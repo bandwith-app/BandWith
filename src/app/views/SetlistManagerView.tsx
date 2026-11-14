@@ -20,13 +20,21 @@ import {
   Upload,
   BookOpen,
   Guitar,
+  MessageSquare,
 } from '@/app/components/icons';
+import {
+  countPendingSuggestions,
+  openSongSuggestions,
+  openSuggestChange,
+  SUGGESTIONS_CHANGED,
+} from '@/lib/services/songSuggestions';
 import { ultimateGuitarSearchUrl } from '@/lib/ultimateGuitar';
 import { openExternal } from '@/lib/nativeFiles';
 import { openLyrics } from '@/lib/lyrics';
 import { asSongChart } from '@/lib/ireal';
 import { cn } from '@/app/components/ui/utils';
 import { useBand } from '@/lib/BandContext';
+import { useAuth } from '@/lib/AuthContext';
 import {
   getSongs, createSong, deleteSong, updateSong,
   getSetlists, getSetlist, createSetlist, updateSetlist, deleteSetlist,
@@ -40,7 +48,7 @@ import type { Song, Setlist } from '@/lib/services/songs';
 import { AddSongModal } from '@/app/components/rehearsal/AddSongModal';
 import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
-import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet } from '@/app/components/bw/Screen';
+import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet, ListRow } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import { isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
 import { formatHoursMinutes, genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
@@ -188,6 +196,7 @@ const editorSnapshot = (name: string, songIds: string[], sets: number[]) =>
 export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose }) => {
   const t = useT();
   const { selectedBand, isAdmin } = useBand();
+  const { user } = useAuth();
   // Setlists are written by admins only (migration 074); members read them.
   const canEditSetlists = isAdmin;
   const [viewMode, setViewMode] = useState<ViewMode>('songs');
@@ -241,6 +250,26 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       fetchData();
     }
   }, [selectedBand?.id]);
+
+  // Suggestions from members (108): admins see how many wait for them,
+  // members how many of theirs are still waiting.
+  const [pendingSuggestions, setPendingSuggestions] = useState(0);
+  useEffect(() => {
+    const bandId = selectedBand?.id;
+    if (!bandId) return;
+    let alive = true;
+    const refresh = (reloadSongs: boolean) => {
+      void countPendingSuggestions(bandId, isAdmin ? undefined : user?.id).then((n) => alive && setPendingSuggestions(n));
+      if (reloadSongs) void fetchData();
+    };
+    refresh(false);
+    const onChange = () => refresh(true);
+    window.addEventListener(SUGGESTIONS_CHANGED, onChange);
+    return () => {
+      alive = false;
+      window.removeEventListener(SUGGESTIONS_CHANGED, onChange);
+    };
+  }, [selectedBand?.id, isAdmin, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = async () => {
     if (!selectedBand?.id) return;
@@ -724,7 +753,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
             )}
             {(viewMode === 'songs' || canEditSetlists) && (
               <IconButton
-                label={viewMode === 'songs' ? t('Add song') : t('New setlist')}
+                label={viewMode === 'songs' ? (isAdmin ? t('Add song') : t('Suggest a song')) : t('New setlist')}
                 variant="filled"
                 icon={<Plus />}
                 onClick={() => (viewMode === 'songs' ? setShowAddSong(true) : setShowAddSetlist(true))}
@@ -824,6 +853,23 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
               </motion.section>
             )}
 
+            {/* Members suggest changes; admins review them (108). */}
+            {viewMode === 'songs' && (isAdmin ? pendingSuggestions > 0 : true) && (
+              <ListRow
+                icon={<MessageSquare />}
+                title={isAdmin ? t('Suggestions from members') : t('My suggestions')}
+                subtitle={
+                  isAdmin
+                    ? pendingSuggestions === 1 ? t('1 to review') : t('{count} to review', { count: pendingSuggestions })
+                    : pendingSuggestions > 0
+                      ? pendingSuggestions === 1 ? t('1 waiting for the admin') : t('{count} waiting for the admin', { count: pendingSuggestions })
+                      : t('Corrections to lyrics or chords, notes for the band')
+                }
+                trailing={isAdmin ? <Tag variant="accent">{pendingSuggestions}</Tag> : undefined}
+                onClick={() => openSongSuggestions()}
+              />
+            )}
+
             {/* List */}
             {viewMode === 'songs' ? (
               filteredSongs.length === 0 ? (
@@ -913,7 +959,17 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                                   : []),
                                 ...(hasChart ? [{ label: t('Open chart'), icon: <FileText className="w-4 h-4" />, run: () => handleOpenChart(song) }] : []),
                                 { label: t('Open in Ultimate Guitar'), icon: <Guitar className="w-4 h-4" />, run: () => { setActionMenuId(null); void openExternal(ultimateGuitarSearchUrl(song.title, song.artist)); } },
-                                { label: t('Edit'), icon: <Edit3 className="w-4 h-4" />, run: () => handleEditSong(song) },
+                                // Only admins edit band songs; members suggest a change (108).
+                                isAdmin
+                                  ? { label: t('Edit'), icon: <Edit3 className="w-4 h-4" />, run: () => handleEditSong(song) }
+                                  : {
+                                      label: t('Suggest a change'),
+                                      icon: <MessageSquare className="w-4 h-4" />,
+                                      run: () => {
+                                        setActionMenuId(null);
+                                        openSuggestChange({ id: song.id, band_id: song.band_id, title: song.title, artist: song.artist, lyrics: song.lyrics, notes: song.notes });
+                                      },
+                                    },
                                 ...(isAdmin && song.status !== 'ready'
                                   ? [{ label: t('Mark as ready'), icon: <CheckCircle2 className="w-4 h-4" />, run: () => handleSetSongStatus(song, 'ready') }]
                                   : []),

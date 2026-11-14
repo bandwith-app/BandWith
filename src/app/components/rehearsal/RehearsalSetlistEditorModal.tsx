@@ -7,6 +7,7 @@ import { userMessage } from '@/lib/userError';
 import { createSong } from '@/lib/services/songs';
 import { safeHttpsUrl } from '@/lib/services/songFiles';
 import { useT, intlLocale } from '@/lib/i18n';
+import { useBand } from '@/lib/BandContext';
 
 function detectUrlType(input: string): { spotify_id?: string; youtube_url?: string; audio_url?: string } {
   const trimmed = input.trim();
@@ -35,6 +36,7 @@ export const RehearsalSetlistEditorModal: React.FC<Props> = ({
   isOpen, onClose, initialTemplate, library, onSave, onCreate, currentUserInitials, bandId, onSongCreated 
 }) => {
   const t = useT();
+  const { isAdmin } = useBand();
   // Local State
   const [name, setName] = useState('');
   const [currentSongIds, setCurrentSongIds] = useState<string[]>([]);
@@ -168,7 +170,8 @@ export const RehearsalSetlistEditorModal: React.FC<Props> = ({
       band_id: bandId,
       title: newTitle.trim(),
       artist: newArtist.trim() || undefined,
-      status: 'ready' as const,
+      // Members can only suggest songs (108): an admin reviews them.
+      status: isAdmin ? ('ready' as const) : ('suggested' as const),
       priority: 'medium' as const,
       ...urlFields,
     };
@@ -197,7 +200,7 @@ export const RehearsalSetlistEditorModal: React.FC<Props> = ({
       setNewUrl('');
       setOverlayTab('library');
     }
-  }, [newTitle, newArtist, newUrl, bandId, onSongCreated, t]);
+  }, [newTitle, newArtist, newUrl, bandId, isAdmin, onSongCreated, t]);
 
   const handleSaveAction = (asNew: boolean) => {
       if (!name) return;

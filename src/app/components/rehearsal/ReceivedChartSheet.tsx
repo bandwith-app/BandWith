@@ -6,6 +6,7 @@ import { chartBarCount, type SongChart } from '@/lib/ireal';
 import { onReceivedChart, peekReceivedChart, receivedFileProblem, setReceivedFileProblem, takeReceivedChart } from '@/lib/chartInbox';
 import { getSongs, updateSong, type Song } from '@/lib/services/songs';
 import { useBand } from '@/lib/BandContext';
+import { suggestSongChange } from '@/lib/services/songSuggestions';
 import { openLyrics } from '@/lib/lyrics';
 import { useT } from '@/lib/i18n';
 
@@ -26,7 +27,9 @@ const LIST_MAX = 80;
  */
 export const ReceivedChartSheet: React.FC = () => {
   const t = useT();
-  const { selectedBand } = useBand();
+  const { selectedBand, isAdmin } = useBand();
+  /** A member's chart goes to the admin as a suggestion (108). */
+  const [suggested, setSuggested] = React.useState(false);
   const [chart, setChart] = React.useState<SongChart | null>(() => peekReceivedChart());
   const [songs, setSongs] = React.useState<Song[] | null>(null);
   const [search, setSearch] = React.useState('');
@@ -82,10 +85,21 @@ export const ReceivedChartSheet: React.FC = () => {
     if (!chart) return;
     setBusy(song.id);
     setError(null);
+    if (!isAdmin) {
+      const { error: e } = await suggestSongChange({ bandId: song.band_id, songId: song.id, kind: 'chords', chordChart: chart });
+      setBusy(null);
+      if (e) return setError(t('Could not send the suggestion.'));
+      takeReceivedChart();
+      setSuggested(true);
+      setDone({ song, chart });
+      setChart(null);
+      return;
+    }
     const { data, error: e } = await updateSong(song.id, { chord_chart: chart } as Partial<Song>);
     setBusy(null);
     if (e || !data) return setError(t('Could not save the chord chart. Try again.'));
     takeReceivedChart();
+    setSuggested(false);
     setDone({ song: data, chart });
     setChart(null);
   };
@@ -122,13 +136,21 @@ export const ReceivedChartSheet: React.FC = () => {
 
   if (done) {
     return (
-      <BwSheet open onClose={close} overline={t('Chord chart')} title={t('Attached to {title}', { title: done.song.title })} zIndex={130} portal>
+      <BwSheet
+        open
+        onClose={close}
+        overline={t('Chord chart')}
+        title={suggested ? t('Suggested for {title}', { title: done.song.title }) : t('Attached to {title}', { title: done.song.title })}
+        zIndex={130}
+        portal
+      >
         <div className="flex flex-col gap-4 pb-2">
           <p className="bw-body-md text-sheet-foreground/85 flex items-center gap-2">
             <Check className="w-5 h-5 shrink-0" aria-hidden />
-            {chartSource(done.chart, t)}
+            {suggested ? t('Sent to the admin. The band’s song stays the same until they accept it.') : chartSource(done.chart, t)}
           </p>
           <div className="flex flex-wrap gap-2">
+            {!suggested && (
             <PillButton
               variant="white"
               size="md"
@@ -140,6 +162,7 @@ export const ReceivedChartSheet: React.FC = () => {
             >
               {t('Open chords')}
             </PillButton>
+            )}
             <PillButton variant="ghost" size="md" fullWidth={false} className="text-sheet-foreground" onClick={close}>
               {t('Done')}
             </PillButton>
@@ -151,7 +174,7 @@ export const ReceivedChartSheet: React.FC = () => {
 
   const c = chart!;
   return (
-    <BwSheet open onClose={close} overline={t('Received file')} title={t('Attach the chord chart')} zIndex={130} portal>
+    <BwSheet open onClose={close} overline={t('Received file')} title={isAdmin ? t('Attach the chord chart') : t('Suggest the chord chart')} zIndex={130} portal>
       <div className="flex flex-col gap-4 pb-2">
         <div className="flex items-start gap-3 p-3 rounded-[16px] bg-sheet-foreground/[0.08]">
           <FileMusic className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
