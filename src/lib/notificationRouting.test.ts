@@ -29,6 +29,13 @@ describe('notificationTarget', () => {
     expect(notificationTarget('song_added', {})).toEqual({ screen: 'repertoire' });
   });
 
+  it('routes setlist and song summaries (107)', () => {
+    // A gig's setlist: that gig. A setlist from the band's library, or a song: the repertoire.
+    expect(notificationTarget('setlist_updated', { event_id: 'e-1', kind: 'summary' })).toEqual({ screen: 'event', eventId: 'e-1' });
+    expect(notificationTarget('setlist_updated', { setlist_id: 's-1' })).toEqual({ screen: 'repertoire' });
+    expect(notificationTarget('song_updated', { song_id: 'x' })).toEqual({ screen: 'repertoire' });
+  });
+
   it('has no screen for someone removed from a band or unknown types', () => {
     expect(notificationTarget('member_left', { removed: true })).toBeNull();
     expect(notificationTarget('something_else', {})).toBeNull();

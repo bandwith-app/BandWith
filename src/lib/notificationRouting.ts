@@ -45,7 +45,7 @@ export function notificationTarget(
     kind === 'member_dropped_out' ||
     kind === 'deputy_reply' ||
     kind === 'deputy_joined' ||
-    kind === 'setlist_updated' ||
+    (kind === 'setlist_updated' && !!eventId) ||
     kind === 'rehearsal_reminder' ||
     kind === 'rehearsal_poll_finalized'
   ) {
@@ -61,7 +61,8 @@ export function notificationTarget(
   }
   if (kind.startsWith('payment_')) return { screen: 'finance' };
   if (kind === 'invite_received' || kind === 'band_invite') return { screen: 'invites' };
-  if (kind === 'song_added') return { screen: 'repertoire' };
+  // A song, or a setlist edited in the band's library (no gig): the repertoire.
+  if (kind === 'song_added' || kind === 'song_updated' || kind === 'setlist_updated') return { screen: 'repertoire' };
   if (kind === 'member_joined' || kind === 'member_left') {
     // Someone removed from a band can no longer open its member list.
     return d.removed ? null : { screen: 'bandMembers' };

@@ -596,7 +596,7 @@ export type SetlistSongInput =
 export const replaceSetlistSongs = async (
   setlistId: string,
   songs: SetlistSongInput[]
-): Promise<{ error: Error | null }> => {
+): Promise<{ error: Error | null; previous?: { song_id: string; set_number: number | null; position: number }[] }> => {
   try {
     // Read the current rows first so a failed insert can be undone.
     const { data: previous, error: readError } = await supabase
@@ -666,7 +666,11 @@ export const replaceSetlistSongs = async (
 
     if (updateError) throw updateError;
 
-    return { error: null };
+    // What was there before, in play order: callers sum up the change (setlistChanges.ts).
+    const before = [...previousRows]
+      .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position)
+      .map(({ song_id, set_number, position }) => ({ song_id, set_number, position }));
+    return { error: null, previous: before };
   } catch (error: any) {
     return { error };
   }

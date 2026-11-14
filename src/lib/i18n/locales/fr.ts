@@ -3868,6 +3868,13 @@ const dict: Dictionary = {
   "New accounts can’t be created right now. Try again later.": "Impossible de créer de nouveaux comptes pour le moment. Réessaie plus tard.",
   "This link has expired or was already used. Ask for a new one.": "Ce lien a expiré ou a déjà été utilisé. Demandes-en un nouveau.",
   "We couldn’t delete your account. Check your connection and try again. If it keeps failing, see Help & support in Settings.": "Impossible de supprimer ton compte. Vérifie ta connexion et réessaie. Si ça ne marche toujours pas, consulte Aide et assistance dans Réglages.",
+  // Setlist edits in the gig overview (107)
+  "Which set?": "Dans quel set ?",
+  "New set": "Nouveau set",
+  "Save the setlist changes?": "Enregistrer les modifications de la setlist ?",
+  "Your changes are only on this device until you save them. Members are notified once, after you save.": "Tant que tu n’enregistres pas, les modifications restent sur cet appareil. Les membres reçoivent une seule notification, après l’enregistrement.",
+  "Save your changes?": "Enregistrer les modifications ?",
+  "You changed this event. Save to keep the changes, or discard them.": "Tu as modifié cet événement. Enregistre pour garder les modifications, ou abandonne-les.",
 };
 
 export default dict;

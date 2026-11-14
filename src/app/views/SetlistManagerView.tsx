@@ -38,6 +38,8 @@ import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { parseSongList, SONG_LIST_ACCEPT } from '@/lib/songListImport';
 import type { Song, Setlist } from '@/lib/services/songs';
 import { AddSongModal } from '@/app/components/rehearsal/AddSongModal';
+import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
+import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import { isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
@@ -46,6 +48,7 @@ import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { useSystemBack } from '@/lib/backStack';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 
 /** Readiness dots: 16 per row, one dot per song (scaled down past 48 songs). */
 const READINESS_COLS = 16;
@@ -179,6 +182,9 @@ interface SetlistManagerViewProps {
 
 type ViewMode = 'songs' | 'setlists';
 
+const editorSnapshot = (name: string, songIds: string[], sets: number[]) =>
+  JSON.stringify([name.trim(), songIds, compactSets(sets)]);
+
 export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose }) => {
   const t = useT();
   const { selectedBand, isAdmin } = useBand();
@@ -200,6 +206,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const [editorError, setEditorError] = useState<string | null>(null);
   /** The setlist couldn't be read: saving would wipe its songs, so it is blocked. */
   const [editorLoadFailed, setEditorLoadFailed] = useState(false);
+  /** The setlist as loaded (name, songs, sets), to tell unsaved edits apart. */
+  const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
   /** Delete waiting for "Delete" in the confirm sheet, with what it takes along. */
   const [confirmDelete, setConfirmDelete] = useState<{ kind: 'song' | 'setlist'; id: string; title: string; body: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -459,6 +467,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setEditorLoadFailed(false);
     setEditorItems([]);
     setEditorSets([]);
+    setEditorBaseline(null);
 
     const { data, error } = await getSetlist(setlistId);
     if (data) {
@@ -469,6 +478,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         .filter((s) => (seen.has(s.song_id) ? false : (seen.add(s.song_id), true)));
       setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id })));
       setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
+      setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
     } else {
       setEditorError(errorText(error, t('Could not load this setlist')));
       setEditorLoadFailed(true);
@@ -512,8 +522,15 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setSetlistEditorSearch(false);
     setEditorError(null);
   };
+  // Leaving the editor with changes not saved asks first.
+  const editorDirty =
+    !!editingSetlistId &&
+    editorBaseline !== null &&
+    editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets) !== editorBaseline;
+  const [editorLeaveOpen, setEditorLeaveOpen] = useState(false);
+  const requestCloseSetlistEditor = () => (editorDirty ? setEditorLeaveOpen(true) : closeSetlistEditor());
   // Android Back and Escape leave the editor for the library, not the library itself.
-  useSystemBack(!!editingSetlistId, closeSetlistEditor);
+  useSystemBack(!!editingSetlistId, requestCloseSetlistEditor);
 
   const handleSaveSetlist = useCallback(async () => {
     if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return;
@@ -528,10 +545,9 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         setEditorError(errorText(nameError, t('Could not save the setlist')));
         return;
       }
-      const { error: songsError } = await replaceSetlistSongs(
-        editingSetlistId,
-        editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 })),
-      );
+      const rows = editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 }));
+      const { error: songsError, previous } = await replaceSetlistSongs(editingSetlistId, rows);
+      const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
       // The name is saved either way; keep the list in step with it.
       setSetlists(prev => prev.map(sl =>
         sl.id === editingSetlistId
@@ -542,11 +558,17 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         setEditorError(errorText(songsError, t('The name was saved, but the song order was not')));
         return;
       }
+      // One push to the band with what changed (107).
+      void notifySetlistSaved({
+        setlistId: editingSetlistId,
+        change: diffSetlist(entriesFromRows(previous ?? []), rows.map(r => ({ songId: r.song_id, setNumber: r.set_number }))),
+        renamed,
+      });
       closeSetlistEditor();
     } finally {
       setSetlistEditorSaving(false);
     }
-  }, [editingSetlistId, editingSetlistName, editorItems, editorSets, setlistEditorSaving, editorLoadFailed, t]);
+  }, [editingSetlistId, editingSetlistName, editorItems, editorSets, setlistEditorSaving, editorLoadFailed, setlists, t]);
 
   const requestDeleteSetlist = async () => {
     if (!editingSetlistId) return;
@@ -981,6 +1003,22 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         document.body,
       )}
 
+      <UnsavedChangesSheet
+        open={editorLeaveOpen}
+        title={t('Save the setlist changes?')}
+        saving={setlistEditorSaving}
+        error={editorError}
+        onKeepEditing={() => setEditorLeaveOpen(false)}
+        onDiscard={() => {
+          setEditorLeaveOpen(false);
+          closeSetlistEditor();
+        }}
+        onSave={async () => {
+          await handleSaveSetlist();
+          setEditorLeaveOpen(false);
+        }}
+      />
+
       {/* New setlist (Figma Sheet, Style=Dark) */}
       <BwSheet
         open={showAddSetlist}
@@ -1034,7 +1072,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                 <motion.div layoutScroll className="flex-1 overflow-y-auto">
                   <ScreenHeader
                 pane
-                    onBack={closeSetlistEditor}
+                    onBack={requestCloseSetlistEditor}
                     backLabel={t('Back to repertoire')}
                     overline={editorSongs.length === 1 ? t('Setlist · {count} song', { count: 1 }) : t('Setlist · {count} songs', { count: editorSongs.length })}
                     title={editingSetlistName.trim() || t('Setlist')}

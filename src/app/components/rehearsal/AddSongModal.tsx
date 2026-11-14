@@ -36,6 +36,8 @@ import { useBand } from '@/lib/BandContext';
 import { useAuth } from '@/lib/AuthContext';
 import { personName } from '@/lib/personName';
 import { notifySongAdded } from '@/lib/services/notifications';
+import { notifySongUpdated } from '@/lib/services/setlistNotify';
+import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
 import { useT } from '@/lib/i18n';
 import { asSongChart, keyLabel, type SongChart } from '@/lib/ireal';
@@ -302,6 +304,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
           const { error: songError } = await updateSong(song.id, changes);
           if (songError) throw songError;
           replaced = replacedFiles(opened, changes);
+          // One push to the band: "Ana changed: key, tempo" (107).
+          void notifySongUpdated(song.id, songFieldsChanged(changes as Record<string, unknown>));
         }
       } else {
         const payload = songCreatePayload(values) as Partial<Song>;

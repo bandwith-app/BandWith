@@ -45,6 +45,8 @@ export type NotificationType =
   | 'member_role_changed'
   // Content
   | 'song_added'
+  // A song edited in the band's repertoire: one push with what changed (107)
+  | 'song_updated'
   | 'setlist_updated'
   | 'task_assigned'
   | 'task_completed'
@@ -147,6 +149,7 @@ export const getNotificationIcon = (type: NotificationType): string => {
     member_role_changed: 'shield',
     // Content
     song_added: 'music',
+    song_updated: 'music',
     setlist_updated: 'list-music',
     task_assigned: 'clipboard',
     task_completed: 'check-square',

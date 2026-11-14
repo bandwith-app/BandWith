@@ -81,6 +81,9 @@ import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
 import { RiderStageContent, RiderStageScreen } from '@/app/components/event/rider/RiderStage';
 import { useRailLayout } from '@/lib/deviceRegions';
+import { GigSetlistEditor, useGigSetlistDraft } from '@/app/components/event/GigSetlistEditor';
+import { UnsavedChangesBar, UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
+import { useSystemBack } from '@/lib/backStack';
 
 interface EventDetailProps {
   event: EventData;
@@ -261,13 +264,13 @@ const SetFlow: React.FC<{ seconds: number[]; max: number }> = ({ seconds, max })
 
 export const EventDetail: React.FC<EventDetailProps> = ({
   event,
-  onClose,
+  onClose: onCloseProp,
   userResponse = 'accepted',
   onAccept,
   onDecline,
   onRespond,
   canRespond,
-  onEdit,
+  onEdit: onEditProp,
   onDelete,
   onChat,
   onConfirmQuote,
@@ -331,6 +334,37 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   /** The setlist couldn't be fetched and no copy is kept on the device (offline). */
   const [setlistError, setSetlistError] = useState(false);
 
+  // The admin's setlist edits in the overview: kept here until Save, then one
+  // notification to the lineup (GigSetlistEditor, migration 107).
+  const setlistDraft = useGigSetlistDraft({
+    songs: setlistSongs,
+    setlistId: event.setlistId,
+    eventId: event.eventId,
+    bandId: event.band_id,
+    eventTitle: event.title,
+    onSaved: (songs, savedId) => {
+      setSetlistSongs(songs as typeof setlistSongs);
+      writeCachedSetlist(savedId, songs as typeof setlistSongs);
+      setSetlistReloadKey((k) => k + 1);
+      // A new setlist was linked to the gig: the events list picks up its id.
+      if (savedId !== event.setlistId) onEventUpdated?.();
+    },
+  });
+  // Leaving (Back, the scrim) or opening Edit with setlist changes not saved: ask first.
+  const [leaveAction, setLeaveAction] = useState<null | (() => void)>(null);
+  const guardUnsaved = (action: () => void) => {
+    if (setlistDraft.dirty) setLeaveAction(() => action);
+    else action();
+  };
+  const onClose = () => guardUnsaved(onCloseProp);
+  const onEdit = onEditProp ? () => guardUnsaved(onEditProp) : undefined;
+  // Android Back with changes waiting: a sheet open over them closes first, then ask.
+  useSystemBack(setlistDraft.dirty, () => {
+    if (activeSheet) setActiveSheet(null);
+    else setLeaveAction(() => onCloseProp);
+    return true;
+  });
+
   // event_members (declined kept), names from the band roster
   const {
     members: dbMembers,
@@ -355,9 +389,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
   useEffect(() => {
     if (!isAdmin && !isPersonalGig && (eventType === 'quote' || userResponse === 'declined')) {
-      onClose();
+      onCloseProp();
     }
-  }, [isAdmin, isPersonalGig, eventType, userResponse, onClose]);
+  }, [isAdmin, isPersonalGig, eventType, userResponse, onCloseProp]);
 
   // Event to-dos (from the create form or a task template).
   const { tasks: eventTasks, toggle: toggleEventTask, error: eventTasksError, reload: reloadTasks } = useEventTasks(
@@ -678,7 +712,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       setIsSubmitting(true);
       try {
         await onAccept();
-        onClose();
+        onCloseProp();
       } catch (err) {
         console.error('Action failed, keeping modal open', err);
       } finally {
@@ -693,7 +727,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       setIsSubmitting(true);
       try {
         await onDecline();
-        onClose();
+        onCloseProp();
       } catch {
         /* handled */
       } finally {
@@ -910,10 +944,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   });
 
   const confirmedExact = resolvedMembers.filter((m) => m.status === 'confirmed').length;
-  const songSeconds = setlistSongs.map((s) => parseDurationSeconds(s.duration));
+  // Follows the admin's edits while they wait for Save (new songs count 0 until saved).
+  const songSeconds = (
+    setlistDraft.dirty
+      ? setlistDraft.sets.flatMap((s) => s.songs.map((sg) => sg.source?.duration as string | undefined))
+      : setlistSongs.map((s) => s.duration)
+  ).map((d) => parseDurationSeconds(d));
   const totalSongSeconds = songSeconds.reduce((a, b) => a + b, 0);
   const maxSongSeconds = Math.max(0, ...songSeconds);
   const showSetFlow = numSongs >= 2 && numSongs <= 24 && maxSongSeconds > 0;
+  // Band admin: reorder, add and remove songs right here (setlists are admin-only, 074).
+  const canEditSetlist =
+    isAdmin && !isPast && !isPersonalGig && !isQuote && !isRehearsal && !!event.band_id && !!event.eventId && !setlistError &&
+    // Every row must name its song, or saving would drop it.
+    setlistSongs.every((s) => !!s.songId);
+  // Song counts in the titles follow the edits while they wait for Save.
+  const shownSongs = canEditSetlist ? setlistDraft.sets.reduce((n, s) => n + s.songs.length, 0) : numSongs;
   const chatLabel = isRehearsal ? t('REHEARSAL CHAT') : t('EVENT CHAT');
 
   // ─── RSVP ───
@@ -1298,12 +1344,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               {tab === 'setlist' && (
                 <section className="flex flex-col gap-6" aria-label={t('Setlist')}>
                   <SectionTitle
-                    title={t('SETLIST · {count}', { count: numSongs })}
+                    title={t('SETLIST · {count}', { count: shownSongs })}
                     actionLabel={isAdmin && onEdit ? t('EDIT') : undefined}
                     onAction={isAdmin && onEdit ? onEdit : undefined}
                   />
                   {setlistLoading ? (
                     <p className="bw-body-sm text-muted-foreground">{t('Loading…')}</p>
+                  ) : canEditSetlist ? (
+                    <div className="bg-card rounded-[16px] p-4">
+                      <GigSetlistEditor draft={setlistDraft} />
+                    </div>
                   ) : numSongs > 0 ? (
                     <ol className="bg-card rounded-[16px] px-4 py-1 flex flex-col">
                       {setlistSongs.map((song, i) => (
@@ -1620,12 +1670,26 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     actionLabel={
                       setlistLoading
                         ? '...'
-                        : numSongs === 1
-                          ? t('{count} SONG', { count: numSongs })
-                          : t('{count} SONGS', { count: numSongs })
+                        : shownSongs === 1
+                          ? t('{count} SONG', { count: shownSongs })
+                          : t('{count} SONGS', { count: shownSongs })
                     }
                     onAction={() => setActiveSheet('setlist')}
                   />
+                  {canEditSetlist && !setlistLoading ? (
+                    <div className="bg-card rounded-[16px] p-4 flex flex-col gap-3">
+                      {showSetFlow && (
+                        <span className="flex flex-col gap-2 w-full pb-3 border-b border-border">
+                          <SetFlow seconds={songSeconds} max={maxSongSeconds} />
+                          <span className="flex items-center justify-between bw-label-xs text-muted-foreground">
+                            <span>{t('SET FLOW · ENERGY')}</span>
+                            <span>{t('OPENER → ENCORE')}</span>
+                          </span>
+                        </span>
+                      )}
+                      <GigSetlistEditor draft={setlistDraft} />
+                    </div>
+                  ) : (
                   <button
                     type="button"
                     onClick={() => setActiveSheet('setlist')}
@@ -1678,6 +1742,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       </>
                     )}
                   </button>
+                  )}
                 </section>
               )}
 
@@ -2004,6 +2069,37 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           </div>
         </div>
 
+        <UnsavedChangesSheet
+          open={!!leaveAction}
+          title={t('Save the setlist changes?')}
+          saving={setlistDraft.saving}
+          error={setlistDraft.error}
+          onKeepEditing={() => setLeaveAction(null)}
+          onDiscard={() => {
+            const go = leaveAction;
+            setLeaveAction(null);
+            setlistDraft.discard();
+            go?.();
+          }}
+          onSave={async () => {
+            const go = leaveAction;
+            if (await setlistDraft.save()) {
+              setLeaveAction(null);
+              go?.();
+            }
+          }}
+        />
+
+        {/* Setlist changes waiting for Save (the setlist sheet shows its own). */}
+        {setlistDraft.dirty && activeSheet !== 'setlist' && (
+          <UnsavedChangesBar
+            onCancel={setlistDraft.discard}
+            onSave={() => void setlistDraft.save()}
+            saving={setlistDraft.saving}
+            error={setlistDraft.error}
+          />
+        )}
+
         {/* ═══ DRILL-DOWN BOTTOM SHEET (Setlist / Lineup / Fee / Notes) ═══ */}
         {/* iPhone Duo open: the event moves to the leading page while the sheet
             is on the trailing page (Figma "Open · Event detail / Gig | Event /
@@ -2018,14 +2114,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           title={
             <>
               {activeSheet === 'fee' && t('Fee & payouts')}
-              {activeSheet === 'setlist' && t('Setlist · {count}', { count: numSongs })}
+              {activeSheet === 'setlist' && t('Setlist · {count}', { count: shownSongs })}
               {activeSheet === 'lineup' &&
                 (isQuote ? t('Availability · {count}', { count: memberCount }) : t('Lineup · {count}', { count: memberCount }))}
               {activeSheet === 'notes' && t('Logistics & notes')}
             </>
           }
           footer={
-            activeSheet === 'fee' && isAdmin && paidSupported && activeMembers.length > 0 && !allPaid ? (
+            activeSheet === 'setlist' && setlistDraft.dirty ? (
+              <UnsavedChangesBar
+                inSheet
+                onCancel={setlistDraft.discard}
+                onSave={() => void setlistDraft.save()}
+                saving={setlistDraft.saving}
+                error={setlistDraft.error}
+              />
+            ) : activeSheet === 'fee' && isAdmin && paidSupported && activeMembers.length > 0 && !allPaid ? (
               <PillButton
                 variant="primary"
                 onClick={() => {
@@ -2066,7 +2170,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               />
             )}
 
-            {activeSheet === 'setlist' && (
+            {activeSheet === 'setlist' && canEditSetlist && <GigSetlistEditor draft={setlistDraft} layerZ={120} />}
+            {activeSheet === 'setlist' && !canEditSetlist && (
               <>
                 {numSongs > 0 ? (
                   <div className="flex flex-col gap-2">

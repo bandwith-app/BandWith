@@ -48,6 +48,8 @@ import {
 import type { EventMember, Event } from "@/lib/services/events";
 import { respondToOwnInvite, InviteResponseError } from "@/lib/services/inviteResponse";
 import { createSetlist, deleteSetlist, replaceSetlistSongs, updateSetlist } from "@/lib/services/songs";
+import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
+import { notifySetlistSaved } from "@/lib/services/setlistNotify";
 import { receiptFor, deleteChat as deleteChatService, createChat as createChatService, chatErrorMessage } from "@/lib/services/chats";
 import { deleteNotification as deleteNotificationService, createNotification, getUnreadCount } from "@/lib/services/notifications";
 import { syncAppBadge } from "@/lib/services/appBadge";
@@ -3198,6 +3200,8 @@ export default function AuthenticatedApp() {
       // Set once the setlist is saved online: an offline fallback after that
       // must not queue it again.
       let setlistSaved = false;
+      // Edit: what the save changed in the setlist, for the lineup's one notification (107).
+      const setlistChange: { current: { id: string; change: SetlistChange } | null } = { current: null };
       const persistSetlist = async (): Promise<string | null> => {
         const songs = setlistSongs();
         // No songs: leave the setlist as it is, unless the user removed every
@@ -3213,11 +3217,18 @@ export default function AuthenticatedApp() {
             .maybeSingle();
           const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
           if (existingId) {
-            const { error: replaceErr } = await replaceSetlistSongs(
+            const { error: replaceErr, previous } = await replaceSetlistSongs(
               existingId,
               songs.map(({ song_id, set_number }) => ({ song_id, set_number }))
             );
             if (replaceErr) throw replaceErr;
+            setlistChange.current = {
+              id: existingId,
+              change: diffSetlist(
+                entriesFromRows(previous ?? []),
+                songs.map(({ song_id, set_number }) => ({ songId: song_id, setNumber: set_number }))
+              ),
+            };
             await updateSetlist(existingId, { name, song_count: songs.length });
             return existingId;
           }
@@ -3225,6 +3236,7 @@ export default function AuthenticatedApp() {
         if (songs.length === 0) return null;
         const { data: sl, error: slErr } = await createSetlist({ band_id: realBand.id, name, song_count: songs.length }, songs);
         if (slErr) throw slErr;
+        if (data._editing && sl?.id) setlistChange.current = { id: sl.id, change: { moved: 0, added: songs.length, removed: 0 } };
         return sl?.id || null;
       };
 
@@ -3359,6 +3371,8 @@ export default function AuthenticatedApp() {
               await notifyEventMembersCreated(realBand.id, data._editingEventId, title || "Event", date, time || "20:00", eventType, user.id, creatorName, addedOnEdit, { venue: location, feeTbd: !!data.feeTbd });
             } catch (err) { console.error("Notify error:", err); }
           }
+          // One push to the lineup with what changed in the setlist (the gig now points at it).
+          if (setlistChange.current) void notifySetlistSaved({ setlistId: setlistChange.current.id, eventId: data._editingEventId, change: setlistChange.current.change });
           const memberFailed = memberResult.startsWith('insert errors') || memberResult.startsWith('delete failed') || memberResult.startsWith('verify failed');
           if (memberFailed) {
             console.error('Member persist issue:', memberResult);
