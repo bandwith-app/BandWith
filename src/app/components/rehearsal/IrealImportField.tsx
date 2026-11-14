@@ -48,7 +48,7 @@ export const IrealImportField: React.FC<{
             size="sm"
             variant="outline"
             fullWidth={false}
-            onClick={() => openLyrics({ title: chart.title, artist: chart.composer, lyrics: '', chart, view: 'chords' })}
+            onClick={() => openLyrics({ title: chart.title, artist: chart.composer, lyrics: '', chart, view: 'structure' })}
           >
             {t('Preview chords')}
           </PillButton>

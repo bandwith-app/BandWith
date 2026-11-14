@@ -1,15 +1,19 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Minus, Pause, Play, Plus, X } from '@/app/components/icons';
+import { Minus, Music2, Pause, Play, Plus, X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
-import { closeLyrics, parseInline, parseLyrics, splitChords, useLyricsDoc } from '@/lib/lyrics';
+import { closeLyrics, openLyrics, parseInline, parseLyrics, splitChords, useLyricsDoc } from '@/lib/lyrics';
+import { useOptionalBand } from '@/lib/BandContext';
+import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
 import { chordLabel, keyLabel } from '@/lib/ireal';
 import { transposeChord } from '@/lib/transpose';
 import { TransposeControl, TransposeProvider, useSongTranspose, useTranspose } from './Transpose';
 import { togglePlay, usePlayer } from '@/lib/audioPlayer';
 import { useSystemBack } from '@/lib/backStack';
 import { useT } from '@/lib/i18n';
-import { ChordChartView } from '@/app/components/ui/ChordChart';
+import { availableViews, hasInlineChords, normalizeLyrics, resolveView, sectionLabel } from '@/lib/songFormat';
+import { SongBody, SongViewTabs, useSongViewPreference } from './SongViews';
+import type { SongView } from '@/lib/songFormat';
 import { cn } from '@/app/components/ui/utils';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -56,13 +60,16 @@ const Inline: React.FC<{ text: string }> = ({ text }) => (
  * they start on; that word and its chord make one box (never overlapping the
  * next chord), the rest of the words wrap like text on narrow screens.
  */
-const LyricsLine: React.FC<{ line: string }> = ({ line }) => {
+const LyricsLine: React.FC<{ line: string; hideChords?: boolean }> = ({ line, hideChords }) => {
   const segments = React.useMemo(() => splitChords(line), [line]);
   const { semitones, flats } = useTranspose();
-  if (!segments) {
+  if (!segments || hideChords) {
+    // Lyrics only: the words, chords dropped (a chords-only line disappears).
+    const words = segments ? segments.map((s) => s.text).join('').replace(/\s{2,}/g, ' ') : line;
+    if (!words.trim()) return null;
     return (
       <p className="font-medium break-words">
-        <Inline text={line} />
+        <Inline text={words} />
       </p>
     );
   }
@@ -93,7 +100,7 @@ const LyricsLine: React.FC<{ line: string }> = ({ line }) => {
  * Lyrics as sections of lines (Markdown / JSON, see src/lib/lyrics.ts).
  * `muted` is the class for section names and the empty message.
  */
-type LyricsTextProps = { lyrics?: string | null; size: number; muted?: string; className?: string };
+type LyricsTextProps = { lyrics?: string | null; size: number; muted?: string; className?: string; hideChords?: boolean };
 
 export const LyricsText: React.FC<LyricsTextProps> = (props) => {
   const tr = useT();
@@ -113,9 +120,11 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
   size,
   muted = 'text-muted-foreground',
   className,
+  hideChords,
 }) => {
   const tr = useT();
-  const sections = React.useMemo(() => parseLyrics(lyrics), [lyrics]);
+  // Shown in the band's format (section names, chords on their words), whatever was saved.
+  const sections = React.useMemo(() => parseLyrics(normalizeLyrics(lyrics)), [lyrics]);
   return (
     <div className={className ?? 'max-w-3xl mx-auto w-full flex flex-col gap-8 pt-4'} style={{ fontSize: size, lineHeight: 1.45 }}>
       {sections.length === 0 ? (
@@ -123,10 +132,10 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
       ) : (
         sections.map((s, i) => (
           <section key={i} className="flex flex-col gap-1">
-            {s.name && <h3 className={`bw-label-md ${muted} uppercase mb-1`}>{s.name}</h3>}
+            {s.name && <h3 className={`bw-label-md ${muted} uppercase mb-1`}>{sectionLabel(s.name, tr)}</h3>}
             {s.lines.map((line, j) =>
               line.trim() ? (
-                <LyricsLine key={j} line={line} />
+                <LyricsLine key={j} line={line} hideChords={hideChords} />
               ) : (
                 <span key={j} className="block h-[0.8em]" aria-hidden />
               )
@@ -134,34 +143,6 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
           </section>
         ))
       )}
-    </div>
-  );
-};
-
-/** Lyrics / Chords switch, shown when a song has both. */
-export const LyricsChordsTabs: React.FC<{
-  view: 'lyrics' | 'chords';
-  onChange: (v: 'lyrics' | 'chords') => void;
-  className?: string;
-  /** Classes of the selected and the other tab (Stage mode is always dark). */
-  on?: string;
-  off?: string;
-}> = ({ view, onChange, className, on = 'bg-foreground text-background', off = 'text-muted-foreground' }) => {
-  const tr = useT();
-  return (
-    <div role="tablist" className={cn('flex items-center gap-1', className)}>
-      {(['lyrics', 'chords'] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          role="tab"
-          aria-selected={view === v}
-          onClick={() => onChange(v)}
-          className={cn('min-h-9 px-3 rounded-full bw-label-sm transition-colors', view === v ? on : off)}
-        >
-          {v === 'lyrics' ? tr('Lyrics') : tr('Chords')}
-        </button>
-      ))}
     </div>
   );
 };
@@ -183,14 +164,31 @@ export const LyricsViewer: React.FC = () => {
   });
 
   const isThisTrack = !!doc?.songId && player.track?.id === doc.songId;
-  const hasLyrics = !!doc?.lyrics?.trim();
-  const hasChart = !!doc?.chart;
-  const [view, setView] = React.useState<'lyrics' | 'chords'>('lyrics');
+  // Admins fix the chords from the reader (the band song, the same for everyone).
+  const canEditChords = !!useOptionalBand()?.isAdmin && !!doc?.songId && !!doc.lyrics?.trim();
   React.useEffect(() => {
-    if (doc) setView(doc.view ?? (hasLyrics || !hasChart ? 'lyrics' : 'chords'));
-  }, [doc]); // eslint-disable-line react-hooks/exhaustive-deps
-  const showChords = view === 'chords' && hasChart;
-  const kind = showChords ? tr('Chords') : tr('Lyrics');
+    const onSaved = (e: Event) => {
+      const d = (e as CustomEvent<{ id: string; lyrics: string }>).detail;
+      if (d && doc?.songId === d.id) openLyrics({ ...doc, lyrics: d.lyrics });
+    };
+    window.addEventListener(SONG_SAVED, onSaved);
+    return () => window.removeEventListener(SONG_SAVED, onSaved);
+  }, [doc]);
+  const hasChart = !!doc?.chart;
+  // The person's view (instrument or last pick); a menu item can open another one.
+  const [preferred, setPreferred] = useSongViewPreference();
+  const [opened, setOpened] = React.useState<SongView | null>(null);
+  React.useEffect(() => {
+    setOpened(doc?.view ?? null);
+  }, [doc]);
+  const song = React.useMemo(() => ({ lyrics: normalizeLyrics(doc?.lyrics), chart: doc?.chart }), [doc]);
+  const view = resolveView(opened ?? preferred, song) ?? 'lyrics';
+  const pick = (v: SongView) => {
+    setOpened(null);
+    setPreferred(v);
+  };
+  const showChords = view !== 'lyrics' && (hasChart || hasInlineChords(doc?.lyrics));
+  const kind = view === 'structure' ? tr('Structure') : view === 'chords' ? tr('Chords') : tr('Lyrics');
   // Transpose on this device: only when there are chords to move.
   const [semitones, setSemitones] = useSongTranspose(doc?.songId);
   const songKey = doc?.songKey || keyLabel(doc?.chart?.key) || null;
@@ -227,19 +225,22 @@ export const LyricsViewer: React.FC = () => {
                 onClick={togglePlay}
               />
             )}
+            {canEditChords && (
+              <IconButton label={tr('Edit chords')} size="sm" icon={<Music2 />} onClick={() => openChordEditor(doc.songId!)} />
+            )}
             <IconButton label={tr('Smaller text')} size="sm" icon={<Minus />} onClick={() => step(-1)} disabled={min} />
             <IconButton label={tr('Bigger text')} size="sm" icon={<Plus />} onClick={() => step(1)} disabled={max} />
             <IconButton label={showChords ? tr('Close') : tr('Close lyrics')} size="sm" icon={<X />} onClick={closeLyrics} />
           </div>
-          {((hasLyrics && hasChart) || hasChords) && (
+          {(availableViews(song).length > 1 || hasChords) && (
             <div className="shrink-0 px-4 pb-2 flex flex-wrap items-center justify-between gap-2">
-              {hasLyrics && hasChart ? <LyricsChordsTabs view={view} onChange={setView} /> : <span />}
-              {hasChords && <TransposeControl semitones={semitones} onChange={setSemitones} songKey={songKey} />}
+              <SongViewTabs song={song} view={view} onChange={pick} />
+              {hasChords && showChords && <TransposeControl semitones={semitones} onChange={setSemitones} songKey={songKey} />}
             </div>
           )}
           <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-16">
             <TransposeProvider semitones={semitones} songKey={songKey}>
-              {showChords && doc.chart ? <ChordChartView chart={doc.chart} size={size} /> : <LyricsText lyrics={doc.lyrics} size={size} />}
+              <SongBody song={song} view={view} size={size} />
             </TransposeProvider>
           </div>
         </motion.div>

@@ -59,6 +59,7 @@ import { MiniPlayer } from "@/app/components/ui/MiniPlayer";
 import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
 import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
 import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
+import { ChordEditor } from "@/app/components/songs/ChordEditor";
 import { openSongSuggestions } from "@/lib/services/songSuggestions";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
@@ -4753,6 +4754,7 @@ export default function AuthenticatedApp() {
       <LyricsViewer />
       <SongSuggestionsView />
       <SuggestSongChangeSheet />
+      <ChordEditor />
       {/* A MusicXML chord chart opened with the app: attach it to a song. */}
       <ReceivedChartSheet />
       <AnimatePresence>

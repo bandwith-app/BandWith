@@ -102,6 +102,28 @@ export const buildSeed = (): DemoDB => {
 
   // A made-up song with made-up lyrics (never real lyrics in the demo), and
   // members' suggestions for the admin to review (108).
+  const HARBOR_LIGHTS = [
+    '[Strofa]',
+    'A              E',
+    'Harbor lights are burning low',
+    'F#m            D',
+    'Every boat is coming home',
+    '',
+    'Rit.:',
+    'D          E           A',
+    'Sing it slow, sing it clear',
+    '',
+    '[Strofa]',
+    'Salt and silver on the shore',
+    'Nobody waits here anymore',
+  ].join('\n');
+  const HARBOR_CHART = {
+    v: 1, source: 'ireal', title: 'Harbor Lights', composer: 'The Demo Band', style: 'Soul Ballad', key: 'G', bpm: 88, time: '4/4',
+    sections: [
+      { label: 'A', bars: [{ chords: ['G'] }, { chords: ['D'] }, { chords: ['E-'] }, { chords: ['C'] }] },
+      { label: 'B', bars: [{ chords: ['C'] }, { chords: ['D'] }, { chords: ['G'] }, { chords: ['%'] }] },
+    ],
+  };
   const PAPER_BOATS = [
     '# Verse 1',
     '[C]Paper boats on the [G]river',
@@ -118,6 +140,12 @@ export const buildSeed = (): DemoDB => {
       id: id(350), band_id: IDS.band, title: 'Paper Boats', artist: 'The Demo Band', duration_seconds: 214, bpm: 96, key: 'C',
       genre: 'Soul / Funk', category: 'repertoire', status: 'ready', priority: 'normal', times_played: 3, added_by: IDS.me,
       lyrics: PAPER_BOATS, notes: 'Capo 2 on acoustic.', created_at: created, updated_at: created,
+    },
+    {
+      // Made-up song with an iReal-style chart, lyrics pasted as "chords over words" in the wrong key (chord editor checks).
+      id: id(352), band_id: IDS.band, title: 'Harbor Lights', artist: 'The Demo Band', duration_seconds: 201, bpm: 88, key: 'G',
+      genre: 'Soul / Funk', category: 'repertoire', status: 'learning', priority: 'normal', times_played: 0, added_by: IDS.me,
+      lyrics: HARBOR_LIGHTS, chord_chart: HARBOR_CHART, created_at: created, updated_at: created,
     },
     {
       id: id(351), band_id: IDS.band, title: 'Lantern Street', artist: 'The Demo Band', duration_seconds: 188, bpm: 104, key: 'G',

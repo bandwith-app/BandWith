@@ -35,6 +35,7 @@ import { asSongChart } from '@/lib/ireal';
 import { cn } from '@/app/components/ui/utils';
 import { useBand } from '@/lib/BandContext';
 import { useAuth } from '@/lib/AuthContext';
+import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
 import {
   getSongs, createSong, deleteSong, updateSong,
   getSetlists, getSetlist, createSetlist, updateSetlist, deleteSetlist,
@@ -265,9 +266,11 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     refresh(false);
     const onChange = () => refresh(true);
     window.addEventListener(SUGGESTIONS_CHANGED, onChange);
+    window.addEventListener(SONG_SAVED, onChange);
     return () => {
       alive = false;
       window.removeEventListener(SUGGESTIONS_CHANGED, onChange);
+      window.removeEventListener(SONG_SAVED, onChange);
     };
   }, [selectedBand?.id, isAdmin, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -955,11 +958,14 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                                   ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart) }); } }]
                                   : []),
                                 ...(asSongChart(song.chord_chart)
-                                  ? [{ label: t('Chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'chords' }); } }]
+                                  ? [{ label: t('Chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'structure' }); } }]
                                   : []),
                                 ...(hasChart ? [{ label: t('Open chart'), icon: <FileText className="w-4 h-4" />, run: () => handleOpenChart(song) }] : []),
                                 { label: t('Open in Ultimate Guitar'), icon: <Guitar className="w-4 h-4" />, run: () => { setActionMenuId(null); void openExternal(ultimateGuitarSearchUrl(song.title, song.artist)); } },
                                 // Only admins edit band songs; members suggest a change (108).
+                                ...(isAdmin && song.lyrics?.trim()
+                                  ? [{ label: t('Edit chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openChordEditor(song.id); } }]
+                                  : []),
                                 isAdmin
                                   ? { label: t('Edit'), icon: <Edit3 className="w-4 h-4" />, run: () => handleEditSong(song) }
                                   : {
