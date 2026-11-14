@@ -49,6 +49,8 @@ import { getSongs, getSetlists, getSetlist, type Song, type Setlist } from '@/li
 import { removeSongsFromSets, setsFromSetlistSongs, setSongCount } from '@/lib/setlistSets';
 import { setStartNumbers, withSetSongs } from '@/lib/setlistOrder';
 import { SortableSongList } from '@/app/components/ui/SortableSongList';
+import { SetChooserSheet } from '@/app/components/ui/SetChooserSheet';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { supabase } from '@/lib/supabase';
 import { listEventTasks } from '@/lib/services/eventTasks';
 import { getBandPricing, DEFAULT_BAND_PRICING, type BandPricingSettings } from '@/lib/services/pricing';
@@ -426,6 +428,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [step, setStep] = useState<number>(() => (typeof ds?.step === 'number' ? ds.step : 0));
   const [songPickerOpen, setSongPickerOpen] = useState(false);
   const [songPickerTargetSet, setSongPickerTargetSet] = useState<string | null>(null);
+  /** Adding songs to a gig with more than one set: which one (SetChooserSheet). */
+  const [setChooserOpen, setSetChooserOpen] = useState(false);
 
   // Review step collapsibles (closed by default)
   const [isReviewSetlistExpanded, setIsReviewSetlistExpanded] = useState(false);
@@ -752,6 +756,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   // the form used to open with 0). Songs the user picked meanwhile win.
   const editingSetlistId: string | undefined = isEditing ? editingEvent?.setlistId : undefined;
   const savedSongCountRef = useRef(0);
+  // Edit: what the form held once the saved setlist and to-dos loaded, to ask
+  // before closing with changes (set below, after the snapshot).
+  const editBaselineRef = useRef<string | null>(null);
+  const editDirtyRef = useRef(false);
+  const rebaseEdit = () => {
+    if (!editDirtyRef.current) editBaselineRef.current = null;
+  };
   useEffect(() => {
     if (!editingSetlistId || Array.isArray(ds?.setlist)) return;
     let cancelled = false;
@@ -759,6 +770,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       if (cancelled || error || !data?.songs?.length) return;
       const sets = setsFromSetlistSongs(data.songs, (n) => t('Set {n}', { n }));
       savedSongCountRef.current = setSongCount(sets);
+      rebaseEdit();
       setSetlist((prev) => (setSongCount(prev) > 0 ? prev : sets));
     });
     return () => {
@@ -786,6 +798,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     listEventTasks(editingEventId).then(({ data }) => {
       if (cancelled || data.length === 0) return;
       setOriginalTaskIds(data.map(t => t.id));
+      rebaseEdit();
       setTasks(prev => [
         ...data.map(t => ({ uid: `t-saved-${t.id}`, id: t.id, title: t.title, completed: t.is_completed })),
         ...prev.filter(t => !t.id),
@@ -1043,6 +1056,21 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const baselineRef = useRef<string | null>(null);
   if (baselineRef.current === null) baselineRef.current = typedSnapshot;
   const isDirty = typedSnapshot !== baselineRef.current;
+  if (editBaselineRef.current === null) editBaselineRef.current = typedSnapshot;
+  const editDirty = isEditing && typedSnapshot !== editBaselineRef.current;
+  editDirtyRef.current = editDirty;
+  const [editLeaveOpen, setEditLeaveOpen] = useState(false);
+  // Edit event: Close / Cancel / Back with changes not saved asks first.
+  const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
+  useSystemBack(editDirty, () => {
+    if (editLeaveOpen) setEditLeaveOpen(false);
+    else if (setChooserOpen) setSetChooserOpen(false);
+    else if (songPickerOpen) {
+      setSongPickerOpen(false);
+      setSongPickerTargetSet(null);
+    } else setEditLeaveOpen(true);
+    return true;
+  });
   const draftsEnabled = !isEditing && modalCategory === 'gig' && !!currentUserId;
   const [leaveOpen, setLeaveOpen] = useState(false);
 
@@ -1785,6 +1813,33 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setSongPickerTargetSet(setUid);
     setSongPickerOpen(true);
   };
+  // One set (or none yet): that's where the songs go. More: ask which.
+  const startAddSongs = () => {
+    if (setlist.length > 1) setSetChooserOpen(true);
+    else openSongPicker(setlist[0]?.uid || null);
+  };
+  const setChooser = (
+    <SetChooserSheet
+      open={setChooserOpen}
+      zIndex={110}
+      sets={setlist.map((s: any, i: number) => ({
+        uid: s.uid,
+        title: (s.title || '').trim() || t('Set {n}', { n: i + 1 }),
+        count: (s.songs || []).length,
+      }))}
+      onClose={() => setSetChooserOpen(false)}
+      onChoose={(uid) => {
+        setSetChooserOpen(false);
+        openSongPicker(uid);
+      }}
+      onNewSet={() => {
+        const uid = `set-${Date.now()}`;
+        setSetlist(prev => [...prev, { uid, title: t('Set {n}', { n: prev.length + 1 }), songs: [] }]);
+        setSetChooserOpen(false);
+        openSongPicker(uid);
+      }}
+    />
+  );
 
   // ── STEP 01: EVENT & LINEUP ─────────────────────────────────
   const renderStep1 = () => (
@@ -1981,7 +2036,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           size="sm"
           fullWidth={false}
           icon={<Plus className="w-4 h-4" />}
-          onClick={() => openSongPicker(setlist[0]?.uid || null)}
+          onClick={startAddSongs}
         >
           {t('Add songs')}
         </PillButton>
@@ -2242,7 +2297,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             size="sm"
             fullWidth={false}
             icon={<Music className="w-4 h-4" />}
-            onClick={() => openSongPicker(setlist[0]?.uid || null)}
+            onClick={startAddSongs}
           >
             {t('Pick songs')}
           </PillButton>
@@ -2264,6 +2319,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                     canReorder
                     label={item.title || t('Set {n}', { n: i + 1 })}
                     onReorder={songs => setSetlist(prev => withSetSongs(prev, item.uid, songs))}
+                    onRemove={uid => removeSongFromSet(item.uid, uid)}
                   />
                 </div>
               ) : null
@@ -2365,7 +2421,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 variant="outline"
                 size="sm"
                 icon={<X />}
-                onClick={onClose}
+                onClick={requestEditClose}
               />
             </div>
             <h1 className="bw-h1 truncate">{getEffectiveTitle()}</h1>
@@ -2382,7 +2438,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           {/* CTA bar */}
           <div className="shrink-0 px-4 pt-3 bg-background" style={ctaPadBottom}>
             <div className="grid grid-cols-[2fr_3fr] gap-3">
-              <PillButton variant="outline" size="lg" onClick={onClose}>
+              <PillButton variant="outline" size="lg" onClick={requestEditClose}>
                 {t('Cancel')}
               </PillButton>
               <PillButton
@@ -2420,6 +2476,22 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             />
           )}
         </AnimatePresence>
+        {setChooser}
+        <UnsavedChangesSheet
+          open={editLeaveOpen}
+          title={t('Save your changes?')}
+          body={t('You changed this event. Save to keep the changes, or discard them.')}
+          saving={isSaving}
+          onKeepEditing={() => setEditLeaveOpen(false)}
+          onDiscard={() => {
+            setEditLeaveOpen(false);
+            onClose();
+          }}
+          onSave={() => {
+            setEditLeaveOpen(false);
+            void handleCreate();
+          }}
+        />
       </>
     );
   }
@@ -2936,6 +3008,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           />
         )}
       </AnimatePresence>
+      {setChooser}
 
       {draftsEnabled && (
         <LeaveWizardSheet

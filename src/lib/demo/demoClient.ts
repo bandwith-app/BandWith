@@ -1073,6 +1073,14 @@ const rpc = (fn: string, args: Row = {}) => {
       data = rotate ? l.token : true;
       break;
     }
+    // No one else to notify in the demo: keep the call for checks.
+    case 'bw_notify_setlist_saved':
+    case 'bw_notify_song_updated': {
+      const g = globalThis as { __bwDemoNotifications?: unknown[] };
+      (g.__bwDemoNotifications ||= []).push({ fn, args });
+      data = 0;
+      break;
+    }
     case 'update_setlist_song_count': {
       const id = args.p_setlist_id ?? args.setlist_id;
       const s = table('setlists').find((r) => r.id === id);
