@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import {
   DndContext,
@@ -67,7 +68,9 @@ export const InputListEditor: React.FC<{
     if (ok) haptic.confirm();
   };
 
-  return (
+  // On <body>: inside the event's scroller (the iPad Rider tab) or a sheet
+  // (new gig), iOS WebKit would clip this full-screen editor to that box.
+  return createPortal(
     <motion.div
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
@@ -145,7 +148,8 @@ export const InputListEditor: React.FC<{
           </div>
         </div>
       </div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 };
 
