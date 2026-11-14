@@ -372,9 +372,12 @@ export interface BwSheetProps {
    */
   leading?: boolean;
   /**
-   * Render at the top of the document. For sheets declared inside the home
-   * scroller (dashboard cards): iOS WebKit keeps fixed layers there on the
-   * leading page, so they could not reach the trailing page.
+   * Render on <body> (default). iOS WebKit clips a fixed layer to any
+   * scrolling ancestor: a sheet declared inside a list-column hub (Members,
+   * Contracts, Gear…) or the home scroller stayed on the leading page while
+   * it was placed on the trailing one, so nothing showed on the open iPhone
+   * Duo. On <body> the sheet still stacks above the layer that opened it
+   * (see `hostZ`).
    */
   portal?: boolean;
   /**
@@ -403,13 +406,29 @@ export const BwSheet: React.FC<BwSheetProps> = ({
   footer,
   children,
   closeLabel = t('Close'),
-  zIndex = 90,
+  zIndex: ownZ = 90,
   leading = false,
-  portal = false,
+  portal = true,
   picker = false,
   navAnchor = false,
 }) => {
   const dark = tone === 'dark';
+  // On <body> the sheet no longer sits inside the stacking context of the
+  // layer that opened it (a hub at z 70, a detail at z 120…): an anchor left
+  // in place reads that layer's z-index so the scrim and the sheet stay above
+  // it, whatever zIndex the caller passed.
+  const anchorRef = React.useRef<HTMLSpanElement | null>(null);
+  const [hostZ, setHostZ] = React.useState(0);
+  React.useLayoutEffect(() => {
+    if (!open || !portal) return;
+    let z = 0;
+    for (let el = anchorRef.current?.parentElement ?? null; el && el !== document.body; el = el.parentElement) {
+      const v = Number.parseInt(getComputedStyle(el).zIndex, 10);
+      if (Number.isFinite(v)) z = Math.max(z, v);
+    }
+    setHostZ(z);
+  }, [open, portal]);
+  const zIndex = portal ? Math.max(ownZ, hostZ + 2) : ownZ;
   // Tablet-sized window: a centred card (or a popover above the nav) that
   // fades in, instead of a sheet rising from the bottom edge.
   const { wide, rail } = useRailLayout();
@@ -502,5 +521,11 @@ export const BwSheet: React.FC<BwSheetProps> = ({
       )}
     </AnimatePresence>
   );
-  return portal && typeof document !== 'undefined' ? createPortal(sheet, document.body) : sheet;
+  if (!portal || typeof document === 'undefined') return sheet;
+  return (
+    <>
+      {open && <span ref={anchorRef} hidden data-bw-sheet-anchor="" />}
+      {createPortal(sheet, document.body)}
+    </>
+  );
 };
