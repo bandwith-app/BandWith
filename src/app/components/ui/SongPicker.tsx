@@ -66,7 +66,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
   zIndex = 110,
 }) => {
   const t = useT();
-  const { selectedBand } = useBand();
+  const { selectedBand, isAdmin } = useBand();
   const [tab, setTab] = useState<Tab>('library');
   const [search, setSearch] = useState('');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -168,7 +168,8 @@ export const SongPicker: React.FC<SongPickerProps> = ({
       band_id: selectedBand.id,
       title: newTitle.trim(),
       artist: newArtist.trim() || undefined,
-      status: 'ready',
+      // Members can only suggest songs (108): an admin reviews them.
+      status: isAdmin ? 'ready' : 'suggested',
       priority: 'medium',
       ...urlFields,
     };
@@ -196,7 +197,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
       setNewUrl('');
       setTab('library');
     }
-  }, [newTitle, newArtist, newUrl, selectedBand?.id, onSelect, t]);
+  }, [newTitle, newArtist, newUrl, selectedBand?.id, isAdmin, onSelect, t]);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '';

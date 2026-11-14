@@ -57,6 +57,9 @@ import { ErrorState } from "@/app/components/ui/ErrorState";
 import { LeadingCompanionSlot } from "@/app/components/duo";
 import { MiniPlayer } from "@/app/components/ui/MiniPlayer";
 import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
+import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
+import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
+import { openSongSuggestions } from "@/lib/services/songSuggestions";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
 import { USER } from "@/app/data/user";
@@ -1229,6 +1232,12 @@ export default function AuthenticatedApp() {
       } else if (d.screen === "repertoire") {
         closeLayersFor("view");
         setShowSetlistManager(true);
+      } else if (d.screen === "songSuggestions") {
+        // The repertoire beneath (the leading page on the open Duo / iPad),
+        // the suggestion on top.
+        closeLayersFor("view");
+        setShowSetlistManager(true);
+        openSongSuggestions(d.suggestionId ? { suggestionId: String(d.suggestionId) } : {});
       } else if (d.screen === "deputyGigs") {
         closeLayersFor("view");
         setDeputyGigsFocus(d.requestId ?? null);
@@ -4742,6 +4751,8 @@ export default function AuthenticatedApp() {
       <LeadingCompanionSlot />
       <MiniPlayer />
       <LyricsViewer />
+      <SongSuggestionsView />
+      <SuggestSongChangeSheet />
       {/* A MusicXML chord chart opened with the app: attach it to a song. */}
       <ReceivedChartSheet />
       <AnimatePresence>

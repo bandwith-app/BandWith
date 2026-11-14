@@ -100,6 +100,49 @@ export const buildSeed = (): DemoDB => {
     created_at: created, updated_at: created,
   }));
 
+  // A made-up song with made-up lyrics (never real lyrics in the demo), and
+  // members' suggestions for the admin to review (108).
+  const PAPER_BOATS = [
+    '# Verse 1',
+    '[C]Paper boats on the [G]river',
+    '[Am]Lanterns in the [F]rain',
+    '[C]Every light is a [G]letter',
+    '[F]Nobody signs their [G]name',
+    '',
+    '# Chorus',
+    '[F]Hold the [G]line, hold the [C]line',
+    '[F]Morning comes in [G]time',
+  ].join('\n');
+  songs.push(
+    {
+      id: id(350), band_id: IDS.band, title: 'Paper Boats', artist: 'The Demo Band', duration_seconds: 214, bpm: 96, key: 'C',
+      genre: 'Soul / Funk', category: 'repertoire', status: 'ready', priority: 'normal', times_played: 3, added_by: IDS.me,
+      lyrics: PAPER_BOATS, notes: 'Capo 2 on acoustic.', created_at: created, updated_at: created,
+    },
+    {
+      id: id(351), band_id: IDS.band, title: 'Lantern Street', artist: 'The Demo Band', duration_seconds: 188, bpm: 104, key: 'G',
+      genre: 'Soul / Funk', category: 'repertoire', status: 'suggested', priority: 'medium', times_played: 0, added_by: IDS.sam,
+      created_at: ago(60 * 26), updated_at: ago(60 * 26),
+    },
+  );
+  const song_suggestions: Row[] = [
+    {
+      id: id(3000), band_id: IDS.band, song_id: id(350), song_title: 'Paper Boats', kind: 'lyrics',
+      proposed: { lyrics: PAPER_BOATS.replace('[Am]Lanterns in the [F]rain', '[Am]Lanterns in the [F]snow').replace('[F]Nobody signs their [G]name', '[F]Nobody [Dm]signs their [G]name') },
+      original: { lyrics: PAPER_BOATS, chord_chart: null }, message: 'We always sing “snow” live, and Lena plays a Dm there.',
+      status: 'pending', reason: null, applied: null, created_by: IDS.marta, created_at: ago(60 * 3), reviewed_by: null, reviewed_at: null,
+    },
+    {
+      id: id(3001), band_id: IDS.band, song_id: id(350), song_title: 'Paper Boats', kind: 'note',
+      proposed: { note: 'Last chorus twice, then stop on the downbeat.' }, original: { notes: 'Capo 2 on acoustic.' }, message: null,
+      status: 'pending', reason: null, applied: null, created_by: IDS.jonah, created_at: ago(60 * 9), reviewed_by: null, reviewed_at: null,
+    },
+    {
+      id: id(3002), band_id: IDS.band, song_id: id(351), song_title: 'Lantern Street', kind: 'new_song', proposed: {}, original: {}, message: null,
+      status: 'pending', reason: null, applied: null, created_by: IDS.sam, created_at: ago(60 * 26), reviewed_by: null, reviewed_at: null,
+    },
+  ];
+
   const setlists: Row[] = [
     { id: id(400), band_id: IDS.band, name: 'Rooftop set', description: 'Two sets, dance-heavy second half', is_template: false, song_count: 10, total_duration_seconds: 2150, created_by: IDS.me, created_at: created, updated_at: created },
     { id: id(401), band_id: IDS.band, name: 'Wedding — dinner + party', description: null, is_template: true, song_count: 8, total_duration_seconds: 1700, created_by: IDS.me, created_at: created, updated_at: created },
@@ -214,6 +257,7 @@ export const buildSeed = (): DemoDB => {
     { id: id(1400), user_id: IDS.me, band_id: IDS.band, type: 'event_invite', title: 'New gig: Jazz Club Night', body: 'You have been added to Jazz Club Night. Confirm your availability.', data: { event_id: id(604) }, read: false, priority: 'high', reference_id: id(604), reference_type: 'event', created_at: ago(60 * 2) },
     { id: id(1401), user_id: IDS.me, band_id: IDS.band, type: 'chat_message', title: 'Marta C.', body: '+1, then straight into September 🔥', data: { chat_id: id(1100) }, read: false, priority: 'normal', reference_id: id(1100), reference_type: 'chat', created_at: ago(12) },
     { id: id(1402), user_id: IDS.me, band_id: IDS.band, type: 'rehearsal_poll', title: 'Vote on rehearsal dates', body: 'Jonah proposed 3 dates for next week.', data: { poll_id: id(1500) }, read: false, priority: 'normal', reference_id: id(1500), reference_type: 'rehearsal_poll', created_at: ago(60 * 20) },
+    { id: id(1404), user_id: IDS.me, band_id: IDS.band, type: 'song_suggestion', title: 'Lyrics correction · Paper Boats', body: 'Marta C. suggests a correction to the lyrics.', data: { suggestion_id: id(3000), song_id: id(350), kind: 'lyrics' }, read: false, priority: 'normal', reference_id: id(3000), reference_type: 'song_suggestion', created_at: ago(60 * 3) },
     { id: id(1403), user_id: IDS.me, band_id: IDS.band, type: 'quote_accepted', title: 'Quote accepted', body: 'Client A accepted Q-2026-0014.', data: { quote_id: id(902) }, read: true, priority: 'normal', reference_id: id(902), reference_type: 'quote', created_at: ago(60 * 24 * 35) },
   ].map((n) => ({ archived: false, read_at: null, ...n }));
 
@@ -387,7 +431,7 @@ export const buildSeed = (): DemoDB => {
 
   return {
     band_deputies, event_drafts: [], demo_deputy_gigs, demo_member_busy,
-    profiles, bands, band_members, songs, song_folders: [], setlists, setlist_songs, events, event_members,
+    profiles, bands, band_members, songs, song_suggestions, song_folders: [], setlists, setlist_songs, events, event_members,
     rehearsal_setlist, rehearsal_tasks, song_proposals, proposal_votes: [], quotes, quote_musicians: [], quote_links, quote_activity,
     transactions, chats, chat_participants, messages, notifications, rehearsal_polls, rehearsal_poll_options,
     rehearsal_poll_votes, task_templates, contracts, event_stage, inventory, gear_kits, gear_kit_items, event_gear_kits, onboarding_progress, member_invites: [],

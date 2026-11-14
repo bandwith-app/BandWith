@@ -114,10 +114,16 @@ const safeName = (name: string) =>
     .replace(/-+/g, '-')
     .slice(-80) || 'file';
 
-/** Upload a picked file for a band; returns the reference to store on the song. */
+/**
+ * Upload a picked file for a band; returns the reference to store on the song.
+ * `suggestedBy`: a member's file for a song they suggest goes in
+ * `<band>/suggestions/<their id>/`, the only place members can write (108);
+ * admins write anywhere in the band's folder.
+ */
 export const uploadSongFile = async (
   bandId: string,
   file: File,
+  opts?: { suggestedBy?: string | null },
 ): Promise<{ ref: string; kind: SongFileKind; error: null } | { ref: null; kind: null; error: Error }> => {
   const problem = validateSongFile(file);
   if (problem) return { ref: null, kind: null, error: new UserError(problem) };
@@ -125,7 +131,8 @@ export const uploadSongFile = async (
   const contentType = songFileContentType(file);
   if (!contentType) return { ref: null, kind: null, error: new UserError(unsupportedTypeMessage()) };
   const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`;
-  const path = `${bandId}/${kind}/${id}-${safeName(file.name)}`;
+  const folder = opts?.suggestedBy ? `${bandId}/suggestions/${opts.suggestedBy}/${kind}` : `${bandId}/${kind}`;
+  const path = `${folder}/${id}-${safeName(file.name)}`;
   const { error } = await supabase.storage.from(SONG_FILES_BUCKET).upload(path, file, {
     contentType,
     upsert: false,
@@ -146,6 +153,32 @@ export const resolveSongFileUrl = async (ref?: string | null): Promise<string | 
     return error ? null : data?.signedUrl ?? null;
   }
   return safeHttpsUrl(ref) ?? null;
+};
+
+/** A file a member uploaded with a song they suggested (`<band>/suggestions/<id>/…`). */
+export const isSuggestionFile = (ref?: string | null): ref is string =>
+  isStoredSongFile(ref) && ref.slice(REF_PREFIX.length).split('/')[1] === 'suggestions';
+
+/**
+ * An accepted suggested song: its files move into the band's own folders, so
+ * the member who suggested it can no longer replace or delete them. Returns
+ * the new references (the old ones when a move fails).
+ */
+export const adoptSuggestionFiles = async (
+  refs: { audio_url?: string | null; chart_url?: string | null },
+): Promise<{ audio_url?: string; chart_url?: string }> => {
+  const out: { audio_url?: string; chart_url?: string } = {};
+  for (const key of ['audio_url', 'chart_url'] as const) {
+    const ref = refs[key];
+    if (!isSuggestionFile(ref)) continue;
+    const from = ref.slice(REF_PREFIX.length);
+    const parts = from.split('/');
+    // <band>/suggestions/<user>/<kind>/<name> → <band>/<kind>/<name>
+    const to = [parts[0], ...parts.slice(3)].join('/');
+    const { error } = await supabase.storage.from(SONG_FILES_BUCKET).move(from, to);
+    if (!error) out[key] = `${REF_PREFIX}${to}`;
+  }
+  return out;
 };
 
 /** Delete stored files (ignores links). Best effort. */

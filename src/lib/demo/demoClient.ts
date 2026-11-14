@@ -10,7 +10,8 @@ import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 
-const DB_KEY = 'bw-demo-db-v4';
+// v5: song suggestions (108) refer to seed songs added with them.
+const DB_KEY = 'bw-demo-db-v5';
 const SESSION_KEY = 'bw-demo-session';
 
 // ---------------------------------------------------------------- storage --
@@ -78,6 +79,7 @@ const FK_TABLE: Record<string, string> = {
   sender_id: 'profiles',
   added_by: 'profiles',
   accepted_by: 'profiles',
+  reviewed_by: 'profiles',
   band_id: 'bands',
   event_id: 'events',
   song_id: 'songs',
@@ -478,7 +480,10 @@ class DemoQuery implements PromiseLike<Result> {
         return this.shape(this.matches());
       case 'insert': {
         const rows = (Array.isArray(this.payload) ? this.payload : [this.payload!]).map((r) => this.withDefaults(r));
+        if (this.name === 'song_suggestions') rows.forEach(fillSuggestion);
         t.push(...rows);
+        // 108's trigger: a member's suggested song gets its suggestion row.
+        if (this.name === 'songs') rows.forEach(suggestedSongRow);
         persist();
         return this.shape(rows);
       }
@@ -671,6 +676,7 @@ const makeChannel = (name: string) => {
 const storage = {
   from: (bucket: string) => ({
     upload: async (path: string) => ({ data: { path, id: uuid(), fullPath: `${bucket}/${path}` }, error: null }),
+    move: async () => ({ data: { message: 'Successfully moved' }, error: null }),
     update: async (path: string) => ({ data: { path }, error: null }),
     remove: async () => ({ data: [], error: null }),
     list: async () => ({ data: [], error: null }),
@@ -679,6 +685,100 @@ const storage = {
     createSignedUrl: async () => ({ data: { signedUrl: '' }, error: null }),
   }),
 };
+
+// ------------------------------------------------- song suggestions (108) --
+
+/** The demo is always signed in as DEMO_USER (flip their band_members role to try a member). */
+const demoUid = (): string => DEMO_USER.id;
+const isDemoAdmin = (bandId: string, uid = demoUid()) =>
+  table('band_members').some((m) => m.band_id === bandId && m.user_id === uid && m.role === 'admin' && m.is_active !== false);
+
+/** BEFORE INSERT: the server-side copy of the song, a pending row. */
+function fillSuggestion(row: Row) {
+  const song = table('songs').find((s) => s.id === row.song_id);
+  row.created_by = row.created_by ?? demoUid();
+  row.song_title = song?.title ?? '';
+  row.status = 'pending';
+  row.reason = null;
+  row.applied = null;
+  row.reviewed_by = null;
+  row.reviewed_at = null;
+  row.original =
+    row.kind === 'note' ? { notes: song?.notes ?? null } : row.kind === 'new_song' ? {} : { lyrics: song?.lyrics ?? null, chord_chart: song?.chord_chart ?? null };
+}
+
+function suggestedSongRow(song: Row) {
+  const by = song.added_by ?? demoUid();
+  if (song.status !== 'suggested' || !by || isDemoAdmin(song.band_id, by)) return;
+  const row: Row = { id: uuid(), band_id: song.band_id, song_id: song.id, kind: 'new_song', proposed: {}, message: null, created_by: by, created_at: new Date().toISOString() };
+  fillSuggestion(row);
+  table('song_suggestions').push(row);
+}
+
+function reviewSuggestion(args: Row): { data: any; error: any } {
+  const g = table('song_suggestions').find((r) => r.id === args.p_id);
+  if (!g || !isDemoAdmin(g.band_id)) return { data: null, error: { message: 'Only band admins can review suggestions', code: '42501' } };
+  if (g.status !== 'pending') return { data: null, error: { message: 'This suggestion was already reviewed', code: '55000' } };
+  const song = table('songs').find((s) => s.id === g.song_id);
+  const now = new Date().toISOString();
+  let files: string[] = [];
+  g.reason = (args.p_reason || '').trim() || null;
+  g.reviewed_by = demoUid();
+  g.reviewed_at = now;
+  if (args.p_decision === 'reject') {
+    g.status = 'rejected';
+    if (g.kind === 'new_song' && song && song.status === 'suggested') {
+      files = [song.audio_url, song.chart_url].filter(Boolean);
+      getDB().songs = table('songs').filter((s) => s.id !== song.id);
+    }
+  } else {
+    if (!song) return { data: null, error: { message: 'The song no longer exists', code: '55000' } };
+    g.status = args.p_edited ? 'accepted_edited' : 'accepted';
+    if (g.kind === 'new_song') {
+      if (song.status === 'suggested') song.status = 'learning';
+    } else {
+      let apply: Row;
+      if (g.kind === 'note') {
+        apply = args.p_applied && 'notes' in args.p_applied
+          ? { notes: args.p_applied.notes }
+          : { notes: song.notes?.trim() ? `${String(song.notes).trimEnd()}\n\n${g.proposed.note}` : g.proposed.note };
+      } else {
+        const src = args.p_applied ?? g.proposed;
+        apply = {};
+        if ('lyrics' in src) apply.lyrics = src.lyrics;
+        if ('chord_chart' in src) apply.chord_chart = src.chord_chart;
+      }
+      g.applied = apply;
+      Object.assign(song, apply, { updated_at: now });
+    }
+  }
+  if (g.created_by !== g.reviewed_by) {
+    table('notifications').push({
+      id: uuid(), user_id: g.created_by, band_id: g.band_id, type: 'song_suggestion_reviewed',
+      title: `${g.status === 'rejected' ? 'Suggestion not accepted' : g.status === 'accepted_edited' ? 'Accepted with changes' : 'Suggestion accepted'} · ${g.song_title}`,
+      body: g.reason || '', data: { suggestion_id: g.id, song_id: g.song_id, status: g.status, reason: g.reason }, read: false,
+      reference_id: g.id, reference_type: 'song_suggestion', created_at: now,
+    });
+  }
+  persist();
+  return { data: { status: g.status, song_id: g.song_id, files }, error: null };
+}
+
+function withdrawSuggestion(args: Row): { data: any; error: any } {
+  const g = table('song_suggestions').find((r) => r.id === args.p_id);
+  if (!g || g.created_by !== demoUid()) return { data: null, error: { message: 'Not your suggestion', code: '42501' } };
+  if (g.status !== 'pending') return { data: null, error: { message: 'This suggestion was already reviewed', code: '55000' } };
+  g.status = 'withdrawn';
+  g.reviewed_at = new Date().toISOString();
+  let files: string[] = [];
+  const song = table('songs').find((s) => s.id === g.song_id);
+  if (g.kind === 'new_song' && song && song.status === 'suggested') {
+    files = [song.audio_url, song.chart_url].filter(Boolean);
+    getDB().songs = table('songs').filter((s) => s.id !== song.id);
+  }
+  persist();
+  return { data: { status: 'withdrawn', files }, error: null };
+}
 
 // -------------------------------------------------------------------- rpc --
 
@@ -1073,6 +1173,12 @@ const rpc = (fn: string, args: Row = {}) => {
       data = rotate ? l.token : true;
       break;
     }
+    case 'bw_review_song_suggestion':
+      ({ data, error } = reviewSuggestion(args));
+      break;
+    case 'bw_withdraw_song_suggestion':
+      ({ data, error } = withdrawSuggestion(args));
+      break;
     // No one else to notify in the demo: keep the call for checks.
     case 'bw_notify_setlist_saved':
     case 'bw_notify_song_updated': {

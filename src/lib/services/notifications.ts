@@ -47,6 +47,9 @@ export type NotificationType =
   | 'song_added'
   // A song edited in the band's repertoire: one push with what changed (107)
   | 'song_updated'
+  // A member's suggestion for a song, to the admins; its outcome, to the member (108)
+  | 'song_suggestion'
+  | 'song_suggestion_reviewed'
   | 'setlist_updated'
   | 'task_assigned'
   | 'task_completed'
@@ -150,6 +153,8 @@ export const getNotificationIcon = (type: NotificationType): string => {
     // Content
     song_added: 'music',
     song_updated: 'music',
+    song_suggestion: 'message-circle',
+    song_suggestion_reviewed: 'check-circle',
     setlist_updated: 'list-music',
     task_assigned: 'clipboard',
     task_completed: 'check-square',

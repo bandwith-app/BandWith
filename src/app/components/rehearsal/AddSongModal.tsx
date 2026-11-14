@@ -258,14 +258,16 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       // (removed with X). A chart link lives in the Sheet music field.
       let audioRef: string | null = existingAudio ?? null;
       let chartRef: string | null = chartLink ?? (isStoredSongFile(existingChart) ? existingChart : null);
+      // A member's files for a song they suggest go in their own folder (108).
+      const uploadOpts = isAdmin ? undefined : { suggestedBy: user?.id };
       if (audioFile) {
-        const up = await uploadSongFile(bandId, audioFile);
+        const up = await uploadSongFile(bandId, audioFile, uploadOpts);
         if (up.error) throw up.error;
         uploaded.push(up.ref);
         audioRef = up.ref;
       }
       if (chartFile) {
-        const up = await uploadSongFile(bandId, chartFile);
+        const up = await uploadSongFile(bandId, chartFile, uploadOpts);
         if (up.error) throw up.error;
         uploaded.push(up.ref);
         chartRef = up.ref;
@@ -311,8 +313,9 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         const payload = songCreatePayload(values) as Partial<Song>;
         const { data: savedSong, error: songError } = await createSong({ ...payload, band_id: bandId, status: suggested ? 'suggested' : 'ready', priority: 'medium' });
         if (songError) throw songError;
-        // Inbox note to the rest of the band (no push).
-        void notifySongAdded(
+        // Inbox note to the rest of the band (no push). A suggested song
+        // reaches the admins from the server instead (108: push + review).
+        if (!suggested) void notifySongAdded(
           bandId,
           { id: savedSong?.id, title: payload.title || title.trim(), artist: payload.artist },
           { suggested, byName: personName(profile ? { ...profile, email: profile.email ?? user?.email } : { email: user?.email }, '') },

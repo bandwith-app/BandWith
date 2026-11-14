@@ -36,6 +36,12 @@ describe('notificationTarget', () => {
     expect(notificationTarget('song_updated', { song_id: 'x' })).toEqual({ screen: 'repertoire' });
   });
 
+  it('opens song suggestions for admins and for the member who suggested (108)', () => {
+    expect(notificationTarget('song_suggestion', { suggestion_id: 'g-1' })).toEqual({ screen: 'songSuggestions', suggestionId: 'g-1' });
+    expect(notificationTarget('song_suggestion_reviewed', { suggestion_id: 'g-1', status: 'rejected' })).toEqual({ screen: 'songSuggestions', suggestionId: 'g-1' });
+    expect(notificationTarget('song_suggestion', {})).toEqual({ screen: 'songSuggestions' });
+  });
+
   it('has no screen for someone removed from a band or unknown types', () => {
     expect(notificationTarget('member_left', { removed: true })).toBeNull();
     expect(notificationTarget('something_else', {})).toBeNull();

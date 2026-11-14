@@ -15,6 +15,8 @@ export type NotificationTarget =
   | { screen: 'invites' }
   | { screen: 'bandMembers' }
   | { screen: 'repertoire' }
+  // A member's suggestion for a song (admins review it; the author sees the outcome, 108).
+  | { screen: 'songSuggestions'; suggestionId?: string }
   // The account's requests as a deputy for other bands (migration 086).
   | { screen: 'deputyGigs'; requestId?: string };
 
@@ -61,6 +63,10 @@ export function notificationTarget(
   }
   if (kind.startsWith('payment_')) return { screen: 'finance' };
   if (kind === 'invite_received' || kind === 'band_invite') return { screen: 'invites' };
+  if (kind === 'song_suggestion' || kind === 'song_suggestion_reviewed') {
+    const suggestionId = str(d.suggestion_id) || str(d.suggestionId);
+    return suggestionId ? { screen: 'songSuggestions', suggestionId } : { screen: 'songSuggestions' };
+  }
   // A song, or a setlist edited in the band's library (no gig): the repertoire.
   if (kind === 'song_added' || kind === 'song_updated' || kind === 'setlist_updated') return { screen: 'repertoire' };
   if (kind === 'member_joined' || kind === 'member_left') {
@@ -89,6 +95,8 @@ export function notificationTargetLabel(target: NotificationTarget): string {
       return t('Open members');
     case 'repertoire':
       return t('Open repertoire');
+    case 'songSuggestions':
+      return t('Open suggestion');
     case 'deputyGigs':
       return t('Open deputy gigs');
   }
