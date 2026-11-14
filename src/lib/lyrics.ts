@@ -141,8 +141,8 @@ export interface LyricsDoc {
   lyrics: string;
   /** songs.chord_chart: the reader can switch between lyrics and chords. */
   chart?: SongChart | null;
-  /** Which one to show first (default: lyrics when there are any). */
-  view?: 'lyrics' | 'chords';
+  /** Which view to open on (default: the person's own, see useSongViewPreference). */
+  view?: 'lyrics' | 'chords' | 'structure';
   /** songs.key: the reader's Transpose control shows the moved key. */
   songKey?: string | null;
 }

@@ -37,6 +37,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { personName } from '@/lib/personName';
 import { notifySongAdded } from '@/lib/services/notifications';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
+import { normalizeLyrics } from '@/lib/songFormat';
 import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
 import { useT } from '@/lib/i18n';
@@ -288,7 +289,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         chartUrl: chartRef,
         youtubeUrl: youtube ?? null,
         notes: noteText,
-        lyrics,
+        // One format for the band: section names and chords tidied on save.
+        lyrics: normalizeLyrics(lyrics),
         bpm,
         key,
         durationSeconds: mins * 60 + secs,

@@ -11,7 +11,7 @@ import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 
 // v5: song suggestions (108) refer to seed songs added with them.
-const DB_KEY = 'bw-demo-db-v5';
+const DB_KEY = 'bw-demo-db-v6';
 const SESSION_KEY = 'bw-demo-session';
 
 // ---------------------------------------------------------------- storage --

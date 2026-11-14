@@ -156,7 +156,7 @@ export const ReceivedChartSheet: React.FC = () => {
               size="md"
               fullWidth={false}
               onClick={() => {
-                openLyrics({ songId: done.song.id, title: done.song.title, artist: done.song.artist, lyrics: done.song.lyrics || '', chart: done.chart, view: 'chords' });
+                openLyrics({ songId: done.song.id, title: done.song.title, artist: done.song.artist, lyrics: done.song.lyrics || '', chart: done.chart, view: 'structure' });
                 close();
               }}
             >

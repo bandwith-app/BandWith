@@ -1,8 +1,9 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
-import { LyricsText, useLyricsSize } from '@/app/components/ui/LyricsViewer';
-import { ChordChartView } from '@/app/components/ui/ChordChart';
+import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
+import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
+import { availableViews, normalizeLyrics, resolveView } from '@/lib/songFormat';
 import type { SongChart } from '@/lib/ireal';
 import { durations, easings } from '@/styles/motion';
 import { haptic } from '@/lib/haptics';
@@ -133,19 +134,22 @@ export const StageMode: React.FC<StageModeProps> = ({
   const currentRef = useRef<HTMLLIElement | null>(null);
   // Lyrics view: the current song's lyrics, following it (also when the leader moves).
   // Chords view: the same for its chord chart.
-  const hasLyrics = songs.some((s) => !!s.lyrics?.trim());
-  const hasChords = songs.some((s) => !!s.chart);
-  type StageView = 'setlist' | 'lyrics' | 'chords';
-  const views: StageView[] = ['setlist', ...(hasLyrics ? (['lyrics'] as const) : []), ...(hasChords ? (['chords'] as const) : [])];
+  // Song view: lyrics, chords or structure, from the player's instrument or last pick (one tap switches).
+  const hasSong = songs.some((s) => !!s.lyrics?.trim() || !!s.chart);
+  type StageView = 'setlist' | 'song';
+  const views: StageView[] = ['setlist', ...(hasSong ? (['song'] as const) : [])];
   const [view, setView] = useState<StageView>('setlist');
-  const showChords = view === 'chords' && hasChords && !editing;
-  const showLyrics = ((view === 'lyrics' && hasLyrics) || showChords) && !editing;
+  const [songView, setSongView] = useSongViewPreference();
+  const showLyrics = view === 'song' && hasSong && !editing;
   const lyricsSong = songs[Math.max(0, current)];
+  const lyricsContent = useMemo(() => ({ lyrics: normalizeLyrics(lyricsSong?.lyrics), chart: lyricsSong?.chart }), [lyricsSong?.lyrics, lyricsSong?.chart]);
+  const shownView = resolveView(songView, lyricsContent);
+  const showChords = showLyrics && shownView !== 'lyrics';
   const lyricsSize = useLyricsSize();
   // Transpose for this player only (kept per song on the device).
   const [semitones, setSemitones] = useSongTranspose(lyricsSong?.songId);
   const lyricsKey = lyricsSong?.key || keyLabel(lyricsSong?.chart?.key) || null;
-  const lyricsHasChords = !!lyricsSong && (showChords ? !!lyricsSong.chart : /\[[A-G][^\]\s]{0,15}\]/.test(lyricsSong.lyrics || ''));
+  const lyricsHasChords = !!lyricsSong && showChords && (!!lyricsSong.chart || /\[[A-G][^\]\s]{0,15}\]/.test(lyricsSong.lyrics || ''));
 
   // Visual metronome: shows while a click runs on the current song.
   const click = live?.click;
@@ -155,7 +159,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   const lyricsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     lyricsRef.current?.scrollTo?.({ top: 0 });
-  }, [lyricsSong?.id, lyricsSong?.title, showLyrics, showChords]);
+  }, [lyricsSong?.id, lyricsSong?.title, showLyrics, shownView]);
 
   // Keep the current song in view when it changes (also when the leader moves).
   useEffect(() => {
@@ -363,7 +367,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                       view === v ? 'text-white border-white' : 'text-white/50 border-transparent',
                     )}
                   >
-                    {v === 'setlist' ? t('Setlist') : v === 'lyrics' ? t('Lyrics') : t('Chords')}
+                    {v === 'setlist' ? t('Setlist') : songViewLabel(songView, t)}
                   </button>
                 ))}
               </span>
@@ -469,31 +473,31 @@ export const StageMode: React.FC<StageModeProps> = ({
                   <Plus className="w-5 h-5" />
                 </button>
               </div>
-              {lyricsHasChords && (
-                <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="shrink-0 pb-2 self-end" />
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 pb-2">
+                <SongViewTabs
+                  song={lyricsContent}
+                  view={shownView ?? songView}
+                  onChange={(v) => {
+                    haptic.tap();
+                    setSongView(v);
+                  }}
+                  on="bg-white text-black"
+                  off="text-white/60"
+                  className="min-w-0 -ml-1 overflow-x-auto scrollbar-hide"
+                />
+                {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
+              </div>
               <TransposeProvider semitones={semitones} songKey={lyricsKey}>
               <div ref={lyricsRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6">
-                {showChords ? (
-                  lyricsSong.chart ? (
-                    <ChordChartView
-                      chart={lyricsSong.chart}
-                      size={lyricsSize.size}
-                      muted="text-white/60"
-                      line="border-white/25"
-                      className="w-full flex flex-col gap-5 pt-1 text-white"
-                    />
-                  ) : (
-                    <p className="bw-body-lg text-white/60">{t('No chords for this song yet.')}</p>
-                  )
-                ) : (
-                  <LyricsText
-                    lyrics={lyricsSong.lyrics}
-                    size={lyricsSize.size}
-                    muted="text-white/60"
-                    className="w-full flex flex-col gap-6 pt-1 text-white"
-                  />
-                )}
+                <SongBody
+                  song={lyricsContent}
+                  view={songView}
+                  size={lyricsSize.size}
+                  muted="text-white/60"
+                  line="border-white/25"
+                  className="w-full flex flex-col gap-6 pt-1 text-white"
+                  chartClassName="w-full flex flex-col gap-5 pt-1 text-white"
+                />
               </div>
               </TransposeProvider>
             </div>

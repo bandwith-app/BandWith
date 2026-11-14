@@ -83,6 +83,9 @@ export const useAuth = () => {
   return context;
 };
 
+/** Like useAuth, but undefined outside an AuthProvider (shared views, tests). */
+export const useOptionalAuth = (): AuthContextType | undefined => useContext(AuthContext);
+
 /**
  * Sends the signed-in user's queued offline edits (a few seconds at most) and
  * returns whatever is still queued, to be stored again after sign-out.
