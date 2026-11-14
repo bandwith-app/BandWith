@@ -107,7 +107,7 @@ export const safeHttpsUrl = (input?: string | null): string | undefined => {
   }
 };
 
-const safeName = (name: string) =>
+export const safeName = (name: string) =>
   name
     .normalize('NFKD')
     .replace(/[^\w.-]+/g, '-')
@@ -146,10 +146,10 @@ export const uploadSongFile = async (
 /** Playable/openable URL for a stored file or an https link; null otherwise. */
 export const resolveSongFileUrl = async (ref?: string | null): Promise<string | null> => {
   if (!ref) return null;
-  if (isStoredSongFile(ref)) {
-    const { data, error } = await supabase.storage
-      .from(SONG_FILES_BUCKET)
-      .createSignedUrl(ref.slice(REF_PREFIX.length), 60 * 60);
+  // Band files, and a person's own files (109: bucket personal-files, owner only).
+  const stored = ref.match(/^sb:\/\/(song-files|personal-files)\/(.+)$/);
+  if (stored) {
+    const { data, error } = await supabase.storage.from(stored[1]).createSignedUrl(stored[2], 60 * 60);
     return error ? null : data?.signedUrl ?? null;
   }
   return safeHttpsUrl(ref) ?? null;

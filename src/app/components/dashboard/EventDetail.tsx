@@ -2517,6 +2517,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               { label: t('End'), time: event.endTime, display: t('TBD') },
             ]}
             songs={stageLive.songs}
+            bandId={event.band_id ?? undefined}
             songsLoading={setlistLoading}
             songsError={setlistError}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}

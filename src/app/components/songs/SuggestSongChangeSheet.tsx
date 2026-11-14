@@ -34,7 +34,7 @@ export const SuggestSongChangeSheet: React.FC = () => {
     if (!song) return;
     setMode(song.start ?? 'text');
     setText(song.lyrics || '');
-    setNote('');
+    setNote(song.note ?? '');
     setMessage('');
     setError(null);
     setSent(false);

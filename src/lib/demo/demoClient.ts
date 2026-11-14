@@ -470,6 +470,8 @@ class DemoQuery implements PromiseLike<Result> {
     if (this.name === 'band_members' && out.is_active === undefined) out.is_active = true;
     if (this.name === 'notifications' && out.read === undefined) out.read = false;
     if (this.name === 'messages' && out.deleted === undefined) out.deleted = false;
+    // 109: my notes and files are mine (user_id default auth.uid()).
+    if ((this.name === 'song_personal_notes' || this.name === 'song_personal_files') && !out.user_id) out.user_id = demoUid();
     return out;
   }
 

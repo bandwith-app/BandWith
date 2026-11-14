@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { motion } from 'motion/react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
+import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
 import { availableViews, normalizeLyrics, resolveView } from '@/lib/songFormat';
 import type { SongChart } from '@/lib/ireal';
@@ -84,6 +85,8 @@ interface StageModeProps {
   date?: string;
   steps: StageStep[];
   songs: StageSong[];
+  /** The event's band: my notes on its songs (109). */
+  bandId?: string;
   songsLoading?: boolean;
   /** The setlist couldn't be loaded (offline, nothing kept on the device). */
   songsError?: boolean;
@@ -116,6 +119,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   date,
   steps,
   songs,
+  bandId,
   songsLoading,
   songsError,
   onRetrySongs,
@@ -149,6 +153,14 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Transpose for this player only (kept per song on the device).
   const [semitones, setSemitones] = useSongTranspose(lyricsSong?.songId);
   const lyricsKey = lyricsSong?.key || keyLabel(lyricsSong?.chart?.key) || null;
+  // My notes and files over the band's version (109), only I see them.
+  const mine = useMemo(
+    () =>
+      lyricsSong?.songId && bandId
+        ? { id: lyricsSong.songId, band_id: bandId, title: lyricsSong.title, lyrics: lyricsContent.lyrics }
+        : null,
+    [lyricsSong?.songId, lyricsSong?.title, bandId, lyricsContent.lyrics],
+  );
   const lyricsHasChords = !!lyricsSong && showChords && (!!lyricsSong.chart || /\[[A-G][^\]\s]{0,15}\]/.test(lyricsSong.lyrics || ''));
 
   // Visual metronome: shows while a click runs on the current song.
@@ -487,6 +499,8 @@ export const StageMode: React.FC<StageModeProps> = ({
                 />
                 {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
               </div>
+              <PersonalLayerScope song={mine} stage>
+              {mine && <MyNotesBar className="shrink-0 pb-2" />}
               <TransposeProvider semitones={semitones} songKey={lyricsKey}>
               <div ref={lyricsRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6">
                 <SongBody
@@ -500,6 +514,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 />
               </div>
               </TransposeProvider>
+              </PersonalLayerScope>
             </div>
           ) : (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4">
