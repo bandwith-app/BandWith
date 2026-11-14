@@ -2,6 +2,7 @@ import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Minus, Music2, Pause, Play, Plus, X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
+import { LineNotes, MyNotesBar, PersonalLayerScope, PickableLine, useLineRefs } from '@/app/components/songs/PersonalLayer';
 import { closeLyrics, openLyrics, parseInline, parseLyrics, splitChords, useLyricsDoc } from '@/lib/lyrics';
 import { useOptionalBand } from '@/lib/BandContext';
 import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
@@ -125,6 +126,8 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
   const tr = useT();
   // Shown in the band's format (section names, chords on their words), whatever was saved.
   const sections = React.useMemo(() => parseLyrics(normalizeLyrics(lyrics)), [lyrics]);
+  // My notes (109): under their lines, and lines to tap while adding one.
+  const refs = useLineRefs(lyrics);
   return (
     <div className={className ?? 'max-w-3xl mx-auto w-full flex flex-col gap-8 pt-4'} style={{ fontSize: size, lineHeight: 1.45 }}>
       {sections.length === 0 ? (
@@ -135,7 +138,16 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
             {s.name && <h3 className={`bw-label-md ${muted} uppercase mb-1`}>{sectionLabel(s.name, tr)}</h3>}
             {s.lines.map((line, j) =>
               line.trim() ? (
-                <LyricsLine key={j} line={line} hideChords={hideChords} />
+                refs?.get(`${i}:${j}`) ? (
+                  <React.Fragment key={j}>
+                    <PickableLine refLine={refs.get(`${i}:${j}`)!}>
+                      <LyricsLine line={line} hideChords={hideChords} />
+                    </PickableLine>
+                    <LineNotes id={`${i}:${j}`} line={line} />
+                  </React.Fragment>
+                ) : (
+                  <LyricsLine key={j} line={line} hideChords={hideChords} />
+                )
               ) : (
                 <span key={j} className="block h-[0.8em]" aria-hidden />
               )
@@ -165,7 +177,8 @@ export const LyricsViewer: React.FC = () => {
 
   const isThisTrack = !!doc?.songId && player.track?.id === doc.songId;
   // Admins fix the chords from the reader (the band song, the same for everyone).
-  const canEditChords = !!useOptionalBand()?.isAdmin && !!doc?.songId && !!doc.lyrics?.trim();
+  const band = useOptionalBand();
+  const canEditChords = !!band?.isAdmin && !!doc?.songId && !!doc.lyrics?.trim();
   React.useEffect(() => {
     const onSaved = (e: Event) => {
       const d = (e as CustomEvent<{ id: string; lyrics: string }>).detail;
@@ -193,6 +206,12 @@ export const LyricsViewer: React.FC = () => {
   const [semitones, setSemitones] = useSongTranspose(doc?.songId);
   const songKey = doc?.songKey || keyLabel(doc?.chart?.key) || null;
   const hasChords = hasChart || /\[[A-G][^\]\s]{0,15}\]/.test(doc?.lyrics || '');
+  // My notes and files on this band song (109), only for its band's members.
+  const bandId = doc?.bandId ?? band?.selectedBand?.id ?? null;
+  const mine = React.useMemo(
+    () => (doc?.songId && bandId ? { id: doc.songId, band_id: bandId, title: doc.title, lyrics: song.lyrics } : null),
+    [doc?.songId, doc?.title, bandId, song.lyrics],
+  );
 
   return (
     <AnimatePresence>
@@ -238,11 +257,14 @@ export const LyricsViewer: React.FC = () => {
               {hasChords && showChords && <TransposeControl semitones={semitones} onChange={setSemitones} songKey={songKey} />}
             </div>
           )}
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-16">
-            <TransposeProvider semitones={semitones} songKey={songKey}>
-              <SongBody song={song} view={view} size={size} />
-            </TransposeProvider>
-          </div>
+          <PersonalLayerScope song={mine}>
+            {mine && <MyNotesBar className="shrink-0 px-4 pb-2" />}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-16">
+              <TransposeProvider semitones={semitones} songKey={songKey}>
+                <SongBody song={song} view={view} size={size} />
+              </TransposeProvider>
+            </div>
+          </PersonalLayerScope>
         </motion.div>
       )}
     </AnimatePresence>

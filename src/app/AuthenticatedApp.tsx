@@ -60,6 +60,7 @@ import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
 import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
 import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
 import { ChordEditor } from "@/app/components/songs/ChordEditor";
+import { PersonalLayerSheets } from "@/app/components/songs/PersonalLayer";
 import { openSongSuggestions } from "@/lib/services/songSuggestions";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
@@ -4755,6 +4756,7 @@ export default function AuthenticatedApp() {
       <SongSuggestionsView />
       <SuggestSongChangeSheet />
       <ChordEditor />
+      <PersonalLayerSheets />
       {/* A MusicXML chord chart opened with the app: attach it to a song. */}
       <ReceivedChartSheet />
       <AnimatePresence>

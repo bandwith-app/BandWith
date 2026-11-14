@@ -136,6 +136,8 @@ export function parseInline(line: string): InlinePart[] {
 // ── Open the reader from anywhere (song menu, mini player) ──
 export interface LyricsDoc {
   songId?: string;
+  /** The song's band (my notes, suggestions); default: the selected band. */
+  bandId?: string;
   title: string;
   artist?: string | null;
   lyrics: string;

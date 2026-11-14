@@ -171,6 +171,8 @@ export interface SuggestTarget {
   notes?: string | null;
   /** Which part to start on. */
   start?: 'text' | 'note';
+  /** A note to start from (e.g. one of my personal notes). */
+  note?: string;
 }
 
 let suggestTarget: SuggestTarget | null = null;
