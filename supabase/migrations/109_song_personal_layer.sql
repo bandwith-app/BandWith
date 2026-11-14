@@ -77,7 +77,7 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT EXISTS (SELECT 1 FROM public.songs s WHERE s.id = p_song AND s.band_id = ANY (public.bw_my_band_ids()));
+  SELECT EXISTS (SELECT 1 FROM public.songs s WHERE s.id = p_song AND s.band_id::text = ANY (public.bw_my_band_ids()));
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_in_my_bands(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_in_my_bands(uuid) TO authenticated;
