@@ -68,6 +68,8 @@ function useRoute() {
 const params = new URLSearchParams(location.search);
 /** Opened from the app (Settings › Academy, a ? button or a tour card). */
 export const EMBEDDED = params.get('embed') === '1';
+// The app's sheet keeps clear of the device's safe areas (styles.css).
+if (EMBEDDED) document.documentElement.dataset.embed = '1';
 const APP_THEME = params.get('theme');
 
 /* ── Theme ── */

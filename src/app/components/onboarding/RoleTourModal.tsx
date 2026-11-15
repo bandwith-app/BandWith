@@ -16,6 +16,7 @@ import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import type { AcademyRole, AcademyTarget } from '@/lib/academy';
 import { AcademySheet } from '@/app/components/academy/AcademySheet';
+import { FoldSplit, useLaptopPose } from '@/app/components/duo/FoldSplit';
 
 /**
  * First-run tour, one per role (admin, member, deputy). Each card links to
@@ -199,6 +200,140 @@ export const RoleTourModal: React.FC<{
     markRoleTourSeen(role);
     onClose();
   };
+  const laptop = useLaptopPose();
+
+  const header = (
+    <div className="flex items-center justify-between">
+      <Selector className="bg-accent text-accent-foreground">
+        {t('Step {step} of {total}', { step: current + 1, total: steps.length })}
+      </Selector>
+      <button
+        type="button"
+        onClick={close}
+        aria-label={t('Close tour')}
+        className="-m-1 p-1 rounded-full active:scale-[var(--press-scale,0.97)] transition-transform"
+      >
+        <span className="flex items-center justify-center w-9 h-9 rounded-full border-[1.5px] border-foreground text-foreground">
+          <X className="w-4 h-4" strokeWidth={2} />
+        </span>
+      </button>
+    </div>
+  );
+
+  const hero = (
+    <>
+      <div className="w-16 h-16 rounded-[16px] bg-accent text-accent-foreground flex items-center justify-center shrink-0">
+        <StepIcon className="w-[29px] h-[29px]" />
+      </div>
+      <p className="bw-label-sm text-muted-foreground">{step.label}</p>
+      <h2 id="role-tour-title" className="bw-h1 text-foreground">
+        {step.title}
+      </h2>
+    </>
+  );
+
+  const body = (
+    <>
+      <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground">{step.content}</p>
+
+      <ul className="flex flex-col gap-4">
+        {step.highlights.map((h, i) => (
+          <li key={i} className="flex items-start gap-3 text-[16px] leading-[1.45] tracking-[-0.003em] text-foreground">
+            <Check className="w-4 h-4 mt-[5px] shrink-0 text-accent" strokeWidth={2.5} aria-hidden />
+            <span>{h}</span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        type="button"
+        onClick={() => setAcademy({ article: step.article })}
+        className="self-start flex items-center gap-2 bw-label-sm text-accent underline underline-offset-4 active:opacity-70"
+      >
+        <BookOpen className="w-4 h-4" aria-hidden />
+        {t('Learn more in the Academy')}
+      </button>
+
+      {isLast && onOpenPricing && (
+        <PillButton
+          variant="outline"
+          size="md"
+          onClick={() => {
+            markRoleTourSeen(role);
+            onOpenPricing();
+          }}
+        >
+          {t('Configure rates')}
+        </PillButton>
+      )}
+    </>
+  );
+
+  const nav = (
+    <>
+      <div className="flex items-center gap-1" aria-hidden>
+        {steps.map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              'h-2.5 rounded-full transition-all duration-300',
+              i === current ? 'w-6 bg-accent' : 'w-2.5 bg-dot-off',
+            )}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        {current > 0 && (
+          <PillButton variant="outline" size="md" fullWidth={false} onClick={() => setCurrent((n) => n - 1)}>
+            {t('Back')}
+          </PillButton>
+        )}
+        <PillButton size="md" fullWidth={false} onClick={isLast ? close : () => setCurrent((n) => n + 1)}>
+          {isLast ? t('Done') : t('Next')}
+        </PillButton>
+      </div>
+    </>
+  );
+
+  if (laptop) {
+    // Laptop pose (iPhone Duo half folded): the step's icon and title stand
+    // on the Display, the text and every control lie on the Deck, so the
+    // whole step reads at once instead of scrolling a card under the fold.
+    return (
+      <>
+        <FoldSplit
+          zIndex={120}
+          className="dark"
+          displayLabel={step.title}
+          deckLabel={t('Step {step} of {total}', { step: current + 1, total: steps.length })}
+          display={
+            <div className="bw-fold-pad flex h-full flex-col justify-end pb-6 pt-3">
+              {/* One block: the Display's first child only clears the clock. */}
+              <div className="flex flex-col gap-4">{hero}</div>
+            </div>
+          }
+          deck={
+            // Fills the Deck down to the tab bar (the rail laid flat stays
+            // above every layer), so Next / Done sits just over it.
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="role-tour-title"
+              className="absolute inset-0 flex flex-col bg-sheet text-sheet-foreground"
+              style={{ paddingBottom: 'var(--content-bottom-clearance, calc(var(--safe-bottom, 0px) + 100px))' }}
+            >
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-3 flex flex-col gap-3 [&>*]:shrink-0">
+                {header}
+                {body}
+              </div>
+              <div className="px-5 pt-1 pb-3 flex items-center justify-between gap-3">{nav}</div>
+            </div>
+          }
+        />
+        <AcademySheet target={academy} onClose={() => setAcademy(undefined)} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -218,87 +353,14 @@ export const RoleTourModal: React.FC<{
           exit={{ scale: 0.94, y: 15 }}
           className="dark w-full max-w-[420px] max-h-full overflow-y-auto bg-sheet text-sheet-foreground rounded-[24px] p-6 flex flex-col gap-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)]"
         >
-          <div className="flex items-center justify-between">
-            <Selector className="bg-accent text-accent-foreground">
-              {t('Step {step} of {total}', { step: current + 1, total: steps.length })}
-            </Selector>
-            <button
-              type="button"
-              onClick={close}
-              aria-label={t('Close tour')}
-              className="-m-1 p-1 rounded-full active:scale-[var(--press-scale,0.97)] transition-transform"
-            >
-              <span className="flex items-center justify-center w-9 h-9 rounded-full border-[1.5px] border-foreground text-foreground">
-                <X className="w-4 h-4" strokeWidth={2} />
-              </span>
-            </button>
-          </div>
+          {header}
+          {hero}
+          {body}
 
-          <div className="w-16 h-16 rounded-[16px] bg-accent text-accent-foreground flex items-center justify-center shrink-0">
-            <StepIcon className="w-[29px] h-[29px]" />
-          </div>
-
-          <p className="bw-label-sm text-muted-foreground">{step.label}</p>
-          <h2 id="role-tour-title" className="bw-h1 text-foreground">
-            {step.title}
-          </h2>
-          <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground">{step.content}</p>
-
-          <ul className="flex flex-col gap-4">
-            {step.highlights.map((h, i) => (
-              <li key={i} className="flex items-start gap-3 text-[16px] leading-[1.45] tracking-[-0.003em] text-foreground">
-                <Check className="w-4 h-4 mt-[5px] shrink-0 text-accent" strokeWidth={2.5} aria-hidden />
-                <span>{h}</span>
-              </li>
-            ))}
-          </ul>
-
-          <button
-            type="button"
-            onClick={() => setAcademy({ article: step.article })}
-            className="self-start flex items-center gap-2 bw-label-sm text-accent underline underline-offset-4 active:opacity-70"
-          >
-            <BookOpen className="w-4 h-4" aria-hidden />
-            {t('Learn more in the Academy')}
-          </button>
-
-          {isLast && onOpenPricing && (
-            <PillButton
-              variant="outline"
-              size="md"
-              onClick={() => {
-                markRoleTourSeen(role);
-                onOpenPricing();
-              }}
-            >
-              {t('Configure rates')}
-            </PillButton>
-          )}
-
-          {/* Footer: stays in view when the card scrolls (Laptop pose, closed Duo
-              in landscape, small phones), so Next / Done is always reachable. */}
+          {/* Footer: stays in view when the card scrolls (closed Duo in
+              landscape, small phones), so Next / Done is always reachable. */}
           <div className="bw-dialog-footer sticky -bottom-6 -mx-6 -mb-6 px-6 pt-3 pb-6 bg-sheet flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1" aria-hidden>
-              {steps.map((_, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    'h-2.5 rounded-full transition-all duration-300',
-                    i === current ? 'w-6 bg-accent' : 'w-2.5 bg-dot-off',
-                  )}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              {current > 0 && (
-                <PillButton variant="outline" size="md" fullWidth={false} onClick={() => setCurrent((n) => n - 1)}>
-                  {t('Back')}
-                </PillButton>
-              )}
-              <PillButton size="md" fullWidth={false} onClick={isLast ? close : () => setCurrent((n) => n + 1)}>
-                {isLast ? t('Done') : t('Next')}
-              </PillButton>
-            </div>
+            {nav}
           </div>
         </motion.div>
       </motion.div>
