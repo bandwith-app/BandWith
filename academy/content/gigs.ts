@@ -674,7 +674,7 @@ const gigs: AreaModule = {
           items: [
             'Open the gig and tap **OPEN** next to **RIDER & STAGE**.',
             'Under **Technical rider**, tap **CREATE RIDER** if the gig has none.',
-            'Under **Stage plot**, tap **EDIT** to place musicians, wedges, speakers and DI boxes. Drag to move; tap an item to rename or remove it. Set **Layout name**, **Stage width (m)** and **Stage depth (m)**, then **SAVE PLOT**. **+ NEW LAYOUT** and **DELETE LAYOUT** manage several layouts.',
+            'Under **Stage plot**, tap **EDIT** to place musicians, wedges, speakers and DI boxes. Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. Tap an item to rename or remove it. Hold an empty spot to add a musician, wedge, speaker or DI box right there. Set **Layout name**, **Stage width (m)** and **Stage depth (m)**, then **SAVE PLOT**. **+ NEW LAYOUT** and **DELETE LAYOUT** manage several layouts.',
             'Under **Input list**, tap **EDIT LIST**. **ADD CHANNEL**, fill in **SOURCE**, **MIC / DI** and **Who**, drag to reorder, then **SAVE LIST**.',
             'Under **Who brings what**, check the list suggested from the lineup, write **BAND BRINGS** and **VENUE PROVIDES** (one per line), tick **The venue agreed to this** when it is settled, and tap **SAVE**.',
           ],
@@ -701,14 +701,14 @@ const gigs: AreaModule = {
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: 'Creates and edits everything and shares the link. Editing the stage plot itself is on iPad; on a phone the plot is shown and the screen says **STAGE PLOT EDITING IS ON IPAD**.' },
+            { role: 'admin', text: 'Creates and edits everything, the stage plot included, on every device, and shares the link. The plot of a past gig is read-only.' },
             { role: 'member', text: 'Sees the rider, plot, input list and who brings what read-only, and can **Share rider PDF**. Before anything is set up: **The band hasn’t set up the stage for this gig yet.**' },
           ],
         },
         {
           type: 'devices',
           rows: [
-            { devices: ['tablet'], text: 'Rider & stage is its own tab in the gig, laid out as a board, and the stage plot can be edited there. In the composer it can be prepared before the gig is created.' },
+            { devices: ['tablet'], text: 'Rider & stage is its own tab in the gig, laid out as a board. In the composer it can be prepared before the gig is created.' },
           ],
         },
       ],
@@ -1118,7 +1118,7 @@ const gigs: AreaModule = {
     { q: 'Who sees my gig drafts?', a: 'Only you. Drafts follow you to your other devices but nobody else gets them until you create the gig.', roles: ['admin'] },
     { q: 'A musician said no. How do I replace them?', a: 'Open **LINEUP**, tap **Find a deputy** next to them and ask one of the band’s deputies.', roles: ['admin'] },
     { q: 'Can I add my band gigs to my phone calendar?', a: 'From a gig invitation tap **Add to Google Calendar**. Deputies can also **Subscribe to my gigs** for a live calendar feed.' },
-    { q: 'Can I edit the stage plot on my phone?', a: 'No, stage plot editing is on iPad. On a phone you can see the plot and edit the input list and who brings what.', roles: ['admin'] },
+    { q: 'Can I edit the stage plot on my phone?', a: 'Yes, on every device: hold an item to move it, or hold an empty spot to add one there. The plot of a past gig is read-only.', roles: ['admin'] },
   ],
 
   glossary: [
