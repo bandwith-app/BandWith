@@ -1059,6 +1059,22 @@ export const EventsView: React.FC<EventsViewProps> = ({
     );
   };
 
+  // Type filter row (All / Gigs / Rehearsals…). The Laptop pose Planner
+  // covers the page, so it shows the same row on its Deck: a filter picked in
+  // Book must stay changeable there.
+  const typePills = (size: 'sm' | 'md') => (
+    <div role="group" aria-label={t('Filter by type')} className="flex gap-2 items-center shrink-0 overflow-x-auto scrollbar-hide -mx-4 px-4">
+      {visibleFilters.map((f) => {
+        const isActive = eventFilter === f || (f === 'ALL' && eventFilter === 'All') || (f === 'REHEARSALS' && eventFilter === 'REHEARSAL') || (f === 'QUOTES' && eventFilter === 'QUOTE') || (f === 'DRAFTS' && eventFilter === 'DRAFT');
+        return (
+          <Selector key={f} size={size} selected={isActive} onClick={() => setEventFilter(f)} count={isActive ? allEvents.length : undefined}>
+            {filterLabel(f)}
+          </Selector>
+        );
+      })}
+    </div>
+  );
+
   return (
     <motion.div
       key="events"
@@ -1073,16 +1089,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         {/* ═══ BAND FILTER PILLS ═══ (2+ bands; combines with the type filter) */}
         {bandPills}
 
-        <div className="flex gap-2 items-center shrink-0 overflow-x-auto scrollbar-hide -mx-4 px-4">
-          {visibleFilters.map((f) => {
-            const isActive = eventFilter === f || (f === 'ALL' && eventFilter === 'All') || (f === 'REHEARSALS' && eventFilter === 'REHEARSAL') || (f === 'QUOTES' && eventFilter === 'QUOTE') || (f === 'DRAFTS' && eventFilter === 'DRAFT');
-            return (
-              <Selector key={f} size="md" selected={isActive} onClick={() => setEventFilter(f)} count={isActive ? allEvents.length : undefined}>
-                {filterLabel(f)}
-              </Selector>
-            );
-          })}
-        </div>
+        {typePills('md')}
       </div>
 
           {/* ═══ ACTIVE REHEARSAL POLLS & PROPOSALS ═══ */}
@@ -1565,7 +1572,28 @@ export const EventsView: React.FC<EventsViewProps> = ({
           }}
           onAddGig={canCreate && onCreateEvent ? (date) => onCreateEvent('gig', date) : undefined}
           onAddRehearsal={canCreate && onCreateEvent ? (date) => onCreateEvent('rehearsal', date) : undefined}
-          filters={bandPills}
+          filters={
+            <>
+              {bandPills}
+              {typePills('sm')}
+            </>
+          }
+          footer={
+            pastEvents.length > 0 && onOpenPastEvents ? (
+              // The page's archive link sits under the Planner in this pose.
+              <button
+                type="button"
+                onClick={onOpenPastEvents}
+                className="min-h-11 flex items-center justify-between gap-3 bw-body-md text-muted-foreground cursor-pointer"
+              >
+                <span>{pastEvents.length === 1 ? t('{count} past event', { count: pastEvents.length }) : t('{count} past events', { count: pastEvents.length })}</span>
+                <span className="flex items-center gap-2 bw-button-sm text-foreground">
+                  <History className="w-3.5 h-3.5" />
+                  {t('Past events archive')}
+                </span>
+              </button>
+            ) : undefined
+          }
         />
       )}
 

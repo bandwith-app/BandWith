@@ -70,7 +70,7 @@ import {
 } from '@/lib/services/pricing';
 import { calculateTravelDistance, venueFields } from '@/lib/services/location';
 import { formatDistance, fromUnit, ratePerUnit, toUnit, useDistanceUnit } from '@/lib/units';
-import { QuoteDeskMode, quoteDeskLinesFromQuote, useLeadingCompanion, type QuoteDeskLine } from '@/app/components/duo';
+import { QuoteDeskMode, quoteDeskLinesFromQuote, useLaptopPose, useLeadingCompanion, type QuoteDeskLine } from '@/app/components/duo';
 import { LiveQuotePreview } from '@/app/components/duo/previews/LiveQuotePreview';
 import { personName } from '@/lib/personName';
 import { t, useT, intlLocale, getLocale, translate, type Locale } from '@/lib/i18n';
@@ -2997,8 +2997,11 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   };
 
   // Send = save and open the share sheet, like the wizard's Share button.
-  const quoteDesk = (
+  // With `form` (the wizard's steps) the Deck edits the quote through them
+  // instead, so it can't be sent without a client.
+  const renderQuoteDesk = (form?: React.ReactNode) => (
     <QuoteDeskMode
+      form={form}
       title={getEffectiveTitle()}
       quoteNumber={initialData?.quoteNumber}
       clientName={clientName.trim() || undefined}
@@ -3019,11 +3022,19 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       sendDisabled={submitting || (!isEditing && (!eventType || !eventDate))}
     />
   );
+  const quoteDesk = renderQuoteDesk();
 
   // iPad (Figma iPad · 06 "Quote / New"): every step on one screen with the
   // quote as the client will read it, in the client's language. Phones and
   // the iPhone Duo keep the steps. Same state, totals and save as the steps.
   const composerLayout = useComposerLayout();
+  // Laptop pose: the quote preview covers the wizard, whose form moves to the Deck.
+  const laptopPose = useLaptopPose();
+  // A new step starts at the top of the Deck, not where the last one was left.
+  const deckTopRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (laptopPose) deckTopRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [step, laptopPose]);
   const composerOn = composerLayout.composer && !isEditing;
   const [quoteSheet, setQuoteSheet] = useState<null | 'production' | 'billing'>(null);
   const docClientKey = clientEmail.trim() || clientName.trim();
@@ -3108,6 +3119,19 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   });
 
   if (isEditing) {
+    const editActions = (
+      <div className="flex gap-2">
+        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={onClose}>
+          {t('Cancel')}
+        </PillButton>
+        <PillButton variant="outline" fullWidth={false} className="px-4" disabled={submitting} onClick={() => handleCreate(false)}>
+          {t('Save')}
+        </PillButton>
+        <PillButton className="flex-1 min-w-0" icon={<Share2 className="w-[18px] h-[18px]" />} loading={submitting} onClick={() => handleCreate(true)}>
+          {t('Save & share')}
+        </PillButton>
+      </div>
+    );
     return (
       <motion.div
         data-modal-open="true"
@@ -3139,26 +3163,22 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         </header>
 
         <PeekingScrollContainer className="flex-1 px-4 pt-2 pb-6 min-h-0">
-          <div className="max-w-xl mx-auto w-full">{renderEditAccordionView()}</div>
+          <div className="max-w-xl mx-auto w-full">{!laptopPose && renderEditAccordionView()}</div>
         </PeekingScrollContainer>
 
         <div className="shrink-0">
           {renderLiveEstimateBar()}
           <div className="px-4 pt-4 bg-background" style={footerPadBottom}>
-            <div className="max-w-xl mx-auto w-full flex gap-2">
-              <PillButton variant="outline" fullWidth={false} className="px-4" onClick={onClose}>
-                {t('Cancel')}
-              </PillButton>
-              <PillButton variant="outline" fullWidth={false} className="px-4" disabled={submitting} onClick={() => handleCreate(false)}>
-                {t('Save')}
-              </PillButton>
-              <PillButton className="flex-1 min-w-0" icon={<Share2 className="w-[18px] h-[18px]" />} loading={submitting} onClick={() => handleCreate(true)}>
-                {t('Save & share')}
-              </PillButton>
-            </div>
+            <div className="max-w-xl mx-auto w-full">{!laptopPose && editActions}</div>
           </div>
         </div>
-        {quoteDesk}
+        {/* Laptop pose: the same sections and actions on the Deck. */}
+        {renderQuoteDesk(
+          <>
+            {renderEditAccordionView()}
+            {editActions}
+          </>,
+        )}
       </motion.div>
     );
   }
@@ -3561,6 +3581,35 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // ── CREATION MODE RENDER (3-ZONE SHELL) ─────────────────────
   if (composerOn) return renderComposer();
+  const stepBody = (
+    <>
+      {step === 0 && renderStep1()}
+      {step === 1 && renderStep2()}
+      {step === 2 && renderStep3()}
+    </>
+  );
+  const stepActions = isLastStep ? (
+    // Saving as a draft is the ✕ (Save draft / Discard): the
+    // finished quote's one way forward is to send it.
+    <div className="grid grid-cols-[auto_1fr] gap-2">
+      <PillButton variant="outline" fullWidth={false} className="px-5" onClick={handleBack}>
+        {t('Back')}
+      </PillButton>
+      <PillButton className="min-w-0" icon={<Share2 className="w-[18px] h-[18px]" />} loading={submitting} onClick={() => handleCreate(true)}>
+        {t('Save & share')}
+      </PillButton>
+    </div>
+  ) : (
+    <div className="grid grid-cols-2 gap-3">
+      <PillButton variant="outline" onClick={isFirstStep ? requestClose : handleBack}>
+        {isFirstStep ? t('Cancel') : t('Back')}
+      </PillButton>
+      <PillButton onClick={handleNext} disabled={!canProceed}>
+        {t('Next')}
+        <ArrowUpRight className="w-[18px] h-[18px]" />
+      </PillButton>
+    </div>
+  );
   return (
     <motion.div
       data-modal-open="true"
@@ -3594,46 +3643,33 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         </div>
       </header>
 
-      {/* Scrollable body */}
+      {/* Scrollable body (on the Deck in Laptop pose, see renderQuoteDesk) */}
       <PeekingScrollContainer className="flex-1 px-4 pt-2 pb-6 min-h-0">
-        <div className="max-w-xl mx-auto w-full">
-          {step === 0 && renderStep1()}
-          {step === 1 && renderStep2()}
-          {step === 2 && renderStep3()}
-        </div>
+        <div className="max-w-xl mx-auto w-full">{!laptopPose && stepBody}</div>
       </PeekingScrollContainer>
 
       {/* Footer: live estimate + actions */}
       <div className="shrink-0">
         {renderLiveEstimateBar()}
         <div className="px-4 pt-4 bg-background" style={footerPadBottom}>
-          <div className="max-w-xl mx-auto w-full">
-            {isLastStep ? (
-              // Saving as a draft is the ✕ (Save draft / Discard): the
-              // finished quote's one way forward is to send it.
-              <div className="grid grid-cols-[auto_1fr] gap-2">
-                <PillButton variant="outline" fullWidth={false} className="px-5" onClick={handleBack}>
-                  {t('Back')}
-                </PillButton>
-                <PillButton className="min-w-0" icon={<Share2 className="w-[18px] h-[18px]" />} loading={submitting} onClick={() => handleCreate(true)}>
-                  {t('Save & share')}
-                </PillButton>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <PillButton variant="outline" onClick={isFirstStep ? requestClose : handleBack}>
-                  {isFirstStep ? t('Cancel') : t('Back')}
-                </PillButton>
-                <PillButton onClick={handleNext} disabled={!canProceed}>
-                  {t('Next')}
-                  <ArrowUpRight className="w-[18px] h-[18px]" />
-                </PillButton>
-              </div>
-            )}
-          </div>
+          <div className="max-w-xl mx-auto w-full">{!laptopPose && stepActions}</div>
         </div>
       </div>
-      {quoteDesk}
+      {renderQuoteDesk(
+        <>
+          <div ref={deckTopRef} aria-hidden className="-mb-3" />
+          <InteractiveQuoteStepIndicator
+            current={step}
+            total={STEPS.length}
+            steps={STEPS}
+            maxAccessibleStep={maxAccessibleStep}
+            onSelectStep={s => setStep(s)}
+            activeColor="var(--wizard-accent)"
+          />
+          {stepBody}
+          {stepActions}
+        </>,
+      )}
       <LeaveWizardSheet
         open={leaveOpen}
         what="quote"

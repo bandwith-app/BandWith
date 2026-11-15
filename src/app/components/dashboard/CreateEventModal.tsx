@@ -2404,7 +2404,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
           style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-          className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
         >
           {/* Header */}
           <div className="shrink-0 px-4 pb-3 flex flex-col gap-2" style={headerPadTop}>
@@ -2922,7 +2922,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-        className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+        className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
       >
         {/* Top bar (Figma Top Bar Style=Canvas) + wizard steps */}
         <div className="shrink-0 bg-background" style={headerPadTop}>

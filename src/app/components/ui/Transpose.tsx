@@ -25,6 +25,8 @@ export const TransposeProvider: React.FC<{ semitones: number; songKey?: string |
 export const useTranspose = () => React.useContext(TransposeContext);
 
 const storeKey = (songId: string) => `bw-transpose:${songId}`;
+/** Tells the other readers of the same song (Stage mode under its Laptop pose wedge). */
+const CHANGED = 'bw:transpose';
 
 /** A song's transposition on this device (kept per song, between sessions). */
 export function useSongTranspose(songId: string | null | undefined): [number, (n: number) => void] {
@@ -36,6 +38,14 @@ export function useSongTranspose(songId: string | null | undefined): [number, (n
     } catch {
       setValue(0);
     }
+    // Another mounted reader changed it (e.g. on the Laptop pose Deck while
+    // Stage mode stays mounted underneath): follow it.
+    const onChange = (e: Event) => {
+      const d = (e as CustomEvent<{ songId: string; value: number }>).detail;
+      if (d?.songId === songId) setValue(d.value);
+    };
+    window.addEventListener(CHANGED, onChange);
+    return () => window.removeEventListener(CHANGED, onChange);
   }, [songId]);
   const set = React.useCallback(
     (n: number) => {
@@ -48,6 +58,7 @@ export function useSongTranspose(songId: string | null | undefined): [number, (n
       } catch {
         /* private mode: only for this session */
       }
+      window.dispatchEvent(new CustomEvent(CHANGED, { detail: { songId, value: next } }));
     },
     [songId],
   );

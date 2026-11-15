@@ -93,6 +93,12 @@ interface StageModeProps {
   onRetrySongs?: () => void;
   accentColor?: string;
   live?: StageLiveControls;
+  /**
+   * Song view open (controlled, optional): shared with the Laptop pose
+   * (FloorWedgeMode) so folding keeps the lyrics up.
+   */
+  songOpen?: boolean;
+  onSongOpenChange?: (open: boolean) => void;
   onClose: () => void;
 }
 
@@ -125,6 +131,8 @@ export const StageMode: React.FC<StageModeProps> = ({
   onRetrySongs,
   accentColor = 'var(--accent-gig, #D5FB46)',
   live,
+  songOpen,
+  onSongOpenChange,
   onClose,
 }) => {
   const t = useT();
@@ -142,7 +150,12 @@ export const StageMode: React.FC<StageModeProps> = ({
   const hasSong = songs.some((s) => !!s.lyrics?.trim() || !!s.chart);
   type StageView = 'setlist' | 'song';
   const views: StageView[] = ['setlist', ...(hasSong ? (['song'] as const) : [])];
-  const [view, setView] = useState<StageView>('setlist');
+  const [ownView, setOwnView] = useState<StageView>('setlist');
+  const view: StageView = songOpen === undefined ? ownView : songOpen ? 'song' : 'setlist';
+  const setView = (v: StageView) => {
+    setOwnView(v);
+    onSongOpenChange?.(v === 'song');
+  };
   const [songView, setSongView] = useSongViewPreference();
   const showLyrics = view === 'song' && hasSong && !editing;
   const lyricsSong = songs[Math.max(0, current)];

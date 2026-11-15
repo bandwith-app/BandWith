@@ -9,6 +9,7 @@ import { safeHttpsUrl } from '@/lib/services/songFiles';
 import { genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 
 export interface PickedSong {
   id: string;
@@ -199,6 +200,9 @@ export const SongPicker: React.FC<SongPickerProps> = ({
     }
   }, [newTitle, newArtist, newUrl, selectedBand?.id, isAdmin, onSelect, t]);
 
+  // Laptop pose: the sheet only has the Deck, so search and filters share one row.
+  const laptop = useLaptopPose();
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '';
     const m = Math.floor(seconds / 60);
@@ -259,7 +263,10 @@ export const SongPicker: React.FC<SongPickerProps> = ({
         {tab === 'library' ? (
           <>
             {/* Search (Figma Input on the dark sheet) */}
+            <div className={cn(laptop ? 'flex items-center gap-2 -mx-5 px-5 overflow-x-auto scrollbar-hide' : 'contents')}>
             <PillField
+              hideLabel={laptop}
+              className={laptop ? 'w-[240px] shrink-0' : undefined}
               tone="sheet"
               label={t('Search library')}
               icon={<Search className="w-5 h-5" />}
@@ -286,7 +293,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
 
             {/* Category filters */}
             {categories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className={cn('flex gap-2', laptop ? 'shrink-0' : 'flex-wrap')}>
                 <Selector
                   selected={!filterCategory}
                   onClick={() => setFilterCategory(null)}
@@ -306,6 +313,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
                 ))}
               </div>
             )}
+            </div>
 
             {/* Song list */}
             {loading ? (

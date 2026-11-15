@@ -270,6 +270,22 @@
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet:not(.inset-0) {
   padding-bottom: var(--content-bottom-clearance) !important;
 }
+/* BwSheet on the Deck: the sheet already clears the bar and the home
+   indicator (rule above), so its footer and spacer don't pad the safe area
+   again, and the drag bar and big title give their height to the list (the
+   Add songs list had 161pt). */
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet.bw-sheet > .shrink-0:last-child:not(:first-child) {
+  padding-bottom: 12px !important;
+}
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet.bw-sheet > div:last-child:not([class]) {
+  height: 0 !important;
+}
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet.bw-sheet > .shrink-0:first-child > span:first-child {
+  display: none;
+}
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet.bw-sheet > .shrink-0:first-child .bw-h1 {
+  font-size: 28px;
+}
 :root[data-bw-rail-host][data-bw-posture="tabletop"] header,
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-status-clear {
   padding-inline-end: max(1rem, var(--bw-status-clear-x, 0px));
@@ -398,6 +414,57 @@
 [data-bw-posture="tabletop"] .bw-chat-detail .bw-chat-fold {
   display: block;
   flex: 0 1 calc(var(--bw-deck-top) - var(--bw-display-h));
+}
+
+/* Full-screen forms (gig wizard, Edit event: `.bw-fold-form`, a header, a
+   scroller and an action bar) like the event detail: the header stays on the
+   Display, the fields and actions lie on the Deck, so none crosses the fold. */
+[data-bw-posture="tabletop"] .bw-fold-form > :first-child {
+  min-height: var(--bw-display-h);
+  margin-bottom: calc(var(--bw-deck-top) - var(--bw-display-h));
+}
+/* The layer already keeps its bottom clear of the Deck bar (above). */
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-fold-form > :last-child {
+  padding-bottom: 12px !important;
+}
+
+/* Hubs (Identity, Repertoire, Members…) are one scroller: in Laptop pose the
+   header holds the Display and stays, and the cards and rows scroll on the
+   Deck under it, so no row or button lies across the fold. */
+:root[data-bw-posture="tabletop"] .bw-pane-hub > :is(header, .bw-hub-head):first-child {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: var(--bw-deck-top);
+  background: var(--color-background);
+  pointer-events: auto;
+}
+/* Their bottom action bars (Invite member) stay above the Deck bar. */
+:root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-pane-hub > .sticky.bottom-0 {
+  padding-bottom: var(--content-bottom-clearance) !important;
+}
+
+/* Lyrics reader (`.bw-fold-reader`): the song fills the Display like the
+   floor wedge, its controls (close, size, views, transpose, My notes) lie on
+   the Deck. */
+[data-bw-posture="tabletop"] .bw-fold-reader .bw-reader-body {
+  order: -1;
+  flex: 0 0 auto;
+  height: var(--bw-display-h);
+  padding-top: var(--bw-status-bottom, var(--safe-top, 0px));
+}
+[data-bw-posture="tabletop"] .bw-fold-reader .bw-reader-controls {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: calc(var(--bw-deck-top) - var(--bw-display-h));
+}
+[data-bw-posture="tabletop"] .bw-fold-reader .bw-reader-controls > :first-child {
+  padding-top: 12px !important;
+  padding-inline-end: 1rem;
 }
 
 /* Controls the Deck bar already offers in Laptop pose (e.g. a second Close). */
