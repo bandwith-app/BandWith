@@ -21,12 +21,16 @@ export const AcademySheet: React.FC<{ target: AcademyTarget | undefined; onClose
   target,
   onClose,
 }) => {
+  // Closed: render nothing (and read no context), so screens with a "?" stay cheap.
+  if (target === undefined || typeof document === 'undefined') return null;
+  return <OpenSheet target={target} onClose={onClose} />;
+};
+
+const OpenSheet: React.FC<{ target: AcademyTarget; onClose: () => void }> = ({ target, onClose }) => {
   const tr = useT();
   const { resolvedTheme } = useTheme();
   const laptop = useLaptopPose();
-  const open = target !== undefined;
-  useCloseOnBack(open, onClose);
-  if (!open || typeof document === 'undefined') return null;
+  useCloseOnBack(true, onClose);
 
   const title = tr('BandWith Academy');
   // The guide is written in English for now (the app's own labels are in bold).

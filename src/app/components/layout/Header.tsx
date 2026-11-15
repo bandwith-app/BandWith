@@ -17,6 +17,7 @@ import { HEADER_SPRING, durations } from '@/styles/motion';
 import { FIT, FitText } from '@/app/components/bw/FitText';
 import { primeKeyboard } from '@/lib/keyboardSafeTap';
 import { useT } from '@/lib/i18n';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 export { HEADER_SPRING };
 
@@ -309,6 +310,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* iPhone Duo: the header's actions join the side rail (Figma "Duo/Side Actions"). */}
           {railOwnsChrome && (
             <RailHeaderActions base>
+              <AcademyHelpButton
+                article={activeTab === 'Chat' ? 'the-chat-inbox' : activeTab === 'Events' ? 'calendar-overview' : 'home-screen'}
+              />
               {activeTab === 'Chat' ? (
                 <IconButton
                   label={t('New chat')}
@@ -331,6 +335,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* ═══ RIGHT: Stationary Bell & Identity Actions (Pinned at top-right, 0px vertical shift) ═══ */}
           {!railOwnsChrome && <div className="absolute top-[3px] right-0 flex items-center gap-2 z-20">
+            {/* "?" opens the Academy guide for the tab (Home keeps Bell + identity only; its guide is in Settings) */}
+            {(activeTab === 'Chat' || activeTab === 'Events') && (
+              <AcademyHelpButton article={activeTab === 'Chat' ? 'the-chat-inbox' : 'calendar-overview'} />
+            )}
             {activeTab === 'Chat' ? (
               /* Figma "Chat / Inbox": a single filled "+" starts a new conversation */
               <IconButton

@@ -41,6 +41,7 @@ import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { instrumentText } from '@/lib/instruments';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 /** Small stat card (Figma: label + 24pt dot value). */
 const StatCard: React.FC<{ label: string; value: number; delay: number }> = ({ label, value, delay }) => (
@@ -426,7 +427,10 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
           return rest.length ? <>{first}<br />{rest.join(' ')}</> : first;
         })()}
         actions={
-          isAdmin ? <IconButton label={t('Invite member')} variant="filled" icon={<Plus />} onClick={() => setShowInvite(true)} /> : undefined
+          <>
+            <AcademyHelpButton article="band-members" />
+            {isAdmin && <IconButton label={t('Invite member')} variant="filled" icon={<Plus />} onClick={() => setShowInvite(true)} />}
+          </>
         }
       >
         {/* Duo Laptop: the band's numbers sit on the Display, the people on the Deck. */}

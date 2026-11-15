@@ -21,6 +21,7 @@ import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { personName, personInitials } from '@/lib/personName';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 interface AnalyticsViewProps {
   onClose: () => void;
@@ -322,7 +323,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
       className="bw-pane-hub fixed inset-0 z-[70] bg-background text-foreground overflow-y-auto overflow-x-hidden"
       style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}
     >
-      <ScreenHeader sticky onBack={onClose} overline={overline} title={(() => {
+      <ScreenHeader sticky onBack={onClose} overline={overline} actions={<AcademyHelpButton article="analytics" />} title={(() => {
         // Two lines: the first word, then the rest ("Data / insights").
         const [first, ...rest] = t('Data insights').split(' ');
         return rest.length ? <>{first}<br />{rest.join(' ')}</> : first;
