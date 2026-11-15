@@ -2509,7 +2509,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             eventTitle={event.title}
             dateLabel={hasHeroDate ? formatEventDateShort(event.date) : undefined}
             people={lineupFirstNames}
-            canEditPlot={wide && !rail}
+            canEditPlot={!isPast}
             onClose={() => setRiderOpen(false)}
           />
         )}
