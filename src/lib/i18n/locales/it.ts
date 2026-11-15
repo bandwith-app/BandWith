@@ -4091,6 +4091,10 @@ const dict: Dictionary = {
   "1 struck off": "1 tolto",
   "{count} struck off": "{count} tolti",
   "struck off": "tolto",
+  "Notifications are off on this device": "Notifiche disattivate su questo dispositivo",
+  "Allow notifications on this device": "Consenti le notifiche su questo dispositivo",
+  "Turn them on in your phone’s settings. Until then, chat messages and gig alerts won’t reach you.": "Attivale nelle impostazioni del telefono. Fino ad allora messaggi della chat e avvisi dei gig non ti arrivano.",
+  "Tap to allow them. Until then, chat messages and gig alerts won’t reach you.": "Tocca per consentirle. Fino ad allora messaggi della chat e avvisi dei gig non ti arrivano.",
 };
 
 export default dict;

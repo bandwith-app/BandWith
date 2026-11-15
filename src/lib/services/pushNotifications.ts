@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '../supabase';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { getActiveChat } from './activeChatTracker';
@@ -13,6 +13,30 @@ import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 
 // Cache the token to avoid re-registration issues
 let cachedToken: string | null = null;
+// The account this device's pushes belong to, and the token last saved for it.
+let pushUserId: string | null = null;
+let savedToken: string | null = null;
+let savedAt = 0;
+let tokenWatch = false;
+
+/**
+ * Android hands out a new FCM token now and then (and after an update or a
+ * data wipe): save every token it reports, not only the first one, or
+ * pushes go to a dead token and the device goes quiet.
+ */
+const watchTokenChanges = () => {
+  if (tokenWatch) return;
+  tokenWatch = true;
+  PushNotifications.addListener('registration', (token) => {
+    cachedToken = token.value;
+    if (pushUserId && token.value !== savedToken) void saveTokenToDatabase(pushUserId, token.value);
+  }).catch(() => {
+    tokenWatch = false;
+  });
+};
+
+/** How long ago this device's token was last confirmed to the server. */
+export const pushTokenAge = (): number => (savedToken ? Date.now() - savedAt : Infinity);
 
 // Types
 export interface PushNotificationToken {
@@ -87,6 +111,8 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
     return { success: false, error: new Error('Push not configured') };
   }
 
+  pushUserId = userId;
+
   try {
     console.log('[Push] Starting subscription for user:', userId);
     
@@ -97,6 +123,8 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
     if (permResult.receive !== 'granted') {
       return { success: false, error: new Error('Permission denied') };
     }
+
+    watchTokenChanges();
 
     // If we already have a cached token, just save it
     if (cachedToken) {
@@ -184,7 +212,11 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
 
   try {
     const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
-    if (!rpcError) return { success: true, error: null };
+    if (!rpcError) {
+      savedToken = token;
+      savedAt = Date.now();
+      return { success: true, error: null };
+    }
 
     const { error } = await supabase
       .from('push_tokens')
@@ -203,6 +235,8 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
       console.error('[Push] Token save failed:', error.message);
       return { success: false, error: new Error(error.message) };
     }
+    savedToken = token;
+    savedAt = Date.now();
     return { success: true, error: null };
   } catch (err: any) {
     console.error('[Push] Save error:', err);
@@ -215,6 +249,8 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
  * BEFORE the session ends (the RPC needs the user's JWT).
  */
 export const unregisterPushToken = async (): Promise<void> => {
+  pushUserId = null;
+  savedToken = null;
   if (!isNative() || !cachedToken) return;
   try {
     const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: cachedToken });
@@ -224,6 +260,21 @@ export const unregisterPushToken = async (): Promise<void> => {
   } catch {
     /* best effort: never block sign-out */
   }
+};
+
+/**
+ * Opens this app's notification settings on the phone, for someone who said
+ * no to notifications (the system asks only once). iOS: the app's page in
+ * Settings; Android: its notification settings (NotificationSettingsPlugin).
+ */
+export const openNotificationSettings = async (): Promise<void> => {
+  if (!isNative()) return;
+  if (Capacitor.getPlatform() === 'ios') {
+    window.location.href = 'app-settings:';
+    return;
+  }
+  const plugin = registerPlugin<{ open: () => Promise<void> }>('BwNotificationSettings');
+  await plugin.open();
 };
 
 // Check if subscription exists
@@ -376,6 +427,7 @@ export const createNotificationChannel = async (
 export const removePushListeners = async (): Promise<void> => {
   if (!isNative()) return;
   
+  tokenWatch = false;
   try {
     await PushNotifications.removeAllListeners();
   } catch (error) {

@@ -8,9 +8,11 @@ import {
   removePushListeners,
   createNotificationChannel,
   isNative,
+  pushTokenAge,
   type PushNotificationData,
 } from '@/lib/services/pushNotifications';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { markAsRead } from '@/lib/services/notifications';
 import { t } from '@/lib/i18n';
 
@@ -129,6 +131,32 @@ export const usePushNotifications = (): UsePushNotificationsReturn => {
     }, 2000);
     return () => clearTimeout(timer);
   }, [isSupported]);
+
+  // Back in the foreground: confirm this device's token again. The server may
+  // have switched a token off, Android may have handed out a new one, or
+  // notifications were just turned on in the phone's settings; before, the
+  // token was only sent once per app start.
+  useEffect(() => {
+    if (!isSupported || !user?.id) return;
+    let alive = true;
+    let handle: PluginListenerHandle | null = null;
+    App.addListener('appStateChange', async ({ isActive }) => {
+      if (!isActive) return;
+      const status = await checkPushPermissions();
+      if (!alive) return;
+      setPermissionStatus(status);
+      if (status === 'granted' && pushTokenAge() > 10 * 60 * 1000) void initialize();
+    })
+      .then((h) => {
+        if (alive) handle = h;
+        else void h.remove();
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      void handle?.remove();
+    };
+  }, [isSupported, user?.id, initialize]);
 
   // Clean up listeners on unmount
   useEffect(() => {

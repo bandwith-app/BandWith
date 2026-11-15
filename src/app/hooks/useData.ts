@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { onAppResume } from '@/lib/appResume';
 import { useAuth } from '@/lib/AuthContext';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
@@ -855,8 +856,13 @@ export const useNotifications = (options?: {
         }
       }
     }, 60000); // 60 seconds - reduced frequency
-    
-    return () => clearInterval(pollInterval);
+    // Back from the background: don't wait up to a minute for what arrived.
+    const offResume = onAppResume(() => { fetchNotifications(true); });
+
+    return () => {
+      clearInterval(pollInterval);
+      offResume();
+    };
   }, [isAuthenticated, fetchNotifications]);
 
   return { notifications, loading, error, refetch: fetchNotifications, setNotifications };
@@ -887,10 +893,15 @@ export const useUnreadCount = () => {
     const unsubscribe = notificationsService.subscribeToNotifications(() => {
       setCount(prev => prev + 1);
     });
+    // Back from the background: recount what arrived meanwhile.
+    const offResume = onAppResume(() => { fetchCount(); });
 
     console.log('[useNotifications] Realtime subscription set up, isAuthenticated:', isAuthenticated);
-    return unsubscribe;
-  }, [isAuthenticated]);
+    return () => {
+      unsubscribe();
+      offResume();
+    };
+  }, [isAuthenticated, fetchCount]);
 
   return { count, loading, refetch: fetchCount };
 };
@@ -1497,10 +1508,15 @@ export const useChats = (bandId?: string) => {
       timer = setTimeout(() => { fetchChats(); }, 1200);
     });
 
+    // Back from the background: the realtime connection was asleep, so pick
+    // up what arrived meanwhile (and tell senders it reached this device).
+    const offResume = onAppResume(() => { fetchChats(); });
+
     return () => {
       unsubscribe();
       unsubscribeReceipts();
       clearTimeout(timer);
+      offResume();
     };
   }, [isAuthenticated, fetchChats]);
 
