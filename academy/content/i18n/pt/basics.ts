@@ -1194,6 +1194,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "O app Android vem como um arquivo APK, não por uma loja. Permita a instalação quando o Android pedir.",
+            "Atualizações: quando sai uma versão nova, uma mensagem diz **BandWith … está disponível**. Toque em **Atualizar** para baixar e instalar por cima desta. **Ajustes** › **Sobre** mostra o mesmo botão.",
             "O botão Voltar do sistema e o gesto de voltar fecham primeiro a camada de cima; na tela Início, aparece **Toque de novo para sair** e um segundo Voltar fecha o app ([[back-behaviour]]).",
             "O acesso rápido usa a sua impressão digital (ou a íris, se o celular tiver). O bloqueio do app também pode recorrer ao PIN ou ao padrão do celular.",
             "Na etapa dos convites dos primeiros passos, **Importar dos contatos** escolhe os colegas de banda na sua agenda de contatos.",

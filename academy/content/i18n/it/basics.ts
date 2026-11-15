@@ -1194,6 +1194,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "L’app Android arriva come file APK, non da uno store. Consenti l’installazione quando Android lo chiede.",
+            "Aggiornamenti: quando esce una nuova versione, un messaggio dice **BandWith … è disponibile**. Tocca **Aggiorna** per scaricarla e installarla sopra questa. **Impostazioni** › **Informazioni** mostra lo stesso pulsante.",
             "Il pulsante Indietro di sistema e il gesto indietro chiudono prima il livello in cima; nella Home, **Tocca di nuovo per uscire** e poi un secondo Indietro chiude l’app ([[back-behaviour]]).",
             "L’accesso rapido usa la tua impronta digitale (o l’iride, se il telefono la supporta). Il blocco app può anche ripiegare sul PIN o sulla sequenza del telefono.",
             "Nel passaggio degli inviti della configurazione iniziale, **Importa dai contatti** ti fa scegliere i compagni di band dalla rubrica.",

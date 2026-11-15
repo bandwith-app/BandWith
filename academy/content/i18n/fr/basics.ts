@@ -1194,6 +1194,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "L’app Android est fournie sous forme de fichier APK plutôt que via un store. Autorise l’installation quand Android le demande.",
+            "Mises à jour : quand une nouvelle version sort, un message indique **BandWith … est disponible**. Touche **Mettre à jour** pour la télécharger et l’installer par-dessus celle-ci. **Réglages** › **À propos** affiche le même bouton.",
             "Le bouton Retour du système et le geste retour ferment d’abord la couche du dessus ; sur l’accueil, **Touche encore pour quitter** puis un deuxième Retour ferment l’app ([[back-behaviour]]).",
             "La connexion rapide utilise ton empreinte (ou l’iris, si le téléphone le permet). Le verrouillage peut aussi se rabattre sur le code PIN ou le schéma du téléphone.",
             "À l’étape des invitations de l’accueil, **Importer des contacts** te permet de choisir des membres dans ton carnet d’adresses.",

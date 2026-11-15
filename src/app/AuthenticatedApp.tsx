@@ -1,4 +1,5 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
+import { openAndroidUpdate, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
@@ -460,6 +461,31 @@ export default function AuthenticatedApp() {
     const timer = setTimeout(() => setSaveToast(null), duration);
     return () => clearTimeout(timer);
   }, [saveToast]);
+
+  // Android test builds come from GitHub releases: offer a newer one
+  // (src/lib/androidUpdate.ts), at most once a day per version.
+  const androidUpdate = useAndroidUpdate();
+  useEffect(() => {
+    if (!androidUpdate) return;
+    const key = 'bw.androidUpdate.notified';
+    try {
+      const last = JSON.parse(localStorage.getItem(key) || 'null');
+      if (last?.version === androidUpdate.version && Date.now() - Number(last.at) < 24 * 60 * 60 * 1000) return;
+      localStorage.setItem(key, JSON.stringify({ version: androidUpdate.version, at: Date.now() }));
+    } catch {
+      /* storage unavailable: show it this time */
+    }
+    // Not over the first screen's own messages.
+    const timer = setTimeout(() => {
+      setSaveToast({
+        message: t('BandWith {version} is available', { version: androidUpdate.version }),
+        type: 'info',
+        action: { label: t('Update'), onClick: () => openAndroidUpdate(androidUpdate) },
+        duration: 12000,
+      });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [androidUpdate]);
 
   const { isOnline, wasOffline, pendingSyncCount, triggerSync } = useNetworkStatus((msg) => {
     setSaveToast({ message: msg, type: 'success' });

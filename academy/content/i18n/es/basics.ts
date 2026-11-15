@@ -1183,6 +1183,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "La app de Android viene como archivo APK, no desde una tienda. Permite la instalación cuando Android te lo pida.",
+            "Actualizaciones: cuando sale una versión nueva, un mensaje dice **BandWith … está disponible**. Toca **Actualizar** para descargarla e instalarla sobre esta. **Ajustes** › **Acerca de** muestra el mismo botón.",
             "El botón Atrás del sistema y el gesto de volver cierran primero la capa de arriba; en Inicio, **Toca otra vez para salir** y un segundo Atrás cierra la app ([[back-behaviour]]).",
             "El inicio rápido usa tu huella (o el iris, si el móvil lo tiene). El bloqueo de la app también puede recurrir al PIN o al patrón del móvil.",
             "En el paso de las invitaciones de la bienvenida, **Importar de contactos** elige a tus compañeros de la agenda.",
