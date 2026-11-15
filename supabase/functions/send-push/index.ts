@@ -48,18 +48,64 @@ function encodeBase64Url(bytes: Uint8Array): string {
     .replace(/\//g, "_");
 }
 
-// Apple rejects provider tokens refreshed more than once every 20 minutes
-// (TooManyProviderTokenUpdates) and expires them after 60: reuse for 50.
-let cachedApnsJwt: { token: string; at: number } | null = null;
+// Apple accepts a new provider token (the signed JWT) at most once every 20
+// minutes (429 TooManyProviderTokenUpdates) and expires it after 60. Edge
+// instances start and stop all the time, so a token kept only in memory was
+// signed again on almost every push and Apple refused them. The token is now
+// shared by every instance through the database (migration 121) and reused
+// for 45 minutes; memory is only a fast path.
+const APNS_TOKEN_MAX_AGE_S = 45 * 60;
+type ApnsJwt = { token: string; iat: number };
+let cachedApnsJwt: ApnsJwt | null = null;
+let pendingApnsJwt: Promise<string> | null = null;
 
-async function generateAPNsJWT(): Promise<string> {
-  if (cachedApnsJwt && Date.now() - cachedApnsJwt.at < 50 * 60 * 1000) return cachedApnsJwt.token;
-  const token = await signAPNsJWT();
-  cachedApnsJwt = { token, at: Date.now() };
-  return token;
+const freshInMemory = () =>
+  cachedApnsJwt && Math.floor(Date.now() / 1000) - cachedApnsJwt.iat < APNS_TOKEN_MAX_AGE_S;
+
+async function claimSharedApnsJwt(candidate: ApnsJwt | null, reject?: string): Promise<ApnsJwt | null> {
+  const { data, error } = await adminClient().rpc('bw_apns_token_claim', {
+    p_candidate: candidate?.token ?? null,
+    p_issued_at: candidate?.iat ?? null,
+    p_reject: reject ?? null,
+    p_max_age: APNS_TOKEN_MAX_AGE_S,
+  });
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? data[0] : data;
+  return row?.token ? { token: String(row.token), iat: Number(row.issued_at) } : null;
 }
 
-async function signAPNsJWT(): Promise<string> {
+/**
+ * The provider token every instance shares. `reject` is a token Apple just
+ * called expired or invalid: it is replaced instead of returned.
+ */
+async function generateAPNsJWT(reject?: string): Promise<string> {
+  if (!reject && freshInMemory()) return cachedApnsJwt!.token;
+  if (!reject && pendingApnsJwt) return pendingApnsJwt;
+  const run = (async () => {
+    try {
+      let shared = await claimSharedApnsJwt(null, reject);
+      if (!shared) shared = await claimSharedApnsJwt(await signAPNsJWT(), reject);
+      if (shared) {
+        cachedApnsJwt = shared;
+        return shared.token;
+      }
+    } catch (e) {
+      console.warn('APNs shared token unavailable:', e instanceof Error ? e.message : String(e));
+    }
+    // Database unreachable: fall back to this instance's own token.
+    if (!reject && freshInMemory()) return cachedApnsJwt!.token;
+    cachedApnsJwt = await signAPNsJWT();
+    return cachedApnsJwt.token;
+  })();
+  if (!reject) pendingApnsJwt = run;
+  try {
+    return await run;
+  } finally {
+    if (pendingApnsJwt === run) pendingApnsJwt = null;
+  }
+}
+
+async function signAPNsJWT(): Promise<ApnsJwt> {
   if (!APNS_KEY_ID || !APNS_TEAM_ID || !APNS_PRIVATE_KEY) {
     throw new Error(`APNs credentials missing`);
   }
@@ -99,7 +145,7 @@ async function signAPNsJWT(): Promise<string> {
     encoder.encode(unsignedToken)
   );
 
-  return `${unsignedToken}.${encodeBase64Url(new Uint8Array(signature))}`;
+  return { token: `${unsignedToken}.${encodeBase64Url(new Uint8Array(signature))}`, iat: now };
 }
 
 async function sendToAPNs(
@@ -113,7 +159,7 @@ async function sendToAPNs(
   collapseId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const jwt = await generateAPNsJWT();
+    let jwt = await generateAPNsJWT();
     const alert: Record<string, string> = { title, body };
     if (subtitle) {
       alert.subtitle = subtitle;
@@ -136,8 +182,8 @@ async function sendToAPNs(
     
     let lastError = 'APNs: no host tried';
     let badTokenEverywhere = true;
-    for (const host of APNS_HOSTS) {
-      const response = await fetch(`https://${host}/3/device/${deviceToken}`, {
+    const post = (host: string) =>
+      fetch(`https://${host}/3/device/${deviceToken}`, {
         method: 'POST',
         headers: {
           'Authorization': `bearer ${jwt}`,
@@ -151,6 +197,30 @@ async function sendToAPNs(
         },
         body: JSON.stringify(apnsPayload),
       });
+    const reasonOf = async (response: Response) => {
+      const text = await response.text();
+      try { return { text, reason: String(JSON.parse(text)?.reason || '') }; } catch { return { text, reason: '' }; }
+    };
+    for (const host of APNS_HOSTS) {
+      let response = await post(host);
+      if (!response.ok && (response.status === 403 || response.status === 429)) {
+        // The provider token, not the device: swap it once and retry.
+        const { text, reason } = await reasonOf(response);
+        let next: string | null = null;
+        if (reason === 'ExpiredProviderToken' || reason === 'InvalidProviderToken') {
+          next = await generateAPNsJWT(jwt);
+        } else if (reason === 'TooManyProviderTokenUpdates') {
+          // Another instance may already hold the token Apple knows.
+          cachedApnsJwt = null;
+          next = await generateAPNsJWT();
+        }
+        if (next && next !== jwt) {
+          jwt = next;
+          response = await post(host);
+        } else {
+          response = new Response(text, { status: response.status });
+        }
+      }
       if (response.ok) return { success: true };
 
       const errorBody = await response.text();
@@ -173,8 +243,12 @@ async function sendToAPNs(
   }
 }
 
+// Google's access token lasts an hour: reuse it inside this instance.
+let cachedFcmToken: { token: string; until: number } | null = null;
+
 async function getFCMAccessToken(): Promise<string | null> {
   if (!FCM_CLIENT_EMAIL || !FCM_PRIVATE_KEY) return null;
+  if (cachedFcmToken && Date.now() < cachedFcmToken.until) return cachedFcmToken.token;
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -224,6 +298,9 @@ async function getFCMAccessToken(): Promise<string | null> {
 
     if (!tokenResponse.ok) return null;
     const tokenData = await tokenResponse.json();
+    if (!tokenData?.access_token) return null;
+    const lifeS = Number(tokenData.expires_in) || 3600;
+    cachedFcmToken = { token: tokenData.access_token, until: Date.now() + Math.max(60, lifeS - 300) * 1000 };
     return tokenData.access_token;
   } catch {
     return null;
@@ -285,6 +362,8 @@ async function sendToFCM(
     );
 
     if (!response.ok) {
+      // Our access token was refused: sign a new one next time.
+      if (response.status === 401) cachedFcmToken = null;
       const errorBody = await response.text();
       // Only a dead or malformed token turns the device off. Any other
       // INVALID_ARGUMENT is a payload problem: switching every Android token
