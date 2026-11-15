@@ -79,6 +79,7 @@ import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { BwSheet } from '@/app/components/bw/Screen';
 import { ComposerCard, ComposerPreview, ComposerShell, useComposerLayout } from '@/app/components/composer/Composer';
 import { builtinText } from '@/lib/i18n/builtins';
+import { instrumentText } from '@/lib/instruments';
 
 export interface QuoteBandMember {
   id: string;
@@ -1683,7 +1684,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
                       <DotCheckbox checked={isSelected} activeColor="var(--surface-inverse)" inactiveColor="var(--border)" />
                       <span className="min-w-0 flex flex-col">
                         <span className={cn('bw-body-md font-medium truncate', !isSelected && 'text-muted-foreground')}>{musician.name}</span>
-                        <span className="bw-label-xs text-muted-foreground truncate">{musician.instrument || t('Musician')}</span>
+                        <span className="bw-label-xs text-muted-foreground truncate">{instrumentText(musician.instrument) || t('Musician')}</span>
                       </span>
                     </button>
                     {isSelected && pricingSettings.pricing_mode === 'per_musician' && (

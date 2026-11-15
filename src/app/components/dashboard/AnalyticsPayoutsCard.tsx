@@ -6,6 +6,7 @@ import { money } from '@/lib/currency';
 import { useT } from '@/lib/i18n';
 import { markEventPaid } from '@/lib/services/eventMemberMoney';
 import { PAYOUTS_CHANGED, type GigPayouts } from '@/lib/payoutsDue';
+import { instrumentText } from '@/lib/instruments';
 
 export interface PayoutPerson {
   name: string;
@@ -93,7 +94,7 @@ export const AnalyticsPayoutsCard: React.FC<{
                     </span>
                     <span className="bw-body-md flex-1 min-w-0 truncate">
                       {who?.name ?? t('Member')}
-                      {who?.instrument ? <span className="opacity-60"> · {who.instrument}</span> : null}
+                      {who?.instrument ? <span className="opacity-60"> · {instrumentText(who.instrument)}</span> : null}
                     </span>
                     <span className="bw-label-md shrink-0 tabular-nums">{money(p.fee, 'auto')}</span>
                   </li>

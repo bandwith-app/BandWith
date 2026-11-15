@@ -5,6 +5,8 @@
  * "Double bass" stays a different instrument.
  */
 
+import { t } from '@/lib/i18n';
+
 /** Canonical key → phrases that mean it (lowercase, accents removed). Longer phrases are tried first. */
 const ALIASES: Record<string, string[]> = {
   'double-bass': ['double bass', 'upright bass', 'contrabass', 'contrabbasso', 'contrebasse', 'kontrabass', 'contrabajo', 'contrabaixo', 'standup bass', 'stand up bass'],
@@ -125,4 +127,27 @@ export function deputyCoverage<D extends CoverageDeputy>(
     (a, b) => Number(a.deputies.length > 0) - Number(b.deputies.length > 0) || a.label.localeCompare(b.label),
   );
   return { rows: list, others };
+}
+
+/** Instrument names the app translates (the chips in profile and onboarding, plus roles). */
+const LABELS = ['Vocals', 'Guitar', 'Bass', 'Drums', 'Keys', 'Sax', 'Piano', 'Trumpet', 'Violin', 'Cello', 'DJ', 'Producer', 'Percussion', 'Trombone', 'Double bass', 'Band leader', 'Other'];
+const LABEL_BY_FOLD = new Map(LABELS.map((l) => [fold(l), l]));
+const SEPARATOR = /(\s*[·,/;&+|]\s*)/;
+
+/**
+ * A free-text instrument or lineup role, ready to show: the names the app
+ * offers ("Vocals", onboarding's "guitar") are translated, anything else is
+ * shown as written. "Vocals · Band leader" → "Voci · Capobanda".
+ */
+export function instrumentText(text: string | null | undefined): string {
+  return (text || '')
+    .trim()
+    .split(SEPARATOR)
+    .map((part) => {
+      if (SEPARATOR.test(part) || !part.trim()) return part;
+      const label = LABEL_BY_FOLD.get(fold(part));
+      if (label) return t(label);
+      return part === part.toLowerCase() ? part.charAt(0).toUpperCase() + part.slice(1) : part;
+    })
+    .join('');
 }

@@ -37,6 +37,7 @@ import { DeputiesSection } from '@/app/components/band/DeputiesSection';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
+import { instrumentText } from '@/lib/instruments';
 
 /** Small stat card (Figma: label + 24pt dot value). */
 const StatCard: React.FC<{ label: string; value: number; delay: number }> = ({ label, value, delay }) => (
@@ -432,7 +433,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                           {isProMember(member) && <Tag variant="solid">Pro</Tag>}
                         </div>
                         <span className="bw-body-sm text-muted-foreground truncate">
-                          {[member.instrument, roleLabel].filter(Boolean).join(' · ')}
+                          {[instrumentText(member.instrument), roleLabel].filter(Boolean).join(' · ')}
                         </span>
                       </div>
                       </button>

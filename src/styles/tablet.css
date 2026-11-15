@@ -17,6 +17,11 @@
 [data-bw-wide][data-bw-two-pane] body:has(.bw-pane-dialog) .bw-nav-bar {
   z-index: 60 !important;
 }
+/* The song reader (lyrics, chords) opens in the detail pane beside its list:
+   the nav keeps floating over it, so the tabs stay reachable while it shows. */
+[data-bw-wide][data-bw-two-pane] .bw-fold-reader {
+  z-index: 102 !important;
+}
 /* Stage mode (in the detail pane) is modal: the nav, centred across both
    panes, would show cut in half at its edge, so it steps away until Exit. */
 [data-bw-wide][data-bw-two-pane] body:has(.bw-stage) .bw-nav-bar {

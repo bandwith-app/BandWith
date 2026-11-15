@@ -2370,7 +2370,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
         >
           {/* Header */}
-          <header className="shrink-0 px-4 pb-4 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
+          <header className="bw-edit-head shrink-0 px-4 pb-4 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
             <div className="flex items-center gap-3 min-h-11">
               <NavBackButton pane label={t('Close edit rehearsal')} onClick={requestEditClose} />
               {/* iPhone Duo: Back is in the rail, so the tag leads the row
@@ -2384,7 +2384,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
                 {data.recurrence !== 'once' && ` · ${recurrenceOptions.find(o => o.value === data.recurrence)?.label}`}
               </p>
               <h1 className="bw-h1 [overflow-wrap:anywhere]">{getEffectiveTitle()}</h1>
-              <p className="bw-body-sm text-muted-foreground truncate">
+              <p className="bw-edit-sub bw-body-sm text-muted-foreground truncate">
                 {formatDate(data.date)} · {data.time} – {endTime} · {data.location || t('Location TBD')}
               </p>
             </div>
@@ -2396,7 +2396,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           </PeekingScrollContainer>
 
           {/* CTA bar */}
-          <div className="shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+          <div className="bw-edit-cta shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
             <div className="grid grid-cols-[2fr_3fr] gap-3">
               <PillButton variant="outline" onClick={requestEditClose}>
                 {t('Cancel')}

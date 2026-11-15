@@ -11,7 +11,7 @@ import {
   type Deputy,
 } from '@/lib/services/deputies';
 import { useT } from '@/lib/i18n';
-import { deputyCoverage, type CoverageMember } from '@/lib/instruments';
+import { deputyCoverage, type CoverageMember, instrumentText } from '@/lib/instruments';
 
 const EMPTY = { name: '', instrument: '', phone: '', email: '', fee: '', notes: '' };
 
@@ -215,7 +215,7 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
                     {d.user_id && <Tag variant="accent">{t('On BandWith')}</Tag>}
                   </span>
                   <span className="bw-body-sm text-muted-foreground truncate">
-                    {[d.instrument, d.phone || d.email].filter(Boolean).join(' · ') || (d.user_id ? t('Asked in the app') : t('No contact yet'))}
+                    {[instrumentText(d.instrument), d.phone || d.email].filter(Boolean).join(' · ') || (d.user_id ? t('Asked in the app') : t('No contact yet'))}
                   </span>
                 </span>
                 <Pencil className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden />

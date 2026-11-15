@@ -15,6 +15,7 @@ import { toLocalDateString } from '@/lib/dates';
 import { personFirstName, personName } from '@/lib/personName';
 import { useT, intlLocale } from '@/lib/i18n';
 import type { BandMember } from '@/lib/services/bands';
+import { instrumentText } from '@/lib/instruments';
 
 /** Gigs drawn in the "Gigs this year" meter (Figma: 2 rows of 12). */
 const METER = 24;
@@ -143,7 +144,7 @@ export const MemberDetail: React.FC<{
             <h1 className="bw-display-lg uppercase [overflow-wrap:anywhere]">{name}</h1>
             <span className="flex items-center gap-2 min-w-0 bw-body-md text-muted-foreground">
               {member.instrument && <Mic className="w-4 h-4 shrink-0" aria-hidden />}
-              <span className="truncate">{[member.instrument, roleLabel].filter(Boolean).join(' · ')}</span>
+              <span className="truncate">{[instrumentText(member.instrument), roleLabel].filter(Boolean).join(' · ')}</span>
               {isPro && <Tag variant="solid">Pro</Tag>}
             </span>
           </div>
