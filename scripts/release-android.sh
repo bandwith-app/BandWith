@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Builds the signed Android release APK for testers and, with --publish, puts
+# it on a GitHub release. The newest release is always at the same link:
+#   https://github.com/bandwith-app/BandWith/releases/latest/download/BandWith.apk
+#
+#   scripts/release-android.sh 1.0.1            # build dist-android/BandWith.apk
+#   scripts/release-android.sh 1.0.1 --publish  # build + GitHub release android-v1.0.1
+#
+# Needs (none of it in the repo):
+# - android/app/google-services.json (Firebase, for push);
+# - the release keystore, ~/Developer/BandWith-keys/bandwith-release.jks
+#   (or BW_ANDROID_KEYSTORE), password in the macOS Keychain under
+#   "BandWith Android release key". Losing it means testers must uninstall
+#   before the next update installs, so keep a backup;
+# - openjdk 21, the Android SDK, and gh signed in for --publish.
+# Run it from a clean checkout of the commit to release.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+VERSION="${1:?usage: scripts/release-android.sh <version, e.g. 1.0.1> [--publish]}"
+PUBLISH="${2:-}"
+KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
+
+[ -f android/app/google-services.json ] || { echo "android/app/google-services.json is missing: push would be off." >&2; exit 1; }
+[ -f "$KEYSTORE" ] || { echo "Release keystore not found: $KEYSTORE" >&2; exit 1; }
+if [ "$PUBLISH" = "--publish" ] && [ -n "$(git status --porcelain --untracked-files=no -- src academy android/app/src android/app/build.gradle)" ]; then
+  echo "Uncommitted changes in the app: release from a clean checkout." >&2
+  exit 1
+fi
+
+BW_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -s 'BandWith Android release key' -w)"
+export BW_ANDROID_KEYSTORE="$KEYSTORE" BW_ANDROID_KEYSTORE_PASSWORD
+export BW_ANDROID_VERSION_NAME="$VERSION"
+# Hour-based, so every later release has a higher code.
+export BW_ANDROID_VERSION_CODE="${BW_ANDROID_VERSION_CODE:-$(date -u +%y%m%d%H)}"
+export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
+npx vite build >/dev/null
+npx vite build --config academy/vite.config.ts >/dev/null
+npx cap sync android >/dev/null
+(cd android && ./gradlew assembleRelease -q)
+
+APK=android/app/build/outputs/apk/release/app-release.apk
+BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+"$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -q "CN=BandWith" || { echo "The APK is not signed with the release key." >&2; exit 1; }
+if "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "application-debuggable"; then
+  echo "The APK is debuggable: not a release build." >&2
+  exit 1
+fi
+
+mkdir -p dist-android
+cp "$APK" dist-android/BandWith.apk
+echo "Built dist-android/BandWith.apk: version $VERSION (code $BW_ANDROID_VERSION_CODE)"
+
+if [ "$PUBLISH" = "--publish" ]; then
+  gh release create "android-v$VERSION" dist-android/BandWith.apk \
+    --repo bandwith-app/BandWith \
+    --target "$(git rev-parse HEAD)" \
+    --title "BandWith for Android $VERSION" \
+    --notes-file scripts/android-release-notes.md
+fi

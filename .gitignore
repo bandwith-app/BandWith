@@ -48,3 +48,6 @@ supabase/.temp/
 # Email template builder output (previews with inlined logos)
 supabase/email-templates/_source/out/
 supabase/email-templates/_legacy/
+
+# Android release output (scripts/release-android.sh)
+dist-android/

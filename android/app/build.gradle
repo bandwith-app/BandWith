@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// Release builds (scripts/release-android.sh): the signing key and its
+// password come from the environment, never from the repo. Without them a
+// release build stays unsigned; debug builds are unchanged.
+def bwKeystore = System.getenv('BW_ANDROID_KEYSTORE')
+def bwKeystorePassword = System.getenv('BW_ANDROID_KEYSTORE_PASSWORD')
+
 android {
     namespace = "com.bandwith.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +13,10 @@ android {
         applicationId "com.bandwith.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Every release raises the code (Android installs an update only over a
+        // lower one); debug builds keep 1.
+        versionCode((System.getenv('BW_ANDROID_VERSION_CODE') ?: '1') as int)
+        versionName(System.getenv('BW_ANDROID_VERSION_NAME') ?: '1.0')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +24,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (bwKeystore && bwKeystorePassword) {
+            release {
+                storeFile file(bwKeystore)
+                storePassword bwKeystorePassword
+                keyAlias System.getenv('BW_ANDROID_KEY_ALIAS') ?: 'bandwith'
+                keyPassword bwKeystorePassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (bwKeystore && bwKeystorePassword) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
