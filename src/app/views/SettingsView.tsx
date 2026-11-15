@@ -34,6 +34,7 @@ import { AcademySheet } from '@/app/components/academy/AcademySheet';
 import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
+import { openAndroidUpdate, useAndroidUpdate } from '@/lib/androidUpdate';
 import { deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -95,6 +96,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const { signOut, user } = useAuth();
   const appVersion = useAppVersion();
+  const androidUpdate = useAndroidUpdate();
   const { mode, setMode, resolvedTheme } = useTheme();
   const t = useT();
   const localePref = useLocalePref();
@@ -138,7 +140,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       : []),
     { id: 'language', label: t('Language'), value: languageName(getLocale()), icon: MessageSquare },
     { id: 'help', label: t('Help & support'), hint: t('Answers and what you can do in the app'), icon: Mail },
-    { id: 'about', label: t('About'), hint: appVersion ? t('Version {version}', { version: appVersion }) : undefined, icon: Star },
+    { id: 'about', label: t('About'), hint: androidUpdate ? t('BandWith {version} is available', { version: androidUpdate.version }) : appVersion ? t('Version {version}', { version: appVersion }) : undefined, icon: Star },
   ];
   const isKnownSection = (v?: string): v is SettingsSection =>
     !!v && SECTIONS.some((sec) => sec.id === v);
@@ -620,6 +622,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className={cn(CARD, 'p-5 flex flex-col gap-4')}>
       <BrandLogo variant="waveform" lockup="horizontal" className="h-8" textClassName="text-2xl" />
       {appVersion && <span className="bw-label-sm text-muted-foreground">{t('Version {version}', { version: appVersion })}</span>}
+      {androidUpdate && (
+        <PillButton variant="dark" size="md" fullWidth={false} onClick={() => void openAndroidUpdate(androidUpdate)}>
+          {t('Update to {version}', { version: androidUpdate.version })}
+        </PillButton>
+      )}
       <p className="bw-body-sm text-muted-foreground">
         {t('All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.')}
       </p>

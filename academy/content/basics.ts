@@ -1201,6 +1201,7 @@ const basics: AreaModule = {
           type: "list",
           items: [
             "The Android app comes as an APK file rather than from a store. Allow the install when Android asks.",
+            "Updates: when a new version is out, a message says **BandWith … is available**. Tap **Update** to download it and install it over this one. **Settings** › **About** shows the same button.",
             "The system Back button and the back gesture close the top layer first; on Home, **Tap again to exit** then a second Back closes the app ([[back-behaviour]]).",
             "Quick sign-in uses your fingerprint (or iris, where the phone has it). App lock can also fall back to the phone's PIN or pattern.",
             "On the invite step of onboarding, **Import from contacts** picks bandmates from your address book.",

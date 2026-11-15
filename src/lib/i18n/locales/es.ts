@@ -4095,6 +4095,9 @@ const dict: Dictionary = {
   "Allow notifications on this device": "Permite las notificaciones en este dispositivo",
   "Turn them on in your phone’s settings. Until then, chat messages and gig alerts won’t reach you.": "Actívalas en los ajustes del teléfono. Hasta entonces no te llegarán los mensajes del chat ni los avisos de conciertos.",
   "Tap to allow them. Until then, chat messages and gig alerts won’t reach you.": "Toca para permitirlas. Hasta entonces no te llegarán los mensajes del chat ni los avisos de conciertos.",
+  "BandWith {version} is available": "BandWith {version} está disponible",
+  "Update": "Actualizar",
+  "Update to {version}": "Actualizar a {version}",
 };
 
 export default dict;
