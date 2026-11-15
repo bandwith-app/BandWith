@@ -44,16 +44,16 @@ function HelpDemo() {
       <div className="mockApp">
         <div className="mockApp__bar">
           <ArrowLeft size={20} />
-          <span className="mockApp__title">Jazz Club Night</span>
+          <span className="mockApp__title">Tech Summit Afterparty</span>
           <button className="mockHelp" onClick={() => setOpen(true)} aria-label="Help for this screen">
             <HelpCircle size={20} />
           </button>
         </div>
         <div className="mockApp__hero">
           <span className="mockTag">Gig</span>
-          <b>Sat 28 Nov · 22:00</b>
+          <b>Fri 11 Dec · 21:00</b>
           <span>
-            <MapPin size={14} /> Blue Note, Milano
+            <MapPin size={14} /> Superstudio Più, Milano
           </span>
         </div>
         <div className="mockApp__rows">
