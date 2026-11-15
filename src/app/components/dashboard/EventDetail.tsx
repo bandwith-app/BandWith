@@ -305,6 +305,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [confirmDrop, setConfirmDrop] = useState(false);
   const [isStageOpen, setIsStageOpen] = useState(false);
+  // Stage mode's song view (lyrics / chords), shared by Book and Laptop pose.
+  const [stageSongOpen, setStageSongOpen] = useState(false);
   /** The Rider & stage screen is open (phone, iPhone Duo). */
   const [riderOpen, setRiderOpen] = useState(false);
   /** iPad gig workspace tab (Figma "iPad · 03"). */
@@ -2534,6 +2536,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             songsError={setlistError}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
+            songOpen={stageSongOpen}
+            onSongOpenChange={setStageSongOpen}
             onClose={() => setIsStageOpen(false)}
           />
         )}
@@ -2547,6 +2551,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           songs={stageLive.songs}
           songsLoading={setlistLoading}
           title={event.title}
+          bandId={event.band_id ?? undefined}
+          lyricsOn={stageSongOpen}
+          onLyricsOnChange={setStageSongOpen}
           index={stageLive.index}
           onIndexChange={stageLive.select}
           click={stageLive.click}

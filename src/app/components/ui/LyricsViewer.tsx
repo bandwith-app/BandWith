@@ -21,6 +21,8 @@ import { ErrorBoundary } from './ErrorBoundary';
 const SIZES = [18, 21, 24, 28, 33, 40];
 const SIZE_KEY = 'bw-lyrics-size';
 
+const sizeListeners = new Set<(size: number) => void>();
+
 /** Lyrics text size (A− / A+), kept per device and shared with Stage mode. */
 export function useLyricsSize() {
   const [size, setSize] = React.useState(() => {
@@ -31,9 +33,17 @@ export function useLyricsSize() {
       return 24;
     }
   });
+  // Readers mounted together (Stage mode under its Laptop pose wedge) keep one size.
+  React.useEffect(() => {
+    sizeListeners.add(setSize);
+    return () => {
+      sizeListeners.delete(setSize);
+    };
+  }, []);
   const step = React.useCallback(
     (d: number) => {
       const i = Math.max(0, Math.min(SIZES.length - 1, SIZES.indexOf(size) + d));
+      sizeListeners.forEach((l) => l(SIZES[i]));
       setSize(SIZES[i]);
       try {
         localStorage.setItem(SIZE_KEY, String(SIZES[i]));
@@ -225,41 +235,46 @@ export const LyricsViewer: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 24 }}
           transition={{ type: 'spring', damping: 32, stiffness: 340 }}
-          className="bw-pane-detail fixed inset-0 z-[150] bg-background text-foreground flex flex-col"
+          className="bw-pane-detail bw-fold-reader fixed inset-0 z-[150] bg-background text-foreground flex flex-col"
         >
-          <div
-            className="shrink-0 px-4 pb-3 flex items-center gap-3 bw-status-clear"
-            style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}
-          >
-            <span className="flex-1 min-w-0 flex flex-col">
-              <span className="bw-label-sm text-muted-foreground truncate">{doc.artist ? `${kind} · ${doc.artist}` : kind}</span>
-              <span className="bw-h2 truncate">{doc.title}</span>
-            </span>
-            {isThisTrack && (
-              <IconButton
-                label={player.status === 'playing' ? tr('Pause') : tr('Play')}
-                variant="filled"
-                size="sm"
-                icon={player.status === 'playing' ? <Pause /> : <Play />}
-                onClick={togglePlay}
-              />
-            )}
-            {canEditChords && (
-              <IconButton label={tr('Edit chords')} size="sm" icon={<Music2 />} onClick={() => openChordEditor(doc.songId!)} />
-            )}
-            <IconButton label={tr('Smaller text')} size="sm" icon={<Minus />} onClick={() => step(-1)} disabled={min} />
-            <IconButton label={tr('Bigger text')} size="sm" icon={<Plus />} onClick={() => step(1)} disabled={max} />
-            <IconButton label={showChords ? tr('Close') : tr('Close lyrics')} size="sm" icon={<X />} onClick={closeLyrics} />
-          </div>
-          {(availableViews(song).length > 1 || hasChords) && (
-            <div className="shrink-0 px-4 pb-2 flex flex-wrap items-center justify-between gap-2">
-              <SongViewTabs song={song} view={view} onChange={pick} />
-              {hasChords && showChords && <TransposeControl semitones={semitones} onChange={setSemitones} songKey={songKey} />}
-            </div>
-          )}
           <PersonalLayerScope song={mine}>
-            {mine && <MyNotesBar className="shrink-0 px-4 pb-2" />}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-16">
+            {/* Laptop pose: these controls move to the Deck and the song fills
+                the Display (index.css .bw-fold-reader); elsewhere the wrapper
+                adds no box. */}
+            <div className="bw-reader-controls contents">
+              <div
+                className="shrink-0 px-4 pb-3 flex items-center gap-3 bw-status-clear"
+                style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}
+              >
+                <span className="flex-1 min-w-0 flex flex-col">
+                  <span className="bw-label-sm text-muted-foreground truncate">{doc.artist ? `${kind} · ${doc.artist}` : kind}</span>
+                  <span className="bw-h2 truncate">{doc.title}</span>
+                </span>
+                {isThisTrack && (
+                  <IconButton
+                    label={player.status === 'playing' ? tr('Pause') : tr('Play')}
+                    variant="filled"
+                    size="sm"
+                    icon={player.status === 'playing' ? <Pause /> : <Play />}
+                    onClick={togglePlay}
+                  />
+                )}
+                {canEditChords && (
+                  <IconButton label={tr('Edit chords')} size="sm" icon={<Music2 />} onClick={() => openChordEditor(doc.songId!)} />
+                )}
+                <IconButton label={tr('Smaller text')} size="sm" icon={<Minus />} onClick={() => step(-1)} disabled={min} />
+                <IconButton label={tr('Bigger text')} size="sm" icon={<Plus />} onClick={() => step(1)} disabled={max} />
+                <IconButton label={showChords ? tr('Close') : tr('Close lyrics')} size="sm" icon={<X />} onClick={closeLyrics} />
+              </div>
+              {(availableViews(song).length > 1 || hasChords) && (
+                <div className="shrink-0 px-4 pb-2 flex flex-wrap items-center justify-between gap-2">
+                  <SongViewTabs song={song} view={view} onChange={pick} />
+                  {hasChords && showChords && <TransposeControl semitones={semitones} onChange={setSemitones} songKey={songKey} />}
+                </div>
+              )}
+              {mine && <MyNotesBar className="shrink-0 px-4 pb-2" />}
+            </div>
+            <div className="bw-reader-body flex-1 min-h-0 overflow-y-auto px-4 pb-16">
               <TransposeProvider semitones={semitones} songKey={songKey}>
                 <SongBody song={song} view={view} size={size} />
               </TransposeProvider>

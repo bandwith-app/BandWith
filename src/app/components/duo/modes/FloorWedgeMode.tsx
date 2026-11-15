@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
@@ -6,7 +6,12 @@ import { haptic } from '@/lib/haptics';
 import { useKeepAwake } from '@/lib/posture';
 import { FoldSplit } from '../FoldSplit';
 import { DeckButton, clock, durationSeconds } from './shared';
-import { LyricsText, useLyricsSize } from '@/app/components/ui/LyricsViewer';
+import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
+import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
+import { SongBody, SongViewTabs, useSongViewPreference } from '@/app/components/ui/SongViews';
+import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
+import { normalizeLyrics, resolveView } from '@/lib/songFormat';
+import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useStageBarHidden } from '@/lib/stageChrome';
@@ -27,6 +32,8 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 export interface WedgeSong {
   /** setlist_songs row id (the click belongs to a song). */
   id?: string;
+  /** songs.id: transpose and My notes are kept per song. */
+  songId?: string;
   title: string;
   artist?: string;
   key?: string | null;
@@ -35,14 +42,16 @@ export interface WedgeSong {
   duration?: string | number | null;
   /** songs.lyrics: the display can show them instead of the big title. */
   lyrics?: string | null;
-  /** Time signature for the click's accent. */
-  chart?: { time?: string } | null;
+  /** songs.chord_chart (also the time signature for the click's accent). */
+  chart?: SongChart | null;
 }
 
 export interface FloorWedgeModeProps {
   songs: WedgeSong[];
   /** Gig title shown above the counter. */
   title?: string;
+  /** The gig's band: my notes on its songs (109), as in Stage mode. */
+  bandId?: string;
   /** e.g. "Set 1". */
   setLabel?: string;
   songsLoading?: boolean;
@@ -66,6 +75,9 @@ export interface FloorWedgeModeProps {
   startedAt?: Date | number;
   /** See FoldSplit. Default 125 (above Stage mode). */
   zIndex?: number;
+  /** Song view on (controlled, optional): shared with Stage mode's song view. */
+  lyricsOn?: boolean;
+  onLyricsOnChange?: (on: boolean) => void;
   /**
    * Leaves Stage mode. Shown on the Deck only while the side bar is hidden
    * (src/lib/stageChrome.ts); otherwise Exit is in the rail.
@@ -76,6 +88,7 @@ export interface FloorWedgeModeProps {
 export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   songs,
   title,
+  bandId,
   setLabel,
   songsLoading,
   initialIndex = 0,
@@ -85,6 +98,8 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   click,
   startedAt,
   zIndex,
+  lyricsOn: lyricsOnProp,
+  onLyricsOnChange,
   onClose,
 }) => {
   const t = useT();
@@ -138,14 +153,32 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   }, [go]);
 
   const song = count > 0 ? songs[index] : null;
-  const hasLyrics = songs.some((s) => !!s.lyrics?.trim());
-  const [lyricsOn, setLyricsOn] = useState(false);
+  // Song view as in Stage mode (Lyrics / Chords / Structure, transpose, My
+  // notes): the same per-device preference and per-song transpose, so folding
+  // from Book keeps what the player picked there.
+  const hasLyrics = songs.some((s) => !!s.lyrics?.trim() || !!s.chart);
+  const [ownLyricsOn, setOwnLyricsOn] = useState(false);
+  const lyricsOn = lyricsOnProp ?? ownLyricsOn;
+  const setLyricsOn = (on: boolean) => {
+    setOwnLyricsOn(on);
+    onLyricsOnChange?.(on);
+  };
   const showLyrics = lyricsOn && hasLyrics && !!song;
   const lyricsSize = useLyricsSize();
+  const [songView, setSongView] = useSongViewPreference();
+  const content = useMemo(() => ({ lyrics: normalizeLyrics(song?.lyrics), chart: song?.chart ?? undefined }), [song?.lyrics, song?.chart]);
+  const shownView = resolveView(songView, content);
+  const [semitones, setSemitones] = useSongTranspose(song?.songId);
+  const songKey = song?.key || keyLabel(song?.chart?.key) || null;
+  const hasChords = showLyrics && shownView !== 'lyrics' && (!!song?.chart || /\[[A-G][^\]\s]{0,15}\]/.test(song?.lyrics || ''));
+  const mine = useMemo(
+    () => (song?.songId && bandId ? { id: song.songId, band_id: bandId, title: song.title, lyrics: content.lyrics } : null),
+    [song?.songId, song?.title, bandId, content.lyrics],
+  );
   const lyricsRef = React.useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     lyricsRef.current?.scrollTo?.({ top: 0 });
-  }, [index, showLyrics]);
+  }, [index, showLyrics, shownView]);
   const next = index + 1 < count ? songs[index + 1] : null;
   const clickUi = useStageClickUi(click, song);
   const start = startedAt !== undefined ? new Date(startedAt).getTime() : mountedAt;
@@ -173,27 +206,23 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               <span className="text-white/40"> / {count}</span>
             </p>
             <h1 className="flex-1 min-w-0 bw-h2 truncate text-accent">{song.title}</h1>
-            <button
-              type="button"
-              disabled={lyricsSize.min}
-              onClick={() => lyricsSize.step(-1)}
-              aria-label={t('Smaller text')}
-              className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 disabled:opacity-30"
-            >
-              <Minus className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              disabled={lyricsSize.max}
-              onClick={() => lyricsSize.step(1)}
-              aria-label={t('Bigger text')}
-              className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 disabled:opacity-30"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
           </div>
-          <div ref={lyricsRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" aria-label={t('Lyrics · {title}', { title: song.title })}>
-            <LyricsText lyrics={song.lyrics} size={lyricsSize.size} muted="text-white/60" className="w-full flex flex-col gap-6 pb-4 text-white" />
+          {/* Only the words on the Display; their controls are on the Deck
+              (the text size buttons sat under the clock block here). */}
+          <div
+            ref={lyricsRef}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+            aria-label={shownView !== 'lyrics' ? t('Chords · {title}', { title: song.title }) : t('Lyrics · {title}', { title: song.title })}
+          >
+            <SongBody
+              song={content}
+              view={songView}
+              size={lyricsSize.size}
+              muted="text-white/60"
+              line="border-white/25"
+              className="w-full flex flex-col gap-6 pb-4 text-white"
+              chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
+            />
           </div>
         </>
       ) : (
@@ -247,7 +276,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               aria-pressed={lyricsOn}
               onClick={() => {
                 haptic.tap();
-                setLyricsOn((v) => !v);
+                setLyricsOn(!lyricsOn);
               }}
               className={cn(
                 'flex items-center gap-2 min-h-11 px-4 rounded-full bw-label-md uppercase border',
@@ -322,6 +351,45 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           )}
         </div>
       )}
+      {showLyrics && (
+        <div className="flex flex-col gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <SongViewTabs
+              song={content}
+              view={shownView ?? songView}
+              onChange={(v) => {
+                haptic.tap();
+                setSongView(v);
+              }}
+              on="bg-white text-black"
+              off="text-white/60"
+              className="min-w-0 -ml-1 overflow-x-auto scrollbar-hide"
+            />
+            <span className="flex items-center gap-2 ml-auto shrink-0">
+              <button
+                type="button"
+                disabled={lyricsSize.min}
+                onClick={() => lyricsSize.step(-1)}
+                aria-label={t('Smaller text')}
+                className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 disabled:opacity-30"
+              >
+                <Minus className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                disabled={lyricsSize.max}
+                onClick={() => lyricsSize.step(1)}
+                aria-label={t('Bigger text')}
+                className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 disabled:opacity-30"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </span>
+          </div>
+          {hasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} />}
+          {mine && <MyNotesBar />}
+        </div>
+      )}
       <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"
@@ -375,7 +443,12 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 
   return (
     <>
-      <FoldSplit zIndex={zIndex} variant="stage" displayLabel={t('Now playing')} deckLabel={t('Song controls')} display={display} deck={deck} />
+      {/* Both halves read the song's transpose and My notes (as in Stage mode). */}
+      <PersonalLayerScope song={showLyrics ? mine : null} stage>
+        <TransposeProvider semitones={semitones} songKey={songKey}>
+          <FoldSplit zIndex={zIndex} variant="stage" displayLabel={t('Now playing')} deckLabel={t('Song controls')} display={display} deck={deck} />
+        </TransposeProvider>
+      </PersonalLayerScope>
       {/* The click's glow goes above the wedge (Stage mode's own sits under it). */}
       {click && clickUi.show && clickUi.state && typeof document !== 'undefined' &&
         createPortal(

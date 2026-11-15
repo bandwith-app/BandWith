@@ -42,6 +42,8 @@ export interface PlannerModeProps {
   zIndex?: number;
   /** Filter pills shown at the top of the Deck (e.g. the band filter). */
   filters?: React.ReactNode;
+  /** Shown at the end of the Deck (e.g. the past events archive link). */
+  footer?: React.ReactNode;
 }
 
 /** Mon…Sun in the app language (English: 'Mon', 'Tue'…). 2024-01-01 is a Monday. */
@@ -100,6 +102,7 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
   onAddRehearsal,
   zIndex,
   filters,
+  footer,
 }) => {
   const t = useT();
   const today = toLocalDateString();
@@ -275,6 +278,7 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
           )}
         </div>
       )}
+      {footer}
     </div>
   );
 

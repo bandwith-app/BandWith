@@ -416,7 +416,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
         >
           {/* ═══ STICKY HEADER (Expanded -> Compact Morph, Zero Layout Shift) ═══ */}
           <div
-            className="sticky top-0 z-30 shrink-0 pointer-events-none select-none"
+            className="bw-hub-head sticky top-0 z-30 shrink-0 pointer-events-none select-none"
             style={{
               height: `calc(${topInset} + 72px)`,
               overflowAnchor: 'none',
