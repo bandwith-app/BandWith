@@ -782,7 +782,8 @@ export const notifyEventMembersCreated = async (
         creator_name: creatorName,
         venue: additionalData?.venue,
         // Only the recipient's own fee: members never see the gig total.
-        member_fee: additionalData?.memberFees?.[userId] ?? undefined,
+        // Rehearsals have no member fee (116).
+        member_fee: eventType !== 'rehearsal' ? additionalData?.memberFees?.[userId] ?? undefined : undefined,
         requires_rsvp: tentative || config.requiresRsvp,
         ...(tentative ? { tentative: true } : {}),
         ...(additionalData?.feeTbd ? { fee_tbd: true } : {}),

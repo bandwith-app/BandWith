@@ -3383,7 +3383,6 @@ const dict: Dictionary = {
   "1 item in maintenance": "1 elemento en mantenimiento",
   "1 item needs a look": "1 elemento por revisar",
   "1 needs a look": "1 por revisar",
-  "A kit bundles items from your inventory. Use it on a gig and every item is booked for that date.": "Un kit agrupa elementos de tu inventario. Úsalo en un concierto y cada elemento queda reservado para esa fecha.",
   "Add items to your gear list first, then bundle them into a kit.": "Primero añade elementos a tu equipo y luego agrúpalos en un kit.",
   "Add kit": "Añadir kit",
   "Back to kits": "Volver a los kits",
@@ -4074,6 +4073,10 @@ const dict: Dictionary = {
   "An admin dismissed your rehearsal proposal.": "Un admin ha descartado tu propuesta de ensayo.",
   "{name} mentioned you": "{name} te ha mencionado",
   "iPhone Duo": "iPhone Duo",
+  "Voting closed": "Votación cerrada",
+  "Voting has closed. An admin will lock in a date.": "La votación ha terminado. Un admin fijará una fecha.",
+  "It leaves the gear list and every kit it's in. This can't be undone.": "Sale de la lista de equipo y de todos los kits que lo incluyen. No se puede deshacer.",
+  "A kit bundles items from your inventory. Add it to a gig and the gig lists its items as the gear to bring. Items are not reserved for that date.": "Un kit agrupa elementos de tu inventario. Añádelo a un concierto y el concierto muestra sus elementos como el equipo que llevar. Los elementos no quedan reservados para esa fecha.",
 };
 
 export default dict;

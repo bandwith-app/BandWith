@@ -928,6 +928,44 @@ const rpc = (fn: string, args: Row = {}) => {
         .map((e) => ({ event_id: e.id, private: Object.fromEntries(PRIVATE.map((k) => [k, e[k] ?? null])) }));
       break;
     }
+    // Poll room cost (114): the total for admins, everyone's share.
+    case 'bw_rehearsal_poll_costs': {
+      const ids: string[] = Array.isArray(args.p_poll_ids) ? args.p_poll_ids : [];
+      const members = table('band_members');
+      const isAdminOf = (bandId: unknown) =>
+        members.some((r) => r.band_id === bandId && r.user_id === DEMO_USER.id && r.role === 'admin' && r.is_active !== false);
+      data = table('rehearsal_polls')
+        .filter((p) => ids.includes(p.id) && members.some((r) => r.band_id === p.band_id && r.user_id === DEMO_USER.id && r.is_active !== false))
+        .map((p) => {
+          const invited: unknown[] = Array.isArray(p.invited_user_ids) ? p.invited_user_ids : [];
+          const n = Math.max(1, invited.length || members.filter((r) => r.band_id === p.band_id && r.is_active !== false).length);
+          const total = p.room_cost != null ? Number(p.room_cost) : null;
+          return {
+            poll_id: p.id,
+            room_cost: isAdminOf(p.band_id) ? total : null,
+            cost_share: total && total > 0 ? Math.round((total / n) * 100) / 100 : null,
+            share_count: n,
+          };
+        });
+      break;
+    }
+    // Gear purchase data (115): every item for admins, own personal gear otherwise.
+    case 'bw_inventory_private': {
+      const bandId = args.p_band_id;
+      const me = table('band_members').find((r) => r.band_id === bandId && r.user_id === DEMO_USER.id && r.is_active !== false);
+      const isAdmin = me?.role === 'admin';
+      data = !me
+        ? []
+        : table('inventory')
+            .filter((i) => i.band_id === bandId && (isAdmin || i.owner_id === DEMO_USER.id))
+            .map((i) => ({
+              inventory_id: i.id,
+              serial_number: i.serial_number ?? null,
+              purchase_date: i.purchase_date ?? null,
+              purchase_price: i.purchase_price ?? null,
+            }));
+      break;
+    }
     case 'bw_save_event_lineup': {
       const rows = table('event_members');
       const now = new Date().toISOString();

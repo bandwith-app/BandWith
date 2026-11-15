@@ -20,6 +20,7 @@ import {
   finalizePollIntoRehearsal,
   POLL_CLOSED,
   deletePoll,
+  isPollVotingClosed,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
 import { markAsRead, type Notification } from '@/lib/services/notifications';
@@ -108,9 +109,12 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
     if (storedDeclinedAll) setDeclinedAll(true);
   }, [storedDeclinedAll]);
 
+  // After the vote-by deadline (117) the database refuses votes.
+  const votingClosed = !!poll && poll.status === 'polling' && isPollVotingClosed(poll);
+
   // Handle vote toggle
   const handleToggleVote = async (optionId: string) => {
-    if (!poll || votingOptionId || !canVoteInPoll(poll, currentUserId)) return;
+    if (!poll || votingOptionId || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
     setVotingOptionId(optionId);
     setDeclinedAll(false);
@@ -149,7 +153,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
   // Handle "None of these work for me"
   const handleNoneWork = async () => {
-    if (!poll || isClearing || !canVoteInPoll(poll, currentUserId)) return;
+    if (!poll || isClearing || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
     setIsClearing(true);
 
@@ -472,7 +476,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
             <div className="flex flex-col gap-4">
               {/* Status & Summary */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Tag variant="accent">{hasUserVotedAny ? t('Voted') : declinedAll ? t('None work') : t('Active')}</Tag>
+                <Tag variant="accent">{votingClosed ? t('Voting closed') : hasUserVotedAny ? t('Voted') : declinedAll ? t('None work') : t('Active')}</Tag>
                 <span className="bw-body-sm text-sheet-foreground/85">
                   {voteByLabel ? `${t('Vote by {date}', { date: voteByLabel })} · ` : ''}
                   {t('{answered} of {total} answered', { answered: answeredCount, total: totalMembers })}
@@ -484,7 +488,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
               <PollDetails poll={{ ...poll, total_members_count: totalMembers }} className="text-sheet-foreground/85" />
 
               <p className="bw-label-sm">
-                {canVote ? t('Select the dates that work for you') : t("You're not on this poll's invite list, so you can't vote.")}
+                {votingClosed ? t('Voting has closed. An admin will lock in a date.') : canVote ? t('Select the dates that work for you') : t("You're not on this poll's invite list, so you can't vote.")}
               </p>
 
               {/* Candidate pads */}
@@ -499,7 +503,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                         key={option.id}
                         onDark
                         selected={!!option.has_voted}
-                        disabled={!canVote || votingOptionId === option.id}
+                        disabled={!canVote || votingClosed || votingOptionId === option.id}
                         day={dateName(d, { weekday: 'short' }).toUpperCase()}
                         date={d.getDate()}
                         time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -684,6 +688,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
               <PillButton
                 variant="outline"
                 loading={isClearing}
+                disabled={votingClosed}
                 aria-pressed={declinedAll}
                 className={declinedAll ? 'bg-sheet-foreground/[0.12]' : undefined}
                 onClick={handleNoneWork}

@@ -365,7 +365,8 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
       name: personName(m.profile, 'Unknown'),
       role: memberInstrument(m) || m.role || 'Member',
       initials: personInitials(m.profile, 'U'),
-      fee: m.default_fee?.toString() || '0',
+      // Rehearsals have no member fee: the default gig fee is not copied (116).
+      fee: '0',
       status: 'confirmed' as const,
     }));
   }, [selectedBand?.members]);

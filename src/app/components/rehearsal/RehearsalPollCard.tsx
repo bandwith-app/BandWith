@@ -19,6 +19,7 @@ import {
   dismissPoll,
   deletePoll,
   cleanNotesWithoutDays,
+  isPollVotingClosed,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
 import { PollDetails } from './PollDetails';
@@ -140,8 +141,11 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
   }, [expanded, clearAutoClose]);
 
   // Toggle vote
+  // After the vote-by deadline (117) the database refuses votes.
+  const votingClosed = poll.status === 'polling' && isPollVotingClosed(poll);
+
   const handleToggleVote = async (optionId: string) => {
-    if (!canVote) return;
+    if (!canVote || votingClosed) return;
     haptic.selection();
     setVotingOptionId(optionId);
     startAutoClose();
@@ -158,7 +162,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
 
   // "None of these work"
   const handleNoneWork = async () => {
-    if (!hasUserVotedAny || !canVote) return;
+    if (!hasUserVotedAny || !canVote || votingClosed) return;
     startAutoClose();
     // Clears the votes and stores the answer (102) so the admin sees it.
     const { error } = await markPollUnavailable(poll.id, currentUserId);
@@ -351,10 +355,10 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
           <span
             className={cn(
               'h-4 px-1.5 rounded-full inline-flex items-center bw-label-xs',
-              hasUserVotedAny || !canVote ? 'bg-white/15 text-white' : 'bg-accent text-accent-foreground'
+              hasUserVotedAny || !canVote || votingClosed ? 'bg-white/15 text-white' : 'bg-accent text-accent-foreground'
             )}
           >
-            {!canVote ? t('Not invited') : hasUserVotedAny ? t('Voted') : poll.declined_all ? t('None work') : t('Vote now')}
+            {votingClosed ? t('Voting closed') : !canVote ? t('Not invited') : hasUserVotedAny ? t('Voted') : poll.declined_all ? t('None work') : t('Vote now')}
           </span>
         </div>
 
@@ -377,7 +381,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                 key={option.id}
                 onDark
                 selected={!!option.has_voted}
-                disabled={!canVote || votingOptionId === option.id}
+                disabled={!canVote || votingClosed || votingOptionId === option.id}
                 day={dateName(d, { weekday: 'short' }).toUpperCase()}
                 date={d.getDate()}
                 time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -434,7 +438,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                   )}
                 </div>
 
-                {hasUserVotedAny && canVote && (
+                {hasUserVotedAny && canVote && !votingClosed && (
                   <PillButton variant="ghost" size="sm" fullWidth={false} className="-mr-3 shrink-0" onClick={handleNoneWork}>
                     {t('None work')}
                   </PillButton>
@@ -463,7 +467,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                         <button
                           type="button"
                           aria-pressed={isChecked}
-                          disabled={!canVote || votingOptionId === option.id}
+                          disabled={!canVote || votingClosed || votingOptionId === option.id}
                           onClick={() => handleToggleVote(option.id)}
                           className="flex-1 min-w-0 flex flex-col gap-1 text-left cursor-pointer select-none"
                         >

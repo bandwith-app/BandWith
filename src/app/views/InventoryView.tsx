@@ -26,6 +26,7 @@ import { createKit, deleteKit, listBandKits, listKitGigs, removeKitFromGig, upda
 import { KitCard, KitTile } from '@/app/components/gear/KitParts';
 import { KitDetail } from '@/app/components/gear/KitDetail';
 import { KitEditorSheet, UseKitSheet, type KitEditorValue } from '@/app/components/gear/KitSheets';
+import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 
 interface InventoryViewProps {
   onBack: () => void;
@@ -52,7 +53,7 @@ const STATUS_CONFIG: Record<string, { label: string; dot: string }> = {
   lost: { label: 'Lost', dot: 'bg-destructive' },
 };
 
-const EDITABLE_STATUSES = ['available', 'in_use', 'maintenance'] as const;
+const EDITABLE_STATUSES = ['available', 'in_use', 'maintenance', 'lost'] as const;
 
 const CATEGORY_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   Instruments: Music,
@@ -142,8 +143,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
   const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Item waiting for "Delete?" (the row's bin or the sheet's Delete item).
+  const [pendingDelete, setPendingDelete] = useState<{ item: InventoryItem; fromSheet: boolean } | null>(null);
 
   const isNew = editing === 'new';
+  // Purchase data is shown and saved only when it was loaded (115): every
+  // item for admins, a member's own gear. Otherwise a save keeps what is stored.
+  const showPrivate = isNew || (!!editing && editing.private_loaded !== false);
   const showKits = !tablet && tab === 'kits';
   // Display labels only; category ids and status values stay English (stored in the DB).
   const categoryLabel: Record<string, string> = {
@@ -298,14 +304,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
     if (!form.name.trim() || saving || !editing) return;
     setSaving(true);
     setFormError(null);
-    const { data, error } = isNew ? await createInventoryItem(bandId, form) : await updateInventoryItem((editing as InventoryItem).id, form);
+    const { data, error } = isNew
+      ? await createInventoryItem(bandId, form)
+      : await updateInventoryItem((editing as InventoryItem).id, form, showPrivate);
     setSaving(false);
     if (error || !data) {
       setFormError(error?.message || t('Could not save the item.'));
       return;
     }
     setItems((prev) => {
-      const next = isNew ? [...prev, data] : prev.map((i) => (i.id === data.id ? data : i));
+      const next = isNew ? [...prev, data] : prev.map((i) => (i.id === data.id ? { ...i, ...data } : i));
       return next.sort((a, b) => a.name.localeCompare(b.name));
     });
     setEditing(null);
@@ -318,6 +326,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
     setFormError(null);
     const { error } = await deleteInventoryItem(item.id);
     setDeleting(false);
+    setPendingDelete(null);
     if (error) {
       setFormError(error.message);
       return;
@@ -332,11 +341,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
     setListError(null);
     const { error } = await deleteInventoryItem(item.id);
     setDeletingId(null);
+    setPendingDelete(null);
     if (error) {
       setListError(t("Couldn't delete {name}. {error}", { name: item.name, error: error.message }));
       return;
     }
     setItems((prev) => prev.filter((i) => i.id !== item.id));
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.fromSheet) void handleDeleteFromSheet();
+    else void handleDeleteItem(pendingDelete.item);
+  };
+  const cancelDelete = () => {
+    if (deleting || deletingId) return;
+    setPendingDelete(null);
   };
 
   const filteredItems = items.filter((item) => {
@@ -466,7 +486,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             {!kitsError && (
               <p className="flex gap-2 bw-body-sm text-muted-foreground px-1">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                {t('A kit bundles items from your inventory. Use it on a gig and every item is booked for that date.')}
+                {t('A kit bundles items from your inventory. Add it to a gig and the gig lists its items as the gear to bring. Items are not reserved for that date.')}
               </p>
             )}
             {canEdit && !kitsError && (
@@ -570,7 +590,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
                       icon={deletingId === item.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
                       className="relative z-10 text-muted-foreground"
                       disabled={!!deletingId}
-                      onClick={() => handleDeleteItem(item)}
+                      onClick={() => setPendingDelete({ item, fromSheet: false })}
                     />
                   ) : (
                     <span className="w-2 shrink-0" aria-hidden />
@@ -661,7 +681,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
                 icon={<Trash2 className="w-[18px] h-[18px]" />}
                 loading={deleting}
                 disabled={saving}
-                onClick={handleDeleteFromSheet}
+                onClick={() => editing && setPendingDelete({ item: editing, fromSheet: true })}
               >
                 {t('Delete item')}
               </PillButton>
@@ -757,30 +777,34 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             value={form.location}
             onChange={(e) => set('location', e.target.value)}
           />
-          <PillField
-            tone="sheet"
-            label={t('Serial number')}
-            placeholder={t('Optional')}
-            value={form.serialNumber}
-            onChange={(e) => set('serialNumber', e.target.value)}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <PillField
-              tone="sheet"
-              label={t('Purchase date')}
-              type="date"
-              value={form.purchaseDate}
-              onChange={(e) => set('purchaseDate', e.target.value)}
-            />
-            <PillField
-              tone="sheet"
-              label={t('Purchase price')}
-              inputMode="decimal"
-              placeholder="0.00"
-              value={form.purchasePrice}
-              onChange={(e) => set('purchasePrice', e.target.value)}
-            />
-          </div>
+          {showPrivate && (
+            <>
+              <PillField
+                tone="sheet"
+                label={t('Serial number')}
+                placeholder={t('Optional')}
+                value={form.serialNumber}
+                onChange={(e) => set('serialNumber', e.target.value)}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <PillField
+                  tone="sheet"
+                  label={t('Purchase date')}
+                  type="date"
+                  value={form.purchaseDate}
+                  onChange={(e) => set('purchaseDate', e.target.value)}
+                />
+                <PillField
+                  tone="sheet"
+                  label={t('Purchase price')}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={form.purchasePrice}
+                  onChange={(e) => set('purchasePrice', e.target.value)}
+                />
+              </div>
+            </>
+          )}
           <div className="flex flex-col gap-2">
             <label htmlFor="gear-notes" className="bw-label-sm text-sheet-foreground/70">
               {t('Notes')}
@@ -796,6 +820,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
           </div>
         </form>
       </BwSheet>
+
+      {/* "Delete?" for the row's bin and the sheet's Delete item (above the sheet). */}
+      <DeleteChatSheet
+        open={!!pendingDelete}
+        title={pendingDelete ? t('Delete {name}?', { name: pendingDelete.item.name }) : undefined}
+        body={t("It leaves the gear list and every kit it's in. This can't be undone.")}
+        deleting={deleting || !!deletingId}
+        onCancel={cancelDelete}
+        onConfirm={confirmDelete}
+      />
     </motion.div>
   );
 };

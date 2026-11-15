@@ -48,12 +48,16 @@ export function usePollSongTitles(ids: string[] | null | undefined): string[] {
 }
 
 export const PollDetails: React.FC<{
-  poll: Pick<RehearsalPoll, 'location' | 'room_cost' | 'focus_song_ids' | 'total_members_count'>;
+  poll: Pick<RehearsalPoll, 'location' | 'room_cost' | 'room_cost_share' | 'focus_song_ids' | 'total_members_count'>;
   className?: string;
 }> = ({ poll, className }) => {
   const t = useT();
   const songs = usePollSongTitles(poll.focus_song_ids);
-  const share = pollShareLabel(poll.room_cost, poll.total_members_count);
+  // The share from bw_rehearsal_poll_costs (114); members never get the total.
+  const share =
+    poll.room_cost_share != null
+      ? pollShareLabel(poll.room_cost_share, 1)
+      : pollShareLabel(poll.room_cost, poll.total_members_count);
   const place = poll.location?.trim();
   if (!place && !share && songs.length === 0) return null;
   return (
