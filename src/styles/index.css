@@ -439,6 +439,18 @@
   background: var(--color-background);
   pointer-events: auto;
 }
+/* The hub's summary (`.bw-hub-fold`: member counts, repertoire card,
+   documents overview, headline numbers, profile card) joins the header on
+   the Display, resting just above the fold; lists and actions start on the
+   Deck. A summary taller than the Display scrolls inside it. */
+:root[data-bw-posture="tabletop"] .bw-pane-hub > header:first-child {
+  max-height: var(--bw-deck-top);
+  overflow-y: auto;
+}
+:root[data-bw-posture="tabletop"] .bw-pane-hub > header:first-child > .bw-hub-fold {
+  margin-top: auto;
+  padding-bottom: 12px;
+}
 /* Their bottom action bars (Invite member) stay above the Deck bar. */
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-pane-hub > .sticky.bottom-0 {
   padding-bottom: var(--content-bottom-clearance) !important;

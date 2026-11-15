@@ -36,6 +36,7 @@ import { personName } from '@/lib/personName';
 import { DeputiesSection } from '@/app/components/band/DeputiesSection';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 
 /** Small stat card (Figma: label + 24pt dot value). */
 const StatCard: React.FC<{ label: string; value: number; delay: number }> = ({ label, value, delay }) => (
@@ -337,6 +338,15 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       .slice(0, 2)
       .toUpperCase() || user.email.slice(0, 2).toUpperCase();
 
+  const laptop = useLaptopPose();
+  const statsRow = (
+    <div className="flex gap-2">
+      <StatCard label={t('Total')} value={stats.total} delay={0.05} />
+      <StatCard label={t('Admins')} value={stats.admins} delay={0.1} />
+      <StatCard label={t('Members')} value={stats.members} delay={0.15} />
+    </div>
+  );
+
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -357,7 +367,10 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
         actions={
           isAdmin ? <IconButton label={t('Invite member')} variant="filled" icon={<Plus />} onClick={() => setShowInvite(true)} /> : undefined
         }
-      />
+      >
+        {/* Duo Laptop: the band's numbers sit on the Display, the people on the Deck. */}
+        {laptop && !loading && members.length > 0 && <div className="bw-hub-fold">{statsRow}</div>}
+      </ScreenHeader>
 
       <div className="flex-1 flex flex-col gap-4 px-4 pt-4 max-w-2xl mx-auto w-full" style={{ paddingBottom: isAdmin ? 24 : 'calc(var(--safe-bottom) + 40px)' }}>
         {memberNotice && (
@@ -377,11 +390,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
           </Card>
         ) : (
           <>
-            <div className="flex gap-2">
-              <StatCard label={t('Total')} value={stats.total} delay={0.05} />
-              <StatCard label={t('Admins')} value={stats.admins} delay={0.1} />
-              <StatCard label={t('Members')} value={stats.members} delay={0.15} />
-            </div>
+            {!laptop && statsRow}
 
             <ul className="flex flex-col gap-4" aria-label={t('All members')}>
               {members.map((member, i) => {

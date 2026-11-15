@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
 import { cn } from '@/app/components/ui/utils';
@@ -106,6 +107,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
 }) => {
   const { signOut, user, profile, userMode } = useAuth();
   const t = useT();
+  // Duo Laptop: the profile card sits on the Display, the rest on the Deck.
+  const laptop = useLaptopPose();
   const appVersion = useAppVersion();
   // Solo accounts get a personal-calendar placeholder, not a real band.
   const isSolo = userMode === 'solo';
@@ -399,6 +402,70 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
     ? allAssetShortcuts
     : allAssetShortcuts.filter((item) => item.id !== 'DOCUMENTS');
 
+  const profileCard = (
+    <section aria-label={t('Your profile')} className={cn('p-5 rounded-[24px]', HUB_CARD)}>
+      <div className="flex items-center gap-4">
+        {profile?.avatar_url ? (
+          <img
+            src={profile.avatar_url}
+            alt={displayName}
+            className="w-16 h-16 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-accent text-accent-foreground bw-h2 flex items-center justify-center shrink-0">
+            {displayInitials}
+          </div>
+        )}
+        <div className="flex flex-col min-w-0 flex-1 gap-1">
+          <h2
+            className={cn(
+              'text-foreground line-clamp-2',
+              // An address in big uppercase type breaks mid-word: show it as text.
+              missingName ? 'bw-body-lg font-semibold [overflow-wrap:anywhere]' : 'bw-h2 break-words'
+            )}
+          >
+            {missingName && displayName.includes('@') ? (
+              <>
+                {displayName.slice(0, displayName.indexOf('@'))}
+                <wbr />
+                {displayName.slice(displayName.indexOf('@'))}
+              </>
+            ) : (
+              displayName
+            )}
+          </h2>
+          <span className="bw-body-sm text-muted-foreground truncate">{missingName ? t('No name yet') : displayEmail}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Tag variant={isAdmin ? 'accent' : 'subtle'}>{myInstrument || (roleLabel === 'ADMIN' ? t('Admin') : roleLabel === 'MEMBER' ? t('Member') : roleLabel)}</Tag>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onEditProfile?.();
+          }}
+          className="h-9 px-2 -mr-2 rounded-full flex items-center gap-2 text-accent-ink bw-button-sm shrink-0 self-start mt-1 active:scale-95 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Edit3 aria-hidden className="w-3.5 h-3.5" />
+          <span>{t('Edit')}</span>
+        </button>
+      </div>
+      {missingName && (
+        <button
+          type="button"
+          onClick={() => onEditProfile?.()}
+          className="mt-4 w-full rounded-[16px] bg-accent text-accent-foreground px-4 py-3 flex items-center justify-between gap-3 text-left active:scale-[0.99] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex flex-col gap-0.5 min-w-0">
+            <span className="bw-label-md">{t('Add your name')}</span>
+            <span className="bw-body-sm opacity-80">{t('Your band sees your email until you do.')}</span>
+          </span>
+          <ArrowUpRight aria-hidden className="w-4 h-4 shrink-0" />
+        </button>
+      )}
+    </section>
+  );
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -477,72 +544,13 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                 )}
               </motion.div>
             </div>
+            {laptop && <div className="bw-hub-fold absolute left-0 right-0 bottom-0 px-4 pb-3 pointer-events-auto"><div className="max-w-xl mx-auto w-full">{profileCard}</div></div>}
           </div>
 
           {/* ═══ SCROLLABLE CONTENT ═══ */}
           <div className="px-4 pt-5 pb-2 max-w-xl mx-auto w-full flex flex-col gap-4">
             {/* ═══ 1. PROFILE CARD ═══ */}
-            <section aria-label={t('Your profile')} className={cn('p-5 rounded-[24px]', HUB_CARD)}>
-              <div className="flex items-center gap-4">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="w-16 h-16 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-full bg-accent text-accent-foreground bw-h2 flex items-center justify-center shrink-0">
-                    {displayInitials}
-                  </div>
-                )}
-                <div className="flex flex-col min-w-0 flex-1 gap-1">
-                  <h2
-                    className={cn(
-                      'text-foreground line-clamp-2',
-                      // An address in big uppercase type breaks mid-word: show it as text.
-                      missingName ? 'bw-body-lg font-semibold [overflow-wrap:anywhere]' : 'bw-h2 break-words'
-                    )}
-                  >
-                    {missingName && displayName.includes('@') ? (
-                      <>
-                        {displayName.slice(0, displayName.indexOf('@'))}
-                        <wbr />
-                        {displayName.slice(displayName.indexOf('@'))}
-                      </>
-                    ) : (
-                      displayName
-                    )}
-                  </h2>
-                  <span className="bw-body-sm text-muted-foreground truncate">{missingName ? t('No name yet') : displayEmail}</span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Tag variant={isAdmin ? 'accent' : 'subtle'}>{myInstrument || (roleLabel === 'ADMIN' ? t('Admin') : roleLabel === 'MEMBER' ? t('Member') : roleLabel)}</Tag>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onEditProfile?.();
-                  }}
-                  className="h-9 px-2 -mr-2 rounded-full flex items-center gap-2 text-accent-ink bw-button-sm shrink-0 self-start mt-1 active:scale-95 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Edit3 aria-hidden className="w-3.5 h-3.5" />
-                  <span>{t('Edit')}</span>
-                </button>
-              </div>
-              {missingName && (
-                <button
-                  type="button"
-                  onClick={() => onEditProfile?.()}
-                  className="mt-4 w-full rounded-[16px] bg-accent text-accent-foreground px-4 py-3 flex items-center justify-between gap-3 text-left active:scale-[0.99] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="flex flex-col gap-0.5 min-w-0">
-                    <span className="bw-label-md">{t('Add your name')}</span>
-                    <span className="bw-body-sm opacity-80">{t('Your band sees your email until you do.')}</span>
-                  </span>
-                  <ArrowUpRight aria-hidden className="w-4 h-4 shrink-0" />
-                </button>
-              )}
-            </section>
+            {!laptop && profileCard}
 
             {/* Deputy for other bands (086): their requests, answered in the app */}
             {deputyBandCount > 0 && onOpenDeputyGigs && (

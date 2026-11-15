@@ -19,6 +19,7 @@ import { MemberStatsCard } from '@/app/components/dashboard/MemberStatsCard';
 import { AnalyticsPayoutsCard, type PayoutPerson } from '@/app/components/dashboard/AnalyticsPayoutsCard';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { useRailLayout } from '@/lib/deviceRegions';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { personName, personInitials } from '@/lib/personName';
 
 interface AnalyticsViewProps {
@@ -195,6 +196,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
   // iPhone Duo open (Figma "Duo · Next / Analytics"): revenue by type and
   // payouts get their own page beside the totals. Tablets keep one column.
   const { twoPane, wide } = useRailLayout();
+  const laptop = useLaptopPose();
   const splitPages = twoPane && !wide && isAdmin;
 
   const fees = monthlyFees ?? Array<number>(MONTH_SPAN).fill(0);
@@ -298,6 +300,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
       : null;
 
   const overline = [selectedBand?.name, now.getFullYear()].filter(Boolean).join(' · ');
+  const headline = (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        <StatCard label={isAdmin ? t('Total revenue') : t('Total earned')} value={fmt(totalRevenue)} accent delay={0.05} />
+        <StatCard label={t('Total events')} value={totalEvents} delay={0.1} />
+      </div>
+      <div className="flex gap-2">
+        <StatCard label={t('Confirmed')} value={confirmed} delay={0.15} />
+        <StatCard label={t('Upcoming')} value={upcoming} delay={0.2} />
+      </div>
+    </div>
+  );
 
   return (
     <motion.div
@@ -312,7 +326,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
         // Two lines: the first word, then the rest ("Data / insights").
         const [first, ...rest] = t('Data insights').split(' ');
         return rest.length ? <>{first}<br />{rest.join(' ')}</> : first;
-      })()} />
+      })()}>
+        {laptop && !loading && <div className="bw-hub-fold">{headline}</div>}
+      </ScreenHeader>
 
       <div className="px-4 pt-4 flex flex-col gap-4 max-w-2xl mx-auto w-full" style={{ paddingBottom: 'calc(var(--safe-bottom) + 40px)' }}>
         {loading ? (
@@ -321,14 +337,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
           </div>
         ) : (
           <>
-            <div className="flex gap-2">
-              <StatCard label={isAdmin ? t('Total revenue') : t('Total earned')} value={fmt(totalRevenue)} accent delay={0.05} />
-              <StatCard label={t('Total events')} value={totalEvents} delay={0.1} />
-            </div>
-            <div className="flex gap-2">
-              <StatCard label={t('Confirmed')} value={confirmed} delay={0.15} />
-              <StatCard label={t('Upcoming')} value={upcoming} delay={0.2} />
-            </div>
+            {/* Duo Laptop: the headline numbers sit on the Display. */}
+            {!laptop && headline}
 
             {/* Revenue change (Figma: inverse card, 32pt dot value, lime chart icon) */}
             <div className="flex items-center gap-3 px-5 py-4 rounded-[24px] bg-surface-inverse text-surface-inverse-foreground">

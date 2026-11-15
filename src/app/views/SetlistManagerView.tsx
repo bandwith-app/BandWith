@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { raiseAboveOpenPanes, revealMenu, MENU_SCROLL_MARGIN } from '@/lib/raiseLayer';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'motion/react';
 import {
@@ -737,6 +738,54 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
 
   const formatClock = (seconds?: number) => (seconds ? formatDuration(seconds) : '—');
 
+  const laptop = useLaptopPose();
+  const repertoireCard = !loading && (songs.length > 0 || setlists.length > 0) ? (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-[24px] p-5 bg-surface-inverse text-surface-inverse-foreground flex flex-col gap-4"
+    >
+      <h2 className="bw-label-sm">{t('Band repertoire')}</h2>
+      {/* Counts on the left, total playing time on the right */}
+      <dl className="flex flex-wrap items-end gap-x-4 gap-y-3">
+        {[
+          { label: t('Songs'), value: stats.totalSongs },
+          { label: t('Setlists'), value: stats.totalSetlists },
+        ].map((s) => (
+          <div key={s.label} className="flex flex-col gap-1">
+            <dt className="bw-label-xs">{s.label}</dt>
+            <dd className="bw-h2">{s.value}</dd>
+          </div>
+        ))}
+        <div className="ml-auto flex flex-col gap-1 text-right">
+          <dt className="bw-label-xs">{t('Total duration')}</dt>
+          <dd className="bw-h2">{stats.totalDuration}</dd>
+        </div>
+      </dl>
+
+      {stats.totalSongs > 0 && (
+        <>
+          <h3 className="bw-label-xs" aria-label={t('Status readiness: {ready} of {total} ready', { ready: stats.ready, total: stats.totalSongs })}>
+            {t('Status readiness')}
+          </h3>
+          <ReadinessDots ready={stats.ready} learning={stats.learning} suggested={stats.suggested} total={stats.totalSongs} />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {[
+              { label: t('Ready'), value: stats.ready, color: 'var(--accent)' },
+              { label: t('Learning'), value: stats.learning, color: 'currentColor' },
+              { label: t('Suggested'), value: stats.suggested, color: 'var(--dot-mid)' },
+            ].map((l) => (
+              <span key={l.label} className="flex items-center gap-2 bw-label-sm">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} aria-hidden />
+                {l.label} {l.value}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </motion.section>
+  ) : null;
+
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -774,7 +823,9 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
             )}
           </>
         }
-      />
+      >
+        {laptop && repertoireCard && <div className="bw-hub-fold">{repertoireCard}</div>}
+      </ScreenHeader>
 
       <input
         ref={importInputRef}
@@ -818,53 +869,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
           </div>
         ) : (
           <>
-            {/* Band repertoire (Figma: inverse card) */}
-            {(songs.length > 0 || setlists.length > 0) && (
-              <motion.section
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-[24px] p-5 bg-surface-inverse text-surface-inverse-foreground flex flex-col gap-4"
-              >
-                <h2 className="bw-label-sm">{t('Band repertoire')}</h2>
-                {/* Counts on the left, total playing time on the right */}
-                <dl className="flex flex-wrap items-end gap-x-4 gap-y-3">
-                  {[
-                    { label: t('Songs'), value: stats.totalSongs },
-                    { label: t('Setlists'), value: stats.totalSetlists },
-                  ].map((s) => (
-                    <div key={s.label} className="flex flex-col gap-1">
-                      <dt className="bw-label-xs">{s.label}</dt>
-                      <dd className="bw-h2">{s.value}</dd>
-                    </div>
-                  ))}
-                  <div className="ml-auto flex flex-col gap-1 text-right">
-                    <dt className="bw-label-xs">{t('Total duration')}</dt>
-                    <dd className="bw-h2">{stats.totalDuration}</dd>
-                  </div>
-                </dl>
-
-                {stats.totalSongs > 0 && (
-                  <>
-                    <h3 className="bw-label-xs" aria-label={t('Status readiness: {ready} of {total} ready', { ready: stats.ready, total: stats.totalSongs })}>
-                      {t('Status readiness')}
-                    </h3>
-                    <ReadinessDots ready={stats.ready} learning={stats.learning} suggested={stats.suggested} total={stats.totalSongs} />
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                      {[
-                        { label: t('Ready'), value: stats.ready, color: 'var(--accent)' },
-                        { label: t('Learning'), value: stats.learning, color: 'currentColor' },
-                        { label: t('Suggested'), value: stats.suggested, color: 'var(--dot-mid)' },
-                      ].map((l) => (
-                        <span key={l.label} className="flex items-center gap-2 bw-label-sm">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} aria-hidden />
-                          {l.label} {l.value}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </motion.section>
-            )}
+            {/* Band repertoire (Figma: inverse card). Duo Laptop: on the Display. */}
+            {!laptop && repertoireCard}
 
             {/* Members suggest changes; admins review them (108). */}
             {viewMode === 'songs' && (isAdmin ? pendingSuggestions > 0 : true) && (
