@@ -547,6 +547,25 @@ Deno.serve(async (req: Request) => {
     );
 
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;
+
+    // A chat push that Apple or Google accepted reached the recipient's phone:
+    // the sender sees ✓✓ even while the recipient's app sleeps in the
+    // background (migration 122). Recipients with no device reached stay ✓.
+    const pushChatId = data?.chat_id || data?.chatId;
+    if (pushChatId && (notificationType === 'chat_message' || notificationType === 'chat_mention')) {
+      const reached = [...new Set(
+        results
+          .map((r: any, i: number) => (r.status === 'fulfilled' && r.value.success ? String(tokens[i].user_id) : null))
+          .filter((id: string | null): id is string => !!id),
+      )];
+      if (reached.length > 0) {
+        const { error: deliveredError } = await supabase.rpc('bw_mark_chat_delivered_by_push', {
+          p_chat_id: String(pushChatId),
+          p_user_ids: reached,
+        });
+        if (deliveredError) console.warn('Delivered mark failed:', deliveredError.message);
+      }
+    }
     return new Response(
       JSON.stringify({ 
         success: true, 
