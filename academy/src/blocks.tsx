@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import type { Block, Role } from '../content/types';
-import { SHOTS, ROLE_LABEL } from '../content';
+import type { Block, Role, ShotDevice } from '../content/types';
+import { ROLE_LABEL } from '../content';
+import { SHOT_FILES } from '../content/shotFiles';
+import { shotFor, useViewDevice, VIEW_DEVICE_LABEL } from './viewer';
 import { Inline } from './inline';
 import { DeviceGlyph, DEVICE_SHORT } from './devices';
 import { AlertTriangle, Lock, Sparkles, Image as ImageIcon } from 'lucide-react';
@@ -9,37 +11,62 @@ export function RoleChip({ role, on = true }: { role: Role; on?: boolean }) {
   return <span className={`chip chip--${role}${on ? '' : ' chip--off'}`}>{ROLE_LABEL[role]}</span>;
 }
 
-function Shot({ id, caption }: { id: string; caption: string }) {
-  const [failed, setFailed] = useState(false);
+function Shot({ id, caption, device: pinned }: { id: string; caption: string; device?: ShotDevice }) {
+  const { device: want } = useViewDevice();
+  const [failed, setFailed] = useState<string | null>(null);
   const [tall, setTall] = useState(false);
-  const meta = SHOTS.get(id);
-  const wide = meta?.viewport === 'tablet';
+  // The reader's own device, or the nearest one captured. A pinned shot
+  // (a screen that exists on one device only) always shows that device.
+  const dev = pinned ? ((SHOT_FILES[id] ?? []).includes(pinned) ? pinned : null) : shotFor(id, want);
+  const src = dev ? `./shots/${id}@${dev}.webp` : null;
+  const kind = dev ?? pinned ?? want;
+  const portrait = kind === 'phone' || kind === 'duoClosed';
   return (
-    <figure className={`shot${wide ? ' shot--wide' : ''}`}>
-      {failed ? (
+    <figure className={`shot shot--${kind}`}>
+      {!src || failed === src ? (
         <div className="shot__missing">
           <ImageIcon size={22} />
           <span>Screenshot coming: {id}</span>
         </div>
       ) : (
-        <div className={`shot__frame${wide ? ' shot__frame--wide' : ''}`}>
-          <div className="shot__screen" tabIndex={tall ? 0 : undefined} aria-label={tall ? 'Scrollable screenshot' : undefined}>
+        <div className={`shot__frame shot__frame--${kind}`}>
+          {kind === 'web' && (
+            <div className="shot__bar" aria-hidden>
+              <i />
+              <i />
+              <i />
+              <span>bandwith-beryl.vercel.app</span>
+            </div>
+          )}
+          <div
+            className="shot__screen"
+            tabIndex={portrait && tall ? 0 : undefined}
+            aria-label={portrait && tall ? 'Scrollable screenshot' : undefined}
+          >
             <img
-              src={`./shots/${id}.webp`}
+              key={src}
+              src={src}
               alt={caption}
               loading="lazy"
-              onError={() => setFailed(true)}
+              onError={() => setFailed(src)}
               onLoad={(e) => {
                 const img = e.currentTarget;
-                setTall(!wide && img.naturalHeight / img.naturalWidth > 2.3);
+                setTall(img.naturalHeight / img.naturalWidth > 2.3);
               }}
             />
           </div>
-          {tall && <span className="shot__scroll">Scroll inside</span>}
+          {(kind === 'duoBook' || kind === 'duoLaptop') && <span className="shot__hinge" aria-hidden />}
+          {portrait && tall && <span className="shot__scroll">Scroll inside</span>}
         </div>
       )}
       <figcaption>
-        <Inline text={caption} />
+        <span className="dev shot__dev">
+          <DeviceGlyph device={kind} size={16} />
+          {VIEW_DEVICE_LABEL[kind]}
+        </span>
+        <span>
+          <Inline text={caption} />
+        </span>
       </figcaption>
     </figure>
   );
@@ -142,7 +169,7 @@ function BlockView({ block: b }: { block: Block }) {
         </section>
       );
     case 'shot':
-      return <Shot id={b.id} caption={b.caption} />;
+      return <Shot id={b.id} caption={b.caption} device={b.device} />;
     case 'table':
       return (
         <div className="tableWrap">

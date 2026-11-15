@@ -1155,6 +1155,11 @@ const basics: AreaModule = {
             ["Event, chat, menus", "The event hero, the messages, the header", "Details, the message box, the rows"],
           ],
         },
+        { type: "shot", id: "basics-home-admin", device: "duoLaptop", caption: "Band desk: the next gig as a poster on top, action items and create buttons below." },
+        { type: "shot", id: "calendar-month", device: "duoLaptop", caption: "Planner: the month and its counts on top, the day's agenda with + Gig and + Rehearsal below." },
+        { type: "shot", id: "shot-poll-card", device: "duoLaptop", caption: "Find a date: members × candidate days on top, your own day pads and Lock below." },
+        { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Floor wedge: song, key, BPM and the next song on black, big Prev / Next pads below." },
+        { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Quote desk: the quote as the client reads it on top, the quote form below." },
         { type: "p", text: "Sheets, menus and the keyboard open on the Deck; short messages (toasts) show on the Display. The rail lies along the bottom edge of the Deck." },
         {
           type: "steps",

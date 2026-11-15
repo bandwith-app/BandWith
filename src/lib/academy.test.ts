@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ARTICLES, BY_ID } from '../../academy/content';
-import { academyUrl } from './academy';
+import { ARTICLES, BY_ID, SHOTS } from '../../academy/content';
+import { SHOT_FILES } from '../../academy/content/shotFiles';
+import { academyDevice, academyUrl } from './academy';
 
 // Every "?" button and tour card links to an Academy article by id: a typo
 // would open an empty guide, so check them all against academy/content.
@@ -44,5 +45,38 @@ describe('BandWith Academy links', () => {
     expect(academyUrl({ article: 'create-a-gig' }, 'dark')).toMatch(/index\.html\?embed=1&theme=dark#\/a\/create-a-gig$/);
     expect(academyUrl({ role: 'member' }, 'light')).toMatch(/#\/role\/member$/);
     expect(academyUrl(null, 'light')).toMatch(/#\/$/);
+    expect(academyUrl({ role: 'admin' }, 'dark', 'duoBook')).toMatch(/\?embed=1&theme=dark&device=duoBook#\/role\/admin$/);
+  });
+
+  it('tells the guide which device it is on', () => {
+    const base = { duo: false, laptop: false, twoPane: false, wide: false, native: true, finePointer: false };
+    expect(academyDevice(base)).toBe('phone');
+    expect(academyDevice({ ...base, wide: true })).toBe('tablet');
+    expect(academyDevice({ ...base, wide: true, twoPane: true })).toBe('tablet');
+    expect(academyDevice({ ...base, wide: true, native: false, finePointer: true })).toBe('web');
+    expect(academyDevice({ ...base, native: false, finePointer: true })).toBe('phone');
+    expect(academyDevice({ ...base, duo: true })).toBe('duoClosed');
+    expect(academyDevice({ ...base, duo: true, wide: true, twoPane: true })).toBe('duoBook');
+    expect(academyDevice({ ...base, duo: true, laptop: true })).toBe('duoLaptop');
+  });
+
+  it('every screenshot file belongs to a shot, and the index matches the files', () => {
+    const files = Object.keys(import.meta.glob('/academy/public/shots/*'))
+      .map((f) => f.split('/').pop()!)
+      .sort();
+    const listed = Object.entries(SHOT_FILES)
+      .flatMap(([id, devices]) => devices.map((d) => `${id}@${d}.webp`))
+      .sort();
+    expect(files).toEqual(listed);
+    expect(Object.keys(SHOT_FILES).filter((id) => !SHOTS.has(id))).toEqual([]);
+  });
+
+  it('every screenshot in a guide exists', () => {
+    const missing = ARTICLES.flatMap((a) =>
+      a.body.flatMap((b) =>
+        b.type !== 'shot' ? [] : !SHOTS.has(b.id) || (b.device && !SHOT_FILES[b.id]?.includes(b.device)) ? [`${a.id} → ${b.id}${b.device ? `@${b.device}` : ''}`] : [],
+      ),
+    );
+    expect(missing).toEqual([]);
   });
 });
