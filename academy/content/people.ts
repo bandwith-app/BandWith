@@ -224,7 +224,7 @@ const people: AreaModule = {
           type: 'roles',
           rows: [
             { role: 'member', text: 'You can leave any band you are in, whenever you want.' },
-            { role: 'admin', text: 'You can leave while the band has another admin. If you are the only one, the app says “You’re the only admin. Make someone else admin before you leave.”: see [[make-admin]].' },
+            { role: 'admin', text: 'You can leave while the band has another admin. If you are the only one, the app asks you to make someone else admin first ([[make-admin]]).' },
           ],
         },
         {

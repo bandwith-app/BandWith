@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { useCloseOnBack } from '@/lib/overlayBack';
 import { useTheme } from '@/lib/ThemeContext';
 import { academyUrl, type AcademyTarget } from '@/lib/academy';
+import { RailHeaderActionsContext } from '@/lib/railActions';
 
 /**
  * The BandWith Academy (user guide) inside the app. Same shape as the legal
@@ -23,7 +24,13 @@ export const AcademySheet: React.FC<{ target: AcademyTarget | undefined; onClose
 }) => {
   // Closed: render nothing (and read no context), so screens with a "?" stay cheap.
   if (target === undefined || typeof document === 'undefined') return null;
-  return <OpenSheet target={target} onClose={onClose} />;
+  // Opened from a "?" that lives in a header's rail slot (iPhone Duo): the
+  // sheet's own Close must stay in the sheet, not move to the rail under it.
+  return (
+    <RailHeaderActionsContext.Provider value={null}>
+      <OpenSheet target={target} onClose={onClose} />
+    </RailHeaderActionsContext.Provider>
+  );
 };
 
 const OpenSheet: React.FC<{ target: AcademyTarget; onClose: () => void }> = ({ target, onClose }) => {
@@ -57,7 +64,9 @@ const OpenSheet: React.FC<{ target: AcademyTarget; onClose: () => void }> = ({ t
           </div>
         }
         deck={
-          <div role="dialog" aria-modal="true" aria-label={title} className="flex h-full flex-col bg-background">
+          // Fills the whole Deck: the sheet covers the tab bar, so the Deck's
+          // bottom clearance for it would only leave an empty band.
+          <div role="dialog" aria-modal="true" aria-label={title} className="absolute inset-0 flex flex-col bg-background" style={{ paddingBottom: 'var(--safe-bottom, 0px)' }}>
             {bar}
             {frame}
           </div>

@@ -275,8 +275,9 @@ export const RoleTourModal: React.FC<{
             </PillButton>
           )}
 
-          {/* Footer (stays in view when the card scrolls, e.g. Laptop pose) */}
-          <div className="bw-dialog-footer flex items-center justify-between gap-3">
+          {/* Footer: stays in view when the card scrolls (Laptop pose, closed Duo
+              in landscape, small phones), so Next / Done is always reachable. */}
+          <div className="bw-dialog-footer sticky -bottom-6 -mx-6 -mb-6 px-6 pt-3 pb-6 bg-sheet flex items-center justify-between gap-3">
             <div className="flex items-center gap-1" aria-hidden>
               {steps.map((_, i) => (
                 <span

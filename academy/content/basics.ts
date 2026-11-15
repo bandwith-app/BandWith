@@ -215,7 +215,7 @@ const basics: AreaModule = {
       roles: ["admin"],
       kind: "task",
       keywords: ["onboarding", "new band", "first band", "setup wizard", "band avatar"],
-      related: ["create-an-account", "admin-welcome-tour", "band-logo-and-details", "first-gig-in-10-minutes", "invite-members"],
+      related: ["create-an-account", "welcome-tour", "band-logo-and-details", "first-gig-in-10-minutes", "invite-members"],
       body: [
         { type: "p", text: "After you create an account and pick **Manage my band**, a short wizard sets up your band. The top bar shows **Step N of M** and a back button on each step." },
         {
@@ -230,7 +230,7 @@ const basics: AreaModule = {
         },
         { type: "note", tone: "tip", text: "Invites are sent only when you tap **Go to dashboard**. If saving fails, the button becomes **Try again**: nothing is lost." },
         { type: "p", text: "The band avatar becomes your band logo: it shows on the band card, the band switcher and quote PDFs. You can change it later ([[band-logo-and-details]])." },
-        { type: "p", text: "On your first time in as an admin, the welcome tour opens ([[admin-welcome-tour]])." },
+        { type: "p", text: "On your first time in as an admin, the welcome tour opens ([[welcome-tour]])." },
         {
           type: "devices",
           rows: [
@@ -241,17 +241,25 @@ const basics: AreaModule = {
       ],
     },
     {
-      id: "admin-welcome-tour",
-      title: "The admin welcome tour",
-      summary: "A four-card tour shown to admins the first time they open the app on a device.",
-      roles: ["admin"],
+      id: "welcome-tour",
+      title: "The welcome tour",
+      summary: "A few cards for your role the first time you open the app on a device, each linking to its guide.",
+      roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["tour", "walkthrough", "introduction", "guided tour"],
-      related: ["create-your-band", "first-gig-in-10-minutes"],
+      keywords: ["tour", "walkthrough", "introduction", "guided tour", "welcome", "show the tour again"],
+      related: ["create-your-band", "first-gig-in-10-minutes", "roles-overview", "deputy-in-the-app"],
       body: [
-        { type: "p", text: "The tour has four cards: **WELCOME TO BANDWITH**, **PRICING & SERVICES**, **AUTOMATED QUOTES** and **READY TO CONFIGURE**. Move with **Next** and **Back**; the last card has **Done**. **Configure rates** opens your band's pricing straight away." },
-        { type: "p", text: "Close it with the close button (**Close tour**) at any time. It doesn't come back on this device once you close it or finish it." },
-        { type: "note", tone: "tip", text: "The tour mentions the More menu. In the app, pricing is in the menu (the last tab) under **Pricing, fees & services**." },
+        { type: "p", text: "The first time you open a band on a device, BandWith shows a short tour for your role. Move with **Next** and **Back**; the last card has **Done**. Close it any time with **Close tour**." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Four cards: your band in one place, putting a gig on the calendar, who sees which fees, and your rates. The last card has **Configure rates**, which opens **Pricing, fees & services**." },
+            { role: "member", text: "Three cards: Home, answering a gig invitation, and the songs (chords, lyrics, your notes and Stage mode)." },
+            { role: "deputy", text: "Three cards on **Deputy gigs**: answering a request, what the band shares with you, and adding your deputy gigs to your calendar." },
+          ],
+        },
+        { type: "p", text: "Each card has **Learn more in the Academy**, which opens the matching guide inside the app. Close the guide to go back to the tour." },
+        { type: "note", tone: "tip", text: "To see it again: Settings, **Help & support**, **Show the tour again**. The same page has **BandWith Academy**, which opens these guides for your role." },
       ],
     },
     {
