@@ -145,7 +145,11 @@ kbd {
   .searchPill { padding: 8px; width: 40px; justify-content: center; }
   .devicePick { width: 40px; padding: 0; justify-content: center; }
   .devicePick__label { display: none; }
+  /* no room in the phone's top bar: the language picker sits in the footer */
+  .top .langPick { display: none; }
 }
+.foot .langPick { height: 32px; padding: 0 10px; }
+.foot .langPick .devicePick__label { display: inline; }
 
 /* ── Layout ── */
 .main { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gutter) 80px; }

@@ -8,6 +8,8 @@
  * (port 5190) or set VITE_ACADEMY_URL.
  */
 
+import { getLocale } from './i18n';
+
 export type AcademyRole = 'admin' | 'member' | 'deputy';
 
 /** What to open: an article (by id, see academy/content), a role path, or the home. */
@@ -44,5 +46,5 @@ export function academyDevice(f: {
 
 export function academyUrl(target: AcademyTarget, theme: 'light' | 'dark', device?: AcademyDevice): string {
   const hash = !target ? '#/' : 'article' in target ? `#/a/${target.article}` : `#/role/${target.role}`;
-  return `${base()}index.html?embed=1&theme=${theme}${device ? `&device=${device}` : ''}${hash}`;
+  return `${base()}index.html?embed=1&theme=${theme}${device ? `&device=${device}` : ''}&lang=${getLocale()}${hash}`;
 }

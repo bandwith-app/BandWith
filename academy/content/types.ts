@@ -124,3 +124,6 @@ export interface AreaModule {
   glossary: GlossaryTerm[];
   shots: Shot[];
 }
+
+/** A translated area (academy/content/i18n/<lang>): the same structure without `shots`, which are shared. */
+export type AreaText = Omit<AreaModule, 'shots'>;

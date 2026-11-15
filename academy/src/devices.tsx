@@ -1,25 +1,26 @@
 import type { Device } from '../content/types';
+import { u } from './ui';
 
 export const DEVICE_LABEL: Record<Device, string> = {
-  phone: 'iPhone & Android phone',
-  phoneLand: 'Phone, landscape',
-  tablet: 'iPad & tablets',
-  duoClosed: 'Dual-screen, closed',
-  duoBook: 'Dual-screen, Book',
-  duoLaptop: 'Dual-screen, Laptop',
-  duoLand: 'Dual-screen, open landscape',
+  phone: u('iPhone & Android phone'),
+  phoneLand: u('Phone, landscape'),
+  tablet: u('iPad & tablets'),
+  duoClosed: u('Dual-screen, closed'),
+  duoBook: u('Dual-screen, Book'),
+  duoLaptop: u('Dual-screen, Laptop'),
+  duoLand: u('Dual-screen, open landscape'),
   android: 'Android',
-  web: 'Web browser',
+  web: u('Web browser'),
 };
 
 export const DEVICE_SHORT: Record<Device, string> = {
-  phone: 'Phone',
-  phoneLand: 'Landscape',
+  phone: u('Phone'),
+  phoneLand: u('Landscape'),
   tablet: 'iPad',
-  duoClosed: 'Duo closed',
+  duoClosed: u('Duo closed'),
   duoBook: 'Duo Book',
   duoLaptop: 'Duo Laptop',
-  duoLand: 'Duo open',
+  duoLand: u('Duo open'),
   android: 'Android',
   web: 'Web',
 };
