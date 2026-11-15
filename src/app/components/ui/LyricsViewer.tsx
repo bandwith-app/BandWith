@@ -275,6 +275,13 @@ export const LyricsViewer: React.FC = () => {
               {mine && <MyNotesBar className="shrink-0 px-4 pb-2" />}
             </div>
             <div className="bw-reader-body flex-1 min-h-0 overflow-y-auto px-4 pb-16">
+              {/* The band's notes on the song (songs.notes): what admins wrote or accepted from a suggestion. */}
+              {doc.notes?.trim() && (
+                <details className="mb-4 rounded-[20px] bg-card text-card-foreground px-4 py-3">
+                  <summary className="bw-label-sm text-muted-foreground cursor-pointer select-none">{tr('Band notes')}</summary>
+                  <p className="pt-2 bw-body-md whitespace-pre-wrap [overflow-wrap:anywhere]">{doc.notes.trim()}</p>
+                </details>
+              )}
               <TransposeProvider semitones={semitones} songKey={songKey}>
                 <SongBody song={song} view={view} size={size} />
               </TransposeProvider>

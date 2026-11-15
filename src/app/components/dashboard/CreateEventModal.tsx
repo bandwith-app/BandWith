@@ -71,6 +71,7 @@ import { freeTone } from '@/app/components/ui/FreeHeat';
 import { BwSheet, DotText } from '@/app/components/bw';
 import { builtinText } from '@/lib/i18n/builtins';
 import { instrumentText } from '@/lib/instruments';
+import { lineupPresetMembers, selectedLineupPreset } from '@/lib/lineupPresets';
 
 export interface BandMember {
   id: string;
@@ -923,15 +924,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const applyPerformancePreset = (preset: { label: string; count: number; type: PerformanceType }) => {
     setPerformanceType(preset.type);
-    let newSelected: string[] = [];
-    if (MEMBERS.length > 0) {
-      newSelected = MEMBERS.slice(0, preset.count).map(m => m.id);
-      if (currentUserMemberId && !newSelected.includes(currentUserMemberId)) {
-        newSelected[0] = currentUserMemberId;
-      }
-    } else if (currentUserMemberId) {
-      newSelected = [currentUserMemberId];
-    }
+    const newSelected = lineupPresetMembers(preset.count, MEMBERS.map(m => m.id), currentUserMemberId);
     setSelectedMembers(newSelected);
     const newFees: Record<string, string> = {};
     newSelected.forEach((id, idx) => {
@@ -1402,6 +1395,14 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     { label: t('Trio'), count: 3, type: 'trio' as PerformanceType },
     { label: t('Full band'), count: MEMBERS.length || 1, type: 'full_band' as PerformanceType },
   ];
+  // Selected only on an exact lineup match (lib/lineupPresets), not a count.
+  const selectedPreset = selectedLineupPreset(
+    lineupPresets,
+    selectedMembers.map(id => MEMBERS.find(m => m.id === id || m.user_id === id)?.id ?? id),
+    MEMBERS.map(m => m.id),
+    currentUserMemberId,
+    performanceType,
+  );
 
   const activeServices = (pricingSettings.custom_services || []).filter(s => s.is_active);
 
@@ -1462,7 +1463,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           <Selector
             key={preset.label}
             size="md"
-            selected={selectedMembers.length === preset.count}
+            selected={selectedPreset === preset.type}
             onClick={() => applyPerformancePreset(preset)}
           >
             {preset.label}
@@ -2623,7 +2624,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             <Selector
               key={preset.label}
               size="md"
-              selected={selectedMembers.length === preset.count}
+              selected={selectedPreset === preset.type}
               onClick={() => applyPerformancePreset(preset)}
             >
               {preset.label}

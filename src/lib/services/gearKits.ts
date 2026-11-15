@@ -2,7 +2,7 @@ import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { todayLocal } from '@/lib/dates';
 import { diffKitItems, validateKitName, type EventGearKit, type GearKit, type GearKitItemLink, type KitGig } from '@/lib/gearKits';
-import type { InventoryItem } from './inventory';
+import { INVENTORY_COLUMNS, type InventoryItem } from './inventory';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Gear kits (tables gear_kits, gear_kit_items, event_gear_kits; migration
@@ -162,7 +162,7 @@ export async function loadGigKits(eventId: string, bandId: string): Promise<Resu
     supabase.from('event_gear_kits').select(USE_COLUMNS).eq('event_id', eventId),
     supabase.from('gear_kits').select(KIT_COLUMNS).eq('band_id', bandId).order('name', { ascending: true }),
     supabase.from('gear_kit_items').select(LINK_COLUMNS).eq('band_id', bandId).order('position', { ascending: true }),
-    supabase.from('inventory').select('*').eq('band_id', bandId),
+    supabase.from('inventory').select(INVENTORY_COLUMNS).eq('band_id', bandId),
   ]);
   const error = uses.error || kits.error || links.error || inventory.error;
   if (error) return { data: null, error: asError(error, t('Could not load the gear kits.')) };

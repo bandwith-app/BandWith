@@ -8,14 +8,19 @@ import { Metric } from '@/app/components/bw';
 import { BackButton, Selector } from '@/app/components/bw/Form';
 import { Card } from '@/app/components/bw/Screen';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
+import { isBillableEvent as isBillable, pastPayKinds, pastPayState } from '@/lib/pastPayment';
 
 interface PastEventsViewProps {
   onClose: () => void;
   allEvents: EventData[];
   onEventClick: (event: EventData) => void;
   isAdmin?: boolean;
+  /** Role in an event's band (events come from every band). Default: `isAdmin`. */
+  isAdminOfBand?: (bandId: string) => boolean;
   bands?: Array<{ id: string; name: string }>;
   userFeeMap?: Record<string, number>;
+  /** The viewer's own payout (paid or not), by event id, on gigs they don't manage. */
+  userPaidMap?: Record<string, boolean>;
 }
 
 const normalizeDateStr = (rawDate: string | undefined): string | null => {
@@ -39,12 +44,6 @@ const parseFee = (price?: string) => {
 
 const shortEuro = (v: number) => (v >= 1000 ? `${sym()}${localDecimal((v / 1000).toFixed(v % 1000 === 0 ? 0 : 1))}k` : `${sym()}${v.toLocaleString(intlLocale('en-US'))}`);
 
-/** Rehearsals, quotes and drafts are not billable; they never carry a payment state. */
-const isBillable = (e: EventData) => {
-  const s = e.status?.toUpperCase();
-  return s === 'CONFIRMED' || s === 'COMPLETED';
-};
-
 const PAY_FILTERS = ['All', 'Paid', 'Unpaid'] as const;
 type PayFilter = (typeof PAY_FILTERS)[number];
 
@@ -53,8 +52,10 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
   allEvents,
   onEventClick,
   isAdmin = true,
+  isAdminOfBand,
   bands = [],
   userFeeMap = {},
+  userPaidMap = {},
 }) => {
   const t = useT();
   useCurrency(); // re-render money labels when the band currency changes
@@ -79,16 +80,26 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
     });
   }, [allEvents, todayStr, isAdmin]);
 
+  // Payment shown per gig: the client's payment where the viewer manages the
+  // gig (band admin, own personal gig), else their own payout when known.
+  const payStateOf = useMemo(() => {
+    const manages = (e: EventData) => (e.band_id ? (isAdminOfBand ? isAdminOfBand(e.band_id) : isAdmin) : true);
+    return (e: EventData) => pastPayState(e, manages(e), userPaidMap);
+  }, [isAdminOfBand, isAdmin, userPaidMap]);
+  // Which payment the filter is about (none known: no filter).
+  const payKinds = useMemo(() => pastPayKinds(rawPastEvents.map(payStateOf)), [rawPastEvents, payStateOf]);
+  const activePayFilter: PayFilter = payKinds ? payFilter : 'All';
+
   const unpaidCount = useMemo(
-    () => rawPastEvents.filter((e) => isBillable(e) && e.paymentStatus !== 'paid').length,
-    [rawPastEvents],
+    () => rawPastEvents.filter((e) => payStateOf(e)?.paid === false).length,
+    [rawPastEvents, payStateOf],
   );
 
   // Filtered past events (Figma: All / Paid / Unpaid)
   const filteredEvents = useMemo(() => {
     let result = [...rawPastEvents];
-    if (payFilter === 'Paid') result = result.filter((e) => isBillable(e) && e.paymentStatus === 'paid');
-    if (payFilter === 'Unpaid') result = result.filter((e) => isBillable(e) && e.paymentStatus !== 'paid');
+    if (activePayFilter === 'Paid') result = result.filter((e) => payStateOf(e)?.paid === true);
+    if (activePayFilter === 'Unpaid') result = result.filter((e) => payStateOf(e)?.paid === false);
 
     // Sort descending (most recent past first)
     result.sort((a, b) => {
@@ -98,7 +109,7 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
     });
 
     return result;
-  }, [rawPastEvents, payFilter]);
+  }, [rawPastEvents, activePayFilter, payStateOf]);
 
   // Metrics: gigs played and earned this calendar year (rehearsals and quotes excluded)
   const metrics = useMemo(() => {
@@ -179,20 +190,30 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
           <Metric label={t('Earned')} value={metrics.formattedRevenue} fill={metrics.totalRevenue / (48 * 500)} />
         </div>
 
-        {/* Payment filter (Figma Selector MD: All / Paid / Unpaid n) */}
-        <div className="flex items-center gap-2 shrink-0 overflow-x-auto -mx-4 px-4 [scrollbar-width:none]">
-          {PAY_FILTERS.map((f) => (
-            <Selector
-              key={f}
-              size="md"
-              selected={payFilter === f}
-              onClick={() => setPayFilter(f)}
-              count={f === 'Unpaid' && unpaidCount > 0 ? unpaidCount : undefined}
-            >
-              {f === 'All' ? t('All') : f === 'Paid' ? t('Paid') : t('Unpaid')}
-            </Selector>
-          ))}
-        </div>
+        {/* Payment filter (Figma Selector MD: All / Paid / Unpaid n): the
+            client's payment for admins, the member's own payout for members;
+            hidden when no payment state is known. */}
+        {payKinds && (
+          <div className="flex items-center gap-2 shrink-0 overflow-x-auto -mx-4 px-4 [scrollbar-width:none]">
+            {PAY_FILTERS.map((f) => (
+              <Selector
+                key={f}
+                size="md"
+                selected={activePayFilter === f}
+                onClick={() => setPayFilter(f)}
+                count={f === 'Unpaid' && unpaidCount > 0 ? unpaidCount : undefined}
+              >
+                {f === 'All'
+                  ? t('All')
+                  : payKinds === 'client'
+                  ? (f === 'Paid' ? t('Client paid') : t('Client unpaid'))
+                  : payKinds === 'own'
+                  ? (f === 'Paid' ? t('Paid to you') : t('Not paid yet'))
+                  : (f === 'Paid' ? t('Paid') : t('Unpaid'))}
+              </Selector>
+            ))}
+          </div>
+        )}
 
         {/* Event rows grouped by month */}
         {groups.length > 0 ? (
@@ -204,9 +225,14 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
                 const isRehearsal = status === 'REHEARSAL';
                 const isGig = status === 'CONFIRMED' || status === 'COMPLETED';
                 const isQuote = status === 'QUOTED' || status === 'QUOTE';
-                // Every row here is in the past, so an unpaid gig is overdue.
-                const isPaid = isGig && event.paymentStatus === 'paid';
-                const statusLabel = isGig ? (isPaid ? t('Paid') : t('Overdue')) : isRehearsal ? t('Rehearsal') : isQuote ? t('Quote') : t('Draft');
+                // Client payment (who manages the gig) or own payout (members).
+                const pay = payStateOf(event);
+                const isPaid = !!pay?.paid;
+                const statusLabel = pay
+                  ? pay.kind === 'client'
+                    ? (pay.paid ? t('Client paid') : t('Client unpaid'))
+                    : (pay.paid ? t('Paid to you') : t('Not paid yet'))
+                  : isGig ? '' : isRehearsal ? t('Rehearsal') : isQuote ? t('Quote') : t('Draft');
                 const norm = normalizeDateStr(event.date);
                 const d = norm ? parseLocalDate(norm) : null;
                 const valid = d && !isNaN(d.getTime());
@@ -238,14 +264,14 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
                       <span className="bw-h3 line-clamp-2 [overflow-wrap:anywhere]">{event.title}</span>
                       {meta && <span className="bw-body-sm text-muted-foreground truncate">{meta}</span>}
                     </span>
-                    {isGig ? (
+                    {pay ? (
                       <span className="flex items-center gap-1.5 shrink-0">
                         <span className={cn('w-2 h-2 rounded-full', isPaid ? 'bg-success' : 'bg-destructive')} aria-hidden />
                         <span className="bw-label-xs">{statusLabel}</span>
                       </span>
-                    ) : (
+                    ) : statusLabel ? (
                       <span className="bw-label-xs text-muted-foreground shrink-0">{statusLabel}</span>
-                    )}
+                    ) : null}
                   </motion.button>
                 );
               })}
@@ -255,9 +281,9 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
           <Card className="items-center text-center py-10">
             <h2 className="bw-h3">{t('No past events found')}</h2>
             <p className="bw-body-sm text-muted-foreground max-w-[280px]">
-              {payFilter === 'Paid'
+              {activePayFilter === 'Paid'
                 ? t('No paid gigs yet.')
-                : payFilter === 'Unpaid'
+                : activePayFilter === 'Unpaid'
                 ? t('Every past gig is paid.')
                 : t('No completed gigs or rehearsals recorded yet.')}
             </p>

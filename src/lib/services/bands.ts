@@ -62,6 +62,8 @@ export interface BandMember {
     full_name?: string;
     avatar_url?: string;
     sub_tier?: string | null;
+    /** The person's own instrument (profile), shown when the band has none set. */
+    instrument?: string | null;
   } | null;
 }
 
@@ -138,6 +140,7 @@ export const getBands = async (): Promise<{ data: BandWithMembers[] | null; erro
           email,
           full_name,
           avatar_url,
+          instrument,
           sub_tier
         )
       `)
@@ -215,6 +218,7 @@ export const getBand = async (bandId: string): Promise<{ data: BandWithMembers |
           email,
           full_name,
           avatar_url,
+          instrument,
           sub_tier
         )
       `)
@@ -543,6 +547,27 @@ export const checkBandAccess = async (
 
 // Alias for removeBandMember
 export const removeMember = removeBandMember;
+
+/**
+ * Admin: a member's instrument in this band and their default gig fee.
+ * Only admins may change fees (071 trigger, 073 update policy); the fee is
+ * never read back from the table (079), so the caller keeps what it sent.
+ */
+export const updateMemberBandDetails = async (
+  memberId: string,
+  details: { instrument: string | null; default_fee: number | null }
+): Promise<{ error: Error | null }> => {
+  try {
+    const { error } = await supabase
+      .from('band_members')
+      .update({ instrument: details.instrument, default_fee: details.default_fee })
+      .eq('id', memberId);
+    if (error) throw error;
+    return { error: null };
+  } catch (error: any) {
+    return { error };
+  }
+};
 
 // Update member role
 export const updateMemberRole = async (

@@ -3,7 +3,7 @@ import { StepPad } from '@/app/components/bw';
 import { Check, Lock } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
-import type { RehearsalPoll, RehearsalPollOption } from '@/lib/services/rehearsalPolls';
+import { isPollVotingClosed, type RehearsalPoll, type RehearsalPollOption } from '@/lib/services/rehearsalPolls';
 import { FoldSplit } from '../FoldSplit';
 import { DeckButton, DeckHeading, ModeEmpty, dayLabel, hhmm, initialsOf } from './shared';
 import { personName } from '@/lib/personName';
@@ -34,6 +34,8 @@ export interface FindADateModeProps {
   loading?: boolean;
   /** Option whose vote is being saved: its pad is disabled meanwhile. */
   votingOptionId?: string | null;
+  /** False for someone not on the poll's invite list (098): the pads are read-only. */
+  canVote?: boolean;
   onToggleVote: (optionId: string) => void;
   /** Admin: confirm the best option as the rehearsal. */
   onLock?: (optionId: string) => void;
@@ -72,6 +74,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
   isAdmin,
   loading,
   votingOptionId,
+  canVote: allowedToVote = true,
   onToggleVote,
   onLock,
   locking,
@@ -115,7 +118,10 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
   }, [votedBy]);
   const total = poll?.total_members_count || rows.length;
   const best = bestOption(options);
-  const canVote = !!poll && !['proposed', 'confirmed', 'cancelled', 'expired'].includes(poll.status);
+  const isOpen = !!poll && !['proposed', 'confirmed', 'cancelled', 'expired'].includes(poll.status);
+  const canVote = isOpen && allowedToVote;
+  // After the vote-by deadline (117) votes are closed; an admin can still lock in.
+  const votingClosed = isOpen && isPollVotingClosed(poll);
 
   const display = !poll ? (
     <div className="bw-fold-pad min-h-full flex items-center">
@@ -193,7 +199,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
   const deck = (
     <div className="flex flex-col gap-3 px-4 pt-3 pb-3 min-h-full">
       <DeckHeading trailing={best ? <span className="bw-label-md">{t('Best: {day}', { day: dayLabel(best.proposed_date) })}</span> : undefined}>
-        {t('Your vote')}
+        {votingClosed ? t('Voting closed') : t('Your vote')}
       </DeckHeading>
       {!poll || options.length === 0 ? (
         <ModeEmpty title={loading ? t('Loading…') : t('Nothing to vote on')} className="py-2" />
@@ -207,7 +213,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
               time={timeRange(o)}
               votes={rows.map((m) => votedBy.get(o.id)?.has(m.id) ?? false)}
               selected={!!o.has_voted}
-              disabled={!canVote || votingOptionId === o.id}
+              disabled={!canVote || votingClosed || votingOptionId === o.id}
               onClick={() => {
                 haptic.tap();
                 onToggleVote(o.id);
@@ -227,7 +233,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
             )}
             <DeckButton
               tone="accent"
-              disabled={!best || !canVote || locking}
+              disabled={!best || !isOpen || locking}
               onClick={() => {
                 if (!best) return;
                 haptic.medium();

@@ -47,6 +47,8 @@ import { ComposerCard, ComposerCheck, ComposerPreview, ComposerShell, Segmented 
 import { useBandFreeDays, useBandFreeSlots } from '@/lib/bandAvailability';
 import { heatLevel, toMinutes } from '@/lib/freeSlots';
 import { FreeDots, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
+import { sessionAudience } from '@/lib/sessionRoster';
+import { memberInstrument } from '@/lib/bandMembership';
 
 interface TaskTemplateDB {
   id: string;
@@ -361,9 +363,10 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     return selectedBand.members.map(m => ({
       id: m.user_id,
       name: personName(m.profile, 'Unknown'),
-      role: m.instrument || m.role || 'Member',
+      role: memberInstrument(m) || m.role || 'Member',
       initials: personInitials(m.profile, 'U'),
-      fee: m.default_fee?.toString() || '0',
+      // Rehearsals have no member fee: the default gig fee is not copied (116).
+      fee: '0',
       status: 'confirmed' as const,
     }));
   }, [selectedBand?.members]);
@@ -698,21 +701,9 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
 
   const handleTypeChange = (newType: RehearsalType) => {
     setData(prev => {
-      let newAudienceIds: string[] = [];
-      if (newType === 'full_band') {
-        newAudienceIds = [];
-      } else {
-        const roleFilters: Record<string, string[]> = {
-          'vocals': ['vocals', 'singer', 'voice', 'lead vocals', 'backing vocals', 'coro'],
-          'rhythm': ['drums', 'bass', 'percussion', 'drummer', 'bassist', 'batteria', 'basso'],
-          'acoustic': ['guitar', 'acoustic', 'piano', 'keyboard', 'keys', 'chitarra', 'tastiere']
-        };
-        const filters = roleFilters[newType] || [];
-        newAudienceIds = prev.members
-          .filter(m => filters.some(f => (m.role || '').toLowerCase().includes(f)))
-          .map(m => m.id);
-        if (newAudienceIds.length === 0) newAudienceIds = prev.members.map(m => m.id);
-      }
+      // Focused sessions pick members by instrument (src/lib/sessionRoster.ts):
+      // Rhythm is drums, bass and keys, as its card says.
+      const newAudienceIds: string[] = newType === 'full_band' ? [] : sessionAudience(newType, prev.members);
       return { ...prev, type: newType, audienceIds: newAudienceIds };
     });
   };
@@ -1077,7 +1068,9 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     </>
   );
 
-  const renderCostCard = (withSplit: boolean) => (
+  // Only an equal split exists (the rehearsal stores one total, events.fee),
+  // so the card shows no split choice.
+  const renderCostCard = () => (
     <Card className="gap-4">
       <div className="flex items-end justify-between gap-3">
         <label className="flex flex-col gap-2 min-w-0">
@@ -1100,16 +1093,6 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           <span className="bw-value-md">{perPersonLabel}</span>
         </div>
       </div>
-      {withSplit && (
-        <div className="flex gap-2">
-          <Selector selected={data.splitMethod === 'equal'} onClick={() => setData(prev => ({ ...prev, splitMethod: 'equal' }))}>
-            {t('Equal split')}
-          </Selector>
-          <Selector selected={data.splitMethod === 'custom'} onClick={() => setData(prev => ({ ...prev, splitMethod: 'custom' }))}>
-            {t('Custom')}
-          </Selector>
-        </div>
-      )}
     </Card>
   );
 
@@ -1249,7 +1232,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden pt-2"
               >
-                {renderCostCard(false)}
+                {renderCostCard()}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1577,7 +1560,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
               }
               onChange={(v) => setData(prev => ({ ...prev, venueType: v }))}
             />
-            {data.venueType === 'paid' && isAdmin && <div className="pt-2">{renderCostCard(true)}</div>}
+            {data.venueType === 'paid' && isAdmin && <div className="pt-2">{renderCostCard()}</div>}
           </div>
         </RehearsalAccordionCard>
 
@@ -2115,7 +2098,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
                 setData(prev => (v === 'free' ? { ...prev, venueType: 'free', totalCost: '0' } : { ...prev, venueType: 'paid' }))
               }
             />
-            {data.venueType === 'paid' && renderCostCard(false)}
+            {data.venueType === 'paid' && renderCostCard()}
           </>
         )}
       </ComposerCard>

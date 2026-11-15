@@ -107,20 +107,50 @@ describe('Quote Service', () => {
   });
 
   describe('deleteQuote', () => {
-    it('reports an error when RLS filtered the row (0 rows deleted)', async () => {
-      mockFrom.mockReturnValue({
-        delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }),
-      });
+    /** quotes: select(link) and delete(); events: delete().eq().eq() recorded. */
+    const tables = (opts: { deleted: unknown[]; heldId?: string | null; eventError?: { message: string } | null }) => {
+      const eventDeletes: Array<Array<[string, unknown]>> = [];
+      const eventsTable = {
+        delete: () => {
+          const filters: Array<[string, unknown]> = [];
+          eventDeletes.push(filters);
+          const chain: any = {
+            eq: (col: string, val: unknown) => { filters.push([col, val]); return chain; },
+            then: (res: (v: unknown) => unknown) => Promise.resolve({ error: opts.eventError ?? null }).then(res),
+          };
+          return chain;
+        },
+      };
+      const quotesTable = {
+        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { converted_to_event_id: opts.heldId ?? null }, error: null }) }) }),
+        delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: opts.deleted, error: null }) }) }),
+      };
+      mockFrom.mockImplementation((name: string) => (name === 'events' ? eventsTable : quotesTable));
+      return { eventDeletes };
+    };
+
+    it('reports an error when RLS filtered the row (0 rows deleted), and keeps the event', async () => {
+      const { eventDeletes } = tables({ deleted: [], heldId: 'ev-1' });
       const { error } = await deleteQuote(QUOTE_ID);
       expect(error?.message).toMatch(/permission|not found/i);
+      expect(eventDeletes).toHaveLength(0);
     });
 
-    it('succeeds when the row was deleted', async () => {
-      mockFrom.mockReturnValue({
-        delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [{ id: QUOTE_ID }], error: null }) }) }),
-      });
-      const { error } = await deleteQuote(QUOTE_ID);
+    it('succeeds when the row was deleted and frees the tentative date', async () => {
+      const { eventDeletes } = tables({ deleted: [{ id: QUOTE_ID }], heldId: 'ev-1' });
+      const { error, eventError } = await deleteQuote(QUOTE_ID);
       expect(error).toBeNull();
+      expect(eventError).toBeNull();
+      // Only tentative events: a gig confirmed from the quote stays.
+      expect(eventDeletes).toContainEqual([['id', 'ev-1'], ['status', 'tentative']]);
+      expect(eventDeletes).toContainEqual([['quote_id', QUOTE_ID], ['status', 'tentative']]);
+    });
+
+    it('says so when the quote went but its event could not be deleted', async () => {
+      tables({ deleted: [{ id: QUOTE_ID }], heldId: 'ev-1', eventError: { message: 'offline' } });
+      const { error, eventError } = await deleteQuote(QUOTE_ID);
+      expect(error).toBeNull();
+      expect(eventError?.message).toBe('offline');
     });
   });
 

@@ -2,14 +2,16 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
-import { useT } from '@/lib/i18n';
+import { useT, getLocale } from '@/lib/i18n';
 import { useCloseOnBack } from '@/lib/overlayBack';
 
 export type LegalDoc = 'terms' | 'privacy' | 'help';
 
 
 /** Bundled with the app (public/legal) and served on the web domains too. */
-export const legalUrl = (doc: LegalDoc) => `/legal/${doc}.html`;
+// Help is translated in the page itself and opens in the app's language;
+// the legal texts are English only.
+export const legalUrl = (doc: LegalDoc) => (doc === 'help' ? `/legal/help.html?lang=${getLocale()}` : `/legal/${doc}.html`);
 
 /**
  * Terms / Privacy viewer. The documents are static pages shipped in the app

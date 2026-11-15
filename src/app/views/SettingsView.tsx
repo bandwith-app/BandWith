@@ -1,7 +1,6 @@
 import { useSystemBack } from '@/lib/backStack';
 import React, { useState, useEffect } from 'react';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPref } from '@/lib/services/notificationPrefs';
-import { loadPrivacyPrefs, savePrivacyPref } from '@/lib/services/privacyPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
 import { Toggle, IconButton, NavBackButton, PillButton, Selector } from '@/app/components/bw';
 import { motion, AnimatePresence } from 'motion/react';
@@ -125,7 +124,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
     { id: 'privacy', label: t('Privacy & account'), hint: appLockAvailable ? t('App lock, gig privacy, export, delete account') : t('Gig privacy, export, delete account'), icon: Lock },
     ...(postureDetected
-      ? [{ id: 'duo' as const, label: 'iPhone Duo', hint: t('Laptop pose'), value: laptopPoseEnabled ? t('On') : t('Off'), icon: Smartphone }]
+      ? [{ id: 'duo' as const, label: t('iPhone Duo'), hint: t('Laptop pose'), value: laptopPoseEnabled ? t('On') : t('Off'), icon: Smartphone }]
       : []),
     { id: 'language', label: t('Language'), value: languageName(getLocale()), icon: MessageSquare },
     { id: 'help', label: t('Help & support'), hint: t('Answers and what you can do in the app'), icon: Mail },
@@ -210,43 +209,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     });
   };
 
-  /* Privacy: profiles.privacy.hidePersonalGigDetails (see privacyPrefs.ts) */
-  const [hideGigDetails, setHideGigDetails] = useState(false);
-  const [privacyState, setPrivacyState] = useState<'loading' | 'ready' | 'unavailable' | 'error'>('loading');
-  const [privacyError, setPrivacyError] = useState<string | null>(null);
-  const [privacySaving, setPrivacySaving] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    loadPrivacyPrefs().then((res) => {
-      if (cancelled) return;
-      if (res.status === 'ready') {
-        setHideGigDetails(res.prefs.hidePersonalGigDetails);
-        setPrivacyState('ready');
-      } else if (res.status === 'unavailable') {
-        setPrivacyState('unavailable');
-      } else {
-        setPrivacyState('error');
-        setPrivacyError(t('Couldn’t load privacy settings: {error}', { error: res.error.message }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleToggleHideGigDetails = (val: boolean) => {
-    if (privacySaving) return;
-    setHideGigDetails(val);
-    setPrivacyError(null);
-    setPrivacySaving(true);
-    savePrivacyPref('hidePersonalGigDetails', val).then(({ error, unavailable }) => {
-      setPrivacySaving(false);
-      if (error) {
-        setHideGigDetails(!val);
-        if (unavailable) setPrivacyState('unavailable');
-        setPrivacyError(unavailable ? error.message : t('Couldn’t save: {error}', { error: error.message }));
-      }
-    });
-  };
-
   /* Export my data (dataExport.ts) */
   const [exporting, setExporting] = useState(false);
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
@@ -317,7 +279,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       case 'appearance': return t('Appearance');
       case 'units': return t('Units');
       case 'privacy': return t('Privacy & account');
-      case 'duo': return 'iPhone Duo';
+      case 'duo': return t('iPhone Duo');
       case 'help': return t('Help & support');
       case 'about': return t('About');
       case 'language': return t('Language');
@@ -484,31 +446,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         </div>
       )}
-      <div className={cn(CARD, 'p-4 flex flex-col gap-2')}>
-        <div className="flex items-center gap-3">
-          <IconTile>
-            <Eye />
-          </IconTile>
-          <RowText
-            title={t("Hide my personal gigs' details from bands")}
-            hint={
-              privacyState === 'unavailable'
-                ? t('Not available yet')
-                : t('Bands see you as busy, without title or venue')
-            }
-          />
-          <Toggle
-            checked={hideGigDetails}
-            onCheckedChange={handleToggleHideGigDetails}
-            disabled={privacyState !== 'ready' || privacySaving}
-            aria-label={t("Hide my personal gigs' details from bands")}
-          />
-        </div>
-        {privacyError && (
-          <p role="alert" className="bw-body-sm text-destructive">
-            {privacyError}
-          </p>
-        )}
+      {/* Personal gigs are private by design (only their creator can read them,
+          migration 056): bands never see their title or venue. */}
+      <div className={cn(CARD, 'p-4 flex items-center gap-3')}>
+        <IconTile>
+          <Eye />
+        </IconTile>
+        <RowText
+          title={t('Personal gigs stay private')}
+          hint={t('Only you see their title and venue. Bands only see that you’re busy.')}
+        />
       </div>
 
       <button
@@ -554,7 +501,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="bw-h2 text-destructive">{t('Delete account')}</span>
         </div>
         <p className="bw-body-md text-foreground">
-          {t('Permanently removes your profile, personal gigs and messages. Bands you admin must have another admin first.')}
+          {t('Permanently removes your profile, personal gigs and messages. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
         </p>
         <PillButton
           variant="danger"
@@ -594,7 +541,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <BrandLogo variant="waveform" lockup="horizontal" className="h-8" textClassName="text-2xl" />
       {appVersion && <span className="bw-label-sm text-muted-foreground">{t('Version {version}', { version: appVersion })}</span>}
       <p className="bw-body-sm text-muted-foreground">
-        {t('All workspace data encrypted end-to-end. Built for musicians, managers, and touring crews.')}
+        {t('All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.')}
       </p>
     </div>
   );
@@ -717,7 +664,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {renderSection(twoPane ? leadingSection : activeSection)}
 
         {/* Footer */}
-        <p className="bw-label-sm text-muted-foreground pt-1">{t('v{version} · All data encrypted', { version: '1.0.0' })}</p>
+        <p className="bw-label-sm text-muted-foreground pt-1">{appVersion ? t('v{version} · Encrypted in transit and at rest', { version: appVersion }) : t('Encrypted in transit and at rest')}</p>
 
         {bottomSpacer}
       </div>

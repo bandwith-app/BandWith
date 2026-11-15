@@ -33,6 +33,7 @@ import {
   markAsRead as markNotificationAsRead,
   markAllAsRead as markAllNotificationsAsRead,
   notifyEventMembersCreated,
+  notifyEventMembersRemoved,
   notifyEventPendingConfirmations,
   notifyEventResponse,
   notifyMemberDroppedOut,
@@ -131,6 +132,8 @@ const RehearsalPostView = lazyLayer(() => import("@/app/components/rehearsal/Reh
 const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
 const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
 const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
+/** A quote save that found no connection (nothing saved, nothing queued). */
+const QUOTE_NEEDS_CONNECTION = "quote:needs-connection";
 import type { PricingModalTabType } from "@/app/components/quotes/BandPricingModal";
 
 import { EventData } from "@/app/components/dashboard/EventCard";
@@ -183,6 +186,7 @@ import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
 import { bandFilterOptions, bandToActivateForCreate, filterByBand, matchesBandFilter, normalizeBandFilter } from "@/lib/bandFilter";
+import { visibleEventsFor } from "@/lib/eventVisibility";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -606,7 +610,8 @@ export default function AuthenticatedApp() {
   const presenceBandsKey = [...allMyBandIds].sort().join(',');
   useEffect(() => { refreshPresenceBands(); }, [presenceBandsKey]);
 
-  const [eventMembersMap, setEventMembersMap] = useState<Record<string, { name: string; userId: string; fee?: number; status?: string }[]>>({});
+  // paidAt: the payout stamp when known (null = not paid yet; undefined = unknown).
+  const [eventMembersMap, setEventMembersMap] = useState<Record<string, { name: string; userId: string; fee?: number; status?: string; paidAt?: string | null }[]>>({});
   const [membersRefreshKey, setMembersRefreshKey] = useState(0);
   const membersMapCacheKey = getCacheKey(user?.id, 'global', 'event_members_map');
 
@@ -705,11 +710,11 @@ export default function AuthenticatedApp() {
       // Fees: all rows for events this user manages, only their own otherwise (071).
       const { data: money } = await getEventMemberMoney(dbEventIds);
       const feeOf = moneyLookup(money);
-      const map: Record<string, { name: string; userId: string; fee?: number; status?: string }[]> = { ...pendingMap };
+      const map: Record<string, { name: string; userId: string; fee?: number; status?: string; paidAt?: string | null }[]> = { ...pendingMap };
       data?.forEach((em: any) => {
         if (!map[em.event_id]) map[em.event_id] = [];
-        const fee = feeOf(em.event_id, em.user_id)?.fee;
-        map[em.event_id].push({ name: bandNameMap[em.user_id] || 'Member', userId: em.user_id, fee: fee ?? undefined, status: em.status });
+        const row = feeOf(em.event_id, em.user_id);
+        map[em.event_id].push({ name: bandNameMap[em.user_id] || 'Member', userId: em.user_id, fee: row?.fee ?? undefined, status: em.status, paidAt: row ? row.paid_at : undefined });
       });
       setEventMembersMap(map);
       setOfflineItem(membersMapCacheKey, map).catch(() => {});
@@ -817,6 +822,12 @@ export default function AuthenticatedApp() {
       .slice(0, 60);
   }, [events, realBand?.id]);
 
+  const eventVisibility = useMemo(() => ({
+    userId: user?.id,
+    membersOf: (eventId: string) => eventMembersMap[eventId] || [],
+    isAdminOfBand,
+  }), [user?.id, eventMembersMap, isAdminOfBand]);
+
   // What this user may see (band pill, membership, no quotes for members),
   // before the calendar's own status filter and search.
   const visibleEvents = useMemo(() => {
@@ -826,23 +837,20 @@ export default function AuthenticatedApp() {
     if (optimisticallyHiddenEventIds.length > 0) {
       result = result.filter(e => !optimisticallyHiddenEventIds.includes(e.eventId || ''));
     }
-    // For members: strictly only include events where current user is added by admin and hasn't declined
-    if (user?.id) {
-      result = result.filter(e => {
-        if (!e.band_id && e.createdBy === user.id) return true;
-        if (!e.eventId) return true; // no UUID key, can't filter
-        const members = eventMembersMap[e.eventId] || [];
-        const myMembership = members.find(m => m.userId === user.id);
-        if (!isAdminOfBand(e.band_id)) {
-          return !!myMembership && myMembership.status !== 'declined';
-        }
-        return !myMembership || myMembership.status !== 'declined';
-      });
+    // Members: only events they are on and haven't declined; never quotes
+    // (role in each event's band; see lib/eventVisibility).
+    return visibleEventsFor(result, eventVisibility);
+  }, [events, selectedBandPill, optimisticallyHiddenEventIds, eventVisibility]);
+
+  // Calendar search: every band (no band pill), same visibility rule as the
+  // calendar, so a member never finds a gig they aren't on.
+  const searchableEvents = useMemo(() => {
+    let result = events;
+    if (optimisticallyHiddenEventIds.length > 0) {
+      result = result.filter(e => !optimisticallyHiddenEventIds.includes(e.eventId || ''));
     }
-    // Double safety: regular members must never see unconverted quotes
-    result = result.filter(e => isAdminOfBand(e.band_id) || ((e.status as string) !== 'QUOTE' && (e.status as string) !== 'QUOTED' && e.eventType !== 'quote'));
-    return result;
-  }, [events, selectedBandPill, optimisticallyHiddenEventIds, eventMembersMap, user?.id, isAdminOfBand]);
+    return visibleEventsFor(result, eventVisibility);
+  }, [events, optimisticallyHiddenEventIds, eventVisibility]);
 
   const visuallyFilteredEvents = useMemo(() => {
     // Status filter
@@ -960,6 +968,19 @@ export default function AuthenticatedApp() {
       if (!e.eventId || !e.band_id || isAdminOfBand(e.band_id)) continue;
       const me = (eventMembersMap[e.eventId] || []).find(m => m.userId === user.id);
       if (me?.fee) map[e.eventId] = me.fee;
+    }
+    return map;
+  }, [events, eventMembersMap, user?.id, isAdminOfBand]);
+
+  // Whether the viewer's own payout is in, on gigs of bands they don't manage
+  // (only where their payout row is known: bw_event_member_money, own row).
+  const userPaidMap = useMemo(() => {
+    if (!user?.id) return {};
+    const map: Record<string, boolean> = {};
+    for (const e of events) {
+      if (!e.eventId || !e.band_id || isAdminOfBand(e.band_id)) continue;
+      const me = (eventMembersMap[e.eventId] || []).find(m => m.userId === user.id);
+      if (me && me.paidAt !== undefined) map[e.eventId] = !!me.paidAt;
     }
     return map;
   }, [events, eventMembersMap, user?.id, isAdminOfBand]);
@@ -1407,6 +1428,9 @@ export default function AuthenticatedApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<"main" | "notifications" | "appearance" | "privacy" | "help" | "about" | "language">("main");
   const [showAnalytics, setShowAnalytics] = useState(false);
+  // iPhone Duo open: a month bar tapped in Analytics (leading page) shows that
+  // month in the calendar on the trailing page ("YYYY-MM").
+  const [calendarFocusMonth, setCalendarFocusMonth] = useState<string | null>(null);
   const [showInventory, setShowInventory] = useState(false);
   const [showContracts, setShowContracts] = useState(false);
   // "Prepare contract" on an accepted quote opens Contracts with this filled in.
@@ -3181,6 +3205,8 @@ export default function AuthenticatedApp() {
       };
 
       let addedOnEdit: string[] = [];
+      // Taken off the lineup on edit (not the editor, not who had declined): told so.
+      let removedOnEdit: string[] = [];
       const persistMembers = async (eventId: string, isEdit?: boolean): Promise<string> => {
         if (!data.members?.length) return 'no members in payload';
         let membersToInvite = data.members;
@@ -3206,6 +3232,7 @@ export default function AuthenticatedApp() {
             .eq('event_id', eventId)
             .in('user_id', removed);
           if (delErr) return `delete failed: ${delErr.message}`;
+          removedOnEdit = removed.filter((id) => id !== user?.id && existingStatus.get(id) !== 'declined');
         }
 
         const errors: string[] = [];
@@ -3432,10 +3459,18 @@ export default function AuthenticatedApp() {
           if (optimisticMembers.length > 0) {
             setEventMembersMap(prev => ({ ...prev, [data._editingEventId]: optimisticMembers }));
           }
-          if (addedOnEdit.length > 0 && user?.id) {
+          if ((addedOnEdit.length > 0 || removedOnEdit.length > 0) && user?.id) {
             try {
               const creatorName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Someone");
-              await notifyEventMembersCreated(realBand.id, data._editingEventId, title || "Event", date, time || "20:00", eventType, user.id, creatorName, addedOnEdit, { venue: location, feeTbd: !!data.feeTbd });
+              if (addedOnEdit.length > 0) {
+                // Each new musician's own fee, as on a new gig.
+                const perMemberFees: Record<string, number> = {};
+                (data.members || []).forEach((m: any) => { if (m.id && m.fee) perMemberFees[m.id] = parseFloat(m.fee) || 0; });
+                await notifyEventMembersCreated(realBand.id, data._editingEventId, title || "Event", date, time || "20:00", eventType, user.id, creatorName, addedOnEdit, { venue: location, memberFees: perMemberFees, feeTbd: !!data.feeTbd });
+              }
+              if (removedOnEdit.length > 0) {
+                await notifyEventMembersRemoved(realBand.id, data._editingEventId, title || "Event", date, eventType, user.id, creatorName, removedOnEdit);
+              }
             } catch (err) { console.error("Notify error:", err); }
           }
           // One push to the lineup with what changed in the setlist (the gig now points at it).
@@ -3880,7 +3915,7 @@ export default function AuthenticatedApp() {
             <ChatView key="chat" chatFilter={chatFilter} setChatFilter={setChatFilter} chatSearch={chatSearch} setChatSearch={setChatSearch} filteredChats={filteredChats} unreadCounts={chatUnreadCounts} onChatClick={(c) => { c.unread = 0; setSelectedChat(c); }} onStartChat={() => setShowNewChat(true)} selectedChatUuid={wideLayout && twoPane ? selectedChat?.uuid : null} loading={chatsLoading && !realChats?.length} loadFailed={!!chatsError && !realChats?.length} onDeleteChat={async (c) => { if (!c.uuid) return; const { error } = await deleteChatService(c.uuid); if (error) setSaveToast({ message: t('Could not delete the chat. Try again.'), type: 'error' }); else refetchChats?.(); }} />
           )}
           {activeTab === "Events" && (
-            <EventsView key="events" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={calendarEvents} rawEvents={events} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} onCreateEvent={(type: 'gig' | 'rehearsal' | 'quote' = 'gig', date?: string) => {
+            <EventsView key="events" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={calendarEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} onCreateEvent={(type: 'gig' | 'rehearsal' | 'quote' = 'gig', date?: string) => {
               if (date) {
                 setCreateEventInitialDate(date);
               } else {
@@ -3899,7 +3934,7 @@ export default function AuthenticatedApp() {
                 setEditingEventData(null);
                 setIsCreateEventOpen(true);
               }
-            }} onOpenPastEvents={() => setShowPastEvents(true)} onProposeRehearsal={() => handleCreateEvent('rehearsal')} isAdmin={isAdmin} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} isAdminOfBand={isAdminOfBand}
+            }} onOpenPastEvents={() => setShowPastEvents(true)} onProposeRehearsal={() => handleCreateEvent('rehearsal')} isAdmin={isAdmin} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} isAdminOfBand={isAdminOfBand} focusMonth={calendarFocusMonth}
               rehearsalPolls={rehearsalPolls}
               onConvertProposal={handleConvertProposal}
               onPollUpdated={() => {
@@ -3912,7 +3947,7 @@ export default function AuthenticatedApp() {
           )}
           {/* PLG: Solo mode fallback for Chat tab */}
           {activeTab === "Chat" && isSolo && (
-            <EventsView key="events-solo" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={visuallyFilteredEvents} rawEvents={events} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} onCreateEvent={(type?: string, date?: string) => { setEditingPersonalGig(date ? { id: '', title: '', eventDate: date } : null); setShowPersonalGigModal(true); }} onOpenPastEvents={() => setShowPastEvents(true)} isAdmin={false} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} />
+            <EventsView key="events-solo" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={visuallyFilteredEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} onCreateEvent={(type?: string, date?: string) => { setEditingPersonalGig(date ? { id: '', title: '', eventDate: date } : null); setShowPersonalGigModal(true); }} onOpenPastEvents={() => setShowPastEvents(true)} isAdmin={false} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} />
           )}
         </AnimatePresence>
 
@@ -4095,7 +4130,16 @@ export default function AuthenticatedApp() {
               isAdmin={isAdmin}
             />
           )}
-          {showAnalytics && <AnalyticsView key="analytics" onClose={() => setShowAnalytics(false)} dashboardData={computedDashboardData as any} isAdmin={isAdmin} />}
+          {showAnalytics && (
+            <AnalyticsView
+              key="analytics"
+              onClose={() => { setShowAnalytics(false); setCalendarFocusMonth(null); }}
+              dashboardData={computedDashboardData as any}
+              isAdmin={isAdmin}
+              // Two pages (Duo open): the month opens in the calendar beside it.
+              onSelectMonth={twoPane ? (yyyyMm) => { setCalendarFocusMonth(yyyyMm); setActiveTab("Events"); } : undefined}
+            />
+          )}
           {showInventory && realBand && (
             <InventoryView
               key="inventory"
@@ -4135,8 +4179,10 @@ export default function AuthenticatedApp() {
               allEvents={visibleEvents}
               onEventClick={handleEventCardClick}
               isAdmin={isAdmin}
+              isAdminOfBand={isAdminOfBand}
               bands={formattedBands}
               userFeeMap={userFeeMap}
+              userPaidMap={userPaidMap}
             />
           )}
 
@@ -4370,31 +4416,22 @@ export default function AuthenticatedApp() {
                       .filter(Boolean)
                   : [];
 
+                // Quotes need a database number, so they can't be queued
+                // offline; their tentative event isn't queued either (it would
+                // hold the date with no quote behind it).
                 const saveQuoteEventOffline = async () => {
                   reportNetworkStatus(false);
-                  const tempId = `offline_ev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-                  const offlineEv: any = {
-                    ...evD,
-                    id: tempId,
-                    eventId: tempId,
-                    created_by: user?.id,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                    _isPendingSync: true,
-                    _tempId: tempId,
-                  };
-                  await enqueueMutation('create_event', { eventData: offlineEv, memberIds: memberRows, ...(clientEventId ? { clientId: clientEventId } : {}) }, tempId);
-                  setSaveToast({ message: t('Saved quote event offline • Will sync when connected'), type: 'info' });
-                  return tempId;
+                  return QUOTE_NEEDS_CONNECTION;
                 };
 
                 if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
                   return await saveQuoteEventOffline();
                 }
 
+                const creating = createEvent(evD);
                 try {
                   const { data: ev, error: evErr } = await Promise.race([
-                    createEvent(evD),
+                    creating,
                     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('offline_timeout')), 4500)),
                   ]);
                   if (evErr && isOfflineError(evErr)) {
@@ -4406,14 +4443,25 @@ export default function AuthenticatedApp() {
                   return ev?.id || null;
                 } catch (err) {
                   if (isOfflineError(err)) {
+                    // Timed out: if the event still lands, take it back (no quote holds it).
+                    void creating
+                      .then(({ data: late }) => (late?.id ? supabase.from('events').delete().eq('id', late.id) : null))
+                      .catch(() => {});
                     return await saveQuoteEventOffline();
                   }
                   return null;
                 }
               })());
 
-              const isOfflineTempId = typeof createdEventId === 'string' && createdEventId.startsWith('offline_');
-              if (!isOfflineTempId && isOnline && (typeof navigator === 'undefined' || navigator.onLine)) {
+              const stillOnline = isOnline && (typeof navigator === 'undefined' || navigator.onLine);
+              if (createdEventId === QUOTE_NEEDS_CONNECTION || !stillOnline) {
+                // Nothing saved: the wizard stays open with the quote as typed.
+                // An event saved just before the connection dropped goes too.
+                if (createdEventId && createdEventId !== QUOTE_NEEDS_CONNECTION && !q.eventId) {
+                  void Promise.resolve(supabase.from('events').delete().eq('id', createdEventId)).catch(() => {});
+                }
+                setSaveToast({ message: t('You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.'), type: 'error' });
+              } else {
                 const { data: savedQuote, error: quoteErr } = await createQuoteDB(
                   { ...appQuoteToDbRecord(q, realBand.id), converted_to_event_id: createdEventId || undefined },
                   appMusiciansToDb(q.musicians)
@@ -4468,14 +4516,6 @@ export default function AuthenticatedApp() {
                   }
                   refetchExpandedQuotes();
                 }
-              } else if (isOfflineTempId) {
-                // Quotes need a database number, so they can't be queued offline yet.
-                closeQuoteWizard();
-                setSaveToast({ message: t('Offline: the event was saved, but the quote itself needs a connection. Create it again when you are back online.'), type: 'error' });
-              } else {
-                // The connection dropped right after the event was saved: as
-                // before, the wizard closes and the event stays.
-                closeQuoteWizard();
               }
               setMembersRefreshKey(prev => prev + 1);
               refetchEvents().catch(() => {});

@@ -44,6 +44,8 @@ import { useBand } from '@/lib/BandContext';
 import { getActiveSymbol as sym, useCurrency, currencySymbol } from '@/lib/currency';
 import { formatQuoteMoney } from '@/lib/services/quoteMath';
 import { useT, intlLocale, localDecimal } from '@/lib/i18n';
+import { shownQuoteStatus } from '@/lib/quoteExpiry';
+import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 
 interface QuotesExpandedProps {
   bandId: string;
@@ -156,12 +158,16 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   // Chart interaction
   const [activeChartId, setActiveChartId] = useState<string | null>(null);
 
+  // The status shown: open quotes past their "valid until" are Expired, as
+  // on the client's page (lib/quoteExpiry); the stored status is unchanged.
+  const shownStatus = (q: Pick<Quote, 'status' | 'validUntil'>): QuoteStatus => shownQuoteStatus(q.status, q.validUntil);
+
   // Computed values - use stats if available, otherwise calculate
   const pipelineTotal = quoteStats?.totalPipeline || quotes
-    .filter(q => q.status !== 'DECLINED' && q.status !== 'EXPIRED')
+    .filter(q => shownStatus(q) !== 'DECLINED' && shownStatus(q) !== 'EXPIRED')
     .reduce((acc, q) => acc + q.total, 0);
 
-  const activeQuotes = quotes.filter(q => q.status !== 'DECLINED' && q.status !== 'EXPIRED');
+  const activeQuotes = quotes.filter(q => shownStatus(q) !== 'DECLINED' && shownStatus(q) !== 'EXPIRED');
 
   // Handlers (all persist through src/lib/services/quotes.ts; optimistic changes are reverted on failure)
   const handleCreateQuote = async (quoteData: Partial<Quote>, opts?: { share?: boolean }) => {
@@ -287,23 +293,32 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
     onQuotesChanged?.();
   };
 
-  const handleDeleteQuote = async (quote: Quote) => {
-    const label = quote.quoteNumber || quote.eventTitle || quote.clientName || t('this quote');
-    if (typeof window !== 'undefined' && !window.confirm(t('Delete {label}? This cannot be undone.', { label }))) {
-      return;
-    }
+  // Delete asks first in the app's own sheet, like every other delete.
+  const [confirmDelete, setConfirmDelete] = useState<Quote | null>(null);
+  const [deletingQuote, setDeletingQuote] = useState(false);
+  const handleDeleteQuote = (quote: Quote) => setConfirmDelete(quote);
 
+  const deleteConfirmed = async () => {
+    const quote = confirmDelete;
+    if (!quote || deletingQuote) return;
+    setDeletingQuote(true);
     const previous = quotes;
     setQuotes(prev => prev.filter(q => q.id !== quote.id));
     setSelectedQuote(null);
 
-    const { error } = await deleteQuoteDB(quote.id);
+    // Its tentative calendar event goes too, so the date is free again.
+    const { error, eventError } = await deleteQuoteDB(quote.id);
+    setDeletingQuote(false);
+    setConfirmDelete(null);
     if (error) {
       setQuotes(previous);
       notify(errorText(error, t('Failed to delete quote')), 'error');
       return;
     }
-    notify(t('Quote deleted'), 'success');
+    notify(
+      eventError ? t('Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.') : t('Quote deleted'),
+      eventError ? 'error' : 'success',
+    );
     onQuotesChanged?.();
   };
 
@@ -429,7 +444,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
           ) : (
             <div className="flex justify-between gap-2 pt-6">
               {chartQuotes.map((quote, qi) => {
-                const probability = getProbabilityFromStatus(quote.status);
+                const probability = getProbabilityFromStatus(shownStatus(quote));
                 const lit = Math.max(2, Math.round(Math.min(1, quote.total / chartMax) * CHART_ROWS));
                 const onColor = probability > 70 ? 'var(--accent)' : probability > 40 ? 'var(--sheet-fg)' : 'color-mix(in srgb, var(--sheet-fg) 45%, transparent)';
                 const isActive = activeChartId === quote.id;
@@ -492,6 +507,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
             </Card>
           ) : quotes.map((quote, i) => {
             const accepted = quote.status === 'ACCEPTED';
+            const status = shownStatus(quote);
             const items = quote.customItems?.length || 0;
             const created = quote.createdAt ? new Date(quote.createdAt) : null;
             return (
@@ -514,8 +530,8 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                     )}
                     <span className="bw-h3 [overflow-wrap:anywhere]">{quote.eventTitle || t('Untitled quote')}</span>
                   </span>
-                  <Tag variant={statusTag(quote.status)} icon={getStatusIcon(quote.status)}>
-                    {t(getStatusLabel(quote.status))}
+                  <Tag variant={statusTag(status)} icon={getStatusIcon(status)}>
+                    {t(getStatusLabel(status))}
                   </Tag>
                 </span>
                 <span className="flex items-end justify-between gap-3">
@@ -637,6 +653,16 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
               />
             )}
           </AnimatePresence>
+
+          <DeleteChatSheet
+            open={!!confirmDelete}
+            title={t('Delete {label}?', { label: confirmDelete ? confirmDelete.quoteNumber || confirmDelete.eventTitle || confirmDelete.clientName || t('this quote') : '' })}
+            body={t('The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.')}
+            confirmLabel={t('Delete quote')}
+            deleting={deletingQuote}
+            onCancel={() => !deletingQuote && setConfirmDelete(null)}
+            onConfirm={() => void deleteConfirmed()}
+          />
         </>,
         document.body,
       )}

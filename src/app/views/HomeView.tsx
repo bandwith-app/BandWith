@@ -240,7 +240,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
 
   // For admins: show all quick actions
-  // For members: show only performance-relevant actions
+  // For members: the same as the menu's band assets (Account hub): repertoire,
+  // members, gear (their own personal gear, 110) and to-do lists (read-only);
+  // contracts hold the client and the price, so they stay admin-only (075).
   // PLG: Solo users have no band, and every quick action (setlist, members,
   // gear, templates, contracts) is band-scoped — the host ignores them in solo
   // mode — so no tiles are shown rather than dead ones.
@@ -249,8 +251,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (!isAdmin) {
       const adminOnlyActions = [
         'Contracts & Riders',
-        'Task Templates',
-        'Inventory',
       ];
       return !adminOnlyActions.includes(action.label);
     }
