@@ -1,4 +1,5 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
+import { runGuarded } from '@/lib/unsavedGuard';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -61,7 +62,7 @@ import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView"
 import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
 import { ChordEditor } from "@/app/components/songs/ChordEditor";
 import { PersonalLayerSheets } from "@/app/components/songs/PersonalLayer";
-import { openSongSuggestions } from "@/lib/services/songSuggestions";
+import { openSongSuggestions, closeSongSuggestions } from "@/lib/services/songSuggestions";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
 import { USER } from "@/app/data/user";
@@ -798,7 +799,9 @@ export default function AuthenticatedApp() {
       .slice(0, 60);
   }, [events, realBand?.id]);
 
-  const visuallyFilteredEvents = useMemo(() => {
+  // What this user may see (band pill, membership, no quotes for members),
+  // before the calendar's own status filter and search.
+  const visibleEvents = useMemo(() => {
     // Band filter (people in 2+ bands): narrows, combines with the rest.
     let result = filterByBand(events, selectedBandPill);
     // Optimistic UI: instantly strip events that should be visually hidden
@@ -820,8 +823,12 @@ export default function AuthenticatedApp() {
     }
     // Double safety: regular members must never see unconverted quotes
     result = result.filter(e => isAdminOfBand(e.band_id) || ((e.status as string) !== 'QUOTE' && (e.status as string) !== 'QUOTED' && e.eventType !== 'quote'));
+    return result;
+  }, [events, selectedBandPill, optimisticallyHiddenEventIds, eventMembersMap, user?.id, isAdminOfBand]);
+
+  const visuallyFilteredEvents = useMemo(() => {
     // Status filter
-    result = result.filter((e) => {
+    let result = visibleEvents.filter((e) => {
       const s = e.status?.toUpperCase();
       let mf = eventFilter === "All" || eventFilter === "ALL";
       if (!mf) {
@@ -843,7 +850,7 @@ export default function AuthenticatedApp() {
       );
     }
     return result;
-  }, [events, selectedBandPill, eventFilter, eventSearch, optimisticallyHiddenEventIds, eventMembersMap, user?.id, isAdminOfBand]);
+  }, [visibleEvents, eventFilter, eventSearch]);
 
   // ── Drafts in the calendar ──────────────────────────────────
   // The admin's saved gig / rehearsal drafts and quotes not shared yet show
@@ -1365,6 +1372,14 @@ export default function AuthenticatedApp() {
 
   const [showBandMembers, setShowBandMembers] = useState(false);
   const [showSetlistManager, setShowSetlistManager] = useState(false);
+  // Leaving the repertoire takes its suggestions screen with it: on the iPad
+  // and the open Duo it would otherwise stay in the trailing pane, over the
+  // next screen.
+  const wasSetlistManager = useRef(false);
+  useEffect(() => {
+    if (wasSetlistManager.current && !showSetlistManager) closeSongSuggestions();
+    wasSetlistManager.current = showSetlistManager;
+  }, [showSetlistManager]);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<"main" | "notifications" | "appearance" | "privacy" | "help" | "about" | "language">("main");
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -2769,7 +2784,12 @@ export default function AuthenticatedApp() {
     }
   };
 
-  const handleEventCardClick = async (event: EventData) => {
+  // Another event while the open gig has setlist changes not saved: ask first.
+  const handleEventCardClick = (event: EventData) => {
+    if (selectedEvent && eventKeyOf(selectedEvent) === eventKeyOf(event)) return void openEventCard(event);
+    runGuarded(() => void openEventCard(event));
+  };
+  const openEventCard = async (event: EventData) => {
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -3939,7 +3959,7 @@ export default function AuthenticatedApp() {
 
       <BottomNavigation
         activeTab={activeTab}
-        setActiveTab={(tab) => {
+        setActiveTab={(tab) => runGuarded(() => {
           // Duo open: details live in the trailing pane, so switching tab
           // clears them instead of leaving a stale detail beside a new list.
           if (twoPane) {
@@ -3948,7 +3968,7 @@ export default function AuthenticatedApp() {
             setSelectedNotification(null);
           }
           setActiveTab(tab);
-        }}
+        })}
         isPlusMenuOpen={isPlusMenuOpen}
         setIsPlusMenuOpen={setIsPlusMenuOpen}
         isControlDeckOpen={isIdentityOpen}
@@ -4043,7 +4063,8 @@ export default function AuthenticatedApp() {
             <PastEventsView
               key="past-events"
               onClose={() => setShowPastEvents(false)}
-              allEvents={visuallyFilteredEvents}
+              // Its own filters: the calendar's (Drafts, a search) would empty it.
+              allEvents={visibleEvents}
               onEventClick={handleEventCardClick}
               isAdmin={isAdmin}
               bands={formattedBands}

@@ -56,6 +56,9 @@ interface Options<T extends LiveSongRef> {
 
 export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
+/** Window event after Stage mode saved a new song order: detail `{ setlistId }`. */
+export const SETLIST_ORDER_SAVED = 'bw:setlist-order-saved';
+
 /** Wait after the last move before saving the order (several taps, one save). */
 const SAVE_DELAY_MS = 700;
 
@@ -271,6 +274,14 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         return;
       }
       const { error } = await saveSetlistOrder(reorderRows(list, saved, inOrder));
+      // The gig open behind Stage mode reloads its setlist in the new order.
+      if (!error) {
+        try {
+          window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
+        } catch {
+          /* no window */
+        }
+      }
       if (closing) return;
       if (error) {
         // Back to the saved order, for everyone.

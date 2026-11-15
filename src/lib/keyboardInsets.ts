@@ -31,8 +31,21 @@ export function installKeyboardInsets(): void {
       root.removeAttribute('data-keyboard');
       tell(false);
     };
+    // The field being typed in stays in sight: on a short screen (a phone in
+    // landscape: ~216 px left) it could sit under the keyboard or a pinned
+    // footer, and the web view does not scroll it up by itself.
+    const reveal = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || !(el.matches('input, textarea, select') || el.isContentEditable)) return;
+      requestAnimationFrame(() => el.scrollIntoView?.({ block: 'center', inline: 'nearest' }));
+    };
     void Keyboard.addListener('keyboardWillShow', open).catch(() => {});
+    void Keyboard.addListener('keyboardDidShow', reveal).catch(() => {});
     void Keyboard.addListener('keyboardWillHide', close).catch(() => {});
+    // Moving to another field while the keyboard stays up.
+    document.addEventListener('focusin', () => {
+      if (root.getAttribute('data-keyboard') === 'open') setTimeout(reveal, 50);
+    });
   } catch {
     // Plugin missing on this build: keep the default insets.
   }

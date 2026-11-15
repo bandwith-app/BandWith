@@ -615,3 +615,9 @@
     overflow: visible !important;
   }
 }
+
+/* Keyboard up: the floating tab bar would sit right above it, over the search
+   results or the field being typed in (worst on a phone in landscape). */
+html[data-keyboard="open"] .bw-nav-bar {
+  display: none !important;
+}

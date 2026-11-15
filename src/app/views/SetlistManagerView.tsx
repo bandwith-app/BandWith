@@ -57,6 +57,7 @@ import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 
 /** Readiness dots: 16 per row, one dot per song (scaled down past 48 songs). */
@@ -89,6 +90,11 @@ const RowMenu: React.FC<{ items: { label: string; icon: React.ReactNode; run: ()
     exit={{ opacity: 0, scale: 0.95 }}
     className="absolute right-3 top-full -mt-2 z-20 min-w-[168px] p-1 rounded-[16px] bg-popover text-popover-foreground shadow-lg border border-border origin-top-right"
     role="menu"
+    // A row low on the screen: scroll so the whole menu shows above the tab bar.
+    style={{ scrollMarginBottom: 'calc(var(--safe-bottom, 0px) + 112px)' }}
+    ref={(el) => {
+      if (el) requestAnimationFrame(() => el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
+    }}
   >
     {items.map((item) => (
       <button
@@ -559,13 +565,17 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     !!editingSetlistId &&
     editorBaseline !== null &&
     editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets) !== editorBaseline;
-  const [editorLeaveOpen, setEditorLeaveOpen] = useState(false);
-  const requestCloseSetlistEditor = () => (editorDirty ? setEditorLeaveOpen(true) : closeSetlistEditor());
+  // What to do once the user leaves: just close, or open another setlist.
+  const [editorLeaveAction, setEditorLeaveAction] = useState<null | (() => void)>(null);
+  const guardEditor = (after: () => void) => (editorDirty ? setEditorLeaveAction(() => after) : after());
+  const requestCloseSetlistEditor = () => guardEditor(closeSetlistEditor);
+  // The tab bar or the hub closing (iPad, Duo open) ask first too.
+  useUnsavedGuard(editorDirty, (proceed) => setEditorLeaveAction(() => () => { closeSetlistEditor(); proceed(); }));
   // Android Back and Escape leave the editor for the library, not the library itself.
   useSystemBack(!!editingSetlistId, requestCloseSetlistEditor);
 
   const handleSaveSetlist = useCallback(async () => {
-    if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return;
+    if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return false;
     setSetlistEditorSaving(true);
     setEditorError(null);
     const name = editingSetlistName.trim();
@@ -575,7 +585,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       const { error: nameError } = await updateSetlist(editingSetlistId, { name });
       if (nameError) {
         setEditorError(errorText(nameError, t('Could not save the setlist')));
-        return;
+        return false;
       }
       const rows = editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 }));
       const { error: songsError, previous } = await replaceSetlistSongs(editingSetlistId, rows);
@@ -588,7 +598,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       ));
       if (songsError) {
         setEditorError(errorText(songsError, t('The name was saved, but the song order was not')));
-        return;
+        return false;
       }
       // One push to the band with what changed (107).
       void notifySetlistSaved({
@@ -597,6 +607,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         renamed,
       });
       closeSetlistEditor();
+      return true;
     } finally {
       setSetlistEditorSaving(false);
     }
@@ -955,7 +966,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                               items={[
                                 ...(canPlay ? [{ label: t('Play'), icon: <Play className="w-4 h-4" />, run: () => handlePlaySong(song) }] : []),
                                 ...(song.lyrics?.trim()
-                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart) }); } }]
+                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'lyrics' }); } }]
                                   : []),
                                 ...(asSongChart(song.chord_chart)
                                   ? [{ label: t('Chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'structure' }); } }]
@@ -1020,7 +1031,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                   >
                     <button
                       type="button"
-                      onClick={() => openSetlistEditor(setlist.id)}
+                      onClick={() => (setlist.id === editingSetlistId ? undefined : guardEditor(() => void openSetlistEditor(setlist.id)))}
                       className="w-full flex items-center gap-3 p-4 rounded-[24px] bg-card text-card-foreground text-left active:scale-[0.99] transition-transform"
                     >
                       <span className="w-11 h-11 rounded-full bg-foreground/[0.08] flex items-center justify-center shrink-0">
@@ -1066,18 +1077,23 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       )}
 
       <UnsavedChangesSheet
-        open={editorLeaveOpen}
+        open={!!editorLeaveAction}
         title={t('Save the setlist changes?')}
         saving={setlistEditorSaving}
         error={editorError}
-        onKeepEditing={() => setEditorLeaveOpen(false)}
+        onKeepEditing={() => setEditorLeaveAction(null)}
         onDiscard={() => {
-          setEditorLeaveOpen(false);
+          const go = editorLeaveAction;
+          setEditorLeaveAction(null);
           closeSetlistEditor();
+          go?.();
         }}
         onSave={async () => {
-          await handleSaveSetlist();
-          setEditorLeaveOpen(false);
+          const go = editorLeaveAction;
+          if (await handleSaveSetlist()) {
+            setEditorLeaveAction(null);
+            go?.();
+          }
         }}
       />
 

@@ -110,8 +110,12 @@ export const ChordEditor: React.FC = () => {
         return;
       }
       const row = data as { id: string; band_id: string; title: string; key: string | null; lyrics: string | null; chord_chart: unknown };
-      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics: row.lyrics || '', chart: asSongChart(row.chord_chart) });
-      setText(row.lyrics || '');
+      // Songs written before the unified format (chords on their own line above
+      // the words) are edited in it: otherwise a chord placed on a word would
+      // sit under the old chord line and both would be saved.
+      const lyrics = normalizeLyrics(row.lyrics) || row.lyrics || '';
+      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, chart: asSongChart(row.chord_chart) });
+      setText(lyrics);
     })();
     return () => {
       alive = false;

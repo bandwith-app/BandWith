@@ -47,7 +47,7 @@ import { listDeputyRequests, type DeputyRequest } from '@/lib/services/deputies'
 import { KeyValueRow, LINK_CLASS, MemberRow, SectionTitle, type ResolvedMember } from '@/app/components/event/parts';
 import { useEventMembers } from '@/app/components/event/useEventMembers';
 import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh';
-import { useStageLive } from '@/app/components/event/useStageLive';
+import { useStageLive, SETLIST_ORDER_SAVED } from '@/app/components/event/useStageLive';
 import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
@@ -84,6 +84,7 @@ import { useRailLayout } from '@/lib/deviceRegions';
 import { GigSetlistEditor, useGigSetlistDraft } from '@/app/components/event/GigSetlistEditor';
 import { UnsavedChangesBar, UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
 
 interface EventDetailProps {
   event: EventData;
@@ -356,6 +357,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     if (setlistDraft.dirty) setLeaveAction(() => action);
     else action();
   };
+  // The tab bar or another event in the list (iPad, Duo open) ask first too.
+  useUnsavedGuard(setlistDraft.dirty, (proceed) => setLeaveAction(() => proceed));
   const onClose = () => guardUnsaved(onCloseProp);
   const onEdit = onEditProp ? () => guardUnsaved(onEditProp) : undefined;
   // Android Back with changes waiting: a sheet open over them closes first, then ask.
@@ -409,6 +412,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     onTasks: reloadTasks,
     onSetlist: () => setSetlistReloadKey((k) => k + 1),
   });
+  // Reordered in Stage mode (opened from here): show the new order at once.
+  useEffect(() => {
+    if (!event.setlistId) return;
+    const onSaved = (e: Event) => {
+      if ((e as CustomEvent<{ setlistId?: string }>).detail?.setlistId === event.setlistId) setSetlistReloadKey((k) => k + 1);
+    };
+    window.addEventListener(SETLIST_ORDER_SAVED, onSaved);
+    return () => window.removeEventListener(SETLIST_ORDER_SAVED, onSaved);
+  }, [event.setlistId]);
 
   // Fetch setlist songs
   useEffect(() => {
