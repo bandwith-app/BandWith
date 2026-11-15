@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BrandLogo } from '@/app/components/ui/BrandLogo';
 import {
   Bell,
+  BellOff,
   Mail,
   Sparkles,
   Play,
@@ -35,6 +36,9 @@ import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
 import { deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { checkPushPermissions, openNotificationSettings, subscribeToPush } from '@/lib/services/pushNotifications';
 import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/app/components/ui/utils';
 import { useRailLayout } from '@/lib/deviceRegions';
@@ -236,7 +240,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
 
+  // The toggle is the account's choice; the phone can still block BandWith's
+  // notifications. Checked again whenever the app comes back to the front
+  // (e.g. after turning them on in the phone's settings).
+  const [devicePush, setDevicePush] = useState<'granted' | 'denied' | 'prompt' | 'unavailable'>('unavailable');
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let alive = true;
+    let handle: PluginListenerHandle | null = null;
+    const check = () => { void checkPushPermissions().then((s) => { if (alive) setDevicePush(s); }); };
+    check();
+    CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive) check(); })
+      .then((h) => { if (alive) handle = h; else void h.remove(); })
+      .catch(() => {});
+    return () => { alive = false; void handle?.remove(); };
+  }, []);
+  const devicePushOff = pushEnabled && (devicePush === 'denied' || devicePush === 'prompt');
+  const fixDevicePush = () => {
+    if (devicePush === 'prompt' && user?.id) {
+      void subscribeToPush(user.id).then(() => checkPushPermissions()).then(setDevicePush);
+    } else {
+      void openNotificationSettings().catch(() => {});
+    }
+  };
+
   const notificationStatus = (() => {
+    if (devicePushOff) return emailEnabled ? t('email alerts enabled') : t('All alerts paused');
     if (pushEnabled && emailEnabled) return t('push & email alerts enabled');
     if (pushEnabled) return t('push alerts enabled');
     if (emailEnabled) return t('email alerts enabled');
@@ -332,6 +361,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <Bell aria-hidden className="w-[22px] h-[22px] text-accent shrink-0" />
         <span className="bw-label-md">{notificationStatus}</span>
       </div>
+
+      {devicePushOff && (
+        <button type="button" onClick={fixDevicePush} className={cn(CARD, ROW, PRESSABLE)}>
+          <IconTile>
+            <BellOff />
+          </IconTile>
+          <RowText
+            title={devicePush === 'denied' ? t('Notifications are off on this device') : t('Allow notifications on this device')}
+            hint={
+              devicePush === 'denied'
+                ? t('Turn them on in your phone’s settings. Until then, chat messages and gig alerts won’t reach you.')
+                : t('Tap to allow them. Until then, chat messages and gig alerts won’t reach you.')
+            }
+          />
+          <ChevronRight aria-hidden className="w-[18px] h-[18px] text-foreground shrink-0" />
+        </button>
+      )}
 
       <div className={cn(CARD, ROW)}>
         <IconTile>
