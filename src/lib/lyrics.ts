@@ -147,6 +147,8 @@ export interface LyricsDoc {
   view?: 'lyrics' | 'chords' | 'structure';
   /** songs.key: the reader's Transpose control shows the moved key. */
   songKey?: string | null;
+  /** songs.notes: the band's notes on the song (accepted "Note for the band" suggestions), read-only. */
+  notes?: string | null;
 }
 
 let current: LyricsDoc | null = null;

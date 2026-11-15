@@ -22,6 +22,8 @@ import {
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
 import { PollDetails } from './PollDetails';
+import { canDeletePoll, canVoteInPoll, canWithdrawProposal } from '@/lib/pollPermissions';
+import { notifyProposalDismissed } from '@/lib/services/pollNotices';
 import { haptic } from '@/lib/haptics';
 import { StepPad, Card, Tag, PillButton, PillField } from '@/app/components/bw';
 import { personName } from '@/lib/personName';
@@ -55,9 +57,14 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
   const [dismissing, setDismissing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
   // Status checks
   const isProposed = poll.status === 'proposed';
+  // Only what the database allows (073, 098): no vote pads for members not
+  // invited to the poll, no Delete for a member once their proposal is a poll.
+  const canVote = canVoteInPoll(poll, currentUserId);
+  const canDelete = canDeletePoll(poll, currentUserId, isAdmin);
 
   // Calculate highest vote count among options
   const maxVotes = useMemo(() => {
@@ -134,6 +141,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
 
   // Toggle vote
   const handleToggleVote = async (optionId: string) => {
+    if (!canVote) return;
     haptic.selection();
     setVotingOptionId(optionId);
     startAutoClose();
@@ -150,7 +158,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
 
   // "None of these work"
   const handleNoneWork = async () => {
-    if (!hasUserVotedAny) return;
+    if (!hasUserVotedAny || !canVote) return;
     startAutoClose();
     // Clears the votes and stores the answer (102) so the admin sees it.
     const { error } = await markPollUnavailable(poll.id, currentUserId);
@@ -193,6 +201,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
     setDismissing(false);
     if (!error) {
       onShowToast?.(t('Proposal dismissed.'), 'info');
+      void notifyProposalDismissed(poll, currentUserId);
       onPollUpdated?.();
     }
   };
@@ -209,6 +218,20 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
       onShowToast?.(t('Failed to delete poll. Please try again.'), 'error');
     } else {
       onShowToast?.(t('Rehearsal poll deleted.'), 'info');
+      onPollUpdated?.();
+    }
+  };
+
+  // The member withdraws their own pending proposal (073: creator, status 'proposed').
+  const handleWithdraw = async () => {
+    setIsDeleting(true);
+    const { error } = await deletePoll(poll.id);
+    setIsDeleting(false);
+    setShowWithdrawConfirm(false);
+    if (error) {
+      onShowToast?.(t('Could not withdraw the proposal. Try again.'), 'error');
+    } else {
+      onShowToast?.(t('Proposal withdrawn.'), 'info');
       onPollUpdated?.();
     }
   };
@@ -260,6 +283,37 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
         {/* Optional Notes */}
         {cleanNotesWithoutDays(poll.notes) && <p className="bw-body-md">{cleanNotesWithoutDays(poll.notes)}</p>}
 
+        {/* The proposer: withdraw it while it is pending */}
+        {!isAdmin && canWithdrawProposal(poll, currentUserId) &&
+          (!showWithdrawConfirm ? (
+            <div className="flex items-center justify-end">
+              <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => setShowWithdrawConfirm(true)}>
+                {t('Withdraw')}
+              </PillButton>
+            </div>
+          ) : (
+            <div
+              role="alertdialog"
+              aria-labelledby={`proposal-withdraw-${poll.id}`}
+              className="flex flex-col gap-3 p-4 rounded-[16px] border-2 border-destructive"
+            >
+              <div className="flex flex-col gap-1">
+                <span id={`proposal-withdraw-${poll.id}`} className="bw-h3 text-destructive">
+                  {t('Withdraw your proposal?')}
+                </span>
+                <p className="bw-body-sm text-muted-foreground">{t('The admins will no longer see it.')}</p>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <PillButton variant="ghost" size="sm" fullWidth={false} disabled={isDeleting} onClick={() => setShowWithdrawConfirm(false)}>
+                  {t('Cancel')}
+                </PillButton>
+                <PillButton variant="danger" size="sm" fullWidth={false} loading={isDeleting} onClick={handleWithdraw}>
+                  {t('Withdraw')}
+                </PillButton>
+              </div>
+            </div>
+          ))}
+
         {/* Admin Actions */}
         {isAdmin && (
           <div className="flex items-center justify-end gap-2">
@@ -297,10 +351,10 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
           <span
             className={cn(
               'h-4 px-1.5 rounded-full inline-flex items-center bw-label-xs',
-              hasUserVotedAny ? 'bg-white/15 text-white' : 'bg-accent text-accent-foreground'
+              hasUserVotedAny || !canVote ? 'bg-white/15 text-white' : 'bg-accent text-accent-foreground'
             )}
           >
-            {hasUserVotedAny ? t('Voted') : poll.declined_all ? t('None work') : t('Vote now')}
+            {!canVote ? t('Not invited') : hasUserVotedAny ? t('Voted') : poll.declined_all ? t('None work') : t('Vote now')}
           </span>
         </div>
 
@@ -323,7 +377,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                 key={option.id}
                 onDark
                 selected={!!option.has_voted}
-                disabled={votingOptionId === option.id}
+                disabled={!canVote || votingOptionId === option.id}
                 day={dateName(d, { weekday: 'short' }).toUpperCase()}
                 date={d.getDate()}
                 time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -333,6 +387,10 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
             );
           })}
         </div>
+
+        {!canVote && (
+          <p className="bw-body-sm text-white/75">{t("You're not on this poll's invite list, so you can't vote.")}</p>
+        )}
 
         <button
           type="button"
@@ -376,7 +434,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                   )}
                 </div>
 
-                {hasUserVotedAny && (
+                {hasUserVotedAny && canVote && (
                   <PillButton variant="ghost" size="sm" fullWidth={false} className="-mr-3 shrink-0" onClick={handleNoneWork}>
                     {t('None work')}
                   </PillButton>
@@ -405,7 +463,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                         <button
                           type="button"
                           aria-pressed={isChecked}
-                          disabled={votingOptionId === option.id}
+                          disabled={!canVote || votingOptionId === option.id}
                           onClick={() => handleToggleVote(option.id)}
                           className="flex-1 min-w-0 flex flex-col gap-1 text-left cursor-pointer select-none"
                         >
@@ -507,8 +565,8 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                 })}
               </div>
 
-              {/* Admin or Creator: Delete Poll with Confirmation */}
-              {(isAdmin || poll.created_by === currentUserId) &&
+              {/* Admin, or the creator of a proposal: Delete Poll with Confirmation */}
+              {canDelete &&
                 (!showDeleteConfirm ? (
                   <PillButton
                     variant="danger"

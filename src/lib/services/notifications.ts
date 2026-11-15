@@ -335,7 +335,7 @@ export const markChatNotificationsAsRead = async (chatId: string): Promise<{ err
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
 
-    // Find and update all unread chat_message notifications for this chat
+    // Find and update all unread chat notifications (messages, mentions) for this chat
     const { error } = await supabase
       .from('notifications')
       .update({
@@ -343,7 +343,7 @@ export const markChatNotificationsAsRead = async (chatId: string): Promise<{ err
         read_at: new Date().toISOString(),
       })
       .eq('user_id', user.id)
-      .eq('type', 'chat_message')
+      .in('type', [...CHAT_NOTIFICATION_TYPES])
       .eq('read', false)
       .contains('data', { chat_id: chatId });
 
@@ -1172,8 +1172,9 @@ export const sendPushToUsers = async (
         body = data.content?.substring(0, 120) || 'New message';
         break;
       case 'chat_mention':
-        title = data.senderName ? `${data.senderName} mentioned you` : 'You were mentioned';
-        subtitle = data.bandName || 'Band Chat';
+        // data.title: already in the recipient's language (chats.ts sendMessage).
+        title = data.title || (data.senderName ? `${data.senderName} mentioned you` : 'You were mentioned');
+        subtitle = data.subtitle || data.bandName || 'Band Chat';
         tag = 'Mention';
         channelId = 'bandwith_messages';
         body = data.content?.substring(0, 120) || 'You were mentioned in chat';
