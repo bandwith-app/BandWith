@@ -2924,7 +2924,15 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       <div className="max-w-xl mx-auto w-full flex items-center justify-between gap-3">
         <div className="flex flex-col gap-1 min-w-0">
           <span className="bw-label-sm">{t('Total estimate')}</span>
-          <span className="bw-body-sm truncate opacity-80">{estimateSubtitle}</span>
+          {/* Up to two lines, breaking between the parts ("VAT 21% €220.50" stays whole). */}
+          <span className="bw-body-sm line-clamp-2 opacity-80">
+            {estimateSubtitle.split(' · ').map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && ' · '}
+                <span className="whitespace-nowrap">{part}</span>
+              </React.Fragment>
+            ))}
+          </span>
         </div>
         <div
           className="shrink-0 max-w-[55%]"

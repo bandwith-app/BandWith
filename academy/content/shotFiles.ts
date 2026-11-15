@@ -11,7 +11,7 @@ export const SHOT_FILES: Record<string, ShotDevice[]> = {
   'basics-welcome': ['phone', 'tablet', 'web'],
   'calendar-month': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'contracts-list': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
-  'gig-wizard-step1': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
+  'gig-wizard-step1': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'gig-workspace-admin': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'gig-workspace-member': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'ipad-gig-composer': ['tablet', 'web', 'duoBook'],
