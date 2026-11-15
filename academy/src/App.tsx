@@ -4,7 +4,6 @@ import type { Role } from '../content/types';
 import { Blocks, RoleChip } from './blocks';
 import { Inline, brokenLinks, highlight, plain } from './inline';
 import { search, terms, type Hit } from './search';
-import { PreviewPage } from './preview';
 import {
   ArrowLeft,
   ArrowRight,
@@ -38,7 +37,6 @@ type Route =
   | { name: 'article'; id: string }
   | { name: 'faq' }
   | { name: 'glossary' }
-  | { name: 'preview' }
   | { name: 'dev' };
 
 const parse = (hash: string): Route => {
@@ -48,7 +46,6 @@ const parse = (hash: string): Route => {
   if (a === 'a' && b) return { name: 'article', id: b };
   if (a === 'faq') return { name: 'faq' };
   if (a === 'glossary') return { name: 'glossary' };
-  if (a === 'preview') return { name: 'preview' };
   if (a === 'dev') return { name: 'dev' };
   return { name: 'home' };
 };
@@ -66,10 +63,18 @@ function useRoute() {
   return route;
 }
 
+/* ── Embedded in the app (?embed=1&theme=dark|light) ── */
+
+const params = new URLSearchParams(location.search);
+/** Opened from the app (Settings › Academy, a ? button or a tour card). */
+export const EMBEDDED = params.get('embed') === '1';
+const APP_THEME = params.get('theme');
+
 /* ── Theme ── */
 
 function useTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (APP_THEME === 'light' || APP_THEME === 'dark') return APP_THEME;
     try {
       const saved = localStorage.getItem('bw-academy-theme');
       if (saved === 'light' || saved === 'dark') return saved;
@@ -80,6 +85,7 @@ function useTheme() {
   });
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    if (EMBEDDED) return; // follow the app; don't overwrite the web visitor's choice
     try {
       localStorage.setItem('bw-academy-theme', theme);
     } catch {
@@ -715,9 +721,11 @@ export function App() {
             <span>Search</span>
             <kbd>/</kbd>
           </button>
-          <button className="iconBtn" onClick={toggleTheme} aria-label="Switch theme">
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+          {!EMBEDDED && (
+            <button className="iconBtn" onClick={toggleTheme} aria-label="Switch theme">
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          )}
         </div>
       </header>
       <main className={`main main--${route.name}`}>
@@ -727,15 +735,16 @@ export function App() {
         {route.name === 'article' && <ArticlePage id={route.id} />}
         {route.name === 'faq' && <FaqPage />}
         {route.name === 'glossary' && <GlossaryPage />}
-        {route.name === 'preview' && <PreviewPage />}
         {route.name === 'dev' && <DevPage />}
       </main>
-      <footer className="foot">
-        <span>BandWith Academy · preview</span>
-        <span>
-          <a href="#/glossary">Glossary</a> · <a href="#/faq">FAQ</a> · <a href="#/preview">In-app preview</a>
-        </span>
-      </footer>
+      {!EMBEDDED && (
+        <footer className="foot">
+          <span>BandWith Academy</span>
+          <span>
+            <a href="#/glossary">Glossary</a> · <a href="#/faq">FAQ</a> · <a href="../">Open BandWith</a>
+          </span>
+        </footer>
+      )}
       {searching && <SearchOverlay onClose={() => setSearching(false)} />}
     </>
   );

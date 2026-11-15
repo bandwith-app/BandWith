@@ -375,51 +375,6 @@ tbody td:first-child { font-weight: 600; }
 .hit__t { font-weight: 600; }
 .hit__s { color: var(--fg-2); font-size: 14px; }
 
-/* ── In-app preview mock-ups ── */
-.previewGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 32px; }
-@media (max-width: 860px) { .previewGrid { grid-template-columns: 1fr; } }
-.previewCard { background: var(--card); border-radius: var(--radius); padding: 28px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
-.previewCard--wide { grid-column: 1 / -1; }
-.previewCard h2 { font-size: 26px; }
-.previewCard > p { color: var(--fg-2); }
-.mockPhone { align-self: center; width: 300px; max-width: 100%; aspect-ratio: 9 / 18.5; border-radius: 46px; background: #0a0a0a; padding: 10px; }
-.mockPhone__screen { position: relative; height: 100%; border-radius: 37px; overflow: hidden; background: #e5e3e0; color: #000; }
-.mockApp { height: 100%; display: flex; flex-direction: column; }
-.mockApp__bar { display: flex; align-items: center; gap: 10px; padding: 36px 16px 12px; }
-.mockApp__title { flex: 1; font-family: var(--font-display); font-weight: 500; font-size: 18px; }
-.mockHelp {
-  width: 36px; height: 36px; border-radius: 999px; border: 0; background: #000; color: #d5fb46; display: grid; place-items: center; cursor: pointer;
-  animation: pulse 2.4s infinite;
-}
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(213, 251, 70, 0.9); } 50% { box-shadow: 0 0 0 8px rgba(213, 251, 70, 0); } }
-@media (prefers-reduced-motion: reduce) { .mockHelp { animation: none; } }
-.mockApp__hero { margin: 4px 12px; padding: 18px; border-radius: 26px; background: #d5fb46; display: flex; flex-direction: column; gap: 4px; }
-.mockApp__hero span { display: flex; align-items: center; gap: 4px; font-size: 14px; }
-.mockTag { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; }
-.mockApp__rows { margin: 10px 12px; background: #f2f0ed; border-radius: 22px; }
-.mockApp__row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-top: 1px solid rgba(0, 0, 0, 0.1); font-size: 15px; }
-.mockApp__row:first-child { border-top: 0; }
-.mockSheet { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; align-items: flex-end; }
-.mockSheet__card { width: 100%; background: #050505; color: #fff; border-radius: 30px 30px 0 0; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 10px; }
-.mockSheet__card p { color: #bbb; font-size: 14px; }
-.mockSheet__head { display: flex; justify-content: space-between; align-items: center; }
-.mockSheet__head .mini { color: #d5fb46; }
-.mockSheet__t { font-family: var(--font-display); font-size: 20px; font-weight: 500; }
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 999px; border: 0; text-decoration: none; font-weight: 600; cursor: pointer; }
-.btn--lime { background: #d5fb46; color: #000; }
-.btn--ghost { background: transparent; color: #000; }
-.tourDemo { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.mockTour { height: 100%; display: flex; flex-direction: column; padding: 40px 22px 22px; gap: 12px; background: #050505; color: #fff; }
-.mockTour__art { flex: 1; display: grid; place-items: center; color: #d5fb46; border-radius: 26px; background: #1c1c1c; }
-.mockTour__dots { display: flex; gap: 6px; }
-.mockTour__dots span { width: 6px; height: 6px; border-radius: 99px; background: #444; }
-.mockTour__dots span.on { width: 18px; background: #d5fb46; }
-.mockTour__t { font-family: var(--font-display); font-weight: 500; font-size: 24px; line-height: 1.1; }
-.mockTour p { color: #bbb; font-size: 14px; }
-.mockTour__more { color: #d5fb46; font-size: 14px; display: flex; align-items: center; gap: 4px; }
-.mockTour__nav { display: flex; justify-content: space-between; }
-.mockTour__nav .btn--ghost { color: #fff; }
-
 .dev pre { white-space: pre-wrap; background: var(--card); padding: 12px; border-radius: 12px; font-size: 12px; }
 .ph {
   font-family: var(--font-mono); font-size: 0.82em; font-weight: 500; text-transform: lowercase;
