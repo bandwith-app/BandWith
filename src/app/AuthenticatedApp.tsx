@@ -369,6 +369,8 @@ export default function AuthenticatedApp() {
   activeTabRef.current = activeTab;
   /** Where a gig opened from another tab returns on close (see navigateToEvent). */
   const eventReturnTabRef = useRef<TabName | null>(null);
+  // A gig opened from a chat's event strip: Back returns to that chat.
+  const eventReturnChatRef = useRef<ChatItem | null>(null);
   // iPhone Duo rail (Figma "Duo"): the switch-band sheet keeps the tabs, the inbox hides them.
   const { twoPane, rail: railLayout, wide: wideLayout } = useRailLayout();
   useEffect(() => {
@@ -1071,6 +1073,7 @@ export default function AuthenticatedApp() {
     // (Home's "Review payouts", a notification) instead of the calendar.
     const from = activeTabRef.current;
     eventReturnTabRef.current = !twoPaneRef.current && from !== "Events" ? from : null;
+    eventReturnChatRef.current = null;
     setActiveTab("Events");
     setEventLoadError(null);
     setTimeout(async () => {
@@ -1098,7 +1101,7 @@ export default function AuthenticatedApp() {
 
   // A gig that couldn't open leaves nothing to return from.
   useEffect(() => {
-    if (eventLoadError) eventReturnTabRef.current = null;
+    if (eventLoadError) { eventReturnTabRef.current = null; eventReturnChatRef.current = null; }
   }, [eventLoadError]);
   const closeSelectedEventRef = useRef(() => {});
   closeSelectedEventRef.current = () => {
@@ -1106,7 +1109,12 @@ export default function AuthenticatedApp() {
     setSelectedEventMembership(null);
     const back = eventReturnTabRef.current;
     eventReturnTabRef.current = null;
-    if (back) setActiveTab(back);
+    const chat = eventReturnChatRef.current;
+    eventReturnChatRef.current = null;
+    if (chat) {
+      setActiveTab("Chat");
+      setSelectedChat(chat);
+    } else if (back) setActiveTab(back);
   };
 
   // "Go live" (Home's next gig): open the gig straight in Stage mode.
@@ -4020,6 +4028,7 @@ export default function AuthenticatedApp() {
           closeLyrics();
           closeChordEditor();
           if (hubOpen) closeHubPages();
+          eventReturnChatRef.current = null;
           setActiveTab(tab);
         })}
         isPlusMenuOpen={isPlusMenuOpen}
@@ -4028,6 +4037,11 @@ export default function AuthenticatedApp() {
         isIdentityOpen={isIdentityOpen}
         toggleControlDeck={toggleIdentity}
         toggleIdentity={toggleIdentity}
+        onSettingsReselect={() => runGuarded(() => {
+          closeLyrics();
+          closeChordEditor();
+          if (hubOpen) closeHubPages();
+        })}
         onRailProfile={openRailProfile}
         railProfileLocked={railProfileLocked}
         closeMenus={closeMenus}
@@ -4598,7 +4612,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {selectedChat && selectedChat.uuid && (
-          <ChatDetailModal key="chat-detail" chat={{ id: selectedChat.uuid, type: selectedChat.type, name: selectedChat.name, initials: selectedChat.initials, avatarUrl: selectedChat.avatarUrl, unread: selectedChat.unread, members: selectedChat.members, isOnline: selectedChat.isOnline, bandLabel: selectedChat.bandLabel ?? convertedChats.find((c) => c.uuid === selectedChat.uuid)?.bandLabel }} onClose={() => { setSelectedChat(null); refetchChats?.(); }} onOpenEvent={(eventId) => { setSelectedChat(null); refetchChats?.(); void navigateToEvent(eventId); }} />
+          <ChatDetailModal key="chat-detail" chat={{ id: selectedChat.uuid, type: selectedChat.type, name: selectedChat.name, initials: selectedChat.initials, avatarUrl: selectedChat.avatarUrl, unread: selectedChat.unread, members: selectedChat.members, isOnline: selectedChat.isOnline, bandLabel: selectedChat.bandLabel ?? convertedChats.find((c) => c.uuid === selectedChat.uuid)?.bandLabel }} onClose={() => { setSelectedChat(null); refetchChats?.(); }} onOpenEvent={(eventId) => { const chat = selectedChat; setSelectedChat(null); refetchChats?.(); void navigateToEvent(eventId); eventReturnChatRef.current = chat; }} />
         )}
         {selectedChat && !selectedChat.uuid && (
           <motion.div key="demo-chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-6" onClick={() => setSelectedChat(null)}>

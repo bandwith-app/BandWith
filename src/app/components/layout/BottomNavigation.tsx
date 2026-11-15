@@ -32,6 +32,8 @@ interface BottomNavigationProps {
   isIdentityOpen: boolean;
   toggleControlDeck?: () => void;
   toggleIdentity?: () => void;
+  /** Settings tapped while already active: back to the Account hub from a page opened on it. */
+  onSettingsReselect?: () => void;
   /** iPhone Duo rail profile button (opens over any screen). */
   onRailProfile?: () => void;
   railProfileLocked?: boolean;
@@ -158,6 +160,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   isIdentityOpen,
   toggleControlDeck,
   toggleIdentity,
+  onSettingsReselect,
   onRailProfile,
   railProfileLocked = false,
   closeMenus,
@@ -288,6 +291,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
           } else if (toggleControlDeck) {
             toggleControlDeck();
           }
+        } else {
+          onSettingsReselect?.();
         }
         setForceOpen(true);
       },

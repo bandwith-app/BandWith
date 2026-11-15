@@ -5,6 +5,7 @@ import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
 import { useOnboarding } from '@/lib/OnboardingContext';
 import { personName } from '@/lib/personName';
 import { useT } from '@/lib/i18n';
+import { instrumentText } from '@/lib/instruments';
 
 interface JoinerWelcomeBandProps {
   inviteData: any;
@@ -51,7 +52,7 @@ export const JoinerWelcomeBand: React.FC<JoinerWelcomeBandProps> = ({
   };
 
   const youName = profileData?.fullName || t('You');
-  const youMeta = profileData?.instruments?.length ? profileData.instruments.join(' · ') : t('Musician');
+  const youMeta = profileData?.instruments?.length ? profileData.instruments.map(instrumentText).join(' · ') : t('Musician');
   // Avatars we can show before joining: the inviter, then a "+N" chip for the rest.
   const othersCount = Math.max(0, memberCount - bandmates.length);
 

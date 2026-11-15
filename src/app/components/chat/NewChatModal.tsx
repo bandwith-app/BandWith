@@ -19,6 +19,7 @@ import { personName, personFirstName, personInitials } from '@/lib/personName';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useT, intlLocale } from '@/lib/i18n';
 import { parseLocalDate } from '@/lib/dates';
+import { instrumentText } from '@/lib/instruments';
 
 interface NewChatModalProps {
   onClose: () => void;
@@ -439,7 +440,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
                                       {personName(member, '')}
                                     </p>
                                     <p className="bw-body-sm text-foreground/85 truncate">
-                                      {member.instrument || member.role || t('Member')}
+                                      {member.instrument ? instrumentText(member.instrument) : member.role === 'admin' ? t('Admin') : t('Member')}
                                     </p>
                                   </div>
                                   {member.role === 'admin' && (
@@ -536,7 +537,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
                             </p>
                           </div>
                           <Tag variant="subtle" className="bg-foreground/[0.12]">
-                            {event.event_type === 'rehearsal' ? t('Rehearsal') : !event.band_id ? t('Personal') : /^quot/i.test(String((event as { status?: string }).status ?? '')) ? t('Quote') : t('Gig')}
+                            {event.event_type === 'rehearsal' ? t('Rehearsal') : !event.band_id ? t('Personal') : ((event as { quote_id?: string | null }).quote_id || ['tentative', 'quoted', 'quote'].includes(String((event as { status?: string }).status ?? '').toLowerCase())) ? t('Quote') : t('Gig')}
                           </Tag>
                         </motion.button>
                       );

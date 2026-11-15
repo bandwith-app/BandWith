@@ -26,6 +26,7 @@ import {
   type DeputyRequestStatus,
 } from '@/lib/services/deputies';
 import { useT } from '@/lib/i18n';
+import { instrumentText } from '@/lib/instruments';
 
 export interface DeputyRequestContext {
   bandId: string;
@@ -309,7 +310,7 @@ export const AskDeputySheet: React.FC<{
                         {d.user_id && !noLinks && <Tag variant="accent" className="shrink-0">{t('On BandWith')}</Tag>}
                       </span>
                       <span className="bw-body-sm text-sheet-foreground/70 truncate">
-                        {[d.instrument, d.default_fee ? t('usual fee {fee}', { fee: formatFee(d.default_fee) }) : null, d.notes].filter(Boolean).join(' · ') || t('Deputy')}
+                        {[instrumentText(d.instrument), d.default_fee ? t('usual fee {fee}', { fee: formatFee(d.default_fee) }) : null, d.notes].filter(Boolean).join(' · ') || t('Deputy')}
                       </span>
                     </span>
                     {busy === d.id && <Loader2 className="w-4 h-4 animate-spin shrink-0 mt-1" />}

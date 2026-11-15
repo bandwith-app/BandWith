@@ -701,3 +701,28 @@
 html[data-keyboard="open"] .bw-nav-bar {
   display: none !important;
 }
+
+/* Edit gig / rehearsal on a phone in landscape (~440 px tall): the header and
+   the Save bar left a sliver for the sections. The title shrinks, the date
+   line goes (each section repeats it) and the bar tightens. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .bw-edit-head {
+    gap: 2px !important;
+    padding-bottom: 6px !important;
+  }
+  .bw-edit-head .bw-h1 {
+    font-size: 24px !important;
+    line-height: 1.1 !important;
+  }
+  .bw-edit-head .bw-edit-sub {
+    display: none !important;
+  }
+  .bw-edit-cta {
+    padding-top: 8px !important;
+    padding-bottom: calc(var(--safe-bottom, 0px) + 8px) !important;
+  }
+  .bw-edit-cta button {
+    min-height: 44px !important;
+    height: 44px !important;
+  }
+}

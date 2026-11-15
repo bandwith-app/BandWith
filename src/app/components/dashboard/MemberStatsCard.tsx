@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { money } from '@/lib/currency';
 import { toLocalDateString } from '@/lib/dates';
 import { useT } from '@/lib/i18n';
+import { instrumentText } from '@/lib/instruments';
 
 type Row = MemberStats & { name: string; instrument?: string };
 
@@ -134,7 +135,7 @@ export const MemberStatsCard: React.FC<{ bandId: string; isAdmin: boolean; curre
                         <span className="flex items-baseline gap-2 min-w-0">
                           <span className="bw-label-md truncate">{s.name}</span>
                           {s.instrument && (
-                            <span className="bw-body-sm text-muted-foreground truncate">{s.instrument}</span>
+                            <span className="bw-body-sm text-muted-foreground truncate">{instrumentText(s.instrument)}</span>
                           )}
                         </span>
                         {s.earned > 0 && <span className="bw-label-md shrink-0 tabular-nums">{money(s.earned)}</span>}

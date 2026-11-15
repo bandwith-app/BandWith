@@ -271,6 +271,10 @@ export const StageMode: React.FC<StageModeProps> = ({
     };
   }, [full, twoPane]);
 
+  // Reading a song in one pane (phone, or the Duo's Book posture beside the
+  // app): a one-line header so the lyrics get the room.
+  const compactHead = showLyrics && !split;
+
   return (
     <motion.div
       role="dialog"
@@ -291,7 +295,8 @@ export const StageMode: React.FC<StageModeProps> = ({
       <div
         ref={contentRef}
         className={cn(
-          'flex flex-col flex-1 min-h-0 w-full max-w-[640px] mx-auto px-4 gap-6',
+          'flex flex-col flex-1 min-h-0 w-full max-w-[640px] mx-auto px-4',
+          compactHead ? 'gap-3' : 'gap-6',
           '[@media(max-height:520px)_and_(min-width:600px)]:grid [@media(max-height:520px)_and_(min-width:600px)]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] [@media(max-height:520px)_and_(min-width:600px)]:grid-rows-[auto_auto_1fr] [@media(max-height:520px)_and_(min-width:600px)]:max-w-[1100px] [@media(max-height:520px)_and_(min-width:600px)]:gap-x-6 [@media(max-height:520px)_and_(min-width:600px)]:gap-y-3',
           // Full screen on two panes: the whole width, one column per pane.
           full && twoPane && 'max-w-none [@media(max-height:520px)_and_(min-width:600px)]:max-w-none',
@@ -306,8 +311,8 @@ export const StageMode: React.FC<StageModeProps> = ({
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: accentColor }} />
               {t('Stage mode · {date}', { date: dateLabel })}
             </span>
-            <FitText as="h1" text={title} sizes={FIT.stage} maxLines={2} className="bw-display-lg text-white" />
-            {(venue || city) && (
+            <FitText as="h1" text={title} sizes={compactHead ? FIT.stageCompact : FIT.stage} maxLines={compactHead ? 1 : 2} className="bw-display-lg text-white" />
+            {(venue || city) && !compactHead && (
               <span className="bw-label-md text-white truncate">
                 {[venue, city && city !== venue ? city : ''].filter(Boolean).join(' · ')}
               </span>

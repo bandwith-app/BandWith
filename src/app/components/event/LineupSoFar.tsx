@@ -2,6 +2,7 @@ import React from 'react';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import type { LineupPerson, LineupStatus, LineupSummary } from '@/lib/lineupSoFar';
+import { instrumentText } from '@/lib/instruments';
 
 const DOT: Record<LineupStatus, string> = {
   in: 'bg-success',
@@ -37,7 +38,7 @@ export const LineupPersonRow: React.FC<{ person: LineupPerson; tone?: 'card' | '
     <span className="flex-1 min-w-0 truncate bw-body-md">
       <span className="font-semibold">{person.name}</span>
       {person.instrument && (
-        <span className={tone === 'sheet' ? 'text-sheet-foreground/70' : 'text-muted-foreground'}> · {person.instrument}</span>
+        <span className={tone === 'sheet' ? 'text-sheet-foreground/70' : 'text-muted-foreground'}> · {instrumentText(person.instrument)}</span>
       )}
     </span>
     <LineupStatusTag status={person.status} />

@@ -397,10 +397,10 @@ const SuggestionDetail: React.FC<{
             </label>
             {error && <FormError>{error}</FormError>}
             {/* Wraps on the real width: in the iPad/Duo pane a viewport breakpoint squeezed three labels into one row. */}
-            <div className="flex flex-wrap gap-2 [&>*]:flex-1 [&>*]:min-w-[13rem]">
+            <div className="flex flex-wrap gap-2 [&>*]:flex-[1_1_13rem]">
               {editing ? (
                 <>
-                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="!flex-[2]">
+                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="!flex-[2_1_13rem]">
                     {t('Accept with these changes')}
                   </PillButton>
                   <PillButton size="md" variant="outline" onClick={() => setEditing(false)} disabled={!!busy}>

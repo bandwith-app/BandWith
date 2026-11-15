@@ -42,6 +42,7 @@ import { useT } from '@/lib/i18n';
 import { useAppVersion } from '@/lib/appVersion';
 import { uuidToNumericId } from '@/lib/numericId';
 import { assetStatusParts, EMPTY_ASSET_STATUS, type AssetId, type AssetStatusCounts, type StatusPart } from '@/lib/assetStatus';
+import { instrumentText } from '@/lib/instruments';
 
 interface NotificationGroup {
   type: string;
@@ -323,15 +324,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
     selectedBand.members || activeBandDetails?.member_count || rosterMembers.length || 1;
   const myBandMember = rosterMembers.find((m) => m.user_id === user?.id);
   // Role tag under the name: profile instrument first, then this band's lineup entry.
-  // Onboarding stores lowercase ids ("guitar, keys"), so title-case each part.
-  const formatInstrument = (raw?: string | null) => {
-    const parts = (raw || '')
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .map((p) => (p.length <= 2 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1)));
-    return parts.length ? parts.join(', ') : null;
-  };
+  const formatInstrument = (raw?: string | null) => instrumentText(raw) || null;
   const myInstrument = formatInstrument(profile?.instrument) || formatInstrument(myBandMember?.instrument);
   const bandInitials =
     selectedBand.initials ||

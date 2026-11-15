@@ -13,6 +13,8 @@ export const FIT = {
   display: [36, 30, 24],
   /** Stage mode title. */
   stage: [44, 36, 28],
+  /** Stage mode title while a song is open in one pane. */
+  stageCompact: [28, 24, 20],
   /** Section / list titles set in H1. */
   h1: [32, 26, 22],
 } as const;

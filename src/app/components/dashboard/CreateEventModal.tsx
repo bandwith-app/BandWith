@@ -70,6 +70,7 @@ import { heatLevel } from '@/lib/freeSlots';
 import { freeTone } from '@/app/components/ui/FreeHeat';
 import { BwSheet, DotText } from '@/app/components/bw';
 import { builtinText } from '@/lib/i18n/builtins';
+import { instrumentText } from '@/lib/instruments';
 
 export interface BandMember {
   id: string;
@@ -1508,7 +1509,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 <span className="bw-body-sm text-muted-foreground truncate">
                   {(() => {
                     // The instrument says who they are here; the raw band role ("admin") is a fallback, translated.
-                    const role = member.instrument ? t(member.instrument) : member.role === 'admin' ? t('Admin') : t('Member');
+                    const role = member.instrument ? instrumentText(member.instrument) : member.role === 'admin' ? t('Admin') : t('Member');
                     return isCurrentUser ? t('You · {role}', { role }) : role;
                   })()}
                 </span>
@@ -2411,7 +2412,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
         >
           {/* Header */}
-          <div className="shrink-0 px-4 pb-3 flex flex-col gap-2" style={headerPadTop}>
+          <div className="bw-edit-head shrink-0 px-4 pb-3 flex flex-col gap-2" style={headerPadTop}>
             <div className="h-11 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <Tag variant="solid">{t('Editing')}</Tag>
@@ -2429,7 +2430,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               />
             </div>
             <h1 className="bw-h1 truncate">{getEffectiveTitle()}</h1>
-            <span className="bw-body-sm text-muted-foreground truncate">
+            <span className="bw-edit-sub bw-body-sm text-muted-foreground truncate">
               {formattedDateStr} · {details.startTime} – {details.endTime} · {details.venue || t('Venue TBD')}
             </span>
           </div>
@@ -2440,7 +2441,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           </PeekingScrollContainer>
 
           {/* CTA bar */}
-          <div className="shrink-0 px-4 pt-3 bg-background" style={ctaPadBottom}>
+          <div className="bw-edit-cta shrink-0 px-4 pt-3 bg-background" style={ctaPadBottom}>
             <div className="grid grid-cols-[2fr_3fr] gap-3">
               <PillButton variant="outline" size="lg" onClick={requestEditClose}>
                 {t('Cancel')}
