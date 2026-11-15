@@ -4013,6 +4013,8 @@ const dict: Dictionary = {
   "Whole line": "Linha inteira",
   "e.g. Breathe before this line": "ex. Respire antes desta linha",
   "Sign in again to add files.": "Entre de novo para adicionar arquivos.",
+  "Suggest now": "Sugerir agora",
+  "e.g. Watch the tempo in the bridge": "ex. Atenção ao andamento na ponte",
 };
 
 export default dict;

@@ -528,7 +528,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
 
       {/* Primary CTA (Figma Button, lime) */}
       {isAdmin && !loading && (
-        <div className="sticky bottom-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+        <div className="bw-sticky-cta sticky bottom-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
           <div className="max-w-2xl mx-auto w-full">
             <PillButton icon={<Plus className="w-[18px] h-[18px]" />} onClick={() => setShowInvite(true)}>
               {members.length === 0 ? t('Invite first member') : t('Invite member')}

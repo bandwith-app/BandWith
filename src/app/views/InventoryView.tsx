@@ -573,7 +573,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             kit={openKit}
             summary={openSummary}
             canEdit={canEdit}
-            onBack={() => setOpenKitId(null)}
+            // Open Duo: a kit is always shown beside the list (the first one
+            // comes back at once), so its Back in the rail leaves Gear instead
+            // of doing nothing.
+            onBack={twoPane && !wide ? onBack : () => setOpenKitId(null)}
             onEdit={() => openKitEditor(openKit)}
             onUseForGig={() => {
               setUseError(null);
@@ -616,7 +619,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
         onClose={closeSheet}
         overline={t('Gear & inventory')}
         title={isNew ? t('Add equipment') : t('Edit equipment')}
-        zIndex={80}
+        // Above an open kit (z-100), which it is opened from on the iPad.
+        zIndex={105}
         footer={
           <div className="flex flex-col gap-2">
             <PillButton type="submit" form="gear-form" loading={saving} disabled={!form.name.trim() || deleting}>

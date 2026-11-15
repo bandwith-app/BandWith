@@ -40,7 +40,7 @@ export const SetChooserSheet: React.FC<{
             key={s.uid}
             icon={<Layers />}
             title={s.title}
-            subtitle={t('{count} songs', { count: s.count })}
+            subtitle={s.count === 1 ? t('{count} song', { count: s.count }) : t('{count} songs', { count: s.count })}
             onClick={() => onChoose(s.uid)}
           />
         ))}

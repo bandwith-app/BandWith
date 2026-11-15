@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { raiseAboveOpenPanes, revealMenu, MENU_SCROLL_MARGIN } from '@/lib/raiseLayer';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'motion/react';
 import {
@@ -91,10 +92,8 @@ const RowMenu: React.FC<{ items: { label: string; icon: React.ReactNode; run: ()
     className="absolute right-3 top-full -mt-2 z-20 min-w-[168px] p-1 rounded-[16px] bg-popover text-popover-foreground shadow-lg border border-border origin-top-right"
     role="menu"
     // A row low on the screen: scroll so the whole menu shows above the tab bar.
-    style={{ scrollMarginBottom: 'calc(var(--safe-bottom, 0px) + 112px)' }}
-    ref={(el) => {
-      if (el) requestAnimationFrame(() => el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
-    }}
+    style={MENU_SCROLL_MARGIN}
+    ref={revealMenu}
   >
     {items.map((item) => (
       <button
@@ -1136,6 +1135,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.3, ease: 'easeOut' }}
             className="bw-pane-detail fixed inset-0 z-[80] bg-background text-foreground flex flex-col"
+            ref={raiseAboveOpenPanes}
             style={{
               overscrollBehaviorX: 'none',
               touchAction: 'pan-y',

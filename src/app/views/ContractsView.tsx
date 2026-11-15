@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { revealMenu, MENU_SCROLL_MARGIN } from '@/lib/raiseLayer';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -205,6 +206,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
 
   const openCreate = () => {
     resetForm();
+    // An open document sheet would cover the new document's screen.
+    setViewingId(null);
+    setMenuOpenId(null);
     setShowCreateModal(true);
   };
 
@@ -712,6 +716,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
                         exit={{ opacity: 0, scale: 0.95 }}
                         className="absolute right-3 top-11 z-20 min-w-[180px] p-1 rounded-[16px] bg-popover text-popover-foreground shadow-lg border border-border origin-top-right"
                         role="menu"
+                        // The last rows: scroll so the whole menu shows above the tab bar.
+                        style={MENU_SCROLL_MARGIN}
+                        ref={revealMenu}
                       >
                         {[
                           { label: t('View'), icon: <Eye className="w-4 h-4" />, run: () => handleView(contract) },

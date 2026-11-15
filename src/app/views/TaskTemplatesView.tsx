@@ -113,6 +113,8 @@ export const TaskTemplatesView: React.FC<TaskTemplatesViewProps> = ({ onBack, ba
 
   const openCreate = () => {
     resetForm();
+    // A list open in its sheet (z-110) would cover the new list's screen.
+    setSelectedTemplate(null);
     setShowCreateModal(true);
   };
 

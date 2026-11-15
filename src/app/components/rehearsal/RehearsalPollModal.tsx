@@ -16,7 +16,7 @@ import {
 } from '@/lib/services/rehearsalPolls';
 import { toLocalDateString } from '../../../lib/dates';
 import { personName, personInitials } from '@/lib/personName';
-import { useT, intlLocale } from '@/lib/i18n';
+import { useT, intlLocale, shortWeekday } from '@/lib/i18n';
 import { useBandFreeDays, useCandidateFreeCounts, slotKey } from '@/lib/bandAvailability';
 import { FreeDots, FreeHeatLegend, FreeLabel, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { ComposerCard, ComposerPreview, ComposerShell, Segmented, useComposerLayout } from '@/app/components/composer/Composer';
@@ -1022,7 +1022,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
                         }}
                         className="flex-1 min-w-0 justify-center px-0"
                       >
-                        {d.label}
+                        {shortWeekday(d.dayIndex)}
                       </Selector>
                     ))}
                   </div>
@@ -1036,7 +1036,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
                               key={d.dayIndex}
                               className={cn('flex-1 min-w-0 h-7 rounded-full flex items-center justify-center bw-label-xs text-foreground', (!c || c.free === 0) && 'bg-foreground/[0.08] text-muted-foreground')}
                               style={heatStyle(c)}
-                              aria-label={c ? t('{day}: {free} of {total} free', { day: d.label, free: c.free, total: c.total }) : undefined}
+                              aria-label={c ? t('{day}: {free} of {total} free', { day: shortWeekday(d.dayIndex), free: c.free, total: c.total }) : undefined}
                             >
                               {c ? `${c.free}/${c.total}` : '–'}
                             </span>

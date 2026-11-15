@@ -1506,7 +1506,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                   {member.name}
                 </span>
                 <span className="bw-body-sm text-muted-foreground truncate">
-                  {isCurrentUser ? t('You · {role}', { role: member.role }) : member.role}
+                  {(() => {
+                    // The instrument says who they are here; the raw band role ("admin") is a fallback, translated.
+                    const role = member.instrument ? t(member.instrument) : member.role === 'admin' ? t('Admin') : t('Member');
+                    return isCurrentUser ? t('You · {role}', { role }) : role;
+                  })()}
                 </span>
               </div>
             </div>
@@ -2412,7 +2416,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <Tag variant="solid">{t('Editing')}</Tag>
                 <Tag variant="subtle">{rawWord(modalCategory)}</Tag>
-                {eventType && <Tag variant="subtle">{rawWord(eventType)}</Tag>}
+                {eventType && eventType !== modalCategory && <Tag variant="subtle">{rawWord(eventType)}</Tag>}
               </div>
               <RailCover pane />
               <HeaderAction

@@ -464,7 +464,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         <div className="flex items-center gap-3 min-h-11">
           <NavBackButton pane label={step === 'details' ? t('Cancel') : t('Back')} onClick={prevStep} disabled={saving} />
           <h2 id="add-song-title" className="flex-1 min-w-0 bw-h1 truncate">
-            {isEdit ? t('Edit song') : t('Add song', { context: 'title' })}
+            {isEdit ? t('Edit song') : !isAdmin ? t('Suggest a song') : t('Add song', { context: 'title' })}
           </h2>
           {!closeInRail && <IconButton label={t('Close')} icon={<X />} variant="ghost" onClick={handleClose} disabled={saving} />}
         </div>
@@ -746,7 +746,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         {step !== 'extras' && !success && (
           <div className="max-w-2xl mx-auto w-full flex justify-center">
             <PillButton variant="ghost" size="sm" fullWidth={false} onClick={handleSubmit} disabled={!canProceed() || saving}>
-              {isEdit ? t('Save now') : t('Add song now')}
+              {isEdit ? t('Save now') : !isAdmin ? t('Suggest now') : t('Add song now')}
             </PillButton>
           </div>
         )}
@@ -764,7 +764,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
             {success ? (
               isEdit ? t('Saved!') : t('Added!')
             ) : step === 'extras' ? (
-              isEdit ? t('Save song') : t('Add song')
+              isEdit ? t('Save song') : !isAdmin ? t('Suggest a song') : t('Add song')
             ) : (
               <>
                 {t('Next')}

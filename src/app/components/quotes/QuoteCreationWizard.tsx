@@ -73,7 +73,7 @@ import { formatDistance, fromUnit, ratePerUnit, toUnit, useDistanceUnit } from '
 import { QuoteDeskMode, quoteDeskLinesFromQuote, useLeadingCompanion, type QuoteDeskLine } from '@/app/components/duo';
 import { LiveQuotePreview } from '@/app/components/duo/previews/LiveQuotePreview';
 import { personName } from '@/lib/personName';
-import { t, useT, intlLocale, getLocale, translate, type Locale } from '@/lib/i18n';
+import { t, useT, intlLocale, getLocale, translate, dateName, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { BwSheet } from '@/app/components/bw/Screen';
@@ -2176,7 +2176,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
           <FieldLabel>{t('Validity')}</FieldLabel>
           <div className="relative">
             <select
-              aria-label={t('Quote validity (until {date})', { date: validUntilDate })}
+              aria-label={t('Quote validity (until {date})', { date: dateName(new Date(`${validUntilDate}T12:00:00`), { day: 'numeric', month: 'short', year: 'numeric' }) })}
               value={validityDays}
               onChange={e => setValidityDays(parseInt(e.target.value) || 30)}
               className="w-full h-11 pl-3 pr-7 rounded-full bg-field border border-border bw-body-lg text-foreground outline-none focus:border-foreground appearance-none cursor-pointer"
@@ -2191,7 +2191,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
           </div>
         </div>
       </div>
-      <span className="bw-body-sm text-muted-foreground -mt-2">{t('Valid until {date}', { date: validUntilDate })}</span>
+      <span className="bw-body-sm text-muted-foreground -mt-2">{t('Valid until {date}', { date: dateName(new Date(`${validUntilDate}T12:00:00`), { day: 'numeric', month: 'short', year: 'numeric' }) })}</span>
 
       {/* VAT exempt + show bank details */}
       <div className="flex flex-col gap-2">

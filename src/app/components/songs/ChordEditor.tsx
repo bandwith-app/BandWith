@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { ScreenHeader, IconButton, Card } from '@/app/components/bw/Screen';
 import { FormError, PillButton } from '@/app/components/bw';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AlertTriangle, Check, Copy, Music2, Plus, RotateCcw, Sparkles } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { supabase } from '@/lib/supabase';
@@ -86,6 +87,9 @@ export const ChordEditor: React.FC = () => {
   const [copyTo, setCopyTo] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
+  const [leaveOpen, setLeaveOpen] = React.useState(false);
+  React.useEffect(() => setLeaveOpen(false), [id]);
   const [drag, setDrag] = React.useState<{ from: Pos; chord: string; x: number; y: number; moved: boolean } | null>(null);
   // The click that ends a drag lands on whatever word is under it: ignore it.
   const dropClick = React.useRef(false);
@@ -125,7 +129,10 @@ export const ChordEditor: React.FC = () => {
   const dirty = !!song && text !== song.lyrics;
   const close = () => {
     if (saving) return;
-    if (dirty && !window.confirm(t('Discard your chord changes?'))) return;
+    if (dirty) {
+      setLeaveOpen(true);
+      return;
+    }
     closeChordEditor();
   };
   useSystemBack(!!id, () => {
@@ -363,6 +370,7 @@ export const ChordEditor: React.FC = () => {
   };
 
   return createPortal(
+    <>
     <AnimatePresence>
       {id && (
         <motion.div
@@ -509,7 +517,23 @@ export const ChordEditor: React.FC = () => {
           )}
         </motion.div>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+    <UnsavedChangesSheet
+      open={!!id && leaveOpen}
+      title={t('Save your changes?')}
+      saving={saving}
+      error={leaveOpen ? error : null}
+      onKeepEditing={() => setLeaveOpen(false)}
+      onDiscard={() => {
+        setLeaveOpen(false);
+        closeChordEditor();
+      }}
+      onSave={() => {
+        // Success closes the editor; an error stays on the sheet.
+        void save();
+      }}
+    />
+    </>,
     document.body,
   );
 };

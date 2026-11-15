@@ -400,7 +400,9 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         title={t('Quotes')}
         onBack={onClose}
         meta={<span className="bw-label-sm text-muted-foreground">{quotes.length}</span>}
-        actions={<IconButton label={t('New quote')} variant="filled" icon={<Plus />} onClick={() => setIsCreating(true)} />}
+        // A quote open beside the list (iPad, Duo open) gives way to the new one:
+        // the detail (z-120) would otherwise cover the wizard (z-100).
+        actions={<IconButton label={t('New quote')} variant="filled" icon={<Plus />} onClick={() => { setSelectedQuote(null); setIsCreating(true); }} />}
       />
 
       <div

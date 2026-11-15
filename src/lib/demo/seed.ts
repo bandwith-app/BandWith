@@ -241,7 +241,7 @@ export const buildSeed = (): DemoDB => {
     };
   };
   const quotes: Row[] = [
-    q(0, { status: 'draft', client_name: 'Client B', client_email: 'client.b@example.com', event_name: '40th birthday party', event_type: 'private_party', event_date: day(40), venue_name: 'Cascina Cuccagna', venue_city: 'Milano', guest_count: 80, base_fee: 1600, travel_fee: 0, sound_included: true, sound_fee: 300, valid_until: day(20) }),
+    q(0, { status: 'draft', client_name: 'Client B', client_email: 'client.b@example.com', event_name: '40th birthday party', event_type: 'private', event_date: day(40), venue_name: 'Cascina Cuccagna', venue_city: 'Milano', guest_count: 80, base_fee: 1600, travel_fee: 0, sound_included: true, sound_fee: 300, valid_until: day(20) }),
     q(1, { status: 'negotiating', client_name: 'Northwind Conferences', client_email: 'ops@northwind.example', client_company: 'Northwind', event_name: 'Year-end gala', event_type: 'corporate', event_date: day(52), venue_name: 'Palazzo Clerici', venue_city: 'Milano', guest_count: 300, base_fee: 3800, travel_fee: 0, sound_included: true, sound_fee: 900, sent_at: ago(60 * 24 * 3), valid_until: day(14) }),
     q(2, { status: 'accepted', client_name: 'Client A', client_email: 'client.a@example.com', event_name: 'Client A — Wedding', event_type: 'wedding', event_date: day(5), venue_name: 'Villa Necchi', venue_city: 'Milano', guest_count: 140, base_fee: 3200, travel_fee: 0, sound_fee: 0, sent_at: ago(60 * 24 * 40), responded_at: ago(60 * 24 * 35), response_type: 'accepted', converted_to_event_id: id(602) }),
   ];

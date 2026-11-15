@@ -1,4 +1,5 @@
 import React from 'react';
+import { raiseAboveOpenPanes } from '@/lib/raiseLayer';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { FormError, PillButton, Selector, Tag } from '@/app/components/bw';
@@ -129,6 +130,7 @@ export const SongSuggestionsView: React.FC = () => {
       {open && (
         <motion.div
           key="song-suggestions"
+          ref={raiseAboveOpenPanes}
           initial={{ x: '100%' }}
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
@@ -393,10 +395,11 @@ const SuggestionDetail: React.FC<{
               />
             </label>
             {error && <FormError>{error}</FormError>}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* Wraps on the real width: in the iPad/Duo pane a viewport breakpoint squeezed three labels into one row. */}
+            <div className="flex flex-wrap gap-2 [&>*]:flex-1 [&>*]:min-w-[11rem]">
               {editing ? (
                 <>
-                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="sm:col-span-2">
+                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="!flex-[2]">
                     {t('Accept with these changes')}
                   </PillButton>
                   <PillButton size="md" variant="outline" onClick={() => setEditing(false)} disabled={!!busy}>

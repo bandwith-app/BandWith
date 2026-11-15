@@ -18,13 +18,14 @@ import {
   POLL_CLOSED,
   dismissPoll,
   deletePoll,
+  cleanNotesWithoutDays,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
 import { PollDetails } from './PollDetails';
 import { haptic } from '@/lib/haptics';
 import { StepPad, Card, Tag, PillButton, PillField } from '@/app/components/bw';
 import { personName } from '@/lib/personName';
-import { useT, dateName, intlLocale } from '@/lib/i18n';
+import { useT, dateName, intlLocale, shortWeekday } from '@/lib/i18n';
 
 interface RehearsalPollCardProps {
   poll: RehearsalPoll;
@@ -247,17 +248,17 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
         {/* Preferred Days */}
         {poll.preferred_days && poll.preferred_days.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="bw-label-sm text-muted-foreground mr-1">{t('Preferred')}</span>
+            <span className="bw-label-sm text-muted-foreground mr-1">{t('Preferred days')}</span>
             {poll.preferred_days.map((day) => (
               <Tag key={day} variant="rehearsal">
-                {day}
+                {shortWeekday(day)}
               </Tag>
             ))}
           </div>
         )}
 
         {/* Optional Notes */}
-        {poll.notes && <p className="bw-body-md">{poll.notes}</p>}
+        {cleanNotesWithoutDays(poll.notes) && <p className="bw-body-md">{cleanNotesWithoutDays(poll.notes)}</p>}
 
         {/* Admin Actions */}
         {isAdmin && (
@@ -306,7 +307,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
         <div className="flex flex-col gap-2">
           <h4 className="bw-h2 text-white">{poll.title}</h4>
           <p className="bw-body-sm text-white/75">
-            {poll.notes ? `${poll.notes} — ` : t('Select your available options — ')}
+            {cleanNotesWithoutDays(poll.notes) ? `${cleanNotesWithoutDays(poll.notes)} — ` : t('Select your available options — ')}
             {t('{answered} of {total} answered', { answered: answeredCount, total: totalMembers })}
           </p>
           <PollDetails poll={{ ...poll, total_members_count: totalMembers }} className="text-white/85" />

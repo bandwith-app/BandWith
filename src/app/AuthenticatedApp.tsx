@@ -3967,6 +3967,19 @@ export default function AuthenticatedApp() {
             setSelectedEvent(null);
             setSelectedNotification(null);
           }
+          // A hub page (to-do lists, gear, members…) covers the tab content;
+          // where the nav floats over it (tablet, Duo rail), a tab tap leaves it.
+          if (hubOpen) {
+            setShowSettings(false);
+            setShowBandMembers(false);
+            setShowSetlistManager(false);
+            setShowAnalytics(false);
+            setShowInventory(false);
+            setShowContracts(false); setContractPrefill(null);
+            setShowTaskTemplates(false);
+            setShowPastEvents(false);
+            setShowDeputyGigs(false);
+          }
           setActiveTab(tab);
         })}
         isPlusMenuOpen={isPlusMenuOpen}

@@ -1375,7 +1375,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                             <span className="bw-body-md truncate">{song.title}</span>
                             {song.artist && <span className="bw-label-xs text-muted-foreground truncate mt-1">{song.artist}</span>}
                           </span>
-                          {song.key && <span className="bw-label-sm text-muted-foreground shrink-0">{song.key}</span>}
+                          {song.key && <span className="bw-label-sm normal-case text-muted-foreground shrink-0">{song.key}</span>}
                           {hasLyricsOrChart(song.lyrics, song.chart) && (
                             <span className="bw-label-xs text-muted-foreground shrink-0">{t('LYRICS')}</span>
                           )}
@@ -2206,7 +2206,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {song.key && <Tag variant="subtle">{song.key}</Tag>}
+                          {song.key && <Tag variant="subtle" className="normal-case">{song.key}</Tag>}
                           {song.duration && (
                             <span className="bw-label-sm text-muted-foreground">{song.duration}</span>
                           )}
