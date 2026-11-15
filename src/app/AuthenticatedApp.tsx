@@ -60,9 +60,10 @@ import { MiniPlayer } from "@/app/components/ui/MiniPlayer";
 import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
 import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
 import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
-import { ChordEditor } from "@/app/components/songs/ChordEditor";
+import { ChordEditor, closeChordEditor } from "@/app/components/songs/ChordEditor";
 import { PersonalLayerSheets } from "@/app/components/songs/PersonalLayer";
 import { openSongSuggestions, closeSongSuggestions } from "@/lib/services/songSuggestions";
+import { closeLyrics } from "@/lib/lyrics";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
 import { USER } from "@/app/data/user";
@@ -1926,6 +1927,9 @@ export default function AuthenticatedApp() {
 
   const closeMenus = () => {
     setIsControlDeckOpen(false);
+    // Two panes: the profile editor opened beside "Who you are" leaves with it,
+    // instead of reappearing later over Home.
+    if (twoPane && isIdentityOpen) setShowEditProfile(false);
     setIsIdentityOpen(false);
     if (activeTab === "More") setActiveTab("Home");
   };
@@ -3970,6 +3974,10 @@ export default function AuthenticatedApp() {
           }
           // A hub page (to-do lists, gear, members…) covers the tab content;
           // where the nav floats over it (tablet, Duo rail), a tab tap leaves it.
+          // The song viewer and chord editor belong to Repertoire: they go too
+          // (the chord editor's unsaved changes are asked about first, above).
+          closeLyrics();
+          closeChordEditor();
           if (hubOpen) {
             setShowSettings(false);
             setShowBandMembers(false);
@@ -4159,7 +4167,12 @@ export default function AuthenticatedApp() {
                 initialType={createEventType as any}
                 initialDate={createEventInitialDate || undefined}
                 layoutId={`create-button-${createEventType}`}
-                onClose={() => { setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null); }}
+                onClose={() => {
+                  // Cancelling an edit returns to the event it was opened from (saving has its own path).
+                  const back = editingEventData?.eventId;
+                  setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
+                  if (back) void navigateToEvent(back);
+                }}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}
                 existingEvents={events}

@@ -37,14 +37,28 @@ export function installKeyboardInsets(): void {
     const reveal = () => {
       const el = document.activeElement as HTMLElement | null;
       if (!el || !(el.matches('input, textarea, select') || el.isContentEditable)) return;
-      requestAnimationFrame(() => el.scrollIntoView?.({ block: 'center', inline: 'nearest' }));
+      const r = el.getBoundingClientRect();
+      // Already well inside the visible area (clear of a pinned footer): leave it.
+      if (r.top >= 64 && r.bottom <= window.innerHeight - 96) return;
+      el.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    };
+    // The web view shrinks to the keyboard's top only after keyboardDidShow
+    // on some devices, so reveal again once its size has settled.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const revealSoon = () => {
+      requestAnimationFrame(reveal);
+      clearTimeout(settle);
+      settle = setTimeout(reveal, 320);
     };
     void Keyboard.addListener('keyboardWillShow', open).catch(() => {});
-    void Keyboard.addListener('keyboardDidShow', reveal).catch(() => {});
+    void Keyboard.addListener('keyboardDidShow', revealSoon).catch(() => {});
     void Keyboard.addListener('keyboardWillHide', close).catch(() => {});
+    window.addEventListener('resize', () => {
+      if (root.getAttribute('data-keyboard') === 'open') revealSoon();
+    });
     // Moving to another field while the keyboard stays up.
     document.addEventListener('focusin', () => {
-      if (root.getAttribute('data-keyboard') === 'open') setTimeout(reveal, 50);
+      if (root.getAttribute('data-keyboard') === 'open') setTimeout(revealSoon, 50);
     });
   } catch {
     // Plugin missing on this build: keep the default insets.

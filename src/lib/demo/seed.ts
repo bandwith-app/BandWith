@@ -346,7 +346,7 @@ export const buildSeed = (): DemoDB => {
   const inventory: Row[] = [
     { id: id(1800), band_id: IDS.band, name: 'Nord Stage 4', category: 'keys', quantity: 1, status: 'available', location: 'Lena', created_at: created, updated_at: created },
     { id: id(1801), band_id: IDS.band, name: 'Shure SM58', category: 'microphones', quantity: 4, status: 'available', location: 'Rehearsal room', created_at: created, updated_at: created },
-    { id: id(1802), band_id: IDS.band, name: 'In-ear mixer (Behringer P16)', category: 'monitoring', quantity: 1, status: 'in_use', location: 'Leo', created_at: created, updated_at: created },
+    { id: id(1802), band_id: IDS.band, name: 'In-ear mixer (Behringer P16)', category: 'Other', quantity: 1, status: 'in_use', location: 'Leo', created_at: created, updated_at: created },
     { id: id(1803), band_id: IDS.band, name: 'DI boxes', category: 'cables', quantity: 6, status: 'maintenance', location: 'Rehearsal room', created_at: created, updated_at: created },
     ...([
       [1804, 'PA tops 12"', 'Other', 2, 'available', 'Case A'],

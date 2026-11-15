@@ -114,9 +114,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
               return myEventIdSet.has(e.id);
             });
 
+            // A personal event (no band) is not the band's.
             return allowedEvents.map(e => ({
               ...e,
-              bandName: band.name
+              bandName: e.band_id ? band.name : undefined
             }));
           });
           
@@ -535,7 +536,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
                             </p>
                           </div>
                           <Tag variant="subtle" className="bg-foreground/[0.12]">
-                            {event.event_type === 'rehearsal' ? t('Rehearsal') : !event.band_id ? t('Personal') : t('Gig')}
+                            {event.event_type === 'rehearsal' ? t('Rehearsal') : !event.band_id ? t('Personal') : /^quot/i.test(String((event as { status?: string }).status ?? '')) ? t('Quote') : t('Gig')}
                           </Tag>
                         </motion.button>
                       );

@@ -210,12 +210,15 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
 
     setError(null);
     const newSlots: TimeSlotDraft[] = [];
+    // A day already gone this week ("Tue" on a Saturday) means the next one.
+    const today = toLocalDateString(new Date());
 
     selectedPresetDays.forEach((targetDay) => {
       // Find date corresponding to this day in target week
       const dateObj = new Date(targetMonday);
       const dayOffset = targetDay === 0 ? 6 : targetDay - 1; // 0=Sunday (day 6 from Monday)
       dateObj.setDate(targetMonday.getDate() + dayOffset);
+      if (toLocalDateString(dateObj) < today) dateObj.setDate(dateObj.getDate() + 7);
       const isoDate = toLocalDateString(dateObj);
 
       // Avoid duplicates
@@ -584,7 +587,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
               </p>
               {initialProposal.preferred_days && initialProposal.preferred_days.length > 0 && (
                 <p className="bw-label-sm text-muted-foreground">
-                  {t('Preferred days')} · {initialProposal.preferred_days.join(', ')}
+                  {t('Preferred days')} · {initialProposal.preferred_days.map(shortWeekday).join(', ')}
                 </p>
               )}
             </div>
@@ -934,7 +937,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
                   </p>
                   {initialProposal.preferred_days && initialProposal.preferred_days.length > 0 && (
                     <p className="bw-label-sm text-muted-foreground">
-                      {t('Preferred days')} · {initialProposal.preferred_days.join(', ')}
+                      {t('Preferred days')} · {initialProposal.preferred_days.map(shortWeekday).join(', ')}
                     </p>
                   )}
                 </div>

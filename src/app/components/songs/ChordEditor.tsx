@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { isChordToken } from '@/lib/lyrics';
 import { asSongChart, chordLabel, keyLabel, type SongChart } from '@/lib/ireal';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
@@ -89,7 +90,12 @@ export const ChordEditor: React.FC = () => {
   const [saving, setSaving] = React.useState(false);
   // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
   const [leaveOpen, setLeaveOpen] = React.useState(false);
-  React.useEffect(() => setLeaveOpen(false), [id]);
+  // Leaving through the tab bar with changes: ask, then go where the user tapped.
+  const pendingLeave = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => {
+    setLeaveOpen(false);
+    pendingLeave.current = null;
+  }, [id]);
   const [drag, setDrag] = React.useState<{ from: Pos; chord: string; x: number; y: number; moved: boolean } | null>(null);
   // The click that ends a drag lands on whatever word is under it: ignore it.
   const dropClick = React.useRef(false);
@@ -127,6 +133,10 @@ export const ChordEditor: React.FC = () => {
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = !!song && text !== song.lyrics;
+  useUnsavedGuard(!!id && dirty, (proceed) => {
+    pendingLeave.current = proceed;
+    setLeaveOpen(true);
+  });
   const close = () => {
     if (saving) return;
     if (dirty) {
@@ -233,6 +243,9 @@ export const ChordEditor: React.FC = () => {
     }
     setSong({ ...song, lyrics: text });
     closeChordEditor();
+    const next = pendingLeave.current;
+    pendingLeave.current = null;
+    next?.();
   };
 
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
@@ -523,10 +536,16 @@ export const ChordEditor: React.FC = () => {
       title={t('Save your changes?')}
       saving={saving}
       error={leaveOpen ? error : null}
-      onKeepEditing={() => setLeaveOpen(false)}
+      onKeepEditing={() => {
+        pendingLeave.current = null;
+        setLeaveOpen(false);
+      }}
       onDiscard={() => {
         setLeaveOpen(false);
         closeChordEditor();
+        const next = pendingLeave.current;
+        pendingLeave.current = null;
+        next?.();
       }}
       onSave={() => {
         // Success closes the editor; an error stays on the sheet.

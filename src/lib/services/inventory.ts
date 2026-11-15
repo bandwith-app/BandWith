@@ -58,7 +58,9 @@ const blankToNull = (v?: string | null) => {
 /** Matches a stored category to the canonical label (older rows may be lowercase). */
 export const canonicalCategory = (category: string | null | undefined): string => {
   const hit = INVENTORY_CATEGORIES.find((c) => c.toLowerCase() === (category ?? '').toLowerCase());
-  return hit ?? (category || 'Other');
+  // An old or free-typed category ("monitoring") files under Other, so the
+  // category chips can still find it and it shows translated.
+  return hit ?? 'Other';
 };
 
 export const parsePrice = (raw?: string): { value: number | null; error: string | null } => {
