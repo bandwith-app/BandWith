@@ -60,7 +60,7 @@ import { addressWithoutCity } from '@/lib/eventAddress';
 import { useSystemBack } from '@/lib/backStack';
 import { haptic } from '@/lib/haptics';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
-import { useLeadingCompanion } from '@/app/components/duo';
+import { useLaptopPose, useLeadingCompanion } from '@/app/components/duo';
 import { LiveGigPreview } from '@/app/components/duo/previews/LiveGigPreview';
 import { useT, intlLocale, getLocale } from '@/lib/i18n';
 import { ComposerCard, ComposerCheck, ComposerPreview, ComposerShell, Segmented, useComposerLayout } from '@/app/components/composer/Composer';
@@ -1138,7 +1138,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   // shows the gig as it will be saved, filling in as the user types. Steps
   // 2–3 leave the leading page alone (the calendar shows underneath).
   // Called before the rehearsal passthrough so the hook order never changes.
-  useLeadingCompanion(
+  // In Laptop pose the same preview fills the Display under the header on
+  // every step (the fields are on the Deck), like the quote wizard's desk.
+  const laptopPose = useLaptopPose();
+  const gigPreview = (
     <LiveGigPreview
       kindLabel={modalCategory === 'quote' ? t('Quote') : t('Gig')}
       typeLabel={eventType ? eventTypeLabels[eventType]?.label ?? eventType : null}
@@ -1155,9 +1158,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       fee={isAdmin && grandTotalFee > 0 ? `${currencySymbol}${grandTotalFee.toLocaleString(intlLocale('en-US'))}` : null}
       accent={activeAccentColor}
       accentFg={activeAccentFg}
-    />,
-    !isEditing && step === 0 && eventType !== 'rehearsal' && !composerOn
+    />
   );
+  useLeadingCompanion(gigPreview, !isEditing && step === 0 && eventType !== 'rehearsal' && !composerOn);
 
   // Members never see quotes (the effect above closes the wizard). This sits
   // after every hook above so the hook order never changes with the role.
@@ -2931,7 +2934,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
       >
         {/* Top bar (Figma Top Bar Style=Canvas) + wizard steps */}
-        <div className="shrink-0 bg-background" style={headerPadTop}>
+        <div
+          className={cn('shrink-0 bg-background', laptopPose && 'flex flex-col')}
+          style={laptopPose ? { ...headerPadTop, maxHeight: 'var(--bw-display-h)' } : headerPadTop}
+        >
           <div className="h-14 px-4 flex items-center gap-3 bw-status-clear">
             <NavBackButton
               pane
@@ -2961,6 +2967,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               activeColor="var(--wizard-accent)"
             />
           </div>
+          {/* Laptop pose: the gig as it will be saved fills the rest of the Display. */}
+          {laptopPose && (
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+              {React.cloneElement(gigPreview, { compact: true })}
+            </div>
+          )}
         </div>
 
         {/* Scrollable body */}

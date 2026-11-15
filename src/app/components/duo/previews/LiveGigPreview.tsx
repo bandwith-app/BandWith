@@ -31,6 +31,8 @@ export interface LiveGigPreviewProps {
   /** Event colour (CSS colour / var) and its foreground. */
   accent: string;
   accentFg: string;
+  /** Laptop pose Display: no label, tighter card, one-line rows, so it fits the upper half. */
+  compact?: boolean;
 }
 
 export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
@@ -47,6 +49,7 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
   fee,
   accent,
   accentFg,
+  compact = false,
 }) => {
   const t = useT();
   // `settingLabel` is the raw setting value; translate it for display only.
@@ -54,10 +57,10 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
     settingLabel === 'indoor' ? t('indoor') : settingLabel === 'outdoor' ? t('outdoor') : settingLabel;
   const place = [venue?.trim(), city?.trim()].filter(Boolean).join(', ');
   return (
-    <div className="flex flex-col gap-3 px-4 pt-4 pb-6" aria-live="polite">
-      <p className="bw-label-sm text-muted-foreground">{t('Live preview')}</p>
+    <div className={compact ? 'flex flex-col px-4 pb-3' : 'flex flex-col gap-3 px-4 pt-4 pb-6'} aria-live="polite">
+      {!compact && <p className="bw-label-sm text-muted-foreground">{t('Live preview')}</p>}
       <section
-        className="rounded-[24px] p-5 flex flex-col gap-3"
+        className={compact ? 'rounded-[20px] p-4 flex flex-col gap-1.5' : 'rounded-[24px] p-5 flex flex-col gap-3'}
         style={{ backgroundColor: accent, color: accentFg }}
         aria-label={t('{kind} preview', { kind: kindLabel })}
       >
@@ -66,7 +69,7 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
           {typeLabel && <span className="bw-label-xs">{typeLabel}</span>}
           {setting && <span className="bw-label-xs opacity-70">{setting}</span>}
         </div>
-        <h2 className="bw-display-lg [overflow-wrap:anywhere]">{title}</h2>
+        <h2 className={compact ? 'bw-h1 line-clamp-2 [overflow-wrap:anywhere]' : 'bw-display-lg [overflow-wrap:anywhere]'}>{title}</h2>
 
         <div className="flex items-start gap-2">
           <Calendar className="w-4 h-4 shrink-0 mt-[3px]" />
@@ -77,11 +80,11 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
         </div>
         <div className="flex items-start gap-2 min-w-0">
           <MapPin className="w-4 h-4 shrink-0 mt-[3px]" />
-          <span className="bw-body-md [overflow-wrap:anywhere]">{place || t('Venue TBD')}</span>
+          <span className={compact ? 'bw-body-md truncate' : 'bw-body-md [overflow-wrap:anywhere]'}>{place || t('Venue TBD')}</span>
         </div>
         <div className="flex items-start gap-2 min-w-0">
           <Users className="w-4 h-4 shrink-0 mt-[3px]" />
-          <span className="bw-body-md [overflow-wrap:anywhere]">
+          <span className={compact ? 'bw-body-md truncate' : 'bw-body-md [overflow-wrap:anywhere]'}>
             {lineupCount === 1 ? t('{count} musician', { count: lineupCount }) : t('{count} musicians', { count: lineupCount })}
             {lineupNames.length > 0 && <span className="opacity-70"> · {lineupNames.join(', ')}</span>}
           </span>
@@ -89,7 +92,7 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
 
         {fee && (
           <div
-            className="flex items-baseline justify-between gap-3 pt-2"
+            className={compact ? 'flex items-baseline justify-between gap-3 pt-1.5' : 'flex items-baseline justify-between gap-3 pt-2'}
             style={{ borderTop: '1px solid color-mix(in srgb, currentColor 20%, transparent)' }}
           >
             <span className="bw-label-sm">{t('Fee')}</span>
