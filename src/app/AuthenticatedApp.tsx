@@ -108,7 +108,6 @@ import { addDaysLocal, countDueTasks, EMPTY_ASSET_STATUS, type AssetStatusCounts
  * hid the list mid-change and the closing page's exit never finished, so it
  * stayed on screen (the Duo hub showed two pages, Back lost).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function lazyLayer<T extends React.ComponentType<any>>(load: () => Promise<{ default: T }>): React.FC<React.ComponentProps<T>> {
   const Lazy = React.lazy(load);
   const Layer: React.FC<React.ComponentProps<T>> = (props) => (
