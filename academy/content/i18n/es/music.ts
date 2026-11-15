@@ -1,0 +1,1311 @@
+import type { AreaText } from '../../types';
+
+const music: AreaText = {
+  area: {
+    id: "music",
+    title: "Repertorio, setlists y escenario",
+    intro: "Ten las canciones de la banda en una sola biblioteca, prepara setlists para los conciertos y lee letras y acordes en el escenario con todos en la misma canción.",
+    icon: "music",
+  },
+
+  articles: [
+    {
+      id: "repertoire-overview",
+      title: "La pantalla Repertorio",
+      summary: "Dónde están las canciones y las setlists de la banda, y para qué sirve cada parte de la pantalla.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["canciones", "biblioteca", "catálogo", "repertorio", "lista de canciones", "preparación"],
+      related: ["add-a-song", "song-menu-actions", "build-a-setlist", "music-what-members-can-do"],
+      body: [
+        { type: "p", text: "El Repertorio es la biblioteca de canciones de la banda. Todas sus canciones pertenecen a la banda, y todos los miembros activos pueden leerlas. Las setlists se crean con estas canciones." },
+        {
+          type: "steps",
+          title: "Abre el Repertorio",
+          items: [
+            "En Inicio, toca la casilla **Repertorio** en **Accesos rápidos**.",
+            "O toca tu avatar arriba (**Abrir perfil y cuenta**) y toca **Repertorio** en **Recursos y flujos de la banda**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Qué hay en la pantalla",
+          items: [
+            "**Canciones** y **Setlists**, arriba, cambian entre las dos listas. Cada una muestra cuántas hay.",
+            "El campo de búsqueda filtra la lista en la que estás: **Buscar canciones, artistas…** busca en títulos y artistas, **Buscar setlists…** en los nombres de las setlists.",
+            "La tarjeta **Repertorio de la banda** muestra el número de **Canciones** y **Setlists**, la **Duración total** de todas las canciones y la **Preparación**: un punto por canción, coloreado según su estado, con los totales de **Lista**, **Aprendiendo** y **Sugerida** debajo.",
+            "Cada fila de canción muestra el título, el artista y el tono, la duración y los BPM. Una etiqueta **Sugerida** o **Aprendiendo** aparece cuando la canción aún no está lista.",
+            "El botón redondo **Reproducir** a la izquierda de una fila reproduce la grabación de la canción o abre su enlace. Aparece en gris cuando la canción no tiene ninguna de las dos cosas.",
+            "Toca cualquier otra parte de una fila para abrir su menú (consulta [[song-menu-actions]]).",
+            "Encima de las canciones, los admins ven **Sugerencias de los miembros** cuando hay algo pendiente de revisar; los miembros siempre ven **Mis sugerencias** (consulta [[review-song-suggestions]] y [[suggest-a-change-to-a-song]]).",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Estado", "Significado"],
+          rows: [
+            ["**Lista**", "La banda la toca. Las canciones que añade o importa un admin empiezan aquí."],
+            ["**Aprendiendo**", "La banda la está preparando. Una sugerencia aprobada empieza aquí."],
+            ["**Sugerida**", "La ha propuesto un miembro. Espera a que un admin la apruebe o la rechace."],
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Ve **Importar lista de canciones** y **Añadir canción** arriba a la derecha en la lista de canciones, y **Nueva setlist** en la lista de setlists. Puede editar, cambiar el estado y eliminar cualquier canción." },
+            { role: "member", text: "Lee todas las canciones y setlists. El botón + de arriba a la derecha es **Sugerir una canción** en la lista de canciones; en la lista de setlists no hay botón." },
+            { role: "deputy", text: "Un sustituto no es miembro de la banda y no tiene Repertorio. Los sustitutos solo ven los conciertos que se les ha pedido tocar (consulta [[deputy-gigs]])." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["tablet", "duoBook", "duoLand"], text: "El Repertorio es la columna de la lista. Una setlist, el formulario de una canción o las sugerencias se abren al lado, en el segundo panel." },
+            { devices: ["duoLaptop"], text: "La tarjeta **Repertorio de la banda** pasa a la mitad de arriba (la pantalla), y las listas se quedan en la mitad de abajo." },
+          ],
+        },
+        { type: "shot", id: "music-repertoire", caption: "El Repertorio con la tarjeta Repertorio de la banda y la lista de canciones." },
+      ],
+    },
+    {
+      id: "add-a-song",
+      title: "Añade una canción al repertorio",
+      summary: "Añade una canción en tres pasos cortos; solo el título es obligatorio.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["nueva canción", "crear canción", "añadir tema", "formulario de canción"],
+      related: ["song-fields", "suggest-a-song", "import-a-song-list", "import-chords-and-lyrics"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, en **Canciones**, toca **Añadir canción** (el botón + de arriba a la derecha). Con la biblioteca vacía también puedes tocar **Añadir primera canción**.",
+            "En el paso 1, **Canción**, escribe el **Título de la canción \\***. Añade el **Artista original** si lo sabes. Para traer ahora acordes o letra, toca **Importar acordes y letras** (consulta [[import-chords-and-lyrics]]).",
+            "Toca **Siguiente**. En el paso 2, **Detalles · opcional**, rellena si quieres la **Duración**, los **BPM**, el **Tono** y el **Género**.",
+            "Toca **Siguiente**. En el paso 3, **Archivos y enlaces · opcional**, añade una grabación, un cifrado, enlaces, notas o la letra.",
+            "Toca **Añadir canción**. El botón cambia a **¡Añadida!** y el formulario se cierra.",
+          ],
+        },
+        { type: "p", text: "Puedes guardar en cualquier paso: toca **Añadir canción ahora** debajo de los campos para guardar con lo que tengas hasta el momento." },
+        { type: "note", tone: "tip", text: "Si ya hay en la biblioteca una canción con el mismo título y artista, el formulario dice «“…” ya está en tu biblioteca. Guarda otra vez para añadir una segunda copia.» Vuelve a tocar el botón de guardar solo si de verdad quieres dos copias." },
+        {
+          type: "list",
+          title: "Qué pasa después de guardar",
+          items: [
+            "La canción se añade con el estado **Lista**.",
+            "Los demás de la banda reciben un aviso en su bandeja de notificaciones (sin push).",
+            "Los archivos que elegiste se suben al guardar, al almacenamiento privado de la banda. Si falla el guardado, se vuelven a quitar.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Añade canciones directamente a la biblioteca como **Lista**." },
+            { role: "member", text: "Usa el mismo formulario, con el título **Sugerir una canción**. La canción se añade como **Sugerida** y espera a un admin. Consulta [[suggest-a-song]]." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoClosed"], text: "**Cerrar** está en la barra lateral, debajo del reloj, en vez de arriba a la derecha del formulario." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "El formulario se abre en el segundo panel, junto al Repertorio." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "song-fields",
+      title: "Todos los campos de una canción",
+      summary: "Para qué sirve cada campo del formulario de canción y qué límites tiene.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["detalles de la canción", "bpm", "tono", "duración", "género", "grabación", "cifrado", "youtube", "notas", "letra"],
+      related: ["add-a-song", "transpose-and-tempo", "lyrics-and-chords-format", "play-a-song-recording"],
+      body: [
+        { type: "p", text: "El formulario de canción tiene tres pasos. Solo el título es obligatorio; los demás pasos dicen «opcional» y se pueden saltar." },
+        {
+          type: "table",
+          head: ["Campo", "Para qué sirve"],
+          rows: [
+            ["**Título de la canción \\***", "El nombre de la canción. Obligatorio."],
+            ["**Artista original**", "Se muestra debajo del título en todas partes y sirve para detectar duplicados."],
+            ["**Importar acordes y letras**", "Trae un cifrado y la letra del foro de iReal Pro, de un archivo o del portapapeles. Cuando hay un cifrado asignado, una tarjeta **Cifrado** muestra su tono, estilo, tempo, compases y secciones, con **Ver acordes**, **Reemplazar** y una X para quitarlo."],
+            ["**Duración**", "Minutos y segundos en dos casillas (min : seg). Sirve para los totales de las setlists."],
+            ["**BPM**", "El tempo, hasta 3 cifras. Lo usa el clic del Modo escenario."],
+            ["**Tono**", "Texto libre, p. ej. Do mayor. Se muestra en la lista, en el escenario y en el control de transporte del lector."],
+            ["**Tap**, **BPM de la grabación**, ÷2 / ×2", "Herramientas debajo de BPM para encontrar el tempo. Consulta [[transpose-and-tempo]]."],
+            ["**Transponer para la banda**", "Cambia el tono, el cifrado y los acordes de la letra para todos. Solo aparece cuando hay algo que transponer."],
+            ["**Género**", "Etiquetas para elegir entre los géneros de la banda, o uno nuevo con la etiqueta discontinua **Género** y luego **Añadir género**. Los géneros filtran la biblioteca cuando creas una setlist."],
+            ["**Grabación**", "Un archivo de audio: MP3, M4A, WAV, 50 MB como máximo."],
+            ["**Cifrado / partitura**", "Un PDF o una foto, 20 MB como máximo."],
+            ["**Elegir archivos**", "Elige uno o varios archivos. La app los coloca en Grabación o en Cifrado según su tipo. Para archivos de iCloud Drive, Google Drive o Dropbox: toca **Elegir archivos**, luego **Explorar**, y elige la app en Ubicaciones."],
+            ["**Vídeo de YouTube**", "Un enlace a la canción en YouTube. Debe empezar por https://."],
+            ["**Partitura**", "Un enlace a un PDF o a una partitura en internet, en lugar de subir un cifrado. Debe empezar por https://."],
+            ["**Acordes**", "Un enlace a una página de acordes. Se guarda en las notas de la canción como «Acordes: <enlace>». Debe empezar por https://."],
+            ["**Notas**", "Notas de la banda sobre la canción: ideas de arreglo, cambios de tono."],
+            ["**Letra · texto, Markdown o JSON**", "La letra de la canción, con los acordes dentro si quieres. Consulta [[lyrics-and-chords-format]]. **Pegar o importar la letra**, debajo de la casilla, abre la hoja de importación en su pestaña Letra."],
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Las grabaciones y los cifrados que subes se guardan en privado para tu banda: solo los miembros de la banda pueden abrirlos." },
+        { type: "note", tone: "tip", text: "Si el título está vacío cuando eliges un archivo, el nombre del archivo pasa a ser el título." },
+      ],
+    },
+    {
+      id: "song-menu-actions",
+      title: "El menú de una canción: todas las acciones",
+      summary: "Qué hace cada opción del menú de una canción y quién la ve.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["acciones de la canción", "opciones de la canción", "menú", "ultimate guitar", "marcar como lista"],
+      related: ["read-a-song", "edit-or-delete-a-song", "play-a-song-recording", "chord-editor"],
+      body: [
+        { type: "p", text: "Toca una fila de canción en el Repertorio para abrir su menú. Las opciones solo aparecen cuando se aplican a esa canción." },
+        {
+          type: "table",
+          head: ["Opción", "Qué hace", "Quién"],
+          rows: [
+            ["**Reproducir**", "Reproduce la grabación en el minirreproductor, o abre el enlace de Spotify o YouTube.", "Todos, cuando la canción tiene grabación o enlace"],
+            ["**Letra**", "Abre el lector de canciones en la letra.", "Todos, cuando la canción tiene letra"],
+            ["**Acordes**", "Abre el lector de canciones en el cifrado.", "Todos, cuando la canción tiene un cifrado de iReal"],
+            ["**Abrir partitura**", "Abre el cifrado subido o el enlace a la partitura.", "Todos, cuando la canción tiene uno"],
+            ["**Abrir en Ultimate Guitar**", "Abre una búsqueda de la canción en Ultimate Guitar, fuera de la app.", "Todos"],
+            ["**Editar acordes**", "Abre el editor de acordes.", "Admins, cuando la canción tiene letra"],
+            ["**Editar**", "Abre el formulario de la canción.", "Admins"],
+            ["**Sugerir un cambio**", "Envía una corrección o una nota al admin.", "Miembros"],
+            ["**Marcar como lista**", "Cambia el estado a Lista.", "Admins, cuando la canción no está Lista"],
+            ["**Aprobar · aprendiendo**", "Aprueba una canción sugerida y la pone en Aprendiendo.", "Admins, en una canción Sugerida"],
+            ["**Volver a aprendiendo**", "Devuelve una canción Lista a Aprendiendo.", "Admins, en una canción Lista"],
+            ["**Eliminar**", "Elimina la canción después de una confirmación.", "Admins"],
+          ],
+        },
+        { type: "note", tone: "tip", text: "Pasar una canción sugerida a Aprendiendo o a Lista desde este menú acepta la sugerencia del miembro, y eliminarla la rechaza. En los dos casos se avisa al miembro que la sugirió." },
+      ],
+    },
+    {
+      id: "edit-or-delete-a-song",
+      title: "Edita, aprueba o elimina una canción",
+      summary: "Cambia los detalles o el estado de una canción, o quítala de la biblioteca.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["cambiar canción", "actualizar canción", "quitar canción", "estado de la canción", "aprobar canción"],
+      related: ["song-fields", "song-menu-actions", "music-notifications"],
+      body: [
+        {
+          type: "steps",
+          title: "Edita una canción",
+          items: [
+            "En el Repertorio, toca la fila de la canción y luego **Editar**.",
+            "Cambia lo que necesites en cualquiera de los tres pasos. Toca **Guardar ahora** para guardar desde el paso 1 o 2, o **Siguiente** y luego **Guardar canción** en el paso 3.",
+          ],
+        },
+        { type: "p", text: "Solo se guardan los campos que has cambiado, así que se conserva el cambio que haga a la vez un compañero en otro campo. El resto de la banda recibe una sola push, por ejemplo «Canción actualizada · Paper Boats» con «Leo M. ha cambiado: tonalidad, tempo.»" },
+        {
+          type: "steps",
+          title: "Cambia el estado de una canción",
+          items: [
+            "Toca la fila de la canción.",
+            "Toca **Marcar como lista**, **Aprobar · aprendiendo** o **Volver a aprendiendo**. La etiqueta de la fila cambia al momento.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Elimina una canción",
+          items: [
+            "Toca la fila de la canción y luego **Eliminar**.",
+            "Lee la confirmación: indica las setlists que pierden la canción y los próximos conciertos en los que se toca.",
+            "Toca **Eliminar** para confirmar, o **Cancelar**.",
+          ],
+        },
+        { type: "note", tone: "warning", text: "Al eliminar una canción se quita de todas las setlists que la tienen, y su grabación y su cifrado subidos se borran para siempre. No se puede deshacer." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Edita, cambia el estado y elimina cualquier canción de la banda." },
+            { role: "member", text: "No puede editar ni eliminar canciones de la banda. En su lugar usa **Sugerir un cambio** (consulta [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "lyrics-and-chords-format",
+      title: "Cómo se escriben la letra y los acordes",
+      summary: "El formato de las canciones de la banda: secciones, acordes en línea y lo que la app ordena al guardar.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["chordpro", "markdown", "secciones", "estrofa", "estribillo", "acordes en línea", "formato", "json"],
+      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics"],
+      body: [
+        { type: "p", text: "La letra es texto sin formato con unas pocas marcas sencillas. El mismo texto contiene las palabras y los acordes, así que una sola canción sirve al cantante y a los músicos." },
+        {
+          type: "list",
+          title: "Las marcas",
+          items: [
+            "Una sección empieza con una línea de título: `# Verse 1` o `[Chorus]`.",
+            "Una línea en blanco separa las estrofas.",
+            "Un acorde va entre corchetes justo antes de la palabra en la que cae: `[Am]word`. En el lector se muestra encima de esa palabra.",
+            "`**bold**` y `*italic*` funcionan dentro de una línea.",
+            "También funciona JSON, por ejemplo una lista de líneas o una lista de secciones con un nombre y sus líneas.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Qué ordena la app al guardar la canción",
+          items: [
+            "Los nombres de sección se unifican: «Rit.» pasa a ser Chorus (Estribillo), «[Strofa 2]» pasa a ser Verse 2 (Estrofa 2). Se entienden nombres en italiano, español, francés, alemán y portugués.",
+            "Las estrofas sin número se numeran cuando hay varias.",
+            "Una línea de acordes encima de una línea de palabras (hojas con acordes sobre la letra) se combina en acordes en línea.",
+            "Un acorde seguido de un espacio se une a la palabra siguiente.",
+          ],
+        },
+        { type: "p", text: "Los nombres de sección se escriben en inglés en el texto, pero cada persona los ve en el idioma de su app." },
+        { type: "note", tone: "tip", text: "Si la letra no se puede dibujar, el lector dice «Esta letra no se puede mostrar. Revisa su formato en Editar tema.»" },
+      ],
+    },
+    {
+      id: "read-a-song",
+      title: "Lee la letra y los acordes",
+      summary: "Abre una canción en el lector a pantalla completa, cambia de vista, cambia el tamaño del texto y transpón solo para ti.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["letra", "acordes", "estructura", "lector", "tamaño del texto", "vista de la canción", "cifrado"],
+      related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca la fila de la canción y toca **Letra** o **Acordes**. Desde el minirreproductor, toca **Letra**.",
+            "Cambia entre **Letra**, **Acordes** y **Estructura** con las pestañas debajo del título. Solo se muestran las vistas que tiene la canción.",
+            "Toca los botones − y + (**Texto más pequeño**, **Texto más grande**) de arriba para cambiar el tamaño del texto.",
+            "Para leer en otro tono, usa − y + alrededor del tono, debajo de las pestañas. Toca el tono para volver al original.",
+            "Toca la X (**Cerrar la letra**) para cerrar el lector.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Vista", "Qué muestra"],
+          rows: [
+            ["**Letra**", "Solo la letra, con los acordes ocultos."],
+            ["**Acordes**", "La letra con los acordes encima, o el cifrado de iReal si la letra no tiene acordes."],
+            ["**Estructura**", "El cifrado de iReal compás a compás, o la progresión de acordes de cada sección en casillas."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Tu vista se recuerda",
+          items: [
+            "La primera vez, el lector se abre en la vista de tu instrumento en la banda: los cantantes en Letra; guitarra, teclados y bajo en Acordes; batería, percusión y vientos en Estructura.",
+            "Después se abre en la última vista que elegiste en este dispositivo. La misma elección vale para el Modo escenario.",
+            "El tamaño del texto se guarda en este dispositivo y se comparte con el Modo escenario.",
+          ],
+        },
+        { type: "p", text: "Si la canción está sonando en el minirreproductor, aparece un botón de reproducir/pausa en la cabecera del lector. Los admins también ven ahí **Editar acordes**." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoLaptop"], text: "La canción ocupa la mitad de arriba (la pantalla) y los controles del lector pasan a la mitad de abajo (el teclado)." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "El lector se abre en el segundo panel, junto al Repertorio." },
+          ],
+        },
+        { type: "shot", id: "music-reader", caption: "El lector de canciones con las pestañas Letra, Acordes y Estructura." },
+      ],
+    },
+    {
+      id: "transpose-and-tempo",
+      title: "Transpón una canción y encuentra su tempo",
+      summary: "Cambia el tono para toda la banda o solo en tu pantalla, y fija los BPM marcando el tempo o a partir de la grabación.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["transponer", "cambio de tono", "semitono", "bpm", "marcar el tempo", "detección de tempo"],
+      related: ["song-fields", "read-a-song", "stage-click"],
+      body: [
+        {
+          type: "table",
+          head: ["Dónde", "Qué cambia", "Quién"],
+          rows: [
+            ["Formulario de canción, **Transponer para la banda**", "El tono de la canción, su cifrado y los acordes de su letra, para todos, al guardar.", "Admins"],
+            ["Lector y Modo escenario, − tono +", "Solo lo que muestra tu pantalla. La canción sigue en su tono para la banda. Se guarda por canción en este dispositivo.", "Todos"],
+          ],
+        },
+        {
+          type: "steps",
+          title: "Transpón para toda la banda",
+          items: [
+            "Abre el menú de la canción y toca **Editar**, y luego **Siguiente** para llegar a **Detalles · opcional**.",
+            "Debajo de **Tono**, toca **Bajar un semitono** (−) o **Subir un semitono** (+). El número entre los dos indica cuánto lo has movido.",
+            "Toca **Guardar ahora**. Se avisa a la banda de que han cambiado el tono y los acordes.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Encuentra los BPM",
+          items: [
+            "En el formulario de canción, en **Detalles · opcional**, toca **Tap** al ritmo de la canción. Después de dos toques se rellenan los BPM; el número de toques aparece junto al botón.",
+            "O toca **BPM de la grabación**, cuando la canción tiene un archivo de audio. El tempo se calcula en tu dispositivo.",
+            "Si el resultado es la mitad o el doble del tempo real, toca ÷2 o ×2.",
+          ],
+        },
+        { type: "note", tone: "tip", text: "Un tempo sacado de la grabación es una estimación: el formulario dice «Estimado a partir de la grabación: compruébalo marcando el tempo.»" },
+      ],
+    },
+    {
+      id: "chord-editor",
+      title: "Edita los acordes de una canción",
+      summary: "Pon acordes en las palabras tocándolas, muévelos arrastrando y cópialos entre secciones.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["editor de acordes", "editar acordes", "añadir acorde", "mover acorde", "copiar acordes", "ireal"],
+      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca la fila de la canción y toca **Editar acordes**. También puedes tocar **Editar acordes** en la cabecera del lector de canciones.",
+            "Toca una palabra. La barra de abajo muestra **Acorde en «…»** y los acordes que ya usa la canción.",
+            "Toca un acorde para ponerlo en la palabra, o escribe uno nuevo en **Acorde nuevo, p. ej. F#m7** y toca **Añadir**. Toca **Sin acorde** para quitarlo. Toca **Listo** para cerrar la barra.",
+            "Para mover un acorde, arrástralo a otra palabra.",
+            "Para reutilizar los acordes de una estrofa, toca **Copiar acordes de…** encima de una sección y elige la sección de la que copiarlos.",
+            "Si la canción tiene un cifrado de iReal, toca **De iReal (…)** encima de una sección para colocar sobre sus líneas los acordes de la sección correspondiente del cifrado.",
+            "Toca **Deshacer** arriba a la derecha para volver atrás. Cuando termines, toca **Guardar acordes**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Comprobaciones del editor",
+          items: [
+            "**Ordenar el formato** aparece cuando los nombres de sección o los acordes no siguen el formato de la banda; un toque los corrige.",
+            "«No están en la partitura de iReal: …» enumera los acordes de la letra que el cifrado nunca toca.",
+            "«Los acordes suenan en …, la canción está en ….» aparece cuando los acordes no encajan con el tono de la canción, con un botón para transponerlos.",
+          ],
+        },
+        { type: "p", text: "El editor de acordes necesita la letra. Si no hay, te pide que la añadas primero en Editar tema. Después de guardar, la banda recibe una push de que han cambiado los acordes." },
+        { type: "note", tone: "tip", text: "Si sales con cambios sin guardar, se te pregunta «¿Guardar los cambios?» con **Guardar cambios**, **Descartar** y **Seguir editando**." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Edita los acordes de la banda para todos." },
+            { role: "member", text: "No tiene editor de acordes. Sugiere una corrección de acordes con **Sugerir un cambio** (consulta [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "import-chords-and-lyrics",
+      title: "Importa acordes y letra a una canción",
+      summary: "Trae un cifrado y la letra del foro de iReal Pro, de un archivo o del portapapeles.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["importar letra", "pegar letra", "chordpro", "musicxml", "cifrado", "importar archivo"],
+      related: ["import-from-ireal-pro", "open-a-chart-from-another-app", "lyrics-and-chords-format"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el formulario de canción, toca **Importar acordes y letras** en el paso 1, o **Pegar o importar la letra** en el paso 3.",
+            "Elige una pestaña: **Del foro**, **De un archivo** o **Letra**.",
+            "**De un archivo**: toca **Elegir un archivo** y elige un archivo MusicXML (.musicxml, .mxl), ChordPro (.cho, .chordpro, .pro) o de texto (.txt).",
+            "**Letra**: copia la letra en otro sitio y luego toca **Pegar del portapapeles**, o pégala en la casilla y toca **Vista previa**.",
+            "Revisa la vista previa y toca **Usar esta letra**, o **Atrás**.",
+            "Guarda la canción como siempre.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Conviene saber",
+          items: [
+            "La letra siempre se muestra antes en una vista previa. Si la canción ya tiene letra, la vista previa indica que esta la sustituye.",
+            "Un cifrado solo se asigna directamente, sin vista previa.",
+            "Lo que trae la importación solo rellena los campos vacíos: el título, el artista, el tono y el tempo que ya escribiste se mantienen.",
+            "Al pegar, las líneas vacías separan las secciones; los acordes encima de las palabras o entre [corchetes] se quedan con ellas.",
+            "Desde iReal Pro en tu dispositivo: Compartir › Exportar › MusicXML, guárdalo en Archivos y luego usa **De un archivo**.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Solo tu banda ve las letras y los cifrados que importas. Importa solo lo que tengas derecho a usar." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Importa en cualquier canción mientras la añade o la edita." },
+            { role: "member", text: "Importa mientras sugiere una canción nueva. Para una canción que ya existe, sugiere el cambio." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "import-from-ireal-pro",
+      title: "Importa un cifrado de iReal Pro",
+      summary: "Toca el enlace de una canción o de una lista en el foro de iReal Pro para traer sus acordes, su forma, su tono y su tempo a una canción.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["ireal", "ireal pro", "irealb", "cifrado", "lista de reproducción", "foro"],
+      related: ["import-chords-and-lyrics", "read-a-song", "chord-editor"],
+      body: [
+        {
+          type: "steps",
+          title: "En las apps de iPhone, iPad y Android",
+          items: [
+            "En el formulario de canción, toca **Importar acordes y letras** y quédate en **Del foro**.",
+            "Toca **Explorar el foro de iReal Pro**. El foro se abre dentro de la app.",
+            "Toca el enlace de una canción o de una lista. Sus acordes vuelven directamente al formulario.",
+            "O pega un enlace irealb:// en **Enlace de iReal Pro**.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "En la web",
+          items: [
+            "En el formulario de canción, toca **Importar acordes y letras** y quédate en **Del foro**.",
+            "Toca **Abrir el foro de iReal Pro**. El foro se abre en su propia ventana.",
+            "Haz clic derecho en el enlace de una canción o de una lista y elige Copiar enlace.",
+            "De vuelta en BandWith, toca **Pegar enlace**, pégalo en **Enlace de iReal Pro** o arrastra el enlace a la casilla (dice **Suelta aquí el enlace**). La ventana del foro se cierra cuando el enlace está dentro.",
+          ],
+        },
+        { type: "p", text: "El enlace de una lista muestra sus canciones («… · 12 canciones»). Las canciones que coinciden con tu título aparecen primero; escribe en **Buscar una canción** para acotar la lista y toca una canción para usarla. **Cambiar** vuelve al enlace." },
+        {
+          type: "list",
+          title: "Qué se importa",
+          items: [
+            "Los acordes y la forma (secciones, compases, repeticiones), además del tono, el estilo, el tempo y el compás. Sin melodía ni letra.",
+            "El título, el compositor (como artista), el tono y los BPM rellenan los campos vacíos del formulario.",
+            "El cifrado aparece en las vistas **Acordes** y **Estructura** del lector de canciones, y el editor de acordes puede usarlo para colocar acordes.",
+          ],
+        },
+        { type: "note", tone: "tip", text: "Si tu navegador bloquea la ventana del foro, permite las ventanas emergentes para BandWith e inténtalo de nuevo." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["web"], text: "El foro no se puede abrir dentro de la página, así que se abre en una ventana aparte y traes el enlace de vuelta con **Pegar enlace**, pegándolo o arrastrándolo." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "open-a-chart-from-another-app",
+      title: "Abre un cifrado MusicXML desde otra app",
+      summary: "Envía un archivo MusicXML a BandWith y asigna su cifrado a una canción.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["abrir en", "menú compartir", "musicxml", "archivo recibido", "asignar cifrado"],
+      related: ["import-chords-and-lyrics", "suggest-a-change-to-a-song"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En otra app (por ejemplo iReal Pro o Archivos), comparte o abre un archivo MusicXML con BandWith.",
+            "BandWith abre una hoja **Archivo recibido**. Los admins ven **Asignar el cifrado**; los miembros ven **Sugerir la tabla de acordes**.",
+            "Elige la canción a la que pertenece. Usa **Buscar una canción** para buscar. Una canción que ya tiene cifrado indica que se sustituirá.",
+            "Toca **Abrir acordes** para revisarlo, o **Listo**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Para una canción nueva, añade antes la canción: el archivo espera en **Importar acordes y letras** › **De un archivo** › **Archivo recibido**, donde **Usarlo** lo asigna.",
+            "Toca **Descartar el archivo** si no lo quieres.",
+            "Una partitura con letra pero sin símbolos de acordes no da cifrado; para usar su letra, abre Editar de la canción › **Pegar o importar la letra** › **De un archivo**.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "El cifrado se asigna a la canción de la banda al momento." },
+            { role: "member", text: "El cifrado le llega al admin como sugerencia. La canción de la banda no cambia hasta que la acepte." },
+          ],
+        },
+        { type: "devices", rows: [{ devices: ["web"], text: "No disponible: recibir archivos de otras apps funciona en las apps de iPhone, iPad y Android." }] },
+      ],
+    },
+    {
+      id: "import-a-song-list",
+      title: "Importa una lista de canciones",
+      summary: "Añade muchas canciones a la vez desde un archivo CSV o de texto, o carga el repertorio seleccionado.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["csv", "excel", "hoja de cálculo", "importación masiva", "txt", "numbers", "google sheets", "700 canciones"],
+      related: ["add-a-song", "repertoire-overview"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, en **Canciones**, toca **Importar lista de canciones** (el botón de subir de arriba a la derecha). Con la biblioteca vacía también puedes tocar **Importar lista (CSV/TXT)**.",
+            "Elige un archivo .csv, .tsv o .txt, de hasta 2 MB.",
+            "Lee la línea encima de la lista: indica cuántas canciones se han importado y cuántas ya estaban en tu biblioteca.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Cómo puede ser el archivo",
+          items: [
+            "Una hoja de cálculo guardada como CSV (Excel, Numbers, Google Sheets) con una fila de cabecera. Columnas que se leen: title (o song, name, track), artist (o band, performer), key, bpm (o tempo), duration (o length, time; m:ss o segundos) y genre.",
+            "Una lista sencilla escrita en Notas: una canción por línea, como «Título - Artista», «Título, Artista» o solo «Título». Las líneas numeradas y las líneas en blanco no dan problemas.",
+            "Hasta 2000 canciones por archivo.",
+          ],
+        },
+        { type: "p", text: "Las canciones con el mismo título y artista que una que ya está en la biblioteca se saltan. Las canciones importadas se añaden como **Lista**." },
+        {
+          type: "steps",
+          title: "Carga el repertorio seleccionado",
+          items: [
+            "Con la biblioteca vacía, toca **Cargar 700+ canciones**.",
+            "La app añade las canciones seleccionadas que aún no están en tu biblioteca y te dice cuántas.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Importar una lista de canciones es solo para admins: va directamente a la biblioteca de la banda. Los miembros sugieren canciones de una en una, y un admin revisa cada una." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Ve **Importar lista de canciones** y **Cargar 700+ canciones**." },
+            { role: "member", text: "No ve estos botones." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "play-a-song-recording",
+      title: "Reproduce una grabación, abre un cifrado o un enlace",
+      summary: "Escucha la grabación de la banda en el minirreproductor y abre cifrados y enlaces.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["reproducir", "audio", "minirreproductor", "grabación", "spotify", "youtube", "cifrado en pdf"],
+      related: ["song-menu-actions", "song-fields", "read-a-song"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca el botón redondo **Reproducir** de una fila de canción, o toca la fila y luego **Reproducir**.",
+            "Una grabación (un archivo subido, un enlace de Google Drive o cualquier enlace de audio) suena en el minirreproductor. Usa ahí **Pausa**, **Reproducir** y **Detener**, y **Letra** para abrir el lector de canciones.",
+            "Un enlace de Spotify o YouTube se abre fuera de la app.",
+            "Para ver el cifrado, toca la fila y luego **Abrir partitura**.",
+          ],
+        },
+        { type: "note", tone: "tip", text: "Si no se abre nada, la app dice «No se pudo abrir la canción. Revisa su grabación o sus enlaces.» Si un enlace falla en el reproductor, **Abrir el enlace** lo abre en otro sitio." },
+      ],
+    },
+    {
+      id: "my-notes-and-files",
+      title: "Mis notas y archivos en una canción",
+      summary: "Añade notas privadas a una canción, una línea, una palabra o un acorde, y guarda tus propios archivos, que nadie más ve.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["notas personales", "notas privadas", "mis notas", "anotaciones", "mis archivos", "grabación propia"],
+      related: ["read-a-song", "stage-mode", "suggest-a-change-to-a-song"],
+      body: [
+        { type: "note", tone: "privacy", text: "Tus notas y archivos son solo tuyos: nadie más de la banda los ve, tampoco los admins. La canción de la banda no cambia para los demás." },
+        {
+          type: "steps",
+          title: "Añade una nota",
+          items: [
+            "Abre la canción en el lector (**Letra** o **Acordes**) o en el Modo escenario.",
+            "Activa **Mis notas** debajo de las pestañas de la canción. La primera vez, una hoja explica qué son; toca **Entendido**.",
+            "Toca **Añadir nota** y luego la línea que quieras. O toca **Nota sobre toda la canción**.",
+            "Para una línea, elige a qué se refiere la nota: **Toda la línea**, una de sus palabras o uno de sus acordes.",
+            "Escribe en **Mi nota** y toca **Guardar nota**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Tus notas aparecen debajo de su línea, resaltadas. Las notas sobre toda la canción aparecen encima de la letra.",
+            "Toca una nota para cambiarla o toca **Eliminar nota**.",
+            "Una nota se queda en su línea aunque un admin edite los acordes o mueva secciones. Si su línea ya no está en la canción, pasa arriba para que no se pierda.",
+            "Desactiva **Mis notas** para ocultarlas, por ejemplo en el escenario. El interruptor se guarda en este dispositivo.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Añade un archivo tuyo",
+          items: [
+            "Con **Mis notas** activado, toca **Añadir archivo** y elige una grabación o una partitura.",
+            "Aparece como una etiqueta debajo de la barra. Tócala para abrirlo; toca su X y confirma para quitarlo.",
+          ],
+        },
+        { type: "p", text: "Para compartir una nota con la banda, toca **Sugerir a la banda** en la hoja de la nota. Le llega al admin como sugerencia, con la línea en la que estaba." },
+        {
+          type: "devices",
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "En el Modo escenario, la barra solo usa botones con iconos, así que cabe en una fila encima de la letra." }],
+        },
+      ],
+    },
+    {
+      id: "suggest-a-song",
+      title: "Sugiere una canción nueva",
+      summary: "Propón una canción para el repertorio; un admin la aprueba o la rechaza.",
+      roles: ["member"],
+      kind: "task",
+      keywords: ["proponer canción", "sugerir canción", "petición de canción", "idea de canción"],
+      related: ["add-a-song", "my-song-suggestions", "review-song-suggestions"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, en **Canciones**, toca **Sugerir una canción** (el botón + de arriba a la derecha).",
+            "Rellena el formulario como para cualquier canción: **Título de la canción \\*** es el único campo obligatorio. Puedes importar acordes y letra y adjuntar una grabación o un cifrado.",
+            "Toca **Sugerir ahora** para enviarla antes, o recorre los pasos y toca **Sugerir una canción** en el último.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Qué pasa después",
+          items: [
+            "La canción aparece en el Repertorio con la etiqueta **Sugerida**, para todos los de la banda.",
+            "Los admins de la banda reciben una push: «Canción sugerida · …». Varias canciones sugeridas en menos de un minuto envían una sola push.",
+            "Cuando un admin la aprueba, pasa a **Aprendiendo** y recibes una push. Si se rechaza, la canción y sus archivos se eliminan, y recibes una push con el motivo del admin si lo ha dado.",
+          ],
+        },
+        { type: "p", text: "Los archivos que adjuntas a una canción sugerida se guardan en tu propia carpeta hasta que un admin acepta la canción." },
+      ],
+    },
+    {
+      id: "suggest-a-change-to-a-song",
+      title: "Sugiere un cambio en una canción",
+      summary: "Envía al admin una corrección de la letra o de los acordes, o una nota para toda la banda.",
+      roles: ["member"],
+      kind: "task",
+      keywords: ["corrección", "corregir letra", "corregir acordes", "nota para la banda", "proponer cambio"],
+      related: ["my-song-suggestions", "review-song-suggestions", "my-notes-and-files"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca la fila de la canción y toca **Sugerir un cambio**.",
+            "Elige **Letra o acordes** o **Nota para la banda**.",
+            "Para la letra o los acordes, cambia el texto en **Letra con acordes**. Los acordes van entre corchetes antes de la palabra: [Am]palabra. La línea debajo de la casilla indica qué has cambiado, por ejemplo «Acordes cambiados en 2 líneas».",
+            "Añade un **Mensaje para el admin (opcional)** si ayuda.",
+            "Para una nota, escríbela en **Nota para toda la banda**.",
+            "Toca **Enviar sugerencia**. La hoja dice **Enviada al admin** y se cierra.",
+          ],
+        },
+        { type: "note", tone: "tip", text: "La canción de la banda sigue igual para todos hasta que el admin acepta tu sugerencia." },
+        { type: "p", text: "También puedes partir de una de tus notas: ábrela y toca **Sugerir a la banda**. La nota se envía con la línea en la que estaba." },
+        { type: "p", text: "Los admins reciben una push con el nombre del tipo: «Corrección de la letra · …», «Corrección de acordes · …» o «Nota para la banda · …»." },
+      ],
+    },
+    {
+      id: "my-song-suggestions",
+      title: "Sigue o retira tus sugerencias",
+      summary: "Mira cuáles de tus sugerencias están pendientes, cuáles se han aceptado, y retira una.",
+      roles: ["member"],
+      kind: "task",
+      keywords: ["mis sugerencias", "retirar", "estado de la sugerencia", "pendiente"],
+      related: ["suggest-a-song", "suggest-a-change-to-a-song"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, en **Canciones**, toca **Mis sugerencias**. Su línea indica cuántas esperan al admin.",
+            "**Pendientes** muestra las que siguen abiertas; **Revisadas** muestra el resto con su resultado.",
+            "Toca una para verla. **Cambios**, **Antes** y **Después** muestran la diferencia; una revisada muestra el motivo del admin si lo ha dado.",
+            "Para retirar una sugerencia pendiente, toca **Retirar la sugerencia** y luego otra vez **Retirar la sugerencia** para confirmar, o **Mantener**.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Etiqueta", "Significado"],
+          rows: [
+            ["**Pendientes**", "Aún no se ha revisado."],
+            ["**Aceptado**", "Aplicada tal como la enviaste."],
+            ["**Aceptada con cambios**", "El admin la aplicó con sus propios cambios."],
+            ["**No aceptada**", "Rechazada."],
+          ],
+        },
+        { type: "note", tone: "warning", text: "Al retirar una canción nueva sugerida se eliminan la canción y los archivos que adjuntaste. Los admins dejan de verla." },
+      ],
+    },
+    {
+      id: "review-song-suggestions",
+      title: "Revisa las sugerencias de los miembros",
+      summary: "Acepta, acepta con cambios o rechaza lo que proponen los miembros, con un motivo opcional.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["revisar", "aprobar", "rechazar", "sugerencias de los miembros", "moderar"],
+      related: ["suggest-a-change-to-a-song", "suggest-a-song", "edit-or-delete-a-song"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, en **Canciones**, toca **Sugerencias de los miembros** (muestra «… por revisar»). También puedes tocar la push que has recibido.",
+            "En **Pendientes**, toca una sugerencia. Indica quién la sugirió y cuándo, con su mensaje.",
+            "Mira **Cambios** (líneas añadidas y quitadas), **Antes** y **Después**. Para una canción nueva, un resumen enumera lo que incluye.",
+            "Si quieres, escribe un **Motivo (opcional, lo verá …)**.",
+            "Toca **Aceptar**, **Aceptar con cambios** o **Rechazar**.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Botón", "Qué pasa"],
+          rows: [
+            ["**Aceptar**", "El cambio se aplica a la canción de la banda. Una canción nueva pasa a Aprendiendo."],
+            ["**Aceptar con cambios**", "Primero editas el texto y luego tocas **Aceptar con estos cambios**. Para una canción nueva, se abre el formulario de la canción."],
+            ["**Rechazar**", "No cambia nada. Una canción nueva sugerida se elimina, con sus archivos."],
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "El miembro recibe una push con el resultado y tu motivo.",
+            "Si la canción ha cambiado después de la sugerencia, la pantalla avisa de que estás comparando con su versión actual.",
+            "Una nota para la banda se añade a las notas de la canción.",
+            "Una sugerencia que incluye un cifrado también sustituye el cifrado de la canción.",
+            "Las sugerencias revisadas se quedan en **Revisadas**.",
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["tablet", "duoBook", "duoLand"], text: "Las sugerencias se abren en el segundo panel, junto al Repertorio." }],
+        },
+        { type: "shot", id: "music-suggestions", caption: "Una corrección de la letra con Cambios, Antes y Después, y los botones de revisión." },
+      ],
+    },
+    {
+      id: "build-a-setlist",
+      title: "Crea una setlist",
+      summary: "Crea una setlist en el Repertorio, añade canciones de la biblioteca, ordénalas y guarda.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["nueva setlist", "crear setlist", "lista de canciones", "orden del concierto", "playlist"],
+      related: ["setlists-and-sets", "attach-a-setlist-to-a-gig", "edit-a-gig-setlist", "music-notifications"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca **Setlists** y luego **Nueva setlist** (el botón + de arriba a la derecha). Si aún no hay setlists, también puedes tocar **Crear primera setlist**.",
+            "Escribe un **Nombre de la setlist \\***, por ejemplo Noche de jazz 1.er set, y toca **Crear setlist**.",
+            "Toca la nueva setlist en la lista para abrirla.",
+            "Toca **Añadir canciones…**. Busca con **Buscar en la biblioteca…** o toca la etiqueta de un género para filtrar. Toca una canción para añadirla; vuelve a tocarla para quitarla. Las canciones de la setlist aparecen resaltadas.",
+            "Toca **Listo** para cerrar la biblioteca.",
+            "Arrastra una canción por su asa (**Arrastra para reordenar**) para moverla. Toca la X de una fila para quitarla.",
+            "Si quieres, cambia el **Nombre de la setlist** arriba.",
+            "Toca **Guardar setlist**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Qué muestra el editor",
+          items: [
+            "**Orden de la setlist (… canciones)** con la duración **Total**.",
+            "Cuando la setlist tiene más de un set, una etiqueta por set con sus canciones y su duración, y una etiqueta **Set 1**, **Set 2** en la primera canción de cada set.",
+            "Cuántas canciones no tienen duración: añádela con Editar para tener un total exacto.",
+          ],
+        },
+        { type: "p", text: "Al guardar, los miembros activos de la banda reciben una sola push con lo que ha cambiado, por ejemplo «Setlist actualizada · Rooftop set» y «Leo M.: 2 canciones movidas, 1 añadida.» También se menciona un cambio de nombre." },
+        { type: "note", tone: "tip", text: "Si sales del editor con cambios sin guardar, se te pregunta «¿Guardar los cambios de la setlist?» con **Guardar cambios**, **Descartar** y **Seguir editando**." },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Crea, edita, renombra y elimina setlists." },
+            { role: "member", text: "Abre las setlists en modo solo lectura: el orden, los sets y la duración, y **Exportar setlist en PDF**. Sin campo de nombre, sin biblioteca, sin asas y sin Guardar." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["tablet", "duoBook", "duoLand"], text: "La setlist se abre en el segundo panel, junto a la lista de setlists." }],
+        },
+        { type: "shot", id: "music-setlist-editor", caption: "El editor de setlists con la biblioteca abierta y el orden de la setlist debajo." },
+      ],
+    },
+    {
+      id: "setlists-and-sets",
+      title: "Setlists, sets y plantillas",
+      summary: "Cómo se relacionan con los conciertos las setlists, los sets que contienen y las setlists de plantilla.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["sets", "set 1", "set 2", "plantilla", "setlist guardada", "setlist del concierto"],
+      related: ["build-a-setlist", "attach-a-setlist-to-a-gig", "edit-a-gig-setlist"],
+      body: [
+        { type: "p", text: "Una setlist es una lista ordenada de canciones de la banda. Una canción solo aparece una vez en una setlist. Una setlist se puede dividir en sets (Set 1, Set 2…), por ejemplo antes y después de un descanso." },
+        {
+          type: "list",
+          items: [
+            "Los sets se crean al preparar la setlist de un concierto: **Añadir set** en el formulario del concierto, o **Nuevo set** al añadir canciones en el resumen del concierto.",
+            "En el editor de setlists del Repertorio ves los sets y puedes mover canciones de uno a otro arrastrándolas por el límite; una canción nueva entra en el último set. Los sets vacíos desaparecen al guardar.",
+            "Las setlists marcadas como plantilla muestran la etiqueta **Plantilla** en la lista. El formulario del concierto ofrece tus setlists guardadas en **Cargar desde plantillas**.",
+            "Cuando cargas una setlist guardada en un concierto, el concierto recibe su propia copia, con el nombre del concierto (por ejemplo «Setlist Rooftop Session»). Cambiar después la setlist del concierto no cambia la que cargaste.",
+            "Todas las setlists de concierto aparecen también en el Repertorio, en **Setlists**.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Edita setlists en todas partes: en el Repertorio, el formulario del concierto, el resumen del concierto y el Modo escenario." },
+            { role: "member", text: "Lee todas las setlists de la banda. Solo los admins pueden editar setlists." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "attach-a-setlist-to-a-gig",
+      title: "Asigna una setlist a un concierto",
+      summary: "Añade canciones o una setlist guardada mientras creas o editas un concierto.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["asignar setlist", "canciones del concierto", "cargar plantilla", "añadir set", "setlist del evento"],
+      related: ["edit-a-gig-setlist", "setlists-and-sets", "create-a-gig"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Crea un concierto, o abre uno y toca **Editar** (consulta [[create-a-gig]]).",
+            "Abre la sección **Setlist y canciones**.",
+            "Para partir de una setlist guardada, tócala en **Cargar desde plantillas**. Cuando ya hay canciones, **Plantillas** vuelve a mostrar la lista como **Reemplazar con una plantilla**.",
+            "Para añadir canciones, toca **Biblioteca** debajo de un set, o **Manual** para escribir una. **Añadir canciones** añade a un set que eliges.",
+            "Toca **Añadir set** para otro set, ponle nombre en **Nombre del set...**, o toca **Quitar set**.",
+            "Guarda el concierto.",
+          ],
+        },
+        { type: "p", text: "El concierto recibe su propia setlist, con el nombre del concierto. Cuando editas un concierto, su setlist se actualiza y la formación recibe una sola push con lo que ha cambiado." },
+        { type: "note", tone: "tip", text: "Si el concierto no tiene setlist, su resumen dice **SIN SETLIST**; los admins pueden añadir canciones ahí mismo (consulta [[edit-a-gig-setlist]])." },
+      ],
+    },
+    {
+      id: "edit-a-gig-setlist",
+      title: "Edita la setlist de un concierto desde su resumen",
+      summary: "Reordena, añade y quita canciones directamente en el concierto, sin abrir el formulario de edición.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["reordenar canciones", "resumen del concierto", "selector de set", "en qué set", "nuevo set", "arrastrar canciones"],
+      related: ["attach-a-setlist-to-a-gig", "music-notifications", "gig-workspace"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abre un próximo concierto. La sección **SETLIST** del resumen muestra sus canciones.",
+            "Para mover una canción, mantenla pulsada y arrástrala. Con un teclado, pon el foco en su asa y usa las flechas arriba y abajo.",
+            "Para quitar una canción, toca su X (**Quitar canción**).",
+            "Para añadir canciones, toca **Añadir canciones**. Con más de un set, **¿En qué set?** te pregunta dónde; toca un set o **Nuevo set**.",
+            "En **Añadir canciones**, marca las canciones (**Biblioteca**) y toca **Añadir … canciones**. Las canciones que ya están en el set muestran **En el set**. **Manual** crea una canción nueva y la añade.",
+            "Toca **Guardar** en la barra **Cambios sin guardar**, o **Cancelar** para descartar los cambios.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "No se guarda nada hasta que tocas **Guardar**. Entonces la formación del concierto (todos los que no han rechazado) recibe una sola push, por ejemplo «Setlist actualizada · Rooftop Session» y «Leo M.: 1 canción movida, 1 añadida.»",
+            "Un concierto que aún no tiene setlist recibe una al guardar, con el nombre del concierto.",
+            "Si sales del concierto con cambios sin guardar, se te pregunta «¿Guardar los cambios de la setlist?».",
+            "Al tocar **SETLIST** o el número de canciones se abre la lista completa en una hoja, donde puedes editar de la misma forma.",
+            "Los conciertos pasados, los presupuestos y los ensayos muestran aquí la setlist en modo solo lectura.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Edita la setlist en el resumen de los próximos conciertos de la banda." },
+            { role: "member", text: "Ve las canciones, los artistas y las duraciones en modo solo lectura. Sin setlist, la hoja dice «El admin de la banda aún no ha añadido una setlist.»" },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["tablet"], text: "El espacio de trabajo del concierto tiene su propia pestaña **SETLIST** junto a **RESUMEN**, **RIDER Y ESCENARIO** y **DINERO**." }],
+        },
+      ],
+    },
+    {
+      id: "export-a-setlist-pdf",
+      title: "Exporta una setlist en PDF",
+      summary: "Haz un PDF de una setlist para imprimirlo o enviarlo.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["pdf", "imprimir setlist", "compartir setlist", "descargar"],
+      related: ["build-a-setlist"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca **Setlists** y abre una setlist.",
+            "Toca **Exportar setlist en PDF** (el botón de documento de arriba a la derecha).",
+            "En un móvil, elige adónde enviarlo en el menú de compartir. En la web, el PDF se descarga.",
+          ],
+        },
+        { type: "p", text: "El PDF incluye el nombre de la banda, el nombre de la setlist y cada canción con su artista, tono, BPM, duración y set." },
+        { type: "p", text: "El botón aparece en gris mientras la setlist está vacía." },
+      ],
+    },
+    {
+      id: "delete-a-setlist",
+      title: "Elimina una setlist",
+      summary: "Quita una setlist; las canciones se quedan en la biblioteca.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["quitar setlist", "borrar setlist"],
+      related: ["build-a-setlist"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Repertorio, toca **Setlists** y abre la setlist.",
+            "Toca **Eliminar setlist** (la papelera roja de arriba a la derecha).",
+            "Lee la confirmación: indica los próximos conciertos que pierden su setlist.",
+            "Toca **Eliminar**, o **Cancelar**.",
+          ],
+        },
+        { type: "note", tone: "warning", text: "Los conciertos que usan la setlist la pierden. Las canciones se quedan en tu biblioteca. No se puede deshacer." },
+      ],
+    },
+    {
+      id: "music-notifications",
+      title: "Notificaciones sobre canciones y setlists",
+      summary: "A quién se avisa de qué cuando cambian canciones, setlists y sugerencias.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["push", "notificación", "setlist actualizada", "canción actualizada", "aviso"],
+      related: ["build-a-setlist", "edit-a-gig-setlist", "review-song-suggestions", "notifications-inbox"],
+      body: [
+        {
+          type: "table",
+          head: ["Cambio", "A quién se avisa", "Cómo"],
+          rows: [
+            ["Se guarda la setlist de un concierto (resumen o formulario del concierto)", "La formación del concierto, salvo quien guarda", "Una push: «Setlist actualizada · <concierto>» con «2 canciones movidas, 1 añadida»"],
+            ["Se guarda una setlist en el Repertorio", "Los miembros activos de la banda, salvo quien guarda", "Una push: «Setlist actualizada · <setlist>», o que se le ha cambiado el nombre"],
+            ["Se edita una canción (formulario o editor de acordes)", "Los miembros activos de la banda, salvo quien guarda", "Una push: «Canción actualizada · <canción>» con los campos cambiados"],
+            ["Un admin añade una canción", "El resto de la banda", "Aviso en la bandeja, sin push"],
+            ["Se sugiere una canción o un cambio", "Los admins activos de la banda", "Push"],
+            ["Se revisa una sugerencia", "El miembro que la hizo", "Push, con el motivo"],
+            ["Se reordena la setlist en el Modo escenario", "La banda", "Aviso en la bandeja, sin push"],
+          ],
+        },
+        { type: "p", text: "Los textos se escriben en el idioma de la app de cada persona." },
+        { type: "p", text: "Un concierto abierto vuelve a cargar su setlist en cuanto un admin la cambia, así que los miembros ven el nuevo orden sin actualizar." },
+      ],
+    },
+    {
+      id: "music-what-members-can-do",
+      title: "Qué pueden hacer admins, miembros y sustitutos con canciones y setlists",
+      summary: "Una tabla de quién puede leer y quién puede cambiar el repertorio, las setlists y el Modo escenario.",
+      roles: ["admin", "member", "deputy"],
+      kind: "reference",
+      keywords: ["permisos", "derechos de los miembros", "solo admins", "solo lectura", "privacidad"],
+      related: ["repertoire-overview", "suggest-a-change-to-a-song", "stage-mode", "who-sees-what"],
+      body: [
+        {
+          type: "table",
+          head: ["Acción", "Admin", "Miembro"],
+          rows: [
+            ["Leer todas las canciones, letras, acordes y archivos", "Sí", "Sí"],
+            ["Añadir una canción a la biblioteca", "Sí, como Lista", "La sugiere, como Sugerida"],
+            ["Editar, transponer para la banda, editar acordes, eliminar una canción", "Sí", "No: sugiere un cambio"],
+            ["Importar una lista de canciones o cargar 700+ canciones", "Sí", "No"],
+            ["Revisar sugerencias", "Sí, todas las de la banda", "Solo ve las suyas"],
+            ["Mis notas y mis archivos", "Solo los suyos", "Solo los suyos"],
+            ["Leer setlists y exportarlas en PDF", "Sí", "Sí"],
+            ["Crear, editar, reordenar y eliminar setlists", "Sí", "No"],
+            ["Abrir el Modo escenario en un próximo concierto", "Sí, como líder", "Sí, como seguidor"],
+            ["Mover la canción actual de la banda, reordenar en el escenario, iniciar el clic de la banda", "Sí", "No: avanza y usa el clic solo en su propio teléfono"],
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Los admins no ven las notas ni los archivos de los miembros. Los miembros solo ven sus propias sugerencias; los admins las ven todas." },
+        {
+          type: "roles",
+          rows: [
+            { role: "deputy", text: "Un sustituto no es miembro de la banda: no tiene Repertorio, ni setlists, ni Modo escenario. Sus bolos como sustituto muestran la fecha, los horarios, la sala, el papel y el caché ofrecido." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "stage-mode",
+      title: "Modo escenario",
+      summary: "Una pantalla negra para el día del concierto, fácil de leer de un vistazo, con el horario, la setlist y la letra o los acordes de cada canción.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      body: [
+        {
+          type: "steps",
+          title: "Abre el Modo escenario",
+          items: [
+            "Abre un próximo concierto de la banda y toca el botón **Reproducir** de arriba a la derecha (**Abrir modo escenario**). El día del concierto aparece resaltado.",
+            "O, en Inicio, toca **Go live** debajo de tu próximo concierto.",
+            "Para salir, toca la X (**Salir del modo escenario**).",
+          ],
+        },
+        {
+          type: "list",
+          title: "Qué hay en la pantalla",
+          items: [
+            "**Modo escenario · <date>**, el título del concierto, la sala y la ciudad.",
+            "El horario: Montaje, Prueba de sonido, Show y Fin en formato de 24 horas. El siguiente aparece resaltado como **Siguiente · …**; los pasados se atenúan.",
+            "La **Setlist** con números, títulos, tono y duración. La canción actual aparece resaltada. Las canciones quitadas para esta noche aparecen tachadas, y el número encima de la lista dice cuántas son (**· 2 quitados**).",
+            "Una segunda pestaña con el nombre de tu vista de canción (**Letra**, **Acordes** o **Estructura**) muestra la canción actual. Sigue a la canción cuando cambia.",
+            "**Anterior** y **Siguiente** abajo, con el botón del clic entre los dos.",
+          ],
+        },
+        {
+          type: "list",
+          title: "En la pestaña de la canción",
+          items: [
+            "Cambia entre **Letra**, **Acordes** y **Estructura**. La elección se comparte con el lector de canciones.",
+            "Cambia el tamaño del texto con − y +.",
+            "Transpón para ti con − tono +. Solo cambia tu pantalla.",
+            "**Mis notas** muestra tus notas privadas sobre la versión de la banda.",
+            "El horario se oculta para dejar más sitio a la canción.",
+            "Donde hay sitio (un móvil en horizontal, un iPad, un dispositivo de doble pantalla abierto sobre los dos paneles), la setlist se queda en una columna junto a la canción. Toca ahí una canción para ir a ella.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Conviene saber",
+          items: [
+            "El Modo escenario se ofrece para los próximos conciertos de la banda, no para ensayos, presupuestos, conciertos pasados ni conciertos personales.",
+            "La pantalla no se apaga mientras el Modo escenario está abierto.",
+            "Sin setlist, dice «Este concierto no tiene setlist.»",
+            "En las apps de móvil y tablet, la setlist con letras y cifrados se guarda en el dispositivo cuando abres el concierto, así que el Modo escenario funciona sin internet. Al cerrar sesión se borra.",
+            "Sin internet y sin copia en el dispositivo, dice «Sin conexión: no se pudo cargar la setlist.» con **Reintentar**.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Dirige: mueve la canción actual de la banda, reordena la setlist manteniendo pulsada y arrastrando una canción, quita canciones para esta noche e inicia el clic de la banda. Consulta [[lead-stage-mode]]." },
+            { role: "member", text: "Sigue al líder, o avanza por las canciones por su cuenta. Consulta [[follow-in-stage-mode]]." },
+            { role: "deputy", text: "Sin Modo escenario: los sustitutos no tienen las setlists de la banda." },
+          ],
+        },
+        { type: "shot", id: "music-stage", caption: "El Modo escenario el día del concierto: horario, setlist y Anterior / Siguiente." },
+      ],
+    },
+    {
+      id: "lead-stage-mode",
+      title: "Dirige a la banda en el Modo escenario",
+      summary: "Como admin, mueve la canción actual para todos, cambia el orden en directo y quita las canciones que no vais a tocar.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["líder", "siguiente canción", "reordenar en directo", "arrastrar", "tachar", "saltar una canción", "quitar una canción esta noche", "la banda te sigue", "sincronización en directo"],
+      related: ["stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abre el Modo escenario en el concierto.",
+            "Mira el estado junto a la setlist: **En directo** significa que la banda te sigue (**La banda te sigue**).",
+            "Toca **Siguiente** o **Anterior** para llevar a la banda a la canción siguiente o anterior, o toca cualquier canción de la lista (**Ir a …**).",
+            "Para cambiar el orden, mantén pulsada una canción hasta que se levante, arrástrala a su nuevo sitio y suéltala. Un deslizamiento rápido sigue desplazando la lista, y un toque sigue haciendo actual la canción.",
+            "Para saltarte una canción esta noche, toca el botón redondo − al final de su fila (**Quitar … esta noche**). El título se tacha y **Anterior** / **Siguiente** la saltan. Toca + (**Recuperar …**) para volver a ponerla.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Estado", "Significado"],
+          rows: [
+            ["**En directo**", "Conectado por internet: los miembros te siguen."],
+            ["**En directo · BT**", "Conectado por internet y enviando también por Bluetooth."],
+            ["**Bluetooth**", "Sin internet: los miembros cercanos te siguen por Bluetooth."],
+            ["**Desconectado**", "Ahora mismo no llega nada a la banda."],
+            ["**Guardando…**, **Guardado**, **No guardado**", "Después de arrastrar: el nuevo orden se guarda poco después de tu último movimiento. **Guardado** aparece un momento y luego vuelve el estado."],
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Los miembros que abren el Modo escenario más tarde se ponen al día en la canción actual.",
+            "Un nuevo orden vale para todos, también para los miembros que han dejado de seguirte, y se guarda en la setlist del concierto. El concierto detrás del Modo escenario lo muestra al momento.",
+            "Al cerrar el Modo escenario se guarda un movimiento que aún esperaba guardarse.",
+            "Si varios admins dirigen a la vez, gana el movimiento más reciente.",
+            "Quitar una canción es solo para esta noche: la setlist del concierto la conserva. Los miembros que te siguen la ven tachada y también se la saltan, por internet o por Bluetooth. Tu teléfono recuerda las canciones quitadas de ese concierto si cierras el Modo escenario y lo vuelves a abrir.",
+          ],
+        },
+        { type: "note", tone: "tip", text: "Mantén el teléfono desbloqueado: el Modo escenario no deja que se apague la pantalla, y si el teléfono del líder se bloquea, se detiene la sincronización de la banda." },
+      ],
+    },
+    {
+      id: "follow-in-stage-mode",
+      title: "Sigue al líder en el Modo escenario",
+      summary: "Como miembro, deja que el teléfono del admin pase tus canciones, o avanza tú por ellas.",
+      roles: ["member"],
+      kind: "task",
+      keywords: ["seguir", "seguir al líder", "sincronizar", "misma canción"],
+      related: ["stage-mode", "lead-stage-mode", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abre el Modo escenario en el concierto. El seguimiento está activado: el botón junto a la setlist dice **Esperando al líder** hasta que se detecta el teléfono del admin, y luego **Con el líder**.",
+            "Tu canción actual, la letra y los acordes cambian cuando el admin avanza.",
+            "Para mirar por tu cuenta lo que viene, toca **Anterior**, **Siguiente** o una canción. El seguimiento se detiene y el botón dice **Seguir al líder**.",
+            "Toca **Seguir al líder** para volver a la canción del líder y seguirle otra vez.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "**· BT** después de la etiqueta significa que estás conectado al líder por Bluetooth.",
+            "**Desconectado** significa que ahora mismo no puede llegar nada a tu teléfono.",
+            "Los miembros no pueden mover la canción de nadie más ni cambiar el orden.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "stage-click",
+      title: "Usa el clic en el Modo escenario",
+      summary: "Un metrónomo visual alrededor del borde de la pantalla, sincronizado entre los teléfonos de la banda.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["metrónomo", "clic", "cuenta atrás", "tempo", "bpm", "pulso"],
+      related: ["stage-mode", "transpose-and-tempo"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "En el Modo escenario, busca el botón del clic entre **Anterior** y **Siguiente**. Muestra los BPM de la canción actual.",
+            "Tócalo (**Iniciar el clic**). Un destello recorre el borde de la pantalla en cada pulso, más intenso en el primer pulso del compás.",
+            "Tócalo otra vez (**Detener el clic**) para pararlo.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Quién lo inicia", "Qué pasa"],
+          rows: [
+            ["Admin", "El clic suena en todos los teléfonos en Modo escenario, sincronizado con el teléfono del líder."],
+            ["Miembro", "El clic solo suena en tu teléfono."],
+            ["Miembro, mientras suena el clic del líder", "El botón lo oculta o lo muestra en tu teléfono (**Ocultar el clic en este teléfono**, **Mostrar el clic**)."],
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "El clic es solo visual: no hay sonido. No impide tocar la pantalla.",
+            "Los pulsos de un compás salen del compás del cifrado de iReal de la canción; si no, son 4.",
+            "Una canción sin BPM no puede iniciar un clic (**Sin BPM para esta canción**). Añade los BPM en el formulario de la canción.",
+            "Al pasar a otra canción se oculta el clic de la canción anterior.",
+            "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen: bien para una cuenta de entrada y como referencia de tempo, no para un clic en los auriculares in-ear.",
+            "El clic de la banda necesita internet: no se envía por Bluetooth.",
+          ],
+        },
+      ],
+    },
+    {
+      id: "stage-bluetooth-sync",
+      title: "Modo escenario sin internet (Bluetooth)",
+      summary: "Cómo la banda se mantiene en la misma canción por Bluetooth cuando la sala no tiene cobertura.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["bluetooth", "sin conexión", "sin cobertura", "sin wifi", "ble", "clave de escenario"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode"],
+      body: [
+        { type: "p", text: "En las apps de iPhone, iPad y Android, el teléfono del admin también envía la canción actual y el orden por Bluetooth. Los teléfonos de los miembros cercanos lo reciben sin emparejar y sin internet." },
+        {
+          type: "steps",
+          title: "Prepárate antes del concierto",
+          items: [
+            "Todos abren el concierto una vez con conexión. La app guarda en el teléfono la setlist (con letras y cifrados) y la clave Bluetooth del concierto.",
+            "Activa el Bluetooth y permite que BandWith lo use.",
+            "En el escenario, todos abren el Modo escenario. El líder muestra **Bluetooth** o **En directo · BT**; los miembros muestran **· BT** después de su etiqueta de seguimiento.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Cuando no conecta",
+          items: [
+            "«El Bluetooth está apagado o no tiene permiso. Actívalo en Ajustes para seguir sincronizado sin internet.»",
+            "«Este teléfono tiene una setlist antigua. Conéctate a internet una vez para seguir por Bluetooth.» Aparece cuando se han añadido o quitado canciones después de que el teléfono cargara la setlist por última vez. Un simple cambio de orden no da problemas.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Cada concierto tiene su propia clave secreta, que solo reciben los miembros activos de la banda. Solo los teléfonos con la clave encuentran al líder y aceptan sus mensajes." },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Sin sincronización por Bluetooth ni copia de la setlist en el dispositivo: el Modo escenario en la web necesita internet." }],
+        },
+      ],
+    },
+    {
+      id: "stage-mode-on-devices",
+      title: "El Modo escenario en móviles, tablets y dispositivos de doble pantalla",
+      summary: "Cómo se organiza el Modo escenario en cada dispositivo y postura.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["horizontal", "ipad", "surface duo", "monitor de suelo", "postura portátil", "pantalla completa", "barra lateral", "pasapáginas"],
+      related: ["stage-mode", "device-differences"],
+      body: [
+        {
+          type: "devices",
+          rows: [
+            { devices: ["phone"], text: "Una columna: cabecera, horario, setlist o canción, y Anterior / Siguiente abajo." },
+            { devices: ["phoneLand", "duoClosed"], text: "En horizontal (bajo y ancho), los horarios y los pasos quedan a la izquierda y la setlist o la canción a la derecha. Con una canción abierta, la columna izquierda muestra en su lugar la setlist, para que puedas saltar a cualquier canción." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "El Modo escenario se abre junto al panel de la lista. **Ocultar barra lateral** le da toda la pantalla: entonces los horarios y los pasos quedan en el primer panel y la setlist o la canción en el segundo, divididos en el borde de los paneles para que nada quede sobre la bisagra. Con una canción abierta, la setlist queda en una columna a su lado (en el primer panel cuando el dispositivo está abierto sobre los dos). **Mostrar barra lateral** vuelve a mostrar la lista. La elección se guarda en el dispositivo." },
+            { devices: ["duoClosed"], text: "**Abrir modo escenario** está en la barra lateral; el día del concierto es la acción principal de la barra. **Ocultar barra lateral** oculta la barra en el Modo escenario." },
+            { devices: ["duoLaptop"], text: "Monitor de suelo: pon el dispositivo de pie en el suelo del escenario como un monitor. La mitad de arriba muestra el contador de canciones (**Canción … de …**), el título, el tono, los BPM, la siguiente canción y el tiempo transcurrido, o la letra. La mitad de abajo tiene grandes botones **Anterior** y **Siguiente** y el progreso del set; las canciones quitadas para esta noche se saltan y sus segmentos de progreso se atenúan. Las flechas, Re Pág/Av Pág y la barra espaciadora también avanzan, así que funcionan los pedales pasapáginas Bluetooth." },
+            { devices: ["web"], text: "Funcionan la sincronización en directo por internet y el clic. Sin Bluetooth y sin copia sin conexión de la setlist." },
+          ],
+        },
+        { type: "p", text: "Atrás en Android y Escape salen primero del Modo escenario, no del concierto que hay debajo." },
+      ],
+    },
+  ],
+
+  faq: [
+    {
+      q: "¿Los miembros pueden editar canciones o setlists?",
+      a: "No. Los miembros leen todas las canciones y setlists. Sugieren canciones nuevas y cambios en letras, acordes o notas, y un admin los revisa. Solo los admins pueden editar setlists.",
+      roles: ["member"],
+    },
+    {
+      q: "¿Quién ve mis notas en una canción?",
+      a: "Solo tú. Ni la banda ni los admins. Para compartir una, ábrela y toca Sugerir a la banda.",
+    },
+    {
+      q: "He transpuesto una canción en el lector. ¿Ha cambiado para todos?",
+      a: "No. Transponer en el lector o en el Modo escenario solo cambia tu pantalla. Para cambiar el tono para la banda, un admin usa Transponer para la banda en el formulario de la canción.",
+    },
+    {
+      q: "¿Por qué no puedo importar una lista de canciones?",
+      a: "Importar una lista va directamente a la biblioteca de la banda, así que es solo para admins. Los miembros sugieren canciones de una en una.",
+      roles: ["member"],
+    },
+    {
+      q: "¿Cambiar la setlist de un concierto cambia la setlist guardada desde la que la cargué?",
+      a: "No. Un concierto recibe su propia copia, con el nombre del concierto. La setlist desde la que la cargaste se queda como estaba.",
+      roles: ["admin"],
+    },
+    {
+      q: "¿La banda recibe una notificación por cada canción que muevo?",
+      a: "No. No se envía nada hasta que guardas. Entonces cada persona recibe una sola push que resume lo que ha cambiado.",
+      roles: ["admin"],
+    },
+    {
+      q: "¿El Modo escenario funciona sin internet?",
+      a: "En las apps de móvil y tablet, sí: abre el concierto una vez con conexión, y el teléfono del líder mantiene a la banda sincronizada por Bluetooth. En la web, el Modo escenario necesita internet.",
+    },
+    {
+      q: "¿Puedo oír el clic?",
+      a: "No. El clic es visual: un destello alrededor del borde de la pantalla en cada pulso.",
+    },
+    {
+      q: "¿Por qué mi teléfono deja de seguir al líder?",
+      a: "Si tocas tú Anterior, Siguiente o una canción, dejas de seguirle. Toca Seguir al líder para volver a la canción del líder.",
+      roles: ["member"],
+    },
+    {
+      q: "¿Qué pasa con una canción sugerida que el admin rechaza?",
+      a: "Se elimina con los archivos que adjuntaste, y recibes una push con el motivo del admin si lo ha dado.",
+      roles: ["member"],
+    },
+    {
+      q: "¿Por qué no veo el foro de iReal Pro dentro de la app en la web?",
+      a: "El foro no se puede mostrar dentro de una página web, así que se abre en su propia ventana. Copia ahí un enlace y toca Pegar enlace, o arrastra el enlace a la casilla.",
+    },
+  ],
+
+  glossary: [
+    { term: "Repertorio", definition: "La biblioteca de canciones de la banda. Todos los miembros activos leen todas las canciones.", see: "repertoire-overview" },
+    { term: "Lista / Aprendiendo / Sugerida", definition: "El estado de una canción: la banda la toca, la está aprendiendo, o la ha propuesto un miembro y espera a un admin.", see: "song-menu-actions" },
+    { term: "Setlist", definition: "Una lista ordenada de canciones de la banda para un concierto o una ocasión, que escriben los admins.", see: "build-a-setlist" },
+    { term: "Set", definition: "Una parte de una setlist, por ejemplo antes y después de un descanso (Set 1, Set 2).", see: "setlists-and-sets" },
+    { term: "Setlist de plantilla", definition: "Una setlist guardada que cargas en un concierto; el concierto recibe su propia copia.", see: "setlists-and-sets" },
+    { term: "Acordes en línea", definition: "Acordes escritos entre corchetes justo antes de la palabra en la que caen, como [Am]palabra.", see: "lyrics-and-chords-format" },
+    { term: "ChordPro", definition: "Un formato de texto para letras con acordes entre corchetes. BandWith importa archivos .cho, .chordpro y .pro.", see: "import-chords-and-lyrics" },
+    { term: "MusicXML", definition: "Un formato de archivo para partituras. BandWith lee sus símbolos de acordes y su letra.", see: "import-chords-and-lyrics" },
+    { term: "Cifrado de iReal Pro", definition: "Un cifrado compás a compás con forma, tono, estilo y tempo, importado desde un enlace de iReal Pro.", see: "import-from-ireal-pro" },
+    { term: "Vista de la canción", definition: "Cómo se muestra una canción: Letra, Acordes o Estructura. Se recuerda en cada dispositivo.", see: "read-a-song" },
+    { term: "Estructura", definition: "Las secciones de la canción con sus acordes en casillas, o el cifrado de iReal compás a compás.", see: "read-a-song" },
+    { term: "Transponer para la banda", definition: "Cambiar el tono, el cifrado y los acordes de una canción para todos, desde el formulario de la canción.", see: "transpose-and-tempo" },
+    { term: "Mis notas", definition: "Notas y archivos privados en una canción de la banda, que solo ves tú.", see: "my-notes-and-files" },
+    { term: "Sugerencia", definition: "La propuesta de un miembro: una canción nueva, una corrección de letra o de acordes, o una nota para la banda.", see: "review-song-suggestions" },
+    { term: "Modo escenario", definition: "La pantalla negra del día del concierto con el horario, la setlist y la canción actual.", see: "stage-mode" },
+    { term: "Líder", definition: "En el Modo escenario, el admin de la banda cuyos cambios de canción y de orden llegan a todos los miembros.", see: "lead-stage-mode" },
+    { term: "Seguir al líder", definition: "El ajuste del Modo escenario de un miembro que mantiene su canción actual en la del líder.", see: "follow-in-stage-mode" },
+    { term: "Clic", definition: "El metrónomo visual del Modo escenario: un destello en cada pulso, sincronizado entre teléfonos.", see: "stage-click" },
+    { term: "Horario", definition: "Las horas de montaje, prueba de sonido, show y fin en la parte de arriba del Modo escenario.", see: "stage-mode" },
+    { term: "Monitor de suelo", definition: "El Modo escenario en un dispositivo de doble pantalla en postura portátil: la información de la canción arriba y grandes botones Anterior / Siguiente abajo.", see: "stage-mode-on-devices" },
+  ],
+};
+
+export default music;

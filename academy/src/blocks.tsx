@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Block, Role, ShotDevice } from '../content/types';
 import { ROLE_LABEL } from '../content';
+import { u } from './ui';
 import { SHOT_FILES } from '../content/shotFiles';
 import { shotFor, useViewDevice, VIEW_DEVICE_LABEL } from './viewer';
 import { Inline } from './inline';
@@ -41,7 +42,7 @@ function Shot({ id, caption, device: pinned }: { id: string; caption: string; de
           <div
             className="shot__screen"
             tabIndex={portrait && tall ? 0 : undefined}
-            aria-label={portrait && tall ? 'Scrollable screenshot' : undefined}
+            aria-label={portrait && tall ? u('Scrollable screenshot') : undefined}
           >
             <img
               key={src}
@@ -56,7 +57,7 @@ function Shot({ id, caption, device: pinned }: { id: string; caption: string; de
             />
           </div>
           {(kind === 'duoBook' || kind === 'duoLaptop') && <span className="shot__hinge" aria-hidden />}
-          {portrait && tall && <span className="shot__scroll">Scroll inside</span>}
+          {portrait && tall && <span className="shot__scroll">{u('Scroll inside')}</span>}
         </div>
       )}
       <figcaption>
@@ -121,7 +122,7 @@ function BlockView({ block: b }: { block: Block }) {
       );
     case 'note': {
       const Icon = b.tone === 'privacy' ? Lock : b.tone === 'warning' ? AlertTriangle : Sparkles;
-      const label = b.tone === 'privacy' ? 'Privacy' : b.tone === 'warning' ? 'Careful' : 'Tip';
+      const label = b.tone === 'privacy' ? u('Privacy') : b.tone === 'warning' ? u('Careful') : u('Tip');
       return (
         <aside className={`note note--${b.tone}`}>
           <span className="note__label">
@@ -136,7 +137,7 @@ function BlockView({ block: b }: { block: Block }) {
     case 'roles':
       return (
         <section className="rolesBlock">
-          <h3 className="mini">By role</h3>
+          <h3 className="mini">{u('By role')}</h3>
           {b.rows.map((r, i) => (
             <div className="rolesBlock__row" key={i}>
               <RoleChip role={r.role} />
@@ -150,7 +151,7 @@ function BlockView({ block: b }: { block: Block }) {
     case 'devices':
       return (
         <section className="devBlock">
-          <h3 className="mini">On your device</h3>
+          <h3 className="mini">{u('On your device')}</h3>
           {b.rows.map((r, i) => (
             <div className="devBlock__row" key={i}>
               <div className="devBlock__devs">

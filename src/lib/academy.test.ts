@@ -42,10 +42,10 @@ describe('BandWith Academy links', () => {
   });
 
   it('builds embed URLs', () => {
-    expect(academyUrl({ article: 'create-a-gig' }, 'dark')).toMatch(/index\.html\?embed=1&theme=dark#\/a\/create-a-gig$/);
+    expect(academyUrl({ article: 'create-a-gig' }, 'dark')).toMatch(/index\.html\?embed=1&theme=dark&lang=en#\/a\/create-a-gig$/);
     expect(academyUrl({ role: 'member' }, 'light')).toMatch(/#\/role\/member$/);
     expect(academyUrl(null, 'light')).toMatch(/#\/$/);
-    expect(academyUrl({ role: 'admin' }, 'dark', 'duoBook')).toMatch(/\?embed=1&theme=dark&device=duoBook#\/role\/admin$/);
+    expect(academyUrl({ role: 'admin' }, 'dark', 'duoBook')).toMatch(/\?embed=1&theme=dark&device=duoBook&lang=en#\/role\/admin$/);
   });
 
   it('tells the guide which device it is on', () => {

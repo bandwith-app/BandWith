@@ -10,16 +10,17 @@
 import { useEffect, useState } from 'react';
 import type { ShotDevice } from '../content/types';
 import { SHOT_FILES } from '../content/shotFiles';
+import { u } from './ui';
 
 export const VIEW_DEVICES: ShotDevice[] = ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'];
 
 export const VIEW_DEVICE_LABEL: Record<ShotDevice, string> = {
-  phone: 'iPhone & Android phone',
-  tablet: 'iPad & tablets',
-  web: 'Web browser',
-  duoClosed: 'Dual-screen, closed',
-  duoBook: 'Dual-screen, Book',
-  duoLaptop: 'Dual-screen, Laptop',
+  phone: u('iPhone & Android phone'),
+  tablet: u('iPad & tablets'),
+  web: u('Web browser'),
+  duoClosed: u('Dual-screen, closed'),
+  duoBook: u('Dual-screen, Book'),
+  duoLaptop: u('Dual-screen, Laptop'),
 };
 
 const PICK_KEY = 'bw-academy-device';

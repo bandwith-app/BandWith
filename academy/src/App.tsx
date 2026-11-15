@@ -6,6 +6,8 @@ import { useViewDevice, VIEW_DEVICES, VIEW_DEVICE_LABEL } from './viewer';
 import { Blocks, RoleChip } from './blocks';
 import { Inline, brokenLinks, highlight, plain } from './inline';
 import { search, terms, type Hit } from './search';
+import { LANG, LANGS, pickLang, type Lang } from './lang';
+import { searchSuggestions, u } from './ui';
 import {
   ArrowLeft,
   ArrowRight,
@@ -104,18 +106,36 @@ function useTheme() {
 function DevicePicker() {
   const { device, auto, picked, pick } = useViewDevice();
   return (
-    <label className={`devicePick${picked ? ' devicePick--picked' : ''}`} title="Show screens for">
+    <label className={`devicePick${picked ? ' devicePick--picked' : ''}`} title={u('Show screens for')}>
       <DeviceGlyph device={device} size={20} />
       <span className="devicePick__label">{VIEW_DEVICE_LABEL[device]}</span>
       <select
-        aria-label="Show screens for"
+        aria-label={u('Show screens for')}
         value={picked ? device : 'auto'}
         onChange={(e) => pick(e.target.value === 'auto' ? null : (e.target.value as ShotDevice))}
       >
-        <option value="auto">This device ({VIEW_DEVICE_LABEL[auto]})</option>
+        <option value="auto">{u('This device ({device})', { device: VIEW_DEVICE_LABEL[auto] })}</option>
         {VIEW_DEVICES.filter((d) => d !== auto).map((d) => (
           <option key={d} value={d}>
             {VIEW_DEVICE_LABEL[d]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/* ── Language picker (web only: inside the app the guide follows the app's language) ── */
+
+function LangPicker({ full = false }: { full?: boolean }) {
+  const name = LANGS.find((l) => l.id === LANG)?.name ?? LANG;
+  return (
+    <label className="devicePick langPick" title={u('Language')}>
+      <span className="devicePick__label">{full ? `${u('Language')}: ${name}` : LANG.toUpperCase()}</span>
+      <select aria-label={u('Language')} value={LANG} onChange={(e) => pickLang(e.target.value as Lang)}>
+        {LANGS.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name}
           </option>
         ))}
       </select>
@@ -137,12 +157,21 @@ const AREA_ICON: Record<string, typeof Home> = {
 const ROLE_ICON: Record<Role, typeof Home> = { admin: Crown, member: User, deputy: UserCheck };
 
 const ROLE_INTRO: Record<Role, string> = {
-  admin:
+  admin: u(
     'You run the band: you create gigs and rehearsals, send quotes and contracts, set fees, build setlists and decide who joins.',
-  member:
+  ),
+  member: u(
     'You play in the band: you answer gigs and polls, see your own fee and the logistics, practise the repertoire and chat with the band.',
-  deputy:
+  ),
+  deputy: u(
     'You stand in for a band member on some gigs: you reply to the request, see your fee and the logistics, and can follow it all in the app.',
+  ),
+};
+
+const ROLE_TITLE: Record<Role, string> = {
+  admin: u("I'm an admin"),
+  member: u("I'm a member"),
+  deputy: u("I'm a deputy"),
 };
 
 /** Hand-picked first reads per role; ids that don't exist are skipped. */
@@ -189,19 +218,19 @@ function HomePage() {
     <>
       <section className="hero">
         <p className="eyebrow">BandWith Academy</p>
-        <h1>Everything your band can do, step by step.</h1>
+        <h1>{u('Everything your band can do, step by step.')}</h1>
         <p className="lede">
-          {ARTICLES.length} guides for admins, members and deputies, on phone, iPad, dual-screen, Android and the web.
+          {u('{n} guides for admins, members and deputies, on phone, iPad, dual-screen, Android and the web.', { n: ARTICLES.length })}
         </p>
         <button className="heroSearch" onClick={() => window.dispatchEvent(new Event('academy:search'))}>
           <Search size={20} />
-          <span>Search the Academy</span>
+          <span>{u('Search the Academy')}</span>
           <kbd>/</kbd>
         </button>
       </section>
 
       <section className="block">
-        <h2 className="mini">Start with your role</h2>
+        <h2 className="mini">{u('Start with your role')}</h2>
         <div className="roles">
           {(['admin', 'member', 'deputy'] as Role[]).map((r) => {
             const Icon = ROLE_ICON[r];
@@ -209,10 +238,10 @@ function HomePage() {
             return (
               <a key={r} className={`roleCard roleCard--${r}`} href={`#/role/${r}`}>
                 <Icon size={28} />
-                <span className="roleCard__t">I'm {r === 'admin' ? 'an' : 'a'} {r}</span>
+                <span className="roleCard__t">{ROLE_TITLE[r]}</span>
                 <span className="roleCard__d">{ROLE_INTRO[r]}</span>
                 <span className="roleCard__n">
-                  {n} guides <ArrowRight size={16} />
+                  {u('{n} guides', { n })} <ArrowRight size={16} />
                 </span>
               </a>
             );
@@ -251,7 +280,7 @@ function HomePage() {
       </section>
 
       <section className="block">
-        <h2 className="mini">Browse by area</h2>
+        <h2 className="mini">{u('Browse by area')}</h2>
         <div className="areas">
           {MODULES.map((m) => {
             const Icon = AREA_ICON[m.area.icon] ?? BookOpen;
@@ -260,7 +289,7 @@ function HomePage() {
                 <Icon size={26} />
                 <span className="areaCard__t">{m.area.title}</span>
                 <span className="areaCard__d">{m.area.intro}</span>
-                <span className="areaCard__n">{m.articles.length} guides</span>
+                <span className="areaCard__n">{u('{n} guides', { n: m.articles.length })}</span>
               </a>
             );
           })}
@@ -271,16 +300,16 @@ function HomePage() {
         <a className="linkCard" href="#/faq">
           <HelpCircle size={24} />
           <span>
-            <b>FAQ & common problems</b>
-            <small>{FAQ.length} answers</small>
+            <b>{u('FAQ & common problems')}</b>
+            <small>{u('{n} answers', { n: FAQ.length })}</small>
           </span>
           <ChevronRight size={18} />
         </a>
         <a className="linkCard" href="#/glossary">
           <BookOpen size={24} />
           <span>
-            <b>Glossary</b>
-            <small>{GLOSSARY.length} terms</small>
+            <b>{u('Glossary')}</b>
+            <small>{u('{n} terms', { n: GLOSSARY.length })}</small>
           </span>
           <ChevronRight size={18} />
         </a>
@@ -300,7 +329,7 @@ function RolePage({ role }: { role: Role }) {
       </nav>
       <header className={`pageHead pageHead--${role}`}>
         <Icon size={32} />
-        <h1>I'm {role === 'admin' ? 'an' : 'a'} {role}</h1>
+        <h1>{ROLE_TITLE[role]}</h1>
         <p className="lede">{ROLE_INTRO[role]}</p>
         <div className="roleSwitch">
           {(['admin', 'member', 'deputy'] as Role[]).map((r) => (
@@ -312,7 +341,7 @@ function RolePage({ role }: { role: Role }) {
       </header>
       {start.length > 0 && (
         <section className="block">
-          <h2 className="mini">Start here</h2>
+          <h2 className="mini">{u('Start here')}</h2>
           <ol className="path">
             {start.map((a, i) => (
               <li key={a.id}>
@@ -368,7 +397,7 @@ function AreaPage({ id }: { id: string }) {
       </header>
       {refs.length > 0 && (
         <section className="block">
-          <h2 className="mini">Understand it</h2>
+          <h2 className="mini">{u('Understand it')}</h2>
           <div className="rows">
             {refs.map((a) => (
               <ArticleRow key={a.id} a={a} />
@@ -378,7 +407,7 @@ function AreaPage({ id }: { id: string }) {
       )}
       {tasks.length > 0 && (
         <section className="block">
-          <h2 className="mini">How do I…</h2>
+          <h2 className="mini">{u('How do I…')}</h2>
           <div className="rows">
             {tasks.map((a) => (
               <ArticleRow key={a.id} a={a} />
@@ -388,7 +417,7 @@ function AreaPage({ id }: { id: string }) {
       )}
       {faq.length > 0 && (
         <section className="block">
-          <h2 className="mini">Questions</h2>
+          <h2 className="mini">{u('Questions')}</h2>
           <FaqList items={faq} />
         </section>
       )}
@@ -426,13 +455,13 @@ function ArticlePage({ id }: { id: string }) {
           <a href="#/">Academy</a> <ChevronRight size={14} /> <a href={`#/area/${m.area.id}`}>{m.area.title}</a>
         </nav>
         <header className="article__head">
-          <p className="eyebrow">{a.kind === 'task' ? 'How to' : 'Guide'}</p>
+          <p className="eyebrow">{a.kind === 'task' ? u('How to') : u('Guide')}</p>
           <h1>{a.title}</h1>
           <p className="lede">
             <Inline text={a.summary} />
           </p>
           <div className="article__roles">
-            <span className="mini">For</span>
+            <span className="mini">{u('For')}</span>
             {(['admin', 'member', 'deputy'] as Role[]).map((r) => (
               <RoleChip key={r} role={r} on={a.roles.includes(r)} />
             ))}
@@ -443,7 +472,7 @@ function ArticlePage({ id }: { id: string }) {
         </div>
         {related.length > 0 && (
           <section className="block">
-            <h2 className="mini">Related</h2>
+            <h2 className="mini">{u('Related')}</h2>
             <div className="rows">
               {related.map((r) => (
                 <ArticleRow key={r.id} a={r} showArea={r.areaId !== a.areaId} />
@@ -454,7 +483,7 @@ function ArticlePage({ id }: { id: string }) {
         <nav className="pager">
           {prev ? (
             <a href={`#/a/${prev.id}`}>
-              <small>Previous</small>
+              <small>{u('Previous')}</small>
               <span>
                 <ArrowLeft size={16} /> {prev.title}
               </span>
@@ -464,7 +493,7 @@ function ArticlePage({ id }: { id: string }) {
           )}
           {next && (
             <a href={`#/a/${next.id}`} className="pager__next">
-              <small>Next</small>
+              <small>{u('Next')}</small>
               <span>
                 {next.title} <ArrowRight size={16} />
               </span>
@@ -505,11 +534,11 @@ function FaqPage() {
   return (
     <>
       <nav className="crumbs">
-        <a href="#/">Academy</a> <ChevronRight size={14} /> <span>FAQ</span>
+        <a href="#/">Academy</a> <ChevronRight size={14} /> <span>{u('FAQ')}</span>
       </nav>
       <header className="pageHead">
         <HelpCircle size={32} />
-        <h1>FAQ & common problems</h1>
+        <h1>{u('FAQ & common problems')}</h1>
       </header>
       {MODULES.map((m) => {
         const items = FAQ.filter((f) => f.areaId === m.area.id);
@@ -537,11 +566,11 @@ function GlossaryPage() {
   return (
     <>
       <nav className="crumbs">
-        <a href="#/">Academy</a> <ChevronRight size={14} /> <span>Glossary</span>
+        <a href="#/">Academy</a> <ChevronRight size={14} /> <span>{u('Glossary')}</span>
       </nav>
       <header className="pageHead">
         <BookOpen size={32} />
-        <h1>Glossary</h1>
+        <h1>{u('Glossary')}</h1>
       </header>
       <div className="glossary">
         {groups.map(([k, list]) => (
@@ -557,7 +586,7 @@ function GlossaryPage() {
                       <>
                         {' '}
                         <a className="xref" href={`#/a/${t.see}`}>
-                          Read more
+                          {u('Read more')}
                         </a>
                       </>
                     )}
@@ -597,9 +626,9 @@ function DevPage() {
 function NotFound() {
   return (
     <div className="pageHead">
-      <h1>Not found</h1>
+      <h1>{u('Not found')}</h1>
       <p className="lede">
-        <a href="#/">Back to the Academy</a>
+        <a href="#/">{u('Back to the Academy')}</a>
       </p>
     </div>
   );
@@ -625,14 +654,14 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="searchScrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="searchBox" role="dialog" aria-label="Search the Academy">
+      <div className="searchBox" role="dialog" aria-label={u('Search the Academy')}>
         <div className="searchBox__field">
           <Search size={20} />
           <input
             ref={input}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search: setlist, deputy fee, laptop pose…"
+            placeholder={u('Search: setlist, deputy fee, laptop pose…')}
             onKeyDown={(e) => {
               if (e.key === 'Escape') onClose();
               if (e.key === 'ArrowDown') {
@@ -646,16 +675,16 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
               if (e.key === 'Enter' && hits[sel]) open(hits[sel]);
             }}
           />
-          <button className="iconBtn" onClick={onClose} aria-label="Close search">
+          <button className="iconBtn" onClick={onClose} aria-label={u('Close search')}>
             <X size={20} />
           </button>
         </div>
         <div className="searchBox__results">
-          {q && !hits.length && <p className="searchBox__empty">No results. Try another word, or browse the areas.</p>}
+          {q && !hits.length && <p className="searchBox__empty">{u('No results. Try another word, or browse the areas.')}</p>}
           {!q && (
             <div className="searchBox__hint">
-              <span className="mini">Try</span>
-              {['invite members', 'deputy', 'setlist', 'Stage', 'laptop pose', 'quote', 'my fee'].map((s) => (
+              <span className="mini">{u('Try')}</span>
+              {searchSuggestions().map((s) => (
                 <button key={s} onClick={() => setQ(s)}>
                   {s}
                 </button>
@@ -678,14 +707,14 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
               )}
               {h.kind === 'faq' && (
                 <>
-                  <span className="hit__kind">FAQ</span>
+                  <span className="hit__kind">{u('FAQ')}</span>
                   <span className="hit__t">{highlight(h.q, ts)}</span>
                   <span className="hit__s">{highlight(h.a.length > 160 ? h.a.slice(0, 157) + '…' : h.a, ts)}</span>
                 </>
               )}
               {h.kind === 'term' && (
                 <>
-                  <span className="hit__kind">Glossary</span>
+                  <span className="hit__kind">{u('Glossary')}</span>
                   <span className="hit__t">{highlight(h.term, ts)}</span>
                   <span className="hit__s">{highlight(h.definition, ts)}</span>
                 </>
@@ -738,20 +767,21 @@ export function App() {
           </span>
         </a>
         <nav className="top__nav">
-          <a href="#/role/admin">Admin</a>
-          <a href="#/role/member">Member</a>
-          <a href="#/role/deputy">Deputy</a>
-          <a href="#/faq">FAQ</a>
+          <a href="#/role/admin">{ROLE_LABEL.admin}</a>
+          <a href="#/role/member">{ROLE_LABEL.member}</a>
+          <a href="#/role/deputy">{ROLE_LABEL.deputy}</a>
+          <a href="#/faq">{u('FAQ')}</a>
         </nav>
         <div className="top__tools">
           <button className="searchPill" onClick={() => setSearching(true)}>
             <Search size={18} />
-            <span>Search</span>
+            <span>{u('Search')}</span>
             <kbd>/</kbd>
           </button>
           <DevicePicker />
+          {!EMBEDDED && <LangPicker />}
           {!EMBEDDED && (
-            <button className="iconBtn" onClick={toggleTheme} aria-label="Switch theme">
+            <button className="iconBtn" onClick={toggleTheme} aria-label={u('Switch theme')}>
               {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
             </button>
           )}
@@ -769,8 +799,9 @@ export function App() {
       {!EMBEDDED && (
         <footer className="foot">
           <span>BandWith Academy</span>
+          <LangPicker full />
           <span>
-            <a href="#/glossary">Glossary</a> · <a href="#/faq">FAQ</a> · <a href="../">Open BandWith</a>
+            <a href="#/glossary">{u('Glossary')}</a> · <a href="#/faq">{u('FAQ')}</a> · <a href="../">{u('Open BandWith')}</a>
           </span>
         </footer>
       )}
