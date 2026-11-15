@@ -3391,7 +3391,6 @@ const dict: Dictionary = {
   "1 item in maintenance": "1 Teil in Wartung",
   "1 item needs a look": "1 Teil prüfen",
   "1 needs a look": "1 prüfen",
-  "A kit bundles items from your inventory. Use it on a gig and every item is booked for that date.": "Ein Kit bündelt Teile aus deinem Equipment. Nutze es für einen Gig, und jedes Teil ist für dieses Datum gebucht.",
   "Add items to your gear list first, then bundle them into a kit.": "Füge zuerst Teile zu deinem Equipment hinzu und bündle sie dann zu einem Kit.",
   "Add kit": "Kit hinzufügen",
   "Back to kits": "Zurück zu den Kits",
@@ -4035,6 +4034,10 @@ const dict: Dictionary = {
   "The band": "Der Band",
   "Me (personal)": "Mir (persönlich)",
   "Personal gear: the band sees it, only you and the admins can change it.": "Persönliche Ausrüstung: Die Band sieht sie, nur du und die Admins könnt sie ändern.",
+  "Voting closed": "Abstimmung beendet",
+  "Voting has closed. An admin will lock in a date.": "Die Abstimmung ist beendet. Ein Admin legt einen Termin fest.",
+  "It leaves the gear list and every kit it's in. This can't be undone.": "Es verschwindet aus der Equipment-Liste und aus jedem Kit, das es enthält. Das lässt sich nicht rückgängig machen.",
+  "A kit bundles items from your inventory. Add it to a gig and the gig lists its items as the gear to bring. Items are not reserved for that date.": "Ein Kit bündelt Teile aus deinem Equipment. Füge es einem Gig hinzu, und der Gig listet seine Teile als mitzubringendes Equipment. Die Teile werden für dieses Datum nicht reserviert.",
 };
 
 export default dict;

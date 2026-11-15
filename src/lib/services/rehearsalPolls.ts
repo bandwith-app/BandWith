@@ -1,5 +1,4 @@
 import { supabase } from '../supabase';
-import { attachMemberFees } from './bandMemberFees';
 import { createEvent } from './events';
 import { createSetlist, deleteSetlist } from './songs';
 import { createBulkNotifications } from './notifications';
@@ -56,8 +55,13 @@ export interface RehearsalPoll {
   total_members_count?: number;
   /** 097: rehearsal place, room cost and focus songs set in the poll. */
   location?: string | null;
+  /** The room's total: admins only (bw_rehearsal_poll_costs, 114). */
   room_cost?: number | string | null;
+  /** Each person's share of the room cost, for everyone who sees the poll (114). */
+  room_cost_share?: number | null;
   focus_song_ids?: string[] | null;
+  /** 058: the day members should vote by. */
+  vote_by?: string | null;
   /** 098: members asked to vote (empty = everyone) and the vote-by time. */
   invited_user_ids?: string[] | null;
   vote_by_time?: string | null;
@@ -73,6 +77,91 @@ export const pollAnsweredCount = (poll: Pick<RehearsalPoll, 'options' | 'unavail
   (poll.options || []).forEach((o) => o.votes?.forEach((v) => answered.add(v.user_id)));
   (poll.unavailable || []).forEach((u) => answered.add(u.user_id));
   return answered.size;
+};
+
+/**
+ * rehearsal_polls columns the app reads directly: every column except
+ * room_cost, which comes from bw_rehearsal_poll_costs() (114), so step 2
+ * (119) can revoke it. New columns go here and in 119's GRANT.
+ */
+export const POLL_COLUMNS =
+  'id, band_id, created_by, creator_role, title, notes, status, confirmed_event_id, created_at, updated_at, vote_by, location, focus_song_ids, invited_user_ids, vote_by_time';
+
+/** Database before the RPC: read the column directly, as before. */
+const isMissingRpc = (err: { code?: string; message?: string } | null | undefined): boolean =>
+  !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''));
+
+export interface PollCost {
+  poll_id: string;
+  /** Admins only; null for members. */
+  room_cost: number | null;
+  /** Per-person share, null without a cost. */
+  cost_share: number | null;
+}
+
+const toNumber = (v: unknown): number | null => (v == null || v === '' ? null : Number(v));
+
+/**
+ * Room cost of these polls: the total for the band's admins, each person's
+ * share for everyone (bw_rehearsal_poll_costs, 114). Before 114 the total is
+ * read from the table and the share worked out here.
+ */
+export async function getPollCosts(
+  polls: { id: string; invited_user_ids?: string[] | null }[],
+  fallbackMembers = 1,
+): Promise<Map<string, PollCost>> {
+  const out = new Map<string, PollCost>();
+  const ids = [...new Set(polls.map((p) => p.id).filter(Boolean))];
+  if (ids.length === 0) return out;
+  try {
+    const res = await supabase.rpc('bw_rehearsal_poll_costs', { p_poll_ids: ids });
+    const { data, error } = res ?? { data: null, error: null };
+    if (error && isMissingRpc(error)) {
+      const legacy = await supabase.from('rehearsal_polls').select('id, room_cost').in('id', ids);
+      for (const r of (legacy?.data || []) as { id: string; room_cost: unknown }[]) {
+        const total = toNumber(r.room_cost);
+        const poll = polls.find((p) => p.id === r.id);
+        const n = Math.max(1, pollInvitees(poll || {})?.length || fallbackMembers);
+        out.set(r.id, {
+          poll_id: r.id,
+          room_cost: total,
+          cost_share: total && total > 0 ? Math.round((total / n) * 100) / 100 : null,
+        });
+      }
+      return out;
+    }
+    if (error) {
+      console.warn('Failed to load the poll room cost:', error);
+      return out;
+    }
+    for (const r of (Array.isArray(data) ? data : []) as { poll_id: string; room_cost: unknown; cost_share: unknown }[]) {
+      out.set(r.poll_id, { poll_id: r.poll_id, room_cost: toNumber(r.room_cost), cost_share: toNumber(r.cost_share) });
+    }
+  } catch (err) {
+    console.warn('Failed to load the poll room cost:', err);
+  }
+  return out;
+}
+
+/**
+ * When voting closes (117): vote_by at vote_by_time (end of that day without
+ * a time), in this device's time zone. Null when the poll has no deadline.
+ */
+export const pollVoteDeadline = (poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined): Date | null => {
+  const day = String(poll?.vote_by || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const time = String(poll?.vote_by_time || '').slice(0, 5);
+  const d = new Date(`${day}T${/^\d{2}:\d{2}$/.test(time) ? `${time}:00` : '23:59:59'}`);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+/** The vote-by deadline has passed: votes can no longer change (117). */
+export const isPollVotingClosed = (
+  poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined,
+  now: Date = new Date(),
+): boolean => {
+  const deadline = pollVoteDeadline(poll);
+  return !!deadline && now.getTime() > deadline.getTime();
 };
 
 /** Table for "None of these work" answers (migration 102). */
@@ -201,7 +290,7 @@ export const createMemberRehearsalProposal = async ({
         notes: combinedNotes || null,
         status: 'proposed',
       })
-      .select()
+      .select(POLL_COLUMNS)
       .single();
 
     if (insertError) throw insertError;
@@ -335,7 +424,7 @@ export const createOrPublishAdminPoll = async ({
           ...details,
         })
         .eq('id', pollId)
-        .select()
+        .select('id')
         .single();
 
       if (updateError) throw updateError;
@@ -357,7 +446,7 @@ export const createOrPublishAdminPoll = async ({
           ...(voteBy !== undefined ? { vote_by: voteBy || null } : {}),
           ...details,
         })
-        .select()
+        .select('id')
         .single();
 
       if (createError) throw createError;
@@ -561,7 +650,7 @@ export const finalizePollIntoRehearsal = async ({
     // 2. Fetch poll details
     const { data: poll, error: pollError } = await supabase
       .from('rehearsal_polls')
-      .select('*')
+      .select(POLL_COLUMNS)
       .eq('id', pollId)
       .single();
 
@@ -576,24 +665,23 @@ export const finalizePollIntoRehearsal = async ({
       .eq('is_active', true);
 
     if (membersError) throw membersError;
-    // Fees from bw_band_member_fees (076): the caller is an admin, so all rows.
-    const membersWithFees = await attachMemberFees((bandMembers || []) as any[]);
 
     // Deduplicate members by user_id; only the invited ones when the poll
     // has a list (098), plus the admin who locks it in.
     const invited = pollInvitees(poll);
     const seenUsers = new Set<string>();
-    const uniqueBandMembers = membersWithFees.filter((bm: any) => {
+    const uniqueBandMembers = ((bandMembers || []) as any[]).filter((bm: any) => {
       if (!bm.user_id || seenUsers.has(bm.user_id)) return false;
       if (invited && !invited.includes(bm.user_id) && bm.user_id !== adminId) return false;
       seenUsers.add(bm.user_id);
       return true;
     });
 
+    // Rehearsals have no member fee: the default gig fee is not copied (116).
     const roster = uniqueBandMembers.map((bm: any) => ({
       user_id: bm.user_id,
       role: bm.role || 'member',
-      fee: bm.default_fee != null ? Number(bm.default_fee) : 0,
+      fee: 0,
       status: bm.user_id === adminId ? 'confirmed' : 'pending',
     }));
 
@@ -621,7 +709,8 @@ export const finalizePollIntoRehearsal = async ({
     // 5. Create confirmed rehearsal event, with the place, room cost and
     // focus songs set in the poll (097).
     const venueName = location?.trim() || poll.location?.trim() || t('Band Practice Space');
-    const roomCost = poll.room_cost != null ? Number(poll.room_cost) : 0;
+    // The room's total (admins only, 114): the caller locking it in is an admin.
+    const roomCost = (await getPollCosts([poll])).get(poll.id)?.room_cost ?? 0;
     const focusIds: string[] = Array.isArray(poll.focus_song_ids) ? poll.focus_song_ids.filter(Boolean) : [];
     let setlistId: string | null = null;
     if (focusIds.length > 0) {
@@ -780,7 +869,7 @@ export const getRehearsalPolls = async (
     // 1. Fetch polls
     const { data: allPolls, error: pollsError } = await supabase
       .from('rehearsal_polls')
-      .select('*')
+      .select(POLL_COLUMNS)
       .eq('band_id', bandId)
       .in('status', ['proposed', 'polling', 'confirmed'])
       .order('created_at', { ascending: false });
@@ -839,13 +928,18 @@ export const getRehearsalPolls = async (
       }
     }
 
-    // 5. Total band members count for attendance percentage
+    // 5. Total band members count for attendance percentage: active members
+    // only, like bw_is_band_member (is_active null counts as active).
     const { count: memberCount } = await supabase
       .from('band_members')
       .select('id', { count: 'exact', head: true })
-      .eq('band_id', bandId);
+      .eq('band_id', bandId)
+      .not('is_active', 'is', false);
 
     const totalMembers = memberCount || 1;
+
+    // 5b. Room cost: the share for everyone, the total for admins (114).
+    const costs = await getPollCosts(polls, totalMembers);
 
     // 6. Map options and votes into polls
     const enrichedPolls: RehearsalPoll[] = polls.map((poll) => {
@@ -873,8 +967,11 @@ export const getRehearsalPolls = async (
         .filter((u) => u.poll_id === poll.id)
         .map((u) => ({ user_id: u.user_id, profile: profilesMap[u.user_id] || null }));
 
+      const cost = costs.get(poll.id);
       return {
         ...poll,
+        room_cost: cost?.room_cost ?? null,
+        room_cost_share: cost?.cost_share ?? null,
         options: enrichedOptions,
         unavailable: pollUnavailable,
         declined_all: !!userId && pollUnavailable.some((u) => u.user_id === userId),
@@ -901,7 +998,7 @@ export const getRehearsalPoll = async (
   try {
     const { data: poll, error: pollError } = await supabase
       .from('rehearsal_polls')
-      .select('*')
+      .select('id, band_id')
       .eq('id', pollId)
       .single();
 
