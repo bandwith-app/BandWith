@@ -985,12 +985,12 @@ const gigs: AreaModule = {
             'Tap an event to open it.',
           ],
         },
-        { type: 'p', text: 'Events are grouped by month, most recent first. Each row shows the date, title, place and a status: **Paid** or **Overdue** for gigs, **Rehearsal**, **Quote** or **Draft** for the rest.' },
+        { type: 'p', text: 'Events are grouped by month, most recent first. Each row shows the date, title, place and a status: for gigs **Client paid** or **Client unpaid** (admins) and **Paid to you** or **Not paid yet** (members); **Rehearsal**, **Quote** or **Draft** for the rest. The filters above the list use the same words.' },
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: '**Earned** adds up the band fees of the year’s gigs. **Paid** and **Unpaid** follow whether the client has paid the band.' },
-            { role: 'member', text: '**Earned** adds up your own fees. Quotes never appear.' },
+            { role: 'admin', text: '**Earned** adds up the band fees of the year’s gigs. **Client paid** and **Client unpaid** follow whether the client has paid the band.' },
+            { role: 'member', text: '**Earned** adds up your own fees. **Paid to you** and **Not paid yet** follow whether your own fee was marked paid. Quotes never appear.' },
           ],
         },
         { type: 'p', text: 'A gig becomes past when its day is over, or, for a show that ends after midnight, when the show ends.' },

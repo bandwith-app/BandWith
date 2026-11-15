@@ -386,7 +386,7 @@ const basics: AreaModule = {
         },
         { type: "p", text: "Everything you see belongs to the band you are in: Home, the setlists, members and assets. The calendar can show all your bands at once with its band filter ([[filter-the-calendar]])." },
         { type: "p", text: "A notification from another band asks first: **This is from** followed by the band, with **Switch to** that band, **Just view** (opens it without switching, when it can be viewed) or **Cancel**." },
-        { type: "note", tone: "tip", text: "There is no button to leave a band yourself. Ask an admin of that band to remove you." },
+        { type: "note", tone: "tip", text: "To leave a band, open its **Band members** and tap **Leave band** in the **⋯** menu of your own row ([[leave-a-band]])." },
       ],
     },
     {
@@ -820,7 +820,7 @@ const basics: AreaModule = {
           type: "list",
           items: [
             "**App lock** (phones and tablets only): ask for Face ID, fingerprint or the device passcode when BandWith starts again after being closed. Per device ([[app-lock]]).",
-            "**Hide my personal gigs' details from bands**: a setting for the future. Today your personal gigs are already private (only you can see them), so this switch changes nothing yet. Saved on your account.",
+            "**Personal gigs stay private**: an info row, not a switch. Only you see the title and venue of your personal gigs; bands only see that you are busy ([[personal-gigs]]).",
             "**Export my data**: a JSON copy of what you own ([[export-your-data]]).",
             "**Terms of Service** and **Privacy Policy**: open the documents inside the app.",
             "**Delete account** ([[delete-your-account]]).",
@@ -1230,7 +1230,7 @@ const basics: AreaModule = {
     { q: "My invite is not found, or it has expired.", a: "Check your spam folder and the address you typed. If it still isn't there, ask your band admin to send it again." },
     { q: "I opened the invite but it says it is for another address.", a: "You are signed in with a different account. Tap **Sign out**, then open the invite again and sign in or sign up with the address it was sent to. See [[accept-a-band-invite]]." },
     { q: "How do I switch between my bands?", a: "On Home, tap **Switch band** under the band name and pick the band. See [[several-bands]]." },
-    { q: "How do I leave a band?", a: "There is no leave button. Ask an admin of that band to remove you from **Band members**.", roles: ["member"] },
+    { q: "How do I leave a band?", a: "On **Band members**, tap **⋯** on your own row, then **Leave band** and confirm. See [[leave-a-band]].", roles: ["member"] },
     { q: "Can I delete my account if I run a band?", a: "Yes, once the band has another admin. If you are the only admin of a band with other members, make one of them admin first. See [[delete-your-account]].", roles: ["admin"] },
     { q: "Does BandWith work without a connection?", a: "Yes. Your bands, gigs and setlists stay available, and gig and rehearsal changes you make offline are sent when the connection comes back. See [[offline-mode]]." },
   ],

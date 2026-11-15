@@ -369,8 +369,8 @@ const together: AreaModule = {
           title: 'Edge cases',
           items: [
             'Not in a band yet: you see **Band required**, with **Create a band**.',
-            'An admin who dismisses your proposal does not send you a notification: it just leaves your list.',
-            'There is no button to withdraw a proposal yourself.',
+            'If an admin dismisses your proposal, you get "Rehearsal proposal dismissed" and it leaves your list.',
+            'Changed your mind? Tap **Withdraw** on your proposal, then **Withdraw** again on "Withdraw your proposal?". The admins no longer see it.',
           ],
         },
         { type: 'roles', rows: [{ role: 'admin', text: 'Admins do not propose: they create the rehearsal or a poll directly. See [[create-a-rehearsal]].' }] },
@@ -391,7 +391,7 @@ const together: AreaModule = {
             'Find the proposal under **Rehearsal scheduling** in the Home Action center or in the **Calendar**. It shows **Member rehearsal proposal**, **Proposed by**, the **Preferred days** and the note. You can also open it from the "New Rehearsal Proposal" notification.',
             'Tap **Build poll** (in the notification sheet: **Build poll from proposal**). The poll builder opens with the topic as title, the note, and the preferred days preselected.',
             'Add date slots and publish as in [[create-a-rehearsal-poll]].',
-            'Or tap **Dismiss** to close the proposal without a poll.',
+            'Or tap **Dismiss** to close the proposal without a poll. The member who proposed it gets "Rehearsal proposal dismissed".',
           ],
         },
         {
@@ -473,7 +473,7 @@ const together: AreaModule = {
         {
           type: 'list',
           items: [
-            'Only invited members get the poll notification, see the poll and can vote. The server refuses votes from anyone else.',
+            'Only invited members get the poll notification and can vote. The others in the band can open the poll read-only, marked **Not invited**; the server refuses their votes.',
             'Admins of the band always see the poll. The admin who publishes it is always on the list.',
             'When you lock in a date, only the invited members (and you) are put on the rehearsal.',
             'The share of the room cost is divided by the number of people asked to vote.',
@@ -486,7 +486,7 @@ const together: AreaModule = {
         {
           type: 'note',
           tone: 'warning',
-          text: 'The deadline is a reminder for people, not a lock. Nothing closes the poll at that time: members can still vote until an admin locks in a date.',
+          text: 'At the vote-by time voting closes: the poll shows **Voting closed** and "Voting has closed. An admin will lock in a date." The server refuses later votes. Admins can still lock in a date.',
         },
       ],
     },
@@ -982,13 +982,13 @@ const together: AreaModule = {
       roles: ['member'],
     },
     {
-      q: 'I am not seeing a poll other members talk about.',
-      a: 'The admin probably left you out under **Who votes**. Only invited members see a poll and can vote on it.',
+      q: 'Why does a poll say Not invited?',
+      a: 'The admin left you out under **Who votes**. You can read the poll, but only invited members vote on it.',
       roles: ['member'],
     },
     {
       q: 'Does the poll close at the vote-by time?',
-      a: 'No. The deadline is only shown to members. The poll stays open until an admin locks in a date or deletes it.',
+      a: 'Yes, for voting: after the vote-by time the poll shows **Voting closed** and no one can vote. An admin then locks in a date or deletes the poll.',
     },
     {
       q: 'Can members see what the rehearsal room costs?',
@@ -1029,7 +1029,7 @@ const together: AreaModule = {
     { term: 'Candidate slot', definition: 'One date with a start and end time offered in a poll.', see: 'create-a-rehearsal-poll' },
     { term: 'Scheduling mode', definition: 'The switch between **Schedule directly** and **Poll availability** when an admin starts a new rehearsal.', see: 'create-a-rehearsal' },
     { term: 'Who votes', definition: 'The members asked to vote on a poll. Leaving someone out makes an invite list.', see: 'poll-who-votes-and-deadline' },
-    { term: 'Vote by', definition: 'The day and time members should answer a poll by. It is shown, not enforced.', see: 'poll-who-votes-and-deadline' },
+    { term: 'Vote by', definition: 'The day and time a poll stops taking votes. After it the poll shows Voting closed.', see: 'poll-who-votes-and-deadline' },
     { term: 'Top pick', definition: 'The poll date with the most votes so far.', see: 'vote-in-a-rehearsal-poll' },
     { term: 'None work', definition: 'A poll answer meaning no offered date suits you. It clears your votes and tells the admin.', see: 'vote-in-a-rehearsal-poll' },
     { term: 'Lock in', definition: 'Choosing the winning date of a poll, which creates the rehearsal.', see: 'lock-in-a-poll-date' },

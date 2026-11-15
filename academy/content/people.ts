@@ -41,7 +41,7 @@ const people: AreaModule = {
             'Three counters: **Total**, **Admins** and **Members**.',
             'One row per person: photo or initials, name (the stage name when one is set), instrument and role (**Admin** or **Member**). A **Pro** tag marks people on a paid plan.',
             'Tap a row to open that person’s page. See [[member-detail]].',
-            'Tap **⋯** (**Actions for {name}**) on a row for a short menu: **Email**, and for admins **Make admin** or **Make member** and **Remove from band**.',
+            'Tap **⋯** (**Actions for {name}**) on a row for a short menu: **Email**; on your own row **Leave band**; for admins, on other people’s rows, **Make admin** or **Make member** and **Remove from band**.',
             'Admins also see the **Invite member** button (top right and at the bottom) and, under the list, the **Deputies** section. See [[deputies]].',
           ],
         },
@@ -179,7 +179,7 @@ const people: AreaModule = {
         },
         { type: 'p', text: 'The change is saved at once; there is no confirmation. The person sees their new role the next time their band list loads.' },
         { type: 'note', tone: 'warning', text: 'You can’t turn the last admin into a member. Make someone else admin first.' },
-        { type: 'note', tone: 'tip', text: 'On your own page the role buttons are hidden. In the list, the **⋯** menu on your own row still offers **Make member** while there is another admin.' },
+        { type: 'note', tone: 'tip', text: 'You can’t change your own role: your page and the **⋯** menu on your own row show no role buttons. Ask another admin to make you a member.' },
       ],
     },
     {
@@ -223,11 +223,19 @@ const people: AreaModule = {
         {
           type: 'roles',
           rows: [
-            { role: 'member', text: 'There is no Leave button for members in this version. Ask one of the band’s admins to remove you ([[remove-a-member]]).' },
-            { role: 'admin', text: 'On **Band members**, tap **⋯** on your own row and tap **Remove from band**, then **Remove**. This works only while the band has another admin.' },
+            { role: 'member', text: 'You can leave any band you are in, whenever you want.' },
+            { role: 'admin', text: 'You can leave while the band has another admin. If you are the only one, the app says “You’re the only admin. Make someone else admin before you leave.”: see [[make-admin]].' },
           ],
         },
-        { type: 'p', text: 'When you leave, the others get “{name} left {band}”. You can join again only with a new invite.' },
+        {
+          type: 'steps',
+          items: [
+            'Open **Band members** for that band.',
+            'Tap **⋯** on your own row and tap **Leave band**. (You can also tap your row and use **Leave band** at the bottom.)',
+            'The sheet asks “Leave {band}?”: you lose access to the band’s events, chats and repertoire. Tap **Leave band** to confirm, or **Cancel**.',
+          ],
+        },
+        { type: 'p', text: 'When you leave, the others get “{name} left {band}”. The app moves you to your other band, or to the start screen if you have none. You can join again only with a new invite.' },
         { type: 'note', tone: 'warning', text: 'Deleting your account (Settings, **Delete account**) also takes you out of every band. If you are the only admin of a band, make someone else admin first.' },
       ],
     },
@@ -278,8 +286,17 @@ const people: AreaModule = {
       keywords: ['default fee', 'usual fee', 'rate', 'instrument', 'role', 'pay'],
       related: ['who-sees-what', 'deputies', 'gig-workspace'],
       body: [
-        { type: 'p', text: 'Each person in a band can have a default fee. When an admin adds them to a new gig, quote or rehearsal, their fee is pre-filled with it; without one, the band’s member rate from **Pricing, fees & services** is used. The admin can change the fee on each gig.' },
-        { type: 'note', tone: 'tip', text: 'This version has no screen to edit a member’s default fee. Set fees per gig in the lineup, or set the band’s member rate in **Pricing, fees & services** (Account Hub, admins only).' },
+        { type: 'p', text: 'Each person in a band can have a default fee. When an admin adds them to a new gig or quote, their fee is pre-filled with it (rehearsals carry no fee); without one, the band’s member rate from **Pricing, fees & services** is used. The admin can change the fee on each gig.' },
+        {
+          type: 'steps',
+          title: 'Admins: change a member’s instrument or default fee',
+          items: [
+            'On **Band members**, tap the person’s row.',
+            'Under **In the band**, type the **Instrument in this band** (empty: their profile instrument is shown) and the **Default fee** (optional, a number like 150).',
+            'Tap **Save**. The default fee is used for new gigs.',
+          ],
+        },
+        { type: 'p', text: 'A member who opens their own row sees “Your default fee in this band: {fee}” when they have one.' },
         { type: 'p', text: 'Your own primary instrument is on your profile: tap your avatar, then **Edit** on your profile card, and pick it under **Primary instrument / role**. It shows on your Account Hub card.' },
         { type: 'p', text: 'The instrument next to each name on **Band members** is the one stored for that person in this band. The deputies’ **Who covers what** card groups the band by these instruments.' },
         { type: 'note', tone: 'privacy', text: 'Default fees follow the money rule: admins see everyone’s, a member sees only their own.' },
@@ -669,8 +686,8 @@ const people: AreaModule = {
             { role: 'member', text: 'Can edit and delete only items marked as theirs. The sheet says “Personal gear: the band sees it, only you and the admins can change it.” Other items are shown without buttons.' },
           ],
         },
-        { type: 'note', tone: 'warning', text: 'The bin on a row deletes the item at once, without asking. Deleting an item also takes it out of every kit.' },
-        { type: 'note', tone: 'privacy', text: 'Everyone in the band sees every item, including personal gear and its serial number, purchase date and price.' },
+        { type: 'note', tone: 'warning', text: 'The bin on a row, or **Delete item** in the sheet, asks “Delete {name}?” first. Deleting an item also takes it out of every kit.' },
+        { type: 'note', tone: 'privacy', text: 'Everyone in the band sees every item, its status and where it is. The **Serial number**, **Purchase date** and **Purchase price** are shown only to admins, and to the owner of personal gear.' },
       ],
     },
     {
@@ -692,7 +709,7 @@ const people: AreaModule = {
             ['**Lost**', 'Missing', 'No: counted as “missing”'],
           ],
         },
-        { type: 'p', text: 'You can pick **Available**, **In use** or **Maintenance** when you edit an item. **Lost** shows only on items already marked lost.' },
+        { type: 'p', text: 'You pick **Available**, **In use**, **Maintenance** or **Lost** when you edit an item.' },
         { type: 'p', text: '**Location / who has it** is free text: a room, a case, a van or a person’s name. Use it to find gear before a gig.' },
         { type: 'p', text: 'Kits count their ready items (“{ready}/{total} ready”) and warn about the rest (“{count} items need a look · check it before {gig}.”).' },
       ],
@@ -808,7 +825,7 @@ const people: AreaModule = {
             ['Repertoire (songs, lyrics, chords)', 'Add, edit, delete, import', 'Read; suggest songs and changes; private notes and files only they see'],
             ['Contracts and riders', 'Yes', 'No contracts. The gig shows the rider’s version and the stage plan'],
             ['Chat', 'Band chat, gig chats, direct chats with anyone in the band', 'Band chat, chats of gigs they play, direct chats only with admins'],
-            ['Gear and kits', 'See and change everything', 'See everything (including purchase prices); change only their own personal gear'],
+            ['Gear and kits', 'See and change everything', 'See every item, its status and location; serial number, purchase date and price only on their own personal gear; change only their own personal gear'],
             ['Member contact details', 'Email and phone of everyone in the band', 'Email and phone of everyone in the band'],
             ['Deputy list and requests', 'Yes: contacts, usual fees, notes, answers', 'No'],
             ['Personal gigs and private song notes', 'Only their own', 'Only their own'],
@@ -834,7 +851,7 @@ const people: AreaModule = {
 
   faq: [
     { q: 'Can members see what the others are paid?', a: 'No. A member sees only their own fee on each gig and their own yearly totals. Admins see everyone’s.' },
-    { q: 'How do I leave a band?', a: 'Members ask an admin to remove them; there is no Leave button for members. An admin can remove themselves from their own row while the band has another admin. See [[leave-a-band]].', roles: ['admin', 'member'] },
+    { q: 'How do I leave a band?', a: 'On **Band members**, tap **⋯** on your own row, then **Leave band**. An admin can leave while the band has another admin. See [[leave-a-band]].', roles: ['admin', 'member'] },
     { q: 'Why can’t I remove the last admin?', a: 'Every band needs at least one admin. Make someone else admin first, then change or remove the first one.', roles: ['admin'] },
     { q: 'How long is an invite valid?', a: '7 days. The invited address gets a reminder when 2 days are left. Inviting the same address again renews it.', roles: ['admin'] },
     { q: 'The person I invited says the invite doesn’t work.', a: 'They must sign in with the exact email address you invited. If it expired, invite them again.', roles: ['admin'] },
@@ -844,7 +861,7 @@ const people: AreaModule = {
     { q: 'Can members add gear?', a: 'Yes, their own personal gear with Add my gear. They can change or delete only that. The band’s gear is managed by admins.', roles: ['member'] },
     { q: 'Do members see deputies?', a: 'No. The deputies list and the requests are admin-only.' },
     { q: 'Where do I change the band logo?', a: 'Account Hub, current band card, Edit, Band logo. It also goes on your quote PDFs.', roles: ['admin'] },
-    { q: 'Where do I set a member’s default fee?', a: 'There is no screen for it in this version. Set the fee on each gig, or the band’s member rate in Pricing, fees & services.', roles: ['admin'] },
+    { q: 'Where do I set a member’s default fee?', a: 'On **Band members**, tap the person, then **In the band**: **Default fee** and **Save**. It is used for new gigs.', roles: ['admin'] },
   ],
 
   glossary: [
