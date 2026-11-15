@@ -24,6 +24,8 @@ export interface InventoryItem {
   serial_number?: string | null;
   purchase_date?: string | null;
   purchase_price?: number | string | null;
+  /** Personal gear (110): the member it belongs to. Null = the band's gear (admins manage it). */
+  owner_id?: string | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -39,11 +41,13 @@ export interface InventoryInput {
   purchaseDate?: string;
   /** Free text from the field; parsed to a number (blank → null). */
   purchasePrice?: string;
+  /** Who it belongs to: a user id (personal gear), null (the band's), undefined = unchanged. */
+  ownerId?: string | null;
 }
 
 type Result<T> = { data: T | null; error: Error | null };
 
-const noRowsMessage = () => t("This change wasn't saved: only band admins can manage the gear list.");
+const noRowsMessage = () => t("This change wasn't saved: band gear is managed by the admins, personal gear by its owner.");
 
 const asError = (err: unknown, fallback: string) => {
   const e = err as { message?: string } | null;
@@ -54,6 +58,10 @@ const blankToNull = (v?: string | null) => {
   const trimmed = (v ?? '').trim();
   return trimmed ? trimmed : null;
 };
+
+/** Who may change an item: admins any, a member only their own personal gear. */
+export const canEditInventoryItem = (item: Pick<InventoryItem, 'owner_id'>, userId: string | null | undefined, isAdmin: boolean): boolean =>
+  isAdmin || (!!userId && item.owner_id === userId);
 
 /** Matches a stored category to the canonical label (older rows may be lowercase). */
 export const canonicalCategory = (category: string | null | undefined): string => {
@@ -89,6 +97,7 @@ export const toInventoryRow = (input: InventoryInput): { row: Record<string, unk
       serial_number: blankToNull(input.serialNumber),
       purchase_date: blankToNull(input.purchaseDate),
       purchase_price: price.value,
+      ...(input.ownerId !== undefined ? { owner_id: input.ownerId } : {}),
     },
     error: null,
   };

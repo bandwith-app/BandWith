@@ -32,7 +32,7 @@ import {
 } from '@/lib/services/songSuggestions';
 import { ultimateGuitarSearchUrl } from '@/lib/ultimateGuitar';
 import { openExternal } from '@/lib/nativeFiles';
-import { openLyrics } from '@/lib/lyrics';
+import { closeLyrics, openLyrics } from '@/lib/lyrics';
 import { asSongChart } from '@/lib/ireal';
 import { cn } from '@/app/components/ui/utils';
 import { useBand } from '@/lib/BandContext';
@@ -258,6 +258,10 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     }
   }, [selectedBand?.id]);
 
+  // The song reader opened from a row belongs to Repertoire: leaving Repertoire
+  // (Back, the Duo rail) closes it instead of leaving it over the next screen.
+  useEffect(() => () => closeLyrics(), []);
+
   // Suggestions from members (108): admins see how many wait for them,
   // members how many of theirs are still waiting.
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
@@ -391,7 +395,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const handleImportList = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !selectedBand?.id) return;
+    if (!file || !selectedBand?.id || !isAdmin) return;
     if (file.size > 2 * 1024 * 1024) {
       setImportStatus(t('That file is too large for a song list (max 2 MB).'), true);
       return;
@@ -805,7 +809,9 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         title={t('Repertoire')}
         actions={
           <>
-            {viewMode === 'songs' && (
+            {/* Bulk import goes straight into the library: admins only.
+                Members suggest one song at a time, reviewed by an admin. */}
+            {viewMode === 'songs' && isAdmin && (
               <IconButton
                 label={t('Import song list')}
                 icon={<Upload />}
@@ -907,14 +913,16 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                       <PillButton size="md" fullWidth={false} icon={<Plus className="w-4 h-4" />} onClick={() => setShowAddSong(true)}>
                         {t('Add first song')}
                       </PillButton>
-                      <PillButton size="md" variant="outline" fullWidth={false} loading={importing} onClick={() => importInputRef.current?.click()}>
-                        {t('Import list (CSV/TXT)')}
-                      </PillButton>
-                      {/* Straight in as Ready: admins only (members suggest songs). */}
+                      {/* Straight into the library: admins only (members suggest songs). */}
                       {isAdmin && (
-                        <PillButton size="md" variant="outline" fullWidth={false} loading={seeding} onClick={handleSeedRepertoire}>
-                          {t('Load 700+ songs')}
-                        </PillButton>
+                        <>
+                          <PillButton size="md" variant="outline" fullWidth={false} loading={importing} onClick={() => importInputRef.current?.click()}>
+                            {t('Import list (CSV/TXT)')}
+                          </PillButton>
+                          <PillButton size="md" variant="outline" fullWidth={false} loading={seeding} onClick={handleSeedRepertoire}>
+                            {t('Load 700+ songs')}
+                          </PillButton>
+                        </>
                       )}
                     </div>
                   )}

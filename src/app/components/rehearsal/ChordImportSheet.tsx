@@ -6,7 +6,7 @@ import { chartSummary } from '@/app/components/ui/ChordChart';
 import { LyricsText } from '@/app/components/ui/LyricsViewer';
 import { cn } from '@/app/components/ui/utils';
 import { chartBarCount, parseIrealLink, type SongChart } from '@/lib/ireal';
-import { browseIrealForum, canBrowseForumInApp, IREAL_FORUM_URL } from '@/lib/irealForum';
+import { browseIrealForum, canBrowseForumInApp, closeForumWindow, irealLinkFrom, IREAL_FORUM_URL } from '@/lib/irealForum';
 import { pastedLyrics, readSongFile, songFileTooLarge, SONG_FILE_ACCEPT, type ImportedSong, type SongFileError } from '@/lib/songImport';
 import { openExternal } from '@/lib/nativeFiles';
 import { takeReceivedChart, receivedChartName } from '@/lib/chartInbox';
@@ -27,7 +27,8 @@ export type ImportTab = 'forum' | 'file' | 'lyrics';
 /**
  * "Import chords and lyrics" for a song:
  * - From the forum: tap a song or a playlist link of the iReal Pro forum (in
- *   the app it opens inside it, on the web in a new tab with a paste field).
+ *   the app it opens inside it; on the web in a window beside it, and the
+ *   link comes back by Paste link, a paste in the field, or a drag).
  * - From file: MusicXML (chords, and lyrics when the score has them),
  *   ChordPro or plain text.
  * - Lyrics: paste from the clipboard.
@@ -56,6 +57,8 @@ export const ChordImportSheet: React.FC<{
   const [busy, setBusy] = React.useState(false);
   const [received, setReceived] = React.useState<string | null>(null);
   const [pasted, setPasted] = React.useState('');
+  /** Web: a link is being dragged over the forum tab. */
+  const [dragging, setDragging] = React.useState(false);
   const [preview, setPreview] = React.useState<ImportedSong | null>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
   const pasteBox = React.useRef<HTMLTextAreaElement>(null);
@@ -108,6 +111,8 @@ export const ChordImportSheet: React.FC<{
     try {
       const pl = parseIrealLink(value);
       setError(null);
+      // Web: the forum window opened from here has done its job.
+      if (!inApp) closeForumWindow();
       if (pl.songs.length === 1) pick({ chart: pl.songs[0] });
       else {
         setList(pl);
@@ -123,10 +128,48 @@ export const ChordImportSheet: React.FC<{
     try {
       const link = await browseIrealForum(t('iReal Pro forum'), { close: t('Close'), back: t('Back') });
       if (link) readLink(link);
-    } catch {
-      setError(t('Could not open the forum. Try again.'));
+    } catch (e) {
+      setError(
+        !inApp && (e as Error)?.message === 'blocked'
+          ? t('Your browser blocked the forum window. Allow pop-ups for BandWith and try again.')
+          : t('Could not open the forum. Try again.'),
+      );
     }
   };
+
+  /** Web: the link copied in the forum window, read on the tap (browsers ask once). */
+  const pasteLink = async () => {
+    setError(null);
+    try {
+      const value = await navigator.clipboard.readText();
+      const link = irealLinkFrom({ getData: () => value });
+      if (link) readLink(link);
+      else setError(t('The clipboard has no iReal Pro link: copy one in the forum first.'));
+    } catch {
+      setError(t('Could not read the clipboard: paste into the box below.'));
+    }
+  };
+
+  /** Web: a link dragged from the forum window onto the forum tab. */
+  const dropProps = inApp
+    ? {}
+    : {
+        onDragOver: (e: React.DragEvent) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          if (!dragging) setDragging(true);
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          setDragging(false);
+          const link = irealLinkFrom(e.dataTransfer);
+          if (link) readLink(link);
+          else setError(t('This is not an iReal Pro link.'));
+        },
+      };
 
   const fileErrors: Record<SongFileError, string> = {
     unsupported: t('Choose a MusicXML, ChordPro or text file.'),
@@ -271,15 +314,31 @@ export const ChordImportSheet: React.FC<{
             </div>
 
             {tab === 'forum' && !list && (
-              <div role="tabpanel" className="flex flex-col gap-4">
+              <div
+                role="tabpanel"
+                {...dropProps}
+                className={cn(
+                  'flex flex-col gap-4',
+                  !inApp && '-m-2 p-2 rounded-[20px] outline-2 outline-dashed outline-transparent transition-[outline-color]',
+                  dragging && 'outline-sheet-foreground/60 bg-sheet-foreground/[0.06]',
+                )}
+              >
                 <p className="bw-body-md text-sheet-foreground/85">
                   {inApp
                     ? t('Browse the iReal Pro forum and tap a song or a playlist: its chords come straight here.')
-                    : t('Open the iReal Pro forum, copy the link of a song or a playlist and paste it here.')}
+                    : t('The forum opens in its own window. Right-click a song or a playlist, choose Copy Link and tap Paste link here, or drag the link onto this box.')}
                 </p>
-                <PillButton variant="white" size="md" fullWidth={false} className="self-start" icon={<Globe className="w-4 h-4" />} onClick={() => void browse()}>
-                  {inApp ? t('Browse the iReal Pro forum') : t('Open the iReal Pro forum')}
-                </PillButton>
+                <div className="flex flex-wrap gap-2">
+                  <PillButton variant="white" size="md" fullWidth={false} icon={<Globe className="w-4 h-4" />} onClick={() => void browse()}>
+                    {inApp ? t('Browse the iReal Pro forum') : t('Open the iReal Pro forum')}
+                  </PillButton>
+                  {!inApp && (
+                    <PillButton variant="ghost" size="md" fullWidth={false} className="text-sheet-foreground" icon={<FileText className="w-4 h-4" />} onClick={() => void pasteLink()}>
+                      {t('Paste link')}
+                    </PillButton>
+                  )}
+                </div>
+                {dragging && <p className="bw-label-sm text-sheet-foreground" aria-live="polite">{t('Drop the link here')}</p>}
                 {inApp && (
                   <div role="separator" className="flex items-center gap-3 text-sheet-foreground/60">
                     <span className="flex-1 h-px bg-sheet-foreground/20" />

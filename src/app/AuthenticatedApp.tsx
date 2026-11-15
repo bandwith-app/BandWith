@@ -1903,9 +1903,7 @@ export default function AuthenticatedApp() {
   // Create/edit flows keep it disabled so nothing typed is lost.
   const railProfileLocked =
     !isIdentityOpen && (isCreateEventOpen || showPersonalGigModal || showEditProfile || showUpgradePricing || showPricingModal || !!rsvpNotification || !!pollNotification || !!votePollId);
-  const openRailProfile = () => {
-    if (isIdentityOpen) { closeIdentity(); return; }
-    if (railProfileLocked) return;
+  const closeHubPages = () => {
     setShowSettings(false);
     setShowBandMembers(false);
     setShowSetlistManager(false);
@@ -1914,6 +1912,17 @@ export default function AuthenticatedApp() {
     setShowContracts(false); setContractPrefill(null);
     setShowTaskTemplates(false);
     setShowPastEvents(false);
+    setShowDeputyGigs(false);
+  };
+  // Unsaved edits (a gig's setlist, a setlist, chords) are asked about first,
+  // like every other way out of the screen.
+  const openRailProfile = () => runGuarded(() => {
+    closeLyrics();
+    closeChordEditor();
+    // "Close profile" leaves the hub page opened from it as well, back to the tab.
+    if (isIdentityOpen) { closeHubPages(); closeIdentity(); return; }
+    if (railProfileLocked) return;
+    closeHubPages();
     setShowNewChat(false);
     setIsBandSwitcherOpen(false);
     setIsDayPickerOpen(false);
@@ -1923,7 +1932,7 @@ export default function AuthenticatedApp() {
     setExpandedCard(null);
     setIsPlusMenuOpen(false);
     openIdentity();
-  };
+  });
 
   const closeMenus = () => {
     setIsControlDeckOpen(false);
@@ -3978,17 +3987,7 @@ export default function AuthenticatedApp() {
           // (the chord editor's unsaved changes are asked about first, above).
           closeLyrics();
           closeChordEditor();
-          if (hubOpen) {
-            setShowSettings(false);
-            setShowBandMembers(false);
-            setShowSetlistManager(false);
-            setShowAnalytics(false);
-            setShowInventory(false);
-            setShowContracts(false); setContractPrefill(null);
-            setShowTaskTemplates(false);
-            setShowPastEvents(false);
-            setShowDeputyGigs(false);
-          }
+          if (hubOpen) closeHubPages();
           setActiveTab(tab);
         })}
         isPlusMenuOpen={isPlusMenuOpen}
@@ -4057,6 +4056,7 @@ export default function AuthenticatedApp() {
               onBack={() => setShowInventory(false)}
               bandId={realBand.id}
               canEdit={isAdminOfBand(realBand.id)}
+              ownerNames={Object.fromEntries((realBand.members || []).map((m) => [m.user_id, m.stage_name || m.profile?.full_name || '']))}
               onOpenEvent={(eventId) => {
                 const ev = (events || []).find((e: any) => String(e.eventId || e.id) === eventId);
                 if (!ev) return;

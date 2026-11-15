@@ -255,7 +255,8 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               <>
                 <span className="bw-label-sm uppercase text-white/45 mr-2">{t('Next')}</span>
                 {next.title}
-                {next.key ? ` · ${next.key}` : ''}
+                {/* Keys keep their case (Ab, not AB) inside the uppercase heading. */}
+                {next.key ? <> · <span className="normal-case">{next.key}</span></> : null}
               </>
             ) : (
               <span className="bw-label-sm uppercase text-white/45">{t('Last song')}</span>
