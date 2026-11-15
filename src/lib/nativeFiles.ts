@@ -128,8 +128,18 @@ export const openExternal = async (url: string) => {
     window.location.href = url;
     return;
   }
-  const w = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!w) window.location.href = url;
+  // With 'noopener' window.open always returns null, which used to send the
+  // app itself to the link too: open first, then cut the link back.
+  const w = window.open(url, '_blank');
+  if (!w) {
+    window.location.href = url;
+    return;
+  }
+  try {
+    w.opener = null;
+  } catch {
+    /* cross-origin */
+  }
 };
 
 export type LinkShareResult = 'shared' | 'copied' | 'cancelled';

@@ -31,6 +31,7 @@ import { supabase } from '@/lib/supabase';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
 import { saveEventDraft, deleteEventDraft, newDraftId, type EventDraft } from '@/lib/wizardDrafts';
 import { useSystemBack } from '@/lib/backStack';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 
 import { RehearsalAddTaskModal } from './RehearsalAddTaskModal';
 import { RehearsalSetlistEditorModal } from './RehearsalSetlistEditorModal';
@@ -608,6 +609,16 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     // The tablet composer has no steps: Back closes it.
     else if (step > 0 && !composerOn) setStep(step - 1);
     else requestClose();
+    return true;
+  });
+
+  // Edit rehearsal: Close / Cancel / Back with changes not saved asks first
+  // (as Edit gig does), instead of dropping them.
+  const editDirty = isEditing && isDirty;
+  const [editLeaveOpen, setEditLeaveOpen] = useState(false);
+  const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
+  useSystemBack(editDirty, () => {
+    setEditLeaveOpen((open) => !open);
     return true;
   });
 
@@ -2361,7 +2372,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           {/* Header */}
           <header className="shrink-0 px-4 pb-4 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
             <div className="flex items-center gap-3 min-h-11">
-              <NavBackButton pane label={t('Close edit rehearsal')} onClick={onClose} />
+              <NavBackButton pane label={t('Close edit rehearsal')} onClick={requestEditClose} />
               {/* iPhone Duo: Back is in the rail, so the tag leads the row
                   (as in the gig edit header) instead of floating top-right. */}
               <div className="flex-1 [[data-bw-rail-host]_&]:hidden" />
@@ -2387,7 +2398,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           {/* CTA bar */}
           <div className="shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
             <div className="grid grid-cols-[2fr_3fr] gap-3">
-              <PillButton variant="outline" onClick={onClose}>
+              <PillButton variant="outline" onClick={requestEditClose}>
                 {t('Cancel')}
               </PillButton>
               <PillButton
@@ -2402,6 +2413,21 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           </div>
         </motion.div>
         {modals}
+        <UnsavedChangesSheet
+          open={editLeaveOpen}
+          title={t('Save your changes?')}
+          body={t('You changed this event. Save to keep the changes, or discard them.')}
+          saving={isSubmitting}
+          onKeepEditing={() => setEditLeaveOpen(false)}
+          onDiscard={() => {
+            setEditLeaveOpen(false);
+            onClose();
+          }}
+          onSave={() => {
+            setEditLeaveOpen(false);
+            void handleSubmit();
+          }}
+        />
       </>
     );
   }

@@ -18,6 +18,7 @@ import type { Event } from '@/lib/services/events';
 import { personName, personFirstName, personInitials } from '@/lib/personName';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useT, intlLocale } from '@/lib/i18n';
+import { parseLocalDate } from '@/lib/dates';
 
 interface NewChatModalProps {
   onClose: () => void;
@@ -113,9 +114,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
               return myEventIdSet.has(e.id);
             });
 
+            // A personal event (no band) is not the band's.
             return allowedEvents.map(e => ({
               ...e,
-              bandName: band.name
+              bandName: e.band_id ? band.name : undefined
             }));
           });
           
@@ -166,7 +168,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
   };
 
   const formatEventDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    // "2026-11-14" is a calendar day: read it in local time, not as UTC
+    // midnight (which is the day before west of Greenwich).
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString(intlLocale('en-US'), { 
       day: 'numeric', 
       month: 'short',
@@ -508,7 +512,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
                       const isSelected = selectedEvent?.id === event.id;
                       const startOfToday = new Date();
                       startOfToday.setHours(0, 0, 0, 0);
-                      const kind = eventKindOf(event, new Date(event.event_date) < startOfToday);
+                      const kind = eventKindOf(event, parseLocalDate(event.event_date) < startOfToday);
                       
                       return (
                         <motion.button
@@ -532,7 +536,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onChatCreat
                             </p>
                           </div>
                           <Tag variant="subtle" className="bg-foreground/[0.12]">
-                            {event.event_type === 'rehearsal' ? t('Rehearsal') : t('Gig')}
+                            {event.event_type === 'rehearsal' ? t('Rehearsal') : !event.band_id ? t('Personal') : /^quot/i.test(String((event as { status?: string }).status ?? '')) ? t('Quote') : t('Gig')}
                           </Tag>
                         </motion.button>
                       );

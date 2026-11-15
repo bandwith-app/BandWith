@@ -470,7 +470,7 @@ export const PersonalLayerSheets: React.FC = () => {
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder={t('e.g. Breathe before this line')}
+            placeholder={line ? t('e.g. Breathe before this line') : t('e.g. Watch the tempo in the bridge')}
             rows={4}
             maxLength={2000}
             className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[96px] resize-none"

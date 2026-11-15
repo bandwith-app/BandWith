@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { ScreenHeader, IconButton, Card } from '@/app/components/bw/Screen';
 import { FormError, PillButton } from '@/app/components/bw';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AlertTriangle, Check, Copy, Music2, Plus, RotateCcw, Sparkles } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { supabase } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { isChordToken } from '@/lib/lyrics';
 import { asSongChart, chordLabel, keyLabel, type SongChart } from '@/lib/ireal';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
@@ -86,6 +88,14 @@ export const ChordEditor: React.FC = () => {
   const [copyTo, setCopyTo] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
+  const [leaveOpen, setLeaveOpen] = React.useState(false);
+  // Leaving through the tab bar with changes: ask, then go where the user tapped.
+  const pendingLeave = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => {
+    setLeaveOpen(false);
+    pendingLeave.current = null;
+  }, [id]);
   const [drag, setDrag] = React.useState<{ from: Pos; chord: string; x: number; y: number; moved: boolean } | null>(null);
   // The click that ends a drag lands on whatever word is under it: ignore it.
   const dropClick = React.useRef(false);
@@ -110,8 +120,12 @@ export const ChordEditor: React.FC = () => {
         return;
       }
       const row = data as { id: string; band_id: string; title: string; key: string | null; lyrics: string | null; chord_chart: unknown };
-      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics: row.lyrics || '', chart: asSongChart(row.chord_chart) });
-      setText(row.lyrics || '');
+      // Songs written before the unified format (chords on their own line above
+      // the words) are edited in it: otherwise a chord placed on a word would
+      // sit under the old chord line and both would be saved.
+      const lyrics = normalizeLyrics(row.lyrics) || row.lyrics || '';
+      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, chart: asSongChart(row.chord_chart) });
+      setText(lyrics);
     })();
     return () => {
       alive = false;
@@ -119,9 +133,16 @@ export const ChordEditor: React.FC = () => {
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = !!song && text !== song.lyrics;
+  useUnsavedGuard(!!id && dirty, (proceed) => {
+    pendingLeave.current = proceed;
+    setLeaveOpen(true);
+  });
   const close = () => {
     if (saving) return;
-    if (dirty && !window.confirm(t('Discard your chord changes?'))) return;
+    if (dirty) {
+      setLeaveOpen(true);
+      return;
+    }
     closeChordEditor();
   };
   useSystemBack(!!id, () => {
@@ -222,6 +243,9 @@ export const ChordEditor: React.FC = () => {
     }
     setSong({ ...song, lyrics: text });
     closeChordEditor();
+    const next = pendingLeave.current;
+    pendingLeave.current = null;
+    next?.();
   };
 
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
@@ -359,6 +383,7 @@ export const ChordEditor: React.FC = () => {
   };
 
   return createPortal(
+    <>
     <AnimatePresence>
       {id && (
         <motion.div
@@ -505,7 +530,29 @@ export const ChordEditor: React.FC = () => {
           )}
         </motion.div>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+    <UnsavedChangesSheet
+      open={!!id && leaveOpen}
+      title={t('Save your changes?')}
+      saving={saving}
+      error={leaveOpen ? error : null}
+      onKeepEditing={() => {
+        pendingLeave.current = null;
+        setLeaveOpen(false);
+      }}
+      onDiscard={() => {
+        setLeaveOpen(false);
+        closeChordEditor();
+        const next = pendingLeave.current;
+        pendingLeave.current = null;
+        next?.();
+      }}
+      onSave={() => {
+        // Success closes the editor; an error stays on the sheet.
+        void save();
+      }}
+    />
+    </>,
     document.body,
   );
 };

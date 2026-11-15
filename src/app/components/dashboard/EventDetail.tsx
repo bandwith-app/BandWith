@@ -47,7 +47,7 @@ import { listDeputyRequests, type DeputyRequest } from '@/lib/services/deputies'
 import { KeyValueRow, LINK_CLASS, MemberRow, SectionTitle, type ResolvedMember } from '@/app/components/event/parts';
 import { useEventMembers } from '@/app/components/event/useEventMembers';
 import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh';
-import { useStageLive } from '@/app/components/event/useStageLive';
+import { useStageLive, SETLIST_ORDER_SAVED } from '@/app/components/event/useStageLive';
 import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
@@ -84,6 +84,7 @@ import { useRailLayout } from '@/lib/deviceRegions';
 import { GigSetlistEditor, useGigSetlistDraft } from '@/app/components/event/GigSetlistEditor';
 import { UnsavedChangesBar, UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
 
 interface EventDetailProps {
   event: EventData;
@@ -304,6 +305,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [confirmDrop, setConfirmDrop] = useState(false);
   const [isStageOpen, setIsStageOpen] = useState(false);
+  // Stage mode's song view (lyrics / chords), shared by Book and Laptop pose.
+  const [stageSongOpen, setStageSongOpen] = useState(false);
   /** The Rider & stage screen is open (phone, iPhone Duo). */
   const [riderOpen, setRiderOpen] = useState(false);
   /** iPad gig workspace tab (Figma "iPad · 03"). */
@@ -356,6 +359,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     if (setlistDraft.dirty) setLeaveAction(() => action);
     else action();
   };
+  // The tab bar or another event in the list (iPad, Duo open) ask first too.
+  useUnsavedGuard(setlistDraft.dirty, (proceed) => setLeaveAction(() => proceed));
   const onClose = () => guardUnsaved(onCloseProp);
   const onEdit = onEditProp ? () => guardUnsaved(onEditProp) : undefined;
   // Android Back with changes waiting: a sheet open over them closes first, then ask.
@@ -409,6 +414,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     onTasks: reloadTasks,
     onSetlist: () => setSetlistReloadKey((k) => k + 1),
   });
+  // Reordered in Stage mode (opened from here): show the new order at once.
+  useEffect(() => {
+    if (!event.setlistId) return;
+    const onSaved = (e: Event) => {
+      if ((e as CustomEvent<{ setlistId?: string }>).detail?.setlistId === event.setlistId) setSetlistReloadKey((k) => k + 1);
+    };
+    window.addEventListener(SETLIST_ORDER_SAVED, onSaved);
+    return () => window.removeEventListener(SETLIST_ORDER_SAVED, onSaved);
+  }, [event.setlistId]);
 
   // Fetch setlist songs
   useEffect(() => {
@@ -1363,7 +1377,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                             <span className="bw-body-md truncate">{song.title}</span>
                             {song.artist && <span className="bw-label-xs text-muted-foreground truncate mt-1">{song.artist}</span>}
                           </span>
-                          {song.key && <span className="bw-label-sm text-muted-foreground shrink-0">{song.key}</span>}
+                          {song.key && <span className="bw-label-sm normal-case text-muted-foreground shrink-0">{song.key}</span>}
                           {hasLyricsOrChart(song.lyrics, song.chart) && (
                             <span className="bw-label-xs text-muted-foreground shrink-0">{t('LYRICS')}</span>
                           )}
@@ -2194,7 +2208,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {song.key && <Tag variant="subtle">{song.key}</Tag>}
+                          {song.key && <Tag variant="subtle" className="normal-case">{song.key}</Tag>}
                           {song.duration && (
                             <span className="bw-label-sm text-muted-foreground">{song.duration}</span>
                           )}
@@ -2522,6 +2536,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             songsError={setlistError}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
+            songOpen={stageSongOpen}
+            onSongOpenChange={setStageSongOpen}
             onClose={() => setIsStageOpen(false)}
           />
         )}
@@ -2535,6 +2551,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           songs={stageLive.songs}
           songsLoading={setlistLoading}
           title={event.title}
+          bandId={event.band_id ?? undefined}
+          lyricsOn={stageSongOpen}
+          onLyricsOnChange={setStageSongOpen}
           index={stageLive.index}
           onIndexChange={stageLive.select}
           click={stageLive.click}

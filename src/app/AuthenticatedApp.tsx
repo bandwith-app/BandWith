@@ -1,4 +1,5 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
+import { runGuarded } from '@/lib/unsavedGuard';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -59,9 +60,10 @@ import { MiniPlayer } from "@/app/components/ui/MiniPlayer";
 import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
 import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
 import { SuggestSongChangeSheet } from "@/app/components/songs/SuggestSongChangeSheet";
-import { ChordEditor } from "@/app/components/songs/ChordEditor";
+import { ChordEditor, closeChordEditor } from "@/app/components/songs/ChordEditor";
 import { PersonalLayerSheets } from "@/app/components/songs/PersonalLayer";
-import { openSongSuggestions } from "@/lib/services/songSuggestions";
+import { openSongSuggestions, closeSongSuggestions } from "@/lib/services/songSuggestions";
+import { closeLyrics } from "@/lib/lyrics";
 import { ReceivedChartSheet } from "@/app/components/rehearsal/ReceivedChartSheet";
 
 import { USER } from "@/app/data/user";
@@ -100,20 +102,35 @@ import { todayLocal } from '../lib/dates';
 import { effectiveStatus, type Contract } from '@/lib/services/contracts';
 import { addDaysLocal, countDueTasks, EMPTY_ASSET_STATUS, type AssetStatusCounts } from '@/lib/assetStatus';
 
-const BandMembersView = React.lazy(() => import("@/app/views/BandMembersView").then(m => ({ default: m.BandMembersView })));
-const SetlistManagerView = React.lazy(() => import("@/app/views/SetlistManagerView").then(m => ({ default: m.SetlistManagerView })));
-const SettingsView = React.lazy(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
-const AnalyticsView = React.lazy(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
-const InventoryView = React.lazy(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
-const ContractsView = React.lazy(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
+/**
+ * A lazy screen that waits for its own code, not the whole layer list: when
+ * one page opens for the first time while another closes, a shared Suspense
+ * hid the list mid-change and the closing page's exit never finished, so it
+ * stayed on screen (the Duo hub showed two pages, Back lost).
+ */
+function lazyLayer<T extends React.ComponentType<any>>(load: () => Promise<{ default: T }>): React.FC<React.ComponentProps<T>> {
+  const Lazy = React.lazy(load);
+  const Layer: React.FC<React.ComponentProps<T>> = (props) => (
+    <React.Suspense fallback={null}>
+      <Lazy {...props} />
+    </React.Suspense>
+  );
+  return Layer;
+}
+const BandMembersView = lazyLayer(() => import("@/app/views/BandMembersView").then(m => ({ default: m.BandMembersView })));
+const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerView").then(m => ({ default: m.SetlistManagerView })));
+const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
+const AnalyticsView = lazyLayer(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
+const InventoryView = lazyLayer(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
+const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
 import type { ContractPrefill } from "@/app/views/ContractsView";
-const TaskTemplatesView = React.lazy(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
-const CreateEventModal = React.lazy(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
-const RehearsalLiveView = React.lazy(() => import("@/app/components/rehearsal/RehearsalLiveView").then(m => ({ default: m.RehearsalLiveView })));
-const RehearsalPostView = React.lazy(() => import("@/app/components/rehearsal/RehearsalPostView").then(m => ({ default: m.RehearsalPostView })));
-const QuoteCreationWizard = React.lazy(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
-const BandPricingModal = React.lazy(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
-const QuoteShareModal = React.lazy(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
+const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
+const CreateEventModal = lazyLayer(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
+const RehearsalLiveView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalLiveView").then(m => ({ default: m.RehearsalLiveView })));
+const RehearsalPostView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalPostView").then(m => ({ default: m.RehearsalPostView })));
+const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
+const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
+const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
 import type { PricingModalTabType } from "@/app/components/quotes/BandPricingModal";
 
 import { EventData } from "@/app/components/dashboard/EventCard";
@@ -798,7 +815,9 @@ export default function AuthenticatedApp() {
       .slice(0, 60);
   }, [events, realBand?.id]);
 
-  const visuallyFilteredEvents = useMemo(() => {
+  // What this user may see (band pill, membership, no quotes for members),
+  // before the calendar's own status filter and search.
+  const visibleEvents = useMemo(() => {
     // Band filter (people in 2+ bands): narrows, combines with the rest.
     let result = filterByBand(events, selectedBandPill);
     // Optimistic UI: instantly strip events that should be visually hidden
@@ -820,8 +839,12 @@ export default function AuthenticatedApp() {
     }
     // Double safety: regular members must never see unconverted quotes
     result = result.filter(e => isAdminOfBand(e.band_id) || ((e.status as string) !== 'QUOTE' && (e.status as string) !== 'QUOTED' && e.eventType !== 'quote'));
+    return result;
+  }, [events, selectedBandPill, optimisticallyHiddenEventIds, eventMembersMap, user?.id, isAdminOfBand]);
+
+  const visuallyFilteredEvents = useMemo(() => {
     // Status filter
-    result = result.filter((e) => {
+    let result = visibleEvents.filter((e) => {
       const s = e.status?.toUpperCase();
       let mf = eventFilter === "All" || eventFilter === "ALL";
       if (!mf) {
@@ -843,7 +866,7 @@ export default function AuthenticatedApp() {
       );
     }
     return result;
-  }, [events, selectedBandPill, eventFilter, eventSearch, optimisticallyHiddenEventIds, eventMembersMap, user?.id, isAdminOfBand]);
+  }, [visibleEvents, eventFilter, eventSearch]);
 
   // ── Drafts in the calendar ──────────────────────────────────
   // The admin's saved gig / rehearsal drafts and quotes not shared yet show
@@ -1365,6 +1388,14 @@ export default function AuthenticatedApp() {
 
   const [showBandMembers, setShowBandMembers] = useState(false);
   const [showSetlistManager, setShowSetlistManager] = useState(false);
+  // Leaving the repertoire takes its suggestions screen with it: on the iPad
+  // and the open Duo it would otherwise stay in the trailing pane, over the
+  // next screen.
+  const wasSetlistManager = useRef(false);
+  useEffect(() => {
+    if (wasSetlistManager.current && !showSetlistManager) closeSongSuggestions();
+    wasSetlistManager.current = showSetlistManager;
+  }, [showSetlistManager]);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialSection, setSettingsInitialSection] = useState<"main" | "notifications" | "appearance" | "privacy" | "help" | "about" | "language">("main");
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -1887,9 +1918,7 @@ export default function AuthenticatedApp() {
   // Create/edit flows keep it disabled so nothing typed is lost.
   const railProfileLocked =
     !isIdentityOpen && (isCreateEventOpen || showPersonalGigModal || showEditProfile || showUpgradePricing || showPricingModal || !!rsvpNotification || !!pollNotification || !!votePollId);
-  const openRailProfile = () => {
-    if (isIdentityOpen) { closeIdentity(); return; }
-    if (railProfileLocked) return;
+  const closeHubPages = () => {
     setShowSettings(false);
     setShowBandMembers(false);
     setShowSetlistManager(false);
@@ -1898,6 +1927,17 @@ export default function AuthenticatedApp() {
     setShowContracts(false); setContractPrefill(null);
     setShowTaskTemplates(false);
     setShowPastEvents(false);
+    setShowDeputyGigs(false);
+  };
+  // Unsaved edits (a gig's setlist, a setlist, chords) are asked about first,
+  // like every other way out of the screen.
+  const openRailProfile = () => runGuarded(() => {
+    closeLyrics();
+    closeChordEditor();
+    // "Close profile" leaves the hub page opened from it as well, back to the tab.
+    if (isIdentityOpen) { closeHubPages(); closeIdentity(); return; }
+    if (railProfileLocked) return;
+    closeHubPages();
     setShowNewChat(false);
     setIsBandSwitcherOpen(false);
     setIsDayPickerOpen(false);
@@ -1907,10 +1947,13 @@ export default function AuthenticatedApp() {
     setExpandedCard(null);
     setIsPlusMenuOpen(false);
     openIdentity();
-  };
+  });
 
   const closeMenus = () => {
     setIsControlDeckOpen(false);
+    // Two panes: the profile editor opened beside "Who you are" leaves with it,
+    // instead of reappearing later over Home.
+    if (twoPane && isIdentityOpen) setShowEditProfile(false);
     setIsIdentityOpen(false);
     if (activeTab === "More") setActiveTab("Home");
   };
@@ -2769,7 +2812,12 @@ export default function AuthenticatedApp() {
     }
   };
 
-  const handleEventCardClick = async (event: EventData) => {
+  // Another event while the open gig has setlist changes not saved: ask first.
+  const handleEventCardClick = (event: EventData) => {
+    if (selectedEvent && eventKeyOf(selectedEvent) === eventKeyOf(event)) return void openEventCard(event);
+    runGuarded(() => void openEventCard(event));
+  };
+  const openEventCard = async (event: EventData) => {
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -3743,7 +3791,8 @@ export default function AuthenticatedApp() {
       <div aria-hidden="true" className="bw-pane-placeholder flex-col justify-end gap-3 p-6 pb-10 bg-background text-foreground select-none">
         <span className="bw-label-sm text-muted-foreground">{railLayout ? 'BandWith · Duo' : 'BandWith'}</span>
         <span className="bw-display-lg">
-          {activeTab === 'Chat' ? t('Pick a chat') : (activeTab === 'More' || isIdentityOpen) ? t('Your band, side by side') : t('Pick an event')}
+          {/* A hub page (members, repertoire…) fills the list side: its details come from there. */}
+          {(activeTab === 'More' || isIdentityOpen || hubOpen) ? t('Your band, side by side') : activeTab === 'Chat' ? t('Pick a chat') : t('Pick an event')}
         </span>
         <span className="bw-body-sm text-muted-foreground">{t('Details open on this side.')}</span>
       </div>
@@ -3875,10 +3924,27 @@ export default function AuthenticatedApp() {
           onNotificationClick={handleNotificationClick}
           onMarkAsRead={handleMarkSingleAsRead}
           onMarkGroupAsRead={handleMarkGroupAsRead}
-          onEntityDetailClick={(l) => { if (l === "INVENTORY") setShowInventory(true); if (l === "REPERTOIRE") setShowSetlistManager(true); if (l === "TEMPLATES") setShowTaskTemplates(true); if (l === "DOCUMENTS" && realBand && isAdminOfBand(realBand.id)) setShowContracts(true); }}
+          // One hub page at a time: opening another from the hub (side by side on
+          // the open Duo and the iPad) replaces the one open, after asking about
+          // its unsaved changes, so Back never lands on a page left underneath.
+          onEntityDetailClick={(l) => runGuarded(() => {
+            if (l === "DOCUMENTS" && !(realBand && isAdminOfBand(realBand.id))) return;
+            closeLyrics();
+            closeChordEditor();
+            closeHubPages();
+            if (l === "INVENTORY") setShowInventory(true);
+            if (l === "REPERTOIRE") setShowSetlistManager(true);
+            if (l === "TEMPLATES") setShowTaskTemplates(true);
+            if (l === "DOCUMENTS") setShowContracts(true);
+          })}
           entityCounts={entityCounts}
           onEditProfile={() => setShowEditProfile(true)}
-          onEditBand={() => setShowBandMembers(true)}
+          onEditBand={() => runGuarded(() => {
+            closeLyrics();
+            closeChordEditor();
+            closeHubPages();
+            setShowBandMembers(true);
+          })}
           onOpenBandSettings={() => {
             setPricingModalInitialTab('branding');
             setPricingReturnTo('identity_hub');
@@ -3939,7 +4005,7 @@ export default function AuthenticatedApp() {
 
       <BottomNavigation
         activeTab={activeTab}
-        setActiveTab={(tab) => {
+        setActiveTab={(tab) => runGuarded(() => {
           // Duo open: details live in the trailing pane, so switching tab
           // clears them instead of leaving a stale detail beside a new list.
           if (twoPane) {
@@ -3947,8 +4013,15 @@ export default function AuthenticatedApp() {
             setSelectedEvent(null);
             setSelectedNotification(null);
           }
+          // A hub page (to-do lists, gear, members…) covers the tab content;
+          // where the nav floats over it (tablet, Duo rail), a tab tap leaves it.
+          // The song viewer and chord editor belong to Repertoire: they go too
+          // (the chord editor's unsaved changes are asked about first, above).
+          closeLyrics();
+          closeChordEditor();
+          if (hubOpen) closeHubPages();
           setActiveTab(tab);
-        }}
+        })}
         isPlusMenuOpen={isPlusMenuOpen}
         setIsPlusMenuOpen={setIsPlusMenuOpen}
         isControlDeckOpen={isIdentityOpen}
@@ -4015,6 +4088,7 @@ export default function AuthenticatedApp() {
               onBack={() => setShowInventory(false)}
               bandId={realBand.id}
               canEdit={isAdminOfBand(realBand.id)}
+              ownerNames={Object.fromEntries((realBand.members || []).map((m) => [m.user_id, m.stage_name || m.profile?.full_name || '']))}
               onOpenEvent={(eventId) => {
                 const ev = (events || []).find((e: any) => String(e.eventId || e.id) === eventId);
                 if (!ev) return;
@@ -4043,7 +4117,8 @@ export default function AuthenticatedApp() {
             <PastEventsView
               key="past-events"
               onClose={() => setShowPastEvents(false)}
-              allEvents={visuallyFilteredEvents}
+              // Its own filters: the calendar's (Drafts, a search) would empty it.
+              allEvents={visibleEvents}
               onEventClick={handleEventCardClick}
               isAdmin={isAdmin}
               bands={formattedBands}
@@ -4124,7 +4199,12 @@ export default function AuthenticatedApp() {
                 initialType={createEventType as any}
                 initialDate={createEventInitialDate || undefined}
                 layoutId={`create-button-${createEventType}`}
-                onClose={() => { setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null); }}
+                onClose={() => {
+                  // Cancelling an edit returns to the event it was opened from (saving has its own path).
+                  const back = editingEventData?.eventId;
+                  setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
+                  if (back) void navigateToEvent(back);
+                }}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}
                 existingEvents={events}

@@ -7,6 +7,7 @@ import { ScreenHeader, IconButton, SearchField, Card, BwSheet } from '@/app/comp
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import {
   INVENTORY_CATEGORIES,
+  canEditInventoryItem,
   canonicalCategory,
   createInventoryItem,
   deleteInventoryItem,
@@ -16,6 +17,7 @@ import {
   type InventoryItem,
 } from '@/lib/services/inventory';
 import { useT } from '@/lib/i18n';
+import { useOptionalAuth } from '@/lib/AuthContext';
 import { useSystemBack } from '@/lib/backStack';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { todayLocal } from '@/lib/dates';
@@ -28,8 +30,11 @@ import { KitEditorSheet, UseKitSheet, type KitEditorValue } from '@/app/componen
 interface InventoryViewProps {
   onBack: () => void;
   bandId: string;
-  /** Band admin: may create, edit and use kits (RLS has the last word). */
+  /** Band admin: may create, edit and use kits and all gear (RLS has the last word).
+   *  Members add their own personal gear and change only that. */
   canEdit?: boolean;
+  /** user id → name, for "Personal · Name" on members' own gear. */
+  ownerNames?: Record<string, string>;
   /** Opens a gig from a kit's "Next gig" card. */
   onOpenEvent?: (eventId: string) => void;
 }
@@ -95,10 +100,14 @@ const formFromItem = (item: InventoryItem): InventoryInput => ({
   serialNumber: item.serial_number ?? '',
   purchaseDate: item.purchase_date ?? '',
   purchasePrice: item.purchase_price != null && item.purchase_price !== '' ? String(item.purchase_price) : '',
+  ownerId: item.owner_id ?? null,
 });
 
-export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, canEdit = true, onOpenEvent }) => {
+export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, canEdit = true, ownerNames, onOpenEvent }) => {
   const t = useT();
+  const myId = useOptionalAuth()?.user?.id ?? null;
+  const mayEdit = (item: InventoryItem) => canEditInventoryItem(item, myId, canEdit);
+  const ownerName = (id: string) => (id === myId ? t('You') : ownerNames?.[id]?.split(' ')[0] || t('A member'));
   const { wide, rail, twoPane } = useRailLayout();
   // iPad (Figma "iPad · 08 Gear & kits"): kits sit as a strip above the items, no segment.
   const tablet = wide && !rail;
@@ -266,12 +275,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
   };
 
   const openAdd = () => {
-    setForm(EMPTY_FORM);
+    // Members add their own gear; an admin adds the band's unless they pick "Mine".
+    setForm({ ...EMPTY_FORM, ownerId: canEdit ? null : myId });
     setFormError(null);
     setEditing('new');
   };
 
   const openEdit = (item: InventoryItem) => {
+    if (!mayEdit(item)) return;
     setForm(formFromItem(item));
     setFormError(null);
     setEditing(item);
@@ -518,35 +529,52 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
               const status = STATUS_CONFIG[item.status];
               const category = canonicalCategory(item.category);
               const Icon = CATEGORY_ICON[category] ?? Package;
+              const editable = mayEdit(item);
+              const meta = [
+                item.owner_id ? t('Personal · {name}', { name: ownerName(item.owner_id) }) : null,
+                categoryLabel[category] ?? category,
+                t('qty {count}', { count: item.quantity }),
+                item.location,
+              ].filter(Boolean).join(' · ');
               return (
                 <li key={item.id} className="relative flex items-center gap-3 p-4 pr-2 rounded-[24px] bg-card text-card-foreground">
                   <span className="w-11 h-11 rounded-full bg-foreground/[0.08] flex items-center justify-center shrink-0">
                     <Icon className="w-5 h-5" />
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => openEdit(item)}
-                    aria-label={t('Edit {name}', { name: item.name })}
-                    className="flex-1 min-w-0 flex flex-col gap-1 text-left after:absolute after:inset-0 after:rounded-[24px] after:content-['']"
-                  >
-                    <span className="bw-label-md truncate">{item.name}</span>
-                    <span className="bw-body-sm text-muted-foreground truncate">
-                      {[categoryLabel[category] ?? category, t('qty {count}', { count: item.quantity }), item.location].filter(Boolean).join(' · ')}
+                  {editable ? (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(item)}
+                      aria-label={t('Edit {name}', { name: item.name })}
+                      className="flex-1 min-w-0 flex flex-col gap-1 text-left after:absolute after:inset-0 after:rounded-[24px] after:content-['']"
+                    >
+                      <span className="bw-label-md truncate">{item.name}</span>
+                      <span className="bw-body-sm text-muted-foreground truncate">{meta}</span>
+                    </button>
+                  ) : (
+                    // The band's gear (admins) or another member's: shown, not editable.
+                    <span className="flex-1 min-w-0 flex flex-col gap-1">
+                      <span className="bw-label-md truncate">{item.name}</span>
+                      <span className="bw-body-sm text-muted-foreground truncate">{meta}</span>
                     </span>
-                  </button>
+                  )}
                   <span className="flex items-center gap-1.5 shrink-0">
                     <span className={cn('w-2 h-2 rounded-full', status?.dot ?? 'bg-muted-foreground')} aria-hidden />
                     <span className="bw-label-xs">{statusLabel[item.status] ?? item.status}</span>
                   </span>
-                  <IconButton
-                    label={t('Delete {name}', { name: item.name })}
-                    variant="ghost"
-                    size="sm"
-                    icon={deletingId === item.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
-                    className="relative z-10 text-muted-foreground"
-                    disabled={!!deletingId}
-                    onClick={() => handleDeleteItem(item)}
-                  />
+                  {editable ? (
+                    <IconButton
+                      label={t('Delete {name}', { name: item.name })}
+                      variant="ghost"
+                      size="sm"
+                      icon={deletingId === item.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                      className="relative z-10 text-muted-foreground"
+                      disabled={!!deletingId}
+                      onClick={() => handleDeleteItem(item)}
+                    />
+                  ) : (
+                    <span className="w-2 shrink-0" aria-hidden />
+                  )}
                 </li>
               );
             })}
@@ -555,7 +583,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
 
         {!loading && !loadError && (
           <PillButton icon={<Plus className="w-[18px] h-[18px]" />} onClick={openAdd}>
-            {t('Add equipment')}
+            {canEdit ? t('Add equipment') : t('Add my gear')}
           </PillButton>
         )}
         </>
@@ -573,7 +601,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             kit={openKit}
             summary={openSummary}
             canEdit={canEdit}
-            onBack={() => setOpenKitId(null)}
+            // Open Duo: a kit is always shown beside the list (the first one
+            // comes back at once), so its Back in the rail leaves Gear instead
+            // of doing nothing.
+            onBack={twoPane && !wide ? onBack : () => setOpenKitId(null)}
             onEdit={() => openKitEditor(openKit)}
             onUseForGig={() => {
               setUseError(null);
@@ -616,7 +647,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
         onClose={closeSheet}
         overline={t('Gear & inventory')}
         title={isNew ? t('Add equipment') : t('Edit equipment')}
-        zIndex={80}
+        // Above an open kit (z-100), which it is opened from on the iPad.
+        zIndex={105}
         footer={
           <div className="flex flex-col gap-2">
             <PillButton type="submit" form="gear-form" loading={saving} disabled={!form.name.trim() || deleting}>
@@ -648,6 +680,28 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
           />
+
+          {canEdit ? (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="bw-label-sm text-sheet-foreground/70 mb-2">{t('Belongs to')}</legend>
+              <div className="flex flex-wrap gap-2">
+                <SheetChip selected={!form.ownerId} onClick={() => set('ownerId', null)}>
+                  {t('The band')}
+                </SheetChip>
+                <SheetChip selected={!!myId && form.ownerId === myId} onClick={() => set('ownerId', myId)}>
+                  {t('Me (personal)')}
+                </SheetChip>
+                {/* A member's own gear, opened by an admin: it stays theirs unless changed here. */}
+                {editing && editing !== 'new' && editing.owner_id && editing.owner_id !== myId && (
+                  <SheetChip selected={form.ownerId === editing.owner_id} onClick={() => set('ownerId', editing.owner_id ?? null)}>
+                    {ownerName(editing.owner_id)}
+                  </SheetChip>
+                )}
+              </div>
+            </fieldset>
+          ) : (
+            <p className="bw-body-sm text-sheet-foreground/80">{t('Personal gear: the band sees it, only you and the admins can change it.')}</p>
+          )}
 
           <fieldset className="flex flex-col gap-2">
             <legend className="bw-label-sm text-sheet-foreground/70 mb-2">{t('Category')}</legend>

@@ -66,7 +66,7 @@ export const DeleteChatSheet: React.FC<{
                 {body ??
                   (chatName
                     ? t('Every message is deleted for good, for both of you. This can\'t be undone.')
-                    : t('Your messages are deleted for good and the chat leaves your list. It can\'t be undone.'))}
+                    : t('Your messages are deleted for good, for everyone. The chat leaves your list until a new message arrives. It can\'t be undone.'))}
               </span>
             </div>
             {error && (

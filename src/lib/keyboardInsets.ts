@@ -31,8 +31,35 @@ export function installKeyboardInsets(): void {
       root.removeAttribute('data-keyboard');
       tell(false);
     };
+    // The field being typed in stays in sight: on a short screen (a phone in
+    // landscape: ~216 px left) it could sit under the keyboard or a pinned
+    // footer, and the web view does not scroll it up by itself.
+    const reveal = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el || !(el.matches('input, textarea, select') || el.isContentEditable)) return;
+      const r = el.getBoundingClientRect();
+      // Already well inside the visible area (clear of a pinned footer): leave it.
+      if (r.top >= 64 && r.bottom <= window.innerHeight - 96) return;
+      el.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    };
+    // The web view shrinks to the keyboard's top only after keyboardDidShow
+    // on some devices, so reveal again once its size has settled.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const revealSoon = () => {
+      requestAnimationFrame(reveal);
+      clearTimeout(settle);
+      settle = setTimeout(reveal, 320);
+    };
     void Keyboard.addListener('keyboardWillShow', open).catch(() => {});
+    void Keyboard.addListener('keyboardDidShow', revealSoon).catch(() => {});
     void Keyboard.addListener('keyboardWillHide', close).catch(() => {});
+    window.addEventListener('resize', () => {
+      if (root.getAttribute('data-keyboard') === 'open') revealSoon();
+    });
+    // Moving to another field while the keyboard stays up.
+    document.addEventListener('focusin', () => {
+      if (root.getAttribute('data-keyboard') === 'open') setTimeout(revealSoon, 50);
+    });
   } catch {
     // Plugin missing on this build: keep the default insets.
   }

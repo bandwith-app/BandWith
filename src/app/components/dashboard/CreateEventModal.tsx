@@ -1506,7 +1506,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                   {member.name}
                 </span>
                 <span className="bw-body-sm text-muted-foreground truncate">
-                  {isCurrentUser ? t('You · {role}', { role: member.role }) : member.role}
+                  {(() => {
+                    // The instrument says who they are here; the raw band role ("admin") is a fallback, translated.
+                    const role = member.instrument ? t(member.instrument) : member.role === 'admin' ? t('Admin') : t('Member');
+                    return isCurrentUser ? t('You · {role}', { role }) : role;
+                  })()}
                 </span>
               </div>
             </div>
@@ -2150,7 +2154,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       >
         <div className="flex items-center gap-2 flex-wrap">
           <Tag variant="solid">{modalCategory === 'quote' ? t('Quote') : t('Gig')}</Tag>
-          <span className="bw-label-xs">{eventType ? rawWord(eventType) : t('Event')}</span>
+          {eventType !== modalCategory && <span className="bw-label-xs">{eventType ? rawWord(eventType) : t('Event')}</span>}
           <span className="bw-label-xs opacity-70">{rawWord(setting)}</span>
         </div>
         <h3 className="bw-display-lg [overflow-wrap:anywhere]">{getEffectiveTitle()}</h3>
@@ -2404,7 +2408,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
           style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-          className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
         >
           {/* Header */}
           <div className="shrink-0 px-4 pb-3 flex flex-col gap-2" style={headerPadTop}>
@@ -2412,7 +2416,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <Tag variant="solid">{t('Editing')}</Tag>
                 <Tag variant="subtle">{rawWord(modalCategory)}</Tag>
-                {eventType && <Tag variant="subtle">{rawWord(eventType)}</Tag>}
+                {eventType && eventType !== modalCategory && <Tag variant="subtle">{rawWord(eventType)}</Tag>}
               </div>
               <RailCover pane />
               <HeaderAction
@@ -2922,7 +2926,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-        className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+        className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
       >
         {/* Top bar (Figma Top Bar Style=Canvas) + wizard steps */}
         <div className="shrink-0 bg-background" style={headerPadTop}>

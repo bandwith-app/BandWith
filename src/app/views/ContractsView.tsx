@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { revealMenu, MENU_SCROLL_MARGIN } from '@/lib/raiseLayer';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -205,6 +207,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
 
   const openCreate = () => {
     resetForm();
+    // An open document sheet would cover the new document's screen.
+    setViewingId(null);
+    setMenuOpenId(null);
     setShowCreateModal(true);
   };
 
@@ -544,6 +549,15 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
 
   const isBusy = (id: string, kind?: BusyKind) => !!busy && busy.id === id && (!kind || busy.kind === kind);
 
+  const laptop = useLaptopPose();
+  const overview = contracts.length > 0 ? (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2" aria-label={t('{signed} of {total} signed', { signed: stats.signed, total: stats.total })}>
+      <StatCard label={t('Total docs')} value={stats.total} inverse />
+      <StatCard label={t('Signed')} value={stats.signed} />
+      <StatCard label={t('Pending')} value={stats.pending} />
+    </motion.div>
+  ) : null;
+
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -570,7 +584,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
             onClick={openCreate}
           />
         }
-      />
+      >
+        {laptop && overview && <div className="bw-hub-fold">{overview}</div>}
+      </ScreenHeader>
 
       <div className="flex-1 flex flex-col gap-4 px-4 pt-4 max-w-2xl mx-auto w-full" style={{ paddingBottom: 'calc(var(--safe-bottom) + 40px)' }}>
         <SearchField value={searchQuery} onChange={setSearchQuery} label={t('Search documents')} placeholder={t('Search by title, client or event…')} />
@@ -584,14 +600,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
           ))}
         </div>
 
-        {/* Overview */}
-        {contracts.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2" aria-label={t('{signed} of {total} signed', { signed: stats.signed, total: stats.total })}>
-            <StatCard label={t('Total docs')} value={stats.total} inverse />
-            <StatCard label={t('Signed')} value={stats.signed} />
-            <StatCard label={t('Pending')} value={stats.pending} />
-          </motion.div>
-        )}
+        {/* Overview. Duo Laptop: on the Display. */}
+        {!laptop && overview}
 
         {actionError && !viewingContract && <FormError>{actionError}</FormError>}
         {notice && !viewingContract && (
@@ -712,7 +722,10 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
                         exit={{ opacity: 0, scale: 0.95 }}
                         className="absolute right-3 top-11 z-20 min-w-[180px] p-1 rounded-[16px] bg-popover text-popover-foreground shadow-lg border border-border origin-top-right"
                         role="menu"
+                        // The last rows: scroll so the whole menu shows above the tab bar.
+                        style={MENU_SCROLL_MARGIN}
                       >
+                        <span ref={revealMenu} hidden aria-hidden />
                         {[
                           { label: t('View'), icon: <Eye className="w-4 h-4" />, run: () => handleView(contract) },
                           { label: t('Download PDF'), icon: <Download className="w-4 h-4" />, run: () => handleDownloadPdf(contract) },

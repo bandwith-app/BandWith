@@ -81,6 +81,11 @@ export interface QuoteDeskModeProps {
   sendDisabled?: boolean;
   /** See FoldSplit. Default 105: over the quote wizard / detail layer (100). */
   zIndex?: number;
+  /**
+   * The Deck shows this instead of the line editor: the wizard's own form,
+   * so client, event and lineup stay editable (and required) under the preview.
+   */
+  form?: React.ReactNode;
 }
 
 export const QuoteDeskMode: React.FC<QuoteDeskModeProps> = ({
@@ -106,6 +111,7 @@ export const QuoteDeskMode: React.FC<QuoteDeskModeProps> = ({
   sending,
   sendDisabled,
   zIndex = 105,
+  form,
 }) => {
   const t = useT();
   const [touched, setTouched] = useState<string | null>(null);
@@ -203,7 +209,9 @@ export const QuoteDeskMode: React.FC<QuoteDeskModeProps> = ({
     </div>
   );
 
-  const deck = (
+  const deck = form ? (
+    <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3">{form}</div>
+  ) : (
     <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3">
       <DeckHeading
         trailing={

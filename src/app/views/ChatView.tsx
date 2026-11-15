@@ -458,8 +458,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         ) : (
           <EmptyState
             icon={<MessageSquare className="w-8 h-8" />}
-            title={loadFailed ? t('Could not load your chats') : t('No chats yet')}
-            description={loadFailed ? t('Check your connection and try again.') : t('Start a conversation with your band or an admin.')}
+            title={loadFailed ? t('Could not load your chats') : chatSearch.trim() ? t('No chats or messages match.') : t('No chats yet')}
+            description={loadFailed ? t('Check your connection and try again.') : chatSearch.trim() ? t('Try another name or word.') : t('Start a conversation with your band or an admin.')}
           />
         )}
       </div>

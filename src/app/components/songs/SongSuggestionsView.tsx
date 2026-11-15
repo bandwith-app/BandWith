@@ -1,4 +1,5 @@
 import React from 'react';
+import { raiseAboveOpenPanes } from '@/lib/raiseLayer';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { FormError, PillButton, Selector, Tag } from '@/app/components/bw';
@@ -138,6 +139,7 @@ export const SongSuggestionsView: React.FC = () => {
           role="dialog"
           aria-label={t('Suggestions')}
         >
+          <span ref={raiseAboveOpenPanes} hidden aria-hidden />
           {selected ? (
             <SuggestionDetail
               key={selected.id}
@@ -239,6 +241,7 @@ const SuggestionDetail: React.FC<{
   const [editing, setEditing] = React.useState(false);
   const [edited, setEdited] = React.useState('');
   const [busy, setBusy] = React.useState<null | 'accept' | 'edit' | 'reject' | 'withdraw'>(null);
+  const [confirmWithdraw, setConfirmWithdraw] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [editSong, setEditSong] = React.useState(false);
 
@@ -393,10 +396,11 @@ const SuggestionDetail: React.FC<{
               />
             </label>
             {error && <FormError>{error}</FormError>}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* Wraps on the real width: in the iPad/Duo pane a viewport breakpoint squeezed three labels into one row. */}
+            <div className="flex flex-wrap gap-2 [&>*]:flex-1 [&>*]:min-w-[13rem]">
               {editing ? (
                 <>
-                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="sm:col-span-2">
+                  <PillButton size="md" icon={<Check className="w-4 h-4" />} onClick={() => void run('edit')} loading={busy === 'edit'} disabled={!!busy} className="!flex-[2]">
                     {t('Accept with these changes')}
                   </PillButton>
                   <PillButton size="md" variant="outline" onClick={() => setEditing(false)} disabled={!!busy}>
@@ -423,9 +427,24 @@ const SuggestionDetail: React.FC<{
         {!isAdmin && isMine && pending && (
           <>
             {error && <FormError>{error}</FormError>}
-            <PillButton size="md" variant="outline" icon={<RotateCcw className="w-4 h-4" />} onClick={() => void withdraw()} loading={busy === 'withdraw'} fullWidth={false} className="self-start">
-              {t('Withdraw suggestion')}
-            </PillButton>
+            {/* One tap would withdraw at once: ask first. */}
+            {confirmWithdraw ? (
+              <div className="flex flex-col gap-3 p-4 rounded-[24px] bg-field border border-border">
+                <p className="bw-body-md text-foreground">{t('Withdraw this suggestion? The admins will no longer see it.')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <PillButton size="md" icon={<RotateCcw className="w-4 h-4" />} onClick={() => void withdraw()} loading={busy === 'withdraw'} disabled={!!busy} fullWidth={false}>
+                    {t('Withdraw suggestion')}
+                  </PillButton>
+                  <PillButton size="md" variant="outline" onClick={() => setConfirmWithdraw(false)} disabled={!!busy} fullWidth={false}>
+                    {t('Keep it')}
+                  </PillButton>
+                </div>
+              </div>
+            ) : (
+              <PillButton size="md" variant="outline" icon={<RotateCcw className="w-4 h-4" />} onClick={() => setConfirmWithdraw(true)} fullWidth={false} className="self-start">
+                {t('Withdraw suggestion')}
+              </PillButton>
+            )}
           </>
         )}
       </div>

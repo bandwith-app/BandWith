@@ -8,7 +8,7 @@ import {
   createMemberRehearsalProposal,
   type ProposalEligibility,
 } from '@/lib/services/rehearsalPolls';
-import { useT, intlLocale } from '@/lib/i18n';
+import { useT, intlLocale, shortWeekday } from '@/lib/i18n';
 
 const DAYS_OF_WEEK = [
   { key: 'Mon', label: 'Mon' },
@@ -228,7 +228,7 @@ export const ProposeRehearsalModal: React.FC<ProposeRehearsalModalProps> = ({
                       onClick={() => toggleDay(d.key)}
                       className="flex-1 min-w-0 justify-center px-0"
                     >
-                      {d.label}
+                      {shortWeekday(d.key)}
                     </Selector>
                   ))}
                 </div>

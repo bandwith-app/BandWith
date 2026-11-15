@@ -26,6 +26,19 @@
 [data-bw-wide][data-bw-two-pane][data-bw-tab-nav] .bw-pane-detail {
   padding-bottom: calc(var(--safe-bottom, 0px) + 104px) !important;
 }
+/* Hub pages (Repertoire, Gear, Contracts…) fill the window and scroll on
+   their own: a spacer at the end lets the last row scroll clear of the nav. */
+[data-bw-wide][data-bw-tab-nav] .bw-pane-hub.overflow-y-auto::after {
+  content: '';
+  display: block;
+  flex-shrink: 0;
+  height: calc(var(--safe-bottom, 0px) + 72px);
+}
+/* A sticky bottom action (Members → Invite member) stays at the pane's bottom
+   edge, under the floating nav: its own padding lifts the button above it. */
+[data-bw-wide][data-bw-two-pane][data-bw-tab-nav] .bw-sticky-cta {
+  padding-bottom: calc(var(--safe-bottom, 0px) + 104px) !important;
+}
 
 /* The empty detail pane's caption sits above the nav. */
 [data-bw-wide] .bw-pane-placeholder {

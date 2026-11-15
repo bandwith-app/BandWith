@@ -191,3 +191,16 @@ export const useT = () => {
 
 // The page's lang attribute (screen readers, hyphenation) follows the choice from the start.
 if (typeof document !== 'undefined') applyDocumentLang(getLocale());
+
+/**
+ * Short weekday name in the app language ('Mon' / 'lun'). `day` is either
+ * a JS day index (0 = Sunday) or an English short name ('Mon', 'Tue'…), as
+ * stored in rehearsal polls' preferred days.
+ */
+const EN_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const shortWeekday = (day: number | string): string => {
+  const index = typeof day === 'number' ? day : EN_DAYS.findIndex((d) => d.toLowerCase() === String(day).slice(0, 3).toLowerCase());
+  if (index < 0) return String(day);
+  // 2024-01-07 was a Sunday.
+  return dateName(new Date(2024, 0, 7 + index), { weekday: 'short' });
+};
