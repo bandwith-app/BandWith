@@ -37,6 +37,17 @@ export type Device =
   | 'android'
   | 'web';
 
+/**
+ * Devices a screenshot is captured on (academy/public/shots/<id>@<device>.webp).
+ *  phone      390×844 portrait (iPhone; Android looks the same)
+ *  tablet     iPad 1180×820 landscape: the wide layout
+ *  web        a desktop browser, 1440×900
+ *  duoClosed  dual-screen phone, closed (the rail beside the clock)
+ *  duoBook    dual-screen phone open like a book (two panes)
+ *  duoLaptop  dual-screen phone half folded (Display on top, Deck below)
+ */
+export type ShotDevice = 'phone' | 'tablet' | 'web' | 'duoClosed' | 'duoBook' | 'duoLaptop';
+
 export type Block =
   /** A paragraph. */
   | { type: 'p'; text: string }
@@ -50,8 +61,12 @@ export type Block =
   | { type: 'roles'; rows: { role: Role; text: string }[] }
   /** How it differs per device. Only rows where something really differs. */
   | { type: 'devices'; rows: { devices: Device[]; text: string }[] }
-  /** A screenshot placeholder; `id` refers to an entry in `shots`. */
-  | { type: 'shot'; id: string; caption: string }
+  /**
+   * A screenshot; `id` refers to an entry in `shots`. It shows the capture
+   * for the reader's device (or the nearest one). `device` pins one capture,
+   * for screens that exist on one device only (the Duo's Laptop pose modes).
+   */
+  | { type: 'shot'; id: string; caption: string; device?: ShotDevice }
   /** A small two-column table. */
   | { type: 'table'; head: string[]; rows: string[][] };
 
@@ -98,7 +113,7 @@ export interface Shot {
   /** How to reach the screen in the demo, click by click. */
   how: string;
   role: 'admin' | 'member';
-  /** Viewport: phone 390×844, tablet 1180×820. */
+  /** The device the steps in `how` are written for: phone 390×844, tablet 1180×820. */
   viewport: 'phone' | 'tablet';
 }
 

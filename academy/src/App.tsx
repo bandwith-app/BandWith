@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ARTICLES, BY_ID, FAQ, GLOSSARY, MODULES, ROLE_LABEL, SHOTS, areaOf, type Indexed } from '../content';
-import type { Role } from '../content/types';
+import type { Role, ShotDevice } from '../content/types';
+import { DeviceGlyph } from './devices';
+import { useViewDevice, VIEW_DEVICES, VIEW_DEVICE_LABEL } from './viewer';
 import { Blocks, RoleChip } from './blocks';
 import { Inline, brokenLinks, highlight, plain } from './inline';
 import { search, terms, type Hit } from './search';
@@ -95,6 +97,30 @@ function useTheme() {
     }
   }, [theme]);
   return [theme, () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))] as const;
+}
+
+/* ── Device picker: screenshots follow the reader's device, or the one picked here ── */
+
+function DevicePicker() {
+  const { device, auto, picked, pick } = useViewDevice();
+  return (
+    <label className={`devicePick${picked ? ' devicePick--picked' : ''}`} title="Show screens for">
+      <DeviceGlyph device={device} size={20} />
+      <span className="devicePick__label">{VIEW_DEVICE_LABEL[device]}</span>
+      <select
+        aria-label="Show screens for"
+        value={picked ? device : 'auto'}
+        onChange={(e) => pick(e.target.value === 'auto' ? null : (e.target.value as ShotDevice))}
+      >
+        <option value="auto">This device ({VIEW_DEVICE_LABEL[auto]})</option>
+        {VIEW_DEVICES.filter((d) => d !== auto).map((d) => (
+          <option key={d} value={d}>
+            {VIEW_DEVICE_LABEL[d]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 /* ── Shared bits ── */
@@ -723,6 +749,7 @@ export function App() {
             <span>Search</span>
             <kbd>/</kbd>
           </button>
+          <DevicePicker />
           {!EMBEDDED && (
             <button className="iconBtn" onClick={toggleTheme} aria-label="Switch theme">
               {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}

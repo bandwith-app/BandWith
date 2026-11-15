@@ -19,7 +19,30 @@ const base = (): string => {
   return import.meta.env.DEV ? 'http://localhost:5190/' : '/academy/';
 };
 
-export function academyUrl(target: AcademyTarget, theme: 'light' | 'dark'): string {
+/**
+ * The device the Academy shows screenshots for (academy/content/types.ts
+ * ShotDevice). The app passes it in the URL and posts
+ * `{ type: 'bw-academy-device', device }` to the guide when it changes.
+ */
+export type AcademyDevice = 'phone' | 'tablet' | 'web' | 'duoClosed' | 'duoBook' | 'duoLaptop';
+
+export function academyDevice(f: {
+  /** A dual-screen phone (it reports a system status column). */
+  duo: boolean;
+  laptop: boolean;
+  twoPane: boolean;
+  /** Tablet-sized window (data-bw-wide). */
+  wide: boolean;
+  native: boolean;
+  /** Mouse or trackpad: a desktop browser. */
+  finePointer: boolean;
+}): AcademyDevice {
+  if (f.duo) return f.laptop ? 'duoLaptop' : f.twoPane ? 'duoBook' : 'duoClosed';
+  if (!f.wide) return 'phone';
+  return !f.native && f.finePointer ? 'web' : 'tablet';
+}
+
+export function academyUrl(target: AcademyTarget, theme: 'light' | 'dark', device?: AcademyDevice): string {
   const hash = !target ? '#/' : 'article' in target ? `#/a/${target.article}` : `#/role/${target.role}`;
-  return `${base()}index.html?embed=1&theme=${theme}${hash}`;
+  return `${base()}index.html?embed=1&theme=${theme}${device ? `&device=${device}` : ''}${hash}`;
 }

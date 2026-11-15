@@ -130,10 +130,21 @@ kbd {
   background: transparent; cursor: pointer;
 }
 .iconBtn:hover { background: var(--card); }
+/* Device picker: a chip over a native select (the system menu on phones). */
+.devicePick {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 10px;
+  border-radius: 999px; color: var(--fg-2); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; cursor: pointer;
+}
+.devicePick:hover, .devicePick:focus-within { background: var(--card); color: var(--fg); }
+.devicePick--picked { background: var(--card); color: var(--fg); }
+.devicePick select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.devicePick:focus-within { outline: 2px solid var(--fg); outline-offset: 2px; }
 @media (max-width: 760px) {
   .top__nav { display: none; }
   .searchPill span, .searchPill kbd { display: none; }
   .searchPill { padding: 8px; width: 40px; justify-content: center; }
+  .devicePick { width: 40px; padding: 0; justify-content: center; }
+  .devicePick__label { display: none; }
 }
 
 /* ── Layout ── */
@@ -307,28 +318,49 @@ kbd {
 }
 
 .shot { margin: 8px 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+/* Device frames: a phone (also the closed dual-screen), a tablet, a browser
+   window, and the open dual-screen with its fold (Book: side by side,
+   Laptop: Display over Deck). */
 .shot__frame {
-  width: min(320px, 82%); border-radius: 44px; padding: 10px; background: #0a0a0a;
+  position: relative; width: min(320px, 82%); border-radius: 44px; padding: 10px; background: #0a0a0a;
   box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.5);
 }
-.shot__frame { position: relative; }
 .shot__screen { aspect-ratio: 390 / 844; overflow-y: auto; border-radius: 34px; scrollbar-width: none; }
 .shot__screen::-webkit-scrollbar { display: none; }
 .shot__screen img { display: block; width: 100%; }
-.shot__frame--wide { width: 100%; border-radius: 30px; }
-.shot__frame--wide .shot__screen { aspect-ratio: auto; border-radius: 22px; }
+.shot__frame--duoClosed { width: min(300px, 80%); border-radius: 30px; }
+.shot__frame--duoClosed .shot__screen { aspect-ratio: auto; max-height: 640px; border-radius: 20px; }
+.shot__frame--tablet { width: 100%; border-radius: 30px; }
+.shot__frame--tablet .shot__screen { aspect-ratio: auto; border-radius: 22px; }
+.shot__frame--web { width: 100%; padding: 0; border-radius: 14px; overflow: hidden; background: #1c1c1c; }
+.shot__frame--web .shot__screen { aspect-ratio: auto; border-radius: 0; }
+.shot__bar { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; }
+.shot__bar i { width: 11px; height: 11px; border-radius: 50%; background: #444; }
+.shot__bar span {
+  flex: 0 1 280px; margin: 0 auto; padding: 4px 12px; border-radius: 8px; background: #2a2a2a; color: #999;
+  font-family: var(--font-mono); font-size: 11px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.shot__frame--duoBook { width: 100%; max-width: 760px; border-radius: 26px; padding: 9px; }
+.shot__frame--duoLaptop { width: min(380px, 88%); border-radius: 26px; padding: 9px; }
+.shot__frame--duoBook .shot__screen,
+.shot__frame--duoLaptop .shot__screen { aspect-ratio: auto; border-radius: 17px; }
+/* The fold: the band the app keeps empty there (deviceRegions division, 40 of 951 pt). */
+.shot__hinge { position: absolute; pointer-events: none; background: linear-gradient(var(--hinge-dir), rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0) 100%); }
+.shot__frame--duoBook .shot__hinge { --hinge-dir: 90deg; top: 9px; bottom: 9px; left: calc(9px + (100% - 18px) * 0.4784); width: calc((100% - 18px) * 0.0421); }
+.shot__frame--duoLaptop .shot__hinge { --hinge-dir: 180deg; left: 9px; right: 9px; top: calc(9px + (100% - 18px) * 0.4784); height: calc((100% - 18px) * 0.0421); }
 .shot__scroll {
   position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); pointer-events: none;
   background: #050505; color: #d5fb46; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
   padding: 5px 10px; border-radius: 999px; opacity: 0.92;
 }
-.shot figcaption { color: var(--fg-2); font-size: 14px; text-align: center; max-width: 52ch; }
+.shot figcaption { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--fg-2); font-size: 14px; text-align: center; max-width: 52ch; }
+.shot__dev { background: var(--card); color: var(--fg-2); font-size: 11px; }
 .shot__missing {
   width: min(320px, 82%); aspect-ratio: 9 / 16; border-radius: 40px; border: 1.5px dashed var(--line);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
   color: var(--fg-2); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; text-align: center; padding: 20px;
 }
-.shot--wide .shot__missing { width: 100%; aspect-ratio: 16 / 10; }
+.shot--tablet .shot__missing, .shot--web .shot__missing, .shot--duoBook .shot__missing { width: 100%; aspect-ratio: 16 / 10; }
 
 .tableWrap { overflow-x: auto; background: var(--card); border-radius: var(--radius-md); }
 table { border-collapse: collapse; width: 100%; font-size: 15px; }
