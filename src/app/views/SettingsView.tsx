@@ -25,8 +25,13 @@ import {
   FileText,
   Navigation,
   Check,
+  BookOpen,
+  RotateCcw,
 } from '@/app/components/icons';
 import { LegalSheet, type LegalDoc } from '@/app/components/legal/LegalSheet';
+import { AcademySheet } from '@/app/components/academy/AcademySheet';
+import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
+import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
 import { deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
@@ -82,6 +87,7 @@ const PRESSABLE =
 export const SettingsView: React.FC<SettingsViewProps> = ({
   onClose,
   initialSection = 'notifications',
+  isAdmin = false,
 }) => {
   const { signOut, user } = useAuth();
   const appVersion = useAppVersion();
@@ -212,6 +218,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   /* Export my data (dataExport.ts) */
   const [exporting, setExporting] = useState(false);
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
+  const [academy, setAcademy] = useState<AcademyTarget | undefined>(undefined);
+  const [showTour, setShowTour] = useState(false);
+  const role = isAdmin ? 'admin' : 'member';
   const [exportError, setExportError] = useState<string | null>(null);
   const handleExport = async () => {
     if (exporting) return;
@@ -518,9 +527,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
 
   // The help page ships with the app (public/legal/help.html): it opens
-  // offline, and is the same page on the web.
+  // offline, and is the same page on the web. So does the Academy (academy/).
   const renderHelpSection = () => (
     <>
+      <button
+        type="button"
+        onClick={() => setAcademy({ role })}
+        className={cn(CARD, ROW, PRESSABLE)}
+      >
+        <IconTile>
+          <BookOpen />
+        </IconTile>
+        <RowText title={t('BandWith Academy')} hint={t('Guides for every role and device')} />
+        <ChevronRight aria-hidden className="w-[18px] h-[18px] text-foreground shrink-0" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowTour(true)}
+        className={cn(CARD, ROW, PRESSABLE)}
+      >
+        <IconTile>
+          <RotateCcw />
+        </IconTile>
+        <RowText title={t('Show the tour again')} hint={t('The welcome cards for your role')} />
+        <ChevronRight aria-hidden className="w-[18px] h-[18px] text-foreground shrink-0" />
+      </button>
+      <p className="bw-body-sm text-muted-foreground px-1">{t('The guides are in English for now.')}</p>
       <button
         type="button"
         onClick={() => setLegalDoc('help')}
@@ -533,6 +565,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <ChevronRight aria-hidden className="w-[18px] h-[18px] text-foreground shrink-0" />
       </button>
       <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />
+      <AcademySheet target={academy} onClose={() => setAcademy(undefined)} />
+      {showTour && <RoleTourModal role={role} onClose={() => setShowTour(false)} />}
     </>
   );
 

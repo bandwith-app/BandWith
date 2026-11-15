@@ -3,6 +3,7 @@ import { DuoAuthLayout } from '@/app/components/onboarding/DuoAuthLayout';
 import { usePushNotifications } from '@/app/hooks/usePushNotifications';
 import { useAuth } from '@/lib/AuthContext';
 import { DeputyGigsScreen, DeputyHomeFooter } from './DeputyGigsScreen';
+import { RoleTourModal, roleTourSeen } from '@/app/components/onboarding/RoleTourModal';
 
 /**
  * Home for an account that has no band of its own but plays as a deputy
@@ -13,6 +14,8 @@ const DeputyHome: React.FC<{ onStartBand: () => void; onSignOut: () => void }> =
   const { isAuthenticated } = useAuth();
   const { initialize, isSupported } = usePushNotifications();
   const [focusId, setFocusId] = React.useState<string | null>(null);
+  // First visit: the deputy's own short tour (RoleTourModal).
+  const [showTour, setShowTour] = React.useState(() => !roleTourSeen('deputy'));
 
   // Requests reach the deputy as pushes: register this device.
   React.useEffect(() => {
@@ -33,6 +36,7 @@ const DeputyHome: React.FC<{ onStartBand: () => void; onSignOut: () => void }> =
   return (
     <DuoAuthLayout screenKey="deputy-home">
       <DeputyGigsScreen standalone focusId={focusId} footer={<DeputyHomeFooter onStartBand={onStartBand} onSignOut={onSignOut} />} />
+      {showTour && <RoleTourModal role="deputy" onClose={() => setShowTour(false)} />}
     </DuoAuthLayout>
   );
 };

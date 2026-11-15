@@ -27,6 +27,7 @@ import { KitCard, KitTile } from '@/app/components/gear/KitParts';
 import { KitDetail } from '@/app/components/gear/KitDetail';
 import { KitEditorSheet, UseKitSheet, type KitEditorValue } from '@/app/components/gear/KitSheets';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 interface InventoryViewProps {
   onBack: () => void;
@@ -392,11 +393,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
         overline={t('Equipment & assets')}
         title={tablet ? t('Gear & kits') : t('Gear & inventory')}
         actions={
-          showKits ? (
-            canEdit ? <IconButton label={t('New kit')} variant="filled" icon={<Plus />} onClick={() => openKitEditor('new')} /> : undefined
-          ) : (
-            <IconButton label={t('Add equipment')} variant="filled" icon={<Plus />} onClick={openAdd} />
-          )
+          <>
+            <AcademyHelpButton article={showKits ? 'gear-kits' : 'gear-inventory'} />
+            {showKits ? (
+              canEdit ? <IconButton label={t('New kit')} variant="filled" icon={<Plus />} onClick={() => openKitEditor('new')} /> : null
+            ) : (
+              <IconButton label={t('Add equipment')} variant="filled" icon={<Plus />} onClick={openAdd} />
+            )}
+          </>
         }
       >
         {!tablet && (

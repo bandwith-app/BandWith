@@ -85,6 +85,7 @@ import { GigSetlistEditor, useGigSetlistDraft } from '@/app/components/event/Gig
 import { UnsavedChangesBar, UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { useSystemBack } from '@/lib/backStack';
 import { useUnsavedGuard } from '@/lib/unsavedGuard';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 interface EventDetailProps {
   event: EventData;
@@ -1138,6 +1139,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               {/* Top bar: back + stage mode / options */}
               <div className="flex items-center justify-between gap-2 h-11 -mt-1 empty:hidden">
                 <NavBackButton pane variant="event" size="sm" onClick={onClose} />
+                <AcademyHelpButton
+                  article={isPersonalGig ? 'personal-gigs' : isRehearsal ? 'the-rehearsal-page' : isQuote ? 'quotes-overview' : 'gig-workspace'}
+                  variant="event"
+                  size="sm"
+                  className="ml-auto"
+                />
                 {canStage && !stageInRail && (
                   <button
                     type="button"
@@ -1147,7 +1154,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     }}
                     aria-label={t('Open stage mode')}
                     title={t('Stage mode')}
-                    className="w-11 h-11 -mr-2.5 ml-auto rounded-full flex items-center justify-center shrink-0 active:scale-[var(--press-scale)] transition-transform cursor-pointer"
+                    className="w-11 h-11 -mr-2.5 rounded-full flex items-center justify-center shrink-0 active:scale-[var(--press-scale)] transition-transform cursor-pointer"
                     style={isGigDay ? heroChipStyle : undefined}
                   >
                     <Play className="w-6 h-6" />
@@ -1159,7 +1166,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     icon={<MoreHorizontal />}
                     variant="event"
                     size="sm"
-                    className="ml-auto"
                     onClick={() => {
                       haptic.tap();
                       setConfirmDrop(false);

@@ -46,6 +46,7 @@ import { formatQuoteMoney } from '@/lib/services/quoteMath';
 import { useT, intlLocale, localDecimal } from '@/lib/i18n';
 import { shownQuoteStatus } from '@/lib/quoteExpiry';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 interface QuotesExpandedProps {
   bandId: string;
@@ -417,7 +418,12 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         meta={<span className="bw-label-sm text-muted-foreground">{quotes.length}</span>}
         // A quote open beside the list (iPad, Duo open) gives way to the new one:
         // the detail (z-120) would otherwise cover the wizard (z-100).
-        actions={<IconButton label={t('New quote')} variant="filled" icon={<Plus />} onClick={() => { setSelectedQuote(null); setIsCreating(true); }} />}
+        actions={
+          <>
+            <AcademyHelpButton article="quotes-overview" />
+            <IconButton label={t('New quote')} variant="filled" icon={<Plus />} onClick={() => { setSelectedQuote(null); setIsCreating(true); }} />
+          </>
+        }
       />
 
       <div

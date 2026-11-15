@@ -19,6 +19,7 @@ import es from './locales/es';
 import fr from './locales/fr';
 import de from './locales/de';
 import pt from './locales/pt';
+import { ACADEMY_STRINGS } from './locales/academy';
 
 export type Locale = 'en' | 'it' | 'es' | 'fr' | 'de' | 'pt';
 export type LocalePref = Locale | 'system';
@@ -35,7 +36,14 @@ export const LANGUAGES: { id: Locale; name: string }[] = [
   { id: 'pt', name: 'Português' },
 ];
 
-export const DICTIONARIES: Record<Exclude<Locale, 'en'>, Dictionary> = { it, es, fr, de, pt };
+// The Academy entry points keep their strings in their own file (locales/academy.ts).
+export const DICTIONARIES: Record<Exclude<Locale, 'en'>, Dictionary> = {
+  it: { ...ACADEMY_STRINGS.it, ...it },
+  es: { ...ACADEMY_STRINGS.es, ...es },
+  fr: { ...ACADEMY_STRINGS.fr, ...fr },
+  de: { ...ACADEMY_STRINGS.de, ...de },
+  pt: { ...ACADEMY_STRINGS.pt, ...pt },
+};
 
 const KEY = 'bw-locale-v1';
 const CHANGED = 'bw:locale';

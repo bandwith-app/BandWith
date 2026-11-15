@@ -56,6 +56,7 @@ import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/
 import { useT, intlLocale, translate, getLocale, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 /** Opens the new-contract form filled from an accepted quote (migration 099). */
 export interface ContractPrefill {
@@ -577,12 +578,15 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
         overline={t('Legal & riders')}
         title={t('Contracts & docs')}
         actions={
-          <IconButton
-            label={t('Create document')}
-            variant="filled"
-            icon={<Plus />}
-            onClick={openCreate}
-          />
+          <>
+            <AcademyHelpButton article="contracts-and-docs" />
+            <IconButton
+              label={t('Create document')}
+              variant="filled"
+              icon={<Plus />}
+              onClick={openCreate}
+            />
+          </>
         }
       >
         {laptop && overview && <div className="bw-hub-fold">{overview}</div>}

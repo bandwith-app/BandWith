@@ -149,7 +149,7 @@ import {
   ExpandedCardWrapper,
 } from "@/app/components/dashboard/expanded";
 
-import { AdminGuidedTourModal } from "@/app/components/onboarding/AdminGuidedTourModal";
+import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
 import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
@@ -1473,17 +1473,13 @@ export default function AuthenticatedApp() {
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
   // "Send quote" in the iPad composer: the share sheet emails the client's link by itself.
   const [sharingAutoSend, setSharingAutoSend] = useState(false);
+  // First-run tour, one per role (RoleTourModal): admins and members once
+  // their band has loaded, so the role is known. Deputies get theirs on DeputyHome.
   const [showAdminTour, setShowAdminTour] = useState(false);
-
-  // Auto-launch Admin Guided Tour for first-time admins
+  const tourRole = isAdmin ? 'admin' : 'member';
   useEffect(() => {
-    if (isAdmin) {
-      const hasSeenTour = localStorage.getItem('bandwith_admin_tour_seen');
-      if (!hasSeenTour) {
-        setShowAdminTour(true);
-      }
-    }
-  }, [isAdmin]);
+    if (realBand?.id && !roleTourSeen(tourRole)) setShowAdminTour(true);
+  }, [realBand?.id, tourRole]);
 
   // Tier-limit check before showing the create band modal
   const handleRequestCreateBand = useCallback(() => {
@@ -2354,6 +2350,7 @@ export default function AuthenticatedApp() {
         return true;
       }
       if (s.showAdminTour) {
+        markRoleTourSeen(isAdmin ? 'admin' : 'member');
         setShowAdminTour(false);
         return true;
       }
@@ -4206,20 +4203,16 @@ export default function AuthenticatedApp() {
             />
           )}
           {showAdminTour && (
-            <AdminGuidedTourModal
-              key="admin-tour"
-              isOpen={showAdminTour}
-              onClose={() => {
-                localStorage.setItem('bandwith_admin_tour_seen', 'true');
-                setShowAdminTour(false);
-              }}
-              onOpenPricing={() => {
-                localStorage.setItem('bandwith_admin_tour_seen', 'true');
+            <RoleTourModal
+              key="role-tour"
+              role={tourRole}
+              onClose={() => setShowAdminTour(false)}
+              onOpenPricing={isAdmin ? () => {
                 setShowAdminTour(false);
                 setPricingModalInitialTab('rates');
                 setPricingReturnTo(null);
                 setShowPricingModal(true);
-              }}
+              } : undefined}
             />
           )}
           {showCreateBand && <CreateBandModal key="create-band" isOpen={showCreateBand} onClose={() => setShowCreateBand(false)} onBandCreated={(id) => { selectBand(id); }} />}

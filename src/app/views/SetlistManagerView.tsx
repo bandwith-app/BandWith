@@ -61,6 +61,7 @@ import { userMessage } from '@/lib/userError';
 import { useSystemBack } from '@/lib/backStack';
 import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 /** Readiness dots: 16 per row, one dot per song (scaled down past 48 songs). */
 const READINESS_COLS = 16;
@@ -811,6 +812,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         title={t('Repertoire')}
         actions={
           <>
+            <AcademyHelpButton article={viewMode === 'songs' ? 'repertoire-overview' : 'setlists-and-sets'} />
             {/* Bulk import goes straight into the library: admins only.
                 Members suggest one song at a time, reviewed by an admin. */}
             {viewMode === 'songs' && isAdmin && (

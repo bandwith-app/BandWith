@@ -7,6 +7,7 @@ import { parseLocalDate } from '@/lib/dates';
 import { Metric } from '@/app/components/bw';
 import { BackButton, Selector } from '@/app/components/bw/Form';
 import { Card } from '@/app/components/bw/Screen';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { isBillableEvent as isBillable, pastPayKinds, pastPayState } from '@/lib/pastPayment';
 
@@ -175,6 +176,7 @@ export const PastEventsView: React.FC<PastEventsViewProps> = ({
         <div className="h-14 flex items-center gap-3">
           <BackButton onClick={onClose} />
           <h1 className="bw-h2 flex-1 min-w-0 truncate">{t('Past Events')}</h1>
+          <AcademyHelpButton article="past-events" />
         </div>
       </header>
 

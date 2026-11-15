@@ -32,6 +32,7 @@ import {
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { UseTemplateSheet, type TemplateTargetEvent, type TemplateTargetKind } from '@/app/components/templates/UseTemplateSheet';
 import { useT } from '@/lib/i18n';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 export type { TaskTemplate, TemplateTask } from '@/lib/services/taskTemplates';
 
@@ -279,7 +280,10 @@ export const TaskTemplatesView: React.FC<TaskTemplatesViewProps> = ({ onBack, ba
         overline={t('Workflows & checklists')}
         title={t('To-do lists')}
         actions={
-          canEdit ? <IconButton label={t('New to-do list')} variant="filled" icon={<Plus />} onClick={openCreate} /> : undefined
+          <>
+            <AcademyHelpButton article="todo-and-task-templates" />
+            {canEdit && <IconButton label={t('New to-do list')} variant="filled" icon={<Plus />} onClick={openCreate} />}
+          </>
         }
       />
 

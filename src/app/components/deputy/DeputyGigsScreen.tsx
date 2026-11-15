@@ -1,5 +1,6 @@
 import React from 'react';
 import { BackButton, PillButton } from '@/app/components/bw/Form';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { useT } from '@/lib/i18n';
 import { useDeputyClaim } from '@/lib/deputyClaim';
 import { listMyDeputyGigs, type DeputyClaimResult, type DeputyGig, type MyDeputyGigs } from '@/lib/services/deputies';
@@ -125,9 +126,12 @@ export const DeputyGigsScreen: React.FC<{
   if (standalone) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col">
-        <header className="px-4 flex flex-col gap-1" style={{ paddingTop: 'calc(var(--safe-top) + 24px)' }}>
-          <p className="bw-label-sm text-muted-foreground">BandWith</p>
-          <h1 className="bw-display-lg">{t('Deputy gigs')}</h1>
+        <header className="px-4 flex items-end gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 24px)' }}>
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
+            <p className="bw-label-sm text-muted-foreground">BandWith</p>
+            <h1 className="bw-display-lg">{t('Deputy gigs')}</h1>
+          </div>
+          <AcademyHelpButton article="deputy-gigs" />
         </header>
         <div className="pt-4">{body}</div>
       </div>
@@ -146,6 +150,7 @@ export const DeputyGigsScreen: React.FC<{
         <div className="h-14 flex items-center gap-3">
           {onClose && <BackButton onClick={onClose} />}
           <h1 className="bw-h2 flex-1 min-w-0 truncate">{t('Deputy gigs')}</h1>
+          <AcademyHelpButton article="deputy-gigs" />
         </div>
       </header>
       {body}

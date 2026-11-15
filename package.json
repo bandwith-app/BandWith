@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "android:apk": "bash scripts/build-android-apk.sh",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit -p .",
+    "build": "vite build && vite build --config academy/vite.config.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p academy",
     "lint": "eslint src",
     "dev": "vite",
     "test": "vitest",
