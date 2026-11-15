@@ -1073,7 +1073,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
 
             {/* Footer */}
             <p className="bw-label-sm text-muted-foreground">
-              {appVersion ? t('v{version} · All data encrypted', { version: appVersion }) : t('All data encrypted')}
+              {appVersion ? t('v{version} · Encrypted in transit and at rest', { version: appVersion }) : t('Encrypted in transit and at rest')}
             </p>
 
             {/* Bottom clearance spacer ensuring the footer cleanly clears the floating navbar */}

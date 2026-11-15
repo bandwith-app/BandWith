@@ -53,7 +53,7 @@ const tourSteps = (t: (source: string) => string): TourStep[] => [
     badge: t('WORKFLOW'),
     icon: FileText,
     content:
-      t('When an inquiry comes in, tap "+ NEW QUOTE". The system calculates travel, lineup compensation, taxes, and deposit schedules automatically.'),
+      t('When an inquiry comes in, tap + and choose "New quote". The system calculates travel, lineup compensation, taxes, and deposit schedules automatically.'),
     highlights: [
       t('Seasonal pricing adjustment automatically calculated from the event date'),
       t('Travel rate per km (or mile) per musician from your home base'),
@@ -66,9 +66,9 @@ const tourSteps = (t: (source: string) => string): TourStep[] => [
     badge: t('GET STARTED'),
     icon: CheckCircle2,
     content:
-      t('You are all set! You can visit "Pricing & Services" at any time from the More drawer to set your currency, rates, and services.'),
+      t('You are all set! You can open "Pricing, fees & services" at any time from the Settings tab to set your currency, rates, and services.'),
     highlights: [
-      t('Access anytime from the More menu → Pricing & Services'),
+      t('Access anytime from Settings → Pricing, fees & services'),
       t('All active services will immediately appear in your Quote Wizard'),
       t('Invite your band members and start booking gigs'),
     ],
