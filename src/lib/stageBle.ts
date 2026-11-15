@@ -15,6 +15,8 @@
  *   4 bytes  fingerprint of the setlist's songs (row ids, sorted)
  *   1 byte   current song, as an index into the sorted ids (255 = none)
  *   1 byte   n, then n indexes into the sorted ids: the leader's order
+ *   optional: 1 byte m, then m indexes: songs struck off for tonight (sent
+ *            only when there are some, so older apps keep reading the rest)
  *
  * Version 2 refers to the songs by their sorted ids, not the saved order,
  * and always sends the order: a reorder the leader saves online then still
@@ -104,9 +106,15 @@ export async function encodeStageState(
     if (i === undefined) return null;
     order.push(i);
   }
+  const skipped: number[] = [];
+  for (const id of state.skipped ?? []) {
+    const i = index.get(id);
+    if (i !== undefined) skipped.push(i);
+  }
   const from = enc.encode(state.from);
   const fp = await setlistFingerprint(savedIds);
-  const body = new Uint8Array(1 + 4 + 1 + from.length + 4 + 1 + 1 + order.length);
+  const tail = skipped.length ? 1 + skipped.length : 0;
+  const body = new Uint8Array(1 + 4 + 1 + from.length + 4 + 1 + 1 + order.length + tail);
   const view = new DataView(body.buffer);
   let o = 0;
   body[o++] = STAGE_BLE_VERSION;
@@ -120,6 +128,11 @@ export async function encodeStageState(
   body[o++] = current;
   body[o++] = order.length;
   body.set(order, o);
+  o += order.length;
+  if (skipped.length) {
+    body[o++] = skipped.length;
+    body.set(skipped, o);
+  }
   const mac = (await hmac(keyB64, body)).slice(0, MAC_BYTES);
   const out = new Uint8Array(body.length + MAC_BYTES);
   out.set(body);
@@ -153,7 +166,11 @@ export async function decodeStageState(bytes: Uint8Array, savedIds: string[], ke
   o += 4;
   const current = body[o++];
   const n = body[o++];
-  if (o + n !== body.length) return { ok: false, reason: 'format' };
+  if (o + n > body.length) return { ok: false, reason: 'format' };
+  // Struck-off songs: an optional last section (m, then m indexes).
+  const tailAt = o + n;
+  const m = tailAt < body.length ? body[tailAt] : 0;
+  if (tailAt < body.length && tailAt + 1 + m !== body.length) return { ok: false, reason: 'format' };
   const mine = await setlistFingerprint(savedIds);
   if (hex(fp) !== hex(mine)) return { ok: false, reason: 'setlist' };
   const ids = sortedIds(savedIds);
@@ -164,8 +181,14 @@ export async function decodeStageState(bytes: Uint8Array, savedIds: string[], ke
     if (idx >= ids.length) return { ok: false, reason: 'format' };
     order.push(ids[idx]);
   }
+  const skipped: string[] = [];
+  for (let i = 0; i < m; i++) {
+    const idx = body[tailAt + 1 + i];
+    if (idx >= ids.length) return { ok: false, reason: 'format' };
+    skipped.push(ids[idx]);
+  }
   return {
     ok: true,
-    state: { seq, from, songId: current === NONE ? null : ids[current], order: n > 0 ? order : null },
+    state: { seq, from, songId: current === NONE ? null : ids[current], order: n > 0 ? order : null, ...(skipped.length ? { skipped } : {}) },
   };
 }

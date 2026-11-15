@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
+import { whenSplashGone } from '@/lib/splash';
 import { Fingerprint, ScanFace, Lock, Eye, EyeOff, LogOut } from '@/app/components/icons';
 import { AuthScreen, FormError, Kicker, PillButton, PillField } from '@/app/components/bw/Form';
 import { DuoAuthLayout } from './DuoAuthLayout';
@@ -82,12 +83,19 @@ export const AppLockScreen: React.FC<AppLockScreenProps> = ({ onUnlock }) => {
     if (result === 'failed') setError(t('Couldn’t check it’s you. Try again.'));
   }, [busy, hasPassword, onUnlock, t]);
 
-  // Ask straight away, as the system lock screen does.
+  // Ask straight away, as the system lock screen does, but only once the launch
+  // splash has gone and this screen has painted (never over the animation).
+  const unlockRef = useRef(unlockWithDevice);
+  unlockRef.current = unlockWithDevice;
   useEffect(() => {
     if (!info?.canCheck || autoPrompted.current) return;
     autoPrompted.current = true;
-    void unlockWithDevice();
-  }, [info, unlockWithDevice]);
+    void whenSplashGone().then(() =>
+      requestAnimationFrame(() => {
+        if (mounted.current) void unlockRef.current();
+      }),
+    );
+  }, [info]);
 
   // Android Back on the lock screen leaves the app instead of going anywhere in it.
   useEffect(() => {

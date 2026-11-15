@@ -108,6 +108,9 @@ export const useBandMembers = (bandId: string | null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cacheKey = getCacheKey(user?.id, bandId, 'band_members');
+  // The band shown now: answers for a band the user switched away from are dropped.
+  const bandRef = useRef(bandId);
+  bandRef.current = bandId;
 
   useEffect(() => {
     let isMounted = true;
@@ -126,6 +129,7 @@ export const useBandMembers = (bandId: string | null) => {
     if (!bandId) { setLoading(false); return; }
     
     const { data, error } = await bandsService.getBandMembers(bandId);
+    if (bandRef.current !== bandId) return;
     if (data) {
       setMembers(data);
       setOfflineItem(cacheKey, data).catch(() => {});
@@ -1206,6 +1210,9 @@ export const useExpandedFinanceData = (bandId: string | null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cacheKey = getCacheKey(user?.id, bandId, 'expanded_finance_data');
+  // The band shown now: answers for a band the user switched away from are dropped.
+  const bandRef = useRef(bandId);
+  bandRef.current = bandId;
   
   const [data, setData] = useState<{
     financialStats: {
@@ -1242,6 +1249,7 @@ export const useExpandedFinanceData = (bandId: string | null) => {
         transactionsService.getFinancialStats(bandId),
         transactionsService.getTransactions(bandId, { limit: 10 }),
       ]);
+      if (bandRef.current !== bandId) return;
 
       if (!statsRes.error && !transactionsRes.error) {
         const fresh = {
@@ -1257,9 +1265,9 @@ export const useExpandedFinanceData = (bandId: string | null) => {
         setOfflineItem(cacheKey, fresh).catch(() => {});
       }
     } catch (err: any) {
-      setError(err);
+      if (bandRef.current === bandId) setError(err);
     } finally {
-      setLoading(false);
+      if (bandRef.current === bandId) setLoading(false);
     }
   }, [isAuthenticated, bandId, cacheKey]);
 
@@ -1277,6 +1285,9 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
   const [error, setError] = useState<Error | null>(null);
   const hasLoadedOnce = useRef(false);
   const cacheKey = getCacheKey(user?.id, bandId, `expanded_events_${JSON.stringify(statusFilter || [])}`);
+  // The band shown now: answers for a band the user switched away from are dropped.
+  const bandRef = useRef(bandId);
+  bandRef.current = bandId;
 
   useEffect(() => {
     let isMounted = true;
@@ -1306,6 +1317,7 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
         status,
         limit: 20 
       });
+      if (bandRef.current !== bandId) return;
 
       if (fetchError) throw fetchError;
       if (data) {
@@ -1314,9 +1326,9 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
         hasLoadedOnce.current = true;
       }
     } catch (err: any) {
-      setError(err);
+      if (bandRef.current === bandId) setError(err);
     } finally {
-      setLoading(false);
+      if (bandRef.current === bandId) setLoading(false);
     }
   }, [isAuthenticated, bandId, JSON.stringify(statusFilter), cacheKey]);
 
@@ -1372,6 +1384,9 @@ export const useExpandedQuotesData = (bandId: string | null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cacheKey = getCacheKey(user?.id, bandId, 'expanded_quotes_data');
+  // The band shown now: answers for a band the user switched away from are dropped.
+  const bandRef = useRef(bandId);
+  bandRef.current = bandId;
 
   useEffect(() => {
     let isMounted = true;
@@ -1397,6 +1412,7 @@ export const useExpandedQuotesData = (bandId: string | null) => {
         quotesService.getQuotes(bandId),
         quotesService.getQuoteStats(bandId),
       ]);
+      if (bandRef.current !== bandId) return;
 
       if (!quotesRes.error && !statsRes.error) {
         const freshQuotes = quotesRes.data || [];
@@ -1407,9 +1423,9 @@ export const useExpandedQuotesData = (bandId: string | null) => {
         setOfflineItem(cacheKey, { quotes: freshQuotes, stats: freshStats }).catch(() => {});
       }
     } catch (err: any) {
-      setError(err);
+      if (bandRef.current === bandId) setError(err);
     } finally {
-      setLoading(false);
+      if (bandRef.current === bandId) setLoading(false);
     }
   }, [isAuthenticated, bandId, cacheKey]);
 
@@ -1431,6 +1447,9 @@ export const useChats = (bandId?: string) => {
   const [error, setError] = useState<Error | null>(null);
   // Last list on this device (per account), shown offline and while loading.
   const cacheKey = getCacheKey(user?.id, bandId, 'chats_list');
+  // The band shown now: answers for a band the user switched away from are dropped.
+  const bandRef = useRef(bandId);
+  bandRef.current = bandId;
 
   useEffect(() => {
     let isMounted = true;
@@ -1448,6 +1467,7 @@ export const useChats = (bandId?: string) => {
     
     setLoading(true);
     const { data, error } = await chatsService.getChats(bandId);
+    if (bandRef.current !== bandId) return;
     // A failed refetch (offline, network blip) keeps the list on screen.
     if (data) {
       setChats(data);
@@ -1564,15 +1584,25 @@ export const useRehearsalPolls = (bandId: string | null, userId?: string | null,
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Only the latest request lands: switching band while the last band's polls
+  // are still loading must not show them on the new band's Home.
+  const requestRef = useRef(0);
+  const shownBandRef = useRef(bandId);
   const fetchPolls = useCallback(async () => {
+    const request = ++requestRef.current;
     if (!isAuthenticated || !bandId) {
       setPolls([]);
       setLoading(false);
       return;
     }
 
+    if (shownBandRef.current !== bandId) {
+      shownBandRef.current = bandId;
+      setPolls([]);
+    }
     setLoading(true);
     const { data, error: fetchErr } = await rehearsalPollsService.getRehearsalPolls(bandId, userId, viewerIsAdmin);
+    if (request !== requestRef.current) return;
     setPolls(data || []);
     setError(fetchErr);
     setLoading(false);

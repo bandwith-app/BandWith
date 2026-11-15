@@ -23,7 +23,15 @@ export function installKeyboardInsets(): void {
     if (!Capacitor.isNativePlatform()) return;
     const root = document.documentElement;
     const tell = (open: boolean) => window.dispatchEvent(new CustomEvent(KEYBOARD_EVENT, { detail: { open } }));
+    // A keyboard is up only for a field being typed in. iOS can report one
+    // while rotating (the Duo between postures) with nothing focused: a flag
+    // left on then would hide the Duo rail in the laptop pose for good.
+    const typing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.matches('input, textarea, select') || el.isContentEditable);
+    };
     const open = () => {
+      if (!typing()) return;
       root.setAttribute('data-keyboard', 'open');
       tell(true);
     };
@@ -77,9 +85,20 @@ export function installKeyboardInsets(): void {
     void Keyboard.addListener('keyboardWillShow', open).catch(() => {});
     void Keyboard.addListener('keyboardDidShow', revealSoon).catch(() => {});
     void Keyboard.addListener('keyboardWillHide', close).catch(() => {});
+    void Keyboard.addListener('keyboardDidHide', () => {
+      if (root.getAttribute('data-keyboard') === 'open') close();
+    }).catch(() => {});
+    // The flag never outlives the field: after a rotation or a blur with no
+    // hide event, drop it once nothing is being typed in.
+    const dropIfIdle = () => {
+      if (root.getAttribute('data-keyboard') === 'open' && !typing()) close();
+    };
     window.addEventListener('resize', () => {
-      if (root.getAttribute('data-keyboard') === 'open') revealSoon();
+      if (root.getAttribute('data-keyboard') !== 'open') return;
+      if (!typing()) return close();
+      revealSoon();
     });
+    document.addEventListener('focusout', () => setTimeout(dropIfIdle, 400));
     // Moving to another field while the keyboard stays up.
     document.addEventListener('focusin', () => {
       if (root.getAttribute('data-keyboard') === 'open') setTimeout(revealSoon, 50);

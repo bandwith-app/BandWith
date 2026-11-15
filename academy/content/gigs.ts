@@ -674,8 +674,10 @@ const gigs: AreaModule = {
           items: [
             'Open the gig and tap **OPEN** next to **RIDER & STAGE**.',
             'Under **Technical rider**, tap **CREATE RIDER** if the gig has none.',
-            'Under **Stage plot**, tap **EDIT** to place musicians, wedges, speakers and DI boxes. Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. Tap an item to rename or remove it. Hold an empty spot to add a musician, wedge, speaker or DI box right there. Set **Layout name**, **Stage width (m)** and **Stage depth (m)**, then **SAVE PLOT**. **+ NEW LAYOUT** and **DELETE LAYOUT** manage several layouts.',
-            'Under **Input list**, tap **EDIT LIST**. **ADD CHANNEL**, fill in **SOURCE**, **MIC / DI** and **Who**, drag to reorder, then **SAVE LIST**.',
+            'Under **Stage plot**, tap **EDIT**. Under the plot, the first row of chips (**Add a musician**) adds an instrument: Vocals, Guitar, Bass, Keys, Drums, Percussion, Sax or Trumpet. The second row (**Add gear**) adds **Other musician**, a wedge, a speaker or a DI box. Hold an empty spot to get the same choices right there.',
+            'Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. Tap an item to change its short code and caption, or to remove it. Set **Layout name**, **Stage width (m)** and **Stage depth (m)**, then **SAVE PLOT**. **+ NEW LAYOUT** and **DELETE LAYOUT** manage several layouts.',
+            'Saving the plot fills the input list for you: each instrument adds its usual channels in desk order (Drums: Kick, Snare, OH L and OH R; Bass: one DI channel; a DI box: its own line). Removing an item removes its channels.',
+            'Under **Input list**, tap **EDIT LIST** to fine-tune: **ADD CHANNEL**, change **SOURCE**, **MIC / DI** and **Who**, drag to reorder, then **SAVE LIST**. Your changes stay when you save the plot again.',
             'Under **Who brings what**, check the list suggested from the lineup, write **BAND BRINGS** and **VENUE PROVIDES** (one per line), tick **The venue agreed to this** when it is settled, and tap **SAVE**.',
           ],
         },

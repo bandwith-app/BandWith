@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import { isPaidTier } from '@/lib/beta';
 import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
 import { Capacitor } from '@capacitor/core';
@@ -39,6 +40,7 @@ import { personName } from '@/lib/personName';
 import { DeputiesSection } from '@/app/components/band/DeputiesSection';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
+import { isValidEmail } from '@/lib/services/contracts';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { instrumentText } from '@/lib/instruments';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
@@ -138,6 +140,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
   const [members, setMembers] = useState<BandMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  // A row's menu is the top layer: Back and Escape close just the menu.
+  useSystemBack(!!actionMenuId, () => setActionMenuId(null));
   const [showInvite, setShowInvite] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
@@ -277,6 +281,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     setActionMenuId(null);
   };
 
+  const searchTicket = useRef(0);
   const handleSearch = useCallback(
     async (query: string) => {
       if (!selectedBand?.id || query.trim().length < 3) {
@@ -284,7 +289,10 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
         return;
       }
       setIsSearching(true);
+      // A slower, older search must not replace the newest results.
+      const ticket = ++searchTicket.current;
       const { data, error: searchError } = await searchUsers(query, selectedBand.id);
+      if (ticket !== searchTicket.current) return;
       if (data) setSearchResults(data);
       if (searchError) setError(searchError.message);
       setIsSearching(false);
@@ -352,7 +360,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
   };
 
   const handleInviteByEmail = async () => {
-    if (!selectedBand?.id || !searchQuery || !searchQuery.includes('@')) return;
+    if (!selectedBand?.id || !searchQuery || !isValidEmail(searchQuery)) return;
     const email = searchQuery.trim().toLowerCase();
     await sendInvite({ email }, email);
   };
@@ -663,7 +671,10 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       </BwSheet>
 
       <BwSheet open={showInvite} onClose={closeInvite} overline={selectedBand?.name} title={t('Invite member')} zIndex={102}>
-        <div className="dark flex flex-col gap-3 text-sheet-foreground">
+        {/* data-keep-keyboard: a tap on a result, a role or Invite works on the
+            first touch, while typing (closing the keyboard first would drop the
+            bottom sheet under the finger and the tap would miss). */}
+        <div data-keep-keyboard="" className="dark flex flex-col gap-3 text-sheet-foreground">
           {/* Search (white pill) */}
           <label className="flex items-center gap-3 h-12 px-4 rounded-full bg-white text-black">
             <span className="sr-only">{t('Search BandWith users')}</span>
@@ -680,7 +691,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
               <Loader2 className="w-[18px] h-[18px] shrink-0 animate-spin text-black/50" />
             ) : (
               searchQuery && (
-                <button type="button" onClick={() => setSearchQuery('')} aria-label={t('Clear search')} className="-m-2 p-2 shrink-0 text-black/50">
+                <button type="button" {...keyboardSafeTap(() => setSearchQuery(''))} aria-label={t('Clear search')} className="-m-2 p-2 shrink-0 text-black/50">
                   <X className="w-4 h-4" />
                 </button>
               )
@@ -701,8 +712,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
               {searchResults.map((user) => (
                 <motion.div
                   key={user.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   className="flex items-center gap-3 p-3 rounded-[24px] bg-sheet-foreground/[0.08]"
                 >
                   <Avatar src={user.avatar_url} alt={user.full_name || user.email} initials={userInitials(user)} />
@@ -710,7 +721,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                     <span className="bw-label-md truncate">{user.full_name || t('No name')}</span>
                     <span className="bw-body-sm text-sheet-foreground/70 truncate">{user.email}</span>
                   </div>
-                  <PillButton size="sm" fullWidth={false} onClick={() => handleAddUser(user)} disabled={inviting} aria-label={t('Invite {name}', { name: user.full_name || user.email })}>
+                  <PillButton size="sm" fullWidth={false} {...keyboardSafeTap(() => { if (!inviting) handleAddUser(user); })} disabled={inviting} aria-label={t('Invite {name}', { name: user.full_name || user.email })}>
                     {t('Invite', { context: 'verb' })}
                   </PillButton>
                 </motion.div>
@@ -723,15 +734,22 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <UserPlus className="w-8 h-8 text-sheet-foreground/50" />
               <p className="bw-body-sm text-sheet-foreground/70">
-                {searchQuery.includes('@') ? t('User not found. Send them an invitation?') : t('No users found. Enter an email to invite.')}
+                {/* "mar@" is not an address yet: no invite until it is a whole one. */}
+                {!searchQuery.includes('@')
+                  ? t('No users found. Enter an email to invite.')
+                  : isValidEmail(searchQuery)
+                    ? t('User not found. Send them an invitation?')
+                    : t('Enter a valid email address.')}
               </p>
-              {searchQuery.includes('@') && (
+              {isValidEmail(searchQuery) && (
                 <PillButton
                   size="md"
                   fullWidth={false}
                   loading={inviting}
                   icon={<Send className="w-4 h-4" />}
-                  onClick={handleInviteByEmail}
+                  {...keyboardSafeTap(() => {
+                    if (!inviting) handleInviteByEmail();
+                  })}
                   className="max-w-full [&>span]:min-w-0 [&>span]:truncate"
                 >
                   {t('Invite {name}', { name: searchQuery })}
@@ -756,7 +774,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                     key={role.value}
                     type="button"
                     aria-pressed={selected}
-                    onClick={() => setInviteRole(role.value)}
+                    {...keyboardSafeTap(() => setInviteRole(role.value))}
                     className={cn(
                       'flex flex-col gap-1 p-4 rounded-[24px] text-left active:scale-[0.98] transition-[transform,background-color]',
                       selected ? 'bg-accent text-accent-foreground' : 'bg-sheet-foreground/[0.08] text-sheet-foreground',

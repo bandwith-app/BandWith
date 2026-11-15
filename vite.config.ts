@@ -1,9 +1,20 @@
 import { defineConfig } from 'vite'
 import path from 'path'
+import { existsSync } from 'fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+// Android remote push needs Firebase: android/app/google-services.json. Every
+// build that has the file switches FCM on by itself (VITE_ANDROID_PUSH in the
+// environment still wins), so a plain `vite build` + `cap sync` APK gets push.
+const androidPush =
+  process.env.VITE_ANDROID_PUSH ??
+  (existsSync(path.resolve(__dirname, 'android/app/google-services.json')) ? 'true' : 'false')
+
 export default defineConfig(({ mode }) => ({
+  define: {
+    'import.meta.env.VITE_ANDROID_PUSH': JSON.stringify(androidPush),
+  },
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them

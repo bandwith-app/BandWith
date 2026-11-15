@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSystemBack } from '@/lib/backStack';
 import { revealMenu, MENU_SCROLL_MARGIN } from '@/lib/raiseLayer';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { createPortal } from 'react-dom';
@@ -156,6 +157,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<typeof TABS[number]>('All');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  // A row's menu is the top layer: Back and Escape close just the menu.
+  useSystemBack(!!menuOpenId, () => setMenuOpenId(null));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
 

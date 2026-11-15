@@ -11,6 +11,20 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(StageBlePlugin.class);
         registerPlugin(IrealForumPlugin.class);
         registerPlugin(KeepAwakePlugin.class);
+        registerPlugin(PrivacyPlugin.class);
         super.onCreate(savedInstanceState);
+        PrivacyPlugin.apply(this);
+    }
+
+    @Override
+    public void onPause() {
+        PrivacyPlugin.paused(this, true);
+        super.onPause();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        PrivacyPlugin.paused(this, false);
     }
 }

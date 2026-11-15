@@ -580,6 +580,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   useUnsavedGuard(editorDirty, (proceed) => setEditorLeaveAction(() => () => { closeSetlistEditor(); proceed(); }));
   // Android Back and Escape leave the editor for the library, not the library itself.
   useSystemBack(!!editingSetlistId, requestCloseSetlistEditor);
+  // A song row's menu is the top layer: Back and Escape close just the menu.
+  useSystemBack(!!actionMenuId, () => setActionMenuId(null));
 
   const handleSaveSetlist = useCallback(async () => {
     if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return false;

@@ -7,6 +7,7 @@ import { ChoicePill, DotMatrixRadio, OnboardingSheet, WizardTop, wizardStep } fr
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useT } from '@/lib/i18n';
 import { useCloseOnBack } from '@/lib/overlayBack';
+import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 
 interface InviteMembersProps {
   onBack: () => void;
@@ -171,7 +172,7 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
         />
         <button
           type="button"
-          onClick={handleAddEmail}
+          {...keyboardSafeTap(handleAddEmail)}
           disabled={!isValidEmail(emailInput)}
           aria-label={t('Add bandmate')}
           className="shrink-0 w-11 h-11 rounded-full bg-surface-inverse text-surface-inverse-foreground flex items-center justify-center mb-1 active:scale-[var(--press-scale,0.97)] transition-[transform,opacity] disabled:opacity-30"
@@ -263,7 +264,9 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
                 onClose={() => setShowModal(false)}
                 closeIcon={<X className="w-4 h-4" strokeWidth={2} />}
               >
-                <div className="flex flex-col gap-5">
+                {/* Taps work on the first touch while typing the name (closing the
+                    keyboard first would drop the sheet under the finger). */}
+                <div data-keep-keyboard="" className="flex flex-col gap-5">
                   {/* Name (optional) */}
                   <PillField
                     label={t('Name (optional)')}
@@ -323,12 +326,12 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
                             type="button"
                             role="radio"
                             aria-checked={selected}
-                            onClick={() =>
+                            {...keyboardSafeTap(() =>
                               setCurrentInvite((prev) => ({
                                 ...prev,
                                 permission: opt.id,
                               }))
-                            }
+                            )}
                             className={`w-full flex items-center gap-3 p-4 rounded-[20px] text-left transition-colors ${
                               selected ? 'bg-muted' : 'border border-border'
                             }`}
@@ -345,7 +348,7 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
                   </div>
 
                   {/* Confirm Button */}
-                  <PillButton onClick={handleConfirmInvite} trailingIcon={<Plus className="w-5 h-5" />}>
+                  <PillButton {...keyboardSafeTap(handleConfirmInvite)} trailingIcon={<Plus className="w-5 h-5" />}>
                     {t('Add to list')}
                   </PillButton>
                 </div>

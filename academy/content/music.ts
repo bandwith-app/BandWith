@@ -1162,7 +1162,7 @@ const music: AreaModule = {
           items: [
             "**Stage mode · <date>**, the gig title, venue and city.",
             "The run of show: Load in, Soundcheck, Show and End in 24-hour time. The next one is highlighted as **Next · …**; past ones fade.",
-            "The **Setlist** with numbers, titles, key and duration. The current song is highlighted.",
+            "The **Setlist** with numbers, titles, key and duration. The current song is highlighted. Songs struck off for tonight are crossed out, and the count above the list says how many (**· 2 struck off**).",
             "A second tab named after your song view (**Lyrics**, **Chords** or **Structure**) shows the current song. It follows the song as it changes.",
             "**Prev** and **Next** at the bottom, with the click button between them.",
           ],
@@ -1176,6 +1176,7 @@ const music: AreaModule = {
             "Transpose for yourself with − key +. Only your screen changes.",
             "**My notes** shows your private notes over the band's version.",
             "The run of show hides to give the song more room.",
+            "Where there is room (a phone on its side, an iPad, a dual-screen device open over both panes), the setlist stays in a column beside the song. Tap a song there to go to it.",
           ],
         },
         {
@@ -1192,7 +1193,7 @@ const music: AreaModule = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Leads: moves the band's current song, reorders the setlist and starts the band's click. See [[lead-stage-mode]]." },
+            { role: "admin", text: "Leads: moves the band's current song, reorders the setlist by holding and dragging a song, strikes songs off for tonight and starts the band's click. See [[lead-stage-mode]]." },
             { role: "member", text: "Follows the leader, or steps through the songs alone. See [[follow-in-stage-mode]]." },
             { role: "deputy", text: "No Stage mode: deputies don't have the band's setlists." },
           ],
@@ -1203,10 +1204,10 @@ const music: AreaModule = {
     {
       id: "lead-stage-mode",
       title: "Lead the band in Stage mode",
-      summary: "As admin, move the current song for everyone and change the order live.",
+      summary: "As admin, move the current song for everyone, change the order live and strike off songs you won't play.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["leader", "next song", "reorder live", "band follows", "live sync"],
+      keywords: ["leader", "next song", "reorder live", "drag", "strike", "skip a song", "remove a song tonight", "band follows", "live sync"],
       related: ["stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync"],
       body: [
         {
@@ -1215,7 +1216,8 @@ const music: AreaModule = {
             "Open Stage mode on the gig.",
             "Check the status next to the setlist: **Live** means the band follows you (**Band follows you**).",
             "Tap **Next** or **Prev** to move the band to the next or previous song, or tap any song in the list (**Go to …**).",
-            "To change the order, tap **Reorder**, then the up and down arrows on a song (**Move … up**, **Move … down**). Tap **Done** when finished.",
+            "To change the order, hold a song until it lifts, drag it to its new place and let go. A quick swipe still scrolls the list, and a tap still makes the song current.",
+            "To skip a song tonight, tap the round − button at the end of its row (**Strike … off tonight**). The title is crossed out and **Prev** / **Next** jump over it. Tap + (**Bring back …**) to put it back.",
           ],
         },
         {
@@ -1226,7 +1228,7 @@ const music: AreaModule = {
             ["**Live · BT**", "Connected over the internet and sending over Bluetooth too."],
             ["**Bluetooth**", "No internet: members nearby follow you over Bluetooth."],
             ["**Offline**", "Nothing reaches the band right now."],
-            ["**Saving…**, **Saved**, **Not saved**", "While reordering: the new order is saved shortly after your last move."],
+            ["**Saving…**, **Saved**, **Not saved**", "After a drag: the new order is saved shortly after your last move. **Saved** shows for a moment, then the status returns."],
           ],
         },
         {
@@ -1236,6 +1238,7 @@ const music: AreaModule = {
             "A new order applies to everyone, also members who stopped following, and is saved to the gig's setlist. The gig behind Stage mode shows it at once.",
             "Closing Stage mode saves a move still waiting for its save.",
             "If several admins lead at once, the newest move wins.",
+            "Striking a song off is for tonight only: the gig's setlist keeps it. Members following you see it crossed out and skip it too, over the internet or Bluetooth. Your phone remembers the struck songs for that gig if you close Stage mode and open it again.",
           ],
         },
         {
@@ -1366,10 +1369,10 @@ const music: AreaModule = {
           type: "devices",
           rows: [
             { devices: ["phone"], text: "One column: header, run of show, setlist or song, Prev / Next at the bottom." },
-            { devices: ["phoneLand", "duoClosed"], text: "On its side (short and wide), the times and steps sit on the left and the setlist or song on the right." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "Stage mode opens beside the list pane. **Hide sidebar** gives it the whole screen: then the times and steps sit on the first pane and the setlist or song on the second, split at the panes' edge so nothing sits on the fold. **Show sidebar** brings the list back. The choice is kept on the device." },
+            { devices: ["phoneLand", "duoClosed"], text: "On its side (short and wide), the times and steps sit on the left and the setlist or song on the right. With a song open, the left column shows the setlist instead, so you can jump to any song." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "Stage mode opens beside the list pane. **Hide sidebar** gives it the whole screen: then the times and steps sit on the first pane and the setlist or song on the second, split at the panes' edge so nothing sits on the fold. With a song open, the setlist sits in a column beside it (on the first pane when the device is open over both). **Show sidebar** brings the list back. The choice is kept on the device." },
             { devices: ["duoClosed"], text: "**Open stage mode** is in the rail; on gig day it is the rail's main action. **Hide sidebar** hides the rail in Stage mode." },
-            { devices: ["duoLaptop"], text: "Floor wedge: stand the device on the stage floor like a monitor. The top half shows the song counter (**Song … of …**), title, key, BPM, next song and elapsed time, or the lyrics. The bottom half has big **Prev** and **Next** pads and the set's progress. Arrow keys, Page Up/Down and Space also step, so Bluetooth page-turner pedals work." },
+            { devices: ["duoLaptop"], text: "Floor wedge: stand the device on the stage floor like a monitor. The top half shows the song counter (**Song … of …**), title, key, BPM, next song and elapsed time, or the lyrics. The bottom half has big **Prev** and **Next** pads and the set's progress; songs struck off for tonight are skipped and their progress segments dimmed. Arrow keys, Page Up/Down and Space also step, so Bluetooth page-turner pedals work." },
             { devices: ["web"], text: "Live sync over the internet and the click work. No Bluetooth, and no offline copy of the setlist." },
           ],
         },

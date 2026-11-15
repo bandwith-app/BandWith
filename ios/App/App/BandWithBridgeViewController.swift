@@ -30,11 +30,15 @@ import UserNotifications
 /// - App badge: the page posts the unread count to
 ///   `webkit.messageHandlers.bwBadge`; the icon shows it, and 0 also clears
 ///   the delivered notifications from Notification Center.
+/// - Privacy cover: the page posts whether the app lock is on to
+///   `webkit.messageHandlers.bwPrivacyCover`; while on, the app switcher
+///   shows the launch screen instead of the last screen (SceneDelegate).
 final class BandWithBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
 
     private static let readyMessage = "bwRegionsReady"
     private static let keepAwakeMessage = "bwKeepAwake"
     private static let badgeMessage = "bwBadge"
+    private static let privacyMessage = "bwPrivacyCover"
     private var lastPayload: String?
     /// UIHingeInteraction (iOS 27.1+), typed as its protocol so the stored
     /// property needs no availability annotation.
@@ -53,6 +57,7 @@ final class BandWithBridgeViewController: CAPBridgeViewController, WKScriptMessa
         controller.add(WeakScriptMessageHandler(self), name: Self.readyMessage)
         controller.add(WeakScriptMessageHandler(self), name: Self.keepAwakeMessage)
         controller.add(WeakScriptMessageHandler(self), name: Self.badgeMessage)
+        controller.add(WeakScriptMessageHandler(self), name: Self.privacyMessage)
         controller.addUserScript(WKUserScript(source: Self.bootstrapScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         installHingeObserver()
     }
@@ -81,6 +86,8 @@ final class BandWithBridgeViewController: CAPBridgeViewController, WKScriptMessa
             UIApplication.shared.isIdleTimerDisabled = Self.flag(message.body)
         case Self.badgeMessage:
             Self.setBadge((message.body as? NSNumber)?.intValue ?? 0)
+        case Self.privacyMessage:
+            PrivacyCover.enabled = Self.flag(message.body)
         default:
             break
         }

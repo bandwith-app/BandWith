@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, indexOf, isNewer, moveItem, nextSeq, parseStageState, reorderRows, sameOrder, stageTopic } from '../stageLive';
+import { applyOrder, indexOf, isNewer, moveItem, nextSeq, parseStageState, reorderRows, sameOrder, stageTopic, stepOver } from '../stageLive';
 
 const songs = [
   { id: 'a', songId: 'sa', setNumber: 1, title: 'A' },
@@ -84,5 +84,22 @@ describe('stageLive', () => {
     expect(indexOf(songs, null)).toBe(0);
     expect(sameOrder(['a', 'b'], ['a', 'b'])).toBe(true);
     expect(sameOrder(['a', 'b'], ['b', 'a'])).toBe(false);
+  });
+});
+
+describe('songs struck off', () => {
+  const songs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  it('Prev / Next step over them', () => {
+    expect(stepOver(songs, 0, 1, new Set(['b']))).toBe(2);
+    expect(stepOver(songs, 2, -1, new Set(['b']))).toBe(0);
+    expect(stepOver(songs, 0, 1, new Set())).toBe(1);
+  });
+  it('stays put when every song after is struck off', () => {
+    expect(stepOver(songs, 1, 1, new Set(['c', 'd']))).toBe(1);
+    expect(stepOver(songs, 0, -1, new Set())).toBe(0);
+  });
+  it('travel in the live state', () => {
+    expect(parseStageState({ seq: 1, from: 'x', songId: 'a', order: null, skipped: ['b'] })?.skipped).toEqual(['b']);
+    expect(parseStageState({ seq: 1, from: 'x', songId: 'a', order: null })?.skipped).toBeUndefined();
   });
 });

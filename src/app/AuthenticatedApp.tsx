@@ -48,7 +48,7 @@ import {
   deletePersonalGig,
 } from "@/lib/services/events";
 import type { EventMember, Event } from "@/lib/services/events";
-import { respondToOwnInvite, InviteResponseError } from "@/lib/services/inviteResponse";
+import { respondToOwnInvite, InviteResponseError, getOwnInviteStatus, inviteSettled } from "@/lib/services/inviteResponse";
 import { createSetlist, deleteSetlist, replaceSetlistSongs, updateSetlist } from "@/lib/services/songs";
 import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
 import { notifySetlistSaved } from "@/lib/services/setlistNotify";
@@ -283,9 +283,16 @@ export default function AuthenticatedApp() {
         // Sync system bars (both top status bar & bottom navigation bar) with the active theme
         const isDark = document.documentElement.classList.contains('dark');
         await syncSystemBarsAppearance(isDark ? 'dark' : 'light');
-        try { await Keyboard.setAccessoryBarVisible({ isVisible: false }); } catch (_) {}
-        try { await Keyboard.setScroll({ isDisabled: false }); } catch (_) {}
+        // iOS only: Android's plugin answers "not implemented" (a console error per screen).
+        if (Capacitor.getPlatform() === 'ios') {
+          try { await Keyboard.setAccessoryBarVisible({ isVisible: false }); } catch (_) {}
+          try { await Keyboard.setScroll({ isDisabled: false }); } catch (_) {}
+        }
 
+        // Added once per app run (AuthenticatedApp can mount again after a sign-out).
+        const w = window as Window & { __bwKeyboardTouch?: boolean };
+        if (!w.__bwKeyboardTouch) {
+        w.__bwKeyboardTouch = true;
         document.addEventListener(
           "touchstart",
           (e) => {
@@ -306,6 +313,7 @@ export default function AuthenticatedApp() {
           },
           { passive: true }
         );
+        }
       } catch (err) {
         console.log("Native plugin init:", err);
       }
@@ -503,9 +511,17 @@ export default function AuthenticatedApp() {
     limit: 20,
     excludeChat: true,
     onNewEventInvite: (notif) => {
-      if (notif.data?.creator_id !== user?.id) {
+      if (notif.data?.creator_id === user?.id) return;
+      // A re-sent invite for a gig already answered needs no pop-up.
+      const eventId = notif.data?.event_id as string | undefined;
+      if (!eventId || !user?.id) {
         setUrgentNotification(notif);
+        return;
       }
+      void getOwnInviteStatus(eventId, user.id).then((status) => {
+        if (inviteSettled(status)) void markNotificationAsRead(notif.id);
+        else setUrgentNotification(notif);
+      });
     },
     onNewRehearsalPoll: (notif) => {
       setUrgentNotification(notif);
@@ -541,7 +557,22 @@ export default function AuthenticatedApp() {
     );
     if (unreadInvite) {
       hasPromptedInitialNotifs.current = true;
-      setUrgentNotification(unreadInvite);
+      const eventId = unreadInvite.data?.event_id as string | undefined;
+      if (!eventId || !user?.id) {
+        setUrgentNotification(unreadInvite);
+        return;
+      }
+      // Answered meanwhile (from the gig, a push, another device): mark it read
+      // and look again, instead of asking to CONFIRM an answer already given.
+      void getOwnInviteStatus(eventId, user.id).then((status) => {
+        if (!inviteSettled(status)) {
+          setUrgentNotification(unreadInvite);
+          return;
+        }
+        void markNotificationAsRead(unreadInvite.id);
+        hasPromptedInitialNotifs.current = false;
+        setRealNotifications((prev) => prev.map((n) => (n.id === unreadInvite.id ? { ...n, read: true } : n)));
+      });
       return;
     }
 
@@ -1069,8 +1100,8 @@ export default function AuthenticatedApp() {
         kind: 'hidden',
         title: t('Not confirmed yet'),
         message: dayOf(row.event_date)
-          ? t('“{title}” on {day} went back to being a quote. It comes back to your calendar as soon as an admin confirms it as a gig.', { title: row.title || t('This gig'), day: dayOf(row.event_date) ?? '' })
-          : t('“{title}” went back to being a quote. It comes back to your calendar as soon as an admin confirms it as a gig.', { title: row.title || t('This gig') }),
+          ? t("“{title}” on {day} is a quote for now: the client hasn't confirmed it. It shows in your calendar as soon as an admin confirms it as a gig.", { title: row.title || t('This gig'), day: dayOf(row.event_date) ?? '' })
+          : t("“{title}” is a quote for now: the client hasn't confirmed it. It shows in your calendar as soon as an admin confirms it as a gig.", { title: row.title || t('This gig') }),
       });
       return;
     }
@@ -1917,6 +1948,23 @@ export default function AuthenticatedApp() {
     setSelectedEventMembership(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [twoPane, hubOpen]);
+  // Switching band closes a gig of the band left behind: on the Duo and the
+  // iPad it would otherwise stay in the trailing pane beside the new band's
+  // home. Personal gigs (no band) stay open.
+  const shownBandId = realBand?.id ?? null;
+  const prevShownBandRef = useRef(shownBandId);
+  useEffect(() => {
+    const prev = prevShownBandRef.current;
+    prevShownBandRef.current = shownBandId;
+    // From no band too: a gig opened while the bands were loading.
+    if (!shownBandId || prev === shownBandId) return;
+    const openBand = selectedEvent?.band_id;
+    if (openBand && openBand !== shownBandId) {
+      setSelectedEvent(null);
+      setSelectedEventMembership(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on a band switch
+  }, [shownBandId]);
   // Tablets: the Inbox and the expanded home cards are hubs too. Opening one
   // closes the detail left from before, so the hub can take the whole window
   // (src/styles/tablet.css) instead of sitting beside an unrelated event.
@@ -2882,21 +2930,31 @@ export default function AuthenticatedApp() {
   // the trailing page, next to the dashboard. Once per visit to Home (see
   // homeAutoDetail), so a closed detail stays closed.
   const homeAutoDetailRef = useRef(false);
+  // The dashboard is the selected band's: so is the gig beside it. Switching
+  // band is a new visit, so that band's next gig shows.
+  const autoDetailBandRef = useRef(shownBandId);
   useEffect(() => {
-    const next = nextAutoDetailEvent(visuallyFilteredEvents, todayLocal());
+    if (autoDetailBandRef.current !== shownBandId) {
+      autoDetailBandRef.current = shownBandId;
+      homeAutoDetailRef.current = false;
+    }
+    const pool = shownBandId ? visuallyFilteredEvents.filter((e) => e.band_id === shownBandId) : visuallyFilteredEvents;
+    const next = nextAutoDetailEvent(pool, todayLocal());
     const { done, open } = homeAutoDetail(homeAutoDetailRef.current, {
       twoPane,
       // A hub (members, settings…) covers Home: don't open a gig behind it.
-      onHome: activeTab === 'Home' && !hubOpen,
+      // The account hub too: its trailing page is the profile, not a gig.
+      onHome: activeTab === 'Home' && !hubOpen && !isIdentityOpen,
       hasSelected: !!selectedEvent,
-      loading: eventsLoading,
+      // Bands still loading: which band's gig is not known yet (cold launch).
+      loading: eventsLoading || bandsLoading,
       hasNext: !!next,
     });
     homeAutoDetailRef.current = done;
     if (!open || !next) return;
     handleEventCardClick(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [twoPane, activeTab, hubOpen, eventsLoading, visuallyFilteredEvents, selectedEvent]);
+  }, [twoPane, activeTab, hubOpen, eventsLoading, visuallyFilteredEvents, selectedEvent, shownBandId, bandsLoading, isIdentityOpen]);
 
   /**
    * The member's own lineup row is still loading (weak signal) or could not
@@ -2908,11 +2966,21 @@ export default function AuthenticatedApp() {
     throw new Error(message);
   };
 
+  /** The gig's unread invites are answered now: read, so no pop-up asks again. */
+  const settleInviteNotifications = (eventId: string | undefined) => {
+    if (!eventId) return;
+    const open = (realNotifications || []).filter((n) => !n.read && n.type === "event_invite" && n.data?.event_id === eventId);
+    if (!open.length) return;
+    setRealNotifications((prev) => prev.map((n) => (open.some((o) => o.id === n.id) ? { ...n, read: true } : n)));
+    void Promise.all(open.map((n) => markNotificationAsRead(n.id))).catch(() => {});
+  };
+
   const handleEventAccept = async () => {
     if (!selectedEvent) return;
     if (!selectedEventMembership?.id) return rsvpNotLoaded();
 
     const eventId = selectedEvent.eventId || selectedEvent.id?.toString();
+    const alreadyGoing = selectedEventMembership.status === "confirmed";
 
     // UI Dismissal: Snap modal closed
     setSelectedEvent(null);
@@ -2945,9 +3013,11 @@ export default function AuthenticatedApp() {
     // ═══════════════════════════════════════════════════════════════
     // STEP D — Safe Notification Sandbox (autonomous try/catch)
     // ═══════════════════════════════════════════════════════════════
+    settleInviteNotifications(eventId);
     try {
       const realEventId = selectedEvent.eventId;
-      if (realEventId) {
+      // Already going: the admins were told the first time.
+      if (realEventId && !alreadyGoing) {
         const { data: members } = await getEventMembers(realEventId);
         const creator = members?.find((m) => m.role === "admin" || m.user_id === selectedEvent.createdBy);
         if (creator?.user_id && user?.id) {
@@ -3025,6 +3095,7 @@ export default function AuthenticatedApp() {
     // STEP A — Visual Shortcut: Hide the event card instantly (<1ms)
     // ═══════════════════════════════════════════════════════════════
     const eventIdToHide = selectedEvent.eventId || selectedEvent.id?.toString();
+    const alreadyOut = selectedEventMembership.status === "declined";
     if (eventIdToHide) {
       setOptimisticallyHiddenEventIds(prev => [...prev, eventIdToHide]);
     }
@@ -3056,9 +3127,11 @@ export default function AuthenticatedApp() {
     // ═══════════════════════════════════════════════════════════════
     // STEP D — Safe Notification Sandbox (autonomous try/catch)
     // ═══════════════════════════════════════════════════════════════
+    settleInviteNotifications(eventIdToHide);
     try {
       const realEventId = selectedEvent.eventId;
-      if (realEventId && user?.id) {
+      // Already out: the admins were told the first time.
+      if (realEventId && user?.id && !alreadyOut) {
         const memberName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Member");
         // The event's own band's admins, not the active band's.
         await notifyMemberDroppedOut(
@@ -3868,9 +3941,14 @@ export default function AuthenticatedApp() {
           isScrolled={isHeaderScrolled}
         />
 
+        {/* The home keeps one key across band switches: keyed by band, a switch
+            ran the old home's exit while the band context re-rendered it, and
+            with slow answers that exit never finished ("wait" then never
+            mounted the new band's home: an empty screen). HomeView re-keys its
+            own content per band, so the new band still animates in. */}
         <AnimatePresence mode="wait">
           {(activeTab === "Home" || activeTab === "More") && (
-            <HomeView key={`dashboard-${isSolo ? 'solo' : selectedBand.id}`} selectedBand={selectedBand} expandedCard={expandedCard} setExpandedCard={setExpandedCard} upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} onRehearsalClick={handleRehearsalClick} isHidden={isMenuOpen} dashboardData={computedDashboardData} dashboardLoading={dashboardLoading && !masterEventsList?.length} isAdmin={isAdmin} onViewChange={(tab) => setActiveTab(tab as TabName)} onSelectEvent={navigateToEvent} onGoLive={handleGoLive} onReviewPayouts={handleReviewPayouts} onFilterEvents={(filter) => {
+            <HomeView key={isSolo ? 'dashboard-solo' : 'dashboard'} selectedBand={selectedBand} expandedCard={expandedCard} setExpandedCard={setExpandedCard} upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} onRehearsalClick={handleRehearsalClick} isHidden={isMenuOpen} dashboardData={computedDashboardData} dashboardLoading={dashboardLoading && !masterEventsList?.length} isAdmin={isAdmin} onViewChange={(tab) => setActiveTab(tab as TabName)} onSelectEvent={navigateToEvent} onGoLive={handleGoLive} onReviewPayouts={handleReviewPayouts} onFilterEvents={(filter) => {
               setEventFilter(filter);
               setActiveTab("Events");
             }} onQuickAction={(action) => {
@@ -4001,11 +4079,14 @@ export default function AuthenticatedApp() {
             handleGridNav(section && section !== 'main' ? `Settings:${section}` : 'Settings');
           }}
           deputyBandCount={deputyBandCount}
-          onOpenDeputyGigs={() => {
-            closeIdentity();
+          // Like every other hub page: opened over the hub, so Back returns to it.
+          onOpenDeputyGigs={() => runGuarded(() => {
+            closeLyrics();
+            closeChordEditor();
+            closeHubPages();
             setDeputyGigsFocus(null);
             setShowDeputyGigs(true);
-          }}
+          })}
         />
 
         <SwitchBandPopup
@@ -4605,9 +4686,10 @@ export default function AuthenticatedApp() {
                     const memberName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Member");
 
                     // Nothing saved: say so and stop (no admin notice, inbox stays).
-                    await respondToOwnInvite(eventId, user.id, status);
+                    // Same answer as before: nothing is sent again.
+                    const { changed } = await respondToOwnInvite(eventId, user.id, status);
 
-                    if (status === 'declined') {
+                    if (changed && status === 'declined') {
                       await notifyMemberDroppedOut(
                         notif?.band_id || "",
                         eventId,
@@ -4616,7 +4698,7 @@ export default function AuthenticatedApp() {
                         memberName,
                         user.id
                       );
-                    } else {
+                    } else if (changed) {
                       const creatorId = notif?.data?.creator_id as string;
                       if (creatorId && creatorId !== user.id) {
                         await notifyEventResponse([creatorId], notif?.band_id || "", eventId, eventTitle, eventType, memberName, status);
@@ -4637,7 +4719,15 @@ export default function AuthenticatedApp() {
               const navId = notif?.data?.event_id as string;
               setSelectedNotification(null);
               setSelectedNotifications([]); setInboxOpen(false);
-              if (navId) setTimeout(() => navigateToEvent(navId), 300);
+              // An availability check (still a quote): not on the calendar yet.
+              if ((action === "accept_event" || action === "decline_event") && notif?.data?.tentative && !isAdminOfBand(notif.band_id || undefined)) {
+                setSaveToast({
+                  message: action === "accept_event"
+                    ? t("Thanks, you're available. It shows in your calendar as soon as it's confirmed as a gig.")
+                    : t("Thanks, you're not available. The admins can see your answer."),
+                  type: 'success',
+                });
+              } else if (navId) setTimeout(() => navigateToEvent(navId), 300);
             }}
           />
         </AnimatePresence>
@@ -4761,7 +4851,7 @@ export default function AuthenticatedApp() {
               if (eventId && user?.id) {
                 // Saved first: on failure the sheet shows why and stays open,
                 // and the admins are not told about an answer that isn't there.
-                await respondToOwnInvite(eventId, user.id, 'confirmed');
+                const { changed } = await respondToOwnInvite(eventId, user.id, 'confirmed');
                 // Update eventMembersMap so the event card is immediately confirmed
                 setEventMembersMap(prev => {
                   const list = prev[eventId] || [];
@@ -4773,7 +4863,8 @@ export default function AuthenticatedApp() {
                 setOptimisticallyHiddenEventIds(prev => prev.filter(id => id !== eventId));
 
                 const creatorId = rsvpNotification.data?.creator_id as string;
-                if (creatorId) {
+                // Only a new answer is told (a second GOING sends nothing).
+                if (changed && creatorId && creatorId !== user.id) {
                   const memberName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Member");
                   const eventType = (rsvpNotification.data?.event_type as string) || 'gig';
                   await notifyEventResponse([creatorId], rsvpNotification.band_id || "", eventId, (rsvpNotification.data?.event_title as string) || "Event", eventType, memberName, "confirmed");
@@ -4784,14 +4875,18 @@ export default function AuthenticatedApp() {
                 refetchEvents();
               }
               const navId = rsvpNotification.data?.event_id as string;
+              // An availability check (still a quote) isn't on the member's
+              // calendar yet: say where it will be instead of opening it.
+              const quoteCheck = !!rsvpNotification.data?.tentative && !isAdminOfBand(rsvpNotification.band_id || undefined);
               setRsvpNotification(null);
-              if (navId) setTimeout(() => navigateToEvent(navId), 300);
+              if (quoteCheck) setSaveToast({ message: t("Thanks, you're available. It shows in your calendar as soon as it's confirmed as a gig."), type: 'success' });
+              else if (navId) setTimeout(() => navigateToEvent(navId), 300);
             }}
             onDecline={async () => {
               const eventId = rsvpNotification.data?.event_id as string;
               if (eventId && user?.id) {
                 // Saved first (see onAccept), then hide the declined event.
-                await respondToOwnInvite(eventId, user.id, 'declined');
+                const { changed } = await respondToOwnInvite(eventId, user.id, 'declined');
                 setOptimisticallyHiddenEventIds(prev => [...prev, eventId]);
                 setEventMembersMap(prev => {
                   const list = prev[eventId] || [];
@@ -4804,7 +4899,7 @@ export default function AuthenticatedApp() {
                 const memberName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Member");
                 const eventTitle = (rsvpNotification.data?.event_title as string) || "Event";
                 const eventDate = (rsvpNotification.data?.event_date as string) || undefined;
-                await notifyMemberDroppedOut(
+                if (changed) await notifyMemberDroppedOut(
                   rsvpNotification.band_id || "",
                   eventId,
                   eventTitle,
@@ -4818,8 +4913,12 @@ export default function AuthenticatedApp() {
                 refetchEvents();
               }
               const navId = rsvpNotification.data?.event_id as string;
+              // An availability check (still a quote) isn't on the member's
+              // calendar yet: say where it will be instead of opening it.
+              const quoteCheck = !!rsvpNotification.data?.tentative && !isAdminOfBand(rsvpNotification.band_id || undefined);
               setRsvpNotification(null);
-              if (navId) setTimeout(() => navigateToEvent(navId), 300);
+              if (quoteCheck) setSaveToast({ message: t("Thanks, you're not available. The admins can see your answer."), type: 'success' });
+              else if (navId) setTimeout(() => navigateToEvent(navId), 300);
             }}
             onClose={() => setRsvpNotification(null)}
           />

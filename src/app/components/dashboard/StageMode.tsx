@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
@@ -19,6 +19,7 @@ import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
 import { timelineDates } from '@/lib/gigTiming';
 import { cn } from '@/app/components/ui/utils';
+import { SortableSongList } from '@/app/components/ui/SortableSongList';
 import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
 import { keyLabel } from '@/lib/ireal';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from './StageClick';
@@ -71,6 +72,11 @@ export interface StageLiveControls {
   canReorder: boolean;
   move: (from: number, to: number) => void;
   saveState: StageSaveState;
+  /** Songs struck off tonight (row ids): crossed out, Prev / Next skip them. */
+  skipped?: ReadonlySet<string>;
+  /** The leader can strike songs off. */
+  canStrike?: boolean;
+  toggleSkip?: (index: number) => void;
   /** Visual metronome (useStageLive): newest click, ours or the leader's. */
   click?: StageClickControls;
 }
@@ -140,10 +146,28 @@ export const StageMode: React.FC<StageModeProps> = ({
   // hands-free; a locked leader's phone stops the band's sync too).
   useKeepAwake(true);
   const [now, setNow] = useState(() => new Date());
-  const [reordering, setReordering] = useState(false);
   const current = live && songs.length > 0 ? live.index : -1;
-  const editing = reordering && !!live?.canReorder;
-  const currentRef = useRef<HTMLLIElement | null>(null);
+  // Struck off tonight by the leader (crossed out; Prev / Next skip them).
+  const isStruck = (song: StageSong) => !!song.id && !!live?.skipped?.has(song.id);
+  const struckCount = live?.skipped ? songs.filter((s) => !!s.id && live.skipped!.has(s.id)).length : 0;
+  // One song: singular ("1 tolto", not "1 tolti").
+  const struckText = struckCount === 1 ? t('1 struck off') : t('{count} struck off', { count: struckCount });
+  // Rows for the sortable list (dnd-kit needs a stable id per row).
+  const stageRows = useMemo(
+    () => songs.map((song, i) => ({ uid: song.id ?? `${song.title}-${i}`, title: song.title, song })),
+    [songs],
+  );
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // The leader's save status shows while saving, on an error, and briefly once saved.
+  const saveState = live?.saveState ?? 'idle';
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    setShowSaved(true);
+    const id = window.setTimeout(() => setShowSaved(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [saveState]);
+  const showSave = saveState === 'saving' || saveState === 'error' || (saveState === 'saved' && showSaved);
   // Lyrics view: the current song's lyrics, following it (also when the leader moves).
   // Chords view: the same for its chord chart.
   // Song view: lyrics, chords or structure, from the player's instrument or last pick (one tap switches).
@@ -157,7 +181,7 @@ export const StageMode: React.FC<StageModeProps> = ({
     onSongOpenChange?.(v === 'song');
   };
   const [songView, setSongView] = useSongViewPreference();
-  const showLyrics = view === 'song' && hasSong && !editing;
+  const showLyrics = view === 'song' && hasSong;
   const lyricsSong = songs[Math.max(0, current)];
   const lyricsContent = useMemo(() => ({ lyrics: normalizeLyrics(lyricsSong?.lyrics), chart: lyricsSong?.chart }), [lyricsSong?.lyrics, lyricsSong?.chart]);
   const shownView = resolveView(songView, lyricsContent);
@@ -186,11 +210,25 @@ export const StageMode: React.FC<StageModeProps> = ({
     lyricsRef.current?.scrollTo?.({ top: 0 });
   }, [lyricsSong?.id, lyricsSong?.title, showLyrics, shownView]);
 
-  // Keep the current song in view when it changes (also when the leader moves).
+  // Keep the current song in view when it changes (also when the leader
+  // moves), and after the layout changes (full screen, turning the device,
+  // back to the setlist tab), which leaves the list at its old scroll.
+  const [layoutTick, setLayoutTick] = useState(0);
   useEffect(() => {
-    if (editing) return;
-    currentRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-  }, [current, editing]);
+    const bump = () => setLayoutTick((n) => n + 1);
+    window.addEventListener('resize', bump);
+    window.addEventListener('bwlayout', bump);
+    return () => {
+      window.removeEventListener('resize', bump);
+      window.removeEventListener('bwlayout', bump);
+    };
+  }, []);
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [current, layoutTick, view]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30_000);
@@ -230,6 +268,8 @@ export const StageMode: React.FC<StageModeProps> = ({
   const [barHidden, setBarHidden] = useStageBarHidden();
   const full = hasBar && barHidden;
   useStageFullScreen(full);
+  // Full screen moves the list into another column: bring the current song back into view.
+  useEffect(() => setLayoutTick((n) => n + 1), [full]);
   const toggleBar = () => {
     haptic.tap();
     setBarHidden(!barHidden);
@@ -274,9 +314,41 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Reading a song in one pane (phone, or the Duo's Book posture beside the
   // app): a one-line header so the lyrics get the room.
   const compactHead = showLyrics && !split;
+  // Reading a song with room to the side (phone on its side, iPad, both Duo
+  // panes): the setlist stays beside it, one tap to another song.
+  // The layout's breakpoints read the window, but next to a list pane (iPad,
+  // the open Duo when not full screen) Stage mode only has that pane: there
+  // the side column would squeeze the lyrics to a few letters, so it keeps
+  // the tabs, as on a phone.
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [inNarrowPane, setInNarrowPane] = useState(false);
+  useLayoutEffect(() => {
+    if (!twoPane || full) {
+      setInNarrowPane(false);
+      return;
+    }
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setInNarrowPane(el.getBoundingClientRect().width < 900);
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [twoPane, full]);
+  const showSide = showLyrics && songs.length > 1 && (!!split || !inNarrowPane);
+  const sideRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!showSide) return;
+    sideRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [current, showSide]);
 
   return (
     <motion.div
+      ref={stageRef}
       role="dialog"
       aria-modal="true"
       aria-label={t('Stage mode: {title}', { title })}
@@ -300,12 +372,15 @@ export const StageMode: React.FC<StageModeProps> = ({
           '[@media(max-height:520px)_and_(min-width:600px)]:grid [@media(max-height:520px)_and_(min-width:600px)]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] [@media(max-height:520px)_and_(min-width:600px)]:grid-rows-[auto_auto_1fr] [@media(max-height:520px)_and_(min-width:600px)]:max-w-[1100px] [@media(max-height:520px)_and_(min-width:600px)]:gap-x-6 [@media(max-height:520px)_and_(min-width:600px)]:gap-y-3',
           // Full screen on two panes: the whole width, one column per pane.
           full && twoPane && 'max-w-none [@media(max-height:520px)_and_(min-width:600px)]:max-w-none',
-          split && 'grid grid-rows-[auto_auto_1fr] gap-y-3',
+          split && (showSide ? 'grid grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-y-3' : 'grid grid-rows-[auto_auto_1fr] gap-y-3'),
+          showSide &&
+            !split &&
+            '[@media(max-height:520px)_and_(min-width:600px)]:grid-rows-[auto_minmax(0,1fr)_auto] [@media(min-width:900px)_and_(min-height:521px)]:grid [@media(min-width:900px)_and_(min-height:521px)]:grid-cols-[minmax(0,300px)_minmax(0,1fr)] [@media(min-width:900px)_and_(min-height:521px)]:grid-rows-[auto_minmax(0,1fr)_auto] [@media(min-width:900px)_and_(min-height:521px)]:max-w-[1100px] [@media(min-width:900px)_and_(min-height:521px)]:gap-x-8 [@media(min-width:900px)_and_(min-height:521px)]:gap-y-3',
         )}
         style={split ? { gridTemplateColumns: `${split.col}px minmax(0,1fr)`, columnGap: split.gap } : undefined}
       >
         {/* Header */}
-        <div className={cn('flex items-start justify-between gap-4 shrink-0 bw-status-clear-shift [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1', split && 'col-start-1 row-start-1')}>
+        <div className={cn('flex items-start justify-between gap-4 shrink-0 bw-status-clear-shift [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1', split && 'col-start-1 row-start-1', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-span-2')}>
           <div className="flex flex-col gap-2 min-w-0">
             <span className="flex items-center gap-2 bw-label-sm text-white">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: accentColor }} />
@@ -377,10 +452,57 @@ export const StageMode: React.FC<StageModeProps> = ({
         </ol>
         </div>
 
+        {/* Setlist beside the song (wide layouts only; a phone held upright keeps the tabs). */}
+        {showSide && (
+          <nav
+            ref={sideRef}
+            aria-label={t('Setlist')}
+            className={cn(
+              'hidden min-h-0 overflow-y-auto overscroll-contain -mx-2 px-2',
+              split ? 'block col-start-1 row-start-3' : '[@media(max-height:520px)_and_(min-width:600px)]:block [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-2 [@media(min-width:900px)_and_(min-height:521px)]:block [@media(min-width:900px)_and_(min-height:521px)]:col-start-1 [@media(min-width:900px)_and_(min-height:521px)]:row-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-span-2',
+            )}
+          >
+            <ol className="flex flex-col">
+              {songs.map((song, i) => {
+                const isCurrent = i === current;
+                return (
+                  <li key={song.id ?? `${song.title}-${i}`} className="border-b border-white/10 last:border-b-0">
+                    <button
+                      type="button"
+                      disabled={!live}
+                      aria-current={isCurrent ? 'true' : undefined}
+                      onClick={() => {
+                        haptic.tap();
+                        live?.select(i);
+                      }}
+                      aria-label={isCurrent ? t('Now playing: {title}', { title: song.title }) : t('Go to {title}', { title: song.title })}
+                      className="flex w-full min-w-0 items-center gap-3 min-h-11 py-2 text-left"
+                    >
+                      <span
+                        className="bw-num text-[14px] font-medium w-6 shrink-0"
+                        style={{ ...MONO, color: isCurrent ? accentColor : 'rgba(255,255,255,0.5)' }}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span
+                        className={cn('flex-1 min-w-0 bw-label-md normal-case truncate', !isCurrent && 'text-white/80', isStruck(song) && 'line-through text-white/40')}
+                        style={isCurrent ? { color: accentColor } : undefined}
+                      >
+                        {song.title}
+                        {isStruck(song) && <span className="sr-only"> · {t('struck off')}</span>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+        )}
+
         {/* Setlist */}
-        <section className={cn('flex flex-col flex-1 min-h-0 gap-1 [@media(max-height:520px)_and_(min-width:600px)]:col-start-2 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-span-3', split && 'col-start-2 row-start-1 row-span-3')} aria-label={t('Setlist')}>
+        <section className={cn('flex flex-col flex-1 min-h-0 gap-1 [@media(max-height:520px)_and_(min-width:600px)]:col-start-2 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-span-3', split && 'col-start-2 row-start-1 row-span-3', split && showSide && 'row-span-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-2')} aria-label={t('Setlist')}>
           <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
-            {views.length > 1 && !editing ? (
+            {views.length > 1 ? (
               <span className="flex items-center gap-1 min-w-0" role="tablist" aria-label={t('Setlist')}>
                 {views.map((v) => (
                   <button
@@ -398,6 +520,13 @@ export const StageMode: React.FC<StageModeProps> = ({
                     )}
                   >
                     {v === 'setlist' ? t('Setlist') : songViewLabel(songView, t)}
+                    {/* With tabs there is no room for the "· 1 struck off" line: a short count on the tab. */}
+                    {v === 'setlist' && !songsLoading && struckCount > 0 && (
+                      <>
+                        <span aria-hidden className="ml-1.5 bw-num text-[12px] text-white/60" style={MONO}>−{struckCount}</span>
+                        <span className="sr-only"> · {struckText}</span>
+                      </>
+                    )}
                   </button>
                 ))}
               </span>
@@ -406,6 +535,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span className="bw-label-sm text-white shrink-0">{t('Setlist')}</span>
                 <span className="bw-num text-[14px] font-medium text-white/70 whitespace-nowrap truncate" style={MONO}>
                   {songsLoading ? '…' : songs.length === 1 ? t('{count} song', { count: songs.length }) : t('{count} songs', { count: songs.length })}
+                  {!songsLoading && struckCount > 0 ? ` · ${struckText}` : ''}
                 </span>
               </span>
             )}
@@ -415,7 +545,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   <LiveStatus
                     on={live.connected || live.bluetooth === 'leading'}
                     label={
-                      editing
+                      showSave
                         ? saveLabel(live.saveState, t)
                         : live.connected
                           ? `${t('Live')}${live.bluetooth === 'leading' ? ' · BT' : ''}`
@@ -448,23 +578,6 @@ export const StageMode: React.FC<StageModeProps> = ({
                       {followLabel(live, t)}
                       {live.bluetooth === 'connected' ? ' · BT' : ''}
                     </span>
-                  </button>
-                )}
-                {live.canReorder && (
-                  <button
-                    type="button"
-                    aria-pressed={editing}
-                    onClick={() => {
-                      haptic.tap();
-                      setReordering((v) => !v);
-                    }}
-                    className={cn(
-                      'flex items-center gap-1.5 min-h-11 px-3 rounded-full border bw-label-xs whitespace-nowrap shrink-0',
-                      editing ? 'bg-white text-black border-white' : 'border-white/40 text-white',
-                    )}
-                  >
-                    {editing && <Check className="w-4 h-4" />}
-                    {editing ? t('Done') : t('Reorder')}
                   </button>
                 )}
               </span>
@@ -535,7 +648,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               </PersonalLayerScope>
             </div>
           ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4">
+          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4">
             {songs.length === 0 && !songsLoading && songsError ? (
               <div className="flex flex-col items-start gap-3">
                 <p className="bw-body-md text-white/70">{t('Offline: the setlist couldn’t be loaded.')}</p>
@@ -555,93 +668,87 @@ export const StageMode: React.FC<StageModeProps> = ({
             ) : songs.length === 0 && !songsLoading ? (
               <p className="bw-body-md text-white/70">{t('No setlist attached to this gig.')}</p>
             ) : (
-              <ol className="flex flex-col">
-                {songs.map((song, i) => {
-                  const isCurrent = i === current;
-                  const meta = [song.key, song.duration].filter(Boolean).join(' · ');
-                  const body = (
+              <SortableSongList
+                songs={stageRows}
+                canReorder={!!live?.canReorder}
+                onMove={(from, to) => {
+                  live?.move(from, to);
+                }}
+                label={t('Setlist')}
+                tone="stage"
+                rowClassName="rounded-none pl-0 border-b border-white/15 last:border-b-0"
+                isCurrent={(_, i) => i === current}
+                rowAction={
+                  live?.canStrike && live.toggleSkip
+                    ? (row, i) => {
+                        const struck = isStruck(row.song);
+                        return (
+                          <button
+                            type="button"
+                            aria-pressed={struck}
+                            onClick={() => {
+                              haptic.tap();
+                              live.toggleSkip?.(i);
+                            }}
+                            aria-label={struck ? t('Bring back {title}', { title: row.song.title }) : t('Strike {title} off tonight', { title: row.song.title })}
+                            className={cn(
+                              'w-11 h-11 flex items-center justify-center rounded-full border',
+                              struck ? 'border-white/60 text-white' : 'border-white/25 text-white/60',
+                            )}
+                          >
+                            {struck ? <Plus className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
+                          </button>
+                        );
+                      }
+                    : undefined
+                }
+                onRowClick={
+                  live
+                    ? (_, i) => {
+                        haptic.tap();
+                        live.select(i);
+                      }
+                    : undefined
+                }
+                rowLabel={(row, i) =>
+                  i === current ? t('Now playing: {title}', { title: row.song.title }) : t('Go to {title}', { title: row.song.title })
+                }
+                renderRow={(row, { index, overlay }) => {
+                  const isCurrent = index === current;
+                  const struck = isStruck(row.song);
+                  const meta = [row.song.key, row.song.duration].filter(Boolean).join(' · ');
+                  return (
                     <>
                       <span
                         className="bw-num text-[16px] font-medium w-7 shrink-0"
-                        style={{ ...MONO, color: isCurrent ? accentColor : 'rgba(255,255,255,0.5)' }}
+                        style={{ ...MONO, color: isCurrent ? accentColor : struck ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}
                       >
-                        {String(i + 1).padStart(2, '0')}
+                        {String(index + 1).padStart(2, '0')}
                       </span>
                       <span
-                        className="flex-1 min-w-0 bw-h2 normal-case leading-[1.15] truncate"
+                        className={cn('flex-1 min-w-0 bw-h2 normal-case leading-[1.15] truncate', struck && 'line-through decoration-2 text-white/40')}
                         style={isCurrent ? { color: accentColor } : undefined}
                       >
-                        {song.title}
+                        {row.song.title}
+                        {struck && <span className="sr-only"> · {t('struck off')}</span>}
                       </span>
-                      {!editing && meta && (
+                      {meta && !overlay && !struck && (
                         <span className="bw-num text-[14px] font-medium text-white/70 shrink-0" style={MONO}>
                           {meta}
                         </span>
                       )}
                     </>
                   );
-                  return (
-                    <li
-                      key={song.id ?? `${song.title}-${i}`}
-                      ref={isCurrent ? currentRef : undefined}
-                      aria-current={isCurrent ? 'true' : undefined}
-                      className="flex items-center gap-2 border-b border-white/15 last:border-b-0"
-                    >
-                      {live && !editing ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            haptic.tap();
-                            live.select(i);
-                          }}
-                          aria-label={isCurrent ? t('Now playing: {title}', { title: song.title }) : t('Go to {title}', { title: song.title })}
-                          className="flex flex-1 min-w-0 items-center gap-4 py-3 text-left"
-                        >
-                          {body}
-                        </button>
-                      ) : (
-                        <span className="flex flex-1 min-w-0 items-center gap-4 py-3">{body}</span>
-                      )}
-                      {editing && live && (
-                        <span className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            disabled={i === 0}
-                            onClick={() => {
-                              haptic.tap();
-                              live.move(i, i - 1);
-                            }}
-                            aria-label={t('Move {title} up', { title: song.title })}
-                            className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 disabled:opacity-30"
-                          >
-                            <ChevronUp className="w-5 h-5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={i === songs.length - 1}
-                            onClick={() => {
-                              haptic.tap();
-                              live.move(i, i + 1);
-                            }}
-                            aria-label={t('Move {title} down', { title: song.title })}
-                            className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 disabled:opacity-30"
-                          >
-                            <ChevronDown className="w-5 h-5" />
-                          </button>
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
+                }}
+              />
             )}
           </div>
           )}
         </section>
 
         {/* Song steps: the leader's reach the whole band. */}
-        {live && songs.length > 0 && !editing && (
-          <div className={cn('grid gap-3 shrink-0', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end')}>
+        {live && songs.length > 0 && (
+          <div className={cn('grid gap-3 shrink-0', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end', split && showSide && 'row-start-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-3')}>
             <button
               type="button"
               disabled={current <= 0}
@@ -652,7 +759,8 @@ export const StageMode: React.FC<StageModeProps> = ({
               aria-label={t('Previous song')}
               className="flex items-center justify-center gap-2 min-h-14 rounded-[20px] bg-white/10 text-white bw-button-sm disabled:opacity-40"
             >
-              <ChevronLeft className="w-6 h-6" /> {t('Prev')}
+              {/* Closed Duo on its side: the left column is too narrow for the words. */}
+              <ChevronLeft className="w-6 h-6 shrink-0" /> <span className="[@media(max-height:520px)_and_(min-width:600px)_and_(max-width:760px)]:sr-only">{t('Prev')}</span>
             </button>
             {click && (
               <StageClickButton
@@ -675,7 +783,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               className="flex items-center justify-center gap-2 min-h-14 rounded-[20px] text-black bw-button-sm disabled:opacity-40"
               style={{ backgroundColor: accentColor }}
             >
-              {t('Next')} <ChevronRight className="w-6 h-6" />
+              <span className="[@media(max-height:520px)_and_(min-width:600px)_and_(max-width:760px)]:sr-only">{t('Next')}</span> <ChevronRight className="w-6 h-6 shrink-0" />
             </button>
           </div>
         )}

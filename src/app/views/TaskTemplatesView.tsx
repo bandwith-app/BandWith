@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSystemBack } from '@/lib/backStack';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -87,6 +88,8 @@ export const TaskTemplatesView: React.FC<TaskTemplatesViewProps> = ({ onBack, ba
   const [usingTemplate, setUsingTemplate] = useState<TaskTemplate | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  // A row's menu is the top layer: Back and Escape close just the menu.
+  useSystemBack(!!menuOpenId, () => setMenuOpenId(null));
 
   // Create / edit form state (`editingId` set = editing an existing row)
   const [editingId, setEditingId] = useState<string | null>(null);

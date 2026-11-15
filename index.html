@@ -94,15 +94,21 @@
     <div id="root"></div>
     <script>
       (function () {
+        // window.__bwSplashGone + 'bw:splash-gone': the app waits for them before
+        // anything native shows over the page (the Face ID / fingerprint prompt).
+        function gone() {
+          window.__bwSplashGone = true;
+          window.dispatchEvent(new Event('bw:splash-gone'));
+        }
         var el = document.getElementById('bw-splash');
-        if (!el) return;
+        if (!el) { gone(); return; }
         var cap = window.Capacitor;
         var isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
         var q = location.search;
         var forced = /[?&]splash=1(&|$)/.test(q); // web preview: /?splash=1
         var authLink = /access_token=|type=recovery|type=signup/.test(location.hash) ||
           /[?&]code=/.test(q) || /\/auth\/callback$/.test(location.pathname);
-        if ((!isNative && !forced) || authLink) { el.parentNode.removeChild(el); return; }
+        if ((!isNative && !forced) || authLink) { el.parentNode.removeChild(el); gone(); return; }
         el.style.display = 'block';
 
         // Phone canvas (1290×2796) or the iPhone Duo cover display (466×678 pt @3x).
@@ -120,7 +126,7 @@
           if (done) return;
           done = true;
           el.classList.add('bw-out');
-          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 360);
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); gone(); }, 360);
         }
         el.addEventListener('pointerdown', finish); // tap to skip
 
