@@ -4015,6 +4015,8 @@ const dict: Dictionary = {
   "Sign in again to add files.": "Reconnectez-vous pour ajouter des fichiers.",
   "Suggest now": "Suggérer maintenant",
   "e.g. Watch the tempo in the bridge": "ex. Attention au tempo dans le pont",
+  "Withdraw this suggestion? The admins will no longer see it.": "Retirer la suggestion ? Les admins ne la verront plus.",
+  "Keep it": "La garder",
 };
 
 export default dict;

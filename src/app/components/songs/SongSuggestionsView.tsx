@@ -241,6 +241,7 @@ const SuggestionDetail: React.FC<{
   const [editing, setEditing] = React.useState(false);
   const [edited, setEdited] = React.useState('');
   const [busy, setBusy] = React.useState<null | 'accept' | 'edit' | 'reject' | 'withdraw'>(null);
+  const [confirmWithdraw, setConfirmWithdraw] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [editSong, setEditSong] = React.useState(false);
 
@@ -426,9 +427,24 @@ const SuggestionDetail: React.FC<{
         {!isAdmin && isMine && pending && (
           <>
             {error && <FormError>{error}</FormError>}
-            <PillButton size="md" variant="outline" icon={<RotateCcw className="w-4 h-4" />} onClick={() => void withdraw()} loading={busy === 'withdraw'} fullWidth={false} className="self-start">
-              {t('Withdraw suggestion')}
-            </PillButton>
+            {/* One tap would withdraw at once: ask first. */}
+            {confirmWithdraw ? (
+              <div className="flex flex-col gap-3 p-4 rounded-[24px] bg-field border border-border">
+                <p className="bw-body-md text-foreground">{t('Withdraw this suggestion? The admins will no longer see it.')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <PillButton size="md" icon={<RotateCcw className="w-4 h-4" />} onClick={() => void withdraw()} loading={busy === 'withdraw'} disabled={!!busy} fullWidth={false}>
+                    {t('Withdraw suggestion')}
+                  </PillButton>
+                  <PillButton size="md" variant="outline" onClick={() => setConfirmWithdraw(false)} disabled={!!busy} fullWidth={false}>
+                    {t('Keep it')}
+                  </PillButton>
+                </div>
+              </div>
+            ) : (
+              <PillButton size="md" variant="outline" icon={<RotateCcw className="w-4 h-4" />} onClick={() => setConfirmWithdraw(true)} fullWidth={false} className="self-start">
+                {t('Withdraw suggestion')}
+              </PillButton>
+            )}
           </>
         )}
       </div>

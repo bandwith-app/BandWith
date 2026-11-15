@@ -3763,7 +3763,8 @@ export default function AuthenticatedApp() {
       <div aria-hidden="true" className="bw-pane-placeholder flex-col justify-end gap-3 p-6 pb-10 bg-background text-foreground select-none">
         <span className="bw-label-sm text-muted-foreground">{railLayout ? 'BandWith · Duo' : 'BandWith'}</span>
         <span className="bw-display-lg">
-          {activeTab === 'Chat' ? t('Pick a chat') : (activeTab === 'More' || isIdentityOpen) ? t('Your band, side by side') : t('Pick an event')}
+          {/* A hub page (members, repertoire…) fills the list side: its details come from there. */}
+          {(activeTab === 'More' || isIdentityOpen || hubOpen) ? t('Your band, side by side') : activeTab === 'Chat' ? t('Pick a chat') : t('Pick an event')}
         </span>
         <span className="bw-body-sm text-muted-foreground">{t('Details open on this side.')}</span>
       </div>
