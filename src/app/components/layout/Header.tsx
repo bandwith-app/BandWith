@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
       return profile.email.substring(0, 2).toUpperCase();
     }
     
-    return 'GB'; // ultimate fallback
+    return '?'; // no name or email yet
   };
 
   const initials = getInitials();
