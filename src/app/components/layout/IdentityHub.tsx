@@ -544,7 +544,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                 )}
               </motion.div>
             </div>
-            {laptop && <div className="bw-hub-fold absolute left-0 right-0 bottom-0 px-4 pb-3 pointer-events-auto"><div className="max-w-xl mx-auto w-full">{profileCard}</div></div>}
+            {laptop && <div className="bw-hub-fold absolute left-0 right-0 bottom-0 px-4 pointer-events-auto" style={{ paddingBottom: 'calc(var(--bw-deck-top) - var(--bw-display-h) + 12px)' }}><div className="max-w-xl mx-auto w-full">{profileCard}</div></div>}
           </div>
 
           {/* ═══ SCROLLABLE CONTENT ═══ */}

@@ -3667,12 +3667,9 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             activeColor="var(--wizard-accent)"
           />
           {stepBody}
-          {/* Like the gig wizard's, the actions stay in reach on the Deck,
-              above the rail that lies along its bottom edge. */}
-          <div
-            className="sticky bottom-0 z-[1] mt-auto -mx-4 -mb-3 px-4 pt-3 bg-background"
-            style={{ paddingBottom: 'calc(var(--content-bottom-clearance, 0px) + 12px)' }}
-          >
+          {/* Like the gig wizard's, the actions stay in reach on the Deck
+              (whose own bottom padding already clears the rail). */}
+          <div className="sticky bottom-0 z-[1] mt-auto -mx-4 -mb-3 px-4 py-3 bg-background">
             {stepActions}
           </div>
         </>,

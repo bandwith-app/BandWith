@@ -449,7 +449,8 @@
 }
 :root[data-bw-posture="tabletop"] .bw-pane-hub > header:first-child > .bw-hub-fold {
   margin-top: auto;
-  padding-bottom: 12px;
+  /* The header runs to the Deck: the summary ends 12px above the hinge band. */
+  padding-bottom: calc(var(--bw-deck-top) - var(--bw-display-h) + 12px);
 }
 /* Their bottom action bars (Invite member) stay above the Deck bar. */
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-pane-hub > .sticky.bottom-0 {

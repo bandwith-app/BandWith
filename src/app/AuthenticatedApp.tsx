@@ -102,20 +102,36 @@ import { todayLocal } from '../lib/dates';
 import { effectiveStatus, type Contract } from '@/lib/services/contracts';
 import { addDaysLocal, countDueTasks, EMPTY_ASSET_STATUS, type AssetStatusCounts } from '@/lib/assetStatus';
 
-const BandMembersView = React.lazy(() => import("@/app/views/BandMembersView").then(m => ({ default: m.BandMembersView })));
-const SetlistManagerView = React.lazy(() => import("@/app/views/SetlistManagerView").then(m => ({ default: m.SetlistManagerView })));
-const SettingsView = React.lazy(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
-const AnalyticsView = React.lazy(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
-const InventoryView = React.lazy(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
-const ContractsView = React.lazy(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
+/**
+ * A lazy screen that waits for its own code, not the whole layer list: when
+ * one page opens for the first time while another closes, a shared Suspense
+ * hid the list mid-change and the closing page's exit never finished, so it
+ * stayed on screen (the Duo hub showed two pages, Back lost).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyLayer<T extends React.ComponentType<any>>(load: () => Promise<{ default: T }>): React.FC<React.ComponentProps<T>> {
+  const Lazy = React.lazy(load);
+  const Layer: React.FC<React.ComponentProps<T>> = (props) => (
+    <React.Suspense fallback={null}>
+      <Lazy {...props} />
+    </React.Suspense>
+  );
+  return Layer;
+}
+const BandMembersView = lazyLayer(() => import("@/app/views/BandMembersView").then(m => ({ default: m.BandMembersView })));
+const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerView").then(m => ({ default: m.SetlistManagerView })));
+const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
+const AnalyticsView = lazyLayer(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
+const InventoryView = lazyLayer(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
+const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
 import type { ContractPrefill } from "@/app/views/ContractsView";
-const TaskTemplatesView = React.lazy(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
-const CreateEventModal = React.lazy(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
-const RehearsalLiveView = React.lazy(() => import("@/app/components/rehearsal/RehearsalLiveView").then(m => ({ default: m.RehearsalLiveView })));
-const RehearsalPostView = React.lazy(() => import("@/app/components/rehearsal/RehearsalPostView").then(m => ({ default: m.RehearsalPostView })));
-const QuoteCreationWizard = React.lazy(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
-const BandPricingModal = React.lazy(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
-const QuoteShareModal = React.lazy(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
+const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
+const CreateEventModal = lazyLayer(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
+const RehearsalLiveView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalLiveView").then(m => ({ default: m.RehearsalLiveView })));
+const RehearsalPostView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalPostView").then(m => ({ default: m.RehearsalPostView })));
+const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
+const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
+const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
 import type { PricingModalTabType } from "@/app/components/quotes/BandPricingModal";
 
 import { EventData } from "@/app/components/dashboard/EventCard";
@@ -3909,10 +3925,27 @@ export default function AuthenticatedApp() {
           onNotificationClick={handleNotificationClick}
           onMarkAsRead={handleMarkSingleAsRead}
           onMarkGroupAsRead={handleMarkGroupAsRead}
-          onEntityDetailClick={(l) => { if (l === "INVENTORY") setShowInventory(true); if (l === "REPERTOIRE") setShowSetlistManager(true); if (l === "TEMPLATES") setShowTaskTemplates(true); if (l === "DOCUMENTS" && realBand && isAdminOfBand(realBand.id)) setShowContracts(true); }}
+          // One hub page at a time: opening another from the hub (side by side on
+          // the open Duo and the iPad) replaces the one open, after asking about
+          // its unsaved changes, so Back never lands on a page left underneath.
+          onEntityDetailClick={(l) => runGuarded(() => {
+            if (l === "DOCUMENTS" && !(realBand && isAdminOfBand(realBand.id))) return;
+            closeLyrics();
+            closeChordEditor();
+            closeHubPages();
+            if (l === "INVENTORY") setShowInventory(true);
+            if (l === "REPERTOIRE") setShowSetlistManager(true);
+            if (l === "TEMPLATES") setShowTaskTemplates(true);
+            if (l === "DOCUMENTS") setShowContracts(true);
+          })}
           entityCounts={entityCounts}
           onEditProfile={() => setShowEditProfile(true)}
-          onEditBand={() => setShowBandMembers(true)}
+          onEditBand={() => runGuarded(() => {
+            closeLyrics();
+            closeChordEditor();
+            closeHubPages();
+            setShowBandMembers(true);
+          })}
           onOpenBandSettings={() => {
             setPricingModalInitialTab('branding');
             setPricingReturnTo('identity_hub');
