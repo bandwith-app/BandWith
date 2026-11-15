@@ -3457,7 +3457,6 @@ const dict: Dictionary = {
   "DRAG TO REORDER": "GLISSER POUR RÉORDONNER",
   "Channels": "Voies",
   "ADD CHANNEL": "AJOUTER UNE VOIE",
-  "STAGE PLOT EDITING IS ON IPAD": "LE PLAN DE SCÈNE SE MODIFIE SUR IPAD",
   "SAVE LIST": "ENREGISTRER LA LISTE",
   "Editing channel {n}": "Modification voie {n}",
   "New channel": "Nouvelle voie",
@@ -3542,7 +3541,6 @@ const dict: Dictionary = {
   "Code": "Code",
   "Caption": "Légende",
   "Lead": "Lead",
-  "Drag to move. Tap an item to rename or remove it.": "Glissez pour déplacer. Touchez un élément pour le renommer ou le supprimer.",
   "Could not load the rider & stage.": "Impossible de charger la fiche technique.",
   "Technical rider · {event}": "Fiche technique · {event}",
   "Could not create the link.": "Impossible de créer le lien.",
@@ -4077,6 +4075,8 @@ const dict: Dictionary = {
   "Voting has closed. An admin will lock in a date.": "Le vote est clos. Un admin va valider une date.",
   "It leaves the gear list and every kit it's in. This can't be undone.": "Il quitte la liste du matériel et tous les kits qui le contiennent. Cette action est irréversible.",
   "A kit bundles items from your inventory. Add it to a gig and the gig lists its items as the gear to bring. Items are not reserved for that date.": "Un kit regroupe des éléments de votre stock. Ajoutez-le à un concert : le concert affiche ses éléments comme le matériel à apporter. Les éléments ne sont pas réservés pour cette date.",
+  "Hold an item, then drag it to move it. Tap it to rename or remove it. Hold an empty spot to add one there.": "Maintenez un élément puis faites-le glisser pour le déplacer. Touchez-le pour le renommer ou le supprimer. Maintenez un espace vide pour en ajouter un à cet endroit.",
+  "Add here": "Ajouter ici",
 };
 
 export default dict;

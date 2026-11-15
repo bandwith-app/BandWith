@@ -344,7 +344,6 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
           eventTitle={eventTitle}
           inputs={base.inputs}
           people={people}
-          plotOnTablet={!canEditPlot}
           onCancel={() => setEditingInputs(false)}
           onSave={async (inputs) => {
             const ok = await save({ ...base, inputs });
@@ -506,7 +505,7 @@ function riderMeta(rider: EventStageState['rider'], t: T): string {
     .join(' · ');
 }
 
-/** Tablet canvas editing: name, size, drag items, save. */
+/** Plot editing on every device: name, size, move and add items, save. */
 const PlotEditor: React.FC<{
   plot: StagePlot;
   plots: StagePlot[];

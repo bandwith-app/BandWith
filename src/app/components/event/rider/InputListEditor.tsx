@@ -34,10 +34,9 @@ export const InputListEditor: React.FC<{
   /** First names on the lineup, offered for WHO. */
   people: string[];
   /** The plot can be edited here too (tablets). */
-  plotOnTablet?: boolean;
   onCancel: () => void;
   onSave: (inputs: InputChannel[]) => Promise<boolean>;
-}> = ({ eventTitle, inputs: initial, people, plotOnTablet = true, onCancel, onSave }) => {
+}> = ({ eventTitle, inputs: initial, people, onCancel, onSave }) => {
   const t = useT();
   const [list, setList] = useState<InputChannel[]>(initial);
   const [editing, setEditing] = useState<string | null>(null);
@@ -136,7 +135,6 @@ export const InputListEditor: React.FC<{
               {t('ADD CHANNEL')}
             </button>
           )}
-          {plotOnTablet && <p className="bw-label-xs text-muted-foreground text-center">{t('STAGE PLOT EDITING IS ON IPAD')}</p>}
 
           <div className="grid grid-cols-[1fr_1.4fr] gap-3 pt-2">
             <PillButton variant="outline" size="lg" onClick={onCancel} disabled={saving}>
