@@ -4036,6 +4036,20 @@ const dict: Dictionary = {
   "All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.": "Todos os dados do espaço de trabalho são criptografados em trânsito e em repouso. Feito para músicos, empresários e equipes de turnê.",
   "v{version} · Encrypted in transit and at rest": "v{version} · Criptografado em trânsito e em repouso",
   "Encrypted in transit and at rest": "Criptografado em trânsito e em repouso",
+  "Client paid": "Pago pelo cliente",
+  "Client unpaid": "Não pago pelo cliente",
+  "Paid to you": "Pago a você",
+  "Lineup changed: {title}": "Formação alterada: {title}",
+  "{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.": "{name} tirou você da formação de “{title}” ({when}). Você não precisa mais reservar essa data.",
+  "{name} took you off the lineup of “{title}”. You no longer need to keep the date free.": "{name} tirou você da formação de “{title}”. Você não precisa mais reservar essa data.",
+  "{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.": "{name} tirou você do ensaio “{title}” ({when}). Você não precisa mais reservar essa data.",
+  "{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.": "{name} tirou você do ensaio “{title}”. Você não precisa mais reservar essa data.",
+  "You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.": "Você está offline. Orçamentos precisam de conexão: nada foi salvo, tente de novo quando estiver online.",
+  "Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.": "Orçamento excluído, mas a data continua reservada no calendário. Exclua esse evento do calendário.",
+  "Delete {label}?": "Excluir {label}?",
+  "The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.": "O orçamento e sua data provisória no calendário são excluídos. Um show já confirmado a partir dele continua. Isso não pode ser desfeito.",
+  "Delete quote": "Excluir orçamento",
+  "Records it as sent; doesn’t send anything.": "Registra como enviado; não envia nada.",
 };
 
 export default dict;

@@ -1,6 +1,7 @@
 import { supabase, getSafeUser } from '../supabase';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol } from '@/lib/currency';
+import { LANGUAGES, intlLocale, translate, type Locale } from '@/lib/i18n';
 
 // Types
 export type NotificationType =
@@ -737,12 +738,13 @@ export const notifyEventMembersCreated = async (
     // Get event type config
     const config = EVENT_TYPE_CONFIG[eventType] || EVENT_TYPE_CONFIG.other;
     
-    // Format date for display
+    // The text is English (090 rewrites it, date included, for it/es/fr/de/pt
+    // readers), so the date is English too ("Sat, Dec 12").
     const dateObj = parseLocalDate(eventDate);
-    const formattedDate = dateObj.toLocaleDateString('it-IT', { 
-      weekday: 'short', 
-      day: 'numeric', 
-      month: 'short' 
+    const formattedDate = dateObj.toLocaleDateString('en-US', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
     });
     
     // Build per-member notification body (shows their personal fee, not total)
@@ -800,6 +802,79 @@ export const notifyEventMembersCreated = async (
     return { error: null };
   } catch (error: any) {
     console.error('Error notifying event members:', error);
+    return { error };
+  }
+};
+
+const asLocale = (v: unknown): Locale => {
+  const l = String(v || '').trim().slice(0, 2).toLowerCase();
+  return LANGUAGES.some((x) => x.id === l) ? (l as Locale) : 'en';
+};
+
+/**
+ * To musicians taken off a gig's lineup on edit. Written in each recipient's
+ * profiles.preferred_language here (the database has no text for it), date
+ * included; English when it can't be read. No screen to open: the gig is no
+ * longer theirs.
+ */
+export const notifyEventMembersRemoved = async (
+  bandId: string,
+  eventId: string,
+  eventTitle: string,
+  eventDate: string | null | undefined,
+  eventType: string,
+  actorId: string,
+  actorName: string,
+  removedUserIds: string[],
+): Promise<{ error: Error | null }> => {
+  try {
+    const userIds = [...new Set(removedUserIds)].filter((id) => id && id !== actorId);
+    if (userIds.length === 0) return { error: null };
+    const { data: profiles } = await supabase.from('profiles').select('id, preferred_language').in('id', userIds);
+    const langOf = new Map<string, Locale>(
+      ((profiles || []) as { id: string; preferred_language?: string | null }[]).map((p) => [p.id, asLocale(p.preferred_language)]),
+    );
+    const isRehearsal = eventType === 'rehearsal';
+    const day = eventDate ? parseLocalDate(eventDate) : null;
+    const rows = userIds.map((userId) => {
+      const lang = langOf.get(userId) ?? 'en';
+      const when = day && !isNaN(day.getTime())
+        ? day.toLocaleDateString(intlLocale('en-US', lang), { weekday: 'short', day: 'numeric', month: 'short' })
+        : '';
+      // t('Lineup changed: {title}')
+      // t('{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.')
+      // t('{name} took you off the lineup of “{title}”. You no longer need to keep the date free.')
+      // t('{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.')
+      // t('{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.')
+      const bodyKey = isRehearsal
+        ? when
+          ? '{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.'
+          : '{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.'
+        : when
+          ? '{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.'
+          : '{name} took you off the lineup of “{title}”. You no longer need to keep the date free.';
+      return {
+        user_id: userId,
+        type: 'event_update' as NotificationType,
+        title: translate(lang, 'Lineup changed: {title}', { title: eventTitle }).slice(0, 255),
+        body: translate(lang, bodyKey, { name: actorName, title: eventTitle, when }),
+        band_id: bandId,
+        data: {
+          kind: 'lineup_removed',
+          event_id: eventId,
+          event_title: eventTitle,
+          event_date: eventDate || undefined,
+          event_type: eventType,
+          removed_by: actorId,
+        },
+        read: false,
+      };
+    });
+    const { error } = await supabase.from('notifications').insert(rows);
+    if (error) throw error;
+    return { error: null };
+  } catch (error: any) {
+    console.error('Error notifying removed members:', error);
     return { error };
   }
 };

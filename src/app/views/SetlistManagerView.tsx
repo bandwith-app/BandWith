@@ -422,8 +422,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
           bpm: p.bpm,
           duration_seconds: p.duration,
           genre: p.genre,
-          // Members suggest songs; an admin moves them to Learning / Ready.
-          status: isAdmin ? ('ready' as const) : ('suggested' as const),
+          // The import is admin-only (button and RLS): straight into the library.
+          status: 'ready' as const,
           priority: 'medium' as const,
         })) as Parameters<typeof bulkCreateSongs>[1],
       );
@@ -911,7 +911,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                   {!searchQuery && (
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       <PillButton size="md" fullWidth={false} icon={<Plus className="w-4 h-4" />} onClick={() => setShowAddSong(true)}>
-                        {t('Add first song')}
+                        {/* Members suggest songs (the button opens Suggest a song). */}
+                        {isAdmin ? t('Add first song') : t('Suggest a song')}
                       </PillButton>
                       {/* Straight into the library: admins only (members suggest songs). */}
                       {isAdmin && (
@@ -1263,7 +1264,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                                     <span className="flex-1 min-w-0 flex flex-col gap-1">
                                       <span className="bw-label-md truncate">{song.title}</span>
                                       <span className={cn('bw-body-sm truncate', !isSelected && 'text-muted-foreground')}>
-                                        {[song.artist || 'Unknown artist', parseGenres(song.genre).join(', ')].filter(Boolean).join(' · ')}
+                                        {[song.artist || t('Unknown artist'), parseGenres(song.genre).join(', ')].filter(Boolean).join(' · ')}
                                       </span>
                                     </span>
                                     <span className="bw-label-sm shrink-0">{formatClock(song.duration_seconds)}</span>

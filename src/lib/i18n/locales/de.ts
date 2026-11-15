@@ -4036,6 +4036,20 @@ const dict: Dictionary = {
   "All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.": "Alle Daten des Arbeitsbereichs werden bei der Übertragung und im Ruhezustand verschlüsselt. Gemacht für Musiker, Manager und Tour-Crews.",
   "v{version} · Encrypted in transit and at rest": "v{version} · Verschlüsselt bei Übertragung und Speicherung",
   "Encrypted in transit and at rest": "Verschlüsselt bei Übertragung und Speicherung",
+  "Client paid": "Vom Kunden bezahlt",
+  "Client unpaid": "Vom Kunden nicht bezahlt",
+  "Paid to you": "An dich bezahlt",
+  "Lineup changed: {title}": "Besetzung geändert: {title}",
+  "{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.": "{name} hat dich aus der Besetzung von „{title}“ ({when}) genommen. Du musst dir den Termin nicht mehr freihalten.",
+  "{name} took you off the lineup of “{title}”. You no longer need to keep the date free.": "{name} hat dich aus der Besetzung von „{title}“ genommen. Du musst dir den Termin nicht mehr freihalten.",
+  "{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.": "{name} hat dich aus der Probe „{title}“ ({when}) genommen. Du musst dir den Termin nicht mehr freihalten.",
+  "{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.": "{name} hat dich aus der Probe „{title}“ genommen. Du musst dir den Termin nicht mehr freihalten.",
+  "You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.": "Du bist offline. Angebote brauchen eine Verbindung: Es wurde nichts gespeichert, versuch es erneut, wenn du wieder online bist.",
+  "Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.": "Angebot gelöscht, aber der Termin ist im Kalender noch blockiert. Lösch dieses Event im Kalender.",
+  "Delete {label}?": "{label} löschen?",
+  "The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.": "Das Angebot und sein vorläufiger Termin im Kalender werden gelöscht. Ein daraus schon bestätigter Gig bleibt. Das lässt sich nicht rückgängig machen.",
+  "Delete quote": "Angebot löschen",
+  "Records it as sent; doesn’t send anything.": "Markiert es als gesendet; verschickt nichts.",
 };
 
 export default dict;

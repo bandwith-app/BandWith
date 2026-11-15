@@ -4036,6 +4036,20 @@ const dict: Dictionary = {
   "All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.": "Tutti i dati dello spazio di lavoro sono cifrati in transito e a riposo. Creato per musicisti, manager e crew in tour.",
   "v{version} · Encrypted in transit and at rest": "v{version} · Cifrato in transito e a riposo",
   "Encrypted in transit and at rest": "Cifrato in transito e a riposo",
+  "Client paid": "Pagato dal cliente",
+  "Client unpaid": "Non pagato dal cliente",
+  "Paid to you": "Pagato a te",
+  "Lineup changed: {title}": "Formazione cambiata: {title}",
+  "{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.": "{name} ti ha tolto dalla formazione di “{title}” ({when}). Non devi più tenerti libero quel giorno.",
+  "{name} took you off the lineup of “{title}”. You no longer need to keep the date free.": "{name} ti ha tolto dalla formazione di “{title}”. Non devi più tenerti libero quel giorno.",
+  "{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.": "{name} ti ha tolto dalla prova “{title}” ({when}). Non devi più tenerti libero quel giorno.",
+  "{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.": "{name} ti ha tolto dalla prova “{title}”. Non devi più tenerti libero quel giorno.",
+  "You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.": "Sei offline. I preventivi richiedono una connessione: non è stato salvato nulla, riprova quando torni online.",
+  "Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.": "Preventivo eliminato, ma la data è ancora bloccata in calendario. Elimina quell’evento dal calendario.",
+  "Delete {label}?": "Eliminare {label}?",
+  "The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.": "Vengono eliminati il preventivo e la sua data provvisoria in calendario. Un gig già confermato da questo preventivo resta. Non si può annullare.",
+  "Delete quote": "Elimina preventivo",
+  "Records it as sent; doesn’t send anything.": "Lo segna come inviato; non invia nulla.",
 };
 
 export default dict;

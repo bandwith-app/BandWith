@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { saveSetlistOrder } from '@/lib/services/songs';
+import { notifySetlistSaved } from '@/lib/services/setlistNotify';
+import { diffSetlist } from '@/lib/setlistChanges';
 import { useStageBle } from './useStageBle';
 import {
   applyOrder,
@@ -96,8 +98,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Order waiting for its save (several moves, one save); flushed on close. */
   const pendingOrder = useRef<string[] | null>(null);
-  const saveCtx = useRef({ songs, setlistId });
-  saveCtx.current = { songs, setlistId };
+  const saveCtx = useRef({ songs, setlistId, eventId });
+  saveCtx.current = { songs, setlistId, eventId };
 
   // Visual metronome (stageClick.ts): the newest click state, and the leader's clock offset.
   const [click, setClick] = useState<ClickState | null>(null);
@@ -273,9 +275,20 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (!closing) setSaveState('error');
         return;
       }
-      const { error } = await saveSetlistOrder(reorderRows(list, saved, inOrder));
+      const rows = reorderRows(list, saved, inOrder);
+      const { error } = await saveSetlistOrder(rows);
       // The gig open behind Stage mode reloads its setlist in the new order.
       if (!error) {
+        // The same one summary push as a save in the gig overview (107), to
+        // the lineup, also for who isn't in Stage mode.
+        void notifySetlistSaved({
+          setlistId: list,
+          eventId: saveCtx.current.eventId,
+          change: diffSetlist(
+            saved.map((s) => ({ songId: s.songId, setNumber: s.setNumber })),
+            rows.map((r) => ({ songId: r.song_id, setNumber: r.set_number })),
+          ),
+        });
         try {
           window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
         } catch {

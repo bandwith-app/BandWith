@@ -76,6 +76,8 @@ export interface GigSetlistDraft {
   error: string | null;
   reorder: (setUid: string, songs: DraftSong[]) => void;
   remove: (setUid: string, songUid: string) => void;
+  /** Takes these songs out of a set (null: the first), e.g. unticked in the picker. */
+  removeSongs: (setUid: string | null, songIds: string[]) => void;
   add: (setUid: string | null, picked: PickedSong[]) => void;
   addSet: () => string;
   discard: () => void;
@@ -115,6 +117,18 @@ export function useGigSetlistDraft(opts: {
   const remove = useCallback(
     (setUid: string, songUid: string) =>
       update((prev) => prev.map((s) => (s.uid === setUid ? { ...s, songs: s.songs.filter((sg) => sg.uid !== songUid) } : s))),
+    [update]
+  );
+  const removeSongs = useCallback(
+    (setUid: string | null, songIds: string[]) => {
+      if (songIds.length === 0) return;
+      const gone = new Set(songIds);
+      update((prev) => {
+        const target = (setUid && prev.find((s) => s.uid === setUid)) || prev[0];
+        if (!target) return prev;
+        return prev.map((s) => (s.uid === target.uid ? { ...s, songs: s.songs.filter((sg) => !gone.has(sg.songId)) } : s));
+      });
+    },
     [update]
   );
   const add = useCallback(
@@ -189,7 +203,7 @@ export function useGigSetlistDraft(opts: {
     }
   }, [draft, saving, dirty, setlistId, bandId, eventId, eventTitle, onSaved, t]);
 
-  return { sets, dirty, saving, error, reorder, remove, add, addSet, discard, save };
+  return { sets, dirty, saving, error, reorder, remove, removeSongs, add, addSet, discard, save };
 }
 
 /** The editable list: sets, songs, Add songs (into the set you pick). */
@@ -268,6 +282,8 @@ export const GigSetlistEditor: React.FC<{
               selectedIds={(sets.find((s) => s.uid === pickerSet) ?? sets[0])?.songs.map((sg) => sg.songId) ?? []}
               onClose={() => setPickerOpen(false)}
               onSelect={(song) => draft.add(pickerSet, [song])}
+              // Unticking an "In set" song takes it out (Update setlist).
+              onRemoveSelected={(ids) => draft.removeSongs(pickerSet, ids)}
               onSelectMultiple={(picked) => {
                 draft.add(pickerSet, picked);
                 setPickerOpen(false);

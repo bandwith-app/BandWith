@@ -346,9 +346,13 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 </PillButton>
               </div>
               {quote.status === 'DRAFT' && onSend && (
-                <PillButton variant="outline" size="lg" icon={<Send className="w-4 h-4" />} onClick={() => onSend(quote)}>
-                  {t('Mark as sent')}
-                </PillButton>
+                // Only records the status: sending is Share quote's job.
+                <div className="flex flex-col gap-1">
+                  <PillButton variant="outline" size="lg" icon={<Send className="w-4 h-4" />} onClick={() => onSend(quote)}>
+                    {t('Mark as sent')}
+                  </PillButton>
+                  <span className="bw-body-sm text-muted-foreground text-center">{t('Records it as sent; doesn’t send anything.')}</span>
+                </div>
               )}
               {onSetOutcome && ['SENT', 'VIEWED', 'NEGOTIATING'].includes(quote.status) && (
                 <div className="flex flex-col gap-2">
