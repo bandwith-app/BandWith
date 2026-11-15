@@ -8,7 +8,10 @@
  */
 const CEILING = 160;
 
-export function raiseAboveOpenPanes(el: HTMLElement | null): void {
+export function raiseAboveOpenPanes(probe: HTMLElement | null): void {
+  // Put on an element inside the screen: a ref on AnimatePresence's direct
+  // child makes motion read `props.ref`, which React 18 warns about.
+  const el = probe?.closest<HTMLElement>('.bw-pane-detail') ?? null;
   if (!el || typeof window === 'undefined') return;
   const own = Number.parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
   let top = own;
@@ -22,12 +25,27 @@ export function raiseAboveOpenPanes(el: HTMLElement | null): void {
 }
 
 /**
- * Ref callback for a row's pop-up menu: a row low on the screen scrolls so
- * the whole menu shows above the tab bar (give the menu a scroll-margin-bottom).
+ * Ref callback for an element inside a row's pop-up menu (see
+ * raiseAboveOpenPanes on why not the menu itself): a row low on the screen
+ * scrolls so the whole menu shows above the tab bar (give the menu a
+ * scroll-margin-bottom), or the menu opens upward when the list ends there.
  * A module-level function, so React calls it once on mount, not on every render.
  */
-export function revealMenu(el: HTMLElement | null): void {
-  if (el) requestAnimationFrame(() => el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
+export function revealMenu(probe: HTMLElement | null): void {
+  const el = probe?.closest<HTMLElement>('[role="menu"]');
+  if (!el) return;
+  requestAnimationFrame(() => {
+    el.scrollIntoView?.({ block: 'nearest' });
+    // The last rows can't scroll any higher: open the menu upward instead.
+    const clearance = Number.parseFloat(window.getComputedStyle(el).scrollMarginBottom) || 0;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - clearance && r.top - r.height > 48) {
+      el.style.top = 'auto';
+      el.style.bottom = '100%';
+      el.style.marginTop = '0';
+      el.style.transformOrigin = 'bottom right';
+    }
+  });
 }
 
 /** The scroll margin that keeps a revealed menu clear of the floating tab bar. */

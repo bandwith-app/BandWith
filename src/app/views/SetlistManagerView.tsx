@@ -93,8 +93,8 @@ const RowMenu: React.FC<{ items: { label: string; icon: React.ReactNode; run: ()
     role="menu"
     // A row low on the screen: scroll so the whole menu shows above the tab bar.
     style={MENU_SCROLL_MARGIN}
-    ref={revealMenu}
   >
+    <span ref={revealMenu} hidden aria-hidden />
     {items.map((item) => (
       <button
         key={item.label}
@@ -1135,12 +1135,12 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.3, ease: 'easeOut' }}
             className="bw-pane-detail fixed inset-0 z-[80] bg-background text-foreground flex flex-col"
-            ref={raiseAboveOpenPanes}
             style={{
               overscrollBehaviorX: 'none',
               touchAction: 'pan-y',
             }}
           >
+            <span ref={raiseAboveOpenPanes} hidden aria-hidden />
             {setlistEditorLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

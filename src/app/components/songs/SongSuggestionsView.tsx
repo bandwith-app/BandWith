@@ -130,7 +130,6 @@ export const SongSuggestionsView: React.FC = () => {
       {open && (
         <motion.div
           key="song-suggestions"
-          ref={raiseAboveOpenPanes}
           initial={{ x: '100%' }}
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
@@ -140,6 +139,7 @@ export const SongSuggestionsView: React.FC = () => {
           role="dialog"
           aria-label={t('Suggestions')}
         >
+          <span ref={raiseAboveOpenPanes} hidden aria-hidden />
           {selected ? (
             <SuggestionDetail
               key={selected.id}

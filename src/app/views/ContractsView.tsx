@@ -718,8 +718,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
                         role="menu"
                         // The last rows: scroll so the whole menu shows above the tab bar.
                         style={MENU_SCROLL_MARGIN}
-                        ref={revealMenu}
                       >
+                        <span ref={revealMenu} hidden aria-hidden />
                         {[
                           { label: t('View'), icon: <Eye className="w-4 h-4" />, run: () => handleView(contract) },
                           { label: t('Download PDF'), icon: <Download className="w-4 h-4" />, run: () => handleDownloadPdf(contract) },
