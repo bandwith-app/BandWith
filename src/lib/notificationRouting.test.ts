@@ -44,6 +44,9 @@ describe('notificationTarget', () => {
 
   it('has no screen for someone removed from a band or unknown types', () => {
     expect(notificationTarget('member_left', { removed: true })).toBeNull();
+    // Taken off a gig's lineup: nothing to open.
+    expect(notificationTarget('event_update', { kind: 'lineup_removed', event_id: 'e' })).toBeNull();
+    expect(notificationTarget('event_update', { event_id: 'e' })).toEqual({ screen: 'event', eventId: 'e' });
     expect(notificationTarget('something_else', {})).toBeNull();
   });
 

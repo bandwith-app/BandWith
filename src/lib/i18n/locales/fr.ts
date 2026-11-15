@@ -4035,6 +4035,20 @@ const dict: Dictionary = {
   "The band": "Le groupe",
   "Me (personal)": "Moi (perso)",
   "Personal gear: the band sees it, only you and the admins can change it.": "Matériel perso : le groupe le voit, seuls toi et les admins pouvez le modifier.",
+  "Client paid": "Payé par le client",
+  "Client unpaid": "Non payé par le client",
+  "Paid to you": "Tu as été payé",
+  "Lineup changed: {title}": "Line-up modifié : {title}",
+  "{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.": "{name} t’a retiré du line-up de « {title} » ({when}). Tu n’as plus besoin de garder cette date libre.",
+  "{name} took you off the lineup of “{title}”. You no longer need to keep the date free.": "{name} t’a retiré du line-up de « {title} ». Tu n’as plus besoin de garder cette date libre.",
+  "{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.": "{name} t’a retiré de la répétition « {title} » ({when}). Tu n’as plus besoin de garder cette date libre.",
+  "{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.": "{name} t’a retiré de la répétition « {title} ». Tu n’as plus besoin de garder cette date libre.",
+  "You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.": "Tu es hors ligne. Les devis ont besoin d’une connexion : rien n’a été enregistré, réessaie une fois en ligne.",
+  "Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.": "Devis supprimé, mais la date est toujours bloquée dans le calendrier. Supprime cet événement du calendrier.",
+  "Delete {label}?": "Supprimer {label} ?",
+  "The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.": "Le devis et sa date provisoire dans le calendrier sont supprimés. Un concert déjà confirmé à partir de ce devis reste. C’est irréversible.",
+  "Delete quote": "Supprimer le devis",
+  "Records it as sent; doesn’t send anything.": "L’enregistre comme envoyé ; n’envoie rien.",
 };
 
 export default dict;

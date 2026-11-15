@@ -38,6 +38,8 @@ export function notificationTarget(
     const requestId = str(d.deputy_request_id) || str(d.deputyRequestId);
     return requestId ? { screen: 'deputyGigs', requestId } : { screen: 'deputyGigs' };
   }
+  // Taken off a gig's lineup: it's no longer theirs to open.
+  if (kind === 'event_update' && d.kind === 'lineup_removed') return null;
   if (kind === 'chat_message' || kind === 'chat_mention') {
     return chatId ? { screen: 'chat', chatId } : null;
   }

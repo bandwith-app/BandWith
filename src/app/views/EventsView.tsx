@@ -28,6 +28,7 @@ import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
+import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
 
 interface EventsViewProps {
@@ -194,14 +195,10 @@ const formatBandTotal = (price: string): string => {
   return `${sym()}${num}`;
 };
 
-const getEventWarnings = (event: EventData): string[] => {
-  const warnings: string[] = [];
-  const type = event.eventType?.toLowerCase() || event.status?.toLowerCase();
-  if (!event.location || event.location === 'TBD') warnings.push(t('Missing venue'));
-  if (!event.date) warnings.push(t('Missing date'));
-  if (type !== 'rehearsal' && (!event.price || event.price === '0')) warnings.push(t('Missing fee'));
-  return warnings;
-};
+/** Card warnings; "Missing fee" only for who manages the event (the fee is admin-only). */
+const getEventWarnings = (event: EventData, managesFee: boolean): string[] =>
+  // t('Missing venue') t('Missing date') t('Missing fee')
+  eventWarningKeys(event, managesFee).map((k) => t(k));
 
 const getEventSuggestions = (event: EventData): string[] => {
   const suggestions: string[] = [];
@@ -400,12 +397,11 @@ export const EventsView: React.FC<EventsViewProps> = ({
     const query = eventSearch.trim().toLowerCase();
     if (!query) return { upcomingMatches: [], pastMatches: [], totalCount: 0 };
 
+    // The caller passes the events this user may see (lib/eventVisibility).
     const pool = rawEvents && rawEvents.length > 0 ? rawEvents : filteredAllEvents;
-    
-    // Regular members must never see quotes
-    const accessiblePool = isAdmin 
-      ? pool 
-      : pool.filter(e => (e.status as string) !== 'QUOTE' && (e.status as string) !== 'QUOTED' && e.eventType !== 'quote');
+
+    // Members must never see quotes: role in each event's band.
+    const accessiblePool = pool.filter(e => (e.band_id ? adminOfBand(e.band_id) : isAdmin) || !isQuoteEvent(e));
 
     const seen = new Set<string>();
     const matches: EventData[] = [];
@@ -446,7 +442,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
       pastMatches,
       totalCount: matches.length,
     };
-  }, [eventSearch, rawEvents, filteredAllEvents, isAdmin, todayStr]);
+  }, [eventSearch, rawEvents, filteredAllEvents, isAdmin, adminOfBand, todayStr]);
 
   const { upcomingEvents, pastEvents } = useMemo(() => {
     const upcoming: EventData[] = [];
@@ -802,7 +798,8 @@ export const EventsView: React.FC<EventsViewProps> = ({
       typeLabel = t('DRAFT');
     }
 
-    const warnings = getEventWarnings(event);
+    // Own personal gigs: the user's own fee. Band events: role in that band.
+    const warnings = getEventWarnings(event, event.band_id ? adminOfBand(event.band_id) : true);
     const suggestions = getEventSuggestions(event);
     const tags = getEventTags(event);
     const secondaryTags = tags.filter(tag => tag !== 'GIG' && tag !== 'REHEARSAL' && tag !== 'QUOTE' && tag !== 'DRAFT');
@@ -1332,7 +1329,9 @@ export const EventsView: React.FC<EventsViewProps> = ({
             {eyebrowLabel !== 'SCHEDULE' && (
               <span className="bw-label-sm text-muted-foreground">{filterLabel(eyebrowLabel)}</span>
             )}
-            <SectionHeader title={t('Upcoming')} onSeeAll={onOpenPastEvents} />
+            {/* The list below is every upcoming event; the past archive has
+                its own link under it, so no "See all" here. */}
+            <SectionHeader title={t('Upcoming')} />
           </div>
 
           {/* ═══ UPCOMING EVENT CARDS ═══ */}
@@ -1416,7 +1415,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
             const past = autocompleteResults.pastMatches as EventData[];
             const all = [...upcoming, ...past];
             const isPastEv = (e: EventData) => past.includes(e);
-            const tabs = (isAdmin
+            const tabs = (isAdmin || bands.some((b) => adminOfBand(b.id))
               ? (['ALL', 'GIGS', 'REHEARSALS', 'QUOTES', 'PAST'] as const)
               : (['ALL', 'GIGS', 'REHEARSALS', 'PAST'] as const));
             const inTab = (e: EventData, tab: typeof searchTab) => {

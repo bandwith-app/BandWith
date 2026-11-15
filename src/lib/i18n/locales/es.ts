@@ -4035,6 +4035,20 @@ const dict: Dictionary = {
   "The band": "La banda",
   "Me (personal)": "Mío (personal)",
   "Personal gear: the band sees it, only you and the admins can change it.": "Equipo personal: la banda lo ve, solo tú y los admins podéis cambiarlo.",
+  "Client paid": "Pagado por el cliente",
+  "Client unpaid": "Sin pagar por el cliente",
+  "Paid to you": "Te han pagado",
+  "Lineup changed: {title}": "Cambio en la formación: {title}",
+  "{name} took you off the lineup of “{title}” ({when}). You no longer need to keep the date free.": "{name} te ha quitado de la formación de “{title}” ({when}). Ya no necesitas reservar esa fecha.",
+  "{name} took you off the lineup of “{title}”. You no longer need to keep the date free.": "{name} te ha quitado de la formación de “{title}”. Ya no necesitas reservar esa fecha.",
+  "{name} took you off the rehearsal “{title}” ({when}). You no longer need to keep the date free.": "{name} te ha quitado del ensayo “{title}” ({when}). Ya no necesitas reservar esa fecha.",
+  "{name} took you off the rehearsal “{title}”. You no longer need to keep the date free.": "{name} te ha quitado del ensayo “{title}”. Ya no necesitas reservar esa fecha.",
+  "You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.": "Estás sin conexión. Los presupuestos necesitan conexión: no se ha guardado nada, inténtalo de nuevo cuando vuelvas a estar en línea.",
+  "Quote deleted, but its date is still held in the calendar. Delete that event from the calendar.": "Presupuesto eliminado, pero la fecha sigue reservada en el calendario. Elimina ese evento del calendario.",
+  "Delete {label}?": "¿Eliminar {label}?",
+  "The quote and its tentative date in the calendar are deleted. A gig already confirmed from it stays. This can’t be undone.": "Se eliminan el presupuesto y su fecha provisional en el calendario. Un concierto ya confirmado a partir de él se mantiene. No se puede deshacer.",
+  "Delete quote": "Eliminar presupuesto",
+  "Records it as sent; doesn’t send anything.": "Lo marca como enviado; no envía nada.",
 };
 
 export default dict;

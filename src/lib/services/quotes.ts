@@ -9,6 +9,7 @@ import { saveEventLineup, type LineupRow } from './eventMemberMoney';
 import { notifyEventMembersCreated } from './notifications';
 import { personName } from '@/lib/personName';
 import { t } from '@/lib/i18n';
+import { isQuoteExpired } from '@/lib/quoteExpiry';
 
 // Types
 export type QuoteStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'declined' | 'expired' | 'negotiating' | 'archived';
@@ -326,8 +327,22 @@ export const updateQuote = async (
   }
 };
 
-export const deleteQuote = async (quoteId: string): Promise<{ error: Error | null }> => {
+/**
+ * Deletes a quote and the tentative calendar event that holds its date (made
+ * with the quote: converted_to_event_id, or events.quote_id). Only while that
+ * event is still tentative: a gig confirmed from the quote stays.
+ * `eventError`: the quote is gone but its event could not be deleted.
+ */
+export const deleteQuote = async (quoteId: string): Promise<{ error: Error | null; eventError?: Error | null }> => {
   try {
+    // The tentative event, found before the quote goes (the FK clears the link).
+    const { data: link } = await supabase
+      .from('quotes')
+      .select('converted_to_event_id')
+      .eq('id', quoteId)
+      .maybeSingle();
+    const heldId = (link as { converted_to_event_id?: string | null } | null)?.converted_to_event_id || null;
+
     // Return the deleted id: RLS silently filters rows, so 0 rows means "not allowed / not found"
     const { data, error } = await supabase
       .from('quotes')
@@ -340,7 +355,16 @@ export const deleteQuote = async (quoteId: string): Promise<{ error: Error | nul
       throw new Error('Quote not found or you do not have permission to delete it');
     }
 
-    return { error: null };
+    let eventError: Error | null = null;
+    const byId = heldId
+      ? await supabase.from('events').delete().eq('id', heldId).eq('status', 'tentative')
+      : { error: null };
+    if (byId.error) eventError = new Error(byId.error.message);
+    const byQuote = await supabase.from('events').delete().eq('quote_id', quoteId).eq('status', 'tentative');
+    if (byQuote.error && !eventError) eventError = new Error(byQuote.error.message);
+    if (eventError) console.warn('[quotes] quote deleted, but its tentative event was not:', eventError);
+
+    return { error: null, eventError };
   } catch (error: any) {
     return { error };
   }
@@ -364,7 +388,8 @@ export const sendQuote = async (quoteId: string): Promise<{ data: Quote | null; 
 
     if (error) throw error;
 
-    // TODO: Send email to client
+    // Only the status: the email to the client goes from the share sheet
+    // (QuoteShareModal → send-email edge function).
 
     return { data, error: null };
   } catch (error: any) {
@@ -684,7 +709,7 @@ export const getQuoteStats = async (
   try {
     const { data: quotes, error } = await supabase
       .from('quotes')
-      .select('status, total')
+      .select('status, total, valid_until')
       .eq('band_id', bandId)
       .neq('status', 'archived');
 
@@ -694,8 +719,9 @@ export const getQuoteStats = async (
       totalQuotes: quotes?.length || 0,
       pendingQuotes: quotes?.filter(q => ['draft', 'sent', 'viewed', 'negotiating'].includes(q.status)).length || 0,
       acceptedQuotes: quotes?.filter(q => q.status === 'accepted').length || 0,
+      // Open quotes past their date (as the client page shows them) aren't pipeline.
       totalPipeline: quotes
-        ?.filter(q => ['sent', 'viewed', 'negotiating'].includes(q.status))
+        ?.filter(q => ['sent', 'viewed', 'negotiating'].includes(q.status) && !isQuoteExpired(q.status, q.valid_until))
         .reduce((sum, q) => sum + (q.total || 0), 0) || 0,
       acceptedRevenue: quotes
         ?.filter(q => q.status === 'accepted')
