@@ -214,6 +214,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const [showAddSong, setShowAddSong] = useState(false);
   const [showAddSetlist, setShowAddSetlist] = useState(false);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  // A song's band notes (songs.notes), shown read-only.
+  const [notesSong, setNotesSong] = useState<Song | null>(null);
   const [seeding, setSeeding] = useState(false);
   /** Feedback line above the lists (import results, failed actions). */
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
@@ -980,12 +982,14 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                               items={[
                                 ...(canPlay ? [{ label: t('Play'), icon: <Play className="w-4 h-4" />, run: () => handlePlaySong(song) }] : []),
                                 ...(song.lyrics?.trim()
-                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'lyrics' }); } }]
+                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'lyrics', notes: song.notes }); } }]
                                   : []),
                                 ...(asSongChart(song.chord_chart)
-                                  ? [{ label: t('Chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'structure' }); } }]
+                                  ? [{ label: t('Chords'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'structure', notes: song.notes }); } }]
                                   : []),
                                 ...(hasChart ? [{ label: t('Open chart'), icon: <FileText className="w-4 h-4" />, run: () => handleOpenChart(song) }] : []),
+                                // The band's notes (songs.notes), e.g. an accepted "Note for the band" (108): read-only for members.
+                                ...(song.notes?.trim() ? [{ label: t('Band notes'), icon: <FileText className="w-4 h-4" />, run: () => { setActionMenuId(null); setNotesSong(song); } }] : []),
                                 { label: t('Open in Ultimate Guitar'), icon: <Guitar className="w-4 h-4" />, run: () => { setActionMenuId(null); void openExternal(ultimateGuitarSearchUrl(song.title, song.artist)); } },
                                 // Only admins edit band songs; members suggest a change (108).
                                 ...(isAdmin && song.lyrics?.trim()
@@ -1110,6 +1114,16 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
           }
         }}
       />
+
+      <BwSheet
+        open={!!notesSong}
+        onClose={() => setNotesSong(null)}
+        overline={t('Band notes')}
+        title={notesSong?.title || ''}
+        zIndex={80}
+      >
+        <p className="bw-body-md text-sheet-foreground/85 whitespace-pre-wrap [overflow-wrap:anywhere]">{notesSong?.notes?.trim()}</p>
+      </BwSheet>
 
       {/* New setlist (Figma Sheet, Style=Dark) */}
       <BwSheet

@@ -124,7 +124,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
     { id: 'privacy', label: t('Privacy & account'), hint: appLockAvailable ? t('App lock, gig privacy, export, delete account') : t('Gig privacy, export, delete account'), icon: Lock },
     ...(postureDetected
-      ? [{ id: 'duo' as const, label: 'iPhone Duo', hint: t('Laptop pose'), value: laptopPoseEnabled ? t('On') : t('Off'), icon: Smartphone }]
+      ? [{ id: 'duo' as const, label: t('iPhone Duo'), hint: t('Laptop pose'), value: laptopPoseEnabled ? t('On') : t('Off'), icon: Smartphone }]
       : []),
     { id: 'language', label: t('Language'), value: languageName(getLocale()), icon: MessageSquare },
     { id: 'help', label: t('Help & support'), hint: t('Answers and what you can do in the app'), icon: Mail },
@@ -279,7 +279,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       case 'appearance': return t('Appearance');
       case 'units': return t('Units');
       case 'privacy': return t('Privacy & account');
-      case 'duo': return 'iPhone Duo';
+      case 'duo': return t('iPhone Duo');
       case 'help': return t('Help & support');
       case 'about': return t('About');
       case 'language': return t('Language');

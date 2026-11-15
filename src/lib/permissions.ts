@@ -92,7 +92,7 @@ const memberPermissions: Permissions = {
   canEditEvents: false,
   canDeleteEvents: false,
   canCreateSetlists: false,
-  canEditSetlists: false, // Can mark songs as ready, but not edit structure
+  canEditSetlists: false, // Read-only: members suggest songs and changes (108), admins edit
   canManageInventory: false,
   canCreateTaskTemplates: false,
   canManageContracts: false,

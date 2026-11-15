@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { hasPlanFeature, isPaidTier } from '@/lib/beta';
+import { isPaidTier } from '@/lib/beta';
+import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -15,6 +16,7 @@ import {
   Send,
   Search,
   X,
+  LogOut,
 } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useBand } from '@/lib/BandContext';
@@ -23,6 +25,7 @@ import {
   getBandMembers,
   removeMember,
   updateMemberRole,
+  updateMemberBandDetails,
   searchUsers,
 } from '@/lib/services/bands';
 import { inviteToBand } from '@/lib/services/invitations';
@@ -126,7 +129,7 @@ interface SearchUser {
 
 export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => {
   const t = useT();
-  const { selectedBand, isAdmin } = useBand();
+  const { selectedBand, isAdmin, refreshBands } = useBand();
   const { profile: currentProfile, user: authUser } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   // Android Back and Escape close the member detail first, then Members.
@@ -192,6 +195,63 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     // The database notifies the removed member and the band (migration 046).
     setMembers((prev) => prev.filter((m) => m.id !== pendingRemoval.id));
     setPendingRemoval(null);
+  };
+
+  // Leave band: the signed-in user's own row. A member always can; an admin
+  // only while another admin stays (a band needs one).
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const myRow = authUser?.id ? members.find((m) => m.user_id === authUser.id) : undefined;
+  const handleLeave = () => {
+    setActionMenuId(null);
+    if (leaveBandBlock(members, authUser?.id) === 'last_admin') {
+      setDetailId(null);
+      flashNotice(t("You're the only admin. Make someone else admin before you leave."));
+      return;
+    }
+    setLeaveOpen(true);
+  };
+  const confirmLeave = async () => {
+    if (!myRow || leaving) return;
+    setLeaving(true);
+    const { error } = await removeMember(myRow.id);
+    if (error) {
+      setLeaving(false);
+      setLeaveOpen(false);
+      setDetailId(null);
+      flashNotice(t('Could not leave the band. Try again.'));
+      return;
+    }
+    // The database tells the band (046). Back to another band, or to the
+    // no-band start like any account without one.
+    setLeaving(false);
+    setLeaveOpen(false);
+    setDetailId(null);
+    onClose();
+    await refreshBands();
+  };
+
+  // Admins: the member's instrument in this band and default fee (money: admins only).
+  const handleSaveBandDetails = async (
+    member: BandMember,
+    details: { instrument: string | null; default_fee: number | null },
+  ): Promise<string | null> => {
+    const { error } = await updateMemberBandDetails(member.id, details);
+    if (error) return t('Could not save. Try again.');
+    setMembers((prev) =>
+      prev.map((m) => {
+        if (m.id !== member.id) return m;
+        const { default_fee: _old, ...rest } = m;
+        return {
+          ...rest,
+          instrument: details.instrument ?? undefined,
+          ...(details.default_fee != null ? { default_fee: details.default_fee } : {}),
+        };
+      }),
+    );
+    // Wizards and quotes read the band's members from the band context.
+    void refreshBands();
+    return null;
   };
 
   const handleToggleRole = async (member: BandMember) => {
@@ -314,7 +374,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
   // Paid plan (Indie Act / single_band is free, so it isn't "Pro").
   const isProMember = (member: BandMember): boolean => isPaidTier(member.profile?.sub_tier);
   // Co-managing a band is a paid feature, open to everyone during the beta.
-  const canBeAdmin = (member: BandMember): boolean => hasPlanFeature(member.profile?.sub_tier);
+  const canBeAdmin = (member: BandMember): boolean => canCoManage(member.profile?.sub_tier);
 
   const stats = useMemo(() => {
     const admins = members.filter((m) => m.role === 'admin').length;
@@ -398,6 +458,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                 const name = member.stage_name || personName(member.profile, t('Unknown'));
                 const open = actionMenuId === member.id;
                 const roleLabel = member.role === 'admin' ? t('Admin') : member.role === 'member' ? t('Member') : member.role;
+                const isMe = !!authUser?.id && member.user_id === authUser.id;
                 return (
                   <motion.li
                     key={member.id}
@@ -433,7 +494,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                           {isProMember(member) && <Tag variant="solid">Pro</Tag>}
                         </div>
                         <span className="bw-body-sm text-muted-foreground truncate">
-                          {[instrumentText(member.instrument), roleLabel].filter(Boolean).join(' · ')}
+                          {[instrumentText(memberInstrument(member)), roleLabel].filter(Boolean).join(' · ')}
                         </span>
                       </div>
                       </button>
@@ -460,7 +521,10 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                             {member.profile?.email && (
                               <MenuRow icon={<Mail />} label={t('Email')} onClick={() => handleEmailMember(member.profile!.email)} />
                             )}
-                            {isAdmin && (
+                            {isMe && (
+                              <MenuRow icon={<LogOut />} label={t('Leave band')} danger onClick={handleLeave} />
+                            )}
+                            {isAdmin && !isMe && (
                               <>
                                 {member.role === 'admin' ? (
                                   <MenuRow icon={<UserCog />} label={t('Make member')} onClick={() => handleToggleRole(member)} />
@@ -485,7 +549,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
         {isAdmin && !loading && selectedBand?.id && <DeputiesSection
             bandId={selectedBand.id}
             bandName={selectedBand.name}
-            members={members.map((m) => ({ name: m.stage_name || personName(m.profile, t('Unknown')), instrument: m.instrument }))}
+            members={members.map((m) => ({ name: m.stage_name || personName(m.profile, t('Unknown')), instrument: memberInstrument(m) }))}
           />}
       </div>
 
@@ -506,7 +570,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
               viewerIsAdmin={isAdmin}
               isPro={isProMember(m)}
               initials={getInitials(m)}
-              canBeAdmin={true}
+              canBeAdmin={canBeAdmin(m)}
               onClose={() => setDetailId(null)}
               onMessage={
                 canMessage
@@ -531,6 +595,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                     }
                   : undefined
               }
+              onLeave={self ? handleLeave : undefined}
+              onSaveBandDetails={isAdmin ? (details) => handleSaveBandDetails(m, details) : undefined}
             />
           );
         })()}
@@ -546,6 +612,28 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
           </div>
         </div>
       )}
+
+      <BwSheet
+        open={leaveOpen}
+        onClose={() => !leaving && setLeaveOpen(false)}
+        overline={selectedBand?.name}
+        title={t('Leave {band}?', { band: selectedBand?.name || t('the band') })}
+        zIndex={102}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <PillButton variant="outline" onClick={() => setLeaveOpen(false)} disabled={leaving}>
+              {t('Cancel')}
+            </PillButton>
+            <PillButton variant="danger" loading={leaving} icon={<LogOut className="w-4 h-4" />} onClick={confirmLeave}>
+              {t('Leave band')}
+            </PillButton>
+          </div>
+        }
+      >
+        <p className="bw-body-md text-sheet-foreground/80">
+          {t("You lose access to the band's events, chats and repertoire. An admin can invite you again later.")}
+        </p>
+      </BwSheet>
 
       {/* Invite member (Figma Sheet, Style=Dark) */}
       <BwSheet

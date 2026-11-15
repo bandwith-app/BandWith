@@ -34,6 +34,8 @@ export interface FindADateModeProps {
   loading?: boolean;
   /** Option whose vote is being saved: its pad is disabled meanwhile. */
   votingOptionId?: string | null;
+  /** False for someone not on the poll's invite list (098): the pads are read-only. */
+  canVote?: boolean;
   onToggleVote: (optionId: string) => void;
   /** Admin: confirm the best option as the rehearsal. */
   onLock?: (optionId: string) => void;
@@ -72,6 +74,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
   isAdmin,
   loading,
   votingOptionId,
+  canVote: allowedToVote = true,
   onToggleVote,
   onLock,
   locking,
@@ -115,7 +118,8 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
   }, [votedBy]);
   const total = poll?.total_members_count || rows.length;
   const best = bestOption(options);
-  const canVote = !!poll && !['proposed', 'confirmed', 'cancelled', 'expired'].includes(poll.status);
+  const isOpen = !!poll && !['proposed', 'confirmed', 'cancelled', 'expired'].includes(poll.status);
+  const canVote = isOpen && allowedToVote;
 
   const display = !poll ? (
     <div className="bw-fold-pad min-h-full flex items-center">
@@ -227,7 +231,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
             )}
             <DeckButton
               tone="accent"
-              disabled={!best || !canVote || locking}
+              disabled={!best || !isOpen || locking}
               onClick={() => {
                 if (!best) return;
                 haptic.medium();

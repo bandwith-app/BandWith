@@ -24,6 +24,7 @@ import {
 } from '@/lib/services/rehearsalPolls';
 import { markAsRead, type Notification } from '@/lib/services/notifications';
 import { PollDetails } from './PollDetails';
+import { canDeletePoll, canVoteInPoll, canWithdrawProposal } from '@/lib/pollPermissions';
 import { haptic } from '@/lib/haptics';
 import { ErrorState } from '@/app/components/ui/ErrorState';
 import { FindADateMode } from '@/app/components/duo';
@@ -109,7 +110,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
   // Handle vote toggle
   const handleToggleVote = async (optionId: string) => {
-    if (!poll || votingOptionId) return;
+    if (!poll || votingOptionId || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
     setVotingOptionId(optionId);
     setDeclinedAll(false);
@@ -148,7 +149,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
   // Handle "None of these work for me"
   const handleNoneWork = async () => {
-    if (!poll || isClearing) return;
+    if (!poll || isClearing || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
     setIsClearing(true);
 
@@ -233,6 +234,27 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
   const isProposed = poll?.status === 'proposed';
   const isConfirmed = poll?.status === 'confirmed';
+  // What the database allows (073, 098): only invitees vote; a member deletes
+  // (withdraws) their poll only while it is still a proposal.
+  const canVote = !!poll && canVoteInPoll(poll, currentUserId);
+  const canDelete = !!poll && canDeletePoll(poll, currentUserId, isAdmin);
+  const canWithdraw = !!poll && !isAdmin && canWithdrawProposal(poll, currentUserId);
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const handleWithdraw = async () => {
+    if (!poll) return;
+    setIsDeleting(true);
+    const { error } = await deletePoll(poll.id);
+    setIsDeleting(false);
+    setShowWithdrawConfirm(false);
+    if (error) {
+      onShowToast?.(t('Could not withdraw the proposal. Try again.'), 'error');
+      return;
+    }
+    onShowToast?.(t('Proposal withdrawn.'), 'info');
+    if (notification?.id) markAsRead(notification.id).catch(() => {});
+    onPollUpdated?.();
+    onClose();
+  };
 
   // Vote analytics
   const maxVotes = useMemo(() => {
@@ -403,6 +425,33 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                   {t('This proposal is waiting for the band admin to turn it into an availability poll.')}
                 </p>
               )}
+              {canWithdraw &&
+                (!showWithdrawConfirm ? (
+                  <PillButton variant="outline" onClick={() => setShowWithdrawConfirm(true)}>
+                    {t('Withdraw')}
+                  </PillButton>
+                ) : (
+                  <div
+                    role="alertdialog"
+                    aria-labelledby="proposal-withdraw-title"
+                    className="flex flex-col gap-3 p-4 rounded-[16px] border-2 border-destructive"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span id="proposal-withdraw-title" className="bw-h3 text-destructive">
+                        {t('Withdraw your proposal?')}
+                      </span>
+                      <p className="bw-body-sm text-sheet-foreground/80">{t('The admins will no longer see it.')}</p>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <PillButton variant="ghost" size="sm" fullWidth={false} disabled={isDeleting} onClick={() => setShowWithdrawConfirm(false)}>
+                        {t('Cancel')}
+                      </PillButton>
+                      <PillButton size="sm" fullWidth={false} loading={isDeleting} className="bg-destructive-solid text-white" onClick={handleWithdraw}>
+                        {t('Withdraw')}
+                      </PillButton>
+                    </div>
+                  </div>
+                ))}
             </div>
           ) : isConfirmed ? (
             /* CONFIRMED VIEW */
@@ -434,7 +483,9 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
               <PollDetails poll={{ ...poll, total_members_count: totalMembers }} className="text-sheet-foreground/85" />
 
-              <p className="bw-label-sm">{t('Select the dates that work for you')}</p>
+              <p className="bw-label-sm">
+                {canVote ? t('Select the dates that work for you') : t("You're not on this poll's invite list, so you can't vote.")}
+              </p>
 
               {/* Candidate pads */}
               {poll.options && poll.options.length > 0 ? (
@@ -448,7 +499,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                         key={option.id}
                         onDark
                         selected={!!option.has_voted}
-                        disabled={votingOptionId === option.id}
+                        disabled={!canVote || votingOptionId === option.id}
                         day={dateName(d, { weekday: 'short' }).toUpperCase()}
                         date={d.getDate()}
                         time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -563,8 +614,8 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                 </section>
               )}
 
-              {/* Admin or creator: delete poll with confirmation */}
-              {(isAdmin || poll.created_by === currentUserId) && (
+              {/* Admin, or the creator of a proposal: delete poll with confirmation */}
+              {canDelete && (
                 !showDeleteConfirm ? (
                   <PillButton
                     variant="danger"
@@ -626,18 +677,20 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
         {/* Footer (active poll) */}
         {isActivePoll && (
           <div
-            className="shrink-0 px-5 pt-2 grid grid-cols-[2fr_3fr] gap-3"
+            className={canVote ? 'shrink-0 px-5 pt-2 grid grid-cols-[2fr_3fr] gap-3' : 'shrink-0 px-5 pt-2 grid grid-cols-1 gap-3'}
             style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}
           >
-            <PillButton
-              variant="outline"
-              loading={isClearing}
-              aria-pressed={declinedAll}
-              className={declinedAll ? 'bg-sheet-foreground/[0.12]' : undefined}
-              onClick={handleNoneWork}
-            >
-              {t('None work')}
-            </PillButton>
+            {canVote && (
+              <PillButton
+                variant="outline"
+                loading={isClearing}
+                aria-pressed={declinedAll}
+                className={declinedAll ? 'bg-sheet-foreground/[0.12]' : undefined}
+                onClick={handleNoneWork}
+              >
+                {t('None work')}
+              </PillButton>
+            )}
             <PillButton icon={<Check className="w-[18px] h-[18px]" />} onClick={handleDone}>
               {t('Done')}
             </PillButton>
@@ -654,6 +707,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
           isAdmin={isAdmin}
           loading={loading}
           votingOptionId={votingOptionId}
+          canVote={canVote}
           onToggleVote={handleToggleVote}
           onLock={isAdmin ? handleFinalize : undefined}
           locking={isFinalizing}

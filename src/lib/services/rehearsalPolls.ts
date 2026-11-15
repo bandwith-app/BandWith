@@ -5,6 +5,7 @@ import { createSetlist, deleteSetlist } from './songs';
 import { createBulkNotifications } from './notifications';
 import { personName } from '@/lib/personName';
 import { t } from '@/lib/i18n';
+import { pollNotifyTargets } from '@/lib/pollPermissions';
 
 export interface RehearsalPollOption {
   id: string;
@@ -390,10 +391,13 @@ export const createOrPublishAdminPoll = async ({
         .eq('is_active', true);
 
       if (members && members.length > 0) {
-        // Only the invited members when the poll has a list (098).
-        const uniqueMemberIds = Array.from(
-          new Set(members.map((m: { user_id: string }) => m.user_id).filter(Boolean))
-        ).filter((id) => invitees.length === 0 || invitees.includes(id));
+        // Only the invited members when the poll has a list (098), never the
+        // admin who published it.
+        const uniqueMemberIds = pollNotifyTargets(
+          members.map((m: { user_id: string }) => m.user_id),
+          invitees,
+          adminId,
+        );
 
         const notifPayload = uniqueMemberIds.map((memberId: string) => ({
           user_id: memberId,
@@ -408,7 +412,7 @@ export const createOrPublishAdminPoll = async ({
           },
         }));
 
-        await createBulkNotifications(notifPayload, { sendPush: true });
+        if (notifPayload.length > 0) await createBulkNotifications(notifPayload, { sendPush: true });
       }
     } catch (notifErr) {
       console.warn('Failed to send poll notifications:', notifErr);

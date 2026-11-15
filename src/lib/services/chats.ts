@@ -2,7 +2,10 @@ import { supabase, getSafeUser } from '../supabase';
 import { sendPushToUsers } from './notifications';
 import { personName } from '@/lib/personName';
 import { isDirectChatBetween, type DirectChatFacts } from '@/lib/directChat';
-import { t } from '@/lib/i18n';
+import { t, translate } from '@/lib/i18n';
+import { mentionedUserIds } from '@/lib/chatMentions';
+import { localeOf, groupByLocale } from '@/lib/recipientLocale';
+import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
 
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
@@ -946,12 +949,13 @@ export const sendMessage = async (
         .filter((id: string) => id !== user.id);
 
       if (otherParticipants.length > 0) {
-        // Get sender's name
-        const { data: profile } = await supabase
+        // Sender's name; the others' names (for @mentions) and languages.
+        const { data: people } = await supabase
           .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single();
+          .select('id, full_name, email, preferred_language')
+          .in('id', [user.id, ...otherParticipants]);
+        const byId = new Map(((people || []) as { id: string; full_name?: string | null; email?: string | null; preferred_language?: string | null }[]).map((p) => [p.id, p]));
+        const profile = byId.get(user.id);
 
         const senderName = personName({ full_name: profile?.full_name, email: user.email }, 'Someone');
 
@@ -970,21 +974,42 @@ export const sendMessage = async (
         const subtitle = isDirect ? 'Private Message' : (bandName || 'Band Chat');
         const tag = isDirect ? 'Direct Message' : 'Band Message';
 
+        // @mentions (the composer inserts "@{name}"): those people get
+        // "{sender} mentioned you" instead of the plain message notice.
+        const mentioned = mentionedUserIds(
+          content,
+          otherParticipants.map((id: string) => ({ id, name: personName(byId.get(id), '') })),
+          user.id,
+        );
+        const plain = otherParticipants.filter((id: string) => !mentioned.includes(id));
+        const common = {
+          senderName,
+          content: content.substring(0, 120),
+          chatId,
+          chat_id: chatId,
+          band_id: chat.band_id,
+          chatType: chat.type,
+          bandName,
+          subtitle,
+          channel_id: 'bandwith_messages',
+        };
+
         // Send push notification (Edge Function also creates in-app notifications)
         // Uses service role so RLS is bypassed
         try {
-          await sendPushToUsers(otherParticipants, 'chat_message', {
-            senderName,
-            content: content.substring(0, 120),
-            chatId,
-            chat_id: chatId,
-            band_id: chat.band_id,
-            chatType: chat.type,
-            bandName,
-            subtitle,
-            tag,
-            channel_id: 'bandwith_messages',
-          });
+          if (plain.length > 0) {
+            await sendPushToUsers(plain, 'chat_message', { ...common, tag });
+          }
+          if (mentioned.length > 0) {
+            const langs = new Map(mentioned.map((id) => [id, localeOf(byId.get(id)?.preferred_language)]));
+            for (const [lang, ids] of groupByLocale(mentioned, langs)) {
+              await sendPushToUsers(ids, 'chat_mention', {
+                ...common,
+                title: translate(lang, '{name} mentioned you', { name: senderName }),
+                tag: 'Mention',
+              });
+            }
+          }
         } catch (pushErr) {
           console.warn('[sendMessage] Push notification error (non-critical):', pushErr);
         }
@@ -1279,22 +1304,41 @@ export const searchChatsAndMessages = async (
       });
     }
 
-    // 2. Search in messages content
+    // 2. Search in messages content. Messages from before you deleted a chat
+    // (cleared_at) stay deleted for you, as in the chat itself; read a few
+    // more so the results still fill up after dropping them.
+    const clearedAt = clearedAtByChat(allowedChats, user.id);
     const { data: messageResults } = await supabase
       .from('messages')
       .select(`
         id,
         chat_id,
+        sender_id,
         content,
         created_at
       `)
       .in('chat_id', userChatIds)
       .ilike('content', searchPattern)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .limit(clearedAt.size > 0 ? limit * 3 : limit);
 
-    if (messageResults) {
-      for (const msg of messageResults) {
+    const visibleMessages = (messageResults || [])
+      .filter((msg: { chat_id: string; created_at: string }) => visibleAfterClear(msg.created_at, clearedAt.get(msg.chat_id)))
+      .slice(0, limit);
+
+    if (visibleMessages.length > 0) {
+      // Who wrote each message.
+      const senderIds = Array.from(new Set(visibleMessages.map((m: { sender_id?: string | null }) => m.sender_id).filter(Boolean))) as string[];
+      const senders = new Map<string, string>();
+      if (senderIds.length > 0) {
+        const { data: senderProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', senderIds);
+        (senderProfiles || []).forEach((p: { id: string; full_name?: string | null; email?: string | null }) => senders.set(p.id, personName(p, t('Unknown'))));
+      }
+
+      for (const msg of visibleMessages) {
         const chatInfo = chatMap.get(msg.chat_id);
 
         results.push({
@@ -1304,7 +1348,7 @@ export const searchChatsAndMessages = async (
           chat_type: chatInfo?.type as ChatType,
           message_id: msg.id,
           message_content: msg.content,
-          message_sender: 'Unknown',
+          message_sender: msg.sender_id === user.id ? t('You') : (msg.sender_id && senders.get(msg.sender_id)) || t('Unknown'),
           message_date: msg.created_at,
           match_text: msg.content,
         });

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { Copy, Check, Crown, Mail, MessageCircle, Mic, Phone, Trash2, UserCog } from '@/app/components/icons';
+import { Copy, Check, Crown, LogOut, Mail, MessageCircle, Mic, Phone, Trash2, UserCog } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
-import { DotText, PillButton, Tag } from '@/app/components/bw';
+import { DotText, PillButton, PillField, Tag } from '@/app/components/bw';
 import { ScreenHeader } from '@/app/components/bw/Screen';
 import { LineupStatusTag } from '@/app/components/event/LineupSoFar';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +16,7 @@ import { personFirstName, personName } from '@/lib/personName';
 import { useT, intlLocale } from '@/lib/i18n';
 import type { BandMember } from '@/lib/services/bands';
 import { instrumentText } from '@/lib/instruments';
+import { memberInstrument, parseFeeInput } from '@/lib/bandMembership';
 
 /** Gigs drawn in the "Gigs this year" meter (Figma: 2 rows of 12). */
 const METER = 24;
@@ -30,6 +31,9 @@ const METER = 24;
  * is an admin or is looking at themselves, so a member never sees another
  * member's money. A `bw-pane-detail`: full screen on a phone and the closed
  * Duo, the trailing page on the open Duo, the detail column on a tablet.
+ *
+ * "In the band": admins set the member's instrument in this band and their
+ * default gig fee (money, so admins only); a member sees only their own fee.
  */
 export const MemberDetail: React.FC<{
   member: BandMember;
@@ -42,8 +46,12 @@ export const MemberDetail: React.FC<{
   onMessage?: () => void;
   onToggleRole?: () => void;
   onRemove?: () => void;
+  /** The viewer's own row: leave the band (the parent confirms). */
+  onLeave?: () => void;
+  /** Admins: save the band instrument and default fee; resolves to an error message or null. */
+  onSaveBandDetails?: (details: { instrument: string | null; default_fee: number | null }) => Promise<string | null>;
   canBeAdmin: boolean;
-}> = ({ member, bandId, viewerId, viewerIsAdmin, isPro, initials, onClose, onMessage, onToggleRole, onRemove, canBeAdmin }) => {
+}> = ({ member, bandId, viewerId, viewerIsAdmin, isPro, initials, onClose, onMessage, onToggleRole, onRemove, onLeave, onSaveBandDetails, canBeAdmin }) => {
   const t = useT();
   const isSelf = !!viewerId && member.user_id === viewerId;
   const canSeeMoney = viewerIsAdmin || isSelf;
@@ -53,6 +61,34 @@ export const MemberDetail: React.FC<{
   const roleLabel = member.role === 'admin' ? t('Admin') : t('Member');
   const email = member.profile?.email || null;
   const phone = ((member.profile as { phone?: string | null } | null)?.phone || '').trim() || null;
+  const instrument = memberInstrument(member);
+
+  // "In the band" (admins): the band's instrument entry and the default fee.
+  const savedFee = member.default_fee != null ? String(member.default_fee) : '';
+  const [bandInstrument, setBandInstrument] = useState(member.instrument || '');
+  const [feeText, setFeeText] = useState(savedFee);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsSaved, setDetailsSaved] = useState(false);
+  useEffect(() => {
+    setBandInstrument(member.instrument || '');
+    setFeeText(savedFee);
+  }, [member.id, member.instrument, savedFee]);
+  const fee = parseFeeInput(feeText);
+  const detailsDirty = bandInstrument.trim() !== (member.instrument || '').trim() || feeText.trim() !== savedFee;
+  const saveDetails = async () => {
+    if (!onSaveBandDetails || fee.invalid || savingDetails) return;
+    setSavingDetails(true);
+    setDetailsError(null);
+    const err = await onSaveBandDetails({ instrument: bandInstrument.trim() || null, default_fee: fee.value });
+    setSavingDetails(false);
+    if (err) {
+      setDetailsError(err);
+      return;
+    }
+    setDetailsSaved(true);
+    window.setTimeout(() => setDetailsSaved(false), 2000);
+  };
 
   const [stats, setStats] = useState<MemberStats | null | undefined>(undefined);
   const [next, setNext] = useState<MemberNextItem[] | null>(null);
@@ -143,8 +179,8 @@ export const MemberDetail: React.FC<{
           <div className="flex flex-col gap-1 min-w-0">
             <h1 className="bw-display-lg uppercase [overflow-wrap:anywhere]">{name}</h1>
             <span className="flex items-center gap-2 min-w-0 bw-body-md text-muted-foreground">
-              {member.instrument && <Mic className="w-4 h-4 shrink-0" aria-hidden />}
-              <span className="truncate">{[instrumentText(member.instrument), roleLabel].filter(Boolean).join(' · ')}</span>
+              {instrument && <Mic className="w-4 h-4 shrink-0" aria-hidden />}
+              <span className="truncate">{[instrumentText(instrument), roleLabel].filter(Boolean).join(' · ')}</span>
               {isPro && <Tag variant="solid">Pro</Tag>}
             </span>
           </div>
@@ -203,7 +239,7 @@ export const MemberDetail: React.FC<{
                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <span className="bw-label-md truncate">{e.title || t('Event')}</span>
                     <span className="bw-label-xs uppercase text-muted-foreground truncate">
-                      {[dayLabel(e.day), e.start, e.part && e.part.toLowerCase() !== (member.instrument || '').toLowerCase() ? e.part : null].filter(Boolean).join(' · ')}
+                      {[dayLabel(e.day), e.start, e.part && e.part.toLowerCase() !== instrument.toLowerCase() ? e.part : null].filter(Boolean).join(' · ')}
                     </span>
                   </span>
                   <LineupStatusTag status={e.answer} />
@@ -211,6 +247,56 @@ export const MemberDetail: React.FC<{
               ))}
             </ul>
           </section>
+        )}
+
+        {/* In the band: admins edit, a member sees their own default fee */}
+        {onSaveBandDetails ? (
+          <section className="flex flex-col gap-3" aria-label={t('In the band')}>
+            <h2 className="bw-h1 uppercase">{t('In the band')}</h2>
+            <form
+              className="flex flex-col gap-3 p-4 rounded-[24px] bg-card text-card-foreground"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveDetails();
+              }}
+            >
+              <PillField
+                label={t('Instrument in this band')}
+                value={bandInstrument}
+                onChange={(e) => setBandInstrument(e.target.value)}
+                maxLength={60}
+                placeholder={member.profile?.instrument?.trim() || t('Bass, drums…')}
+                hint={!member.instrument?.trim() && member.profile?.instrument?.trim() ? t('Empty: their profile instrument is shown.') : undefined}
+              />
+              <PillField
+                label={t('Default fee')}
+                value={feeText}
+                onChange={(e) => setFeeText(e.target.value)}
+                inputMode="decimal"
+                placeholder={t('Optional')}
+                hint={fee.invalid ? undefined : t('Used for new gigs. Only admins and {name} see it.', { name: firstName })}
+                error={fee.invalid ? t('Use a number, like 150.') : null}
+              />
+              {detailsError && <p role="alert" className="bw-body-sm text-destructive">{detailsError}</p>}
+              <PillButton
+                type="submit"
+                size="md"
+                variant={detailsSaved ? 'outline' : 'primary'}
+                loading={savingDetails}
+                disabled={(!detailsDirty && !detailsSaved) || fee.invalid}
+                icon={detailsSaved ? <Check className="w-4 h-4" /> : undefined}
+              >
+                {detailsSaved ? t('Saved') : t('Save')}
+              </PillButton>
+            </form>
+          </section>
+        ) : (
+          isSelf &&
+          member.default_fee != null && (
+            <p className="bw-body-md text-muted-foreground">
+              {t('Your default fee in this band: {fee}', { fee: money(member.default_fee, 'auto') })}
+            </p>
+          )
         )}
 
         {/* Contacts */}
@@ -268,6 +354,11 @@ export const MemberDetail: React.FC<{
         {onRemove && (
           <PillButton variant="danger" size="sm" icon={<Trash2 className="w-4 h-4" />} onClick={onRemove}>
             {t('Remove from band')}
+          </PillButton>
+        )}
+        {onLeave && (
+          <PillButton variant="danger" size="sm" icon={<LogOut className="w-4 h-4" />} onClick={onLeave}>
+            {t('Leave band')}
           </PillButton>
         )}
       </div>
