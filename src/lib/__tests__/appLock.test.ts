@@ -6,6 +6,7 @@ vi.mock('@capacitor/core', () => ({
     isNativePlatform: () => native.value,
     getPlatform: () => (native.value ? 'ios' : 'web'),
   },
+  registerPlugin: () => ({ set: async () => {} }),
 }));
 vi.mock('@/lib/supabase', () => ({ isDemoMode: false }));
 

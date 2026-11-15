@@ -36,7 +36,8 @@ export const UnsavedChangesBar: React.FC<{
         <span className="bw-label-sm flex-1 min-w-0 truncate" aria-live="polite">
           {t('Unsaved changes')}
         </span>
-        <PillButton variant="outline" size="sm" fullWidth={false} onClick={onCancel} disabled={saving}>
+        {/* In a dark sheet the outline follows the sheet's text colour (it was black on black). */}
+        <PillButton variant="outline" size="sm" fullWidth={false} onClick={onCancel} disabled={saving} className={inSheet ? 'border-current text-current' : undefined}>
           {t('Cancel')}
         </PillButton>
         <PillButton size="sm" fullWidth={false} onClick={onSave} loading={saving}>

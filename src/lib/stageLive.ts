@@ -21,6 +21,8 @@ export interface StageLiveState {
   songId: string | null;
   /** Live order of setlist_songs row ids, or null when the saved order stands. */
   order: string[] | null;
+  /** Songs struck off for tonight (row ids): shown crossed out, Prev / Next skip them. */
+  skipped?: string[];
 }
 
 /** Start of the clock floor below (2024-01-01 UTC). */
@@ -50,7 +52,15 @@ export const parseStageState = (payload: unknown): StageLiveState | null => {
   if (p.order !== null && !(Array.isArray(p.order) && p.order.length <= 500 && p.order.every((x) => typeof x === 'string'))) {
     return null;
   }
-  return { seq: p.seq, from: p.from, songId: (p.songId as string | null) ?? null, order: (p.order as string[] | null) ?? null };
+  const skipped =
+    Array.isArray(p.skipped) && p.skipped.length <= 500 && p.skipped.every((x) => typeof x === 'string') ? (p.skipped as string[]) : null;
+  return {
+    seq: p.seq,
+    from: p.from,
+    songId: (p.songId as string | null) ?? null,
+    order: (p.order as string[] | null) ?? null,
+    ...(skipped && skipped.length ? { skipped } : {}),
+  };
 };
 
 /**
@@ -117,3 +127,23 @@ export const indexOf = (songs: { id?: string }[], songId: string | null) => {
   const i = songs.findIndex((s) => s.id === songId);
   return i < 0 ? 0 : i;
 };
+
+/**
+ * The next song from `from` in direction `delta` that isn't struck off; `from`
+ * itself when there is none (the end of the set, or all the rest struck).
+ */
+export function stepOver(songs: { id?: string }[], from: number, delta: number, skipped: ReadonlySet<string>): number {
+  const dir = delta < 0 ? -1 : 1;
+  let steps = Math.abs(delta) || 1;
+  let i = from;
+  let last = from;
+  while (steps > 0) {
+    i += dir;
+    if (i < 0 || i >= songs.length) return last;
+    const id = songs[i]?.id;
+    if (id && skipped.has(id)) continue;
+    last = i;
+    steps -= 1;
+  }
+  return last;
+}

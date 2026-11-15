@@ -286,6 +286,25 @@
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-rail-sheet.bw-sheet > .shrink-0:first-child .bw-h1 {
   font-size: 28px;
 }
+/* Keyboard up in Laptop pose: the keyboard takes the Deck, and the web view
+   ends at the fold (native resize). Sheets then rise onto the Display above
+   it, as on an upright phone, instead of keeping a Deck-sized slot that only
+   showed their title (Invite member: the field sat under the keys). The bar
+   on the Deck is under the keyboard anyway. */
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-rail-sheet.bw-rail-sheet.inset-0,
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-deck-only.bw-deck-only.inset-0 {
+  top: 0 !important;
+}
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-rail-sheet.bw-rail-sheet:not(.inset-0),
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-deck-only.bw-deck-only:not(.inset-0) {
+  /* Clear of the fold band too, whatever the keyboard left of the view. */
+  bottom: max(0px, calc(100% - var(--bw-display-h, 100%))) !important;
+  max-height: calc(min(100%, var(--bw-display-h, 100%)) - var(--safe-top) - 8px) !important;
+  padding-bottom: 12px !important;
+}
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-duo-rail {
+  display: none !important;
+}
 :root[data-bw-rail-host][data-bw-posture="tabletop"] header,
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-status-clear {
   padding-inline-end: max(1rem, var(--bw-status-clear-x, 0px));
@@ -541,10 +560,13 @@
   padding-left: 20px;
   padding-right: 20px;
 }
-:root[data-bw-status-block]:not([data-bw-rail-edge="left"]) .bw-fold-display .bw-fold-pad > :first-child {
+:root[data-bw-status-block]:not([data-bw-rail-edge="left"]) .bw-fold-display .bw-fold-pad > :first-child,
+/* A second row still level with the clock block (Stage: the song title). */
+:root[data-bw-status-block]:not([data-bw-rail-edge="left"]) .bw-fold-display .bw-fold-pad > .bw-fold-clear {
   padding-inline-end: max(0px, calc(var(--bw-display-head-x, 0px) - 12px));
 }
-:root[data-bw-status-block][data-bw-rail-edge="left"] .bw-fold-display .bw-fold-pad > :first-child {
+:root[data-bw-status-block][data-bw-rail-edge="left"] .bw-fold-display .bw-fold-pad > :first-child,
+:root[data-bw-status-block][data-bw-rail-edge="left"] .bw-fold-display .bw-fold-pad > .bw-fold-clear {
   padding-inline-start: max(0px, calc(var(--bw-display-head-x, 0px) - 12px));
 }
 /* A hero card (BandDeskMode poster) bleeds to the top edge too; its text

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   X,
@@ -92,10 +92,42 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
     (data.event_type as string) ||
     (matchedStatus === 'REHEARSAL' ? 'rehearsal' : matchedStatus === 'QUOTE' || matchedStatus === 'QUOTED' ? 'quote' : 'gig');
   const eventTitle = (data.event_title as string) || matchedEvent?.title || notification.title;
-  const eventDate = (data.event_date as string) || matchedEvent?.date;
-  const eventTime = (data.event_time as string) || matchedEvent?.time;
-  const venue = (data.venue as string) || matchedEvent?.location;
-  const venueAddress = (data.venue_address as string) || matchedEvent?.venueAddress;
+  // An invite whose notification and calendar entry lack the details (the
+  // gig isn't in this member's calendar yet): read them from the event
+  // itself, public columns only (no fee or client), instead of "TBD".
+  const [fetched, setFetched] = useState<{ date?: string; time?: string; venue?: string; address?: string } | null>(null);
+  const needsFetch = !!eventId && !matchedEvent && !(data.event_date && data.venue);
+  useEffect(() => {
+    if (!needsFetch || !eventId) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const { data: row } = await supabase
+          .from('events')
+          .select('event_date, date, start_time, time, venue_name, venue, venue_address, address, venue_city')
+          .eq('id', eventId)
+          .maybeSingle();
+        if (!alive || !row) return;
+        const r = row as Record<string, string | null>;
+        setFetched({
+          date: r.event_date || r.date || undefined,
+          time: r.start_time || r.time || undefined,
+          venue: r.venue_name || r.venue || r.venue_city || undefined,
+          address: r.venue_address || r.address || undefined,
+        });
+      } catch {
+        /* offline: the sheet keeps what the notification had */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [needsFetch, eventId]);
+
+  const eventDate = (data.event_date as string) || matchedEvent?.date || fetched?.date;
+  const eventTime = (data.event_time as string) || matchedEvent?.time || fetched?.time;
+  const venue = (data.venue as string) || matchedEvent?.location || fetched?.venue;
+  const venueAddress = (data.venue_address as string) || matchedEvent?.venueAddress || fetched?.address;
 
   // Who else is on the gig so far: names, parts and answers, never fees.
   const lineup = useLineupSoFar(
@@ -209,7 +241,6 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
 
       {/* Figma: Event / RSVP – conflict (Sheet, Style=Dark) */}
       <motion.div
-        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-label={t('RSVP: {title}', { title: eventTitle })}
@@ -217,13 +248,13 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'tween', duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
-        className="bw-rail-sheet bw-sheet-card fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] sm:rounded-[32px] px-5 pt-3 sm:max-w-lg sm:mx-auto sm:bottom-6 max-h-[90vh] overflow-y-auto flex flex-col gap-4"
-        style={{
-          paddingBottom: 'calc(16px + var(--safe-bottom))',
-          ...maskStyle,
-        }}
+        className="bw-rail-sheet bw-sheet-card fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] sm:rounded-[32px] px-5 pt-3 sm:max-w-lg sm:mx-auto sm:bottom-6 max-h-[90vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: 'calc(16px + var(--safe-bottom))' }}
         {...drag.sheet}
       >
+        {/* The content scrolls and fades out at the bottom, not the sheet:
+            a mask on the sheet itself let the screen behind show through. */}
+        <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain flex flex-col gap-4" style={maskStyle}>
         {/* Sheet header */}
         <div className="flex flex-col gap-3" {...drag.handle}>
           <span className="bw-grabber mx-auto w-10 h-[5px] rounded-full bg-sheet-foreground/85" />
@@ -341,6 +372,7 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
           <PillButton onClick={handleSend} loading={isSubmitting} disabled={!choice}>
             {isSubmitting ? t('Sending…') : t('Send RSVP')}
           </PillButton>
+        </div>
         </div>
       </motion.div>
     </>

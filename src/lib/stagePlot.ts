@@ -24,6 +24,8 @@ export interface PlotItem {
   y: number;
   /** Highlighted (lead vocal). */
   lead?: boolean;
+  /** Instrument key of a player added from a preset ('drums', 'bass'…, src/lib/instruments.ts). */
+  instrument?: string;
 }
 
 export interface StagePlot {
@@ -44,6 +46,8 @@ export interface InputChannel {
   kind: InputKind;
   /** Who plays it (first name). */
   who: string;
+  /** The plot item it was made for: removing the item removes its channels. */
+  itemId?: string;
 }
 
 export interface StageData {
@@ -105,6 +109,7 @@ const asItem = (v: unknown): PlotItem | null => {
     x: num01(o.x, 0.5),
     y: num01(o.y, 0.5),
     lead: o.lead === true || undefined,
+    instrument: kind === 'player' ? str(o.instrument, 20).toLowerCase() || undefined : undefined,
   };
 };
 
@@ -128,7 +133,8 @@ const asInput = (v: unknown): InputChannel | null => {
   const mic = str(o.mic, 30);
   if (!source && !mic) return null;
   const kind: InputKind = o.kind === 'di' || /^di\b/i.test(mic) ? 'di' : 'mic';
-  return { id: str(o.id, 40) || newId(), source, mic, kind, who: str(o.who, 30) };
+  const itemId = str(o.itemId ?? o.item_id, 40);
+  return { id: str(o.id, 40) || newId(), source, mic, kind, who: str(o.who, 30), ...(itemId ? { itemId } : {}) };
 };
 
 const asLines = (v: unknown): string[] =>
@@ -171,9 +177,10 @@ export function toStageRow(d: StageData): StageRow {
         x: Math.round(i.x * 1000) / 1000,
         y: Math.round(i.y * 1000) / 1000,
         ...(i.lead ? { lead: true } : {}),
+        ...(i.instrument ? { instrument: i.instrument } : {}),
       })),
     })),
-    inputs: clean.inputs.map((c) => ({ id: c.id, source: c.source, mic: c.mic, kind: c.kind, who: c.who })),
+    inputs: clean.inputs.map((c) => ({ id: c.id, source: c.source, mic: c.mic, kind: c.kind, who: c.who, ...(c.itemId ? { itemId: c.itemId } : {}) })),
     mixer: clean.mixer || null,
     band_brings: clean.bandBrings,
     venue_provides: clean.venueProvides,
@@ -272,8 +279,10 @@ export function starterStage(lineup: LineupPlayer[], t: Tr = plain): StageData {
   // Channels in the usual desk order: drums, bass, guitars, keys, others, vocals.
   const inputs: { c: InputChannel; group: number }[] = [];
   let group = 4;
+  // Channels made for the player being placed (linked to its circle).
+  let itemId = '';
   const ch = (source: string, mic: string, who: string, kind: InputKind = /^di\b/i.test(mic) ? 'di' : 'mic') =>
-    inputs.push({ c: { id: newId(), source, mic, kind, who }, group });
+    inputs.push({ c: { id: newId(), source, mic, kind, who, itemId }, group });
 
   // Lead vocal first in front, the drummer centre back, then the rest.
   const players = lineup.map((p) => ({ ...p, keys: instrumentKeys(p.instrument) }));
@@ -287,6 +296,7 @@ export function starterStage(lineup: LineupPlayer[], t: Tr = plain): StageData {
     let spot: { x: number; y: number } | undefined;
     let label = '';
     let lead = false;
+    itemId = newId();
     group = key === 'drums' ? 0 : key === 'bass' || key === 'double-bass' ? 1 : key === 'guitar' ? 2 : key === 'keys' ? 3 : 4;
     if (key === 'drums') {
       spot = { x: 0.5, y: 0.2 };
@@ -319,7 +329,7 @@ export function starterStage(lineup: LineupPlayer[], t: Tr = plain): StageData {
       label = p.instrument ? p.instrument.split(/[·/,]/)[0].trim() : '';
       if (key && key !== 'vocals') ch(label || key, key === 'dj' ? 'DI' : 'SM57', who);
     }
-    items.push({ id: newId(), kind: 'player', code: instrumentCode(key), label: label || undefined, x: spot?.x ?? 0.5, y: spot?.y ?? 0.5, ...(lead ? { lead: true } : {}) });
+    items.push({ id: itemId, kind: 'player', code: instrumentCode(key), label: label || undefined, x: spot?.x ?? 0.5, y: spot?.y ?? 0.5, ...(lead ? { lead: true } : {}), ...(key ? { instrument: key } : {}) });
     if (sings) {
       group = lead ? 5 : 6;
       if (lead) ch(t('Lead vox'), 'Beta 58', who);
@@ -348,4 +358,158 @@ const rank = (key: string | undefined) =>
 /** A copy of a plot under a new name ("Trio"). */
 export function duplicatePlot(plot: StagePlot, name: string): StagePlot {
   return { ...plot, id: newId(), name, items: plot.items.map((i) => ({ ...i, id: newId() })) };
+}
+
+// ------------------------------------------------- instrument presets --
+
+/** Instruments offered when adding a musician to the plot (keys of src/lib/instruments.ts). */
+export const PLOT_PRESETS = ['vocals', 'guitar', 'bass', 'keys', 'drums', 'percussion', 'sax', 'trumpet'] as const;
+export type PlotPreset = (typeof PLOT_PRESETS)[number];
+
+/** Name of a preset in the add menu. */
+export function presetName(key: string, t: Tr = plain): string {
+  switch (key) {
+    case 'vocals': return t('Vocals');
+    case 'guitar': return t('Guitar');
+    case 'bass': return t('Bass');
+    case 'keys': return t('Keys');
+    case 'drums': return t('Drums');
+    case 'percussion': return t('Percussion');
+    case 'sax': return t('Sax');
+    case 'trumpet': return t('Trumpet');
+    default: return key;
+  }
+}
+
+/** Where a preset goes when added without a spot (the usual small-band layout). */
+const PRESET_SPOT: Record<string, { x: number; y: number }> = {
+  drums: { x: 0.5, y: 0.2 },
+  bass: { x: 0.25, y: 0.3 },
+  guitar: { x: 0.75, y: 0.3 },
+  keys: { x: 0.2, y: 0.66 },
+  vocals: { x: 0.5, y: 0.66 },
+  percussion: { x: 0.8, y: 0.3 },
+};
+
+/** A musician circle from a preset: code and caption filled in, both still editable. */
+export function presetItem(key: string, t: Tr = plain, at?: { x: number; y: number }): PlotItem {
+  const spot = at ?? PRESET_SPOT[key] ?? { x: 0.5, y: 0.5 };
+  const label =
+    key === 'drums' ? t('Drums · riser') : key === 'bass' ? t('Bass amp') : key === 'guitar' ? t('Guitar amp') : presetName(key, t);
+  return { id: newId(), kind: 'player', code: instrumentCode(key), label, x: spot.x, y: spot.y, instrument: key };
+}
+
+/** Closer than this (share of the stage width) and two circles overlap. */
+const CROWD = 0.12;
+
+/**
+ * The nearest spot to `want` that no item already covers: added from the chip
+ * row, a sax or a second guitar used to land on the circle already at its
+ * usual place. Steps out in rings and stays on the stage; falls back to
+ * `want` when the stage is full.
+ */
+export function freeSpot(
+  items: ReadonlyArray<Pick<PlotItem, 'x' | 'y'>>,
+  want: { x: number; y: number },
+  /**
+   * The drawn stage: `ratio` its width / depth (x and y are fractions of
+   * each, so a wide stage packs y tighter), `gap` the least distance between
+   * centres as a fraction of its width (a circle and a bit, at its size).
+   */
+  stage: { ratio?: number; gap?: number } = {},
+): { x: number; y: number } {
+  const ratio = stage.ratio && stage.ratio > 0 ? stage.ratio : 1;
+  const gap = Math.max(CROWD, stage.gap ?? 0);
+  const clamp = (v: number) => Math.min(0.94, Math.max(0.06, v));
+  // Room under a circle for its caption ("Sax"), inside the stage's edge.
+  const clampY = (v: number) => Math.min(0.86, Math.max(0.08, v));
+  // Distances in stage widths: y is a fraction of the depth (width / ratio).
+  const far = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, (ay - by) / ratio);
+  const free = (x: number, y: number) => items.every((i) => far(i.x, i.y, x, y) >= gap);
+  if (free(want.x, want.y)) return want;
+  for (let ring = 1; ring <= 8; ring++) {
+    const r = ring * gap;
+    const steps = ring * 8;
+    for (let k = 0; k < steps; k++) {
+      // Sideways first (same row of the stage), then forward and back.
+      const a = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * ((2 * Math.PI) / steps);
+      const x = clamp(want.x + r * Math.cos(a));
+      const y = clampY(want.y + r * ratio * Math.sin(a));
+      if (free(x, y)) return { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 };
+    }
+  }
+  return want;
+}
+
+/** Desk order: drums, bass, guitars, keys, others, lead vocal, other vocals; DI boxes with the others. */
+const deskGroup = (item: PlotItem | undefined): number => {
+  const key = item?.instrument;
+  if (!item) return 4;
+  if (key === 'drums') return 0;
+  if (key === 'bass' || key === 'double-bass') return 1;
+  if (key === 'guitar') return 2;
+  if (key === 'keys') return 3;
+  if (key === 'vocals') return item.lead ? 5 : 6;
+  return 4;
+};
+
+/**
+ * The usual channels for an item: a preset musician's instrument, or a DI box.
+ * A generic musician (no instrument), a wedge or a speaker has none.
+ */
+export function channelsForItem(item: PlotItem, t: Tr = plain): InputChannel[] {
+  const make = (source: string, mic: string): InputChannel => ({
+    id: newId(),
+    source,
+    mic,
+    kind: /^di\b/i.test(mic) ? 'di' : 'mic',
+    who: '',
+    itemId: item.id,
+  });
+  if (item.kind === 'di') return [make(item.label || t('DI box'), 'DI')];
+  if (item.kind !== 'player') return [];
+  switch (item.instrument) {
+    case 'drums':
+      return [make(t('Kick'), 'Beta 52'), make(t('Snare'), 'SM57'), make(t('OH L'), 'C414'), make(t('OH R'), 'C414')];
+    case 'bass':
+    case 'double-bass':
+      return [make(t('Bass'), 'DI')];
+    case 'guitar':
+      return [make(t('Guitar'), 'SM57')];
+    case 'keys':
+      return [make(t('Keys L'), 'DI'), make(t('Keys R'), 'DI')];
+    case 'vocals':
+      return [item.lead ? make(t('Lead vox'), 'Beta 58') : make(t('Vox'), 'SM58')];
+    case 'dj':
+      return [make(t('DJ L'), 'DI'), make(t('DJ R'), 'DI')];
+    case undefined:
+    case '':
+      return [];
+    default:
+      return [make(item.label || presetName(item.instrument, t), 'SM57')];
+  }
+}
+
+/**
+ * The input list after a plot is saved: the channels of items removed from the
+ * plot go, items added get their usual channels in desk order, and every other
+ * channel stays exactly as edited (so it stays editable by hand).
+ */
+export function syncInputs(prev: StagePlot | undefined, next: StagePlot, inputs: InputChannel[], t: Tr = plain): InputChannel[] {
+  const before = new Set((prev?.items ?? []).map((i) => i.id));
+  const now = new Map(next.items.map((i) => [i.id, i] as const));
+  const removed = new Set([...before].filter((id) => !now.has(id)));
+  let list = inputs.filter((c) => !c.itemId || !removed.has(c.itemId));
+  const added = next.items.filter((i) => !before.has(i.id));
+  const linked = new Set(list.map((c) => c.itemId).filter(Boolean));
+  for (const item of added) {
+    if (linked.has(item.id)) continue;
+    const channels = channelsForItem(item, t);
+    if (!channels.length) continue;
+    const g = deskGroup(item);
+    // Before the first channel of a later group (of this plot), else at the end.
+    const at = list.findIndex((c) => c.itemId && now.has(c.itemId) && deskGroup(now.get(c.itemId)) > g);
+    list = at < 0 ? [...list, ...channels] : [...list.slice(0, at), ...channels, ...list.slice(at)];
+  }
+  return list.slice(0, LIMITS.inputs);
 }

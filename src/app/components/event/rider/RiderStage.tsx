@@ -7,12 +7,15 @@ import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { springs } from '@/styles/motion';
-import { duplicatePlot, newId, stageSize, type StageData, type StagePlot } from '@/lib/stagePlot';
+import { duplicatePlot, newId, stageSize, syncInputs, type StageData, type StagePlot } from '@/lib/stagePlot';
 import { CardHead, InputListTable, PlotTabs, RiderStatusCard, VenueAgreedTag, WhoBringsWhat, shortDate } from './RiderParts';
 import { StagePlotView, plotRatio } from './StagePlotView';
 import { InputListEditor } from './InputListEditor';
 import { FoldSplit, useLaptopPose } from '@/app/components/duo/FoldSplit';
 import type { EventStageState } from './useEventStage';
+import { useSystemBack } from '@/lib/backStack';
+import { useUnsavedGuard } from '@/lib/unsavedGuard';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 
 type T = ReturnType<typeof useT>;
 
@@ -83,6 +86,33 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
   const plots = stage?.plots ?? [];
   const plot = plots.find((p) => p.id === plotId) ?? plots[0];
   const cols = layout === 'stack' ? 1 : width >= 900 ? 3 : width >= 560 ? 2 : 1;
+
+  // Plot changes wait for SAVE PLOT. Back, Escape, the tab bar or closing the
+  // gig ask first instead of throwing them away (iPad: Back closed the gig).
+  const savedPlot = editingPlot ? plots.find((p) => p.id === editingPlot.id) : undefined;
+  const plotDirty = !!editingPlot && (savedPlot ? JSON.stringify(savedPlot) !== JSON.stringify(editingPlot) : editingPlot.items.length > 0);
+  const [plotLeave, setPlotLeave] = useState<null | (() => void)>(null);
+  const [plotSaveError, setPlotSaveError] = useState<string | null>(null);
+  useSystemBack(!!editingPlot, () => {
+    if (plotDirty) setPlotLeave(() => () => {});
+    else setEditingPlot(null);
+    return true;
+  });
+  useUnsavedGuard(plotDirty, (proceed) => setPlotLeave(() => proceed));
+  const savePlot = async (): Promise<boolean> => {
+    if (!editingPlot) return true;
+    let ok = false;
+    await run('plot', async () => {
+      const next = plots.some((p) => p.id === editingPlot.id)
+        ? plots.map((p) => (p.id === editingPlot.id ? editingPlot : p))
+        : [...plots, editingPlot];
+      // The input list follows the plot: channels for new instruments, none for removed ones.
+      const inputs = syncInputs(plots.find((p) => p.id === editingPlot.id), editingPlot, base.inputs, t);
+      ok = !!(await save({ ...base, plots: next, inputs }));
+      if (ok) setEditingPlot(null);
+    });
+    return ok;
+  };
 
   useEffect(() => {
     if (!notice) return;
@@ -237,14 +267,7 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
               }
             });
           }}
-          onSave={() =>
-            run('plot', async () => {
-              const next = plots.some((p) => p.id === editingPlot!.id)
-                ? plots.map((p) => (p.id === editingPlot!.id ? editingPlot! : p))
-                : [...plots, editingPlot!];
-              if (await save({ ...base, plots: next })) setEditingPlot(null);
-            })
-          }
+          onSave={() => void savePlot()}
         />
       ) : plot ? (
         layout === 'stack' ? (
@@ -339,6 +362,31 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
 
   const editors = (
     <>
+      <UnsavedChangesSheet
+        open={!!plotLeave}
+        title={t('Save your changes?')}
+        saving={busy === 'plot'}
+        error={plotSaveError}
+        onKeepEditing={() => {
+          setPlotLeave(null);
+          setPlotSaveError(null);
+        }}
+        onDiscard={() => {
+          const go = plotLeave;
+          setPlotLeave(null);
+          setPlotSaveError(null);
+          setEditingPlot(null);
+          go?.();
+        }}
+        onSave={async () => {
+          const go = plotLeave;
+          if (await savePlot()) {
+            setPlotLeave(null);
+            setPlotSaveError(null);
+            go?.();
+          } else setPlotSaveError(t('Could not save. Try again.'));
+        }}
+      />
       {editingInputs && (
         <InputListEditor
           eventTitle={eventTitle}

@@ -146,6 +146,15 @@ export const ChordEditor: React.FC = () => {
     closeChordEditor();
   };
   useSystemBack(!!id, () => {
+    // The chord picker for a word is the top layer: Back closes just that.
+    if (copyTo !== null) {
+      setCopyTo(null);
+      return true;
+    }
+    if (selected) {
+      setSelected(null);
+      return true;
+    }
     close();
     return true;
   });

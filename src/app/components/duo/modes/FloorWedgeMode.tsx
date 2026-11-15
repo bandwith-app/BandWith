@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { stepOver } from '@/lib/stageLive';
 import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
@@ -59,6 +60,8 @@ export interface FloorWedgeModeProps {
   /** Current song when Stage mode is live (useStageLive); omitted = own counter. */
   index?: number;
   onIndexChange?: (index: number) => void;
+  /** Songs struck off tonight (row ids, Stage mode live): Prev / Next skip them. */
+  skipped?: ReadonlySet<string>;
   /** Live follow state: members get a "follow leader" switch, the admin a status. */
   follow?: {
     isLeader: boolean;
@@ -94,6 +97,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   initialIndex = 0,
   index: controlledIndex,
   onIndexChange,
+  skipped,
   follow,
   click,
   startedAt,
@@ -127,13 +131,15 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 
   const go = useCallback(
     (delta: number) => {
-      const next = Math.min(Math.max(0, index + delta), Math.max(0, count - 1));
+      const next = skipped?.size
+        ? stepOver(songs as { id?: string }[], index, delta, skipped)
+        : Math.min(Math.max(0, index + delta), Math.max(0, count - 1));
       if (next === index) return;
       haptic.tap();
       setIndex(next);
       onIndexChange?.(next);
     },
-    [index, count, onIndexChange],
+    [index, count, onIndexChange, skipped, songs],
   );
 
   useEffect(() => {
@@ -200,7 +206,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
         <p className="bw-display-lg text-white/70">{songsLoading ? t('Loading setlist…') : t('No setlist')}</p>
       ) : showLyrics ? (
         <>
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="bw-fold-clear flex items-center gap-3 min-w-0">
             <p className="bw-value-lg tabular-nums shrink-0" aria-live="polite">
               {index + 1}
               <span className="text-white/40"> / {count}</span>
@@ -227,7 +233,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
         </>
       ) : (
         <>
-          <p className="bw-value-lg tabular-nums" aria-live="polite">
+          <p className="bw-fold-clear bw-value-lg tabular-nums" aria-live="polite">
             {index + 1}
             <span className="text-white/40"> / {count}</span>
           </p>
@@ -426,10 +432,13 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
       {count > 0 && (
         <div className="flex flex-col gap-1.5" aria-label={t('Song {index} of {count}', { index: index + 1, count })}>
           <div className="flex gap-1" aria-hidden>
-            {songs.map((_, i) => (
+            {songs.map((song, i) => (
               <span
                 key={i}
-                className={cn('h-1.5 flex-1 rounded-full', i < index ? 'bg-white/60' : i === index ? 'bg-accent' : 'bg-white/15')}
+                className={cn(
+                  'h-1.5 flex-1 rounded-full',
+                  i === index ? 'bg-accent' : skipped?.has((song as { id?: string }).id ?? '') ? 'bg-white/[0.06]' : i < index ? 'bg-white/60' : 'bg-white/15',
+                )}
               />
             ))}
           </div>

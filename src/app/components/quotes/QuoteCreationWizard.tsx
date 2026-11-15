@@ -3279,7 +3279,9 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
           placeholder={getEffectiveTitle()}
           autoComplete="off"
         />
-        <div className="grid grid-cols-2 gap-3">
+        {/* Side by side only when each field has room for its placeholder (a
+            narrow tablet column stacks them instead of cutting the text). */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
           <PillField
             label={t('Client name')}
             hideLabel

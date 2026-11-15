@@ -2562,6 +2562,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           onLyricsOnChange={setStageSongOpen}
           index={stageLive.index}
           onIndexChange={stageLive.select}
+          skipped={stageLive.skipped}
           click={stageLive.click}
           follow={{
             isLeader: stageLive.isLeader,

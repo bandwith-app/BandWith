@@ -180,7 +180,7 @@ const basics: AreaModule = {
       related: ["quick-sign-in", "privacy-and-account-settings"],
       body: [
         { type: "p", text: "App lock protects your bands if someone picks up your unlocked phone. It is on by default on iPhone, iPad and Android. It asks only when the app starts again after being closed (or after the system ended it); coming back from the background doesn't ask." },
-        { type: "p", text: "The **Locked** screen asks straight away. You have three ways in:" },
+        { type: "p", text: "The **Locked** screen asks as soon as the start screen has gone. You have three ways in:" },
         {
           type: "list",
           items: [
@@ -199,6 +199,7 @@ const basics: AreaModule = {
           ],
         },
         { type: "note", tone: "tip", text: "The setting is per device: turning it off on your iPad leaves it on on your phone." },
+        { type: "note", tone: "privacy", text: "While app lock is on, the app switcher (Recents on Android) shows a plain BandWith screen instead of your gigs and amounts." },
         {
           type: "devices",
           rows: [

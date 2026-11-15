@@ -14,7 +14,7 @@
  * default, like the theme and the language.
  */
 import { useSyncExternalStore } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { isDemoMode } from '@/lib/supabase';
 
 const KEY = 'bw-app-lock-v1';
@@ -35,6 +35,32 @@ const readEnabled = (): boolean => {
 
 export const isAppLockEnabled = (): boolean => appLockSupported() && readEnabled();
 
+/**
+ * Privacy cover, native side: while the lock is on, the app switcher (iOS) and
+ * Recents (Android) show no picture of the last screen, so no fees or totals
+ * are seen before Face ID / the fingerprint (SceneDelegate.swift PrivacyCover,
+ * android PrivacyPlugin.java).
+ */
+type PrivacyPlugin = { set(options: { on: boolean }): Promise<void> };
+let androidPrivacy: PrivacyPlugin | null = null;
+export const syncPrivacyCover = () => {
+  try {
+    if (!Capacitor.isNativePlatform()) return;
+    const on = isAppLockEnabled();
+    const ios = (window as unknown as {
+      webkit?: { messageHandlers?: { bwPrivacyCover?: { postMessage: (v: unknown) => void } } };
+    }).webkit?.messageHandlers?.bwPrivacyCover;
+    if (ios) ios.postMessage(on);
+    else if (Capacitor.getPlatform() === 'android') {
+      androidPrivacy ??= registerPlugin<PrivacyPlugin>('BwPrivacy');
+      void androidPrivacy.set({ on }).catch(() => {});
+    }
+  } catch {
+    /* older shell without the cover: nothing to do */
+  }
+};
+if (typeof window !== 'undefined') syncPrivacyCover();
+
 export const setAppLockEnabled = (on: boolean) => {
   try {
     if (on) localStorage.removeItem(KEY);
@@ -47,6 +73,7 @@ export const setAppLockEnabled = (on: boolean) => {
   } catch {
     /* no window (tests) */
   }
+  syncPrivacyCover();
 };
 
 const subscribe = (cb: () => void) => {

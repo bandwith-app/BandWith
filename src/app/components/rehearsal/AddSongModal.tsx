@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
+import { useSystemBack } from '@/lib/backStack';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -167,6 +169,26 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
 
   // Another title or artist: check for a duplicate again.
   useEffect(() => setDuplicateOf(null), [title, artist]);
+
+  // Unsaved changes: the form as it opened (empty, or the song's values)
+  // against now. Closing with something typed asks first, like every wizard.
+  const formSig = JSON.stringify([
+    title, artist, genres, audioFile?.name, chartFile?.name, existingAudio, existingChart,
+    youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec,
+  ]);
+  const baselineRef = useRef<string | null>(null);
+  const [baselineTick, setBaselineTick] = useState(0);
+  // After the edit fill above (same commit), so the baseline has the song's values.
+  useEffect(() => {
+    if (isOpen) setBaselineTick((n) => n + 1);
+    else baselineRef.current = null;
+  }, [isOpen, song?.id]);
+  useEffect(() => {
+    if (isOpen && baselineTick) baselineRef.current = formSig;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when (re)opened
+  }, [baselineTick]);
+  const dirty = isOpen && !success && baselineRef.current !== null && formSig !== baselineRef.current;
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const loadGenres = async () => {
     try {
@@ -383,6 +405,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
 
   const canProceed = () => title.trim().length > 0;
 
+  /** Cancel, X, the rail's close, Back on the first step. */
+  const requestClose = () => {
+    if (savingRef.current) return;
+    if (dirty) setLeaveOpen(true);
+    else handleClose();
+  };
+
   // A chart fills what the form doesn't have yet (title, artist, key, tempo).
   const handleChordChart = (c: SongChart | null) => {
     setChordChart(c);
@@ -426,8 +455,10 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     if (savingRef.current) return;
     if (step === 'extras') setStep('more');
     else if (step === 'more') setStep('details');
-    else handleClose();
+    else requestClose();
   };
+  // Android Back / Escape: a step back, then close (asking first).
+  useSystemBack(isOpen && !leaveOpen, prevStep);
 
   const getStepInfo = () => {
     switch (step) {
@@ -439,7 +470,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
 
   // iPhone Duo: close sits in the system column under the clock
   // (Figma "Closed · Songs / Add song – details").
-  const closeInRail = useRailAction(isOpen ? handleClose : undefined, { label: t('Close'), icon: <X />, pane: true });
+  const closeInRail = useRailAction(isOpen ? requestClose : undefined, { label: t('Close'), icon: <X />, pane: true });
 
   if (!isOpen) return null;
 
@@ -459,6 +490,22 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       aria-labelledby="add-song-title"
       className="bw-pane-detail fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
     >
+      <UnsavedChangesSheet
+        open={leaveOpen}
+        title={t('Save your changes?')}
+        onSave={() => {
+          setLeaveOpen(false);
+          // No title yet: back to it (the form says what's missing).
+          if (canProceed()) void handleSubmit();
+          else setStep('details');
+        }}
+        onDiscard={() => {
+          setLeaveOpen(false);
+          handleClose();
+        }}
+        onKeepEditing={() => setLeaveOpen(false)}
+        saving={saving}
+      />
       {/* Header: Top Bar + wizard steps */}
       <header className="shrink-0 px-4 pb-3 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
         <div className="flex items-center gap-3 min-h-11">
@@ -466,7 +513,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
           <h2 id="add-song-title" className="flex-1 min-w-0 bw-h1 truncate">
             {isEdit ? t('Edit song') : !isAdmin ? t('Suggest a song') : t('Add song', { context: 'title' })}
           </h2>
-          {!closeInRail && <IconButton label={t('Close')} icon={<X />} variant="ghost" onClick={handleClose} disabled={saving} />}
+          {!closeInRail && <IconButton label={t('Close')} icon={<X />} variant="ghost" onClick={requestClose} disabled={saving} />}
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">

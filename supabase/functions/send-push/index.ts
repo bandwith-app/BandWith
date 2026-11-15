@@ -286,9 +286,13 @@ async function sendToFCM(
 
     if (!response.ok) {
       const errorBody = await response.text();
-      if (errorBody.includes('UNREGISTERED') || errorBody.includes('INVALID_ARGUMENT')) {
+      // Only a dead or malformed token turns the device off. Any other
+      // INVALID_ARGUMENT is a payload problem: switching every Android token
+      // off for it would silence the device for good.
+      if (errorBody.includes('UNREGISTERED') || (errorBody.includes('INVALID_ARGUMENT') && /registration token/i.test(errorBody))) {
         return { success: false, error: 'invalid_token' };
       }
+      console.error(`FCM error ${response.status}:`, errorBody.slice(0, 500));
       return { success: false, error: `FCM error: ${response.status}` };
     }
     return { success: true };

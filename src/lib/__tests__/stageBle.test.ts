@@ -22,6 +22,13 @@ const OTHER_KEY = toBase64(new Uint8Array(32).map((_, i) => 255 - i));
 const ids = ['a1', 'b2', 'c3', 'd4'];
 
 describe('stageBle', () => {
+  it('carries the songs struck off, after the order (older apps read the rest)', async () => {
+    const state = { seq: 7, from: 'lead', songId: 'b2', order: ['a1', 'b2', 'c3', 'd4'], skipped: ['c3'] };
+    const bytes = await encodeStageState(state, ids, KEY);
+    expect(bytes!.length).toBe(1 + 4 + 1 + 4 + 4 + 1 + 1 + 4 + 2 + 8);
+    expect(await decodeStageState(bytes!, ids, KEY)).toEqual({ ok: true, state });
+  });
+
   it('round-trips a state through bytes', async () => {
     const state = { seq: 42, from: 'k3x9q2ab', songId: 'c3', order: ['c3', 'a1', 'b2', 'd4'] };
     const bytes = await encodeStageState(state, ids, KEY);

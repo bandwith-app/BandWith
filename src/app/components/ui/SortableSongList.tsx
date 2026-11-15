@@ -46,11 +46,27 @@ interface SortableSongListProps<S extends SortableSong> {
   /** Play number of the first song (numbers run across sets). */
   startNumber?: number;
   canReorder: boolean;
-  onReorder: (songs: S[]) => void;
+  onReorder?: (songs: S[]) => void;
   onRemove?: (uid: string) => void;
   /** Accessible name of the list, e.g. the set name. */
   label?: string;
   className?: string;
+  /** Called with the old and new index of a moved song (instead of onReorder's full list). */
+  onMove?: (from: number, to: number) => void;
+  /** Custom row content (number, title, details); the default is number, title and artist. */
+  renderRow?: (song: S, row: { index: number; number: string; overlay: boolean }) => React.ReactNode;
+  /** Tap on a row (ignored right after a drag). */
+  onRowClick?: (song: S, index: number) => void;
+  /** Accessible name of a row's tap target. */
+  rowLabel?: (song: S, index: number) => string;
+  /** A control at the end of a row (before the grip), e.g. Stage mode's strike-off. */
+  rowAction?: (song: S, index: number) => React.ReactNode;
+  /** The row playing now (aria-current). */
+  isCurrent?: (song: S, index: number) => boolean;
+  /** Extra classes for every row. */
+  rowClassName?: string;
+  /** 'stage': white on black, for Stage mode. */
+  tone?: 'default' | 'stage';
 }
 
 const LONG_PRESS_MS = 400;
@@ -70,25 +86,58 @@ const SongRowBody: React.FC<{ number: string; title: string; artist?: string }> 
 );
 
 const ROW = 'relative flex items-center gap-3 min-h-11 min-w-0 rounded-[12px] pl-1';
+/** A click this soon after a drop is the drop itself, not a tap. */
+const CLICK_AFTER_DROP_MS = 350;
+
+interface RowView {
+  body: React.ReactNode;
+  onClick?: () => void;
+  label?: string;
+  current?: boolean;
+  /** Custom content: roomier rows (Stage mode). */
+  custom?: boolean;
+}
+
+/** The row's content: a button when the row can be tapped. */
+const RowContent: React.FC<{ view: RowView }> = ({ view }) =>
+  view.onClick ? (
+    <button
+      type="button"
+      onClick={view.onClick}
+      aria-label={view.label}
+      aria-current={view.current ? 'true' : undefined}
+      className={cn('flex flex-1 min-w-0 items-center text-left', view.custom ? 'gap-4 py-3' : 'gap-3 py-2')}
+    >
+      {view.body}
+    </button>
+  ) : (
+    <span className={cn('flex flex-1 min-w-0 items-center', view.custom ? 'gap-4 py-3' : 'gap-3')}>{view.body}</span>
+  );
 
 function SortableRow({
   song,
-  number,
   title,
+  view,
   canReorder,
   describedBy,
   onRemove,
   onKeyMove,
   handleRef,
+  rowClassName,
+  stage,
+  action,
 }: {
+  action?: React.ReactNode;
   song: SortableSong;
-  number: string;
   title: string;
+  view: RowView;
   canReorder: boolean;
   describedBy: string;
   onRemove?: () => void;
   onKeyMove: (delta: number) => void;
   handleRef: (el: HTMLButtonElement | null) => void;
+  rowClassName?: string;
+  stage?: boolean;
 }) {
   const t = useT();
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
@@ -106,11 +155,20 @@ function SortableRow({
       className={cn(
         ROW,
         canReorder &&
-          'select-none [-webkit-touch-callout:none] cursor-grab active:bg-foreground/[0.06] transition-colors duration-300',
+          cn(
+            'select-none [-webkit-touch-callout:none] cursor-grab transition-colors duration-300',
+            stage ? 'active:bg-white/[0.06]' : 'active:bg-foreground/[0.06]'
+          ),
+        rowClassName,
         isDragging && 'opacity-30'
       )}
     >
-      <SongRowBody number={number} title={title} artist={song.artist} />
+      <RowContent view={view} />
+      {action && (
+        <span className="shrink-0 flex" onMouseDown={stop} onTouchStart={stop} onPointerDown={stop}>
+          {action}
+        </span>
+      )}
       {onRemove && (
         <IconButton
           label={t('Remove song')}
@@ -135,7 +193,10 @@ function SortableRow({
               onKeyMove(e.key === 'ArrowUp' ? -1 : 1);
             }
           }}
-          className="w-8 h-11 -mr-1 flex items-center justify-center shrink-0 rounded-full text-muted-foreground cursor-grab focus-visible:outline-2 focus-visible:outline-foreground"
+          className={cn(
+            'w-8 h-11 -mr-1 flex items-center justify-center shrink-0 rounded-full cursor-grab focus-visible:outline-2',
+            stage ? 'text-white/50 focus-visible:outline-white' : 'text-muted-foreground focus-visible:outline-foreground'
+          )}
         >
           <GripVertical className="w-4 h-4" />
         </button>
@@ -152,10 +213,30 @@ export function SortableSongList<S extends SortableSong>({
   onRemove,
   label,
   className,
+  onMove,
+  renderRow,
+  onRowClick,
+  rowLabel,
+  rowAction,
+  isCurrent,
+  rowClassName,
+  tone = 'default',
 }: SortableSongListProps<S>) {
   const t = useT();
+  const stage = tone === 'stage';
+  const droppedAt = useRef(0);
   const instructionsId = useId();
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Android WebView: a finger held still on the lifted row fires a context
+  // menu on the drag overlay (portaled to <body>, outside the rows that block
+  // it), and that cancels the touch, dropping the song. While a drag is on,
+  // no context menu anywhere.
+  useEffect(() => {
+    if (!activeId) return;
+    const block = (e: Event) => e.preventDefault();
+    document.addEventListener('contextmenu', block, true);
+    return () => document.removeEventListener('contextmenu', block, true);
+  }, [activeId]);
   const [overId, setOverId] = useState<string | null>(null);
   const [liveText, setLiveText] = useState('');
   const handles = useRef(new Map<string, HTMLButtonElement>());
@@ -187,11 +268,17 @@ export function SortableSongList<S extends SortableSong>({
     if (el && document.activeElement !== el) el.focus();
   }, [songs]);
 
+  /** Applies a move: onMove gets the indices, onReorder the new list. */
+  const apply = (next: S[], uid: string) => {
+    if (onMove) onMove(songs.findIndex((s) => s.uid === uid), next.findIndex((s) => s.uid === uid));
+    else onReorder?.(next);
+  };
+
   const keyMove = (uid: string, delta: number) => {
     const next = moveSongBy(songs, uid, delta);
     if (next === songs) return;
     refocus.current = uid;
-    onReorder(next);
+    apply(next, uid);
     haptic.selection();
     setLiveText(
       t('{title} moved to position {position} of {total}', {
@@ -220,12 +307,32 @@ export function SortableSongList<S extends SortableSong>({
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     reset();
     haptic.drop();
-    if (over && active.id !== over.id) onReorder(moveSongTo(songs, String(active.id), String(over.id)));
+    droppedAt.current = Date.now();
+    if (over && active.id !== over.id) apply(moveSongTo(songs, String(active.id), String(over.id)), String(active.id));
   };
   const onDragCancel = () => {
     reset();
     haptic.drop();
+    droppedAt.current = Date.now();
   };
+
+  const viewOf = (song: S, index: number, number: string, overlay = false): RowView => ({
+    body: renderRow ? (
+      renderRow(song, { index, number, overlay })
+    ) : (
+      <SongRowBody number={number} title={song.title || t('Untitled song')} artist={song.artist} />
+    ),
+    label: rowLabel?.(song, index),
+    current: isCurrent?.(song, index),
+    custom: !!renderRow,
+    onClick:
+      onRowClick && !overlay
+        ? () => {
+            if (Date.now() - droppedAt.current < CLICK_AFTER_DROP_MS) return;
+            onRowClick(song, index);
+          }
+        : undefined,
+  });
 
   const announcements: Announcements = {
     onDragStart: ({ active }) => t('Picked up {title}', { title: titleOf(active.id as string) }),
@@ -252,8 +359,9 @@ export function SortableSongList<S extends SortableSong>({
     return (
       <ol aria-label={label} className={cn('flex flex-col', className)}>
         {songs.map((song, i) => (
-          <li key={song.uid} className={ROW}>
-            <SongRowBody number={playNumber(startNumber + i)} title={song.title || t('Untitled song')} artist={song.artist} />
+          <li key={song.uid} className={cn(ROW, rowClassName)}>
+            <RowContent view={viewOf(song, i, playNumber(startNumber + i))} />
+            {rowAction && <span className="shrink-0 flex">{rowAction(song, i)}</span>}
             {onRemove && (
               <IconButton
                 label={t('Remove song')}
@@ -286,12 +394,15 @@ export function SortableSongList<S extends SortableSong>({
     >
       <SortableContext items={uids} strategy={verticalListSortingStrategy}>
         <ol aria-label={label} className={cn('flex flex-col', className)}>
-          {songs.map((song) => (
+          {songs.map((song, i) => (
             <SortableRow
               key={song.uid}
               song={song}
-              number={numberOf(song.uid)}
+              view={viewOf(song, i, numberOf(song.uid))}
               title={song.title || t('Untitled song')}
+              rowClassName={rowClassName}
+              stage={stage}
+              action={rowAction?.(song, i)}
               canReorder
               describedBy={instructionsId}
               onRemove={onRemove ? () => onRemove(song.uid) : undefined}
@@ -315,17 +426,20 @@ export function SortableSongList<S extends SortableSong>({
           <DragOverlay zIndex={OVERLAY_Z} modifiers={[verticalOnly]}>
             {activeSong ? (
               <div
+                onContextMenu={(e) => e.preventDefault()}
                 className={cn(
                   ROW,
-                  '-mx-2 px-3 bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.28)] ring-1 ring-border scale-[1.02] cursor-grabbing'
+                  rowClassName,
+                  '-mx-2 px-3 scale-[1.02] cursor-grabbing',
+                  stage
+                    ? 'bg-[#1c1c1c] text-white border-0 shadow-[0_12px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/25'
+                    : 'bg-card text-card-foreground shadow-[0_12px_32px_rgba(0,0,0,0.28)] ring-1 ring-border'
                 )}
               >
-                <SongRowBody
-                  number={numberOf(activeSong.uid)}
-                  title={activeSong.title || t('Untitled song')}
-                  artist={activeSong.artist}
+                <RowContent
+                  view={{ ...viewOf(activeSong, songs.indexOf(activeSong), numberOf(activeSong.uid), true), onClick: undefined }}
                 />
-                <GripVertical className="w-4 h-4 shrink-0 text-muted-foreground" />
+                <GripVertical className={cn('w-4 h-4 shrink-0', stage ? 'text-white/60' : 'text-muted-foreground')} />
               </div>
             ) : null}
           </DragOverlay>,

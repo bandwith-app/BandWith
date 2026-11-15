@@ -23,6 +23,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    // The app switcher keeps a picture of the last screen (fees, totals). With
+    // the app lock on it shows the launch screen instead, so nothing is seen
+    // before Face ID / Touch ID on the next launch.
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        PrivacyCover.show(on: window)
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        PrivacyCover.hide(from: window)
+    }
+
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         if let urlContext = URLContexts.first {
             openURL(urlContext)
@@ -64,5 +75,31 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     private func continueActivity(_ activity: NSUserActivity) {
         _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+    }
+}
+
+/// The launch screen laid over the window while the app is in the background.
+/// On by default (the app lock is), the page keeps it in step with the setting.
+enum PrivacyCover {
+    private static let key = "bw.privacyCover"
+    private static let tag = 0xB0C0
+
+    static var enabled: Bool {
+        get { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+
+    static func show(on window: UIWindow?) {
+        guard enabled, let window, window.viewWithTag(tag) == nil else { return }
+        let cover = UIStoryboard(name: "LaunchScreen", bundle: nil).instantiateInitialViewController()?.view ?? UIView()
+        cover.backgroundColor = cover.backgroundColor ?? .black
+        cover.frame = window.bounds
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.tag = tag
+        window.addSubview(cover)
+    }
+
+    static func hide(from window: UIWindow?) {
+        window?.viewWithTag(tag)?.removeFromSuperview()
     }
 }

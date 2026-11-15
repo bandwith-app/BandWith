@@ -15,6 +15,7 @@ import {
   reorderRows,
   sameOrder,
   stageTopic,
+  stepOver,
   type StageLiveState,
 } from '@/lib/stageLive';
 import {
@@ -61,6 +62,27 @@ export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error';
 /** Window event after Stage mode saved a new song order: detail `{ setlistId }`. */
 export const SETLIST_ORDER_SAVED = 'bw:setlist-order-saved';
 
+/** The leader's struck-off songs for a gig, kept on the device (survives a restart mid-gig). */
+const skippedKey = (eventId: string) => `bw-stage-skipped:${eventId}`;
+const readSkipped = (eventId: string | undefined): string[] => {
+  if (!eventId) return [];
+  try {
+    const v = JSON.parse(localStorage.getItem(skippedKey(eventId)) || '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+const writeSkipped = (eventId: string | undefined, ids: string[]) => {
+  if (!eventId) return;
+  try {
+    if (ids.length) localStorage.setItem(skippedKey(eventId), JSON.stringify(ids));
+    else localStorage.removeItem(skippedKey(eventId));
+  } catch {
+    /* storage blocked: tonight only */
+  }
+};
+
 /** Wait after the last move before saving the order (several taps, one save). */
 const SAVE_DELAY_MS = 700;
 
@@ -85,6 +107,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const [leaderSeen, setLeaderSeen] = useState(false);
   const [connected, setConnected] = useState(false);
   const [saveState, setSaveState] = useState<StageSaveState>('idle');
+  // Struck off for tonight: the leader's choice, shown to the whole band.
+  const [skipped, setSkippedState] = useState<string[]>(() => (isLeader ? readSkipped(eventId) : []));
+  const skippedRef = useRef(skipped);
+  const setSkipped = useCallback((ids: string[]) => {
+    skippedRef.current = ids;
+    setSkippedState(ids);
+  }, []);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   /** Newest state applied or sent (Lamport clock + what it said). */
@@ -121,11 +150,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       lastRef.current = state;
       remoteRef.current = state;
       setLeaderSeen(true);
-      // The order is the setlist's, so it applies even when not following.
+      // The order and the struck songs are the setlist's: they apply even when not following.
       if (state.order) setOrder(state.order);
+      setSkipped(state.skipped ?? []);
       if (followingRef.current) setSongId(state.songId);
     },
-    [clientId],
+    [clientId, setSkipped],
   );
 
   // Offline on stage: the same states over Bluetooth (native apps only).
@@ -144,7 +174,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const send = useCallback(
     (next: { songId: string | null; order: string[] | null }) => {
       const seq = nextSeq(lastRef.current?.seq);
-      const state: StageLiveState = { seq, from: clientId, ...next };
+      const state: StageLiveState = { seq, from: clientId, ...next, skipped: skippedRef.current };
       lastRef.current = state;
       ledRef.current = true;
       void channelRef.current?.send({ type: 'broadcast', event: 'state', payload: state });
@@ -381,7 +411,22 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [ordered, isLeader, send, order],
   );
 
-  const go = useCallback((delta: number) => select(index + delta), [select, index]);
+  const skippedSet = useMemo(() => new Set(skipped), [skipped]);
+  // Prev / Next step over the songs struck off.
+  const go = useCallback((delta: number) => select(stepOver(ordered, index, delta, skippedSet)), [select, ordered, index, skippedSet]);
+
+  /** Leader: strike song `i` off tonight's set (or bring it back). Not saved to the setlist. */
+  const toggleSkip = useCallback(
+    (i: number) => {
+      const id = ordered[i]?.id;
+      if (!isLeader || !id) return;
+      const next = skippedRef.current.includes(id) ? skippedRef.current.filter((x) => x !== id) : [...skippedRef.current, id];
+      setSkipped(next);
+      writeSkipped(eventId, next);
+      send({ songId: songId ?? ordered[index]?.id ?? null, order });
+    },
+    [ordered, isLeader, setSkipped, eventId, send, songId, index, order],
+  );
 
   const setFollowing = useCallback(
     (on: boolean) => {
@@ -429,6 +474,11 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     canReorder: isLeader && !!setlistId && hasIds && ordered.every((s) => !!s.songId),
     move,
     saveState,
+    /** Songs struck off tonight (row ids). */
+    skipped: skippedSet,
+    /** The leader can strike songs off (saved rows with ids). */
+    canStrike: isLeader && hasIds,
+    toggleSkip,
     /** Visual metronome: the newest click, whose it is, and the clock offset to use. */
     click: {
       state: click,

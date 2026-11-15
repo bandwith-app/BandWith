@@ -693,8 +693,30 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                   })()}
                 </div>
     ) : null;
+  // Already answered (here, in the RSVP sheet or on the gig): say what, and
+  // offer to change it instead of asking again.
+  const myInviteAnswer = inviteLineup?.people.find((p) => p.isViewer)?.status;
+  const answeredInvite = myInviteAnswer === 'in' || myInviteAnswer === 'maybe' || myInviteAnswer === 'out';
   const renderDetailCta = () =>
-    detailNotif?.type === 'event_invite' ? (
+    detailNotif?.type === 'event_invite' && answeredInvite && onOpenRSVP ? (
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 h-12 px-4 rounded-full bw-button-sm flex-[0_0_44%] min-w-0',
+                      myInviteAnswer === 'in' ? 'bg-success text-success-foreground'
+                        : myInviteAnswer === 'out' ? 'bg-destructive-solid text-white'
+                          : 'bg-foreground/10 text-foreground',
+                    )}
+                    aria-label={t('Your RSVP')}
+                  >
+                    {myInviteAnswer === 'in' && <Check className="w-4 h-4 shrink-0" aria-hidden />}
+                    <span className="truncate">{myInviteAnswer === 'in' ? t('Going') : myInviteAnswer === 'maybe' ? t('Maybe') : t("Can't make it")}</span>
+                  </span>
+                  <PillButton variant="outline" className="flex-1" onClick={() => detailNotif && onOpenRSVP(detailNotif)}>
+                    {t('Change your answer')}
+                  </PillButton>
+                </div>
+              ) : detailNotif?.type === 'event_invite' ? (
                 <div className="flex items-center gap-3">
                   <PillButton variant="outline" className="flex-[0_0_36%]" onClick={() => handleAction('decline_event')}>
                     {t('Decline')}

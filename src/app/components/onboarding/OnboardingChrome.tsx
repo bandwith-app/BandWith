@@ -1,3 +1,4 @@
+import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import React from 'react';
 import { cn } from '@/app/components/ui/utils';
 import { BackButton } from '@/app/components/bw/Form';
@@ -78,7 +79,7 @@ export const ChoicePill: React.FC<{
   <button
     type="button"
     aria-pressed={selected}
-    onClick={onClick}
+    {...keyboardSafeTap(onClick)}
     aria-label={rest['aria-label']}
     className={cn(
       'inline-flex items-center gap-1.5 h-7 px-3 rounded-full bw-label-sm whitespace-nowrap shrink-0',

@@ -139,11 +139,23 @@ export function tabletListWidth(vw: number): number {
 export function installDuoLayout(): void {
   if (typeof window === 'undefined') return;
   const root = document.documentElement;
+  // The keyboard shrinks the web view (native resize): an iPad in landscape
+  // drops to ~400 px tall and would read as a phone, swapping the layout under
+  // the field being typed in (the gig title lost focus, sheets jumped). While
+  // the keyboard is up, the layout keeps the height it had without it.
+  let freeW = 0;
+  let freeH = 0;
   const update = () => {
     const native = !!window.__bwRegions;
     const r = current();
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    let vh = window.innerHeight;
+    if (root.getAttribute('data-keyboard') === 'open') {
+      if (vw === freeW && freeH > vh) vh = freeH;
+    } else {
+      freeW = vw;
+      freeH = vh;
+    }
     const result = computePosture(postureInput(r, native, vw, vh));
     const s = r.status;
     const railEdge = result.railEdge;

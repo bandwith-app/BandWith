@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSystemBack } from '@/lib/backStack';
 import { Plus, Trash2 } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
-import { LIMITS, moveItem, newId, stageSize, type PlotItem, type PlotItemKind, type StagePlot } from '@/lib/stagePlot';
+import { LIMITS, PLOT_PRESETS, freeSpot, moveItem, newId, presetItem, presetName, stageSize, type PlotItem, type PlotItemKind, type StagePlot } from '@/lib/stagePlot';
 
 /** Width / depth of the drawn stage: wider stages draw wider, never too flat or too tall. */
 export function plotRatio(plot: StagePlot): number {
@@ -53,12 +54,47 @@ export const StagePlotView: React.FC<{
   const [selected, setSelected] = useState<string | null>(null);
   const [liftedId, setLiftedId] = useState<string | null>(null);
   const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null);
+  // The hold menu is the top layer: Back and Escape close just the menu.
+  useSystemBack(!!addAt, () => setAddAt(null));
+  // Above the spot low on the plot, below it high up; but a wide, short plot
+  // (iPad in landscape) can push it off the screen: then it takes the side
+  // that fits.
+  const [menuSide, setMenuSide] = useState<'above' | 'below' | null>(null);
+  useLayoutEffect(() => {
+    setMenuSide(null);
+  }, [addAt]);
+  useLayoutEffect(() => {
+    const el = menu.current;
+    if (!addAt || !el || menuSide) return;
+    const r = el.getBoundingClientRect();
+    // --safe-top is a calc(): measure it (status bar, Duo hinge header).
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;top:0;height:var(--safe-top,0px);visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    const top = probe.getBoundingClientRect().height + 8;
+    probe.remove();
+    const side = addAt.y > 0.5 ? 'above' : 'below';
+    const bottom = window.innerHeight - 8;
+    if (r.top < top && side === 'above') setMenuSide('below');
+    else if (r.bottom > bottom && side === 'below') setMenuSide('above');
+    else if (r.top < top || r.bottom > bottom) {
+      // No room on either side (the plot is at the screen's edge): bring the
+      // menu into view, clear of the status bar.
+      setMenuSide(side);
+      el.style.scrollMarginTop = `${top}px`;
+      el.style.scrollMarginBottom = '8px';
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  });
   const size2 = stageSize(plot);
   const ratio = plotRatio(plot);
   const canAdd = plot.items.length < LIMITS.items;
 
+  // Musicians by instrument (code, caption and input channels filled in, all
+  // editable), a generic one, then the gear.
+  const instruments: [string, string][] = PLOT_PRESETS.map((k) => [k, presetName(k, t)]);
   const kinds: [PlotItemKind, string][] = [
-    ['player', t('Musician')],
+    ['player', t('Other musician')],
     ['wedge', t('Wedge')],
     ['speaker', t('Speaker')],
     ['di', t('DI box')],
@@ -174,6 +210,19 @@ export const StagePlotView: React.FC<{
       y: at ? at.y : kind === 'wedge' ? 0.9 : kind === 'speaker' ? 0.8 : 0.5,
       ...(kind === 'player' ? { code: '??', label: '' } : {}),
     };
+    place(item, !!at);
+  };
+  const addPreset = (key: string, at?: { x: number; y: number }) => {
+    if (!canAdd) return;
+    place(presetItem(key, t, at ?? undefined), !!at);
+  };
+  const place = (item: PlotItem, exact = false) => {
+    // From the chip row: next to what is already there, never on top of it.
+    if (!exact) {
+      const width = box.current?.getBoundingClientRect().width || 0;
+      // A circle (44 px) and 8 px of air, at the stage's drawn size.
+      item = { ...item, ...freeSpot(plot.items, item, { ratio, gap: width ? 52 / width : undefined }) };
+    }
     onChange?.({ ...plot, items: [...plot.items, item] });
     setSelected(item.id);
     setAddAt(null);
@@ -229,18 +278,31 @@ export const StagePlotView: React.FC<{
               ref={menu}
               role="menu"
               aria-label={t('Add here')}
-              className="absolute left-1/2 -translate-x-1/2 z-20 w-max max-w-[calc(100%-16px)] p-1 rounded-[20px] bg-white text-black border border-black/10 shadow-[0_10px_28px_rgba(0,0,0,0.35)] grid grid-cols-2 gap-0.5"
-              style={addAt.y > 0.5 ? { bottom: `calc(${(1 - addAt.y) * 100}% + 16px)` } : { top: `calc(${addAt.y * 100}% + 16px)` }}
+              className="absolute left-1/2 -translate-x-1/2 z-20 w-max max-w-[calc(100%-16px)] p-1 rounded-[20px] bg-white text-black border border-black/10 shadow-[0_10px_28px_rgba(0,0,0,0.35)] flex flex-wrap justify-center gap-0.5"
+              style={(menuSide ?? (addAt.y > 0.5 ? 'above' : 'below')) === 'above' ? { bottom: `calc(${(1 - addAt.y) * 100}% + 16px)` } : { top: `calc(${addAt.y * 100}% + 16px)` }}
             >
+              {instruments.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => addPreset(key, addAt)}
+                  className="h-9 px-2.5 rounded-full bw-label-sm inline-flex items-center gap-1 cursor-pointer hover:bg-black/5 active:bg-black/10 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  {label}
+                </button>
+              ))}
+              <span aria-hidden className="basis-full h-px my-0.5 bg-black/10" />
               {kinds.map(([kind, label]) => (
                 <button
                   key={kind}
                   type="button"
                   role="menuitem"
                   onClick={() => add(kind, addAt)}
-                  className="h-9 px-3 rounded-full bw-label-sm inline-flex items-center gap-1.5 cursor-pointer hover:bg-black/5 active:bg-black/10"
+                  className="h-9 px-2.5 rounded-full bw-label-sm inline-flex items-center gap-1 cursor-pointer hover:bg-black/5 active:bg-black/10 whitespace-nowrap"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
                   {label}
                 </button>
               ))}
@@ -257,7 +319,22 @@ export const StagePlotView: React.FC<{
       {editable && (
         <div className="flex flex-col gap-2">
           {canAdd && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Add a musician')}>
+              {instruments.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => addPreset(key)}
+                  className="h-8 px-3 rounded-full border border-foreground/30 bw-label-sm inline-flex items-center gap-1.5 cursor-pointer active:scale-[var(--press-scale)]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {canAdd && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Add gear')}>
               {kinds.map(([kind, label]) => (
                 <button
                   key={kind}
@@ -316,7 +393,10 @@ export const StagePlotView: React.FC<{
               </button>
             </div>
           ) : (
-            <p className="bw-body-sm text-muted-foreground">{t('Hold an item, then drag it to move it. Tap it to rename or remove it. Hold an empty spot to add one there.')}</p>
+            <p className="bw-body-sm text-muted-foreground">
+              {t('Hold an item, then drag it to move it. Tap it to rename or remove it. Hold an empty spot to add one there.')}{' '}
+              {t('Saving adds the channels of new instruments and DI boxes to the input list, and removes those of deleted ones.')}
+            </p>
           )}
         </div>
       )}
