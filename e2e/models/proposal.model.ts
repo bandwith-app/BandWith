@@ -108,7 +108,7 @@ export const proposal = defineLifecycle({
     PUBLISH: { do: 'Add next week\'s days, Publish poll.' },
     LOCK_IN: { do: 'Details · Lock in → Lock in → Confirm & create event.' },
   },
-  wide: ['PROPOSED_BY_JONAH DECLINE CONFIRM_DECLINE_WITH_REASON'],
+  wide: [],
   knownBugs: [],
   manual: [
     'The proposer\'s push for a declined proposal (push delivery is device-only); the in-app notice row is checked.',

@@ -78,7 +78,7 @@ export const rsvpGig = defineLifecycle({
     CONFIRM_DROP: { do: 'Tap Confirm drop.' },
     KEEP: { do: 'Tap CANCEL next to "Drop out?".' },
   },
-  wide: ['ALREADY_GOING DROP_OUT CONFIRM_DROP'],
+  wide: [],
   knownBugs: [
     {
       // EventDetail.tsx:791-797 handleAccept awaits onAccept(), i.e.

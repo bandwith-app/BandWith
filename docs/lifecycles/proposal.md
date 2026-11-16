@@ -4,7 +4,7 @@
 
 Member proposes → admin sees "Open until" → Build poll (→ rehearsal), Decline with or without a reason, expiry; weekly limit; withdraw.
 
-Starts as **member**. States 15/15 and transitions 17/17 covered by 9 generated paths (11 Playwright tests).
+Starts as **member**. States 15/15 and transitions 17/17 covered by 9 generated paths (9 Playwright tests).
 
 ```mermaid
 stateDiagram-v2
@@ -84,7 +84,7 @@ stateDiagram-v2
 | Rehearsal proposal: PROPOSE → WITHDRAW → KEEP | phone-portrait |
 | Rehearsal proposal: PROPOSED_BY_JONAH → BUILD_POLL → PUBLISH → LOCK_IN | phone-portrait |
 | Rehearsal proposal: PROPOSED_BY_JONAH → DECLINE → CONFIRM_DECLINE | phone-portrait |
-| Rehearsal proposal: PROPOSED_BY_JONAH → DECLINE → CONFIRM_DECLINE_WITH_REASON | phone-portrait, ipad-landscape, duo-laptop |
+| Rehearsal proposal: PROPOSED_BY_JONAH → DECLINE → CONFIRM_DECLINE_WITH_REASON | phone-portrait |
 | Rehearsal proposal: PROPOSED_BY_JONAH → DECLINE → KEEP | phone-portrait |
 | Rehearsal proposal: STALE_PROPOSAL | phone-portrait |
 

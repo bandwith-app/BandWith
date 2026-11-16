@@ -6,16 +6,16 @@ The riskiest multi-step lifecycles of BandWith, written as XState state machines
 
 | Model | Role | States | Transitions | Paths | Tests | Known bugs |
 | --- | --- | --- | --- | --- | --- | --- |
-| [RSVP (gig)](rsvp-gig.md) | member | 8/8 | 11/12 | 8 | 9 | 1 |
+| [RSVP (gig)](rsvp-gig.md) | member | 8/8 | 11/12 | 8 | 7 | 1 |
 | [RSVP (rehearsal)](rsvp-rehearsal.md) | member | 8/8 | 11/11 | 6 | 8 | 0 |
-| [Rehearsal proposal](proposal.md) | member | 15/15 | 17/17 | 9 | 11 | 0 |
+| [Rehearsal proposal](proposal.md) | member | 15/15 | 17/17 | 9 | 9 | 0 |
 | [Availability poll](poll.md) | admin | 13/13 | 14/14 | 6 | 8 | 0 |
 | [Overview card edit](card-edit.md) | admin | 10/10 | 17/17 | 12 | 14 | 0 |
 | [Setlist draft](setlist-draft.md) | admin | 9/9 | 10/10 | 5 | 5 | 0 |
 | [Quote to gig](quote.md) | admin | 15/15 | 17/17 | 8 | 10 | 0 |
 | [Deputies](deputy.md) | admin | 17/17 | 20/20 | 9 | 10 | 1 |
-| [Auth callback & reset](auth.md) | admin | 9/9 | 11/11 | 5 | 7 | 0 |
-| **Total** | | 104/104 | 128/129 | 68 | 82 | 2 |
+| [Auth callback & reset](auth.md) | admin | 9/9 | 11/11 | 5 | 5 | 0 |
+| **Total** | | 104/104 | 128/129 | 68 | 76 | 2 |
 
 ## Where things live
 

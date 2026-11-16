@@ -71,7 +71,7 @@ export const auth = defineLifecycle({
     BACK_TO_APP: { do: 'Tap Back to sign in.' },
     BROWSER_BACK: { do: 'Browser Back.' },
   },
-  wide: ['EXPIRED_LINK SEND_NEW_LINK SEND_RESET_LINK BACK_TO_SIGN_IN'],
+  wide: [],
   knownBugs: [],
   manual: [
     'A real expired or used link from Supabase, a code exchanged twice, a reset link opened in another browser ("other_browser"), and the new password form after a valid link: the demo has no auth server.',

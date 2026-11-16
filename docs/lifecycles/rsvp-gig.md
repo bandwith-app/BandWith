@@ -4,7 +4,7 @@
 
 A member answers a band gig invitation, changes the answer, and a past gig is read-only.
 
-Starts as **member**. States 8/8 and transitions 11/12 covered by 8 generated paths (9 Playwright tests).
+Starts as **member**. States 8/8 and transitions 11/12 covered by 8 generated paths (7 Playwright tests).
 
 ```mermaid
 stateDiagram-v2
@@ -59,7 +59,7 @@ stateDiagram-v2
 
 | Test | Profiles |
 | --- | --- |
-| RSVP (gig): ALREADY_GOING → DROP_OUT → CONFIRM_DROP | phone-portrait, ipad-landscape, duo-laptop |
+| RSVP (gig): ALREADY_GOING → DROP_OUT → CONFIRM_DROP | phone-portrait |
 | RSVP (gig): ALREADY_GOING → DROP_OUT → KEEP | phone-portrait |
 | RSVP (gig): INVITED → ACCEPT | phone-portrait |
 | RSVP (gig): INVITED → ACCEPT → REOPEN **(known bug: not run)** | phone-portrait |
