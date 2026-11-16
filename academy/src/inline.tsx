@@ -4,7 +4,9 @@ import { BY_ID } from '../content';
 /** Links that point to an article that doesn't exist (shown on #/dev). */
 export const brokenLinks = new Set<string>();
 
-const TOKEN = /(\*\*[^*]+\*\*|\[\[[^\]]+\]\]|`[^`]+`)/g;
+// A label may end in an escaped asterisk, a required field: **Song title \***.
+const TOKEN = /(\*\*(?:\\\*|[^*])+\*\*|\[\[[^\]]+\]\]|`[^`]+`)/g;
+const unescape = (s: string) => s.replace(/\\\*/g, '*');
 
 /** Renders the inline conventions of the content: **label**, [[id|text]], `code`. */
 export function Inline({ text }: { text: string }) {
@@ -16,7 +18,7 @@ export function Inline({ text }: { text: string }) {
         if (part.startsWith('**') && part.endsWith('**')) {
           return (
             <strong key={i} className="ui">
-              {placeholders(part.slice(2, -2))}
+              {placeholders(unescape(part.slice(2, -2)))}
             </strong>
           );
         }
@@ -59,7 +61,7 @@ function placeholders(text: string): ReactNode {
 /** Plain text of an inline string (for search and summaries). */
 export const plain = (text: string) =>
   text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*\*((?:\\\*|[^*])+)\*\*/g, (_, l: string) => unescape(l))
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
     .replace(/\[\[([^\]]+)\]\]/g, (_, id: string) => BY_ID.get(id.trim())?.title ?? id)
     .replace(/`([^`]+)`/g, '$1')
