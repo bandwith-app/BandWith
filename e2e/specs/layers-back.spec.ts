@@ -1,6 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import type { Locator } from '@playwright/test';
-import { eventDetail, openEvent, SEED, systemBack } from '../support/flows';
+import { escapeRe, eventDetail, openEvent, SEED, systemBack } from '../support/flows';
 import { hubRow, openHub, openChatTab } from '../support/hub';
 
 /**
@@ -114,3 +114,46 @@ for (const layer of LAYERS) {
     });
   });
 }
+
+test.describe('inbox opened as Home loads', () => {
+  test.use({ autoOpen: false });
+
+  test('@smoke no gig opens behind the inbox, and Back (the Duo rail\'s too) closes the inbox', async ({ app }) => {
+    const { page } = app;
+    await page.goto('/');
+    const bellName = `${app.t('Notifications')} (`;
+    await expect(page.getByRole('button', { name: new RegExp(`^${escapeRe(bellName)}`) }).filter({ visible: true }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    // Tap the bell the moment it shows (on the open Duo, Home may not have
+    // opened its next gig beside the dashboard yet), and note in the same
+    // tick whether a gig was open already.
+    const gigBefore = await page.evaluate((prefix) => {
+      const had = !!document.querySelector('.bw-event-detail');
+      const bell = [...document.querySelectorAll<HTMLElement>('button[aria-label]')].find((b) => {
+        const r = b.getBoundingClientRect();
+        return (b.getAttribute('aria-label') || '').startsWith(prefix) && r.width > 0 && r.height > 0;
+      });
+      bell?.click();
+      return had;
+    }, bellName);
+    const inbox = page.getByRole('heading', { name: app.t('Inbox'), exact: true });
+    await expect(inbox).toBeVisible();
+    await expect(page.getByText(/Vote on rehearsal dates/i).first()).toBeVisible();
+    // Home's events have arrived under the inbox (its gig card is there).
+    await expect(page.getByText(SEED.gigToday, { exact: false }).first()).toBeAttached();
+    await app.settle();
+    if (!gigBefore) await expect(page.locator('.bw-event-detail')).toHaveCount(0);
+
+    // The Duo rail's Back (Laptop pose: on the Deck), else system Back.
+    const rail = page.getByRole('toolbar', { name: app.t('Screen actions, search and profile') });
+    if (await rail.isVisible()) await rail.getByRole('button').first().click();
+    else await systemBack(app);
+    await app.settle();
+    await expect(inbox).toBeHidden();
+    // Two pages: the next gig shows beside Home once the inbox is closed.
+    const twoPane = await page.evaluate(() => document.documentElement.hasAttribute('data-bw-two-pane'));
+    if (twoPane) await expect(eventDetail(app)).toBeVisible();
+    await app.check('Home after closing the inbox');
+  });
+});
