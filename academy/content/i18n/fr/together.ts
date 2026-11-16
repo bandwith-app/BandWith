@@ -412,7 +412,7 @@ const together: AreaText = {
             "Touche **Créer** et choisis **Répétition**, puis passe **Mode de planification** sur **Sondage**. Le créateur de **Sondage de dispos** s’ouvre.",
             "Saisis un **Titre du sondage** et, si tu veux, un **Objectif / notes (facultatif)**.",
             "Sous **Qui vote**, touche un membre pour l’exclure. Tu votes toujours.",
-            "Sous **Lieu, coût et morceaux**, remplis **Lieu / studio**, le **Coût de la salle** (le **Partage** montre la part de chacun) et les **Morceaux à travailler** (touche **Ajouter**).",
+            "Sous **Lieu, coût et morceaux**, remplis **Lieu / studio** (tape quelques lettres et choisis une suggestion, ou garde ce que tu as tapé), le **Coût de la salle** (le **Partage** montre la part de chacun) et les **Morceaux à travailler** (touche **Ajouter**).",
             "Ajoute des dates. Avec **Semaine entière**, choisis **Cette semaine** ou **Semaine pro**, touche les **Jours inclus**, règle **Début** et **Fin**, et touche **Ajouter les jours choisis au sondage**. Chaque jour indique combien de membres sont libres. Avec **Date / heure au choix**, choisis une **Date proposée**, un **Début** et une **Fin**, puis touche **Ajouter le créneau au sondage**.",
             "Vérifie les **Créneaux proposés**. Retires-en un avec **Retirer le créneau**, ou touche **Tout effacer**.",
             "Règle si tu veux **Voter avant le** : un jour et une heure (voir [[poll-who-votes-and-deadline]]).",
@@ -422,6 +422,10 @@ const together: AreaText = {
         {
           type: "p",
           text: "Chaque membre invité à voter reçoit une notification « Vote pour les horaires de répétition » et un push. Le sondage apparaît comme **Sondage · Actif** sur l’accueil et dans le **Calendrier** sous **Planification des répétitions**.",
+        },
+        {
+          type: "p",
+          text: "Tu as changé d’avis ? **Retour** (en haut ou en bas, ou le bouton Retour du téléphone) revient au formulaire de répétition ; **Fermer** quitte le sondage. Si tu as saisi quelque chose, on te demande d’abord : **Abandonner ce sondage ?** Touche **Continuer à modifier** ou **Abandonner**. Les sondages n’ont pas de brouillon.",
         },
         {
           type: "list",

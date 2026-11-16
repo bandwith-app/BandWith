@@ -412,7 +412,7 @@ const together: AreaText = {
             "Toque em **Criar**, escolha **Novo ensaio** e mude o **Modo de agendamento** para **Enquete**. Abre o criador de **Enquete de disponibilidade**.",
             "Digite um **Título da enquete** e, se quiser, um **Objetivo / notas (opcional)**.",
             "Em **Quem vota**, toque num membro para deixá-lo de fora. Você sempre vota.",
-            "Em **Local, custo e músicas**, preencha **Local / estúdio**, o **Custo da sala** (a **Divisão** mostra a parte de cada um) e as **Músicas em foco** (toque em **Adicionar**).",
+            "Em **Local, custo e músicas**, preencha **Local / estúdio** (digite algumas letras e escolha uma sugestão, ou mantenha o que digitou), o **Custo da sala** (a **Divisão** mostra a parte de cada um) e as **Músicas em foco** (toque em **Adicionar**).",
             "Adicione datas. Com **Semana inteira**, escolha **Esta semana** ou **Próxima semana**, toque nos dias em **Incluir dias**, defina **Início** e **Fim** e toque em **Adicionar os dias escolhidos à enquete**. Cada dia mostra quantos membros estão livres. Com **Data / hora livre**, escolha uma **Data proposta**, **Início** e **Fim** e toque em **Adicionar horário à enquete**.",
             "Confira os **Horários propostos**. Remova um com **Remover horário** ou toque em **Limpar tudo**.",
             "Se quiser, defina **Votar até**: um dia e um horário (veja [[poll-who-votes-and-deadline]]).",
@@ -422,6 +422,10 @@ const together: AreaText = {
         {
           type: "p",
           text: "Cada membro chamado a votar recebe uma notificação “Vote nos horários do ensaio” e um push. A enquete aparece como **Enquete · Ativa** na tela Início e no **Calendário**, em **Organização de ensaios**.",
+        },
+        {
+          type: "p",
+          text: "Mudou de ideia? **Voltar** (em cima ou embaixo, ou o botão Voltar do celular) retorna ao formulário do ensaio; **Fechar** sai da enquete. Se você digitou algo, o app pergunta antes: **Descartar esta enquete?** Toque em **Continuar editando** ou **Descartar**. Enquetes não têm rascunhos.",
         },
         {
           type: "list",

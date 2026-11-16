@@ -412,7 +412,7 @@ const together: AreaText = {
             "Tippe auf **Erstellen**, wähle **Neue Probe** und stell dann **Planungsmodus** auf **Umfrage**. Der Editor **Verfügbarkeitsumfrage** öffnet sich.",
             "Gib einen **Titel der Umfrage** ein und, wenn du magst, **Ziel / Notizen (optional)**.",
             "Tippe unter **Wer abstimmt** auf ein Mitglied, um es auszuschließen. Du stimmst immer mit ab.",
-            "Fülle unter **Ort, Kosten & Songs** **Ort / Studio**, die **Raumkosten** (die **Aufteilung** zeigt den Anteil jeder Person) und die **Fokus-Songs** aus (tippe auf **Hinzufügen**).",
+            "Fülle unter **Ort, Kosten & Songs** **Ort / Studio** (tipp ein paar Buchstaben und wähl einen Vorschlag, oder behalte, was du getippt hast), die **Raumkosten** (die **Aufteilung** zeigt den Anteil jeder Person) und die **Fokus-Songs** aus (tippe auf **Hinzufügen**).",
             "Füge Termine hinzu. Mit **Ganze Woche** wählst du **Diese Woche** oder **Nächste Woche**, tippst auf die **Tage**, legst **Start** und **Ende** fest und tippst auf **Gewählte Tage zur Umfrage hinzufügen**. Jeder Tag zeigt, wie viele Mitglieder frei sind. Mit **Datum / Uhrzeit frei** wählst du **Terminvorschlag**, **Start** und **Ende** und tippst auf **Termin zur Umfrage hinzufügen**.",
             "Prüfe die **Terminvorschläge**. Entferne einen mit **Termin entfernen** oder tippe auf **Alle löschen**.",
             "Lege, wenn du magst, **Abstimmen bis** fest: einen Tag und eine Uhrzeit (siehe [[poll-who-votes-and-deadline]]).",
@@ -422,6 +422,10 @@ const together: AreaText = {
         {
           type: "p",
           text: "Jedes Mitglied, das abstimmen soll, bekommt die Mitteilung „Stimm über die Probenzeiten ab“ und eine Push-Mitteilung. Die Umfrage erscheint als **Umfrage · Aktiv** auf Start und im **Kalender** unter **Probenplanung**.",
+        },
+        {
+          type: "p",
+          text: "Doch anders entschieden? **Zurück** (oben oder unten, oder die Zurück-Taste des Telefons) führt zum Probenformular zurück; **Schließen** verlässt die Umfrage. Hast du etwas eingegeben, wirst du vorher gefragt: **Diese Umfrage verwerfen?** Tippe auf **Weiter bearbeiten** oder **Verwerfen**. Umfragen haben keine Entwürfe.",
         },
         {
           type: "list",

@@ -573,6 +573,56 @@ export const togglePollVote = async (
 };
 
 /**
+ * Sets the member's vote on one option to `voted` (not a toggle), so the same
+ * write can be repeated safely: the optimistic vote pads (lib/pollVoteSync)
+ * send the state last tapped, whatever the server had. Voting for a date also
+ * drops a "None of these work" answer (102).
+ */
+export const setPollVote = async (
+  pollId: string,
+  optionId: string,
+  userId: string,
+  voted: boolean
+): Promise<{ error: Error | null }> => {
+  try {
+    if (!voted) {
+      const { error } = await supabase
+        .from('rehearsal_poll_votes')
+        .delete()
+        .eq('option_id', optionId)
+        .eq('user_id', userId);
+      if (error) throw error;
+      return { error: null };
+    }
+    const { error } = await supabase
+      .from('rehearsal_poll_votes')
+      .insert({ poll_id: pollId, option_id: optionId, user_id: userId });
+    // Already there (UNIQUE option_id, user_id): the vote stands.
+    if (error && (error as { code?: string }).code !== '23505') throw error;
+    const { error: unavailableError } = await clearPollUnavailable(pollId, userId);
+    if (unavailableError) console.warn('Failed to clear the "none work" answer:', unavailableError);
+    return { error: null };
+  } catch (error: any) {
+    console.error('Failed to set vote:', error);
+    return { error };
+  }
+};
+
+/** Drops the member's "None of these work" answer (102); a no-op before 102. */
+export const clearPollUnavailable = async (
+  pollId: string,
+  userId: string
+): Promise<{ error: Error | null }> => {
+  const { error } = await supabase
+    .from(UNAVAILABLE_TABLE)
+    .delete()
+    .eq('poll_id', pollId)
+    .eq('user_id', userId);
+  if (error && !isMissingTable(error)) return { error: error as unknown as Error };
+  return { error: null };
+};
+
+/**
  * Clear all votes by a user on a poll ("None of these work" toggle).
  */
 export const clearUserVotesForPoll = async (

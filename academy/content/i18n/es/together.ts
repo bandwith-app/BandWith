@@ -329,7 +329,7 @@ const together: AreaText = {
             "Toca **Crear**, elige **Nuevo ensayo** y cambia el **Modo de programación** a **Encuesta**. Se abre el editor de **Encuesta de disponibilidad**.",
             "Escribe un **Título de la encuesta** y, si quieres, un **Objetivo / notas (opcional)**.",
             "En **Quién vota**, toca un miembro para dejarlo fuera. Tú siempre votas.",
-            "En **Lugar, coste y canciones**, rellena el **Lugar / sala**, el **Coste de la sala** (el **Reparto** muestra la parte de cada uno) y las **Canciones a trabajar** (toca **Añadir**).",
+            "En **Lugar, coste y canciones**, rellena el **Lugar / sala** (escribe unas letras y elige una sugerencia, o deja lo que escribiste), el **Coste de la sala** (el **Reparto** muestra la parte de cada uno) y las **Canciones a trabajar** (toca **Añadir**).",
             "Añade fechas. Con **Semana completa**, elige **Esta semana** o **Próxima semana**, toca los días en **Incluir días**, fija el **Inicio** y el **Fin** y toca **Añadir los días elegidos a la encuesta**. Cada día muestra cuántos miembros están libres. Con **Fecha / hora a medida**, elige una **Fecha propuesta**, un **Inicio** y un **Fin** y toca **Añadir horario a la encuesta**.",
             "Revisa los **Horarios propuestos**. Quita uno con **Quitar horario**, o toca **Borrar todo**.",
             "Si quieres, fija **Votar antes del**: un día y una hora (consulta [[poll-who-votes-and-deadline]]).",
@@ -337,6 +337,7 @@ const together: AreaText = {
           ],
         },
         { type: "p", text: "Cada miembro al que se le pide votar recibe una notificación y una push para votar los horarios del ensayo. La encuesta aparece como **Encuesta · Activa** en Inicio y en el **Calendario**, en **Organización de ensayos**." },
+        { type: "p", text: "¿Cambiaste de idea? **Atrás** (arriba o abajo, o el botón Atrás del teléfono) vuelve al formulario del ensayo; **Cerrar** sale de la encuesta. Si escribiste algo, primero se te pregunta: **¿Descartar esta encuesta?** Toca **Seguir editando** o **Descartar**. Las encuestas no tienen borradores." },
         {
           type: "list",
           title: "Qué impide publicar",

@@ -412,7 +412,7 @@ const together: AreaText = {
             "Tocca **Crea** e scegli **Nuova prova**, poi passa **Modalità di programmazione** su **Sondaggio**. Si apre il **Sondaggio disponibilità**.",
             "Scrivi un **Titolo del sondaggio** e, se vuoi, un **Obiettivo / note (facoltativo)**.",
             "Sotto **Chi vota**, tocca un membro per escluderlo. Tu voti sempre.",
-            "Sotto **Luogo, costo e brani**, compila **Luogo / sala**, il **Costo sala** (la **Divisione** mostra la quota di ciascuno) e i **Brani su cui lavorare** (tocca **Aggiungi**).",
+            "Sotto **Luogo, costo e brani**, compila **Luogo / sala** (scrivi qualche lettera e scegli un suggerimento, oppure tieni quello che hai scritto), il **Costo sala** (la **Divisione** mostra la quota di ciascuno) e i **Brani su cui lavorare** (tocca **Aggiungi**).",
             "Aggiungi le date. Con **Tutta la settimana**, scegli **Questa settimana** o **Prossima settimana**, tocca i **Giorni inclusi**, imposta **Inizio** e **Fine** e tocca **Aggiungi i giorni scelti al sondaggio**. Ogni giorno mostra quanti membri sono liberi. Con **Data / ora a scelta**, scegli una **Data proposta**, **Inizio** e **Fine**, e tocca **Aggiungi orario al sondaggio**.",
             "Controlla gli **Orari proposti**. Toglierne uno con **Rimuovi orario**, oppure tocca **Svuota**.",
             "Se vuoi, imposta **Vota entro**: un giorno e un orario (vedi [[poll-who-votes-and-deadline]]).",
@@ -422,6 +422,10 @@ const together: AreaText = {
         {
           type: "p",
           text: "Ogni membro chiamato a votare riceve una notifica e una push “Vota gli orari della prova”. Il sondaggio compare come **Sondaggio · Attivo** nella Home e nel **Calendario** sotto **Organizzazione prove**.",
+        },
+        {
+          type: "p",
+          text: "Hai cambiato idea? **Indietro** (in alto o in basso, o il tasto Indietro del telefono) torna al modulo della prova; **Chiudi** esce dal sondaggio. Se hai scritto qualcosa, ti viene chiesto prima: **Scartare questo sondaggio?** Tocca **Continua a modificare** o **Scarta**. I sondaggi non hanno bozze.",
         },
         {
           type: "list",

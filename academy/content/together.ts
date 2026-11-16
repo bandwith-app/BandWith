@@ -419,7 +419,7 @@ const together: AreaModule = {
             'Tap **Create** and choose **New rehearsal**, then switch **Scheduling mode** to **Poll availability**. The **Availability poll** builder opens.',
             'Type a **Poll title** and, if you like, a **Goal / notes (optional)**.',
             'Under **Who votes**, tap a member to leave them out. You always vote.',
-            'Under **Place, cost & songs**, fill in **Location / studio**, the **Room cost** (the **Split** shows each person\'s share) and the **Focus songs** (tap **Add**).',
+            'Under **Place, cost & songs**, fill in **Location / studio** (type a few letters and pick a suggestion, or keep what you typed), the **Room cost** (the **Split** shows each person\'s share) and the **Focus songs** (tap **Add**).',
             'Add dates. With **Whole week preset**, choose **This week** or **Next week**, tap the **Include days**, set **Start** and **End**, and tap **Add selected days to poll**. Each day shows how many members are free. With **Custom date / time**, pick a **Candidate date**, **Start** and **End**, and tap **Add slot to poll**.',
             'Check the **Candidate slots**. Remove one with **Remove slot**, or tap **Clear all**.',
             'Optionally set **Vote by**: a day and a time (see [[poll-who-votes-and-deadline]]).',
@@ -429,6 +429,10 @@ const together: AreaModule = {
         {
           type: 'p',
           text: 'Every member asked to vote gets a "Vote on Rehearsal Times" notification and push. The poll appears as **Poll · Active** on Home and in the **Calendar** under **Rehearsal scheduling**.',
+        },
+        {
+          type: 'p',
+          text: 'Changed your mind? **Back** (at the top or bottom, or your phone\'s Back) returns to the rehearsal form; **Close** leaves the builder. If you typed anything, you are asked first: **Discard this poll?** Tap **Keep editing** or **Discard**. Polls have no drafts.',
         },
         {
           type: 'list',

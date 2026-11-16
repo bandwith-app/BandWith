@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Sparkles, Send, ChevronLeft, ChevronRight, MapPin, Plus, Check } from '@/app/components/icons';
 import { useBand } from '@/lib/BandContext';
@@ -6,9 +6,13 @@ import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { getActiveSymbol as sym } from '@/lib/currency';
 import { pollShareLabel } from './PollDetails';
 import { cn } from '@/app/components/ui/utils';
-import { HeaderAction, IconButton, PillButton, PillField, Selector, Card, FormError } from '@/app/components/bw';
+import { HeaderAction, IconButton, NavBackButton, PillButton, PillField, Selector, Card, FormError } from '@/app/components/bw';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
+import { useSystemBack } from '@/lib/backStack';
 import { RailCover } from '@/lib/railActions';
 import { TimePicker } from '@/app/components/ui/TimePicker';
+import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
+import { venueFields } from '@/lib/services/location';
 import {
   createOrPublishAdminPoll,
   cleanNotesWithoutDays,
@@ -36,7 +40,10 @@ interface RehearsalPollModalProps {
   initialProposal?: RehearsalPoll | null;
   onSuccess?: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
-  /** iPad composer: "Schedule directly" goes back to the rehearsal composer. */
+  /**
+   * Back to the rehearsal wizard the poll was picked in ("Schedule directly"
+   * on the iPad, Back on phones and the Duo). Not offered for a proposal.
+   */
   onScheduleDirectly?: () => void;
 }
 
@@ -113,6 +120,39 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Leaving with something typed asks first (polls have no drafts).
+  const typedSnapshot = JSON.stringify([
+    title,
+    notes,
+    location,
+    roomCost,
+    focusSongs.map((s) => s.id),
+    excluded,
+    timeSlots.map((s) => [s.proposed_date, s.start_time, s.end_time]),
+    voteBy,
+    voteByTime,
+  ]);
+  const [, setBaselineTick] = useState(0);
+  const baselinePendingRef = useRef(false);
+  const baselineRef = useRef<string | null>(null);
+  if (baselinePendingRef.current) {
+    baselineRef.current = typedSnapshot;
+    baselinePendingRef.current = false;
+  }
+  const isDirty = baselineRef.current !== null && typedSnapshot !== baselineRef.current;
+  const [leaveTo, setLeaveTo] = useState<null | (() => void)>(null);
+  const leave = (to: () => void) => (isDirty && !submitting ? setLeaveTo(() => to) : to());
+  const requestClose = () => leave(onClose);
+  // Picked in the rehearsal wizard: Back returns there; otherwise it closes.
+  const backToWizard = !initialProposal ? onScheduleDirectly : undefined;
+  const goBack = () => leave(backToWizard ?? onClose);
+  // Android Back, the browser's Back and Escape: one step back, not out of the
+  // whole flow. Sheets on top (song picker, the leave sheet) close first.
+  useSystemBack(isOpen, () => {
+    goBack();
+    return true;
+  });
+
   // Calculate Monday of the target week
   const targetMonday = useMemo(() => {
     const now = new Date();
@@ -151,6 +191,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   // Pre-fill if opening from a member proposal
   useEffect(() => {
     if (!isOpen) return;
+    // What the poll opens with is the baseline for "anything typed?" (next render).
+    baselinePendingRef.current = true;
+    setBaselineTick((n) => n + 1);
 
     setLocation(initialProposal?.location || '');
     setRoomCost(initialProposal?.room_cost != null ? String(initialProposal.room_cost) : '');
@@ -387,12 +430,15 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           </label>
           <div className="flex items-center gap-3 h-[52px] px-4 rounded-full bg-field border border-border focus-within:border-2 focus-within:border-foreground">
             <MapPin className="w-5 h-5 shrink-0" />
-            <input
-              id={`${idp}-poll-place`}
+            {/* Same place search as the rehearsal and gig forms; offline it stays a plain field. */}
+            <VenueAutocomplete
+              inputId={`${idp}-poll-place`}
               value={location}
-              onChange={e => setLocation(e.target.value)}
+              onChange={setLocation}
+              onSelect={place => setLocation(venueFields(place).location)}
               placeholder={t('e.g. Blackbox Studios · room 2')}
-              className="flex-1 min-w-0 bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground"
+              containerClassName="flex-1 min-w-0"
+              className="outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
@@ -833,7 +879,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
             { value: 'poll', label: t('Poll availability') },
           ]}
           onChange={v => {
-            if (v === 'direct') onScheduleDirectly();
+            if (v === 'direct') leave(onScheduleDirectly);
           }}
         />
       </div>
@@ -846,7 +892,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         title={initialProposal ? t('Proposal to poll') : t('New rehearsal')}
         subline={t('Poll · members vote on dates')}
         closeLabel={t('Close')}
-        onClose={onClose}
+        onClose={requestClose}
         ready={{ done: ready, total: 4 }}
         headerCenter={modeSwitch}
         accent="var(--accent-gig)"
@@ -890,9 +936,29 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
     return `${day} · ${slot.start_time}${slot.end_time ? ` – ${slot.end_time}` : ''}`;
   };
 
-  if (composerOn) return renderComposer();
+  const leaveSheet = (
+    <UnsavedChangesSheet
+      open={!!leaveTo}
+      title={t('Discard this poll?')}
+      body={t('Nothing is sent to the band until you publish. If you leave now, the dates and details you added are lost.')}
+      onKeepEditing={() => setLeaveTo(null)}
+      onDiscard={() => {
+        const to = leaveTo;
+        setLeaveTo(null);
+        to?.();
+      }}
+    />
+  );
+
+  if (composerOn) return (
+    <>
+      {renderComposer()}
+      {leaveSheet}
+    </>
+  );
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         key="rehearsal-poll-builder"
@@ -912,9 +978,16 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
             style={{ paddingTop: 'calc(var(--safe-top) + 16px)' }}
           >
             <div className="flex items-center gap-3 min-h-11">
-              <p className="flex-1 min-w-0 bw-label-sm truncate">{t('Admin tool · Find the best day')}</p>
+              {/* Before the Back, so the Duo rail keeps this layer's Back. */}
               <RailCover pane />
-              <HeaderAction pane label={t('Close')} icon={<X />} variant="sheet" onClick={onClose} />
+              <NavBackButton
+                pane
+                label={backToWizard ? t('Back') : t('Cancel')}
+                variant="sheet"
+                onClick={goBack}
+              />
+              <p className="flex-1 min-w-0 bw-label-sm truncate">{t('Admin tool · Find the best day')}</p>
+              <HeaderAction pane label={t('Close')} icon={<X />} variant="sheet" onClick={requestClose} />
             </div>
             <h1 id="poll-builder-title" className="bw-display-lg [overflow-wrap:anywhere]">
               {initialProposal ? t('Proposal to poll') : t('Availability poll')}
@@ -1156,8 +1229,8 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}
         >
           <div className="max-w-xl mx-auto grid grid-cols-[2fr_3fr] gap-3">
-            <PillButton variant="outline" onClick={onClose} disabled={submitting}>
-              {t('Cancel')}
+            <PillButton variant="outline" onClick={backToWizard ? goBack : requestClose} disabled={submitting}>
+              {backToWizard ? t('Back') : t('Cancel')}
             </PillButton>
             <PillButton
               onClick={handlePublish}
@@ -1172,6 +1245,8 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         {renderSongPicker(130)}
       </motion.div>
     </AnimatePresence>
+    {leaveSheet}
+    </>
   );
 };
 

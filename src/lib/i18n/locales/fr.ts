@@ -909,6 +909,8 @@ const dict: Dictionary = {
   "Remove slot": "Retirer le créneau",
   "Publishing…": "Publication…",
   "Publish poll": "Publier le sondage",
+  "Discard this poll?": "Abandonner ce sondage ?",
+  "Nothing is sent to the band until you publish. If you leave now, the dates and details you added are lost.": "Le groupe ne reçoit rien tant que tu ne publies pas. Si tu quittes maintenant, les dates et les détails ajoutés seront perdus.",
   "Check your connection and try again.": "Vérifie ta connexion et réessaie.",
   "Failed to update vote. Please try again.": "Impossible de mettre à jour ton vote. Réessaie.",
   "Couldn't clear your votes: {reason}": "Impossible d’effacer tes votes : {reason}",
