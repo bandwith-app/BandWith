@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence, useIsPresent } from 'motion/react';
 import {
   ArrowUpRight,
   MapPin,
@@ -111,6 +111,11 @@ interface EventDetailProps {
   onRevertQuote?: (event: EventData) => Promise<void> | void;
   onShareQuote?: (event: EventData) => void;
   onOpenBandSettings?: () => void;
+  /**
+   * Show readiness "No contract yet" / "Contract not signed yet": opens
+   * Contracts & docs, with a new contract for this gig when it has none.
+   */
+  onOpenContract?: (newForThisGig: boolean) => void;
   /** Calendar events (for the personal-gig schedule conflict). */
   allEvents?: EventData[];
   /** Personal gig clashes with a band event: tell that band's admin. */
@@ -301,6 +306,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   onRevertQuote,
   onShareQuote,
   onOpenBandSettings,
+  onOpenContract,
   allEvents,
   onNotifyConflict,
   onEventUpdated,
@@ -321,6 +327,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const { selectedBand, bands } = useBand();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Counts the times this detail was closed. ACCEPT / DECLINE close it at
+  // once and then wait for the background sync: by then the user may have
+  // opened an event again, which onClose (whatever is open) must not close.
+  const isPresent = useIsPresent();
+  const closedCount = useRef(0);
+  useEffect(() => {
+    if (!isPresent) closedCount.current += 1;
+  }, [isPresent]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
   const [activeSheet, setActiveSheet] = useState<ActiveSheetType>(null);
@@ -793,8 +807,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       haptic.confirm();
       setIsSubmitting(true);
       try {
+        const closedBefore = closedCount.current;
         await onAccept();
-        onCloseProp();
+        if (closedCount.current === closedBefore) onCloseProp();
       } catch (err) {
         console.error('Action failed, keeping modal open', err);
       } finally {
@@ -808,8 +823,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       haptic.delete();
       setIsSubmitting(true);
       try {
+        const closedBefore = closedCount.current;
         await onDecline();
-        onCloseProp();
+        if (closedCount.current === closedBefore) onCloseProp();
       } catch {
         /* handled */
       } finally {
@@ -1580,6 +1596,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     setlist: setlistSongs.length > 0 ? () => setActiveSheet('setlist') : undefined,
                     lyrics: setlistSongs.length > 0 ? () => setActiveSheet('setlist') : undefined,
                     rider: showRiderStage ? () => setRiderOpen(true) : undefined,
+                    // Admins only (the row is there only for them).
+                    contract: onOpenContract && isAdmin ? () => guardUnsaved(() => onOpenContract(!gigContract)) : undefined,
                   }}
                 />
               )}

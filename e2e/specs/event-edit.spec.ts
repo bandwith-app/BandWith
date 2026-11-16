@@ -292,3 +292,19 @@ test('a personal gig keeps its Edit button', async ({ app }) => {
   await expect(eventDetail(app).getByRole('button', { name: app.t('EDIT'), exact: true })).toBeVisible();
   await expect(eventDetail(app).getByRole('button', { name: app.t('Edit venue') })).toHaveCount(0);
 });
+
+test.describe('Show readiness (admin)', () => {
+  test('"No contract yet" opens Contracts & docs with a new contract for the gig', async ({ app }) => {
+    await openEvent(app, SEED.gigToday);
+    const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await app.settle();
+    // The new-contract form, filled in for this gig.
+    await expect(app.page.getByRole('heading', { name: app.t('Create contract'), exact: true })).toBeVisible();
+    const values = () => app.page.locator('input').evaluateAll((xs) => xs.map((x) => (x as HTMLInputElement).value));
+    await expect.poll(values).toContain(`${app.t('Performance agreement')} · ${SEED.gigToday}`);
+    await expect.poll(values).toContain(SEED.clients[0]);
+    await app.check('new contract for the gig');
+  });
+});

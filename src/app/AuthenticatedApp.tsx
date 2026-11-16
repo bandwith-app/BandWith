@@ -4825,6 +4825,22 @@ export default function AuthenticatedApp() {
             currentUserId={user?.id}
             onClose={() => closeSelectedEventRef.current()}
             onOpenBandSettings={isAdmin ? () => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); } : undefined}
+            // Show readiness "No contract yet": Contracts & docs (the hub's
+            // DOCUMENTS), with the new contract filled in for this gig.
+            onOpenContract={(newForThisGig) => {
+              const ev = selectedEvent;
+              inItemBand(ev.band_id, "prepare a contract", () => {
+                closeSelectedEventRef.current();
+                setContractPrefill(newForThisGig ? {
+                  eventId: ev.eventId ?? null,
+                  eventName: ev.title || '',
+                  clientName: ev.clientCompany || ev.clientName || '',
+                  clientEmail: ev.clientEmail || '',
+                  eventDate: ev.date || '',
+                } : null);
+                setShowContracts(true);
+              });
+            }}
             userResponse={selectedEventMembership?.status === "confirmed" ? "accepted" : selectedEventMembership?.status === "declined" ? "declined" : selectedEventMembership?.status === "maybe" ? "maybe" : selectedEventMembership?.status === "pending" ? "pending" : "accepted"}
             onAccept={handleEventAccept}
             onDecline={handleEventDecline}
