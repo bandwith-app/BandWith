@@ -219,12 +219,136 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
     );
   }
 
+  // AuthScreen's layout, split in two blocks so the Duo in Laptop pose can
+  // use the full-screen form layout (`.bw-fold-form`, as Sign in does): the
+  // title and Google / Apple hold the Display, the email form starts on the
+  // Deck, so no field or Show password lies across the fold. Elsewhere it
+  // looks the same.
   return (
-    <AuthScreen
-      top={<WizardTop onBack={onBack} step={step} total={total} />}
-      bodyClassName="pt-2 gap-5"
-      footer={
-        <>
+    <div className="bw-auth-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
+      <div className="shrink-0" style={{ paddingTop: 'var(--safe-top)' }}>
+        <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
+          <WizardTop onBack={onBack} step={step} total={total} />
+        </div>
+        <div className="flex flex-col px-4 pt-2 gap-5">
+          <Kicker overline={t('Account')} title={isJoiner ? t('Join band') : t('Create account')} />
+          <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1">
+            {isJoiner ? t('One step to join the crew.') : t("Let's get you set up in seconds.")}
+          </p>
+
+          {/* OAuth */}
+          <div className="grid grid-cols-2 gap-3">
+            <PillButton
+              variant="white"
+              size="md"
+              onClick={handleOAuthGoogle}
+              disabled={loading}
+              icon={<GoogleBrandIcon size={18} className="shrink-0" />}
+            >
+              Google
+            </PillButton>
+            <PillButton
+              variant="white"
+              size="md"
+              onClick={handleOAuthApple}
+              disabled={loading}
+              icon={<AppleBrandIcon size={18} className="shrink-0" />}
+            >
+              Apple
+            </PillButton>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col px-4 pt-5 pb-6 gap-5">
+        <OrDivider label={t('or with email')} />
+
+        {/* Form (submitted by the pinned footer CTA via form="account-creation-form") */}
+        <form id="account-creation-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <AnimatePresence initial={false}>
+            {error && (
+              <motion.div
+                key="account-error"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <FormError>{error}</FormError>
+                {wrongPassword && onForgotPassword && (
+                  <PillButton variant="ghost" size="sm" fullWidth={false} onClick={onForgotPassword} className="mt-2 -mx-3 text-muted-foreground">
+                    {t('Forgot password?')}
+                  </PillButton>
+                )}
+              </motion.div>
+            )}
+            {success && (
+              <motion.div
+                key="account-success"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <div role="status" className="flex items-center gap-3 p-4 rounded-[20px] border-2 border-success text-success">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <p className="text-[14px] leading-[1.4] font-medium">{success}</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!isJoiner && (
+            <PillField
+              label={t('Full name')}
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder={t('Your name')}
+              autoComplete="name"
+              autoCapitalize="words"
+              icon={<User className="w-5 h-5" strokeWidth={1.75} />}
+              required
+            />
+          )}
+
+          <PillField
+            label={t('Email')}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            autoComplete="email"
+            autoCapitalize="none"
+            inputMode="email"
+            readOnly={isEmailReadonly}
+            className={isEmailReadonly ? 'opacity-50' : undefined}
+            icon={<Mail className="w-5 h-5" strokeWidth={1.75} />}
+            required
+          />
+
+          <PillField
+            label={t('Password')}
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t('Password')}
+            autoComplete={isJoiner ? 'current-password' : 'new-password'}
+            icon={<Lock className="w-5 h-5" strokeWidth={1.75} />}
+            hint={t('Min 8 characters')}
+            required
+            minLength={8}
+            trailing={
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? t('Hide password') : t('Show password')}
+                className="-m-2 p-2 text-muted-foreground"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} /> : <Eye className="w-5 h-5" strokeWidth={1.75} />}
+              </button>
+            }
+          />
+        </form>
+      </div>
+      <div className="shrink-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
           <PillButton
             type="submit"
             form="account-creation-form"
@@ -246,124 +370,8 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
             )}
             <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />
           </p>
-        </>
-      }
-    >
-      <Kicker overline={t('Account')} title={isJoiner ? t('Join band') : t('Create account')} />
-      <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1">
-        {isJoiner ? t('One step to join the crew.') : t("Let's get you set up in seconds.")}
-      </p>
-
-      {/* OAuth */}
-      <div className="grid grid-cols-2 gap-3">
-        <PillButton
-          variant="white"
-          size="md"
-          onClick={handleOAuthGoogle}
-          disabled={loading}
-          icon={<GoogleBrandIcon size={18} className="shrink-0" />}
-        >
-          Google
-        </PillButton>
-        <PillButton
-          variant="white"
-          size="md"
-          onClick={handleOAuthApple}
-          disabled={loading}
-          icon={<AppleBrandIcon size={18} className="shrink-0" />}
-        >
-          Apple
-        </PillButton>
       </div>
-
-      <OrDivider label={t('or with email')} />
-
-      {/* Form (submitted by the pinned footer CTA via form="account-creation-form") */}
-      <form id="account-creation-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <AnimatePresence initial={false}>
-          {error && (
-            <motion.div
-              key="account-error"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <FormError>{error}</FormError>
-              {wrongPassword && onForgotPassword && (
-                <PillButton variant="ghost" size="sm" fullWidth={false} onClick={onForgotPassword} className="mt-2 -mx-3 text-muted-foreground">
-                  {t('Forgot password?')}
-                </PillButton>
-              )}
-            </motion.div>
-          )}
-          {success && (
-            <motion.div
-              key="account-success"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <div role="status" className="flex items-center gap-3 p-4 rounded-[20px] border-2 border-success text-success">
-                <CheckCircle2 className="w-5 h-5 shrink-0" />
-                <p className="text-[14px] leading-[1.4] font-medium">{success}</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {!isJoiner && (
-          <PillField
-            label={t('Full name')}
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder={t('Your name')}
-            autoComplete="name"
-            autoCapitalize="words"
-            icon={<User className="w-5 h-5" strokeWidth={1.75} />}
-            required
-          />
-        )}
-
-        <PillField
-          label={t('Email')}
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@email.com"
-          autoComplete="email"
-          autoCapitalize="none"
-          inputMode="email"
-          readOnly={isEmailReadonly}
-          className={isEmailReadonly ? 'opacity-50' : undefined}
-          icon={<Mail className="w-5 h-5" strokeWidth={1.75} />}
-          required
-        />
-
-        <PillField
-          label={t('Password')}
-          type={showPassword ? 'text' : 'password'}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder={t('Password')}
-          autoComplete={isJoiner ? 'current-password' : 'new-password'}
-          icon={<Lock className="w-5 h-5" strokeWidth={1.75} />}
-          hint={t('Min 8 characters')}
-          required
-          minLength={8}
-          trailing={
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? t('Hide password') : t('Show password')}
-              className="-m-2 p-2 text-muted-foreground"
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} /> : <Eye className="w-5 h-5" strokeWidth={1.75} />}
-            </button>
-          }
-        />
-      </form>
-    </AuthScreen>
+    </div>
   );
 };
 

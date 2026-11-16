@@ -14,6 +14,7 @@ check (`app.check`) on each screen it reaches.
 | Home: every card renders, top to bottom (admin and member) | `home-calendar` | all |
 | Home: See all, Upcoming cards, a quote draft, Review payouts | `home-calendar` | full |
 | Notifications inbox → open a notification (poll vote sheet) → close | `home-calendar` | full |
+| Notifications inbox: Mark all as read clears the Unread count and dots (admin and member) | `home-calendar` | all |
 | Calendar renders, top to bottom (admin and member) | `home-calendar` | all |
 | Calendar: next / previous month, Today | `home-calendar` | full |
 | Calendar: filters All / Gigs / Rehearsals / Quotes | `home-calendar` | full |
@@ -34,6 +35,7 @@ check (`app.check`) on each screen it reaches.
 | Rehearsal: roster, studio cost (paid / free), focus songs, notes | `event-edit` | full |
 | Personal gig keeps its Edit button; gigs/rehearsals have none | `event-edit` | full |
 | Leaving an editor with unsaved changes asks (Cancel, ✕, Escape) | `unsaved-changes` | full |
+| Show readiness: "No contract yet" opens Contracts & docs with a new contract for the gig | `event-edit` | full |
 
 ## Members, privacy, RSVP
 
@@ -45,6 +47,7 @@ check (`app.check`) on each screen it reaches.
 | Admin → member on the same device: cached client and price are gone | `member-readonly` | all |
 | RSVP: only GOING / CAN'T, the answer sticks (rehearsal and gig) | `rsvp` | full |
 | RSVP: an old "maybe" asks to choose (rehearsal and gig) | `rsvp` | full |
+| RSVP: after answering a gig invitation, the next event opened stays open | `rsvp` | full |
 | Rehearsal proposals: member proposes; admin sees "Open until", declines with a reason | `rehearsal-proposals` | full |
 
 ## Rider & stage
@@ -70,6 +73,7 @@ check (`app.check`) on each screen it reaches.
 | Poll on Home: fast votes, last tap wins; admin locks in a date | `polls` | full |
 | iPad composers: venue suggestions (gig, rehearsal) | `fold-layers` | iPad |
 | Duo Laptop: Create menu, gig wizard, rehearsal wizard, poll builder, Propose rehearsal, Log personal gig off the fold | `fold-layers` | laptop |
+| Duo Laptop: Stage mode (floor wedge), Deputy gigs, What brings you here?, Create account off the fold | `fold-layers` | laptop |
 
 ## Settings, assets, chat
 
@@ -91,6 +95,7 @@ check (`app.check`) on each screen it reaches.
 | Flow | Spec | Profiles |
 | --- | --- | --- |
 | Every layer closes with system Back and with its own Back / ✕ (notifications, Create menu, search, gig, hub page, chat) | `layers-back` | full (some all) |
+| Inbox opened while Home loads: no gig opens behind it; Back (and the Duo rail's) closes the inbox | `layers-back` | all |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

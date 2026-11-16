@@ -10,7 +10,7 @@ export type { Locale };
 
 /** The demo account (Leo M.), admin of the demo band "Velvet Static". */
 export const DEMO_USER_ID = '10000001-0000-4000-8000-000000000001';
-const DB_KEY = 'bw-demo-db-v6';
+export const DB_KEY = 'bw-demo-db-v6';
 
 /**
  * Every test runs at the same moment: Monday 16 Nov 2026, 10:00 in Milan.
