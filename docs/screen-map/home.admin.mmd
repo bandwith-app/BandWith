@@ -1,0 +1,30 @@
+flowchart LR
+  s0["Home ⌂<br/><small>Home</small>"]
+  s1["Your bands<br/><small>Your bands</small>"]
+  s2["Fee & payouts<br/><small>Summer Fest Openi… › Fee & payouts</small>"]
+  s3["Stage mode: Rooftop Session<br/><small>Rooftop Session › Stage mode: Rooft…</small>"]
+  s4["Repertoire<br/><small>Repertoire</small>"]
+  s5["Band members<br/><small>Band members</small>"]
+  s6["Data insights<br/><small>Data insights</small>"]
+  x0(["→ Notifications"])
+  x1(["→ Settings & Account hub"])
+  x2(["→ Calendar"])
+  x3(["→ Event detail gig / rehearsal / quote / personal"])
+  x4(["→ Create"])
+  s0 -->|"Velvet Static Switch …"| s1
+  s0 -->|"Notifications 3 unre…"| x0
+  s0 -->|"Open Identity and Acc… / Band assets & workflo…"| x1
+  s0 -->|"CONFIRMED GIGS / UPCOMING REHEARSALS +3"| x2
+  s0 -->|"Review payouts"| s2
+  s0 -->|"16 Nov Gig Rooftop Se… / Show readiness: 2 of 5…"| x3
+  s0 -->|"Go live"| s3
+  s0 -->|"5 Dec Gig · Draft Spr… / Create"| x4
+  s0 -->|"Repertoire"| s4
+  s0 -->|"Members"| s5
+  s0 -->|"View Analytics"| s6
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0,s3,s4,s5 flagged
+  class x0,x1,x2,x3,x4 stub

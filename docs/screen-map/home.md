@@ -1,0 +1,108 @@
+# Home
+
+[← Screen map](README.md) · profile phone-portrait
+
+## admin (7 screens)
+
+_Leo M., admin of the demo band Velvet Static_ · source: [home.admin.mmd](home.admin.mmd)
+
+```mermaid
+flowchart LR
+  s0["Home ⌂<br/><small>Home</small>"]
+  s1["Your bands<br/><small>Your bands</small>"]
+  s2["Fee & payouts<br/><small>Summer Fest Openi… › Fee & payouts</small>"]
+  s3["Stage mode: Rooftop Session<br/><small>Rooftop Session › Stage mode: Rooft…</small>"]
+  s4["Repertoire<br/><small>Repertoire</small>"]
+  s5["Band members<br/><small>Band members</small>"]
+  s6["Data insights<br/><small>Data insights</small>"]
+  x0(["→ Notifications"])
+  x1(["→ Settings & Account hub"])
+  x2(["→ Calendar"])
+  x3(["→ Event detail gig / rehearsal / quote / personal"])
+  x4(["→ Create"])
+  s0 -->|"Velvet Static Switch …"| s1
+  s0 -->|"Notifications 3 unre…"| x0
+  s0 -->|"Open Identity and Acc… / Band assets & workflo…"| x1
+  s0 -->|"CONFIRMED GIGS / UPCOMING REHEARSALS +3"| x2
+  s0 -->|"Review payouts"| s2
+  s0 -->|"16 Nov Gig Rooftop Se… / Show readiness: 2 of 5…"| x3
+  s0 -->|"Go live"| s3
+  s0 -->|"5 Dec Gig · Draft Spr… / Create"| x4
+  s0 -->|"Repertoire"| s4
+  s0 -->|"Members"| s5
+  s0 -->|"View Analytics"| s6
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0,s3,s4,s5 flagged
+  class x0,x1,x2,x3,x4 stub
+```
+
+## member (18 screens)
+
+_Leo M. as a member of Velvet Static (not admin)_ · source: [home.member.mmd](home.member.mmd)
+
+```mermaid
+flowchart LR
+  s0["Home ⌂<br/><small>Home</small>"]
+  s1["Your bands<br/><small>Your bands</small>"]
+  s2["Repertoire<br/><small>Repertoire</small>"]
+  s3["Stage mode: Rooftop Session<br/><small>Rooftop Session › Stage mode: Rooft…</small>"]
+  s4["Client A — Wedding<br/><small>Client A — Wedding</small>"]
+  s5["Band members<br/><small>Band members</small>"]
+  s6["Create<br/><small>Create</small>"]
+  s7["BandWith Academy<br/><small>Repertoire › BandWith Academy</small>"]
+  s8["Suggest a song<br/><small>Repertoire › Suggest a song</small>"]
+  s9["BandWith Academy<br/><small>Client A — Wedding › BandWith Academy</small>"]
+  s10["Stage mode: Client A — Wedd…<br/><small>Client A — Wedding › Stage mode: Clien…</small>"]
+  s11["Setlist · 8<br/><small>Client A — Wedding › Setlist · 8</small>"]
+  s12["Rider & stage<br/><small>Client A — Wedding › Rider & stage</small>"]
+  s13["Lineup · 5<br/><small>Client A — Wedding › Lineup · 5</small>"]
+  s14["Logistics & notes<br/><small>Client A — Wedding › Logistics & notes</small>"]
+  s15["BandWith Academy<br/><small>Band members › BandWith Academy</small>"]
+  s16["Leo M.<br/><small>Band members › Leo M.</small>"]
+  s17["Marta C.<br/><small>Band members › Marta C.</small>"]
+  x0(["→ Notifications"])
+  x1(["→ Settings & Account hub"])
+  x2(["→ Calendar"])
+  x3(["→ Event detail gig / rehearsal / quote / personal"])
+  x4(["→ Create"])
+  s0 -->|"Velvet Static Switch …"| s1
+  s0 -->|"Notifications 3 unre…"| x0
+  s0 -->|"Open Identity and Acc… / Band assets & workflo…"| x1
+  s0 -->|"CONFIRMED GIGS / UPCOMING REHEARSALS +3"| x2
+  s0 -->|"View Setlist / Repertoire"| s2
+  s0 -->|"16 Nov Gig Rooftop Se… / Show readiness: 2 of 4…"| x3
+  s0 -->|"Go live"| s3
+  s0 -->|"21 Nov Gig Client A —…"| s4
+  s0 -->|"Members"| s5
+  s0 -->|"Create"| x4
+  s1 -->|"Close / VS Member Velvet Stat…"| s0
+  s1 -->|"Create band"| s6
+  s1 -.->|"Back / Esc"| s0
+  s2 -->|"Go back"| s0
+  s2 -->|"Help for this screen"| s7
+  s2 -->|"Suggest a song"| s8
+  s2 -->|"My suggestions Correc…"| x0
+  s2 -.->|"Back / Esc"| s0
+  s3 -->|"Exit stage mode"| x3
+  s4 -->|"Back"| s0
+  s4 -->|"Help for this screen"| s9
+  s4 -->|"Open stage mode"| s10
+  s4 -->|"Setlist · 8 songs / Lyrics & charts · 0 o… +1"| s11
+  s4 -->|"Rider v3 · sent to th… / OPEN: RIDER & STAGE +1"| s12
+  s4 -->|"Lineup · 5 of 5 confi… / DETAILS: LINEUP · 5/5 …"| s13
+  s4 -->|"Dress code Suits No n…"| s14
+  s5 -->|"Back"| s0
+  s5 -->|"Help for this screen"| s15
+  s5 -->|"Open Leo M."| s16
+  s5 -->|"Open Marta C."| s17
+  s5 -.->|"Back / Esc"| s0
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0,s2,s3,s4,s5,s10 flagged
+  class x0,x1,x2,x3,x4 stub
+```

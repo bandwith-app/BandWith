@@ -10,7 +10,7 @@ export type { Locale };
 
 /** The demo account (Leo M.), admin of the demo band "Velvet Static". */
 export const DEMO_USER_ID = '10000001-0000-4000-8000-000000000001';
-const DB_KEY = 'bw-demo-db-v6';
+export const DB_KEY = 'bw-demo-db-v6';
 
 /**
  * Every test runs at the same moment: Monday 16 Nov 2026, 10:00 in Milan.
@@ -21,7 +21,7 @@ const DB_KEY = 'bw-demo-db-v6';
 export const FIXED_NOW = new Date('2026-11-16T10:00:00+01:00');
 
 /** Init script: Date (and Date.now) shifted by `offset` ms; timers untouched. */
-function fakeDate(offset: number) {
+export function fakeDate(offset: number) {
   const RealDate = Date;
   const now = () => RealDate.now() + offset;
   function FakeDate(this: unknown, ...args: unknown[]) {
