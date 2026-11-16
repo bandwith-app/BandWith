@@ -1,5 +1,5 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
-import { openAndroidUpdate, useAndroidUpdate } from '@/lib/androidUpdate';
+import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
@@ -481,12 +481,27 @@ export default function AuthenticatedApp() {
       setSaveToast({
         message: t('BandWith {version} is available', { version: androidUpdate.version }),
         type: 'info',
-        action: { label: t('Update'), onClick: () => openAndroidUpdate(androidUpdate) },
+        action: { label: t('Update'), onClick: () => openAndroidUpdate(androidUpdate, 'toast') },
         duration: 12000,
       });
     }, 3000);
     return () => clearTimeout(timer);
   }, [androidUpdate]);
+  // An update started from that toast reports its progress in the toast
+  // (Settings › About shows its own).
+  const { state: androidInstall, source: androidInstallSource } = useAndroidInstallState();
+  useEffect(() => {
+    if (androidInstallSource !== 'toast' || androidInstall.phase === 'idle') return;
+    const message = androidInstallMessage(androidInstall, t);
+    if (!message) return;
+    if (androidInstall.phase === 'permission') {
+      setSaveToast({ message, type: 'info', action: { label: t('Allow'), onClick: () => allowAndroidInstalls() }, duration: 30000 });
+    } else if (androidInstall.phase === 'error') {
+      setSaveToast({ message, type: 'error', duration: 10000 });
+    } else {
+      setSaveToast({ message, type: 'info', minimal: true, duration: androidInstall.phase === 'downloading' ? 60000 : 6000 });
+    }
+  }, [androidInstall, androidInstallSource]);
 
   const { isOnline, wasOffline, pendingSyncCount, triggerSync } = useNetworkStatus((msg) => {
     setSaveToast({ message: msg, type: 'success' });

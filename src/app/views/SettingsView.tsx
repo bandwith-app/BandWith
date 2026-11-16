@@ -34,7 +34,7 @@ import { AcademySheet } from '@/app/components/academy/AcademySheet';
 import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
-import { openAndroidUpdate, useAndroidUpdate } from '@/lib/androidUpdate';
+import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -97,6 +97,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const { signOut, user } = useAuth();
   const appVersion = useAppVersion();
   const androidUpdate = useAndroidUpdate();
+  const { state: androidInstall } = useAndroidInstallState();
   const { mode, setMode, resolvedTheme } = useTheme();
   const t = useT();
   const localePref = useLocalePref();
@@ -622,11 +623,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className={cn(CARD, 'p-5 flex flex-col gap-4')}>
       <BrandLogo variant="waveform" lockup="horizontal" className="h-8" textClassName="text-2xl" />
       {appVersion && <span className="bw-label-sm text-muted-foreground">{t('Version {version}', { version: appVersion })}</span>}
-      {androidUpdate && (
-        <PillButton variant="dark" size="md" fullWidth={false} onClick={() => void openAndroidUpdate(androidUpdate)}>
-          {t('Update to {version}', { version: androidUpdate.version })}
-        </PillButton>
-      )}
+      {androidUpdate && (() => {
+        // In-app install (src/lib/androidUpdate.ts): progress on the button,
+        // Android's one-time permission and errors in a line under it.
+        const status = androidInstall.phase !== 'idle' && androidInstall.version === androidUpdate.version ? androidInstall : null;
+        const message = status ? androidInstallMessage(status, t) : null;
+        return (
+          <div className="flex flex-col items-start gap-2">
+            {status?.phase === 'permission' ? (
+              <PillButton variant="dark" size="md" fullWidth={false} onClick={() => void allowAndroidInstalls()}>
+                {t('Allow')}
+              </PillButton>
+            ) : (
+              <PillButton
+                variant="dark"
+                size="md"
+                fullWidth={false}
+                disabled={status?.phase === 'downloading'}
+                onClick={() => void openAndroidUpdate(androidUpdate, 'settings')}
+              >
+                {status?.phase === 'downloading' ? message : t('Update to {version}', { version: androidUpdate.version })}
+              </PillButton>
+            )}
+            {message && status?.phase !== 'downloading' && (
+              <p
+                role={status?.phase === 'error' ? 'alert' : 'status'}
+                className={cn('bw-body-sm', status?.phase === 'error' ? 'text-destructive' : 'text-muted-foreground')}
+              >
+                {message}
+              </p>
+            )}
+          </div>
+        );
+      })()}
       <p className="bw-body-sm text-muted-foreground">
         {t('All workspace data is encrypted in transit and at rest. Built for musicians, managers, and touring crews.')}
       </p>

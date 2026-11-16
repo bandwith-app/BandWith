@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(KeepAwakePlugin.class);
         registerPlugin(PrivacyPlugin.class);
         registerPlugin(NotificationSettingsPlugin.class);
+        registerPlugin(ApkUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         PrivacyPlugin.apply(this);
     }

@@ -1188,14 +1188,14 @@ const basics: AreaText = {
       summary: "Gesto indietro, uscita dall’app, contatti e installazione dell’APK.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["android", "apk", "gesto indietro", "installare", "impronta digitale"],
+      keywords: ["android", "apk", "gesto indietro", "installare", "aggiornare", "play protect", "impronta digitale"],
       related: ["back-behaviour", "device-differences", "push-notifications"],
       body: [
         {
           type: "list",
           items: [
-            "L’app Android arriva come file APK, non da uno store. Consenti l’installazione quando Android lo chiede.",
-            "Aggiornamenti: quando esce una nuova versione, un messaggio dice **BandWith … è disponibile**. Tocca **Aggiorna** per scaricarla e installarla sopra questa. **Impostazioni** › **Informazioni** mostra lo stesso pulsante.",
+            "L’app Android arriva come file APK dalla pagina delle release, non da uno store. La prima volta: apri **BandWith.apk**, consenti l’installazione dal browser o dall’app File quando Android lo chiede, poi tocca **Installa**. Play Protect può dire che è un’app sconosciuta: tocca **Altri dettagli** › **Installa comunque**. Se hai una copia di prova di BandWith non scaricata dalla pagina delle release, disinstallala prima; i tuoi dati sono sul server.",
+            "Aggiornamenti: quando esce una nuova versione, un messaggio dice **BandWith … è disponibile**. Tocca **Aggiorna**: BandWith la scarica e mostra a che punto è. La prima volta Android chiede se BandWith può installare app: tocca **Consenti**, attiva **Consenti da questa origine** e torna indietro. Poi tocca **Installa**. Da lì in poi un aggiornamento è solo **Aggiorna** › **Installa**. **Impostazioni** › **Informazioni** mostra lo stesso pulsante.",
             "Il pulsante Indietro di sistema e il gesto indietro chiudono prima il livello in cima; nella Home, **Tocca di nuovo per uscire** e poi un secondo Indietro chiude l’app ([[back-behaviour]]).",
             "L’accesso rapido usa la tua impronta digitale (o l’iride, se il telefono la supporta). Il blocco app può anche ripiegare sul PIN o sulla sequenza del telefono.",
             "Nel passaggio degli inviti della configurazione iniziale, **Importa dai contatti** ti fa scegliere i compagni di band dalla rubrica.",
