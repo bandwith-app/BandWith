@@ -27,6 +27,30 @@ async function expectNever(app: App, words: string[], where: string, ms = 1500) 
   } while (Date.now() < deadline);
 }
 
+/**
+ * A slow device (the emulator pass ran on a machine at load 300+): reads of
+ * the offline cache (IndexedDB) answer only after `ms`, so they land after
+ * the fresh answer from the server. From the next page load on.
+ */
+async function slowOfflineCache(app: App, ms = 2500) {
+  await app.page.addInitScript((delay) => {
+    const get = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore['get']>) {
+      const req = get.apply(this, args);
+      let handler: ((this: IDBRequest, ev: Event) => unknown) | null = null;
+      Object.defineProperty(req, 'onsuccess', {
+        configurable: true,
+        get: () => handler,
+        set: (fn) => {
+          handler = fn;
+          req.addEventListener('success', (ev) => setTimeout(() => handler?.call(req, ev), delay), { once: true });
+        },
+      });
+      return req;
+    };
+  }, ms);
+}
+
 async function expectNoEditing(app: App) {
   const detail = eventDetail(app);
   for (const label of ['Edit title, date & times', 'Edit venue', 'Edit fee']) {
@@ -82,5 +106,38 @@ test.describe('admin hands the band over: same device, now a member', () => {
     await app.setRole('member', { keepOfflineCache: true });
     await openEvent(app, SEED.gigToday);
     await expectNever(app, ['Aurora Events', '€1,800', ...OTHERS_FEES], "former admin's gig as member", 4000);
+  });
+
+  test('@smoke on a slow device too: the cached client never reaches the member', async ({ app }) => {
+    await openEvent(app, SEED.gigToday);
+    await expect(eventDetail(app).getByText(/Aurora Events/i).first()).toBeVisible();
+    await slowOfflineCache(app);
+    await app.setRole('member', { keepOfflineCache: true });
+    await expectNever(app, ['Aurora Events', '€1,800', ...OTHERS_FEES], 'former admin, now member: Home', 3500);
+    await openEvent(app, SEED.gigToday);
+    await expectNever(app, ['Aurora Events', '€1,800', ...OTHERS_FEES], "former admin's gig as member (slow cache)", 4000);
+  });
+});
+
+test.describe('a member is made admin: same device, cache kept', () => {
+  test.use({ role: 'member' });
+  // The emulator pass (11-16): the member-shaped rows the device cached (no
+  // client, no price) hid the client from the new admin until the cache was
+  // cleared by hand, and Create contract came up with an empty client.
+  test('@smoke the new admin sees the client, and a new contract is filled in', async ({ app }) => {
+    await openEvent(app, SEED.gigToday);
+    await expectNever(app, ['Aurora Events'], "member's gig", 500);
+    await slowOfflineCache(app);
+    await app.setRole('admin', { keepOfflineCache: true });
+    await openEvent(app, SEED.gigToday);
+    await expect(eventDetail(app).getByText(/Aurora Events/i).first()).toBeVisible();
+    const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await app.settle();
+    await expect(app.page.getByRole('heading', { name: app.t('Create contract'), exact: true })).toBeVisible();
+    const values = () => app.page.locator('input').evaluateAll((xs) => xs.map((x) => (x as HTMLInputElement).value));
+    await expect.poll(values).toContain(SEED.clients[0]);
+    await app.check('new admin: new contract for the gig');
   });
 });

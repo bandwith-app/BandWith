@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { getBands, getBand, BandWithMembers } from './services/bands';
-import { getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
+import { getOfflineItem, setOfflineItem, getCacheKey, syncCachedRoles } from './offline/storage';
 import { getBandPricing } from './services/pricing';
 import { setActiveCurrency } from './currency';
 import { onAppResume } from './appResume';
@@ -173,16 +173,25 @@ export const BandProvider: React.FC<BandProviderProps> = ({ children }) => {
       }
 
       const fetchedBands = data || [];
+      // The cached data was read for the roles of the last band list: a role
+      // changed (member made admin, admin made member) drops it, and the data
+      // hooks fetch again (offline/storage.ts syncCachedRoles).
+      const rolesSynced = syncCachedRoles(
+        user.id,
+        Object.fromEntries(fetchedBands.map((b) => [b.id, b.user_role || 'member'])),
+      ).catch(() => false);
       // Same bands and rosters as on screen: keep the objects, so a refresh
       // (picker opened, app back in front) doesn't redraw or refetch anything.
       if (selectedBand && bandsUnchanged(bandsRef.current, fetchedBands)) {
+        // Written again in case a role change just dropped the cache.
+        void rolesSynced.then((dropped) => { if (dropped) setOfflineItem(bandsCacheKey, fetchedBands).catch(() => {}); });
         setError(null);
         setResolvedFor(user.id);
         setLoading(false);
         return;
       }
       setBands(fetchedBands);
-      setOfflineItem(bandsCacheKey, fetchedBands).catch(() => {});
+      void rolesSynced.then(() => setOfflineItem(bandsCacheKey, fetchedBands).catch(() => {}));
       hasLoadedCacheRef.current = true;
 
       // Robust auto-selection logic

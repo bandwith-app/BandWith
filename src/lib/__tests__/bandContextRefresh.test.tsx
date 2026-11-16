@@ -16,6 +16,7 @@ vi.mock('../offline/storage', () => ({
   getOfflineItem: vi.fn(async () => null),
   setOfflineItem: vi.fn(async () => {}),
   getCacheKey: (...parts: unknown[]) => parts.join(':'),
+  syncCachedRoles: vi.fn(async () => false),
 }));
 vi.mock('../services/pricing', () => ({ getBandPricing: vi.fn(async () => ({})) }));
 vi.mock('../services/bands', () => ({ getBands: h.getBands, getBand: vi.fn() }));

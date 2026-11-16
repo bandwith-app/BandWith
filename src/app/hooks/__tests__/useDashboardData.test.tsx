@@ -12,6 +12,7 @@ vi.mock('@/lib/offline/storage', () => ({
   getCacheKey: (u: string, b: string | null, k: string) => `bw:${u}:${b || 'global'}:${k}`,
   getOfflineItem: async (k: string) => store.get(k) ?? null,
   setOfflineItem: async (k: string, v: unknown) => { store.set(k, v); },
+  onCachedRolesChanged: () => () => {},
 }));
 vi.mock('@/lib/services/events', () => ({
   getEventStats: async () => ({ data: { totalEvents: 1, confirmedEvents: 1, totalRevenue: 0, upcomingEvents: 1 }, error: null }),

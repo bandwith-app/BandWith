@@ -10,9 +10,31 @@ import * as transactionsService from '@/lib/services/transactions';
 import * as chatsService from '@/lib/services/chats';
 import * as rehearsalPollsService from '@/lib/services/rehearsalPolls';
 import { supabase, getSafeUser } from '@/lib/supabase';
-import { getOfflineItem, setOfflineItem, getCacheKey } from '@/lib/offline/storage';
+import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
 import { getPendingMutations } from '@/lib/offline/syncQueue';
 import { getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
+
+// ============================================
+// CACHE RULES
+// ============================================
+
+/**
+ * The cache only fills in until the server answers. On a slow device the
+ * cache read can land after the fetch: `freshKey` remembers which cache key
+ * the server already answered for, so its older rows (maybe read for another
+ * role) never replace the fresh ones.
+ */
+const useFreshKey = () => useRef<string | null>(null);
+
+/**
+ * The user's role in a band changed (offline/storage.ts syncCachedRoles):
+ * the rows on screen were read for the old role, so fetch them again.
+ */
+const useRefetchOnRoleChange = (refetch: () => unknown) => {
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+  useEffect(() => onCachedRolesChanged(() => { void refetchRef.current(); }), []);
+};
 
 // ============================================
 // BANDS HOOKS
@@ -159,6 +181,7 @@ export const useEvents = (
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const hasLoadedOnce = useRef(false);
+  const freshKey = useFreshKey();
   const eventsRef = useRef<eventsService.Event[]>([]);
   eventsRef.current = events;
 
@@ -220,11 +243,11 @@ export const useEvents = (
       getOfflineItem<eventsService.Event[]>(cacheKey),
       getOfflineItem<eventsService.Event[]>(fallbackCacheKey),
     ]).then(async ([cached, fallbackCached]) => {
-      if (!isMounted) return;
+      if (!isMounted || freshKey.current === cacheKey) return;
       const source = (cached && cached.length > 0) ? cached : fallbackCached;
       if (!source) return;
       const merged = await mergePendingEvents(source);
-      if (isMounted) {
+      if (isMounted && freshKey.current !== cacheKey) {
         setEvents(merged);
         hasLoadedOnce.current = true;
         setLoading(false);
@@ -280,6 +303,7 @@ export const useEvents = (
 
       const merged = await mergePendingEvents(data);
       setEvents(merged);
+      freshKey.current = cacheKey;
       setOfflineItem(cacheKey, data).catch(() => {});
       if (data.length > 0 || hasBands) {
         setOfflineItem(fallbackCacheKey, data).catch(() => {});
@@ -318,6 +342,8 @@ export const useEvents = (
     
     return () => clearInterval(pollInterval);
   }, [fetchEvents, bandId]);
+
+  useRefetchOnRoleChange(() => fetchEvents(true));
 
   // Subscribe to realtime events updates
   useEffect(() => {
@@ -915,6 +941,7 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const hasLoadedOnce = useRef(false);
+  const freshKey = useFreshKey();
   const effectiveUserId = userId || user?.id;
   const cacheKey = getCacheKey(effectiveUserId, bandId, 'dashboard_data');
   const fallbackCacheKey = getCacheKey(effectiveUserId, 'global', 'dashboard_data_fallback');
@@ -967,7 +994,7 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
       getOfflineItem<typeof data>(cacheKey),
       getOfflineItem<typeof data>(fallbackCacheKey),
     ]).then(([cached, fallbackCached]) => {
-      if (!isMounted) return;
+      if (!isMounted || freshKey.current === cacheKey) return;
       // The fallback is the last band fetched on this device: only for that
       // band, or before the band is known (cold start).
       const fallback = fallbackCached && (!bandId || fallbackCached.bandId === bandId) ? fallbackCached : null;
@@ -1019,6 +1046,8 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
         recentQuotesRes?.error ||
         memberStatsRes?.error
       );
+      // Something came from the server: the cache must not replace it now.
+      if (results.some((r) => r && !r.error && !r.skipped)) freshKey.current = cacheKey;
 
       setData(prev => {
         // Parts that failed keep the previous value only if it is this band's.
@@ -1079,6 +1108,8 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
     
     return () => clearInterval(pollInterval);
   }, [bandId, fetchData]);
+
+  useRefetchOnRoleChange(() => fetchData(true));
 
   // Subscribe to realtime changes on events table to refresh dashboard when event_members change
   // (event_members changes happen via persistMembers delete+reinsert triggered by event saves)
@@ -1221,6 +1252,7 @@ export const useExpandedFinanceData = (bandId: string | null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cacheKey = getCacheKey(user?.id, bandId, 'expanded_finance_data');
+  const freshKey = useFreshKey();
   // The band shown now: answers for a band the user switched away from are dropped.
   const bandRef = useRef(bandId);
   bandRef.current = bandId;
@@ -1241,7 +1273,7 @@ export const useExpandedFinanceData = (bandId: string | null) => {
     let isMounted = true;
     if (bandId) {
       getOfflineItem<typeof data>(cacheKey).then((cached) => {
-        if (isMounted && cached && (cached.financialStats || cached.recentTransactions?.length)) {
+        if (isMounted && freshKey.current !== cacheKey && cached && (cached.financialStats || cached.recentTransactions?.length)) {
           setData(cached);
           setLoading(false);
         }
@@ -1273,6 +1305,7 @@ export const useExpandedFinanceData = (bandId: string | null) => {
         };
 
         setData(fresh);
+        freshKey.current = cacheKey;
         setOfflineItem(cacheKey, fresh).catch(() => {});
       }
     } catch (err: any) {
@@ -1286,6 +1319,8 @@ export const useExpandedFinanceData = (bandId: string | null) => {
     fetchData();
   }, [fetchData]);
 
+  useRefetchOnRoleChange(fetchData);
+
   return { data, loading, error, refetch: fetchData };
 };
 
@@ -1296,6 +1331,7 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
   const [error, setError] = useState<Error | null>(null);
   const hasLoadedOnce = useRef(false);
   const cacheKey = getCacheKey(user?.id, bandId, `expanded_events_${JSON.stringify(statusFilter || [])}`);
+  const freshKey = useFreshKey();
   // The band shown now: answers for a band the user switched away from are dropped.
   const bandRef = useRef(bandId);
   bandRef.current = bandId;
@@ -1304,7 +1340,7 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
     let isMounted = true;
     if (bandId) {
       getOfflineItem<eventsService.Event[]>(cacheKey).then((cached) => {
-        if (isMounted && cached?.length) {
+        if (isMounted && freshKey.current !== cacheKey && cached?.length) {
           setEvents(cached);
           hasLoadedOnce.current = true;
           setLoading(false);
@@ -1333,6 +1369,7 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
       if (fetchError) throw fetchError;
       if (data) {
         setEvents(data);
+        freshKey.current = cacheKey;
         setOfflineItem(cacheKey, data).catch(() => {});
         hasLoadedOnce.current = true;
       }
@@ -1379,6 +1416,8 @@ export const useExpandedEventsData = (bandId: string | null, statusFilter?: stri
     };
   }, [bandId, fetchEvents]);
 
+  useRefetchOnRoleChange(() => fetchEvents(true));
+
   return { events, loading, error, refetch: fetchEvents };
 };
 
@@ -1395,6 +1434,7 @@ export const useExpandedQuotesData = (bandId: string | null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const cacheKey = getCacheKey(user?.id, bandId, 'expanded_quotes_data');
+  const freshKey = useFreshKey();
   // The band shown now: answers for a band the user switched away from are dropped.
   const bandRef = useRef(bandId);
   bandRef.current = bandId;
@@ -1403,7 +1443,7 @@ export const useExpandedQuotesData = (bandId: string | null) => {
     let isMounted = true;
     if (bandId) {
       getOfflineItem<{ quotes: quotesService.Quote[]; stats: typeof stats }>(cacheKey).then((cached) => {
-        if (isMounted && cached && (cached.quotes?.length || cached.stats)) {
+        if (isMounted && freshKey.current !== cacheKey && cached && (cached.quotes?.length || cached.stats)) {
           setQuotes(cached.quotes || []);
           setStats(cached.stats || null);
           setLoading(false);
@@ -1431,6 +1471,7 @@ export const useExpandedQuotesData = (bandId: string | null) => {
 
         setQuotes(freshQuotes);
         setStats(freshStats);
+        freshKey.current = cacheKey;
         setOfflineItem(cacheKey, { quotes: freshQuotes, stats: freshStats }).catch(() => {});
       }
     } catch (err: any) {
@@ -1443,6 +1484,8 @@ export const useExpandedQuotesData = (bandId: string | null) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useRefetchOnRoleChange(fetchData);
 
   return { quotes, stats, loading, error, refetch: fetchData };
 };
