@@ -36,6 +36,9 @@ check (`app.check`) on each screen it reaches.
 | Personal gig keeps its Edit button; gigs/rehearsals have none | `event-edit` | full |
 | Leaving an editor with unsaved changes asks (Cancel, ✕, Escape) | `unsaved-changes` | full |
 | Show readiness: "No contract yet" opens Contracts & docs with a new contract for the gig | `event-edit` | full |
+| … its Back (the screen's, the Duo rail's, system Back) leaves the form, then returns to the gig | `event-edit` | all |
+| … the new contract form fills the pane, its action at the bottom, no tab bar over it (iPad) | `event-edit` | full |
+| A gig scrolled to the end keeps Back (pinned top bar, or the Duo rail) on screen | `rider-stage` | all |
 
 ## Members, privacy, RSVP
 
@@ -44,7 +47,8 @@ check (`app.check`) on each screen it reaches.
 | Member: gigs and rehearsal are read-only; no client, price or colleagues' fees | `member-readonly` | all (portrait and landscape) |
 | Member: Home and Calendar never show a client or gig price | `member-readonly` | all |
 | Member: own fee is shown | `member-readonly` | full |
-| Admin → member on the same device: cached client and price are gone | `member-readonly` | all |
+| Admin → member on the same device: cached client and price are gone (also with a slow cache) | `member-readonly` | all |
+| Member → admin on the same device: the client shows and a new contract is filled in (slow cache) | `member-readonly` | all |
 | RSVP: only GOING / CAN'T, the answer sticks (rehearsal and gig) | `rsvp` | full |
 | RSVP: an old "maybe" asks to choose (rehearsal and gig) | `rsvp` | full |
 | RSVP: after answering a gig invitation, the next event opened stays open | `rsvp` | full |
@@ -55,6 +59,7 @@ check (`app.check`) on each screen it reaches.
 | Flow | Spec | Profiles |
 | --- | --- | --- |
 | Open from the gig, Back / Escape (also from the input-list editor) | `rider-stage` | full |
+| Phone: back from Rider & stage, the gig's Back and stage mode are on screen | `rider-stage` | full |
 | Tablet: Rider & stage tab and back to Overview | `rider-stage` | full |
 | Build input list from lineup; Update / Keep after a lineup change | `rider-stage` | full |
 | No "seen" anywhere | `rider-stage` | full |

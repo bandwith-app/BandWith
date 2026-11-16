@@ -9,6 +9,7 @@ import {
   Music,
   RotateCcw,
   Play,
+  ArrowLeft,
   Plus,
   Trash2,
   AlertCircle,
@@ -589,10 +590,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const heroRef = React.useRef<HTMLElement>(null);
   const scrimRef = React.useRef<HTMLDivElement>(null);
   const [heroUnderBar, setHeroUnderBar] = useState(true);
+  // The hero's top bar (Back, stage mode, options) scrolled away: it stays
+  // pinned at the top instead, like Rider & stage's, so Back is always in
+  // reach (coming back from Rider & stage lands mid-page).
+  const [topBarPinned, setTopBarPinned] = useState(false);
   const handleScroll = React.useCallback(() => {
     const bottom = heroRef.current?.getBoundingClientRect().bottom ?? 0;
     const barHeight = scrimRef.current?.offsetHeight || 24;
     setHeroUnderBar(bottom > barHeight);
+    setTopBarPinned((heroRef.current?.parentElement?.scrollTop ?? 0) > 2);
   }, []);
   useEffect(() => {
     if (!heroUnderBar) return;
@@ -1209,6 +1215,57 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     </div>
   ) : null;
 
+  // The hero top bar's actions, also on the pinned bar.
+  const topBarActions = (
+    <>
+      <AcademyHelpButton
+        article={isPersonalGig ? 'personal-gigs' : isRehearsal ? 'the-rehearsal-page' : isQuote ? 'quotes-overview' : 'gig-workspace'}
+        variant="event"
+        size="sm"
+        className="ml-auto"
+      />
+      {canEditOverview && !editInRail && (
+        <IconButton
+          label={t('Edit title, date & times')}
+          icon={<Pencil />}
+          variant="event"
+          size="sm"
+          onClick={() => openEdit('event')}
+        />
+      )}
+      {canStage && !stageInRail && (
+        <button
+          type="button"
+          onClick={() => {
+            haptic.medium();
+            setIsStageOpen(true);
+          }}
+          aria-label={t('Open stage mode')}
+          title={t('Stage mode')}
+          className="w-11 h-11 -mr-2.5 rounded-full flex items-center justify-center shrink-0 active:scale-[var(--press-scale)] transition-transform cursor-pointer"
+          style={isGigDay ? heroChipStyle : undefined}
+        >
+          <Play className="w-6 h-6" />
+        </button>
+      )}
+      {showOptionsMenu && !optionsInRail && (
+        <IconButton
+          label={t('More options')}
+          icon={<MoreHorizontal />}
+          variant="event"
+          size="sm"
+          onClick={() => {
+            haptic.tap();
+            setConfirmDrop(false);
+            setOptionsOpen(true);
+          }}
+        />
+      )}
+    </>
+  );
+  // Pinned while the page is scrolled; the iPhone Duo has these in its rail.
+  const pinnedBar = topBarPinned && !railChrome;
+
   return (
     <>
       <motion.div
@@ -1238,6 +1295,26 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           )}
           style={{ height: 'var(--safe-top)' }}
         />
+        {pinnedBar && (
+          <div
+            className={cn(
+              'bw-ed-pinned @container absolute inset-x-0 top-0 z-20',
+              !heroUnderBar && 'bg-background text-foreground',
+            )}
+            style={heroUnderBar ? { backgroundColor: theme.accentColor, color: theme.accentFg } : undefined}
+          >
+            <div
+              className={cn('mx-auto w-full px-4 pb-2', tab ? 'max-w-[1120px] @min-[700px]:px-8' : 'max-w-[640px]')}
+              style={{ paddingTop: 'calc(var(--wizard-header-pt, max(var(--safe-top), 44px)) + 4px)' }}
+            >
+              <div className="flex items-center justify-between gap-2 h-11 -mt-1">
+                <IconButton label={t('Back')} icon={<ArrowLeft />} variant="event" size="sm" onClick={onClose} />
+                {!heroUnderBar && <p className="bw-label-md flex-1 min-w-0 truncate">{event.title}</p>}
+                {topBarActions}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="bw-ed-scroll flex-1 min-h-0 overflow-y-auto overscroll-contain" onScroll={handleScroll}>
           {/* ═══ HERO (event colour, full-bleed) ═══ */}
           <header
@@ -1249,52 +1326,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               className={cn('mx-auto w-full px-4 pb-14 flex flex-col gap-3', tab ? 'max-w-[1120px] @min-[700px]:px-8' : 'max-w-[640px]')}
               style={{ paddingTop: 'calc(var(--wizard-header-pt, max(var(--safe-top), 44px)) + 4px)' }}
             >
-              {/* Top bar: back + stage mode / options */}
-              <div className="flex items-center justify-between gap-2 h-11 -mt-1 empty:hidden">
+              {/* Top bar: back + stage mode / options (pinned below once scrolled) */}
+              <div className={cn('bw-ed-topbar flex items-center justify-between gap-2 h-11 -mt-1 empty:hidden', pinnedBar && 'invisible')}>
                 <NavBackButton pane variant="event" size="sm" onClick={onClose} />
-                <AcademyHelpButton
-                  article={isPersonalGig ? 'personal-gigs' : isRehearsal ? 'the-rehearsal-page' : isQuote ? 'quotes-overview' : 'gig-workspace'}
-                  variant="event"
-                  size="sm"
-                  className="ml-auto"
-                />
-                {canEditOverview && !editInRail && (
-                  <IconButton
-                    label={t('Edit title, date & times')}
-                    icon={<Pencil />}
-                    variant="event"
-                    size="sm"
-                    onClick={() => openEdit('event')}
-                  />
-                )}
-                {canStage && !stageInRail && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      haptic.medium();
-                      setIsStageOpen(true);
-                    }}
-                    aria-label={t('Open stage mode')}
-                    title={t('Stage mode')}
-                    className="w-11 h-11 -mr-2.5 rounded-full flex items-center justify-center shrink-0 active:scale-[var(--press-scale)] transition-transform cursor-pointer"
-                    style={isGigDay ? heroChipStyle : undefined}
-                  >
-                    <Play className="w-6 h-6" />
-                  </button>
-                )}
-                {showOptionsMenu && !optionsInRail && (
-                  <IconButton
-                    label={t('More options')}
-                    icon={<MoreHorizontal />}
-                    variant="event"
-                    size="sm"
-                    onClick={() => {
-                      haptic.tap();
-                      setConfirmDrop(false);
-                      setOptionsOpen(true);
-                    }}
-                  />
-                )}
+                {topBarActions}
               </div>
 
               {/* Chips + title | dot-matrix date */}

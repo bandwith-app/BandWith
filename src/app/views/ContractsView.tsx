@@ -163,6 +163,11 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
   // A row's menu is the top layer: Back and Escape close just the menu.
   useSystemBack(!!menuOpenId, () => setMenuOpenId(null));
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // The new / edit document form is a layer too: the system Back (Android,
+  // Escape, the Duo rail) leaves the form like its own Back, not the screen.
+  useSystemBack(showCreateModal, () => {
+    if (!saving) setShowCreateModal(false);
+  });
   const [viewingId, setViewingId] = useState<string | null>(null);
 
   // Create form state
@@ -794,7 +799,11 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="bw-pane-detail fixed inset-0 z-[100] flex flex-col bg-background text-foreground"
+            // A composer: on a tablet the nav steps away and the form fills the
+            // pane with its action at the bottom (tablet.css); in Duo Laptop
+            // pose the header holds the Display, fields and action the Deck.
+            data-bw-composer=""
+            className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] flex flex-col bg-background text-foreground"
           >
             <ScreenHeader
                 pane

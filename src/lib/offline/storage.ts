@@ -165,17 +165,8 @@ export const removeOfflineItem = async (key: string): Promise<void> => {
   }
 };
 
-/**
- * Clear cache entries (optionally filtered by prefix, e.g. on logout).
- * With the default `bw:` prefix this also removes every per-user offline
- * mutation queue (`bw:offline_queue:<userId>`) and the legacy un-prefixed
- * queue key, so one user's unsynced edits can never replay for the next user.
- */
-export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> => {
-  if (prefix === 'bw:') {
-    await removeOfflineItem(LEGACY_MUTATION_QUEUE_KEY);
-  }
-
+/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
+const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();
@@ -188,7 +179,7 @@ export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> =
             const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
             if (cursor) {
               const k = cursor.key;
-              if (typeof k === 'string' && k.startsWith(prefix)) {
+              if (typeof k === 'string' && drop(k)) {
                 cursor.delete();
               }
               cursor.continue();
@@ -210,7 +201,7 @@ export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> =
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith(prefix)) {
+      if (k && drop(k)) {
         keysToRemove.push(k);
       }
     }
@@ -218,4 +209,79 @@ export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> =
   } catch {
     // Ignore
   }
+};
+
+/**
+ * Clear cache entries (optionally filtered by prefix, e.g. on logout).
+ * With the default `bw:` prefix this also removes every per-user offline
+ * mutation queue (`bw:offline_queue:<userId>`) and the legacy un-prefixed
+ * queue key, so one user's unsynced edits can never replay for the next user.
+ */
+export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> => {
+  if (prefix === 'bw:') {
+    await removeOfflineItem(LEGACY_MUTATION_QUEUE_KEY);
+  }
+  await removeOfflineItemsWhere((k) => k.startsWith(prefix));
+};
+
+// ─── Cached data and the role it was read for ───────────────────────────────
+
+/** Band id → the user's role in it ('admin' | 'member'). */
+export type BandRoles = Record<string, string>;
+
+/**
+ * Cached keys a role change keeps: who the user is and which band was open.
+ * Everything else under `bw:<userId>:` was read for one role (a member's
+ * rows carry no client, price or colleagues' fees) and is dropped.
+ */
+const ROLE_NEUTRAL_KEYS = ['user_profile', 'selected_band_id'];
+
+const cachedRolesKey = (userId: string) => getCacheKey(userId, 'global', 'cache_roles');
+
+type RolesChangedListener = (userId: string) => void;
+const rolesChangedListeners = new Set<RolesChangedListener>();
+
+/** Called after a role change dropped the cache: data on screen was read for the old role. */
+export const onCachedRolesChanged = (listener: RolesChangedListener): (() => void) => {
+  rolesChangedListeners.add(listener);
+  return () => {
+    rolesChangedListeners.delete(listener);
+  };
+};
+
+/**
+ * Records the roles a fresh band list gives the user, and drops the cached
+ * data when it was read for other roles: a member made admin must not keep
+ * member-shaped rows (no client, so an empty new contract), and an admin made
+ * member must not keep the client and price on the device. Also dropped once
+ * when the device has no record yet (cache written before this check).
+ * Listeners hear about a real change, so the open screens fetch again.
+ * Returns whether the cache was dropped.
+ */
+export const syncCachedRoles = async (userId: string, roles: BandRoles): Promise<boolean> => {
+  const key = cachedRolesKey(userId);
+  const previous = await getOfflineItem<BandRoles>(key);
+  const changed = !!previous && Object.keys(roles).some((band) => band in previous && previous[band] !== roles[band]);
+  const sameRecord =
+    !!previous &&
+    Object.keys(previous).length === Object.keys(roles).length &&
+    Object.keys(roles).every((band) => previous[band] === roles[band]);
+  if (previous && !changed) {
+    if (!sameRecord) await setOfflineItem(key, roles);
+    return false;
+  }
+  const userPrefix = `bw:${userId}:`;
+  const keep = new Set(ROLE_NEUTRAL_KEYS.map((k) => getCacheKey(userId, 'global', k)));
+  await removeOfflineItemsWhere((k) => k.startsWith(userPrefix) && !keep.has(k));
+  await setOfflineItem(key, roles);
+  if (changed) {
+    rolesChangedListeners.forEach((listener) => {
+      try {
+        listener(userId);
+      } catch {
+        /* one listener must not stop the others */
+      }
+    });
+  }
+  return true;
 };

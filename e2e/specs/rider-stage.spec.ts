@@ -79,6 +79,23 @@ test.describe('Rider & stage as admin', () => {
     await expectGigOverview(app, SEED.wedding);
   });
 
+  // Emulator pass 11-16: back from Rider & stage the gig is still scrolled to
+  // where its row was, and its Back had scrolled away with the hero.
+  test("phone: back from Rider & stage, the gig's Back is on screen", async ({ app }) => {
+    await openEvent(app, SEED.wedding);
+    test.skip(await isWide(app), 'tablets show Rider & stage as a tab of the gig, not a screen');
+    await openRiderStage(app);
+    await back(app);
+    await expectGigOverview(app, SEED.wedding);
+    const gigBack = app.button('Back', { exact: true }).last();
+    await expect(gigBack).toBeInViewport();
+    await expect(app.page.getByRole('button', { name: app.t('Open stage mode') })).toBeInViewport();
+    await app.check('gig, back from Rider & stage');
+    await gigBack.click();
+    await app.settle();
+    await expect(eventDetail(app)).toBeHidden();
+  });
+
   test('tablet: the Rider & stage tab and back to Overview', async ({ app }) => {
     await openEvent(app, SEED.wedding);
     test.skip(!(await isWide(app)), 'phones open Rider & stage as a screen');
@@ -152,5 +169,23 @@ test.describe('Rider & stage as member', () => {
     await expect(app.page.getByRole('button', { name: app.t('Edit the stage plot') })).toHaveCount(0);
     expect(await riderText(app)).not.toMatch(/\bseen\b/i);
     await app.check('Rider & stage (member)');
+  });
+});
+
+test.describe('a long gig page', () => {
+  // Scrolled to the end, Back and the gig's actions stay in reach: pinned at
+  // the top (phones, tablets), in the rail (iPhone Duo).
+  test('@smoke scrolled to the end, Back is still on screen and closes the gig', async ({ app }) => {
+    await openEvent(app, SEED.wedding);
+    await app.page.locator('.bw-event-detail .bw-ed-scroll').last().evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await app.settle();
+    const gigBack = app.button('Back', { exact: true }).last();
+    await expect(gigBack).toBeInViewport();
+    await app.check('gig scrolled to the end');
+    await gigBack.click();
+    await app.settle();
+    await expect(eventDetail(app)).toBeHidden();
   });
 });

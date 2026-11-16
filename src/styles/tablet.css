@@ -27,6 +27,16 @@
 [data-bw-wide][data-bw-two-pane] body:has(.bw-stage) .bw-nav-bar {
   display: none !important;
 }
+/* A composer in the detail pane (Contracts → Create contract) is modal like
+   the full-screen composers, which hide the nav: the nav steps away, so the
+   form scrolls in the pane's full height and its primary action sits at the
+   pane's bottom edge instead of floating above where the nav was. */
+[data-bw-wide][data-bw-two-pane] body:has(.bw-pane-detail[data-bw-composer]) .bw-nav-bar {
+  display: none !important;
+}
+[data-bw-wide][data-bw-two-pane][data-bw-tab-nav] .bw-pane-detail[data-bw-composer] {
+  padding-bottom: 0 !important;
+}
 /* Detail content ends above the nav (bar 64 px + 24 px from the bottom). */
 [data-bw-wide][data-bw-two-pane][data-bw-tab-nav] .bw-pane-detail {
   padding-bottom: calc(var(--safe-bottom, 0px) + 104px) !important;
