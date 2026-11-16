@@ -97,6 +97,7 @@ check (`app.check`) on each screen it reaches.
 | Every layer closes with system Back and with its own Back / ✕ (notifications, Create menu, search, gig, hub page, chat) | `layers-back` | full (some all) |
 | Accessibility (axe, WCAG 2.1 AA): Home, Calendar, a gig and its Venue / Lineup / Setlist sheets, a rehearsal, Suggestions, New rehearsal; no critical or serious violation | `a11y` | phone-portrait, iPad (composer), laptop (month grid, sheets) |
 | Inbox opened while Home loads: no gig opens behind it; Back (and the Duo rail's) closes the inbox | `layers-back` | all |
+| Onboarding (web): the browser Back steps back like Escape; on the first screen it leaves | `layers-back` | full |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

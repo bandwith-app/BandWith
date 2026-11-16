@@ -157,3 +157,41 @@ test.describe('inbox opened as Home loads', () => {
     await app.check('Home after closing the inbox');
   });
 });
+
+test.describe('onboarding, signed out (web)', () => {
+  test.use({ autoOpen: false });
+
+  test('the browser Back steps back like Escape, and the first screen still leaves', async ({ app }) => {
+    const { page } = app;
+    await page.addInitScript(() => {
+      try {
+        localStorage.removeItem('bw-demo-session');
+      } catch {
+        /* about:blank, once Back has left the app */
+      }
+    });
+    await page.goto('/');
+    const getStarted = page.getByRole('button', { name: app.t('Get started'), exact: true });
+    await getStarted.click();
+    const createAccount = page.getByRole('heading', { name: new RegExp(app.t('Create account'), 'i') }).first();
+    await expect(createAccount).toBeVisible();
+
+    await page.goBack();
+    await expect(createAccount).toBeHidden();
+    await expect(getStarted).toBeVisible();
+    await app.check('Welcome after the browser Back');
+
+    // Again, so the entry is kept on top for the next Back.
+    await getStarted.click();
+    await expect(createAccount).toBeVisible();
+    await page.goBack();
+    await expect(getStarted).toBeVisible();
+
+    // Nothing to step back to: Back leaves the app as usual.
+    await page.goBack().catch(() => null);
+    await expect.poll(() => page.url()).toBe('about:blank');
+    // (Forward again, for the end-of-test page check.)
+    await page.goForward();
+    await expect(getStarted).toBeVisible();
+  });
+});
