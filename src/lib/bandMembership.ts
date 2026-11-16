@@ -46,3 +46,20 @@ export function parseFeeInput(text: string): { value: number | null; invalid: bo
   if (!Number.isFinite(n) || n < 0) return { value: null, invalid: true };
   return { value: Math.round(n * 100) / 100, invalid: false };
 }
+
+/** Notices the database sends the band when its roster changes (migration 046). */
+export const isRosterChange = (type: string | null | undefined): boolean =>
+  type === 'member_joined' || type === 'member_left';
+
+/**
+ * Whether a fresh band list says the same as the one on screen (same bands,
+ * same members, roles, instruments and fees), so a refresh can keep it.
+ */
+export function bandsUnchanged(prev: readonly unknown[], next: readonly unknown[]): boolean {
+  if (prev.length !== next.length) return false;
+  try {
+    return JSON.stringify(prev) === JSON.stringify(next);
+  } catch {
+    return false;
+  }
+}

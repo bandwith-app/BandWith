@@ -53,7 +53,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Ogni membro dell’organico riceve una notifica “Nuova prova” e una push, e la prova compare nel suo calendario con una scheda **Ci sarai?** (vedi [[answer-a-rehearsal-invite]]). Tu risulti presente.",
+          text: "Ogni membro dell’organico riceve una notifica “Nuova prova” e una push, e la prova compare nel suo calendario con una scheda **Ci sarai?** (vedi [[answer-a-rehearsal-invite]]). Tu risulti presente, a meno che non ti sia tolto dall’organico: la prova la gestisci comunque.",
         },
         {
           type: "devices",
@@ -468,7 +468,7 @@ const together: AreaText = {
           items: [
             "Solo i membri invitati ricevono la notifica del sondaggio e possono votare. Gli altri della band possono aprire il sondaggio in sola lettura, con l’etichetta **Non invitato**; il server rifiuta i loro voti.",
             "Gli admin della band vedono sempre il sondaggio. L’admin che lo pubblica è sempre nell’elenco.",
-            "Quando confermi una data, nella prova vengono messi solo i membri invitati (e tu).",
+            "Quando confermi una data, nella prova vengono messi solo i membri invitati: anche tu se eri invitato o hai votato. In ogni caso la gestisci tu.",
             "La quota del costo della sala si divide per il numero di persone chiamate a votare.",
           ],
         },

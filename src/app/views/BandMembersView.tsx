@@ -132,7 +132,7 @@ interface SearchUser {
 
 export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => {
   const t = useT();
-  const { selectedBand, isAdmin, refreshBands } = useBand();
+  const { selectedBand, isAdmin, refreshBands, refreshMembers } = useBand();
   const { profile: currentProfile, user: authUser } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   // Android Back and Escape close the member detail first, then Members.
@@ -167,6 +167,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     if (data) setMembers(data);
     if (error) setError(error.message);
     setLoading(false);
+    // Event pickers read the roster from the band context: same people there.
+    if (data) void refreshMembers?.();
   };
 
   const [pendingRemoval, setPendingRemoval] = useState<BandMember | null>(null);
@@ -200,6 +202,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     // The database notifies the removed member and the band (migration 046).
     setMembers((prev) => prev.filter((m) => m.id !== pendingRemoval.id));
     setPendingRemoval(null);
+    // Off the lineup pickers too, without waiting for the band's notice.
+    void refreshMembers?.();
   };
 
   // Leave band: the signed-in user's own row. A member always can; an admin

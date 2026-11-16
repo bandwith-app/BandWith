@@ -72,6 +72,7 @@ import { BwSheet, DotText } from '@/app/components/bw';
 import { builtinText } from '@/lib/i18n/builtins';
 import { instrumentText } from '@/lib/instruments';
 import { lineupPresetMembers, selectedLineupPreset } from '@/lib/lineupPresets';
+import { lineupCleared } from '@/lib/eventLineup';
 
 export interface BandMember {
   id: string;
@@ -412,7 +413,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const isEditing = !!editingEvent;
   // A draft restores the wizard where it was left (creation only).
   const ds = (!editingEvent && draft?.state ? draft.state : null) as Record<string, any> | null;
-  const { selectedBand, isAdmin } = useBand();
+  const { selectedBand, isAdmin, refreshMembers } = useBand();
+  // The roster as it is now: someone who just joined can be put on the lineup.
+  useEffect(() => {
+    void refreshMembers?.();
+  }, []);
 
   const editingWarnings = useMemo(() => {
     if (!editingEvent) return [];
@@ -692,6 +697,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     return currentUserMemberId ? [currentUserMemberId] : [];
   });
 
+  // The user changed the lineup by hand: an empty one stays empty.
+  const lineupTouchedRef = useRef(false);
+  // Editing: how many were on the lineup when the form opened.
+  const initialLineupCount = useRef(editingEvent?.memberUserIds?.length ?? 0).current;
+
   const [memberFees, setMemberFees] = useState<Record<string, string>>(() => {
     if (ds?.memberFees && typeof ds.memberFees === 'object') return ds.memberFees;
     if (editingEvent?.memberUserIds?.length && editingEvent.memberFeeMap) {
@@ -721,7 +731,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       if (isCancelled) return;
       setPricingSettings(settings);
       if (!isEditing) {
-        if (selectedMembers.length === 0 && currentUserMemberId) {
+        // You start on a new gig's lineup, until you take yourself off.
+        if (selectedMembers.length === 0 && currentUserMemberId && !lineupTouchedRef.current) {
           setSelectedMembers([currentUserMemberId]);
           const m = MEMBERS.find(mem => mem.id === currentUserMemberId || mem.user_id === currentUserMemberId);
           const autoFee =
@@ -904,8 +915,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   };
 
   const toggleMember = (memberId: string) => {
+    lineupTouchedRef.current = true;
     if (selectedMembers.includes(memberId)) {
-      if (memberId === currentUserMemberId) return;
+      // Anyone can come off, you too: an admin who doesn't play this gig
+      // still manages it (lib/eventLineup.ts).
       setSelectedMembers(prev => prev.filter(id => id !== memberId));
       const newFees = { ...memberFees };
       delete newFees[memberId];
@@ -923,6 +936,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   }, []);
 
   const applyPerformancePreset = (preset: { label: string; count: number; type: PerformanceType }) => {
+    lineupTouchedRef.current = true;
     setPerformanceType(preset.type);
     const newSelected = lineupPresetMembers(preset.count, MEMBERS.map(m => m.id), currentUserMemberId);
     setSelectedMembers(newSelected);
@@ -980,6 +994,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       setting: isEditing && !settingTouchedRef.current ? (editingEvent?.indoorOutdoor ?? null) : setting,
       members: membersWithUserIds,
       audienceIds: membersWithUserIds.map(m => m.id),
+      // Everyone taken off on purpose (an empty lineup alone means "unchanged").
+      _lineupCleared: lineupCleared(isEditing, initialLineupCount, membersWithUserIds.length),
       setlist,
       // Every song removed from a saved setlist: empty it (no songs alone means "unchanged").
       _setlistCleared: isEditing && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
@@ -1481,7 +1497,6 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       {MEMBERS.map(member => {
         const isSelected = selectedMembers.includes(member.id);
         const isCurrentUser = member.id === currentUserMemberId;
-        const isLocked = isSelected && isCurrentUser;
         const showFee = isSelected && isAdmin && !feeTbd;
 
         return (
@@ -1489,19 +1504,17 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             <div
               role="checkbox"
               aria-checked={isSelected}
-              aria-disabled={isLocked || undefined}
               tabIndex={0}
-              onClick={() => !isLocked && toggleMember(member.id)}
+              onClick={() => toggleMember(member.id)}
               onKeyDown={(e) => {
                 if (e.key !== ' ' && e.key !== 'Enter') return;
                 e.preventDefault();
-                if (!isLocked) toggleMember(member.id);
+                toggleMember(member.id);
               }}
-              className={cn('flex items-center gap-3 min-w-0 flex-1 rounded-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring', !isLocked && 'cursor-pointer')}
+              className="flex items-center gap-3 min-w-0 flex-1 rounded-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
             >
               <DotCheckbox
                 checked={isSelected}
-                disabled={isLocked}
                 activeColor="var(--wizard-accent)"
                 inactiveColor="var(--dot-mid)"
               />

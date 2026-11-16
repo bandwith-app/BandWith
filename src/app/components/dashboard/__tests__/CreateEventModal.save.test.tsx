@@ -144,3 +144,54 @@ describe('a failed save (Phase 3)', () => {
     expect(drafts.del).not.toHaveBeenCalled();
   });
 });
+
+// The admin starts on a new gig's lineup but can take themselves off, on a
+// new gig and when editing one (they still manage it).
+describe('the admin on the lineup', () => {
+  const roster = [
+    { id: 'bm-me', user_id: 'me', name: 'Ada Admin', role: 'admin', fee: '100', initials: 'AA', instrument: 'Keys' },
+    { id: 'bm-2', user_id: 'u2', name: 'Bo Bass', role: 'member', fee: '100', initials: 'BB', instrument: 'Bass' },
+  ];
+  const lineupDraft = {
+    ...draft,
+    state: { ...draft.state, step: 0, selectedMembers: ['bm-me', 'bm-2'], memberFees: { 'bm-me': '100', 'bm-2': '100' } },
+  };
+  const row = (name: RegExp) => screen.getAllByRole('checkbox').find((el) => name.test(el.textContent || ''))!;
+
+  it('can untick themselves on a new gig', async () => {
+    const onCreate = vi.fn(async () => true);
+    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} draft={lineupDraft as any} currentUserId="me" bandMembers={roster} />);
+    const me = row(/Ada Admin/);
+    expect(me.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(me);
+    expect(row(/Ada Admin/).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(screen.getByText('Next'));
+    fireEvent.click(screen.getByText('Next'));
+    fireEvent.click(screen.getByText('Create gig'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+    expect(sent.members.map((m: any) => m.id)).toEqual(['u2']);
+    expect(sent._lineupCleared).toBe(false);
+  });
+
+  it('editing: taking everyone off says so, so the save empties the lineup', async () => {
+    const onCreate = vi.fn(async () => true);
+    render(
+      <CreateEventModal
+        onClose={vi.fn()}
+        onCreate={onCreate}
+        editingEvent={{ ...gig, memberUserIds: ['me', 'u2'], memberFeeMap: { me: '100', u2: '100' } }}
+        currentUserId="me"
+        bandMembers={roster}
+      />,
+    );
+    fireEvent.click(screen.getByText('Band & compensation'));
+    fireEvent.click(row(/Ada Admin/));
+    fireEvent.click(row(/Bo Bass/));
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+    expect(sent.members).toEqual([]);
+    expect(sent._lineupCleared).toBe(true);
+  });
+});

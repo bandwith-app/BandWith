@@ -263,7 +263,7 @@ const gigs: AreaText = {
           title: "Cosa succede quando tocchi Crea gig",
           items: [
             "Il gig viene salvato come confermato e compare nel calendario di tutti quelli in formazione.",
-            "Tu sei in formazione come confermato. Tutti gli altri musicisti sono in attesa e ricevono un invito con solo il proprio compenso. Vedi [[gig-notifications]].",
+            "Se sei in formazione, risulti confermato. Tutti gli altri musicisti sono in attesa e ricevono un invito con solo il proprio compenso. Vedi [[gig-notifications]].",
             "Ricevi una notifica che dice che il gig aspetta la conferma degli altri.",
             "Se il salvataggio non riesce, la procedura resta aperta con quello che hai scritto, e il gig viene conservato anche tra le tue bozze.",
             "Senza connessione, il gig viene salvato sul dispositivo: **Salvato offline • Si sincronizza appena connesso**.",
@@ -294,8 +294,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Scegliere chi suona",
           items: [
-            "**Formazione tipo** sceglie le prime 1, 2 o 3 persone dell’organico, oppure tutti con **Band al completo**. Tu resti sempre in formazione.",
-            "La scheda dell’organico dice **Organico · {count} di {total}**. Spunta o togli la spunta a ogni musicista. La tua riga dice **Tu · {role}** e non si può deselezionare.",
+            "**Formazione tipo** sceglie le prime 1, 2 o 3 persone dell’organico, oppure tutti con **Band al completo**. Una formazione tipo include sempre te.",
+            "La scheda dell’organico dice **Organico · {count} di {total}**. Spunta o togli la spunta a ogni musicista. La tua riga dice **Tu · {role}** ed è già spuntata: togli la spunta se non suoni. Continui a gestire il gig, senza compenso, invito o risposta tua.",
             "Ogni riga mostra lo strumento del musicista preso dall’organico della band (oppure **Admin** / **Membro** se non c’è uno strumento).",
             "Chiusa, la scheda mostra fino a cinque avatar, il numero di musicisti e **{amount} totale stimato**.",
           ],

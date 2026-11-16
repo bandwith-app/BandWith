@@ -426,7 +426,11 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   bandMembers,
 }) => {
   const t = useT();
-  const { selectedBand } = useBand();
+  const { selectedBand, refreshMembers } = useBand();
+  // The musicians to pick from: the roster as it is now.
+  useEffect(() => {
+    void refreshMembers?.();
+  }, []);
   const [pricingSettings, setPricingSettings] = useState<BandPricingSettings>(DEFAULT_BAND_PRICING);
   const [step, setStep] = useState(0);
 

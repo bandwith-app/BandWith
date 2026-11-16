@@ -263,7 +263,7 @@ const gigs: AreaText = {
           title: "O que acontece quando você toca em Criar show",
           items: [
             "O show é salvo como confirmado e aparece no calendário de todos da formação.",
-            "Você entra na formação como confirmado. Todos os outros músicos ficam pendentes e recebem um convite só com o próprio cachê. Veja [[gig-notifications]].",
+            "Se você está na formação, fica confirmado. Todos os outros músicos ficam pendentes e recebem um convite só com o próprio cachê. Veja [[gig-notifications]].",
             "Você recebe um aviso dizendo que o show está esperando a confirmação dos outros.",
             "Se não der para salvar, o assistente continua aberto com o que você digitou, e o show também fica guardado nos seus rascunhos.",
             "Sem conexão, o show é salvo no dispositivo: **Salvo offline • Sincroniza quando conectar**.",
@@ -294,8 +294,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Escolher quem toca",
           items: [
-            "**Formação padrão** escolhe as 1, 2 ou 3 primeiras pessoas do elenco, ou todo mundo em **Banda completa**. Você sempre fica na formação.",
-            "O cartão do elenco diz **Elenco · {count} de {total}**. Marque ou desmarque cada músico. A sua própria linha diz **Você · {role}** e não pode ser desmarcada.",
+            "**Formação padrão** escolhe as 1, 2 ou 3 primeiras pessoas do elenco, ou todo mundo em **Banda completa**. Uma formação padrão sempre inclui você.",
+            "O cartão do elenco diz **Elenco · {count} de {total}**. Marque ou desmarque cada músico. A sua própria linha diz **Você · {role}** e já vem marcada: desmarque se você não toca. Você continua gerenciando o show, sem cachê, convite ou resposta sua.",
             "Cada linha mostra o instrumento do músico segundo o elenco da banda (ou **Admin** / **Membro** quando não há instrumento definido).",
             "Recolhido, o cartão mostra até cinco avatares, o número de músicos e **{amount} total estimado**.",
           ],

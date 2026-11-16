@@ -260,7 +260,7 @@ const gigs: AreaText = {
           title: "Qué pasa al tocar Crear concierto",
           items: [
             "El concierto se guarda como confirmado y aparece en el calendario de todos los de la formación.",
-            "Tú estás en la formación como confirmado. Los demás músicos quedan pendientes y reciben una invitación con solo su propio caché. Consulta [[gig-notifications]].",
+            "Si estás en la formación, quedas confirmado. Los demás músicos quedan pendientes y reciben una invitación con solo su propio caché. Consulta [[gig-notifications]].",
             "Recibes una nota en el buzón que dice que el concierto espera a que los demás confirmen.",
             "Si falla el guardado, el asistente sigue abierto con lo que escribiste, y el concierto también se guarda en tus borradores.",
             "Sin conexión, el concierto se guarda en el dispositivo: **Guardado sin conexión • Se sincronizará al conectarte**.",
@@ -291,8 +291,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Elige quién toca",
           items: [
-            "**Formación tipo** elige a las 1, 2 o 3 primeras personas de la plantilla, o a todos con **Banda completa**. Tú siempre te quedas en la formación.",
-            "La tarjeta de la plantilla dice **Plantilla · {count} de {total}**. Marca o desmarca a cada músico. Tu propia fila dice **Tú · {role}** y no se puede desmarcar.",
+            "**Formación tipo** elige a las 1, 2 o 3 primeras personas de la plantilla, o a todos con **Banda completa**. Una formación tipo siempre te incluye.",
+            "La tarjeta de la plantilla dice **Plantilla · {count} de {total}**. Marca o desmarca a cada músico. Tu propia fila dice **Tú · {role}** y empieza marcada: desmárcala si no tocas. Sigues gestionando el concierto, sin caché, invitación ni respuesta propia.",
             "Cada fila muestra el instrumento del músico según la plantilla de la banda (o **Admin** / **Miembro** si no tiene instrumento).",
             "Plegada, la tarjeta muestra hasta cinco avatares, el número de músicos y **{amount} total estimado**.",
           ],

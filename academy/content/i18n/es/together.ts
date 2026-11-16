@@ -39,7 +39,7 @@ const together: AreaText = {
         },
         { type: "note", tone: "tip", text: "**Siguiente** en el segundo paso sigue desactivado hasta que el ensayo tenga un lugar y una fecha. Elige **A def.** si aún no has reservado una sala." },
         { type: "note", tone: "tip", text: "Sin conexión, el ensayo se guarda en tu dispositivo («Guardado sin conexión • Se sincronizará al conectarte») y se envía cuando vuelves a tener conexión." },
-        { type: "p", text: "Cada miembro de la plantilla recibe una notificación «Nuevo ensayo» y una push, y el ensayo aparece en su calendario con una tarjeta **¿Vienes?** (consulta [[answer-a-rehearsal-invite]]). Tú quedas marcado como que vas." },
+        { type: "p", text: "Cada miembro de la plantilla recibe una notificación «Nuevo ensayo» y una push, y el ensayo aparece en su calendario con una tarjeta **¿Vienes?** (consulta [[answer-a-rehearsal-invite]]). Tú quedas marcado como que vas, salvo que te hayas quitado de la plantilla: sigues gestionando el ensayo." },
         {
           type: "devices",
           rows: [
@@ -372,7 +372,7 @@ const together: AreaText = {
           items: [
             "Solo los miembros invitados reciben la notificación de la encuesta y pueden votar. Los demás de la banda pueden abrir la encuesta en modo solo lectura, marcada **Sin invitación**; el servidor rechaza sus votos.",
             "Los admins de la banda siempre ven la encuesta. El admin que la publica siempre está en la lista.",
-            "Cuando fijas una fecha, solo los miembros invitados (y tú) entran en el ensayo.",
+            "Cuando fijas una fecha, solo los miembros invitados entran en el ensayo: tú también si estabas invitado o votaste. En cualquier caso, lo gestionas tú.",
             "La parte del coste de la sala se divide entre el número de personas a las que se pide votar.",
           ],
         },
