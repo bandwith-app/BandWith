@@ -112,7 +112,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Quand tu modifies une répétition, la section **Matériel et tâches** propose aussi **Ajouter une tâche** et **Charger un modèle**, qui ajoute toutes les tâches d’un modèle de liste de tâches enregistré. Voir [[todo-and-task-templates]].",
+          text: "Sur une répétition planifiée, **MODIFIER** à côté de **TÂCHES** ouvre **Tâches**, avec **Ajouter** et, tant qu’il n’y en a pas, **Charger une liste de tâches**, qui ajoute toutes les tâches d’un modèle de liste de tâches enregistré. Voir [[todo-and-task-templates]].",
         },
         {
           type: "note",
@@ -124,7 +124,7 @@ const together: AreaText = {
     {
       id: "edit-a-rehearsal",
       title: "Modifier une répétition",
-      summary: "Change la date, la salle, l’effectif, le coût, la setlist ou les tâches d’une répétition déjà planifiée.",
+      summary: "Change la date, les horaires, la salle, l’effectif, le coût, les morceaux à bosser, les notes ou les tâches d’une répétition planifiée, directement sur sa page.",
       roles: ["admin"],
       kind: "task",
       keywords: ["changer la répétition", "déplacer la répétition", "reprogrammer", "mettre à jour la répétition"],
@@ -134,14 +134,14 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Ouvre la répétition depuis le **Calendrier** ou l’accueil.",
-            "En bas de la répétition, touche **MODIFIER**.",
-            "Ouvre la section à changer : **Séance et récurrence**, **Date, heure et studio**, **Coût du studio**, **Effectif**, **Setlist** ou **Matériel et tâches**. Un bandeau en haut indique les champs à compléter.",
-            "Touche **Enregistrer**. Le bouton reste désactivé tant que la répétition n’a pas de lieu.",
+            "Touche ce que tu veux changer : le crayon en haut ou les tuiles **DÉBUT** et **FIN**, la tuile **SALLE**, ou **MODIFIER** à côté de **PRÉSENCES**, **MORCEAUX À BOSSER**, **NOTES**, **TÂCHES** ou **COÛT DU STUDIO**.",
+            "Une feuille s’ouvre avec seulement cette partie. **Titre, date et horaires** a aussi **Récurrence** ; **Effectif** a **Tout sélectionner**.",
+            "Touche **Enregistrer**. Le bouton reste inactif tant que rien n’a changé.",
           ],
         },
         {
           type: "p",
-          text: "Si tu touches **Annuler** avec des modifications non enregistrées, BandWith demande **Enregistrer les modifications ?** et te laisse enregistrer, abandonner ou continuer à modifier.",
+          text: "Fermer la feuille avec **Annuler**, Retour ou un glissement vers le bas laisse la répétition telle quelle. Les morceaux à bosser s’enregistrent avec **Enregistrer** dans la feuille de la setlist.",
         },
         {
           type: "list",
@@ -154,7 +154,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "La modification passe toujours par l’éditeur pas à pas, y compris sur iPad.",
+          text: "Les répétitions passées se modifient de la même façon, y compris sur iPad. Les membres voient la page sans crayons ni **MODIFIER**.",
         },
       ],
     },
@@ -171,7 +171,7 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Ouvre la répétition.",
-            "Touche **SUPPRIMER** sous **MODIFIER** et **CHAT RÉPÉTITION**.",
+            "Touche **SUPPRIMER** sous **CHAT RÉPÉTITION**.",
             "Touche **Oui, supprimer**, ou **ANNULER** pour la garder.",
           ],
         },
@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTES** : la note de la répétition, s’il y en a une.",
             "**TÂCHES** : les tâches de préparation et combien sont faites. Touche une tâche pour la cocher.",
             "**COÛT DU STUDIO** : la salle, les heures, le total et **Partagé entre {count} présents**, avec le montant **CHACUN**.",
-            "Boutons en bas : **MODIFIER**, **CHAT RÉPÉTITION** et **SUPPRIMER** pour les admins ; **CHAT RÉPÉTITION** pour les membres qui ont répondu présent.",
+            "Boutons en bas : **CHAT RÉPÉTITION** et **SUPPRIMER** pour les admins, qui changent tout le reste avec **MODIFIER** sur chaque partie ; **CHAT RÉPÉTITION** pour les membres qui ont répondu présent.",
           ],
         },
         {

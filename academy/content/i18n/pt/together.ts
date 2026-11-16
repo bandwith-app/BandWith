@@ -112,7 +112,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Quando você edita um ensaio, a seção **Equipamento e tarefas** também tem **Adicionar tarefa** e **Carregar modelo**, que adiciona todas as tarefas de um modelo de lista de tarefas salvo. Veja [[todo-and-task-templates]].",
+          text: "Num ensaio agendado, **EDITAR** ao lado de **TAREFAS** abre **Tarefas**, com **Adicionar** e, enquanto não houver nenhuma, **Carregar uma lista de tarefas**, que adiciona todas as tarefas de um modelo de lista de tarefas salvo. Veja [[todo-and-task-templates]].",
         },
         {
           type: "note",
@@ -124,7 +124,7 @@ const together: AreaText = {
     {
       id: "edit-a-rehearsal",
       title: "Editar um ensaio",
-      summary: "Mude a data, a sala, o elenco, o custo, a setlist ou as tarefas de um ensaio já agendado.",
+      summary: "Mude a data, os horários, a sala, o elenco, o custo, as músicas em foco, as notas ou as tarefas de um ensaio agendado, direto na página dele.",
       roles: ["admin"],
       kind: "task",
       keywords: ["mudar ensaio", "remarcar ensaio", "reagendar", "atualizar ensaio"],
@@ -134,14 +134,14 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Abra o ensaio pelo **Calendário** ou pela tela Início.",
-            "No final do ensaio, toque em **EDITAR**.",
-            "Abra a seção que você quer mudar: **Sessão e recorrência**, **Data, hora e estúdio**, **Custo do estúdio**, **Elenco**, **Setlist** ou **Equipamento e tarefas**. Uma faixa no alto indica quais campos precisam de atenção.",
-            "Toque em **Salvar ensaio**. O botão fica desativado enquanto o ensaio não tiver lugar.",
+            "Toque no que você quer mudar: o lápis no alto ou os quadros **INÍCIO** e **FIM**, o quadro **SALA**, ou **EDITAR** ao lado de **PRESENÇA**, **MÚSICAS EM FOCO**, **NOTAS**, **TAREFAS** ou **CUSTO DO ESTÚDIO**.",
+            "Abre um painel só com essa parte. **Título, data e horários** também tem **Recorrência**; **Elenco** tem **Selecionar todos**.",
+            "Toque em **Salvar**. O botão fica desativado até algo mudar.",
           ],
         },
         {
           type: "p",
-          text: "Se você tocar em **Cancelar** com alterações não salvas, o BandWith pergunta **Salvar as alterações?** e deixa você salvar, descartar ou continuar editando.",
+          text: "Fechar o painel com **Cancelar**, Voltar ou deslizando para baixo deixa o ensaio como estava. As músicas em foco são salvas com **Salvar** no painel da setlist.",
         },
         {
           type: "list",
@@ -154,7 +154,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "A edição sempre usa o editor passo a passo, inclusive no iPad.",
+          text: "Ensaios passados são editados do mesmo jeito, também no iPad. Os membros veem a página sem lápis e sem **EDITAR**.",
         },
       ],
     },
@@ -171,7 +171,7 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Abra o ensaio.",
-            "Toque em **EXCLUIR**, abaixo de **EDITAR** e **CHAT DO ENSAIO**.",
+            "Toque em **EXCLUIR**, abaixo de **CHAT DO ENSAIO**.",
             "Toque em **Sim, excluir**, ou em **CANCELAR** para mantê-lo.",
           ],
         },
@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTAS**: a nota do ensaio, quando houver.",
             "**TAREFAS**: as tarefas de preparação e quantas estão feitas. Toque numa tarefa para marcá-la.",
             "**CUSTO DO ESTÚDIO**: a sala, as horas, o total e **Dividido entre {count} presentes**, com o valor **CADA**.",
-            "Botões no final: **EDITAR**, **CHAT DO ENSAIO** e **EXCLUIR** para os admins; **CHAT DO ENSAIO** para os membros que responderam que vão.",
+            "Botões no final: **CHAT DO ENSAIO** e **EXCLUIR** para os admins, que mudam todo o resto com **EDITAR** em cada parte; **CHAT DO ENSAIO** para os membros que responderam que vão.",
           ],
         },
         {

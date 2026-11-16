@@ -961,7 +961,7 @@ const music: AreaModule = {
         {
           type: "steps",
           items: [
-            "Create a gig, or open one and tap **Edit** (see [[create-a-gig]]).",
+            "Create a gig (see [[create-a-gig]]). For a gig you already have, open it and use its **SETLIST** section instead, which offers the same templates and songs.",
             "Open the **Setlist & songs** section.",
             "To start from a saved setlist, tap it under **Load from templates**. Once there are songs, **Templates** shows the list again as **Replace with a template**.",
             "To add songs, tap **From library** under a set, or **Manual** to type one in. **Add songs** adds to a set you pick.",
@@ -1007,7 +1007,7 @@ const music: AreaModule = {
             "A gig with no setlist yet gets one when you save, named after the gig.",
             "Leaving the gig with changes not saved asks “Save the setlist changes?”.",
             "Tapping **SETLIST** or the song count opens the full list in a sheet, where you can edit the same way.",
-            "Past gigs, quotes and rehearsals show the setlist read-only here.",
+            "Quotes show the setlist read-only here. On a past gig you edit it in the sheet (**SETLIST** or the song count); a rehearsal’s songs with **EDIT** next to **FOCUS SONGS**.",
           ],
         },
         {

@@ -387,7 +387,7 @@ const gigs: AreaModule = {
       keywords: ['ipad', 'tablet', 'composer', 'live preview', 'new gig ipad'],
       related: ['create-a-gig', 'rider-and-stage', 'gig-drafts'],
       body: [
-        { type: 'p', text: 'On an iPad (or another wide window without the dual-screen rail), **New gig** opens the composer. It has the same fields and saves the same gig as the step wizard. Editing a gig still uses the edit view ([[edit-a-gig]]).' },
+        { type: 'p', text: 'On an iPad (or another wide window without the dual-screen rail), **New gig** opens the composer. It has the same fields and saves the same gig as the step wizard. You change a gig afterwards right on its page ([[edit-a-gig]]).' },
         { type: 'shot', id: 'ipad-gig-composer', caption: 'The iPad composer: numbered cards on the left, the live preview on the right.' },
         {
           type: 'steps',
@@ -451,7 +451,7 @@ const gigs: AreaModule = {
     {
       id: 'edit-a-gig',
       title: 'Edit a gig',
-      summary: 'Change the lineup, fees, times, venue, setlist, tasks or notes of a gig, and what the band is told.',
+      summary: 'Change the times, venue, lineup, fees, setlist, tasks or notes right on the gig’s page, and what the band is told.',
       roles: ['admin'],
       kind: 'task',
       keywords: ['edit gig', 'change time', 'change venue', 'add musician', 'remove musician', 'update gig'],
@@ -460,33 +460,33 @@ const gigs: AreaModule = {
         {
           type: 'steps',
           items: [
-            'Open the gig and tap **EDIT** under the content. You can also tap **EDIT** next to **LINEUP**, **ADD MUSICIAN**, or the venue when it reads **TBD**.',
-            'The edit view shows **Editing** and four sections. Open the one you need: **01 Event basics & client**, **02 Date, time & venue**, **03 Band & compensation** or **04 Setlist, tasks & notes**.',
-            'Make your changes. A section with a missing venue, date, fee or lineup shows **Needs attention** and opens on its own.',
-            'Tap **Save changes**. It needs a date.',
+            'Open the gig. Admins change it right on its page: the pencil at the top, the pencil next to the venue, the time tiles, and **EDIT** next to a section.',
+            'A sheet opens with only that part, for example **Title, date & times**, **Venue & location** or **Lineup**.',
+            'Make your changes and tap **Save**. It stays off until something changed. **Cancel**, Back or a swipe down closes the sheet and keeps the gig as it was.',
+            'The setlist is edited right in the **SETLIST** section, with its own **Save** (see [[edit-a-gig-setlist]]).',
           ],
         },
         {
           type: 'list',
-          title: 'In each section',
+          title: 'What each part changes',
           items: [
-            '**Event basics & client**: event type, client, title, **Guests** and **Setting**.',
-            '**Date, time & venue**: **Venue name**, date, times and call times.',
-            '**Band & compensation**: presets, roster and fees, **Fee to be discussed (TBD)**, extra band fee, **Duration** and the **Total estimate**.',
-            '**Setlist, tasks & notes**: **Pick songs**, reorder songs (long-press and drag), rename or delete tasks, and **Notes for the band**.',
+            '**Title, date & times** (the pencil at the top, or a time tile): title, event type, date, start and end time, load-in and soundcheck.',
+            '**Venue & location** (the pencil next to the venue, or the venue when it reads **TBD**): venue name, address, city and **Setting**.',
+            '**Lineup** (**EDIT** next to **LINEUP**, or **ADD MUSICIAN**): a **Lineup preset** or who plays, and their fees. The pencil on the fee card (**Edit fee**): the fees, **Fee to be discussed (TBD)** and the extra band fee.',
+            '**TASKS** and **CLIENT & NOTES**: **EDIT** to add, rename or delete to-dos (or **Load a to-do list**), and to change the client and **Notes for the band**.',
           ],
         },
         {
           type: 'list',
           title: 'What the band is told',
           items: [
-            'New musicians get an invitation. Everyone already on the lineup keeps their answer.',
+            'New musicians get an invitation, and who you take off the lineup is told. Everyone already on it keeps their answer.',
             'A new date, time, call time or venue sends the lineup one **Gig updated** notification listing what changed.',
             'A changed fee notifies only that musician.',
             'Setlist changes send the lineup one notification with what moved, was added or removed.',
           ],
         },
-        { type: 'note', tone: 'tip', text: 'Closing with unsaved changes asks **Save your changes?**. Save to keep them, or discard them.' },
+        { type: 'note', tone: 'tip', text: 'Past gigs are edited the same way. Members see the page without the pencils and **EDIT**.' },
         { type: 'p', text: 'A quote opens the quote editor instead. See [[create-a-quote]]. A personal gig opens its own form ([[personal-gigs]]).' },
       ],
     },
@@ -559,8 +559,8 @@ const gigs: AreaModule = {
             '**RIDER & STAGE** with **OPEN**. See [[rider-and-stage]].',
             '**SETLIST** with the song count. See [[gig-setlist]].',
             '**TASKS** with **{done} of {total} done**: tap a task to tick it.',
-            '**CLIENT & NOTES** (admins) or **NOTES**: tap it or **DETAILS** for **Logistics & notes** (venue, copy address, client contacts, dress code, setting, guests and notes).',
-            'The actions. Admins: **EDIT**, **EVENT CHAT**, **REVERT TO QUOTE** and **DELETE**. Members: **DROP OUT** and **EVENT CHAT**. See [[event-and-rehearsal-chats]].',
+            '**CLIENT & NOTES** (admins) or **NOTES**: tap it or **DETAILS** for **Logistics & notes** (venue, copy address, client contacts, dress code, setting, guests and notes). Admins get **EDIT** there to change the client and notes.',
+            'The actions. Admins: **EVENT CHAT**, **REVERT TO QUOTE** and **DELETE**; everything else is changed on its own section ([[edit-a-gig]]). Members: **DROP OUT** and **EVENT CHAT**. See [[event-and-rehearsal-chats]].',
           ],
         },
         {
@@ -568,7 +568,7 @@ const gigs: AreaModule = {
           title: 'A past gig',
           items: [
             'The header turns grey with **PAST GIG** and **COMPLETED**.',
-            'The actions become **VIEW SETLIST** and **EVENT CHAT** (admins, and members who accepted). Admins also get **EDIT DETAILS** and **REMOVE FROM ARCHIVE**.',
+            'The actions become **VIEW SETLIST** and **EVENT CHAT** (admins, and members who accepted). Admins also get **REMOVE FROM ARCHIVE**, and still change the gig on its sections.',
             'Stage mode, readiness and the find-a-deputy button are gone.',
           ],
         },
@@ -650,7 +650,7 @@ const gigs: AreaModule = {
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: 'Edits the setlist here or through **EDIT**. With no setlist the sheet shows **No setlist assigned** and **Assign setlist**.' },
+            { role: 'admin', text: 'Edits the setlist here: reorder, **Add songs**, or **Load from templates** while it is empty (also on a past gig, in the sheet).' },
             { role: 'member', text: 'Sees the setlist read-only. Without one: **The band admin has not attached a setlist yet.**' },
           ],
         },
@@ -732,7 +732,7 @@ const gigs: AreaModule = {
             'The sheet, marked **Admin only**, shows the **Band fee**, **PAYOUTS DUE · {count}** with the amount still owed, and **MUSICIANS · {paid} OF {total} PAID**.',
             'Tap the round switch next to a musician (**{name} paid**) to mark them paid or not paid.',
             'Or tap **MARK ALL AS PAID** to mark everyone at once.',
-            'Tap the pencil (**Edit fee**) to change fees in the edit view.',
+            'Tap the pencil (**Edit fee**) to change the fees, **Fee to be discussed (TBD)** or the extra band fee.',
           ],
         },
         {
@@ -1112,7 +1112,7 @@ const gigs: AreaModule = {
     { q: 'Can members see what the band is paid?', a: 'No. Members see only their own fee. The band fee, client, deposit and other musicians’ fees never reach their app.', roles: ['admin', 'member'] },
     { q: 'Why did a gig disappear from my calendar?', a: 'You declined it or dropped out, an admin removed you from the lineup, or the gig was deleted. A gig turned back into a quote also leaves members’ calendars.', roles: ['member'] },
     { q: 'My show ends at 2 am. Will it show as past at midnight?', a: 'No. A gig whose end time is earlier than its start runs past midnight and stays upcoming until the show ends.' },
-    { q: 'How do I confirm the date before the fee is agreed?', a: 'Turn on **Fee to be discussed (TBD)** in the wizard. The gig is confirmed and invitations say the fee is to be discussed. Set the fees later with **EDIT**.', roles: ['admin'] },
+    { q: 'How do I confirm the date before the fee is agreed?', a: 'Turn on **Fee to be discussed (TBD)** in the wizard. The gig is confirmed and invitations say the fee is to be discussed. Set the fees later with the pencil on the fee card (**Edit fee**).', roles: ['admin'] },
     { q: 'Can I duplicate a gig?', a: 'Not at the moment. Create a new gig and load the same setlist from **Load from templates** and the same tasks from **Load a to-do list**.', roles: ['admin'] },
     { q: 'How do I cancel a gig?', a: 'Delete it: open the gig, tap **DELETE**, then **Confirm delete**. The lineup gets a cancellation. If it is going back to negotiation, use **REVERT TO QUOTE** instead.', roles: ['admin'] },
     { q: 'Does my band see my personal gigs?', a: 'No. They only see that you are busy that day in the availability counts.' },

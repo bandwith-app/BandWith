@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus } from '@/app/components/icons';
-import { PillButton } from '@/app/components/bw/Form';
+import { Folder, Plus } from '@/app/components/icons';
+import { FormError, PillButton, Selector } from '@/app/components/bw/Form';
 import { SortableSongList } from '@/app/components/ui/SortableSongList';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { SetChooserSheet } from '@/app/components/ui/SetChooserSheet';
@@ -9,7 +9,7 @@ import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
-import { createSetlist, replaceSetlistSongs } from '@/lib/services/songs';
+import { createSetlist, getSetlist, getSetlists, replaceSetlistSongs, type Setlist } from '@/lib/services/songs';
 import { diffSetlist, entriesFromRows, type SetlistEntry } from '@/lib/setlistChanges';
 import { setStartNumbers } from '@/lib/setlistOrder';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
@@ -80,6 +80,8 @@ export interface GigSetlistDraft {
   removeSongs: (setUid: string | null, songIds: string[]) => void;
   add: (setUid: string | null, picked: PickedSong[]) => void;
   addSet: () => string;
+  /** Replaces the whole list (a saved setlist loaded as a template). */
+  load: (songs: GigSetlistSong[]) => void;
   discard: () => void;
   save: () => Promise<boolean>;
 }
@@ -149,6 +151,7 @@ export function useGigSetlistDraft(opts: {
     update((prev) => [...prev, { uid, songs: [] }]);
     return uid;
   }, [update]);
+  const load = useCallback((list: GigSetlistSong[]) => update(() => setsFromGigSongs(list)), [update]);
   const discard = useCallback(() => {
     setDraft(null);
     setError(null);
@@ -203,7 +206,7 @@ export function useGigSetlistDraft(opts: {
     }
   }, [draft, saving, dirty, setlistId, bandId, eventId, eventTitle, onSaved, t]);
 
-  return { sets, dirty, saving, error, reorder, remove, removeSongs, add, addSet, discard, save };
+  return { sets, dirty, saving, error, reorder, remove, removeSongs, add, addSet, load, discard, save };
 }
 
 /** The editable list: sets, songs, Add songs (into the set you pick). */
@@ -212,9 +215,40 @@ export const GigSetlistEditor: React.FC<{
   className?: string;
   /** Stacking of the set chooser and song picker (above the sheet that holds the list). */
   layerZ?: number;
-}> = ({ draft, className, layerZ = 120 }) => {
+  /** The band's saved setlists, offered as templates (as the Edit page did). */
+  templatesBandId?: string | null;
+}> = ({ draft, className, layerZ = 120, templatesBandId }) => {
   const t = useT();
   const { sets } = draft;
+  const [templates, setTemplates] = useState<Setlist[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!templatesBandId) return;
+    let cancelled = false;
+    getSetlists(templatesBandId).then(({ data }) => {
+      if (!cancelled && data) setTemplates(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [templatesBandId]);
+  const loadTemplate = async (sl: Setlist) => {
+    const { data, error } = await getSetlist(sl.id);
+    if (error) {
+      setTemplateError(t('Couldn\'t load "{name}": {error}', { name: sl.name, error: error.message }));
+      return;
+    }
+    setTemplateError(null);
+    if (!data?.songs?.length) return;
+    haptic.tap();
+    draft.load(
+      [...data.songs]
+        .sort((a, b) => (a.set_number || 1) - (b.set_number || 1) || (a.position ?? 0) - (b.position ?? 0))
+        .map((row) => ({ songId: row.song_id, setNumber: row.set_number || 1, title: row.song?.title || t('Untitled'), artist: row.song?.artist || undefined })),
+    );
+    setShowTemplates(false);
+  };
   const [chooserOpen, setChooserOpen] = useState(false);
   const [pickerSet, setPickerSet] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -253,9 +287,31 @@ export const GigSetlistEditor: React.FC<{
           />
         </div>
       ))}
-      <PillButton variant="outline" size="sm" fullWidth={false} className="self-start" icon={<Plus className="w-4 h-4" />} onClick={startAdd}>
-        {t('Add songs')}
-      </PillButton>
+      {templates.length > 0 && (total === 0 || showTemplates) && (
+        <div className="flex flex-col gap-2">
+          <span className="bw-label-sm text-muted-foreground">{total > 0 ? t('Replace with a template') : t('Load from templates')}</span>
+          <div className="flex flex-wrap gap-2">
+            {templates.map((sl) => (
+              <Selector key={sl.id} size="sm" selected={false} onClick={() => void loadTemplate(sl)}>
+                <Folder className="w-3.5 h-3.5" />
+                {sl.name}
+                {sl.song_count != null && <span className="opacity-60">({sl.song_count})</span>}
+              </Selector>
+            ))}
+          </div>
+        </div>
+      )}
+      {templateError && <FormError>{templateError}</FormError>}
+      <div className="flex flex-wrap items-center gap-2">
+        <PillButton variant="outline" size="sm" fullWidth={false} icon={<Plus className="w-4 h-4" />} onClick={startAdd}>
+          {t('Add songs')}
+        </PillButton>
+        {templates.length > 0 && total > 0 && (
+          <PillButton variant="ghost" size="sm" fullWidth={false} icon={<Folder className="w-4 h-4" />} onClick={() => setShowTemplates((v) => !v)}>
+            {t('Templates')}
+          </PillButton>
+        )}
+      </div>
 
       <SetChooserSheet
         open={chooserOpen}

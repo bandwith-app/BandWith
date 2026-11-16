@@ -842,7 +842,7 @@ const music: AreaText = {
         {
           type: "steps",
           items: [
-            "Crea un concierto, o abre uno y toca **Editar** (consulta [[create-a-gig]]).",
+            "Crea un concierto (consulta [[create-a-gig]]). Para un concierto que ya tienes, ábrelo y usa su sección **SETLIST**, que ofrece las mismas plantillas y canciones.",
             "Abre la sección **Setlist y canciones**.",
             "Para partir de una setlist guardada, tócala en **Cargar desde plantillas**. Cuando ya hay canciones, **Plantillas** vuelve a mostrar la lista como **Reemplazar con una plantilla**.",
             "Para añadir canciones, toca **Biblioteca** debajo de un set, o **Manual** para escribir una. **Añadir canciones** añade a un set que eliges.",
@@ -881,7 +881,7 @@ const music: AreaText = {
             "Un concierto que aún no tiene setlist recibe una al guardar, con el nombre del concierto.",
             "Si sales del concierto con cambios sin guardar, se te pregunta «¿Guardar los cambios de la setlist?».",
             "Al tocar **SETLIST** o el número de canciones se abre la lista completa en una hoja, donde puedes editar de la misma forma.",
-            "Los conciertos pasados, los presupuestos y los ensayos muestran aquí la setlist en modo solo lectura.",
+            "Los presupuestos muestran aquí la setlist en modo solo lectura. En un concierto pasado la editas en la hoja (**SETLIST** o el número de canciones); las canciones de un ensayo, con **EDITAR** junto a **CANCIONES A ENSAYAR**.",
           ],
         },
         {

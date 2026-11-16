@@ -4828,7 +4828,8 @@ export default function AuthenticatedApp() {
             canRespond={!!selectedEventMembership}
             allEvents={events}
             onNotifyConflict={handleNotifyConflict}
-            onEventUpdated={() => { refetchEvents(); }}
+            onEventUpdated={() => { refetchEvents(); if (refetchDashboard) refetchDashboard().catch(() => {}); }}
+            onToast={(message, type) => setSaveToast({ message, type })}
             onEdit={() => inItemBand(selectedEvent.band_id, "edit this event", handleEventEdit)}
             onDelete={() => inItemBand(selectedEvent.band_id, "delete this event", handleEventDelete)}
             onChat={handleEventChat}

@@ -112,7 +112,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Beim Bearbeiten einer Probe hat der Bereich **Equipment & Aufgaben** außerdem **Aufgabe hinzufügen** und **Vorlage laden**, das alle Aufgaben einer gespeicherten To-do-Vorlage hinzufügt. Siehe [[todo-and-task-templates]].",
+          text: "Bei einer geplanten Probe öffnet **ÄNDERN** neben **AUFGABEN** das Fenster **Aufgaben**, mit **Hinzufügen** und, solange es keine gibt, **To-do-Liste laden**, das alle Aufgaben einer gespeicherten To-do-Vorlage hinzufügt. Siehe [[todo-and-task-templates]].",
         },
         {
           type: "note",
@@ -124,7 +124,7 @@ const together: AreaText = {
     {
       id: "edit-a-rehearsal",
       title: "Eine Probe bearbeiten",
-      summary: "Ändere Datum, Raum, Besetzung, Kosten, Setlist oder Aufgaben einer schon geplanten Probe.",
+      summary: "Ändere Datum, Zeiten, Raum, Besetzung, Kosten, Fokus-Songs, Notizen oder Aufgaben einer geplanten Probe, direkt auf ihrer Seite.",
       roles: ["admin"],
       kind: "task",
       keywords: ["Probe ändern", "Probe verschieben", "neu planen", "Probe aktualisieren"],
@@ -134,14 +134,14 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Öffne die Probe im **Kalender** oder auf Start.",
-            "Tippe unten in der Probe auf **ÄNDERN**.",
-            "Öffne den Bereich, den du ändern willst: **Session & Wiederholung**, **Datum, Zeit & Studio**, **Studiokosten**, **Besetzung**, **Setlist** oder **Equipment & Aufgaben**. Ein Banner oben sagt, welche Felder Aufmerksamkeit brauchen.",
-            "Tippe auf **Probe speichern**. Der Button bleibt deaktiviert, solange die Probe keinen Ort hat.",
+            "Tippe auf das, was du ändern willst: den Stift oben oder die Kacheln **START** und **ENDE**, die Kachel **RAUM**, oder **ÄNDERN** neben **ANWESENHEIT**, **FOKUS-SONGS**, **NOTIZEN**, **AUFGABEN** oder **STUDIOKOSTEN**.",
+            "Ein Fenster öffnet sich nur mit diesem Teil. **Titel, Datum & Zeiten** hat auch **Wiederholung**; **Besetzung** hat **Alle wählen**.",
+            "Tippe auf **Speichern**. Der Button bleibt aus, bis sich etwas geändert hat.",
           ],
         },
         {
           type: "p",
-          text: "Tippst du mit ungespeicherten Änderungen auf **Abbrechen**, fragt BandWith **Änderungen speichern?** und lässt dich speichern, verwerfen oder weiter bearbeiten.",
+          text: "Schließt du das Fenster mit **Abbrechen**, Zurück oder nach unten wischen, bleibt die Probe, wie sie war. Fokus-Songs speicherst du mit **Speichern** im Setlist-Fenster.",
         },
         {
           type: "list",
@@ -154,7 +154,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "Zum Bearbeiten gibt es immer den Schritt-für-Schritt-Editor, auch auf dem iPad.",
+          text: "Vergangene Proben bearbeitest du genauso, auch auf dem iPad. Mitglieder sehen die Seite ohne Stifte und ohne **ÄNDERN**.",
         },
       ],
     },
@@ -171,7 +171,7 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Öffne die Probe.",
-            "Tippe unter **ÄNDERN** und **PROBEN-CHAT** auf **LÖSCHEN**.",
+            "Tippe unter **PROBEN-CHAT** auf **LÖSCHEN**.",
             "Tippe auf **Ja, löschen** oder auf **ABBRECHEN**, um sie zu behalten.",
           ],
         },
@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTIZEN**: die Notiz zur Probe, falls es eine gibt.",
             "**AUFGABEN**: die Vorbereitungsaufgaben und wie viele erledigt sind. Tippe auf eine Aufgabe, um sie abzuhaken.",
             "**STUDIOKOSTEN**: der Raum, die Stunden, die Summe und **Geteilt durch … Zusagen**, mit dem Betrag **PRO PERSON**.",
-            "Buttons unten: **ÄNDERN**, **PROBEN-CHAT** und **LÖSCHEN** für Admins; **PROBEN-CHAT** für Mitglieder, die mit dabei geantwortet haben.",
+            "Buttons unten: **PROBEN-CHAT** und **LÖSCHEN** für Admins, die alles andere mit **ÄNDERN** im jeweiligen Teil ändern; **PROBEN-CHAT** für Mitglieder, die mit dabei geantwortet haben.",
           ],
         },
         {
