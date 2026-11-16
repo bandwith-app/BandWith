@@ -20,6 +20,21 @@ const DB_KEY = 'bw-demo-db-v6';
  */
 export const FIXED_NOW = new Date('2026-11-16T10:00:00+01:00');
 
+/** Init script: Date (and Date.now) shifted by `offset` ms; timers untouched. */
+function fakeDate(offset: number) {
+  const RealDate = Date;
+  const now = () => RealDate.now() + offset;
+  function FakeDate(this: unknown, ...args: unknown[]) {
+    if (!new.target) return new RealDate(now()).toString();
+    return args.length ? new (RealDate as unknown as new (...a: unknown[]) => Date)(...args) : new RealDate(now());
+  }
+  FakeDate.prototype = RealDate.prototype;
+  FakeDate.now = now;
+  FakeDate.parse = RealDate.parse;
+  FakeDate.UTC = RealDate.UTC;
+  (globalThis as unknown as { Date: unknown }).Date = FakeDate;
+}
+
 export type Role = 'admin' | 'member';
 type DemoDB = Record<string, Record<string, unknown>[]>;
 
@@ -76,7 +91,13 @@ export const test = base.extend<Options & { app: App }>({
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`));
 
     await stubNetwork(page.context());
-    await page.clock.install({ time: FIXED_NOW });
+    // Only Date moves to FIXED_NOW. Playwright's clock.install also fakes
+    // performance.now and timers; after a page reload its performance.now
+    // runs ahead of the browser's animation timeline by the time spent before
+    // the reload, so exit animations (closing the urgent pop-up, sheets)
+    // stall for that long. The offset is fixed per test, so time keeps
+    // flowing across reloads without jumping back.
+    await page.addInitScript(fakeDate, FIXED_NOW.getTime() - Date.now());
 
     // Signed in to the demo, first-run tours already seen, language chosen.
     // Only on a fresh context: a reload keeps what the test changed.
