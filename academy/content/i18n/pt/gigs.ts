@@ -378,7 +378,7 @@ const gigs: AreaText = {
       keywords: ["ipad", "tablet", "tela de criação", "prévia ao vivo", "novo show no ipad"],
       related: ["create-a-gig", "rider-and-stage", "gig-drafts"],
       body: [
-        { type: "p", text: "No iPad (ou em outra janela larga sem a barra lateral de duas telas), **Novo show** abre a tela de criação. Ela tem os mesmos campos e salva o mesmo show que o assistente em etapas. Para editar um show, continua valendo a tela de edição ([[edit-a-gig]])." },
+        { type: "p", text: "No iPad (ou em outra janela larga sem a barra lateral de duas telas), **Novo show** abre a tela de criação. Ela tem os mesmos campos e salva o mesmo show que o assistente em etapas. Depois, o show é editado direto na página dele ([[edit-a-gig]])." },
         { type: "shot", id: "ipad-gig-composer", caption: "A tela de criação do iPad: cartões numerados à esquerda, a prévia ao vivo à direita." },
         {
           type: "steps",
@@ -442,7 +442,7 @@ const gigs: AreaText = {
     {
       id: "edit-a-gig",
       title: "Editar um show",
-      summary: "Mude a formação, os cachês, os horários, o local, a setlist, as tarefas ou as notas de um show, e veja o que a banda fica sabendo.",
+      summary: "Mude os horários, o local, a formação, os cachês, a setlist, as tarefas ou as notas direto na página do show, e veja o que a banda fica sabendo.",
       roles: ["admin"],
       kind: "task",
       keywords: ["editar show", "mudar horário", "mudar local", "adicionar músico", "remover músico", "atualizar show"],
@@ -451,33 +451,33 @@ const gigs: AreaText = {
         {
           type: "steps",
           items: [
-            "Abra o show e toque em **EDITAR** abaixo do conteúdo. Você também pode tocar em **EDITAR** ao lado de **FORMAÇÃO**, em **ADICIONAR MÚSICO** ou no local quando ele aparece como **A def.**.",
-            "A tela de edição mostra **Editando** e quatro seções. Abra a que você precisa: **01 Dados do evento e cliente**, **02 Data, horário e local**, **03 Banda e cachês** ou **04 Setlist, tarefas e notas**.",
-            "Faça as mudanças. Uma seção em que falta o local, a data, o cachê ou a formação mostra **Requer atenção** e abre sozinha.",
-            "Toque em **Salvar alterações**. É preciso ter uma data.",
+            "Abra o show. Os admins mudam tudo direto na página dele: o lápis no alto, o lápis ao lado do local, os quadros de horário e **EDITAR** ao lado de uma seção.",
+            "Abre um painel só com essa parte, por exemplo **Título, data e horários**, **Local e endereço** ou **Formação**.",
+            "Faça as mudanças e toque em **Salvar**. O botão fica desativado até algo mudar. **Cancelar**, Voltar ou deslizar para baixo fecham o painel e deixam o show como estava.",
+            "A setlist é editada direto na seção **SETLIST**, com o próprio **Salvar** (veja [[edit-a-gig-setlist]]).",
           ],
         },
         {
           type: "list",
-          title: "Em cada seção",
+          title: "O que cada parte muda",
           items: [
-            "**Dados do evento e cliente**: tipo de evento, cliente, título, **Convidados** e **Ambiente**.",
-            "**Data, horário e local**: **Nome do local**, data, horários e horários de chegada.",
-            "**Banda e cachês**: formações padrão, elenco e cachês, **Cachê a definir**, extra da banda, **Duração** e o **Total estimado**.",
-            "**Setlist, tarefas e notas**: **Escolher músicas**, reordenar as músicas (mantenha pressionado e arraste), renomear ou excluir tarefas, e **Notas para a banda**.",
+            "**Título, data e horários** (o lápis no alto ou um quadro de horário): título, tipo de evento, data, horário de início e fim, montagem e passagem de som.",
+            "**Local e endereço** (o lápis ao lado do local, ou o local quando aparece como **A def.**): nome do local, endereço, cidade e **Ambiente**.",
+            "**Formação** (**EDITAR** ao lado de **FORMAÇÃO**, ou **ADICIONAR MÚSICO**): uma **Formação padrão** ou quem toca, e os cachês. O lápis no cartão do cachê (**Editar cachê**): os cachês, **Cachê a definir** e o extra da banda.",
+            "**TAREFAS** e **CLIENTE E NOTAS**: **EDITAR** para adicionar, renomear ou excluir tarefas (ou **Carregar uma lista de tarefas**), e para mudar o cliente e as **Notas para a banda**.",
           ],
         },
         {
           type: "list",
           title: "O que a banda fica sabendo",
           items: [
-            "Os novos músicos recebem um convite. Todos que já estavam na formação mantêm a resposta.",
+            "Os novos músicos recebem um convite, e quem você tira da formação é avisado. Todos que já estavam mantêm a resposta.",
             "Uma nova data, horário, horário de chegada ou local envia à formação uma única notificação **Show atualizado** com a lista do que mudou.",
             "Um cachê alterado avisa só aquele músico.",
             "As mudanças na setlist enviam à formação uma única notificação com o que mudou de lugar, entrou ou saiu.",
           ],
         },
-        { type: "note", tone: "tip", text: "Fechar com alterações não salvas pergunta **Salvar as alterações?**. Salve para mantê-las ou descarte." },
+        { type: "note", tone: "tip", text: "Shows passados são editados do mesmo jeito. Os membros veem a página sem lápis e sem **EDITAR**." },
         { type: "p", text: "Um orçamento abre o editor de orçamentos. Veja [[create-a-quote]]. Um show pessoal abre o próprio formulário ([[personal-gigs]])." },
       ],
     },
@@ -550,8 +550,8 @@ const gigs: AreaText = {
             "**RIDER E PALCO** com **ABRIR**. Veja [[rider-and-stage]].",
             "**SETLIST** com o número de músicas. Veja [[gig-setlist]].",
             "**TAREFAS** com **{done} de {total} feitas**: toque numa tarefa para marcá-la.",
-            "**CLIENTE E NOTAS** (admins) ou **NOTAS**: toque ou use **DETALHES** para ver **Logística e notas** (local, copiar endereço, contatos do cliente, traje, ambiente, convidados e notas).",
-            "As ações. Admins: **EDITAR**, **CHAT DO EVENTO**, **VOLTAR A ORÇAMENTO** e **EXCLUIR**. Membros: **DESISTIR** e **CHAT DO EVENTO**. Veja [[event-and-rehearsal-chats]].",
+            "**CLIENTE E NOTAS** (admins) ou **NOTAS**: toque ou use **DETALHES** para ver **Logística e notas** (local, copiar endereço, contatos do cliente, traje, ambiente, convidados e notas). Os admins têm ali **EDITAR** para mudar o cliente e as notas.",
+            "As ações. Admins: **CHAT DO EVENTO**, **VOLTAR A ORÇAMENTO** e **EXCLUIR**; todo o resto se muda na própria seção ([[edit-a-gig]]). Membros: **DESISTIR** e **CHAT DO EVENTO**. Veja [[event-and-rehearsal-chats]].",
           ],
         },
         {
@@ -559,7 +559,7 @@ const gigs: AreaText = {
           title: "Um show passado",
           items: [
             "O cabeçalho fica cinza com **SHOW PASSADO** e **CONCLUÍDO**.",
-            "As ações viram **VER SETLIST** e **CHAT DO EVENTO** (admins e membros que aceitaram). Os admins também têm **EDITAR DETALHES** e **REMOVER DO ARQUIVO**.",
+            "As ações viram **VER SETLIST** e **CHAT DO EVENTO** (admins e membros que aceitaram). Os admins também têm **REMOVER DO ARQUIVO** e ainda podem mudar o show nas seções dele.",
             "O Modo palco, a preparação e o botão de achar substituto somem.",
           ],
         },
@@ -641,7 +641,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Edita a setlist aqui ou por **EDITAR**. Sem setlist, o painel mostra **Nenhuma setlist definida** e **Definir setlist**." },
+            { role: "admin", text: "Edita a setlist aqui: reordena, **Adicionar músicas**, ou **Carregar de modelos** enquanto está vazia (também num show passado, no painel)." },
             { role: "member", text: "Vê a setlist só para leitura. Sem setlist: **O admin da banda ainda não anexou uma setlist.**" },
           ],
         },
@@ -723,7 +723,7 @@ const gigs: AreaText = {
             "O painel, marcado **Só admins**, mostra o **Cachê da banda**, **PAGAMENTOS PENDENTES · {count}** com o valor ainda devido e **MÚSICOS · {paid} DE {total} PAGOS**.",
             "Toque no botão redondo ao lado de um músico (**{name} pago**) para marcá-lo como pago ou não pago.",
             "Ou toque em **MARCAR TODOS COMO PAGOS** para marcar todo mundo de uma vez.",
-            "Toque no lápis (**Editar cachê**) para mudar os cachês na tela de edição.",
+            "Toque no lápis (**Editar cachê**) para mudar os cachês, **Cachê a definir** ou o extra da banda.",
           ],
         },
         {
@@ -1103,7 +1103,7 @@ const gigs: AreaText = {
     { q: "Os membros veem quanto a banda recebe?", a: "Não. Os membros veem só o próprio cachê. O cachê da banda, o cliente, o sinal e os cachês dos outros músicos nunca chegam ao app deles.", roles: ["admin", "member"] },
     { q: "Por que um show sumiu do meu calendário?", a: "Você recusou ou desistiu, um admin tirou você da formação ou o show foi excluído. Um show que voltou a ser orçamento também sai do calendário dos membros.", roles: ["member"] },
     { q: "Meu show termina às 2h. Ele vai aparecer como passado à meia-noite?", a: "Não. Um show com horário de término anterior ao de início passa da meia-noite e continua entre os próximos até o show terminar." },
-    { q: "Como confirmo a data antes de acertar o cachê?", a: "Ative **Cachê a definir** no assistente. O show fica confirmado e os convites dizem que o cachê está a combinar. Defina os cachês depois com **EDITAR**.", roles: ["admin"] },
+    { q: "Como confirmo a data antes de acertar o cachê?", a: "Ative **Cachê a definir** no assistente. O show fica confirmado e os convites dizem que o cachê está a combinar. Defina os cachês depois com o lápis no cartão do cachê (**Editar cachê**).", roles: ["admin"] },
     { q: "Dá para duplicar um show?", a: "Por enquanto, não. Crie um novo show e carregue a mesma setlist em **Carregar de modelos** e as mesmas tarefas em **Carregar uma lista de tarefas**.", roles: ["admin"] },
     { q: "Como eu cancelo um show?", a: "Exclua: abra o show, toque em **EXCLUIR** e depois em **Sim, excluir**. A formação recebe o cancelamento. Se ele estiver voltando para negociação, use **VOLTAR A ORÇAMENTO**.", roles: ["admin"] },
     { q: "Minha banda vê os meus shows pessoais?", a: "Não. Ela só vê que você está ocupado nesse dia, nas contagens de disponibilidade." },

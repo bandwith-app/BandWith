@@ -951,7 +951,7 @@ const music: AreaText = {
         {
           type: "steps",
           items: [
-            "Crie um show, ou abra um e toque em **Editar** (veja [[create-a-gig]]).",
+            "Crie um show (veja [[create-a-gig]]). Para um show que você já tem, abra-o e use a seção **SETLIST** dele, que oferece os mesmos modelos e músicas.",
             "Abra a seção **Setlist e músicas**.",
             "Para começar de uma setlist salva, toque nela em **Carregar de modelos**. Quando já há músicas, **Modelos** mostra a lista de novo como **Substituir por um modelo**.",
             "Para adicionar músicas, toque em **Biblioteca** embaixo de um set, ou em **Manual** para digitar uma. **Adicionar músicas** adiciona a um set que você escolhe.",
@@ -997,7 +997,7 @@ const music: AreaText = {
             "Um show ainda sem setlist ganha uma quando você salva, com o nome do show.",
             "Sair do show com alterações não salvas pergunta “Salvar as alterações da setlist?”.",
             "Tocar em **SETLIST** ou no número de músicas abre a lista completa numa janela, onde você pode editar do mesmo jeito.",
-            "Shows passados, orçamentos e ensaios mostram a setlist aqui só para leitura.",
+            "Orçamentos mostram a setlist aqui só para leitura. Num show passado, você a edita no painel (**SETLIST** ou o número de músicas); as músicas de um ensaio, com **EDITAR** ao lado de **MÚSICAS EM FOCO**.",
           ],
         },
         {

@@ -119,7 +119,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'When you edit a rehearsal, the **Gear & tasks** section also has **Add task** and **Load template**, which adds every task of a saved to-do list template. See [[todo-and-task-templates]].',
+          text: 'On a scheduled rehearsal, **EDIT** next to **TASKS** opens **Tasks**, with **Add** and, while it has none, **Load a to-do list**, which adds every task of a saved to-do list template. See [[todo-and-task-templates]].',
         },
         {
           type: 'note',
@@ -131,7 +131,7 @@ const together: AreaModule = {
     {
       id: 'edit-a-rehearsal',
       title: 'Edit a rehearsal',
-      summary: 'Change the date, room, roster, cost, setlist or tasks of a rehearsal that is already scheduled.',
+      summary: 'Change the date, times, room, roster, cost, focus songs, notes or tasks of a scheduled rehearsal, right on its page.',
       roles: ['admin'],
       kind: 'task',
       keywords: ['change rehearsal', 'move rehearsal', 'reschedule', 'update rehearsal'],
@@ -141,14 +141,14 @@ const together: AreaModule = {
           type: 'steps',
           items: [
             'Open the rehearsal from the **Calendar** or from Home.',
-            'At the bottom of the rehearsal, tap **EDIT**.',
-            'Open the section you want to change: **Session & recurrence**, **Date, time & studio**, **Studio cost**, **Band roster**, **Setlist** or **Gear & tasks**. A banner at the top says which fields need attention.',
-            'Tap **Save rehearsal**. It stays disabled while the rehearsal has no place.',
+            'Tap what you want to change: the pencil at the top or the **START** and **END** tiles, the **ROOM** tile, or **EDIT** next to **ATTENDANCE**, **FOCUS SONGS**, **NOTES**, **TASKS** or **STUDIO COST**.',
+            'A sheet opens with only that part. **Title, date & times** also has **Recurrence**; **Band roster** has **Select all**.',
+            'Tap **Save**. It stays off until something changed.',
           ],
         },
         {
           type: 'p',
-          text: 'If you tap **Cancel** with unsaved changes, BandWith asks **Save your changes?** and lets you save, discard or keep editing.',
+          text: 'Closing the sheet with **Cancel**, Back or a swipe down keeps the rehearsal as it was. Focus songs are saved with **Save** in the setlist sheet.',
         },
         {
           type: 'list',
@@ -161,7 +161,7 @@ const together: AreaModule = {
         {
           type: 'note',
           tone: 'tip',
-          text: 'Editing always uses the step-by-step editor, also on an iPad.',
+          text: 'Past rehearsals are edited the same way, also on an iPad. Members see the page without the pencils and **EDIT**.',
         },
       ],
     },
@@ -178,7 +178,7 @@ const together: AreaModule = {
           type: 'steps',
           items: [
             'Open the rehearsal.',
-            'Tap **DELETE** under **EDIT** and **REHEARSAL CHAT**.',
+            'Tap **DELETE** under **REHEARSAL CHAT**.',
             'Tap **Confirm delete**, or **CANCEL** to keep it.',
           ],
         },
@@ -279,7 +279,7 @@ const together: AreaModule = {
             '**NOTES**: the rehearsal note, when there is one.',
             '**TASKS**: the prep tasks and how many are done. Tap a task to tick it.',
             '**STUDIO COST**: the room, the hours, the total and **Split between {count} going**, with the amount **EACH**.',
-            'Buttons at the bottom: **EDIT**, **REHEARSAL CHAT** and **DELETE** for admins; **REHEARSAL CHAT** for members who answered going.',
+            'Buttons at the bottom: **REHEARSAL CHAT** and **DELETE** for admins, who change everything else with **EDIT** on each part; **REHEARSAL CHAT** for members who answered going.',
           ],
         },
         {

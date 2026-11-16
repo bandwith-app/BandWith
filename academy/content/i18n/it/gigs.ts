@@ -378,7 +378,7 @@ const gigs: AreaText = {
       keywords: ["ipad", "tablet", "composer", "anteprima live", "nuovo gig su ipad"],
       related: ["create-a-gig", "rider-and-stage", "gig-drafts"],
       body: [
-        { type: "p", text: "Su un iPad (o in un’altra finestra larga senza la barra laterale del doppio schermo), **Nuovo gig** apre il composer. Ha gli stessi campi e salva lo stesso gig della procedura a passaggi. Per modificare un gig si usa sempre la vista di modifica ([[edit-a-gig]])." },
+        { type: "p", text: "Su un iPad (o in un’altra finestra larga senza la barra laterale del doppio schermo), **Nuovo gig** apre il composer. Ha gli stessi campi e salva lo stesso gig della procedura a passaggi. Dopo, un gig si modifica direttamente nella sua pagina ([[edit-a-gig]])." },
         { type: "shot", id: "ipad-gig-composer", caption: "Il composer per iPad: schede numerate a sinistra, anteprima dal vivo a destra." },
         {
           type: "steps",
@@ -442,7 +442,7 @@ const gigs: AreaText = {
     {
       id: "edit-a-gig",
       title: "Modifica un gig",
-      summary: "Cambia formazione, compensi, orari, locale, scaletta, attività o note di un gig, e cosa viene comunicato alla band.",
+      summary: "Cambia orari, locale, formazione, compensi, scaletta, attività o note direttamente nella pagina del gig, e cosa viene comunicato alla band.",
       roles: ["admin"],
       kind: "task",
       keywords: ["modificare gig", "cambiare orario", "cambiare locale", "aggiungere musicista", "togliere musicista", "aggiornare gig"],
@@ -451,33 +451,33 @@ const gigs: AreaText = {
         {
           type: "steps",
           items: [
-            "Apri il gig e tocca **MODIFICA** sotto il contenuto. Puoi anche toccare **MODIFICA** accanto a **FORMAZIONE**, **AGGIUNGI MUSICISTA**, o il locale quando dice **Da def.**.",
-            "La vista di modifica mostra **In modifica** e quattro sezioni. Apri quella che ti serve: **01 Dati evento e cliente**, **02 Data, orario e locale**, **03 Band e compensi** o **04 Scaletta, attività e note**.",
-            "Fai le modifiche. Una sezione con locale, data, compenso o formazione mancanti mostra **Richiede attenzione** e si apre da sola.",
-            "Tocca **Salva modifiche**. Serve una data.",
+            "Apri il gig. Gli admin lo cambiano direttamente nella sua pagina: la matita in alto, la matita accanto al locale, i riquadri degli orari e **MODIFICA** accanto a una sezione.",
+            "Si apre un foglio con solo quella parte, per esempio **Titolo, data e orari**, **Locale e indirizzo** o **Formazione**.",
+            "Fai le modifiche e tocca **Salva**. Resta disattivato finché non cambi qualcosa. **Annulla**, Indietro o uno swipe verso il basso chiudono il foglio e lasciano il gig com’era.",
+            "La scaletta si modifica direttamente nella sezione **SCALETTA**, con il suo **Salva** (vedi [[edit-a-gig-setlist]]).",
           ],
         },
         {
           type: "list",
-          title: "In ogni sezione",
+          title: "Cosa cambia ogni parte",
           items: [
-            "**Dati evento e cliente**: tipo di evento, cliente, titolo, **Ospiti** e **Ambiente**.",
-            "**Data, orario e locale**: **Nome del locale**, data, orari e orari di ritrovo.",
-            "**Band e compensi**: formazioni tipo, organico e compensi, **Compenso da definire**, extra band, **Durata** e il **Totale stimato**.",
-            "**Scaletta, attività e note**: **Scegli brani**, riordina i brani (tieni premuto e trascina), rinomina o elimina le attività, e **Note per la band**.",
+            "**Titolo, data e orari** (la matita in alto o un riquadro degli orari): titolo, tipo di evento, data, orario di inizio e fine, carico e soundcheck.",
+            "**Locale e indirizzo** (la matita accanto al locale, o il locale quando dice **Da def.**): nome del locale, indirizzo, città e **Ambiente**.",
+            "**Formazione** (**MODIFICA** accanto a **FORMAZIONE**, o **AGGIUNGI MUSICISTA**): una **Formazione tipo** o chi suona, e i compensi. La matita sulla scheda del compenso (**Modifica compenso**): i compensi, **Compenso da definire** e l’extra band.",
+            "**ATTIVITÀ** e **CLIENTE E NOTE**: **MODIFICA** per aggiungere, rinominare o eliminare le attività (o **Carica una lista di attività**), e per cambiare il cliente e le **Note per la band**.",
           ],
         },
         {
           type: "list",
           title: "Cosa viene comunicato alla band",
           items: [
-            "I nuovi musicisti ricevono un invito. Chi era già in formazione mantiene la sua risposta.",
+            "I nuovi musicisti ricevono un invito, e chi togli dalla formazione viene avvisato. Chi era già in formazione mantiene la sua risposta.",
             "Una nuova data, un nuovo orario, orario di ritrovo o locale manda alla formazione un’unica notifica **Gig aggiornato** con l’elenco di cosa è cambiato.",
             "Un compenso cambiato avvisa solo quel musicista.",
             "Le modifiche alla scaletta mandano alla formazione un’unica notifica con ciò che è stato spostato, aggiunto o tolto.",
           ],
         },
-        { type: "note", tone: "tip", text: "Se chiudi con modifiche non salvate, l’app chiede **Salvare le modifiche?**. Salva per tenerle, oppure scartale." },
+        { type: "note", tone: "tip", text: "I gig passati si modificano allo stesso modo. I membri vedono la pagina senza matite e senza **MODIFICA**." },
         { type: "p", text: "Un preventivo apre invece l’editor dei preventivi. Vedi [[create-a-quote]]. Un gig personale apre il suo modulo ([[personal-gigs]])." },
       ],
     },
@@ -550,8 +550,8 @@ const gigs: AreaText = {
             "**RIDER & PALCO** con **APRI**. Vedi [[rider-and-stage]].",
             "**SCALETTA** con il numero di brani. Vedi [[gig-setlist]].",
             "**ATTIVITÀ** con **{done} di {total} completate**: tocca un’attività per spuntarla.",
-            "**CLIENTE E NOTE** (admin) o **NOTE**: toccalo o tocca **DETTAGLI** per **Logistica e note** (locale, copia indirizzo, contatti del cliente, dress code, ambiente, ospiti e note).",
-            "Le azioni. Admin: **MODIFICA**, **CHAT EVENTO**, **TORNA A PREVENTIVO** ed **ELIMINA**. Membri: **MI RITIRO** e **CHAT EVENTO**. Vedi [[event-and-rehearsal-chats]].",
+            "**CLIENTE E NOTE** (admin) o **NOTE**: toccalo o tocca **DETTAGLI** per **Logistica e note** (locale, copia indirizzo, contatti del cliente, dress code, ambiente, ospiti e note). Gli admin hanno lì **MODIFICA** per cambiare cliente e note.",
+            "Le azioni. Admin: **CHAT EVENTO**, **TORNA A PREVENTIVO** ed **ELIMINA**; tutto il resto si cambia nella sua sezione ([[edit-a-gig]]). Membri: **MI RITIRO** e **CHAT EVENTO**. Vedi [[event-and-rehearsal-chats]].",
           ],
         },
         {
@@ -559,7 +559,7 @@ const gigs: AreaText = {
           title: "Un gig passato",
           items: [
             "L’intestazione diventa grigia con **GIG PASSATO** e **COMPLETATO**.",
-            "Le azioni diventano **VEDI SCALETTA** e **CHAT EVENTO** (admin e membri che hanno accettato). Gli admin hanno anche **MODIFICA DETTAGLI** e **RIMUOVI DALL’ARCHIVIO**.",
+            "Le azioni diventano **VEDI SCALETTA** e **CHAT EVENTO** (admin e membri che hanno accettato). Gli admin hanno anche **RIMUOVI DALL’ARCHIVIO** e possono ancora cambiare il gig nelle sue sezioni.",
             "Modalità palco, preparazione e il pulsante per trovare un sostituto non ci sono più.",
           ],
         },
@@ -641,7 +641,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Modifica la scaletta qui o tramite **MODIFICA**. Senza scaletta, il foglio mostra **Nessuna scaletta assegnata** e **Assegna scaletta**." },
+            { role: "admin", text: "Modifica la scaletta qui: riordina, **Aggiungi brani**, o **Carica da un modello** finché è vuota (anche su un gig passato, nel foglio)." },
             { role: "member", text: "Vede la scaletta in sola lettura. Se non c’è: **L’admin della band non ha ancora collegato una scaletta.**" },
           ],
         },
@@ -723,7 +723,7 @@ const gigs: AreaText = {
             "Il foglio, segnato **Solo admin**, mostra il **Compenso band**, **PAGAMENTI DA FARE · {count}** con l’importo ancora dovuto e **MUSICISTI · {paid} SU {total} PAGATI**.",
             "Tocca l’interruttore rotondo accanto a un musicista (**{name} pagato**) per segnarlo come pagato o non pagato.",
             "Oppure tocca **SEGNA TUTTI COME PAGATI** per segnare tutti in una volta.",
-            "Tocca la matita (**Modifica compenso**) per cambiare i compensi nella vista di modifica.",
+            "Tocca la matita (**Modifica compenso**) per cambiare i compensi, **Compenso da definire** o l’extra band.",
           ],
         },
         {
@@ -1103,7 +1103,7 @@ const gigs: AreaText = {
     { q: "I membri vedono quanto viene pagata la band?", a: "No. I membri vedono solo il proprio compenso. Il compenso della band, il cliente, l’acconto e i compensi degli altri musicisti non arrivano mai sulla loro app.", roles: ["admin", "member"] },
     { q: "Perché un gig è sparito dal mio calendario?", a: "L’hai rifiutato o ti sei ritirato, un admin ti ha tolto dalla formazione, oppure il gig è stato eliminato. Anche un gig tornato a essere un preventivo sparisce dal calendario dei membri.", roles: ["member"] },
     { q: "Il mio show finisce alle 2 di notte. A mezzanotte risulterà passato?", a: "No. Un gig con l’orario di fine prima di quello di inizio va oltre la mezzanotte e resta in arrivo finché lo show non finisce." },
-    { q: "Come confermo la data prima di aver concordato il compenso?", a: "Attiva **Compenso da definire** nella procedura. Il gig è confermato e gli inviti dicono che il compenso è da definire. Imposta i compensi più tardi con **MODIFICA**.", roles: ["admin"] },
+    { q: "Come confermo la data prima di aver concordato il compenso?", a: "Attiva **Compenso da definire** nella procedura. Il gig è confermato e gli inviti dicono che il compenso è da definire. Imposta i compensi più tardi con la matita sulla scheda del compenso (**Modifica compenso**).", roles: ["admin"] },
     { q: "Posso duplicare un gig?", a: "Per ora no. Crea un nuovo gig e carica la stessa scaletta da **Carica da un modello** e le stesse attività da **Carica una lista di attività**.", roles: ["admin"] },
     { q: "Come annullo un gig?", a: "Eliminalo: apri il gig, tocca **ELIMINA**, poi **Sì, elimina**. La formazione riceve l’avviso di annullamento. Se invece torna in trattativa, usa **TORNA A PREVENTIVO**.", roles: ["admin"] },
     { q: "La mia band vede i miei gig personali?", a: "No. Vede solo che quel giorno sei occupato, nei conteggi delle disponibilità." },

@@ -951,7 +951,7 @@ const music: AreaText = {
         {
           type: "steps",
           items: [
-            "Crée un concert, ou ouvres-en un et touche **Modifier** (voir [[create-a-gig]]).",
+            "Crée un concert (voir [[create-a-gig]]). Pour un concert existant, ouvre-le et utilise plutôt sa section **SETLIST**, qui propose les mêmes modèles et morceaux.",
             "Ouvre la section **Setlist et morceaux**.",
             "Pour partir d’une setlist enregistrée, touche-la sous **Charger un modèle**. Une fois qu’il y a des morceaux, **Modèles** réaffiche la liste sous la forme **Remplacer par un modèle**.",
             "Pour ajouter des morceaux, touche **Bibliothèque** sous un set, ou **Manuel** pour en saisir un. **Ajouter morceaux** ajoute dans le set choisi.",
@@ -997,7 +997,7 @@ const music: AreaText = {
             "Un concert sans setlist en reçoit une à l’enregistrement, nommée d’après le concert.",
             "Si tu quittes le concert sans enregistrer, l’app demande « Enregistrer les modifications de la setlist ? ».",
             "Toucher **SETLIST** ou le nombre de morceaux ouvre la liste complète dans une feuille, où tu peux modifier de la même façon.",
-            "Les concerts passés, les devis et les répétitions affichent ici la setlist en lecture seule.",
+            "Les devis affichent ici la setlist en lecture seule. Sur un concert passé, tu la modifies dans la feuille (**SETLIST** ou le nombre de morceaux) ; les morceaux d’une répétition avec **MODIFIER** à côté de **MORCEAUX À BOSSER**.",
           ],
         },
         {

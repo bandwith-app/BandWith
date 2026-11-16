@@ -378,7 +378,7 @@ const gigs: AreaText = {
       keywords: ["iPad", "Tablet", "Editor", "Live-Vorschau", "neuer Gig iPad"],
       related: ["create-a-gig", "rider-and-stage", "gig-drafts"],
       body: [
-        { type: "p", text: "Auf dem iPad (oder in einem anderen breiten Fenster ohne die Dual-Screen-Leiste) öffnet **Neuer Gig** den Editor. Er hat dieselben Felder und speichert denselben Gig wie der Schritt-Assistent. Zum Bearbeiten eines Gigs gibt es weiterhin die Bearbeitungsansicht ([[edit-a-gig]])." },
+        { type: "p", text: "Auf dem iPad (oder in einem anderen breiten Fenster ohne die Dual-Screen-Leiste) öffnet **Neuer Gig** den Editor. Er hat dieselben Felder und speichert denselben Gig wie der Schritt-Assistent. Danach bearbeitest du einen Gig direkt auf seiner Seite ([[edit-a-gig]])." },
         { type: "shot", id: "ipad-gig-composer", caption: "Der iPad-Editor: nummerierte Karten links, die Live-Vorschau rechts." },
         {
           type: "steps",
@@ -442,7 +442,7 @@ const gigs: AreaText = {
     {
       id: "edit-a-gig",
       title: "Einen Gig bearbeiten",
-      summary: "Ändere Besetzung, Gagen, Zeiten, Location, Setlist, Aufgaben oder Notizen eines Gigs, und was die Band davon erfährt.",
+      summary: "Ändere Zeiten, Location, Besetzung, Gagen, Setlist, Aufgaben oder Notizen direkt auf der Seite des Gigs, und was die Band davon erfährt.",
       roles: ["admin"],
       kind: "task",
       keywords: ["Gig bearbeiten", "Zeit ändern", "Location ändern", "Musiker hinzufügen", "Musiker entfernen", "Gig aktualisieren"],
@@ -451,33 +451,33 @@ const gigs: AreaText = {
         {
           type: "steps",
           items: [
-            "Öffne den Gig und tippe unter dem Inhalt auf **ÄNDERN**. Du kannst auch auf **ÄNDERN** neben **BESETZUNG**, auf **MUSIKER HINZUFÜGEN** oder auf die Location tippen, wenn dort **Offen** steht.",
-            "Die Bearbeitungsansicht zeigt **Bearbeiten** und vier Bereiche. Öffne den, den du brauchst: **01 Eventdaten & Kunde**, **02 Datum, Zeit & Location**, **03 Band & Gagen** oder **04 Setlist, Aufgaben & Notizen**.",
-            "Nimm deine Änderungen vor. Ein Bereich mit fehlender Location, fehlendem Datum, fehlender Gage oder Besetzung zeigt **Braucht Aufmerksamkeit** und öffnet sich von selbst.",
-            "Tippe auf **Änderungen sichern**. Dafür braucht es ein Datum.",
+            "Öffne den Gig. Admins ändern ihn direkt auf seiner Seite: der Stift oben, der Stift neben der Location, die Zeit-Kacheln und **ÄNDERN** neben einem Bereich.",
+            "Ein Fenster öffnet sich nur mit diesem Teil, zum Beispiel **Titel, Datum & Zeiten**, **Location & Adresse** oder **Besetzung**.",
+            "Nimm deine Änderungen vor und tippe auf **Speichern**. Der Button bleibt aus, bis sich etwas geändert hat. **Abbrechen**, Zurück oder nach unten wischen schließt das Fenster, und der Gig bleibt, wie er war.",
+            "Die Setlist bearbeitest du direkt im Bereich **SETLIST**, mit eigenem **Speichern** (siehe [[edit-a-gig-setlist]]).",
           ],
         },
         {
           type: "list",
-          title: "In den einzelnen Bereichen",
+          title: "Was jeder Teil ändert",
           items: [
-            "**Eventdaten & Kunde**: Eventtyp, Kunde, Titel, **Gäste** und **Ort**.",
-            "**Datum, Zeit & Location**: **Name der Location**, Datum, Zeiten und Treffzeiten.",
-            "**Band & Gagen**: Vorlagen, Besetzung und Gagen, **Gage noch offen**, Band-Zuschlag, **Dauer** und **Geschätzt gesamt**.",
-            "**Setlist, Aufgaben & Notizen**: **Songs wählen**, Songs umsortieren (lange drücken und ziehen), Aufgaben umbenennen oder löschen und **Notizen für die Band**.",
+            "**Titel, Datum & Zeiten** (der Stift oben oder eine Zeit-Kachel): Titel, Eventtyp, Datum, Beginn und Ende, Load-in und Soundcheck.",
+            "**Location & Adresse** (der Stift neben der Location, oder die Location, wenn dort **Offen** steht): Name der Location, Adresse, Stadt und **Ort**.",
+            "**Besetzung** (**ÄNDERN** neben **BESETZUNG**, oder **MUSIKER HINZUFÜGEN**): eine **Besetzungsvorlage** oder wer spielt, und die Gagen. Der Stift auf der Gagen-Karte (**Gage bearbeiten**): die Gagen, **Gage noch offen** und der Band-Zuschlag.",
+            "**AUFGABEN** und **KUNDE & NOTIZEN**: **ÄNDERN**, um Aufgaben hinzuzufügen, umzubenennen oder zu löschen (oder **To-do-Liste laden**), und um Kunde und **Notizen für die Band** zu ändern.",
           ],
         },
         {
           type: "list",
           title: "Was die Band erfährt",
           items: [
-            "Neue Musiker bekommen eine Einladung. Alle, die schon in der Besetzung stehen, behalten ihre Antwort.",
+            "Neue Musiker bekommen eine Einladung, und wen du aus der Besetzung nimmst, erfährt es. Alle, die schon dabei sind, behalten ihre Antwort.",
             "Ein neues Datum, eine neue Zeit, Treffzeit oder Location schickt der Besetzung eine Mitteilung **Gig aktualisiert** mit allem, was sich geändert hat.",
             "Eine geänderte Gage benachrichtigt nur diesen Musiker.",
             "Änderungen an der Setlist schicken der Besetzung eine Mitteilung mit dem, was verschoben, hinzugefügt oder entfernt wurde.",
           ],
         },
-        { type: "note", tone: "tip", text: "Schließt du mit ungespeicherten Änderungen, fragt die App **Änderungen speichern?**. Speichere, um sie zu behalten, oder verwirf sie." },
+        { type: "note", tone: "tip", text: "Vergangene Gigs bearbeitest du genauso. Mitglieder sehen die Seite ohne Stifte und ohne **ÄNDERN**." },
         { type: "p", text: "Ein Angebot öffnet stattdessen den Angebotseditor. Siehe [[create-a-quote]]. Ein privater Gig öffnet sein eigenes Formular ([[personal-gigs]])." },
       ],
     },
@@ -550,8 +550,8 @@ const gigs: AreaText = {
             "**RIDER & BÜHNE** mit **ÖFFNEN**. Siehe [[rider-and-stage]].",
             "**SETLIST** mit der Zahl der Songs. Siehe [[gig-setlist]].",
             "**AUFGABEN** mit **{done} von {total} erledigt**: Tippe auf eine Aufgabe, um sie abzuhaken.",
-            "**KUNDE & NOTIZEN** (Admins) oder **NOTIZEN**: Tippe darauf oder auf **DETAILS** für **Logistik & Notizen** (Location, Adresse kopieren, Kundenkontakte, Dresscode, Ort, Gäste und Notizen).",
-            "Die Aktionen. Admins: **ÄNDERN**, **EVENT-CHAT**, **ZURÜCK ZUM ANGEBOT** und **LÖSCHEN**. Mitglieder: **AUSSTEIGEN** und **EVENT-CHAT**. Siehe [[event-and-rehearsal-chats]].",
+            "**KUNDE & NOTIZEN** (Admins) oder **NOTIZEN**: Tippe darauf oder auf **DETAILS** für **Logistik & Notizen** (Location, Adresse kopieren, Kundenkontakte, Dresscode, Ort, Gäste und Notizen). Admins haben dort **ÄNDERN**, um Kunde und Notizen zu ändern.",
+            "Die Aktionen. Admins: **EVENT-CHAT**, **ZURÜCK ZUM ANGEBOT** und **LÖSCHEN**; alles andere änderst du im jeweiligen Bereich ([[edit-a-gig]]). Mitglieder: **AUSSTEIGEN** und **EVENT-CHAT**. Siehe [[event-and-rehearsal-chats]].",
           ],
         },
         {
@@ -559,7 +559,7 @@ const gigs: AreaText = {
           title: "Ein vergangener Gig",
           items: [
             "Der Kopfbereich wird grau, mit **VERGANGENER GIG** und **ABGESCHLOSSEN**.",
-            "Die Aktionen werden zu **SETLIST ANSEHEN** und **EVENT-CHAT** (Admins und Mitglieder, die zugesagt haben). Admins bekommen außerdem **DETAILS ÄNDERN** und **AUS ARCHIV ENTFERNEN**.",
+            "Die Aktionen werden zu **SETLIST ANSEHEN** und **EVENT-CHAT** (Admins und Mitglieder, die zugesagt haben). Admins bekommen außerdem **AUS ARCHIV ENTFERNEN** und können den Gig weiter in seinen Bereichen ändern.",
             "Bühnenmodus, Bereitschaft und der Button zum Finden einer Vertretung fallen weg.",
           ],
         },
@@ -641,7 +641,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Bearbeitet die Setlist hier oder über **ÄNDERN**. Ohne Setlist zeigt das Fenster **Keine Setlist zugewiesen** und **Setlist zuweisen**." },
+            { role: "admin", text: "Bearbeitet die Setlist hier: umsortieren, **Songs hinzufügen** oder **Aus Vorlagen laden**, solange sie leer ist (auch bei einem vergangenen Gig, im Fenster)." },
             { role: "member", text: "Sieht die Setlist nur zum Lesen. Ohne Setlist: **Der Band-Admin hat noch keine Setlist angehängt.**" },
           ],
         },
@@ -723,7 +723,7 @@ const gigs: AreaText = {
             "Das Fenster mit dem Hinweis **Nur Admins** zeigt die **Band-Gage**, **OFFENE AUSZAHLUNGEN · {count}** mit dem noch geschuldeten Betrag und **MUSIKER · {paid} VON {total} BEZAHLT**.",
             "Tippe auf den runden Schalter neben einem Musiker (**{name} bezahlt**), um ihn als bezahlt oder nicht bezahlt zu markieren.",
             "Oder tippe auf **ALLE ALS BEZAHLT MARKIEREN**, um alle auf einmal zu markieren.",
-            "Tippe auf den Stift (**Gage bearbeiten**), um Gagen in der Bearbeitungsansicht zu ändern.",
+            "Tippe auf den Stift (**Gage bearbeiten**), um die Gagen, **Gage noch offen** oder den Band-Zuschlag zu ändern.",
           ],
         },
         {
@@ -1103,7 +1103,7 @@ const gigs: AreaText = {
     { q: "Sehen Mitglieder, was die Band bekommt?", a: "Nein. Mitglieder sehen nur ihre eigene Gage. Band-Gage, Kunde, Anzahlung und die Gagen anderer Musiker erreichen ihre App nie.", roles: ["admin", "member"] },
     { q: "Warum ist ein Gig aus meinem Kalender verschwunden?", a: "Du hast abgesagt oder bist ausgestiegen, ein Admin hat dich aus der Besetzung genommen, oder der Gig wurde gelöscht. Auch ein Gig, der wieder zum Angebot wurde, verschwindet aus den Kalendern der Mitglieder.", roles: ["member"] },
     { q: "Meine Show endet um 2 Uhr nachts. Wird sie um Mitternacht als vergangen angezeigt?", a: "Nein. Ein Gig, dessen Endzeit vor dem Beginn liegt, geht über Mitternacht und bleibt anstehend, bis die Show endet." },
-    { q: "Wie bestätige ich das Datum, bevor die Gage feststeht?", a: "Schalte im Assistenten **Gage noch offen** ein. Der Gig ist bestätigt, und die Einladungen sagen, dass die Gage noch besprochen wird. Die Gagen legst du später mit **ÄNDERN** fest.", roles: ["admin"] },
+    { q: "Wie bestätige ich das Datum, bevor die Gage feststeht?", a: "Schalte im Assistenten **Gage noch offen** ein. Der Gig ist bestätigt, und die Einladungen sagen, dass die Gage noch besprochen wird. Die Gagen legst du später mit dem Stift auf der Gagen-Karte fest (**Gage bearbeiten**).", roles: ["admin"] },
     { q: "Kann ich einen Gig duplizieren?", a: "Im Moment nicht. Erstelle einen neuen Gig und lade dieselbe Setlist über **Aus Vorlagen laden** und dieselben Aufgaben über **To-do-Liste laden**.", roles: ["admin"] },
     { q: "Wie sage ich einen Gig ab?", a: "Lösch ihn: Öffne den Gig, tippe auf **LÖSCHEN** und dann auf **Ja, löschen**. Die Besetzung bekommt eine Absage. Geht er zurück in die Verhandlung, nutze stattdessen **ZURÜCK ZUM ANGEBOT**.", roles: ["admin"] },
     { q: "Sieht meine Band meine privaten Gigs?", a: "Nein. Sie sieht in den Verfügbarkeitszahlen nur, dass du an dem Tag beschäftigt bist." },

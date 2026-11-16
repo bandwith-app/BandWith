@@ -951,7 +951,7 @@ const music: AreaText = {
         {
           type: "steps",
           items: [
-            "Crea un gig, oppure aprine uno e tocca **Modifica** (vedi [[create-a-gig]]).",
+            "Crea un gig (vedi [[create-a-gig]]). Per un gig che hai già, aprilo e usa invece la sua sezione **SCALETTA**, che offre gli stessi modelli e brani.",
             "Apri la sezione **Scaletta e brani**.",
             "Per partire da una scaletta salvata, toccala sotto **Carica da un modello**. Quando ci sono già dei brani, **Modelli** mostra di nuovo l’elenco come **Sostituisci con un modello**.",
             "Per aggiungere brani, tocca **Libreria** sotto un set, oppure **Manuale** per scriverne uno. **Aggiungi brani** aggiunge al set che scegli.",
@@ -997,7 +997,7 @@ const music: AreaText = {
             "Un gig che non ha ancora una scaletta ne riceve una quando salvi, con il nome del gig.",
             "Se esci dal gig con modifiche non salvate, l’app chiede “Salvare le modifiche alla scaletta?”.",
             "Toccando **SCALETTA** o il numero di brani si apre l’elenco completo in un foglio, dove puoi modificare allo stesso modo.",
-            "I gig passati, i preventivi e le prove mostrano qui la scaletta in sola lettura.",
+            "I preventivi mostrano qui la scaletta in sola lettura. In un gig passato la modifichi nel foglio (**SCALETTA** o il numero di brani); i brani di una prova con **MODIFICA** accanto a **BRANI DA PROVARE**.",
           ],
         },
         {

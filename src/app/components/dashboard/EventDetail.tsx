@@ -86,6 +86,9 @@ import { UnsavedChangesBar, UnsavedChangesSheet } from '@/app/components/bw/Unsa
 import { useSystemBack } from '@/lib/backStack';
 import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
+import { OverviewEditSheets } from '@/app/components/event/edit/OverviewEditSheets';
+import { useOverviewEdit, type OverviewToast } from '@/app/components/event/edit/useOverviewEdit';
+import type { EditCard, EditKind } from '@/lib/eventOverviewEdit';
 
 interface EventDetailProps {
   event: EventData;
@@ -112,8 +115,10 @@ interface EventDetailProps {
   allEvents?: EventData[];
   /** Personal gig clashes with a band event: tell that band's admin. */
   onNotifyConflict?: (bandId: string, eventId: string) => Promise<void> | void;
-  /** Something on the event was saved from here (personal gig "Paid"). */
+  /** Something on the event was saved from here (personal gig "Paid", a card edit). */
   onEventUpdated?: () => void;
+  /** A card edit was saved (or queued offline), or it failed. */
+  onToast?: OverviewToast;
   memberFee?: number;
   /** Opened with "Go live": start in Stage mode. */
   startInStage?: boolean;
@@ -212,11 +217,28 @@ const splitTimeDisplay = (display: string): [string, string] => {
   return [`${String(h).padStart(2, '0')}:${m[2] || '00'}`, ''];
 };
 
-const TimeTile: React.FC<{ label: string; value: string; text?: boolean }> = ({ label, value, text }) => {
+const TimeTile: React.FC<{ label: string; value: string; text?: boolean; onEdit?: () => void; editLabel?: string }> = ({
+  label,
+  value,
+  text,
+  onEdit,
+  editLabel,
+}) => {
   const [main, suffix] = text ? [value, ''] : splitTimeDisplay(value);
+  // Admins: the tile opens its card editor.
+  const Tile = onEdit ? 'button' : 'div';
   return (
-    <div className="@container bg-card rounded-[16px] p-4 flex flex-col gap-1 min-w-0">
-      <span className="bw-label-xs text-muted-foreground truncate">{label}</span>
+    <Tile
+      {...(onEdit ? { type: 'button' as const, onClick: onEdit, 'aria-label': `${label} ${value} · ${editLabel || ''}`.trim() } : {})}
+      className={cn(
+        '@container bg-card rounded-[16px] p-4 flex flex-col gap-1 min-w-0 text-left',
+        onEdit && 'cursor-pointer active:scale-[0.98] transition-transform',
+      )}
+    >
+      <span className="flex items-center justify-between gap-1 min-w-0">
+        <span className="bw-label-xs text-muted-foreground truncate">{label}</span>
+        {onEdit && <Pencil className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden />}
+      </span>
       {text ? (
         <span className="bw-num truncate">{main}</span>
       ) : (
@@ -226,7 +248,7 @@ const TimeTile: React.FC<{ label: string; value: string; text?: boolean }> = ({ 
           {suffix && <span className="bw-label-xs @max-[84px]:hidden">{suffix}</span>}
         </span>
       )}
-    </div>
+    </Tile>
   );
 };
 
@@ -265,7 +287,7 @@ const SetFlow: React.FC<{ seconds: number[]; max: number }> = ({ seconds, max })
 };
 
 export const EventDetail: React.FC<EventDetailProps> = ({
-  event,
+  event: eventProp,
   onClose: onCloseProp,
   userResponse = 'accepted',
   onAccept,
@@ -282,6 +304,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   allEvents,
   onNotifyConflict,
   onEventUpdated,
+  onToast,
   memberFee,
   startInStage,
   startOnFee,
@@ -289,6 +312,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   currentUserId,
 }) => {
   const t = useT();
+  // A card edit shows at once; the next copy from the events list takes over.
+  const [patched, setPatched] = useState<Partial<EventData>>({});
+  useEffect(() => setPatched({}), [eventProp]);
+  const event = useMemo<EventData>(() => ({ ...eventProp, ...patched }), [eventProp, patched]);
   useCurrency(); // re-render money labels when the band currency changes
   const railChrome = useRailOwnsChrome();
   const { selectedBand, bands } = useBand();
@@ -404,6 +431,29 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     isPersonalGig ? null : event.eventId,
   );
   const tasksDone = eventTasks.filter((task) => task.is_completed).length;
+
+  // Admins edit a band gig or a rehearsal right here, one card at a time
+  // (same fields, saves and notifications as the Edit page it replaces).
+  const editKind: EditKind | null = isPersonalGig || isQuote ? null : eventType === 'gig' ? 'gig' : isRehearsal ? 'rehearsal' : null;
+  const canEditOverview = isAdmin && !!editKind && !!event.eventId && !!event.band_id;
+  // Lineup and fee edits start from the saved lineup: only once it has loaded.
+  const lineupReady = !!dbMembers && !membersError;
+  const [editCard, setEditCard] = useState<EditCard | null>(null);
+  const editApi = useOverviewEdit({
+    event,
+    kind: editKind ?? 'gig',
+    currentUserId,
+    onPatched: (p) => setPatched((prev) => ({ ...prev, ...p })),
+    onSaved: onEventUpdated,
+    onToast,
+    reloadMembers,
+    reloadTasks,
+  });
+  const openEdit = (card: EditCard) => {
+    haptic.tap();
+    setActiveSheet(null);
+    setEditCard(card);
+  };
 
   // Lineup, to-dos and setlist reload as soon as someone changes them.
   const [setlistReloadKey, setSetlistReloadKey] = useState(0);
@@ -648,6 +698,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       : undefined,
     { label: t('More options'), icon: <MoreHorizontal />, pane: true },
   );
+
+  // iPhone Duo: the hero's edit button joins the rail's Side Actions too.
+  const editInRail = useRailAction(canEditOverview ? () => openEdit('event') : undefined, {
+    label: t('Edit title, date & times'),
+    icon: <Pencil />,
+    pane: true,
+  });
 
   // Reverting a gig to a quote asks first. Declared before the early return
   // below: every hook must run on every render.
@@ -969,8 +1026,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const maxSongSeconds = Math.max(0, ...songSeconds);
   const showSetFlow = numSongs >= 2 && numSongs <= 24 && maxSongSeconds > 0;
   // Band admin: reorder, add and remove songs right here (setlists are admin-only, 074).
+  // Rehearsals (focus songs) and past gigs too, in the setlist sheet.
   const canEditSetlist =
-    isAdmin && !isPast && !isPersonalGig && !isQuote && !isRehearsal && !!event.band_id && !!event.eventId && !setlistError &&
+    isAdmin && !isPersonalGig && !isQuote && !!event.band_id && !!event.eventId && !setlistError &&
     // Every row must name its song, or saving would drop it.
     setlistSongs.every((s) => !!s.songId);
   // Song counts in the titles follow the edits while they wait for Save.
@@ -1002,7 +1060,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const roomLabel = shortPlace(event.venueName || event.location) || '';
   const rehearsalHours = durationHours(event.time, event.endTime);
   const goingCount = confirmedExact;
-  const showStudioCost = isRehearsal && !isPersonalGig && bandFeeNum > 0;
+  // Admins see it (and set it) on a free rehearsal too.
+  const showStudioCost = isRehearsal && !isPersonalGig && (bandFeeNum > 0 || canEditOverview);
 
   const heroChipStyle: React.CSSProperties = { backgroundColor: theme.accentFg, color: theme.accentColor };
   const heroTintStyle: React.CSSProperties = {
@@ -1019,9 +1078,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   }
   const showNotesSection = !isRehearsal && !isQuote;
 
+  // The fee's pencil: its card editor (band gigs), else the Edit page.
+  const editFee = canEditOverview ? (lineupReady ? () => openEdit('fee') : undefined) : onEdit;
+
   // Lineup header action: admins edit the lineup, others open the details.
   const lineupAction =
-    isAdmin && onEdit && !isPast
+    canEditOverview && lineupReady
+      ? { label: t('EDIT'), run: () => openEdit('lineup') }
+      : isAdmin && onEdit && !isPast && !canEditOverview
       ? { label: t('EDIT'), run: onEdit }
       : !isRehearsal
         ? { label: t('DETAILS'), run: () => setActiveSheet('lineup') }
@@ -1060,6 +1124,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const settingRaw = event.indoorOutdoor?.toUpperCase();
   const settingShown = settingRaw ? settingLabels[settingRaw] ?? settingRaw : undefined;
 
+  const editTimes = canEditOverview ? () => openEdit('event') : undefined;
+
   // Time tiles (none on quotes). Laptop pose shows them on the Display with
   // the title (index.css: .bw-ed-times-hero), the rest of the time on the sheet.
   const timeTiles = !isQuote ? (
@@ -1072,15 +1138,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         </>
       ) : eventType === 'gig' ? (
         <>
-          <TimeTile label={t('LOAD IN')} value={loadInTime} />
-          <TimeTile label={t('SOUNDCHECK')} value={soundCheckTime} />
-          <TimeTile label={t('SHOW')} value={showTimeShown} />
+          <TimeTile label={t('LOAD IN')} value={loadInTime} onEdit={editTimes} editLabel={t('Edit date & times')} />
+          <TimeTile label={t('SOUNDCHECK')} value={soundCheckTime} onEdit={editTimes} editLabel={t('Edit date & times')} />
+          <TimeTile label={t('SHOW')} value={showTimeShown} onEdit={editTimes} editLabel={t('Edit date & times')} />
         </>
       ) : isRehearsal ? (
         <>
-          <TimeTile label={t('START')} value={showTimeShown} />
-          <TimeTile label={t('END')} value={endTimeFormatted || t('TBD')} />
-          <TimeTile label={t('ROOM')} value={roomLabel || t('TBD')} text />
+          <TimeTile label={t('START')} value={showTimeShown} onEdit={editTimes} editLabel={t('Edit date & times')} />
+          <TimeTile label={t('END')} value={endTimeFormatted || t('TBD')} onEdit={editTimes} editLabel={t('Edit date & times')} />
+          <TimeTile
+            label={t('ROOM')}
+            value={roomLabel || t('TBD')}
+            text
+            onEdit={canEditOverview ? () => openEdit('venue') : undefined}
+            editLabel={t('Edit venue')}
+          />
         </>
       ) : (
         <>
@@ -1145,6 +1217,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   size="sm"
                   className="ml-auto"
                 />
+                {canEditOverview && !editInRail && (
+                  <IconButton
+                    label={t('Edit title, date & times')}
+                    icon={<Pencil />}
+                    variant="event"
+                    size="sm"
+                    onClick={() => openEdit('event')}
+                  />
+                )}
                 {canStage && !stageInRail && (
                   <button
                     type="button"
@@ -1226,10 +1307,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               {/* Venue + date·time | weather */}
               <div className="flex items-end justify-between gap-3">
                 <div className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                  <div className="flex items-center gap-1.5 max-w-full">
                   <button
                     type="button"
-                    onClick={hasValidLocation ? handleOpenMaps : onEdit}
-                    disabled={!hasValidLocation && !onEdit}
+                    onClick={hasValidLocation ? handleOpenMaps : canEditOverview ? () => openEdit('venue') : onEdit}
+                    disabled={!hasValidLocation && !onEdit && !canEditOverview}
                     title={hasValidLocation ? t('Open {place} in Maps', { place: fullLocationQuery }) : t('Venue TBD')}
                     className={cn(
                       'group inline-flex items-center gap-1 text-left max-w-full',
@@ -1252,6 +1334,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       </span>
                     )}
                   </button>
+                  {canEditOverview && (
+                    <button
+                      type="button"
+                      onClick={() => openEdit('venue')}
+                      aria-label={t('Edit venue')}
+                      title={t('Edit venue')}
+                      className="w-8 h-8 -my-2 shrink-0 rounded-full inline-flex items-center justify-center cursor-pointer active:opacity-70"
+                    >
+                      <span className="w-[22px] h-[22px] rounded-full inline-flex items-center justify-center" style={heroTintStyle}>
+                        <Pencil className="w-3 h-3" aria-hidden />
+                      </span>
+                    </button>
+                  )}
+                  </div>
                   {venueAddress && <span className="bw-label-xs opacity-70 truncate max-w-full">{venueAddress}</span>}
                   <span
                     className="mt-1.5 min-h-5 px-2 py-1 rounded-[4px] bw-label-xs inline-block max-w-full"
@@ -1364,14 +1460,15 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 <section className="flex flex-col gap-6" aria-label={t('Setlist')}>
                   <SectionTitle
                     title={t('SETLIST · {count}', { count: shownSongs })}
-                    actionLabel={isAdmin && onEdit ? t('EDIT') : undefined}
-                    onAction={isAdmin && onEdit ? onEdit : undefined}
+                    // The list below is the editor; the Edit page only when it can't be.
+                    actionLabel={isAdmin && onEdit && !canEditSetlist ? t('EDIT') : undefined}
+                    onAction={isAdmin && onEdit && !canEditSetlist ? onEdit : undefined}
                   />
                   {setlistLoading ? (
                     <p className="bw-body-sm text-muted-foreground">{t('Loading…')}</p>
                   ) : canEditSetlist ? (
                     <div className="bg-card rounded-[16px] p-4">
-                      <GigSetlistEditor draft={setlistDraft} />
+                      <GigSetlistEditor draft={setlistDraft} templatesBandId={event.band_id} />
                     </div>
                   ) : numSongs > 0 ? (
                     <ol className="bg-card rounded-[16px] px-4 py-1 flex flex-col">
@@ -1420,7 +1517,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     bandFundPct={bandFundPct}
                     paidSupported={paidSupported}
                     formatMoney={formatCurrencyExact}
-                    onEditFee={onEdit}
+                    onEditFee={editFee}
                     onSetPaid={setPaid}
                     settingPaid={settingPaid}
                     error={markError || membersError}
@@ -1545,6 +1642,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     </div>
                     {isAdmin && depositDue && <Tag variant="accent">{t('DEPOSIT DUE')}</Tag>}
                     {feeTbd && <Tag variant="subtle">{t('To be discussed')}</Tag>}
+                    {canEditOverview && lineupReady && (
+                      <IconButton label={t('Edit fee')} variant="sheet" size="sm" icon={<Pencil />} onClick={() => openEdit('fee')} />
+                    )}
                   </div>
                   {isAdmin && (activeMembers.length > 0 || depositAmount > 0 || (myResolvedFee != null && myResolvedFee > 0)) && (
                     <div className="flex flex-col gap-3">
@@ -1632,8 +1732,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                         </span>
                       </span>
                     )}
-                    {isAdmin && !isPast && onEdit && !isRehearsal && (
-                      <PillButton variant="outline" size="md" type="button" onClick={onEdit}>
+                    {isAdmin && !isPast && !isRehearsal && (canEditOverview ? lineupReady : !!onEdit) && (
+                      <PillButton variant="outline" size="md" type="button" onClick={canEditOverview ? () => openEdit('lineup') : onEdit}>
                         <Plus className="w-4 h-4" />
                         {t('ADD MUSICIAN')}
                       </PillButton>
@@ -1661,16 +1761,20 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               {/* ─── STUDIO COST (rehearsal) ─── */}
               {showStudioCost && (
                 <section className="flex flex-col gap-6">
-                  <SectionTitle title={t('STUDIO COST')} />
+                  <SectionTitle
+                    title={t('STUDIO COST')}
+                    actionLabel={canEditOverview ? t('EDIT') : undefined}
+                    onAction={canEditOverview ? () => openEdit('cost') : undefined}
+                  />
                   <div className="bg-card rounded-[16px] p-4 flex flex-col gap-3">
                     <KeyValueRow
                       label={[roomLabel || t('Room'), rehearsalHours != null ? `${formatHours(rehearsalHours)} h` : '']
                         .filter(Boolean)
                         .join(' · ')}
-                      value={formatCurrencyExact(bandFeeNum)}
+                      value={bandFeeNum > 0 ? formatCurrencyExact(bandFeeNum) : t('Free')}
                       muted
                     />
-                    {goingCount > 0 && (
+                    {goingCount > 0 && bandFeeNum > 0 && (
                       <KeyValueRow
                         label={t('Split between {count} going', { count: goingCount })}
                         value={t('{amount} EACH', { amount: money(bandFeeNum / goingCount, 'auto') })}
@@ -1695,7 +1799,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     }
                     onAction={() => setActiveSheet('setlist')}
                   />
-                  {canEditSetlist && !setlistLoading ? (
+                  {canEditSetlist && !isPast && !setlistLoading ? (
                     <div className="bg-card rounded-[16px] p-4 flex flex-col gap-3">
                       {showSetFlow && (
                         <span className="flex flex-col gap-2 w-full pb-3 border-b border-border">
@@ -1706,7 +1810,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                           </span>
                         </span>
                       )}
-                      <GigSetlistEditor draft={setlistDraft} />
+                      <GigSetlistEditor draft={setlistDraft} templatesBandId={event.band_id} />
                     </div>
                   ) : (
                   <button
@@ -1770,7 +1874,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 <section className="flex flex-col gap-6">
                   <SectionTitle
                     title={t('FOCUS SONGS')}
-                    actionLabel={setlistLoading ? '...' : t('SETLIST')}
+                    actionLabel={setlistLoading ? '...' : canEditSetlist ? t('EDIT') : t('SETLIST')}
                     onAction={() => setActiveSheet('setlist')}
                   />
                   {setlistLoading ? (
@@ -1805,25 +1909,49 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               )}
 
               {/* ─── NOTE (rehearsal): set in the iPad composer, Figma "Focus & note" ─── */}
-              {isRehearsal && !isPersonalGig && !!event.notes?.trim() && (
+              {isRehearsal && !isPersonalGig && (!!event.notes?.trim() || canEditOverview) && (
                 <section className="flex flex-col gap-6" aria-label={t('Notes')}>
-                  <SectionTitle title={t('NOTES')} />
-                  <p className="bg-card rounded-[16px] p-4 bw-body-md whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
-                    {event.notes.trim()}
+                  <SectionTitle
+                    title={t('NOTES')}
+                    actionLabel={canEditOverview ? t('EDIT') : undefined}
+                    onAction={canEditOverview ? () => openEdit('notes') : undefined}
+                  />
+                  <p
+                    className={cn(
+                      'bg-card rounded-[16px] p-4 bw-body-md whitespace-pre-wrap select-text [overflow-wrap:anywhere]',
+                      !event.notes?.trim() && 'text-muted-foreground',
+                    )}
+                  >
+                    {event.notes?.trim() || t('No notes added yet.')}
                   </p>
                 </section>
               )}
 
               {/* ─── TASKS (band events with saved to-dos) ─── */}
-              {inOverview && !isPersonalGig && eventTasks.length > 0 && (
+              {inOverview && !isPersonalGig && (eventTasks.length > 0 || canEditOverview) && (
                 <section className="flex flex-col gap-6">
                   <div className="flex flex-col gap-1">
-                    <SectionTitle title={t('TASKS')} />
-                    <span className="bw-label-sm text-muted-foreground">
-                      {t('{done} of {total} done', { done: tasksDone, total: eventTasks.length })}
-                    </span>
+                    <SectionTitle
+                      title={t('TASKS')}
+                      actionLabel={canEditOverview ? t('EDIT') : undefined}
+                      onAction={canEditOverview ? () => openEdit('tasks') : undefined}
+                    />
+                    {eventTasks.length > 0 && (
+                      <span className="bw-label-sm text-muted-foreground">
+                        {t('{done} of {total} done', { done: tasksDone, total: eventTasks.length })}
+                      </span>
+                    )}
                   </div>
                   {eventTasksError && <p role="alert" className="bw-body-sm text-destructive">{eventTasksError}</p>}
+                  {eventTasks.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => openEdit('tasks')}
+                      className="bg-card rounded-[16px] p-4 text-left bw-body-sm text-muted-foreground cursor-pointer"
+                    >
+                      {t('No tasks assigned yet.')}
+                    </button>
+                  ) : (
                   <div className="bg-card rounded-[16px] px-4 py-1 flex flex-col">
                     {eventTasks.map((task, i) => (
                       <button
@@ -1854,13 +1982,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       </button>
                     ))}
                   </div>
+                  )}
                 </section>
               )}
 
               {/* ─── CLIENT & NOTES (gig / draft / personal) ─── */}
               {inOverview && showNotesSection && (
                 <section className="flex flex-col gap-6">
-                  <SectionTitle title={notesTitle} actionLabel={t('DETAILS')} onAction={() => setActiveSheet('notes')} />
+                  <SectionTitle
+                    title={notesTitle}
+                    actionLabel={canEditOverview ? t('EDIT') : t('DETAILS')}
+                    onAction={canEditOverview ? () => openEdit('notes') : () => setActiveSheet('notes')}
+                  />
                   <button
                     type="button"
                     onClick={() => setActiveSheet('notes')}
@@ -1910,10 +2043,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                         renderDeleteConfirm(() => setShowDeleteConfirm(false))
                       ) : (
                         <div className="flex items-center gap-5">
-                          <button onClick={onEdit} className={LINK_CLASS}>
-                            <Pencil className="w-3.5 h-3.5" />
-                            {t('EDIT DETAILS')}
-                          </button>
+                          {/* Gigs and rehearsals are edited on their cards above. */}
+                          {!canEditOverview && (
+                            <button onClick={onEdit} className={LINK_CLASS}>
+                              <Pencil className="w-3.5 h-3.5" />
+                              {t('EDIT DETAILS')}
+                            </button>
+                          )}
                           <button
                             onClick={() => setShowDeleteConfirm(true)}
                             className={cn(LINK_CLASS, 'text-destructive-solid hover:text-destructive-solid')}
@@ -1984,11 +2120,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     </>
                   ) : (
                     <>
-                      <div className="grid grid-cols-2 gap-3 w-full">
-                        <PillButton variant="outline" size="lg" onClick={onEdit}>
-                          <Pencil className="w-4 h-4" />
-                          {t('EDIT')}
-                        </PillButton>
+                      {/* No Edit page for gigs and rehearsals: each card above has its EDIT. */}
+                      <div className={cn('grid gap-3 w-full', canEditOverview ? 'grid-cols-1' : 'grid-cols-2')}>
+                        {!canEditOverview && (
+                          <PillButton variant="outline" size="lg" onClick={onEdit}>
+                            <Pencil className="w-4 h-4" />
+                            {t('EDIT')}
+                          </PillButton>
+                        )}
                         <PillButton variant="dark" size="lg" onClick={onChat}>
                           <MessageSquare className="w-4 h-4" />
                           {chatLabel}
@@ -2175,7 +2314,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 paidSupported={paidSupported}
                 formatMoney={formatCurrencyExact}
                 onEditFee={
-                  isAdmin && onEdit
+                  canEditOverview
+                    ? editFee
+                    : isAdmin && onEdit
                     ? () => {
                         setActiveSheet(null);
                         onEdit();
@@ -2189,7 +2330,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               />
             )}
 
-            {activeSheet === 'setlist' && canEditSetlist && <GigSetlistEditor draft={setlistDraft} layerZ={120} />}
+            {activeSheet === 'setlist' && canEditSetlist && <GigSetlistEditor draft={setlistDraft} layerZ={120} templatesBandId={event.band_id} />}
             {activeSheet === 'setlist' && !canEditSetlist && (
               <>
                 {numSongs > 0 ? (
@@ -2572,6 +2713,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             onToggle: stageLive.setFollowing,
           }}
           onClose={() => setIsStageOpen(false)}
+        />
+      )}
+
+      {/* Card editors (admins, band gigs and rehearsals): sheets on <body>. */}
+      {canEditOverview && editKind && (
+        <OverviewEditSheets
+          card={editCard}
+          onClose={() => setEditCard(null)}
+          event={event}
+          kind={editKind}
+          api={editApi}
+          lineup={resolvedMembers}
+          tasks={eventTasks}
+          allEvents={allEvents}
+          currentUserId={currentUserId}
         />
       )}
     </>

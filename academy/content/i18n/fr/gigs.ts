@@ -378,7 +378,7 @@ const gigs: AreaText = {
       keywords: ["ipad", "tablette", "éditeur", "aperçu en direct", "nouveau concert ipad"],
       related: ["create-a-gig", "rider-and-stage", "gig-drafts"],
       body: [
-        { type: "p", text: "Sur un iPad (ou une autre fenêtre large sans le rail double écran), **Nouveau concert** ouvre l’éditeur. Il a les mêmes champs et enregistre le même concert que l’assistant pas à pas. La modification d’un concert passe toujours par la vue de modification ([[edit-a-gig]])." },
+        { type: "p", text: "Sur un iPad (ou une autre fenêtre large sans le rail double écran), **Nouveau concert** ouvre l’éditeur. Il a les mêmes champs et enregistre le même concert que l’assistant pas à pas. Ensuite, un concert se modifie directement sur sa page ([[edit-a-gig]])." },
         { type: "shot", id: "ipad-gig-composer", caption: "L’éditeur iPad : cartes numérotées à gauche, aperçu en direct à droite." },
         {
           type: "steps",
@@ -442,7 +442,7 @@ const gigs: AreaText = {
     {
       id: "edit-a-gig",
       title: "Modifier un concert",
-      summary: "Change le line-up, les cachets, les horaires, la salle, la setlist, les tâches ou les notes d’un concert, et ce que le groupe apprend.",
+      summary: "Change les horaires, la salle, le line-up, les cachets, la setlist, les tâches ou les notes directement sur la page du concert, et ce que le groupe apprend.",
       roles: ["admin"],
       kind: "task",
       keywords: ["modifier un concert", "changer l’horaire", "changer de salle", "ajouter un musicien", "retirer un musicien", "mettre à jour le concert"],
@@ -451,33 +451,33 @@ const gigs: AreaText = {
         {
           type: "steps",
           items: [
-            "Ouvre le concert et touche **MODIFIER** sous le contenu. Tu peux aussi toucher **MODIFIER** à côté de **LINE-UP**, **AJOUTER UN MUSICIEN**, ou la salle quand elle indique **À déf.**.",
-            "La vue de modification affiche **Modification** et quatre sections. Ouvre celle qu’il te faut : **01 Infos de l’événement et client**, **02 Date, heure et salle**, **03 Groupe et cachets** ou **04 Setlist, tâches et notes**.",
-            "Fais tes modifications. Une section où il manque la salle, la date, le cachet ou le line-up affiche **À traiter** et s’ouvre d’elle-même.",
-            "Touche **Enregistrer**. Il faut une date.",
+            "Ouvre le concert. Les admins le modifient directement sur sa page : le crayon en haut, le crayon à côté de la salle, les tuiles d’horaires et **MODIFIER** à côté d’une section.",
+            "Une feuille s’ouvre avec seulement cette partie, par exemple **Titre, date et horaires**, **Salle & adresse** ou **Line-up**.",
+            "Fais tes modifications et touche **Enregistrer**. Le bouton reste inactif tant que rien n’a changé. **Annuler**, Retour ou un glissement vers le bas ferment la feuille et laissent le concert tel quel.",
+            "La setlist se modifie directement dans la section **SETLIST**, avec son propre **Enregistrer** (voir [[edit-a-gig-setlist]]).",
           ],
         },
         {
           type: "list",
-          title: "Dans chaque section",
+          title: "Ce que change chaque partie",
           items: [
-            "**Infos de l’événement et client** : type d’événement, client, titre, **Invités** et **Cadre**.",
-            "**Date, heure et salle** : **Nom de la salle**, date, horaires et heures de rendez-vous.",
-            "**Groupe et cachets** : line-ups types, effectif et cachets, **Cachet à définir**, supplément du groupe, **Durée** et le **Total estimé**.",
-            "**Setlist, tâches et notes** : **Choisir morceaux**, réordonner les morceaux (appui long et glisser), renommer ou supprimer des tâches, et **Notes pour le groupe**.",
+            "**Titre, date et horaires** (le crayon en haut ou une tuile d’horaire) : titre, type d’événement, date, heure de début et de fin, arrivée et balance.",
+            "**Salle & adresse** (le crayon à côté de la salle, ou la salle quand elle indique **À déf.**) : nom de la salle, adresse, ville et **Cadre**.",
+            "**Line-up** (**MODIFIER** à côté de **LINE-UP**, ou **AJOUTER UN MUSICIEN**) : un **Line-up type** ou qui joue, et leurs cachets. Le crayon de la carte du cachet (**Modifier le cachet**) : les cachets, **Cachet à définir** et le supplément du groupe.",
+            "**TÂCHES** et **CLIENT & NOTES** : **MODIFIER** pour ajouter, renommer ou supprimer des tâches (ou **Charger une liste de tâches**), et pour changer le client et les **Notes pour le groupe**.",
           ],
         },
         {
           type: "list",
           title: "Ce que le groupe apprend",
           items: [
-            "Les nouveaux musiciens reçoivent une invitation. Ceux déjà dans le line-up gardent leur réponse.",
+            "Les nouveaux musiciens reçoivent une invitation, et ceux que tu retires du line-up sont prévenus. Ceux déjà dans le line-up gardent leur réponse.",
             "Une nouvelle date, un nouvel horaire, une nouvelle heure de rendez-vous ou une nouvelle salle envoient au line-up une seule notification **Concert modifié** qui liste ce qui a changé.",
             "Un cachet modifié ne prévient que ce musicien.",
             "Les changements de setlist envoient au line-up une seule notification avec ce qui a bougé, été ajouté ou retiré.",
           ],
         },
-        { type: "note", tone: "tip", text: "Fermer avec des modifications non enregistrées demande **Enregistrer les modifications ?**. Enregistre pour les garder, ou abandonne-les." },
+        { type: "note", tone: "tip", text: "Les concerts passés se modifient de la même façon. Les membres voient la page sans crayons ni **MODIFIER**." },
         { type: "p", text: "Un devis ouvre plutôt l’éditeur de devis. Voir [[create-a-quote]]. Un concert perso ouvre son propre formulaire ([[personal-gigs]])." },
       ],
     },
@@ -550,8 +550,8 @@ const gigs: AreaText = {
             "**FICHE TECHNIQUE & SCÈNE** avec **OUVRIR**. Voir [[rider-and-stage]].",
             "**SETLIST** avec le nombre de morceaux. Voir [[gig-setlist]].",
             "**TÂCHES** avec **{done} sur {total} faites** : touche une tâche pour la cocher.",
-            "**CLIENT & NOTES** (admins) ou **NOTES** : touche-le ou **DÉTAILS** pour **Logistique & notes** (salle, copie de l’adresse, contacts du client, dress code, cadre, invités et notes).",
-            "Les actions. Admins : **MODIFIER**, **CHAT ÉVÉNEMENT**, **REPASSER EN DEVIS** et **SUPPRIMER**. Membres : **JE ME RETIRE** et **CHAT ÉVÉNEMENT**. Voir [[event-and-rehearsal-chats]].",
+            "**CLIENT & NOTES** (admins) ou **NOTES** : touche-le ou **DÉTAILS** pour **Logistique & notes** (salle, copie de l’adresse, contacts du client, dress code, cadre, invités et notes). Les admins y ont **MODIFIER** pour changer le client et les notes.",
+            "Les actions. Admins : **CHAT ÉVÉNEMENT**, **REPASSER EN DEVIS** et **SUPPRIMER** ; tout le reste se modifie dans sa propre section ([[edit-a-gig]]). Membres : **JE ME RETIRE** et **CHAT ÉVÉNEMENT**. Voir [[event-and-rehearsal-chats]].",
           ],
         },
         {
@@ -559,7 +559,7 @@ const gigs: AreaText = {
           title: "Un concert passé",
           items: [
             "L’en-tête devient gris avec **CONCERT PASSÉ** et **TERMINÉ**.",
-            "Les actions deviennent **VOIR LA SETLIST** et **CHAT ÉVÉNEMENT** (admins, et membres qui ont accepté). Les admins ont aussi **MODIFIER** et **RETIRER DES ARCHIVES**.",
+            "Les actions deviennent **VOIR LA SETLIST** et **CHAT ÉVÉNEMENT** (admins, et membres qui ont accepté). Les admins ont aussi **RETIRER DES ARCHIVES** et peuvent toujours modifier le concert dans ses sections.",
             "Le mode scène, la préparation et le bouton pour trouver un remplaçant disparaissent.",
           ],
         },
@@ -641,7 +641,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Modifie la setlist ici ou via **MODIFIER**. Sans setlist, la feuille affiche **Aucune setlist attribuée** et **Attribuer une setlist**." },
+            { role: "admin", text: "Modifie la setlist ici : réordonne, **Ajouter morceaux**, ou **Charger un modèle** tant qu’elle est vide (aussi sur un concert passé, dans la feuille)." },
             { role: "member", text: "Voit la setlist en lecture seule. Sans setlist : **L’admin du groupe n’a pas encore ajouté de setlist.**" },
           ],
         },
@@ -723,7 +723,7 @@ const gigs: AreaText = {
             "La feuille, marquée **Admins seulement**, montre le **Cachet du groupe**, **PAIEMENTS À FAIRE · {count}** avec le montant encore dû, et **MUSICIENS · {paid} SUR {total} PAYÉS**.",
             "Touche l’interrupteur rond à côté d’un musicien (**{name} payé**) pour le marquer payé ou non payé.",
             "Ou touche **TOUT MARQUER COMME PAYÉ** pour marquer tout le monde d’un coup.",
-            "Touche le crayon (**Modifier le cachet**) pour changer les cachets dans la vue de modification.",
+            "Touche le crayon (**Modifier le cachet**) pour changer les cachets, **Cachet à définir** ou le supplément du groupe.",
           ],
         },
         {
@@ -1103,7 +1103,7 @@ const gigs: AreaText = {
     { q: "Les membres voient-ils combien le groupe est payé ?", a: "Non. Les membres ne voient que leur propre cachet. Le cachet du groupe, le client, l’acompte et les cachets des autres musiciens n’arrivent jamais dans leur app.", roles: ["admin", "member"] },
     { q: "Pourquoi un concert a-t-il disparu de mon calendrier ?", a: "Tu l’as refusé ou tu t’es retiré, un admin t’a retiré du line-up, ou le concert a été supprimé. Un concert repassé en devis quitte aussi le calendrier des membres.", roles: ["member"] },
     { q: "Mon concert finit à 2 h. Va-t-il passer dans les concerts passés à minuit ?", a: "Non. Un concert dont l’heure de fin est plus tôt que le début dépasse minuit et reste à venir jusqu’à la fin du concert." },
-    { q: "Comment confirmer la date avant que le cachet soit fixé ?", a: "Active **Cachet à définir** dans l’assistant. Le concert est confirmé et les invitations indiquent que le cachet reste à discuter. Fixe les cachets plus tard avec **MODIFIER**.", roles: ["admin"] },
+    { q: "Comment confirmer la date avant que le cachet soit fixé ?", a: "Active **Cachet à définir** dans l’assistant. Le concert est confirmé et les invitations indiquent que le cachet reste à discuter. Fixe les cachets plus tard avec le crayon de la carte du cachet (**Modifier le cachet**).", roles: ["admin"] },
     { q: "Puis-je dupliquer un concert ?", a: "Pas pour l’instant. Crée un nouveau concert et charge la même setlist depuis **Charger un modèle** et les mêmes tâches depuis **Charger une liste de tâches**.", roles: ["admin"] },
     { q: "Comment annuler un concert ?", a: "Supprime-le : ouvre le concert, touche **SUPPRIMER**, puis **Oui, supprimer**. Le line-up reçoit une annulation. S’il repart en négociation, utilise plutôt **REPASSER EN DEVIS**.", roles: ["admin"] },
     { q: "Mon groupe voit-il mes concerts perso ?", a: "Non. Il voit seulement que tu es occupé ce jour-là, dans les décomptes de disponibilité." },

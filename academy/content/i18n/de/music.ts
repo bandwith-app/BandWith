@@ -951,7 +951,7 @@ const music: AreaText = {
         {
           type: "steps",
           items: [
-            "Leg einen Gig an oder öffne einen und tippe auf **Ändern** (siehe [[create-a-gig]]).",
+            "Leg einen Gig an (siehe [[create-a-gig]]). Bei einem bestehenden Gig öffnest du ihn und nutzt stattdessen seinen Bereich **SETLIST**, der dieselben Vorlagen und Songs bietet.",
             "Öffne den Bereich **Setlist & Songs**.",
             "Um mit einer gespeicherten Setlist zu starten, tippe sie unter **Aus Vorlagen laden** an. Sobald Songs drin sind, zeigt **Vorlagen** die Liste wieder als **Durch Vorlage ersetzen**.",
             "Um Songs hinzuzufügen, tippe unter einem Set auf **Bibliothek** oder auf **Manuell**, um einen einzutippen. **Songs hinzufügen** fügt sie einem Set deiner Wahl hinzu.",
@@ -997,7 +997,7 @@ const music: AreaText = {
             "Ein Gig ohne Setlist bekommt beim Speichern eine, benannt nach dem Gig.",
             "Verlässt du den Gig mit ungespeicherten Änderungen, fragt die App „Änderungen an der Setlist speichern?“.",
             "Ein Tippen auf **SETLIST** oder die Zahl der Songs öffnet die ganze Liste in einem Fenster, wo du genauso bearbeiten kannst.",
-            "Vergangene Gigs, Angebote und Proben zeigen die Setlist hier nur zum Lesen.",
+            "Angebote zeigen die Setlist hier nur zum Lesen. Bei einem vergangenen Gig bearbeitest du sie im Fenster (**SETLIST** oder die Songanzahl); die Songs einer Probe mit **ÄNDERN** neben **FOKUS-SONGS**.",
           ],
         },
         {

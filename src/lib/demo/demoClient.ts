@@ -359,7 +359,8 @@ class DemoQuery implements PromiseLike<Result> {
   }
   update(values: Row) {
     this.op = 'update';
-    this.payload = values;
+    // Like the real client (JSON): keys set to undefined are not sent, so they leave the column as it is.
+    this.payload = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
     return this;
   }
   delete() {

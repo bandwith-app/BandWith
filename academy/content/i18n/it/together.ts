@@ -112,7 +112,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Quando modifichi una prova, la sezione **Strumenti e attività** ha anche **Aggiungi attività** e **Carica modello**, che aggiunge tutte le attività di una checklist salvata. Vedi [[todo-and-task-templates]].",
+          text: "In una prova già fissata, **MODIFICA** accanto ad **ATTIVITÀ** apre **Attività**, con **Aggiungi** e, finché non ce ne sono, **Carica una lista di attività**, che aggiunge tutte le attività di una checklist salvata. Vedi [[todo-and-task-templates]].",
         },
         {
           type: "note",
@@ -124,7 +124,7 @@ const together: AreaText = {
     {
       id: "edit-a-rehearsal",
       title: "Modifica una prova",
-      summary: "Cambia data, sala, organico, costo, scaletta o compiti di una prova già fissata.",
+      summary: "Cambia data, orari, sala, organico, costo, brani da provare, note o attività di una prova già fissata, direttamente nella sua pagina.",
       roles: ["admin"],
       kind: "task",
       keywords: ["cambiare prova", "spostare prova", "riprogrammare", "aggiornare prova"],
@@ -134,14 +134,14 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Apri la prova dal **Calendario** o dalla Home.",
-            "In fondo alla prova, tocca **MODIFICA**.",
-            "Apri la sezione da cambiare: **Sessione e ricorrenza**, **Data, ora e sala**, **Costo sala**, **Organico**, **Scaletta** o **Strumenti e attività**. Un avviso in alto indica quali campi richiedono attenzione.",
-            "Tocca **Salva prova**. Resta disattivato finché la prova non ha un luogo.",
+            "Tocca quello che vuoi cambiare: la matita in alto o i riquadri **INIZIO** e **FINE**, il riquadro **SALA**, o **MODIFICA** accanto a **PRESENZE**, **BRANI DA PROVARE**, **NOTE**, **ATTIVITÀ** o **COSTO SALA**.",
+            "Si apre un foglio con solo quella parte. **Titolo, data e orari** ha anche **Ricorrenza**; **Organico** ha **Seleziona tutti**.",
+            "Tocca **Salva**. Resta disattivato finché non cambi qualcosa.",
           ],
         },
         {
           type: "p",
-          text: "Se tocchi **Annulla** con modifiche non salvate, BandWith chiede **Salvare le modifiche?** e ti fa salvare, scartare o continuare a modificare.",
+          text: "Chiudere il foglio con **Annulla**, Indietro o uno swipe verso il basso lascia la prova com’era. I brani da provare si salvano con **Salva** nel foglio della scaletta.",
         },
         {
           type: "list",
@@ -154,7 +154,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "Per le modifiche si usa sempre l’editor passo passo, anche su iPad.",
+          text: "Le prove passate si modificano allo stesso modo, anche su iPad. I membri vedono la pagina senza matite e senza **MODIFICA**.",
         },
       ],
     },
@@ -171,7 +171,7 @@ const together: AreaText = {
           type: "steps",
           items: [
             "Apri la prova.",
-            "Tocca **ELIMINA** sotto **MODIFICA** e **CHAT PROVA**.",
+            "Tocca **ELIMINA** sotto **CHAT PROVA**.",
             "Tocca **Sì, elimina**, oppure **ANNULLA** per tenerla.",
           ],
         },
@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTE**: la nota della prova, quando c’è.",
             "**ATTIVITÀ**: i compiti di preparazione e quanti sono fatti. Tocca un compito per spuntarlo.",
             "**COSTO SALA**: la sala, le ore, il totale e **Diviso tra {count} presenti**, con l’importo **A TESTA**.",
-            "Pulsanti in fondo: **MODIFICA**, **CHAT PROVA** ed **ELIMINA** per gli admin; **CHAT PROVA** per i membri che hanno risposto ci sono.",
+            "Pulsanti in fondo: **CHAT PROVA** ed **ELIMINA** per gli admin, che cambiano tutto il resto con **MODIFICA** su ogni parte; **CHAT PROVA** per i membri che hanno risposto ci sono.",
           ],
         },
         {
