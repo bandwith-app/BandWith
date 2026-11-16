@@ -475,7 +475,7 @@ const together: AreaModule = {
           items: [
             'Only invited members get the poll notification and can vote. The others in the band can open the poll read-only, marked **Not invited**; the server refuses their votes.',
             'Admins of the band always see the poll. The admin who publishes it is always on the list.',
-            'When you lock in a date, only the invited members (and you) are put on the rehearsal.',
+            'When you lock in a date, only the invited members are put on the rehearsal: you too if you were invited or voted. Either way you manage it.',
             'The share of the room cost is divided by the number of people asked to vote.',
           ],
         },

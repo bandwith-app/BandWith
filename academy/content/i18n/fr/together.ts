@@ -468,7 +468,7 @@ const together: AreaText = {
           items: [
             "Seuls les membres invités reçoivent la notification du sondage et peuvent voter. Les autres membres du groupe peuvent ouvrir le sondage en lecture seule, avec la mention **Non invité** ; le serveur refuse leurs votes.",
             "Les admins du groupe voient toujours le sondage. L’admin qui le publie fait toujours partie de la liste.",
-            "Quand tu valides une date, seuls les membres invités (et toi) sont mis sur la répétition.",
+            "Quand tu valides une date, seuls les membres invités sont mis sur la répétition : toi aussi si tu étais invité ou as voté. Dans tous les cas, c’est toi qui la gères.",
             "La part du coût de la salle est divisée par le nombre de personnes invitées à voter.",
           ],
         },

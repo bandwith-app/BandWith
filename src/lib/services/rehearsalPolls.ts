@@ -671,12 +671,24 @@ export const finalizePollIntoRehearsal = async ({
     if (membersError) throw membersError;
 
     // Deduplicate members by user_id; only the invited ones when the poll
-    // has a list (098), plus the admin who locks it in.
+    // has a list (098). The admin who locks it in is not put on the lineup
+    // for that alone: only when invited (the publisher always is) or when
+    // they voted. They manage the rehearsal either way.
     const invited = pollInvitees(poll);
+    let adminVoted = false;
+    if (invited && !invited.includes(adminId)) {
+      const { data: votes } = await supabase
+        .from('rehearsal_poll_votes')
+        .select('id')
+        .eq('poll_id', pollId)
+        .eq('user_id', adminId)
+        .limit(1);
+      adminVoted = (votes || []).length > 0;
+    }
     const seenUsers = new Set<string>();
     const uniqueBandMembers = ((bandMembers || []) as any[]).filter((bm: any) => {
       if (!bm.user_id || seenUsers.has(bm.user_id)) return false;
-      if (invited && !invited.includes(bm.user_id) && bm.user_id !== adminId) return false;
+      if (invited && !invited.includes(bm.user_id) && !(bm.user_id === adminId && adminVoted)) return false;
       seenUsers.add(bm.user_id);
       return true;
     });

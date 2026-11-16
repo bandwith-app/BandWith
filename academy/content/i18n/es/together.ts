@@ -372,7 +372,7 @@ const together: AreaText = {
           items: [
             "Solo los miembros invitados reciben la notificación de la encuesta y pueden votar. Los demás de la banda pueden abrir la encuesta en modo solo lectura, marcada **Sin invitación**; el servidor rechaza sus votos.",
             "Los admins de la banda siempre ven la encuesta. El admin que la publica siempre está en la lista.",
-            "Cuando fijas una fecha, solo los miembros invitados (y tú) entran en el ensayo.",
+            "Cuando fijas una fecha, solo los miembros invitados entran en el ensayo: tú también si estabas invitado o votaste. En cualquier caso, lo gestionas tú.",
             "La parte del coste de la sala se divide entre el número de personas a las que se pide votar.",
           ],
         },

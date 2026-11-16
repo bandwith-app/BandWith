@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const log: string[] = [];
 let claimRows: { id: string }[] = [{ id: 'p1' }];
 let pollStatus = 'polling';
+let invitedIds: string[] = [];
+let bandRows: { user_id: string; role: string }[] = [];
+let adminVotes: { id: string }[] = [];
 
 const query = (table: string) => {
   let op = 'select';
@@ -15,6 +18,8 @@ const query = (table: string) => {
         return (res: (v: unknown) => void) => {
           log.push(`${table}.${op}${payload?.status ? `:${payload.status}` : ''}${filters.length ? `[${filters.join(',')}]` : ''}`);
           if (table === 'rehearsal_polls' && op === 'update' && payload?.status === 'confirmed') return res({ data: claimRows, error: null });
+          if (table === 'band_members') return res({ data: bandRows, error: null });
+          if (table === 'rehearsal_poll_votes' && op === 'select') return res({ data: adminVotes, error: null });
           return res({ data: [], error: null });
         };
       }
@@ -22,7 +27,7 @@ const query = (table: string) => {
         return async () => {
           log.push(`${table}.single`);
           if (table === 'rehearsal_poll_options') return { data: { id: 'o1', proposed_date: '2026-12-01', start_time: '20:00' }, error: null };
-          return { data: { id: 'p1', band_id: 'b1', title: 'Practice', status: pollStatus, invited_user_ids: [] }, error: null };
+          return { data: { id: 'p1', band_id: 'b1', title: 'Practice', status: pollStatus, invited_user_ids: invitedIds }, error: null };
         };
       }
       return (...args: unknown[]) => {
@@ -62,6 +67,9 @@ beforeEach(() => {
   log.length = 0;
   claimRows = [{ id: 'p1' }];
   pollStatus = 'polling';
+  invitedIds = [];
+  bandRows = [];
+  adminVotes = [];
   createEvent.mockReset();
   createEvent.mockImplementation(async () => {
     log.push('createEvent');
@@ -99,5 +107,41 @@ describe('finalizePollIntoRehearsal (lock in once)', () => {
     const { error } = await finalizePollIntoRehearsal(args);
     expect(error?.message).toBe('boom');
     expect(log.some((l) => l.startsWith('rehearsal_polls.update:polling'))).toBe(true);
+  });
+});
+
+describe('finalizePollIntoRehearsal (who is on the rehearsal)', () => {
+  const lineup = () => ((createEvent.mock.calls[0] as unknown[])[1] as { user_id: string; status: string }[]).map((r) => `${r.user_id}:${r.status}`);
+
+  beforeEach(() => {
+    bandRows = [
+      { user_id: 'admin', role: 'admin' },
+      { user_id: 'm1', role: 'member' },
+      { user_id: 'm2', role: 'member' },
+    ];
+  });
+
+  it('a poll for everyone puts the whole band on it, the admin confirmed', async () => {
+    await finalizePollIntoRehearsal(args);
+    expect(lineup()).toEqual(['admin:confirmed', 'm1:pending', 'm2:pending']);
+  });
+
+  it('an admin who was not invited and did not vote is not put on it', async () => {
+    invitedIds = ['m1'];
+    await finalizePollIntoRehearsal(args);
+    expect(lineup()).toEqual(['m1:pending']);
+  });
+
+  it('an invited admin is on it', async () => {
+    invitedIds = ['m1', 'admin'];
+    await finalizePollIntoRehearsal(args);
+    expect(lineup()).toEqual(['admin:confirmed', 'm1:pending']);
+  });
+
+  it('an admin who voted is on it', async () => {
+    invitedIds = ['m1'];
+    adminVotes = [{ id: 'v1' }];
+    await finalizePollIntoRehearsal(args);
+    expect(lineup()).toEqual(['admin:confirmed', 'm1:pending']);
   });
 });

@@ -468,7 +468,7 @@ const together: AreaText = {
           items: [
             "Nur eingeladene Mitglieder bekommen die Mitteilung zur Umfrage und können abstimmen. Die anderen in der Band können die Umfrage nur ansehen, markiert mit **Nicht eingeladen**; der Server lehnt ihre Stimmen ab.",
             "Die Admins der Band sehen die Umfrage immer. Der Admin, der sie startet, steht immer auf der Liste.",
-            "Wenn du einen Termin festlegst, kommen nur die eingeladenen Mitglieder (und du) in die Probe.",
+            "Wenn du einen Termin festlegst, kommen nur die eingeladenen Mitglieder in die Probe: du auch, wenn du eingeladen warst oder abgestimmt hast. Verwalten kannst du sie so oder so.",
             "Der Anteil an den Raumkosten wird durch die Zahl der Personen geteilt, die abstimmen sollen.",
           ],
         },
