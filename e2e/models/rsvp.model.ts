@@ -79,26 +79,7 @@ export const rsvpGig = defineLifecycle({
     KEEP: { do: 'Tap CANCEL next to "Drop out?".' },
   },
   wide: [],
-  knownBugs: [
-    {
-      // EventDetail.tsx:791-797 handleAccept awaits onAccept(), i.e.
-      // AuthenticatedApp.tsx handleEventAccept, which already closed the
-      // detail and then waits for the background sync (notify, refetch
-      // events / notifications / dashboard, ~2-3 s in the demo). Only then
-      // does handleAccept call onCloseProp(), which closes whatever event is
-      // open by now (closeSelectedEventRef): the gig the member reopened.
-      // The rehearsal card answers through handleRespond, which doesn't call
-      // onCloseProp, so rehearsals are fine.
-      path: 'INVITED ACCEPT REOPEN',
-      role: 'member',
-      profile: 'phone-portrait',
-      actual:
-        'After ACCEPT the gig closes ("You\'re confirmed!"). Opening it again right away (within ~3 s) shows it with DROP OUT, then it closes by itself; the same happens to any event opened in that window.',
-      expected:
-        'An event the user opened stays open until they leave it. The stale close comes from EventDetail.tsx:791-797 (handleAccept calls onCloseProp() after awaiting onAccept), and DECLINE has the same shape (EventDetail.tsx:806-812).',
-      evidence: 'e2e/.results-known-bugs/rsvp-gig-reopen-after-accept/ (trace.zip, test-failed-1.png)',
-    },
-  ],
+  knownBugs: [],
 });
 
 export const rsvpRehearsal = defineLifecycle({

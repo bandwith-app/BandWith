@@ -4,7 +4,7 @@
 
 A member answers a band gig invitation, changes the answer, and a past gig is read-only.
 
-Starts as **member**. States 8/8 and transitions 11/12 covered by 8 generated paths (7 Playwright tests).
+Starts as **member**. States 8/8 and transitions 12/12 covered by 7 generated paths (7 Playwright tests).
 
 ```mermaid
 stateDiagram-v2
@@ -17,7 +17,7 @@ stateDiagram-v2
   invited --> out : DECLINE
   maybePrompt --> going : GOING
   maybePrompt --> out : CANT
-  going --> goingOpen : REOPEN (known bug)
+  going --> goingOpen : REOPEN
   goingOpen --> dropPrompt : DROP_OUT
   dropPrompt --> out : CONFIRM_DROP
   dropPrompt --> goingOpen : KEEP
@@ -61,16 +61,8 @@ stateDiagram-v2
 | --- | --- |
 | RSVP (gig): ALREADY_GOING → DROP_OUT → CONFIRM_DROP | phone-portrait |
 | RSVP (gig): ALREADY_GOING → DROP_OUT → KEEP | phone-portrait |
-| RSVP (gig): INVITED → ACCEPT | phone-portrait |
-| RSVP (gig): INVITED → ACCEPT → REOPEN **(known bug: not run)** | phone-portrait |
+| RSVP (gig): INVITED → ACCEPT → REOPEN | phone-portrait |
 | RSVP (gig): INVITED → DECLINE | phone-portrait |
 | RSVP (gig): OLD_MAYBE → CANT | phone-portrait |
 | RSVP (gig): OLD_MAYBE → GOING | phone-portrait |
 | RSVP (gig): PAST_GIG | phone-portrait |
-
-## Known bugs
-
-- **INVITED ACCEPT REOPEN** — member, phone-portrait
-  - Actual: After ACCEPT the gig closes ("You're confirmed!"). Opening it again right away (within ~3 s) shows it with DROP OUT, then it closes by itself; the same happens to any event opened in that window.
-  - Expected: An event the user opened stays open until they leave it. The stale close comes from EventDetail.tsx:791-797 (handleAccept calls onCloseProp() after awaiting onAccept), and DECLINE has the same shape (EventDetail.tsx:806-812).
-  - Evidence: `e2e/.results-known-bugs/rsvp-gig-reopen-after-accept/ (trace.zip, test-failed-1.png)` (local, re-create with `E2E_KNOWN_BUGS=1`)
