@@ -1,0 +1,21 @@
+# #180: venue autocomplete, one tap on a suggestion picks it and closes the
+# list (poll location; Photon answers are canned by the setup script).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: venue-one-tap
+tags: [ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow: ../subflows/open-poll-builder.yaml
+- tapOn: "e.g. Blackbox Studios · room 2|Location / studio"
+- inputText: "Villa Necchi"
+- extendedWaitUntil:
+    visible: "(?i)villa necchi studios.*"
+    timeout: 10000
+- takeScreenshot: venue-suggestions
+- tapOn: "(?i)villa necchi studios.*"
+- assertNotVisible: "(?i)villa necchi hall.*"
+- assertVisible: ".*Villa Necchi Studios.*"
+- takeScreenshot: venue-picked-one-tap

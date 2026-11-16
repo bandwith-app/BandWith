@@ -1,0 +1,20 @@
+# Calendar tab -> the event's card in the agenda -> its detail.
+# env TITLE: the event title, as a case-insensitive regex (e.g. "rooftop session").
+appId: ${APP_ID}
+---
+- runFlow:
+    file: tap-until.yaml
+    env:
+      TARGET: "Calendar"
+      EXPECT: "Search events"
+- scrollUntilVisible:
+    element:
+      text: "(?i)${TITLE}"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn:
+    text: "(?i)${TITLE}"
+- extendedWaitUntil:
+    visible: "Back"
+    timeout: 15000

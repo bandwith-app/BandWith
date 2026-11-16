@@ -18,6 +18,8 @@
     "e2e:crawl:report": "playwright test -c e2e/crawl/report.config.ts",
     "e2e:models:coverage": "node e2e/models/coverage.ts",
     "e2e:models:docs": "node e2e/models/mermaid.ts",
+    "emulator:check": "bash scripts/emulator-check.sh",
+    "deploy:web": "bash scripts/deploy-web.sh",
     "export:icons": "powershell -ExecutionPolicy Bypass -File scripts/export-icons.ps1",
     "postinstall": "node scripts/postinstall.js"
   },

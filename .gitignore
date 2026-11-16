@@ -61,3 +61,6 @@ e2e/RESUME.md
 # Screen-map crawler output (a small sample is committed)
 e2e/crawl/out/*
 !e2e/crawl/out/sample/
+
+# Emulator check (scripts/emulator-check.sh): builds, Maestro output, release markers
+.emulator-check/

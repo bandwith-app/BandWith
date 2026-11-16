@@ -1,0 +1,31 @@
+# #179/#180: Notifications inbox, Mark all as read clears the unread count
+# and the dots (admin, then member).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: mark-all-read
+tags: [ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/tap-until.yaml
+    env:
+      TARGET: "Notifications \\([1-9]\\d* unread\\)"
+      EXPECT: "Mark all as read|MARK READ"
+- tapOn: "Mark all as read|MARK READ"
+- assertNotVisible: "(?i)unread\\s*[1-9].*"
+- takeScreenshot: mark-all-read-admin
+- runFlow:
+    file: ../subflows/start.yaml
+    env:
+      SETUP: role=member
+      ROLE: member
+- runFlow:
+    file: ../subflows/tap-until.yaml
+    env:
+      TARGET: "Notifications \\([1-9]\\d* unread\\)"
+      EXPECT: "Mark all as read|MARK READ"
+- tapOn: "Mark all as read|MARK READ"
+- assertNotVisible: "(?i)unread\\s*[1-9].*"
+- takeScreenshot: mark-all-read-member

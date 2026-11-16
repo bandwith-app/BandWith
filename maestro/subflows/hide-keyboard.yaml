@@ -1,0 +1,15 @@
+# Closes the on-screen keyboard the way a user does. Android: system Back
+# (Maestro's hideKeyboard). iOS: a tap outside the field (WKWebView has no
+# dismiss key Maestro can use). env BLUR: plain text on screen to tap.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: ${BLUR}

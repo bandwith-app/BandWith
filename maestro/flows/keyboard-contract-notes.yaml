@@ -1,0 +1,33 @@
+# On-screen keyboard (#180, #186), Create contract (notes). A field is focused and typed in;
+# the keyboard probe (setup/bw-maestro-setup.js, subflows/type-and-check.yaml)
+# checks the keyboard came up, the field is in sight above it, not covered,
+# and got there in one move (no jump).
+# The notes box at the bottom of the form (its own flow: with the keyboard
+# already up, iOS reports positions off by the page's scroll).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: keyboard-contract-notes
+tags: [ios, android, keyboard]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- scrollUntilVisible:
+    element: "No contract yet.*"
+    timeout: 40000
+- tapOn: "No contract yet.*"
+- assertVisible: "(?i)create contract"
+- scrollUntilVisible:
+    element: "Technical specifications.*|Notes (&|&amp;) terms"
+    timeout: 40000
+- runFlow:
+    file: ../subflows/type-and-check.yaml
+    env:
+      FIELD: "Technical specifications.*"
+      FIELD_ID: "contract-notes"
+      TEXT: "Load-in at 18"
+      SHOT: keyboard-contract-notes-01

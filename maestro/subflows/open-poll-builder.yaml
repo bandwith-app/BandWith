@@ -1,0 +1,14 @@
+# Create -> New rehearsal -> Poll availability (phones: its own screen;
+# tablets: the one-screen composer).
+appId: ${APP_ID}
+---
+- runFlow:
+    file: tap-until.yaml
+    env:
+      TARGET: "Create"
+      EXPECT: "(?i)new rehearsal.*"
+- tapOn: "(?i)new rehearsal.*"
+- tapOn: "(?i)poll availability.*"
+- extendedWaitUntil:
+    visible: "e.g. Extra rehearsal before the wedding|Poll title"
+    timeout: 10000

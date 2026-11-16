@@ -1,0 +1,51 @@
+# #185: the role changes on the same device with the offline cache kept.
+# Admin -> member: the cached client is gone. Member -> admin: the client is
+# back and a new contract is filled in with it.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: role-change-cache
+tags: [ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- scrollUntilVisible:
+    element: "(?i).*aurora events.*"
+    timeout: 40000
+- tapOn: "Back"
+# Admin -> member, cache kept.
+- runFlow:
+    file: ../subflows/setup-link.yaml
+    env:
+      SETUP: role=member&keep=1
+      ROLE: member
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- assertNotVisible: "(?i).*aurora events.*"
+- scroll
+- assertNotVisible: "(?i).*aurora events.*"
+- takeScreenshot: role-admin-to-member-no-client
+- tapOn: "Back"
+# Member -> admin, cache kept.
+- runFlow:
+    file: ../subflows/setup-link.yaml
+    env:
+      SETUP: role=admin&keep=1
+      ROLE: admin
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- scrollUntilVisible:
+    element: "No contract yet.*"
+    timeout: 40000
+- tapOn: "No contract yet.*"
+- assertVisible: "(?i)create contract"
+- assertVisible: "(?i).*aurora events.*"
+- takeScreenshot: role-member-to-admin-contract-prefilled

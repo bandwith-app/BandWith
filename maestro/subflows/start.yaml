@@ -1,0 +1,18 @@
+# Fresh install state, signed in to the demo (bw-maestro-setup.js), on Home.
+# The setup script closes the urgent pop-up whenever it shows up.
+# env SETUP: optional setup link parameters, e.g. "role=member" or
+#   "role=member&pending=Client%20A%20%E2%80%94%20Wedding"
+#   (see setup/bw-maestro-setup.js); ROLE: the role the link sets.
+# Notifications are allowed up front (permissions), so iOS doesn't ask.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+    permissions:
+      all: allow
+- runFlow: wait-app.yaml
+- runFlow:
+    when:
+      true: ${SETUP && SETUP.length > 0}
+    file: setup-link.yaml

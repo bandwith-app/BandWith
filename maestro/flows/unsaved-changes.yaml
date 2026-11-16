@@ -1,0 +1,31 @@
+# #178/#180: an overview edit sheet with a change asks "Save your changes?"
+# on Cancel; Keep editing keeps the change, Discard drops it.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: unsaved-changes
+tags: [ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Edit title, date & times"
+# An edit without the keyboard (the keyboard over the sheet has its own
+# flows): another event type.
+- tapOn: "(?i)club"
+- tapOn: "(?i)cancel"
+- assertVisible: "(?i)save your changes\\??"
+- takeScreenshot: unsaved-asks
+- tapOn: "Keep editing"
+- assertVisible: "(?i)title, date (&|&amp;) times"
+- assertNotVisible: "(?i)save your changes\\??"
+- tapOn: "(?i)cancel"
+- tapOn: "Discard"
+- assertNotVisible: "(?i)title, date (&|&amp;) times"
+- assertVisible: "(?i)rooftop session"
