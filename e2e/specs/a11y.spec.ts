@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { test, expect, type App } from '../fixtures';
-import { openEvent, eventDetail, isWide, openCreate, SEED } from '../support/flows';
+import { openEvent, eventDetail, isWide, leaveBand, openCreate, SEED } from '../support/flows';
 import { editSheet, openEditor } from '../support/event';
 
 /**
@@ -21,7 +21,22 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
  */
 const CHROME_NAME_MISMATCH = /^(Notifications|Open Identity and Account Hub|Open profile|Close profile|Chat)\b/;
 
-async function scan(app: App, where: string, layer?: import('@playwright/test').Locator) {
+async function scan(app: App, where: string, layer?: import('@playwright/test').Locator | string) {
+  // A CSS selector instead of a locator: for layers the fixture would close
+  // as soon as a locator touches the page (tours), so only page.evaluate here.
+  if (typeof layer === 'string') {
+    await app.page.waitForFunction((sel) => {
+      let o = 1;
+      for (let n = document.querySelector(sel); n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+      return !!document.querySelector(sel) && o === 1;
+    }, layer);
+    await app.page.evaluate((sel) => {
+      document.querySelectorAll('[data-a11y-scan]').forEach((x) => x.removeAttribute('data-a11y-scan'));
+      document.querySelector(sel)!.setAttribute('data-a11y-scan', '');
+    }, layer);
+    await app.settle();
+    return analyze(app, where, true);
+  }
   // axe blends text with the opacity of its ancestors: a layer still fading
   // in (opacity 0 → 1 as it opens) fails color-contrast on every line. Wait
   // until the layer is fully opaque, then until nothing moves.
@@ -37,14 +52,18 @@ async function scan(app: App, where: string, layer?: import('@playwright/test').
       .toBe(1);
   }
   await app.settle();
-  let builder = new AxeBuilder({ page: app.page }).setLegacyMode(true).withTags(TAGS);
   if (layer) {
     await layer.evaluate((e) => {
       document.querySelectorAll('[data-a11y-scan]').forEach((x) => x.removeAttribute('data-a11y-scan'));
       e.setAttribute('data-a11y-scan', '');
     });
-    builder = builder.include('[data-a11y-scan]');
   }
+  return analyze(app, where, !!layer);
+}
+
+async function analyze(app: App, where: string, layer: boolean) {
+  let builder = new AxeBuilder({ page: app.page }).setLegacyMode(true).withTags(TAGS);
+  if (layer) builder = builder.include('[data-a11y-scan]');
   const { violations } = await builder.analyze();
   // Match the element's own aria-label: axe cuts long attribute values in
   // `html` ("Open Identity and Ac..."), so matching that snippet misses.
@@ -165,4 +184,51 @@ test.describe('axe: Duo Laptop pose', () => {
     await expect(app.page.getByRole('grid').first()).toBeVisible();
     await scan(app, 'Calendar month grid');
   });
+
+  // The first-run tours split over the fold: the dark sheet on the Deck, the
+  // step's title on the Display. The title kept the dark theme's white on the
+  // light Display (#fff on #E5E3E0, 1.2:1): seen on the Duo simulator.
+  for (const role of ['deputy', 'admin', 'member'] as const) {
+    test(`@laptop the ${role} tour reads on both screens`, async ({ app }) => {
+      if (role === 'deputy') await leaveBand(app, true);
+      else {
+        if (role === 'member') await app.setRole('member');
+        await app.page.evaluate((r) => localStorage.removeItem(`bw-role-tour-seen:${r}`), role);
+        await app.page.reload();
+      }
+      // No expect() on the tour: the fixture closes tours as soon as one shows to an action or assertion.
+      await app.page.waitForFunction(() => !!document.querySelector('.bw-fold-split .bw-fold-display #role-tour-title'), null, { timeout: 30_000 });
+      await app.settle();
+      const low = await app.page.evaluate(() => {
+        const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+        const lum = ([r, g, b]: number[]) => {
+          const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        const bgOf = (el: Element | null): number[] => {
+          for (; el; el = el.parentElement) {
+            const c = rgb(getComputedStyle(el).backgroundColor);
+            if (c.length >= 3 && (c[3] ?? 1) > 0.9) return c;
+          }
+          return [255, 255, 255];
+        };
+        const out: string[] = [];
+        const split = document.querySelector('#role-tour-title')!.closest('.bw-fold-split')!;
+        const walker = document.createTreeWalker(split, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const el = n.parentElement!;
+          if (!n.textContent?.trim() || !el.getClientRects().length) continue;
+          const cs = getComputedStyle(el);
+          const [l1, l2] = [lum(rgb(cs.color)), lum(bgOf(el))].sort((a, b) => b - a);
+          const ratio = (l1 + 0.05) / (l2 + 0.05);
+          const size = parseFloat(cs.fontSize);
+          const large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700);
+          if (ratio < (large ? 3 : 4.5)) out.push(`"${n.textContent.trim().slice(0, 40)}" ${cs.color} on rgb(${bgOf(el).join(',')}) = ${ratio.toFixed(2)}:1`);
+        }
+        return out;
+      });
+      expect(low, `${role} tour: text below WCAG AA contrast`).toEqual([]);
+      await scan(app, `${role} tour`, '.bw-fold-split:has(#role-tour-title)');
+    });
+  }
 });

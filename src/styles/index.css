@@ -554,8 +554,11 @@
   /* Over the page, under the floating tab bar (z-80), sheets and the rail.
      Modes shown over a modal layer pass a higher z-index. */
   z-index: 70;
-  background: var(--color-background);
-  color: var(--color-foreground);
+  /* The theme tokens themselves, not --color-background/--color-foreground:
+     those resolve once on :root, so a split with its own theme (the tours'
+     `.dark`) kept a light Display under its white title. */
+  background: var(--bg);
+  color: var(--fg);
 }
 .bw-fold-split--stage {
   z-index: 125;

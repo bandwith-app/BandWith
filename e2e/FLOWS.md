@@ -79,6 +79,7 @@ check (`app.check`) on each screen it reaches.
 | iPad composers: venue suggestions (gig, rehearsal) | `fold-layers` | iPad |
 | Duo Laptop: Create menu, gig wizard, rehearsal wizard, poll builder, Propose rehearsal, Log personal gig off the fold | `fold-layers` | laptop |
 | Duo Laptop: Stage mode (floor wedge), Deputy gigs, What brings you here?, Create account off the fold | `fold-layers` | laptop |
+| Duo Laptop, keyboard up: the field being typed in rests on the Deck strip (or whole on the Display), never on the fold or under a pinned header: Deputy gigs (home and in the app), Create contract, gig wizard, Sign in, Create account | `fold-layers` | laptop |
 
 ## Settings, assets, chat
 
@@ -100,7 +101,7 @@ check (`app.check`) on each screen it reaches.
 | Flow | Spec | Profiles |
 | --- | --- | --- |
 | Every layer closes with system Back and with its own Back / ✕ (notifications, Create menu, search, gig, hub page, chat) | `layers-back` | full (some all) |
-| Accessibility (axe, WCAG 2.1 AA): Home, Calendar, a gig and its Venue / Lineup / Setlist sheets, a rehearsal, Suggestions, New rehearsal; no critical or serious violation | `a11y` | phone-portrait, iPad (composer), laptop (month grid, sheets) |
+| Accessibility (axe, WCAG 2.1 AA): Home, Calendar, a gig and its Venue / Lineup / Setlist sheets, a rehearsal, Suggestions, New rehearsal; no critical or serious violation; the role tours (deputy, admin, member) read on both screens of the fold | `a11y` | phone-portrait, iPad (composer), laptop (month grid, sheets, tours) |
 | Inbox opened while Home loads: no gig opens behind it; Back (and the Duo rail's) closes the inbox | `layers-back` | all |
 | Onboarding (web): the browser Back steps back like Escape; on the first screen it leaves | `layers-back` | full |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
@@ -130,8 +131,9 @@ These need a real device; run them from the device test matrix before a release.
   (the suite emulates the postures, not the hardware).
 - **Android APK installer**: install, update over an older version, the in-app update notice.
 - **Push notifications**: delivery, tapping one opens the right screen, translated text.
-- **Real keyboard**: the on-screen keyboard covering fields, Return / Done, autocorrect,
-  hardware keyboard on the iPad.
+- **Real keyboard**: Return / Done, autocorrect, hardware keyboard on the iPad, WebKit's
+  own focus scrolling (the suite fires the Keyboard plugin's window events and shrinks the
+  viewport, see `support/keyboard.ts`; it does not run the real keyboard).
 - **Bluetooth stage sync**: two phones offline in Stage mode, synced click.
 - **Native sharing and files**: share sheets (rider PDF, quote), file pickers, camera.
 - **Sign in with Google / Apple and real email links** (the suite only tests the callback
