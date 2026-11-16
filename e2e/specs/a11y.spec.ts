@@ -22,6 +22,20 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const CHROME_NAME_MISMATCH = /^(Notifications|Open Identity and Account Hub|Open profile|Close profile|Chat)\b/;
 
 async function scan(app: App, where: string, layer?: import('@playwright/test').Locator) {
+  // axe blends text with the opacity of its ancestors: a layer still fading
+  // in (opacity 0 → 1 as it opens) fails color-contrast on every line. Wait
+  // until the layer is fully opaque, then until nothing moves.
+  if (layer) {
+    await expect
+      .poll(() =>
+        layer.evaluate((e) => {
+          let o = 1;
+          for (let n: Element | null = e; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+          return o;
+        }),
+      )
+      .toBe(1);
+  }
   await app.settle();
   let builder = new AxeBuilder({ page: app.page }).setLegacyMode(true).withTags(TAGS);
   if (layer) {
