@@ -29,6 +29,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      # Lifecycle model docs (docs/lifecycles) match the models in e2e/models.
+      - run: pnpm e2e:models:docs --check
       - run: pnpm test:run
       - run: pnpm build
 

@@ -276,6 +276,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 4.7.0
         version: 4.7.0(vite@6.3.5(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.30.1))
+      '@xstate/graph':
+        specifier: 3.0.4
+        version: 3.0.4(xstate@5.33.4)
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(jiti@2.7.0)
@@ -303,6 +306,9 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.1.8(@types/node@24.19.2)(jsdom@27.4.0)(vite@6.3.5(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.30.1))
+      xstate:
+        specifier: 5.33.4
+        version: 5.33.4
 
 packages:
 
@@ -2305,6 +2311,11 @@ packages:
     engines: {node: '>=14.6'}
     deprecated: this version has critical issues, please update to the latest version
 
+  '@xstate/graph@3.0.4':
+    resolution: {integrity: sha512-b12RA7E//+7FJVrD09Td+BhHRJbeKZnK+98xXBd+JmccG360xVP1lyzVhUZPgBgwPdmIGBJqhKzmWYJQ9c8ojQ==}
+    peerDependencies:
+      xstate: ^5.19.4
+
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -3817,6 +3828,9 @@ packages:
 
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
+
+  xstate@5.33.4:
+    resolution: {integrity: sha512-eGNMu3BNqU0Z85P+ouYG5OCZqIABU+QsW6vUieFt9p9gOGs3C+BL10Exg7XdRPSXPQKlP6XoYpYf93r9VmW8mQ==}
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
@@ -5805,6 +5819,10 @@ snapshots:
 
   '@xmldom/xmldom@0.9.10': {}
 
+  '@xstate/graph@3.0.4(xstate@5.33.4)':
+    dependencies:
+      xstate: 5.33.4
+
   acorn-jsx@5.3.2(acorn@8.19.0):
     dependencies:
       acorn: 8.19.0
@@ -7209,6 +7227,8 @@ snapshots:
   xmlbuilder@15.1.1: {}
 
   xmlchars@2.2.0: {}
+
+  xstate@5.33.4: {}
 
   yallist@3.1.1: {}
 

@@ -26,7 +26,18 @@ pnpm e2e --grep @smoke                       # the smoke set only
 pnpm e2e --ui                                # Playwright UI mode
 E2E_WORKERS=2 pnpm e2e                       # fewer workers on a busy machine
 pnpm e2e:typecheck                           # tsc for e2e/
+pnpm e2e:models:coverage                     # lifecycle models: states, transitions, covered
 ```
+
+## Lifecycle models
+
+`models/` holds XState models of the riskiest multi-step lifecycles (RSVP, rehearsal
+proposals, availability polls, overview card edits, quotes, deputies, auth links), for
+tests only. `@xstate/graph` generates one path per transition and
+`specs/lifecycles.spec.ts` runs each one as a test ("<lifecycle>: <event → event>").
+Paths the app gets wrong today are listed in the model's `knownBugs` and not run.
+Diagrams, states, events and paths: [docs/lifecycles](../docs/lifecycles/README.md)
+(`pnpm e2e:models:docs` rewrites them after a model changes).
 
 The HTML report goes to `e2e/.report/` (`pnpm exec playwright show-report e2e/.report`),
 traces and screenshots of failed tests to `e2e/.results/`.
@@ -43,7 +54,7 @@ traces and screenshots of failed tests to `e2e/.results/`.
 | `ipad-landscape` | 1210×834, touch | WebKit | full set |
 | `ipad-portrait` | 834×1210, touch | WebKit | `@smoke` |
 | `duo-closed` / `duo-closed-landscape` | 466×678 / 678×466 | WebKit | `@smoke` |
-| `duo-book` | 951×669, fold x 455–495 | WebKit | `@smoke` |
+| `duo-book` | 951×669, fold x 455–495 | WebKit | `@smoke` + `@duo-book` |
 | `duo-laptop` | 669×951, fold y 455–495 | WebKit | `@smoke` + `@laptop` |
 | `duo-open` | 669×951 | WebKit | `@smoke` |
 
@@ -55,6 +66,7 @@ Tags in test titles:
 
 - `@smoke`: runs on every profile. Layout and privacy checks of the main screens.
 - `@laptop`: runs only on `duo-laptop` (nothing may sit on the fold).
+- `@duo-book`: runs only on `duo-book` (lifecycle paths that need its two panes).
 - no tag: the full flow set, on `phone-portrait` and `ipad-landscape`.
 
 ## What every test gets (`fixtures.ts`)

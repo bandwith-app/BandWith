@@ -37,12 +37,13 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
   // Tags: @smoke runs everywhere; @laptop only on the Duo in Laptop pose
-  // (fold checks); untagged tests are the full flow set.
+  // (fold checks); @duo-book only on the Duo in book posture (lifecycle
+  // model paths that need its two panes); untagged tests are the full flow set.
   projects: DEVICE_PROJECTS.map((p) => ({
     name: p.name,
     use: p.use,
-    grep: p.full ? undefined : p.name === 'duo-laptop' ? /@smoke|@laptop/ : /@smoke/,
-    grepInvert: p.full ? /@laptop/ : undefined,
+    grep: p.full ? undefined : p.name === 'duo-laptop' ? /@smoke|@laptop/ : p.name === 'duo-book' ? /@smoke|@duo-book/ : /@smoke/,
+    grepInvert: p.full ? /@laptop|@duo-book/ : undefined,
   })),
   webServer: {
     command:
