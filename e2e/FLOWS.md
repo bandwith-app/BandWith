@@ -102,6 +102,21 @@ check (`app.check`) on each screen it reaches.
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |
 
+## Lifecycle models (generated paths)
+
+Every path of the XState models in `models/`; the list of paths per model is in
+[docs/lifecycles](../docs/lifecycles/README.md).
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| RSVP gig and rehearsal: invite → accept / decline / maybe → change → drop out; past events read-only | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+| Rehearsal proposal: propose, weekly limit, withdraw, decline (with reason), Build poll → rehearsal, expiry | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+| Availability poll: builder, discard, publish, fast votes, lock in, cancel, delete, invitees only | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+| Overview card edit per card type: Cancel, ✕, Escape, Back, Save, switch card; member sees no edit; setlist draft | `xstate-lifecycles` | phone-portrait (+ wide subset, `@duo-book`) |
+| Quote → sent → declined / accepted → gig / contract / rider; Revert to quote; Confirm as gig + Undo | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+| Deputies: list, unlink, Find a deputy → Ask in the app; claim link → Deputy gigs → answers; no-band home | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+| Auth links: expired (query / fragment) → new link → reset; server error → sign in; Back not to the dead link | `xstate-lifecycles` | phone-portrait (+ wide subset) |
+
 ## Manual only
 
 These need a real device; run them from the device test matrix before a release.

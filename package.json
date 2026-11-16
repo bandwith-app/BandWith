@@ -16,6 +16,8 @@
     "e2e:typecheck": "tsc --noEmit -p e2e",
     "e2e:crawl": "playwright test -c e2e/crawl/crawl.config.ts",
     "e2e:crawl:report": "playwright test -c e2e/crawl/report.config.ts",
+    "e2e:models:coverage": "node e2e/models/coverage.ts",
+    "e2e:models:docs": "node e2e/models/mermaid.ts",
     "export:icons": "powershell -ExecutionPolicy Bypass -File scripts/export-icons.ps1",
     "postinstall": "node scripts/postinstall.js"
   },
@@ -108,6 +110,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "4.7.0",
+    "@xstate/graph": "3.0.4",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "jsdom": "^27.0.1",
@@ -116,7 +119,8 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.2",
     "vite": "6.3.5",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "xstate": "5.33.4"
   },
   "peerDependencies": {
     "react": "18.3.1",
