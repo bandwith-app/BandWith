@@ -50,13 +50,14 @@ export const UnsavedChangesBar: React.FC<{
 
 /**
  * Leaving with changes that aren't saved: save them, throw them away, or go
- * back (the sheet's X, the scrim or a swipe down).
+ * back (the sheet's X, the scrim or a swipe down). Without `onSave` (nothing
+ * to save, e.g. a poll not published yet) it offers Keep editing / Discard.
  */
 export const UnsavedChangesSheet: React.FC<{
   open: boolean;
   title: string;
   body?: string;
-  onSave: () => void;
+  onSave?: () => void;
   onDiscard: () => void;
   onKeepEditing: () => void;
   saving?: boolean;
@@ -75,9 +76,13 @@ export const UnsavedChangesSheet: React.FC<{
       portal
       footer={
         <div className="flex flex-col gap-2">
-          <PillButton onClick={onSave} loading={saving}>
-            {t('Save changes')}
-          </PillButton>
+          {onSave ? (
+            <PillButton onClick={onSave} loading={saving}>
+              {t('Save changes')}
+            </PillButton>
+          ) : (
+            <PillButton onClick={onKeepEditing}>{t('Keep editing')}</PillButton>
+          )}
           <PillButton variant="outline" onClick={onDiscard} disabled={saving}>
             {t('Discard')}
           </PillButton>

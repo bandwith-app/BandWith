@@ -916,6 +916,8 @@ const dict: Dictionary = {
   "Remove slot": "Termin entfernen",
   "Publishing…": "Wird veröffentlicht…",
   "Publish poll": "Umfrage starten",
+  "Discard this poll?": "Diese Umfrage verwerfen?",
+  "Nothing is sent to the band until you publish. If you leave now, the dates and details you added are lost.": "Die Band bekommt nichts, bis du die Umfrage startest. Wenn du jetzt gehst, sind die Termine und Details weg, die du eingegeben hast.",
   "Check your connection and try again.": "Prüf deine Verbindung und versuch es noch mal.",
   "Failed to update vote. Please try again.": "Deine Stimme konnte nicht aktualisiert werden. Versuch es noch mal.",
   "Couldn't clear your votes: {reason}": "Deine Stimmen konnten nicht gelöscht werden: {reason}",

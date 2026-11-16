@@ -14,8 +14,6 @@ import { IconButton, PillButton, PillField, StepPad, Tag } from '@/app/component
 import { RailSheet } from '@/lib/railActions';
 import {
   getRehearsalPoll,
-  togglePollVote,
-  markPollUnavailable,
   pollAnsweredCount,
   finalizePollIntoRehearsal,
   POLL_CLOSED,
@@ -32,6 +30,7 @@ import { markAsRead, type Notification } from '@/lib/services/notifications';
 import { PollDetails } from './PollDetails';
 import { canDeletePoll, canVoteInPoll, canWithdrawProposal } from '@/lib/pollPermissions';
 import { haptic } from '@/lib/haptics';
+import { useOptimisticPollVotes } from '@/app/hooks/useOptimisticPollVotes';
 import { ErrorState } from '@/app/components/ui/ErrorState';
 import { FindADateMode } from '@/app/components/duo';
 import { personName } from '@/lib/personName';
@@ -64,18 +63,16 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
   const drag = useSheetDrag(onClose);
   // Android Back and Escape close this sheet, not the screen beneath.
   useSystemBack(true, onClose);
-  const [poll, setPoll] = useState<RehearsalPoll | null>(null);
+  const [fetchedPoll, setPoll] = useState<RehearsalPoll | null>(null);
   const [loading, setLoading] = useState(true);
-  const [votingOptionId, setVotingOptionId] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [showLocationInput, setShowLocationInput] = useState<string | null>(null);
   const [finalLocation, setFinalLocation] = useState(() => t('Band Practice Space'));
   // The place set in the poll (097) is the default for the lock-in.
-  const pollLocation = (poll as RehearsalPoll | null)?.location?.trim();
+  const pollLocation = fetchedPoll?.location?.trim();
   useEffect(() => {
     if (pollLocation) setFinalLocation(pollLocation);
   }, [pollLocation]);
-  const [isClearing, setIsClearing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -88,25 +85,50 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
   }, [pollId, notification]);
 
   // Fetch poll data
-  const loadPoll = useCallback(async () => {
+  // `silent`: a refresh after a vote, without the loading state in between.
+  const loadPoll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!effectivePollId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setLoadError(null);
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
     const { data, error } = await getRehearsalPoll(effectivePollId, currentUserId);
     if (data) {
       setPoll(data);
-    } else if (error && !/not found|PGRST116/i.test(`${error.message} ${(error as any).code || ''}`)) {
+    } else if (!silent && error && !/not found|PGRST116/i.test(`${error.message} ${(error as any).code || ''}`)) {
       setLoadError(error.message || t('Check your connection and try again.'));
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [effectivePollId, currentUserId, t]);
 
   useEffect(() => {
     loadPoll();
   }, [loadPoll]);
+
+  // Taps show at once; the writes follow, and a failure undoes them.
+  const { poll, toggleVote, markNoneWork } = useOptimisticPollVotes(fetchedPoll, currentUserId, {
+    onSaved: () => {
+      if (notification?.id) markAsRead(notification.id).catch(() => {});
+      onPollUpdated?.();
+      void loadPoll({ silent: true });
+    },
+    onFailed: (step, error) => {
+      setDeclinedAll(!!fetchedPollRef.current?.declined_all);
+      onShowToast?.(
+        step.kind === 'vote'
+          ? t('Failed to update vote. Please try again.')
+          : t("Couldn't clear your votes: {reason}", { reason: (error as Error)?.message || t('please try again.') }),
+        'error'
+      );
+      void loadPoll({ silent: true });
+    },
+  });
+  const fetchedPollRef = React.useRef(fetchedPoll);
+  fetchedPollRef.current = fetchedPoll;
 
   // The stored "None work" answer (102).
   const storedDeclinedAll = !!poll?.declined_all;
@@ -117,77 +139,21 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
   // After the vote-by deadline (117) the database refuses votes.
   const votingClosed = !!poll && poll.status === 'polling' && isPollVotingClosed(poll);
 
-  // Handle vote toggle
-  const handleToggleVote = async (optionId: string) => {
-    if (!poll || votingOptionId || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
+  // Handle vote toggle: shown at once, never blocked by the write before it.
+  const handleToggleVote = (optionId: string) => {
+    if (!poll || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
-    setVotingOptionId(optionId);
-    setDeclinedAll(false);
-
-    // Optimistic local state update
-    setPoll((prev) => {
-      if (!prev || !prev.options) return prev;
-      const updatedOptions = prev.options.map((opt) => {
-        if (opt.id === optionId) {
-          const nextVoted = !opt.has_voted;
-          const nextCount = Math.max(0, (opt.vote_count || 0) + (nextVoted ? 1 : -1));
-          return {
-            ...opt,
-            has_voted: nextVoted,
-            vote_count: nextCount,
-          };
-        }
-        return opt;
-      });
-      return { ...prev, options: updatedOptions };
-    });
-
-    const { error } = await togglePollVote(poll.id, optionId, currentUserId);
-    setVotingOptionId(null);
-
-    if (error) {
-      onShowToast?.(t('Failed to update vote. Please try again.'), 'error');
-      loadPoll();
-    } else {
-      if (notification?.id) {
-        markAsRead(notification.id).catch(() => {});
-      }
-      onPollUpdated?.();
-    }
+    if (!poll.options?.find((o) => o.id === optionId)?.has_voted) setDeclinedAll(false);
+    toggleVote(optionId);
   };
 
   // Handle "None of these work for me"
-  const handleNoneWork = async () => {
-    if (!poll || isClearing || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
+  const handleNoneWork = () => {
+    if (!poll || votingClosed || !canVoteInPoll(poll, currentUserId)) return;
     haptic.selection();
-    setIsClearing(true);
-
-    setPoll((prev) => {
-      if (!prev || !prev.options) return prev;
-      const updatedOptions = prev.options.map((opt) => ({
-        ...opt,
-        has_voted: false,
-        vote_count: opt.has_voted ? Math.max(0, (opt.vote_count || 0) - 1) : opt.vote_count,
-      }));
-      return { ...prev, options: updatedOptions };
-    });
-
-    const { stored, error } = await markPollUnavailable(poll.id, currentUserId);
-    setIsClearing(false);
-
-    if (error) {
-      onShowToast?.(t("Couldn't clear your votes: {reason}", { reason: error.message || t('please try again.') }), 'error');
-      loadPoll();
-    } else {
-      setDeclinedAll(true);
-      // Before migration 102 the answer is not stored: don't say the admin was told.
-      onShowToast?.(stored ? t('Marked unavailable for all dates.') : t('Your votes were cleared.'), 'info');
-      onPollUpdated?.();
-      if (notification?.id) {
-        markAsRead(notification.id).catch(() => {});
-      }
-      onPollUpdated?.();
-    }
+    setDeclinedAll(true);
+    markNoneWork();
+    onShowToast?.(t('Marked unavailable for all dates.'), 'info');
   };
 
   // Admin finalize option into confirmed rehearsal
@@ -558,7 +524,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                         key={option.id}
                         onDark
                         selected={!!option.has_voted}
-                        disabled={!canVote || votingClosed || votingOptionId === option.id}
+                        disabled={!canVote || votingClosed}
                         day={dateName(d, { weekday: 'short' }).toUpperCase()}
                         date={d.getDate()}
                         time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -742,7 +708,6 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
             {canVote && (
               <PillButton
                 variant="outline"
-                loading={isClearing}
                 disabled={votingClosed}
                 aria-pressed={declinedAll}
                 className={declinedAll ? 'bg-sheet-foreground/[0.12]' : undefined}
@@ -766,7 +731,6 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
           currentUserId={currentUserId}
           isAdmin={isAdmin}
           loading={loading}
-          votingOptionId={votingOptionId}
           canVote={canVote}
           onToggleVote={handleToggleVote}
           onLock={isAdmin ? handleFinalize : undefined}

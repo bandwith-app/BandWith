@@ -11,8 +11,6 @@ import {
 } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import {
-  togglePollVote,
-  markPollUnavailable,
   pollAnsweredCount,
   finalizePollIntoRehearsal,
   POLL_CLOSED,
@@ -28,6 +26,7 @@ import { notifyProposalDeclined } from '@/lib/services/pollNotices';
 import { proposalLastDay } from '@/lib/proposalExpiry';
 import { ProposalDeclinePanel } from './ProposalDeclinePanel';
 import { haptic } from '@/lib/haptics';
+import { useOptimisticPollVotes } from '@/app/hooks/useOptimisticPollVotes';
 import { StepPad, Card, Tag, PillButton, PillField } from '@/app/components/bw';
 import { personName } from '@/lib/personName';
 import { useT, dateName, intlLocale, shortWeekday } from '@/lib/i18n';
@@ -43,7 +42,7 @@ interface RehearsalPollCardProps {
 }
 
 export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
-  poll,
+  poll: fetchedPoll,
   currentUserId,
   isAdmin,
   onConvertProposal,
@@ -53,7 +52,20 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
 }) => {
   const t = useT();
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [votingOptionId, setVotingOptionId] = useState<string | null>(null);
+  // Taps show at once; the writes follow, and a failure undoes them.
+  const { poll, toggleVote, markNoneWork } = useOptimisticPollVotes(fetchedPoll, currentUserId, {
+    onSaved: () => onPollUpdated?.(),
+    onFailed: (step, error) => {
+      clearAutoCloseRef.current();
+      onShowToast?.(
+        step.kind === 'vote'
+          ? t('Failed to register vote. Please try again.')
+          : t("Couldn't clear your votes: {reason}", { reason: (error as Error)?.message || t('please try again.') }),
+        'error'
+      );
+      onPollUpdated?.();
+    },
+  });
   const [finalizingOptionId, setFinalizingOptionId] = useState<string | null>(null);
   const [showLocationInput, setShowLocationInput] = useState<string | null>(null); // optionId when admin clicks lock-in
   const [finalLocation, setFinalLocation] = useState(() => poll.location?.trim() || t('Band Practice Space'));
@@ -98,6 +110,8 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
     }
     setAutoCloseCountdown(null);
   }, []);
+  const clearAutoCloseRef = useRef(clearAutoClose);
+  clearAutoCloseRef.current = clearAutoClose;
 
   const startAutoClose = useCallback(() => {
     clearAutoClose();
@@ -147,34 +161,20 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
   // After the vote-by deadline (117) the database refuses votes.
   const votingClosed = poll.status === 'polling' && isPollVotingClosed(poll);
 
-  const handleToggleVote = async (optionId: string) => {
+  const handleToggleVote = (optionId: string) => {
     if (!canVote || votingClosed) return;
     haptic.selection();
-    setVotingOptionId(optionId);
     startAutoClose();
-    const { error } = await togglePollVote(poll.id, optionId, currentUserId);
-    setVotingOptionId(null);
-
-    if (error) {
-      clearAutoClose();
-      onShowToast?.(t('Failed to register vote. Please try again.'), 'error');
-    } else {
-      onPollUpdated?.();
-    }
+    toggleVote(optionId);
   };
 
   // "None of these work"
-  const handleNoneWork = async () => {
+  const handleNoneWork = () => {
     if (!hasUserVotedAny || !canVote || votingClosed) return;
     startAutoClose();
     // Clears the votes and stores the answer (102) so the admin sees it.
-    const { error } = await markPollUnavailable(poll.id, currentUserId);
-    if (!error) {
-      onShowToast?.(t('Cleared your availability for this poll.'), 'info');
-      onPollUpdated?.();
-    } else {
-      clearAutoClose();
-    }
+    markNoneWork();
+    onShowToast?.(t('Cleared your availability for this poll.'), 'info');
   };
 
   // Finalize into official rehearsal
@@ -411,7 +411,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                 key={option.id}
                 onDark
                 selected={!!option.has_voted}
-                disabled={!canVote || votingClosed || votingOptionId === option.id}
+                disabled={!canVote || votingClosed}
                 day={dateName(d, { weekday: 'short' }).toUpperCase()}
                 date={d.getDate()}
                 time={`${(option.start_time || '').slice(0, 5)}${option.end_time ? `–${option.end_time.slice(0, 5)}` : ''}`}
@@ -497,7 +497,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
                         <button
                           type="button"
                           aria-pressed={isChecked}
-                          disabled={!canVote || votingClosed || votingOptionId === option.id}
+                          disabled={!canVote || votingClosed}
                           onClick={() => handleToggleVote(option.id)}
                           className="flex-1 min-w-0 flex flex-col gap-1 text-left cursor-pointer select-none"
                         >
