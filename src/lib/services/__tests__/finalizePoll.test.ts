@@ -145,3 +145,14 @@ describe('finalizePollIntoRehearsal (who is on the rehearsal)', () => {
     expect(lineup()).toEqual(['admin:confirmed', 'm1:pending']);
   });
 });
+
+describe('finalizePollIntoRehearsal (notification)', () => {
+  it('the locked-in notification shows a readable date, not the stored one', async () => {
+    bandRows = [{ user_id: 'm1', role: 'member' }];
+    const { createBulkNotifications } = await import('../notifications');
+    await finalizePollIntoRehearsal(args);
+    const calls = vi.mocked(createBulkNotifications).mock.calls;
+    const rows = calls[calls.length - 1][0] as unknown as { body: string }[];
+    expect(rows[0].body).toBe('Rehearsal locked in for Tue, Dec 1 at 20:00 (Studio).');
+  });
+});

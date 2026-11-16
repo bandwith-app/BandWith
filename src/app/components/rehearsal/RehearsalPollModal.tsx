@@ -432,7 +432,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           <label htmlFor={`${idp}-poll-place`} className="bw-label-sm text-muted-foreground">
             {t('Location / studio')}
           </label>
-          <div className="flex items-center gap-3 h-[52px] px-4 rounded-full bg-field border border-border focus-within:border-2 focus-within:border-foreground">
+          {/* `relative` here and `static` on the search: the suggestions open
+              under the whole field, as wide as it, not beside the pin. */}
+          <div className="relative flex items-center gap-3 h-[52px] px-4 rounded-full bg-field border border-border focus-within:border-2 focus-within:border-foreground">
             <MapPin className="w-5 h-5 shrink-0" />
             {/* Same place search as the rehearsal and gig forms; offline it stays a plain field. */}
             <VenueAutocomplete
@@ -441,7 +443,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
               onChange={setLocation}
               onSelect={place => setLocation(venueFields(place).location)}
               placeholder={t('e.g. Blackbox Studios · room 2')}
-              containerClassName="flex-1 min-w-0"
+              containerClassName="static flex-1 min-w-0"
               className="outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -975,7 +977,8 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         transition={{ type: 'tween', duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
         className="bw-pane-detail fixed inset-0 z-[120] bg-background text-foreground flex flex-col"
       >
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Laptop pose: the header holds the Display, the form starts on the Deck. */}
+        <div className="bw-fold-form flex-1 min-h-0 overflow-y-auto">
           {/* Figma "Rehearsal / Poll builder": rehearsal-blue header */}
           <header
             className="bg-accent-rehearsal text-accent-rehearsal-foreground px-4 pb-5 flex flex-col gap-2"
@@ -1227,9 +1230,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           </div>
         </div>
 
-        {/* CTA bar */}
+        {/* CTA bar (hidden while typing: it covered the venue suggestions) */}
         <div
-          className="shrink-0 px-4 pt-3 bg-background"
+          className="bw-poll-cta shrink-0 px-4 pt-3 bg-background"
           style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}
         >
           <div className="max-w-xl mx-auto grid grid-cols-[2fr_3fr] gap-3">
