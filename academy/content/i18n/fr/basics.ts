@@ -40,6 +40,7 @@ const basics: AreaText = {
             { devices: ["duoBook", "duoLand"], text: "Sur le téléphone double écran ouvert, la page de gauche montre la page de marque BandWith avec les étapes d’accueil nommées ; le formulaire est sur la page de droite." },
             { devices: ["tablet"], text: "L’inscription, l’accueil et les écrans de verrouillage restent dans une colonne lisible au milieu de la fenêtre au lieu de s’étirer sur toute la largeur." },
             { devices: ["web"], text: "La connexion Google et Apple s’ouvre dans le même onglet et te ramène à l’app. Dans l’app mobile, elle s’ouvre dans un navigateur intégré ; si tu le fermes sans te connecter, les boutons fonctionnent de nouveau." },
+            { devices: ["duoLaptop"], text: "En position ordinateur, le titre et Google / Apple restent sur la moitié haute et le formulaire e-mail commence sur la moitié basse. Sur **Qu’est-ce qui t’amène ?**, les choix sont sur la moitié basse : fais défiler jusqu’à **Continuer**." },
           ],
         },
       ],
@@ -98,6 +99,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Nouveau ici ? Touche **Crée un compte** en bas de l’écran de connexion." },
         { type: "note", tone: "tip", text: "Hors ligne, l’app te garde connecté grâce à la session enregistrée sur l’appareil : tu peux toujours ouvrir tes groupes et tes concerts en cache. Elle renouvelle la session dès que tu es de nouveau en ligne." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "En position ordinateur, le titre et Google / Apple restent sur la moitié haute ; **E-mail**, **Mot de passe** et **Se connecter** commencent sur la moitié basse, à l’écart de la charnière." }] },
       ],
     },
     {
@@ -255,6 +257,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Chaque carte a **En savoir plus dans l’Academy**, qui ouvre le guide correspondant dans l’app. Ferme le guide pour revenir à la visite." },
         { type: "note", tone: "tip", text: "Pour la revoir : Réglages, **Aide et assistance**, **Revoir la visite**. La même page propose **BandWith Academy**, qui ouvre ces guides pour ton rôle." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "En position ordinateur, l’icône et le titre de chaque carte sont sur la moitié haute, le texte et les boutons sur la moitié basse. Les deux moitiés prennent les couleurs sombres de la visite : le titre se lit bien." }] },
       ],
     },
     {
@@ -557,6 +560,7 @@ const basics: AreaText = {
         {
           type: "list",
           items: [
+            "Un sélecteur de date ou d’heure : seul le sélecteur se ferme, la feuille d’où tu l’as ouvert reste.",
             "Une feuille ou une boîte de dialogue ouverte (conditions, invitation, **Activer Face ID ?**, confirmation de suppression).",
             "Une section dans un écran (une section des réglages revient à la liste des sections).",
             "Une page ou un panneau plein écran (le menu, les alertes, un événement).",
@@ -570,7 +574,7 @@ const basics: AreaText = {
           rows: [
             { devices: ["android"], text: "Le bouton Retour du système et le geste retour suivent l’ordre ci-dessus." },
             { devices: ["phone"], text: "L’iPhone n’a pas de Retour système : utilise le bouton retour en haut à gauche de chaque écran, ou fais glisser une feuille vers le bas." },
-            { devices: ["web", "tablet"], text: "Échap sur un clavier physique ferme la couche du dessus. Un Échap tapé dans un champ reste dans le champ. Sur le web, le Retour du navigateur fonctionne comme le Retour Android mais ne quitte jamais l’app ; depuis l’accueil, il quitte le site." },
+            { devices: ["web", "tablet"], text: "Échap sur un clavier physique ferme la couche du dessus. Un Échap tapé dans un champ reste dans le champ. Sur le web, le Retour du navigateur fonctionne comme le Retour Android mais ne quitte jamais l’app ; depuis l’accueil, il quitte le site. Pendant la configuration de ton compte, il revient d’une étape à la fois." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Retour se trouve dans le rail latéral, pas dans la barre du haut de chaque écran." },
           ],
         },
@@ -616,7 +620,7 @@ const basics: AreaText = {
             "Passe de **Tout** à **Non lues**. Les éléments non lus ont un point rouge.",
             "Touche un élément. Une invitation de concert ouvre d’abord sa page de détail ; la plupart des autres ouvrent directement leur écran (un chat, un événement, un sondage, un devis).",
             "Fais glisser un élément vers la gauche et touche **Supprimer** pour l’enlever.",
-            "Touche **Marquer lu** pour tout marquer comme lu, ou **Effacer**, puis **Tout effacer**, pour vider la liste.",
+            "Touche **Marquer lu** pour tout marquer comme lu : les points rouges et le compteur **Non lues** disparaissent aussitôt. Ou touche **Effacer**, puis **Tout effacer**, pour vider la liste.",
           ],
         },
         { type: "p", text: "La page de détail d’une invitation de concert montre les **Détails de l’événement** : date, **Horaires** (arrivée, balance, début), **Salle**, ton **Cachet attribué** et tout **Conflit d’agenda** avec ton calendrier. Touche **Accepter** ou **Refuser**, ou **Ajouter à Google Agenda**. Les sondages de répétition ont **Voter les dates**." },
@@ -627,6 +631,8 @@ const basics: AreaText = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "La liste reste sur la page de gauche et l’élément sélectionné, prêt à recevoir ta réponse, sur la page de droite." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Le Retour du rail ferme les alertes. Tant qu’elles sont ouvertes, rien ne s’ouvre derrière : tu reviens là où tu étais." },
+            { devices: ["duoLaptop"], text: "En position ordinateur, l’en-tête des alertes reste sur la moitié haute et la liste défile sur la moitié basse." },
           ],
         },
       ],
@@ -1157,6 +1163,8 @@ const basics: AreaText = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Retour de scène : morceau, tonalité, BPM et morceau suivant sur fond noir, grands pavés Préc. / Suiv. en bas." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Bureau des devis : le devis tel que le client le lit en haut, le formulaire du devis en bas." },
         { type: "p", text: "Les feuilles, les menus et le clavier s’ouvrent sur le Deck ; les messages courts (toasts) s’affichent sur le Display. Le rail se place le long du bord inférieur du Deck." },
+        { type: "p", text: "Les formulaires gardent leur en-tête sur le Display et tous leurs champs sur le Deck : **Se connecter**, la création du compte, **Qu’est-ce qui t’amène ?**, **Dates de remplaçant**, les formulaires de concert, de répétition et de sondage, **Créer un contrat** et les alertes. Pendant la saisie, le champ où tu écris reste visible : juste au-dessus du clavier ou, quand le clavier couvre tout le Deck, en entier sur le Display, juste au-dessus de la charnière." },
+        { type: "p", text: "Les visites par rôle placent l’icône et le titre de chaque carte sur le Display, le texte et les boutons sur le Deck, les deux aux couleurs sombres de la visite ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Désactiver la position ordinateur",
@@ -1225,7 +1233,7 @@ const basics: AreaText = {
             "Import des contacts.",
           ],
         },
-        { type: "p", text: "Échap ferme la couche du dessus. Le Retour du navigateur fonctionne comme le Retour Android, mais ne ferme jamais rien en dehors de l’app ; depuis l’accueil, il quitte le site. Sur un ordinateur partagé, déconnecte-toi quand tu as fini." },
+        { type: "p", text: "Échap ferme la couche du dessus. Le Retour du navigateur fonctionne comme le Retour Android, mais ne ferme jamais rien en dehors de l’app ; depuis l’accueil, il quitte le site. Pendant la configuration de ton compte, Retour revient à l’étape précédente ; depuis la première, il quitte le site. Sur un ordinateur partagé, déconnecte-toi quand tu as fini." },
       ],
     },
   ],

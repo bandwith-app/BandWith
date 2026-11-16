@@ -171,7 +171,7 @@ const people: AreaText = {
             "Touche **Nommer admin** pour lui donner les droits d’admin, ou **Rendre membre** pour les lui retirer.",
           ],
         },
-        { type: "p", text: "Le changement est enregistré tout de suite, sans confirmation. La personne voit son nouveau rôle au prochain chargement de sa liste de groupes." },
+        { type: "p", text: "Le changement est enregistré tout de suite, sans confirmation. La personne voit son nouveau rôle au prochain chargement de sa liste de groupes. Son téléphone efface alors les données du groupe gardées pour le mode hors ligne et les recharge pour le nouveau rôle : un nouvel admin voit le client et les prix, un ancien admin ne les garde plus sur son téléphone." },
         { type: "note", tone: "warning", text: "Tu ne peux pas rendre membre le dernier admin. Nomme d’abord quelqu’un d’autre admin." },
         { type: "note", tone: "tip", text: "Tu ne peux pas changer ton propre rôle : ta page et le menu **⋯** de ta propre ligne n’ont pas de boutons de rôle. Demande à un autre admin de te rendre membre." },
       ],
@@ -538,7 +538,13 @@ const people: AreaText = {
         { type: "p", text: "Les demandes en cours passent en premier ; les autres sont sous **Passées et clôturées**. Les demandes s’affichent à partir d’il y a 30 jours. La ligne du haut liste les « Groupes qui t'appellent comme remplaçant »." },
         { type: "p", text: "**M'abonner à mes dates** ajoute un flux d’agenda de tes concerts confirmés avec ce groupe. Il suit chaque changement et signale les concerts annulés : ton agenda reste juste sans ouvrir BandWith." },
         { type: "shot", id: "people-deputy-gigs", caption: "Dates de remplaçant : une demande d’un autre groupe en attente de réponse." },
-        { type: "devices", rows: [{ devices: ["duoBook", "duoLand"], text: "En écran d’accueil, la page de la marque BandWith est sur le premier écran et tes dates sur le second, comme à la connexion." }] },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoBook", "duoLand"], text: "En écran d’accueil, la page de la marque BandWith est sur le premier écran et tes dates sur le second, comme à la connexion." },
+            { devices: ["duoLaptop"], text: "En écran d’accueil en position ordinateur, l’en-tête reste sur la moitié haute et tes demandes sur la moitié basse. Pendant que tu écris un message, la zone de saisie reste visible, au-dessus du clavier ou juste au-dessus de la charnière." },
+          ],
+        },
       ],
     },
     {

@@ -47,6 +47,7 @@ const basics: AreaModule = {
             { devices: ["duoBook", "duoLand"], text: "On the open dual-screen phone, the left page shows the BandWith brand page with the named onboarding steps; the form is on the right page." },
             { devices: ["tablet"], text: "Sign-up, onboarding and lock screens stay in a readable column in the middle of the window instead of stretching across it." },
             { devices: ["web"], text: "Google and Apple sign-in open in the same tab and bring you back to the app. On a phone app they open an in-app browser; closing it without signing in makes the buttons work again." },
+            { devices: ["duoLaptop"], text: "In Laptop pose the title and Google / Apple stay on the upper half and the email form starts on the lower half. On **What brings you here?** the choices are on the lower half: scroll down to **Continue**." },
           ],
         },
       ],
@@ -105,6 +106,7 @@ const basics: AreaModule = {
         },
         { type: "p", text: "New here? Tap **Create an account** at the bottom of the sign-in screen." },
         { type: "note", tone: "tip", text: "Offline, the app keeps you signed in with the session saved on the device, so you can still open your cached bands and gigs. It renews the session once you are back online." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In Laptop pose the title and Google / Apple stay on the upper half; **Email**, **Password** and **Sign in** start on the lower half, clear of the fold." }] },
       ],
     },
     {
@@ -262,6 +264,7 @@ const basics: AreaModule = {
         },
         { type: "p", text: "Each card has **Learn more in the Academy**, which opens the matching guide inside the app. Close the guide to go back to the tour." },
         { type: "note", tone: "tip", text: "To see it again: Settings, **Help & support**, **Show the tour again**. The same page has **BandWith Academy**, which opens these guides for your role." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In Laptop pose each card's icon and title stand on the upper half, its text and buttons on the lower half. Both halves take the tour's dark colours, so the title is easy to read." }] },
       ],
     },
     {
@@ -564,6 +567,7 @@ const basics: AreaModule = {
         {
           type: "list",
           items: [
+            "A date or time picker: only the picker closes, the sheet you opened it from stays.",
             "An open sheet or dialog (Terms, an invite, **Enable Face ID?**, a delete confirmation).",
             "A section inside a screen (a Settings section goes back to the list of sections).",
             "A full-screen page or panel (the menu, the inbox, an event).",
@@ -577,7 +581,7 @@ const basics: AreaModule = {
           rows: [
             { devices: ["android"], text: "The system Back button and the back gesture follow the order above." },
             { devices: ["phone"], text: "iPhone has no system Back: use the back button at the top left of each screen, or swipe a sheet down." },
-            { devices: ["web", "tablet"], text: "Escape on a hardware keyboard closes the top layer. Escape typed in a field belongs to the field. On the web, the browser's Back works like Android Back but never exits; from Home it leaves the site." },
+            { devices: ["web", "tablet"], text: "Escape on a hardware keyboard closes the top layer. Escape typed in a field belongs to the field. On the web, the browser's Back works like Android Back but never exits; from Home it leaves the site. While you set up your account, it goes back one onboarding step at a time." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Back lives in the side rail, not in each screen's top bar." },
           ],
         },
@@ -623,7 +627,7 @@ const basics: AreaModule = {
             "Switch between **All** and **Unread**. Unread items have a red dot.",
             "Tap an item. A gig invitation opens its detail page first; most other items open their screen directly (a chat, an event, a poll, a quote).",
             "Swipe an item to the left and tap **Delete** to remove it.",
-            "Tap **Mark read** to mark everything as read, or **Clear**, then **Clear all**, to empty the list.",
+            "Tap **Mark read** to mark everything as read: the red dots and the **Unread** count clear at once. Or tap **Clear**, then **Clear all**, to empty the list.",
           ],
         },
         { type: "p", text: "A gig invitation's detail page shows **Event specifications**: date, **Timings** (load-in, soundcheck, start), **Venue**, your **Allocated fee** and any **Schedule conflict** with your calendar. Tap **Accept event** or **Decline**, or **Add to Google Calendar**. Rehearsal polls have **Vote on dates**." },
@@ -634,6 +638,8 @@ const basics: AreaModule = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "The list stays on the left page and the selected item, ready to answer, is on the right page." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Back in the rail closes the inbox. Nothing opens behind it while it is open, so you land where you were." },
+            { devices: ["duoLaptop"], text: "In Laptop pose the inbox header stays on the upper half and the list scrolls on the lower half." },
           ],
         },
       ],
@@ -1164,6 +1170,8 @@ const basics: AreaModule = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Floor wedge: song, key, BPM and the next song on black, big Prev / Next pads below." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Quote desk: the quote as the client reads it on top, the quote form below." },
         { type: "p", text: "Sheets, menus and the keyboard open on the Deck; short messages (toasts) show on the Display. The rail lies along the bottom edge of the Deck." },
+        { type: "p", text: "Forms keep their header on the Display and every field on the Deck: **Sign in**, creating an account, **What brings you here?**, **Deputy gigs**, the gig, rehearsal and poll forms, **Create contract** and the inbox. While you type, the field you are in stays in sight: just above the keyboard or, when the keyboard covers the whole Deck, whole on the Display just above the fold." },
+        { type: "p", text: "The role tours put each card's icon and title on the Display and its text and buttons on the Deck, both in the tour's dark colours ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Switch Laptop pose off",
@@ -1232,7 +1240,7 @@ const basics: AreaModule = {
             "Import from contacts.",
           ],
         },
-        { type: "p", text: "Escape closes the top layer. The browser's Back works like Android Back, but never closes anything outside the app; from Home it leaves the site. On a shared computer, sign out when you are done." },
+        { type: "p", text: "Escape closes the top layer. The browser's Back works like Android Back, but never closes anything outside the app; from Home it leaves the site. While you set up your account, Back goes to the previous onboarding step; on the first one it leaves the site. On a shared computer, sign out when you are done." },
       ],
     },
   ],

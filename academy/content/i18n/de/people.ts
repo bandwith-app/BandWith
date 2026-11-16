@@ -171,7 +171,7 @@ const people: AreaText = {
             "Tippe auf **Zum Admin machen**, um Admin-Rechte zu geben, oder auf **Zum Mitglied machen**, um sie wegzunehmen.",
           ],
         },
-        { type: "p", text: "Die Änderung wird sofort gespeichert; es gibt keine Bestätigung. Die Person sieht ihre neue Rolle, sobald ihre Bandliste das nächste Mal lädt." },
+        { type: "p", text: "Die Änderung wird sofort gespeichert; es gibt keine Bestätigung. Die Person sieht ihre neue Rolle, sobald ihre Bandliste das nächste Mal lädt. Danach löscht ihr Handy die für die Offline-Nutzung gespeicherten Banddaten und lädt sie für die neue Rolle neu: Ein neuer Admin sieht den Kunden und die Preise, ein früherer Admin behält sie nicht mehr auf dem Handy." },
         { type: "note", tone: "warning", text: "Den letzten Admin kannst du nicht zum Mitglied machen. Mach zuerst jemand anderen zum Admin." },
         { type: "note", tone: "tip", text: "Deine eigene Rolle kannst du nicht ändern: Deine Seite und das Menü **⋯** in deiner eigenen Zeile zeigen keine Rollen-Buttons. Bitte einen anderen Admin, dich zum Mitglied zu machen." },
       ],
@@ -538,7 +538,13 @@ const people: AreaText = {
         { type: "p", text: "Offene Anfragen stehen oben; geschlossene unter **Vergangen und geschlossen**. Angezeigt werden Anfragen ab 30 Tagen zurück. Die Zeile oben nennt die „Bands, die dich als Vertretung anfragen“." },
         { type: "p", text: "**Meine Gigs abonnieren** fügt einen Kalender-Feed deiner bestätigten Gigs mit dieser Band hinzu. Er übernimmt jede Änderung und markiert abgesagte Gigs, so stimmt dein Kalender, ohne dass du BandWith öffnest." },
         { type: "shot", id: "people-deputy-gigs", caption: "Vertretungs-Gigs: eine Anfrage einer anderen Band, die auf Antwort wartet." },
-        { type: "devices", rows: [{ devices: ["duoBook", "duoLand"], text: "Als Startbildschirm steht die BandWith-Markenseite auf dem ersten Bildschirm und deine Gigs auf dem zweiten, wie bei der Anmeldung." }] },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoBook", "duoLand"], text: "Als Startbildschirm steht die BandWith-Markenseite auf dem ersten Bildschirm und deine Gigs auf dem zweiten, wie bei der Anmeldung." },
+            { devices: ["duoLaptop"], text: "Als Startbildschirm in der Laptop-Haltung bleibt die Kopfzeile in der oberen Hälfte, deine Anfragen liegen in der unteren. Während du eine Nachricht schreibst, bleibt das Feld sichtbar, über der Tastatur oder direkt über dem Falz." },
+          ],
+        },
       ],
     },
     {

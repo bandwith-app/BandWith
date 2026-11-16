@@ -129,6 +129,7 @@ const gigs: AreaModule = {
           rows: [
             { devices: ['duoClosed', 'duoBook', 'duoLaptop', 'duoLand'], text: 'The header search is the rail’s **Search**. On an open device the search stays on the left page and the event you pick opens on the right page.' },
             { devices: ['tablet'], text: 'The event you pick opens beside the list and stays outlined in the results.' },
+            { devices: ['android'], text: 'Back first hides the keyboard, then closes the search. An event you opened from the results closes first, back to the results.' },
           ],
         },
       ],
@@ -353,7 +354,7 @@ const gigs: AreaModule = {
           type: 'list',
           title: 'Venue',
           items: [
-            'Type in **Venue / location** and pick a suggestion. A named place fills in the venue and its street; a plain address becomes the venue itself. The city, region, postcode and country are filled in too.',
+            'Type in **Venue / location** and pick a suggestion: one tap is enough, even with the keyboard up. A named place fills in the venue and its street; a plain address becomes the venue itself. The city, region, postcode and country are filled in too.',
             'On the gig, the venue name is a link: tap it (or **MAP**) to open it in your maps app. **Logistics & notes** has **Copy** for the full address and **Maps**.',
             'Leave the venue empty or pick **TBD** when you don’t know it yet: the card then warns **Missing venue**.',
           ],
@@ -539,7 +540,8 @@ const gigs: AreaModule = {
           type: 'list',
           title: 'The header',
           items: [
-            'Back at the top left. **Open stage mode** (the play button) at the top right on upcoming band gigs; on the gig day it is filled. See [[stage-mode]].',
+            'Back at the top left. At the top right: **Help for this screen** (?), the pencil (**Edit title, date & times**, admins) and **Open stage mode** (the play button) on upcoming band gigs; on the gig day it is filled. See [[stage-mode]].',
+            'Once you scroll, this top bar stays pinned at the top, so Back is always in reach. Over the header it keeps the gig colour; further down it shows the gig’s title.',
             'Chips: **GIG** (or **PAST GIG**), **CONFIRMED**, **INVITE PENDING** while your answer is open, the event type (**WEDDING**, **CLUB**…) and the band name.',
             'The title, the day in large dots, and the month.',
             'The venue (tap it or **MAP** to open maps), the address, and the date with start and end time.',
@@ -603,7 +605,7 @@ const gigs: AreaModule = {
             ['**Setlist · {count} songs**', 'The gig has at least one song.'],
             ['**Lyrics & charts · {done} of {total} songs**', 'Every setlist song has lyrics or a chord chart.'],
             ['**Rider v{version} · sent to the venue**', 'The rider link or PDF has been shared with the venue.'],
-            ['**Contract signed**', 'The gig’s contract is signed (admins only).'],
+            ['**Contract signed** / **Contract not signed yet** / **No contract yet**', 'The gig’s contract is signed (admins only).'],
             ['**Deposit paid**', 'The deposit is paid, when one is due (admins only).'],
             ['**To-dos · {done} of {total} done**', 'Every task is ticked. Listed only when the gig has tasks.'],
           ],
@@ -611,7 +613,7 @@ const gigs: AreaModule = {
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: 'Sees every check, including **Contract signed** and **Deposit paid**. Tapping a line opens the lineup, the setlist or the rider.' },
+            { role: 'admin', text: 'Sees every check, including the contract and **Deposit paid**. Tapping a line opens the lineup, the setlist (also from the lyrics line), the rider or **Contracts & docs**. **No contract yet** opens a new contract already filled in for this gig: title, event, client, email and date. Check it and tap **Create contract**. Back, also the phone’s Back and the dual-screen rail’s, returns to the gig.' },
             { role: 'member', text: 'Sees the same checks without the contract and the deposit, which are the band’s business.' },
           ],
         },
@@ -905,7 +907,7 @@ const gigs: AreaModule = {
       keywords: ['privacy', 'permissions', 'who sees', 'fees private', 'member view', 'roles'],
       related: ['gig-workspace', 'fee-and-payouts-on-a-gig', 'deputies-on-a-gig', 'personal-gigs'],
       body: [
-        { type: 'p', text: 'Members and deputies see only their own fee and the logistics. The rules are enforced by the server, not only hidden in the app: a member’s phone never receives the band fee, the client or other people’s fees.' },
+        { type: 'p', text: 'Members and deputies see only their own fee and the logistics. The rules are enforced by the server, not only hidden in the app: a member’s phone never receives the band fee, the client or other people’s fees. When your role in a band changes, the phone drops what it kept of that band for offline use and loads it again for your new role: as an admin you then see the client, as a member you never do.' },
         { type: 'shot', id: 'gig-workspace-member', caption: 'The same gig as a member sees it: Your fee, no client, no band money.' },
         {
           type: 'table',

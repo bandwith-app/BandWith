@@ -608,9 +608,18 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Da un preventivo accettato, **Prepara il contratto** apre questo modulo già compilato con gig, cliente, email e data, intitolato “Contratto di esibizione · {event}”." },
+        { type: "p", text: "Da un gig, la riga **Ancora nessun contratto** della preparazione allo show apre lo stesso modulo compilato per quel gig ([[show-readiness]]). Indietro, dal modulo o da **Contratti & doc**, torna al gig." },
+        { type: "shot", id: "contracts-new-for-gig", caption: "Crea contratto aperto da “Ancora nessun contratto” su un gig: titolo, evento, cliente, email e data già compilati." },
         { type: "p", text: "Per cambiare un documento, toccalo e poi **Modifica**, oppure **⋯** > **Modifica**, e tocca **Salva modifiche**. Un contratto firmato non si può più modificare." },
         { type: "note", tone: "tip", text: "Le condizioni di pagamento vanno in **Note e condizioni**. Il testo standard dice che l’acconto conferma la prenotazione e che il saldo è dovuto il giorno dell’evento: adattalo a quanto hai concordato nel preventivo." },
         { type: "p", text: "Il PDF del contratto termina con due righe per la firma, “Per {band}” e “Per {client}”, da firmare su carta o con lo strumento del cliente. BandWith registra la data della firma quando tocchi **Segna come firmato**; non raccoglie firme da sola." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["tablet"], text: "In orizzontale il modulo occupa tutto il riquadro destro e **Crea contratto** sta sul suo bordo inferiore; la barra delle schede si fa da parte mentre scrivi." },
+            { devices: ["duoLaptop"], text: "In posizione laptop l’intestazione resta nella metà alta, i campi e **Crea contratto** nella metà bassa. Il campo in cui scrivi resta in vista, sopra la tastiera o appena sopra la piega." },
+          ],
+        },
       ],
     },
     {
@@ -648,7 +657,7 @@ const business: AreaText = {
           title: "Eliminare",
           items: ["Tocca **⋯** > **Elimina** e conferma. “Il documento viene eliminato per tutta la band. Le copie già inviate al cliente non cambiano.”"],
         },
-        { type: "note", tone: "tip", text: "Un contratto firmato collegato a un gig conta come fatto nella preparazione allo show del gig, vedi [[gig-workspace]]." },
+        { type: "note", tone: "tip", text: "Un contratto firmato collegato a un gig conta come fatto nella preparazione allo show del gig, vedi [[show-readiness]]." },
       ],
     },
     {

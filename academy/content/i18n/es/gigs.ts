@@ -119,6 +119,7 @@ const gigs: AreaText = {
           rows: [
             { devices: ["duoClosed", "duoBook", "duoLaptop", "duoLand"], text: "La búsqueda de la cabecera es el **Buscar** de la barra lateral. Con el dispositivo abierto, la búsqueda se queda en la página izquierda y el evento que eliges se abre en la derecha." },
             { devices: ["tablet"], text: "El evento que eliges se abre junto a la lista y sigue resaltado en los resultados." },
+            { devices: ["android"], text: "Atrás primero oculta el teclado y luego cierra la búsqueda. Un evento abierto desde los resultados se cierra antes y vuelves a los resultados." },
           ],
         },
       ],
@@ -341,7 +342,7 @@ const gigs: AreaText = {
           type: "list",
           title: "Lugar",
           items: [
-            "Escribe en **Sala / lugar** y elige una sugerencia. Un sitio con nombre rellena la sala y su calle; una dirección sin más se convierte en la propia sala. También se rellenan la ciudad, la región, el código postal y el país.",
+            "Escribe en **Sala / lugar** y elige una sugerencia: basta con un toque, incluso con el teclado abierto. Un sitio con nombre rellena la sala y su calle; una dirección sin más se convierte en la propia sala. También se rellenan la ciudad, la región, el código postal y el país.",
             "En el concierto, el nombre de la sala es un enlace: tócalo (o **MAPA**) para abrirlo en tu app de mapas. **Logística y notas** tiene **Copiar** para la dirección completa y **Mapas**.",
             "Deja la sala vacía o elige **A def.** cuando aún no la sepas: la tarjeta avisará entonces **Falta la sala**.",
           ],
@@ -525,7 +526,8 @@ const gigs: AreaText = {
           type: "list",
           title: "La cabecera",
           items: [
-            "Atrás arriba a la izquierda. **Abrir modo escenario** (el botón de reproducir) arriba a la derecha en los próximos conciertos de la banda; el día del concierto va relleno. Consulta [[stage-mode]].",
+            "Atrás arriba a la izquierda. Arriba a la derecha: **Ayuda para esta pantalla** (?), el lápiz (**Editar título, fecha y horarios**, admins) y **Abrir modo escenario** (el botón de reproducir) en los próximos conciertos de la banda; el día del concierto va relleno. Consulta [[stage-mode]].",
+            "Cuando te desplazas, esta barra se queda fija arriba, así que Atrás siempre está a mano. Sobre la cabecera conserva el color del concierto; más abajo muestra el título del concierto.",
             "Etiquetas: **CONCIERTO** (o **CONCIERTO PASADO**), **CONFIRMADO**, **INVITACIÓN PENDIENTE** mientras tu respuesta está abierta, el tipo de evento (**BODA**, **CLUB**…) y el nombre de la banda.",
             "El título, el día con números grandes de puntos y el mes.",
             "El lugar (tócalo o toca **MAPA** para abrir los mapas), la dirección y la fecha con las horas de inicio y de fin.",
@@ -589,7 +591,7 @@ const gigs: AreaText = {
             ["**Setlist · {count} canciones**", "El concierto tiene al menos una canción."],
             ["**Letras y acordes · {done} de {total} canciones**", "Cada canción de la setlist tiene letra o acordes."],
             ["**Rider v{version} · enviado al local**", "El enlace o el PDF del rider se ha compartido con el local."],
-            ["**Contrato firmado**", "El contrato del concierto está firmado (solo admins)."],
+            ["**Contrato firmado** / **Contrato aún sin firmar** / **Aún no hay contrato**", "El contrato del concierto está firmado (solo admins)."],
             ["**Anticipo pagado**", "El anticipo está pagado, cuando hay uno (solo admins)."],
             ["**Tareas · {done} de {total} hechas**", "Todas las tareas están marcadas. Solo aparece si el concierto tiene tareas."],
           ],
@@ -597,7 +599,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Ve todas las comprobaciones, también **Contrato firmado** y **Anticipo pagado**. Al tocar una línea se abre la formación, la setlist o el rider." },
+            { role: "admin", text: "Ve todas las comprobaciones, también el contrato y **Anticipo pagado**. Al tocar una línea se abre la formación, la setlist (también desde la línea de letras), el rider o **Contratos y docs**. **Aún no hay contrato** abre un contrato nuevo ya rellenado para este concierto: título, evento, cliente, email y fecha. Revísalo y toca **Crear contrato**. Atrás, también el del móvil y el de la barra lateral del doble pantalla, vuelve al concierto." },
             { role: "member", text: "Ve las mismas comprobaciones sin el contrato ni el anticipo, que son cosa de la banda." },
           ],
         },
@@ -889,7 +891,7 @@ const gigs: AreaText = {
       keywords: ["privacidad", "permisos", "quién ve", "cachés privados", "vista del miembro", "roles"],
       related: ["gig-workspace", "fee-and-payouts-on-a-gig", "deputies-on-a-gig", "personal-gigs"],
       body: [
-        { type: "p", text: "Los miembros y los sustitutos solo ven su propio caché y la logística. Las reglas las aplica el servidor, no solo se ocultan en la app: el móvil de un miembro nunca recibe el caché de la banda, el cliente ni los cachés de los demás." },
+        { type: "p", text: "Los miembros y los sustitutos solo ven su propio caché y la logística. Las reglas las aplica el servidor, no solo se ocultan en la app: el móvil de un miembro nunca recibe el caché de la banda, el cliente ni los cachés de los demás. Cuando cambia tu rol en una banda, el móvil borra lo que guardaba de esa banda para usarlo sin conexión y lo vuelve a cargar para tu nuevo rol: como admin ves el cliente; como miembro, nunca." },
         { type: "shot", id: "gig-workspace-member", caption: "El mismo concierto tal como lo ve un miembro: Tu caché, sin cliente y sin el dinero de la banda." },
         {
           type: "table",

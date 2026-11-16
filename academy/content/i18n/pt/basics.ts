@@ -40,6 +40,7 @@ const basics: AreaText = {
             { devices: ["duoBook", "duoLand"], text: "No celular de duas telas aberto, a página da esquerda mostra a apresentação do BandWith com as etapas do cadastro; o formulário fica na página da direita." },
             { devices: ["tablet"], text: "O cadastro, as etapas iniciais e as telas de bloqueio ficam numa coluna fácil de ler no meio da janela, em vez de ocupar toda a largura." },
             { devices: ["web"], text: "O login com Google e Apple abre na mesma aba e traz você de volta ao app. No app de celular, ele abre um navegador dentro do app; se você fechar sem entrar, os botões voltam a funcionar." },
+            { devices: ["duoLaptop"], text: "Na posição notebook, o título e Google / Apple ficam na metade de cima e o formulário de e-mail começa na metade de baixo. Em **O que traz você aqui?**, as opções ficam na metade de baixo: role até **Continuar**." },
           ],
         },
       ],
@@ -98,6 +99,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "É novo por aqui? Toque em **Crie uma conta** na parte de baixo da tela de login." },
         { type: "note", tone: "tip", text: "Offline, o app mantém você conectado com a sessão salva no dispositivo, então você ainda abre as bandas e os shows em cache. A sessão é renovada quando você volta a ficar online." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "Na posição notebook, o título e Google / Apple ficam na metade de cima; **E-mail**, **Senha** e **Entrar** começam na metade de baixo, longe da dobra." }] },
       ],
     },
     {
@@ -255,6 +257,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Cada cartão tem **Saiba mais na Academy**, que abre o guia correspondente dentro do app. Feche o guia para voltar ao tour." },
         { type: "note", tone: "tip", text: "Para ver de novo: Ajustes, **Ajuda e suporte**, **Ver o tour outra vez**. A mesma página tem **BandWith Academy**, que abre estes guias para a sua função." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "Na posição notebook, o ícone e o título de cada cartão ficam na metade de cima, o texto e os botões na metade de baixo. As duas metades usam as cores escuras do tour, então o título fica fácil de ler." }] },
       ],
     },
     {
@@ -557,6 +560,7 @@ const basics: AreaText = {
         {
           type: "list",
           items: [
+            "Um seletor de data ou hora: só o seletor fecha; o painel de onde você o abriu continua aberto.",
             "Um painel ou diálogo aberto (Termos, um convite, **Ativar Face ID?**, uma confirmação de exclusão).",
             "Uma seção dentro de uma tela (uma seção dos Ajustes volta para a lista de seções).",
             "Uma página ou painel de tela cheia (o menu, os avisos, um evento).",
@@ -570,7 +574,7 @@ const basics: AreaText = {
           rows: [
             { devices: ["android"], text: "O botão Voltar do sistema e o gesto de voltar seguem a ordem acima." },
             { devices: ["phone"], text: "O iPhone não tem Voltar do sistema: use o botão de voltar no canto superior esquerdo de cada tela, ou deslize um painel para baixo." },
-            { devices: ["web", "tablet"], text: "Esc num teclado físico fecha a camada de cima. Esc digitado num campo fica com o campo. Na web, o Voltar do navegador funciona como o Voltar do Android, mas nunca fecha o app; a partir da tela Início, ele sai do site." },
+            { devices: ["web", "tablet"], text: "Esc num teclado físico fecha a camada de cima. Esc digitado num campo fica com o campo. Na web, o Voltar do navegador funciona como o Voltar do Android, mas nunca fecha o app; a partir da tela Início, ele sai do site. Enquanto você configura a conta, ele volta uma etapa por vez." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Voltar fica na barra lateral, não na barra de cima de cada tela." },
           ],
         },
@@ -616,7 +620,7 @@ const basics: AreaText = {
             "Alterne entre **Tudo** e **Não lidas**. Os itens não lidos têm um ponto vermelho.",
             "Toque num item. Um convite para show abre primeiro a página de detalhes; a maioria dos outros itens abre direto a tela correspondente (uma conversa, um evento, uma enquete, um orçamento).",
             "Deslize um item para a esquerda e toque em **Excluir** para removê-lo.",
-            "Toque em **Marcar lidas** para marcar tudo como lido, ou em **Limpar** e depois **Limpar tudo** para esvaziar a lista.",
+            "Toque em **Marcar lidas** para marcar tudo como lido: os pontos vermelhos e a contagem de **Não lidas** somem na hora. Ou toque em **Limpar** e depois **Limpar tudo** para esvaziar a lista.",
           ],
         },
         { type: "p", text: "A página de detalhes de um convite para show mostra **Detalhes do evento**: data, **Horários** (montagem, passagem de som, início), **Local**, o seu **Cachê atribuído** e qualquer **Conflito de agenda** com o seu calendário. Toque em **Aceitar evento** ou **Recusar**, ou em **Adicionar ao Google Agenda**. As enquetes de ensaio têm **Votar nas datas**." },
@@ -627,6 +631,8 @@ const basics: AreaText = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "A lista fica na página da esquerda e o item selecionado, pronto para responder, fica na página da direita." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "O Voltar da barra lateral fecha a caixa de avisos. Enquanto ela está aberta, nada abre por trás, então você volta para onde estava." },
+            { devices: ["duoLaptop"], text: "Na posição notebook, o cabeçalho da caixa de avisos fica na metade de cima e a lista rola na metade de baixo." },
           ],
         },
       ],
@@ -1157,6 +1163,8 @@ const basics: AreaText = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Retorno de palco: música, tom, BPM e a próxima música sobre fundo preto, botões grandes Anterior / Próxima embaixo." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Mesa de orçamento: o orçamento do jeito que o cliente lê em cima, o formulário embaixo." },
         { type: "p", text: "Painéis, menus e o teclado abrem no Deck; mensagens curtas (avisos rápidos) aparecem no Display. A barra lateral fica ao longo da borda de baixo do Deck." },
+        { type: "p", text: "Os formulários deixam o cabeçalho no Display e todos os campos no Deck: **Entrar**, a criação da conta, **O que traz você aqui?**, **Shows como substituto**, os formulários de show, ensaio e enquete, **Criar contrato** e a caixa de avisos. Enquanto você digita, o campo em que está fica à vista: logo acima do teclado ou, quando o teclado cobre todo o Deck, inteiro no Display, logo acima da dobra." },
+        { type: "p", text: "Os tours de cada função colocam o ícone e o título de cada cartão no Display e o texto e os botões no Deck, os dois nas cores escuras do tour ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Desativar a posição notebook",
@@ -1225,7 +1233,7 @@ const basics: AreaText = {
             "Importar dos contatos.",
           ],
         },
-        { type: "p", text: "Esc fecha a camada de cima. O Voltar do navegador funciona como o Voltar do Android, mas nunca fecha nada fora do app; a partir da tela Início, ele sai do site. Num computador compartilhado, saia da conta quando terminar." },
+        { type: "p", text: "Esc fecha a camada de cima. O Voltar do navegador funciona como o Voltar do Android, mas nunca fecha nada fora do app; a partir da tela Início, ele sai do site. Enquanto você configura a conta, o Voltar vai para a etapa anterior; na primeira, ele sai do site. Num computador compartilhado, saia da conta quando terminar." },
       ],
     },
   ],

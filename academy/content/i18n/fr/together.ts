@@ -427,7 +427,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Tu as changé d’avis ? **Retour** (en haut ou en bas, ou le bouton Retour du téléphone) revient au formulaire de répétition ; **Fermer** quitte le sondage. Si tu as saisi quelque chose, on te demande d’abord : **Abandonner ce sondage ?** Touche **Continuer à modifier** ou **Abandonner**. Les sondages n’ont pas de brouillon.",
+          text: "Tu as changé d’avis ? **Retour** (en haut ou en bas, ou le bouton Retour du téléphone) revient au formulaire de répétition ; **Fermer** quitte le sondage. Si tu as changé quelque chose, on te demande d’abord : **Abandonner ce sondage ?** Touche **Continuer à modifier** ou **Abandonner**. Sans changement, il se ferme tout simplement. Les sondages n’ont pas de brouillon.",
         },
         {
           type: "list",

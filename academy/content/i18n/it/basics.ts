@@ -40,6 +40,7 @@ const basics: AreaText = {
             { devices: ["duoBook", "duoLand"], text: "Sul telefono a doppio schermo aperto, la pagina sinistra mostra la pagina del marchio BandWith con i nomi dei passaggi; il modulo è sulla pagina destra." },
             { devices: ["tablet"], text: "Registrazione, configurazione iniziale e schermate di blocco restano in una colonna leggibile al centro della finestra, invece di occuparla tutta." },
             { devices: ["web"], text: "L’accesso con Google e Apple si apre nella stessa scheda e ti riporta all’app. Nell’app per telefono si apre un browser interno; se lo chiudi senza accedere, i pulsanti tornano a funzionare." },
+            { devices: ["duoLaptop"], text: "In posizione laptop il titolo e Google / Apple restano nella metà alta e il modulo email comincia nella metà bassa. Su **Cosa ti porta qui?** le scelte sono nella metà bassa: scorri in giù fino a **Continua**." },
           ],
         },
       ],
@@ -98,6 +99,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Sei nuovo? Tocca **Crea un account** in fondo alla schermata di accesso." },
         { type: "note", tone: "tip", text: "Offline, l’app ti tiene collegato con la sessione salvata sul dispositivo, così puoi comunque aprire le band e i gig in cache. La sessione si rinnova appena torni online." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In posizione laptop il titolo e Google / Apple restano nella metà alta; **Email**, **Password** e **Accedi** cominciano nella metà bassa, lontano dalla piega." }] },
       ],
     },
     {
@@ -255,6 +257,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Ogni scheda ha **Scopri di più nell’Academy**, che apre la guida corrispondente dentro l’app. Chiudi la guida per tornare al tour." },
         { type: "note", tone: "tip", text: "Per rivederlo: Impostazioni, **Aiuto e assistenza**, **Rivedi il tour**. Nella stessa pagina c’è **BandWith Academy**, che apre queste guide per il tuo ruolo." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In posizione laptop l’icona e il titolo di ogni scheda stanno nella metà alta, il testo e i pulsanti nella metà bassa. Entrambe le metà prendono i colori scuri del tour, così il titolo si legge bene." }] },
       ],
     },
     {
@@ -557,6 +560,7 @@ const basics: AreaText = {
         {
           type: "list",
           items: [
+            "Un selettore di data o di ora: si chiude solo il selettore, il foglio da cui l’hai aperto resta.",
             "Un foglio o una finestra aperti (Termini, un invito, **Attivare Face ID?**, una conferma di eliminazione).",
             "Una sezione dentro una schermata (una sezione delle Impostazioni torna all’elenco delle sezioni).",
             "Una pagina o un pannello a schermo intero (il menu, le notifiche, un evento).",
@@ -570,7 +574,7 @@ const basics: AreaText = {
           rows: [
             { devices: ["android"], text: "Il pulsante Indietro di sistema e il gesto per tornare indietro seguono l’ordine qui sopra." },
             { devices: ["phone"], text: "iPhone non ha un Indietro di sistema: usa il pulsante in alto a sinistra di ogni schermata, oppure trascina un foglio verso il basso." },
-            { devices: ["web", "tablet"], text: "Esc su una tastiera fisica chiude il livello in cima. Esc premuto dentro un campo vale per il campo. Sul web, Indietro del browser funziona come Indietro di Android ma non chiude mai l’app; dalla Home esci dal sito." },
+            { devices: ["web", "tablet"], text: "Esc su una tastiera fisica chiude il livello in cima. Esc premuto dentro un campo vale per il campo. Sul web, Indietro del browser funziona come Indietro di Android ma non chiude mai l’app; dalla Home esci dal sito. Mentre configuri l’account, torna indietro di un passaggio alla volta." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Indietro si trova nella barra laterale, non nella barra in alto di ogni schermata." },
           ],
         },
@@ -616,7 +620,7 @@ const basics: AreaText = {
             "Passa da **Tutto** a **Non lette**. Le notifiche non lette hanno un pallino rosso.",
             "Tocca una notifica. Un invito a un gig apre prima la sua pagina di dettaglio; quasi tutte le altre aprono direttamente la loro schermata (una chat, un evento, un sondaggio, un preventivo).",
             "Scorri una notifica verso sinistra e tocca **Elimina** per rimuoverla.",
-            "Tocca **Segna lette** per segnare tutto come letto, oppure **Cancella** e poi **Svuota** per vuotare l’elenco.",
+            "Tocca **Segna lette** per segnare tutto come letto: i pallini rossi e il conteggio **Non lette** spariscono subito. Oppure tocca **Cancella** e poi **Svuota** per vuotare l’elenco.",
           ],
         },
         { type: "p", text: "La pagina di dettaglio di un invito a un gig mostra i **Dettagli evento**: data, **Orari** (carico, soundcheck, inizio), **Locale**, il tuo **Compenso assegnato** e un eventuale **Conflitto di calendario** con i tuoi impegni. Tocca **Accetta evento** o **Rifiuta**, oppure **Aggiungi a Google Calendar**. I sondaggi sulle prove hanno **Vota le date**." },
@@ -627,6 +631,8 @@ const basics: AreaText = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "L’elenco resta sulla pagina sinistra e la notifica selezionata, pronta per la risposta, è sulla pagina destra." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Indietro nella barra laterale chiude le notifiche. Mentre sono aperte non si apre niente dietro, così torni dov’eri." },
+            { devices: ["duoLaptop"], text: "In posizione laptop l’intestazione delle notifiche resta nella metà alta e l’elenco scorre nella metà bassa." },
           ],
         },
       ],
@@ -1157,6 +1163,8 @@ const basics: AreaText = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Spia da palco: brano, tonalità, BPM e brano successivo su sfondo nero, grandi tasti Prev / Next in basso." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Banco preventivi: il preventivo come lo legge il cliente in alto, il modulo del preventivo in basso." },
         { type: "p", text: "Fogli, menu e tastiera si aprono sul Deck; i messaggi brevi (toast) compaiono sul Display. La barra laterale si trova lungo il bordo inferiore del Deck." },
+        { type: "p", text: "I moduli tengono l’intestazione sul Display e tutti i campi sul Deck: **Accedi**, la creazione dell’account, **Cosa ti porta qui?**, **Date da sostituto**, i moduli di gig, prove e sondaggi, **Crea contratto** e le notifiche. Mentre scrivi, il campo in cui sei resta in vista: subito sopra la tastiera oppure, quando la tastiera copre tutto il Deck, intero sul Display appena sopra la piega." },
+        { type: "p", text: "I tour per ruolo mettono l’icona e il titolo di ogni scheda sul Display e il testo e i pulsanti sul Deck, entrambi con i colori scuri del tour ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Disattivare la posizione laptop",
@@ -1225,7 +1233,7 @@ const basics: AreaText = {
             "Importazione dai contatti.",
           ],
         },
-        { type: "p", text: "Esc chiude il livello in cima. Indietro del browser funziona come Indietro di Android, ma non chiude mai nulla fuori dall’app; dalla Home esci dal sito. Su un computer condiviso, esci dall’account quando hai finito." },
+        { type: "p", text: "Esc chiude il livello in cima. Indietro del browser funziona come Indietro di Android, ma non chiude mai nulla fuori dall’app; dalla Home esci dal sito. Mentre configuri l’account, Indietro torna al passaggio precedente; dal primo esci dal sito. Su un computer condiviso, esci dall’account quando hai finito." },
       ],
     },
   ],

@@ -170,7 +170,7 @@ const people: AreaText = {
             "Toca **Hacer admin** para darle derechos de admin, o **Hacer miembro** para quitárselos.",
           ],
         },
-        { type: "p", text: "El cambio se guarda al momento; no hay confirmación. La persona ve su nuevo rol la próxima vez que se carga su lista de bandas." },
+        { type: "p", text: "El cambio se guarda al momento; no hay confirmación. La persona ve su nuevo rol la próxima vez que se carga su lista de bandas. Después su móvil borra los datos de la banda guardados para usar sin conexión y los vuelve a cargar para el nuevo rol: un admin nuevo ve el cliente y los precios, y quien deja de ser admin ya no los conserva en el móvil." },
         { type: "note", tone: "warning", text: "No puedes convertir en miembro al último admin. Primero haz admin a otra persona." },
         { type: "note", tone: "tip", text: "No puedes cambiar tu propio rol: tu página y el menú **⋯** de tu propia fila no muestran botones de rol. Pide a otro admin que te haga miembro." },
       ],
@@ -535,7 +535,13 @@ const people: AreaText = {
         { type: "p", text: "Las solicitudes abiertas van primero; las cerradas están en **Pasadas y cerradas**. Se muestran las solicitudes de los últimos 30 días en adelante. La línea de arriba muestra «Bandas que te llaman como sustituto»." },
         { type: "p", text: "**Suscribirme a mis bolos** añade un feed de calendario con tus conciertos confirmados con esa banda. Sigue cada cambio y marca los conciertos cancelados, así tu calendario está al día sin abrir BandWith." },
         { type: "shot", id: "people-deputy-gigs", caption: "Bolos como sustituto: una solicitud de otra banda esperando respuesta." },
-        { type: "devices", rows: [{ devices: ["duoBook", "duoLand"], text: "Como pantalla de inicio, la página de marca de BandWith queda en la primera pantalla y tus bolos en la segunda, como en el inicio de sesión." }] },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoBook", "duoLand"], text: "Como pantalla de inicio, la página de marca de BandWith queda en la primera pantalla y tus bolos en la segunda, como en el inicio de sesión." },
+            { devices: ["duoLaptop"], text: "Como pantalla de inicio en postura portátil, la cabecera se queda en la mitad de arriba y tus solicitudes en la de abajo. Mientras escribes un mensaje, el cuadro sigue a la vista, encima del teclado o justo encima del pliegue." },
+          ],
+        },
       ],
     },
     {

@@ -177,7 +177,7 @@ const people: AreaModule = {
             'Tap **Make admin** to give them admin rights, or **Make member** to take them away.',
           ],
         },
-        { type: 'p', text: 'The change is saved at once; there is no confirmation. The person sees their new role the next time their band list loads.' },
+        { type: 'p', text: 'The change is saved at once; there is no confirmation. The person sees their new role the next time their band list loads. Their phone then drops the band data it kept for offline use and loads it again for the new role: a new admin sees the client and prices, a former admin no longer keeps them on the phone.' },
         { type: 'note', tone: 'warning', text: 'You can’t turn the last admin into a member. Make someone else admin first.' },
         { type: 'note', tone: 'tip', text: 'You can’t change your own role: your page and the **⋯** menu on your own row show no role buttons. Ask another admin to make you a member.' },
       ],
@@ -544,7 +544,13 @@ const people: AreaModule = {
         { type: 'p', text: 'Open requests come first; closed ones are under **Past and closed**. Requests show from 30 days ago on. The line at the top lists “Bands that call you as a deputy”.' },
         { type: 'p', text: '**Subscribe to my gigs** adds a calendar feed of your confirmed gigs with that band. It follows every change and marks cancelled gigs, so your calendar stays right without opening BandWith.' },
         { type: 'shot', id: 'people-deputy-gigs', caption: 'Deputy gigs: a request from another band waiting for an answer.' },
-        { type: 'devices', rows: [{ devices: ['duoBook', 'duoLand'], text: 'As a home screen, the BandWith brand page sits on the first screen and your gigs on the second, like sign-in.' }] },
+        {
+          type: 'devices',
+          rows: [
+            { devices: ['duoBook', 'duoLand'], text: 'As a home screen, the BandWith brand page sits on the first screen and your gigs on the second, like sign-in.' },
+            { devices: ['duoLaptop'], text: 'As a home screen in Laptop pose, the header stays on the upper half and your requests on the lower half. While you type a message, the box stays in sight, above the keyboard or just above the fold.' },
+          ],
+        },
       ],
     },
     {

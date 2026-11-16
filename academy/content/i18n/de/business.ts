@@ -608,9 +608,18 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Aus einem angenommenen Angebot öffnet **Vertrag vorbereiten** dieses Formular schon ausgefüllt mit Gig, Kunde, E-Mail und Datum, mit dem Titel „Auftrittsvertrag · {event}“." },
+        { type: "p", text: "Von einem Gig aus öffnet die Zeile **Noch kein Vertrag** in der Show-Bereitschaft dasselbe Formular, für diesen Gig ausgefüllt ([[show-readiness]]). Zurück, aus dem Formular oder aus **Verträge & Docs**, führt zurück zum Gig." },
+        { type: "shot", id: "contracts-new-for-gig", caption: "Vertrag erstellen, geöffnet über „Noch kein Vertrag“ an einem Gig: Titel, Event, Kunde, E-Mail und Datum sind schon ausgefüllt." },
         { type: "p", text: "Um ein Dokument zu ändern, tippe darauf und dann auf **Ändern** oder auf **⋯** > **Ändern**, und tippe auf **Änderungen sichern**. Ein unterschriebener Vertrag lässt sich nicht mehr bearbeiten." },
         { type: "note", tone: "tip", text: "Zahlungsbedingungen gehören in **Notizen & Bedingungen**. Der Standardtext sagt, dass die Anzahlung die Buchung bestätigt und der Rest am Eventtag fällig ist: Pass ihn an das an, was ihr im Angebot vereinbart habt." },
         { type: "p", text: "Das Vertrags-PDF endet mit zwei Unterschriftszeilen, „Für {band}“ und „Für {client}“, zum Unterschreiben auf Papier oder im eigenen Tool des Kunden. BandWith speichert das Datum der Unterschrift, wenn du auf **Als signiert markieren** tippst; Unterschriften selbst sammelt es nicht ein." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["tablet"], text: "Im Querformat füllt das Formular den ganzen rechten Bereich, und **Vertrag erstellen** sitzt an seinem unteren Rand; die Tab-Leiste weicht zur Seite, während du schreibst." },
+            { devices: ["duoLaptop"], text: "In der Laptop-Haltung bleibt die Kopfzeile in der oberen Hälfte, die Felder und **Vertrag erstellen** liegen in der unteren. Das Feld, in dem du tippst, bleibt sichtbar, über der Tastatur oder direkt über dem Falz." },
+          ],
+        },
       ],
     },
     {
@@ -648,7 +657,7 @@ const business: AreaText = {
           title: "Löschen",
           items: ["Tippe auf **⋯** > **Löschen** und bestätige. „Das Dokument wird für die ganze Band gelöscht. Bereits an den Kunden gesendete Kopien sind nicht betroffen.“"],
         },
-        { type: "note", tone: "tip", text: "Ein unterschriebener Vertrag, der mit einem Gig verknüpft ist, zählt in der Show-Bereitschaft des Gigs als erledigt, siehe [[gig-workspace]]." },
+        { type: "note", tone: "tip", text: "Ein unterschriebener Vertrag, der mit einem Gig verknüpft ist, zählt in der Show-Bereitschaft des Gigs als erledigt, siehe [[show-readiness]]." },
       ],
     },
     {

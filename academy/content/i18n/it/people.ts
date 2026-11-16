@@ -171,7 +171,7 @@ const people: AreaText = {
             "Tocca **Rendi admin** per darle i diritti di admin, o **Rendi membro** per toglierli.",
           ],
         },
-        { type: "p", text: "La modifica viene salvata subito, senza conferma. La persona vede il nuovo ruolo la prossima volta che si carica il suo elenco della band." },
+        { type: "p", text: "La modifica viene salvata subito, senza conferma. La persona vede il nuovo ruolo la prossima volta che si carica il suo elenco della band. Poi il suo telefono elimina i dati della band salvati per l’uso offline e li ricarica per il nuovo ruolo: un nuovo admin vede il cliente e i prezzi, un ex admin non li tiene più sul telefono." },
         { type: "note", tone: "warning", text: "Non puoi rendere membro l’ultimo admin. Prima rendi admin qualcun altro." },
         { type: "note", tone: "tip", text: "Non puoi cambiare il tuo ruolo: la tua pagina e il menu **⋯** sulla tua riga non hanno i pulsanti del ruolo. Chiedi a un altro admin di renderti membro." },
       ],
@@ -538,7 +538,13 @@ const people: AreaText = {
         { type: "p", text: "Le richieste aperte vengono prima; quelle chiuse sono sotto **Passate e chiuse**. Compaiono le richieste degli ultimi 30 giorni in poi. La riga in alto elenca le “Band che ti chiamano come sostituto”." },
         { type: "p", text: "**Iscriviti alle mie date** aggiunge un feed di calendario con le tue date confermate con quella band. Segue ogni modifica e segna le date annullate, così il tuo calendario resta aggiornato senza aprire BandWith." },
         { type: "shot", id: "people-deputy-gigs", caption: "Date da sostituto: una richiesta di un’altra band in attesa di risposta." },
-        { type: "devices", rows: [{ devices: ["duoBook", "duoLand"], text: "Come schermata Home, la pagina del marchio BandWith sta sul primo schermo e le tue date sul secondo, come nell’accesso." }] },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["duoBook", "duoLand"], text: "Come schermata Home, la pagina del marchio BandWith sta sul primo schermo e le tue date sul secondo, come nell’accesso." },
+            { devices: ["duoLaptop"], text: "Come schermata Home in posizione laptop, l’intestazione resta nella metà alta e le tue richieste nella metà bassa. Mentre scrivi un messaggio, la casella resta in vista, sopra la tastiera o appena sopra la piega." },
+          ],
+        },
       ],
     },
     {

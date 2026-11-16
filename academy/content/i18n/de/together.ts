@@ -427,7 +427,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Doch anders entschieden? **Zurück** (oben oder unten, oder die Zurück-Taste des Telefons) führt zum Probenformular zurück; **Schließen** verlässt die Umfrage. Hast du etwas eingegeben, wirst du vorher gefragt: **Diese Umfrage verwerfen?** Tippe auf **Weiter bearbeiten** oder **Verwerfen**. Umfragen haben keine Entwürfe.",
+          text: "Doch anders entschieden? **Zurück** (oben oder unten, oder die Zurück-Taste des Telefons) führt zum Probenformular zurück; **Schließen** verlässt die Umfrage. Hast du etwas geändert, wirst du vorher gefragt: **Diese Umfrage verwerfen?** Tippe auf **Weiter bearbeiten** oder **Verwerfen**. Ohne Änderungen schließt sie sich einfach. Umfragen haben keine Entwürfe.",
         },
         {
           type: "list",

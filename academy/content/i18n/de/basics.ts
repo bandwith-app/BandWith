@@ -40,6 +40,7 @@ const basics: AreaText = {
             { devices: ["duoBook", "duoLand"], text: "Auf dem aufgeklappten Dual-Screen-Handy zeigt die linke Seite die BandWith-Markenseite mit den benannten Einrichtungsschritten; das Formular steht auf der rechten Seite." },
             { devices: ["tablet"], text: "Registrierung, Einrichtung und Sperrbildschirm bleiben in einer gut lesbaren Spalte in der Fenstermitte, statt sich über die ganze Breite zu ziehen." },
             { devices: ["web"], text: "Die Anmeldung mit Google und Apple öffnet sich im selben Tab und bringt dich danach zurück in die App. In der Handy-App öffnet sie einen In-App-Browser; schließt du ihn ohne Anmeldung, funktionieren die Buttons wieder." },
+            { devices: ["duoLaptop"], text: "In der Laptop-Haltung bleiben der Titel und Google / Apple in der oberen Hälfte, das E-Mail-Formular beginnt in der unteren. Bei **Was führt dich her?** liegen die Auswahlkarten in der unteren Hälfte: Scroll nach unten zu **Weiter**." },
           ],
         },
       ],
@@ -98,6 +99,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Neu hier? Tippe unten auf dem Anmeldebildschirm auf **Erstelle ein Konto**." },
         { type: "note", tone: "tip", text: "Offline bleibst du mit der auf dem Gerät gespeicherten Sitzung angemeldet und kannst deine zwischengespeicherten Bands und Gigs weiter öffnen. Sobald du wieder online bist, erneuert die App die Sitzung." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In der Laptop-Haltung bleiben der Titel und Google / Apple in der oberen Hälfte; **E-Mail**, **Passwort** und **Anmelden** beginnen in der unteren Hälfte, weg vom Falz." }] },
       ],
     },
     {
@@ -255,6 +257,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Jede Karte hat **Mehr dazu in der Academy**, das die passende Anleitung direkt in der App öffnet. Schließ die Anleitung, um zur Tour zurückzukehren." },
         { type: "note", tone: "tip", text: "So siehst du sie noch einmal: Einstellungen, **Hilfe & Support**, **Tour erneut ansehen**. Auf derselben Seite findest du **BandWith Academy**, das diese Anleitungen für deine Rolle öffnet." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "In der Laptop-Haltung stehen Symbol und Titel jeder Karte in der oberen Hälfte, Text und Buttons in der unteren. Beide Hälften tragen die dunklen Farben der Tour, so ist der Titel gut lesbar." }] },
       ],
     },
     {
@@ -557,6 +560,7 @@ const basics: AreaText = {
         {
           type: "list",
           items: [
+            "Eine Datums- oder Zeitauswahl: Nur die Auswahl schließt sich, das Fenster, aus dem du sie geöffnet hast, bleibt offen.",
             "Ein offenes Fenster oder einen Dialog (Nutzungsbedingungen, eine Einladung, **Face ID aktivieren?**, eine Löschbestätigung).",
             "Einen Bereich innerhalb eines Bildschirms (ein Einstellungsbereich führt zurück zur Liste der Bereiche).",
             "Eine Vollbildseite oder ein Panel (das Menü, den Posteingang, einen Termin).",
@@ -570,7 +574,7 @@ const basics: AreaText = {
           rows: [
             { devices: ["android"], text: "Die Zurück-Taste des Systems und die Zurück-Geste folgen der Reihenfolge oben." },
             { devices: ["phone"], text: "Das iPhone hat kein System-Zurück: Nutze den Zurück-Button oben links auf jedem Bildschirm oder wische ein Fenster nach unten." },
-            { devices: ["web", "tablet"], text: "Escape auf einer Hardware-Tastatur schließt die oberste Ebene. Escape in einem Eingabefeld gehört zum Feld. Im Web funktioniert „Zurück“ im Browser wie Zurück unter Android, beendet aber nie etwas; von Start aus verlässt es die Website." },
+            { devices: ["web", "tablet"], text: "Escape auf einer Hardware-Tastatur schließt die oberste Ebene. Escape in einem Eingabefeld gehört zum Feld. Im Web funktioniert „Zurück“ im Browser wie Zurück unter Android, beendet aber nie etwas; von Start aus verlässt es die Website. Während du dein Konto einrichtest, geht es jeweils einen Schritt zurück." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Zurück sitzt in der seitlichen Leiste, nicht in der oberen Leiste jedes Bildschirms." },
           ],
         },
@@ -616,7 +620,7 @@ const basics: AreaText = {
             "Wechsle zwischen **Alle** und **Ungelesen**. Ungelesene Einträge haben einen roten Punkt.",
             "Tippe auf einen Eintrag. Eine Gig-Einladung öffnet zuerst ihre Detailseite; die meisten anderen Einträge öffnen direkt ihren Bildschirm (einen Chat, einen Termin, eine Umfrage, ein Angebot).",
             "Wische einen Eintrag nach links und tippe auf **Löschen**, um ihn zu entfernen.",
-            "Tippe auf **Gelesen**, um alles als gelesen zu markieren, oder auf **Löschen** und dann **Alle löschen**, um die Liste zu leeren.",
+            "Tippe auf **Gelesen**, um alles als gelesen zu markieren: Die roten Punkte und der Zähler bei **Ungelesen** verschwinden sofort. Oder tippe auf **Löschen** und dann **Alle löschen**, um die Liste zu leeren.",
           ],
         },
         { type: "p", text: "Die Detailseite einer Gig-Einladung zeigt **Eventdetails**: Datum, **Zeiten** (Load-in, Soundcheck, Beginn), **Location**, deine **Zugeteilte Gage** und einen eventuellen **Terminkonflikt** mit deinem Kalender. Tippe auf **Event annehmen** oder **Ablehnen** oder auf **Zu Google Kalender hinzufügen**. Probenumfragen haben **Termine abstimmen**." },
@@ -627,6 +631,8 @@ const basics: AreaText = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "Die Liste bleibt auf der linken Seite, der ausgewählte Eintrag steht zum Beantworten auf der rechten." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Zurück in der Leiste schließt den Posteingang. Solange er offen ist, öffnet sich nichts dahinter, du landest also wieder dort, wo du warst." },
+            { devices: ["duoLaptop"], text: "In der Laptop-Haltung bleibt die Kopfzeile des Posteingangs in der oberen Hälfte, die Liste scrollt in der unteren." },
           ],
         },
       ],
@@ -1157,6 +1163,8 @@ const basics: AreaText = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Bühnenmonitor: Song, Tonart, BPM und nächster Song auf Schwarz, unten große Felder Zurück / Weiter." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Angebots-Pult: oben das Angebot, wie der Kunde es liest, unten das Angebotsformular." },
         { type: "p", text: "Fenster, Menüs und die Tastatur öffnen sich auf dem Deck; kurze Meldungen (Toasts) erscheinen auf dem Display. Die Leiste liegt am unteren Rand des Decks." },
+        { type: "p", text: "Formulare behalten ihre Kopfzeile auf dem Display und alle Felder auf dem Deck: **Anmelden**, das Erstellen des Kontos, **Was führt dich her?**, **Vertretungs-Gigs**, die Formulare für Gigs, Proben und Umfragen, **Vertrag erstellen** und der Posteingang. Beim Tippen bleibt das Feld, in dem du schreibst, sichtbar: direkt über der Tastatur oder, wenn die Tastatur das ganze Deck verdeckt, vollständig auf dem Display direkt über dem Falz." },
+        { type: "p", text: "Die Rollen-Touren zeigen Symbol und Titel jeder Karte auf dem Display, Text und Buttons auf dem Deck, beide in den dunklen Farben der Tour ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Laptop-Haltung ausschalten",
@@ -1225,7 +1233,7 @@ const basics: AreaText = {
             "Aus Kontakten importieren.",
           ],
         },
-        { type: "p", text: "Escape schließt die oberste Ebene. „Zurück“ im Browser funktioniert wie Zurück unter Android, schließt aber nie etwas außerhalb der App; von Start aus verlässt es die Website. Melde dich an einem gemeinsam genutzten Computer ab, wenn du fertig bist." },
+        { type: "p", text: "Escape schließt die oberste Ebene. „Zurück“ im Browser funktioniert wie Zurück unter Android, schließt aber nie etwas außerhalb der App; von Start aus verlässt es die Website. Während du dein Konto einrichtest, geht „Zurück“ zum vorherigen Schritt; vom ersten aus verlässt es die Website. Melde dich an einem gemeinsam genutzten Computer ab, wenn du fertig bist." },
       ],
     },
   ],

@@ -608,9 +608,18 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "A partir de um orçamento aceito, **Preparar contrato** abre este formulário já preenchido com o show, o cliente, o e-mail e a data, com o título “Contrato de apresentação · {event}”." },
+        { type: "p", text: "A partir de um show, a linha **Ainda não há contrato** da preparação do show abre o mesmo formulário preenchido para esse show ([[show-readiness]]). O Voltar, do formulário ou de **Contratos e docs**, retorna ao show." },
+        { type: "shot", id: "contracts-new-for-gig", caption: "Criar contrato aberto a partir de “Ainda não há contrato” num show: título, evento, cliente, e-mail e data já preenchidos." },
         { type: "p", text: "Para mudar um documento, toque nele e depois em **Editar**, ou em **⋯** > **Editar**, e toque em **Salvar alterações**. Um contrato assinado não pode mais ser editado." },
         { type: "note", tone: "tip", text: "As condições de pagamento vão em **Notas e condições**. O texto padrão diz que o sinal confirma a reserva e que o restante vence na data do evento: ajuste para bater com o que você combinou no orçamento." },
         { type: "p", text: "O PDF do contrato termina com duas linhas de assinatura, “Para {band}” e “Para {client}”, para assinar no papel ou na ferramenta do próprio cliente. O BandWith registra a data da assinatura quando você toca em **Marcar como assinado**; ele mesmo não coleta assinaturas." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["tablet"], text: "Na horizontal, o formulário ocupa todo o painel da direita e **Criar contrato** fica na borda de baixo dele; a barra de abas sai do caminho enquanto você escreve." },
+            { devices: ["duoLaptop"], text: "Na posição notebook, o cabeçalho fica na metade de cima; os campos e **Criar contrato**, na metade de baixo. O campo em que você digita fica à vista, acima do teclado ou logo acima da dobra." },
+          ],
+        },
       ],
     },
     {
@@ -648,7 +657,7 @@ const business: AreaText = {
           title: "Excluir",
           items: ["Toque em **⋯** > **Excluir** e confirme. “O documento é excluído para toda a banda. As cópias já enviadas ao cliente não são afetadas.”"],
         },
-        { type: "note", tone: "tip", text: "Um contrato assinado vinculado a um show conta como feito na preparação do show; veja [[gig-workspace]]." },
+        { type: "note", tone: "tip", text: "Um contrato assinado vinculado a um show conta como feito na preparação do show; veja [[show-readiness]]." },
       ],
     },
     {

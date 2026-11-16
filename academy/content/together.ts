@@ -434,7 +434,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'Changed your mind? **Back** (at the top or bottom, or your phone\'s Back) returns to the rehearsal form; **Close** leaves the builder. If you typed anything, you are asked first: **Discard this poll?** Tap **Keep editing** or **Discard**. Polls have no drafts.',
+          text: 'Changed your mind? **Back** (at the top or bottom, or your phone\'s Back) returns to the rehearsal form; **Close** leaves the builder. If you changed anything, you are asked first: **Discard this poll?** Tap **Keep editing** or **Discard**. With no changes it simply closes. Polls have no drafts.',
         },
         {
           type: 'list',
