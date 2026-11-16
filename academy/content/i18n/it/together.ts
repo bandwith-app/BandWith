@@ -141,7 +141,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Chiudere il foglio con **Annulla**, Indietro o uno swipe verso il basso lascia la prova com’era. I brani da provare si salvano con **Salva** nel foglio della scaletta.",
+          text: "Chiudere il foglio con **Annulla**, ✕, Indietro o uno swipe verso il basso lascia la prova com’era. Se hai cambiato qualcosa, prima chiede **Salvare le modifiche?**: **Salva modifiche**, **Scarta** o **Continua a modificare**. Aprire un’altra parte della prova chiede lo stesso. I brani da provare si salvano con **Salva** nel foglio della scaletta.",
         },
         {
           type: "list",

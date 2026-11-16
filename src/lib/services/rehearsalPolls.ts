@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { parseLocalDate } from '../dates';
 import { createEvent } from './events';
 import { createSetlist, deleteSetlist } from './songs';
 import { createBulkNotifications } from './notifications';
@@ -667,6 +668,19 @@ export const markPollUnavailable = async (
   return { stored: true, error: null };
 };
 
+/**
+ * English text of the "rehearsal locked in" notification, with a readable
+ * date ("Tue, Nov 24") instead of the stored ISO one. The database rewrites it
+ * in the reader's language (090) from the row's data.
+ */
+export const pollLockedInBody = (date: string, time: string | null | undefined, venue: string): string => {
+  const day = parseLocalDate(date);
+  const when = isNaN(day.getTime())
+    ? date
+    : day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return `Rehearsal locked in for ${when} at ${(time || '').slice(0, 5)} (${venue}).`;
+};
+
 /** The poll was locked in (or cancelled) meanwhile, e.g. by another admin. */
 export const POLL_CLOSED = 'poll_closed';
 const pollClosedError = () =>
@@ -835,7 +849,7 @@ export const finalizePollIntoRehearsal = async ({
           band_id: bandId,
           type: 'rehearsal_poll_finalized' as const,
           title: 'Rehearsal Confirmed!',
-          body: `Rehearsal locked in for ${option.proposed_date} at ${option.start_time} (${venueName}).`,
+          body: pollLockedInBody(option.proposed_date, option.start_time, venueName),
           data: {
             event_id: newEvent.id,
             poll_id: pollId,

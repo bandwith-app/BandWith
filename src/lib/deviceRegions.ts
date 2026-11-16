@@ -106,6 +106,9 @@ export function postureInput(r: DeviceRegions, native: boolean, vw: number, vh: 
   };
 }
 
+/** Rails shorter than this, with the camera at the bottom, use the tight spacing. */
+export const RAIL_TIGHT_MAX_H = 520;
+
 /** Narrowest window that gets the tablet layout (iPad mini portrait is 744). */
 export const WIDE_MIN_W = 744;
 
@@ -190,6 +193,17 @@ export function installDuoLayout(): void {
     } else {
       root.style.removeProperty('--bw-rail-clear-top');
       root.style.removeProperty('--bw-rail-clear-bottom');
+    }
+    // Closed and turned over in landscape (~466 px tall, camera at the
+    // bottom): the nav and the actions pill only fit above the camera with a
+    // smaller top margin and tighter icon spacing.
+    const tight = rail > 0 && !!s && s.h < vh * 0.6 && s.y + s.h / 2 > vh / 2 && vh < RAIL_TIGHT_MAX_H;
+    if (tight) {
+      root.style.setProperty('--bw-rail-pad-top', '8px');
+      root.style.setProperty('--bw-rail-gap', '6px');
+    } else {
+      root.style.removeProperty('--bw-rail-pad-top');
+      root.style.removeProperty('--bw-rail-gap');
     }
     if (twoPane) {
       const railLeft = railEdge === 'left' ? rail : 0;

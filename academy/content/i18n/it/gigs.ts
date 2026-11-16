@@ -453,7 +453,7 @@ const gigs: AreaText = {
           items: [
             "Apri il gig. Gli admin lo cambiano direttamente nella sua pagina: la matita in alto, la matita accanto al locale, i riquadri degli orari e **MODIFICA** accanto a una sezione.",
             "Si apre un foglio con solo quella parte, per esempio **Titolo, data e orari**, **Locale e indirizzo** o **Formazione**.",
-            "Fai le modifiche e tocca **Salva**. Resta disattivato finché non cambi qualcosa. **Annulla**, Indietro o uno swipe verso il basso chiudono il foglio e lasciano il gig com’era.",
+            "Fai le modifiche e tocca **Salva**. Resta disattivato finché non cambi qualcosa. **Annulla**, ✕, Indietro o uno swipe verso il basso chiudono il foglio e lasciano il gig com’era. Se hai cambiato qualcosa, prima chiede **Salvare le modifiche?**: **Salva modifiche**, **Scarta** o **Continua a modificare**. Aprire un’altra parte del gig chiede lo stesso.",
             "La scaletta si modifica direttamente nella sezione **SCALETTA**, con il suo **Salva** (vedi [[edit-a-gig-setlist]]).",
           ],
         },
@@ -765,6 +765,7 @@ const gigs: AreaText = {
           items: [
             "Apri il gig dalla notifica o dal calendario. L’intestazione mostra **INVITO IN ATTESA**.",
             "In **La tua risposta** · **Ci sei?**, tocca **ACCETTA** o **RIFIUTA**.",
+            "Se prima avevi risposto forse, la scheda dice “La tua risposta era Forse. Scegli CI SONO o NON POSSO.”: scegline una.",
           ],
         },
         {

@@ -141,7 +141,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Fechar o painel com **Cancelar**, Voltar ou deslizando para baixo deixa o ensaio como estava. As músicas em foco são salvas com **Salvar** no painel da setlist.",
+          text: "Fechar o painel com **Cancelar**, ✕, Voltar ou deslizando para baixo deixa o ensaio como estava. Se você mudou algo, antes aparece **Salvar as alterações?**: **Salvar alterações**, **Descartar** ou **Continuar editando**. Abrir outra parte do ensaio pergunta o mesmo. As músicas em foco são salvas com **Salvar** no painel da setlist.",
         },
         {
           type: "list",

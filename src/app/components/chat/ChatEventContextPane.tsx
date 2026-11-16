@@ -51,8 +51,9 @@ export const ChatEventContextPane: React.FC<{
     <div className="flex flex-col min-h-full">
       {/* Hero in the event colour */}
       <section
-        className="px-4 pt-4 pb-10 flex flex-col gap-3"
-        style={{ backgroundColor: `var(--accent-${kind})`, color: `var(--accent-${kind}-fg)` }}
+        className="px-4 pb-10 flex flex-col gap-3"
+        // Clear of the status bar: on the iPad this pane runs to the top edge.
+        style={{ paddingTop: 'calc(var(--safe-top) + 16px)', backgroundColor: `var(--accent-${kind})`, color: `var(--accent-${kind}-fg)` }}
         aria-label={[kindLabel, context.title, whenLine, context.place].filter(Boolean).join(', ')}
       >
         <div className="flex items-center gap-1.5 flex-wrap">

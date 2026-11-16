@@ -250,7 +250,7 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
             : {
                 top: 0,
                 bottom: 0,
-                paddingTop: 40,
+                paddingTop: 'var(--bw-rail-pad-top, 40px)',
                 width: 'var(--bw-rail-w)',
                 ...(onLeft ? { left: 0 } : { right: 0 }),
               }
@@ -270,7 +270,7 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
               key="tabs"
               aria-label={t('Main')}
               {...containerMotion}
-              className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center gap-[14px]', onDeck ? 'h-12 px-3 flex-row' : 'w-12 py-3 flex-col')}
+              className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-3 flex-col')}
             >
               {tabs.slice(0, 2).map((tab) => (
                 <Cell key={tab.key} label={tab.label} onClick={tab.onClick} dot={tab.isActive} active={tab.isActive} badgeCount={tab.badgeCount}>
@@ -302,7 +302,7 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
             role="toolbar"
             aria-label={t('Screen actions, search and profile')}
             {...containerMotion}
-            className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center gap-[14px]', onDeck ? 'h-12 px-3 flex-row' : 'w-12 py-3 flex-col')}
+            className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-3 flex-col')}
           >
             {back && (
               <Cell label={back.label} onClick={() => { haptic.tap(); back.run(); }}>

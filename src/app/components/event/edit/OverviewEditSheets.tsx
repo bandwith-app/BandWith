@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Folder, MapPin, Plus, X } from '@/app/components/icons';
 import { BwSheet, IconButton } from '@/app/components/bw/Screen';
 import { FormError, PillButton, PillField, Selector } from '@/app/components/bw/Form';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { Segmented } from '@/app/components/composer/Composer';
 import { DotCheckbox } from '@/app/components/ui/DotCheckbox';
 import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
@@ -46,7 +47,8 @@ import type { OverviewEditApi } from './useOverviewEdit';
  * gig or a rehearsal is edited where it is read instead of on a separate
  * Edit page. Same fields, rules and saves as that page (lib/eventOverviewEdit,
  * lib/services/eventEdits). Each sheet starts from what is saved every time
- * it opens; closing it (✕, the scrim, a swipe, system Back) drops the edits.
+ * it opens; closing it (✕, Cancel, the scrim, a swipe, system Back) with
+ * edits asks first: save them, discard them or keep editing.
  */
 
 const PICKER_FIELD =
@@ -71,6 +73,9 @@ interface SheetBase {
   api: OverviewEditApi;
 }
 
+/** Another card's pencil was tapped while this editor is open (iPhone Duo rail). */
+const SwitchRequest = createContext<{ pending: boolean; resolve: (go: boolean) => void } | null>(null);
+
 /** Save / Cancel under every editor; Save stays off until something changed. */
 const EditSheet: React.FC<{
   open: boolean;
@@ -85,10 +90,32 @@ const EditSheet: React.FC<{
   children: React.ReactNode;
 }> = ({ open, onClose, title, overline, dirty, canSave = true, saving, error, onSave, children }) => {
   const t = useT();
+  // Leaving with edits (closing, or opening another card's editor) asks
+  // first: Save changes / Discard / Keep editing.
+  const [leaveFor, setLeaveFor] = useState<'close' | 'switch' | null>(null);
+  const switchRequest = useContext(SwitchRequest);
+  useEffect(() => {
+    if (!open) setLeaveFor(null);
+  }, [open]);
+  useEffect(() => {
+    if (!open || !switchRequest?.pending) return;
+    if (dirty && !saving) setLeaveFor('switch');
+    else switchRequest.resolve(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, switchRequest?.pending]);
+  const requestClose = () => {
+    if (dirty && !saving) setLeaveFor('close');
+    else onClose();
+  };
+  const stay = () => {
+    if (leaveFor === 'switch') switchRequest?.resolve(false);
+    setLeaveFor(null);
+  };
   return (
+    <>
     <BwSheet
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       closeLabel={t('Close')}
       tone="light"
       picker
@@ -99,7 +126,7 @@ const EditSheet: React.FC<{
         <div className="flex flex-col gap-2">
           {error && <FormError>{error}</FormError>}
           <div className="grid grid-cols-[2fr_3fr] gap-3">
-            <PillButton variant="outline" size="lg" onClick={onClose} disabled={saving}>
+            <PillButton variant="outline" size="lg" onClick={requestClose} disabled={saving}>
               {t('Cancel')}
             </PillButton>
             <PillButton variant="primary" size="lg" onClick={onSave} loading={saving} disabled={!dirty || !canSave}>
@@ -111,6 +138,28 @@ const EditSheet: React.FC<{
     >
       <div className="flex flex-col gap-5">{children}</div>
     </BwSheet>
+    <UnsavedChangesSheet
+      open={open && !!leaveFor}
+      title={t('Save your changes?')}
+      saving={saving}
+      error={error}
+      onSave={
+        canSave
+          ? () => {
+              stay();
+              onSave();
+            }
+          : undefined
+      }
+      onDiscard={() => {
+        const target = leaveFor;
+        setLeaveFor(null);
+        if (target === 'switch') switchRequest?.resolve(true);
+        else onClose();
+      }}
+      onKeepEditing={stay}
+    />
+    </>
   );
 };
 
@@ -295,7 +344,8 @@ const VenueSheet: React.FC<SheetBase> = ({ open, onClose, event, kind, api }) =>
                       venue: f.location,
                       // The street is the venue itself when the pick is just an address.
                       address: f.isNamedPlace ? place.address || '' : '',
-                      ...(place.city ? { city: place.city } : {}),
+                      // A new place never keeps the previous place's city.
+                      city: place.city || '',
                     },
               );
             }}
@@ -316,7 +366,9 @@ const VenueSheet: React.FC<SheetBase> = ({ open, onClose, event, kind, api }) =>
           <div className="flex flex-col gap-2">
             <Label>{t('Setting')}</Label>
             <div className="flex gap-2">
-              <Selector size="md" selected={v.setting === 'indoor'} onClick={() => setV((prev) => ({ ...prev, setting: 'indoor' }))}>
+              {/* No setting saved reads as indoor, as on the calendar card and
+                  the old Edit page; only a tap saves one. */}
+              <Selector size="md" selected={(v.setting || 'indoor') === 'indoor'} onClick={() => setV((prev) => ({ ...prev, setting: 'indoor' }))}>
                 {t('Indoor')}
               </Selector>
               <Selector size="md" selected={v.setting === 'outdoor'} onClick={() => setV((prev) => ({ ...prev, setting: 'outdoor' }))}>
@@ -938,11 +990,19 @@ export const OverviewEditSheets: React.FC<{
   tasks: EventTask[];
   allEvents?: EventData[];
   currentUserId?: string;
-}> = ({ card, onClose, event, kind, api, lineup, tasks, allEvents, currentUserId }) => {
+  /** Another card's editor was asked for while `card` is open. */
+  switchTo?: EditCard | null;
+  /** The open editor let it go (true) or kept it (false). */
+  onSwitch?: (go: boolean) => void;
+}> = ({ card, onClose, event, kind, api, lineup, tasks, allEvents, currentUserId, switchTo, onSwitch }) => {
   const base = { onClose, event, kind, api };
   const going = lineup.filter((m) => m.status === 'confirmed').length;
+  const switchRequest = useMemo(
+    () => ({ pending: !!switchTo, resolve: (go: boolean) => onSwitch?.(go) }),
+    [switchTo, onSwitch],
+  );
   return (
-    <>
+    <SwitchRequest.Provider value={switchRequest}>
       <EventFieldsSheet {...base} open={card === 'event'} allEvents={allEvents} />
       <VenueSheet {...base} open={card === 'venue'} />
       <LineupSheet {...base} open={card === 'lineup'} lineup={lineup} currentUserId={currentUserId} />
@@ -950,6 +1010,6 @@ export const OverviewEditSheets: React.FC<{
       {kind === 'rehearsal' && <CostSheet {...base} open={card === 'cost'} going={going || lineup.length} />}
       <TasksSheet {...base} open={card === 'tasks'} tasks={tasks} />
       <NotesSheet {...base} open={card === 'notes'} />
-    </>
+    </SwitchRequest.Provider>
   );
 };

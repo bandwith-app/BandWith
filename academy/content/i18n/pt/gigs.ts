@@ -453,7 +453,7 @@ const gigs: AreaText = {
           items: [
             "Abra o show. Os admins mudam tudo direto na página dele: o lápis no alto, o lápis ao lado do local, os quadros de horário e **EDITAR** ao lado de uma seção.",
             "Abre um painel só com essa parte, por exemplo **Título, data e horários**, **Local e endereço** ou **Formação**.",
-            "Faça as mudanças e toque em **Salvar**. O botão fica desativado até algo mudar. **Cancelar**, Voltar ou deslizar para baixo fecham o painel e deixam o show como estava.",
+            "Faça as mudanças e toque em **Salvar**. O botão fica desativado até algo mudar. **Cancelar**, ✕, Voltar ou deslizar para baixo fecham o painel e deixam o show como estava. Se você mudou algo, antes aparece **Salvar as alterações?**: **Salvar alterações**, **Descartar** ou **Continuar editando**. Abrir outra parte do show pergunta o mesmo.",
             "A setlist é editada direto na seção **SETLIST**, com o próprio **Salvar** (veja [[edit-a-gig-setlist]]).",
           ],
         },
@@ -765,6 +765,7 @@ const gigs: AreaText = {
           items: [
             "Abra o show pela notificação ou pelo calendário. O cabeçalho mostra **CONVITE PENDENTE**.",
             "Em **Sua resposta** · **Você topa?**, toque em **ACEITAR** ou **RECUSAR**.",
+            "Se antes você respondeu talvez, o cartão diz “Sua resposta era Talvez. Escolha VOU ou NÃO POSSO.”: escolha uma.",
           ],
         },
         {

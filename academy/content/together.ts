@@ -148,7 +148,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'Closing the sheet with **Cancel**, Back or a swipe down keeps the rehearsal as it was. Focus songs are saved with **Save** in the setlist sheet.',
+          text: 'Closing the sheet with **Cancel**, ✕, Back or a swipe down keeps the rehearsal as it was. If you changed something, **Save your changes?** asks first: **Save changes**, **Discard** or **Keep editing**. Opening another part of the rehearsal asks the same. Focus songs are saved with **Save** in the setlist sheet.',
         },
         {
           type: 'list',

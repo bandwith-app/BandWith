@@ -453,7 +453,7 @@ const gigs: AreaText = {
           items: [
             "Ouvre le concert. Les admins le modifient directement sur sa page : le crayon en haut, le crayon à côté de la salle, les tuiles d’horaires et **MODIFIER** à côté d’une section.",
             "Une feuille s’ouvre avec seulement cette partie, par exemple **Titre, date et horaires**, **Salle & adresse** ou **Line-up**.",
-            "Fais tes modifications et touche **Enregistrer**. Le bouton reste inactif tant que rien n’a changé. **Annuler**, Retour ou un glissement vers le bas ferment la feuille et laissent le concert tel quel.",
+            "Fais tes modifications et touche **Enregistrer**. Le bouton reste inactif tant que rien n’a changé. **Annuler**, ✕, Retour ou un glissement vers le bas ferment la feuille et laissent le concert tel quel. Si tu as changé quelque chose, **Enregistrer les modifications ?** demande d’abord : **Enregistrer**, **Abandonner** ou **Continuer à modifier**. Ouvrir une autre partie du concert pose la même question.",
             "La setlist se modifie directement dans la section **SETLIST**, avec son propre **Enregistrer** (voir [[edit-a-gig-setlist]]).",
           ],
         },
@@ -765,6 +765,7 @@ const gigs: AreaText = {
           items: [
             "Ouvre le concert depuis la notification ou le calendrier. L’en-tête affiche **INVITATION EN ATTENTE**.",
             "Dans **Ta réponse** · **Tu en es ?**, touche **ACCEPTER** ou **REFUSER**.",
+            "Si tu avais répondu peut-être, la carte affiche « Ta réponse était Peut-être. Choisis PRÉSENT ou ABSENT. » : choisis l’une des deux.",
           ],
         },
         {

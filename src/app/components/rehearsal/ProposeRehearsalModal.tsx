@@ -137,7 +137,7 @@ export const ProposeRehearsalModal: React.FC<ProposeRehearsalModalProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 24 }}
         transition={{ type: 'tween', duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-        className="bw-pane-detail fixed inset-0 z-[120] bg-background text-foreground flex flex-col overflow-y-auto"
+        className="bw-pane-detail bw-fold-form fixed inset-0 z-[120] bg-background text-foreground flex flex-col overflow-y-auto"
       >
         {/* Figma "Rehearsal / Propose – member": rehearsal-blue header */}
         <header

@@ -42,6 +42,7 @@ import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 const subtitleOf = (data?: Record<string, unknown> | null): string | null =>
   data?.subtitle ? localizePushLabel(String(data.subtitle), pushLanguage(getLocale())) ?? null : null;
 import { inviteFeeToShow } from '@/lib/inviteFee';
+import { notificationTypeLine } from '@/lib/notificationTypeLine';
 import { useAuth } from '@/lib/AuthContext';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { LineupSoFar } from '@/app/components/event/LineupSoFar';
@@ -458,9 +459,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                         const IconComponent = meta.icon;
                         const subtitle = subtitleOf(notif.data);
                         const fromBand = bandOf(notif);
-                        const typeLine = [meta.label, fromBand && fromBand !== subtitle ? fromBand : null, subtitle]
-                          .filter(Boolean)
-                          .join(' · ');
+                        const typeLine = notificationTypeLine(meta.label, fromBand, subtitle);
 
                         const row = (
                             <button

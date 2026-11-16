@@ -108,7 +108,7 @@ const together: AreaText = {
             "Toca **Guardar**. Sigue desactivado hasta que cambies algo.",
           ],
         },
-        { type: "p", text: "Cerrar la hoja con **Cancelar**, Atrás o deslizando hacia abajo deja el ensayo como estaba. Las canciones a ensayar se guardan con **Guardar** en la hoja de la setlist." },
+        { type: "p", text: "Cerrar la hoja con **Cancelar**, ✕, Atrás o deslizando hacia abajo deja el ensayo como estaba. Si cambiaste algo, antes pregunta **¿Guardar los cambios?**: **Guardar cambios**, **Descartar** o **Seguir editando**. Abrir otra parte del ensayo pregunta lo mismo. Las canciones a ensayar se guardan con **Guardar** en la hoja de la setlist." },
         {
           type: "list",
           title: "A quién se avisa",

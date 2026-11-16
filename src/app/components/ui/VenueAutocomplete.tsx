@@ -43,6 +43,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const listboxId = useId();
+  // Where a touch on a suggestion started: a tap picks it, a scroll doesn't.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -167,6 +169,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
             if (suggestions.length > 0) setIsOpen(true);
           }}
           placeholder={placeholder ?? t('Venue name')}
+          autoCorrect="off"
+          spellCheck={false}
           disabled={disabled}
           autoFocus={autoFocus}
           required={required}
@@ -214,6 +218,21 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
                   aria-selected={isSelected}
                   onMouseEnter={() => setHighlightedIndex(idx)}
                   onClick={() => handleSelectPlace(item)}
+                  // iOS with the keyboard up: the tap only blurs the field (the
+                  // keyboard closes, no click follows), so a tap picks on touchend.
+                  // preventDefault there also stops the click that would follow.
+                  onTouchStart={(e) => {
+                    const p = e.touches[0];
+                    touchStartRef.current = p ? { x: p.clientX, y: p.clientY } : null;
+                  }}
+                  onTouchEnd={(e) => {
+                    const start = touchStartRef.current;
+                    const p = e.changedTouches[0];
+                    touchStartRef.current = null;
+                    if (!start || !p || Math.abs(p.clientX - start.x) > 10 || Math.abs(p.clientY - start.y) > 10) return;
+                    e.preventDefault();
+                    handleSelectPlace(item);
+                  }}
                   className={cn(
                     'w-full text-left p-3 rounded-full flex items-center gap-3 transition-colors',
                     isSelected ? 'bg-sheet-foreground/[0.08]' : 'hover:bg-sheet-foreground/[0.08]'

@@ -854,9 +854,16 @@ export const RiderStageScreen: React.FC<RiderStageProps & { onClose: () => void;
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div
           className="max-w-[640px] mx-auto w-full px-4 flex flex-col gap-6"
-          style={{ paddingTop: 'calc(max(var(--safe-top), 44px) + 4px)', paddingBottom: 'calc(var(--safe-bottom) + 48px)' }}
+          style={{ paddingBottom: 'calc(var(--safe-bottom) + 48px)' }}
         >
-          {controls}
+          {/* Back and Share stay at the top, and the page scrolls under them,
+              not under the status bar. */}
+          <div
+            className="bw-rider-top sticky top-0 z-10 -mx-4 px-4 pb-1 bg-background"
+            style={{ paddingTop: 'calc(max(var(--safe-top), 44px) + 4px)' }}
+          >
+            {controls}
+          </div>
           {head}
           <RiderStageContent {...props} layout="stack" />
         </div>

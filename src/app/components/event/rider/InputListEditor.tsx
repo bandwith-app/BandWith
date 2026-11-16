@@ -16,6 +16,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Check, GripVertical, Pencil, Plus, Trash2, Users, X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
 import { PillButton } from '@/app/components/bw/Form';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
@@ -43,9 +44,16 @@ export const InputListEditor: React.FC<{
   const [list, setList] = useState<InputChannel[]>(initial);
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const railBack = useRailBack(onCancel, t('Close'), true, true);
+  // Leaving with changes asks first (Save / Discard / Keep editing).
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const dirty = JSON.stringify(list) !== JSON.stringify(initial);
+  const requestCancel = () => {
+    if (dirty && !saving) setConfirmLeave(true);
+    else onCancel();
+  };
+  const railBack = useRailBack(requestCancel, t('Close'), true, true);
   // Android Back and Escape close the editor, not the Rider & stage screen beneath.
-  useSystemBack(true, onCancel);
+  useSystemBack(true, requestCancel);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 6 } }),
@@ -92,7 +100,7 @@ export const InputListEditor: React.FC<{
           style={{ paddingTop: 'calc(max(var(--safe-top), 44px) + 4px)', paddingBottom: 'calc(var(--safe-bottom) + 32px)' }}
         >
           <div className="flex items-center justify-between h-11">
-            {!railBack ? <IconButton label={t('Close')} icon={<X />} size="sm" variant="outline" onClick={onCancel} /> : <span />}
+            {!railBack ? <IconButton label={t('Close')} icon={<X />} size="sm" variant="outline" onClick={requestCancel} /> : <span />}
             <button type="button" onClick={save} disabled={saving} className="bw-button-sm h-11 px-1 cursor-pointer disabled:opacity-50">
               {t('DONE')}
             </button>
@@ -157,7 +165,7 @@ export const InputListEditor: React.FC<{
           )}
 
           <div className="grid grid-cols-[1fr_1.4fr] gap-3 pt-2">
-            <PillButton variant="outline" size="lg" onClick={onCancel} disabled={saving}>
+            <PillButton variant="outline" size="lg" onClick={requestCancel} disabled={saving}>
               {t('CANCEL')}
             </PillButton>
             <PillButton variant="primary" size="lg" onClick={save} loading={saving} icon={<Check className="w-[18px] h-[18px]" />}>
@@ -166,6 +174,20 @@ export const InputListEditor: React.FC<{
           </div>
         </div>
       </div>
+      <UnsavedChangesSheet
+        open={confirmLeave}
+        title={t('Save your changes?')}
+        saving={saving}
+        onSave={() => {
+          setConfirmLeave(false);
+          void save();
+        }}
+        onDiscard={() => {
+          setConfirmLeave(false);
+          onCancel();
+        }}
+        onKeepEditing={() => setConfirmLeave(false)}
+      />
     </motion.div>,
     document.body,
   );

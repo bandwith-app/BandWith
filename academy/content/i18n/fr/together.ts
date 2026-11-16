@@ -141,7 +141,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Fermer la feuille avec **Annuler**, Retour ou un glissement vers le bas laisse la répétition telle quelle. Les morceaux à bosser s’enregistrent avec **Enregistrer** dans la feuille de la setlist.",
+          text: "Fermer la feuille avec **Annuler**, ✕, Retour ou un glissement vers le bas laisse la répétition telle quelle. Si tu as changé quelque chose, **Enregistrer les modifications ?** demande d’abord : **Enregistrer**, **Abandonner** ou **Continuer à modifier**. Ouvrir une autre partie de la répétition pose la même question. Les morceaux à bosser s’enregistrent avec **Enregistrer** dans la feuille de la setlist.",
         },
         {
           type: "list",
