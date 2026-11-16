@@ -28,16 +28,34 @@ export const eventDetail = (app: App): Locator => app.page.locator('.bw-event-de
 /** Calendar tab → the event's card in the agenda → its detail. */
 export async function openEvent(app: App, title: string) {
   await app.tab('Calendar');
+  const card = app.page.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).first();
+  // Duo Laptop pose shows the Planner (month grid + one day's agenda): an
+  // event on another day is not on screen there, so find it like a user,
+  // with Search.
+  const reachable = await card.click({ trial: true, timeout: 2500 }).then(() => true, () => false);
+  if (!reachable) {
+    await app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first().click();
+    await app.page.getByPlaceholder(app.t('Search title, venue, city, client…')).filter({ visible: true }).first().fill(title);
+    await app.settle();
+    const results = app.page.getByRole('dialog', { name: app.t('Search events') }).last();
+    await results.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).first().click();
+    await expectEventOpen(app, title);
+    return;
+  }
   await openEventHere(app, title);
+}
+
+async function expectEventOpen(app: App, title: string) {
+  const detail = eventDetail(app);
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(title, { exact: false }).first()).toBeVisible();
+  await app.settle();
 }
 
 /** Opens an event whose card is already on screen. */
 export async function openEventHere(app: App, title: string) {
   await app.page.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).first().click();
-  const detail = eventDetail(app);
-  await expect(detail).toBeVisible();
-  await expect(detail.getByText(title, { exact: false }).first()).toBeVisible();
-  await app.settle();
+  await expectEventOpen(app, title);
 }
 
 /** The in-app Back of the top layer. */
@@ -74,4 +92,34 @@ export async function openCreate(app: App, item: string) {
   const menu = app.page.getByRole('dialog').last();
   await menu.getByRole('button', { name: new RegExp(`^${escapeRe(app.t(item))}`, 'i') }).first().click();
   await app.settle();
+}
+
+/**
+ * Page health over the whole screen, not just its first viewport: scrolls
+ * the main scroller (the tallest one) a viewport at a time and checks each.
+ */
+export async function checkWholeScreen(app: App, where: string, maxSteps = 8) {
+  for (let step = 0; step < maxSteps; step++) {
+    await app.check(`${where} (scroll ${step})`);
+    const moved = await app.page.evaluate(() => {
+      let best: Element | null = null;
+      let area = 0;
+      document.querySelectorAll('*').forEach((e) => {
+        const s = getComputedStyle(e);
+        if (!/(auto|scroll)/.test(s.overflowY) || e.scrollHeight <= e.clientHeight + 4) return;
+        const r = e.getBoundingClientRect();
+        const a = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+        if (a > area) {
+          area = a;
+          best = e;
+        }
+      });
+      const el = (best ?? document.scrollingElement) as Element | null;
+      if (!el) return false;
+      const before = el.scrollTop;
+      el.scrollTop = before + el.clientHeight * 0.8;
+      return el.scrollTop > before + 1;
+    });
+    if (!moved) return;
+  }
 }

@@ -9,8 +9,24 @@ import { escapeRe } from './flows';
 
 /** Settings tab → the Account hub. */
 export async function openHub(app: App) {
-  await app.tab('Settings');
-  await expect(app.page.getByRole('button', { name: app.t('Close Account Hub'), exact: true })).toBeVisible();
+  // Phones: the Settings tab. The Duo's rail has no Settings tab; its
+  // avatar (also on phones' Home header) opens the same hub.
+  const settings = app.page.getByRole('button', { name: app.t('Settings'), exact: true }).filter({ visible: true });
+  if (await settings.count()) await app.tab('Settings');
+  else
+    await app.page
+      .getByRole('button', { name: app.t('Open Identity and Account Hub'), exact: true })
+      .or(app.page.getByRole('button', { name: app.t('Open profile'), exact: true }))
+      .filter({ visible: true })
+      .first()
+      .click();
+  // Phones: a layer with a close button. Duo/tablet: a pane, "Who you are".
+  await expect(
+    app.page
+      .getByRole('button', { name: app.t('Close Account Hub'), exact: true })
+      .or(app.page.getByRole('heading', { name: app.t('Who you are'), exact: true }))
+      .first(),
+  ).toBeVisible();
 }
 
 /** A hub row by the start of its accessible name ("Gear & inventory: 16 items…"). */
