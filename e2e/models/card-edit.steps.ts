@@ -189,6 +189,13 @@ export const cardEditSteps = stepsFor(cardEdit, {
         await app.check(`member: ${title}`);
         await systemBack(app);
         await expect(detail(app)).toBeHidden();
+        // Opened from Search (card not reachable, e.g. Duo Laptop's Planner
+        // or a slow agenda): Back lands on the results; leave them too.
+        const results = app.page.getByRole('dialog', { name: app.t('Search events') });
+        if (await results.isVisible()) {
+          await systemBack(app);
+          await expect(results).toBeHidden();
+        }
       }
     },
   },
