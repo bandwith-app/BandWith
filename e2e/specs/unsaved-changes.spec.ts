@@ -1,6 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import type { Locator } from '@playwright/test';
-import { openEvent, eventDetail, SEED } from '../support/flows';
+import { openEvent, eventDetail, SEED, systemBack } from '../support/flows';
 import { editSheet, openEditor, sectionEdit } from '../support/event';
 
 /**
@@ -96,7 +96,7 @@ const EDITORS: Editor[] = [
 const WAYS: { name: string; leave: (app: App, sheet: Locator) => Promise<void> }[] = [
   { name: 'Cancel', leave: (app, sheet) => sheet.getByRole('button', { name: app.t('Cancel'), exact: true }).click() },
   { name: '✕', leave: (app, sheet) => sheet.getByRole('button', { name: app.t('Close'), exact: true }).first().click() },
-  { name: 'Escape', leave: (app) => app.page.keyboard.press('Escape') },
+  { name: 'Escape (system Back)', leave: (app) => systemBack(app) },
 ];
 
 /** The "unsaved changes" question: it offers to discard. */
@@ -130,7 +130,7 @@ for (const ed of EDITORS) {
 
     test('with no change, Escape just closes', async ({ app }) => {
       await openEditor(app, ed.open(app), ed.title);
-      await app.page.keyboard.press('Escape');
+      await systemBack(app);
       await expect(editSheet(app, ed.title)).toBeHidden();
       await expect(discardChoice(app)).toHaveCount(0);
     });

@@ -2,6 +2,7 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { duoInitScript, type DuoProfile } from './support/devices';
 import { expectHealthy } from './support/health';
 import { settle } from './support/settle';
+import { stubNetwork } from './support/network';
 import { tr, type Locale } from './support/i18n';
 
 export { expect };
@@ -36,7 +37,7 @@ export interface App {
   settle: () => Promise<void>;
   /** A main tab: Home, Calendar, Create, Chat, Settings. */
   tab: (name: 'Home' | 'Calendar' | 'Create' | 'Chat' | 'Settings') => Promise<void>;
-  /** Button (or link/tab) by its accessible name in the test's language. */
+  /** Visible button (or link/tab) by its accessible name in the test's language. */
   button: (source: string, opts?: { exact?: boolean; vars?: Record<string, string | number> }) => Locator;
   /**
    * Makes the demo user (Leo M.) admin or member of the demo band and
@@ -74,6 +75,7 @@ export const test = base.extend<Options & { app: App }>({
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`));
 
+    await stubNetwork(page.context());
     await page.clock.install({ time: FIXED_NOW });
 
     // Signed in to the demo, first-run tours already seen, language chosen.
@@ -168,7 +170,8 @@ export const test = base.extend<Options & { app: App }>({
         return page
           .getByRole('button', { name, exact })
           .or(page.getByRole('link', { name, exact }))
-          .or(page.getByRole('tab', { name, exact }));
+          .or(page.getByRole('tab', { name, exact }))
+          .filter({ visible: true });
       },
       editDb: async (mutate) => {
         const db = await readDb();

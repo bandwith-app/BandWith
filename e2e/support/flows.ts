@@ -54,3 +54,24 @@ export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Money as the app prints it in English (€1,800). */
 export const eur = (n: number) => `€${n.toLocaleString('en-US')}`;
+
+/**
+ * System Back as the user gives it: Android Back / Escape on a keyboard.
+ * Escape typed inside a field belongs to the field (src/lib/backStack.ts),
+ * so the focus leaves the field first, as it does when Back is pressed.
+ */
+export async function systemBack(app: App) {
+  await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+  await app.page.keyboard.press('Escape');
+}
+
+/** Tablet layout (src/lib/deviceRegions.ts sets data-bw-wide on <html>). */
+export const isWide = (app: App) => app.page.evaluate(() => document.documentElement.hasAttribute('data-bw-wide'));
+
+/** Create (+) → one of its entries ("New gig", "New rehearsal", "Propose rehearsal"…). */
+export async function openCreate(app: App, item: string) {
+  await app.tab('Create');
+  const menu = app.page.getByRole('dialog').last();
+  await menu.getByRole('button', { name: new RegExp(`^${escapeRe(app.t(item))}`, 'i') }).first().click();
+  await app.settle();
+}

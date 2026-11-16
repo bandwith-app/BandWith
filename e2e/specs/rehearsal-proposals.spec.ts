@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { openCreate } from '../support/flows';
 
 /**
  * Rehearsal proposals (#174): a member proposes, the admin sees how long the
@@ -9,8 +10,7 @@ test.describe('rehearsal proposals', () => {
 
   test('a member proposes a rehearsal; the admin sees "Open until" and declines it with a reason', async ({ app }) => {
     const { page, t } = app;
-    await app.tab('Create');
-    await app.button('Propose rehearsal').first().click();
+    await openCreate(app, 'Propose rehearsal');
     const topic = page.getByPlaceholder(t('e.g. Practice new setlist transitions'));
     await expect(topic).toBeVisible();
     // The notes placeholder is an example, not an instruction.
