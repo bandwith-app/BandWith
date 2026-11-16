@@ -755,7 +755,7 @@ const gigs: AreaText = {
       summary: "Accetta o rifiuta un gig, vedi il tuo compenso e chi altro suona, e controlla le sovrapposizioni.",
       roles: ["member", "admin"],
       kind: "task",
-      keywords: ["rsvp", "risposta", "accettare gig", "rifiutare gig", "invito", "ci sei", "forse", "disponibilità"],
+      keywords: ["rsvp", "risposta", "accettare gig", "rifiutare gig", "invito", "ci sei", "disponibilità"],
       related: ["drop-out-of-a-gig", "gig-notifications", "free-slots-and-conflicts", "what-members-see-on-a-gig"],
       body: [
         { type: "p", text: "Quando un admin ti aggiunge a un gig ricevi una notifica **Invito al gig**. Puoi rispondere dalle notifiche, dal foglio di risposta o dal gig stesso." },
@@ -783,7 +783,7 @@ const gigs: AreaText = {
           items: [
             "In **Ci sarai?**, controlla data, orario, **Orari**, locale e **Il tuo compenso**.",
             "Guarda **Formazione finora · {count} su {total} ci sono**: chi altro suona, con strumento e risposta.",
-            "Scegli **CI SONO**, **FORSE — CONFERMO PIÙ TARDI** o **NON POSSO ESSERCI**.",
+            "Scegli **CI SONO** o **NON POSSO ESSERCI**.",
             "Aggiungi una **Nota per la band (facoltativa)** e tocca **Invia risposta**.",
           ],
         },
@@ -793,7 +793,6 @@ const gigs: AreaText = {
           items: [
             "Accettando compare **Sei confermato!** e chi ha creato il gig viene avvisato.",
             "Rifiutando compare **Ti sei ritirato da questo evento.**, tutti gli admin della band vengono avvisati che serve un sostituto e il gig sparisce dal tuo calendario.",
-            "**Forse** lascia il gig nel tuo calendario, con la tua risposta segnata come forse.",
           ],
         },
         { type: "note", tone: "privacy", text: "L’invito mostra solo il tuo compenso, oppure **Da discutere**. L’elenco della formazione mostra nomi, strumenti e risposte, mai il compenso di nessuno." },

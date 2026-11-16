@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTIZEN**: die Notiz zur Probe, falls es eine gibt.",
             "**AUFGABEN**: die Vorbereitungsaufgaben und wie viele erledigt sind. Tippe auf eine Aufgabe, um sie abzuhaken.",
             "**STUDIOKOSTEN**: der Raum, die Stunden, die Summe und **Geteilt durch … Zusagen**, mit dem Betrag **PRO PERSON**.",
-            "Buttons unten: **ÄNDERN**, **PROBEN-CHAT** und **LÖSCHEN** für Admins; **PROBEN-CHAT** für Mitglieder, die mit dabei oder vielleicht geantwortet haben.",
+            "Buttons unten: **ÄNDERN**, **PROBEN-CHAT** und **LÖSCHEN** für Admins; **PROBEN-CHAT** für Mitglieder, die mit dabei geantwortet haben.",
           ],
         },
         {
@@ -296,7 +296,7 @@ const together: AreaText = {
       summary: "Sag dem Admin, ob du kommst, ändere deine Antwort oder steig später aus.",
       roles: ["member"],
       kind: "task",
-      keywords: ["Zusage", "dabei", "vielleicht", "kann nicht", "Probe absagen", "aussteigen"],
+      keywords: ["Zusage", "dabei", "kann nicht", "Probe absagen", "aussteigen"],
       related: ["the-rehearsal-page", "rehearsal-and-chat-notifications"],
       body: [
         {
@@ -304,8 +304,9 @@ const together: AreaText = {
           title: "Antworten",
           items: [
             "Öffne die Probe über die Mitteilung „Neue Probe“ oder im **Kalender**.",
-            "Tippe auf der Karte **Kommst du?** auf **DABEI**, **VIELLEICHT** oder **KANN NICHT**. Die Karte sagt, bis wann du antworten sollst („Antworte bis …, damit der Admin den Raum bestätigen kann.“).",
+            "Tippe auf der Karte **Kommst du?** auf **DABEI** oder **KANN NICHT**. Die Karte sagt, bis wann du antworten sollst („Antworte bis …, damit der Admin den Raum bestätigen kann.“).",
             "Um die Antwort später zu ändern, tippe auf der Karte **Deine Antwort** auf **Ändern** und wähle neu.",
+            "Hattest du vorher vielleicht geantwortet, steht auf der Karte „Deine Antwort war Vielleicht. Wähle DABEI oder KANN NICHT.“: wähle eins davon.",
           ],
         },
         {
@@ -350,7 +351,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Die Admins der Band bekommen die Mitteilung „Neuer Probenvorschlag“ und eine Push-Mitteilung. Auf deinem Startbildschirm und im **Kalender** erscheint der Vorschlag als **Dein Probenvorschlag** mit **Admin prüft**, bis ein Admin daraus eine Umfrage macht oder ihn ablehnt.",
+          text: "Die Admins der Band bekommen die Mitteilung „Neuer Probenvorschlag“ und eine Push-Mitteilung. Auf deinem Startbildschirm und im **Kalender** erscheint der Vorschlag als **Dein Probenvorschlag** mit **Admin prüft** und **Offen bis** zu seinem letzten Tag: dem letzten deiner bevorzugten Tage in der kommenden Woche, ohne gewählten Tag nach 7 Tagen. Er bleibt, bis ein Admin daraus eine Umfrage macht oder ihn ablehnt oder dieser Tag vorbei ist: dann verschwindet er aus allen Listen.",
         },
         {
           type: "note",
@@ -362,7 +363,7 @@ const together: AreaText = {
           title: "Sonderfälle",
           items: [
             "Noch in keiner Band: Du siehst **Band erforderlich** mit **Band erstellen**.",
-            "Lehnt ein Admin deinen Vorschlag ab, bekommst du „Probenvorschlag abgelehnt“ und er verschwindet aus deiner Liste.",
+            "Lehnt ein Admin deinen Vorschlag ab, bekommst du „Probenvorschlag abgelehnt“ (Mitteilung und Push), mit dem Grund, falls er einen angegeben hat, und er verschwindet aus deiner Liste.",
             "Doch anders entschieden? Tippe bei deinem Vorschlag auf **Zurückziehen** und dann bei „Deinen Vorschlag zurückziehen?“ noch einmal auf **Zurückziehen**. Die Admins sehen ihn nicht mehr.",
           ],
         },
@@ -384,7 +385,8 @@ const together: AreaText = {
             "Du findest den Vorschlag unter **Probenplanung** in „Zu erledigen“ auf Start oder im **Kalender**. Er zeigt **Probenvorschlag eines Mitglieds**, **Vorgeschlagen von**, die **Bevorzugte Tage** und die Notiz. Du kannst ihn auch über die Mitteilung „Neuer Probenvorschlag“ öffnen.",
             "Tippe auf **Zur Umfrage** (im Mitteilungsfenster: **Umfrage aus Vorschlag erstellen**). Der Umfrage-Editor öffnet sich mit dem Thema als Titel, der Notiz und den bevorzugten Tagen schon ausgewählt.",
             "Füge Termine hinzu und starte die Umfrage wie in [[create-a-rehearsal-poll]].",
-            "Oder tippe auf **Ablehnen**, um den Vorschlag ohne Umfrage zu schließen. Das Mitglied, das ihn gemacht hat, bekommt „Probenvorschlag abgelehnt“.",
+            "Oder tippe auf **Ablehnen**, um den Vorschlag ohne Umfrage zu schließen. Gib in **Diesen Vorschlag ablehnen?** optional einen **Grund** ein und tippe auf **Ablehnen**. Das Mitglied, das ihn gemacht hat, bekommt „Probenvorschlag abgelehnt“ (Mitteilung und Push) mit deinem Grund.",
+            "Tust du nichts, verschwindet der Vorschlag nach dem Tag unter **Offen bis** aus der Liste.",
           ],
         },
         {
@@ -620,7 +622,7 @@ const together: AreaText = {
             ["Vorschlag (**Admin prüft**)", "Ein Mitglied hat um eine Probe gebeten.", "Das Mitglied, das ihn gemacht hat, und die Admins."],
             ["Umfrage (**Umfrage · Aktiv**)", "Ein Admin hat Termine zur Abstimmung gestellt.", "Eingeladene Mitglieder und die Admins."],
             ["Bestätigt (**Probe · Bestätigt**)", "Ein Termin wurde festgelegt; die Probe steht im Kalender.", "Alle in der Probe."],
-            ["Abgelehnt oder gelöscht", "Ohne Probe geschlossen.", "Niemand: Sie verschwindet aus den Listen."],
+            ["Abgelehnt, abgelaufen oder gelöscht", "Ohne Probe geschlossen (ein Vorschlag läuft nach dem Tag unter **Offen bis** ab).", "Niemand: Sie verschwindet aus den Listen."],
           ],
         },
         {
@@ -807,7 +809,7 @@ const together: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Kann den Chat jedes Events der Band öffnen." },
-            { role: "member", text: "Sieht den Chat-Button erst nach einer Zusage (oder bei Proben auch nach Vielleicht). Wer absagt, verliert den Zugriff: „Du kannst nur in Events schreiben, an denen du teilnimmst.“" },
+            { role: "member", text: "Sieht den Chat-Button erst nach einer Zusage. Wer absagt, verliert den Zugriff: „Du kannst nur in Events schreiben, an denen du teilnimmst.“" },
           ],
         },
         {
@@ -994,7 +996,7 @@ const together: AreaText = {
     },
     {
       q: "Warum kann ich den Proben-Chat nicht öffnen?",
-      a: "Mitglieder sehen **PROBEN-CHAT**, nachdem sie **DABEI** oder **VIELLEICHT** geantwortet haben. Hast du abgesagt, hast du keinen Zugriff mehr.",
+      a: "Mitglieder sehen **PROBEN-CHAT**, nachdem sie **DABEI** geantwortet haben. Hast du abgesagt, hast du keinen Zugriff mehr.",
       roles: ["member"],
     },
     {
@@ -1017,7 +1019,7 @@ const together: AreaText = {
   ],
 
   glossary: [
-    { term: "Probenvorschlag", definition: "Die Bitte eines Mitglieds um eine Probe, mit Thema und bevorzugten Tagen. Sie wartet auf einen Admin.", see: "propose-a-rehearsal" },
+    { term: "Probenvorschlag", definition: "Die Bitte eines Mitglieds um eine Probe, mit Thema und bevorzugten Tagen. Sie wartet bis zu ihrem letzten bevorzugten Tag auf einen Admin.", see: "propose-a-rehearsal" },
     { term: "Verfügbarkeitsumfrage", definition: "Eine Liste von Terminvorschlägen, über die die Band abstimmt, bevor ein Admin einen auswählt.", see: "create-a-rehearsal-poll" },
     { term: "Terminvorschlag", definition: "Ein Datum mit Start- und Endzeit, das in einer Umfrage angeboten wird.", see: "create-a-rehearsal-poll" },
     { term: "Planungsmodus", definition: "Der Schalter zwischen **Direkt planen** und **Umfrage**, wenn ein Admin eine neue Probe beginnt.", see: "create-a-rehearsal" },

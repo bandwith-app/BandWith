@@ -5,6 +5,7 @@ import { createBulkNotifications } from './notifications';
 import { personName } from '@/lib/personName';
 import { t } from '@/lib/i18n';
 import { pollNotifyTargets } from '@/lib/pollPermissions';
+import { isProposalExpired } from '@/lib/proposalExpiry';
 
 export interface RehearsalPollOption {
   id: string;
@@ -817,6 +818,26 @@ export const dismissPoll = async (pollId: string): Promise<{ error: Error | null
 };
 
 /**
+ * An admin declines a member's proposal. Only while it is still a proposal:
+ * false when it is gone or already a poll (withdrawn, or another admin acted).
+ */
+export const declineProposal = async (pollId: string): Promise<{ declined: boolean; error: Error | null }> => {
+  try {
+    const { data, error } = await supabase
+      .from('rehearsal_polls')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', pollId)
+      .eq('status', 'proposed')
+      .select('id');
+    if (error) throw error;
+    return { declined: (data || []).length > 0, error: null };
+  } catch (error: any) {
+    console.error('Failed to decline proposal:', error);
+    return { declined: false, error };
+  }
+};
+
+/**
  * Permanently delete or cancel a rehearsal poll.
  */
 export const deletePoll = async (pollId: string): Promise<{ error: Error | null }> => {
@@ -879,7 +900,10 @@ export const getRehearsalPolls = async (
       .order('created_at', { ascending: false });
 
     if (pollsError) throw pollsError;
-    const polls = (allPolls || []).filter((p) => canSeePoll(p, userId, viewerIsAdmin));
+    // A proposal no admin acted on is gone after its last day (proposalExpiry.ts).
+    const polls = (allPolls || []).filter(
+      (p) => canSeePoll(p, userId, viewerIsAdmin) && !isProposalExpired({ ...p, preferred_days: extractPreferredDays(p.notes) })
+    );
     if (polls.length === 0) return { data: [], error: null };
 
     const pollIds = polls.map((p) => p.id);

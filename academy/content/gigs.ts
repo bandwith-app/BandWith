@@ -764,7 +764,7 @@ const gigs: AreaModule = {
       summary: 'Accept or decline a gig, see your fee and who else is playing, and check for clashes.',
       roles: ['member', 'admin'],
       kind: 'task',
-      keywords: ['rsvp', 'accept gig', 'decline gig', 'invitation', 'are you in', 'maybe', 'availability'],
+      keywords: ['rsvp', 'accept gig', 'decline gig', 'invitation', 'are you in', 'availability'],
       related: ['drop-out-of-a-gig', 'gig-notifications', 'free-slots-and-conflicts', 'what-members-see-on-a-gig'],
       body: [
         { type: 'p', text: 'When an admin adds you to a gig you get a **Gig invitation** notification. You can answer from the inbox, from the RSVP sheet or from the gig itself.' },
@@ -792,7 +792,7 @@ const gigs: AreaModule = {
           items: [
             'In **Can you make it?**, check the date, time, **Timings**, venue and **Your fee**.',
             'Look at **Lineup so far · {count} of {total} in**: who else plays, with their instrument and answer.',
-            'Choose **GOING**, **MAYBE — I’LL CONFIRM LATER** or **CAN’T MAKE IT**.',
+            'Choose **GOING** or **CAN’T MAKE IT**.',
             'Add a **Note for the band (optional)** and tap **Send RSVP**.',
           ],
         },
@@ -802,7 +802,6 @@ const gigs: AreaModule = {
           items: [
             'Accepting shows **You’re confirmed!** and tells the gig’s creator.',
             'Declining shows **You dropped out of this event.**, tells every admin of the band that a replacement is needed, and removes the gig from your calendar.',
-            '**Maybe** keeps the gig on your calendar with your answer marked as maybe.',
           ],
         },
         { type: 'note', tone: 'privacy', text: 'The invitation shows only your own fee, or **to be discussed**. The lineup list shows names, instruments and answers, never anyone’s fee.' },

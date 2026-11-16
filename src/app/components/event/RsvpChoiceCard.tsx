@@ -15,18 +15,17 @@ const toStatus: Record<RsvpAnswer, RsvpStatus | null> = {
 
 /**
  * Rehearsal RSVP card (Figma 22:895): always shown to invited members, the
- * current answer selected, GOING / MAYBE / CAN'T. Once answered it shrinks to
- * one line ("Going ✓" + Change) so the event details move up.
+ * current answer selected, GOING / CAN'T. Once answered it shrinks to one
+ * line ("Going ✓" + Change) so the event details move up. Maybe is no longer
+ * offered: an older "maybe" answer shows as such and asks for a firm one.
  */
 export const RsvpChoiceCard: React.FC<{
   title: string;
   current: RsvpAnswer;
   /** Resolves when saved; throws to keep the card as it was. */
   onChoose: (status: RsvpStatus) => Promise<void>;
-  /** MAYBE needs a handler that can store it; hidden otherwise. */
-  allowMaybe: boolean;
   caption?: string;
-}> = ({ title, current, onChoose, allowMaybe, caption }) => {
+}> = ({ title, current, onChoose, caption }) => {
   const t = useT();
   const [busy, setBusy] = useState<RsvpStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,16 +48,12 @@ export const RsvpChoiceCard: React.FC<{
 
   const options: { value: RsvpStatus; label: string }[] = [
     { value: 'confirmed', label: t('GOING') },
-    ...(allowMaybe ? [{ value: 'maybe' as const, label: t('MAYBE') }] : []),
     { value: 'declined', label: t("CAN'T") },
   ];
 
   const answered = options.find((o) => o.value === selected);
   if (answered && !editing && !busy && !error) {
-    const tone =
-      answered.value === 'confirmed' ? 'bg-success text-success-foreground'
-        : answered.value === 'declined' ? 'bg-destructive-solid text-white'
-          : 'bg-sheet-foreground/15 text-sheet-foreground';
+    const tone = answered.value === 'confirmed' ? 'bg-success text-success-foreground' : 'bg-destructive-solid text-white';
     return (
       <section
         className="dark bg-sheet text-sheet-foreground rounded-[16px] pl-5 pr-3 py-3 flex items-center gap-3"
@@ -67,7 +62,7 @@ export const RsvpChoiceCard: React.FC<{
         <span className="bw-label-sm shrink-0">{t('Your RSVP')}</span>
         <span className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full bw-button-sm ${tone}`}>
           {answered.value === 'confirmed' && <Check className="w-4 h-4" aria-hidden />}
-          {answered.value === 'confirmed' ? t('Going') : answered.value === 'maybe' ? t('Maybe') : t("Can't make it")}
+          {answered.value === 'confirmed' ? t('Going') : t("Can't make it")}
         </span>
         <span className="flex-1" />
         <PillButton variant="outline" size="sm" fullWidth={false} onClick={() => setEditing(true)}>
@@ -81,7 +76,10 @@ export const RsvpChoiceCard: React.FC<{
     <section className="dark bg-sheet text-sheet-foreground rounded-[16px] p-5 flex flex-col gap-4">
       <span className="bw-label-sm">{t('Your RSVP')}</span>
       <h2 className="bw-h1">{title}</h2>
-      <div role="radiogroup" aria-label={t('Your RSVP')} className={options.length === 3 ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-2 gap-2'}>
+      {selected === 'maybe' && (
+        <p className="bw-body-sm text-sheet-foreground/80">{t("Your answer was Maybe. Choose GOING or CAN'T.")}</p>
+      )}
+      <div role="radiogroup" aria-label={t('Your RSVP')} className="grid grid-cols-2 gap-2">
         {options.map((o) => {
           const on = selected === o.value;
           return (

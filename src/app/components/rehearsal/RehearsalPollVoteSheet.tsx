@@ -20,9 +20,14 @@ import {
   finalizePollIntoRehearsal,
   POLL_CLOSED,
   deletePoll,
+  declineProposal,
+  cleanNotesWithoutDays,
   isPollVotingClosed,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
+import { notifyProposalDeclined } from '@/lib/services/pollNotices';
+import { proposalLastDay } from '@/lib/proposalExpiry';
+import { ProposalDeclinePanel } from './ProposalDeclinePanel';
 import { markAsRead, type Notification } from '@/lib/services/notifications';
 import { PollDetails } from './PollDetails';
 import { canDeletePoll, canVoteInPoll, canWithdrawProposal } from '@/lib/pollPermissions';
@@ -32,7 +37,7 @@ import { FindADateMode } from '@/app/components/duo';
 import { personName } from '@/lib/personName';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useSystemBack } from '@/lib/backStack';
-import { useT, dateName, intlLocale, formatList } from '@/lib/i18n';
+import { useT, dateName, intlLocale, formatList, shortWeekday } from '@/lib/i18n';
 
 interface RehearsalPollVoteSheetProps {
   notification?: Notification | null;
@@ -260,6 +265,30 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
     onClose();
   };
 
+  // Admin: decline the proposal; the member is told (inbox + push).
+  const [showDeclineConfirm, setShowDeclineConfirm] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
+  const handleDecline = async (reason: string) => {
+    if (!poll) return;
+    setIsDeclining(true);
+    const { declined, error } = await declineProposal(poll.id);
+    setIsDeclining(false);
+    if (error) {
+      onShowToast?.(t('Could not decline the proposal. Try again.'), 'error');
+      return;
+    }
+    if (declined) {
+      onShowToast?.(t('Proposal declined.'), 'info');
+      void notifyProposalDeclined(poll, currentUserId, reason);
+    } else {
+      onShowToast?.(t('This proposal is no longer pending.'), 'info');
+    }
+    if (notification?.id) markAsRead(notification.id).catch(() => {});
+    onPollUpdated?.();
+    onClose();
+  };
+  const proposalOpenUntil = poll && isProposed ? proposalLastDay(poll.created_at, poll.preferred_days) : null;
+
   // Vote analytics
   const maxVotes = useMemo(() => {
     if (!poll?.options?.length) return 0;
@@ -408,22 +437,48 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
                     <span className="bw-label-sm text-sheet-foreground/70 mr-1">{t('Preferred days')}</span>
                     {poll.preferred_days.map((day) => (
                       <Tag key={day} variant="outline">
-                        {day}
+                        {shortWeekday(day)}
                       </Tag>
                     ))}
                   </div>
                 )}
 
-                {poll.notes && <p className="bw-body-md text-sheet-foreground/85">{poll.notes}</p>}
+                {cleanNotesWithoutDays(poll.notes) && (
+                  <p className="bw-body-md text-sheet-foreground/85">{cleanNotesWithoutDays(poll.notes)}</p>
+                )}
+
+                {proposalOpenUntil && (
+                  <p className="bw-body-sm text-sheet-foreground/70">
+                    {t('Open until {date}', {
+                      date: dateName(new Date(proposalOpenUntil + 'T12:00:00'), { weekday: 'short', day: 'numeric', month: 'short' }),
+                    })}
+                  </p>
+                )}
               </div>
 
               {isAdmin ? (
-                <PillButton
-                  onClick={() => onOpenAdminWizard?.(poll)}
-                  trailingIcon={<ArrowUpRight className="w-5 h-5" />}
-                >
-                  {t('Build poll from proposal')}
-                </PillButton>
+                <>
+                  <PillButton
+                    onClick={() => onOpenAdminWizard?.(poll)}
+                    trailingIcon={<ArrowUpRight className="w-5 h-5" />}
+                  >
+                    {t('Build poll from proposal')}
+                  </PillButton>
+                  {!showDeclineConfirm ? (
+                    <PillButton variant="outline" onClick={() => setShowDeclineConfirm(true)}>
+                      {t('Decline')}
+                    </PillButton>
+                  ) : (
+                    <ProposalDeclinePanel
+                      id="proposal-decline-title"
+                      name={personName(poll.creator_profile, t('Band member'))}
+                      tone="sheet"
+                      busy={isDeclining}
+                      onCancel={() => setShowDeclineConfirm(false)}
+                      onConfirm={handleDecline}
+                    />
+                  )}
+                </>
               ) : (
                 <p className="bw-body-sm text-sheet-foreground/70">
                   {t('This proposal is waiting for the band admin to turn it into an availability poll.')}

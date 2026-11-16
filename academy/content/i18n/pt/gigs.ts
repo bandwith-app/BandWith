@@ -755,7 +755,7 @@ const gigs: AreaText = {
       summary: "Aceite ou recuse um show, veja o seu cachê e quem mais vai tocar, e confira se há conflitos.",
       roles: ["member", "admin"],
       kind: "task",
-      keywords: ["rsvp", "responder convite", "aceitar show", "recusar show", "convite", "você topa", "talvez", "disponibilidade"],
+      keywords: ["rsvp", "responder convite", "aceitar show", "recusar show", "convite", "você topa", "disponibilidade"],
       related: ["drop-out-of-a-gig", "gig-notifications", "free-slots-and-conflicts", "what-members-see-on-a-gig"],
       body: [
         { type: "p", text: "Quando um admin inclui você num show, você recebe a notificação **Convite para show**. Dá para responder pelos avisos, pelo painel de resposta ou pelo próprio show." },
@@ -783,7 +783,7 @@ const gigs: AreaText = {
           items: [
             "Em **Você pode ir?**, confira a data, o horário, os **Horários**, o local e **Seu cachê**.",
             "Veja **Formação até agora · {count} de {total} vão**: quem mais toca, com instrumento e resposta.",
-            "Escolha **VOU**, **TALVEZ — CONFIRMO DEPOIS** ou **NÃO POSSO IR**.",
+            "Escolha **VOU** ou **NÃO POSSO IR**.",
             "Adicione uma **Nota para a banda (opcional)** e toque em **Enviar resposta**.",
           ],
         },
@@ -793,7 +793,6 @@ const gigs: AreaText = {
           items: [
             "Ao aceitar, aparece **Você está confirmado!** e quem criou o show é avisado.",
             "Ao recusar, aparece **Você saiu deste evento.**, todos os admins da banda são avisados de que é preciso um substituto e o show sai do seu calendário.",
-            "**Talvez** mantém o show no seu calendário, com a sua resposta marcada como talvez.",
           ],
         },
         { type: "note", tone: "privacy", text: "O convite mostra só o seu cachê, ou **A combinar**. A lista da formação mostra nomes, instrumentos e respostas, nunca o cachê de ninguém." },

@@ -3069,24 +3069,6 @@ export default function AuthenticatedApp() {
     if (refetchDashboard) await refetchDashboard();
   };
 
-  const handleEventMaybe = async () => {
-    if (!selectedEvent) return;
-    if (!selectedEventMembership?.id) return rsvpNotLoaded();
-    const eventId = selectedEvent.eventId || selectedEvent.id?.toString();
-    const { data: updated, error } = await respondToEventInvite(selectedEventMembership.id, "maybe");
-    if (error || !updated) {
-      throw new Error(t("Couldn't save your answer. Try again."));
-    }
-    if (isOpenEvent(eventId)) setSelectedEventMembership((prev: any) => (prev ? { ...prev, status: "maybe" } : prev));
-    if (eventId && user?.id) {
-      setEventMembersMap(prev => {
-        const list = prev[eventId] || [];
-        return { ...prev, [eventId]: list.map(m => m.userId === user.id ? { ...m, status: 'maybe' } : m) };
-      });
-    }
-    setSaveToast({ message: t("Saved as maybe"), type: 'success' });
-  };
-
   /** Personal-gig conflict: tell the band's admins the user is booked that evening. */
   const handleNotifyConflict = async (bandId: string, eventId: string) => {
     const { data: admins, error } = await supabase
@@ -4818,10 +4800,10 @@ export default function AuthenticatedApp() {
             userResponse={selectedEventMembership?.status === "confirmed" ? "accepted" : selectedEventMembership?.status === "declined" ? "declined" : selectedEventMembership?.status === "maybe" ? "maybe" : selectedEventMembership?.status === "pending" ? "pending" : "accepted"}
             onAccept={handleEventAccept}
             onDecline={handleEventDecline}
+            // GOING / CAN'T: Maybe is no longer offered.
             onRespond={async (status) => {
               if (status === 'confirmed') return handleEventAccept();
               if (status === 'declined') return handleEventDecline();
-              return handleEventMaybe();
             }}
             canRespond={!!selectedEventMembership}
             allEvents={events}

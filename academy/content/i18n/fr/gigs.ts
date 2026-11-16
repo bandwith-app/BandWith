@@ -755,7 +755,7 @@ const gigs: AreaText = {
       summary: "Accepte ou refuse un concert, vois ton cachet et qui d’autre joue, et vérifie les conflits.",
       roles: ["member", "admin"],
       kind: "task",
-      keywords: ["répondre", "rsvp", "accepter un concert", "refuser un concert", "invitation", "tu en es", "peut-être", "disponibilité"],
+      keywords: ["répondre", "rsvp", "accepter un concert", "refuser un concert", "invitation", "tu en es", "disponibilité"],
       related: ["drop-out-of-a-gig", "gig-notifications", "free-slots-and-conflicts", "what-members-see-on-a-gig"],
       body: [
         { type: "p", text: "Quand un admin t’ajoute à un concert, tu reçois une notification **Invitation concert**. Tu peux répondre depuis les alertes, depuis la feuille de réponse ou depuis le concert lui-même." },
@@ -783,7 +783,7 @@ const gigs: AreaText = {
           items: [
             "Dans **Tu seras là ?**, vérifie la date, l’heure, les **Horaires**, la salle et **Ton cachet**.",
             "Regarde **Formation pour l’instant · {count} sur {total} partants** : qui d’autre joue, avec son instrument et sa réponse.",
-            "Choisis **PRÉSENT**, **PEUT-ÊTRE — JE CONFIRME PLUS TARD** ou **JE NE PEUX PAS**.",
+            "Choisis **PRÉSENT** ou **JE NE PEUX PAS**.",
             "Ajoute une **Note pour le groupe (facultatif)** et touche **Envoyer la réponse**.",
           ],
         },
@@ -793,7 +793,6 @@ const gigs: AreaText = {
           items: [
             "Accepter affiche **Tu es confirmé !** et prévient la personne qui a créé le concert.",
             "Refuser affiche **Tu t’es retiré de cet événement.**, prévient chaque admin du groupe qu’il faut un remplaçant, et retire le concert de ton calendrier.",
-            "**Peut-être** garde le concert dans ton calendrier avec ta réponse marquée comme peut-être.",
           ],
         },
         { type: "note", tone: "privacy", text: "L’invitation montre seulement ton propre cachet, ou **À discuter**. La liste du line-up montre les noms, les instruments et les réponses, jamais le cachet de quiconque." },

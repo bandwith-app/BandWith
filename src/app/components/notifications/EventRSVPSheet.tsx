@@ -36,9 +36,8 @@ export interface EventRSVPSheetProps {
   /** CAN'T MAKE IT. */
   onDecline: (note?: string) => Promise<void>;
   /**
-   * Optional single handler for all three answers. When given it is used
-   * instead of onAccept / onDecline, and it is the only way "maybe" reaches
-   * the parent. Without it the sheet records "maybe" itself.
+   * Optional single handler for both answers (GOING / CAN'T MAKE IT). When
+   * given it is used instead of onAccept / onDecline. Maybe is no longer offered.
    */
   onRespond?: (status: RsvpStatus, note?: string) => Promise<void>;
   onClose: () => void;
@@ -53,7 +52,7 @@ const kindOf = (e: any): 'personal gig' | 'rehearsal' | 'gig' => {
   return String(e.status || '').toUpperCase() === 'REHEARSAL' ? 'rehearsal' : 'gig';
 };
 
-/** Figma "Event / RSVP – conflict" (23:1213): dark sheet, three answers, optional note. */
+/** Figma "Event / RSVP – conflict" (23:1213): dark sheet, two answers, optional note. */
 export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
   notification,
   onAccept,
@@ -70,14 +69,14 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
   useSystemBack(true, onClose);
   useCurrency(); // re-render money labels when the band currency changes
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [choice, setChoice] = useState<RsvpStatus | null>(initialStatus ?? null);
+  // An older "maybe" preselects nothing: the member picks a firm answer.
+  const [choice, setChoice] = useState<RsvpStatus | null>(initialStatus === 'maybe' ? null : initialStatus ?? null);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { containerRef, maskStyle } = usePeekingScroll<HTMLDivElement>();
 
   const CHOICES: { value: RsvpStatus; label: string }[] = [
     { value: 'confirmed', label: t('GOING') },
-    { value: 'maybe', label: t("MAYBE — I'LL CONFIRM LATER") },
     { value: 'declined', label: t("CAN'T MAKE IT") },
   ];
   const KIND_LABEL = { 'personal gig': t('personal gig'), rehearsal: t('rehearsal'), gig: t('gig') };
@@ -174,7 +173,7 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
       })()
     : '';
 
-  /** Writes the answer (maybe without a parent handler) and/or the note on the member's own row. */
+  /** Writes the note on the member's own row. */
   const saveOwnRow = async (patch: Record<string, unknown>): Promise<string | null> => {
     if (!eventId || !currentUserId) return t('Could not find your invitation for this event.');
     const { data: rows, error: upErr } = await supabase
@@ -195,20 +194,6 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
     setError(null);
     const trimmed = note.trim();
     try {
-      if (choice === 'maybe' && !onRespond) {
-        // No parent handler for "maybe": record it here, then close.
-        const err = await saveOwnRow({
-          status: 'maybe',
-          responded_at: new Date().toISOString(),
-          ...(trimmed ? { notes: trimmed } : {}),
-        });
-        if (err) {
-          setError(err);
-          return;
-        }
-        onClose();
-        return;
-      }
       // Save the note first: the parent closes the sheet once it has the answer.
       if (trimmed) {
         const err = await saveOwnRow({ notes: trimmed });

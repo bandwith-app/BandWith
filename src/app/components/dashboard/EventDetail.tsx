@@ -90,13 +90,13 @@ import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 interface EventDetailProps {
   event: EventData;
   onClose: () => void;
-  /** The viewer's own answer ('maybe' selects MAYBE on the rehearsal RSVP card). */
+  /** The viewer's own answer (an older 'maybe' asks for GOING / CAN'T on the rehearsal RSVP card). */
   userResponse?: RsvpAnswer;
   onAccept?: () => Promise<void>;
   onDecline?: () => Promise<void>;
   /**
-   * One handler for GOING / MAYBE / CAN'T (rehearsal RSVP card). When set it
-   * is used instead of onAccept / onDecline there, and enables MAYBE.
+   * One handler for GOING / CAN'T (rehearsal RSVP card). When set it is used
+   * instead of onAccept / onDecline there.
    */
   onRespond?: (status: RsvpStatus, note?: string) => Promise<void>;
   /** The viewer has an event_members row (shows the rehearsal RSVP card). Defaults to !isAdmin. */
@@ -751,7 +751,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     }
   };
 
-  /** Rehearsal RSVP card: GOING / MAYBE / CAN'T. Errors are shown on the card. */
+  /** Rehearsal RSVP card: GOING / CAN'T. Errors are shown on the card. */
   const handleRespond = async (status: RsvpStatus) => {
     if (status === 'declined') haptic.delete();
     else haptic.confirm();
@@ -1325,7 +1325,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   title={t('Are you coming?')}
                   current={userResponse}
                   onChoose={handleRespond}
-                  allowMaybe={!!onRespond}
                   caption={rsvpCaption}
                 />
               )}

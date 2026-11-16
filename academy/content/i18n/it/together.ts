@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTE**: la nota della prova, quando c’è.",
             "**ATTIVITÀ**: i compiti di preparazione e quanti sono fatti. Tocca un compito per spuntarlo.",
             "**COSTO SALA**: la sala, le ore, il totale e **Diviso tra {count} presenti**, con l’importo **A TESTA**.",
-            "Pulsanti in fondo: **MODIFICA**, **CHAT PROVA** ed **ELIMINA** per gli admin; **CHAT PROVA** per i membri che hanno risposto ci sono o forse.",
+            "Pulsanti in fondo: **MODIFICA**, **CHAT PROVA** ed **ELIMINA** per gli admin; **CHAT PROVA** per i membri che hanno risposto ci sono.",
           ],
         },
         {
@@ -296,7 +296,7 @@ const together: AreaText = {
       summary: "Di’ all’admin se ci sarai, cambia la tua risposta o ritirati più tardi.",
       roles: ["member"],
       kind: "task",
-      keywords: ["rsvp", "risposta", "ci sono", "forse", "non posso", "rifiutare prova", "ritirarsi"],
+      keywords: ["rsvp", "risposta", "ci sono", "non posso", "rifiutare prova", "ritirarsi"],
       related: ["the-rehearsal-page", "rehearsal-and-chat-notifications"],
       body: [
         {
@@ -304,8 +304,9 @@ const together: AreaText = {
           title: "Rispondere",
           items: [
             "Apri la prova dalla notifica “Nuova prova” o dal **Calendario**.",
-            "Nella scheda **Ci sarai?**, tocca **CI SONO**, **FORSE** o **NON POSSO**. La scheda dice entro quando rispondere (“Rispondi entro … così l’admin può confermare la sala.”).",
+            "Nella scheda **Ci sarai?**, tocca **CI SONO** o **NON POSSO**. La scheda dice entro quando rispondere (“Rispondi entro … così l’admin può confermare la sala.”).",
             "Per cambiarla più tardi, tocca **Cambia** sulla scheda **La tua risposta** e scegli di nuovo.",
+            "Se prima avevi risposto forse, la scheda dice “La tua risposta era Forse. Scegli CI SONO o NON POSSO.”: scegline una.",
           ],
         },
         {
@@ -350,7 +351,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Gli admin della band ricevono una notifica e una push “Nuova proposta di prova”. Nella tua Home e nel **Calendario** la proposta compare come **La tua proposta di prova** con **Attesa admin** finché un admin non la trasforma in un sondaggio o la ignora.",
+          text: "Gli admin della band ricevono una notifica e una push “Nuova proposta di prova”. Nella tua Home e nel **Calendario** la proposta compare come **La tua proposta di prova** con **Attesa admin** e **Aperta fino a** il suo ultimo giorno: l’ultimo dei tuoi giorni preferiti nella settimana successiva, oppure 7 giorni se non ne hai scelti. Resta lì finché un admin non la trasforma in un sondaggio o la rifiuta, o finché quel giorno non passa: poi esce da tutti gli elenchi.",
         },
         {
           type: "note",
@@ -362,7 +363,7 @@ const together: AreaText = {
           title: "Casi particolari",
           items: [
             "Non sei ancora in una band: vedi **Serve una band**, con **Crea una band**.",
-            "Se un admin ignora la tua proposta, ricevi “Proposta di prova ignorata” e la proposta esce dal tuo elenco.",
+            "Se un admin rifiuta la tua proposta, ricevi “Proposta di prova rifiutata” (notifica e push), con il motivo se l’ha indicato, e la proposta esce dal tuo elenco.",
             "Hai cambiato idea? Tocca **Ritira** sulla tua proposta, poi di nuovo **Ritira** in “Ritirare la tua proposta?”. Gli admin non la vedono più.",
           ],
         },
@@ -372,10 +373,10 @@ const together: AreaText = {
     {
       id: "handle-a-rehearsal-proposal",
       title: "Gestisci la proposta di prova di un membro",
-      summary: "Trasforma la proposta di un membro in un sondaggio sulle disponibilità, oppure ignorala.",
+      summary: "Trasforma la proposta di un membro in un sondaggio sulle disponibilità, oppure rifiutala.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["proposta", "creare sondaggio", "ignorare proposta", "richiesta del membro"],
+      keywords: ["proposta", "creare sondaggio", "rifiutare proposta", "ignorare proposta", "richiesta del membro"],
       related: ["propose-a-rehearsal", "create-a-rehearsal-poll"],
       body: [
         {
@@ -384,7 +385,8 @@ const together: AreaText = {
             "Trova la proposta sotto **Organizzazione prove** in Da gestire nella Home o nel **Calendario**. Mostra **Proposta di prova di un membro**, **Proposta da**, i **Giorni preferiti** e la nota. Puoi aprirla anche dalla notifica “Nuova proposta di prova”.",
             "Tocca **Crea sondaggio** (nel foglio della notifica: **Crea sondaggio dalla proposta**). Si apre il sondaggio con l’argomento come titolo, la nota e i giorni preferiti già selezionati.",
             "Aggiungi gli orari e pubblica come in [[create-a-rehearsal-poll]].",
-            "Oppure tocca **Ignora** per chiudere la proposta senza sondaggio. Il membro che l’ha proposta riceve “Proposta di prova ignorata”.",
+            "Oppure tocca **Rifiuta** per chiudere la proposta senza sondaggio. In **Rifiutare questa proposta?** scrivi, se vuoi, un **Motivo**, poi tocca **Rifiuta**. Il membro che l’ha proposta riceve “Proposta di prova rifiutata” (notifica e push) con il tuo motivo.",
+            "Se non fai nulla, la proposta esce dall’elenco dopo il giorno indicato in **Aperta fino a**.",
           ],
         },
         {
@@ -600,7 +602,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Per chiudere la proposta di un membro che non ha ancora un sondaggio, usa invece **Ignora** (vedi [[handle-a-rehearsal-proposal]]).",
+          text: "Per chiudere la proposta di un membro che non ha ancora un sondaggio, usa invece **Rifiuta** (vedi [[handle-a-rehearsal-proposal]]).",
         },
       ],
     },
@@ -620,7 +622,7 @@ const together: AreaText = {
             ["Proposta (**Attesa admin**)", "Un membro ha chiesto una prova.", "Il membro che l’ha proposta e gli admin."],
             ["Sondaggio (**Sondaggio · Attivo**)", "Un admin ha pubblicato delle date da votare.", "I membri invitati e gli admin."],
             ["Confermata (**Prova · Confermata**)", "È stata confermata una data; la prova è in calendario.", "Tutti quelli della prova."],
-            ["Ignorata o eliminata", "Chiusa senza una prova.", "Nessuno: esce dagli elenchi."],
+            ["Rifiutata, scaduta o eliminata", "Chiusa senza una prova (una proposta scade dopo il giorno in **Aperta fino a**).", "Nessuno: esce dagli elenchi."],
           ],
         },
         {
@@ -630,7 +632,7 @@ const together: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Pubblica sondaggi, trasforma le proposte in sondaggi, conferma le date, ignora ed elimina. Lo può fare qualsiasi admin della band, non solo chi ha pubblicato." },
+            { role: "admin", text: "Pubblica sondaggi, trasforma le proposte in sondaggi, conferma le date, rifiuta ed elimina. Lo può fare qualsiasi admin della band, non solo chi ha pubblicato." },
             { role: "member", text: "Propone (una a settimana), vota, risponde **Nessuna va** e vede chi ha votato cosa." },
             { role: "deputy", text: "Non partecipa ai sondaggi della band." },
           ],
@@ -807,7 +809,7 @@ const together: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Può aprire la chat di qualsiasi evento della band." },
-            { role: "member", text: "Vede il pulsante della chat solo dopo aver risposto che ci sarà (o forse, per le prove). Chi rifiuta perde l’accesso: “Puoi scrivere solo negli eventi a cui partecipi.”" },
+            { role: "member", text: "Vede il pulsante della chat solo dopo aver risposto che ci sarà. Chi rifiuta perde l’accesso: “Puoi scrivere solo negli eventi a cui partecipi.”" },
           ],
         },
         {
@@ -994,7 +996,7 @@ const together: AreaText = {
     },
     {
       q: "Perché non riesco ad aprire la chat della prova?",
-      a: "I membri vedono **CHAT PROVA** dopo aver risposto **CI SONO** o **FORSE**. Se hai rifiutato, non hai più accesso.",
+      a: "I membri vedono **CHAT PROVA** dopo aver risposto **CI SONO**. Se hai rifiutato, non hai più accesso.",
       roles: ["member"],
     },
     {
@@ -1017,7 +1019,7 @@ const together: AreaText = {
   ],
 
   glossary: [
-    { term: "Proposta di prova", definition: "La richiesta di una prova da parte di un membro, con un argomento e i giorni preferiti. Resta in attesa di un admin.", see: "propose-a-rehearsal" },
+    { term: "Proposta di prova", definition: "La richiesta di una prova da parte di un membro, con un argomento e i giorni preferiti. Resta in attesa di un admin fino al suo ultimo giorno preferito.", see: "propose-a-rehearsal" },
     { term: "Sondaggio sulle disponibilità", definition: "Un elenco di date proposte che la band vota prima che un admin ne scelga una.", see: "create-a-rehearsal-poll" },
     { term: "Orario proposto", definition: "Una data con orario di inizio e fine offerta in un sondaggio.", see: "create-a-rehearsal-poll" },
     { term: "Modalità di programmazione", definition: "La scelta tra **Programma ora** e **Sondaggio** quando un admin crea una nuova prova.", see: "create-a-rehearsal" },
