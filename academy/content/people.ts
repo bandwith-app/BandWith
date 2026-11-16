@@ -628,9 +628,9 @@ const people: AreaModule = {
           title: 'What you see',
           items: [
             'Two tabs: **Items** and **Kits** ([[gear-kits]]).',
-            'A search field (**Search equipment, mics, cables…**) and category chips with counts: **All**, **Instruments**, **Cables**, **Microphones**, **Stands**, **Lighting**, **Cases**, **Other**.',
+            'A search field (**Search equipment, mics, cables…**) and category chips with counts: **All**, **Instruments**, **Cables**, **Microphones**, **Speakers**, **Stands**, **Lighting**, **Cases**, the band’s own categories, then **Other**.',
             'Each item: name, status dot, and a line with “Personal · {name}” for someone’s own gear, the category, “qty {count}” and the location.',
-            'Items you may change have an edit and a delete button.',
+            'Items you may change have an edit and a delete button. Items you can’t change show a lock instead, and a note under the list says who can change them.',
           ],
         },
         {
@@ -667,6 +667,7 @@ const people: AreaModule = {
             'Type the **Item name**, for example “Shure SM58”.',
             'Admins: under **Belongs to**, pick **The band** or **Me (personal)**. Members’ items are always theirs.',
             'Pick a **Category** and a **Status**, set the **Quantity**, and fill in **Location / who has it**.',
+            'No category fits? Tap **Custom** and type a **Category name** (up to 40 characters). It then shows as a chip for the whole band.',
             'Optionally add **Serial number**, **Purchase date**, **Purchase price** and **Notes**.',
             'Tap **Save item**.',
           ],
@@ -683,7 +684,7 @@ const people: AreaModule = {
           type: 'roles',
           rows: [
             { role: 'admin', text: 'Can edit every item, change who it belongs to, and delete anything.' },
-            { role: 'member', text: 'Can edit and delete only items marked as theirs. The sheet says “Personal gear: the band sees it, only you and the admins can change it.” Other items are shown without buttons.' },
+            { role: 'member', text: 'Can edit and delete only items marked as theirs. The sheet says “Personal gear: the band sees it, only you and the admins can change it.” Other items show a lock instead of the buttons.' },
           ],
         },
         { type: 'note', tone: 'warning', text: 'The bin on a row, or **Delete item** in the sheet, asks “Delete {name}?” first. Deleting an item also takes it out of every kit.' },

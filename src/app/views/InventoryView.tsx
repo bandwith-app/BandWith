@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { Package, Loader2, Plus, Minus, Trash2, Music, Mic, Link, Box, Sun, Briefcase, RefreshCw, Info } from '@/app/components/icons';
+import { Package, Loader2, Plus, Minus, Trash2, Music, Mic, Link, Box, Sun, Briefcase, RefreshCw, Info, Volume2, Lock } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { ScreenHeader, IconButton, SearchField, Card, BwSheet } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import {
+  CUSTOM_CATEGORY_MAX,
   INVENTORY_CATEGORIES,
   canEditInventoryItem,
   canonicalCategory,
   createInventoryItem,
+  customCategories,
+  sameCategory,
   deleteInventoryItem,
   listInventory,
   updateInventoryItem,
@@ -43,8 +46,9 @@ interface InventoryViewProps {
 
 type GearTab = 'items' | 'kits';
 
-/** Figma "Gear / Inventory" tabs: All, Instruments, Cables, Microphones, Stands, Lighting — then Cases, Other. */
-const CATEGORIES = ['All', ...INVENTORY_CATEGORIES];
+/** Figma "Gear / Inventory" tabs: All, Instruments, Cables, Microphones, Speakers, Stands, Lighting — then Cases,
+ *  the band's own categories, Other. */
+const BUILT_IN_CATEGORIES: string[] = INVENTORY_CATEGORIES.filter((c) => c !== 'Other');
 
 /** Figma "Status": a dot + Label/XS. */
 const STATUS_CONFIG: Record<string, { label: string; dot: string }> = {
@@ -59,6 +63,7 @@ const EDITABLE_STATUSES = ['available', 'in_use', 'maintenance', 'lost'] as cons
 const CATEGORY_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   Instruments: Music,
   Microphones: Mic,
+  Speakers: Volume2,
   Cables: Link,
   Stands: Box,
   Lighting: Sun,
@@ -140,6 +145,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
   // Add / edit sheet: `editing` null = closed, 'new' = add, item = edit.
   const [editing, setEditing] = useState<InventoryItem | 'new' | null>(null);
   const [form, setForm] = useState<InventoryInput>(EMPTY_FORM);
+  // "Custom" chip: the category is typed in a field instead of picked.
+  const [customCategory, setCustomCategory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -158,6 +165,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
     Instruments: t('Instruments'),
     Cables: t('Cables'),
     Microphones: t('Microphones'),
+    Speakers: t('Speakers'),
     Stands: t('Stands'),
     Lighting: t('Lighting'),
     Cases: t('Cases'),
@@ -284,6 +292,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
   const openAdd = () => {
     // Members add their own gear; an admin adds the band's unless they pick "Mine".
     setForm({ ...EMPTY_FORM, ownerId: canEdit ? null : myId });
+    setCustomCategory(false);
     setFormError(null);
     setEditing('new');
   };
@@ -291,6 +300,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
   const openEdit = (item: InventoryItem) => {
     if (!mayEdit(item)) return;
     setForm(formFromItem(item));
+    setCustomCategory(false);
     setFormError(null);
     setEditing(item);
   };
@@ -362,15 +372,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
 
   const filteredItems = items.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || canonicalCategory(item.category) === selectedCategory;
+    const matchesCategory = selectedCategory === 'All' || sameCategory(item.category, selectedCategory);
     return matchesSearch && matchesCategory;
   });
 
+  // Keyed in lower case: the band's own categories match whatever their case.
   const categoryCounts = items.reduce<Record<string, number>>((acc, item) => {
-    const cat = canonicalCategory(item.category);
+    const cat = canonicalCategory(item.category).toLowerCase();
     acc[cat] = (acc[cat] || 0) + 1;
     return acc;
   }, {});
+  const bandCategories = useMemo(() => customCategories(items), [items]);
+  const categories = ['All', ...BUILT_IN_CATEGORIES, ...bandCategories, 'Other'];
+  // The sheet: the built-in categories, then the band's own (before Other).
+  const sheetCategories = [...BUILT_IN_CATEGORIES, ...bandCategories, 'Other'];
+  const pickCategory = (c: string) => {
+    setCustomCategory(false);
+    set('category', c);
+  };
 
   const statusChoices = EDITABLE_STATUSES.includes(form.status as (typeof EDITABLE_STATUSES)[number])
     ? EDITABLE_STATUSES
@@ -505,8 +524,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
 
         {/* Category filter (Figma Selector MD, wrapping) */}
         <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((cat) => {
-            const count = cat === 'All' ? items.length : categoryCounts[cat];
+          {categories.map((cat) => {
+            const count = cat === 'All' ? items.length : categoryCounts[cat.toLowerCase()];
             return (
               <Selector
                 key={cat}
@@ -597,12 +616,31 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
                       onClick={() => setPendingDelete({ item, fromSheet: false })}
                     />
                   ) : (
-                    <span className="w-2 shrink-0" aria-hidden />
+                    // Read only: the band's gear (admins) or another member's.
+                    <span
+                      role="img"
+                      aria-label={
+                        item.owner_id
+                          ? t('Only {name} and the admins can change this item.', { name: ownerName(item.owner_id) })
+                          : t('Band gear: only the admins can change it.')
+                      }
+                      className="w-9 h-9 flex items-center justify-center shrink-0 text-muted-foreground"
+                    >
+                      <Lock className="w-4 h-4" />
+                    </span>
                   )}
                 </li>
               );
             })}
           </ul>
+        )}
+
+        {!loading && !loadError && items.some((i) => !mayEdit(i)) && (
+          // Members: why some rows have a lock instead of the bin.
+          <p className="flex gap-2 bw-body-sm text-muted-foreground px-1">
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+            {t('Items with a lock belong to the band or to another member: only the admins or their owner can change them.')}
+          </p>
         )}
 
         {!loading && !loadError && (
@@ -675,7 +713,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
         zIndex={105}
         footer={
           <div className="flex flex-col gap-2">
-            <PillButton type="submit" form="gear-form" loading={saving} disabled={!form.name.trim() || deleting}>
+            <PillButton type="submit" form="gear-form" loading={saving} disabled={!form.name.trim() || !form.category.trim() || deleting}>
               {isNew ? t('Save item') : t('Save changes')}
             </PillButton>
             {!isNew && (
@@ -700,7 +738,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
             tone="sheet"
             label={t('Item name', { context: 'inventory' })}
             required
-            placeholder={t('Shure SM58, drum kit, DI box…')}
+            placeholder={t('e.g. Vocal mic, drum kit, DI box')}
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
           />
@@ -730,12 +768,35 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ onBack, bandId, ca
           <fieldset className="flex flex-col gap-2">
             <legend className="bw-label-sm text-sheet-foreground/70 mb-2">{t('Category')}</legend>
             <div className="flex flex-wrap gap-2">
-              {INVENTORY_CATEGORIES.map((c) => (
-                <SheetChip key={c} selected={form.category === c} onClick={() => set('category', c)}>
+              {sheetCategories.map((c) => (
+                <SheetChip key={c} selected={!customCategory && sameCategory(form.category, c)} onClick={() => pickCategory(c)}>
                   {categoryLabel[c] ?? c}
                 </SheetChip>
               ))}
+              <SheetChip
+                selected={customCategory}
+                onClick={() => {
+                  setCustomCategory(true);
+                  set('category', '');
+                }}
+              >
+                <Plus className="w-4 h-4 -ml-1 mr-1" />
+                {t('Custom', { context: 'category' })}
+              </SheetChip>
             </div>
+            {customCategory && (
+              <div className="mt-2">
+                <PillField
+                  tone="sheet"
+                  label={t('Category name')}
+                  placeholder={t('e.g. Keys, In-ear monitors')}
+                  maxLength={CUSTOM_CATEGORY_MAX}
+                  autoFocus
+                  value={form.category}
+                  onChange={(e) => set('category', e.target.value)}
+                />
+              </div>
+            )}
           </fieldset>
 
           <fieldset className="flex flex-col gap-2">

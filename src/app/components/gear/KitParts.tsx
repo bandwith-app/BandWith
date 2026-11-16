@@ -29,6 +29,7 @@ export const gearCategoryLabel = (category: string): string => {
       Instruments: t('Instruments'),
       Cables: t('Cables'),
       Microphones: t('Microphones'),
+      Speakers: t('Speakers'),
       Stands: t('Stands'),
       Lighting: t('Lighting'),
       Cases: t('Cases'),

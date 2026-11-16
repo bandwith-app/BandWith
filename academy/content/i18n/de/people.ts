@@ -622,9 +622,9 @@ const people: AreaText = {
           title: "Was du siehst",
           items: [
             "Zwei Tabs: **Teile** und **Kits** ([[gear-kits]]).",
-            "Ein Suchfeld (**Equipment, Mikros, Kabel suchen…**) und Kategorie-Chips mit Zahlen: **Alle**, **Instrumente**, **Kabel**, **Mikrofone**, **Ständer**, **Licht**, **Koffer**, **Sonstiges**.",
+            "Ein Suchfeld (**Equipment, Mikros, Kabel suchen…**) und Kategorie-Chips mit Zahlen: **Alle**, **Instrumente**, **Kabel**, **Mikrofone**, **Lautsprecher**, **Ständer**, **Licht**, **Koffer**, die eigenen Kategorien der Band, dann **Sonstiges**.",
             "Jedes Teil: Name, Statuspunkt und eine Zeile mit „Persönlich · {name}“ bei eigenem Equipment einer Person, der Kategorie, „Anz. {count}“ und dem Ort.",
-            "Teile, die du ändern darfst, haben einen Bearbeiten- und einen Löschen-Button.",
+            "Teile, die du ändern darfst, haben einen Bearbeiten- und einen Löschen-Button. Teile, die du nicht ändern darfst, zeigen ein Schloss, und ein Hinweis unter der Liste sagt, wer sie ändern kann.",
           ],
         },
         {
@@ -661,6 +661,7 @@ const people: AreaText = {
             "Gib den **Name des Postens** ein, zum Beispiel „Shure SM58“.",
             "Admins: Wähle unter **Gehört** **Der Band** oder **Mir (persönlich)**. Teile von Mitgliedern gehören immer ihnen selbst.",
             "Wähle eine **Kategorie** und einen **Status**, lege die **Menge** fest und fülle **Ort / wer es hat** aus.",
+            "Keine Kategorie passt? Tippe auf **Eigene** und gib einen **Name der Kategorie** ein (bis zu 40 Zeichen). Sie erscheint dann als Chip für die ganze Band.",
             "Füge, wenn du magst, **Seriennummer**, **Kaufdatum**, **Kaufpreis** und **Notizen** hinzu.",
             "Tippe auf **Teil speichern**.",
           ],
@@ -677,7 +678,7 @@ const people: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Kann jedes Teil bearbeiten, ändern, wem es gehört, und alles löschen." },
-            { role: "member", text: "Kann nur Teile bearbeiten und löschen, die als eigene markiert sind. Das Fenster sagt „Persönliche Ausrüstung: Die Band sieht sie, nur du und die Admins könnt sie ändern.“ Andere Teile erscheinen ohne Buttons." },
+            { role: "member", text: "Kann nur Teile bearbeiten und löschen, die als eigene markiert sind. Das Fenster sagt „Persönliche Ausrüstung: Die Band sieht sie, nur du und die Admins könnt sie ändern.“ Andere Teile zeigen statt der Buttons ein Schloss." },
           ],
         },
         { type: "note", tone: "warning", text: "Der Papierkorb in einer Zeile oder **Teil löschen** im Fenster fragt zuerst „{name} löschen?“. Ein gelöschtes Teil verschwindet auch aus jedem Kit." },

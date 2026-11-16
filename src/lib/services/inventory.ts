@@ -8,9 +8,12 @@ import { t } from '@/lib/i18n';
 
 export type InventoryStatus = 'available' | 'in_use' | 'maintenance' | 'lost';
 
-/** Figma order first (Instruments → Lighting), then the extra DB categories. */
-export const INVENTORY_CATEGORIES = ['Instruments', 'Cables', 'Microphones', 'Stands', 'Lighting', 'Cases', 'Other'] as const;
+/** Figma order first (Instruments → Lighting, plus Speakers), then the extra DB categories.
+ *  A band may also type its own category (127): stored as typed, max 40 characters. */
+export const INVENTORY_CATEGORIES = ['Instruments', 'Cables', 'Microphones', 'Speakers', 'Stands', 'Lighting', 'Cases', 'Other'] as const;
 export type InventoryCategory = (typeof INVENTORY_CATEGORIES)[number];
+
+export const CUSTOM_CATEGORY_MAX = 40;
 
 export interface InventoryItem {
   id: string;
@@ -101,7 +104,9 @@ const privateOf = (row: Record<string, unknown>): InventoryPrivate => ({
 const noRowsMessage = () => t("This change wasn't saved: band gear is managed by the admins, personal gear by its owner.");
 
 const asError = (err: unknown, fallback: string) => {
-  const e = err as { message?: string } | null;
+  const e = err as { message?: string; code?: string } | null;
+  // A database before 127 accepts only the original categories.
+  if (e?.code === '23514' && /category/i.test(e.message || '')) return new Error(t("This category can't be saved yet. Pick another one."));
   return new Error(e?.message || fallback);
 };
 
@@ -114,13 +119,41 @@ const blankToNull = (v?: string | null) => {
 export const canEditInventoryItem = (item: Pick<InventoryItem, 'owner_id'>, userId: string | null | undefined, isAdmin: boolean): boolean =>
   isAdmin || (!!userId && item.owner_id === userId);
 
-/** Matches a stored category to the canonical label (older rows may be lowercase). */
+/**
+ * Matches a stored category to the canonical label (older rows may be
+ * lowercase). Any other text is the band's own category (127) and is kept as
+ * typed (trimmed); a blank one files under Other.
+ */
 export const canonicalCategory = (category: string | null | undefined): string => {
-  const hit = INVENTORY_CATEGORIES.find((c) => c.toLowerCase() === (category ?? '').toLowerCase());
-  // An old or free-typed category ("monitoring") files under Other, so the
-  // category chips can still find it and it shows translated.
-  return hit ?? 'Other';
+  const raw = (category ?? '').trim();
+  const hit = INVENTORY_CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());
+  return hit ?? (raw || 'Other');
 };
+
+/** True for a category the band typed itself (not one of INVENTORY_CATEGORIES). */
+export const isCustomCategory = (category: string | null | undefined): boolean =>
+  !(INVENTORY_CATEGORIES as readonly string[]).includes(canonicalCategory(category));
+
+/**
+ * The band's own categories in use, once each (case-insensitive, first
+ * spelling wins), sorted for the chips.
+ */
+export const customCategories = (items: Pick<InventoryItem, 'category'>[]): string[] => {
+  const seen = new Map<string, string>();
+  for (const item of items) {
+    const c = canonicalCategory(item.category);
+    if (isCustomCategory(c) && !seen.has(c.toLowerCase())) seen.set(c.toLowerCase(), c);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+};
+
+/** A built-in category typed in the app language ("Altavoces" → Speakers), so it isn't stored as a custom one. */
+const builtInByLabel = (typed: string): string | undefined =>
+  INVENTORY_CATEGORIES.find((c) => t(c).toLocaleLowerCase() === typed.toLocaleLowerCase());
+
+/** Same category, ignoring case ("keys" files with "Keys"). */
+export const sameCategory = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  canonicalCategory(a).toLowerCase() === canonicalCategory(b).toLowerCase();
 
 export const parsePrice = (raw?: string): { value: number | null; error: string | null } => {
   const cleaned = (raw ?? '').trim().replace(/\s/g, '').replace(',', '.');
@@ -143,12 +176,15 @@ export const toInventoryRow = (
   if (!name) return { row: null, error: t('Give the item a name.') };
   const qty = Math.floor(Number(input.quantity));
   if (!Number.isFinite(qty) || qty < 0) return { row: null, error: t('Quantity must be 0 or more.') };
+  const rawCategory = (input.category ?? '').trim();
+  if (!rawCategory) return { row: null, error: t('Give the category a name.') };
+  if (rawCategory.length > CUSTOM_CATEGORY_MAX) return { row: null, error: t('Use {count} characters or fewer for the category.', { count: CUSTOM_CATEGORY_MAX }) };
   const price = includePrivate ? parsePrice(input.purchasePrice) : { value: null, error: null };
   if (price.error) return { row: null, error: price.error };
   return {
     row: {
       name,
-      category: input.category,
+      category: builtInByLabel(rawCategory) ?? canonicalCategory(rawCategory),
       quantity: qty,
       status: input.status,
       location: blankToNull(input.location),

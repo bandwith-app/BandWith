@@ -33,8 +33,11 @@ export const NextGigReadiness: React.FC<{
             : t('Show readiness')
         }
       >
-        <span className="bw-label-sm truncate">
-          {readiness ? t('Show readiness · {done}/{total}', { done: readiness.done, total: readiness.total }) : t('Show readiness')}
+        <span className="bw-label-sm line-clamp-2">
+          {/* Wraps when long (es, de); the count stays with the last word. */}
+          {readiness
+            ? t('Show readiness · {done}/{total}', { done: readiness.done, total: readiness.total }).replace(' · ', '\u00a0·\u00a0')
+            : t('Show readiness')}
         </span>
         <span className="flex gap-1" aria-hidden>
           {(readiness?.items ?? []).map((item) => (

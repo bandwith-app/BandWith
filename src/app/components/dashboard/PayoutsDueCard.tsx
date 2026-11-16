@@ -50,7 +50,7 @@ export const PayoutsDueCard: React.FC<{
                     </>
                   )}
                 </span>
-                <span className="bw-h3 truncate">
+                <span className="bw-h3 line-clamp-2 break-words">
                   {isAdmin ? t('Payouts due') : t("You're owed {amount}", { amount: money(gig.total, 'auto') })}
                 </span>
               </div>

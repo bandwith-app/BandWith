@@ -344,13 +344,13 @@ export const buildSeed = (): DemoDB => {
     },
   ];
   const inventory: Row[] = [
-    { id: id(1800), band_id: IDS.band, name: 'Nord Stage 4', category: 'keys', quantity: 1, status: 'available', location: 'Lena', owner_id: IDS.lena, created_at: created, updated_at: created },
+    { id: id(1800), band_id: IDS.band, name: 'Nord Stage 4', category: 'Keys', quantity: 1, status: 'available', location: 'Lena', owner_id: IDS.lena, created_at: created, updated_at: created },
     { id: id(1801), band_id: IDS.band, name: 'Shure SM58', category: 'microphones', quantity: 4, status: 'available', location: 'Rehearsal room', created_at: created, updated_at: created },
     { id: id(1802), band_id: IDS.band, name: 'In-ear mixer (Behringer P16)', category: 'Other', quantity: 1, status: 'in_use', location: 'Leo', owner_id: IDS.me, created_at: created, updated_at: created },
     { id: id(1803), band_id: IDS.band, name: 'DI boxes', category: 'cables', quantity: 6, status: 'maintenance', location: 'Rehearsal room', created_at: created, updated_at: created },
     ...([
-      [1804, 'PA tops 12"', 'Other', 2, 'available', 'Case A'],
-      [1805, 'Sub 18"', 'Other', 1, 'available', 'Case B'],
+      [1804, 'PA tops 12"', 'Speakers', 2, 'available', 'Case A'],
+      [1805, 'Sub 18"', 'Speakers', 1, 'available', 'Case B'],
       [1806, 'XR18 mixer', 'Other', 1, 'available', 'Case C'],
       [1807, 'Mic stands', 'Stands', 5, 'available', 'Case D'],
       [1808, 'XLR 10 m', 'Cables', 12, 'available', 'Cable bag'],
