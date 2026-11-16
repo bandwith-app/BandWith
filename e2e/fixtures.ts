@@ -38,6 +38,13 @@ export interface App {
   tab: (name: 'Home' | 'Calendar' | 'Create' | 'Chat' | 'Settings') => Promise<void>;
   /** Button (or link/tab) by its accessible name in the test's language. */
   button: (source: string, opts?: { exact?: boolean; vars?: Record<string, string | number> }) => Locator;
+  /**
+   * Makes the demo user (Leo M.) admin or member of the demo band and
+   * reloads. Like a fresh install of that member's phone, the offline cache
+   * from the previous session is cleared, unless `keepOfflineCache` is set
+   * (the same device after an admin hands the band over).
+   */
+  setRole: (role: Role, opts?: { keepOfflineCache?: boolean }) => Promise<void>;
   /** Changes the demo database, then reloads so the app reads it. */
   editDb: (mutate: (db: DemoDB, ids: { me: string }) => void) => Promise<void>;
   /** Reads the demo database. */
@@ -124,22 +131,25 @@ export const test = base.extend<Options & { app: App }>({
       open: async (path = '/') => {
         await page.goto(path);
         await waitForHome();
-        if (role === 'member') {
-          const db = await readDb();
-          const me = (db.band_members || []).find((m) => m.user_id === DEMO_USER_ID);
-          if (me && me.role !== 'member') {
-            await page.evaluate(
-              ({ k, id }) => {
-                const d = JSON.parse(localStorage.getItem(k) || '{}');
-                for (const m of d.band_members || []) if (m.user_id === id) m.role = 'member';
-                localStorage.setItem(k, JSON.stringify(d));
-              },
-              { k: DB_KEY, id: DEMO_USER_ID },
-            );
-            await page.reload();
-            await waitForHome();
-          }
-        }
+        if (role === 'member') await app.setRole('member');
+        await settle(page);
+      },
+      setRole: async (next, opts = {}) => {
+        await page.evaluate(
+          ({ k, id, next, clear }) => {
+            const d = JSON.parse(localStorage.getItem(k) || '{}');
+            for (const m of d.band_members || []) if (m.user_id === id) m.role = next;
+            localStorage.setItem(k, JSON.stringify(d));
+            if (clear) {
+              // src/lib/offline/storage.ts: IndexedDB with a localStorage fallback.
+              for (const key of Object.keys(localStorage)) if (key.startsWith('bw:')) localStorage.removeItem(key);
+              indexedDB.deleteDatabase('bandwith_offline_db');
+            }
+          },
+          { k: DB_KEY, id: DEMO_USER_ID, next, clear: !opts.keepOfflineCache },
+        );
+        await page.reload();
+        await waitForHome();
         await settle(page);
       },
       check: async (where) => {
