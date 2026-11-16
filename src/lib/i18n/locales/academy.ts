@@ -23,7 +23,7 @@ const rows: Record<string, Record<Locale, string>> = {
     es: 'Ayuda para esta pantalla',
     fr: 'Aide pour cet écran',
     de: 'Hilfe zu diesem Bildschirm',
-    pt: 'Ajuda para este ecrã',
+    pt: 'Ajuda para esta tela',
   },
   'Learn more in the Academy': {
     it: 'Scopri di più nell’Academy',
@@ -102,7 +102,7 @@ const rows: Record<string, Record<Locale, string>> = {
     es: 'Elige la formación y el caché de cada músico. Reciben una invitación y responden desde el móvil.',
     fr: 'Choisissez la formation et le cachet de chaque musicien. Ils reçoivent une invitation et répondent depuis leur téléphone.',
     de: 'Wähle die Besetzung und die Gage jedes Musikers. Sie bekommen eine Einladung und antworten am Handy.',
-    pt: 'Escolha a formação e o cachê de cada músico. Recebem um convite e respondem no telemóvel.',
+    pt: 'Escolha a formação e o cachê de cada músico. Recebem um convite e respondem no celular.',
   },
   'See who answered on the gig': {
     it: 'Vedi chi ha risposto sul gig',

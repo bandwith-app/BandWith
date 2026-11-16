@@ -339,7 +339,7 @@ const together: AreaText = {
           ],
         },
         { type: "p", text: "Cada miembro al que se le pide votar recibe una notificación y una push para votar los horarios del ensayo. La encuesta aparece como **Encuesta · Activa** en Inicio y en el **Calendario**, en **Organización de ensayos**." },
-        { type: "p", text: "¿Cambiaste de idea? **Atrás** (arriba o abajo, o el botón Atrás del teléfono) vuelve al formulario del ensayo; **Cerrar** sale de la encuesta. Si escribiste algo, primero se te pregunta: **¿Descartar esta encuesta?** Toca **Seguir editando** o **Descartar**. Las encuestas no tienen borradores." },
+        { type: "p", text: "¿Cambiaste de idea? **Atrás** (arriba o abajo, o el botón Atrás del teléfono) vuelve al formulario del ensayo; **Cerrar** sale de la encuesta. Si cambiaste algo, primero se te pregunta: **¿Descartar esta encuesta?** Toca **Seguir editando** o **Descartar**. Sin cambios, simplemente se cierra. Las encuestas no tienen borradores." },
         {
           type: "list",
           title: "Qué impide publicar",

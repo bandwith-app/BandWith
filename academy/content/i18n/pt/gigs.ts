@@ -120,6 +120,7 @@ const gigs: AreaText = {
           rows: [
             { devices: ["duoClosed", "duoBook", "duoLaptop", "duoLand"], text: "A busca do cabeçalho é o botão **Buscar** da barra lateral. Com o aparelho aberto, a busca fica na página da esquerda e o evento escolhido abre na da direita." },
             { devices: ["tablet"], text: "O evento escolhido abre ao lado da lista e continua destacado nos resultados." },
+            { devices: ["android"], text: "O Voltar primeiro esconde o teclado e depois fecha a busca. Um evento aberto a partir dos resultados fecha antes, e você volta aos resultados." },
           ],
         },
       ],
@@ -344,7 +345,7 @@ const gigs: AreaText = {
           type: "list",
           title: "Local",
           items: [
-            "Digite em **Local / endereço** e escolha uma sugestão. Um lugar com nome preenche o local e a rua; um endereço simples vira o próprio local. A cidade, o estado, o CEP e o país também são preenchidos.",
+            "Digite em **Local / endereço** e escolha uma sugestão: um toque basta, mesmo com o teclado aberto. Um lugar com nome preenche o local e a rua; um endereço simples vira o próprio local. A cidade, o estado, o CEP e o país também são preenchidos.",
             "No show, o nome do local é um link: toque nele (ou em **MAPA**) para abri-lo no app de mapas. **Logística e notas** tem **Copiar** para o endereço completo e **Mapas**.",
             "Deixe o local vazio ou escolha **A def.** quando ainda não souber: o cartão então avisa **Falta o local**.",
           ],
@@ -530,7 +531,8 @@ const gigs: AreaText = {
           type: "list",
           title: "O cabeçalho",
           items: [
-            "Voltar no canto superior esquerdo. **Abrir modo palco** (o botão de play) no canto superior direito dos próximos shows da banda; no dia do show, ele fica preenchido. Veja [[stage-mode]].",
+            "Voltar no canto superior esquerdo. No canto superior direito: **Ajuda para esta tela** (?), o lápis (**Editar título, data e horários**, admins) e **Abrir modo palco** (o botão de play) nos próximos shows da banda; no dia do show, ele fica preenchido. Veja [[stage-mode]].",
+            "Quando você rola a tela, essa barra fica fixa no topo, então o Voltar está sempre à mão. Sobre o cabeçalho ela mantém a cor do show; mais abaixo, mostra o título do show.",
             "Etiquetas: **SHOW** (ou **SHOW PASSADO**), **CONFIRMADO**, **CONVITE PENDENTE** enquanto a sua resposta está em aberto, o tipo de evento (**CASAMENTO**, **CLUBE**…) e o nome da banda.",
             "O título, o dia em pontos grandes e o mês.",
             "O local (toque nele ou em **MAPA** para abrir os mapas), o endereço e a data com os horários de início e término.",
@@ -594,7 +596,7 @@ const gigs: AreaText = {
             ["**Setlist · {count} músicas**", "O show tem pelo menos uma música."],
             ["**Letras e cifras · {done} de {total} músicas**", "Todas as músicas da setlist têm letra ou cifra."],
             ["**Rider v{version} · enviado ao local**", "O link ou o PDF do rider foi compartilhado com o local."],
-            ["**Contrato assinado**", "O contrato do show está assinado (só admins)."],
+            ["**Contrato assinado** / **Contrato ainda não assinado** / **Ainda não há contrato**", "O contrato do show está assinado (só admins)."],
             ["**Sinal pago**", "O sinal está pago, quando há um (só admins)."],
             ["**Tarefas · {done} de {total} feitas**", "Todas as tarefas estão marcadas. Só aparece quando o show tem tarefas."],
           ],
@@ -602,7 +604,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Vê todos os itens, inclusive **Contrato assinado** e **Sinal pago**. Tocar numa linha abre a formação, a setlist ou o rider." },
+            { role: "admin", text: "Vê todos os itens, inclusive o contrato e **Sinal pago**. Tocar numa linha abre a formação, a setlist (também pela linha das letras), o rider ou **Contratos e docs**. **Ainda não há contrato** abre um contrato novo já preenchido para este show: título, evento, cliente, e-mail e data. Confira e toque em **Criar contrato**. O Voltar, também o do celular e o da barra lateral do celular de duas telas, retorna ao show." },
             { role: "member", text: "Vê os mesmos itens sem o contrato e o sinal, que são assunto da banda." },
           ],
         },
@@ -896,7 +898,7 @@ const gigs: AreaText = {
       keywords: ["privacidade", "permissões", "quem vê", "cachês privados", "visão do membro", "funções"],
       related: ["gig-workspace", "fee-and-payouts-on-a-gig", "deputies-on-a-gig", "personal-gigs"],
       body: [
-        { type: "p", text: "Membros e substitutos veem só o próprio cachê e a logística. As regras são aplicadas pelo servidor, não apenas escondidas no app: o celular de um membro nunca recebe o cachê da banda, o cliente nem os cachês dos outros." },
+        { type: "p", text: "Membros e substitutos veem só o próprio cachê e a logística. As regras são aplicadas pelo servidor, não apenas escondidas no app: o celular de um membro nunca recebe o cachê da banda, o cliente nem os cachês dos outros. Quando a sua função numa banda muda, o celular apaga o que guardava dessa banda para uso offline e carrega tudo de novo para a nova função: como admin, você passa a ver o cliente; como membro, nunca." },
         { type: "shot", id: "gig-workspace-member", caption: "O mesmo show do jeito que um membro vê: Seu cachê, sem cliente, sem o dinheiro da banda." },
         {
           type: "table",

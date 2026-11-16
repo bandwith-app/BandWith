@@ -171,7 +171,7 @@ const people: AreaText = {
             'Toque em **Tornar admin** para dar direitos de admin, ou em **Tornar membro** para tirá-los.',
           ],
         },
-        { type: 'p', text: 'A mudança é salva na hora; não há confirmação. A pessoa vê a nova função na próxima vez que a lista da banda carregar.' },
+        { type: 'p', text: 'A mudança é salva na hora; não há confirmação. A pessoa vê a nova função na próxima vez que a lista da banda carregar. Depois o celular dela apaga os dados da banda guardados para uso offline e carrega tudo de novo para a nova função: um novo admin vê o cliente e os preços, e quem deixou de ser admin não os guarda mais no celular.' },
         { type: 'note', tone: 'warning', text: 'Você não pode tornar membro o último admin. Primeiro torne outra pessoa admin.' },
         { type: 'note', tone: 'tip', text: 'Você não pode mudar a sua própria função: a sua página e o menu **⋯** na sua linha não mostram botões de função. Peça a outro admin para tornar você membro.' },
       ],
@@ -538,7 +538,13 @@ const people: AreaText = {
         { type: 'p', text: 'Os pedidos abertos vêm primeiro; os encerrados ficam em **Passados e encerrados**. Aparecem os pedidos dos últimos 30 dias em diante. A linha no alto lista as “Bandas que chamam você como substituto”.' },
         { type: 'p', text: '**Assinar meus shows** adiciona um feed de calendário com os seus shows confirmados com aquela banda. Ele acompanha cada mudança e marca os shows cancelados, então o seu calendário fica certo sem abrir o BandWith.' },
         { type: 'shot', id: 'people-deputy-gigs', caption: 'Shows como substituto: um pedido de outra banda esperando resposta.' },
-        { type: 'devices', rows: [{ devices: ['duoBook', 'duoLand'], text: 'Como tela inicial, a página da marca BandWith fica na primeira tela e os seus shows na segunda, como no login.' }] },
+        {
+          type: 'devices',
+          rows: [
+            { devices: ['duoBook', 'duoLand'], text: 'Como tela inicial, a página da marca BandWith fica na primeira tela e os seus shows na segunda, como no login.' },
+            { devices: ['duoLaptop'], text: 'Como tela inicial na posição notebook, o cabeçalho fica na metade de cima e os seus pedidos na metade de baixo. Enquanto você escreve uma mensagem, a caixa fica à vista, acima do teclado ou logo acima da dobra.' },
+          ],
+        },
       ],
     },
     {

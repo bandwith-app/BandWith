@@ -427,7 +427,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Hai cambiato idea? **Indietro** (in alto o in basso, o il tasto Indietro del telefono) torna al modulo della prova; **Chiudi** esce dal sondaggio. Se hai scritto qualcosa, ti viene chiesto prima: **Scartare questo sondaggio?** Tocca **Continua a modificare** o **Scarta**. I sondaggi non hanno bozze.",
+          text: "Hai cambiato idea? **Indietro** (in alto o in basso, o il tasto Indietro del telefono) torna al modulo della prova; **Chiudi** esce dal sondaggio. Se hai cambiato qualcosa, ti viene chiesto prima: **Scartare questo sondaggio?** Tocca **Continua a modificare** o **Scarta**. Senza modifiche si chiude e basta. I sondaggi non hanno bozze.",
         },
         {
           type: "list",

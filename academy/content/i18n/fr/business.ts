@@ -608,9 +608,18 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Depuis un devis accepté, **Préparer le contrat** ouvre ce formulaire déjà rempli avec le concert, le client, l’e-mail et la date, intitulé « Contrat de prestation · {event} »." },
+        { type: "p", text: "Depuis un concert, la ligne **Pas encore de contrat** de la préparation du show ouvre le même formulaire rempli pour ce concert ([[show-readiness]]). Retour, depuis le formulaire ou depuis **Contrats & docs**, ramène au concert." },
+        { type: "shot", id: "contracts-new-for-gig", caption: "Créer un contrat ouvert depuis « Pas encore de contrat » sur un concert : titre, événement, client, e-mail et date déjà remplis." },
         { type: "p", text: "Pour modifier un document, touche-le puis **Modifier**, ou **⋯** > **Modifier**, et touche **Enregistrer**. Un contrat signé ne peut plus être modifié." },
         { type: "note", tone: "tip", text: "Les conditions de paiement vont dans **Notes & conditions**. Le texte standard indique que l’acompte confirme la réservation et que le solde est dû le jour de l’événement : adapte-le à ce que tu as convenu dans le devis." },
         { type: "p", text: "Le PDF du contrat se termine par deux lignes de signature, « Pour {band} » et « Pour {client} », à signer sur papier ou dans l’outil du client. BandWith enregistre la date de signature quand tu touches **Marquer comme signé** ; l’app ne recueille pas elle-même les signatures." },
+        {
+          type: "devices",
+          rows: [
+            { devices: ["tablet"], text: "En paysage, le formulaire occupe tout le volet de droite et **Créer un contrat** se trouve en bas de celui-ci ; la barre d’onglets s’écarte pendant que tu écris." },
+            { devices: ["duoLaptop"], text: "En position ordinateur, l’en-tête reste sur la moitié haute, les champs et **Créer un contrat** sur la moitié basse. Le champ où tu écris reste visible, au-dessus du clavier ou juste au-dessus de la charnière." },
+          ],
+        },
       ],
     },
     {
@@ -648,7 +657,7 @@ const business: AreaText = {
           title: "Supprimer",
           items: ["Touche **⋯** > **Supprimer** et confirme. « Le document est supprimé pour tout le groupe. Les copies déjà envoyées au client ne sont pas concernées. »"],
         },
-        { type: "note", tone: "tip", text: "Un contrat signé lié à un concert compte comme fait dans la préparation du show de ce concert, voir [[gig-workspace]]." },
+        { type: "note", tone: "tip", text: "Un contrat signé lié à un concert compte comme fait dans la préparation du show de ce concert, voir [[show-readiness]]." },
       ],
     },
     {

@@ -120,6 +120,7 @@ const gigs: AreaText = {
           rows: [
             { devices: ["duoClosed", "duoBook", "duoLaptop", "duoLand"], text: "La ricerca dell’intestazione è il **Cerca** della barra laterale. Su un dispositivo aperto la ricerca resta sulla pagina sinistra e l’evento che scegli si apre sulla pagina destra." },
             { devices: ["tablet"], text: "L’evento che scegli si apre accanto all’elenco e resta evidenziato tra i risultati." },
+            { devices: ["android"], text: "Indietro prima chiude la tastiera, poi la ricerca. Un evento aperto dai risultati si chiude per primo e torni ai risultati." },
           ],
         },
       ],
@@ -344,7 +345,7 @@ const gigs: AreaText = {
           type: "list",
           title: "Locale",
           items: [
-            "Scrivi in **Locale / luogo** e scegli un suggerimento. Un luogo con un nome compila il locale e la via; un indirizzo semplice diventa il locale stesso. Vengono compilati anche città, regione, CAP e paese.",
+            "Scrivi in **Locale / luogo** e scegli un suggerimento: basta un tocco, anche con la tastiera aperta. Un luogo con un nome compila il locale e la via; un indirizzo semplice diventa il locale stesso. Vengono compilati anche città, regione, CAP e paese.",
             "Sul gig, il nome del locale è un link: toccalo (o tocca **MAPPA**) per aprirlo nella tua app di mappe. **Logistica e note** ha **Copia** per l’indirizzo completo e **Mappe**.",
             "Lascia il locale vuoto o scegli **Da def.** quando non lo sai ancora: la scheda avvisa allora **Manca il locale**.",
           ],
@@ -530,7 +531,8 @@ const gigs: AreaText = {
           type: "list",
           title: "L’intestazione",
           items: [
-            "Indietro in alto a sinistra. **Apri modalità palco** (il pulsante play) in alto a destra sui gig della band in arrivo; il giorno del gig è pieno. Vedi [[stage-mode]].",
+            "Indietro in alto a sinistra. In alto a destra: **Aiuto per questa schermata** (?), la matita (**Modifica titolo, data e orari**, admin) e **Apri modalità palco** (il pulsante play) sui gig della band in arrivo; il giorno del gig è pieno. Vedi [[stage-mode]].",
+            "Quando scorri, questa barra resta fissata in alto, così Indietro è sempre a portata di mano. Sopra l’intestazione mantiene il colore del gig; più in basso mostra il titolo del gig.",
             "Etichette: **GIG** (o **GIG PASSATO**), **CONFERMATO**, **INVITO IN ATTESA** finché la tua risposta è aperta, il tipo di evento (**MATRIMONIO**, **CLUB**…) e il nome della band.",
             "Il titolo, il giorno a grandi punti e il mese.",
             "Il locale (toccalo o tocca **MAPPA** per aprire le mappe), l’indirizzo e la data con orario di inizio e fine.",
@@ -594,7 +596,7 @@ const gigs: AreaText = {
             ["**Scaletta · {count} brani**", "Il gig ha almeno un brano."],
             ["**Testi e accordi · {done} su {total} brani**", "Ogni brano della scaletta ha il testo o una griglia di accordi."],
             ["**Rider v{version} · inviato al locale**", "Il link o il PDF del rider è stato condiviso con il locale."],
-            ["**Contratto firmato**", "Il contratto del gig è firmato (solo admin)."],
+            ["**Contratto firmato** / **Contratto non ancora firmato** / **Ancora nessun contratto**", "Il contratto del gig è firmato (solo admin)."],
             ["**Acconto pagato**", "L’acconto è pagato, quando è previsto (solo admin)."],
             ["**Cose da fare · {done} su {total} fatte**", "Ogni attività è spuntata. Compare solo se il gig ha delle attività."],
           ],
@@ -602,7 +604,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Vede tutti i controlli, compresi **Contratto firmato** e **Acconto pagato**. Toccando una riga si aprono la formazione, la scaletta o il rider." },
+            { role: "admin", text: "Vede tutti i controlli, compresi il contratto e **Acconto pagato**. Toccando una riga si aprono la formazione, la scaletta (anche dalla riga dei testi), il rider o **Contratti & doc**. **Ancora nessun contratto** apre un nuovo contratto già compilato per questo gig: titolo, evento, cliente, email e data. Controllalo e tocca **Crea contratto**. Indietro, anche quello del telefono e della barra laterale del doppio schermo, torna al gig." },
             { role: "member", text: "Vede gli stessi controlli senza contratto e acconto, che sono affari della band." },
           ],
         },
@@ -896,7 +898,7 @@ const gigs: AreaText = {
       keywords: ["privacy", "permessi", "chi vede", "compensi privati", "vista membro", "ruoli"],
       related: ["gig-workspace", "fee-and-payouts-on-a-gig", "deputies-on-a-gig", "personal-gigs"],
       body: [
-        { type: "p", text: "Membri e sostituti vedono solo il proprio compenso e la logistica. Le regole sono applicate dal server, non solo nascoste nell’app: il telefono di un membro non riceve mai il compenso della band, il cliente o i compensi degli altri." },
+        { type: "p", text: "Membri e sostituti vedono solo il proprio compenso e la logistica. Le regole sono applicate dal server, non solo nascoste nell’app: il telefono di un membro non riceve mai il compenso della band, il cliente o i compensi degli altri. Quando il tuo ruolo in una band cambia, il telefono elimina ciò che aveva salvato di quella band per l’uso offline e lo ricarica per il nuovo ruolo: da admin vedi il cliente, da membro mai." },
         { type: "shot", id: "gig-workspace-member", caption: "Lo stesso gig visto da un membro: Il tuo compenso, nessun cliente, niente soldi della band." },
         {
           type: "table",

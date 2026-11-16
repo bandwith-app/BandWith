@@ -120,6 +120,7 @@ const gigs: AreaText = {
           rows: [
             { devices: ["duoClosed", "duoBook", "duoLaptop", "duoLand"], text: "Die Suche in der Kopfzeile ist die **Suchen** in der Leiste. Auf einem aufgeklappten Gerät bleibt die Suche auf der linken Seite und der gewählte Termin öffnet sich rechts." },
             { devices: ["tablet"], text: "Der gewählte Termin öffnet sich neben der Liste und bleibt in den Ergebnissen umrandet." },
+            { devices: ["android"], text: "Zurück blendet zuerst die Tastatur aus und schließt dann die Suche. Ein aus den Ergebnissen geöffneter Termin schließt sich zuerst, du bist dann wieder bei den Ergebnissen." },
           ],
         },
       ],
@@ -344,7 +345,7 @@ const gigs: AreaText = {
           type: "list",
           title: "Location",
           items: [
-            "Tippe in **Location / Ort** und wähle einen Vorschlag. Ein benannter Ort füllt Location und Straße aus; eine reine Adresse wird selbst zur Location. Stadt, Region, Postleitzahl und Land werden ebenfalls eingetragen.",
+            "Tippe in **Location / Ort** und wähle einen Vorschlag: Ein Tipp genügt, auch bei offener Tastatur. Ein benannter Ort füllt Location und Straße aus; eine reine Adresse wird selbst zur Location. Stadt, Region, Postleitzahl und Land werden ebenfalls eingetragen.",
             "Im Gig ist der Name der Location ein Link: Tippe darauf (oder auf **KARTE**), um ihn in deiner Karten-App zu öffnen. **Logistik & Notizen** hat **Kopieren** für die vollständige Adresse und **Karten**.",
             "Lass die Location leer oder wähle **Offen**, wenn du sie noch nicht kennst: Die Karte warnt dann mit **Location fehlt**.",
           ],
@@ -530,7 +531,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Der Kopfbereich",
           items: [
-            "Zurück oben links. **Bühnenmodus öffnen** (der Play-Button) oben rechts bei anstehenden Band-Gigs; am Tag des Gigs ist er ausgefüllt. Siehe [[stage-mode]].",
+            "Zurück oben links. Oben rechts: **Hilfe zu diesem Bildschirm** (?), der Stift (**Titel, Datum und Zeiten bearbeiten**, Admins) und **Bühnenmodus öffnen** (der Play-Button) bei anstehenden Band-Gigs; am Tag des Gigs ist er ausgefüllt. Siehe [[stage-mode]].",
+            "Sobald du scrollst, bleibt diese Leiste oben angeheftet, so ist Zurück immer erreichbar. Über dem Kopfbereich behält sie die Farbe des Gigs; weiter unten zeigt sie den Titel des Gigs.",
             "Chips: **GIG** (oder **VERGANGENER GIG**), **BESTÄTIGT**, **EINLADUNG OFFEN**, solange deine Antwort fehlt, der Eventtyp (**HOCHZEIT**, **CLUB**…) und der Bandname.",
             "Der Titel, der Tag in großen Punkten und der Monat.",
             "Die Location (tippe darauf oder auf **KARTE**, um die Karte zu öffnen), die Adresse und das Datum mit Beginn und Ende.",
@@ -594,7 +596,7 @@ const gigs: AreaText = {
             ["**Setlist · {count} Songs**", "Der Gig hat mindestens einen Song."],
             ["**Texte & Charts · {done} von {total} Songs**", "Jeder Song der Setlist hat einen Text oder ein Akkordblatt."],
             ["**Rider v{version} · an die Location gesendet**", "Der Rider-Link oder das PDF wurde mit der Location geteilt."],
-            ["**Vertrag unterschrieben**", "Der Vertrag des Gigs ist unterschrieben (nur Admins)."],
+            ["**Vertrag unterschrieben** / **Vertrag noch nicht unterschrieben** / **Noch kein Vertrag**", "Der Vertrag des Gigs ist unterschrieben (nur Admins)."],
             ["**Anzahlung bezahlt**", "Die Anzahlung ist bezahlt, wenn eine fällig ist (nur Admins)."],
             ["**Aufgaben · {done} von {total} erledigt**", "Jede Aufgabe ist abgehakt. Nur aufgeführt, wenn der Gig Aufgaben hat."],
           ],
@@ -602,7 +604,7 @@ const gigs: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Sieht alle Prüfpunkte, auch **Vertrag unterschrieben** und **Anzahlung bezahlt**. Ein Tipp auf eine Zeile öffnet Besetzung, Setlist oder Rider." },
+            { role: "admin", text: "Sieht alle Prüfpunkte, auch den Vertrag und **Anzahlung bezahlt**. Ein Tipp auf eine Zeile öffnet Besetzung, Setlist (auch von der Zeile für Texte), Rider oder **Verträge & Docs**. **Noch kein Vertrag** öffnet einen neuen Vertrag, schon für diesen Gig ausgefüllt: Titel, Event, Kunde, E-Mail und Datum. Prüf ihn und tippe auf **Vertrag erstellen**. Zurück, auch das des Handys und das der Leiste am Dual-Screen-Handy, führt zurück zum Gig." },
             { role: "member", text: "Sieht dieselben Prüfpunkte ohne Vertrag und Anzahlung, denn die sind Sache der Band." },
           ],
         },
@@ -896,7 +898,7 @@ const gigs: AreaText = {
       keywords: ["Datenschutz", "Berechtigungen", "wer sieht was", "Gagen privat", "Mitgliederansicht", "Rollen"],
       related: ["gig-workspace", "fee-and-payouts-on-a-gig", "deputies-on-a-gig", "personal-gigs"],
       body: [
-        { type: "p", text: "Mitglieder und Vertretungen sehen nur ihre eigene Gage und die Logistik. Der Server setzt diese Regeln durch, sie sind nicht nur in der App ausgeblendet: Das Handy eines Mitglieds bekommt die Band-Gage, den Kunden oder die Gagen anderer nie zu sehen." },
+        { type: "p", text: "Mitglieder und Vertretungen sehen nur ihre eigene Gage und die Logistik. Der Server setzt diese Regeln durch, sie sind nicht nur in der App ausgeblendet: Das Handy eines Mitglieds bekommt die Band-Gage, den Kunden oder die Gagen anderer nie zu sehen. Ändert sich deine Rolle in einer Band, löscht das Handy, was es von dieser Band für die Offline-Nutzung gespeichert hatte, und lädt es für deine neue Rolle neu: Als Admin siehst du dann den Kunden, als Mitglied nie." },
         { type: "shot", id: "gig-workspace-member", caption: "Derselbe Gig aus Sicht eines Mitglieds: Deine Gage, kein Kunde, kein Geld der Band." },
         {
           type: "table",

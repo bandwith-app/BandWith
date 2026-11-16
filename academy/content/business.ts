@@ -616,9 +616,18 @@ const business: AreaModule = {
           ],
         },
         { type: 'p', text: 'From an accepted quote, **Prepare contract** opens this form already filled with the gig, client, email and date, titled "Performance agreement · {event}".' },
+        { type: 'p', text: 'From a gig, the readiness line **No contract yet** opens the same form filled in for that gig ([[show-readiness]]). Back, from the form or from **Contracts & docs**, returns to the gig.' },
+        { type: 'shot', id: 'contracts-new-for-gig', caption: 'Create contract opened from “No contract yet” on a gig: title, event, client, email and date already filled in.' },
         { type: 'p', text: 'To change a document, tap it and then **Edit**, or **⋯** > **Edit**, and tap **Save changes**. A signed contract can no longer be edited.' },
         { type: 'note', tone: 'tip', text: 'Payment terms go in **Notes & terms**. The standard text says the deposit confirms the booking and the balance is due on the event date: change it to match what you agreed in the quote.' },
         { type: 'p', text: 'The contract PDF ends with two signature lines, "For {band}" and "For {client}", to sign on paper or in the client\'s own tool. BandWith records the signature date when you tap **Mark as signed**; it does not collect signatures itself.' },
+        {
+          type: 'devices',
+          rows: [
+            { devices: ['tablet'], text: 'In landscape the form fills the right pane and **Create contract** sits at its bottom edge; the tab pill steps aside while you write.' },
+            { devices: ['duoLaptop'], text: 'In Laptop pose the header stays on the top half, the fields and **Create contract** on the bottom half. The field you type in stays in sight, above the keyboard or just above the fold.' },
+          ],
+        },
       ],
     },
     {
@@ -656,7 +665,7 @@ const business: AreaModule = {
           title: 'Delete',
           items: ['Tap **⋯** > **Delete** and confirm. "The document is removed for the whole band. Copies already sent to the client are not affected."'],
         },
-        { type: 'note', tone: 'tip', text: 'A signed contract linked to a gig counts as done in the gig\'s show readiness, see [[gig-workspace]].' },
+        { type: 'note', tone: 'tip', text: 'A signed contract linked to a gig counts as done in the gig\'s show readiness, see [[show-readiness]].' },
       ],
     },
     {
@@ -1078,6 +1087,12 @@ const business: AreaModule = {
       how: 'Home > Quick Actions > Contracts. Capture the list with the All tab, the three totals and the three demo documents.',
       role: 'admin',
       viewport: 'phone',
+    },
+    {
+      id: 'contracts-new-for-gig',
+      how: 'Calendar > Rooftop Session > SHOW READINESS > No contract yet. Capture Create contract filled in for the gig (on a tablet it fills the right pane, Contracts & docs on the left).',
+      role: 'admin',
+      viewport: 'tablet',
     },
     {
       id: 'analytics',

@@ -39,6 +39,7 @@ const basics: AreaText = {
             { devices: ["duoBook", "duoLand"], text: "Con el móvil de doble pantalla abierto, la página izquierda muestra la página de marca de BandWith con los pasos de bienvenida; el formulario está en la página derecha." },
             { devices: ["tablet"], text: "El registro, la bienvenida y las pantallas de bloqueo se quedan en una columna legible en el centro de la ventana, en lugar de ocuparla entera." },
             { devices: ["web"], text: "El acceso con Google y Apple se abre en la misma pestaña y te devuelve a la app. En la app del móvil se abre un navegador integrado; si lo cierras sin entrar, los botones vuelven a funcionar." },
+            { devices: ["duoLaptop"], text: "En postura portátil, el título y Google / Apple se quedan en la mitad de arriba y el formulario de email empieza en la mitad de abajo. En **¿Qué te trae por aquí?** las opciones están en la mitad de abajo: desplázate hasta **Continuar**." },
           ],
         },
       ],
@@ -97,6 +98,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "¿Eres nuevo? Toca **Crea una cuenta** al final de la pantalla de acceso." },
         { type: "note", tone: "tip", text: "Sin conexión, la app mantiene tu sesión guardada en el dispositivo, así que puedes seguir abriendo las bandas y los conciertos guardados. Renueva la sesión cuando vuelves a tener conexión." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "En postura portátil, el título y Google / Apple se quedan en la mitad de arriba; **Email**, **Contraseña** y **Entrar** empiezan en la mitad de abajo, lejos del pliegue." }] },
       ],
     },
     {
@@ -254,6 +256,7 @@ const basics: AreaText = {
         },
         { type: "p", text: "Cada tarjeta tiene **Más información en la Academy**, que abre la guía correspondiente dentro de la app. Cierra la guía para volver al tour." },
         { type: "note", tone: "tip", text: "Para verlo otra vez: Ajustes, **Ayuda y soporte**, **Ver el tour otra vez**. En la misma página está **BandWith Academy**, que abre estas guías para tu rol." },
+        { type: "devices", rows: [{ devices: ["duoLaptop"], text: "En postura portátil, el icono y el título de cada tarjeta van en la mitad de arriba; el texto y los botones, en la de abajo. Las dos mitades usan los colores oscuros del tour, así que el título se lee bien." }] },
       ],
     },
     {
@@ -554,6 +557,7 @@ const basics: AreaText = {
         {
           type: "list",
           items: [
+            "Un selector de fecha u hora: solo se cierra el selector; la hoja desde la que lo abriste sigue abierta.",
             "Una hoja o un diálogo abierto (Términos, una invitación, **¿Activar Face ID?**, una confirmación de borrado).",
             "Una sección dentro de una pantalla (una sección de Ajustes vuelve a la lista de secciones).",
             "Una página o un panel a pantalla completa (el menú, el buzón, un evento).",
@@ -567,7 +571,7 @@ const basics: AreaText = {
           rows: [
             { devices: ["android"], text: "El botón Atrás del sistema y el gesto de volver siguen el orden de arriba." },
             { devices: ["phone"], text: "El iPhone no tiene Atrás del sistema: usa el botón de volver arriba a la izquierda de cada pantalla, o desliza una hoja hacia abajo." },
-            { devices: ["web", "tablet"], text: "Escape en un teclado físico cierra la capa de arriba. Escape pulsado en un campo es para el campo. En la web, el Atrás del navegador funciona como el Atrás de Android, pero nunca cierra la app; desde Inicio sale del sitio." },
+            { devices: ["web", "tablet"], text: "Escape en un teclado físico cierra la capa de arriba. Escape pulsado en un campo es para el campo. En la web, el Atrás del navegador funciona como el Atrás de Android, pero nunca cierra la app; desde Inicio sale del sitio. Mientras configuras tu cuenta, retrocede un paso cada vez." },
             { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Atrás está en la barra lateral, no en la barra superior de cada pantalla." },
           ],
         },
@@ -613,7 +617,7 @@ const basics: AreaText = {
             "Cambia entre **Todo** y **No leídas**. Las no leídas tienen un punto rojo.",
             "Toca una notificación. Una invitación a un concierto abre primero su página de detalle; la mayoría de las demás abren directamente su pantalla (un chat, un evento, un sondeo, un presupuesto).",
             "Desliza una notificación hacia la izquierda y toca **Eliminar** para quitarla.",
-            "Toca **Marcar leídas** para marcarlo todo como leído, o **Borrar** y luego **Borrar todo** para vaciar la lista.",
+            "Toca **Marcar leídas** para marcarlo todo como leído: los puntos rojos y el contador de **No leídas** desaparecen al momento. O toca **Borrar** y luego **Borrar todo** para vaciar la lista.",
           ],
         },
         { type: "p", text: "La página de detalle de una invitación a un concierto muestra **Detalles del evento**: la fecha, los **Horarios** (montaje, prueba de sonido, inicio), la **Sala**, tu **Caché asignado** y cualquier **Conflicto de agenda** con tu calendario. Toca **Aceptar evento** o **Rechazar**, o **Añadir a Google Calendar**. Los sondeos de ensayo tienen **Vota las fechas**." },
@@ -624,6 +628,8 @@ const basics: AreaText = {
           type: "devices",
           rows: [
             { devices: ["duoBook", "duoLand", "tablet"], text: "La lista se queda en la página izquierda y la notificación elegida, lista para responder, en la derecha." },
+            { devices: ["duoClosed", "duoBook", "duoLand", "duoLaptop"], text: "Atrás en la barra lateral cierra el buzón. Mientras está abierto no se abre nada detrás, así que vuelves a donde estabas." },
+            { devices: ["duoLaptop"], text: "En postura portátil, la cabecera del buzón se queda en la mitad de arriba y la lista se desplaza en la de abajo." },
           ],
         },
       ],
@@ -1146,6 +1152,8 @@ const basics: AreaText = {
         { type: "shot", id: "music-stage", device: "duoLaptop", caption: "Monitor de suelo: canción, tonalidad, BPM y siguiente canción sobre negro, grandes botones Anterior / Siguiente abajo." },
         { type: "shot", id: "quote-wizard-review", device: "duoLaptop", caption: "Mesa de presupuestos: el presupuesto tal como lo lee el cliente arriba, el formulario abajo." },
         { type: "p", text: "Las hojas, los menús y el teclado se abren en el Deck; los mensajes cortos (avisos) aparecen en el Display. La barra lateral va a lo largo del borde inferior del Deck." },
+        { type: "p", text: "Los formularios dejan la cabecera en el Display y todos los campos en el Deck: **Entrar**, la creación de la cuenta, **¿Qué te trae por aquí?**, **Bolos como sustituto**, los formularios de conciertos, ensayos y encuestas, **Crear contrato** y el buzón. Mientras escribes, el campo en el que estás sigue a la vista: justo encima del teclado o, cuando el teclado tapa todo el Deck, entero en el Display, justo encima del pliegue." },
+        { type: "p", text: "Los tours de cada rol ponen el icono y el título de cada tarjeta en el Display y el texto y los botones en el Deck, los dos con los colores oscuros del tour ([[welcome-tour]])." },
         {
           type: "steps",
           title: "Desactiva la postura portátil",
@@ -1214,7 +1222,7 @@ const basics: AreaText = {
             "Importar de contactos.",
           ],
         },
-        { type: "p", text: "Escape cierra la capa de arriba. El Atrás del navegador funciona como el Atrás de Android, pero nunca cierra nada fuera de la app; desde Inicio sale del sitio. En un ordenador compartido, cierra sesión cuando termines." },
+        { type: "p", text: "Escape cierra la capa de arriba. El Atrás del navegador funciona como el Atrás de Android, pero nunca cierra nada fuera de la app; desde Inicio sale del sitio. Mientras configuras tu cuenta, Atrás vuelve al paso anterior; desde el primero sale del sitio. En un ordenador compartido, cierra sesión cuando termines." },
       ],
     },
   ],

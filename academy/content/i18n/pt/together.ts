@@ -427,7 +427,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Mudou de ideia? **Voltar** (em cima ou embaixo, ou o botão Voltar do celular) retorna ao formulário do ensaio; **Fechar** sai da enquete. Se você digitou algo, o app pergunta antes: **Descartar esta enquete?** Toque em **Continuar editando** ou **Descartar**. Enquetes não têm rascunhos.",
+          text: "Mudou de ideia? **Voltar** (em cima ou embaixo, ou o botão Voltar do celular) retorna ao formulário do ensaio; **Fechar** sai da enquete. Se você mudou algo, o app pergunta antes: **Descartar esta enquete?** Toque em **Continuar editando** ou **Descartar**. Sem mudanças, ela simplesmente fecha. Enquetes não têm rascunhos.",
         },
         {
           type: "list",
