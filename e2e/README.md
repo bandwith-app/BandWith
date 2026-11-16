@@ -38,6 +38,8 @@ tests only. `@xstate/graph` generates one path per transition and
 Paths the app gets wrong today are listed in the model's `knownBugs` and not run.
 Diagrams, states, events and paths: [docs/lifecycles](../docs/lifecycles/README.md)
 (`pnpm e2e:models:docs` rewrites them after a model changes).
+In CI they run in their own job, "E2E lifecycles", beside the three E2E shards, which skip
+them (`E2E_SKIP_LIFECYCLES=1`).
 
 The HTML report goes to `e2e/.report/` (`pnpm exec playwright show-report e2e/.report`),
 traces and screenshots of failed tests to `e2e/.results/`.
