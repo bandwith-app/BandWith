@@ -593,7 +593,7 @@ const gigs: AreaText = {
             ["**Formation · {done} sur {total} confirmés**", "Tous ceux qui n’ont pas refusé ont confirmé."],
             ["**Setlist · {count} morceaux**", "Le concert a au moins un morceau."],
             ["**Paroles et grilles · {done} sur {total} morceaux**", "Chaque morceau de la setlist a des paroles ou une grille d’accords."],
-            ["**Fiche technique v{version} · vue par la salle**", "La salle a ouvert le lien de la fiche technique."],
+            ["**Fiche technique v{version} · envoyée à la salle**", "Le lien ou le PDF de la fiche technique a été partagé avec la salle."],
             ["**Contrat signé**", "Le contrat du concert est signé (admins uniquement)."],
             ["**Acompte payé**", "L’acompte est payé, quand il y en a un (admins uniquement)."],
             ["**Tâches · {done} sur {total} faites**", "Chaque tâche est cochée. Affiché seulement si le concert a des tâches."],
@@ -668,8 +668,9 @@ const gigs: AreaText = {
             "Sous **Plan de scène**, touche **MODIFIER**. Sous le plan, la première rangée de pastilles (**Ajouter un musicien**) ajoute un instrument : chant, guitare, basse, claviers, batterie, percussions, sax ou trompette. La deuxième rangée (**Ajouter du matériel**) ajoute **Autre musicien**, un retour, une enceinte ou un boîtier DI. Maintiens le doigt sur un emplacement vide pour obtenir les mêmes choix à cet endroit.",
             "Maintiens un élément jusqu’à ce qu’il se soulève, puis fais-le glisser et lâche-le ; un balayage rapide fait toujours défiler la page. Touche un élément pour changer son code court et sa légende, ou pour le retirer. Indique le **Nom de la configuration**, la **Largeur de scène (m)** et la **Profondeur de scène (m)**, puis **ENREGISTRER LE PLAN**. **+ NOUVELLE CONFIGURATION** et **SUPPRIMER LA CONFIGURATION** gèrent plusieurs configurations.",
             "Enregistrer le plan remplit le patch pour toi : chaque instrument ajoute ses voies habituelles dans l’ordre de la console (batterie : grosse caisse, caisse claire, OH L et OH R ; basse : une voie DI ; un boîtier DI : sa propre ligne). Retirer un élément retire ses voies.",
-            "Sous **Patch**, touche **MODIFIER LA LISTE** pour peaufiner : **AJOUTER UNE VOIE**, change **SOURCE**, **MICRO / DI** et **Qui**, fais glisser pour réordonner, puis **ENREGISTRER LA LISTE**. Tes changements restent quand tu enregistres de nouveau le plan.",
-            "Sous **Qui apporte quoi**, vérifie la liste suggérée d’après le line-up, remplis **LE GROUPE APPORTE** et **LA SALLE FOURNIT** (un élément par ligne), coche **La salle a validé** quand c’est réglé, et touche **ENREGISTRER**.",
+            "À côté de **Patch**, touche **MODIFIER LA LISTE** pour peaufiner : **AJOUTER UNE VOIE**, change **SOURCE**, **MICRO / DI** et **Qui**, fais glisser pour réordonner, puis **ENREGISTRER LA LISTE**. Tes changements restent quand tu enregistres de nouveau le plan. **CRÉER D'APRÈS LA FORMATION** dans l’éditeur repart des instruments de la formation.",
+            "S’il n’y a pas encore de voies, touche **CRÉER D'APRÈS LA FORMATION** sous **Patch**. Si la formation change ensuite, la liste propose **METTRE À JOUR D'APRÈS LA FORMATION** ou **GARDER CETTE LISTE**. Si tu as modifié la liste à la main, BandWith demande d’abord (**Refaire le patch ?**), car tes changements seraient remplacés.",
+            "À côté de **Qui apporte quoi**, touche **MODIFIER**, vérifie la liste suggérée d’après le line-up, remplis **LE GROUPE APPORTE** et **LA SALLE FOURNIT** (un élément par ligne), coche **La salle a validé** quand c’est réglé, et touche **ENREGISTRER**.",
           ],
         },
         {
@@ -678,7 +679,7 @@ const gigs: AreaText = {
           items: [
             "Touche **PARTAGER LE LIEN AVEC LA SALLE** (ou **Partager le lien de la fiche**) et envoie-le comme d’habitude.",
             "Ou touche **PDF** / **Partager le PDF de la fiche** pour un fichier.",
-            "La fiche affiche **ENVOYÉE À LA SALLE {date}** et, une fois que la salle a ouvert le lien, **OUVERTE {date}**. La préparation passe à **Fiche technique v{version} · vue par la salle**.",
+            "La fiche affiche **ENVOYÉE À LA SALLE {date}**. La préparation passe à **Fiche technique v{version} · envoyée à la salle**. Partager le PDF compte aussi comme envoi ; l’enregistrer sur le téléphone, non.",
           ],
         },
         {
@@ -688,7 +689,6 @@ const gigs: AreaText = {
             "La salle ouvre le lien dans un navigateur, sans compte.",
             "La page montre la fiche technique, les horaires et la salle du concert, le plan de scène, le patch et qui apporte quoi, dans la langue de la salle quand elle est disponible.",
             "Elle ne montre jamais le client ni aucun cachet.",
-            "L’ouvrir marque la fiche comme vue pour le groupe. Le groupe qui vérifie son propre lien (aperçu) ne compte pas.",
           ],
         },
         {

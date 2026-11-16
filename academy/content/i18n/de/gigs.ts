@@ -593,7 +593,7 @@ const gigs: AreaText = {
             ["**Besetzung · {done} von {total} bestätigt**", "Alle, die nicht abgesagt haben, haben bestätigt."],
             ["**Setlist · {count} Songs**", "Der Gig hat mindestens einen Song."],
             ["**Texte & Charts · {done} von {total} Songs**", "Jeder Song der Setlist hat einen Text oder ein Akkordblatt."],
-            ["**Rider v{version} · von der Location gesehen**", "Die Location hat den Rider-Link geöffnet."],
+            ["**Rider v{version} · an die Location gesendet**", "Der Rider-Link oder das PDF wurde mit der Location geteilt."],
             ["**Vertrag unterschrieben**", "Der Vertrag des Gigs ist unterschrieben (nur Admins)."],
             ["**Anzahlung bezahlt**", "Die Anzahlung ist bezahlt, wenn eine fällig ist (nur Admins)."],
             ["**Aufgaben · {done} von {total} erledigt**", "Jede Aufgabe ist abgehakt. Nur aufgeführt, wenn der Gig Aufgaben hat."],
@@ -668,8 +668,9 @@ const gigs: AreaText = {
             "Tippe unter **Bühnenplan** auf **ÄNDERN**. Unter dem Plan fügt die erste Chip-Reihe (**Musiker:in hinzufügen**) ein Instrument hinzu: Gesang, Gitarre, Bass, Keys, Drums, Percussion, Saxofon oder Trompete. Die zweite Reihe (**Equipment hinzufügen**) fügt **Andere Musiker:in**, einen Monitor, einen Lautsprecher oder eine DI-Box hinzu. Halte eine freie Stelle gedrückt, um dieselbe Auswahl direkt dort zu bekommen.",
             "Halte ein Element, bis es sich anhebt, zieh es und lass los; ein schnelles Wischen scrollt weiterhin die Seite. Tippe auf ein Element, um sein Kürzel und seine Beschriftung zu ändern oder es zu entfernen. Lege **Name der Aufstellung**, **Bühnenbreite (m)** und **Bühnentiefe (m)** fest und tippe dann auf **PLAN SICHERN**. Mit **+ NEUE AUFSTELLUNG** und **AUFSTELLUNG LÖSCHEN** verwaltest du mehrere Aufstellungen.",
             "Beim Sichern des Plans wird die Kanalliste für dich gefüllt: Jedes Instrument fügt seine üblichen Kanäle in Pult-Reihenfolge hinzu (Drums: Kick, Snare, OH L und OH R; Bass: ein DI-Kanal; eine DI-Box: ihre eigene Leitung). Entfernst du ein Element, verschwinden seine Kanäle.",
-            "Tippe unter **Kanalliste** auf **LISTE BEARBEITEN**, um nachzujustieren: **KANAL HINZUFÜGEN**, **QUELLE**, **MIKRO / DI** und **Wer** ändern, per Ziehen umsortieren, dann **LISTE SICHERN**. Deine Änderungen bleiben erhalten, wenn du den Plan erneut sicherst.",
-            "Prüfe unter **Wer bringt was** die aus der Besetzung vorgeschlagene Liste, schreib **BAND BRINGT** und **LOCATION STELLT** (eins pro Zeile), hak **Die Location hat zugestimmt** an, wenn es geklärt ist, und tippe auf **SICHERN**.",
+            "Tippe neben **Kanalliste** auf **LISTE BEARBEITEN**, um nachzujustieren: **KANAL HINZUFÜGEN**, **QUELLE**, **MIKRO / DI** und **Wer** ändern, per Ziehen umsortieren, dann **LISTE SICHERN**. Deine Änderungen bleiben erhalten, wenn du den Plan erneut sicherst. **AUS DER BESETZUNG ERSTELLEN** im Editor beginnt die Liste neu mit den Instrumenten der Besetzung.",
+            "Gibt es noch keine Kanäle, tippe unter **Kanalliste** auf **AUS DER BESETZUNG ERSTELLEN**. Ändert sich die Besetzung später, bietet die Liste **AUS DER BESETZUNG AKTUALISIEREN** oder **DIESE LISTE BEHALTEN** an. Hast du die Liste von Hand bearbeitet, fragt BandWith vorher (**Kanalliste neu erstellen?**), weil deine Änderungen ersetzt würden.",
+            "Tippe neben **Wer bringt was** auf **ÄNDERN**, prüfe die aus der Besetzung vorgeschlagene Liste, schreib **BAND BRINGT** und **LOCATION STELLT** (eins pro Zeile), hak **Die Location hat zugestimmt** an, wenn es geklärt ist, und tippe auf **SICHERN**.",
           ],
         },
         {
@@ -678,7 +679,7 @@ const gigs: AreaText = {
           items: [
             "Tippe auf **LINK MIT DER LOCATION TEILEN** (oder **Rider-Link teilen**) und schick ihn auf dem üblichen Weg.",
             "Oder tippe auf **PDF** / **Rider-PDF teilen** für eine Datei.",
-            "Der Rider zeigt **AN LOCATION GESENDET {date}** und, sobald die Location den Link öffnet, **GEÖFFNET {date}**. Die Bereitschaft wechselt zu **Rider v{version} · von der Location gesehen**.",
+            "Der Rider zeigt **AN LOCATION GESENDET {date}**. Die Bereitschaft wechselt zu **Rider v{version} · an die Location gesendet**. Auch das Teilen des PDFs zählt als gesendet, das Speichern auf dem Handy nicht.",
           ],
         },
         {
@@ -688,7 +689,6 @@ const gigs: AreaText = {
             "Die Location öffnet den Link im Browser, ohne Konto.",
             "Die Seite zeigt den Rider, Zeiten und Location des Gigs, den Bühnenplan, die Kanalliste und „Wer bringt was“, wenn verfügbar in der Sprache der Location.",
             "Sie zeigt nie den Kunden oder irgendeine Gage.",
-            "Öffnet die Location sie, gilt der Rider für die Band als gesehen. Prüft die Band ihren eigenen Link (Vorschau), zählt das nicht.",
           ],
         },
         {

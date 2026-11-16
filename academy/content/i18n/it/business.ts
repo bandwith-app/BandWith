@@ -657,7 +657,7 @@ const business: AreaText = {
       summary: "Tieni i rider tecnici insieme ai contratti, condividili con un link web e invia nuove versioni.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["rider tecnico", "link del rider", "pianta del palco", "input list", "locale", "nuova versione", "visto"],
+      keywords: ["rider tecnico", "link del rider", "pianta del palco", "input list", "locale", "nuova versione", "pdf"],
       related: ["contracts-and-docs", "send-a-contract", "rider-and-stage"],
       body: [
         {
@@ -670,14 +670,14 @@ const business: AreaText = {
             "Per inviarlo, usa **Invia** come per un contratto, oppure **Link web** (**⋯** > **Condividi link web**) per condividere una pagina in sola lettura per il locale.",
           ],
         },
-        { type: "p", text: "Quando il locale apre il link web, il rider mostra **Visto** con la data (“Visto dal locale”). Dopo una modifica, tocca **⋯** > **Nuova versione**: il rider torna **Bozza** come versione successiva, e lo condividi di nuovo perché il locale la veda." },
+        { type: "p", text: "Una volta condiviso, il rider mostra **Inviato**. Dopo una modifica, tocca **⋯** > **Nuova versione**: il rider torna **Bozza** come versione successiva, e lo condividi di nuovo perché il locale la veda." },
         { type: "p", text: "I rider non hanno **Segna come firmato**." },
       ],
     },
     {
       id: "contract-statuses",
       title: "Gli stati di contratti e rider",
-      summary: "Bozza, Inviato, Visualizzato o Visto, Firmato e Scaduto.",
+      summary: "Bozza, Inviato, Firmato e Scaduto.",
       roles: ["admin"],
       kind: "reference",
       keywords: ["stato del contratto", "contratto scaduto", "in attesa", "firmato"],
@@ -689,7 +689,6 @@ const business: AreaText = {
           rows: [
             ["**Bozza**", "Creato, non ancora inviato."],
             ["**Inviato**", "Condiviso con il cliente."],
-            ["**Visualizzato** / **Visto**", "Per i rider: il locale ha aperto il link web."],
             ["**Firmato**", "Hai toccato **Segna come firmato**. Definitivo: si può vedere, scaricare o eliminare, non modificare."],
             ["**Scaduto**", "Compare quando la data **Valido fino al** è passata, oppure quando è passata la data dell’evento mentre il documento non era ancora firmato. Il documento non cambia; cambia solo come viene mostrato."],
           ],

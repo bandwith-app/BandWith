@@ -593,7 +593,7 @@ const gigs: AreaText = {
             ["**Formação · {done} de {total} confirmados**", "Todos que não recusaram confirmaram."],
             ["**Setlist · {count} músicas**", "O show tem pelo menos uma música."],
             ["**Letras e cifras · {done} de {total} músicas**", "Todas as músicas da setlist têm letra ou cifra."],
-            ["**Rider v{version} · visto pelo local**", "O local abriu o link do rider."],
+            ["**Rider v{version} · enviado ao local**", "O link ou o PDF do rider foi compartilhado com o local."],
             ["**Contrato assinado**", "O contrato do show está assinado (só admins)."],
             ["**Sinal pago**", "O sinal está pago, quando há um (só admins)."],
             ["**Tarefas · {done} de {total} feitas**", "Todas as tarefas estão marcadas. Só aparece quando o show tem tarefas."],
@@ -668,8 +668,9 @@ const gigs: AreaText = {
             "Em **Mapa de palco**, toque em **EDITAR**. Abaixo do mapa, a primeira linha de botões (**Adicionar um músico**) adiciona um instrumento: voz, guitarra, baixo, teclado, bateria, percussão, sax ou trompete. A segunda linha (**Adicionar equipamento**) adiciona **Outro músico**, um retorno, uma caixa de som ou uma caixa DI. Mantenha pressionado um espaço vazio para ter as mesmas opções ali mesmo.",
             "Mantenha um item pressionado até ele se destacar, arraste e solte; um deslize rápido continua rolando a página. Toque num item para mudar o código curto e a legenda, ou para removê-lo. Defina **Nome da disposição**, **Largura do palco (m)** e **Profundidade do palco (m)** e toque em **SALVAR MAPA**. **+ NOVA DISPOSIÇÃO** e **EXCLUIR DISPOSIÇÃO** gerenciam várias disposições.",
             "Salvar o mapa preenche a lista de canais para você: cada instrumento adiciona os canais de costume na ordem da mesa (bateria: bumbo, caixa, OH E e OH D; baixo: um canal DI; uma caixa DI: a própria linha). Remover um item remove os canais dele.",
-            "Em **Lista de canais**, toque em **EDITAR LISTA** para ajustar: **ADICIONAR CANAL**, mude **FONTE**, **MIC / DI** e **Quem**, arraste para reordenar e toque em **SALVAR LISTA**. Suas alterações continuam quando você salva o mapa de novo.",
-            "Em **Quem leva o quê**, confira a lista sugerida a partir da formação, escreva **A BANDA LEVA** e **O LOCAL FORNECE** (um item por linha), marque **O local concordou** quando estiver acertado e toque em **SALVAR**.",
+            "Ao lado de **Lista de canais**, toque em **EDITAR LISTA** para ajustar: **ADICIONAR CANAL**, mude **FONTE**, **MIC / DI** e **Quem**, arraste para reordenar e toque em **SALVAR LISTA**. Suas alterações continuam quando você salva o mapa de novo. **CRIAR A PARTIR DA FORMAÇÃO** no editor recomeça a lista com os instrumentos da formação.",
+            "Se ainda não há canais, toque em **CRIAR A PARTIR DA FORMAÇÃO** em **Lista de canais**. Se a formação mudar depois, a lista oferece **ATUALIZAR A PARTIR DA FORMAÇÃO** ou **MANTER ESTA LISTA**. Se você editou a lista à mão, o BandWith pergunta antes (**Refazer a lista de canais?**), porque suas alterações seriam substituídas.",
+            "Ao lado de **Quem leva o quê**, toque em **EDITAR**, confira a lista sugerida a partir da formação, escreva **A BANDA LEVA** e **O LOCAL FORNECE** (um item por linha), marque **O local concordou** quando estiver acertado e toque em **SALVAR**.",
           ],
         },
         {
@@ -678,7 +679,7 @@ const gigs: AreaText = {
           items: [
             "Toque em **COMPARTILHAR LINK COM O LOCAL** (ou **Compartilhar link do rider**) e envie como de costume.",
             "Ou toque em **PDF** / **Compartilhar PDF do rider** para ter um arquivo.",
-            "O rider mostra **ENVIADO AO LOCAL {date}** e, quando o local abre o link, **ABERTO {date}**. A preparação passa para **Rider v{version} · visto pelo local**.",
+            "O rider mostra **ENVIADO AO LOCAL {date}**. A preparação passa para **Rider v{version} · enviado ao local**. Compartilhar o PDF também conta como envio; salvá-lo no celular, não.",
           ],
         },
         {
@@ -688,7 +689,6 @@ const gigs: AreaText = {
             "O local abre o link num navegador, sem conta.",
             "Ela mostra o rider, os horários e o local do show, o mapa de palco, a lista de canais e quem leva o quê, no idioma do local quando disponível.",
             "Ela nunca mostra o cliente nem nenhum cachê.",
-            "Abrir a página marca o rider como visto para a banda. A própria banda conferindo o link (prévia) não conta.",
           ],
         },
         {

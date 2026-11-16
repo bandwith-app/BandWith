@@ -665,7 +665,7 @@ const business: AreaModule = {
       summary: 'Keep technical riders with your contracts, share them as a web link and send new versions.',
       roles: ['admin'],
       kind: 'task',
-      keywords: ['technical rider', 'rider link', 'stage plot', 'input list', 'venue', 'new version', 'seen'],
+      keywords: ['technical rider', 'rider link', 'stage plot', 'input list', 'venue', 'new version', 'pdf'],
       related: ['contracts-and-docs', 'send-a-contract', 'rider-and-stage'],
       body: [
         {
@@ -678,14 +678,14 @@ const business: AreaModule = {
             'To send it, use **Send** like a contract, or **Web link** (**⋯** > **Share web link**) to share a read-only page for the venue.',
           ],
         },
-        { type: 'p', text: 'When the venue opens the web link, the rider shows **Seen** with the date ("Seen by the venue"). After a change, tap **⋯** > **New version**: the rider goes back to **Draft** as the next version, and you share it again so the venue sees it.' },
+        { type: 'p', text: 'Once shared, the rider shows **Sent**. After a change, tap **⋯** > **New version**: the rider goes back to **Draft** as the next version, and you share it again so the venue sees it.' },
         { type: 'p', text: 'Riders have no **Mark as signed**.' },
       ],
     },
     {
       id: 'contract-statuses',
       title: 'Contract and rider statuses',
-      summary: 'Draft, Sent, Viewed or Seen, Signed and Expired.',
+      summary: 'Draft, Sent, Signed and Expired.',
       roles: ['admin'],
       kind: 'reference',
       keywords: ['contract status', 'expired contract', 'pending', 'signed'],
@@ -697,7 +697,6 @@ const business: AreaModule = {
           rows: [
             ['**Draft**', 'Created, not sent yet.'],
             ['**Sent**', 'Shared with the client.'],
-            ['**Viewed** / **Seen**', 'For riders: the venue opened the web link.'],
             ['**Signed**', 'You tapped **Mark as signed**. Final: it can be viewed, downloaded or deleted, not edited.'],
             ['**Expired**', 'Shown when the **Valid until** date has passed, or the event date has passed while it was still unsigned. Nothing is changed in the document; it is only how it is shown.'],
           ],

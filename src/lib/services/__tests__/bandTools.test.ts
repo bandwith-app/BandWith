@@ -65,6 +65,7 @@ import {
   updateInventoryItem,
 } from '../inventory';
 import { setLocalePref } from '@/lib/i18n';
+import { asStageData } from '../../stagePlot';
 
 beforeEach(() => {
   calls.length = 0;
@@ -122,6 +123,41 @@ describe('contract PDF', () => {
     expect(count).toBeGreaterThan(1);
     expect(s).toContain(`Page ${count} of ${count}`);
     expect(s).toContain('TECHNICAL RIDER');
+  });
+
+  it('a rider PDF heads with the gig, tags DI channels and keeps table rows whole', () => {
+    const inputs = Array.from({ length: 60 }, (_, i) =>
+      i % 3 === 0 ? { source: `Keys ${i}`, mic: 'DI · Radial J48', kind: 'di' } : { source: `Vox ${i}`, mic: 'SM58', kind: 'mic', who: 'Leo' },
+    );
+    const stage = asStageData({
+      plots: [{ id: 'p', name: 'Full band', width_m: 6, depth_m: 4, items: [
+        { id: 'a', kind: 'player', code: 'VX', x: 0.5, y: 0.6, lead: true },
+        { id: 'b', kind: 'player', code: 'DR', x: 0.5, y: 0.2 },
+        { id: 'd', kind: 'di', x: 0.3, y: 0.5, label: 'Playback' },
+      ] }],
+      inputs,
+      band_brings: ['PA'],
+      venue_provides: ['Power'],
+    } as any);
+    const r = contract({ type: 'rider', status: 'sent', title: 'Rider', client_name: 'Villa Aurora', version: 3, event_name: 'Gala', event_date: '2026-11-21' } as any);
+    const s = ascii(buildContractPdfBytes(r, { bandName: 'The Band', stage, now: new Date(2026, 10, 10) }));
+    // Header: the gig at a glance, no document status for the venue.
+    expect(s).not.toContain('Status:');
+    for (const label of ['(EVENT)', '(DATE)', '(VENUE)', '(VERSION)', '(Villa Aurora)', '(v3)']) expect(s).toContain(label);
+    // DI boxes and channels say DI; a model after "DI" stays as text.
+    expect(s).toContain('(DI) Tj');
+    expect(s).toContain('(RADIAL J48)');
+    expect(s).toContain('(DI box)');
+    expect(s).toContain('(Lead vox)');
+    // A long list flows onto more pages, each repeating the running header and the column titles.
+    const pages = Number(/\/Count (\d+)/.exec(s)![1]);
+    expect(pages).toBeGreaterThan(2);
+    expect(s.split('(MIC / DI)').length - 1).toBeGreaterThanOrEqual(pages - 1);
+    expect(s.split('(THE BAND \xB7 GALA \xB7 21 NOV 2026)').length - 1).toBe(pages - 1);
+    // Translated for the venue.
+    const it = ascii(buildContractPdfBytes(r, { bandName: 'The Band', stage, lang: 'it', now: new Date(2026, 10, 10) }));
+    expect(it).toContain('(SCHEDA TECNICA)');
+    expect(it).toContain('(SORGENTE)');
   });
 
   it('wraps and hard-splits text to the width', () => {

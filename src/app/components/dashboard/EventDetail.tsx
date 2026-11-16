@@ -949,7 +949,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     lyricsCovered: setlistSongs.filter((s) => hasLyricsOrChart(s.lyrics, s.chart)).length,
     rider: showRiderStage
       ? riderStage.rider
-        ? { version: riderStage.rider.version, sent: !!riderStage.rider.sentAt, seen: !!riderStage.rider.viewedAt }
+        ? { version: riderStage.rider.version, sent: !!riderStage.rider.sentAt }
         : null
       : undefined,
     contract: isAdmin && hasRiderStage ? gigContract : undefined,

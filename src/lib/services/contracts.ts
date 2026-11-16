@@ -448,31 +448,53 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
   const lang = opts.lang ?? 'en';
   const tr = (source: string, vars?: Record<string, string | number>) => translate(lang, source, vars);
   const date = (value?: string | null) => formatContractDate(value, intlLocale('en-GB', lang));
+  const rider = isRider(c);
   const pages: string[][] = [];
   let ops: string[] = [];
   let y = PAGE_H - MARGIN;
+  const kind = toWinAnsi(rider ? tr('TECHNICAL RIDER') : tr('CONTRACT'));
+
+  const textAt = (s: string, x: number, at: number, size: number, bold = false, gray = 0) => {
+    if (s) ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray} g ${n(x)} ${n(at)} Td ${pdfString(s)} Tj ET`);
+  };
+  const text = (s: string, x: number, size: number, bold = false, gray = 0) => textAt(s, x, y, size, bold, gray);
+  const rule = (gray = 0.82) => {
+    ops.push(`${gray} G 0.75 w ${n(MARGIN)} ${n(y)} m ${n(PAGE_W - MARGIN)} ${n(y)} l S`);
+  };
+  /** Cuts WinAnsi text to `maxW` with an ellipsis. */
+  const fit = (s: string, size: number, maxW: number, bold = false) => {
+    if (textWidth(s, size, bold) <= maxW) return s;
+    let cut = s.length;
+    while (cut > 1 && textWidth(`${s.slice(0, cut)}\x85`, size, bold) > maxW) cut--;
+    return `${s.slice(0, cut).trimEnd()}\x85`;
+  };
+  // Riders: later pages repeat the band, the event and its date, so a loose page still says what it belongs to.
+  const running = toWinAnsi([opts.bandName, c.event_name, date(c.event_date)].filter(Boolean).join(' · ').toUpperCase());
 
   const newPage = () => {
     ops = [];
     pages.push(ops);
     y = PAGE_H - MARGIN;
+    if (rider && pages.length > 1) {
+      const kw = textWidth(kind, 8, true);
+      text(fit(running, 8, CONTENT_W - kw - 16, true), MARGIN, 8, true, 0.45);
+      text(kind, PAGE_W - MARGIN - kw, 8, true, 0.45);
+      y -= 9;
+      rule(0.85);
+      y -= 26;
+    }
   };
+  /** The writable area ends above the footer. */
+  const fits = (height: number) => y - height >= MARGIN + 28;
   const ensure = (height: number) => {
-    if (y - height < MARGIN + 28) newPage();
-  };
-  const text = (s: string, x: number, size: number, bold = false, gray = 0) => {
-    ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray} g ${n(x)} ${n(y)} Td ${pdfString(s)} Tj ET`);
-  };
-  const rule = (gray = 0.82) => {
-    ops.push(`${gray} G 0.75 w ${n(MARGIN)} ${n(y)} m ${n(PAGE_W - MARGIN)} ${n(y)} l S`);
+    if (!fits(height)) newPage();
   };
 
   newPage();
 
   // Header: band name + document kind.
-  const kind = toWinAnsi(isRider(c) ? tr('TECHNICAL RIDER') : tr('CONTRACT'));
-  text(toWinAnsi((opts.bandName || '').toUpperCase()), MARGIN, 10, true, 0.35);
   const kindW = textWidth(kind, 10, true);
+  text(rider ? fit(toWinAnsi((opts.bandName || '').toUpperCase()), 10, CONTENT_W - kindW - 16, true) : toWinAnsi((opts.bandName || '').toUpperCase()), MARGIN, 10, true, 0.35);
   text(kind, PAGE_W - MARGIN - kindW, 10, true, 0.35);
   y -= 34;
 
@@ -482,55 +504,98 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
     text(line, MARGIN, 24, true);
     y -= 30;
   }
-  y -= 4;
-  const status = effectiveStatus(c, toLocalDateString(now));
-  text(toWinAnsi(tr('Status: {status}', { status: tr(STATUS_LABEL[status]) })), MARGIN, 11, false, 0.35);
-  y -= 18;
-  rule();
-  y -= 26;
 
-  // Details.
-  const rows: [string, string | null | undefined][] = [
-    [tr('Document type'), isRider(c) ? tr('Rider') : tr('Contract')],
-    [tr('Client'), c.client_name],
-    [tr('Client email'), c.client_email],
-    [tr('Event'), c.event_name],
-    [tr('Event date'), date(c.event_date)],
-    [tr('Valid until'), date(c.expires_at)],
-    [tr('Sent'), date(c.sent_at)],
-    [tr('Signed'), date(c.signed_at)],
-  ];
-  const labelW = 120;
-  for (const [label, value] of rows) {
-    if (!value) continue;
-    const lines = wrapText(toWinAnsi(value), 12, CONTENT_W - labelW);
-    ensure(lines.length * 17 + 4);
-    text(toWinAnsi(label.toUpperCase()), MARGIN, 9, true, 0.45);
-    for (const line of lines) {
-      text(line, MARGIN + labelW, 12);
-      y -= 17;
-    }
+  if (rider) {
+    // Riders go to the venue: the gig at a glance instead of the document's
+    // status (a rider sent as a PDF can't tell whether the venue read it).
+    y -= 6;
+    const grid = (cells: [string, string | null | undefined, number][]) => {
+      const shown = cells.filter((x): x is [string, string, number] => !!x[1]);
+      if (!shown.length) return;
+      const gap = 16;
+      const total = shown.reduce((s, x) => s + x[2], 0);
+      const free = CONTENT_W - gap * (shown.length - 1);
+      let x = MARGIN;
+      const cols = shown.map(([label, value, weight]) => {
+        const width = (free * weight) / total;
+        const col = { x, width, label: toWinAnsi(label.toUpperCase()), lines: wrapText(toWinAnsi(value), 11, width) };
+        x += width + gap;
+        return col;
+      });
+      const h = 16 + Math.max(...cols.map((col) => col.lines.length)) * 14;
+      ensure(h);
+      for (const col of cols) {
+        textAt(fit(col.label, 7.5, col.width, true), col.x, y, 7.5, true, 0.45);
+        col.lines.forEach((line, i) => textAt(line, col.x, y - 15 - i * 14, 11));
+      }
+      y -= h + 6;
+    };
+    grid([
+      [tr('Event'), c.event_name, 3],
+      [tr('Date'), date(c.event_date), 2],
+      [tr('Venue'), c.client_name, 3],
+      [tr('Version'), c.version ? `v${c.version}` : null, 1.2],
+    ]);
+    grid([
+      [tr('Email'), c.client_email, 3],
+      [tr('Valid until'), date(c.expires_at), 2],
+    ]);
+    rule();
+  } else {
     y -= 4;
+    const status = effectiveStatus(c, toLocalDateString(now));
+    text(toWinAnsi(tr('Status: {status}', { status: tr(STATUS_LABEL[status]) })), MARGIN, 11, false, 0.35);
+    y -= 18;
+    rule();
+    y -= 26;
+
+    // Details.
+    const rows: [string, string | null | undefined][] = [
+      [tr('Document type'), tr('Contract')],
+      [tr('Client'), c.client_name],
+      [tr('Client email'), c.client_email],
+      [tr('Event'), c.event_name],
+      [tr('Event date'), date(c.event_date)],
+      [tr('Valid until'), date(c.expires_at)],
+      [tr('Sent'), date(c.sent_at)],
+      [tr('Signed'), date(c.signed_at)],
+    ];
+    const labelW = 120;
+    for (const [label, value] of rows) {
+      if (!value) continue;
+      const lines = wrapText(toWinAnsi(value), 12, CONTENT_W - labelW);
+      ensure(lines.length * 17 + 4);
+      text(toWinAnsi(label.toUpperCase()), MARGIN, 9, true, 0.45);
+      for (const line of lines) {
+        text(line, MARGIN + labelW, 12);
+        y -= 17;
+      }
+      y -= 4;
+    }
   }
 
+  /**
+   * Rider section: title and meta over a rule, kept on one page with the
+   * first `keep` points of what follows.
+   */
+  const heading = (label: string, meta = '', keep = 60) => {
+    y -= 28;
+    ensure(keep + 26);
+    const m = toWinAnsi(meta);
+    const mw = m ? textWidth(m, 9) + 16 : 0;
+    text(fit(toWinAnsi(label), 11, CONTENT_W - mw, true), MARGIN, 11, true);
+    if (m) text(m, PAGE_W - MARGIN - textWidth(m, 9), 9, false, 0.45);
+    y -= 8;
+    rule(0.55);
+    y -= 12;
+  };
+
   // Rider: stage plot, input list, who brings what (092).
-  const stage = isRider(c) ? opts.stage : null;
+  const stage = rider ? opts.stage : null;
   if (stage) {
-    const heading = (label: string, meta = '') => {
-      y -= 10;
-      ensure(60);
-      rule();
-      y -= 26;
-      text(toWinAnsi(label), MARGIN, 10, true, 0.35);
-      if (meta) {
-        const m = toWinAnsi(meta);
-        text(m, PAGE_W - MARGIN - textWidth(m, 9), 9, false, 0.45);
-      }
-      y -= 18;
-    };
-    const centred = (s: string, cx: number, size: number, bold = false, gray = 0) => {
+    const centred = (s: string, cx: number, at: number, size: number, bold = false, gray = 0) => {
       const w = toWinAnsi(s);
-      text(w, cx - textWidth(w, size, bold) / 2, size, bold, gray);
+      textAt(w, cx - textWidth(w, size, bold) / 2, at, size, bold, gray);
     };
     const circle = (cx: number, cy: number, r: number) => {
       const k = 0.5523 * r;
@@ -539,12 +604,17 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
         `${n(cx - r)} ${n(cy - k)} ${n(cx - k)} ${n(cy - r)} ${n(cx)} ${n(cy - r)} c ` +
         `${n(cx + k)} ${n(cy - r)} ${n(cx + r)} ${n(cy - k)} ${n(cx + r)} ${n(cy)} c`;
     };
+    const LIME = '0.835 0.984 0.275 rg';
+    // A DI box says so: an outlined box with "DI" in it (as in the app and on the venue's page).
+    const diBox = (cx: number, cy: number, w: number, h: number, size: number) => {
+      ops.push(`0 G 1 w 1 g ${n(cx - w / 2)} ${n(cy - h / 2)} ${n(w)} ${n(h)} re B`);
+      centred('DI', cx, cy - size * 0.36, size, true);
+    };
     for (const plot of stage.plots.filter((p) => p.items.length > 0)) {
-      heading(`${tr('STAGE PLOT')} · ${plot.name.toUpperCase()}`, stageSize(plot));
       const ratio = plot.widthM && plot.depthM ? Math.min(2.1, Math.max(1.3, plot.widthM / plot.depthM)) : 1.6;
       const boxW = CONTENT_W;
       const boxH = Math.round(boxW / ratio);
-      ensure(boxH + 36);
+      heading(`${tr('STAGE PLOT')} · ${plot.name.toUpperCase()}`, stageSize(plot), boxH + 44);
       const top = y;
       const bottom = y - boxH;
       ops.push(`[4 3] 0 d 0.6 G 1 w ${n(MARGIN)} ${n(bottom)} ${n(boxW)} ${n(boxH)} re S [] 0 d`);
@@ -552,81 +622,145 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
         const cx = MARGIN + it.x * boxW;
         const cy = top - it.y * boxH;
         if (it.kind === 'player') {
-          ops.push(`${it.lead ? '0.835 0.984 0.275 rg' : '0 g'} ${circle(cx, cy, 15)} f`);
-          const save = y;
-          y = cy - 4;
-          centred(it.code || '', cx, 10, true, it.lead ? 0 : 1);
-          if (it.label) {
-            y = cy - 27;
-            centred(it.label, cx, 7.5, false, 0.4);
-          }
-          y = save;
+          ops.push(`${it.lead ? LIME : '0 g'} ${circle(cx, cy, 15)} f`);
+          centred(it.code || '', cx, cy - 4, 10, true, it.lead ? 0 : 1);
+          if (it.label) centred(it.label, cx, cy - 27, 7.5, false, 0.4);
         } else if (it.kind === 'speaker') {
           ops.push(`0 g ${n(cx - 5)} ${n(cy - 15)} 10 30 re f`);
         } else if (it.kind === 'di') {
-          ops.push(`0 G 1 w ${n(cx - 8)} ${n(cy - 5)} 16 10 re S`);
+          diBox(cx, cy, 22, 12, 7);
+          if (it.label) centred(it.label, cx, cy - 17, 7.5, false, 0.4);
         } else {
           ops.push(`0 G 1 w ${n(cx - 11)} ${n(cy - 5)} 22 10 re S`);
         }
       }
-      y = bottom - 16;
-      centred(tr('AUDIENCE'), MARGIN + boxW / 2, 8, false, 0.45);
-      y -= 12;
+      y = bottom - 14;
+      centred(tr('AUDIENCE'), MARGIN + boxW / 2, y, 8, false, 0.45);
+      // What the marks mean, for whoever reads the plot first.
+      y -= 22;
+      const kinds = new Set(plot.items.map((i) => i.kind));
+      const legend: [string, (x: number, cy: number) => void][] = [];
+      if (plot.items.some((i) => i.kind === 'player' && !i.lead)) legend.push([tr('Musician'), (x, cy) => ops.push(`0 g ${circle(x + 6, cy, 5.5)} f`)]);
+      if (plot.items.some((i) => i.kind === 'player' && i.lead)) legend.push([tr('Lead vox'), (x, cy) => ops.push(`${LIME} ${circle(x + 6, cy, 5.5)} f`)]);
+      if (kinds.has('wedge')) legend.push([tr('Wedge'), (x, cy) => ops.push(`0 G 1 w ${n(x)} ${n(cy - 3)} 14 6 re S`)]);
+      if (kinds.has('speaker')) legend.push([tr('Speaker'), (x, cy) => ops.push(`0 g ${n(x + 4)} ${n(cy - 6)} 5 12 re f`)]);
+      if (kinds.has('di')) legend.push([tr('DI box'), (x, cy) => diBox(x + 8, cy, 16, 9, 5.5)]);
+      let lx = MARGIN;
+      for (const [label, glyph] of legend) {
+        const s = toWinAnsi(label);
+        if (lx + 20 + textWidth(s, 8) > PAGE_W - MARGIN) break;
+        glyph(lx, y + 3);
+        textAt(s, lx + 20, y, 8, false, 0.35);
+        lx += 20 + textWidth(s, 8) + 18;
+      }
+      y -= 4;
     }
 
     if (stage.inputs.length > 0) {
+      // CH · SOURCE · MIC / DI · WHO, rows as tall as their wrapped text; a
+      // row never splits across pages and the column titles repeat.
+      const col = { ch: MARGIN + 8, src: MARGIN + 42, mic: MARGIN + 252, who: MARGIN + 380 };
+      const width = { src: col.mic - col.src - 12, mic: col.who - col.mic - 12, who: PAGE_W - MARGIN - col.who - 8 };
+      const head = () => {
+        ops.push(`0.93 g ${n(MARGIN)} ${n(y - 18)} ${n(CONTENT_W)} 18 re f`);
+        ([[tr('CH'), col.ch], [tr('SOURCE'), col.src], [tr('MIC / DI'), col.mic], [tr('WHO'), col.who]] as const).forEach(([h, x]) =>
+          textAt(toWinAnsi(h), x, y - 12, 7.5, true, 0.4),
+        );
+        y -= 18;
+      };
       heading(
         tr('INPUT LIST'),
         [tr('{count} ch', { count: stage.inputs.length }), stage.mixer].filter(Boolean).join(' · '),
+        // Start the table where at least a few rows fit, not one or two at a page's foot.
+        18 + Math.min(stage.inputs.length, 5) * 21,
       );
-      const cols = [MARGIN, MARGIN + 40, MARGIN + 260, MARGIN + 380];
-      [tr('CH'), tr('SOURCE'), tr('MIC / DI'), tr('WHO')].forEach((h, i) => text(toWinAnsi(h), cols[i], 8.5, true, 0.45));
-      y -= 16;
+      head();
       stage.inputs.forEach((ch, i) => {
-        ensure(18);
-        text(channelLabel(i), cols[0], 11, false, 0.45);
-        text(toWinAnsi(ch.source).slice(0, 34), cols[1], 11, true);
-        text(toWinAnsi(ch.mic.toUpperCase()).slice(0, 18), cols[2], 10);
-        text(toWinAnsi(ch.who).slice(0, 18), cols[3], 10.5, false, 0.35);
-        y -= 17;
+        const di = ch.kind === 'di';
+        // "DI" itself becomes the tag; a model after it ("DI · Radial J48") stays as text.
+        const model = toWinAnsi((di ? ch.mic.replace(/^\s*di\b[\s·:\-–]*/i, '') : ch.mic).toUpperCase());
+        const src = wrapText(toWinAnsi(ch.source), 10.5, width.src, true);
+        const mic = model ? wrapText(model, 9.5, width.mic - (di ? 24 : 0)) : [];
+        const who = wrapText(toWinAnsi(ch.who), 10, width.who);
+        const h = 8 + Math.max(1, src.length, mic.length, who.length) * 13;
+        if (!fits(h)) {
+          newPage();
+          head();
+        }
+        if (i % 2 === 1) ops.push(`0.965 g ${n(MARGIN)} ${n(y - h)} ${n(CONTENT_W)} ${n(h)} re f`);
+        const base = y - 14;
+        textAt(channelLabel(i), col.ch, base, 9.5, false, 0.45);
+        src.forEach((line, k) => textAt(line, col.src, base - k * 13, 10.5, true));
+        let mx = col.mic;
+        if (di) {
+          ops.push(`0 g ${n(mx)} ${n(base - 2.5)} 18 11 re f`);
+          centred('DI', mx + 9, base + 0.5, 7, true, 1);
+          mx += 24;
+        }
+        mic.forEach((line, k) => textAt(line, mx, base - k * 13, 9.5));
+        who.forEach((line, k) => textAt(line, col.who, base - k * 13, 10, false, 0.3));
+        y -= h;
       });
+      rule(0.82);
     }
 
     if (stage.bandBrings.length > 0 || stage.venueProvides.length > 0) {
-      heading(tr('WHO BRINGS WHAT'), stage.venueAgreed ? tr('VENUE AGREED') : '');
-      const half = CONTENT_W / 2;
-      text(toWinAnsi(tr('BAND BRINGS')), MARGIN, 8.5, true, 0.45);
-      text(toWinAnsi(tr('VENUE PROVIDES')), MARGIN + half, 8.5, true, 0.45);
-      y -= 18;
+      const gap = 24;
+      const colW = (CONTENT_W - gap) / 2;
+      const right = MARGIN + colW + gap;
+      const titles = () => {
+        textAt(toWinAnsi(tr('BAND BRINGS')), MARGIN, y - 8, 7.5, true, 0.45);
+        textAt(toWinAnsi(tr('VENUE PROVIDES')), right, y - 8, 7.5, true, 0.45);
+        y -= 16;
+      };
+      heading(tr('WHO BRINGS WHAT'), stage.venueAgreed ? tr('VENUE AGREED') : '', 16 + 2 * 15);
+      titles();
       const rows = Math.max(stage.bandBrings.length, stage.venueProvides.length);
       for (let i = 0; i < rows; i++) {
-        ensure(17);
-        const a = stage.bandBrings[i];
-        const b = stage.venueProvides[i];
-        if (a) text(toWinAnsi(`- ${a}`).slice(0, 48), MARGIN, 11);
-        if (b) text(toWinAnsi(`- ${b}`).slice(0, 48), MARGIN + half, 11);
-        y -= 17;
+        const a = stage.bandBrings[i] ? wrapText(toWinAnsi(stage.bandBrings[i]), 10.5, colW - 12) : [];
+        const b = stage.venueProvides[i] ? wrapText(toWinAnsi(stage.venueProvides[i]), 10.5, colW - 12) : [];
+        const h = 4 + Math.max(a.length, b.length) * 14;
+        if (!fits(h)) {
+          newPage();
+          titles();
+        }
+        const base = y - 11;
+        if (a.length) textAt('\x95', MARGIN, base, 10.5, false, 0.45);
+        a.forEach((line, k) => textAt(line, MARGIN + 12, base - k * 14, 10.5));
+        if (b.length) textAt('\x95', right, base, 10.5, false, 0.45);
+        b.forEach((line, k) => textAt(line, right + 12, base - k * 14, 10.5));
+        y -= h;
       }
     }
   }
 
   // Notes & terms.
   if (c.content && c.content.trim()) {
-    y -= 10;
-    ensure(60);
-    rule();
-    y -= 26;
-    text(toWinAnsi(isRider(c) ? tr('REQUIREMENTS & NOTES') : tr('NOTES & TERMS')), MARGIN, 10, true, 0.35);
-    y -= 22;
-    for (const line of wrapText(toWinAnsi(c.content.trim()), 11.5, CONTENT_W)) {
-      ensure(16);
-      if (line) text(line, MARGIN, 11.5);
-      y -= 16;
+    if (rider) {
+      heading(tr('REQUIREMENTS & NOTES'), '', 3 * 15);
+      y -= 11;
+      for (const line of wrapText(toWinAnsi(c.content.trim()), 10.5, CONTENT_W)) {
+        ensure(15);
+        if (line) text(line, MARGIN, 10.5);
+        y -= 15;
+      }
+    } else {
+      y -= 10;
+      ensure(60);
+      rule();
+      y -= 26;
+      text(toWinAnsi(tr('NOTES & TERMS')), MARGIN, 10, true, 0.35);
+      y -= 22;
+      for (const line of wrapText(toWinAnsi(c.content.trim()), 11.5, CONTENT_W)) {
+        ensure(16);
+        if (line) text(line, MARGIN, 11.5);
+        y -= 16;
+      }
     }
   }
 
   // Signature block for contracts.
-  if (!isRider(c)) {
+  if (!rider) {
     y -= 24;
     ensure(80);
     y -= 40;

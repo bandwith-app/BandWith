@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asStageData, freeSpot, channelLabel, isStageEmpty, moveInput, moveItem, presetItem, stageSize, starterStage, syncInputs, toStageRow, LIMITS } from '../stagePlot';
+import { asStageData, freeSpot, channelLabel, handEdited, inputsEditedByHand, inputsFromLineup, isStageEmpty, keepInputs, lineupInputsOffer, lineupKey, moveInput, moveItem, presetItem, stageSize, starterStage, syncInputs, toStageRow, LIMITS } from '../stagePlot';
 
 describe('stagePlot', () => {
   it('sanitises bad rows instead of failing', () => {
@@ -111,6 +111,79 @@ describe('instrument presets and the input list', () => {
     const player = d.plots[0].items.find((i) => i.kind === 'player')!;
     expect(d.inputs[0].itemId).toBe(player.id);
     expect(syncInputs(d.plots[0], plot(d.plots[0].items.filter((i) => i.id !== player.id)), d.inputs)).toEqual([]);
+  });
+});
+
+describe('input list from the lineup', () => {
+  const band = [
+    { name: 'Marta Conti', instrument: 'Drums' },
+    { name: 'Jonah Reyes', instrument: 'Bass' },
+    { name: 'Leo M.', instrument: 'Vocals' },
+  ];
+
+  it('fingerprints the lineup regardless of order', () => {
+    expect(lineupKey([...band].reverse())).toBe(lineupKey(band));
+    expect(lineupKey([{ ...band[0], instrument: 'Keys' }, band[1], band[2]])).not.toBe(lineupKey(band));
+    expect(lineupKey(band)).toMatch(/^\w+$/);
+  });
+
+  it('marks starter channels as built from the lineup, and the marker round-trips', () => {
+    const d = starterStage(band);
+    const key = lineupKey(band);
+    expect(d.inputs.map((c) => c.auto)).toEqual(d.inputs.map((_, i) => `${key}:${i}/${d.inputs.length}`));
+    expect(asStageData(toStageRow(d) as any).inputs).toEqual(d.inputs);
+    expect(inputsEditedByHand(d.inputs)).toBe(false);
+  });
+
+  it('a change by hand, a moved, added or removed channel counts as edited', () => {
+    const list = starterStage(band).inputs;
+    expect(inputsEditedByHand([])).toBe(false);
+    expect(inputsEditedByHand([handEdited({ ...list[0], mic: 'Beta 91' }), ...list.slice(1)])).toBe(true);
+    expect(inputsEditedByHand(moveInput(list, 0, 1))).toBe(true);
+    expect(inputsEditedByHand(list.slice(1))).toBe(true);
+    expect(inputsEditedByHand([...list, { id: 'x', source: 'Click', mic: 'DI', kind: 'di', who: '' }])).toBe(true);
+    expect(inputsEditedByHand(list.map(({ auto: _a, ...c }) => c))).toBe(true);
+    expect(handEdited(list[0]).auto).toBeUndefined();
+    expect(handEdited(list[0]).source).toBe(list[0].source);
+  });
+
+  it('offers to build an empty list, and nothing when it already matches', () => {
+    expect(lineupInputsOffer([], band)).toEqual({ kind: 'build', edited: false });
+    expect(lineupInputsOffer([], [{ name: 'Ann', instrument: '' }])).toMatchObject({ kind: 'none' });
+    expect(lineupInputsOffer(starterStage(band).inputs, band)).toMatchObject({ kind: 'none' });
+  });
+
+  it('offers an update when the lineup changed, and says when hand edits would be lost', () => {
+    const list = starterStage(band).inputs;
+    const next = [band[0], band[1], { name: 'Ava K.', instrument: 'Vocals' }];
+    expect(lineupInputsOffer(list, next)).toEqual({ kind: 'update', edited: false });
+    const edited = [handEdited({ ...list[0], mic: 'Beta 91' }), ...list.slice(1)];
+    expect(lineupInputsOffer(edited, next)).toEqual({ kind: 'update', edited: true });
+    // Same channels after the change (only the order of players differs): nothing to do.
+    expect(lineupInputsOffer(list, [...band].reverse())).toMatchObject({ kind: 'none' });
+  });
+
+  it('a list without markers (made before) or kept on purpose gets no offer', () => {
+    const list = starterStage(band).inputs.map(({ auto: _a, ...c }) => c);
+    const next = [band[0], { name: 'Ava K.', instrument: 'Keys' }];
+    expect(lineupInputsOffer(list, next).kind).toBe('none');
+    const kept = keepInputs(starterStage(band).inputs, next);
+    expect(kept.every((c) => c.auto === `${lineupKey(next)}:-`)).toBe(true);
+    expect(lineupInputsOffer(kept, next).kind).toBe('none');
+    expect(inputsEditedByHand(kept)).toBe(true);
+    // A later lineup change offers again.
+    expect(lineupInputsOffer(kept, [band[1], { name: 'Ava K.', instrument: 'Guitar' }]).kind).toBe('update');
+  });
+
+  it('links rebuilt channels to the players already on the plot', () => {
+    const d = starterStage(band);
+    const rebuilt = inputsFromLineup(band, undefined, d.plots[0]);
+    const ids = new Set(d.plots[0].items.map((i) => i.id));
+    expect(rebuilt.length).toBe(d.inputs.length);
+    expect(rebuilt.filter((c) => c.itemId).every((c) => ids.has(c.itemId!))).toBe(true);
+    expect(rebuilt.map((c) => c.auto)).toEqual(d.inputs.map((c) => c.auto));
+    // Without a plot, no dangling links.
+    expect(inputsFromLineup(band).every((c) => !c.itemId)).toBe(true);
   });
 });
 

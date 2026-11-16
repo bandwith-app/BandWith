@@ -13,15 +13,16 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Check, GripVertical, Pencil, Plus, Trash2, X } from '@/app/components/icons';
+import { Check, GripVertical, Pencil, Plus, Trash2, Users, X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
 import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { useRailBack } from '@/lib/railActions';
+import { useSystemBack } from '@/lib/backStack';
 import { springs } from '@/styles/motion';
-import { channelLabel, moveInput, newId, LIMITS, type InputChannel } from '@/lib/stagePlot';
+import { channelLabel, handEdited, moveInput, newId, LIMITS, type InputChannel } from '@/lib/stagePlot';
 
 /**
  * Input list editor (Figma "Phone Next / Rider & stage – Edit input list"):
@@ -33,15 +34,18 @@ export const InputListEditor: React.FC<{
   inputs: InputChannel[];
   /** First names on the lineup, offered for WHO. */
   people: string[];
-  /** The plot can be edited here too (tablets). */
+  /** The channels of the gig's lineup (absent when its instruments give none). */
+  fromLineup?: () => InputChannel[];
   onCancel: () => void;
   onSave: (inputs: InputChannel[]) => Promise<boolean>;
-}> = ({ eventTitle, inputs: initial, people, onCancel, onSave }) => {
+}> = ({ eventTitle, inputs: initial, people, fromLineup, onCancel, onSave }) => {
   const t = useT();
   const [list, setList] = useState<InputChannel[]>(initial);
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const railBack = useRailBack(onCancel, t('Close'), true, true);
+  // Android Back and Escape close the editor, not the Rider & stage screen beneath.
+  useSystemBack(true, onCancel);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 6 } }),
@@ -54,7 +58,8 @@ export const InputListEditor: React.FC<{
     setList((l) => moveInput(l, from, to));
     haptic.tap();
   };
-  const patch = (id: string, p: Partial<InputChannel>) => setList((l) => l.map((c) => (c.id === id ? { ...c, ...p } : c)));
+  // A channel changed by hand no longer counts as made from the lineup.
+  const patch = (id: string, p: Partial<InputChannel>) => setList((l) => l.map((c) => (c.id === id ? { ...handEdited(c), ...p } : c)));
   const add = () => {
     const c: InputChannel = { id: newId(), source: '', mic: 'SM58', kind: 'mic', who: '' };
     setList((l) => [...l, c]);
@@ -133,6 +138,21 @@ export const InputListEditor: React.FC<{
             >
               <Plus className="w-4 h-4" />
               {t('ADD CHANNEL')}
+            </button>
+          )}
+          {/* Replaces the list here only: nothing is saved until SAVE LIST, CANCEL keeps the old one. */}
+          {fromLineup && (
+            <button
+              type="button"
+              onClick={() => {
+                setList(fromLineup());
+                setEditing(null);
+                haptic.tap();
+              }}
+              className="h-12 self-center px-4 bw-button-sm inline-flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <Users className="w-4 h-4" />
+              {t('BUILD FROM LINEUP')}
             </button>
           )}
 

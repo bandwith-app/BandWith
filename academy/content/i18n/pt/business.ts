@@ -657,7 +657,7 @@ const business: AreaText = {
       summary: "Guarde os riders técnicos junto com os contratos, compartilhe-os por link web e envie novas versões.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["rider técnico", "link do rider", "mapa de palco", "lista de canais", "local", "nova versão", "visto"],
+      keywords: ["rider técnico", "link do rider", "mapa de palco", "lista de canais", "local", "nova versão", "pdf"],
       related: ["contracts-and-docs", "send-a-contract", "rider-and-stage"],
       body: [
         {
@@ -670,14 +670,14 @@ const business: AreaText = {
             "Para enviar, use **Enviar** como num contrato, ou **Link web** (**⋯** > **Compartilhar link web**) para compartilhar uma página só de leitura para o local.",
           ],
         },
-        { type: "p", text: "Quando o local abre o link web, o rider mostra **Visto** com a data (“Visto pelo local”). Depois de uma mudança, toque em **⋯** > **Nova versão**: o rider volta a **Rascunho** como próxima versão, e você o compartilha de novo para o local ver." },
+        { type: "p", text: "Uma vez compartilhado, o rider mostra **Enviado**. Depois de uma mudança, toque em **⋯** > **Nova versão**: o rider volta a **Rascunho** como próxima versão, e você o compartilha de novo para o local ver." },
         { type: "p", text: "Os riders não têm **Marcar como assinado**." },
       ],
     },
     {
       id: "contract-statuses",
       title: "Status de contratos e riders",
-      summary: "Rascunho, Enviado, Visualizado ou Visto, Assinado e Expirado.",
+      summary: "Rascunho, Enviado, Assinado e Expirado.",
       roles: ["admin"],
       kind: "reference",
       keywords: ["status do contrato", "contrato expirado", "pendente", "assinado"],
@@ -689,7 +689,6 @@ const business: AreaText = {
           rows: [
             ["**Rascunho**", "Criado, ainda não enviado."],
             ["**Enviado**", "Compartilhado com o cliente."],
-            ["**Visualizado** / **Visto**", "Nos riders: o local abriu o link web."],
             ["**Assinado**", "Você tocou em **Marcar como assinado**. Definitivo: pode ser visto, baixado ou excluído, não editado."],
             ["**Expirado**", "Aparece quando a data de **Válido até** já passou, ou quando a data do evento passou com o documento ainda sem assinatura. Nada muda no documento; é só como ele aparece."],
           ],

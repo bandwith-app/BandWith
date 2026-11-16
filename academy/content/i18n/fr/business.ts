@@ -657,7 +657,7 @@ const business: AreaText = {
       summary: "Range tes fiches techniques avec tes contrats, partage-les par lien web et envoie de nouvelles versions.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["fiche technique", "rider", "lien de la fiche", "plan de scène", "patch", "salle", "nouvelle version", "vue"],
+      keywords: ["fiche technique", "rider", "lien de la fiche", "plan de scène", "patch", "salle", "nouvelle version", "pdf"],
       related: ["contracts-and-docs", "send-a-contract", "rider-and-stage"],
       body: [
         {
@@ -670,14 +670,14 @@ const business: AreaText = {
             "Pour l’envoyer, utilise **Envoyer** comme pour un contrat, ou **Lien web** (**⋯** > **Partager le lien web**) pour partager une page en lecture seule avec la salle.",
           ],
         },
-        { type: "p", text: "Quand la salle ouvre le lien web, la fiche affiche **Vue** avec la date (« Vue par la salle »). Après un changement, touche **⋯** > **Nouvelle version** : la fiche repasse en **Brouillon** comme version suivante, et tu la partages de nouveau pour que la salle la voie." },
+        { type: "p", text: "Une fois partagée, la fiche affiche **Envoyé**. Après un changement, touche **⋯** > **Nouvelle version** : la fiche repasse en **Brouillon** comme version suivante, et tu la partages de nouveau pour que la salle la voie." },
         { type: "p", text: "Les fiches techniques n’ont pas **Marquer comme signé**." },
       ],
     },
     {
       id: "contract-statuses",
       title: "Les états des contrats et des fiches techniques",
-      summary: "Brouillon, Envoyé, Vu ou Vue, Signé et Expiré.",
+      summary: "Brouillon, Envoyé, Signé et Expiré.",
       roles: ["admin"],
       kind: "reference",
       keywords: ["état du contrat", "contrat expiré", "en attente", "signé"],
@@ -689,7 +689,6 @@ const business: AreaText = {
           rows: [
             ["**Brouillon**", "Créé, pas encore envoyé."],
             ["**Envoyé**", "Partagé avec le client."],
-            ["**Vu** / **Vue**", "Pour les fiches techniques : la salle a ouvert le lien web."],
             ["**Signé**", "Tu as touché **Marquer comme signé**. Définitif : il peut être consulté, téléchargé ou supprimé, pas modifié."],
             ["**Expiré**", "Affiché quand la date **Valable jusqu’au** est passée, ou quand la date de l’événement est passée alors qu’il n’était pas signé. Rien ne change dans le document ; c’est seulement son affichage."],
           ],

@@ -602,7 +602,7 @@ const gigs: AreaModule = {
             ['**Lineup · {done} of {total} confirmed**', 'Everyone who has not declined has confirmed.'],
             ['**Setlist · {count} songs**', 'The gig has at least one song.'],
             ['**Lyrics & charts · {done} of {total} songs**', 'Every setlist song has lyrics or a chord chart.'],
-            ['**Rider v{version} · seen by the venue**', 'The venue has opened the rider link.'],
+            ['**Rider v{version} · sent to the venue**', 'The rider link or PDF has been shared with the venue.'],
             ['**Contract signed**', 'The gig’s contract is signed (admins only).'],
             ['**Deposit paid**', 'The deposit is paid, when one is due (admins only).'],
             ['**To-dos · {done} of {total} done**', 'Every task is ticked. Listed only when the gig has tasks.'],
@@ -677,8 +677,9 @@ const gigs: AreaModule = {
             'Under **Stage plot**, tap **EDIT**. Under the plot, the first row of chips (**Add a musician**) adds an instrument: Vocals, Guitar, Bass, Keys, Drums, Percussion, Sax or Trumpet. The second row (**Add gear**) adds **Other musician**, a wedge, a speaker or a DI box. Hold an empty spot to get the same choices right there.',
             'Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. Tap an item to change its short code and caption, or to remove it. Set **Layout name**, **Stage width (m)** and **Stage depth (m)**, then **SAVE PLOT**. **+ NEW LAYOUT** and **DELETE LAYOUT** manage several layouts.',
             'Saving the plot fills the input list for you: each instrument adds its usual channels in desk order (Drums: Kick, Snare, OH L and OH R; Bass: one DI channel; a DI box: its own line). Removing an item removes its channels.',
-            'Under **Input list**, tap **EDIT LIST** to fine-tune: **ADD CHANNEL**, change **SOURCE**, **MIC / DI** and **Who**, drag to reorder, then **SAVE LIST**. Your changes stay when you save the plot again.',
-            'Under **Who brings what**, check the list suggested from the lineup, write **BAND BRINGS** and **VENUE PROVIDES** (one per line), tick **The venue agreed to this** when it is settled, and tap **SAVE**.',
+            'Next to **Input list**, tap **EDIT LIST** to fine-tune: **ADD CHANNEL**, change **SOURCE**, **MIC / DI** and **Who**, drag to reorder, then **SAVE LIST**. Your changes stay when you save the plot again. **BUILD FROM LINEUP** in the editor starts the list again from the lineup’s instruments.',
+            'With no channels yet, tap **BUILD FROM LINEUP** under **Input list**. If the lineup changes later, the list offers **UPDATE FROM LINEUP** or **KEEP THIS LIST**. When you edited the list by hand, BandWith asks first (**Rebuild the input list?**), because your changes would be replaced.',
+            'Next to **Who brings what**, tap **EDIT**, check the list suggested from the lineup, write **BAND BRINGS** and **VENUE PROVIDES** (one per line), tick **The venue agreed to this** when it is settled, and tap **SAVE**.',
           ],
         },
         {
@@ -687,7 +688,7 @@ const gigs: AreaModule = {
           items: [
             'Tap **SHARE LINK WITH THE VENUE** (or **Share rider link**) and send it the usual way.',
             'Or tap **PDF** / **Share rider PDF** for a file.',
-            'The rider shows **SENT TO THE VENUE {date}** and, once the venue opens the link, **OPENED {date}**. Readiness turns to **Rider v{version} · seen by the venue**.',
+            'The rider shows **SENT TO THE VENUE {date}**. Readiness turns to **Rider v{version} · sent to the venue**. Sharing the PDF counts as sent too; saving it to the phone does not.',
           ],
         },
         {
@@ -697,7 +698,6 @@ const gigs: AreaModule = {
             'The venue opens the link in a browser, with no account.',
             'It shows the rider, the gig’s times and venue, the stage plot, the input list and who brings what, in the venue’s language when available.',
             'It never shows the client or any fee.',
-            'Opening it marks the rider as seen for the band. The band checking its own link (preview) does not.',
           ],
         },
         {
