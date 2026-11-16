@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowUpRight,
@@ -439,6 +439,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Lineup and fee edits start from the saved lineup: only once it has loaded.
   const lineupReady = !!dbMembers && !membersError;
   const [editCard, setEditCard] = useState<EditCard | null>(null);
+  // Another card's editor asked for while one is open: the open one asks first.
+  const [switchTo, setSwitchTo] = useState<EditCard | null>(null);
   const editApi = useOverviewEdit({
     event,
     kind: editKind ?? 'gig',
@@ -452,8 +454,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const openEdit = (card: EditCard) => {
     haptic.tap();
     setActiveSheet(null);
-    setEditCard(card);
+    if (editCard && editCard !== card) setSwitchTo(card);
+    else setEditCard(card);
   };
+  const onEditSwitch = useCallback(
+    (go: boolean) => {
+      if (go && switchTo) setEditCard(switchTo);
+      setSwitchTo(null);
+    },
+    [switchTo],
+  );
 
   // Lineup, to-dos and setlist reload as soon as someone changes them.
   const [setlistReloadKey, setSetlistReloadKey] = useState(0);
@@ -1046,6 +1056,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     !isPersonalGig &&
     (canRespond ?? !isAdmin) &&
     (!!onRespond || (!!onAccept && !!onDecline));
+  // Band gig with an older "maybe" (Maybe is no longer offered): ask for GOING / CAN'T.
+  const showGigMaybeRsvp =
+    eventType === 'gig' &&
+    !isPast &&
+    !isPersonalGig &&
+    !isAdmin &&
+    userResponse === 'maybe' &&
+    (!!onRespond || (!!onAccept && !!onDecline));
   const answerByDate = dayBefore(event.date);
   const answerByDays = daysUntil(answerByDate);
   const rsvpCaption =
@@ -1069,11 +1087,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   };
 
   // ─── Client & notes (gig / draft): Client, Phone, Dress code, then notes ───
-  const notesTitle = event.clientName && !isPersonalGig ? t('CLIENT & NOTES') : t('NOTES');
+  // The client is the managers' business (078): a member never sees it, even
+  // when cached data from an earlier admin session still carries it.
+  const clientName = isAdmin ? event.clientName : undefined;
+  const clientPhone = isAdmin ? event.clientPhone : undefined;
+  const clientEmail = isAdmin ? event.clientEmail : undefined;
+  const notesTitle = clientName && !isPersonalGig ? t('CLIENT & NOTES') : t('NOTES');
   const notesRows: { label: string; value: string }[] = [];
   if (!isPersonalGig) {
-    if (event.clientName) notesRows.push({ label: t('Client'), value: event.clientName });
-    if (event.clientPhone) notesRows.push({ label: t('Phone'), value: event.clientPhone });
+    if (clientName) notesRows.push({ label: t('Client'), value: clientName });
+    if (clientPhone) notesRows.push({ label: t('Phone'), value: clientPhone });
     if (event.dressCode) notesRows.push({ label: t('Dress code'), value: event.dressCode });
   }
   const showNotesSection = !isRehearsal && !isQuote;
@@ -1423,6 +1446,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   onChoose={handleRespond}
                   caption={rsvpCaption}
                 />
+              )}
+
+              {showGigMaybeRsvp && (
+                <RsvpChoiceCard title={t('Are you in?')} current={userResponse} onChoose={handleRespond} />
               )}
 
               {/* ─── TIME TILES ─── */}
@@ -2272,7 +2299,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           title={
             <>
               {activeSheet === 'fee' && t('Fee & payouts')}
-              {activeSheet === 'setlist' && t('Setlist · {count}', { count: shownSongs })}
+              {activeSheet === 'setlist' &&
+                (isRehearsal ? `${t('Focus songs')} · ${shownSongs}` : t('Setlist · {count}', { count: shownSongs }))}
               {activeSheet === 'lineup' &&
                 (isQuote ? t('Availability · {count}', { count: memberCount }) : t('Lineup · {count}', { count: memberCount }))}
               {activeSheet === 'notes' && t('Logistics & notes')}
@@ -2493,26 +2521,26 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
                 {/* Client & event metadata: only what was entered */}
                 {!isPersonalGig &&
-                  (event.clientName || event.clientPhone || event.clientEmail || event.dressCode || event.guests || event.indoorOutdoor) && (
+                  (clientName || clientPhone || clientEmail || event.dressCode || event.guests || event.indoorOutdoor) && (
                     <div className="rounded-[16px] bg-foreground/[0.08] p-4 flex flex-col gap-3">
-                      {event.clientName && <KeyValueRow label={t('Client')} value={event.clientName} muted />}
-                      {event.clientPhone && (
+                      {clientName && <KeyValueRow label={t('Client')} value={clientName} muted />}
+                      {clientPhone && (
                         <KeyValueRow
                           label={t('Phone')}
                           value={
-                            <a href={`tel:${event.clientPhone.replace(/\s+/g, '')}`} className="underline underline-offset-2 select-text">
-                              {event.clientPhone}
+                            <a href={`tel:${clientPhone.replace(/\s+/g, '')}`} className="underline underline-offset-2 select-text">
+                              {clientPhone}
                             </a>
                           }
                           muted
                         />
                       )}
-                      {event.clientEmail && (
+                      {clientEmail && (
                         <KeyValueRow
                           label={t('Email')}
                           value={
-                            <a href={`mailto:${event.clientEmail}`} className="underline underline-offset-2 select-text">
-                              {event.clientEmail}
+                            <a href={`mailto:${clientEmail}`} className="underline underline-offset-2 select-text">
+                              {clientEmail}
                             </a>
                           }
                           muted
@@ -2720,7 +2748,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       {canEditOverview && editKind && (
         <OverviewEditSheets
           card={editCard}
-          onClose={() => setEditCard(null)}
+          onClose={() => {
+            setEditCard(null);
+            setSwitchTo(null);
+          }}
+          switchTo={switchTo}
+          onSwitch={onEditSwitch}
           event={event}
           kind={editKind}
           api={editApi}

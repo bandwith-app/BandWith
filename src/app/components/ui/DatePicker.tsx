@@ -6,6 +6,7 @@ import { Calendar, ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, X, A
 import { cn } from './utils';
 import { IconButton } from '@/app/components/bw/Screen';
 import { RailSheet } from '@/lib/railActions';
+import { useSystemBack } from '@/lib/backStack';
 import { PillButton } from '@/app/components/bw/Form';
 import { t, useT, intlLocale, weekdayInitials } from '@/lib/i18n';
 import { useBandFreeDays } from '@/lib/bandAvailability';
@@ -177,6 +178,11 @@ export const PickerSheet: React.FC<PickerSheetProps> = ({
 }) => {
   const t = useT();
   const drag = useSheetDrag(() => onOpenChange(false));
+  // Android Back / Escape close this picker only, not the sheet it opened from.
+  useSystemBack(open, () => {
+    onOpenChange(false);
+    return true;
+  });
   return (
   <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
     <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger>
