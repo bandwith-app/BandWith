@@ -774,7 +774,10 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: durations.normal, ease: easings.smooth }}
-          className="bw-pane-detail fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          // Laptop pose: like the full-screen forms (`.bw-fold-form`), the
+          // header holds the Display and the rows scroll on the Deck, so no
+          // row lies across the fold.
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
