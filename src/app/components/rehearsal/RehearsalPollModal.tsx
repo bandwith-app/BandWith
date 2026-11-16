@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Sparkles, Send, ChevronLeft, ChevronRight, MapPin, Plus, Check } from '@/app/components/icons';
 import { useBand } from '@/lib/BandContext';
@@ -125,25 +125,34 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Leaving with something typed asks first (polls have no drafts).
-  const typedSnapshot = JSON.stringify([
-    title,
-    notes,
-    location,
-    roomCost,
-    focusSongs.map((s) => s.id),
-    excluded,
-    timeSlots.map((s) => [s.proposed_date, s.start_time, s.end_time]),
-    voteBy,
-    voteByTime,
-  ]);
-  const [, setBaselineTick] = useState(0);
-  const baselinePendingRef = useRef(false);
-  const baselineRef = useRef<string | null>(null);
-  if (baselinePendingRef.current) {
-    baselineRef.current = typedSnapshot;
-    baselinePendingRef.current = false;
-  }
-  const isDirty = baselineRef.current !== null && typedSnapshot !== baselineRef.current;
+  const snapshotOf = (v: {
+    title: string;
+    notes: string;
+    location: string;
+    roomCost: string;
+    focusSongs: { id: string }[];
+    excluded: string[];
+    timeSlots: TimeSlotDraft[];
+    voteBy: string;
+    voteByTime: string;
+  }) =>
+    JSON.stringify([
+      v.title,
+      v.notes,
+      v.location,
+      v.roomCost,
+      v.focusSongs.map((s) => s.id),
+      v.excluded,
+      v.timeSlots.map((s) => [s.proposed_date, s.start_time, s.end_time]),
+      v.voteBy,
+      v.voteByTime,
+    ]);
+  const typedSnapshot = snapshotOf({ title, notes, location, roomCost, focusSongs, excluded, timeSlots, voteBy, voteByTime });
+  // What the poll opens with, set in the same batch as the prefilled fields,
+  // so a render in between (e.g. the roster refresh) can't take a half-filled
+  // form as the baseline.
+  const [baseline, setBaseline] = useState<string | null>(null);
+  const isDirty = baseline !== null && typedSnapshot !== baseline;
   const [leaveTo, setLeaveTo] = useState<null | (() => void)>(null);
   const leave = (to: () => void) => (isDirty && !submitting ? setLeaveTo(() => to) : to());
   const requestClose = () => leave(onClose);
@@ -195,20 +204,36 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   // Pre-fill if opening from a member proposal
   useEffect(() => {
     if (!isOpen) return;
-    // What the poll opens with is the baseline for "anything typed?" (next render).
-    baselinePendingRef.current = true;
-    setBaselineTick((n) => n + 1);
+    const start = {
+      title: initialProposal ? initialProposal.title || t('Rehearsal Availability Poll') : t('Upcoming Rehearsal Availability'),
+      notes: initialProposal ? cleanNotesWithoutDays(initialProposal.notes) : '',
+      location: initialProposal?.location || '',
+      roomCost: initialProposal?.room_cost != null ? String(initialProposal.room_cost) : '',
+      // Member proposals carry no songs; the builder never reopens a published poll.
+      focusSongs: [],
+      excluded: [],
+      // If the proposal already had options (e.g. re-editing); otherwise start empty.
+      timeSlots: (initialProposal?.options || []).map((o) => ({
+        id: o.id || `slot-${Math.random()}`,
+        proposed_date: o.proposed_date,
+        start_time: o.start_time,
+        end_time: o.end_time || '',
+      })),
+      voteBy,
+      voteByTime: '18:00',
+    };
+    // What the poll opens with is the baseline for "anything typed?".
+    setBaseline(snapshotOf(start));
 
-    setLocation(initialProposal?.location || '');
-    setRoomCost(initialProposal?.room_cost != null ? String(initialProposal.room_cost) : '');
-    // Member proposals carry no songs; the builder never reopens a published poll.
-    setFocusSongs([]);
-    setExcluded([]);
-    setVoteByTime('18:00');
+    setLocation(start.location);
+    setRoomCost(start.roomCost);
+    setFocusSongs(start.focusSongs);
+    setExcluded(start.excluded);
+    setVoteByTime(start.voteByTime);
+    setTitle(start.title);
+    setNotes(start.notes);
+    setTimeSlots(start.timeSlots);
     if (initialProposal) {
-      setTitle(initialProposal.title || t('Rehearsal Availability Poll'));
-      setNotes(cleanNotesWithoutDays(initialProposal.notes));
-
       // If proposal had preferred days, select them in preset generator
       if (initialProposal.preferred_days && initialProposal.preferred_days.length > 0) {
         const dayIndices: number[] = [];
@@ -226,25 +251,6 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           setSelectedPresetDays(dayIndices);
         }
       }
-
-      // If proposal already had options (e.g. re-editing)
-      if (initialProposal.options && initialProposal.options.length > 0) {
-        setTimeSlots(
-          initialProposal.options.map((o) => ({
-            id: o.id || `slot-${Math.random()}`,
-            proposed_date: o.proposed_date,
-            start_time: o.start_time,
-            end_time: o.end_time || '',
-          }))
-        );
-      } else {
-        // Start empty or populate with preset
-        setTimeSlots([]);
-      }
-    } else {
-      setTitle(t('Upcoming Rehearsal Availability'));
-      setNotes('');
-      setTimeSlots([]);
     }
   }, [isOpen, initialProposal]);
 
