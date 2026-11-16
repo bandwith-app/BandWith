@@ -1,0 +1,220 @@
+<section class="chapter" id="ch-devices">
+  <h1>BandWith su ogni terminale</h1>
+  <p class="lead">L'app è la stessa ovunque, con gli stessi dati e le stesse regole. Cambiano il layout, il modo di navigare e poche funzioni che richiedono l'hardware del telefono. Questa parte descrive ogni terminale; le funzioni sono descritte nella Parte III, con le note per dispositivo accanto a ciascuna.</p>
+  <span class="anchor" id="art-device-differences"></span>
+
+  <h2>I terminali a colpo d'occhio</h2>
+  <table class="grid">
+    <thead><tr><th>Terminale</th><th>Layout</th><th>Cosa cambia</th></tr></thead>
+    <tbody>
+      <tr><td>iPhone / telefono Android, verticale</td><td>Una schermata alla volta, barra delle schede in basso</td><td>Il layout di riferimento. Face ID / impronta, blocco app, notifiche push e sincronizzazione Bluetooth dello Stage funzionano tutti.</td></tr>
+      <tr><td>Telefono in orizzontale</td><td>Resta il layout del telefono (un telefono di lato non viene mai trattato come tablet)</td><td>La barra delle schede si nasconde mentre la tastiera è aperta.</td></tr>
+      <tr><td>iPad, tablet Android, browser desktop</td><td>Layout largo: colonna elenco (320–420 px) con il dettaglio accanto, in orizzontale o in verticale da 960 px</td><td>Barra delle schede a «pillola» flottante con etichette, finestre centrate, <b class="ui">Create</b> come popover, composer a schermata unica per nuovi gig, prove e preventivi.</td></tr>
+      <tr><td>iPhone Duo chiuso (schermo esterno)</td><td>Una pagina, con la barra laterale (rail) nella colonna di sistema</td><td>Indietro, Cerca e il profilo stanno nel rail.</td></tr>
+      <tr><td>iPhone Duo aperto a libro (Book)</td><td>Due pagine: elenchi a sinistra, dettagli a destra</td><td>Le procedure guidate mostrano un'anteprima dal vivo sulla pagina sinistra.</td></tr>
+      <tr><td>iPhone Duo in postura Laptop</td><td>Metà superiore (Display) per leggere, metà inferiore (Deck) per toccare</td><td>Layout speciali: Band desk, Planner, Find a date, Floor wedge, Quote desk. Disattivabile in <b class="ui">Settings › iPhone Duo</b>.</td></tr>
+      <tr><td>iPhone Duo aperto in orizzontale</td><td>Due pagine uguali, da 860 px di larghezza</td><td>Come Book, con il rail accanto.</td></tr>
+      <tr><td>Android</td><td>Come telefono o tablet</td><td>Tasto e gesto Indietro di sistema, <b class="ui">Tap again to exit</b>, import dai contatti. Si installa da file APK e si aggiorna dall'app con <b class="ui">Update</b> › <b class="ui">Install</b>.</td></tr>
+      <tr><td>Web (bandwith-beryl.vercel.app)</td><td>Layout telefono in una finestra stretta, layout largo da 744 px</td><td>Niente push, niente Face ID / impronta, niente blocco app, niente sincronizzazione Bluetooth dello Stage. Esc e il tasto Indietro del browser chiudono i livelli aperti.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Funzioni per terminale</h3>
+  <p>Tutte le funzioni di band (calendario, gig, preventivi, contratti, denaro, prove, sondaggi, chat, repertorio, scalette, Stage mode, membri, sostituti, attrezzatura, impostazioni) sono presenti su ogni terminale. Le differenze reali sono solo queste:</p>
+  <table class="grid matrix">
+    <thead><tr><th>Funzione</th><th>Telefono iOS</th><th>Telefono Android</th><th>iPad / tablet</th><th>Web</th><th>iPhone Duo</th></tr></thead>
+    <tbody>
+      <tr><td>Accesso rapido (Face ID / impronta)</td><td>Sì</td><td>Sì (impronta o iride)</td><td>Sì</td><td>No</td><td>Sì</td></tr>
+      <tr><td>Blocco app</td><td>Sì</td><td>Sì, anche con PIN/sequenza</td><td>Sì</td><td>No (mai bloccata)</td><td>Sì</td></tr>
+      <tr><td>Notifiche push</td><td>Sì</td><td>Sì (tramite i servizi Google Play)</td><td>Sì</td><td>No: campanella in app</td><td>Sì</td></tr>
+      <tr><td>Stage mode via internet + click</td><td>Sì</td><td>Sì</td><td>Sì</td><td>Sì</td><td>Sì</td></tr>
+      <tr><td>Stage via Bluetooth e copia offline della scaletta</td><td>Sì</td><td>Sì</td><td>Sì</td><td>No</td><td>Sì</td></tr>
+      <tr><td>Import membri dalla rubrica</td><td>No (si digitano gli indirizzi)</td><td>Sì</td><td>No</td><td>No</td><td>No</td></tr>
+      <tr><td>Aprire una partitura da un'altra app</td><td>Sì</td><td>Sì</td><td>Sì</td><td>No</td><td>Sì</td></tr>
+      <tr><td>Import da iReal Pro</td><td>Sì, browser in app</td><td>Sì, browser in app</td><td>Sì</td><td>Sì, il forum si apre in un'altra finestra e il link si incolla con <b class="ui">Paste link</b>, incolla o trascina</td><td>Sì</td></tr>
+      <tr><td>Condivisione PDF</td><td>Foglio di condivisione di sistema</td><td>Foglio di condivisione di sistema</td><td>Foglio di condivisione + <b class="ui">Send quote</b> nel composer</td><td><b class="ui">Download PDF</b> salva il file; <b class="ui">Share PDF document</b> lo scarica</td><td>Foglio di condivisione</td></tr>
+      <tr><td>Aggiornamento dall'app (<b class="ui">Update</b> › <b class="ui">Install</b>)</td><td>No: aggiornamenti dal sistema</td><td>Sì, anche da <b class="ui">Settings › About</b></td><td>No: aggiornamenti dal sistema</td><td>Non serve: il sito è sempre all'ultima versione</td><td>No: aggiornamenti dal sistema</td></tr>
+      <tr><td>Schermo sempre acceso in Stage mode</td><td>Sì</td><td>Sì</td><td>Sì</td><td>—</td><td>Sì</td></tr>
+      <tr><td>Composer a schermata unica (gig, prova, sondaggio, preventivo)</td><td>No: procedura a passi</td><td>No: procedura a passi</td><td>Sì</td><td>Sì, da 744 px</td><td>No: procedura a passi, con anteprima sull'altra pagina</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Telefono (iPhone e Android)</h2>
+  <span class="anchor" id="art-iphone-and-android-phones"></span>
+  <p>Sul telefono si vede una schermata alla volta, con la barra delle schede in basso: <b class="ui">Home</b>, <b class="ui">Calendar</b>, <b class="ui">Create</b>, <b class="ui">Chat</b> e <b class="ui">Settings</b>. I fogli (sheet) salgono dal basso; si chiudono con il loro pulsante di chiusura, trascinandoli verso il basso o, su Android, con Indietro. Le schermate della Parte III sono catturate su telefono.</p>
+  <ul>
+    <li><b>Orizzontale.</b> Ruotando il telefono il layout resta quello del telefono: in orizzontale non c'è mai abbastanza spazio per due pannelli. La barra delle schede si nasconde mentre la tastiera è aperta, per non coprire il campo; quando la tastiera lascia poco spazio, la schermata scorre come un tutt'uno.</li>
+    <li><b>Indietro.</b> iPhone non ha un tasto Indietro di sistema: si usa il pulsante in alto a sinistra di ogni schermata, o si trascina in basso il foglio aperto. Nel workspace di un gig, appena si scorre la pagina, la barra superiore (Indietro, aiuto, matita di modifica, Stage mode, opzioni) resta fissata in alto: sopra l'intestazione ha il colore dell'evento, oltre l'intestazione lo sfondo della pagina e il titolo del gig. Indietro è quindi sempre a portata di dito, anche dopo <b class="ui">Rider &amp; stage</b> o in fondo alla pagina.</li>
+    <li><b>Stage mode.</b> Una colonna: intestazione, scaletta della serata (run of show), scaletta o brano, <b class="ui">Prev</b> / <b class="ui">Next</b> in basso. Su un lato (corto e largo) orari e passaggi stanno a sinistra, la scaletta o il brano a destra. La barra delle note usa solo icone, così resta su una riga sopra il testo. Stage mode e il Floor wedge tengono lo schermo acceso.</li>
+    <li><b>Hardware.</b> Face ID / Touch ID per l'accesso rapido e il blocco app, notifiche push, sincronizzazione Bluetooth dello Stage, apertura di partiture ricevute da altre app.</li>
+    <li><b>Rubrica.</b> Su iPhone e iPad il pulsante per importare i contatti non c'è (il sistema non offre un selettore di contatti a questo tipo di app): gli indirizzi si digitano.</li>
+  </ul>
+
+  <h3>Specifico di Android</h3>
+  <span class="anchor" id="art-android-app"></span>
+  <ul>
+    <li><b>Prima installazione.</b> L'app Android si installa da un file APK scaricato dalla pagina delle release, non da uno store. Si apre <b class="ui">BandWith.apk</b>, si consente l'installazione dal browser o dall'app File quando Android lo chiede, poi si tocca <b class="ui">Install</b>. Play Protect può segnalarla come app sconosciuta: <b class="ui">More details</b> › <b class="ui">Install anyway</b>. Una copia di prova di BandWith non scaricata dalla pagina delle release va disinstallata prima; i dati sono sul server e non si perdono.</li>
+    <li><b>Aggiornamenti.</b> Quando esce una nuova versione, un messaggio dice <b class="ui">BandWith … is available</b>. Si tocca <b class="ui">Update</b>: BandWith scarica il file e mostra l'avanzamento. La prima volta Android chiede se BandWith può installare app: si tocca <b class="ui">Allow</b>, si attiva <b class="ui">Allow from this source</b> e si torna all'app, poi si tocca <b class="ui">Install</b>. Dalle volte successive l'aggiornamento è solo <b class="ui">Update</b> › <b class="ui">Install</b>. Lo stesso pulsante è in <b class="ui">Settings</b> › <b class="ui">About</b>.</li>
+    <li>Il tasto Indietro di sistema e il gesto Indietro chiudono per primo il livello in cima (foglio, selettore, pagina). Esempi: nel nuovo gig, Indietro chiude prima il selettore dei brani aperto, poi chiede se salvare una bozza; nella pagina di una persona chiude prima la persona, poi l'elenco <b class="ui">Band members</b>; nelle impostazioni torna dall'una sezione all'elenco delle sezioni. Su Home appare <b class="ui">Tap again to exit</b> e un secondo Indietro chiude l'app. Sulla schermata di blocco, Indietro esce dall'app.</li>
+    <li>L'accesso rapido usa l'impronta (o l'iride, dove il telefono la ha); il pulsante si chiama <b class="ui">Use Fingerprint</b>. Il blocco app può ripiegare sul PIN o sulla sequenza del telefono.</li>
+    <li>Nel passo inviti della creazione della band, <b class="ui">Import from contacts</b> sceglie i compagni dalla rubrica.</li>
+    <li>Stage mode tiene lo schermo acceso.</li>
+    <li>Le notifiche push arrivano tramite i servizi Google Play. Se non arrivano, le impostazioni <b class="ui">Notifications</b> dell'app indicano se il telefono le blocca; l'inbox e il pop-up urgente mostrano comunque tutto quando l'app è aperta.</li>
+  </ul>
+
+  <h2>iPad e tablet</h2>
+  <span class="anchor" id="art-ipad-layout"></span>
+  <p>Ogni finestra larga almeno 744 px e alta almeno 600 px riceve il layout largo: iPad (anche iPad mini in verticale), tablet Android e browser desktop.</p>
+  <ul>
+    <li><b>Elenco e dettaglio.</b> In orizzontale (o in verticale sugli iPad grandi, da 960 px) gli elenchi stanno in una colonna a sinistra (320–420 px) e l'elemento aperto riempie il resto. La selezione resta evidenziata nell'elenco. L'evento aperto da Home, dalla ricerca o dal calendario si apre accanto all'elenco e resta contornato nei risultati.</li>
+    <li><b>Navigazione.</b> La barra delle schede è una «pillola» flottante con icone ed etichette, sopra entrambi i pannelli; la scheda attiva è piena. <b class="ui">Create</b> si apre come popover sopra il pulsante.</li>
+    <li><b>Fogli.</b> Si aprono come schede centrate, senza maniglia. Accesso, onboarding e schermata di blocco restano in una colonna leggibile al centro, senza allargarsi su tutta la finestra.</li>
+    <li><b>Hub.</b> Il menu, l'inbox delle notifiche e gli altri hub occupano tutta la finestra finché non si apre qualcosa; poi diventano la colonna elenco con la pagina aperta accanto.</li>
+    <li><b>Home.</b> Il secondo pannello mostra il prossimo evento accanto a Home (non una bozza né un preventivo), una volta per visita; se lo si chiude, resta chiuso finché non si esce da Home e si torna. Finché non c'è un evento, il pannello dice <b class="ui">Pick an event</b>.</li>
+    <li><b>Composer a schermata unica.</b> Nuovo gig, nuova prova, sondaggio e nuovo preventivo si aprono come un'unica schermata: tutti i passi in schede numerate, con un'anteprima dal vivo accanto e un contatore delle schede pronte nell'intestazione, insieme al pulsante per salvare la bozza. Il salvataggio funziona esattamente come nella procedura a passi.
+      <ul>
+        <li>Gig: composer con anteprima; il mese è mostrato in linea nella scheda <b class="ui">Date &amp; time</b>, con i conteggi sotto; <b class="ui">Rider &amp; stage</b> si può preparare prima di creare il gig.</li>
+        <li>Preventivo: cinque schede (<b class="ui">Client &amp; event</b>, <b class="ui">Lineup &amp; rate</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Production &amp; travel</b>, <b class="ui">Billing &amp; terms</b>) accanto a un'anteprima <b class="ui">Live PDF</b> «As the client sees it», nella lingua del cliente; in fondo all'anteprima <b class="ui">Share</b> e <b class="ui">Send quote</b>, che invia subito il link per email.</li>
+        <li>Prova: quattro schede (<b class="ui">Session</b>, <b class="ui">Date &amp; time</b>, <b class="ui">Place &amp; cost</b>, <b class="ui">Focus, note &amp; tasks</b>) con <b class="ui">Live preview</b> «As the band sees it»; la striscia <b class="ui">Next 7 days</b> mostra quanti membri sono liberi ogni giorno (<b class="ui">From band calendars</b>).</li>
+        <li>Sondaggio: <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (una settimana colorata per numero di membri liberi; si tocca un giorno per aggiungerlo con gli orari scelti), <b class="ui">Place, cost &amp; songs</b>, <b class="ui">Vote deadline &amp; note</b>, con anteprima «As members vote» e il <b class="ui">Top pick</b>.</li>
+      </ul>
+    </li>
+    <li><b>Workspace del gig a schede.</b> I gig di band hanno le schede <b class="ui">OVERVIEW</b>, <b class="ui">SETLIST</b>, <b class="ui">RIDER &amp; STAGE</b> e, per gli admin, <b class="ui">MONEY</b>. Su una finestra larga l'overview è su due colonne; il rider è una bacheca dove si modifica anche la pianta del palco; la sezione GEAR KIT è nella scheda del rider; <b class="ui">MONEY</b> contiene compenso e pagamenti.</li>
+    <li><b>Chat di evento.</b> In orizzontale tre colonne: elenco delle chat, conversazione e un pannello di contesto con gli orari (<b class="ui">Load in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b>, <b class="ui">Out</b>), luogo, stato, <b class="ui">In this chat · Lineup {count}/{total}</b>, chi è online e <b class="ui">Open gig</b>.</li>
+    <li><b>Repertorio.</b> Il Repertoire è la colonna elenco; scaletta, scheda del brano, lettore e suggerimenti si aprono nel secondo pannello.</li>
+    <li><b>Stage mode.</b> Si apre accanto all'elenco. <b class="ui">Hide sidebar</b> gli dà tutto lo schermo: orari e passaggi nel primo pannello, scaletta o brano nel secondo; <b class="ui">Show sidebar</b> riporta l'elenco. La scelta è ricordata sul dispositivo.</li>
+    <li><b>Membri e attrezzatura.</b> La pagina di una persona si apre nella colonna dettaglio; i sostituti sono su due colonne quando lo schermo è largo. L'inventario si chiama <b class="ui">Gear &amp; kits</b>: i kit sono una striscia di riquadri sopra gli oggetti, senza schede Items/Kits.</li>
+    <li><b>Contratti.</b> In orizzontale il modulo <b class="ui">Create contract</b> occupa l'intero pannello di dettaglio: la pillola di navigazione si sposta come per i composer e il pulsante per creare il contratto sta sul bordo inferiore del pannello.</li>
+    <li><b>Tastiera.</b> Con una tastiera fisica, Esc chiude il livello in cima (Esc digitato in un campo resta al campo).</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="basics-tablet-home" data-device="tablet"><figcaption>Layout largo: pillola di navigazione, colonna elenco e dettaglio dell'evento.</figcaption></figure>
+    <figure class="shot" data-shot="gig-workspace-admin" data-device="tablet"><figcaption>Workspace del gig su iPad, con le schede OVERVIEW / SETLIST / RIDER &amp; STAGE / MONEY.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="tablet"><figcaption>Composer del preventivo: cinque schede e il Live PDF come lo vede il cliente.</figcaption></figure>
+    <figure class="shot" data-shot="shot-rehearsal-wizard" data-device="tablet"><figcaption>Composer della prova con disponibilità della band sui prossimi 7 giorni.</figcaption></figure>
+    <figure class="shot" data-shot="shot-poll-builder" data-device="tablet"><figcaption>Composer del sondaggio: settimana colorata per membri liberi e anteprima del voto.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="tablet"><figcaption>Chat di evento in tre colonne con il pannello di contesto del gig.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="tablet"><figcaption>Stage mode accanto all'elenco.</figcaption></figure>
+    <figure class="shot" data-shot="people-gear" data-device="tablet"><figcaption>Gear &amp; kits: i kit come riquadri sopra gli oggetti.</figcaption></figure>
+  </div>
+
+  <h2>Web (browser)</h2>
+  <span class="anchor" id="art-using-the-web-app"></span>
+  <p>All'indirizzo <b>bandwith-beryl.vercel.app</b> si accede con lo stesso account; band, gig e impostazioni sono gli stessi dell'app. Una finestra stretta riceve il layout del telefono, da 744 px di larghezza il layout largo descritto sopra per l'iPad.</p>
+  <ul>
+    <li><b>Accesso.</b> Google e Apple si aprono nella stessa scheda e riportano all'app (nelle app per telefono si aprono in un browser interno; chiudendolo senza accedere i pulsanti tornano attivi). L'accesso rapido non esiste: si entra con password, Google o Apple.</li>
+    <li><b>Blocco app.</b> La versione web non si blocca mai: una pagina web non può fidarsi di un controllo del dispositivo. Su un computer condiviso si esce con <b class="ui">Sign out</b>.</li>
+    <li><b>Notifiche.</b> Niente push: si usa la campanella nell'app.</li>
+    <li><b>Stage mode.</b> Sincronizzazione live via internet e click funzionano; niente Bluetooth e nessuna copia offline della scaletta, quindi serve la connessione.</li>
+    <li><b>File.</b> <b class="ui">Download PDF</b> salva il file sul computer; non esiste il foglio di condivisione di sistema, quindi <b class="ui">Share PDF document</b> scarica il PDF. Ricevere file da altre app (aprire una partitura) non è disponibile.</li>
+    <li><b>iReal Pro.</b> Il forum non si apre dentro la pagina: si apre in un'altra finestra e il link si riporta con <b class="ui">Paste link</b>, incollandolo o trascinandolo.</li>
+    <li><b>Import dai contatti</b> non disponibile.</li>
+    <li><b>Tastiera e Indietro.</b> Esc chiude il livello in cima. Il tasto Indietro del browser funziona come l'Indietro di Android ma non chiude mai nulla fuori dall'app; da Home esce dal sito. Durante la configurazione dell'account Indietro torna al passaggio di onboarding precedente; dal primo passaggio esce dal sito.</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="basics-home-admin" data-device="web"><figcaption>Home dell'admin nel browser desktop.</figcaption></figure>
+    <figure class="shot" data-shot="analytics" data-device="web"><figcaption>Analytics nel browser.</figcaption></figure>
+  </div>
+
+  <h2>iPhone Duo: le quattro posture</h2>
+  <p>Su un telefono a doppio schermo l'app cambia layout secondo come è aperto il dispositivo. In tutte le posture non c'è la barra delle schede in basso: la colonna di sistema (con ora, batteria e fotocamera) diventa il <b>rail</b>, che contiene la navigazione e i comandi della schermata. Regola di progetto: ogni schermata funziona in ogni postura, e niente viene mai posato sulla piega.</p>
+
+  <h3>Il rail</h3>
+  <span class="anchor" id="art-duo-closed"></span>
+  <p>Dall'alto in basso il rail contiene:</p>
+  <ol class="steps">
+    <li>Le schede <b class="ui">Home</b>, <b class="ui">Calendar</b>, <b class="ui">Create</b> e <b class="ui">Chat</b>; si nascondono mentre è aperta una pagina a tutto schermo.</li>
+    <li>Indietro, poi le azioni proprie della schermata corrente (la chiusura di una procedura come <b class="ui">Close gig wizard</b>, <b class="ui">New chat</b>, <b class="ui">Open stage mode</b>, <b class="ui">More options</b>), poi Cerca.</li>
+    <li>Il profilo, che apre il menu sopra qualsiasi schermata (<b class="ui">Open profile</b>). Al posto della scheda Settings del telefono.</li>
+  </ol>
+  <p>Cerca apre un campo accanto al rail; con la tastiera aperta il campo sta appena sopra. Con il dispositivo aperto la ricerca resta sulla pagina sinistra e l'evento scelto si apre sulla destra. Il rail segue la colonna di sistema: a destra normalmente, a sinistra quando l'app gira in una finestra Split View sul lato sinistro. Nel giorno del gig, <b class="ui">Open stage mode</b> è l'azione principale del rail; in Stage mode <b class="ui">Hide sidebar</b> nasconde il rail.</p>
+
+  <h3>Chiuso (schermo esterno)</h3>
+  <p>Da chiuso il telefono mostra una pagina, con il rail accanto. Le schermate non hanno Indietro né Cerca nella barra in alto: sono nel rail, come la chiusura delle procedure guidate (<b class="ui">Close gig wizard</b>, la chiusura del preventivo, <b class="ui">Close</b> della scheda brano), sotto l'orologio. La pagina di una persona e il dettaglio di un membro si aprono a tutto schermo. Le prove usano la procedura a passi del telefono. Ruotato su un lato con la tastiera aperta, i moduli scorrono come un tutt'uno così il campo resta visibile; Stage mode su un lato mette orari e passaggi a sinistra, la scaletta o il brano a destra.</p>
+  <div class="gallery duo">
+    <figure class="shot" data-shot="basics-home-admin" data-device="duoClosed"><figcaption>Home sul Duo chiuso, con il rail a destra.</figcaption></figure>
+    <figure class="shot" data-shot="calendar-month" data-device="duoClosed"><figcaption>Calendario: Cerca e azioni nel rail.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="duoClosed"><figcaption>Stage mode da chiuso.</figcaption></figure>
+  </div>
+
+  <h3>Aperto a libro (Book)</h3>
+  <span class="anchor" id="art-duo-book"></span>
+  <p>Aperto come un libro, l'app usa entrambe le pagine: gli elenchi restano a sinistra e l'elemento aperto è a destra. Finché non si apre nulla, la pagina destra dice <b class="ui">Pick an event</b>, <b class="ui">Pick a chat</b> o <b class="ui">Your band, side by side</b>, con <b class="ui">Details open on this side.</b> Il rail resta nella colonna di sistema.</p>
+  <ul>
+    <li><b>Accesso e onboarding:</b> la pagina del marchio BandWith con i passi nominati a sinistra, il modulo a destra. Per un sostituto senza band, <b class="ui">Deputy gigs</b> mette il marchio sul primo schermo e i suoi gig sul secondo.</li>
+    <li><b>Impostazioni:</b> sezioni a sinistra, sezione aperta a destra (all'inizio <b class="ui">Notifications</b>). Durante la conferma di <b class="ui">Delete account</b> resta leggibile a sinistra cosa verrà eliminato. Il menu account occupa tutta la finestra finché non si apre qualcosa.</li>
+    <li><b>Notifiche:</b> l'elenco a sinistra, l'elemento selezionato, pronto per rispondere, a destra.</li>
+    <li><b>Cambio band:</b> il foglio si apre a destra accanto a Home. Home apre il prossimo evento accanto alla dashboard, come su iPad.</li>
+    <li><b>Nuovo gig:</b> al passo 1 la pagina sinistra mostra il gig come lo vedrà la band, mentre si compila; ai passi 2 e 3 a sinistra resta il calendario. <b>Nuovo preventivo:</b> ai passi 1 e 2 l'altra pagina mostra il preventivo dal vivo come lo leggerà il cliente.</li>
+    <li><b>Workspace del gig:</b> il gig si apre a destra; un foglio come <b class="ui">Fee &amp; payouts</b> si apre a destra mentre il gig passa a sinistra.</li>
+    <li><b>Analytics:</b> <b class="ui">Revenue by event type</b> e <b class="ui">Payouts due</b> passano sul secondo schermo, intitolato <b class="ui">Where it comes from</b>.</li>
+    <li><b>Chat:</b> elenco e conversazione affiancati; nelle chat di evento il pannello di contesto con orari, luogo, lineup e <b class="ui">Open gig</b>.</li>
+    <li><b>Repertorio, scalette, brani, suggerimenti:</b> nel secondo pannello accanto all'elenco. <b>Membri, kit:</b> sul secondo schermo accanto all'elenco.</li>
+    <li><b>Stage mode:</b> accanto all'elenco; con <b class="ui">Hide sidebar</b> orari e passaggi sulla prima pagina e scaletta o brano sulla seconda, divisi esattamente sul bordo dei pannelli.</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="gig-wizard-step1" data-device="duoBook"><figcaption>Nuovo gig in Book: l'anteprima del gig a sinistra, il modulo a destra.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="duoBook"><figcaption>Preventivo in Book: il documento del cliente accanto al modulo.</figcaption></figure>
+    <figure class="shot" data-shot="basics-settings-privacy" data-device="duoBook"><figcaption>Impostazioni: sezioni a sinistra, sezione aperta a destra.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="duoBook"><figcaption>Chat di evento con il pannello di contesto.</figcaption></figure>
+  </div>
+
+  <h3>Postura Laptop</h3>
+  <span class="anchor" id="art-duo-laptop-pose"></span>
+  <p>Il telefono si appoggia piegato a metà con la piega in orizzontale, come un piccolo portatile. Dopo un attimo (per non sfarfallare mentre lo si muove) l'app si divide sulla piega: la metà superiore (il <b>Display</b>) mostra le cose da leggere, la metà inferiore (il <b>Deck</b>) contiene tutti i comandi. Fogli, menu e tastiera si aprono sul Deck; i messaggi brevi (toast) compaiono sul Display. Il rail corre lungo il bordo inferiore del Deck, vicino alle mani. Entrare o uscire dalla postura non cambia mai la schermata su cui ci si trova.</p>
+  <p>I moduli tengono l'intestazione sul Display e tutti i campi sul Deck: <b class="ui">Sign in</b>, la creazione dell'account, <b class="ui">What brings you here?</b> (le scelte sono sul Deck, <b class="ui">Continue</b> si raggiunge scorrendo), <b class="ui">Deputy gigs</b>, i moduli di gig, prova e sondaggio, <b class="ui">Create contract</b> e l'inbox. Durante la digitazione il campo in uso resta sempre in vista: appena sopra la tastiera oppure, quando la tastiera copre tutto il Deck, intero sul Display appena sopra la piega. Nessun campo finisce mai sulla piega.</p>
+  <p>I tour per ruolo mettono icona e titolo di ogni scheda sul Display e testo e pulsanti sul Deck, entrambi con i colori scuri del tour, così il titolo resta leggibile.</p>
+  <table class="grid">
+    <thead><tr><th>Schermata</th><th>Display (metà superiore)</th><th>Deck (metà inferiore)</th></tr></thead>
+    <tbody>
+      <tr><td>Home: <b>Band desk</b></td><td>Il prossimo gig come un poster (la prossima prova se non c'è un gig confermato)</td><td>Cosa c'è da fare (voti, pagamenti, risposte), sondaggi non ancora votati e proposte in attesa, pulsanti di creazione, schede</td></tr>
+      <tr><td>Calendario: <b>Planner</b></td><td>Il mese con un punto per tipo di evento e i conteggi <b class="ui">Gigs</b>, <b class="ui">Rehearsals</b>, <b class="ui">Fees</b> (solo admin) e <b class="ui">Free weekends</b></td><td>I filtri, l'<b class="ui">Agenda</b> del giorno con <b class="ui">Previous day</b> / <b class="ui">Next day</b> e, per gli admin, <b class="ui">+ Gig</b> / <b class="ui">+ Rehearsal</b>; i giorni vuoti dicono <b class="ui">Nothing on this day.</b></td></tr>
+      <tr><td>Sondaggio: <b>Find a date</b></td><td>Membri × giorni candidati, il giorno migliore evidenziato, quanti hanno votato</td><td>I propri pulsanti per giorno, poi <b class="ui">Lock in</b> (admin) o <b class="ui">Done</b> (membro)</td></tr>
+      <tr><td>Stage mode: <b>Floor wedge</b></td><td>Su fondo nero: contatore <b class="ui">Song … of …</b>, titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo</td><td>Grandi pulsanti <b class="ui">Prev</b> / <b class="ui">Next</b> e l'avanzamento del set; frecce, Pagina su/giù e Spazio avanzano, quindi funzionano i pedali Bluetooth voltapagina. Il dispositivo si posa sul palco come una spia</td></tr>
+      <tr><td>Preventivo: <b>Quote desk</b></td><td>Il preventivo come lo legge il cliente</td><td>Le righe con i selettori di quantità, sconto, IVA e invio</td></tr>
+      <tr><td>Rider &amp; stage</td><td>La pianta del palco</td><td>Il rider e i suoi comandi</td></tr>
+      <tr><td>Workspace del gig</td><td>Titolo e riquadri degli orari</td><td>Tutto il resto</td></tr>
+      <tr><td>Chat</td><td>I messaggi</td><td>La casella di scrittura</td></tr>
+      <tr><td>Repertorio e lettore</td><td>La scheda <b class="ui">Band repertoire</b>, oppure il brano</td><td>Gli elenchi, oppure i comandi del lettore</td></tr>
+      <tr><td>Contratti, analytics, membri</td><td>I tre totali dei contratti, i quattro totali delle analytics, i tre contatori dei membri</td><td>Gli elenchi</td></tr>
+      <tr><td>Menu account, eventi, menu</td><td>La scheda profilo, l'intestazione dell'evento</td><td>Le righe e i dettagli, che scorrono</td></tr>
+      <tr><td>Nuovo gig</td><td>L'anteprima compatta del gig che si sta creando</td><td>Il modulo</td></tr>
+      <tr><td>Accesso, account, <b class="ui">Create contract</b>, inbox</td><td>Titolo e intestazione (e, all'accesso, Google / Apple)</td><td>I campi e il pulsante d'azione, oppure l'elenco che scorre</td></tr>
+      <tr><td>Tour per ruolo</td><td>Icona e titolo della scheda</td><td>Testo e pulsanti</td></tr>
+    </tbody>
+  </table>
+  <div class="gallery duo">
+    <figure class="shot" data-shot="basics-home-admin" data-device="duoLaptop"><figcaption>Band desk.</figcaption></figure>
+    <figure class="shot" data-shot="calendar-month" data-device="duoLaptop"><figcaption>Planner.</figcaption></figure>
+    <figure class="shot" data-shot="shot-poll-card" data-device="duoLaptop"><figcaption>Find a date.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="duoLaptop"><figcaption>Floor wedge.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="duoLaptop"><figcaption>Quote desk.</figcaption></figure>
+    <figure class="shot" data-shot="gig-wizard-step1" data-device="duoLaptop"><figcaption>Nuovo gig con anteprima compatta.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="duoLaptop"><figcaption>Chat: messaggi sopra, scrittura sotto.</figcaption></figure>
+    <figure class="shot" data-shot="basics-menu" data-device="duoLaptop"><figcaption>Menu account: profilo sopra, righe sotto.</figcaption></figure>
+  </div>
+  <p class="steps-title">Disattivare la postura Laptop</p>
+  <ol class="steps">
+    <li>Aprire il menu, toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">iPhone Duo</b>.</li>
+    <li>Disattivare <b class="ui">Laptop pose</b>: il telefono piegato a metà mantiene il layout normale.</li>
+  </ol>
+  <aside class="note tip">La sezione <b class="ui">iPhone Duo</b> compare solo sui telefoni che segnalano una piega.</aside>
+
+  <h3>Aperto in orizzontale</h3>
+  <span class="anchor" id="art-duo-landscape"></span>
+  <p>Completamente aperto e ruotato, il display è largo (da 860 px): l'app lo divide in due pagine uguali, come in Book, con elenchi a sinistra, dettagli a destra e il rail nella colonna di sistema; i sostituti compaiono su due colonne. Appoggiato completamente piatto con la piega in orizzontale, il display aperto conta come un'unica pagina alta. In una finestra Split View più stretta dello schermo l'app usa il layout adatto alla finestra.</p>
+
+  <h2>Indietro e chiusura dei livelli</h2>
+  <span class="anchor" id="art-back-behaviour-devices"></span>
+  <table class="grid">
+    <thead><tr><th>Terminale</th><th>Come si torna indietro</th></tr></thead>
+    <tbody>
+      <tr><td>iPhone</td><td>Pulsante indietro in alto a sinistra di ogni schermata; i fogli si trascinano in basso.</td></tr>
+      <tr><td>Android</td><td>Tasto e gesto Indietro chiudono prima il livello in cima; su Home <b class="ui">Tap again to exit</b>.</td></tr>
+      <tr><td>iPad / web con tastiera</td><td>Esc chiude il livello in cima (non quando si sta scrivendo in un campo).</td></tr>
+      <tr><td>Web</td><td>Il tasto Indietro del browser come l'Indietro di Android, senza mai uscire dall'app tranne che da Home. Durante l'onboarding torna indietro di un passaggio alla volta.</td></tr>
+      <tr><td>iPhone Duo</td><td>Indietro è nel rail, non nella barra in alto delle schermate.</td></tr>
+    </tbody>
+  </table>
+  <p>Su ogni terminale Indietro chiude un livello alla volta: prima un selettore di data o di ora (il foglio sotto resta aperto), poi un foglio o una finestra di dialogo, poi una sezione interna, poi la pagina a schermo intero. Le schermate aperte da un'altra tornano a quella di partenza: per esempio <b class="ui">Contracts &amp; docs</b> aperto dalla riga <b class="ui">No contract yet</b> di un gig torna al gig, con il pulsante della schermata, con l'Indietro di sistema e con quello del rail del Duo. Il dettaglio completo è in <a data-ref="back-behaviour">Tornare indietro e chiudere</a>.</p>
+</section>

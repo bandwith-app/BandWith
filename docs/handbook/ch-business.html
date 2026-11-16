@@ -1,0 +1,588 @@
+<section class="chapter" id="ch-business">
+  <h1>Preventivi, contratti e denaro</h1>
+  <p class="lead">Dal prezzo di uno spettacolo all'invio al cliente, dal sì del cliente al gig confermato, fino ai documenti e ai pagamenti dei musicisti. Tutto è gestito dagli admin; i membri vedono soltanto il proprio compenso.</p>
+
+  <h2>Creare un preventivo</h2>
+
+  <h3 id="art-create-a-quote" data-roles="admin">Creare un preventivo</h3>
+  <p>Il preventivo è l'offerta inviata al cliente prima che il gig sia prenotato. Al salvataggio compare anche un evento provvisorio sulla sua data nel calendario degli admin, così la data resta bloccata in attesa della risposta.</p>
+  <p class="steps-title">Avviare il preventivo</p>
+  <ol class="steps">
+    <li>Toccare <b class="ui">Create</b> (il + nella barra inferiore) e poi <b class="ui">New quote</b>, oppure <b class="ui">+</b> (<b class="ui">New quote</b>) in alto a destra nella schermata Quotes.</li>
+    <li>Passo 1, <b class="ui">EVENT &amp; LINEUP</b>: inserire il <b class="ui">Client name</b> e, se si vuole, un <b class="ui">Event title</b>. Senza titolo il preventivo prende il nome da tipo di evento e cliente, ad esempio <b class="ui">Wedding - Client A</b>.</li>
+    <li>Scegliere l'<b class="ui">Event type</b>: <b class="ui">Wedding</b>, <b class="ui">Corporate</b>, <b class="ui">Private party</b>, <b class="ui">Festival</b>, <b class="ui">Club</b>, <b class="ui">Pub</b> o <b class="ui">Other</b>.</li>
+    <li>Controllare la formazione in <b class="ui">Lineup formation package</b>: musicisti e compensi arrivano dal <a data-ref="pricing-sheet">listino prezzi</a>; <b class="ui">Customize</b> permette di cambiare chi suona e ogni compenso.</li>
+    <li>Aggiungere eventuali chip <b class="ui">Extra sets &amp; add-ons (optional)</b> e, se noti, <b class="ui">Client email</b> e <b class="ui">Client phone</b>. L'email serve in seguito per inviare il preventivo per email.</li>
+    <li>Toccare <b class="ui">Next</b>. Passo 2, <b class="ui">DATE &amp; VENUE</b>: cercare <b class="ui">Venue / location</b>, scegliere <b class="ui">Event date</b>, orari <b class="ui">Start</b> e <b class="ui">End</b>, <b class="ui">Number of sets</b>, <b class="ui">Mins per set</b> e <b class="ui">Guest count (optional)</b>.</li>
+    <li>Toccare <b class="ui">Next</b>. Il passo 3, <b class="ui">REVIEW &amp; CONFIRM</b>, mostra il riepilogo e il <b class="ui">Breakdown</b>; i pannelli <b class="ui">Billing, discounts, VAT &amp; deposit</b>, <b class="ui">Production &amp; travel</b> e <b class="ui">Multi-option proposal &amp; terms</b> servono a rifinirlo.</li>
+    <li>Toccare <b class="ui">Save &amp; share</b>: il preventivo riceve il suo numero (ad esempio Q-2026-0014) e si apre la schermata di condivisione (<a data-ref="share-a-quote">Condividere un preventivo</a>).</li>
+  </ol>
+  <figure class="shot" data-shot="quote-wizard-review" data-device="phone"><figcaption>Passo 3 di un nuovo preventivo: riepilogo, dettaglio dei costi e i tre pannelli.</figcaption></figure>
+  <p>Il <b class="ui">Total estimate</b> in basso si aggiorna mentre si scrive, a ogni passo. Toccando una barra dei passi in alto, oppure <b class="ui">Lineup</b> e <b class="ui">Venue</b> sulla scheda di riepilogo, si torna indietro. Al passo 3 si arriva solo dopo aver impostato tipo di evento e data.</p>
+  <aside class="note tip">Per conservare un preventivo senza inviarlo, chiudere la procedura con ✕ e scegliere <b class="ui">Save draft</b> (vedi <a data-ref="quote-drafts">Bozze</a>).</aside>
+  <aside class="note warning">Il salvataggio richiede la connessione, perché il numero viene assegnato dal database. Offline si conserva solo l'evento in calendario e l'app avvisa: <b class="ui">Offline: the event was saved, but the quote itself needs a connection. Create it again when you are back online.</b></aside>
+  <div class="devnote" data-devices="tablet">Su iPad si apre un compositore a schermata unica al posto dei passi: cinque schede (<b class="ui">Client &amp; event</b>, <b class="ui">Lineup &amp; rate</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Production &amp; travel</b>, <b class="ui">Billing &amp; terms</b>) accanto a un'anteprima <b class="ui">Live PDF</b> <b class="ui">As the client sees it</b>, nella lingua del cliente. <b class="ui">Edit</b> sulle ultime due schede apre le relative impostazioni in un pannello. L'intestazione indica quante delle 5 schede sono pronte e contiene <b class="ui">Save draft</b>. In fondo all'anteprima ci sono <b class="ui">Share</b> e <b class="ui">Send quote</b>.</div>
+  <div class="devnote" data-devices="duoBook">Con il Duo aperto a libro, durante i passi 1 e 2 l'altra pagina mostra il preventivo in tempo reale.</div>
+  <div class="devnote" data-devices="duoLaptop">In postura laptop l'anteprima del preventivo occupa la metà superiore; il modulo, con i suoi pulsanti, passa nella metà inferiore.</div>
+  <div class="devnote" data-devices="duoClosed">Sul Duo chiuso il pulsante di chiusura si trova nella barra laterale, sotto l'orologio.</div>
+  <div class="roles">
+    <div data-role="admin">Crea, modifica, invia ed elimina i preventivi.</div>
+    <div data-role="member">Non può aprire i preventivi: la voce di menu è nascosta e il database restituisce i preventivi solo agli admin. Ne viene a conoscenza solo se l'admin chiede la disponibilità alla formazione.</div>
+    <div data-role="deputy">Non vede mai i preventivi.</div>
+  </div>
+
+  <h3 id="art-quote-price-lines" data-roles="admin">Formazione, extra, viaggio e produzione</h3>
+  <p>Il preventivo somma queste righe: la base della formazione, set extra e voci personalizzate, poi viaggio, alloggio e produzione quando sono addebitati a parte. I valori predefiniti vengono dal <a data-ref="pricing-sheet">listino prezzi</a>; quanto inserito sul preventivo prevale, solo per quel preventivo.</p>
+  <table class="grid">
+    <thead><tr><th>Riga</th><th>Dove si imposta sul preventivo</th></tr></thead>
+    <tbody>
+      <tr><td>Base della formazione</td><td>Passo 1, <b class="ui">Lineup formation package</b>. Con i pacchetti fissi si sceglie <b class="ui">Solo</b>, <b class="ui">Duo</b>, <b class="ui">Trio</b>, <b class="ui">Full band</b> o uno dei propri pacchetti. Con il prezzo per musicista, <b class="ui">Customize</b> aggiunge o toglie musicisti e consente di inserire ogni <b class="ui">Fee for {name}</b>.</td></tr>
+      <tr><td>Sostituzione del compenso base</td><td>Pannello <b class="ui">Billing, discounts, VAT &amp; deposit</b>, campo <b class="ui">Base fee override</b>: sostituisce la base calcolata della formazione.</td></tr>
+      <tr><td>Set extra e aggiunte</td><td>Chip del passo 1, dal catalogo. Le voci per persona seguono la dimensione della formazione; quelle al km seguono la distanza.</td></tr>
+      <tr><td>Voci personalizzate</td><td>Pannello <b class="ui">Production &amp; travel</b>, <b class="ui">Custom Line Item</b>: <b class="ui">Item name</b>, <b class="ui">Quantity</b> e <b class="ui">Price</b>, poi <b class="ui">Add item</b>. <b class="ui">Remove item</b> la elimina.</td></tr>
+      <tr><td>Audio e luci</td><td>Pannello <b class="ui">Production &amp; travel</b>, <b class="ui">Sound &amp; lighting production</b>: <b class="ui">Included in base</b> o <b class="ui">Separate fee</b>, livello <b class="ui">Standard PA</b>, <b class="ui">Pro PA</b> o <b class="ui">Client PA</b>, e il <b class="ui">Production fee</b>.</td></tr>
+      <tr><td>Viaggio</td><td>Il passo 2 calcola la distanza di sola andata dalla sede della band quando si sceglie il luogo. In <b class="ui">Travel &amp; transport</b> si sceglie <b class="ui">Included</b>, <b class="ui">Separate fee</b> o <b class="ui">Client arranged</b> e si correggono distanza o <b class="ui">Travel fee</b>.</td></tr>
+      <tr><td>Alloggio</td><td><b class="ui">Hotel &amp; accommodation</b>: <b class="ui">Included</b>, <b class="ui">Separate fee</b>, <b class="ui">Client hotel</b> o <b class="ui">Not needed</b>, con <b class="ui">Rooms</b>, <b class="ui">Nights</b> e <b class="ui">Accommodation fee</b>.</td></tr>
+    </tbody>
+  </table>
+  <p>Sotto la formazione, la riga <b class="ui">Musician fees</b> (o <b class="ui">Package fee</b>) mostra il totale della formazione; se il listino aggiunge un fondo band, lo indica, ad esempio <b class="ui">incl. +10% fund</b>.</p>
+  <p>Il viaggio è gratuito entro il raggio locale gratuito: il chip del passo 2 indica <b class="ui">≤{distance} free</b> oppure la parte addebitabile. Se la band non ha ancora una sede, la distanza non viene calcolata e va inserita a mano nel campo del viaggio.</p>
+  <aside class="note privacy">I compensi dei musicisti sul preventivo sono interni. PDF e pagina del cliente mostrano la formazione in una sola riga (ad esempio <b class="ui">MAIN BAND · 5pc band</b>), mai quanto guadagna ciascuno. Quando il preventivo diventa un gig, ogni musicista viene informato solo del proprio compenso.</aside>
+  <aside class="note tip">Con i prezzi stagionali attivi, il passo 2 mostra <b class="ui">Peak season rate</b>, <b class="ui">Off-peak rate</b> o <b class="ui">Standard season</b> e il compenso base segue il mese dell'evento, finché non se ne inserisce uno manualmente.</aside>
+
+  <h3 id="art-quote-billing-and-terms" data-roles="admin">Sconto, IVA, acconto, validità e condizioni</h3>
+  <p class="steps-title">Fatturazione</p>
+  <ol class="steps">
+    <li>Al passo 3 aprire <b class="ui">Billing, discounts, VAT &amp; deposit</b>.</li>
+    <li>In <b class="ui">Package discount</b> scegliere <b class="ui">None</b>, <b class="ui">% off</b> o <b class="ui">{currency} off</b> e inserire il <b class="ui">Discount value</b>.</li>
+    <li>Cambiare la <b class="ui">VAT rate</b> se il preventivo richiede un'aliquota diversa, oppure attivare <b class="ui">VAT exempt</b> (<b class="ui">Quote at 0% VAT</b>).</li>
+    <li>Impostare la percentuale di <b class="ui">Deposit</b> (<b class="ui">Booking deposit</b>) oppure <b class="ui">None</b>.</li>
+    <li>Scegliere la <b class="ui">Validity</b>: il preventivo vale quel numero di giorni da oggi, indicato come <b class="ui">Valid until {date}</b>.</li>
+    <li>Lasciare attivo <b class="ui">Show bank details on PDF</b> per stampare il conto sul PDF. Se compare <b class="ui">Add your bank account in Branding &amp; payment</b>, aggiungerlo prima (<a data-ref="branding-and-payment">Logo, firma e dati bancari</a>).</li>
+  </ol>
+  <p class="steps-title">Proposta e condizioni</p>
+  <ol class="steps">
+    <li>Aprire <b class="ui">Multi-option proposal &amp; terms</b>.</li>
+    <li>Attivare <b class="ui">Multi-option comparison</b> per offrire più formazioni a confronto. L'app compila i livelli dai pacchetti; per ognuno si modificano <b class="ui">Tier name</b>, <b class="ui">Musicians</b>, <b class="ui">Gross fee</b>, <b class="ui">Discount</b> e <b class="ui">Lineup / instrumentation</b>, si aggiungono livelli con <b class="ui">Add option tier</b> o se ne rimuove uno. Il PDF riceve una pagina di sintesi con la tabella di confronto.</li>
+    <li>Inserire un <b class="ui">Quote subtitle (optional)</b>, mostrato sotto il titolo nel PDF.</li>
+    <li>Spuntare i <b class="ui">Payment methods</b> accettati: <b class="ui">Bank transfer</b>, <b class="ui">Credit card</b>, <b class="ui">Cash</b>.</li>
+    <li>Scegliere la <b class="ui">Cancellation policy</b>: <b class="ui">Flexible</b>, <b class="ui">Moderate</b> o <b class="ui">Strict</b>.</li>
+    <li>Scrivere in <b class="ui">Client message / notes</b> quanto il cliente deve leggere.</li>
+  </ol>
+  <p>I totali sono calcolati allo stesso modo a schermo, nel PDF, sulla pagina del cliente e nel database: subtotale, meno lo sconto, più IVA, poi l'acconto come quota del totale.</p>
+  <aside class="note tip">I link di pagamento online dell'acconto (<b class="ui">Card · Stripe</b>, <b class="ui">PayPal</b>) sono visibili ma disattivati; il messaggio a schermo rimanda ai dati per il bonifico.</aside>
+
+  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Chiedere la disponibilità prima del sì del cliente</h3>
+  <ol class="steps">
+    <li>Al passo 3 di un nuovo preventivo, attivare <b class="ui">Ask the lineup now</b> (sotto <b class="ui">Lineup availability</b>). Su iPad l'interruttore è sotto il PDF live: <b class="ui">Check who is free before you send</b>.</li>
+    <li>Salvare con <b class="ui">Save &amp; share</b>, oppure chiudere e scegliere <b class="ui">Save draft</b>: in entrambi i casi i musicisti ricevono la richiesta.</li>
+    <li>Seguire le risposte sull'evento in calendario del preventivo, che indica <b class="ui">Availability: {free} of {total} free</b> con un elenco apribile.</li>
+  </ol>
+  <p>Un avviso conferma l'invio, ad esempio <b class="ui">Quote Q-2026-0014 saved · availability asked to 4</b>. Con l'interruttore spento, i musicisti vengono interpellati solo quando il preventivo diventa un gig.</p>
+  <div class="roles">
+    <div data-role="admin">Attiva la verifica alla creazione del preventivo (non in modifica) e vede tutte le risposte.</div>
+    <div data-role="member">Riceve una notifica <b class="ui">Availability check</b> per la data, con il proprio compenso, e risponde come a qualsiasi RSVP. Preventivo, cliente e totale restano nascosti, e l'evento non compare nel suo calendario finché non è confermato come gig.</div>
+  </div>
+  <aside class="note privacy">Nella verifica di disponibilità ogni musicista vede solo il proprio compenso, mai il totale del preventivo né i compensi degli altri.</aside>
+
+  <h3 id="art-quote-drafts" data-roles="admin">Salvare un preventivo come bozza</h3>
+  <ol class="steps">
+    <li>In un nuovo preventivo toccare ✕ (<b class="ui">Close quote wizard</b>) o <b class="ui">Cancel</b>, oppure usare il gesto Indietro di sistema.</li>
+    <li>In <b class="ui">Save this quote as a draft?</b> toccare <b class="ui">Save draft</b>. <b class="ui">Discard</b> elimina quanto inserito; <b class="ui">Keep editing</b> torna al preventivo.</li>
+    <li>La bozza si trova in <b class="ui">Drafts</b> su Home (come <b class="ui">Quote · Draft</b>), nella schermata Quotes con l'etichetta <b class="ui">Draft</b> e nel calendario sul suo giorno.</li>
+    <li>Quando è pronta, aprirla e usare <b class="ui">Share quote</b>.</li>
+  </ol>
+  <div class="devnote" data-devices="tablet">Su iPad <b class="ui">Save draft</b> si trova nell'intestazione del compositore.</div>
+  <aside class="note privacy">L'app conferma <b class="ui">Saved as a draft quote that members can't see.</b> In calendario la bozza riporta <b class="ui">HIDDEN FROM MEMBERS</b>. I musicisti ricevono la verifica di disponibilità solo se è stato attivato <b class="ui">Ask the lineup now</b>.</aside>
+
+  <h2>Listino, intestazione e lingua del cliente</h2>
+
+  <h3 id="art-pricing-sheet" data-roles="admin">Il listino prezzi (Pricing &amp; services)</h3>
+  <p>Contiene tariffe, pacchetti, aggiunte, viaggio, audio, imposte e immagine della band: i valori di partenza di ogni nuovo preventivo. Si apre dal pannello account: toccare l'avatar in cima a Home, poi <b class="ui">Band settings</b> (si apre su <b class="ui">Branding &amp; payment</b>; le tariffe sono in <b class="ui">Lineup &amp; rates</b>). Lo apre anche <b class="ui">Branding &amp; payment</b> nella schermata di condivisione di un preventivo. Il foglio si chiama <b class="ui">Pricing &amp; services</b>, sotto <b class="ui">Universal quote engine</b>.</p>
+  <p>La fascia scura in alto, <b class="ui">Live sample quote</b>, calcola un gig di esempio con le impostazioni correnti mentre si modificano. Le modifiche si conservano con <b class="ui">Save changes</b> in fondo.</p>
+  <table class="grid">
+    <thead><tr><th>Scheda</th><th>Cosa si imposta</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lineup &amp; rates</b></td><td><b class="ui">1. Base pricing model</b>: <b class="ui">Per-musician rate</b> (un <b class="ui">Default fee per musician</b>, opzionalmente <b class="ui">Use individual member fees</b> dal profilo di ciascun membro, un <b class="ui">Default lineup size</b> e una tariffa separata <b class="ui">External / sub musician rate</b>) oppure <b class="ui">Flat packages</b> (i <b class="ui">Formation packages</b>, ciascuno con il suo prezzo; <b class="ui">Add package</b>, nascondere o rimuovere un pacchetto). <b class="ui">2. Band fund / agency markup</b>: <b class="ui">None</b>, un importo <b class="ui">Fixed {symbol}</b> per gig o una percentuale <b class="ui">Markup on lineup</b>.</td></tr>
+      <tr><td><b class="ui">Sets &amp; add-ons</b></td><td>Il <b class="ui">Sets &amp; add-ons catalog</b>: extra che compaiono come chip al passo 1 del preventivo. <b class="ui">Add extra</b> con <b class="ui">Service name</b>, <b class="ui">Price</b>, <b class="ui">Category</b> e <b class="ui">Unit</b> (<b class="ui">Flat Fee</b>, <b class="ui">Per Musician</b>, <b class="ui">Per Hour</b>, per km o miglio). <b class="ui">Quick-add starter presets</b> aggiunge i set <b class="ui">Wedding</b>, <b class="ui">Club / Show</b> o <b class="ui">Corporate / AV</b>. Ogni voce può essere attiva o nascosta nella procedura, oppure eliminata.</td></tr>
+      <tr><td><b class="ui">Travel &amp; sound</b></td><td><b class="ui">1. Travel &amp; mileage rules</b>: <b class="ui">Band home base</b>, <b class="ui">Default travel policy</b>, <b class="ui">Travel calculation mode</b> (<b class="ui">Per vehicle</b>, <b class="ui">Per musician</b>, forfait al km o miglio), <b class="ui">Number of vehicles</b>, <b class="ui">Free local radius</b> e tariffa al km o miglio, con un esempio di calcolo. <b class="ui">2. Sound &amp; lighting packages</b>: <b class="ui">Default production policy</b> e prezzi dei pacchetti standard e pro e di una zona audio aggiuntiva.</td></tr>
+      <tr><td><b class="ui">Rules &amp; tax</b></td><td><b class="ui">1. Country &amp; currency</b>, <b class="ui">2. Seasonal pricing</b> (maggiorazione di alta stagione e sconto di bassa stagione), <b class="ui">3. Tax, deposit &amp; validity</b> (aliquota IVA predefinita, <b class="ui">Booking deposit</b>, <b class="ui">Default validity</b> in giorni). <b class="ui">Reset to recommended defaults</b> chiede conferma prima di ripristinare tutte le tariffe e i servizi.</td></tr>
+      <tr><td><b class="ui">Branding &amp; payment</b></td><td>Logo, firmatario e firma, conto bancario, condizioni di pagamento, contatti e dati legali, avvertenza del PDF (vedi <a data-ref="branding-and-payment">Logo, firma e dati bancari</a>).</td></tr>
+    </tbody>
+  </table>
+  <aside class="note tip">Le modifiche al listino non toccano mai i preventivi già salvati: valgono per quelli creati in seguito.</aside>
+  <div class="roles">
+    <div data-role="admin">Apre e modifica il listino.</div>
+    <div data-role="member">Non ha alcun accesso. Se ci arriva comunque, vede <b class="ui">Admin access required</b>: <b class="ui">Only band administrators can access and configure the financial and logistical formulas for this band.</b></div>
+  </div>
+
+  <h3 id="art-branding-and-payment" data-roles="admin">Logo, firma e dati bancari sui preventivi</h3>
+  <p>Servono a dare al PDF l'aspetto della band e a indicare al cliente come pagare.</p>
+  <ol class="steps">
+    <li>Aprire il listino su <b class="ui">Branding &amp; payment</b> (pannello account &gt; <b class="ui">Band settings</b>, oppure <b class="ui">Branding &amp; payment</b> nella schermata di condivisione di un preventivo).</li>
+    <li>In <b class="ui">1. Band identity, logo &amp; sign-off</b> verificare <b class="ui">Band name</b> e <b class="ui">Band bio / tagline</b>, poi toccare <b class="ui">Upload logo</b>.</li>
+    <li>Inserire <b class="ui">Signer full name</b> ed eventualmente <b class="ui">Signer role / title (optional)</b>. Per l'<b class="ui">Authorised signature (optional)</b> toccare <b class="ui">Upload image</b> o <b class="ui">Draw signature</b> e firmare sopra la linea (<b class="ui">Clear pad</b> ricomincia).</li>
+    <li>In <b class="ui">2. Payment &amp; bank account</b> scegliere il <b class="ui">Bank account format</b> (<b class="ui">Europe · IBAN</b>, <b class="ui">USA · ABA routing</b>, <b class="ui">Other · SWIFT</b>), poi <b class="ui">Account holder</b> e i dati del conto.</li>
+    <li>Inserire le <b class="ui">Default payment terms</b>, ad esempio <b class="ui">Deposit on booking, balance on the event date</b>.</li>
+    <li>Compilare <b class="ui">3. Band contact &amp; legal details</b> se i clienti ne hanno bisogno (email per le prenotazioni, telefono, sito, ragione sociale, partita IVA/codice fiscale, indirizzo).</li>
+    <li>Adattare, se si vuole, <b class="ui">4. Quote PDF disclaimer</b>; <code>{days}</code> viene sostituito dalla durata della validità. <b class="ui">Reset text</b> ripristina il testo predefinito.</li>
+    <li>Toccare <b class="ui">Save changes</b>. Un'anteprima di preventivo aperta si rigenera da sola.</li>
+  </ol>
+  <p>Nome e firma del firmatario compaiono in fondo a ogni PDF di preventivo; senza firmatario si usa il nome della band. Finché mancano il logo o il conto bancario, la schermata di condivisione lo ricorda con <b class="ui">Complete your band branding</b>.</p>
+  <aside class="note privacy">I dati bancari sono stampati solo sui preventivi con <b class="ui">Show bank details on PDF</b> attivo e all'interno dell'app restano mascherati.</aside>
+
+  <h3 id="art-client-language" data-roles="admin">Documenti nella lingua del cliente</h3>
+  <p>Preventivi, contratti e rider possono partire in inglese, italiano, spagnolo, francese, tedesco o portoghese, indipendentemente dalla lingua dell'app. Ogni schermata che invia qualcosa al cliente ha un selettore <b class="ui">Client language</b> con sei chip: EN, IT, ES, FR, DE, PT. Cambia il PDF, il messaggio di accompagnamento e la pagina web del cliente; l'app resta nella lingua dell'utente.</p>
+  <p class="steps-title">Dove si trova</p>
+  <ul>
+    <li>Nella schermata di condivisione del preventivo (<b class="ui">PDF ready</b>), sotto l'anteprima del PDF: cambiandolo, il PDF viene ricreato nella nuova lingua.</li>
+    <li>Nel compositore di preventivi su iPad, sotto il <b class="ui">Live PDF</b>.</li>
+    <li>Nel pannello <b class="ui">Send to client</b> di contratti e rider.</li>
+  </ul>
+  <p>La prima volta i documenti partono nella lingua dell'app. La lingua scelta viene ricordata per quel cliente su quel dispositivo (in base all'email o, se manca, al nome), così il preventivo o contratto successivo si apre nella stessa lingua. Sul server non viene salvato nulla di questa scelta.</p>
+  <p>Una volta inviato il link di un preventivo, la pagina del cliente e le relative email mantengono la lingua già ricevuta dal cliente. Se la pagina non ha una lingua, segue quella del browser del cliente.</p>
+  <p>I testi generati dall'app (pacchetti iniziali, servizi, condizioni di pagamento predefinite) vengono tradotti nel documento del cliente; quanto scritto dall'utente viene stampato così com'è.</p>
+
+  <h2>Inviare e seguire il preventivo</h2>
+
+  <h3 id="art-share-a-quote" data-roles="admin">Condividere un preventivo con il cliente</h3>
+  <p>Al cliente si invia un link personale per accettare o rifiutare, oppure solo il PDF, tramite WhatsApp, SMS, email o qualsiasi app.</p>
+  <ol class="steps">
+    <li>Aprire la schermata di condivisione: <b class="ui">Save &amp; share</b> nella procedura, <b class="ui">Share quote</b> sul preventivo o <b class="ui">SHARE QUOTE</b> sul suo evento in calendario.</li>
+    <li>Attendere l'anteprima A4. Si sfogliano le pagine con i chip o le frecce; dopo una modifica toccare ↻ (<b class="ui">Regenerate PDF preview</b>).</li>
+    <li>Scegliere la <b class="ui">Client language</b>.</li>
+    <li>In <b class="ui">Send to client</b> scegliere come inviare il link personale: <b class="ui">WhatsApp</b>, <b class="ui">Text message</b>, <b class="ui">Email</b> o <b class="ui">Copy message &amp; link</b>. Ciascuno invia un messaggio pronto con link, totale e nome del mittente.</li>
+    <li>In alternativa, in <b class="ui">PDF only</b>, toccare <b class="ui">Share PDF document</b> (foglio di condivisione di sistema) o <b class="ui">Download PDF</b> per inviare il file in autonomia.</li>
+    <li>Toccare <b class="ui">Done</b>.</li>
+  </ol>
+  <figure class="shot" data-shot="quote-share" data-device="phone"><figcaption>La schermata di condivisione: anteprima PDF, lingua del cliente, canali per il link e invio del solo PDF.</figcaption></figure>
+  <p>La schermata spiega: <b class="ui">A personal link where {name} can accept the quote, decline it or ask you questions. You get a notification for each answer.</b> WhatsApp e SMS usano il telefono del cliente indicato sul preventivo.</p>
+  <p>Una bozza diventa <b class="ui">Sent</b> appena qualcosa parte davvero: un messaggio con il link da qualsiasi canale, o il PDF tramite <b class="ui">Share PDF document</b>. <b class="ui">Download PDF</b> da solo non cambia lo stato.</p>
+  <aside class="note tip">Aprire la schermata di condivisione non invia nulla. Se il link del cliente non può essere preparato, compare <b class="ui">The client link could not be prepared. Check your connection and reopen this screen.</b> e i canali PDF restano utilizzabili.</aside>
+  <div class="devnote" data-devices="web">Su computer <b class="ui">Download PDF</b> salva il file sul computer; non esiste un foglio di condivisione di sistema, quindi anche <b class="ui">Share PDF document</b> scarica il file.</div>
+  <div class="devnote" data-devices="tablet">Il compositore su iPad aggiunge <b class="ui">Send quote</b>, che invia subito il link per email (vedi <a data-ref="send-quote-by-email">Inviare un preventivo per email</a>).</div>
+
+  <h3 id="art-send-quote-by-email" data-roles="admin">Inviare un preventivo per email</h3>
+  <p class="steps-title">Da qualsiasi dispositivo</p>
+  <ol class="steps">
+    <li>Verificare che il preventivo abbia una <b class="ui">Client email</b> (altrimenti modificarlo).</li>
+    <li>Aprire la schermata di condivisione e scegliere la <b class="ui">Client language</b>.</li>
+    <li>In <b class="ui">Send to client</b> toccare <b class="ui">Email</b> (<b class="ui">To {email}, with the PDF</b>).</li>
+  </ol>
+  <p class="steps-title">Su iPad</p>
+  <ol class="steps">
+    <li>Compilare il compositore, email del cliente compresa.</li>
+    <li>Toccare <b class="ui">Send quote</b> sotto il PDF live: il preventivo viene salvato, si apre la schermata di condivisione e l'email parte da sola appena link e PDF sono pronti.</li>
+  </ol>
+  <p>La conferma è <b class="ui">Email sent to {email}</b>. Se BandWith non riesce a inviarla, si apre l'app di posta con lo stesso messaggio e il link: <b class="ui">Your mail app opened with the message and the link.</b> In entrambi i casi il preventivo risulta <b class="ui">Sent</b>.</p>
+  <aside class="note warning">Si può inviare una sola email al minuto per preventivo: <b class="ui">An email was just sent. Wait a minute and try again.</b> Senza email del cliente, <b class="ui">Send quote</b> lo segnala e gli altri canali restano disponibili.</aside>
+
+  <h3 id="art-client-quote-page" data-roles="admin">Cosa vede il cliente: la pagina del preventivo</h3>
+  <p>Il link apre una pagina sul sito di BandWith, dove il cliente accetta, rifiuta o scrive alla band senza account e senza app.</p>
+  <p class="steps-title">Contenuto della pagina</p>
+  <ul>
+    <li>Un saluto con il nome della band, titolo e numero del preventivo, data, orario, luogo, città, ospiti, formazione e musica.</li>
+    <li><b class="ui">What's in the quote</b>: voci, subtotale, sconto, IVA, totale, acconto e data di validità, più opzioni, note e condizioni; un pulsante <b class="ui">Download the PDF</b>.</li>
+    <li><b class="ui">Does it work for you?</b>: per accettare, il cliente scrive <b class="ui">Your full name</b>, spunta <b class="ui">I accept this quote ({ref}, version {n}).</b> e tocca <b class="ui">Accept the quote</b>.</li>
+    <li><b class="ui">Decline the quote</b>: motivo facoltativo, poi <b class="ui">Decline</b>.</li>
+    <li><b class="ui">Questions or changes?</b>: il cliente scrive un messaggio e tocca <b class="ui">Send message</b>; la risposta della band compare sulla stessa pagina.</li>
+  </ul>
+  <p>L'accettazione registra il nome digitato, data e ora e la versione vista dal cliente. La pagina precisa che non si tratta di una firma legale: l'eventuale contratto si firma a parte.</p>
+  <table class="grid">
+    <thead><tr><th>Situazione</th><th>Cosa vede il cliente</th></tr></thead>
+    <tbody>
+      <tr><td>Preventivo modificato dopo l'invio</td><td><b class="ui">Updated on {date}</b>. Se aveva la pagina aperta, accettando vede <b class="ui">The quote was just updated.</b> e nulla viene registrato finché non controlla la nuova versione.</td></tr>
+      <tr><td>Accettato</td><td><b class="ui">Accepted. Thank you!</b> con chi e quando. Accetta e rifiuta scompaiono; può ancora scrivere.</td></tr>
+      <tr><td>Rifiutato</td><td><b class="ui">You declined this quote.</b> Può ancora accettarlo o scrivere.</td></tr>
+      <tr><td>Data di validità superata</td><td><b class="ui">This quote expired on {date}.</b> Accetta e rifiuta scompaiono; può scrivere.</td></tr>
+      <tr><td>Link sostituito o disattivato</td><td><b class="ui">This link doesn't work.</b> con l'invito a chiederne uno nuovo alla band.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">La pagina mostra solo il riepilogo pubblicato, il nome della band e la conversazione: mai i musicisti, i loro compensi o le note interne.</aside>
+  <aside class="note tip"><b class="ui">Preview page</b> sul preventivo mostra esattamente ciò che vede il cliente; nulla di quanto fatto nell'anteprima viene registrato.</aside>
+
+  <h3 id="art-client-confirmation" data-roles="admin">Seguire un preventivo inviato</h3>
+  <p>Il preventivo si apre dalla schermata Quotes. La sezione <b class="ui">Client confirmation</b> segue il link in quattro fasi: <b class="ui">Sent</b>, <b class="ui">Viewed</b>, <b class="ui">Discussing</b>, poi <b class="ui">Accepted</b> o <b class="ui">Declined</b>. Si aggiorna da sola ogni 20 secondi.</p>
+  <figure class="shot" data-shot="quote-client-confirmation" data-device="phone"><figcaption>Client confirmation su un preventivo che il cliente ha aperto e su cui ha fatto domande.</figcaption></figure>
+  <p class="steps-title">Rispondere al cliente</p>
+  <ol class="steps">
+    <li>Leggere i messaggi in <b class="ui">Conversation</b>.</li>
+    <li>Scrivere in <b class="ui">Reply to the client</b> e toccare <b class="ui">Send reply</b>.</li>
+  </ol>
+  <p>La risposta compare sulla pagina del cliente, che la riceve anche per email se il preventivo ha un'email del cliente.</p>
+  <p class="steps-title">Altre azioni</p>
+  <ul>
+    <li><b class="ui">Remind client</b>: apre la schermata di condivisione con un messaggio di promemoria (finché il cliente non risponde).</li>
+    <li><b class="ui">Send the update</b>: compare dopo la modifica di un preventivo inviato, perché <b class="ui">The client's page already shows version {n}. Let them know.</b></li>
+    <li><b class="ui">Preview page</b>: apre la pagina del cliente in modalità anteprima.</li>
+    <li><b class="ui">Copy link</b>: copia il solo link.</li>
+    <li><b class="ui">New link</b>: il vecchio link smette di funzionare e va inviato quello nuovo; riattiva anche un link disattivato.</li>
+    <li><b class="ui">Turn off link</b>: il cliente non può più aprire il preventivo finché non si crea un nuovo link.</li>
+    <li><b class="ui">Quote history</b>: ogni invio, promemoria, visualizzazione, aggiornamento, risposta e modifica del link, con l'orario.</li>
+  </ul>
+  <p>Gli admin ricevono una notifica push e in app quando il cliente apre il preventivo per la prima volta, accetta, rifiuta o scrive.</p>
+  <aside class="note warning"><b class="ui">New link</b> e <b class="ui">Turn off link</b> chiedono conferma, perché il link attuale del cliente smette subito di funzionare.</aside>
+  <p>Su un preventivo mai inviato, al posto di questa sezione compare <b class="ui">Send to client</b>.</p>
+
+  <h3 id="art-record-client-answer" data-roles="admin">Registrare una risposta data a voce o per telefono</h3>
+  <ol class="steps">
+    <li>Aprire il preventivo dalla schermata Quotes.</li>
+    <li>In <b class="ui">Client answered by phone or in person?</b> toccare <b class="ui">Accepted</b> o <b class="ui">Declined</b>.</li>
+  </ol>
+  <p><b class="ui">Accepted</b> conferma anche l'evento in calendario del preventivo come gig (<b class="ui">Quote accepted. The gig is confirmed.</b>) e la formazione viene avvisata. La pagina del cliente mostra quindi il preventivo come accettato e non offre più accetta e rifiuta. All'admin che registra la risposta non arriva alcuna notifica.</p>
+  <p>Questi pulsanti compaiono sui preventivi <b class="ui">Sent</b>, <b class="ui">Viewed</b> o <b class="ui">Discussing</b>. Su una <b class="ui">Draft</b> inviata fuori dall'app si usa prima <b class="ui">Mark as sent</b>, che cambia solo lo stato e non invia nulla.</p>
+
+  <h2>Dal preventivo al gig e gestione dei preventivi</h2>
+
+  <h3 id="art-quote-to-gig" data-roles="admin,member">Trasformare un preventivo accettato in gig</h3>
+  <p>La data del preventivo viene confermata come gig e compare nel calendario di tutti, con formazione e compensi.</p>
+  <p class="steps-title">Dal preventivo</p>
+  <ol class="steps">
+    <li>Quando il cliente accetta sulla pagina, aprire il preventivo.</li>
+    <li>Nella scheda di accettazione toccare <b class="ui">Create gig from quote</b> (o <b class="ui">Confirm &amp; open gig</b> se il preventivo ha già il suo evento in calendario).</li>
+    <li>Si apre il gig. Per un contratto, toccare <b class="ui">Prepare contract</b> sul preventivo (vedi <a data-ref="create-a-contract">Creare un contratto</a>).</li>
+  </ol>
+  <p class="steps-title">Dal calendario</p>
+  <ol class="steps">
+    <li>Aprire l'evento del preventivo sul suo giorno.</li>
+    <li>Toccare <b class="ui">CONFIRM AS GIG</b>. Sul messaggio <b class="ui">Quote confirmed as Gig!</b> si può toccare <b class="ui">UNDO</b> per 8 secondi.</li>
+  </ol>
+  <p>L'evento provvisorio diventa un gig confermato. Se il preventivo non aveva un evento (preventivo vecchio), viene creato un nuovo gig confermato con data, luogo, cliente e totale, e i musicisti del preventivo ne diventano la formazione con i rispettivi compensi. Chi lo crea risulta confermato; gli altri ricevono la richiesta di RSVP.</p>
+  <aside class="note tip">Il sì del cliente sulla pagina non conferma il gig da solo: è l'admin a decidere quando, con uno dei pulsanti sopra. Registrare <b class="ui">Accepted</b> nell'app, invece, lo conferma subito.</aside>
+  <aside class="note warning">I musicisti inseriti solo per nome, senza account BandWith, non possono essere aggiunti a un gig. Se la formazione non può essere salvata, l'app avvisa: <b class="ui">Gig created, but its lineup was not added. Add the musicians in the gig.</b></aside>
+  <div class="roles">
+    <div data-role="admin">Conferma il preventivo e vede il compenso della band.</div>
+    <div data-role="member">Il gig compare nel suo calendario con una notifica e solo il proprio compenso (vedi <a data-ref="what-members-see-of-money">Cosa vedono i membri del denaro</a>).</div>
+  </div>
+
+  <h3 id="art-revert-gig-to-quote" data-roles="admin">Riportare un gig a preventivo</h3>
+  <ol class="steps">
+    <li>Aprire il gig.</li>
+    <li>Toccare <b class="ui">REVERT TO QUOTE</b> in fondo.</li>
+    <li>Leggere l'avviso e toccare <b class="ui">Revert to quote</b>, oppure <b class="ui">Keep the gig</b>.</li>
+  </ol>
+  <p>L'avviso spiega: <b class="ui">Back to a quote: the gig leaves the musicians' calendars until you confirm it again. Their answers are kept.</b> Il preventivo collegato torna allo stato precedente al sì: <b class="ui">Viewed</b> o <b class="ui">Sent</b> se il cliente lo aveva ricevuto, <b class="ui">Draft</b> se non era mai stato condiviso.</p>
+  <p>Prove e gig personali non hanno <b class="ui">REVERT TO QUOTE</b>: non sono mai stati preventivi.</p>
+  <aside class="note tip">Un membro che nel frattempo apre un link al gig vede <b class="ui">Not confirmed yet</b>; il gig torna nel suo calendario appena viene riconfermato.</aside>
+
+  <h3 id="art-edit-duplicate-delete-quote" data-roles="admin">Modificare, duplicare o eliminare un preventivo</h3>
+  <p class="steps-title">Modificare</p>
+  <ol class="steps">
+    <li>Aprire il preventivo e toccare <b class="ui">Edit quote</b> (o <b class="ui">EDIT QUOTE</b> sul suo evento in calendario).</li>
+    <li>Aprire le sezioni necessarie: <b class="ui">Client &amp; occasion</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Lineup &amp; extra sets</b>, <b class="ui">Pricing, logistics &amp; billing</b>, <b class="ui">Proposal options &amp; terms</b>.</li>
+    <li>Toccare <b class="ui">Save</b>, oppure <b class="ui">Save &amp; share</b> per inviarlo subito.</li>
+  </ol>
+  <p>Si possono modificare i preventivi <b class="ui">Draft</b>, <b class="ui">Sent</b>, <b class="ui">Viewed</b> o <b class="ui">Discussing</b>. Se il cliente ha già il link, la sua pagina passa alla nuova versione (<b class="ui">The client's page now shows version {n}.</b>); con <b class="ui">Send the update</b> lo si avvisa.</p>
+  <p class="steps-title">Duplicare</p>
+  <ol class="steps">
+    <li>Aprire il preventivo e toccare <b class="ui">Duplicate</b> in fondo. La copia è una nuova <b class="ui">Draft</b> con un proprio numero (<b class="ui">Quote duplicated as {number}</b>) e ancora senza link per il cliente.</li>
+  </ol>
+  <p class="steps-title">Eliminare</p>
+  <ol class="steps">
+    <li>Aprire il preventivo, toccare <b class="ui">Delete this quote</b> e confermare <b class="ui">Delete {label}? This cannot be undone.</b></li>
+  </ol>
+  <aside class="note warning">L'eliminazione è irreversibile e il link del cliente smette di funzionare. Per liberare anche la data, eliminare l'evento del preventivo dal calendario.</aside>
+
+  <h3 id="art-quotes-overview" data-roles="admin">La schermata Quotes</h3>
+  <p>È la pipeline commerciale: tutti i preventivi, il loro stato e il loro valore potenziale. Su Home, <b class="ui">ACTIVE QUOTES</b> apre <b class="ui">Quotes</b>; il numero su Home conta gli eventi di preventivo ancora futuri.</p>
+  <ul>
+    <li><b class="ui">Pipeline potential</b>: il valore di tutti i preventivi non rifiutati né scaduti. Sotto, una colonna di punti per preventivo (fino a sette): più alta significa più grande, più luminosa significa più vicina al sì (l'accettato è nel colore d'accento). Toccando una colonna si vede il suo importo.</li>
+    <li><b class="ui">All quotes</b>: una scheda per preventivo con titolo, etichetta di stato, numero di voci e data; toccandola si apre.</li>
+    <li><b class="ui">+</b> (<b class="ui">New quote</b>) in alto a destra avvia un preventivo.</li>
+  </ul>
+  <p>I preventivi compaiono anche nel calendario come eventi provvisori, con il filtro <b class="ui">Quote</b>; le bozze sono visibili solo all'admin.</p>
+  <p>Il preventivo aperto mostra la data, le <b class="ui">Line items</b> con subtotale, sconto, IVA e <b class="ui">Total</b>, l'acconto, i giorni di validità rimasti, quando è stato inviato e aperto, i dati del <b class="ui">Client</b>, poi <a data-ref="client-confirmation">Client confirmation</a> e le azioni.</p>
+
+  <h3 id="art-quote-statuses" data-roles="admin">Stati del preventivo</h3>
+  <table class="grid">
+    <thead><tr><th>Stato</th><th>Significato</th><th>Come ci si arriva</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Draft</b></td><td>Salvato, non inviato. Visibile solo agli admin.</td><td>Creazione o duplicazione, oppure ritorno a preventivo di un gig il cui preventivo non era mai stato condiviso.</td></tr>
+      <tr><td><b class="ui">Sent</b></td><td>Il cliente lo ha ricevuto.</td><td>Un messaggio con il link o il PDF è partito da un canale, oppure <b class="ui">Mark as sent</b>.</td></tr>
+      <tr><td><b class="ui">Viewed</b></td><td>Il cliente ha aperto il link.</td><td>Prima visita alla pagina del cliente.</td></tr>
+      <tr><td><b class="ui">Discussing</b></td><td>Il cliente ha scritto.</td><td>Un messaggio dalla pagina del cliente prima di una risposta.</td></tr>
+      <tr><td><b class="ui">Accepted</b></td><td>Il cliente ha detto sì.</td><td>Accettato sulla pagina, o <b class="ui">Accepted</b> registrato nell'app.</td></tr>
+      <tr><td><b class="ui">Declined</b></td><td>Il cliente ha detto no.</td><td>Rifiutato sulla pagina, o <b class="ui">Declined</b> registrato nell'app. Il cliente può comunque accettare in seguito.</td></tr>
+      <tr><td><b class="ui">Expired</b></td><td>Oltre la data di validità.</td><td>Dopo la data di validità la pagina del cliente non offre più l'accettazione; il preventivo mostra <b class="ui">Expired</b> al posto dei giorni rimasti.</td></tr>
+    </tbody>
+  </table>
+  <p>Sull'evento in calendario lo stato è accompagnato da una riga che indica il passo successivo, ad esempio <b class="ui">Draft · not sent to the client</b> oppure <b class="ui">The client said yes: Confirm as gig to put it on everyone's calendar.</b></p>
+
+  <h2>Contratti e rider</h2>
+
+  <h3 id="art-contracts-and-docs" data-roles="admin">Contracts &amp; docs</h3>
+  <p>Qui la band conserva accordi di esibizione e rider tecnici. Si apre da Home con <b class="ui">Contracts</b> in <b class="ui">Quick Actions</b>, oppure dal pannello account con <b class="ui">Contracts &amp; docs</b>.</p>
+  <figure class="shot" data-shot="contracts-list" data-device="phone"><figcaption>Contracts &amp; docs: ricerca, schede, totali e documenti.</figcaption></figure>
+  <ul>
+    <li><b class="ui">Search documents</b> per titolo, cliente o evento.</li>
+    <li>Schede <b class="ui">All</b>, <b class="ui">Contracts</b> e <b class="ui">Riders</b>, ciascuna con il suo conteggio.</li>
+    <li><b class="ui">Total docs</b>, <b class="ui">Signed</b> e <b class="ui">Pending</b> (bozza, inviato o visto).</li>
+    <li>Una scheda per documento con stato, cliente, data dell'evento e gig collegato. Toccandola si visualizza; <b class="ui">⋯</b> apre le azioni.</li>
+    <li><b class="ui">+</b> (<b class="ui">Create document</b>) in alto a destra.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Vede, crea, invia, segna come firmati ed elimina tutti i documenti della band.</div>
+    <div data-role="member">Nessun accesso: i contratti contengono il cliente e il prezzo del gig, quindi la voce è nascosta e il database non restituisce nulla ai membri.</div>
+    <div data-role="deputy">Nessun accesso.</div>
+  </div>
+  <div class="devnote" data-devices="duoLaptop">In postura laptop i tre totali stanno nella metà superiore.</div>
+
+  <h3 id="art-create-a-contract" data-roles="admin">Creare o modificare un contratto</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Contracts &amp; docs</b> toccare <b class="ui">+</b> (<b class="ui">Create document</b>).</li>
+    <li>In <b class="ui">Document type</b> lasciare <b class="ui">Contract</b>.</li>
+    <li>In <b class="ui">For a band event</b> toccare uno dei gig futuri, oppure <b class="ui">None</b>. Scegliendo un gig, <b class="ui">Fills in the event, date and client from the gig.</b></li>
+    <li>Verificare <b class="ui">Document title *</b>, <b class="ui">Event name</b>, <b class="ui">Client / venue *</b> e <b class="ui">Client email</b>.</li>
+    <li>Impostare la <b class="ui">Event date</b> ed eventualmente <b class="ui">Valid until</b>.</li>
+    <li>Scrivere le <b class="ui">Notes &amp; terms</b>, oppure toccare <b class="ui">Use standard terms</b> per partire dalle clausole standard (esibizione, compenso e pagamento, cancellazione, locale, ospitalità, pause, registrazioni, forza maggiore) e modificarle.</li>
+    <li>Toccare <b class="ui">Create contract</b>.</li>
+  </ol>
+  <p>Da un preventivo accettato, <b class="ui">Prepare contract</b> apre questo modulo già compilato con gig, cliente, email e data, con il titolo <b class="ui">Performance agreement · {event}</b>.</p>
+  <p>Da un gig, la riga di preparazione <b class="ui">No contract yet</b> apre lo stesso modulo compilato per quel gig (<a data-ref="show-readiness">preparazione dello spettacolo</a>). Indietro, dal modulo o da <b class="ui">Contracts &amp; docs</b>, riporta al gig.</p>
+  <figure class="shot" data-shot="contracts-new-for-gig" data-device="phone"><figcaption>Create contract aperto da «No contract yet» su un gig: titolo, evento, cliente, email e data già compilati.</figcaption></figure>
+  <p>Per modificare un documento: toccarlo e poi <b class="ui">Edit</b>, oppure <b class="ui">⋯</b> &gt; <b class="ui">Edit</b>, e confermare con <b class="ui">Save changes</b>. Un contratto firmato non è più modificabile.</p>
+  <aside class="note tip">Le condizioni di pagamento vanno in <b class="ui">Notes &amp; terms</b>. Il testo standard prevede che l'acconto confermi la prenotazione e il saldo sia dovuto alla data dell'evento: va adattato a quanto concordato nel preventivo.</aside>
+  <p>Il PDF del contratto termina con due righe di firma, <b class="ui">For {band}</b> e <b class="ui">For {client}</b>, da firmare su carta o con lo strumento del cliente. BandWith non raccoglie firme: registra la data di firma quando si tocca <b class="ui">Mark as signed</b>.</p>
+  <div class="devnote" data-devices="tablet">In orizzontale il modulo occupa tutto il pannello destro e <b class="ui">Create contract</b> sta sul suo bordo inferiore; la pillola delle schede si sposta mentre si scrive.</div>
+  <div class="devnote" data-devices="duoLaptop">In postura Laptop l'intestazione resta sulla metà superiore, i campi e <b class="ui">Create contract</b> sulla metà inferiore. Il campo in cui si scrive resta in vista, sopra la tastiera o appena sopra la piega.</div>
+
+  <h3 id="art-send-a-contract" data-roles="admin">Inviare, esportare e segnare come firmato un contratto</h3>
+  <p class="steps-title">Inviare al cliente</p>
+  <ol class="steps">
+    <li>Toccare il contratto, poi <b class="ui">Send</b> (o <b class="ui">⋯</b> &gt; <b class="ui">Send to client</b>).</li>
+    <li>Verificare la <b class="ui">Client email</b> e scegliere la <b class="ui">Client language</b>; il campo <b class="ui">Message</b> mostra il testo che accompagna il PDF.</li>
+    <li>Toccare <b class="ui">Share PDF</b>: si apre il foglio di condivisione con PDF e messaggio; scegliere Mail o un'altra app e inviare.</li>
+    <li>Dopo la condivisione il contratto risulta <b class="ui">Sent</b>.</li>
+  </ol>
+  <div class="devnote" data-devices="web">Su computer non c'è il foglio di condivisione: il PDF viene scaricato e si apre l'app di posta con il messaggio. Allegare il PDF, inviare l'email e poi toccare <b class="ui">Mark as sent</b> (o <b class="ui">Not sent yet</b> per lasciarlo com'è).</div>
+  <p class="steps-title">Esportare o stampare</p>
+  <ol class="steps">
+    <li>Toccare il contratto, poi <b class="ui">PDF</b> (o <b class="ui">⋯</b> &gt; <b class="ui">Download PDF</b>) e stampare dal file salvato.</li>
+  </ol>
+  <p class="steps-title">Registrare la firma</p>
+  <ol class="steps">
+    <li>Al ritorno della copia firmata, toccare il contratto e poi <b class="ui">Mark as signed</b>. Lo stato diventa <b class="ui">Signed</b> con la data del giorno, e modifica e invio vengono disattivati.</li>
+  </ol>
+  <p class="steps-title">Eliminare</p>
+  <ol class="steps">
+    <li>Toccare <b class="ui">⋯</b> &gt; <b class="ui">Delete</b> e confermare: <b class="ui">The document is removed for the whole band. Copies already sent to the client are not affected.</b></li>
+  </ol>
+  <aside class="note tip">Un contratto firmato collegato a un gig conta come completato nella preparazione dello spettacolo (vedi <a data-ref="show-readiness">preparazione dello spettacolo</a>).</aside>
+
+  <h3 id="art-contract-riders" data-roles="admin">I rider in Contracts &amp; docs</h3>
+  <p>I rider tecnici si conservano insieme ai contratti, si condividono come link web e se ne inviano nuove versioni.</p>
+  <ol class="steps">
+    <li>Toccare <b class="ui">+</b> (<b class="ui">Create document</b>) e scegliere <b class="ui">Rider</b> in <b class="ui">Document type</b>.</li>
+    <li>Collegarlo a un gig in <b class="ui">For a band event</b>, così riporta stage plot, lista input e chi porta cosa di quel gig.</li>
+    <li>Scrivere <b class="ui">Requirements &amp; notes</b>, oppure toccare <b class="ui">Use standard rider</b> (palco, corrente, audio, orari, backstage, ospitalità, parcheggio).</li>
+    <li>Toccare <b class="ui">Create rider</b>.</li>
+    <li>Per inviarlo, usare <b class="ui">Send</b> come per un contratto, oppure <b class="ui">Web link</b> (<b class="ui">⋯</b> &gt; <b class="ui">Share web link</b>) per condividere una pagina in sola lettura per il locale.</li>
+  </ol>
+  <p>Una volta condiviso, il rider risulta <b class="ui">Sent</b>. Dopo una modifica, <b class="ui">⋯</b> &gt; <b class="ui">New version</b> riporta il rider a <b class="ui">Draft</b> come versione successiva, da condividere di nuovo perché il locale la veda.</p>
+  <p>I rider non hanno <b class="ui">Mark as signed</b>.</p>
+
+  <h3 id="art-contract-statuses" data-roles="admin">Stati di contratti e rider</h3>
+  <table class="grid">
+    <thead><tr><th>Stato</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Draft</b></td><td>Creato, non ancora inviato.</td></tr>
+      <tr><td><b class="ui">Sent</b></td><td>Condiviso con il cliente.</td></tr>
+      <tr><td><b class="ui">Signed</b></td><td>È stato toccato <b class="ui">Mark as signed</b>. Definitivo: si può visualizzare, scaricare o eliminare, non modificare.</td></tr>
+      <tr><td><b class="ui">Expired</b></td><td>Mostrato quando la data <b class="ui">Valid until</b> è passata, o quando è passata la data dell'evento senza firma. Il documento non viene modificato: cambia solo come è mostrato.</td></tr>
+    </tbody>
+  </table>
+  <p>Il pannello account conta i documenti ancora da firmare e le bozze.</p>
+
+  <h2>Il denaro della band</h2>
+
+  <h3 id="art-money-on-home" data-roles="admin,member">Il denaro su Home</h3>
+  <table class="grid">
+    <thead><tr><th>Su Home</th><th>Cosa conta</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">REVENUE</b> (admin)</td><td>I compensi dell'anno in corso dei gig confermati e completati. Toccandolo si apre <b class="ui">Money flow</b>.</td></tr>
+      <tr><td><b class="ui">ACTIVE QUOTES</b> (admin)</td><td>Gli eventi di preventivo ancora futuri. Toccandolo si apre Quotes.</td></tr>
+      <tr><td><b class="ui">Revenue vs last month</b> (admin)</td><td>La variazione dei ricavi da gig, accanto a <b class="ui">Gigs this month</b>.</td></tr>
+      <tr><td><b class="ui">UPCOMING PAY</b> (membri)</td><td>I propri compensi per i gig confermati in arrivo.</td></tr>
+      <tr><td><b class="ui">TOTAL EARNED</b> (membri)</td><td>I propri compensi per i gig già suonati.</td></tr>
+    </tbody>
+  </table>
+  <p><b class="ui">Money flow</b> è il registro della band: <b class="ui">Net profit</b>, <b class="ui">Revenue</b> ed <b class="ui">Expenses</b> dell'anno, e <b class="ui">Recent activity</b>, cioè entrate e uscite registrate. <b class="ui">+</b> (<b class="ui">Add transaction</b>) ne aggiunge una (vedi <a data-ref="add-a-transaction">Registrare entrate e uscite</a>).</p>
+  <aside class="note tip">I due ricavi sono diversi: <b class="ui">REVENUE</b> su Home somma i compensi dei gig, <b class="ui">Revenue</b> in Money flow somma le entrate registrate. Un pagamento compare in Money flow solo se registrato come entrata.</aside>
+  <p>In <b class="ui">Upcoming</b> gli admin vedono il compenso della band per ogni gig; i membri vedono il proprio compenso (<b class="ui">Your fee</b>) o l'orario.</p>
+  <aside class="note privacy">Money flow, REVENUE e ACTIVE QUOTES sono riservati agli admin; il registro stesso è leggibile nel database solo dagli admin.</aside>
+
+  <h3 id="art-add-a-transaction" data-roles="admin">Registrare un'entrata o una spesa</h3>
+  <ol class="steps">
+    <li>Su Home toccare <b class="ui">REVENUE</b> per aprire <b class="ui">Money flow</b>.</li>
+    <li>Toccare <b class="ui">+</b> (<b class="ui">Add transaction</b>) in alto a destra.</li>
+    <li>Scegliere <b class="ui">Income</b> o <b class="ui">Expense</b>.</li>
+    <li>Inserire <b class="ui">Description</b> (ad esempio <b class="ui">Jazz Night @ Blue Note</b>), <b class="ui">Amount</b> e <b class="ui">Date</b>.</li>
+    <li>Scegliere la <b class="ui">Category</b>: per le entrate <b class="ui">GIG</b>, <b class="ui">REHEARSAL</b>, <b class="ui">MERCHANDISE</b>, <b class="ui">ROYALTIES</b> o <b class="ui">OTHER</b>; per le spese <b class="ui">EQUIPMENT</b>, <b class="ui">TRAVEL</b>, <b class="ui">STUDIO</b>, <b class="ui">MARKETING</b>, <b class="ui">FEES</b> o <b class="ui">OTHER</b>.</li>
+    <li>Toccare <b class="ui">Add income</b> o <b class="ui">Add expense</b>.</li>
+  </ol>
+  <p>Totali e <b class="ui">Recent activity</b> si aggiornano subito. Ogni entrata aggiunta invia agli admin della band una notifica <b class="ui">Payment received</b>.</p>
+
+  <h3 id="art-payouts-due" data-roles="admin,member,deputy">Pagamenti dovuti ai musicisti</h3>
+  <p>Un pagamento è dovuto quando un gig della band è concluso (confermato o completato), il musicista aveva confermato, ha un compenso superiore a zero e non è ancora segnato come pagato. Si tratta dei pagamenti della band ai musicisti, non del cliente alla band.</p>
+  <p class="steps-title">Pagare un musicista o tutti (admin)</p>
+  <ol class="steps">
+    <li>Su Home, in <b class="ui">Action center</b> &gt; <b class="ui">Payouts ({count})</b>, toccare <b class="ui">Review payouts</b> sul gig; oppure aprire il gig e toccare <b class="ui">FEE &amp; PAYOUTS</b>.</li>
+    <li>Il pannello <b class="ui">Fee &amp; payouts</b> mostra il <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> con l'importo, e ogni musicista con il suo compenso e <b class="ui">PAID</b> o <b class="ui">PENDING</b>.</li>
+    <li>Toccare l'interruttore tondo accanto a un musicista per segnarlo pagato; toccarlo di nuovo per annullare.</li>
+    <li>Oppure toccare <b class="ui">MARK ALL AS PAID</b> per segnare tutti quelli non ancora pagati.</li>
+  </ol>
+  <p>Analytics contiene lo stesso elenco con <b class="ui">MARK ALL AS PAID</b> per ogni gig (vedi <a data-ref="analytics">Analytics</a>). Un musicista pagato esce subito dall'elenco.</p>
+  <div class="roles">
+    <div data-role="admin">Vede tutti i musicisti da pagare su ogni gig e li segna come pagati.</div>
+    <div data-role="member">Vede solo il proprio pagamento: <b class="ui">Your payouts ({count})</b> su Home con <b class="ui">You're owed {amount}</b> e <b class="ui">View payout</b>. Sul gig, <b class="ui">PAYOUT DETAILS</b> mostra <b class="ui">Your assigned fee</b> e <b class="ui">PAID</b> o <b class="ui">PENDING</b>. Non può modificare compensi o pagamenti.</div>
+    <div data-role="deputy">Come un membro: solo il proprio compenso per il gig che copre.</div>
+  </div>
+  <div class="devnote" data-devices="tablet">Su iPad il workspace del gig ha una scheda <b class="ui">MONEY</b> (solo admin) con lo stesso elenco di compensi e pagamenti.</div>
+
+  <h3 id="art-currency-and-tax" data-roles="admin">Valuta e imposte della band</h3>
+  <ol class="steps">
+    <li>Aprire il listino e toccare <b class="ui">Rules &amp; tax</b>.</li>
+    <li>In <b class="ui">1. Country &amp; currency</b> toccare il <b class="ui">Country</b>: imposta la valuta e la relativa aliquota IVA standard (ad esempio Italia, EUR, 22%). Se il paese non è in elenco, scegliere <b class="ui">Other</b>.</li>
+    <li>Cambiare la <b class="ui">Currency</b> se necessario: EUR €, USD $, GBP £ o CHF.</li>
+    <li>In <b class="ui">3. Tax, deposit &amp; validity</b> regolare la <b class="ui">Default VAT rate</b>; gli spettacoli dal vivo possono rientrare in un'aliquota ridotta.</li>
+    <li>Toccare <b class="ui">Save changes</b>.</li>
+  </ol>
+  <p>Tutte le etichette monetarie dell'app seguono la valuta della band; ogni preventivo mantiene la valuta con cui è stato creato.</p>
+  <aside class="note tip">Chilometri o miglia è un'impostazione personale, non della band: Settings &gt; <b class="ui">Distance</b>. Cambia solo come distanze e tariffe sono mostrate sul proprio dispositivo; preventivi salvati e prezzi restano invariati.</aside>
+
+  <h3 id="art-what-members-see-of-money" data-roles="admin,member,deputy">Cosa vedono i membri del denaro</h3>
+  <aside class="note privacy">Membri e sostituti vedono solo il proprio compenso e la logistica. Non vedono mai i compensi altrui, i totali dei preventivi, il prezzo del gig, il cliente o le finanze della band. La regola è applicata dal database, non solo nascosta nell'app.</aside>
+  <table class="grid">
+    <thead><tr><th>Argomento</th><th>Admin</th><th>Membro o sostituto</th></tr></thead>
+    <tbody>
+      <tr><td>Preventivi</td><td>Tutto</td><td>Nulla; solo una verifica di disponibilità con il proprio compenso, se richiesta</td></tr>
+      <tr><td>Compenso del gig</td><td><b class="ui">Band fee</b>, compenso di ogni musicista, fondo band, acconto</td><td>Solo <b class="ui">Your fee</b></td></tr>
+      <tr><td>Pagamenti</td><td>Tutti i musicisti da pagare</td><td>Il proprio pagamento e <b class="ui">PAID</b> / <b class="ui">PENDING</b></td></tr>
+      <tr><td>Contratti e rider</td><td>Tutto</td><td>Nulla</td></tr>
+      <tr><td>Money flow</td><td>Tutto</td><td>Nulla</td></tr>
+      <tr><td>Metriche su Home</td><td><b class="ui">REVENUE</b>, <b class="ui">ACTIVE QUOTES</b></td><td><b class="ui">UPCOMING PAY</b>, <b class="ui">TOTAL EARNED</b> (propri)</td></tr>
+      <tr><td>Analytics</td><td>Tutta la band</td><td>Nessun accesso</td></tr>
+      <tr><td>Liste di cose da fare</td><td>Creazione e modifica</td><td>Lettura; spunta delle attività sui propri eventi</td></tr>
+    </tbody>
+  </table>
+  <p>I compensi li cambiano gli admin; un membro non può mai cambiare un compenso, un ruolo o un pagamento, nemmeno il proprio.</p>
+
+  <h3 id="art-analytics" data-roles="admin">Analytics (Data insights)</h3>
+  <p>Su Home, scorrere fino in fondo e toccare <b class="ui">View Analytics</b>. La schermata si chiama <b class="ui">Data insights</b>, con nome della band e anno sopra il titolo, e copre l'anno solare in corso.</p>
+  <figure class="shot" data-shot="analytics" data-device="phone"><figcaption>Data insights: totali, variazione dei ricavi e andamento mensile.</figcaption></figure>
+  <table class="grid">
+    <thead><tr><th>Scheda</th><th>Cosa mostra</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Total revenue</b></td><td>I compensi dell'anno dei gig confermati e completati (lo stesso numero di <b class="ui">REVENUE</b> su Home).</td></tr>
+      <tr><td><b class="ui">Total events</b>, <b class="ui">Confirmed</b>, <b class="ui">Upcoming</b></td><td>Quanti eventi ha la band, quanti sono confermati e quanti devono ancora svolgersi.</td></tr>
+      <tr><td><b class="ui">Revenue vs previous period</b></td><td>La variazione percentuale dei ricavi; <b class="ui">--</b> quando non c'è nulla da confrontare.</td></tr>
+      <tr><td><b class="ui">Monthly breakdown</b></td><td>Sei colonne di punti, una per mese fino al mese corrente (evidenziato), in scala rispetto al mese migliore. Passando sopra o tenendo premuto un mese se ne vede l'importo. Sotto: <b class="ui">Total earnings {year}</b>.</td></tr>
+      <tr><td><b class="ui">Revenue by event type</b></td><td>I gig prenotati dell'anno raggruppati per tipo (Wedding, Corporate, Private party, Festival, Club, Pub, Gig, Other), dal più alto, con numero di gig, importo e quota. Prove e gig personali sono esclusi.</td></tr>
+      <tr><td><b class="ui">Payouts due</b></td><td>Una scheda per ogni gig concluso che deve ancora pagare musicisti: chi deve ricevere quanto, il totale e <b class="ui">MARK ALL AS PAID</b>.</td></tr>
+      <tr><td><b class="ui">Members</b></td><td>Statistiche annuali per membro (vedi <a data-ref="member-stats">Statistiche dei membri</a>).</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Analytics si apre da un pulsante riservato agli admin; compensi per tipo e pagamenti provengono da dati leggibili solo dagli admin.</aside>
+  <div class="devnote" data-devices="duoBook,duoLand">Con il Duo aperto, <b class="ui">Revenue by event type</b> e <b class="ui">Payouts due</b> passano al secondo schermo, intitolato <b class="ui">Where it comes from</b>.</div>
+  <div class="devnote" data-devices="duoLaptop">In postura laptop i quattro totali stanno nella metà superiore.</div>
+
+  <h3 id="art-member-stats" data-roles="admin,member">Statistiche dei membri</h3>
+  <p>La scheda <b class="ui">Members</b> in fondo ad Analytics elenca ogni musicista con una riga come <b class="ui">{count} played · {count} coming up · {count} rehearsals</b>, più rifiuti e <b class="ui">awaiting reply</b> quando presenti, i guadagni e un'etichetta <b class="ui">{amount} not paid yet</b> se la band gli deve ancora del denaro.</p>
+  <p class="steps-title">Come si conta</p>
+  <ul>
+    <li>Suonati: gig della band dell'anno, confermati o completati, confermati dal musicista e già passati; il loro compenso conta come guadagnato.</li>
+    <li>In arrivo: gli stessi, ancora da svolgersi.</li>
+    <li>Prove: prove passate che il musicista ha confermato, non annullate.</li>
+    <li>Rifiuti: tutti gli eventi a cui ha detto no. In attesa di risposta: eventi futuri a cui non ha risposto.</li>
+    <li>Non ancora pagato: guadagnato meno quanto segnato come pagato.</li>
+  </ul>
+  <p>L'utente corrente compare per primo, poi i membri attivi per numero di gig. Chi ha lasciato la band è in fondo con <b class="ui">Former member</b>.</p>
+  <div class="roles">
+    <div data-role="admin">Vede tutti i membri.</div>
+    <div data-role="member">Il database restituisce solo la propria riga, intitolata <b class="ui">Your year</b>. I membri non hanno un pulsante per aprire Analytics.</div>
+  </div>
+
+  <h2>Liste di cose da fare</h2>
+
+  <h3 id="art-todo-and-task-templates" data-roles="admin,member">Le liste di cose da fare</h3>
+  <p>Una lista è un modello: un insieme di attività con nome, ciascuna con scadenza a un certo numero di giorni prima o dopo l'evento. Usarla su un gig, una prova o un preventivo copia le attività sull'evento con date di scadenza reali; da lì in poi le attività si spuntano sull'evento stesso. Servono come checklist riutilizzabili per gig, matrimoni, prove o festival.</p>
+  <p>Si apre <b class="ui">To-do lists</b> da Home &gt; <b class="ui">Quick Actions</b> &gt; <b class="ui">To-do lists</b>, o dal pannello account. L'intestazione riporta <b class="ui">Workflows &amp; checklists</b>.</p>
+  <ul>
+    <li><b class="ui">Search to-do lists</b> per nome o descrizione.</li>
+    <li>Una scheda per lista con l'etichetta di categoria (<b class="ui">Wedding</b>, <b class="ui">Corporate</b>, <b class="ui">Festival</b>, <b class="ui">Private party</b>, <b class="ui">Rehearsal</b>, <b class="ui">Other</b>), il numero di attività e la descrizione. Le liste iniziali portano <b class="ui">Default</b>.</li>
+    <li>Toccando una lista si vedono le <b class="ui">Tasks ({count})</b> con le scadenze relative e le etichette <b class="ui">Required</b>, e <b class="ui">Use this list</b>.</li>
+    <li><b class="ui">⋯</b> su una scheda: <b class="ui">Duplicate</b>, <b class="ui">Edit</b> e <b class="ui">Delete</b> (le liste iniziali non si possono eliminare).</li>
+    <li>Senza liste: <b class="ui">New to-do list</b> o <b class="ui">Add starter lists</b> (Wedding gig checklist, Corporate event, Festival set, Rehearsal session).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Crea, modifica, duplica, elimina e usa le liste, e modifica le attività sugli eventi.</div>
+    <div data-role="member">Apre To-do lists dal pannello account e le legge, senza <b class="ui">+</b>, <b class="ui">⋯</b> o <b class="ui">Use this list</b>. Sugli eventi può spuntare le attività, non aggiungerle, rinominarle o eliminarle.</div>
+    <div data-role="deputy">Nessuna lista di cose da fare.</div>
+  </div>
+  <aside class="note tip">Le liste iniziali sono scritte in inglese e mostrate nella lingua dell'app finché non vengono modificate.</aside>
+
+  <h3 id="art-create-a-todo-list" data-roles="admin">Creare o modificare una lista</h3>
+  <ol class="steps">
+    <li>In <b class="ui">To-do lists</b> toccare <b class="ui">+</b> (<b class="ui">New to-do list</b>).</li>
+    <li>Inserire <b class="ui">List name</b> (ad esempio <b class="ui">Festival preparation</b>) e <b class="ui">Description</b>.</li>
+    <li>Scegliere una <b class="ui">Category</b>.</li>
+    <li>In <b class="ui">New task</b> scrivere un'attività (ad esempio <b class="ui">Charge in-ears</b>).</li>
+    <li>Scegliere la scadenza in <b class="ui">Due</b>: 14, 7, 3 o 1 giorno prima, <b class="ui">Day of event</b> o 1 giorno dopo.</li>
+    <li>Se serve, toccare <b class="ui">Required</b> per passare a <b class="ui">Optional</b>, poi <b class="ui">Add task</b>.</li>
+    <li>Ripetere per ogni attività; ✕ ne rimuove una.</li>
+    <li>Toccare <b class="ui">Create list ({count} tasks)</b>.</li>
+  </ol>
+  <p>Un'attività rimasta nel campo al momento del salvataggio viene salvata anch'essa. Per modificare una lista: <b class="ui">⋯</b> &gt; <b class="ui">Edit</b> e <b class="ui">Save changes</b>; <b class="ui">⋯</b> &gt; <b class="ui">Duplicate</b> la copia.</p>
+  <aside class="note warning"><b class="ui">Delete</b> elimina la lista per tutta la band; <b class="ui">Events already created keep their tasks.</b></aside>
+
+  <h3 id="art-use-a-todo-list" data-roles="admin">Usare una lista su un gig, una prova o un preventivo</h3>
+  <p class="steps-title">Da To-do lists</p>
+  <ol class="steps">
+    <li>Toccare una lista, poi <b class="ui">Use this list</b>.</li>
+    <li>In <b class="ui">Start new, with these tasks</b> toccare <b class="ui">New gig</b>, <b class="ui">New rehearsal</b> o <b class="ui">New quote</b>. I moduli di gig e prova si aprono con le attività già inserite; per un preventivo, le attività vengono aggiunte al salvataggio.</li>
+    <li>Oppure toccare <b class="ui">An existing gig, rehearsal or quote</b> e scegliere un evento futuro o una delle <b class="ui">Saved drafts</b>.</li>
+  </ol>
+  <p class="steps-title">Dal modulo del gig</p>
+  <ol class="steps">
+    <li>In un nuovo gig, aprire la sezione delle attività e toccare una lista in <b class="ui">Load a to-do list</b>; poi si possono aggiungere o eliminare attività.</li>
+  </ol>
+  <p>Le scadenze si calcolano dalla data dell'evento: un'attività "7 giorni prima" di un gig del 20 giugno scade il 13 giugno. Le attività già presenti sull'evento (stesso titolo) vengono saltate: <b class="ui">"{title}" already has these tasks</b>.</p>
+
+  <h3 id="art-event-tasks" data-roles="admin,member">Spuntare le attività di un evento</h3>
+  <ol class="steps">
+    <li>Aprire il gig o la prova.</li>
+    <li>Scorrere fino a <b class="ui">TASKS</b>, che indica <b class="ui">{done} of {total} done</b> ed elenca ogni attività con <b class="ui">Due {date}</b>.</li>
+    <li>Toccare un'attività per spuntarla; toccarla di nuovo per togliere la spunta.</li>
+  </ol>
+  <p>Tutti i partecipanti all'evento vedono la stessa lista e le spunte si aggiornano per tutti. Le attività aperte contano nella prontezza dello spettacolo del gig, e il pannello account conta le attività in scadenza questa settimana e quelle scadute.</p>
+  <p>Per aggiungere, rinominare o rimuovere attività, un admin modifica l'evento e ne cambia le attività (vedi <a data-ref="create-a-gig">Creare un gig</a>).</p>
+  <p>Le attività di un gig valgono per tutta la formazione; solo quelle delle prove possono essere assegnate a uno o più membri, nel modulo della prova.</p>
+  <div class="roles">
+    <div data-role="admin">Aggiunge, rinomina, rimuove e spunta le attività.</div>
+    <div data-role="member">Spunta le attività dei propri eventi. Qualsiasi altra operazione viene rifiutata: <b class="ui">Only band admins can edit tasks; members can only mark them done</b>.</div>
+  </div>
+
+  <h2>Domande frequenti</h2>
+  <dl class="faq">
+    <dt>I membri possono vedere un preventivo o il suo totale?</dt>
+    <dd>No. I preventivi sono riservati agli admin, nell'app e nel database. Un membro riceve solo una verifica di disponibilità con il proprio compenso, se è attivo <b class="ui">Ask the lineup now</b>.</dd>
+    <dt>Il cliente ha bisogno di un account per accettare?</dt>
+    <dd>No. Il link personale apre una pagina web dove scrive il nome, spunta la casella e tocca <b class="ui">Accept the quote</b>.</dd>
+    <dt>Un preventivo accettato equivale a un contratto firmato?</dt>
+    <dd>No. Registra nome, data e versione accettata. Per una firma si prepara un contratto dal preventivo accettato.</dd>
+    <dt>Il cliente ha accettato: perché il gig non è ancora in calendario?</dt>
+    <dd>Il sì sulla pagina del cliente non conferma il gig da solo. Occorre aprire il preventivo e toccare <b class="ui">Create gig from quote</b>, oppure <b class="ui">CONFIRM AS GIG</b> sull'evento del preventivo.</dd>
+    <dt>Se si modifica un preventivo già inviato, il cliente vede la modifica?</dt>
+    <dd>Sì: la sua pagina mostra la nuova versione con <b class="ui">Updated on</b>. <b class="ui">Send the update</b> sul preventivo lo avvisa.</dd>
+    <dt>Si può inviare il preventivo in italiano con l'app in inglese?</dt>
+    <dd>Sì: scegliere IT in <b class="ui">Client language</b> nella schermata di condivisione. La scelta viene ricordata per quel cliente sul dispositivo.</dd>
+    <dt>Perché REVENUE su Home è diverso da Revenue in Money flow?</dt>
+    <dd><b class="ui">REVENUE</b> su Home somma i compensi dei gig confermati dell'anno; Money flow somma le entrate registrate.</dd>
+    <dt>Come si paga un sostituto o un membro?</dt>
+    <dd>Il pagamento avviene fuori dall'app; poi lo si segna come pagato nel pannello <b class="ui">Fee &amp; payouts</b> del gig o con <b class="ui">MARK ALL AS PAID</b>.</dd>
+    <dt>I clienti possono pagare l'acconto online?</dt>
+    <dd>No: i pulsanti Stripe e PayPal sono disattivati; si usano i dati per il bonifico riportati sul PDF.</dd>
+    <dt>I membri non vedono Contracts: è un problema?</dt>
+    <dd>No. I contratti contengono il cliente e il prezzo del gig, quindi solo gli admin possono aprirli.</dd>
+  </dl>
+</section>

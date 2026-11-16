@@ -1,0 +1,44 @@
+<section class="chapter" id="ch-intro">
+  <h1>Che cos'è BandWith</h1>
+  <p class="lead">BandWith è l'app che una band usa per gestire tutto il suo lavoro: date, gig, preventivi, contratti, compensi, prove, scalette, testi e accordi sul palco, sostituti e attrezzatura. Una sola app, con gli stessi dati e le stesse regole su telefono, tablet, browser e iPhone Duo.</p>
+
+  <h2>Le aree dell'app</h2>
+  <table class="grid">
+    <thead><tr><th>Area</th><th>Cosa contiene</th></tr></thead>
+    <tbody>
+      <tr><td>Primi passi e impostazioni</td><td>Account, accesso rapido, blocco app, creazione della band, inviti, più band, navigazione, Home, menu, bozze, notifiche, modalità offline, profilo, lingua, privacy, esportazione dati.</td></tr>
+      <tr><td>Calendario e gig</td><td>Calendario di band e personale, filtri, ricerca, giorni liberi e conflitti, creazione del gig in tre passi (o composer unico su iPad), workspace del gig, prontezza dello show, rider e palco, compensi, inviti ai membri, sostituti, aggiornamenti in tempo reale.</td></tr>
+      <tr><td>Preventivi, contratti e denaro</td><td>Preventivi con listino, link per il cliente con conferma online, email del preventivo, conversione in gig, contratti, transazioni, compensi da pagare, valuta e IVA, analisi, statistiche dei membri, liste di cose da fare.</td></tr>
+      <tr><td>Prove, sondaggi e chat</td><td>Prove singole e ricorrenti, proposte dei membri, sondaggi per trovare la data, chat di band, di evento e dirette, ricevute di lettura e presenza online.</td></tr>
+      <tr><td>Repertorio, scalette e Stage mode</td><td>Libreria dei brani, testi e accordi, trasposizione, editor degli accordi, import da iReal Pro e da altri formati, suggerimenti dei membri, scalette e set, PDF della scaletta, Stage mode con sincronizzazione live, click e Bluetooth.</td></tr>
+      <tr><td>Membri, sostituti e attrezzatura</td><td>Membri e ruoli, inviti, compensi e strumenti predefiniti, sostituti (deputy) con pagina di risposta e accesso in app, inventario dell'attrezzatura, kit per i gig, chi vede cosa.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Ruoli: admin, membro, sostituto</h2>
+  <span class="anchor" id="art-roles-overview"></span>
+  <p>Ogni persona in una band ha un ruolo, e i ruoli valgono per band: si può essere admin della propria band e membro in un'altra. I sostituti (deputy) sono musicisti esterni che una band chiama per un gig.</p>
+  <table class="grid">
+    <thead><tr><th>Ruolo</th><th>Può fare</th><th>Non vede mai</th></tr></thead>
+    <tbody>
+      <tr><td><b>Admin</b></td><td>Tutto: crea e modifica gig, prove e preventivi; imposta compensi e pagamenti; modifica le scalette; importa brani; invita e rimuove membri; contratti, listino, analisi, dati della band.</td><td>—</td></tr>
+      <tr><td><b>Membro</b></td><td>Vede il calendario della band e la logistica dei gig, risponde agli inviti, vota nei sondaggi, propone prove, chatta, consulta scalette e repertorio, gestisce la propria attrezzatura e le proprie note, aggiunge gig personali.</td><td>I compensi degli altri, i totali dei preventivi, le finanze della band, i contratti.</td></tr>
+      <tr><td><b>Deputy</b></td><td>Risponde alle richieste delle band che lo chiamano, vede i gig che suona (data, orari, luogo, il proprio compenso), li aggiunge al proprio calendario.</td><td>Tutto il resto della band.</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin">Si diventa admin creando una band, accettando un invito con permesso <b class="ui">Admin</b>, oppure quando un altro admin tocca <b class="ui">Make admin</b>. Una band può avere più admin.</div>
+    <div data-role="member">Entra con un invito (<a data-ref="join-with-an-invite">entrare con un invito</a>). I membri possono suggerire cose (prove, correzioni ai brani) che un admin approva.</div>
+    <div data-role="deputy">Viene chiamato da un admin per un gig. Con un link di collegamento risponde nell'app, in <b class="ui">Deputy gigs</b>; se non ha una band propria, <b class="ui">Deputy gigs</b> è la sua schermata principale.</div>
+  </div>
+  <aside class="note privacy">Membri e sostituti vedono solo il proprio compenso e la logistica. Non vedono mai i compensi degli altri, i totali dei preventivi né le finanze della band. Le scalette si modificano solo da admin, l'import di elenchi di brani è solo per admin, e ogni membro modifica solo la propria attrezzatura personale. Il dettaglio schermata per schermata è in <a data-ref="who-sees-what">chi vede cosa</a>. Queste regole sono applicate anche sul server, non solo nell'interfaccia (vedi l'appendice tecnica).</aside>
+
+  <h2>Lingue</h2>
+  <p>L'app è disponibile in sei lingue: English, Italiano, Español, Français, Deutsch e Português, scelte in <b class="ui">Settings › Language</b>. Date, importi e orari (formato 24 ore) seguono la lingua. I documenti per il cliente (preventivo, link di conferma, PDF) si generano nella lingua del cliente, indipendente da quella dell'app; le notifiche push e le email arrivano a ogni persona nella sua lingua. In questo documento i nomi di pulsanti ed etichette sono riportati in inglese, <b class="ui">così</b>, esattamente come appaiono nell'app in inglese, per poterli ritrovare sullo schermo.</p>
+
+  <h2>Dove funziona</h2>
+  <p>BandWith gira come app per iPhone e iPad, come app Android (installata da file APK e aggiornata dall'interno dell'app) e nel browser all'indirizzo <b>bandwith-beryl.vercel.app</b>. Su iPhone Duo (telefono a doppio schermo pieghevole) l'app usa le due metà dello schermo in modi diversi a seconda della postura. Tutte le versioni condividono lo stesso account e gli stessi dati in tempo reale; cambiano il layout e le poche funzioni che richiedono l'hardware del telefono. La Parte II descrive ogni terminale.</p>
+
+  <h2>Guida integrata: BandWith Academy</h2>
+  <p>Dentro l'app, i pulsanti <b class="ui">?</b> aprono la guida (Academy) sull'argomento della schermata, con tour per ruolo e schermate catturate sul dispositivo di chi legge. La stessa guida è online in <b>/academy/</b>. Questo documento ne riprende tutto il contenuto, organizzato per terminale e per area.</p>
+</section>

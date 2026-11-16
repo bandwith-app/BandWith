@@ -1,0 +1,360 @@
+<section class="chapter" id="ch-together">
+  <h1>Prove, sondaggi e chat</h1>
+  <p class="lead">Programmazione delle prove, sondaggi per trovare una data adatta a tutta la band e chat di band, di evento e dirette.</p>
+
+  <h2>Programmare le prove</h2>
+
+  <h3 id="art-create-a-rehearsal" data-roles="admin">Creare una prova</h3>
+  <p>L'admin programma direttamente una prova quando conosce già la data; per sapere prima chi è libero usa un <a data-ref="create-a-rehearsal-poll">sondaggio di disponibilità</a>.</p>
+  <p class="steps-title">Su telefono</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> (il + nella barra in basso) → <b class="ui">New rehearsal</b>, oppure nel <b class="ui">Calendar</b> un giorno vuoto → <b class="ui">Rehearsal</b>.</li>
+    <li><b class="ui">Scheduling mode</b> resta su <b class="ui">Schedule directly</b>.</li>
+    <li><b class="ui">Rehearsal title (optional)</b>: senza titolo la prova prende il nome del tipo di sessione (es. <b class="ui">Full Band Rehearsal</b>).</li>
+    <li><b class="ui">Session type</b>: <b class="ui">Full Band</b>, <b class="ui">Vocals</b>, <b class="ui">Rhythm</b>, <b class="ui">Acoustic</b> o <b class="ui">Other</b>. Vocals, Rhythm e Acoustic preselezionano i membri con lo strumento corrispondente; Other apre l'intero organico.</li>
+    <li>Nel <b class="ui">Band roster</b> si tocca un membro per aggiungerlo o toglierlo, o <b class="ui">Select all</b>; poi <b class="ui">Next</b>.</li>
+    <li>Luogo in <b class="ui">Search venue or studio…</b> o con una scelta rapida (<b class="ui">Band HQ</b>, <b class="ui">Studio A</b>, <b class="ui">Home Studio</b>, <b class="ui">TBD</b>).</li>
+    <li><b class="ui">Rehearsal date</b>, <b class="ui">Start time</b>, <b class="ui">End time</b>.</li>
+    <li><b class="ui">Recurrence</b>: <b class="ui">One time</b>, <b class="ui">Weekly</b>, <b class="ui">Biweekly</b> o <b class="ui">Monthly</b>.</li>
+    <li><b class="ui">Venue cost</b>: <b class="ui">Free</b> o <b class="ui">Paid</b>; per una sala a pagamento si inserisce il <b class="ui">Total studio cost</b> e la scheda mostra la quota <b class="ui">Per person</b>. <b class="ui">Next</b>.</li>
+    <li><b class="ui">REVIEW &amp; CONFIRM</b> riepiloga tutto; <b class="ui">Session &amp; roster</b> o <b class="ui">Date &amp; studio</b> riportano indietro per modificare. Qui si possono aggiungere <a data-ref="rehearsal-songs-and-prep-tasks">brani e compiti</a>.</li>
+    <li><b class="ui">Create rehearsal</b>.</li>
+  </ol>
+  <aside class="note tip"><b class="ui">Next</b> nel secondo passo resta disattivato finché mancano luogo e data; se la sala non è prenotata si sceglie <b class="ui">TBD</b>.</aside>
+  <aside class="note tip">Senza connessione la prova resta sul dispositivo (<b class="ui">Saved offline • Will sync when connected</b>) e viene inviata appena si torna online.</aside>
+  <p>Ogni membro in organico riceve la notifica <b class="ui">New Rehearsal</b> con push e trova la prova nel calendario con la scheda <b class="ui">Are you coming?</b> (vedi <a data-ref="answer-a-rehearsal-invite">Rispondere all'invito</a>). L'admin risulta presente, a meno che non si sia tolto dall'organico: in quel caso continua comunque a gestire la prova.</p>
+  <div class="devnote" data-devices="tablet">Su iPad il wizard è un'unica schermata con quattro schede (<b class="ui">Session</b>, <b class="ui">Date &amp; time</b>, <b class="ui">Place &amp; cost</b>, <b class="ui">Focus, note &amp; tasks</b>) e una <b class="ui">Live preview</b> <b class="ui">As the band sees it</b>. La striscia <b class="ui">Next 7 days</b> indica quanti membri sono liberi ogni giorno (<b class="ui">From band calendars</b>). C'è anche un campo <b class="ui">Goal / notes (optional)</b> per la band. Quando il contatore delle schede è completo si tocca <b class="ui">Schedule rehearsal</b>.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLaptop,duoLand">Su iPhone Duo si usa il wizard del telefono; chiusura e indietro passano nella barra laterale quando è visibile.</div>
+  <figure class="shot" data-shot="shot-rehearsal-wizard" data-device="phone"><figcaption>Il wizard della prova, passo 1: tipo di sessione e organico.</figcaption></figure>
+  <div class="roles">
+    <div data-role="admin">Crea, modifica ed elimina le prove.</div>
+    <div data-role="member">Non crea prove: nel menu <b class="ui">Create</b> trova <b class="ui">Propose rehearsal</b> (vedi <a data-ref="propose-a-rehearsal">Proporre una prova</a>).</div>
+    <div data-role="deputy">Non è membro della band e non vede mai il wizard.</div>
+  </div>
+
+  <h3 id="art-rehearsal-songs-and-prep-tasks" data-roles="admin">Brani e compiti di preparazione</h3>
+  <p>Si aggiungono nell'ultimo passo del wizard (<b class="ui">REVIEW &amp; CONFIRM</b>) o <a data-ref="edit-a-rehearsal">modificando la prova</a>. I brani diventano la scaletta della prova, che i membri vedono come <b class="ui">FOCUS SONGS</b>.</p>
+  <ul>
+    <li><b>Brani</b>: nella scheda <b class="ui">Setlist</b>, <b class="ui">Add songs</b> per sceglierli dal repertorio, oppure <b class="ui">Setlist template</b> per partire da una scaletta salvata. Nell'editor si cerca nella libreria, si aggiunge un brano a mano (<b class="ui">Manual</b>: <b class="ui">Song title *</b> e <b class="ui">Artist</b>) e si chiude con <b class="ui">Done</b>. La X in <b class="ui">Selected songs</b> rimuove un brano.</li>
+    <li><b>Compiti</b>: nella scheda <b class="ui">Prep tasks</b>, un suggerimento <b class="ui">Quick add</b> (es. <b class="ui">Bring chord charts</b>, <b class="ui">Record audio</b>) o un testo libero in <b class="ui">New task</b> + <b class="ui">Add</b>. La X in <b class="ui">Band tasks</b> rimuove un compito.</li>
+    <li>Su una prova già programmata, <b class="ui">EDIT</b> accanto a <b class="ui">TASKS</b> apre <b class="ui">Tasks</b>, con <b class="ui">Add</b> e, finché non ci sono compiti, <b class="ui">Load a to-do list</b>, che aggiunge tutti i compiti di un <a data-ref="todo-and-task-templates">modello di to-do</a> salvato.</li>
+  </ul>
+  <aside class="note privacy">Solo gli admin scelgono e modificano la scaletta della prova; i membri la aprono da <b class="ui">FOCUS SONGS</b> in sola lettura.</aside>
+
+  <h3 id="art-edit-a-rehearsal" data-roles="admin">Modificare una prova</h3>
+  <p>La prova si modifica direttamente dalla sua pagina, una parte alla volta: data, orari, sala, organico, costo, brani in evidenza, note e compiti.</p>
+  <ol class="steps">
+    <li>Si apre la prova dal <b class="ui">Calendar</b> o dalla Home.</li>
+    <li>Si tocca la parte da cambiare: la matita in alto o i riquadri <b class="ui">START</b> ed <b class="ui">END</b>, il riquadro <b class="ui">ROOM</b>, oppure <b class="ui">EDIT</b> accanto a <b class="ui">ATTENDANCE</b>, <b class="ui">FOCUS SONGS</b>, <b class="ui">NOTES</b>, <b class="ui">TASKS</b> o <b class="ui">STUDIO COST</b>.</li>
+    <li>Si apre un foglio con la sola parte scelta. <b class="ui">Title, date &amp; times</b> contiene anche <b class="ui">Recurrence</b>; <b class="ui">Band roster</b> ha <b class="ui">Select all</b>.</li>
+    <li>Si tocca <b class="ui">Save</b>, attivo solo quando qualcosa è cambiato.</li>
+  </ol>
+  <p>Chiudendo il foglio con <b class="ui">Cancel</b>, ✕, Indietro o un trascinamento verso il basso la prova resta com'era. Se qualcosa è cambiato, <b class="ui">Save your changes?</b> chiede prima: <b class="ui">Save changes</b>, <b class="ui">Discard</b> o <b class="ui">Keep editing</b>; lo stesso accade aprendo un'altra parte della prova. I brani in evidenza si salvano con <b class="ui">Save</b> nel foglio della scaletta. Nuova data, nuovi orari o nuovo luogo inviano <b class="ui">Rehearsal updated</b> con push ai partecipanti; i membri aggiunti all'organico ricevono l'invito <b class="ui">New Rehearsal</b>.</p>
+  <aside class="note tip">Le prove passate si modificano allo stesso modo, anche su iPad. I membri vedono la pagina senza matite e senza <b class="ui">EDIT</b>.</aside>
+
+  <h3 id="art-delete-a-rehearsal" data-roles="admin">Eliminare (annullare) una prova</h3>
+  <p>Nella prova si tocca <b class="ui">DELETE</b> (sotto <b class="ui">REHEARSAL CHAT</b>), poi <b class="ui">Confirm delete</b>, oppure <b class="ui">CANCEL</b> per tenerla.</p>
+  <aside class="note warning">L'eliminazione è definitiva. Una prova ricorrente è un unico evento: eliminarla rimuove tutte le date della serie.</aside>
+  <p>I partecipanti ricevono <b class="ui">Rehearsal cancelled</b> con push. Aprendola da una vecchia notifica vedono <b class="ui">Rehearsal cancelled</b> e l'avviso che un admin l'ha rimossa.</p>
+
+  <h3 id="art-rehearsal-drafts" data-roles="admin">Salvare una prova come bozza</h3>
+  <ol class="steps">
+    <li>Nel wizard, dopo aver inserito qualcosa, si tocca <b class="ui">Cancel</b> o il pulsante di chiusura.</li>
+    <li>In <b class="ui">Save this rehearsal as a draft?</b>: <b class="ui">Save draft</b>, <b class="ui">Discard</b> (elimina) o <b class="ui">Keep editing</b>.</li>
+    <li>La bozza si riprende dalle bozze nella Home o dal suo giorno nel calendario.</li>
+    <li>Per eliminarla, la si riapre, si chiude il wizard e si tocca <b class="ui">Delete draft</b>.</li>
+  </ol>
+  <aside class="note privacy">Le bozze sono visibili solo a chi le ha create; i membri non ricevono nulla finché la prova non è creata.</aside>
+  <p>Se il salvataggio della prova non riesce, il wizard resta aperto e la prova viene conservata anche come bozza: nulla va perso.</p>
+  <div class="devnote" data-devices="tablet">Su iPad il composer a schermata unica ha un pulsante di salvataggio in bozza nell'intestazione.</div>
+
+  <h3 id="art-recurring-rehearsals" data-roles="admin,member">Prove ricorrenti</h3>
+  <p>Con una <b class="ui">Recurrence</b> diversa da <b class="ui">One time</b>, BandWith salva una sola prova con una regola di ripetizione; le date successive compaiono in calendario per circa quattro mesi, fino a 24 date.</p>
+  <table class="grid">
+    <thead><tr><th>Ricorrenza</th><th>Indicazione sulla prova</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">One time</b></td><td><b class="ui">ONCE</b></td></tr>
+      <tr><td><b class="ui">Weekly</b></td><td><b class="ui">EVERY {day}</b> (es. <b class="ui">EVERY TUESDAY</b>)</td></tr>
+      <tr><td><b class="ui">Biweekly</b></td><td><b class="ui">EVERY OTHER {day}</b></td></tr>
+      <tr><td><b class="ui">Monthly</b></td><td><b class="ui">MONTHLY</b></td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">Tutte le date di una serie condividono la stessa prova: un organico, una risposta per membro, una scaletta. Modificarla o eliminarla vale per tutte le date.</aside>
+
+  <h2>La pagina della prova e le risposte</h2>
+
+  <h3 id="art-the-rehearsal-page" data-roles="admin,member">La pagina della prova</h3>
+  <p>Si apre dal <b class="ui">Calendar</b> o dalla Home; è blu, il colore delle prove, e contiene:</p>
+  <ul>
+    <li><b class="ui">Are you coming?</b>: la scheda di risposta per gli invitati.</li>
+    <li>I riquadri <b class="ui">START</b>, <b class="ui">END</b> e <b class="ui">ROOM</b>.</li>
+    <li><b class="ui">ATTENDANCE</b>: invitati e risposte.</li>
+    <li><b class="ui">FOCUS SONGS</b>: fino a otto brani, con <b class="ui">+ {count} MORE</b> e <b class="ui">SETLIST</b> per l'elenco completo.</li>
+    <li><b class="ui">NOTES</b>: la nota della prova, se c'è.</li>
+    <li><b class="ui">TASKS</b>: i compiti e quanti sono completati; si spuntano toccandoli.</li>
+    <li><b class="ui">STUDIO COST</b>: sala, ore, totale e <b class="ui">Split between {count} going</b> con la quota <b class="ui">EACH</b>.</li>
+    <li>In fondo: <b class="ui">REHEARSAL CHAT</b> e <b class="ui">DELETE</b> per gli admin, che cambiano tutto il resto con <b class="ui">EDIT</b> su ogni parte; <b class="ui">REHEARSAL CHAT</b> per i membri che hanno risposto presente.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Vede tutto, compreso <b class="ui">STUDIO COST</b>; può modificare o eliminare.</div>
+    <div data-role="member">Vede la prova solo se è in organico: orari, sala, presenze, brani, note e compiti, ma non il costo della sala. Il ritiro è nel menu <b class="ui">More options</b>.</div>
+    <div data-role="deputy">È chiamato per i gig, non per le prove, e non vede le prove della band.</div>
+  </div>
+  <aside class="note privacy">Il costo totale della sala è denaro della band e resta agli admin. Durante un sondaggio i membri vedono solo la propria quota (<b class="ui">€12 each</b>).</aside>
+
+  <h3 id="art-answer-a-rehearsal-invite" data-roles="member">Rispondere all'invito o ritirarsi</h3>
+  <ol class="steps">
+    <li>Il membro apre la prova dalla notifica <b class="ui">New Rehearsal</b> o dal <b class="ui">Calendar</b>.</li>
+    <li>Nella scheda <b class="ui">Are you coming?</b> tocca <b class="ui">GOING</b> o <b class="ui">CAN'T</b>; la scheda indica la scadenza (<b class="ui">Answer by … so the admin can confirm the room.</b>).</li>
+    <li>Per cambiare risposta: <b class="ui">Change</b> nella scheda <b class="ui">Your RSVP</b>.</li>
+    <li>Se in passato aveva risposto «forse», la scheda dice <b class="ui">Your answer was Maybe. Choose GOING or CAN'T.</b>: sceglie una delle due.</li>
+    <li>Per ritirarsi: <b class="ui">More options</b> (il pulsante … in alto) → <b class="ui">Rehearsal options</b> → <b class="ui">Drop out of this rehearsal</b> → <b class="ui">DROP OUT</b>. L'admin viene avvisato.</li>
+  </ol>
+  <aside class="note warning">Dopo <b class="ui">CAN'T</b> o un ritiro la prova esce dal calendario del membro; per rientrare deve chiederlo a un admin.</aside>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand">Su iPhone Duo <b class="ui">More options</b> è nella barra laterale con le altre azioni dell'intestazione.</div>
+
+  <h2>Proposte e sondaggi di disponibilità</h2>
+
+  <h3 id="art-propose-a-rehearsal" data-roles="member">Proporre una prova (membri)</h3>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">Propose rehearsal</b>; con il <b class="ui">Calendar</b> vuoto anche <b class="ui">Propose rehearsal</b> direttamente.</li>
+    <li>Chi è in più band sceglie la band in <b class="ui">Choose band</b>.</li>
+    <li><b class="ui">Topic</b> (obbligatorio), es. "Practice new setlist transitions".</li>
+    <li>Facoltativi: <b class="ui">Preferred days (optional)</b> e <b class="ui">Notes or songs (optional)</b>.</li>
+    <li><b class="ui">Submit to admin</b>.</li>
+  </ol>
+  <p>Gli admin ricevono <b class="ui">New Rehearsal Proposal</b> con push. Nella Home e nel <b class="ui">Calendar</b> del membro la proposta appare come <b class="ui">Your rehearsal proposal</b> con <b class="ui">Pending admin</b> e <b class="ui">Open until</b> con il suo ultimo giorno: l'ultimo dei giorni preferiti nella settimana successiva, oppure 7 giorni se non ne sono stati indicati. Resta finché un admin non la trasforma in sondaggio o la rifiuta, o finché quel giorno non passa: allora esce da ogni elenco.</p>
+  <aside class="note warning">Una proposta ogni 7 giorni per band, per tenere ordinata la programmazione. Raggiunto il limite compaiono <b class="ui">Weekly limit reached</b> e la data <b class="ui">Next available proposal</b>. Il limite è verificato anche dal server.</aside>
+  <ul>
+    <li>Senza band il membro vede <b class="ui">Band required</b>, con <b class="ui">Create a band</b>.</li>
+    <li>Se un admin la rifiuta, il membro riceve <b class="ui">Rehearsal proposal declined</b> (notifica e push), con il motivo se è stato indicato, e la proposta sparisce dal suo elenco.</li>
+    <li>Per ritirarla: <b class="ui">Withdraw</b>, poi di nuovo <b class="ui">Withdraw</b> in <b class="ui">Withdraw your proposal?</b>; gli admin non la vedono più.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Non propone: crea direttamente la prova o un sondaggio (vedi <a data-ref="create-a-rehearsal">Creare una prova</a>).</div>
+  </div>
+
+  <h3 id="art-handle-a-rehearsal-proposal" data-roles="admin">Gestire la proposta di un membro</h3>
+  <ol class="steps">
+    <li>La proposta si trova in <b class="ui">Rehearsal scheduling</b> (Action center della Home o <b class="ui">Calendar</b>) o dalla notifica <b class="ui">New Rehearsal Proposal</b>. Mostra <b class="ui">Member rehearsal proposal</b>, <b class="ui">Proposed by</b>, i <b class="ui">Preferred days</b> e la nota.</li>
+    <li><b class="ui">Build poll</b> (nel pannello della notifica <b class="ui">Build poll from proposal</b>) apre il costruttore con l'argomento come titolo, la nota e i giorni preferiti preselezionati; si aggiungono le fasce e si pubblica come in <a data-ref="create-a-rehearsal-poll">Creare un sondaggio</a>.</li>
+    <li>Oppure <b class="ui">Decline</b> chiude la proposta senza sondaggio: in <b class="ui">Decline this proposal?</b> si scrive se si vuole un <b class="ui">Reason</b> e si tocca <b class="ui">Decline</b>. Il membro riceve <b class="ui">Rehearsal proposal declined</b> (notifica e push) con il motivo.</li>
+    <li>Se non si fa nulla, la proposta esce dall'elenco dopo il giorno indicato in <b class="ui">Open until</b>.</li>
+  </ol>
+  <aside class="note tip">Una proposta non contiene brani, luogo né costo: vanno aggiunti nel costruttore prima di pubblicare.</aside>
+
+  <h3 id="art-create-a-rehearsal-poll" data-roles="admin">Creare un sondaggio di disponibilità</h3>
+  <p class="steps-title">Su telefono</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">New rehearsal</b>, poi <b class="ui">Scheduling mode</b> su <b class="ui">Poll availability</b>: si apre il costruttore <b class="ui">Availability poll</b>.</li>
+    <li><b class="ui">Poll title</b> e, facoltativo, <b class="ui">Goal / notes (optional)</b>.</li>
+    <li>In <b class="ui">Who votes</b> si tocca un membro per escluderlo; l'admin vota sempre.</li>
+    <li>In <b class="ui">Place, cost &amp; songs</b>: <b class="ui">Location / studio</b> (si digitano alcune lettere e si sceglie un suggerimento, oppure si tiene quanto scritto), <b class="ui">Room cost</b> (lo <b class="ui">Split</b> mostra la quota a persona) e <b class="ui">Focus songs</b> (<b class="ui">Add</b>).</li>
+    <li>Date con <b class="ui">Whole week preset</b>: <b class="ui">This week</b> o <b class="ui">Next week</b>, gli <b class="ui">Include days</b>, <b class="ui">Start</b> ed <b class="ui">End</b>, poi <b class="ui">Add selected days to poll</b>; ogni giorno mostra quanti membri sono liberi. Oppure <b class="ui">Custom date / time</b>: <b class="ui">Candidate date</b>, <b class="ui">Start</b>, <b class="ui">End</b> e <b class="ui">Add slot to poll</b>.</li>
+    <li>Nelle <b class="ui">Candidate slots</b> si toglie una fascia con <b class="ui">Remove slot</b> o tutte con <b class="ui">Clear all</b>.</li>
+    <li>Facoltativo: <b class="ui">Vote by</b>, giorno e ora (vedi <a data-ref="poll-who-votes-and-deadline">Chi vota e la scadenza</a>).</li>
+    <li><b class="ui">Publish poll</b>.</li>
+  </ol>
+  <p>I membri chiamati a votare ricevono <b class="ui">Vote on Rehearsal Times</b> con push. Il sondaggio appare come <b class="ui">Poll · Active</b> nella Home e nel <b class="ui">Calendar</b> in <b class="ui">Rehearsal scheduling</b>.</p>
+  <p>Ripensamenti? <b class="ui">Back</b> (in alto o in basso, o l'Indietro del telefono) torna al modulo della prova; <b class="ui">Close</b> esce dal costruttore. Se si è cambiato qualcosa, l'app chiede prima <b class="ui">Discard this poll?</b>: <b class="ui">Keep editing</b> o <b class="ui">Discard</b>. Senza modifiche si chiude e basta. I sondaggi non hanno bozze.</p>
+  <p>La pubblicazione è bloccata se manca il titolo (<b class="ui">Please give your poll a title.</b>), se non c'è alcuna fascia (<b class="ui">Add at least one candidate time slot for members to vote on.</b>) o se la scadenza cade dopo la prima fascia (<b class="ui">Pick a day before the first slot</b>). Una fascia con stesso giorno e ora di inizio non si aggiunge due volte (<b class="ui">This slot is already added.</b>).</p>
+  <div class="devnote" data-devices="tablet">Su iPad il sondaggio è un composer a schermata unica, <b class="ui">New rehearsal</b> con <b class="ui">Poll · members vote on dates</b>, con le schede <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (striscia settimanale colorata secondo quanti membri sono liberi; toccando un giorno lo si aggiunge con gli orari scelti), <b class="ui">Place, cost &amp; songs</b> e <b class="ui">Vote deadline &amp; note</b>. La <b class="ui">Live preview</b> mostra le fasce <b class="ui">As members vote</b>, con la <b class="ui">Top pick</b>.</div>
+  <figure class="shot" data-shot="shot-poll-builder" data-device="phone"><figcaption>Il costruttore del sondaggio di disponibilità su telefono.</figcaption></figure>
+  <aside class="note privacy">I conteggi dei liberi derivano dai calendari di tutti, ma si vede solo il numero (<b class="ui">4 of 5 free</b>), mai chi è occupato né perché.</aside>
+
+  <h3 id="art-poll-who-votes-and-deadline" data-roles="admin,member">Chi vota e la scadenza del voto</h3>
+  <p>Di norma votano tutti i membri attivi. Escludendo qualcuno in <b class="ui">Who votes</b> il sondaggio ha una lista di invitati:</p>
+  <ul>
+    <li>Solo gli invitati ricevono la notifica e votano. Gli altri membri possono aprire il sondaggio in sola lettura, marcato <b class="ui">Not invited</b>; il server rifiuta i loro voti.</li>
+    <li>Gli admin della band vedono sempre il sondaggio; chi lo pubblica è sempre in lista.</li>
+    <li>Quando si fissa la data, nella prova entrano solo gli invitati: anche l'admin, se era invitato o ha votato. In ogni caso è lui a gestirla.</li>
+    <li>La quota della sala è divisa per il numero di persone chiamate a votare.</li>
+  </ul>
+  <p><b class="ui">Vote by</b> è un giorno tra oggi e la prima fascia, più un'ora (predefinita 18:00). I membri vedono, per esempio, <b class="ui">Vote by Fri 11 Dec, 18:00</b>.</p>
+  <aside class="note warning">All'ora di scadenza il voto si chiude: compaiono <b class="ui">Voting closed</b> e <b class="ui">Voting has closed. An admin will lock in a date.</b> Il server rifiuta i voti successivi; gli admin possono ancora fissare una data o eliminare il sondaggio.</aside>
+
+  <h3 id="art-vote-in-a-rehearsal-poll" data-roles="member,admin">Votare in un sondaggio</h3>
+  <p class="steps-title">Dalla scheda del sondaggio</p>
+  <ol class="steps">
+    <li>Nella Home (Action center) o nel <b class="ui">Calendar</b>, la scheda <b class="ui">Poll · Active</b> ha un badge <b class="ui">Vote now</b>, <b class="ui">Voted</b> o <b class="ui">None work</b>.</li>
+    <li>Si tocca ogni riquadro data adatto (anche più di uno); toccandolo di nuovo il voto si ritira.</li>
+    <li><b class="ui">Details</b> mostra ogni data con <b class="ui">{count}/{total} available</b>, la <b class="ui">Top pick</b> (la più votata) e chi ha votato. Dopo il voto i dettagli si chiudono da soli (<b class="ui">Closing in …s</b>), salvo <b class="ui">Keep open</b>.</li>
+    <li>Se dopo aver votato nessuna data va più bene: <b class="ui">None work</b> nei dettagli.</li>
+  </ol>
+  <p class="steps-title">Dalla notifica</p>
+  <ol class="steps">
+    <li>Push <b class="ui">Vote on Rehearsal Times</b> o notifica nella campanella → <b class="ui">Vote now</b>.</li>
+    <li>In <b class="ui">Rehearsal availability</b>, sotto <b class="ui">Select the dates that work for you</b>, si toccano le date possibili.</li>
+    <li><b class="ui">Done</b>, oppure <b class="ui">None work</b> se nessuna va bene.</li>
+  </ol>
+  <p><b class="ui">None work</b> cancella i voti e segnala agli admin che nessuna data va bene (<b class="ui">No date works for …</b>); un voto successivo per una data sostituisce questa risposta. Durante il voto si vedono luogo e quota personale (<b class="ui">Blackbox Studios · €12 each</b>), i brani, <b class="ui">{answered} of {total} answered</b>, l'eventuale scadenza e, in <b class="ui">Responses</b>, chi ha votato quale data.</p>
+  <aside class="note tip">I voti si aggiornano in tempo reale per tutti. Senza connessione il voto non è salvato e compare <b class="ui">Failed to register vote. Please try again.</b></aside>
+  <figure class="shot" data-shot="shot-poll-card" data-device="phone"><figcaption>Un sondaggio attivo nella Home, con i riquadri delle date e i dettagli.</figcaption></figure>
+  <div class="devnote" data-devices="duoLaptop">In posizione Laptop il pannello di voto mostra membri e giorni sullo schermo superiore, e i riquadri dei giorni con <b class="ui">Lock in</b> e <b class="ui">Done</b> su quello inferiore.</div>
+
+  <h3 id="art-lock-in-a-poll-date" data-roles="admin">Fissare la data e creare la prova</h3>
+  <ol class="steps">
+    <li>Sulla scheda del sondaggio <b class="ui">Details · Lock in</b> (nel pannello della notifica: <b class="ui">Responses · Lock in a date</b>).</li>
+    <li><b class="ui">Lock in</b> accanto alla data scelta, spesso la <b class="ui">Top pick</b>.</li>
+    <li>Si verifica la <b class="ui">Rehearsal location</b>, precompilata con il luogo del sondaggio o con <b class="ui">Band Practice Space</b>.</li>
+    <li><b class="ui">Confirm &amp; create event</b>.</li>
+  </ol>
+  <ul>
+    <li>Nasce una prova confermata in quella data e ora, con titolo, luogo e nota del sondaggio; il costo della sala diventa il costo studio e i brani la scaletta.</li>
+    <li>Gli invitati entrano nella prova e rispondono come di consueto (<a data-ref="answer-a-rehearsal-invite">Rispondere all'invito</a>); l'admin risulta presente.</li>
+    <li>Il sondaggio si chiude ed esce dall'Action center. I membri ricevono <b class="ui">Rehearsal Confirmed!</b> nella campanella, senza push.</li>
+  </ul>
+  <aside class="note tip">Se un altro admin ha appena fissato la data, compare <b class="ui">This poll was already locked in or closed.</b> e non si crea una seconda prova.</aside>
+
+  <h3 id="art-delete-a-rehearsal-poll" data-roles="admin">Eliminare un sondaggio</h3>
+  <p>Da <b class="ui">Details · Lock in</b> o dalla notifica del sondaggio si tocca <b class="ui">Delete poll</b>, poi di nuovo <b class="ui">Delete poll</b> in <b class="ui">Delete rehearsal poll?</b> (o <b class="ui">Cancel</b>).</p>
+  <aside class="note warning">Date proposte e voti vengono eliminati per sempre, senza possibilità di annullare, e i membri non vengono avvisati.</aside>
+  <p>Per chiudere una proposta che non ha ancora un sondaggio si usa invece <b class="ui">Decline</b> (vedi <a data-ref="handle-a-rehearsal-proposal">Gestire la proposta</a>).</p>
+
+  <h3 id="art-rehearsal-polls-explained" data-roles="admin,member">Come funzionano proposte e sondaggi</h3>
+  <table class="grid">
+    <thead><tr><th>Fase</th><th>Significato</th><th>Chi la vede</th></tr></thead>
+    <tbody>
+      <tr><td>Proposta (<b class="ui">Pending admin</b>)</td><td>Un membro ha chiesto una prova.</td><td>Il membro proponente e gli admin.</td></tr>
+      <tr><td>Sondaggio (<b class="ui">Poll · Active</b>)</td><td>Un admin ha pubblicato date da votare.</td><td>Gli invitati e gli admin.</td></tr>
+      <tr><td>Confermata (<b class="ui">Rehearsal · Confirmed</b>)</td><td>Data fissata, prova in calendario.</td><td>Tutti i partecipanti.</td></tr>
+      <tr><td>Rifiutata, scaduta o eliminata</td><td>Chiusa senza prova (una proposta scade dopo il giorno indicato in <b class="ui">Open until</b>).</td><td>Nessuno: esce dagli elenchi.</td></tr>
+    </tbody>
+  </table>
+  <p>Proposte e sondaggi aperti compaiono nell'<b class="ui">Action center</b> della Home e in cima al <b class="ui">Calendar</b> in <b class="ui">Rehearsal scheduling ({count})</b>, dove seguono il filtro per band.</p>
+  <div class="roles">
+    <div data-role="admin">Pubblica sondaggi, li crea dalle proposte, fissa le date, rifiuta ed elimina: qualsiasi admin della band, non solo chi ha pubblicato.</div>
+    <div data-role="member">Propone (una volta a settimana), vota, risponde <b class="ui">None work</b> e vede chi ha votato cosa.</div>
+    <div data-role="deputy">Non partecipa ai sondaggi della band.</div>
+  </div>
+  <div class="devnote" data-devices="duoLaptop">In posizione Laptop il "Band desk" della Home elenca i sondaggi non ancora votati e le proposte in attesa di sondaggio; toccandone uno si apre.</div>
+
+  <h2>La chat</h2>
+
+  <h3 id="art-the-chat-inbox" data-roles="admin,member">La casella della chat</h3>
+  <p><b class="ui">Chat</b> nella barra in basso raccoglie tutte le chat di band, evento e dirette; il badge conta i non letti.</p>
+  <ul>
+    <li>Filtri <b class="ui">ALL</b>, <b class="ui">DIRECT</b>, <b class="ui">BANDS</b>, <b class="ui">EVENTS</b>, ciascuno con il proprio conteggio di non letti.</li>
+    <li>Le chat con non letti vengono prima. Ogni riga mostra nome (<b class="ui"> · Band</b> per la chat della band), ora, ultimo messaggio e numero di non letti o le spunte del proprio ultimo messaggio; con due o più band, anche la band di appartenenza.</li>
+    <li>Un pallino verde su una chat diretta indica che la persona è online.</li>
+    <li><b class="ui">Search chats…</b> (almeno due lettere) cerca chat, persone e parole nei messaggi, raggruppati in <b class="ui">CHATS</b>, <b class="ui">PEOPLE</b> e <b class="ui">MESSAGES</b>; <b class="ui">Clear search</b> torna all'elenco.</li>
+    <li>Uno scorrimento a sinistra elimina la chat (<a data-ref="delete-a-chat">Eliminare una chat</a>); il + (<b class="ui">New chat</b>) in alto ne avvia una (<a data-ref="start-a-chat">Avviare una chat</a>).</li>
+  </ul>
+  <figure class="shot" data-shot="shot-chat-inbox" data-device="phone"><figcaption>La casella della chat con i filtri per tipo.</figcaption></figure>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Elenco e conversazione aperta sono affiancati; la chat aperta è evidenziata nell'elenco.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand">Su iPhone Duo il campo di ricerca è nella barra laterale.</div>
+  <aside class="note tip">In modalità solo (senza band) la chat non c'è: la scheda <b class="ui">Chat</b> apre il calendario.</aside>
+
+  <h3 id="art-start-a-chat" data-roles="admin,member">Avviare una chat</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Chat</b>, il + (<b class="ui">New chat</b>) in alto.</li>
+    <li><b class="ui">Chat type</b>: <b class="ui">DIRECT</b>, <b class="ui">BAND</b> o <b class="ui">EVENT</b>.</li>
+    <li>Si sceglie una persona (<b class="ui">Search admins…</b> o <b class="ui">Search members…</b>), una band (<b class="ui">Search bands…</b>) o un evento (<b class="ui">Search events…</b>).</li>
+    <li>Pulsante in basso: <b class="ui">Message {name}</b> o <b class="ui">Open {name} chat</b>.</li>
+  </ol>
+  <p>Se la chat esiste già, BandWith apre quella invece di crearne un'altra: ogni band ha una sola chat con tutti i membri attivi, ogni evento una sola chat con la sua formazione. Si può scrivere anche dall'elenco membri della band con il pulsante messaggio del membro, presente solo se uno dei due è admin.</p>
+  <div class="roles">
+    <div data-role="admin"><b class="ui">DIRECT</b> elenca tutti i membri delle sue band; <b class="ui">EVENT</b> tutti gli eventi delle band che gestisce.</div>
+    <div data-role="member"><b class="ui">DIRECT</b> elenca solo gli <b class="ui">Admins</b> (<b class="ui">Direct messages are limited to band admins.</b>); <b class="ui">EVENT</b> solo gli eventi a cui partecipa e che non ha rifiutato.</div>
+  </div>
+
+  <h3 id="art-send-and-reply-to-messages" data-roles="admin,member">Inviare, rispondere e menzionare</h3>
+  <ul>
+    <li><b>Inviare</b>: <b class="ui">Write a message…</b> in basso, poi <b class="ui">Send message</b> (o Invio da tastiera).</li>
+    <li><b>Rispondere a un messaggio</b>: su telefono o tablet lo si scorre verso destra; con il mouse, passandoci sopra, <b class="ui">Reply to message</b>. Il composer mostra <b class="ui">Replying to {name}</b>; <b class="ui">Cancel reply</b> annulla.</li>
+    <li><b>Menzionare</b>: si digita @ e l'inizio di un nome e si tocca la persona tra i suggerimenti (Invio sceglie il primo). Le menzioni appaiono in grassetto ed evidenziate per tutti, ma non generano una notifica in più: ogni messaggio è già notificato a tutti i partecipanti.</li>
+    <li>Nelle chat di band ed evento ogni messaggio mostra il mittente, con <b class="ui"> · Admin</b> per gli admin.</li>
+    <li>Si caricano gli ultimi 50 messaggi; per i precedenti si scorre in alto e si tocca <b class="ui">Load earlier messages</b>.</li>
+    <li>Solo testo: niente allegati o foto, reazioni, modifica o eliminazione di singoli messaggi.</li>
+    <li>Senza connessione il messaggio non parte e torna nel composer con <b class="ui">Message not sent. Check your connection and try again.</b>, pronto da reinviare una volta online.</li>
+  </ul>
+  <div class="devnote" data-devices="duoLaptop">In posizione Laptop i messaggi occupano lo schermo superiore e il composer si apre su quello inferiore.</div>
+
+  <h3 id="art-event-and-rehearsal-chats" data-roles="admin,member">Chat di evento e di prova</h3>
+  <p>Dal gig si tocca <b class="ui">EVENT CHAT</b>, dalla prova <b class="ui">REHEARSAL CHAT</b>. La chat comprende la formazione (chi non ha rifiutato) e gli admin della band; chi entra in formazione più tardi si unisce al messaggio successivo.</p>
+  <p>Una striscia in alto mostra titolo, <b class="ui">Today</b> / <b class="ui">Tomorrow</b> o la data, <b class="ui">Load-in {time}</b> (o <b class="ui">Start {time}</b>), il luogo e, se il caso, <b class="ui">Cancelled</b> o <b class="ui">Past event</b>; toccandola si apre l'evento (vedi <a data-ref="gig-workspace">il workspace del gig</a>).</p>
+  <aside class="note privacy">Striscia e pannello laterale mostrano solo logistica (orari, luogo, stato), mai compenso o cliente.</aside>
+  <div class="roles">
+    <div data-role="admin">Apre la chat di qualsiasi evento della band.</div>
+    <div data-role="member">Vede il pulsante solo dopo aver risposto presente. Chi rifiuta perde l'accesso: <b class="ui">You can only message in events you are participating in.</b></div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Con due pannelli (iPad in orizzontale, iPhone Duo aperto) accanto alla conversazione c'è un pannello di contesto con orari (<b class="ui">Load in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b>, <b class="ui">Out</b>), luogo, stato, <b class="ui">In this chat · Lineup {count}/{total}</b>, chi è online e <b class="ui">Open gig</b>.</div>
+  <figure class="shot" data-shot="shot-event-chat" data-device="tablet"><figcaption>Una chat evento su iPad, con la striscia dell'evento e il pannello di contesto.</figcaption></figure>
+  <aside class="note tip">I gig personali non hanno chat: <b class="ui">Event chats are available for band events.</b></aside>
+
+  <h3 id="art-who-can-message-whom" data-roles="admin,member,deputy">Chi può scrivere a chi</h3>
+  <table class="grid">
+    <thead><tr><th>Chat</th><th>Admin</th><th>Membro</th></tr></thead>
+    <tbody>
+      <tr><td>Chat della band</td><td>Sì, nelle band in cui è attivo</td><td>Sì, nelle band in cui è attivo</td></tr>
+      <tr><td>Chat evento</td><td>Qualsiasi evento della band</td><td>Solo eventi a cui partecipa e non rifiutati</td></tr>
+      <tr><td>Messaggio diretto</td><td>Chiunque nelle sue band</td><td>Solo admin di una band in comune</td></tr>
+    </tbody>
+  </table>
+  <p>Due membri non possono scriversi direttamente: usano la chat della band o dell'evento. Le regole sono verificate all'avvio della chat e a ogni invio. Quando una regola blocca, al posto del composer compare un lucchetto con il motivo, per esempio <b class="ui">Direct messaging is only available with band admins.</b> o <b class="ui">You no longer have access to this chat.</b> (dopo aver lasciato la band o essere stati tolti dal gig).</p>
+  <div class="roles">
+    <div data-role="deputy">Non è membro della band e non è in alcuna chat di band, evento o diretta. La band lo contatta con le richieste di sostituzione (<b class="ui">Ask in the app</b>) e lui risponde in Deputy gigs (vedi <a data-ref="deputy-in-the-app">Il sostituto nell'app</a>).</div>
+  </div>
+  <aside class="note privacy">Una chat diretta resta tra le sue due persone: BandWith non la riutilizza mai per conversare con altri, quindi nessun altro ne legge la cronologia.</aside>
+
+  <h3 id="art-message-receipts-and-online-status" data-roles="admin,member">Spunte, conferme di lettura e stato online</h3>
+  <table class="grid">
+    <thead><tr><th>Segno</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td>Orologio (<b class="ui">Sending</b>)</td><td>In invio.</td></tr>
+      <tr><td>Una spunta (<b class="ui">Sent</b>)</td><td>Salvato sul server.</td></tr>
+      <tr><td>Due spunte grigie (<b class="ui">Delivered</b>)</td><td>Arrivato sui telefoni degli altri.</td></tr>
+      <tr><td>Due spunte colorate (<b class="ui">Read</b>)</td><td>Gli altri hanno aperto la chat dopo il messaggio.</td></tr>
+    </tbody>
+  </table>
+  <p>Nelle chat di band ed evento le spunte cambiano solo quando tutti hanno ricevuto o letto; chi è entrato dopo l'invio non conta. L'intestazione di una chat diretta mostra <b class="ui">Online</b> o <b class="ui">Offline</b>, quella di un gruppo <b class="ui">{count} members · {count} online</b>.</p>
+
+  <h3 id="art-delete-a-chat" data-roles="admin,member">Eliminare una chat</h3>
+  <p>Nell'elenco si scorre la chat a sinistra e si tocca il pulsante di eliminazione, oppure nella chat aperta si tocca <b class="ui">Delete chat</b> (il cestino) in alto a destra; si conferma con <b class="ui">Delete</b> o si annulla con <b class="ui">Cancel</b>.</p>
+  <table class="grid">
+    <thead><tr><th>Chat</th><th>Cosa viene eliminato</th></tr></thead>
+    <tbody>
+      <tr><td>Chat diretta</td><td>Tutti i messaggi, per entrambe le persone.</td></tr>
+      <tr><td>Chat di band o evento</td><td>Solo i propri messaggi, per tutti; gli altri conservano il resto.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">L'operazione è definitiva. La chat esce dall'elenco finché non arriva un nuovo messaggio, poi ricompare con i soli messaggi nuovi.</aside>
+
+  <h2>Notifiche</h2>
+
+  <h3 id="art-rehearsal-and-chat-notifications" data-roles="admin,member">Notifiche per prove, sondaggi e chat</h3>
+  <table class="grid">
+    <thead><tr><th>Quando</th><th>Chi viene avvisato</th><th>Push</th></tr></thead>
+    <tbody>
+      <tr><td>Un membro propone una prova</td><td>Gli admin della band</td><td>Sì</td></tr>
+      <tr><td>Un admin pubblica un sondaggio</td><td>I membri chiamati a votare</td><td>Sì</td></tr>
+      <tr><td>Viene fissata una data</td><td>Chi entra nella prova</td><td>No, solo campanella</td></tr>
+      <tr><td>Una prova viene creata, o si viene aggiunti</td><td>I membri invitati</td><td>Sì</td></tr>
+      <tr><td>Cambiano data, orario o luogo</td><td>I partecipanti</td><td>Sì</td></tr>
+      <tr><td>Una prova viene eliminata</td><td>I partecipanti</td><td>Sì</td></tr>
+      <tr><td>Un membro risponde o si ritira</td><td>L'admin che l'ha creata</td><td>Solo per il ritiro</td></tr>
+      <tr><td>Nuovo messaggio in chat</td><td>Tutti gli altri partecipanti</td><td>Sì</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Una notifica di sondaggio apre il pannello di voto, una di prova apre la prova, una di chat apre la chat.</li>
+    <li>All'apertura dell'app, un sondaggio o una proposta non letti compaiono una volta in un piccolo pop-up.</li>
+    <li>Nessuna push per la chat aperta sullo schermo; aprire una chat segna come lette le sue notifiche.</li>
+    <li>Se la notifica riguarda un'altra band dell'utente, l'app chiede prima se passare a quella band.</li>
+    <li>Tutte le push si disattivano in <b class="ui">Settings</b> con <b class="ui">Push notifications</b> (<b class="ui">Gig invites, polls, chat messages</b>); la campanella conserva comunque ogni notifica.</li>
+  </ul>
+
+  <h2>Domande frequenti</h2>
+  <dl class="faq">
+    <dt>Un membro può creare una prova?</dt>
+    <dd>No: tocca <b class="ui">Propose rehearsal</b> e decidono gli admin, programmandola direttamente o con un sondaggio.</dd>
+    <dt>Perché un sondaggio indica Not invited?</dt>
+    <dd>L'admin ha escluso il membro in <b class="ui">Who votes</b>: può leggere il sondaggio, ma votano solo gli invitati.</dd>
+    <dt>I membri vedono quanto costa la sala prove?</dt>
+    <dd>Durante un sondaggio solo la propria quota (<b class="ui">€12 each</b>); il totale nella pagina della prova è visibile solo agli admin.</dd>
+    <dt>Un membro può scrivere direttamente a un altro membro?</dt>
+    <dd>Solo se uno dei due è admin di una band in comune; altrimenti si usa la chat della band o dell'evento.</dd>
+    <dt>Eliminando la chat della band, la band perde la conversazione?</dt>
+    <dd>No, si cancellano solo i propri messaggi. In una chat diretta invece spariscono tutti i messaggi per entrambi.</dd>
+  </dl>
+</section>
