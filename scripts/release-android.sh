@@ -6,6 +6,8 @@
 #   scripts/release-android.sh 1.0.1            # build dist-android/BandWith.apk
 #   scripts/release-android.sh 1.0.1 --publish  # build + GitHub release android-v1.0.1
 #
+# --publish refuses a version whose android-v<version> release or tag exists.
+#
 # Needs (none of it in the repo):
 # - android/app/google-services.json (Firebase, for push);
 # - the release keystore, ~/Developer/BandWith-keys/bandwith-release.jks
@@ -20,6 +22,17 @@ cd "$(dirname "$0")/.."
 VERSION="${1:?usage: scripts/release-android.sh <version, e.g. 1.0.1> [--publish]}"
 PUBLISH="${2:-}"
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
+TAG="android-v$VERSION"
+
+[[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "Version must look like 1.0.3: $VERSION" >&2; exit 1; }
+if [ "$PUBLISH" = "--publish" ]; then
+  # Every release needs its own version: the app compares names to offer updates.
+  if gh release view "$TAG" --repo bandwith-app/BandWith >/dev/null 2>&1 \
+    || [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+    echo "$TAG is already published: pick a new version." >&2
+    exit 1
+  fi
+fi
 
 [ -f android/app/google-services.json ] || { echo "android/app/google-services.json is missing: push would be off." >&2; exit 1; }
 [ -f "$KEYSTORE" ] || { echo "Release keystore not found: $KEYSTORE" >&2; exit 1; }
@@ -31,8 +44,11 @@ fi
 BW_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -s 'BandWith Android release key' -w)"
 export BW_ANDROID_KEYSTORE="$KEYSTORE" BW_ANDROID_KEYSTORE_PASSWORD
 export BW_ANDROID_VERSION_NAME="$VERSION"
-# Hour-based, so every later release has a higher code.
-export BW_ANDROID_VERSION_CODE="${BW_ANDROID_VERSION_CODE:-$(date -u +%y%m%d%H)}"
+# Minute-based (scripts/android-version-code.sh): every later release has a
+# higher code, also two in the same hour. BW_ANDROID_VERSION_CODE overrides it.
+export BW_ANDROID_VERSION_CODE="${BW_ANDROID_VERSION_CODE:-$(scripts/android-version-code.sh)}"
+case "$BW_ANDROID_VERSION_CODE" in '' | *[!0-9]*) echo "BW_ANDROID_VERSION_CODE must be a number." >&2; exit 1 ;; esac
+[ "$BW_ANDROID_VERSION_CODE" -lt 2100000000 ] || { echo "BW_ANDROID_VERSION_CODE must be below 2100000000." >&2; exit 1; }
 export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -55,7 +71,7 @@ cp "$APK" dist-android/BandWith.apk
 echo "Built dist-android/BandWith.apk: version $VERSION (code $BW_ANDROID_VERSION_CODE)"
 
 if [ "$PUBLISH" = "--publish" ]; then
-  gh release create "android-v$VERSION" dist-android/BandWith.apk \
+  gh release create "$TAG" dist-android/BandWith.apk \
     --repo bandwith-app/BandWith \
     --target "$(git rev-parse HEAD)" \
     --title "BandWith for Android $VERSION" \

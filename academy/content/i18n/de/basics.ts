@@ -1187,14 +1187,14 @@ const basics: AreaText = {
       summary: "Zurück-Geste, App beenden, Kontakte und die Installation per APK.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["Android", "APK", "Zurück-Geste", "installieren", "Fingerabdruck"],
+      keywords: ["Android", "APK", "Zurück-Geste", "installieren", "aktualisieren", "Play Protect", "Fingerabdruck"],
       related: ["back-behaviour", "device-differences", "push-notifications"],
       body: [
         {
           type: "list",
           items: [
-            "Die Android-App kommt als APK-Datei statt aus einem Store. Erlaube die Installation, wenn Android fragt.",
-            "Updates: Gibt es eine neue Version, sagt eine Meldung **BandWith … ist verfügbar**. Tippe auf **Aktualisieren**, um sie zu laden und über diese zu installieren. **Einstellungen** › **Info** zeigt dieselbe Schaltfläche.",
+            "Die Android-App kommt als APK-Datei von der Release-Seite statt aus einem Store. Beim ersten Mal: Öffne **BandWith.apk**, erlaube Installationen aus deinem Browser oder der Dateien-App, wenn Android fragt, und tippe auf **Installieren**. Play Protect nennt sie eventuell eine unbekannte App: Tippe auf **Weitere Details** › **Trotzdem installieren**. Hast du eine Testkopie von BandWith, die nicht von der Release-Seite stammt, deinstalliere sie zuerst; deine Daten liegen auf dem Server.",
+            "Updates: Gibt es eine neue Version, sagt eine Meldung **BandWith … ist verfügbar**. Tippe auf **Aktualisieren**: BandWith lädt sie und zeigt den Fortschritt. Beim ersten Mal fragt Android, ob BandWith Apps installieren darf: Tippe auf **Erlauben**, aktiviere **Aus dieser Quelle zulassen** und komm zurück. Dann tippe auf **Installieren**. Danach ist ein Update nur noch **Aktualisieren** › **Installieren**. **Einstellungen** › **Info** zeigt dieselbe Schaltfläche.",
             "Die Zurück-Taste des Systems und die Zurück-Geste schließen zuerst die oberste Ebene; auf Start erscheint **Zum Beenden erneut tippen**, ein zweites Zurück schließt dann die App ([[back-behaviour]]).",
             "Die Schnellanmeldung nutzt deinen Fingerabdruck (oder die Iris, wenn das Handy das kann). Die App-Sperre kann auch auf PIN oder Muster des Handys zurückgreifen.",
             "Im Einladungsschritt der Einrichtung wählst du mit **Aus Kontakten importieren** Mitmusiker aus deinem Adressbuch.",

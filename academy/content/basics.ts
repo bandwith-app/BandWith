@@ -1194,14 +1194,14 @@ const basics: AreaModule = {
       summary: "Back gesture, exiting the app, contacts and installing the APK.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["android", "apk", "back gesture", "install", "fingerprint"],
+      keywords: ["android", "apk", "back gesture", "install", "update", "play protect", "fingerprint"],
       related: ["back-behaviour", "device-differences", "push-notifications"],
       body: [
         {
           type: "list",
           items: [
-            "The Android app comes as an APK file rather than from a store. Allow the install when Android asks.",
-            "Updates: when a new version is out, a message says **BandWith … is available**. Tap **Update** to download it and install it over this one. **Settings** › **About** shows the same button.",
+            "The Android app comes as an APK file from the release page, not from a store. The first time: open **BandWith.apk**, allow installs from your browser or Files app when Android asks, then tap **Install**. Play Protect may call it an unknown app: tap **More details** › **Install anyway**. If you have a test copy of BandWith that didn't come from the release page, uninstall it first; your data is on the server.",
+            "Updates: when a new version is out, a message says **BandWith … is available**. Tap **Update**: BandWith downloads it and shows how far it is. The first time, Android asks whether BandWith may install apps: tap **Allow**, turn on **Allow from this source** and come back. Then tap **Install**. After that an update is just **Update** › **Install**. **Settings** › **About** shows the same button.",
             "The system Back button and the back gesture close the top layer first; on Home, **Tap again to exit** then a second Back closes the app ([[back-behaviour]]).",
             "Quick sign-in uses your fingerprint (or iris, where the phone has it). App lock can also fall back to the phone's PIN or pattern.",
             "On the invite step of onboarding, **Import from contacts** picks bandmates from your address book.",

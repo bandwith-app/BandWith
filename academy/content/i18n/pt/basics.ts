@@ -1187,14 +1187,14 @@ const basics: AreaText = {
       summary: "Gesto de voltar, sair do app, contatos e instalação do APK.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["android", "apk", "gesto de voltar", "instalar", "impressão digital"],
+      keywords: ["android", "apk", "gesto de voltar", "instalar", "atualizar", "play protect", "impressão digital"],
       related: ["back-behaviour", "device-differences", "push-notifications"],
       body: [
         {
           type: "list",
           items: [
-            "O app Android vem como um arquivo APK, não por uma loja. Permita a instalação quando o Android pedir.",
-            "Atualizações: quando sai uma versão nova, uma mensagem diz **BandWith … está disponível**. Toque em **Atualizar** para baixar e instalar por cima desta. **Ajustes** › **Sobre** mostra o mesmo botão.",
+            "O app Android vem como um arquivo APK da página de versões, não por uma loja. Na primeira vez: abra **BandWith.apk**, permita instalar pelo navegador ou pelo app Arquivos quando o Android pedir e toque em **Instalar**. O Play Protect pode dizer que é um app desconhecido: toque em **Mais detalhes** › **Instalar mesmo assim**. Se você tem uma cópia de teste do BandWith que não veio da página de versões, desinstale-a antes; seus dados estão no servidor.",
+            "Atualizações: quando sai uma versão nova, uma mensagem diz **BandWith … está disponível**. Toque em **Atualizar**: o BandWith baixa a versão e mostra o progresso. Na primeira vez, o Android pergunta se o BandWith pode instalar apps: toque em **Permitir**, ative **Permitir desta fonte** e volte. Depois toque em **Instalar**. A partir daí, atualizar é só **Atualizar** › **Instalar**. **Ajustes** › **Sobre** mostra o mesmo botão.",
             "O botão Voltar do sistema e o gesto de voltar fecham primeiro a camada de cima; na tela Início, aparece **Toque de novo para sair** e um segundo Voltar fecha o app ([[back-behaviour]]).",
             "O acesso rápido usa a sua impressão digital (ou a íris, se o celular tiver). O bloqueio do app também pode recorrer ao PIN ou ao padrão do celular.",
             "Na etapa dos convites dos primeiros passos, **Importar dos contatos** escolhe os colegas de banda na sua agenda de contatos.",

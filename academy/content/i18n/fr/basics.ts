@@ -1187,14 +1187,14 @@ const basics: AreaText = {
       summary: "Geste retour, quitter l’app, contacts et installation de l’APK.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["android", "apk", "geste retour", "installer", "empreinte"],
+      keywords: ["android", "apk", "geste retour", "installer", "mise à jour", "play protect", "empreinte"],
       related: ["back-behaviour", "device-differences", "push-notifications"],
       body: [
         {
           type: "list",
           items: [
-            "L’app Android est fournie sous forme de fichier APK plutôt que via un store. Autorise l’installation quand Android le demande.",
-            "Mises à jour : quand une nouvelle version sort, un message indique **BandWith … est disponible**. Touche **Mettre à jour** pour la télécharger et l’installer par-dessus celle-ci. **Réglages** › **À propos** affiche le même bouton.",
+            "L’app Android est fournie sous forme de fichier APK depuis la page des versions, pas via un store. La première fois : ouvre **BandWith.apk**, autorise l’installation depuis ton navigateur ou l’app Fichiers quand Android le demande, puis touche **Installer**. Play Protect peut la signaler comme app inconnue : touche **Plus de détails** › **Installer quand même**. Si tu as une copie de test de BandWith qui ne vient pas de la page des versions, désinstalle-la d’abord ; tes données sont sur le serveur.",
+            "Mises à jour : quand une nouvelle version sort, un message indique **BandWith … est disponible**. Touche **Mettre à jour** : BandWith la télécharge et montre où il en est. La première fois, Android demande si BandWith peut installer des apps : touche **Autoriser**, active **Autoriser cette source** et reviens. Puis touche **Installer**. Ensuite, une mise à jour se résume à **Mettre à jour** › **Installer**. **Réglages** › **À propos** affiche le même bouton.",
             "Le bouton Retour du système et le geste retour ferment d’abord la couche du dessus ; sur l’accueil, **Touche encore pour quitter** puis un deuxième Retour ferment l’app ([[back-behaviour]]).",
             "La connexion rapide utilise ton empreinte (ou l’iris, si le téléphone le permet). Le verrouillage peut aussi se rabattre sur le code PIN ou le schéma du téléphone.",
             "À l’étape des invitations de l’accueil, **Importer des contacts** te permet de choisir des membres dans ton carnet d’adresses.",

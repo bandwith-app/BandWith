@@ -68,6 +68,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- In-app updates of the tester APK (ApkUpdatePlugin): Android asks the user once
+         ("Allow from this source") before BandWith may open the installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Saving PDFs to Documents/BandWith on Android 9 and older (newer versions need no permission). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Stage mode over Bluetooth (leader advertises, members scan and connect).

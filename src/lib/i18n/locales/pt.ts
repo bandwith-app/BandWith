@@ -4098,6 +4098,14 @@ const dict: Dictionary = {
   "BandWith {version} is available": "BandWith {version} está disponível",
   "Update": "Atualizar",
   "Update to {version}": "Atualizar para {version}",
+  "Allow": "Permitir",
+  "Downloading the update…": "Baixando a atualização…",
+  "Downloading {percent}%": "Baixando {percent}%",
+  "Android asks once before BandWith can install updates. Tap Allow, turn on “Allow from this source”, then come back.": "O Android pergunta uma vez antes de o BandWith poder instalar atualizações. Toque em Permitir, ative “Permitir desta fonte” e volte.",
+  "Tap Install to update BandWith.": "Toque em Instalar para atualizar o BandWith.",
+  "This download is not newer than your BandWith. Try again later.": "Este download não é mais recente que o seu BandWith. Tente mais tarde.",
+  "This copy of BandWith can’t be updated. Uninstall it, then install BandWith from the release page once.": "Esta cópia do BandWith não pode ser atualizada. Desinstale-a e instale o BandWith uma vez pela página de versões.",
+  "Couldn’t update inside the app. The download opens in your browser.": "Não foi possível atualizar no app. O download abre no navegador.",
 };
 
 export default dict;
