@@ -17,7 +17,7 @@ import { Capacitor } from '@capacitor/core';
 import { authErrorMessage } from '@/lib/authErrors';
 import { useCloseOnBack } from '@/lib/overlayBack';
 import { quickSignInDeclined, rememberQuickSignInDeclined } from '@/lib/quickSignInPrompt';
-import { AuthScreen, BackButton, FormError, Kicker, OrDivider, PillButton, PillField } from '@/app/components/bw/Form';
+import { BackButton, FormError, Kicker, OrDivider, PillButton, PillField } from '@/app/components/bw/Form';
 import type { BiometricStatus } from '@/lib/services/biometric';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useT } from '@/lib/i18n';
@@ -276,16 +276,18 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
   const biometryName = getBiometryDisplayName(biometricStatus?.biometryType);
   const BiometryIcon = biometricStatus?.biometryType === 'faceId' ? ScanFace : Fingerprint;
 
+  // AuthScreen's layout, split in two blocks so the Duo in Laptop pose can
+  // use the full-screen form layout (`.bw-fold-form`): the title and the
+  // Google / Apple buttons hold the Display, the email form starts on the
+  // Deck, so no field lies across the fold. Elsewhere it looks the same.
+  const enter = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35 } };
   return (
-    <AuthScreen top={<BackButton onClick={onBack} className="bw-duo-rail-back" />}>
-      <motion.form
-        className="flex flex-col gap-5"
-        onSubmit={handleSubmit}
-        noValidate
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
+    <div className="bw-auth-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
+      <div className="shrink-0" style={{ paddingTop: 'var(--safe-top)' }}>
+        <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
+          <BackButton onClick={onBack} className="bw-duo-rail-back" />
+        </div>
+        <motion.div className="flex flex-col gap-5 px-4 pt-4" {...enter}>
         <Kicker overline={t('Welcome back')} title={t('Sign in')} />
 
         <div className="flex flex-col gap-3">
@@ -306,7 +308,11 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
             {t('Continue with Apple')}
           </PillButton>
         </div>
+        </motion.div>
+      </div>
 
+      <div className="flex-1 flex flex-col px-4 pt-5 pb-6">
+      <motion.form className="flex flex-col gap-5" onSubmit={handleSubmit} noValidate {...enter}>
         <OrDivider />
 
         <AnimatePresence>
@@ -440,7 +446,8 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({
           </>
         )}
       </AnimatePresence>
-    </AuthScreen>
+      </div>
+    </div>
   );
 };
 
