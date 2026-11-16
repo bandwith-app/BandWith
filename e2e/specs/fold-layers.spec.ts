@@ -6,9 +6,10 @@ import { isWide, openCreate } from '../support/flows';
  *
  * - @laptop (Duo in Laptop pose only): the Create layers keep every control
  *   off the fold band (app.check measures it). Known open bug on main:
- *   member "Log personal gig" venue search and the poll builder sit on it.
- * - iPad composers: the location field suggests venues while typing. Known
- *   open bug on main for the gig/rehearsal composers.
+ *   member "Log personal gig" (its venue search) and the rehearsal wizard
+ *   put controls on it.
+ * - iPad composers: the location field suggests venues while typing
+ *   (reported on device; passes here with the stubbed place search).
  */
 
 const venueSuggestion = (app: App, q: string) => app.page.getByRole('option', { name: new RegExp(`${q} Studios`) });

@@ -55,7 +55,7 @@ test.describe('Account hub as admin', () => {
     await expect(hubRow(app, 'Gear & inventory')).toBeVisible();
   });
 
-  test('Deputy gigs: the request from another band can be answered', async ({ app }) => {
+  test('Deputy gigs: the request from another band shows its answers', async ({ app }) => {
     await openHubPage(app, 'Deputy gigs');
     await expect(app.button('YES').first()).toBeVisible();
     await expect(app.button("NO, I CAN'T").first()).toBeVisible();
