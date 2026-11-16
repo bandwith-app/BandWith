@@ -143,6 +143,7 @@ export const JoinerInviteLanding: React.FC<JoinerInviteLandingProps> = ({
               value={Math.min(memberCount, METER_ROWS * METER_COLS) / (METER_ROWS * METER_COLS)}
               rows={METER_ROWS}
               cols={METER_COLS}
+              label={memberCount === 1 ? t('Member') : t('Members')}
             />
             <span className="bw-label-md">{memberCount === 1 ? t('Member') : t('Members')}</span>
             <DotText text={memberCount} size={30} label={memberCount === 1 ? t('{count} member', { count: memberCount }) : t('{count} members', { count: memberCount })} />
@@ -153,6 +154,7 @@ export const JoinerInviteLanding: React.FC<JoinerInviteLandingProps> = ({
                 value={Math.min(inviteData.gigs_this_year, METER_ROWS * METER_COLS) / (METER_ROWS * METER_COLS)}
                 rows={METER_ROWS}
                 cols={METER_COLS}
+                label={t('Gigs this year')}
               />
               <span className="bw-label-md">{t('Gigs this year')}</span>
               <DotText text={inviteData.gigs_this_year} size={30} label={t('{count} gigs this year', { count: inviteData.gigs_this_year })} />

@@ -11,6 +11,12 @@ interface DotCheckboxProps {
   checkColor?: string;
   className?: string;
   onClick?: () => void;
+  /**
+   * Accessible name (the row's label). Without a click handler or a label the
+   * box is only a picture: its row is the control (a `role="checkbox"` row or
+   * a button) and says what it is.
+   */
+  label?: string;
 }
 
 export const DotCheckbox: React.FC<DotCheckboxProps> = ({
@@ -21,6 +27,7 @@ export const DotCheckbox: React.FC<DotCheckboxProps> = ({
   checkColor,
   className,
   onClick,
+  label,
 }) => {
   const borderColor = disabled
     ? 'rgba(0,0,0,0.1)'
@@ -62,6 +69,7 @@ export const DotCheckbox: React.FC<DotCheckboxProps> = ({
         type="button"
         role="checkbox"
         aria-checked={checked}
+        aria-label={label}
         disabled={disabled}
         onClick={onClick}
         className="shrink-0"
@@ -71,8 +79,16 @@ export const DotCheckbox: React.FC<DotCheckboxProps> = ({
     );
   }
 
+  if (!label) {
+    return (
+      <div aria-hidden="true" className="shrink-0">
+        {box}
+      </div>
+    );
+  }
+
   return (
-    <div role="checkbox" aria-checked={checked} className="shrink-0">
+    <div role="checkbox" aria-checked={checked} aria-label={label} className="shrink-0">
       {box}
     </div>
   );

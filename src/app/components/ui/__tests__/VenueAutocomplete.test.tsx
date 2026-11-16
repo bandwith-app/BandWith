@@ -27,7 +27,7 @@ const Harness: React.FC<{ onSelect: (p: unknown) => void }> = ({ onSelect }) => 
 
 const openSuggestions = async () => {
   mocks.searchVenues.mockResolvedValue([place]);
-  const input = screen.getByRole('textbox');
+  const input = screen.getByRole('combobox');
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: 'Blue Note' } });
   return screen.findByRole('option');
@@ -67,6 +67,6 @@ describe('Venue suggestions on a touch screen', () => {
 
   it('the venue field does not autocorrect names', () => {
     render(<Harness onSelect={vi.fn()} />);
-    expect(screen.getByRole('textbox').getAttribute('autocorrect')).toBe('off');
+    expect(screen.getByRole('combobox').getAttribute('autocorrect')).toBe('off');
   });
 });

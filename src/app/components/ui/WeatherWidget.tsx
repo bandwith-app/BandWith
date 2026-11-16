@@ -270,8 +270,8 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
     <div className="flex items-center gap-2 text-current w-full">
       <span className="shrink-0 opacity-60 [&_svg]:w-4 [&_svg]:h-4">{icon}</span>
       <div className="flex flex-col gap-0.5 min-w-0">
-        {overline && <span className="bw-label-xs opacity-70">{overline}</span>}
-        <span className="bw-body-sm leading-tight opacity-80">{text}</span>
+        {overline && <span className="bw-label-xs opacity-85">{overline}</span>}
+        <span className="bw-body-sm leading-tight opacity-85">{text}</span>
       </div>
     </div>
   );
@@ -307,7 +307,7 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
 
           <div className="flex flex-col items-start gap-1 min-w-0">
             <span className="bw-num leading-none">{state.data.temp}°</span>
-            <span className="flex items-center gap-1 bw-label-xs opacity-80 whitespace-nowrap">
+            <span className="flex items-center gap-1 bw-label-xs opacity-85 whitespace-nowrap">
               <Droplet className="w-2.5 h-2.5 shrink-0" strokeWidth={1.5} />
               {state.data.precipitationProbability}%
               <Wind className="w-2.5 h-2.5 shrink-0 ml-1" strokeWidth={1.5} />

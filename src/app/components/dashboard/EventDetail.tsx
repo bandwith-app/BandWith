@@ -234,7 +234,7 @@ const TimeTile: React.FC<{ label: string; value: string; text?: boolean; onEdit?
   const Tile = onEdit ? 'button' : 'div';
   return (
     <Tile
-      {...(onEdit ? { type: 'button' as const, onClick: onEdit, 'aria-label': `${label} ${value} · ${editLabel || ''}`.trim() } : {})}
+      {...(onEdit ? { type: 'button' as const, onClick: onEdit, 'aria-label': `${label} ${[main, suffix].filter(Boolean).join(' ')} · ${editLabel || ''}`.trim() } : {})}
       className={cn(
         '@container bg-card rounded-[16px] p-4 flex flex-col gap-1 min-w-0 text-left',
         onEdit && 'cursor-pointer active:scale-[0.98] transition-transform',
@@ -244,6 +244,8 @@ const TimeTile: React.FC<{ label: string; value: string; text?: boolean; onEdit?
         <span className="bw-label-xs text-muted-foreground truncate">{label}</span>
         {onEdit && <Pencil className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden />}
       </span>
+      {/* A word break between label and value for text readers (none on screen: flex). */}
+      {' '}
       {text ? (
         <span className="bw-num truncate">{main}</span>
       ) : (
@@ -1339,7 +1341,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     showGrid
                     label={hasHeroDate ? formatEventDateFull(event.date) : t('Date TBD')}
                   />
-                  <span className="bw-label-sm opacity-70">{heroMonth}</span>
+                  <span className="bw-label-sm opacity-85">{heroMonth}</span>
                 </div>
               </div>
 
@@ -1367,7 +1369,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       {venueShown}
                     </span>
                     {hasValidLocation && (
-                      <span className="inline-flex items-center gap-0.5 shrink-0 px-1.5 h-[18px] rounded-full border border-current/40 bw-label-xs opacity-80">
+                      <span className="inline-flex items-center gap-0.5 shrink-0 px-1.5 h-[18px] rounded-full border border-current/40 bw-label-xs opacity-85">
                         {t('MAP')}
                         <ArrowUpRight className="w-2.5 h-2.5" aria-hidden />
                       </span>
@@ -1387,7 +1389,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     </button>
                   )}
                   </div>
-                  {venueAddress && <span className="bw-label-xs opacity-70 truncate max-w-full">{venueAddress}</span>}
+                  {venueAddress && <span className="bw-label-xs opacity-85 truncate max-w-full">{venueAddress}</span>}
                   <span
                     className="mt-1.5 min-h-5 px-2 py-1 rounded-[4px] bw-label-xs inline-block max-w-full"
                     style={heroTintStyle}
@@ -1405,7 +1407,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 <div className="shrink-0">
                   {isPast ? (
                     <div className="flex flex-col items-end gap-1">
-                      <span className="bw-label-xs opacity-70">
+                      <span className="bw-label-xs opacity-85">
                         {eventType === 'gig' && !isPersonalGig ? t('ATTENDANCE') : t('STATUS')}
                       </span>
                       <span className="bw-label-md">
@@ -1755,8 +1757,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                         type="button"
                         onClick={() => setActiveSheet('lineup')}
                         className="flex flex-col gap-4 text-left cursor-pointer"
-                        aria-label={t('Open lineup details')}
                       >
+                        {/* Named by what it does and by the names it shows (voice control). */}
+                        <span className="sr-only">{t('Open lineup details')}</span>
                         {resolvedMembers.slice(0, 6).map((m, i) => (
                           <MemberRow key={m.userId || i} member={m} />
                         ))}

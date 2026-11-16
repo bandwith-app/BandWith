@@ -856,15 +856,11 @@ export const EventsView: React.FC<EventsViewProps> = ({
         key={event.id}
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEventClick(event); } }}
-        aria-label={draftOf ? t('{title}, draft, only you can see it', { title: event.title }) : undefined}
+        id={`bw-ev-card-${event.id}`}
         className={cn(
           'relative flex flex-col gap-4 rounded-[24px] p-5 cursor-pointer active:scale-[0.99] transition-transform',
           isPast && 'opacity-85'
         )}
-        aria-current={selectedEventId && event.eventId === selectedEventId ? 'true' : undefined}
         style={{
           backgroundColor: cardBg,
           color: cardFg,
@@ -876,6 +872,17 @@ export const EventsView: React.FC<EventsViewProps> = ({
         }}
         onClick={() => onEventClick(event)}
       >
+        {/* The card's button for keyboard and screen readers: it lies under
+            the card's own buttons (the missing-details chip), so no button
+            sits inside another; it is named by the card's text. A tap
+            anywhere opens the event (the card's click). */}
+        <button
+          type="button"
+          className="absolute inset-0 rounded-[24px] cursor-pointer"
+          aria-labelledby={draftOf ? undefined : `bw-ev-card-${event.id}`}
+          aria-label={draftOf ? t('{title}, draft, only you can see it', { title: event.title }) : undefined}
+          aria-current={selectedEventId && event.eventId === selectedEventId ? 'true' : undefined}
+        />
         {/* Top: chips + title, open button (Figma "Event Card") */}
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0 flex flex-col gap-2">
@@ -958,7 +965,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8">
           {[left, right].map((m) => (
             <div key={m.label} className="flex flex-col gap-2 min-w-0">
-              <DotMeter value={m.fill} rows={2} cols={10} dot={10} onColor={cardFg} offColor={dimFg} peakColor={cardFg} />
+              <DotMeter value={m.fill} rows={2} cols={10} dot={10} onColor={cardFg} offColor={dimFg} peakColor={cardFg} label={m.label} />
               <span className="bw-label-md">{m.label}</span>
               <DotText text={m.value} size={30} />
             </div>

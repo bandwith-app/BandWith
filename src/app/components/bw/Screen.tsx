@@ -509,7 +509,10 @@ export const BwSheet: React.FC<BwSheetProps> = ({
                 <IconButton label={closeLabel} icon={<X />} size="sm" variant={dark ? 'sheet' : 'outline'} onClick={onClose} />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 pt-3 pb-4">{children}</div>
+            {/* A tab stop, so a long list without buttons scrolls by keyboard too. */}
+            <div className="flex-1 overflow-y-auto px-5 pt-3 pb-4" tabIndex={0}>
+              {children}
+            </div>
             {footer && (
               <div className="shrink-0 px-5 pt-2" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
                 {footer}
