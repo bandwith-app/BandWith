@@ -6,7 +6,7 @@ An admin opens a card editor on a gig or rehearsal overview, changes it, and lea
 
 Starts as **admin**. States 10/10 and transitions 17/17 covered by 12 generated paths (14 Playwright tests).
 
-Runs for each of: hero, venue, lineup, fee, to-dos, client & notes, studio cost (one per path, in turn; every one for `OPEN_EVENT OPEN CHANGE SAVE`).
+Runs for each of: hero, venue, lineup, fee, to-dos, client & notes, studio cost (one per path, in turn; every one for ).
 
 ```mermaid
 stateDiagram-v2
@@ -78,8 +78,8 @@ stateDiagram-v2
 | Overview card edit: OPEN_EVENT → OPEN → CHANGE → CANCEL → SAVE_CHANGES | phone-portrait | to-dos |
 | Overview card edit: OPEN_EVENT → OPEN → CHANGE → CLOSE_X | phone-portrait | client & notes |
 | Overview card edit: OPEN_EVENT → OPEN → CHANGE → ESCAPE | phone-portrait | studio cost |
-| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SAVE | phone-portrait | hero, venue, lineup, fee, to-dos, client & notes, studio cost |
-| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → DISCARD | duo-book | hero |
-| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → KEEP_EDITING | duo-book | venue |
-| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → SAVE_CHANGES | duo-book | lineup |
-| Overview card edit: OPEN_EVENT → OPEN → ESCAPE | phone-portrait | fee |
+| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SAVE | phone-portrait | hero |
+| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → DISCARD | duo-book | venue |
+| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → KEEP_EDITING | duo-book | lineup |
+| Overview card edit: OPEN_EVENT → OPEN → CHANGE → SWITCH_CARD → SAVE_CHANGES | duo-book | fee |
+| Overview card edit: OPEN_EVENT → OPEN → ESCAPE | phone-portrait | to-dos |

@@ -66,6 +66,11 @@ export interface KnownBug {
   variant?: string;
   role: 'admin' | 'member' | 'deputy' | 'signed out';
   profile: ProfileName;
+  /**
+   * The bug only shows on these profiles: the path still runs on the others.
+   * Default: the path is left out everywhere.
+   */
+  onlyOn?: ProfileName[];
   /** What happens instead. */
   actual: string;
   /** What should happen, and the code / migration / Academy text that says so. */
@@ -225,8 +230,22 @@ export function generatePaths(model: Lifecycle): { paths: ModelPath[]; tooDeep: 
   const keys = [...unique.keys()];
   const bugsOf = (key: string) => model.knownBugs.filter((b) => key === b.path || key.startsWith(`${b.path} `));
   // A path a known bug takes out entirely covers nothing: its prefixes stay.
-  const runs = (key: string) => !bugsOf(key).some((b) => !b.variant);
+  const runs = (key: string) => !bugsOf(key).some((b) => !b.variant && !b.onlyOn);
   const kept = keys.filter((k) => !keys.some((other) => other !== k && runs(other) && other.startsWith(`${k} `)));
+
+  // A path named in the model must be one of its generated paths (a typo or
+  // a model change would otherwise silently drop it).
+  for (const [what, list] of [
+    ['wide', model.wide ?? []],
+    ['everyVariant', model.everyVariant ?? []],
+    ['knownBugs', model.knownBugs.map((b) => b.path)],
+  ] as const) {
+    for (const k of list) {
+      if (!kept.some((p) => p === k || p.startsWith(`${k} `))) {
+        throw new Error(`${model.id}: ${what} path "${k}" is not a generated path (${kept.join(' | ')})`);
+      }
+    }
+  }
 
   const all = model.variants?.length ? [...model.variants] : [''];
   let turn = 0;
@@ -249,7 +268,14 @@ export function generatePaths(model: Lifecycle): { paths: ModelPath[]; tooDeep: 
   return { paths, tooDeep };
 }
 
-/** True when a known bug takes the whole path (or this variant of it) out of the run. */
-export function excluded(path: ModelPath, variant?: string): KnownBug | undefined {
-  return path.bugs.find((b) => !b.variant || b.variant === variant);
+/** The known bug that takes this path (or this variant of it, on this profile) out of the run. */
+export function excluded(path: ModelPath, variant?: string, profile?: ProfileName): KnownBug | undefined {
+  return path.bugs.find(
+    (b) => (!b.variant || b.variant === variant) && (!b.onlyOn || (!!profile && b.onlyOn.includes(profile))),
+  );
+}
+
+/** The variants of a path that run on a profile (known bugs left out). */
+export function runnable(path: ModelPath, profile: ProfileName): string[] {
+  return path.profiles.includes(profile) ? path.variants.filter((v) => !excluded(path, v || undefined, profile)) : [];
 }

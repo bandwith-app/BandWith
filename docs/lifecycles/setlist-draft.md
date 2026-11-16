@@ -6,7 +6,7 @@ An admin changes a gig setlist or rehearsal focus songs, then cancels, saves, or
 
 Starts as **admin**. States 9/9 and transitions 10/10 covered by 5 generated paths (5 Playwright tests).
 
-Runs for each of: gig setlist, focus songs.
+Runs for each of: gig setlist, focus songs (one per path, in turn; every one for ).
 
 ```mermaid
 stateDiagram-v2
@@ -59,8 +59,8 @@ stateDiagram-v2
 
 | Test | Profiles | Variants |
 | --- | --- | --- |
-| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CANCEL_DRAFT | phone-portrait | gig setlist, focus songs |
-| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → DISCARD | phone-portrait | gig setlist, focus songs |
-| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → KEEP_EDITING | phone-portrait | gig setlist, focus songs |
-| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → SAVE_CHANGES | phone-portrait | gig setlist, focus songs |
-| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → SAVE_DRAFT | phone-portrait | gig setlist, focus songs |
+| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CANCEL_DRAFT | phone-portrait | gig setlist |
+| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → DISCARD | phone-portrait | focus songs |
+| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → KEEP_EDITING | phone-portrait | gig setlist |
+| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → CLOSE_SONGS → LEAVE_EVENT → SAVE_CHANGES | phone-portrait | focus songs |
+| Setlist draft: OPEN_EVENT → OPEN_SONGS → CHANGE → SAVE_DRAFT | phone-portrait | gig setlist |

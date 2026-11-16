@@ -13,9 +13,9 @@ The riskiest multi-step lifecycles of BandWith, written as XState state machines
 | [Overview card edit](card-edit.md) | admin | 10/10 | 17/17 | 12 | 14 | 0 |
 | [Setlist draft](setlist-draft.md) | admin | 9/9 | 10/10 | 5 | 5 | 0 |
 | [Quote to gig](quote.md) | admin | 15/15 | 17/17 | 8 | 10 | 0 |
-| [Deputies](deputy.md) | admin | 17/17 | 20/20 | 9 | 9 | 0 |
-| [Auth callback & reset](auth.md) | admin | 9/9 | 11/11 | 5 | 5 | 0 |
-| **Total** | | 104/104 | 128/129 | 68 | 79 | 1 |
+| [Deputies](deputy.md) | admin | 17/17 | 20/20 | 9 | 10 | 1 |
+| [Auth callback & reset](auth.md) | admin | 9/9 | 11/11 | 5 | 7 | 0 |
+| **Total** | | 104/104 | 128/129 | 68 | 82 | 2 |
 
 ## Where things live
 
@@ -44,3 +44,4 @@ Every path runs on phone-portrait. A model's `wide` paths also run on ipad-lands
 A path that fails because the **app** is wrong is listed in the model's `knownBugs` (role, profile, steps, evidence, the expected behaviour and its source) and left out of the run, so the suite stays green; the coverage report and the model's page print it. A path that fails because the **model** is wrong gets the model fixed.
 
 - [RSVP (gig)](rsvp-gig.md): `INVITED ACCEPT REOPEN` — After ACCEPT the gig closes ("You're confirmed!"). Opening it again right away (within ~3 s) shows it with DROP OUT, then it closes by itself; the same happens to any event opened in that window.
+- [Deputies](deputy.md): `NO_BAND` — On the Duo in Laptop pose (fold y 455–495) the standalone Deputy gigs home is one long scrolling page: Jazz Brunch's "Message to the band" field sits across the fold (TEXTAREA @y476..546), and scrolling moves the answer buttons through it.

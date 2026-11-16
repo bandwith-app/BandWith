@@ -213,8 +213,12 @@ export const deputySteps = stepsFor(deputy, {
     CANCEL_CHANGE: ({ app }) => answer(app, BRUNCH, 'Cancel').click(),
     STILL_OK: ({ app }) => gig(app, SUMMER).getByRole('button', { name: app.t('Still OK'), exact: true }).click(),
     NO_BAND: async ({ app }) => {
-      // Leaves the band and drops the cached band list, as a new device would.
-      await app.page.evaluate((me) => {
+      // Leaves the band and drops the cached band list before the app starts
+      // (as a new device would): the IndexedDB cache is deleted before the
+      // app opens it again.
+      await app.page.addInitScript((me) => {
+        if (sessionStorage.getItem('bw-e2e-no-band')) return;
+        sessionStorage.setItem('bw-e2e-no-band', '1');
         const k = 'bw-demo-db-v6';
         const d = JSON.parse(localStorage.getItem(k) || '{}');
         d.band_members = (d.band_members || []).filter((m: { user_id: string }) => m.user_id !== me);

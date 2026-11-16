@@ -118,8 +118,22 @@ export const deputy = defineLifecycle({
     STILL_OK: { do: 'Summer Wedding: tap Still OK.' },
     NO_BAND: { do: 'The account leaves its band (deputy gigs only), opens the app again.' },
   },
-  wide: ['OPEN_CLAIM_LINK OK YES CHANGE_ANSWER NO'],
-  knownBugs: [],
+  wide: ['NO_BAND YES CHANGE_ANSWER NO'],
+  knownBugs: [
+    // KNOWN BUG (app): the no-band Deputy gigs home puts controls on the
+    // Duo Laptop fold. The path still runs on phone-portrait and iPad.
+    {
+      path: 'NO_BAND',
+      role: 'deputy',
+      profile: 'duo-laptop',
+      onlyOn: ['duo-laptop'],
+      actual:
+        'On the Duo in Laptop pose (fold y 455–495) the standalone Deputy gigs home is one long scrolling page: Jazz Brunch\'s "Message to the band" field sits across the fold (TEXTAREA @y476..546), and scrolling moves the answer buttons through it.',
+      expected:
+        'Nothing the user can touch sits on the fold in Laptop pose, as on every other screen (e2e/support/health.ts onFold, e2e/README.md "@laptop … nothing may sit on the fold"). DeputyHome.tsx wraps DeputyGigsScreen in DuoAuthLayout, which only lays out the open (two-pane) display, so the Laptop pose gets no fold-aware layout.',
+      evidence: 'e2e/.results-known-bugs/deputy-home-laptop-fold/ (trace.zip, test-failed-1.png)',
+    },
+  ],
   manual: [
     'Two accounts: the admin\'s request reaching the deputy\'s notifications and their answer reaching the admin ("Available"): the demo has one user, and its deputy gigs are a separate demo table (demo_deputy_gigs) for another band.',
     'Claiming a link for the first time ("From now on {band} can ask you in the app"), a link of another account, and the link a band member opens: the demo claim always answers "already" (demoClient.ts bw_deputy_claim).',

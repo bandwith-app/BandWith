@@ -38,12 +38,13 @@ export default defineConfig({
   },
   // Tags: @smoke runs everywhere; @laptop only on the Duo in Laptop pose
   // (fold checks); @duo-book only on the Duo in book posture (lifecycle
-  // model paths that need its two panes); untagged tests are the full flow set.
+  // model paths that need its two panes); @phone-portrait-only (lifecycle
+  // model paths) only on phone-portrait; untagged tests are the full flow set.
   projects: DEVICE_PROJECTS.map((p) => ({
     name: p.name,
     use: p.use,
     grep: p.full ? undefined : p.name === 'duo-laptop' ? /@smoke|@laptop/ : p.name === 'duo-book' ? /@smoke|@duo-book/ : /@smoke/,
-    grepInvert: p.full ? /@laptop|@duo-book/ : undefined,
+    grepInvert: p.full ? (p.name === 'phone-portrait' ? /@laptop|@duo-book/ : /@laptop|@duo-book|@phone-portrait-only/) : undefined,
   })),
   webServer: {
     command:

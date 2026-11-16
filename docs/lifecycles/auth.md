@@ -4,7 +4,7 @@
 
 Expired reset link (query or fragment) → Send a new link → reset → Check your email → sign in; server error → Back to sign in; Back never returns to the dead link.
 
-Starts as **admin**. States 9/9 and transitions 11/11 covered by 5 generated paths (5 Playwright tests).
+Starts as **admin**. States 9/9 and transitions 11/11 covered by 5 generated paths (7 Playwright tests).
 
 ```mermaid
 stateDiagram-v2
@@ -58,7 +58,7 @@ stateDiagram-v2
 | --- | --- |
 | Auth callback & reset: EXPIRED_IN_FRAGMENT | phone-portrait |
 | Auth callback & reset: EXPIRED_LINK → BACK_TO_SIGN_IN → BROWSER_BACK | phone-portrait |
-| Auth callback & reset: EXPIRED_LINK → SEND_NEW_LINK → SEND_RESET_LINK → BACK_TO_SIGN_IN | phone-portrait |
+| Auth callback & reset: EXPIRED_LINK → SEND_NEW_LINK → SEND_RESET_LINK → BACK_TO_SIGN_IN | phone-portrait, ipad-landscape, duo-laptop |
 | Auth callback & reset: SERVER_ERROR_LINK → BACK_TO_SIGN_IN | phone-portrait |
 | Auth callback & reset: SERVER_ERROR_SIGNED_IN → BACK_TO_APP | phone-portrait |
 

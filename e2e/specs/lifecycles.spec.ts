@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures';
-import { excluded, generatePaths, type ModelPath } from '../models/lifecycle.ts';
+import { excluded, generatePaths, runnable, type ModelPath, type ProfileName } from '../models/lifecycle.ts';
 import { MODEL_STEPS } from '../models/registry.ts';
 import type { Ctx, ModelSteps } from '../models/steps.ts';
 import type { Lifecycle } from '../models/lifecycle.ts';
@@ -44,12 +44,18 @@ for (const steps of MODEL_STEPS) {
   test.describe(model.title, () => {
     test.use({ role: model.role, autoOpen: false });
     for (const path of generatePaths(model).paths) {
-      const todo = path.variants.filter((v) => !excluded(path, v || undefined) !== KNOWN_BUGS);
-      if (!todo.length) continue; // known bug: see the model's knownBugs
+      // The variants to run on a profile: the runnable ones, or with
+      // E2E_KNOWN_BUGS only the ones a known bug leaves out.
+      const todo = (profile: ProfileName) =>
+        path.profiles.includes(profile)
+          ? KNOWN_BUGS
+            ? path.variants.filter((v) => excluded(path, v || undefined, profile))
+            : runnable(path, profile)
+          : [];
       const title = KNOWN_BUGS ? `[known bug] ${path.name}` : path.name;
 
-      const body = async ({ app }: { app: Ctx['app'] }) => {
-        for (const [i, variant] of todo.entries()) {
+      const body = async ({ app, profileId }: { app: Ctx['app']; profileId: string }) => {
+        for (const [i, variant] of todo(profileId as ProfileName).entries()) {
           const c: Ctx = { app, variant, data: {} };
           if (i > 0) {
             // Next variant: fresh demo data, same browser.
@@ -61,15 +67,19 @@ for (const steps of MODEL_STEPS) {
         expect(app.errors).toEqual([]);
       };
 
-      const on = path.profiles;
-      if (on.includes('phone-portrait') || on.includes('ipad-landscape')) {
+      const phone = todo('phone-portrait').length > 0;
+      const ipad = todo('ipad-landscape').length > 0;
+      if (phone || ipad) {
+        // Most paths run on phone-portrait only: the tag keeps them out of the
+        // other full project (playwright.config.ts), so they don't count there.
+        const tag = ipad ? [] : ['@phone-portrait-only'];
         test.describe(() => {
-          test.skip(({ profileId }) => !on.includes(profileId as never), `path runs on ${on.join(', ')}`);
-          test(title, body);
+          test.skip(({ profileId }) => !todo(profileId as ProfileName).length, `path runs on ${path.profiles.join(', ')}`);
+          test(title, { tag }, body);
         });
       }
-      if (on.includes('duo-laptop')) test(`${title} @laptop`, body);
-      if (on.includes('duo-book')) test(`${title} @duo-book`, body);
+      if (todo('duo-laptop').length) test(`${title} @laptop`, body);
+      if (todo('duo-book').length) test(`${title} @duo-book`, body);
     }
   });
 }

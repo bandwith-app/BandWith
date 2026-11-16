@@ -4,7 +4,7 @@
 
 Admin: deputy list → ask a deputy in the app for a member who declined → unlink the account. Deputy: claim link → Deputy gigs → Yes / Not sure / No → change the answer; no-band home.
 
-Starts as **admin**. States 17/17 and transitions 20/20 covered by 9 generated paths (9 Playwright tests).
+Starts as **admin**. States 17/17 and transitions 20/20 covered by 9 generated paths (10 Playwright tests).
 
 ```mermaid
 stateDiagram-v2
@@ -12,7 +12,7 @@ stateDiagram-v2
   home --> roster : OPEN_ROSTER
   home --> lineupDeclined : MEMBER_DECLINED
   home --> welcome : OPEN_CLAIM_LINK
-  home --> deputyHome : NO_BAND
+  home --> deputyHome : NO_BAND (known bug)
   roster --> lucaSheet : EDIT_LUCA
   lucaSheet --> unlinkPrompt : UNLINK
   unlinkPrompt --> lucaSheet : CANCEL
@@ -87,13 +87,20 @@ stateDiagram-v2
 | --- | --- |
 | Deputies: MEMBER_DECLINED → FIND_DEPUTY → ASK_IN_APP | phone-portrait |
 | Deputies: NO_BAND → YES → CHANGE_ANSWER → CANCEL_CHANGE | phone-portrait |
-| Deputies: NO_BAND → YES → CHANGE_ANSWER → NO | phone-portrait |
+| Deputies: NO_BAND → YES → CHANGE_ANSWER → NO **(known bug: not run on duo-laptop)** | phone-portrait, ipad-landscape, duo-laptop |
 | Deputies: OPEN_CLAIM_LINK → OK → NO | phone-portrait |
 | Deputies: OPEN_CLAIM_LINK → OK → NOT_SURE | phone-portrait |
 | Deputies: OPEN_CLAIM_LINK → OK → STILL_OK | phone-portrait |
 | Deputies: OPEN_CLAIM_LINK → OK → YES | phone-portrait |
 | Deputies: OPEN_ROSTER → EDIT_LUCA → UNLINK → CANCEL | phone-portrait |
 | Deputies: OPEN_ROSTER → EDIT_LUCA → UNLINK → CONFIRM_UNLINK → ASK_AFTER_UNLINK | phone-portrait |
+
+## Known bugs
+
+- **NO_BAND** — deputy, duo-laptop (left out only on duo-laptop)
+  - Actual: On the Duo in Laptop pose (fold y 455–495) the standalone Deputy gigs home is one long scrolling page: Jazz Brunch's "Message to the band" field sits across the fold (TEXTAREA @y476..546), and scrolling moves the answer buttons through it.
+  - Expected: Nothing the user can touch sits on the fold in Laptop pose, as on every other screen (e2e/support/health.ts onFold, e2e/README.md "@laptop … nothing may sit on the fold"). DeputyHome.tsx wraps DeputyGigsScreen in DuoAuthLayout, which only lays out the open (two-pane) display, so the Laptop pose gets no fold-aware layout.
+  - Evidence: `e2e/.results-known-bugs/deputy-home-laptop-fold/ (trace.zip, test-failed-1.png)` (local, re-create with `E2E_KNOWN_BUGS=1`)
 
 ## Not in the demo (manual)
 

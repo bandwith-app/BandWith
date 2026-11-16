@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MODELS } from './index.ts';
-import { generatePaths, transitionsOf, type EventSpec, type Lifecycle, type StateSpec } from './lifecycle.ts';
+import { generatePaths, runnable, transitionsOf, type EventSpec, type Lifecycle, type StateSpec } from './lifecycle.ts';
 import { coverageOf } from './coverage.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -67,13 +67,14 @@ function page(model: Lifecycle): string {
   const withVariants = !!model.variants?.length;
   out.push('', '## Generated paths', '', `| Test | Profiles |${withVariants ? ' Variants |' : ''}`, `| --- | --- |${withVariants ? ' --- |' : ''}`);
   for (const p of paths) {
-    const bug = p.bugs.some((b) => !b.variant) ? ' **(known bug: not run)**' : '';
+    const off = p.profiles.filter((profile) => !runnable(p, profile).length);
+    const bug = !off.length ? '' : off.length === p.profiles.length ? ' **(known bug: not run)**' : ` **(known bug: not run on ${off.join(', ')})**`;
     out.push(`| ${cell(p.name)}${bug} | ${p.profiles.join(', ')} |${withVariants ? ` ${p.variants.join(', ')} |` : ''}`);
   }
   if (model.knownBugs.length) {
     out.push('', '## Known bugs', '');
     for (const b of model.knownBugs) {
-      out.push(`- **${b.path}**${b.variant ? ` (${b.variant})` : ''} — ${b.role}, ${b.profile}`);
+      out.push(`- **${b.path}**${b.variant ? ` (${b.variant})` : ''} — ${b.role}, ${b.profile}${b.onlyOn ? ` (left out only on ${b.onlyOn.join(', ')})` : ''}`);
       out.push(`  - Actual: ${b.actual}`);
       out.push(`  - Expected: ${b.expected}`);
       out.push(`  - Evidence: \`${b.evidence}\` (local, re-create with \`E2E_KNOWN_BUGS=1\`)`);

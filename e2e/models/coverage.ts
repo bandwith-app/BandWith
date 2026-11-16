@@ -10,7 +10,7 @@
  * Plain `node` (type stripping): no Playwright, no browser.
  */
 import { MODELS } from './index.ts';
-import { excluded, generatePaths, transitionsOf, type KnownBug, type Lifecycle, type ModelStep } from './lifecycle.ts';
+import { generatePaths, runnable, transitionsOf, type KnownBug, type Lifecycle, type ModelStep } from './lifecycle.ts';
 
 export interface ModelCoverage {
   id: string;
@@ -39,10 +39,10 @@ export function coverageOf(model: Lifecycle): ModelCoverage {
   const seen = new Set<string>([model.initial as string]);
   let tests = 0;
   for (const p of paths) {
-    const runs = p.variants.filter((v) => !excluded(p, v || undefined));
-    if (!runs.length) continue;
-    // A Playwright test per profile (titles tagged @laptop / @duo-book are separate tests).
-    tests += p.profiles.length;
+    // A Playwright test per profile it runs on (@laptop / @duo-book titles are separate tests).
+    const on = p.profiles.filter((profile) => runnable(p, profile).length);
+    if (!on.length) continue;
+    tests += on.length;
     for (const s of p.steps) {
       covered.add(edge(s));
       seen.add(s.to);
@@ -89,8 +89,8 @@ function print(rows: ModelCoverage[]) {
     for (const t of r.uncoveredTransitions) out.push(`  not covered: ${t}`);
     for (const t of r.tooDeep) out.push(`  too deep (maxDepth): ${t}`);
     for (const b of r.knownBugs) {
-      out.push(`  KNOWN BUG (not run): ${b.path}${b.variant ? ` [${b.variant}]` : ''}`);
-      out.push(`    role ${b.role}, profile ${b.profile}`);
+      out.push(`  KNOWN BUG (not run${b.onlyOn ? ` on ${b.onlyOn.join(', ')}` : ''}): ${b.path}${b.variant ? ` [${b.variant}]` : ''}`);
+      out.push(`    role ${b.role}, profile ${b.profile}${b.onlyOn ? ` (left out only on ${b.onlyOn.join(', ')})` : ''}`);
       out.push(`    actual:   ${b.actual}`);
       out.push(`    expected: ${b.expected}`);
       out.push(`    evidence: ${b.evidence}`);

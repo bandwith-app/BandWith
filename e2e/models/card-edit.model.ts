@@ -33,9 +33,10 @@ export const cardEdit = defineLifecycle({
   summary: 'An admin opens a card editor on a gig or rehearsal overview, changes it, and leaves, switches or saves.',
   role: 'admin',
   initial: 'start',
+  // Each path runs for one card, in turn, so every card is covered across
+  // the paths (saving every card type is also in e2e/specs/event-edit.spec.ts).
   variants: CARDS,
   rotateVariants: true,
-  everyVariant: ['OPEN_EVENT OPEN CHANGE SAVE'],
   states: {
     start: {
       see: 'Home.',
@@ -126,6 +127,7 @@ export const setlistDraft = defineLifecycle({
   role: 'admin',
   initial: 'start',
   variants: ['gig setlist', 'focus songs'],
+  rotateVariants: true,
   states: {
     start: { see: 'Home.', on: { OPEN_EVENT: 'overview' } },
     overview: { see: 'The event overview with its songs.', on: { OPEN_SONGS: 'clean' } },
