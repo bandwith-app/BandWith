@@ -355,8 +355,13 @@
 [data-bw-posture="tabletop"] .bw-event-detail .bw-ed-scroll {
   overflow: visible !important;
 }
-[data-bw-posture="tabletop"] .bw-event-detail .bw-ed-scrim {
+[data-bw-posture="tabletop"] .bw-event-detail .bw-ed-scrim,
+[data-bw-posture="tabletop"] .bw-event-detail .bw-ed-pinned {
   display: none;
+}
+/* The hero's own top bar stays on the Display (no pinned copy here). */
+[data-bw-posture="tabletop"] .bw-event-detail .bw-ed-topbar {
+  visibility: visible;
 }
 [data-bw-posture="tabletop"] .bw-event-detail .bw-ed-hero {
   position: absolute;
