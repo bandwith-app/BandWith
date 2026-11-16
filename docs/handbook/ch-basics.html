@@ -1,0 +1,525 @@
+<section class="chapter" id="ch-basics">
+  <h1>Primi passi, navigazione e impostazioni</h1>
+  <p class="lead">Come si crea l'account, si fonda una band o ci si unisce a una band esistente, come ci si orienta nell'app e come la si adatta alle proprie preferenze su ogni dispositivo.</p>
+
+  <h2>Account e accesso</h2>
+
+  <h3 id="art-create-an-account" data-roles="admin,member,deputy">Creare l'account BandWith</h3>
+  <p>La prima schermata è quella di benvenuto, con tre ingressi: <b class="ui">Get started</b> (nuovo account), <b class="ui">Sign in</b> (account già esistente) e <b class="ui">I have an invite code</b> (invito da parte di una band).</p>
+  <figure class="shot" data-shot="basics-welcome" data-device="phone"><figcaption>La schermata di benvenuto: Get started, Sign in e I have an invite code.</figcaption></figure>
+  <ol class="steps">
+    <li>Nella schermata di benvenuto toccare <b class="ui">Get started</b>.</li>
+    <li>Toccare <b class="ui">Continue with Google</b> o <b class="ui">Continue with Apple</b> per usare quell'account, oppure compilare il modulo email sotto <b class="ui">or with email</b>.</li>
+    <li>Nel modulo email inserire <b class="ui">Full name</b>, <b class="ui">Email</b> e una <b class="ui">Password</b> di almeno 8 caratteri (il suggerimento indica <b class="ui">Min 8 characters</b>).</li>
+    <li>Toccare <b class="ui">Continue</b> in basso. Proseguendo si accettano i <b class="ui">Terms</b> e la <b class="ui">Privacy Policy</b>, entrambi apribili dai link sotto il modulo.</li>
+    <li>Se compare <b class="ui">Check your email</b>, aprire il link ricevuto per email per confermare l'indirizzo (vedi <a data-ref="confirm-your-email">Confermare l'indirizzo email</a>).</li>
+    <li>In <b class="ui">What brings you here?</b> scegliere <b class="ui">Manage my band</b> o <b class="ui">Solo schedule</b> e toccare <b class="ui">Continue</b> (vedi <a data-ref="solo-and-band-mode">Modalità solista e modalità band</a>).</li>
+  </ol>
+  <aside class="note tip">Se l'indirizzo appartiene già a un account, l'app avvisa con <b class="ui">This email is already registered. Try signing in.</b> In quel caso si usa l'<a data-ref="sign-in">accesso</a>.</aside>
+  <p>Se si è entrati con l'account Google sbagliato, <b class="ui">What brings you here?</b> mostra <b class="ui">Signed in as</b> con l'indirizzo e un pulsante <b class="ui">Sign out</b>: si può ricominciare prima che esista una band.</p>
+  <div class="devnote" data-devices="duoBook,duoLand">Sul telefono a doppio schermo aperto, la pagina sinistra mostra la pagina del marchio BandWith con l'elenco dei passaggi di onboarding; il modulo è sulla pagina destra.</div>
+  <div class="devnote" data-devices="tablet">Registrazione, onboarding e schermate di blocco restano in una colonna leggibile al centro della finestra, senza allargarsi su tutta la larghezza.</div>
+  <div class="devnote" data-devices="web">L'accesso con Google e Apple si apre nella stessa scheda e riporta poi all'app. Nell'app per telefono si apre invece un browser interno; chiudendolo senza accedere, i pulsanti tornano utilizzabili.</div>
+  <div class="devnote" data-devices="duoLaptop">In postura Laptop il titolo e i pulsanti Google / Apple restano sulla metà superiore e il modulo email comincia sulla metà inferiore. In <b class="ui">What brings you here?</b> le scelte sono sulla metà inferiore: si scorre fino a <b class="ui">Continue</b>.</div>
+
+  <h3 id="art-confirm-your-email" data-roles="admin,member,deputy">Confermare l'indirizzo email</h3>
+  <p>Quando la conferma email è attiva, l'account esiste solo dopo l'apertura del link inviato; fino ad allora l'app mostra <b class="ui">Check your email</b>.</p>
+  <ol class="steps">
+    <li>Aprire l'email di BandWith sullo stesso dispositivo su cui si è creato l'account.</li>
+    <li>Toccare il link: l'app si apre e completa la creazione dell'account.</li>
+    <li>Se l'app resta su <b class="ui">Check your email</b>, toccare <b class="ui">I’ve confirmed it: sign in</b>.</li>
+    <li>Email non arrivata: controllare lo spam, poi toccare <b class="ui">Send the email again</b>; il pulsante diventa <b class="ui">Email sent again</b>.</li>
+  </ol>
+  <aside class="note tip">Il link va aperto sul dispositivo della registrazione: aperto su un altro dispositivo non può completare l'iscrizione.</aside>
+
+  <h3 id="art-sign-in" data-roles="admin,member,deputy">Accedere</h3>
+  <ol class="steps">
+    <li>Nella schermata di benvenuto toccare <b class="ui">Sign in</b>.</li>
+    <li>Toccare <b class="ui">Continue with Google</b> o <b class="ui">Continue with Apple</b> se ci si è registrati così.</li>
+    <li>Altrimenti inserire <b class="ui">Email</b> e <b class="ui">Password</b>; il pulsante a forma di occhio (<b class="ui">Show password</b>) mostra la password durante la digitazione.</li>
+    <li>Toccare <b class="ui">Sign in</b>.</li>
+    <li>Se l'app chiede <b class="ui">Enable Face ID?</b> (o l'impronta), toccare <b class="ui">Enable</b> per accedere più in fretta la volta successiva, oppure <b class="ui">Not now</b> (vedi <a data-ref="quick-sign-in">Accesso con Face ID o impronta</a>).</li>
+  </ol>
+  <p>Se l'accesso rapido è attivo sul dispositivo, sotto <b class="ui">Sign in</b> compare un grande pulsante <b class="ui">Use Face ID</b> (o impronta) che sostituisce la password.</p>
+  <p class="steps-title">Quando l'accesso non riesce</p>
+  <ul>
+    <li><b class="ui">Please enter email and password</b>: uno dei due campi è vuoto.</li>
+    <li>Password errata: toccare <b class="ui">Forgot password?</b> sotto il campo password (vedi <a data-ref="forgot-password">Reimpostare la password</a>).</li>
+    <li>Un accesso Google o Apple annullato o un link email scaduto spiegano cosa non ha funzionato: nell'app nella schermata di accesso, sul web in una schermata a sé con <b class="ui">Back to sign in</b>. Basta riprovare.</li>
+    <li><b class="ui">Can’t load your bands</b>: l'accesso è riuscito ma le band non si caricano (nessuna connessione, errore del server, app non aggiornata). Le band sono al sicuro: toccare <b class="ui">Try again</b> o aggiornare BandWith.</li>
+  </ul>
+  <p>Chi è nuovo tocca <b class="ui">Create an account</b> in fondo alla schermata di accesso.</p>
+  <aside class="note tip">Offline l'app mantiene l'accesso con la sessione salvata sul dispositivo, così band e gig in cache restano consultabili; la sessione si rinnova al ritorno della connessione.</aside>
+  <div class="devnote" data-devices="duoLaptop">In postura Laptop il titolo e i pulsanti Google / Apple restano sulla metà superiore; <b class="ui">Email</b>, <b class="ui">Password</b> e <b class="ui">Sign in</b> cominciano sulla metà inferiore, lontano dalla piega.</div>
+
+  <h3 id="art-forgot-password" data-roles="admin,member,deputy">Reimpostare una password dimenticata</h3>
+  <ol class="steps">
+    <li>Nella schermata di accesso toccare <b class="ui">Forgot password?</b>.</li>
+    <li>In <b class="ui">Reset password</b> inserire l'<b class="ui">Email</b> di registrazione e toccare <b class="ui">Send reset link</b>.</li>
+    <li>Aprire l'email e toccare il link, valido per un'ora.</li>
+    <li>L'app si apre su <b class="ui">Set a new password</b>: inserire una <b class="ui">New password</b> di almeno 8 caratteri e ripeterla in <b class="ui">Confirm new password</b>.</li>
+    <li>Toccare <b class="ui">Save new password</b>; su <b class="ui">Password updated</b> toccare <b class="ui">Continue</b>.</li>
+  </ol>
+  <p>Se il link è vecchio o è stato aperto per errore, <b class="ui">Keep my current password</b> lascia tutto invariato.</p>
+  <p>Link scaduto o già usato? Alcune app di posta aprono i link prima dell'utente, e così li consumano. Sul web BandWith mostra <b class="ui">Link expired</b>: si tocca <b class="ui">Send a new link</b>. Nell'app lo segnala la schermata di accesso: si tocca <b class="ui">Forgot password?</b>. Il nuovo link va aperto subito, nello stesso browser da cui è stato richiesto.</p>
+  <aside class="note tip">Dopo un cambio password l'accesso con Face ID / impronta si disattiva per quell'account; si riattiva con un accesso tramite la nuova password.</aside>
+  <p>Gli account che accedono solo con Google o Apple non hanno una password BandWith: la password si gestisce presso Google o Apple.</p>
+
+  <h3 id="art-quick-sign-in" data-roles="admin,member,deputy">Accesso con Face ID o impronta</h3>
+  <p>L'accesso rapido viene proposto quando si accede con email e password. Conserva nell'archivio sicuro del telefono (Keychain o Keystore) un token di accesso, mai la password. È disponibile per un solo account per dispositivo.</p>
+  <ol class="steps">
+    <li>Nella schermata di accesso inserire email e password e toccare <b class="ui">Sign in</b>.</li>
+    <li>Quando <b class="ui">Faster sign-in</b> chiede <b class="ui">Enable Face ID?</b> (o <b class="ui">Enable Fingerprint?</b>), toccare <b class="ui">Enable Face ID</b>.</li>
+    <li>La volta successiva toccare <b class="ui">Use Face ID</b> nella schermata di accesso.</li>
+  </ol>
+  <ul>
+    <li>Accedendo con un altro account l'app chiede <b class="ui">Use Face ID for this account?</b>: <b class="ui">Switch Face ID</b> lo sposta, <b class="ui">Not now</b> lo lascia sul primo account.</li>
+    <li>Dopo <b class="ui">Not now</b> l'app non lo richiede più a quell'account, su quel dispositivo, per 30 giorni.</li>
+    <li><b class="ui">Quick sign-in expired. Sign in with your password once to turn it back on.</b> compare quando l'accesso salvato non è più valido.</li>
+    <li><b class="ui">Your password changed. Sign in with it once to turn quick sign-in back on.</b> compare dopo una reimpostazione della password.</li>
+    <li>L'uscita (sign out) conserva l'accesso rapido per quell'account; l'eliminazione dell'account lo rimuove dal dispositivo.</li>
+  </ul>
+  <div class="devnote" data-devices="web">Non disponibile sul web: si accede con password, Google o Apple.</div>
+  <div class="devnote" data-devices="android">Usa l'impronta (o l'iride, se il telefono la supporta); il pulsante si chiama <b class="ui">Use Fingerprint</b>.</div>
+
+  <h3 id="art-app-lock" data-roles="admin,member,deputy">Blocco app</h3>
+  <p>Il blocco app protegge le band se qualcuno prende in mano il telefono sbloccato. È attivo per impostazione predefinita su iPhone, iPad e Android e interviene solo quando l'app riparte dopo essere stata chiusa (anche dal sistema); il ritorno dallo sfondo non lo attiva. La schermata <b class="ui">Locked</b> chiede lo sblocco appena sparisce la schermata di avvio, con tre possibilità:</p>
+  <ul>
+    <li><b class="ui">Unlock with Face ID</b> (o impronta, o <b class="ui">device passcode</b>): il codice del telefono è la riserva offerta dal sistema.</li>
+    <li><b class="ui">Use password</b>: si inserisce la <b class="ui">Password</b> dell'account BandWith e si tocca <b class="ui">Unlock</b>. Solo per account con password (non solo Google o Apple).</li>
+    <li><b class="ui">Sign out</b>: esce dall'account; per rientrare serve un accesso completo.</li>
+  </ul>
+  <p class="steps-title">Attivare o disattivare il blocco</p>
+  <ol class="steps">
+    <li>Aprire il menu (ultima scheda) e toccare <b class="ui">Settings &amp; account</b>.</li>
+    <li>Toccare <b class="ui">Privacy &amp; account</b>.</li>
+    <li>Agire sull'interruttore <b class="ui">App lock</b>; per disattivarlo l'app chiede prima lo stesso controllo Face ID / impronta.</li>
+  </ol>
+  <aside class="note tip">L'impostazione vale per singolo dispositivo: disattivata sull'iPad, resta attiva sul telefono.</aside>
+  <aside class="note privacy">Con il blocco app attivo, il selettore delle app (Recenti su Android) mostra una schermata BandWith neutra invece di gig e importi.</aside>
+  <div class="devnote" data-devices="web">La versione web non si blocca mai, perché una pagina web non può fidarsi di un controllo del dispositivo. Su un computer condiviso conviene uscire dall'account.</div>
+  <div class="devnote" data-devices="android">Il tasto Indietro sulla schermata di blocco esce dall'app invece di navigare al suo interno.</div>
+
+  <h2>La band: configurazione, inviti e più band</h2>
+
+  <h3 id="art-create-your-band" data-roles="admin">Configurare la band (primo avvio)</h3>
+  <p>Dopo la creazione dell'account e la scelta di <b class="ui">Manage my band</b>, una breve procedura in cinque passaggi configura la band. La barra superiore mostra <b class="ui">Step N of M</b> e un pulsante Indietro in ogni passaggio.</p>
+  <ol class="steps">
+    <li><b class="ui">Name your band</b>: inserire il <b class="ui">Band name</b> (almeno 2 caratteri). La foto rotonda aggiunge un <b class="ui">Band avatar</b> (facoltativo); la scheda di anteprima mostra come la vedranno membri e clienti. Toccare <b class="ui">Continue</b>.</li>
+    <li><b class="ui">Tell us about you</b>: inserire <b class="ui">Your name</b> e toccare almeno uno strumento in <b class="ui">Your role / instrument</b>; <b class="ui">Other…</b> permette di scriverne uno non elencato. La scheda <b class="ui">Your role: band admin</b> conferma il controllo completo. Toccare <b class="ui">Continue</b>.</li>
+    <li><b class="ui">Invite your bandmates</b>: inserire un <b class="ui">Email address</b> e toccare il pulsante di aggiunta. In <b class="ui">Invite details</b> indicare <b class="ui">Name (optional)</b>, <b class="ui">Role / instrument</b> e <b class="ui">Permission</b>: <b class="ui">Member</b> (accesso limitato) o <b class="ui">Admin</b> (accesso completo). Toccare <b class="ui">Add to list</b> e ripetere per ognuno, poi <b class="ui">Send invites</b> oppure <b class="ui">Skip for now</b>.</li>
+    <li><b class="ui">Build your repertoire</b>: toccare brani in <b class="ui">Popular songs</b>, usare <b class="ui">+ Add song</b> per scriverne uno o <b class="ui">Import</b> per caricare un file CSV o TXT. Toccare <b class="ui">Continue</b> oppure <b class="ui">Skip for now</b>.</li>
+    <li><b class="ui">Ready to rock.</b>: controllare il numero di membri e brani e toccare <b class="ui">Go to dashboard</b>.</li>
+  </ol>
+  <aside class="note tip">Gli inviti partono solo al tocco di <b class="ui">Go to dashboard</b>. Se il salvataggio non riesce, il pulsante diventa <b class="ui">Try again</b> e non si perde nulla.</aside>
+  <p>L'avatar diventa il logo della band: compare sulla scheda della band, nel selettore delle band e nei PDF dei preventivi, e si può cambiare in seguito (<a data-ref="band-logo-and-details">Nome, logo e sede della band</a>). Al primo ingresso come admin si apre il <a data-ref="welcome-tour">tour di benvenuto</a>.</p>
+  <div class="devnote" data-devices="android">Nel passaggio degli inviti, <b class="ui">Import from contacts</b> permette di scegliere i compagni dalla rubrica.</div>
+  <div class="devnote" data-devices="phone,tablet">Su iPhone e iPad il pulsante dei contatti è nascosto, perché il sistema non offre un selettore di contatti ad app di questo tipo: gli indirizzi si digitano.</div>
+
+  <h3 id="art-welcome-tour" data-roles="admin,member,deputy">Il tour di benvenuto</h3>
+  <p>La prima volta che si apre una band su un dispositivo, BandWith mostra un breve tour dedicato al proprio ruolo. Si scorre con <b class="ui">Next</b> e <b class="ui">Back</b>; l'ultima scheda ha <b class="ui">Done</b>. <b class="ui">Close tour</b> lo chiude in qualsiasi momento.</p>
+  <div class="roles">
+    <div data-role="admin">Quattro schede: la band in un unico posto, come mettere un gig in calendario, chi vede quali compensi e le tariffe. L'ultima ha <b class="ui">Configure rates</b>, che apre <b class="ui">Pricing, fees &amp; services</b>.</div>
+    <div data-role="member">Tre schede: la Home, come rispondere a un invito a un gig, e i brani (accordi, testi, note personali e modalità Stage).</div>
+    <div data-role="deputy">Tre schede su <b class="ui">Deputy gigs</b>: rispondere a una richiesta, cosa condivide la band con il sostituto, e aggiungere i propri gig da sostituto al calendario.</div>
+  </div>
+  <p>Ogni scheda ha <b class="ui">Learn more in the Academy</b>, che apre la guida corrispondente dentro l'app; chiusa la guida si torna al tour.</p>
+  <aside class="note tip">Per rivederlo: Impostazioni, <b class="ui">Help &amp; support</b>, <b class="ui">Show the tour again</b>. La stessa pagina contiene <b class="ui">BandWith Academy</b>, che apre le guide per il proprio ruolo.</aside>
+  <div class="devnote" data-devices="duoLaptop">In postura Laptop l'icona e il titolo di ogni scheda stanno sulla metà superiore, testo e pulsanti sulla metà inferiore. Entrambe le metà prendono i colori scuri del tour, così il titolo resta ben leggibile.</div>
+
+  <h3 id="art-solo-and-band-mode" data-roles="admin,member,deputy">Modalità solista e modalità band</h3>
+  <p>In <b class="ui">What brings you here?</b> si sceglie come iniziare. <b class="ui">Solo schedule</b> (badge <b class="ui">Free</b>) è un calendario personale: gig personali, prove private e guadagni. <b class="ui">Manage my band</b> (badge <b class="ui">Admin</b>) crea una band gestita dall'utente. La scelta si può cambiare in seguito.</p>
+  <table class="grid">
+    <thead><tr><th></th><th>Solo schedule</th><th>In una band</th></tr></thead>
+    <tbody>
+      <tr><td>Home</td><td>I gig personali, senza azioni rapide di band</td><td>Schede della band, action center, azioni rapide</td></tr>
+      <tr><td>Menu Create</td><td><b class="ui">Add personal gig</b></td><td>Admin: <b class="ui">New gig</b>, <b class="ui">New rehearsal</b>, <b class="ui">New quote</b>, <b class="ui">Log personal gig</b>. Membro: <b class="ui">Add personal gig</b>, <b class="ui">Propose rehearsal</b></td></tr>
+      <tr><td>Menu</td><td><b class="ui">My calendar</b> con l'etichetta <b class="ui">Solo schedule</b></td><td>La band, i suoi membri e le sue risorse</td></tr>
+      <tr><td>Scheda Chat</td><td>Mostra il calendario (non c'è una band con cui chattare)</td><td>Chat di band e chat private</td></tr>
+    </tbody>
+  </table>
+  <p>Si esce dalla modalità solista creando una band (<a data-ref="several-bands">Suonare in più band</a>) o unendosi a una con un invito (<a data-ref="join-with-an-invite">Unirsi con un invito</a>). L'app passa da sola alla modalità band e i gig personali restano.</p>
+  <p>In modalità band il ruolo è per singola band: si può essere admin della propria band e membro di un'altra. L'etichetta sopra il nome della band in Home indica <b class="ui">Admin</b> o <b class="ui">Member</b> per la band attiva.</p>
+
+  <h3 id="art-join-with-an-invite" data-roles="member,admin">Unirsi a una band con link o codice d'invito</h3>
+  <ol class="steps">
+    <li>Aprire il link d'invito nell'email dell'admin, oppure toccare <b class="ui">I have an invite code</b> nella schermata di benvenuto, incollare il codice in <b class="ui">Invite code or link</b> e toccare <b class="ui">Join</b>.</li>
+    <li>Attendere <b class="ui">Checking invite code…</b>. L'invito mostra <b class="ui">You're invited</b>, la band, i suoi membri e i gig dell'anno, chi ha invitato e con quale ruolo.</li>
+    <li>Toccare <b class="ui">Accept &amp; continue</b>, oppure <b class="ui">Decline invitation</b> per rifiutare.</li>
+    <li>In <b class="ui">Join band</b> registrarsi con Google, Apple o email e password. Se l'indirizzo ha già un account, basta inserirne la password: l'app esegue l'accesso.</li>
+    <li>In <b class="ui">Tell us about you</b> inserire il nome, scegliere gli strumenti e toccare <b class="ui">Continue</b>.</li>
+    <li>In <b class="ui">You’re joining</b> toccare <b class="ui">Join</b> seguito dal nome della band: l'app si apre sulla band.</li>
+  </ol>
+  <aside class="note tip">Va usato l'indirizzo a cui è stato inviato l'invito: un invito destinato a un altro indirizzo non può essere accettato da questo account.</aside>
+  <p>Se l'adesione non riesce (invito scaduto, email diversa), l'app resta sull'ultima schermata, ne spiega il motivo e il pulsante diventa <b class="ui">Try again</b>.</p>
+  <p>In alternativa all'email, l'admin può condividere un codice: in <b class="ui">Band members</b> l'invito offre <b class="ui">Copy code</b> e <b class="ui">Share invite</b>. La persona installa BandWith, si registra e incolla il codice.</p>
+
+  <h3 id="art-find-my-invite-by-email" data-roles="member,admin">Trovare l'invito tramite email</h3>
+  <ol class="steps">
+    <li>Nella schermata di benvenuto toccare <b class="ui">I have an invite code</b>, poi <b class="ui">No code? Find my invite by email</b>.</li>
+    <li>In <b class="ui">Find your invite</b> inserire l'<b class="ui">Email</b> a cui è arrivato l'invito e toccare <b class="ui">Find invite</b>.</li>
+    <li>Se compare <b class="ui">Invite found</b>, toccare <b class="ui">Create account</b> oppure <b class="ui">I already have an account</b> per accedere, usando lo stesso indirizzo.</li>
+    <li>Una volta dentro, la scheda dell'invito in <b class="ui">What brings you here?</b> (o in Home) mostra la band: toccare <b class="ui">Join band</b> (<a data-ref="accept-a-band-invite">Accettare un invito con un account esistente</a>).</li>
+  </ol>
+  <aside class="note privacy">Chiunque può digitare un indirizzo, quindi la ricerca dice solo se c'è un invito in attesa. La band che l'ha inviato compare solo dopo l'accesso con quell'indirizzo.</aside>
+  <p class="steps-title">Nessun invito trovato</p>
+  <ul>
+    <li>Controllare la cartella spam.</li>
+    <li>Toccare <b class="ui">Try another email</b> e provare un altro indirizzo.</li>
+    <li>Chiedere all'admin di inviare di nuovo l'invito.</li>
+    <li>Oppure toccare <b class="ui">Or create your own band →</b>.</li>
+  </ul>
+  <p><b class="ui">Too many attempts. Wait a minute and try again.</b> indica che la ricerca è stata usata troppe volte in poco tempo.</p>
+
+  <h3 id="art-accept-a-band-invite" data-roles="member,admin,deputy">Accettare un invito avendo già un account</h3>
+  <p>Quando una band invita l'email di un account esistente, in Home compare una scheda scura <b class="ui">Band invite</b> con chi invita e quale band (ad es. <b class="ui">Leo M. invited you to join Velvet Static</b>), il numero di membri e il ruolo, <b class="ui">as member</b> o <b class="ui">as admin</b>.</p>
+  <ul>
+    <li><b class="ui">Join band</b>: l'app mostra <b class="ui">You joined</b> con il nome della band e passa a quella band.</li>
+    <li><b class="ui">Decline</b>: la band viene avvisata e la scheda scompare.</li>
+    <li>Pulsante di chiusura (<b class="ui">Decide later</b>): la scheda ricompare al successivo avvio dell'app.</li>
+  </ul>
+  <p>Se si apre un link d'invito mentre si è collegati con un altro account, la scheda <b class="ui">This invite is for</b> mostra l'indirizzo destinatario: toccare <b class="ui">Sign out</b> e riaprire l'invito con quell'indirizzo. <b class="ui">This invite can’t be opened</b> significa che l'invito è già stato usato, rifiutato o è scaduto.</p>
+
+  <h3 id="art-several-bands" data-roles="admin,member">Suonare in più band</h3>
+  <p class="steps-title">Cambiare band</p>
+  <ol class="steps">
+    <li>In Home toccare <b class="ui">Switch band</b> sotto il nome della band.</li>
+    <li>In <b class="ui">Your bands</b> toccare la band desiderata. Quella attiva è contrassegnata <b class="ui">Active</b>; ogni riga mostra il proprio ruolo e il numero di membri.</li>
+  </ol>
+  <p>Si può cambiare anche dal menu (ultima scheda): in <b class="ui">Your bands</b>, <b class="ui">Switch</b> su una band.</p>
+  <p class="steps-title">Creare un'altra band</p>
+  <ol class="steps">
+    <li>Aprire <b class="ui">Switch band</b> e toccare <b class="ui">Create band</b>, oppure nel menu toccare <b class="ui">New band</b> (<b class="ui">Playing in another act?</b>).</li>
+    <li>Inserire <b class="ui">Band name</b>, scegliere un <b class="ui">Genre</b> e, se si vuole, aggiungere <b class="ui">Description</b> e <b class="ui">Website (optional)</b>.</li>
+    <li>Lasciare <b class="ui">Plan</b> su <b class="ui">Free</b>, che comprende tutte le funzioni.</li>
+    <li>Toccare <b class="ui">Create</b>: l'utente diventa admin della nuova band e l'app passa a quella.</li>
+  </ol>
+  <p>Tutto ciò che si vede appartiene alla band attiva: Home, scalette, membri e risorse. Il calendario può invece mostrare tutte le band insieme grazie al filtro per band (<a data-ref="filter-the-calendar">Filtrare il calendario</a>).</p>
+  <p>Una notifica proveniente da un'altra band chiede prima <b class="ui">This is from</b> seguito dalla band, con <b class="ui">Switch to</b> (passa a quella band), <b class="ui">Just view</b> (la apre senza cambiare band, quando è consultabile) o <b class="ui">Cancel</b>.</p>
+  <aside class="note tip">Per lasciare una band: aprire <b class="ui">Band members</b> e toccare <b class="ui">Leave band</b> nel menu <b class="ui">⋯</b> della propria riga (<a data-ref="leave-a-band">Lasciare una band</a>).</aside>
+
+  <h3 id="art-band-logo-and-details" data-roles="admin">Nome, logo e sede della band</h3>
+  <ol class="steps">
+    <li>Aprire il menu (ultima scheda, o la propria foto in alto a destra in Home).</li>
+    <li>Sulla scheda della band attiva toccare <b class="ui">Edit</b>.</li>
+    <li>In <b class="ui">Band logo</b> toccare <b class="ui">Upload</b> (o <b class="ui">Change</b>) e scegliere un'immagine; il pulsante <b class="ui">Remove logo</b> la elimina.</li>
+    <li>Modificare il <b class="ui">Band name</b> se serve.</li>
+    <li>Iniziare a scrivere in <b class="ui">Home base city</b> e scegliere il luogo tra i <b class="ui">Suggested places</b>: da qui si calcolano le spese di viaggio nei preventivi.</li>
+    <li>Aggiungere una <b class="ui">Band bio / tagline (optional)</b>.</li>
+    <li>Toccare <b class="ui">Save details</b> oppure <b class="ui">Cancel</b>.</li>
+  </ol>
+  <p>Il logo compare sulla scheda della band, nel selettore delle band e nei PDF dei preventivi; sede e tagline compaiono sotto il nome della band nel menu.</p>
+  <div class="roles">
+    <div data-role="admin">Vede <b class="ui">Edit</b> e <b class="ui">Band settings</b> sulla scheda della band.</div>
+    <div data-role="member">Vede la scheda della band senza <b class="ui">Edit</b>; può aprire <b class="ui">Members</b> per vedere la formazione.</div>
+  </div>
+
+  <h2>Orientarsi nell'app</h2>
+
+  <h3 id="art-app-navigation" data-roles="admin,member,deputy">Navigazione</h3>
+  <p>La barra in basso ha quattro schede e al centro il pulsante Create:</p>
+  <table class="grid">
+    <thead><tr><th>Comando</th><th>Funzione</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Home</b></td><td>La band in sintesi (<a data-ref="home-screen">La schermata Home</a>).</td></tr>
+      <tr><td><b class="ui">Calendar</b></td><td>Tutti i gig, le prove, i preventivi e i gig personali, con ricerca e filtri.</td></tr>
+      <tr><td><b class="ui">+</b> (<b class="ui">Create</b>)</td><td>Apre il menu <b class="ui">Create</b>.</td></tr>
+      <tr><td><b class="ui">Chat</b></td><td>Chat di band, chat degli eventi e messaggi privati; un badge conta i non letti.</td></tr>
+      <tr><td><b class="ui">Settings</b> (icona menu)</td><td>Apre il menu: profilo, band, risorse della band, impostazioni dell'app e uscita (<a data-ref="account-menu">Il menu</a>).</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin"><b class="ui">Create</b> offre <b class="ui">New gig</b>, <b class="ui">New rehearsal</b> (programmazione diretta o sondaggio sulle disponibilità), <b class="ui">New quote</b> e <b class="ui">Log personal gig</b>.</div>
+    <div data-role="member"><b class="ui">Create</b> offre <b class="ui">Add personal gig</b> e <b class="ui">Propose rehearsal</b> (proporre all'admin una data o un argomento di prova).</div>
+  </div>
+  <p>L'intestazione della Home mostra il ruolo, il nome della band e <b class="ui">Switch band</b>; a destra ci sono la campanella (<b class="ui">Notifications</b>, con il numero di non lette) e la foto o le iniziali, che aprono anch'esse il menu. L'intestazione di Calendar ha <b class="ui">Search events</b>, quella di Chat ha <b class="ui">New chat</b>.</p>
+  <p>La barra delle schede si riduce scorrendo verso il basso e ricompare scorrendo verso l'alto; si nasconde quando la tastiera è aperta.</p>
+  <div class="devnote" data-devices="tablet">Le schede diventano una pillola flottante con icone ed etichette; la scheda attiva è piena. <b class="ui">Create</b> si apre come popover sopra il pulsante.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand">Non c'è barra inferiore: la barra laterale contiene Home, Calendar, Create e Chat, poi Indietro, le azioni della schermata, la ricerca e il profilo (<a data-ref="duo-closed">Duo chiuso</a>).</div>
+  <div class="devnote" data-devices="duoLaptop">La barra laterale si dispone lungo il bordo inferiore della metà bassa, vicino alle mani (<a data-ref="duo-laptop-pose">Postura laptop</a>).</div>
+
+  <h3 id="art-home-screen" data-roles="admin,member">La schermata Home</h3>
+  <figure class="shot" data-shot="basics-home-admin" data-device="phone"><figcaption>La Home di un admin: metriche, action center ed eventi in arrivo.</figcaption></figure>
+  <p>La Home si costruisce sulla band attiva. Dall'alto verso il basso:</p>
+  <table class="grid">
+    <thead><tr><th>Scheda</th><th>Admin</th><th>Membro</th></tr></thead>
+    <tbody>
+      <tr><td>Metriche (2 × 2)</td><td><b class="ui">CONFIRMED GIGS</b>, <b class="ui">UPCOMING REHEARSALS</b>, <b class="ui">ACTIVE QUOTES</b>, <b class="ui">REVENUE</b></td><td><b class="ui">CONFIRMED GIGS</b>, <b class="ui">UPCOMING REHEARSALS</b>, <b class="ui">UPCOMING PAY</b>, <b class="ui">TOTAL EARNED</b> (solo i propri compensi)</td></tr>
+      <tr><td><b class="ui">Action center</b></td><td><b class="ui">Payouts</b> da saldare dopo un concerto (tutti i musicisti) e <b class="ui">Rehearsal scheduling</b> (sondaggi e proposte)</td><td><b class="ui">Your payouts</b> (solo quanto spetta al membro) e sondaggi di prova aperti</td></tr>
+      <tr><td><b class="ui">Next Soundcheck</b> / <b class="ui">My setlist</b></td><td>Non presente</td><td>Orari del prossimo gig, <b class="ui">Load-in map</b>, numero di brani e <b class="ui">View Setlist</b></td></tr>
+      <tr><td><b class="ui">Upcoming</b></td><td>I prossimi 3 gig e prove; il primo gig mostra <b class="ui">Show readiness</b> e <b class="ui">Go live</b></td><td>I prossimi 3 gig e prove; i gig mostrano <b class="ui">Your fee</b></td></tr>
+      <tr><td><b class="ui">Drafts</b></td><td>Gig, prove e preventivi non completati (<a data-ref="drafts">Bozze</a>)</td><td>Solo se il membro ha bozze proprie</td></tr>
+      <tr><td><b class="ui">Quick Actions</b></td><td><b class="ui">Repertoire</b>, <b class="ui">Members</b>, <b class="ui">Gear list</b>, <b class="ui">To-do lists</b>, <b class="ui">Contracts</b></td><td><b class="ui">Repertoire</b>, <b class="ui">Members</b></td></tr>
+      <tr><td>Crescita</td><td><b class="ui">Gigs this month</b>, <b class="ui">Revenue vs last month</b>, <b class="ui">View calendar</b>, <b class="ui">View Analytics</b></td><td>Non presente</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Elementi toccabili</p>
+  <ul>
+    <li><b class="ui">CONFIRMED GIGS</b> e <b class="ui">UPCOMING REHEARSALS</b> aprono il calendario filtrato su quel tipo.</li>
+    <li><b class="ui">ACTIVE QUOTES</b> e <b class="ui">REVENUE</b> (admin) aprono le schede preventivi e finanze.</li>
+    <li><b class="ui">See all</b> accanto a <b class="ui">Upcoming</b> apre il calendario.</li>
+    <li><b class="ui">Review payouts</b> (admin) apre compensi e pagamenti del gig; <b class="ui">View payout</b> (membro) mostra il proprio.</li>
+    <li>Una scheda in <b class="ui">Upcoming</b> apre l'evento; <b class="ui">Go live</b> apre il gig in modalità Stage.</li>
+    <li>La freccia accanto a <b class="ui">Quick Actions</b> apre tutte le risorse della band.</li>
+  </ul>
+  <aside class="note privacy">In Home i membri non vedono mai i compensi altrui, i totali dei preventivi né gli incassi della band: le loro schede economiche contano solo i propri compensi.</aside>
+  <p>Se non c'è nulla in programma, <b class="ui">Upcoming</b> indica <b class="ui">No upcoming gigs or rehearsals scheduled</b>; agli admin compare anche <b class="ui">Tap + to schedule a gig or rehearsal</b>.</p>
+  <div class="devnote" data-devices="duoLaptop">La Home diventa il Band desk: nella metà superiore il prossimo gig come locandina (o la prossima prova se non ci sono gig confermati), in quella inferiore le cose da fare e i pulsanti di creazione.</div>
+  <div class="devnote" data-devices="duoBook,duoLand,tablet">La seconda pagina mostra il prossimo gig accanto alla Home, oppure <b class="ui">Pick an event</b> finché non se ne apre uno.</div>
+
+  <h3 id="art-account-menu" data-roles="admin,member,deputy">Il menu: profilo, band e impostazioni</h3>
+  <figure class="shot" data-shot="basics-menu" data-device="phone"><figcaption>Il menu (identità e account): profilo, band attiva, risorse e impostazioni dell'app.</figcaption></figure>
+  <p>Si apre con l'ultima scheda (<b class="ui">Settings</b>) o con la foto in alto a destra e si intitola <b class="ui">Who you are</b>. Dall'alto verso il basso:</p>
+  <ul>
+    <li>La scheda del profilo: nome, email e strumento. <b class="ui">Edit</b> apre la <a data-ref="edit-your-profile">modifica del profilo</a>. Senza nome compare <b class="ui">Add your name</b>, che ricorda che la band vede l'email finché non si aggiunge un nome.</li>
+    <li><b class="ui">Deputy gigs</b>: solo se qualche band chiede all'utente di suonare come sostituto (<a data-ref="deputy-gigs">Gig da sostituto</a>).</li>
+    <li>La band attiva: nome, numero di musicisti e ruolo (<b class="ui">Band admin</b> o <b class="ui">Band member</b>). Gli admin vedono <b class="ui">Edit</b> e <b class="ui">Band settings</b>; <b class="ui">Members</b> apre la formazione.</li>
+    <li><b class="ui">Your bands</b>, con <b class="ui">Switch</b> su ogni altra band, e <b class="ui">New band</b>.</li>
+    <li><b class="ui">Band assets &amp; workflows</b>: <b class="ui">Repertoire</b>, <b class="ui">Gear &amp; inventory</b>, <b class="ui">Contracts &amp; docs</b> (solo admin) e <b class="ui">To-do lists</b>, ciascuno con un conteggio e una riga di stato come <b class="ui">3 learning</b> o <b class="ui">All in order</b>.</li>
+    <li><b class="ui">Pricing, fees &amp; services</b> (solo admin): logo, conto bancario, compensi dei musicisti e servizi per i preventivi.</li>
+    <li><b class="ui">App settings</b>: il tema <b class="ui">Appearance</b> (<b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b>) e un unico interruttore <b class="ui">Notifications</b> per push ed email insieme.</li>
+    <li><b class="ui">Settings &amp; account</b>: tutte le impostazioni (<a data-ref="settings-overview">Tutte le impostazioni</a>).</li>
+    <li><b class="ui">Help &amp; support</b>, <b class="ui">Export my data</b> e <b class="ui">Sign out</b>.</li>
+  </ul>
+  <p>Il menu si chiude con il pulsante di chiusura (<b class="ui">Close Account Hub</b>) o con Indietro.</p>
+  <div class="devnote" data-devices="duoLaptop">La scheda del profilo resta nella metà superiore; il resto scorre nella metà inferiore.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Il menu occupa tutta la finestra finché non si apre una voce; a quel punto diventa la colonna elenco e la pagina aperta si affianca.</div>
+
+  <h3 id="art-back-behaviour" data-roles="admin,member,deputy">Tornare indietro e chiudere</h3>
+  <p>Indietro chiude sempre per primo l'elemento in cima, un livello per volta:</p>
+  <ol>
+    <li>Un selettore di data o di ora: si chiude solo il selettore, il foglio da cui lo si è aperto resta.</li>
+    <li>Un foglio o una finestra di dialogo aperti (Termini, un invito, <b class="ui">Enable Face ID?</b>, una conferma di eliminazione).</li>
+    <li>Una sezione all'interno di una schermata (una sezione delle Impostazioni torna all'elenco delle sezioni).</li>
+    <li>Una pagina o un pannello a schermo intero (il menu, l'inbox, un evento).</li>
+    <li>Da un'altra scheda si torna alla Home.</li>
+    <li>In Home senza nulla aperto, Android chiede <b class="ui">Tap again to exit</b>; un secondo Indietro chiude l'app.</li>
+  </ol>
+  <p>Le modifiche non salvate chiedono conferma prima di essere scartate. Una procedura guidata chiusa conserva quanto inserito come bozza (<a data-ref="drafts">Bozze</a>).</p>
+  <div class="devnote" data-devices="android">Il tasto Indietro di sistema e il gesto Indietro seguono l'ordine descritto.</div>
+  <div class="devnote" data-devices="phone">iPhone non ha un Indietro di sistema: si usa il pulsante Indietro in alto a sinistra di ogni schermata, oppure si trascina un foglio verso il basso.</div>
+  <div class="devnote" data-devices="web,tablet">Esc su una tastiera fisica chiude il livello in cima; un Esc digitato in un campo resta al campo. Sul web, l'Indietro del browser funziona come quello di Android ma non chiude mai l'app: dalla Home esce dal sito. Durante la configurazione dell'account torna indietro di un passaggio di onboarding alla volta.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand,duoLaptop">Indietro si trova nella barra laterale, non nella barra superiore di ogni schermata.</div>
+
+  <h3 id="art-drafts" data-roles="admin,member">Bozze</h3>
+  <p>Se si chiude la procedura di un gig o di una prova prima di finirla, quanto inserito viene salvato come bozza; anche i preventivi salvati prima dell'invio sono bozze. Compaiono in Home sotto <b class="ui">Drafts</b>, desaturate, con l'etichetta <b class="ui">Gig · Draft</b>, <b class="ui">Rehearsal · Draft</b> o <b class="ui">Quote · Draft</b>. Le bozze con una data compaiono anche in calendario.</p>
+  <ol class="steps">
+    <li>In Home, sotto <b class="ui">Drafts</b>, toccare la bozza.</li>
+    <li>Il foglio mostra la data (<b class="ui">No date yet</b> se manca), il luogo (<b class="ui">No venue yet</b>) e quando è stata salvata.</li>
+    <li><b class="ui">Continue editing</b> riapre la procedura dal punto in cui era rimasta.</li>
+    <li>Oppure <b class="ui">Delete draft</b>, poi <b class="ui">Delete</b> su <b class="ui">Delete this draft?</b>.</li>
+  </ol>
+  <aside class="note privacy">Una bozza è visibile solo a chi l'ha creata: i membri non ricevono notifiche e non la vedono in calendario finché il gig, la prova o il preventivo non vengono creati.</aside>
+  <aside class="note warning">Eliminando una bozza si perde quanto inserito. Poiché nulla era stato inviato alla band, nessun altro ne è toccato.</aside>
+  <p>Le bozze di gig e prove sono conservate sul dispositivo (funzionano offline) e, una volta online, si sincronizzano sugli altri dispositivi; una bozza eliminata su un dispositivo scompare anche dagli altri.</p>
+
+  <h2>Notifiche e uso offline</h2>
+
+  <h3 id="art-notifications-inbox" data-roles="admin,member,deputy">L'inbox delle notifiche</h3>
+  <ol class="steps">
+    <li>Toccare la campanella in alto a destra in Home: si apre l'inbox (<b class="ui">Inbox</b>, <b class="ui">Activity &amp; updates</b>).</li>
+    <li>Passare tra <b class="ui">All</b> e <b class="ui">Unread</b>; le voci non lette hanno un pallino rosso.</li>
+    <li>Toccare una voce. Un invito a un gig apre prima la sua pagina di dettaglio; la maggior parte delle altre voci apre direttamente la schermata relativa (una chat, un evento, un sondaggio, un preventivo).</li>
+    <li>Scorrere una voce verso sinistra e toccare <b class="ui">Delete</b> per rimuoverla.</li>
+    <li><b class="ui">Mark read</b> segna tutto come letto: i pallini rossi e il conteggio <b class="ui">Unread</b> si azzerano subito. Oppure <b class="ui">Clear</b> e poi <b class="ui">Clear all</b> svuota l'elenco.</li>
+  </ol>
+  <p>La pagina di dettaglio di un invito a un gig mostra <b class="ui">Event specifications</b>: data, <b class="ui">Timings</b> (load-in, soundcheck, inizio), <b class="ui">Venue</b>, il proprio <b class="ui">Allocated fee</b> ed eventuali <b class="ui">Schedule conflict</b> con il proprio calendario. Si risponde con <b class="ui">Accept event</b> o <b class="ui">Decline</b>, oppure <b class="ui">Add to Google Calendar</b>. I sondaggi di prova hanno <b class="ui">Vote on dates</b>.</p>
+  <aside class="note warning"><b class="ui">Clear all notifications?</b> rimuove le notifiche dall'elenco in modo definitivo: l'operazione non si può annullare.</aside>
+  <aside class="note privacy">Un invito a un gig mostra solo il proprio compenso e chi altro è in formazione, mai i compensi degli altri.</aside>
+  <p>Una notifica di un'altra band chiede prima se cambiare band (<a data-ref="several-bands">Suonare in più band</a>).</p>
+  <div class="devnote" data-devices="duoBook,duoLand,tablet">L'elenco resta sulla pagina sinistra e la voce selezionata, pronta per la risposta, sulla pagina destra.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand,duoLaptop">Indietro nella barra laterale chiude l'inbox. Mentre l'inbox è aperta non si apre nulla dietro, quindi si torna esattamente dove si era.</div>
+  <div class="devnote" data-devices="duoLaptop">In postura Laptop l'intestazione dell'inbox resta sulla metà superiore e l'elenco scorre sulla metà inferiore.</div>
+
+  <h3 id="art-push-notifications" data-roles="admin,member,deputy">Notifiche push e pop-up urgenti</h3>
+  <p>BandWith invia notifiche push per inviti ai gig, sondaggi, messaggi in chat, pagamenti e modifiche alla band. Toccando una push si apre la stessa schermata della voce corrispondente nell'inbox. L'icona dell'app mostra un badge con il numero di non letti.</p>
+  <p>Le voci urgenti (un invito a un gig, un sondaggio o una proposta di prova) mostrano anche un pop-up lime in cima allo schermo con l'etichetta <b class="ui">Urgent</b> e un pulsante: <b class="ui">CONFIRM</b>, <b class="ui">VOTE NOW</b> o <b class="ui">VIEW</b>. Toccando lo sfondo oscurato o il pulsante di chiusura (<b class="ui">Dismiss alert</b>) lo si chiude. Il pop-up compare anche con le push disattivate.</p>
+  <p>Push ed email del server arrivano nella lingua dell'app (<a data-ref="change-language">Cambiare lingua</a>). Più inviti allo stesso evento si sostituiscono a vicenda; messaggi di chat e avvisi restano invece visibili uno per uno.</p>
+  <p>Al primo utilizzo il telefono chiede se BandWith può inviare notifiche. Se si è risposto no, le impostazioni <b class="ui">Notifications</b> mostrano <b class="ui">Notifications are off on this device</b> (<a data-ref="notification-settings">Impostazioni delle notifiche</a>): toccandolo si aprono le impostazioni del telefono per BandWith, dove riattivarle.</p>
+  <p>Tornando all'app dopo un po' di tempo in sottofondo, l'elenco delle chat, la campanella e il badge si aggiornano subito con quanto arrivato nel frattempo.</p>
+  <div class="devnote" data-devices="web">Sul web non ci sono push: si controlla la campanella nell'app.</div>
+  <div class="devnote" data-devices="android">Le push arrivano tramite i servizi Google Play. Se non arrivano, conviene guardare le impostazioni <b class="ui">Notifications</b> nell'app; inbox e pop-up urgente mostrano comunque tutto quando l'app è aperta.</div>
+
+  <h3 id="art-offline-mode" data-roles="admin,member,deputy">Usare BandWith offline</h3>
+  <p>Band, gig e scalette restano disponibili senza connessione: l'app mostra quanto caricato per ultimo su quel dispositivo. Una striscia sotto la barra di stato indica <b class="ui">You’re offline · showing cached info</b>.</p>
+  <p>Creare, modificare o eliminare un gig o una prova funziona offline. L'app conferma <b class="ui">Saved offline • Will sync when connected</b> e la striscia conta le modifiche in attesa, ad es. <b class="ui">You’re offline · 2 changes will sync</b>.</p>
+  <p>Al ritorno della connessione le modifiche partono da sole: la striscia mostra <b class="ui">Back online · 2 changes to sync</b> con il pulsante <b class="ui">Sync now</b>, poi <b class="ui">Back online · synced</b>.</p>
+  <p class="steps-title">Richiedono la connessione</p>
+  <ul>
+    <li>Salvare un preventivo (l'evento si salva offline, il preventivo no).</li>
+    <li>Inviare messaggi in chat.</li>
+    <li>Rispondere agli inviti e unirsi a una band.</li>
+    <li>Il primo accesso su un dispositivo.</li>
+  </ul>
+  <aside class="note tip">All'uscita dall'account le modifiche in attesa vengono inviate prima, il che può richiedere qualche secondo. Per sicurezza conviene uscire solo quando la striscia indica synced.</aside>
+
+  <h2>Profilo e impostazioni</h2>
+
+  <h3 id="art-edit-your-profile" data-roles="admin,member,deputy">Modificare il profilo</h3>
+  <ol class="steps">
+    <li>Aprire il menu (ultima scheda, o la propria foto in alto a destra in Home).</li>
+    <li>Sulla scheda del profilo toccare <b class="ui">Edit</b>: si apre <b class="ui">Edit profile</b>.</li>
+    <li><b class="ui">Upload photo</b> cambia l'immagine (JPG o PNG, fino a 8 MB).</li>
+    <li>Modificare <b class="ui">Full name</b>, <b class="ui">Phone number</b>, <b class="ui">Primary instrument / role</b> e <b class="ui">Bio &amp; background</b>.</li>
+    <li>Toccare <b class="ui">Save changes</b>.</li>
+  </ol>
+  <p>L'<b class="ui">Email</b> non si può modificare qui: è <b class="ui">Linked to your sign-in.</b></p>
+  <p>Nome e strumento sono ciò che i compagni vedono in formazioni, chat ed elenco membri; finché manca il nome, vedono l'indirizzo email.</p>
+
+  <h3 id="art-settings-overview" data-roles="admin,member,deputy">Tutte le impostazioni</h3>
+  <p>Dal menu (ultima scheda) si tocca <b class="ui">Settings &amp; account</b>; <b class="ui">App settings</b> elenca le sezioni:</p>
+  <table class="grid">
+    <thead><tr><th>Sezione</th><th>Contenuto</th><th>Ambito</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Account (tutti i dispositivi)</td></tr>
+      <tr><td><b class="ui">Appearance</b></td><td>Tema: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>Questo dispositivo</td></tr>
+      <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> o <b class="ui">Miles</b></td><td>Questo dispositivo</td></tr>
+      <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, riservatezza dei gig personali, <b class="ui">Export my data</b>, Termini, Privacy Policy, <b class="ui">Delete account</b></td><td>Misto (vedi <a data-ref="privacy-and-account-settings">Privacy e account</a>)</td></tr>
+      <tr><td><b class="ui">iPhone Duo</b></td><td><b class="ui">Laptop pose</b>; solo sui telefoni a doppio schermo</td><td>Questo dispositivo</td></tr>
+      <tr><td><b class="ui">Language</b></td><td><b class="ui">Automatic</b> o una delle sei lingue</td><td>Questo dispositivo, più push ed email</td></tr>
+      <tr><td><b class="ui">Help &amp; support</b></td><td>Risposte e funzioni disponibili nell'app</td><td>-</td></tr>
+      <tr><td><b class="ui">About</b></td><td>La versione dell'app</td><td>-</td></tr>
+    </tbody>
+  </table>
+  <figure class="shot" data-shot="basics-settings-privacy" data-device="phone"><figcaption>Impostazioni › Privacy &amp; account.</figcaption></figure>
+  <div class="devnote" data-devices="duoBook,duoLand">L'elenco delle sezioni resta sulla pagina sinistra e la sezione aperta sulla destra; all'apertura è selezionata <b class="ui">Notifications</b>. Durante la conferma di <b class="ui">Delete account</b>, l'elenco di ciò che verrà eliminato resta leggibile a sinistra.</div>
+  <div class="devnote" data-devices="android">Indietro da una sezione riporta all'elenco delle sezioni.</div>
+
+  <h3 id="art-notification-settings" data-roles="admin,member,deputy">Scegliere le notifiche</h3>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Notifications</b>.</li>
+    <li><b class="ui">Push notifications</b> (inviti ai gig, sondaggi, messaggi in chat): attivare o disattivare.</li>
+    <li><b class="ui">Email notifications</b> (inviti e nuovi membri via email): attivare o disattivare.</li>
+    <li><b class="ui">Product news</b> (novità di BandWith, poche volte l'anno): attivare o disattivare. Resta spento finché le notifiche email sono disattivate.</li>
+  </ol>
+  <p>La riga in alto riassume lo stato, ad es. <b class="ui">push &amp; email alerts enabled</b> o <b class="ui">All alerts paused</b>. L'interruttore <b class="ui">Notifications</b> del menu attiva o disattiva push ed email insieme.</p>
+  <p>Le scelte sono salvate sull'account e valgono quindi su tutti i dispositivi. Se il salvataggio non riesce, l'interruttore torna com'era e l'app spiega il motivo.</p>
+  <aside class="note tip">Inviti e sondaggi urgenti mostrano sempre un pop-up, anche con le push disattivate; l'inbox conserva tutto.</aside>
+
+  <h3 id="art-appearance-and-units" data-roles="admin,member,deputy">Tema e unità di distanza</h3>
+  <p class="steps-title">Tema</p>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Appearance</b>.</li>
+    <li>Toccare <b class="ui">Light</b>, <b class="ui">Dark</b> o <b class="ui">System</b> (segue il telefono). La riga sopra indica <b class="ui">Current: dark mode</b> o <b class="ui">Current: light mode</b>.</li>
+  </ol>
+  <p>Gli stessi tre pulsanti sono anche nel menu, sotto <b class="ui">App settings</b>, per un cambio veloce.</p>
+  <p class="steps-title">Distanza</p>
+  <ol class="steps">
+    <li>In <b class="ui">Settings &amp; account</b> toccare <b class="ui">Units</b>.</li>
+    <li>Toccare <b class="ui">Kilometres</b> o <b class="ui">Miles</b>.</li>
+  </ol>
+  <p>L'unità cambia distanze e tariffe di viaggio in preventivi e listino, e la velocità del vento nel meteo. Preventivi e prezzi salvati non cambiano: cambia solo come vengono mostrati su quel dispositivo. Finché non si sceglie, l'app segue la regione (miglia negli Stati Uniti e nel Regno Unito).</p>
+
+  <h3 id="art-change-language" data-roles="admin,member,deputy">Cambiare la lingua dell'app</h3>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Language</b>.</li>
+    <li>Toccare <b class="ui">Automatic</b> per usare la lingua del telefono (il suggerimento indica quale), oppure scegliere una lingua tra English, Italiano, Español, Français, Deutsch e Português; ogni nome è scritto nella propria lingua.</li>
+  </ol>
+  <p>Push ed email inviate dal server seguono la lingua scelta qui. I documenti per i clienti (preventivi, contratti) usano la lingua del cliente, non quella dell'utente.</p>
+
+  <h3 id="art-privacy-and-account-settings" data-roles="admin,member,deputy">Privacy e account</h3>
+  <p>Dal menu si tocca <b class="ui">Settings &amp; account</b>, poi <b class="ui">Privacy &amp; account</b>:</p>
+  <ul>
+    <li><b class="ui">App lock</b> (solo telefoni e tablet): chiede Face ID, impronta o codice del dispositivo quando BandWith riparte dopo essere stata chiusa. Vale per dispositivo (<a data-ref="app-lock">Blocco app</a>).</li>
+    <li><b class="ui">Personal gigs stay private</b>: una riga informativa, non un interruttore. Solo l'utente vede titolo e luogo dei propri gig personali; le band vedono solo che è occupato (<a data-ref="personal-gigs">Gig personali</a>).</li>
+    <li><b class="ui">Export my data</b>: una copia JSON di ciò che appartiene all'utente (<a data-ref="export-your-data">Esportare i dati</a>).</li>
+    <li><b class="ui">Terms of Service</b> e <b class="ui">Privacy Policy</b>: aprono i documenti dentro l'app.</li>
+    <li><b class="ui">Delete account</b> (<a data-ref="delete-your-account">Eliminare l'account</a>).</li>
+  </ul>
+  <aside class="note privacy">I gig personali sono leggibili solo dal proprietario: le band non ne vedono mai titolo, luogo, compenso o cliente. Quando una band cerca una data libera, vede solo quanti membri sono liberi in un giorno, mai chi è occupato né perché.</aside>
+
+  <h3 id="art-export-your-data" data-roles="admin,member,deputy">Esportare i propri dati</h3>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Privacy &amp; account</b> (il menu ha anche <b class="ui">Export my data</b> vicino al fondo).</li>
+    <li>Toccare <b class="ui">Export my data</b>; per un momento compare <b class="ui">Preparing your file…</b>.</li>
+    <li>Salvare o condividere il file dal foglio di condivisione (sul web viene scaricato).</li>
+  </ol>
+  <p class="steps-title">Contenuto del file</p>
+  <ul>
+    <li>Il profilo, con le scelte su notifiche e privacy.</li>
+    <li>Le appartenenze alle band, con nome di ciascuna band e ruolo.</li>
+    <li>I gig personali (con prezzo e cliente).</li>
+    <li>Le risposte ai gig e il proprio compenso per ciascuno, con titolo e data del gig quando sono ancora visibili all'utente.</li>
+  </ul>
+  <p>In caso di errore l'app indica <b class="ui">Couldn’t export your data.</b> e non crea file parziali.</p>
+
+  <h3 id="art-delete-your-account" data-roles="admin,member,deputy">Eliminare l'account</h3>
+  <aside class="note warning">L'operazione è irreversibile: profilo, gig personali e messaggi vengono eliminati. Conviene esportare prima i dati se se ne vuole una copia.</aside>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Privacy &amp; account</b>.</li>
+    <li>Nella scheda rossa <b class="ui">Delete account</b> toccare <b class="ui">Delete account</b>.</li>
+    <li>In <b class="ui">Delete account?</b> scrivere <code>DELETE</code> in <b class="ui">Type DELETE to confirm</b>.</li>
+    <li>Toccare <b class="ui">Delete</b>: l'app esegue l'uscita.</li>
+  </ol>
+  <p>Se l'utente è l'unico admin di una band con altri membri, l'app si ferma con <b class="ui">Add another admin to</b> seguito dal nome della band: occorre prima nominare admin un altro membro (<a data-ref="make-admin">Nominare un admin</a>) e poi riprovare. Le band in cui l'utente è l'unica persona vengono eliminate insieme all'account.</p>
+  <p>L'eliminazione rimuove anche l'accesso con Face ID / impronta per l'account da quel dispositivo.</p>
+
+  <h3 id="art-sign-out" data-roles="admin,member,deputy">Uscire dall'account</h3>
+  <ol class="steps">
+    <li>Aprire il menu (ultima scheda).</li>
+    <li>Scorrere in fondo e toccare <b class="ui">Sign out</b>, che riporta l'indirizzo con cui si è collegati.</li>
+  </ol>
+  <p>Le modifiche in attesa di sincronizzazione vengono inviate prima; poi dati in cache e coda offline di quell'account vengono rimossi dal dispositivo, così la persona successiva non può vederli. In caso di errore compare <b class="ui">Couldn’t sign out. Try again.</b></p>
+  <p>Se l'accesso rapido è attivo per l'account, la volta successiva Face ID consente comunque di entrare.</p>
+
+  <h3 id="art-help-and-about" data-roles="admin,member,deputy">Aiuto, documenti legali e versione</h3>
+  <p><b class="ui">Help &amp; support</b> (nel menu e in <b class="ui">Settings &amp; account</b>) apre la pagina di aiuto: accesso, adesione a una band, uso offline e dati personali. È inclusa nell'app, quindi si apre anche offline. In fondo, la sezione dei contatti riporta l'indirizzo email a cui scrivere per un problema, un errore o una richiesta sulla privacy; la Privacy Policy indica lo stesso indirizzo.</p>
+  <p><b class="ui">Terms of Service</b> e <b class="ui">Privacy Policy</b> sono in <b class="ui">Privacy &amp; account</b> e collegati dal modulo di registrazione.</p>
+  <p><b class="ui">About</b> mostra il logo BandWith e la versione (<b class="ui">Version</b> seguito dal numero), riportata anche in fondo al menu. È il numero da indicare quando si segnala un problema.</p>
+  <div class="devnote" data-devices="android">Quando è disponibile una nuova versione, <b class="ui">About</b> mostra anche il pulsante <b class="ui">Update</b>, che scarica e installa l'aggiornamento (<a data-ref="android-app">l'app Android</a>).</div>
+
+  <h2>Il primo gig in 10 minuti</h2>
+
+  <h3 id="art-first-gig-in-10-minutes" data-roles="admin">Dal primo accesso al primo gig</h3>
+  <p>Percorso consigliato per un nuovo admin, da seguire in ordine; ogni passaggio rimanda all'articolo dettagliato. L'esempio è una band di cinque persone: l'admin più batteria, basso, tastiere e chitarra.</p>
+  <p class="steps-title">Configurare la band (circa 4 minuti)</p>
+  <ol class="steps">
+    <li>Toccare <b class="ui">Get started</b> nella schermata di benvenuto e creare l'account (<a data-ref="create-an-account">Creare l'account</a>).</li>
+    <li>In <b class="ui">What brings you here?</b> toccare <b class="ui">Manage my band</b>, poi <b class="ui">Continue</b>.</li>
+    <li>Inserire il <b class="ui">Band name</b>, aggiungere una foto per il logo e toccare <b class="ui">Continue</b> (<a data-ref="create-your-band">Configurare la band</a>).</li>
+    <li>Inserire <b class="ui">Your name</b>, scegliere lo strumento e toccare <b class="ui">Continue</b>.</li>
+    <li>In <b class="ui">Invite your bandmates</b> aggiungere l'email di ogni compagno con permesso <b class="ui">Member</b>, poi toccare <b class="ui">Send invites</b>. Si può fare anche dopo, in <b class="ui">Band members</b> con <b class="ui">Invite member</b> (<a data-ref="invite-members">Invitare i membri</a>).</li>
+    <li>Toccare qualche brano in <b class="ui">Popular songs</b> o usare <b class="ui">Import</b> per la propria lista, poi <b class="ui">Continue</b> e <b class="ui">Go to dashboard</b>.</li>
+    <li>Nel tour di benvenuto toccare <b class="ui">Configure rates</b> per impostare subito compensi dei musicisti e tariffe per i clienti, oppure scorrere con <b class="ui">Next</b> fino a <b class="ui">Done</b> e farlo più tardi in <b class="ui">Pricing, fees &amp; services</b> (<a data-ref="pricing-sheet">Listino prezzi</a>).</li>
+  </ol>
+  <p class="steps-title">Creare il gig (circa 4 minuti)</p>
+  <ol class="steps">
+    <li>Toccare <b class="ui">+</b> al centro della barra delle schede, poi <b class="ui">New gig</b> (<a data-ref="create-a-gig">Creare un gig</a>).</li>
+    <li>In <b class="ui">Event &amp; lineup</b> scegliere il tipo di evento e toccare i musicisti che suonano; inserire il <b class="ui">Fee</b> di ciascuno o spuntare <b class="ui">Fee to be discussed (TBD)</b> (<a data-ref="gig-lineup-and-fees">Formazione e compensi</a>).</li>
+    <li>In <b class="ui">Date &amp; venue</b> impostare data, orari e <b class="ui">Venue name</b>.</li>
+    <li>In <b class="ui">Review &amp; confirm</b> aggiungere brani in <b class="ui">Setlist &amp; songs</b> (<a data-ref="build-a-setlist">Costruire una scaletta</a>), poi toccare <b class="ui">Create gig</b>.</li>
+  </ol>
+  <p class="steps-title">Coinvolgere la band (circa 2 minuti)</p>
+  <ol class="steps">
+    <li>Verificare che ogni musicista abbia ricevuto un <b class="ui">Gig invitation</b>. Nel gig, <b class="ui">LINEUP</b> mostra chi ha risposto; <b class="ui">INVITE PENDING</b> indica chi non l'ha ancora fatto (<a data-ref="answer-a-gig-invitation">Rispondere a un invito</a>).</li>
+    <li>Aprire <b class="ui">EVENT CHAT</b> nel gig per organizzare la logistica con la formazione (<a data-ref="event-and-rehearsal-chats">Chat di eventi e prove</a>).</li>
+    <li>Aprire <b class="ui">RIDER &amp; STAGE</b> per preparare e condividere con il locale il PDF del rider (<a data-ref="rider-and-stage">Rider e palco</a>).</li>
+    <li>Il giorno del concerto, aprire il gig dalla Home e toccare <b class="ui">Go live</b> per la modalità Stage (<a data-ref="stage-mode">Modalità Stage</a>).</li>
+  </ol>
+  <aside class="note privacy">Ogni musicista vede solo il proprio compenso nell'invito e nel gig. Nessuno, tranne gli admin, vede gli altri compensi o quanto paga il cliente.</aside>
+  <aside class="note tip">La formazione elenca solo le persone che si sono già unite alla band: conviene inviare prima gli inviti alla band e attendere le adesioni, oppure chiedere un sostituto per il gig (<a data-ref="ask-a-deputy">Chiedere un sostituto</a>).</aside>
+
+  <h2>Domande frequenti</h2>
+  <dl class="faq">
+    <dt>Ho dimenticato la password.</dt>
+    <dd>Nella schermata di accesso toccare <b class="ui">Forgot password?</b> e seguire il link ricevuto via email, valido un'ora (<a data-ref="forgot-password">Reimpostare la password</a>).</dd>
+    <dt>Mi sono registrato ma non riesco ad accedere.</dt>
+    <dd>Un nuovo account può richiedere prima la conferma dell'indirizzo: aprire il link dell'email sul dispositivo usato per la registrazione, poi accedere (<a data-ref="confirm-your-email">Confermare l'email</a>).</dd>
+    <dt>Face ID (o l'impronta) non funziona più.</dt>
+    <dd>Accedere una volta con la password per riattivare l'accesso rapido; succede dopo un cambio password o quando l'accesso salvato scade (<a data-ref="quick-sign-in">Accesso rapido</a>).</dd>
+    <dt>Perché l'app chiede Face ID a ogni avvio?</dt>
+    <dd>È il blocco app, che su iPhone, iPad e Android interviene quando l'app riparte dopo essere stata chiusa. Si disattiva in <b class="ui">Settings &amp; account › Privacy &amp; account › App lock</b> (<a data-ref="app-lock">Blocco app</a>).</dd>
+    <dt>Non ho un codice d'invito.</dt>
+    <dd>Toccare <b class="ui">I have an invite code</b>, poi <b class="ui">No code? Find my invite by email</b>; quindi creare l'account o accedere con l'indirizzo a cui è stato inviato l'invito, che comparirà lì (<a data-ref="find-my-invite-by-email">Trovare l'invito</a>).</dd>
+    <dt>L'invito non si trova o è scaduto.</dt>
+    <dd>Controllare lo spam e l'indirizzo digitato; se ancora non compare, chiedere all'admin della band di inviarlo di nuovo.</dd>
+    <dt>L'invito dice che è per un altro indirizzo.</dt>
+    <dd>Si è collegati con un altro account: toccare <b class="ui">Sign out</b>, riaprire l'invito e accedere o registrarsi con l'indirizzo destinatario (<a data-ref="accept-a-band-invite">Accettare un invito</a>).</dd>
+    <dt>Come si lascia una band?</dt>
+    <dd>In <b class="ui">Band members</b> toccare <b class="ui">⋯</b> sulla propria riga, poi <b class="ui">Leave band</b> e confermare (<a data-ref="leave-a-band">Lasciare una band</a>).</dd>
+    <dt>Si può eliminare l'account se si gestisce una band?</dt>
+    <dd>Sì, quando la band ha un altro admin. Se si è l'unico admin di una band con altri membri, prima bisogna nominare admin uno di loro (<a data-ref="delete-your-account">Eliminare l'account</a>).</dd>
+    <dt>BandWith funziona senza connessione?</dt>
+    <dd>Sì: band, gig e scalette restano disponibili e le modifiche a gig e prove fatte offline vengono inviate al ritorno della connessione (<a data-ref="offline-mode">Uso offline</a>).</dd>
+  </dl>
+</section>

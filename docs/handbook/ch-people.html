@@ -1,0 +1,481 @@
+<section class="chapter" id="ch-people">
+  <h1>Membri, sostituti (deputy) e attrezzatura</h1>
+  <p class="lead">Quest'area riguarda chi fa parte della band, chi sostituisce un membro quando non può suonare, l'attrezzatura da portare ai gig e le regole su chi può vedere quali dati.</p>
+
+  <h2>La band e i suoi membri</h2>
+
+  <h3 id="art-band-members" data-roles="admin,member">La schermata Band members</h3>
+  <p><b class="ui">Band members</b> elenca tutte le persone della band selezionata. Il nome della band compare sopra il titolo.</p>
+  <p class="steps-title">Come aprirla</p>
+  <ol class="steps">
+    <li>Dalla Home, in <b class="ui">Quick Actions</b>, si tocca <b class="ui">Members</b>.</li>
+    <li>In alternativa si tocca l'avatar in alto a destra per aprire l'Account Hub e poi <b class="ui">Members</b> nella scheda della band corrente.</li>
+  </ol>
+  <p class="steps-title">Cosa contiene</p>
+  <ul>
+    <li>Tre contatori: <b class="ui">Total</b>, <b class="ui">Admins</b> e <b class="ui">Members</b>.</li>
+    <li>Una riga per persona: foto o iniziali, nome (il nome d'arte, se impostato), strumento e ruolo (<b class="ui">Admin</b> o <b class="ui">Member</b>). Il tag <b class="ui">Pro</b> indica chi ha un piano a pagamento.</li>
+    <li>Toccando una riga si apre la pagina della persona (<a data-ref="member-detail">la pagina del membro</a>).</li>
+    <li>Il pulsante <b class="ui">⋯</b> (<b class="ui">Actions for {name}</b>) su ogni riga apre un breve menu: <b class="ui">Email</b>; sulla propria riga <b class="ui">Leave band</b>; per gli admin, sulle righe degli altri, <b class="ui">Make admin</b> o <b class="ui">Make member</b> e <b class="ui">Remove from band</b>.</li>
+    <li>Solo gli admin vedono il pulsante <b class="ui">Invite member</b> (in alto a destra e in fondo) e, sotto l'elenco, la sezione <b class="ui">Deputies</b> (<a data-ref="deputies">i deputy</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Vede tutti, invita persone, cambia i ruoli, rimuove membri e gestisce i deputy.</div>
+    <div data-role="member">Vede tutti con i relativi contatti e può scrivere loro un'email. Non ha il pulsante di invito, non può cambiare ruoli e non vede l'elenco dei deputy.</div>
+  </div>
+  <figure class="shot" data-shot="people-band-members" data-device="phone"><figcaption>Band members visto da un admin: contatori, formazione e pulsante Invite member.</figcaption></figure>
+  <div class="devnote" data-devices="duoLaptop">I tre contatori stanno nella metà superiore, l'elenco delle persone in quella inferiore.</div>
+  <div class="devnote" data-devices="duoBook,duoLand,tablet">La pagina di una persona si apre accanto all'elenco invece di coprirlo.</div>
+  <div class="devnote" data-devices="android">Il gesto Indietro chiude prima la pagina della persona, poi Band members.</div>
+  <aside class="note tip">Una band vuota mostra <b class="ui">No members yet</b> e, agli admin, <b class="ui">Invite first member</b>.</aside>
+
+  <h3 id="art-invite-members" data-roles="admin">Invitare qualcuno nella band</h3>
+  <p>Nessuno viene aggiunto a una band senza il proprio consenso: l'admin invia un invito e la persona lo accetta.</p>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b> l'admin tocca <b class="ui">Invite member</b> (il + in alto a destra o il pulsante in fondo).</li>
+    <li>Digita almeno 3 caratteri di un nome o di un indirizzo email nel campo di ricerca.</li>
+    <li>Se la persona usa già BandWith, compare sotto <b class="ui">Found in BandWith</b>: si tocca <b class="ui">Invite</b> accanto al nome.</li>
+    <li>Se non si trova nessuno, si digita l'indirizzo email completo e si tocca <b class="ui">Invite {email}</b>.</li>
+    <li>Prima dell'invio si sceglie il ruolo in <b class="ui">Role</b>: <b class="ui">Member</b> (<b class="ui">Can view band content</b>) o <b class="ui">Admin</b> (<b class="ui">Manage members, events &amp; settings</b>). Il valore predefinito è Member.</li>
+    <li>Per chi è nuovo su BandWith il pannello mostra poi l'<b class="ui">Invite code</b>: <b class="ui">Share invite</b> invia link e codice con qualsiasi app, <b class="ui">Copy code</b> copia il codice.</li>
+  </ol>
+  <p class="steps-title">Cosa succede dopo</p>
+  <ul>
+    <li>Utente esistente: riceve una notifica e, alla successiva apertura di BandWith, una scheda <b class="ui">Band invite</b>. L'admin vede <b class="ui">Invite sent to {name}</b>.</li>
+    <li>Persona nuova: BandWith invia l'invito via email quando possibile. L'admin vede <b class="ui">Invite emailed to {name}</b> oppure, senza email, <b class="ui">Invite created for {name}. Share it so they can join.</b></li>
+    <li>L'invito vale 7 giorni. Quando mancano 2 giorni o meno, l'indirizzo invitato riceve un'unica email di promemoria. Se scade, l'admin riceve un'email.</li>
+    <li>Invitare di nuovo lo stesso indirizzo rinnova l'invito per altri 7 giorni.</li>
+    <li>Quando la persona entra, tutta la band riceve <b class="ui">{name} joined {band}</b>.</li>
+  </ul>
+  <aside class="note privacy">Nei risultati di ricerca le email sono parzialmente nascoste (per esempio gi•••@…), a meno che non si digiti l'indirizzo esatto. Chi è già nella band non compare.</aside>
+  <figure class="shot" data-shot="people-invite" data-device="phone"><figcaption>Il pannello Invite member con ricerca, risultati e scelta del ruolo.</figcaption></figure>
+  <aside class="note tip">L'invito è legato all'indirizzo email: per entrare, la persona deve accedere con quell'indirizzo.</aside>
+
+  <h3 id="art-accept-an-invite" data-roles="admin,member">Entrare in una band da un invito</h3>
+  <p class="steps-title">Chi usa già BandWith</p>
+  <ol class="steps">
+    <li>All'apertura dell'app compare la scheda <b class="ui">Band invite</b> con chi ha invitato, la band, il numero di membri e il ruolo (<b class="ui">as member</b> o <b class="ui">as admin</b>).</li>
+    <li><b class="ui">Join band</b> conferma: compare <b class="ui">You joined {band}</b> e la band si aggiunge al selettore delle band.</li>
+    <li><b class="ui">Decline</b> rifiuta. La X (<b class="ui">Decide later</b>) rimanda la decisione: la scheda ricompare alla prossima apertura.</li>
+  </ol>
+  <p class="steps-title">Chi è nuovo su BandWith</p>
+  <ol class="steps">
+    <li>Apre il link d'invito ricevuto via messaggio o email; oppure, nella schermata di benvenuto, tocca <b class="ui">I have an invite code</b>, incolla codice o link in <b class="ui">Invite code or link</b> e tocca <b class="ui">Join</b>.</li>
+    <li>Controlla la scheda della band e tocca <b class="ui">Accept &amp; continue</b> (o <b class="ui">Decline invitation</b>).</li>
+    <li>Crea l'account o accede con l'indirizzo email a cui è stato inviato l'invito.</li>
+  </ol>
+  <p class="steps-title">Se non funziona</p>
+  <ul>
+    <li><b class="ui">This invite was sent to a different email</b>: l'accesso è stato fatto con un altro indirizzo; occorre uscire e usare quello invitato.</li>
+    <li><b class="ui">This invite has expired</b> o <b class="ui">isn't valid any more</b>: serve un nuovo invito da un admin.</li>
+    <li><b class="ui">That doesn't look like an invite code</b>: va incollato il codice completo o l'intero link.</li>
+  </ul>
+
+  <h2>Ruoli, uscite e rimozioni</h2>
+
+  <h3 id="art-member-roles" data-roles="admin,member">Ruoli admin e member</h3>
+  <p>Ogni persona di una band è <b class="ui">Admin</b> oppure <b class="ui">Member</b>. Una band può avere più admin; chi crea la band ne è il primo admin.</p>
+  <div class="roles">
+    <div data-role="admin">Crea e modifica gig, prove e preventivi; imposta i compensi e segna i pagamenti; modifica setlist, brani, contratti, liste di cose da fare e kit di attrezzatura; invita e rimuove persone; cambia i ruoli; gestisce i deputy; modifica i dati e il listino della band; vede finanze e statistiche della band.</div>
+    <div data-role="member">Vede i gig della band e la logistica, risponde agli inviti a suonare, legge setlist e brani, propone brani e modifiche, tiene note private sui brani, usa la chat, aggiunge e modifica la propria attrezzatura personale e vede solo il proprio compenso.</div>
+  </div>
+  <aside class="note warning">Una band deve avere almeno un admin. L'app non permette di rimuovere l'ultimo admin né di trasformarlo in member: <b class="ui">A band needs at least one admin. Make someone else admin first.</b> La stessa regola impedisce di eliminare il proprio account finché si è l'unico admin di una band.</aside>
+  <p>Co-gestire una band (essere uno di più admin) è una funzione del piano a pagamento: per chi ha il piano gratuito, <b class="ui">Make admin</b> mostra <b class="ui">Requires a Pro account to co-manage</b>.</p>
+  <p>L'elenco completo dei dati leggibili da ciascun ruolo è in <a data-ref="who-sees-what">Chi vede cosa</a>.</p>
+
+  <h3 id="art-make-admin" data-roles="admin">Nominare un admin o riportarlo a member</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b> l'admin tocca <b class="ui">⋯</b> sulla riga della persona, oppure tocca la riga per aprirne la pagina.</li>
+    <li>Tocca <b class="ui">Make admin</b> per dare i diritti di admin, o <b class="ui">Make member</b> per toglierli.</li>
+  </ol>
+  <p>La modifica viene salvata subito, senza conferma. La persona vede il nuovo ruolo al successivo caricamento dell'elenco delle sue band. Il suo telefono scarta allora i dati della band conservati per l'uso offline e li ricarica per il nuovo ruolo: un nuovo admin vede cliente e prezzi, un ex admin non li conserva più sul telefono.</p>
+  <aside class="note warning">L'ultimo admin non può essere trasformato in member: prima bisogna nominare admin qualcun altro.</aside>
+  <aside class="note tip">Nessuno può cambiare il proprio ruolo: la propria pagina e il menu <b class="ui">⋯</b> della propria riga non mostrano pulsanti di ruolo. Per tornare member serve un altro admin.</aside>
+
+  <h3 id="art-remove-a-member" data-roles="admin">Rimuovere un membro dalla band</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b> l'admin tocca <b class="ui">⋯</b> sulla riga della persona e poi <b class="ui">Remove from band</b>, oppure apre la sua pagina e tocca <b class="ui">Remove from band</b> in fondo.</li>
+    <li>Nel pannello <b class="ui">Remove from band?</b> tocca <b class="ui">Remove</b>; <b class="ui">Cancel</b> annulla.</li>
+  </ol>
+  <p class="steps-title">Cosa succede</p>
+  <ul>
+    <li>La persona perde subito l'accesso a eventi, chat e repertorio della band.</li>
+    <li>Riceve la notifica <b class="ui">Removed from {band}</b>; il resto della band riceve <b class="ui">{name} left {band}</b>.</li>
+    <li>I suoi gig passati, le sue risposte e i suoi pagamenti restano nello storico della band.</li>
+    <li>Può essere invitata di nuovo in seguito.</li>
+  </ul>
+  <aside class="note warning">Non si può annullare. Per riportare la persona nella band occorre un nuovo invito, che lei deve accettare.</aside>
+
+  <h3 id="art-leave-a-band" data-roles="admin,member">Lasciare una band</h3>
+  <div class="roles">
+    <div data-role="member">Può lasciare qualsiasi band di cui fa parte, in qualsiasi momento.</div>
+    <div data-role="admin">Può uscire se la band ha un altro admin. Se è l'unico, l'app chiede di nominare prima un altro admin (<a data-ref="make-admin">nominare un admin</a>).</div>
+  </div>
+  <ol class="steps">
+    <li>Si apre <b class="ui">Band members</b> per quella band.</li>
+    <li>Si tocca <b class="ui">⋯</b> sulla propria riga e poi <b class="ui">Leave band</b> (oppure si apre la propria riga e si usa <b class="ui">Leave band</b> in fondo).</li>
+    <li>Il pannello <b class="ui">Leave {band}?</b> avverte che si perde l'accesso a eventi, chat e repertorio della band. <b class="ui">Leave band</b> conferma, <b class="ui">Cancel</b> annulla.</li>
+  </ol>
+  <p>Gli altri ricevono <b class="ui">{name} left {band}</b>. L'app passa all'altra band dell'utente o, se non ne ha, alla schermata iniziale. Per rientrare serve un nuovo invito.</p>
+  <aside class="note warning">Anche l'eliminazione dell'account (Settings, <b class="ui">Delete account</b>) fa uscire da tutte le band. Chi è l'unico admin di una band deve prima nominare admin qualcun altro.</aside>
+
+  <h2>Pagina del membro, compensi e dati della band</h2>
+
+  <h3 id="art-member-detail" data-roles="admin,member">La pagina di un membro</h3>
+  <p>Si apre toccando una persona in <b class="ui">Band members</b>.</p>
+  <ul>
+    <li>In alto: foto, nome, strumento e ruolo.</li>
+    <li><b class="ui">Gigs this year</b>: gig suonati più gig in programma, con un indicatore a punti. <b class="ui">Paid · {year}</b>: quanto è stato pagato e quanto è ancora dovuto.</li>
+    <li><b class="ui">Next for {name}</b>: i prossimi eventi della persona in questa band, ciascuno con la sua risposta (confermato, in attesa, rifiutato).</li>
+    <li><b class="ui">Contacts</b>: email e telefono, ciascuno con un pulsante per copiarlo; toccandoli si scrive o si chiama.</li>
+    <li><b class="ui">Message</b> apre una chat diretta. <b class="ui">Make admin</b> / <b class="ui">Make member</b> e <b class="ui">Remove from band</b> sono riservati agli admin.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Vede i contatori di gig e pagamenti di tutti e tutte le azioni, tranne sulla propria pagina.</div>
+    <div data-role="member">Vede i contatori di gig e pagamenti solo sulla propria pagina. Sulla pagina di un altro vede nome, strumento, prossimi eventi e contatti. <b class="ui">Message</b> compare solo sulla pagina di un admin, perché i member possono avviare chat dirette solo con gli admin.</div>
+  </div>
+  <aside class="note privacy">Un member non vede mai quanto viene pagato un altro member. I contatori arrivano dal server, che restituisce i dati di tutti agli admin e solo la propria riga al member.</aside>
+  <div class="devnote" data-devices="phone,duoClosed">Si apre a schermo intero.</div>
+  <div class="devnote" data-devices="duoBook,duoLand">Si apre sul secondo schermo, accanto all'elenco.</div>
+  <div class="devnote" data-devices="tablet">Si apre nella colonna di dettaglio accanto all'elenco.</div>
+
+  <h3 id="art-default-fees-and-instruments" data-roles="admin,member">Compensi predefiniti e strumenti</h3>
+  <p>Ogni persona può avere un compenso predefinito nella band. Quando un admin la aggiunge a un nuovo gig o preventivo, il compenso viene precompilato con quel valore (le prove non hanno compenso); in sua assenza si usa la tariffa per musicista impostata in <b class="ui">Pricing, fees &amp; services</b>. L'admin può comunque modificare il compenso su ogni gig.</p>
+  <p class="steps-title">Admin: cambiare strumento o compenso predefinito di un membro</p>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b> si tocca la riga della persona.</li>
+    <li>In <b class="ui">In the band</b> si compilano <b class="ui">Instrument in this band</b> (se vuoto, viene mostrato lo strumento del profilo) e <b class="ui">Default fee</b> (facoltativo, un numero come 150).</li>
+    <li>Si tocca <b class="ui">Save</b>. Il compenso predefinito vale per i nuovi gig.</li>
+  </ol>
+  <p>Un member che apre la propria riga vede <b class="ui">Your default fee in this band: {fee}</b>, se ne ha uno.</p>
+  <p>Lo strumento principale personale si imposta nel profilo: avatar, <b class="ui">Edit</b> sulla scheda del profilo, campo <b class="ui">Primary instrument / role</b>. Compare sulla scheda dell'Account Hub.</p>
+  <p>Lo strumento accanto a ogni nome in <b class="ui">Band members</b> è quello salvato per la persona in questa band; la scheda <b class="ui">Who covers what</b> dei deputy raggruppa la band in base a questi strumenti.</p>
+  <aside class="note privacy">I compensi predefiniti seguono la regola sul denaro: gli admin li vedono tutti, un member solo il proprio.</aside>
+
+  <h3 id="art-band-details" data-roles="admin">Nome, logo, città e bio della band</h3>
+  <ol class="steps">
+    <li>L'admin tocca l'avatar in alto a destra per aprire l'Account Hub.</li>
+    <li>Nella scheda della band corrente tocca <b class="ui">Edit</b>.</li>
+    <li>In <b class="ui">Band logo</b> tocca <b class="ui">Upload</b> (o <b class="ui">Change</b>) e sceglie un'immagine; il cestino (<b class="ui">Remove logo</b>) la toglie.</li>
+    <li>Modifica <b class="ui">Band name</b>, <b class="ui">Home base city</b> (scegliendo uno dei <b class="ui">Suggested places</b>, così le spese di trasferta possono usarne la posizione) e <b class="ui">Band bio / tagline (optional)</b>.</li>
+    <li>Tocca <b class="ui">Save details</b>; <b class="ui">Cancel</b> o <b class="ui">Close</b> escono senza salvare.</li>
+  </ol>
+  <p>Il logo compare sulla scheda della band, nel selettore delle band e nei PDF dei preventivi. La città di riferimento diventa il punto di partenza per le spese di trasferta del listino.</p>
+  <p><b class="ui">Band settings</b>, sotto la scheda della band, apre branding e listino della band (conto bancario, tariffe dei musicisti, servizi dei preventivi): vedi <a data-ref="pricing-sheet">il listino</a>.</p>
+  <aside class="note privacy">I member vedono nome, logo, città e bio della band, mai i dati bancari, fiscali o del listino.</aside>
+
+  <h2>I sostituti (deputy)</h2>
+
+  <h3 id="art-deputies" data-roles="admin,deputy">Deputy: i musicisti sostituti</h3>
+  <p>Un deputy è un musicista esterno alla band che suona quando un membro non può. La band tiene un elenco di deputy con strumento, contatti e compenso abituale. I deputy non hanno bisogno di un account BandWith.</p>
+  <p class="steps-title">Come funziona</p>
+  <ul>
+    <li>Un admin aggiunge i deputy in <b class="ui">Band members</b>, sezione <b class="ui">Deputies</b> (<a data-ref="add-a-deputy">aggiungere un deputy</a>).</li>
+    <li>Quando un membro rifiuta un gig, l'admin tocca <b class="ui">Find a deputy</b> nella formazione del gig e invia una richiesta via WhatsApp, SMS o email (<a data-ref="ask-a-deputy">chiedere a un deputy</a>).</li>
+    <li>Il messaggio contiene un link privato a una pagina di risposta, dove il deputy risponde con un tocco, senza account (<a data-ref="deputy-reply-page">la pagina di risposta</a>).</li>
+    <li>Gli admin ricevono una notifica con la risposta.</li>
+    <li>Se il deputy apre BandWith da quel link e accede, il suo account viene collegato alla voce della band. Da quel momento la band può usare <b class="ui">Ask in the app</b> e il deputy risponde in <b class="ui">Deputy gigs</b> (<a data-ref="deputy-gigs">Deputy gigs</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Aggiunge, modifica ed elimina deputy; ne vede telefono, email, compenso abituale e note; invia, segue e annulla le richieste; scollega l'account di un deputy.</div>
+    <div data-role="member">Non vede né l'elenco dei deputy né le richieste. Un member che apre un link deputy della propria band riceve il messaggio <b class="ui">You're already in {band}</b>.</div>
+    <div data-role="deputy">Vede solo le proprie richieste: nome della band, titolo del gig, data, orari di carico, soundcheck e spettacolo, locale e città, ruolo e compenso offerto. L'indirizzo stradale compare solo dopo che ha accettato.</div>
+  </div>
+  <aside class="note privacy">Un deputy non vede mai il cliente, il prezzo del gig, i compensi degli altri musicisti, la setlist, la chat o qualsiasi altro dato della band.</aside>
+  <aside class="note tip">Un deputy che accetta non viene aggiunto alla formazione del gig: gli admin lo seguono in <b class="ui">Deputies asked</b> nel pannello della formazione.</aside>
+
+  <h3 id="art-add-a-deputy" data-roles="admin">Aggiungere, modificare o eliminare un deputy</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b> l'admin scorre fino a <b class="ui">Deputies</b>.</li>
+    <li>Tocca <b class="ui">Add deputy</b> (il + accanto al titolo). In <b class="ui">Who covers what</b>, il + accanto a uno strumento con <b class="ui">No deputy yet</b> apre il modulo con quello strumento già compilato.</li>
+    <li>Compila <b class="ui">Name</b> (obbligatorio), <b class="ui">Instrument</b>, <b class="ui">Phone (WhatsApp)</b>, <b class="ui">Email</b>, <b class="ui">Usual fee</b> e <b class="ui">Notes</b> (per esempio <b class="ui">Reads charts, has own gear</b>).</li>
+    <li>Tocca <b class="ui">Add deputy</b>.</li>
+  </ol>
+  <p class="steps-title">Modifica o eliminazione</p>
+  <ol class="steps">
+    <li>Si tocca il deputy nell'elenco.</li>
+    <li>Si modificano i campi e si tocca <b class="ui">Save</b>.</li>
+    <li>Per eliminarlo: <b class="ui">Delete deputy</b>, poi <b class="ui">Delete</b> nel pannello <b class="ui">Delete deputy?</b>.</li>
+  </ol>
+  <p><b class="ui">Who covers what</b> elenca ogni strumento suonato nella band, i membri che lo suonano e i relativi deputy. La riga in alto dice <b class="ui">Every instrument in the band has a deputy.</b> oppure quanti strumenti ne sono privi.</p>
+  <p>Un deputy con account BandWith ha il tag <b class="ui">On BandWith</b> e la sua scheda indica che risponde nell'app.</p>
+  <aside class="note warning">Eliminare un deputy lo toglie dall'elenco della band. Le richieste passate conservano il suo nome e la sua risposta. Può essere aggiunto di nuovo in seguito.</aside>
+  <aside class="note privacy">Solo gli admin vedono questo elenco (<b class="ui">Only admins see this list.</b>).</aside>
+  <div class="devnote" data-devices="tablet,duoLand">Con schermo largo i deputy sono disposti su due colonne.</div>
+
+  <h3 id="art-ask-a-deputy" data-roles="admin">Chiedere a un deputy di coprire un gig</h3>
+  <p>Si può chiedere un deputy quando un membro ha rifiutato un gig della band non ancora passato. Prove, gig personali e gig passati non offrono questa funzione.</p>
+  <figure class="shot" data-shot="people-find-deputy" data-device="phone"><figcaption>Find a deputy per sostituire un membro che ha rifiutato: per ogni deputy, Ask in the app, WhatsApp, SMS ed Email.</figcaption></figure>
+  <ol class="steps">
+    <li>L'admin apre il gig e, nella sezione <b class="ui">LINEUP</b>, tocca l'elenco dei nomi (non <b class="ui">EDIT</b>) per aprire il pannello <b class="ui">Lineup</b>.</li>
+    <li>Accanto al membro che ha rifiutato tocca <b class="ui">Find a deputy</b>. Il pannello mostra <b class="ui">Replacing {name}</b> e i deputy della band, con in testa quelli che suonano lo stesso strumento.</li>
+    <li>Per un deputy presente su BandWith tocca <b class="ui">Ask in the app</b>: il deputy riceve una notifica.</li>
+    <li>Altrimenti tocca <b class="ui">WhatsApp</b>, <b class="ui">SMS</b> o <b class="ui">Email</b>: si apre l'app di messaggistica con i dettagli del gig e il link di risposta già inseriti, e il messaggio si invia dal telefono.</li>
+    <li>Tornando in BandWith, la risposta compare sotto il nome del deputy: <b class="ui">Asked · no answer yet</b>, <b class="ui">Available</b>, <b class="ui">Will confirm later</b> o <b class="ui">Can't make it</b>, con l'eventuale nota.</li>
+  </ol>
+  <p class="steps-title">Dopo la risposta</p>
+  <ul>
+    <li>Dopo un sì, i pulsanti inviano il riepilogo (<b class="ui">Send recap</b>, <b class="ui">Recap in the app</b>) con l'indirizzo completo e il link al calendario.</li>
+    <li>Se data, orari o locale cambiano dopo la risposta, il deputy viene segnalato con <b class="ui">The gig changed after their answer: send them the update.</b> e i pulsanti inviano l'aggiornamento (<b class="ui">Send update</b>, <b class="ui">Update in the app</b>).</li>
+    <li><b class="ui">Copy link</b> copia il link di risposta. <b class="ui">Cancel request</b> ritira la richiesta; un deputy collegato riceve una notifica.</li>
+    <li>Il pannello della formazione elenca tutte le richieste aperte in <b class="ui">Deputies asked</b>.</li>
+  </ul>
+  <p class="steps-title">Contenuto della richiesta</p>
+  <ul>
+    <li>Nome della band, titolo del gig, data e ora, locale e città, ruolo e compenso.</li>
+    <li>Il compenso è quello del membro sostituito su questo gig o, se non impostato, il compenso abituale del deputy.</li>
+    <li>L'indirizzo stradale è incluso solo nel riepilogo e nell'aggiornamento, dopo un sì.</li>
+  </ul>
+  <aside class="note tip"><b class="ui">Already sent a moment ago.</b> indica un doppio tocco: la stessa richiesta in-app parte al massimo una volta ogni 2 minuti.</aside>
+  <aside class="note tip">Se la band non ha ancora deputy, il pannello propone <b class="ui">Add deputies</b>, che porta all'elenco.</aside>
+
+  <h2>L'esperienza del deputy</h2>
+
+  <h3 id="art-deputy-reply-page" data-roles="deputy,admin">La pagina di risposta del deputy</h3>
+  <p>Il link della richiesta apre una piccola pagina web nel browser del deputy, senza app né account. È mostrata nella lingua del deputy, se disponibile.</p>
+  <p class="steps-title">Cosa vede il deputy</p>
+  <ul>
+    <li><b class="ui">{band} is looking for a deputy for this gig.</b> con data, orari di carico, soundcheck e spettacolo, locale, città, ruolo e compenso offerto.</li>
+    <li>Tre risposte, <b class="ui">Yes, I'm available</b>, <b class="ui">Not sure yet, I'll confirm later</b>, <b class="ui">No, I can't</b>, e il campo <b class="ui">Message to the band (optional)</b>.</li>
+    <li>Dopo un sì: l'indirizzo, <b class="ui">Open in Maps</b> e <b class="ui">Add to your calendar</b> (<b class="ui">Apple Calendar · Outlook</b>, <b class="ui">Google Calendar</b> o <b class="ui">Subscribe · updates by itself</b>).</li>
+    <li><b class="ui">Change your answer</b> resta disponibile fino al gig.</li>
+    <li>Se la band modifica il gig dopo la risposta: <b class="ui">Something changed</b> con i valori vecchi e nuovi, e i pulsanti <b class="ui">Still OK</b> o <b class="ui">I can't anymore</b>.</li>
+    <li><b class="ui">Get BandWith</b> apre l'app e collega l'account (<a data-ref="deputy-gigs">Deputy gigs</a>).</li>
+  </ul>
+  <p class="steps-title">Quando il link smette di funzionare</p>
+  <ul>
+    <li><b class="ui">This request is closed.</b>: la band ha ritirato la richiesta.</li>
+    <li><b class="ui">The gig was cancelled.</b></li>
+    <li><b class="ui">This gig is over.</b>: dal giorno dopo il gig.</li>
+    <li><b class="ui">This link doesn't work.</b>: la band ha scollegato il deputy o il link è errato; occorre chiedere alla band di inviare di nuovo la richiesta.</li>
+  </ul>
+  <aside class="note privacy">Il link è la chiave: chiunque lo possieda può rispondere. Se è arrivato alla persona sbagliata, un admin può scollegare il deputy, operazione che sostituisce tutti i link (<a data-ref="unlink-a-deputy">scollegare un deputy</a>).</aside>
+
+  <h3 id="art-deputy-in-the-app" data-roles="deputy">Rispondere alle richieste nell'app</h3>
+  <p>Il deputy collega il proprio account BandWith all'elenco deputy di una band partendo dal link di risposta.</p>
+  <ol class="steps">
+    <li>Il deputy apre il link ricevuto dalla band e tocca <b class="ui">Get BandWith</b>.</li>
+    <li>Nell'app crea un account o accede. La schermata di benvenuto dice <b class="ui">{band} calls you as a deputy.</b></li>
+    <li>Dopo <b class="ui">Linking your account to the band…</b> compare <b class="ui">You're on {band}'s deputy list</b>.</li>
+    <li>Tocca <b class="ui">OK</b>: le richieste di quella band sono elencate in <b class="ui">Deputy gigs</b>.</li>
+  </ol>
+  <p class="steps-title">Altri messaggi</p>
+  <ul>
+    <li><b class="ui">This link belongs to another account</b>: la band l'ha collegato a qualcun altro; serve una nuova richiesta.</li>
+    <li><b class="ui">You're already in {band}</b>: la persona è membro di quella band e non può esserne deputy.</li>
+    <li><b class="ui">Couldn't link your account to the band. Check your connection.</b>: si tocca <b class="ui">Try again</b>; l'app riprova anche da sola al ritorno della connessione.</li>
+  </ul>
+  <p>Da quel momento gli admin della band possono fare richieste nell'app e il deputy riceve notifiche. Gli admin vengono avvisati con <b class="ui">{deputy} is on BandWith</b>.</p>
+  <aside class="note tip">Il collegamento resta in attesa anche se il deputy deve prima registrarsi o se l'app si riavvia.</aside>
+
+  <h3 id="art-deputy-gigs" data-roles="deputy">Deputy gigs</h3>
+  <p>Raccoglie tutte le richieste ricevute come deputy dalle varie band, con le risposte date, l'indirizzo dopo un sì e i link per il calendario.</p>
+  <p class="steps-title">Dove si trova</p>
+  <ul>
+    <li>Senza una band propria, <b class="ui">Deputy gigs</b> è la schermata Home. Il riquadro <b class="ui">Playing in a band too?</b> offre <b class="ui">Set up your band</b> e <b class="ui">Sign out</b>.</li>
+    <li>Con una band: avatar, poi <b class="ui">Deputy gigs</b> (<b class="ui">Requests from {count} bands</b>) in cima all'Account Hub.</li>
+    <li>Toccando una notifica deputy si apre direttamente sulla richiesta.</li>
+  </ul>
+  <p class="steps-title">Ogni richiesta</p>
+  <ul>
+    <li>Titolo del gig e band, con uno stato: <b class="ui">Waiting for your answer</b>, <b class="ui">You said yes</b>, <b class="ui">You'll confirm later</b>, <b class="ui">You said you can't</b>, <b class="ui">Request withdrawn</b>, <b class="ui">Gig cancelled</b> o <b class="ui">Gig over</b>.</li>
+    <li>Data, carico, soundcheck, spettacolo, locale, città, ruolo e <b class="ui">Fee offered</b>. L'indirizzo compare dopo un sì.</li>
+    <li>Per rispondere: <b class="ui">Yes</b>, <b class="ui">Not sure yet</b> o <b class="ui">No, I can't</b>, con un messaggio facoltativo; in seguito <b class="ui">Change your answer</b>.</li>
+    <li>Se il gig è cambiato: <b class="ui">Something changed</b>, poi <b class="ui">Still OK</b> o <b class="ui">I can't anymore</b>.</li>
+    <li>Dopo un sì: <b class="ui">Open in Maps</b>, <b class="ui">Add to calendar</b>, <b class="ui">Google Calendar</b> e <b class="ui">Subscribe to my gigs</b>.</li>
+  </ul>
+  <p>Le richieste aperte stanno in testa, quelle chiuse in <b class="ui">Past and closed</b>. Vengono mostrate le richieste a partire da 30 giorni prima. La riga in alto elenca le <b class="ui">Bands that call you as a deputy</b>.</p>
+  <p><b class="ui">Subscribe to my gigs</b> aggiunge un feed calendario dei gig confermati con quella band: segue ogni modifica e segnala i gig annullati, così il calendario resta aggiornato senza aprire BandWith.</p>
+  <figure class="shot" data-shot="people-deputy-gigs" data-device="phone"><figcaption>Deputy gigs: una richiesta di un'altra band in attesa di risposta.</figcaption></figure>
+  <div class="devnote" data-devices="duoBook,duoLand">Quando è la schermata Home, la pagina del marchio BandWith occupa il primo schermo e i gig il secondo, come nell'accesso.</div>
+  <div class="devnote" data-devices="duoLaptop">Come schermata Home in postura Laptop, l'intestazione resta sulla metà superiore e le richieste sulla metà inferiore. Mentre si scrive un messaggio la casella resta in vista, sopra la tastiera o appena sopra la piega.</div>
+
+  <h3 id="art-unlink-a-deputy" data-roles="admin">Scollegare l'account BandWith di un deputy</h3>
+  <p>Serve quando il link è stato aperto dalla persona sbagliata o il deputy ha cambiato account.</p>
+  <ol class="steps">
+    <li>In <b class="ui">Band members</b>, sezione <b class="ui">Deputies</b>, l'admin tocca il deputy con il tag <b class="ui">On BandWith</b>.</li>
+    <li>Nel riquadro <b class="ui">On BandWith</b> tocca <b class="ui">Unlink account</b>.</li>
+    <li>Nel pannello <b class="ui">Unlink BandWith account?</b> tocca <b class="ui">Unlink</b>.</li>
+  </ol>
+  <p class="steps-title">Cosa succede</p>
+  <ul>
+    <li>Quell'account smette di ricevere richieste nell'app e non vede più i gig di questa band in <b class="ui">Deputy gigs</b>.</li>
+    <li>Tutti i link già inviati al deputy vengono sostituiti: le vecchie pagine di risposta, i feed calendario e i link all'app smettono di funzionare.</li>
+    <li>Le risposte già date restano invariate.</li>
+    <li>La richiesta successiva va inviata via messaggio; aprendo il nuovo link dall'app si collega di nuovo l'account giusto.</li>
+  </ul>
+  <aside class="note warning">L'operazione non si può annullare: i vecchi link non funzioneranno più.</aside>
+
+  <h3 id="art-deputy-notifications" data-roles="admin,deputy">Notifiche dei deputy</h3>
+  <table class="grid">
+    <thead><tr><th>Quando</th><th>Chi</th><th>Notifica</th></tr></thead>
+    <tbody>
+      <tr><td>Il deputy risponde o cambia risposta</td><td>Tutti gli admin attivi</td><td><b class="ui">{deputy} is available</b>, <b class="ui">will confirm later</b> o <b class="ui">can't make it</b>, con il gig e la nota</td></tr>
+      <tr><td>Il deputy conferma dopo una modifica</td><td>Tutti gli admin attivi</td><td><b class="ui">{deputy} is OK with the changes</b></td></tr>
+      <tr><td>Un deputy collega il proprio account</td><td>Tutti gli admin attivi</td><td><b class="ui">{deputy} is on BandWith</b></td></tr>
+      <tr><td>Nuova richiesta, o di nuovo <b class="ui">Ask in the app</b></td><td>Deputy collegato</td><td><b class="ui">{band}: can you play?</b></td></tr>
+      <tr><td><b class="ui">Recap in the app</b> dopo un sì</td><td>Deputy collegato</td><td><b class="ui">You're confirmed: {gig}</b></td></tr>
+      <tr><td>Data, orari o locale cambiano dopo la risposta</td><td>Deputy collegato</td><td><b class="ui">{gig} has changed</b>, con le modifiche e <b class="ui">Still OK?</b></td></tr>
+      <tr><td>Il gig viene annullato</td><td>Deputy collegato</td><td><b class="ui">{gig} is cancelled</b></td></tr>
+      <tr><td>L'admin annulla la richiesta</td><td>Deputy collegato</td><td><b class="ui">{band} no longer needs you</b></td></tr>
+    </tbody>
+  </table>
+  <p>Le notifiche degli admin aprono il gig; quelle del deputy aprono <b class="ui">Deputy gigs</b> sulla richiesta. Un deputy senza app non riceve nulla in automatico: l'aggiornamento va inviato da <b class="ui">Find a deputy</b>.</p>
+  <aside class="note tip">Le raffiche vengono unite: la stessa richiesta, lo stesso riepilogo o lo stesso avviso di modifica raggiunge un deputy al massimo una volta ogni 2 minuti.</aside>
+
+  <h2>Attrezzatura e kit</h2>
+
+  <h3 id="art-gear-inventory" data-roles="admin,member">Gear &amp; inventory</h3>
+  <p>L'elenco dell'attrezzatura della band, con categorie, stato, posizione e proprietario di ogni oggetto.</p>
+  <p class="steps-title">Come aprirlo</p>
+  <ol class="steps">
+    <li>Admin: dalla Home, in <b class="ui">Quick Actions</b>, <b class="ui">Gear list</b>.</li>
+    <li>Tutti: avatar, poi il riquadro <b class="ui">Gear &amp; inventory</b> in <b class="ui">Band assets &amp; workflows</b>.</li>
+  </ol>
+  <p class="steps-title">Cosa contiene</p>
+  <ul>
+    <li>Due schede: <b class="ui">Items</b> e <b class="ui">Kits</b> (<a data-ref="gear-kits">i kit</a>).</li>
+    <li>Un campo di ricerca (<b class="ui">Search equipment, mics, cables…</b>) e filtri per categoria con il conteggio: <b class="ui">All</b>, <b class="ui">Instruments</b>, <b class="ui">Cables</b>, <b class="ui">Microphones</b>, <b class="ui">Speakers</b>, <b class="ui">Stands</b>, <b class="ui">Lighting</b>, <b class="ui">Cases</b>, le categorie create dalla band, poi <b class="ui">Other</b>.</li>
+    <li>Ogni oggetto: nome, pallino di stato e una riga con <b class="ui">Personal · {name}</b> per l'attrezzatura personale di qualcuno, la categoria, <b class="ui">qty {count}</b> e la posizione.</li>
+    <li>Gli oggetti modificabili dall'utente hanno un pulsante di modifica e uno di eliminazione. Quelli che non può modificare mostrano invece un lucchetto, e una nota sotto l'elenco spiega chi può modificarli.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Aggiunge, modifica ed elimina qualsiasi oggetto, sia della band sia personale dei membri, e gestisce i kit.</div>
+    <div data-role="member">Vede tutta l'attrezzatura e i kit della band. Aggiunge la propria attrezzatura con <b class="ui">Add my gear</b> e può modificare o eliminare solo quella.</div>
+  </div>
+  <p>Il riquadro nell'Account Hub mostra il numero di oggetti e una riga di stato: <b class="ui">{count} in repair</b>, <b class="ui">{count} missing</b> o <b class="ui">All in order</b>.</p>
+  <figure class="shot" data-shot="people-gear" data-device="phone"><figcaption>L'elenco dell'attrezzatura della band, con i kit e gli oggetti.</figcaption></figure>
+  <div class="devnote" data-devices="tablet">La schermata si chiama <b class="ui">Gear &amp; kits</b>: i kit sono una fila di riquadri sopra gli oggetti, senza le schede Items/Kits.</div>
+  <div class="devnote" data-devices="duoBook,duoLand">Un kit si apre sul secondo schermo.</div>
+
+  <h3 id="art-add-gear" data-roles="admin,member">Aggiungere, modificare o eliminare un oggetto</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Gear &amp; inventory</b> si tocca <b class="ui">Add equipment</b> (admin) o <b class="ui">Add my gear</b> (member), oppure il + in alto a destra.</li>
+    <li>Si digita l'<b class="ui">Item name</b>, per esempio <b class="ui">Shure SM58</b>.</li>
+    <li>Solo admin: in <b class="ui">Belongs to</b> si sceglie <b class="ui">The band</b> o <b class="ui">Me (personal)</b>. Gli oggetti aggiunti da un member sono sempre suoi.</li>
+    <li>Si scelgono <b class="ui">Category</b> e <b class="ui">Status</b>, si imposta <b class="ui">Quantity</b> e si compila <b class="ui">Location / who has it</b>.</li>
+    <li>Nessuna categoria adatta? Si tocca <b class="ui">Custom</b> e si scrive un <b class="ui">Category name</b> (fino a 40 caratteri), che compare poi come filtro per tutta la band.</li>
+    <li>Facoltativi: <b class="ui">Serial number</b>, <b class="ui">Purchase date</b>, <b class="ui">Purchase price</b> e <b class="ui">Notes</b>.</li>
+    <li>Si tocca <b class="ui">Save item</b>.</li>
+  </ol>
+  <p class="steps-title">Modifica o eliminazione</p>
+  <ol class="steps">
+    <li>Si tocca l'oggetto (<b class="ui">Edit {name}</b>), lo si modifica e si tocca <b class="ui">Save changes</b>.</li>
+    <li>Per eliminarlo: <b class="ui">Delete item</b> nel pannello, oppure il cestino sulla riga.</li>
+  </ol>
+  <div class="roles">
+    <div data-role="admin">Può modificare ogni oggetto, cambiarne il proprietario ed eliminare qualsiasi cosa.</div>
+    <div data-role="member">Può modificare ed eliminare solo gli oggetti segnati come suoi. Il pannello indica <b class="ui">Personal gear: the band sees it, only you and the admins can change it.</b> Gli altri oggetti mostrano un lucchetto al posto dei pulsanti.</div>
+  </div>
+  <aside class="note warning">Il cestino sulla riga e <b class="ui">Delete item</b> chiedono prima conferma con <b class="ui">Delete {name}?</b>. Eliminare un oggetto lo toglie anche da tutti i kit.</aside>
+  <aside class="note privacy">Tutti i membri della band vedono ogni oggetto, il suo stato e dove si trova. <b class="ui">Serial number</b>, <b class="ui">Purchase date</b> e <b class="ui">Purchase price</b> sono visibili solo agli admin e, per l'attrezzatura personale, al proprietario.</aside>
+
+  <h3 id="art-gear-status" data-roles="admin,member">Stato e posizione dell'attrezzatura</h3>
+  <p>Lo stato si sceglie modificando l'oggetto, tra <b class="ui">Available</b>, <b class="ui">In use</b>, <b class="ui">Maintenance</b> e <b class="ui">Lost</b>, e alimenta i contatori dei kit e dell'Account Hub.</p>
+  <table class="grid">
+    <thead><tr><th>Stato</th><th>Significato</th><th>Pronto per un gig?</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Available</b></td><td>Al suo posto, libero da prendere</td><td>Sì</td></tr>
+      <tr><td><b class="ui">In use</b></td><td>In uso presso qualcuno</td><td>Sì</td></tr>
+      <tr><td><b class="ui">Maintenance</b></td><td>In riparazione</td><td>No: conteggiato come <b class="ui">repair</b></td></tr>
+      <tr><td><b class="ui">Lost</b></td><td>Mancante</td><td>No: conteggiato come <b class="ui">missing</b></td></tr>
+    </tbody>
+  </table>
+  <p><b class="ui">Location / who has it</b> è un testo libero: una stanza, un case, un furgone o il nome di una persona. Serve a ritrovare l'attrezzatura prima di un gig.</p>
+  <p>I kit contano gli oggetti pronti (<b class="ui">{ready}/{total} ready</b>) e segnalano gli altri (<b class="ui">{count} items need a look · check it before {gig}.</b>).</p>
+
+  <h3 id="art-gear-kits" data-roles="admin">Creare e modificare un kit</h3>
+  <p>Un kit raggruppa l'attrezzatura da portare a un certo tipo di gig, per esempio l'impianto per i club o il set per il duo acustico.</p>
+  <ol class="steps">
+    <li>In <b class="ui">Gear &amp; inventory</b> l'admin apre la scheda <b class="ui">Kits</b> e tocca <b class="ui">New kit</b>.</li>
+    <li>Digita il <b class="ui">Kit name</b> (fino a 80 caratteri) ed eventualmente <b class="ui">Notes</b>, per esempio come si imballa.</li>
+    <li>In <b class="ui">Items from your inventory</b> spunta gli oggetti, usando la ricerca se l'elenco è lungo.</li>
+    <li>Tocca <b class="ui">Create kit</b>.</li>
+  </ol>
+  <p class="steps-title">Modifica o eliminazione</p>
+  <ol class="steps">
+    <li>Si apre il kit e si tocca <b class="ui">Edit</b>.</li>
+    <li>Si modificano nome, note o oggetti e si tocca <b class="ui">Save changes</b>.</li>
+    <li>Per eliminarlo: <b class="ui">Delete kit</b>, poi un secondo tocco (<b class="ui">Tap again to delete the kit</b>). Gli oggetti restano nell'inventario.</li>
+  </ol>
+  <p class="steps-title">La pagina del kit</p>
+  <ul>
+    <li>Contatori <b class="ui">Items</b>, <b class="ui">Cases</b> e <b class="ui">Ready</b>.</li>
+    <li><b class="ui">Next gig with this kit</b> e un avviso quando ci sono oggetti in manutenzione o persi.</li>
+    <li>L'elenco degli oggetti con il loro stato.</li>
+    <li><b class="ui">Use for a gig</b> (<a data-ref="kit-for-a-gig">usare un kit per un gig</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Crea, modifica, elimina e usa i kit.</div>
+    <div data-role="member">Vede i kit, i loro oggetti e lo stato di prontezza, senza pulsanti di modifica.</div>
+  </div>
+
+  <h3 id="art-kit-for-a-gig" data-roles="admin,member">Usare un kit per un gig</h3>
+  <p>Collegando un kit a un gig, la band sa cosa caricare sul furgone.</p>
+  <p class="steps-title">Dal gig</p>
+  <ol class="steps">
+    <li>Si apre il gig e, nella sezione <b class="ui">GEAR KIT</b>, si tocca <b class="ui">PICK A KIT</b> (o <b class="ui">CHANGE</b> se ce n'è già uno).</li>
+    <li>In <b class="ui">Kit for this gig</b> si tocca <b class="ui">Add kit</b> accanto a ogni kit necessario; <b class="ui">Kit added</b> lo toglie.</li>
+    <li>Si tocca <b class="ui">Done</b>.</li>
+  </ol>
+  <p class="steps-title">Dal kit</p>
+  <ol class="steps">
+    <li>Si apre il kit e si tocca <b class="ui">Use for a gig</b>.</li>
+    <li>Si tocca <b class="ui">Add kit</b> accanto a ogni gig in programma, poi <b class="ui">Done</b>.</li>
+  </ol>
+  <p>Il gig mostra quindi il kit con i suoi oggetti e <b class="ui">All ready</b> oppure quanti richiedono un controllo; il kit mostra il suo prossimo gig.</p>
+  <div class="roles">
+    <div data-role="admin">Sceglie e cambia i kit dei gig della band in programma.</div>
+    <div data-role="member">Vede il kit del gig e la sua prontezza, senza il pulsante <b class="ui">PICK A KIT</b>.</div>
+  </div>
+  <aside class="note tip">I kit valgono solo per i gig della band: prove, preventivi e gig personali non hanno la sezione <b class="ui">GEAR KIT</b>. Usare un kit non cambia lo stato degli oggetti.</aside>
+  <div class="devnote" data-devices="tablet">La sezione <b class="ui">GEAR KIT</b> si trova nella scheda rider del gig.</div>
+
+  <h2>Chi vede cosa</h2>
+
+  <h3 id="art-who-sees-what" data-roles="admin,member,deputy">Chi vede cosa</h3>
+  <p>Denaro, prezzi dei preventivi, contratti e compensi altrui sono protetti dal server, non solo nascosti nell'app: il telefono di un member non li riceve mai.</p>
+  <table class="grid">
+    <thead><tr><th>Dato</th><th>Admin</th><th>Member</th></tr></thead>
+    <tbody>
+      <tr><td>Dettagli del gig (data, orari, locale, indirizzo, dress code, note, rider e piano palco)</td><td>Tutto, più cliente, prezzo del gig, acconto, stato del pagamento, note interne e contratto</td><td>La logistica dei gig in cui suona e che non ha rifiutato. Mai cliente, prezzo, acconto, note interne o contratto</td></tr>
+      <tr><td>Formazione del gig e risposte</td><td>Tutti, con compensi e pagamenti</td><td>Chi suona e le risposte, senza compensi</td></tr>
+      <tr><td>Proprio compenso</td><td>Sì</td><td>Sì: compenso per gig, pagato o no, compenso predefinito e il proprio <b class="ui">Paid · {year}</b></td></tr>
+      <tr><td>Compensi altrui</td><td>Sì, per ogni membro e deputy</td><td>No</td></tr>
+      <tr><td>Preventivi e relativi totali</td><td>Sì: crea, invia e vede tutto</td><td>No. La verifica di disponibilità di un preventivo mostra solo la data</td></tr>
+      <tr><td>Finanze, pagamenti e statistiche della band</td><td>Sì</td><td>No. Solo i propri guadagni</td></tr>
+      <tr><td>Listino, dati bancari e fiscali</td><td>Sì</td><td>No</td></tr>
+      <tr><td>Setlist</td><td>Crea, modifica, collega ai gig</td><td>Sola lettura</td></tr>
+      <tr><td>Repertorio (brani, testi, accordi)</td><td>Aggiunge, modifica, elimina, importa</td><td>Lettura; proposte di brani e modifiche; note e file privati visibili solo a lui</td></tr>
+      <tr><td>Contratti e rider</td><td>Sì</td><td>Nessun contratto. Il gig mostra la versione del rider e il piano palco</td></tr>
+      <tr><td>Chat</td><td>Chat della band, chat dei gig, chat dirette con chiunque nella band</td><td>Chat della band, chat dei gig in cui suona, chat dirette solo con gli admin</td></tr>
+      <tr><td>Attrezzatura e kit</td><td>Vede e modifica tutto</td><td>Vede ogni oggetto, stato e posizione; numero di serie, data e prezzo d'acquisto solo per la propria attrezzatura personale; modifica solo quella</td></tr>
+      <tr><td>Contatti dei membri</td><td>Email e telefono di tutti nella band</td><td>Email e telefono di tutti nella band</td></tr>
+      <tr><td>Elenco deputy e richieste</td><td>Sì: contatti, compensi abituali, note, risposte</td><td>No</td></tr>
+      <tr><td>Gig personali e note private sui brani</td><td>Solo i propri</td><td>Solo i propri</td></tr>
+    </tbody>
+  </table>
+  <table class="grid">
+    <thead><tr><th>Dato</th><th>Deputy</th></tr></thead>
+    <tbody>
+      <tr><td>Dettagli del gig</td><td>Solo per i gig per cui è stato contattato: nome della band, titolo, data, orari di carico, soundcheck e spettacolo, locale e città. L'indirizzo stradale solo dopo un sì</td></tr>
+      <tr><td>Proprio compenso</td><td>Il compenso offerto in ogni richiesta</td></tr>
+      <tr><td>Altri compensi, preventivi, finanze, listino</td><td>No</td></tr>
+      <tr><td>Formazione, setlist, repertorio, contratti, chat, attrezzatura</td><td>No</td></tr>
+      <tr><td>Contatti dei membri</td><td>No</td></tr>
+      <tr><td>Dati sui deputy</td><td>Le proprie richieste e il nome con cui la band lo ha salvato</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Member e deputy vedono solo il proprio compenso e la logistica, mai i compensi altrui, i totali dei preventivi o le finanze della band.</aside>
+  <aside class="note tip">I gig personali di un member (esterni a qualsiasi band) sono privati: le band non ne vedono mai titolo, locale o orario.</aside>
+
+  <h2>Domande frequenti</h2>
+  <dl class="faq">
+    <dt>La persona invitata dice che l'invito non funziona.</dt>
+    <dd>Deve accedere con lo stesso indirizzo email a cui è stato inviato l'invito; se è scaduto, va invitata di nuovo.</dd>
+    <dt>Un deputy ha bisogno dell'app?</dt>
+    <dd>No: il link della richiesta apre una pagina web dove risponde con un tocco. Con l'app riceve le notifiche e vede tutte le richieste in <b class="ui">Deputy gigs</b>.</dd>
+    <dt>Il link di un deputy è stato aperto dalla persona sbagliata: cosa fare?</dt>
+    <dd>L'admin apre il deputy in <b class="ui">Band members</b>, tocca <b class="ui">Unlink account</b> e conferma. Tutti i vecchi link smettono di funzionare; la richiesta successiva va inviata via messaggio.</dd>
+  </dl>
+</section>

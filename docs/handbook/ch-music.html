@@ -1,0 +1,727 @@
+<section class="chapter" id="ch-music">
+  <h1>Repertorio, scalette e Stage mode</h1>
+  <p class="lead">Tutti i brani della band stanno in un'unica libreria, il Repertoire. Da qui l'admin compone le scalette (setlist) dei gig, e sul palco ognuno legge testi e accordi restando sullo stesso brano degli altri.</p>
+
+  <h2>Il Repertoire e i brani</h2>
+
+  <h3 id="art-repertoire-overview" data-roles="admin,member">La schermata Repertoire</h3>
+  <p>Il Repertoire è la libreria dei brani della band. Ogni brano appartiene alla band e ogni membro attivo può leggerli tutti. Le setlist si compongono a partire da questi brani.</p>
+  <p class="steps-title">Aprire il Repertoire</p>
+  <ol class="steps">
+    <li>Nella Home si tocca il riquadro <b class="ui">Repertoire</b> sotto <b class="ui">Quick Actions</b>.</li>
+    <li>In alternativa si tocca l'avatar in alto (<b class="ui">Open Identity and Account Hub</b>) e poi <b class="ui">Repertoire</b> sotto <b class="ui">Band assets &amp; workflows</b>.</li>
+  </ol>
+  <p class="steps-title">Cosa contiene la schermata</p>
+  <ul>
+    <li><b class="ui">Songs</b> e <b class="ui">Setlists</b> in alto passano da un elenco all'altro; ciascuno indica quanti elementi contiene.</li>
+    <li>Il campo di ricerca filtra l'elenco aperto: <b class="ui">Search songs, artists…</b> cerca per titolo e artista, <b class="ui">Search setlists…</b> per nome della setlist.</li>
+    <li>La scheda <b class="ui">Band repertoire</b> riporta il numero di <b class="ui">Songs</b> e <b class="ui">Setlists</b>, la <b class="ui">Total duration</b> di tutti i brani e lo <b class="ui">Status readiness</b>: un pallino per brano, colorato secondo lo stato, con sotto i conteggi di <b class="ui">Ready</b>, <b class="ui">Learning</b> e <b class="ui">Suggested</b>.</li>
+    <li>Ogni riga mostra titolo, artista e tonalità, durata e BPM. Un'etichetta <b class="ui">Suggested</b> o <b class="ui">Learning</b> segnala i brani non ancora pronti.</li>
+    <li>Il pulsante tondo <b class="ui">Play</b> a sinistra della riga riproduce la registrazione o apre il link del brano; è grigio se il brano non ha né l'una né l'altro.</li>
+    <li>Toccando un altro punto della riga si apre il menu del brano (vedi <a data-ref="song-menu-actions">Menu del brano</a>).</li>
+    <li>Sopra i brani l'admin vede <b class="ui">Suggestions from members</b> quando c'è qualcosa da esaminare; il membro vede sempre <b class="ui">My suggestions</b> (vedi <a data-ref="review-song-suggestions">Esaminare i suggerimenti</a> e <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</li>
+  </ul>
+  <table class="grid">
+    <thead><tr><th>Stato</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Ready</b></td><td>La band lo suona. I brani aggiunti o importati da un admin partono da qui.</td></tr>
+      <tr><td><b class="ui">Learning</b></td><td>La band lo sta preparando. Un suggerimento approvato parte da qui.</td></tr>
+      <tr><td><b class="ui">Suggested</b></td><td>Proposto da un membro, in attesa che un admin lo approvi o lo rifiuti.</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin">Vede <b class="ui">Import song list</b> e <b class="ui">Add song</b> in alto a destra nell'elenco Songs, e <b class="ui">New setlist</b> nell'elenco Setlists. Può modificare, cambiare di stato ed eliminare ogni brano.</div>
+    <div data-role="member">Legge tutti i brani e le setlist. Il pulsante + in alto a destra nell'elenco Songs è <b class="ui">Suggest a song</b>; nell'elenco Setlists non c'è alcun pulsante.</div>
+    <div data-role="deputy">Il deputy non è membro della band e non ha il Repertoire: vede solo i gig per cui è stato chiamato (vedi <a data-ref="deputy-gigs">Gig da deputy</a>).</div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Il Repertoire occupa la colonna dell'elenco; setlist, modulo del brano e suggerimenti si aprono accanto, nel secondo pannello.</div>
+  <div class="devnote" data-devices="duoLaptop">La scheda <b class="ui">Band repertoire</b> passa nella metà superiore (il Display), gli elenchi restano nella metà inferiore.</div>
+  <figure class="shot" data-shot="music-repertoire" data-device="phone"><figcaption>Il Repertoire con la scheda Band repertoire e l'elenco dei brani.</figcaption></figure>
+
+  <h3 id="art-add-a-song" data-roles="admin">Aggiungere un brano al repertorio</h3>
+  <p>Il brano si aggiunge in tre brevi passaggi; solo il titolo è obbligatorio.</p>
+  <ol class="steps">
+    <li>Nel Repertoire, su <b class="ui">Songs</b>, l'admin tocca <b class="ui">Add song</b> (il + in alto a destra). Con la libreria vuota c'è anche <b class="ui">Add first song</b>.</li>
+    <li>Al passaggio 1, <b class="ui">Song</b>, inserisce il <b class="ui">Song title *</b> e, se lo conosce, l'<b class="ui">Original artist</b>. Per portare subito accordi o testo tocca <b class="ui">Import chords and lyrics</b> (vedi <a data-ref="import-chords-and-lyrics">Importare accordi e testi</a>).</li>
+    <li>Con <b class="ui">Next</b> passa al passaggio 2, <b class="ui">Details · optional</b>: <b class="ui">Duration</b>, <b class="ui">BPM</b>, <b class="ui">Key</b> e <b class="ui">Genre</b>, tutti facoltativi.</li>
+    <li>Con <b class="ui">Next</b> arriva al passaggio 3, <b class="ui">Files &amp; links · optional</b>: registrazione, partitura, link, note o testo.</li>
+    <li>Tocca <b class="ui">Add song</b>: il pulsante diventa <b class="ui">Added!</b> e il modulo si chiude.</li>
+  </ol>
+  <p>Si può salvare a qualsiasi passaggio con <b class="ui">Add song now</b>, sotto i campi, con i dati inseriti fin lì.</p>
+  <aside class="note tip">Se in libreria c'è già un brano con lo stesso titolo e artista, il modulo avvisa <b class="ui">“… is already in your library. Save again to add a second copy.”</b> Toccando di nuovo il pulsante di salvataggio si crea una seconda copia.</aside>
+  <p class="steps-title">Dopo il salvataggio</p>
+  <ul>
+    <li>Il brano entra con stato <b class="ui">Ready</b>.</li>
+    <li>Il resto della band riceve un avviso nella casella notifiche (senza push).</li>
+    <li>I file scelti vengono caricati al salvataggio nello spazio privato della band; se il salvataggio fallisce, vengono rimossi.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Aggiunge i brani direttamente in libreria come <b class="ui">Ready</b>.</div>
+    <div data-role="member">Usa lo stesso modulo, intitolato <b class="ui">Suggest a song</b>: il brano entra come <b class="ui">Suggested</b> e attende un admin (vedi <a data-ref="suggest-a-song">Suggerire un brano</a>).</div>
+  </div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Close</b> si trova nella barra laterale, sotto l'orologio, invece che in alto a destra nel modulo.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Il modulo si apre nel secondo pannello, accanto al Repertoire.</div>
+
+  <h3 id="art-song-fields" data-roles="admin,member">I campi del brano</h3>
+  <p>Il modulo del brano ha tre passaggi. Solo il titolo è obbligatorio; gli altri passaggi sono indicati come facoltativi e si possono saltare.</p>
+  <table class="grid">
+    <thead><tr><th>Campo</th><th>Funzione</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Song title *</b></td><td>Nome del brano. Obbligatorio.</td></tr>
+      <tr><td><b class="ui">Original artist</b></td><td>Compare sotto il titolo ovunque e serve a riconoscere i doppioni.</td></tr>
+      <tr><td><b class="ui">Import chords and lyrics</b></td><td>Porta accordi e testo dal forum di iReal Pro, da un file o dagli appunti. Con un accordo allegato compare la scheda <b class="ui">Chord chart</b> con tonalità, stile, tempo, battute e sezioni, più <b class="ui">Preview chords</b>, <b class="ui">Replace</b> e una X per rimuoverla.</td></tr>
+      <tr><td><b class="ui">Duration</b></td><td>Minuti e secondi in due caselle (min : sec). Serve per i totali delle setlist.</td></tr>
+      <tr><td><b class="ui">BPM</b></td><td>Tempo, fino a 3 cifre. Lo usa il click dello Stage mode.</td></tr>
+      <tr><td><b class="ui">Key</b></td><td>Testo libero, ad es. C maj. Compare nell'elenco, sul palco e nel controllo di trasposizione del lettore.</td></tr>
+      <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Strumenti sotto BPM per trovare il tempo (vedi <a data-ref="transpose-and-tempo">Trasporre e trovare il tempo</a>).</td></tr>
+      <tr><td><b class="ui">Transpose for the band</b></td><td>Sposta tonalità, accordi della partitura e accordi nel testo per tutti. Compare solo se c'è qualcosa da trasporre.</td></tr>
+      <tr><td><b class="ui">Genre</b></td><td>Etichette scelte tra i generi della band, oppure una nuova con il chip tratteggiato <b class="ui">Genre</b> e poi <b class="ui">Add genre</b>. I generi filtrano la libreria quando si compone una setlist.</td></tr>
+      <tr><td><b class="ui">Recording</b></td><td>File audio MP3, M4A o WAV, massimo 50 MB.</td></tr>
+      <tr><td><b class="ui">Chart / sheet music</b></td><td>PDF o foto, massimo 20 MB.</td></tr>
+      <tr><td><b class="ui">Choose files</b></td><td>Sceglie uno o più file, che l'app smista tra Recording e Chart in base al tipo. Per i file su iCloud Drive, Google Drive o Dropbox: <b class="ui">Choose files</b>, poi <b class="ui">Browse</b> e l'app sotto Locations.</td></tr>
+      <tr><td><b class="ui">YouTube video</b></td><td>Link al brano su YouTube; deve iniziare con https://.</td></tr>
+      <tr><td><b class="ui">Sheet music</b></td><td>Link a un PDF o a uno spartito online, al posto della partitura caricata; deve iniziare con https://.</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>Link a una pagina di accordi, salvato nelle note del brano come “Chords: &lt;link&gt;”; deve iniziare con https://.</td></tr>
+      <tr><td><b class="ui">Notes</b></td><td>Note della band sul brano: idee di arrangiamento, cambi di tonalità.</td></tr>
+      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>Il testo del brano, eventualmente con gli accordi in linea (vedi <a data-ref="lyrics-and-chords-format">Come si scrivono testi e accordi</a>). <b class="ui">Paste or import lyrics</b>, sotto la casella, apre il foglio di importazione sulla scheda Lyrics.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Registrazioni e partiture caricate sono conservate in modo privato per la band: solo i membri della band possono aprirle.</aside>
+  <aside class="note tip">Se il titolo è vuoto quando si sceglie un file, il nome del file diventa il titolo.</aside>
+
+  <h3 id="art-song-menu-actions" data-roles="admin,member">Il menu del brano</h3>
+  <p>Toccando una riga del Repertoire si apre il menu del brano. Le voci compaiono solo se pertinenti per quel brano.</p>
+  <table class="grid">
+    <thead><tr><th>Voce</th><th>Funzione</th><th>Chi la vede</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Play</b></td><td>Riproduce la registrazione nel mini player, oppure apre il link Spotify o YouTube.</td><td>Tutti, se il brano ha registrazione o link</td></tr>
+      <tr><td><b class="ui">Lyrics</b></td><td>Apre il lettore sul testo.</td><td>Tutti, se il brano ha un testo</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>Apre il lettore sulla partitura degli accordi.</td><td>Tutti, se il brano ha una partitura iReal</td></tr>
+      <tr><td><b class="ui">Open chart</b></td><td>Apre la partitura caricata o il link allo spartito.</td><td>Tutti, se il brano ne ha una</td></tr>
+      <tr><td><b class="ui">Open in Ultimate Guitar</b></td><td>Apre, fuori dall'app, una ricerca del brano su Ultimate Guitar.</td><td>Tutti</td></tr>
+      <tr><td><b class="ui">Edit chords</b></td><td>Apre l'editor degli accordi.</td><td>Admin, se il brano ha un testo</td></tr>
+      <tr><td><b class="ui">Edit</b></td><td>Apre il modulo del brano.</td><td>Admin</td></tr>
+      <tr><td><b class="ui">Suggest a change</b></td><td>Invia all'admin una correzione o una nota.</td><td>Membri</td></tr>
+      <tr><td><b class="ui">Mark as ready</b></td><td>Porta lo stato a Ready.</td><td>Admin, se il brano non è Ready</td></tr>
+      <tr><td><b class="ui">Approve · learning</b></td><td>Approva un brano suggerito e lo porta a Learning.</td><td>Admin, su un brano Suggested</td></tr>
+      <tr><td><b class="ui">Back to learning</b></td><td>Riporta un brano Ready a Learning.</td><td>Admin, su un brano Ready</td></tr>
+      <tr><td><b class="ui">Delete</b></td><td>Elimina il brano dopo una conferma.</td><td>Admin</td></tr>
+    </tbody>
+  </table>
+  <aside class="note tip">Portare un brano suggerito a Learning o Ready da questo menu equivale ad accettare il suggerimento; eliminarlo equivale a rifiutarlo. In entrambi i casi il membro che l'ha proposto viene avvisato.</aside>
+
+  <h3 id="art-edit-or-delete-a-song" data-roles="admin">Modificare, approvare o eliminare un brano</h3>
+  <p class="steps-title">Modificare un brano</p>
+  <ol class="steps">
+    <li>Nel Repertoire l'admin tocca la riga del brano e poi <b class="ui">Edit</b>.</li>
+    <li>Cambia ciò che serve in uno dei tre passaggi e salva con <b class="ui">Save now</b> dal passaggio 1 o 2, oppure con <b class="ui">Next</b> e infine <b class="ui">Save song</b> al passaggio 3.</li>
+  </ol>
+  <p>Vengono salvati solo i campi modificati, quindi la modifica contemporanea di un altro campo da parte di un compagno di band non va persa. Il resto della band riceve un'unica push, ad esempio <b class="ui">“Song updated · Paper Boats”</b> con <b class="ui">“Leo M. changed: key, tempo.”</b></p>
+  <p class="steps-title">Cambiare lo stato</p>
+  <ol class="steps">
+    <li>Si tocca la riga del brano.</li>
+    <li>Si sceglie <b class="ui">Mark as ready</b>, <b class="ui">Approve · learning</b> o <b class="ui">Back to learning</b>: l'etichetta sulla riga cambia subito.</li>
+  </ol>
+  <p class="steps-title">Eliminare un brano</p>
+  <ol class="steps">
+    <li>Si tocca la riga del brano e poi <b class="ui">Delete</b>.</li>
+    <li>La conferma elenca le setlist che perdono il brano e i gig in programma che lo prevedono.</li>
+    <li>Si conferma con <b class="ui">Delete</b> o si annulla con <b class="ui">Cancel</b>.</li>
+  </ol>
+  <aside class="note warning">L'eliminazione toglie il brano da tutte le setlist che lo contengono e cancella definitivamente registrazione e partitura caricate. L'operazione è irreversibile.</aside>
+  <div class="roles">
+    <div data-role="admin">Modifica, cambia di stato ed elimina ogni brano della band.</div>
+    <div data-role="member">Non può modificare né eliminare i brani della band; usa <b class="ui">Suggest a change</b> (vedi <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</div>
+  </div>
+
+  <h2>Testi, accordi e tonalità</h2>
+
+  <h3 id="art-lyrics-and-chords-format" data-roles="admin,member">Come si scrivono testi e accordi</h3>
+  <p>Il testo è semplice testo con pochi segni convenzionali. Lo stesso testo contiene parole e accordi, così un unico brano serve sia al cantante sia ai musicisti.</p>
+  <p class="steps-title">I segni</p>
+  <ul>
+    <li>Una sezione inizia con una riga di intestazione: <code># Verse 1</code> oppure <code>[Chorus]</code>.</li>
+    <li>Una riga vuota separa le strofe.</li>
+    <li>L'accordo va tra parentesi quadre subito prima della parola su cui cade: <code>[Am]word</code>. Nel lettore compare sopra quella parola.</li>
+    <li>All'interno di una riga funzionano <code>**bold**</code> e <code>*italic*</code>.</li>
+    <li>È accettato anche JSON, ad esempio un elenco di righe o un elenco di sezioni con nome e righe.</li>
+  </ul>
+  <p class="steps-title">Cosa sistema l'app al salvataggio</p>
+  <ul>
+    <li>I nomi delle sezioni vengono uniformati: “Rit.” diventa Chorus, “[Strofa 2]” diventa Verse 2. Sono riconosciuti nomi in italiano, spagnolo, francese, tedesco e portoghese.</li>
+    <li>Le strofe senza numero vengono numerate se sono più di una.</li>
+    <li>Una riga di accordi sopra una riga di parole (lo schema “accordi sopra il testo”) viene fusa in accordi in linea.</li>
+    <li>Un accordo seguito da uno spazio viene agganciato alla parola successiva.</li>
+  </ul>
+  <p>Nel testo i nomi delle sezioni sono scritti in inglese, ma ciascuno li vede nella lingua impostata nella propria app.</p>
+  <aside class="note tip">Se il testo non può essere visualizzato, il lettore mostra <b class="ui">“These lyrics can’t be shown. Check their format in Edit song.”</b></aside>
+
+  <h3 id="art-read-a-song" data-roles="admin,member">Leggere testi e accordi</h3>
+  <p>Il lettore a schermo intero permette di cambiare vista, dimensione del testo e tonalità personale.</p>
+  <ol class="steps">
+    <li>Nel Repertoire si tocca la riga del brano e poi <b class="ui">Lyrics</b> o <b class="ui">Chords</b>; dal mini player si tocca <b class="ui">Lyrics</b>.</li>
+    <li>Le schede sotto il titolo passano tra <b class="ui">Lyrics</b>, <b class="ui">Chords</b> e <b class="ui">Structure</b>; compaiono solo le viste disponibili per quel brano.</li>
+    <li>I pulsanti − e + in alto (<b class="ui">Smaller text</b>, <b class="ui">Bigger text</b>) cambiano la dimensione del testo.</li>
+    <li>Per leggere in un'altra tonalità si usano − e + attorno alla tonalità sotto le schede; toccando la tonalità si torna all'originale.</li>
+    <li>La X (<b class="ui">Close lyrics</b>) chiude il lettore.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Vista</th><th>Contenuto</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lyrics</b></td><td>Solo le parole, accordi nascosti.</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>Le parole con gli accordi sopra, oppure la partitura iReal se il testo non ha accordi.</td></tr>
+      <tr><td><b class="ui">Structure</b></td><td>La partitura iReal battuta per battuta, oppure la progressione di accordi di ogni sezione in riquadri.</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">La vista viene ricordata</p>
+  <ul>
+    <li>La prima volta il lettore si apre sulla vista adatta allo strumento suonato nella band: cantanti su Lyrics; chitarra, tastiere e basso su Chords; batteria, percussioni e fiati su Structure.</li>
+    <li>In seguito si apre sull'ultima vista scelta su quel dispositivo; la stessa scelta vale nello Stage mode.</li>
+    <li>La dimensione del testo resta memorizzata sul dispositivo ed è condivisa con lo Stage mode.</li>
+  </ul>
+  <p>Se il brano è in riproduzione nel mini player, nell'intestazione del lettore compare un pulsante play/pausa. L'admin vede lì anche <b class="ui">Edit chords</b>.</p>
+  <div class="devnote" data-devices="duoLaptop">Il brano occupa la metà superiore (il Display) e i controlli del lettore passano nella metà inferiore (il Deck).</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Il lettore si apre nel secondo pannello, accanto al Repertoire.</div>
+  <figure class="shot" data-shot="music-reader" data-device="phone"><figcaption>Il lettore del brano con le schede Lyrics, Chords e Structure.</figcaption></figure>
+
+  <h3 id="art-transpose-and-tempo" data-roles="admin,member">Trasporre un brano e trovarne il tempo</h3>
+  <p>La tonalità si può cambiare per tutta la band o solo sul proprio schermo; il BPM si ricava battendo il tempo o dalla registrazione.</p>
+  <table class="grid">
+    <thead><tr><th>Dove</th><th>Cosa cambia</th><th>Chi</th></tr></thead>
+    <tbody>
+      <tr><td>Modulo del brano, <b class="ui">Transpose for the band</b></td><td>Tonalità, partitura degli accordi e accordi nel testo, per tutti, una volta salvato.</td><td>Admin</td></tr>
+      <tr><td>Lettore e Stage mode, − tonalità +</td><td>Solo ciò che mostra il proprio schermo; per la band il brano resta nella sua tonalità. Memorizzato per brano su quel dispositivo.</td><td>Tutti</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Trasporre per tutta la band</p>
+  <ol class="steps">
+    <li>Dal menu del brano l'admin tocca <b class="ui">Edit</b>, poi <b class="ui">Next</b> fino a <b class="ui">Details · optional</b>.</li>
+    <li>Sotto <b class="ui">Key</b> tocca <b class="ui">Transpose down a semitone</b> (−) o <b class="ui">Transpose up a semitone</b> (+); il numero tra i due indica di quanto si è spostato.</li>
+    <li>Tocca <b class="ui">Save now</b>: la band viene avvisata che tonalità e accordi sono cambiati.</li>
+  </ol>
+  <p class="steps-title">Trovare il BPM</p>
+  <ol class="steps">
+    <li>Nel modulo, su <b class="ui">Details · optional</b>, si tocca <b class="ui">Tap</b> a tempo con il brano: dopo due tocchi il BPM si compila e accanto al pulsante compare il numero di tocchi.</li>
+    <li>Oppure, se il brano ha un file audio, si tocca <b class="ui">BPM from the recording</b>: il tempo viene calcolato sul dispositivo.</li>
+    <li>Se il risultato è la metà o il doppio del tempo reale, si tocca ÷2 o ×2.</li>
+  </ol>
+  <aside class="note tip">Il tempo ricavato dalla registrazione è una stima: il modulo indica <b class="ui">“Estimated from the recording: check it by tapping along.”</b></aside>
+
+  <h3 id="art-chord-editor" data-roles="admin">Modificare gli accordi di un brano</h3>
+  <p>Nell'editor gli accordi si posano sulle parole con un tocco, si spostano trascinandoli e si copiano da una sezione all'altra.</p>
+  <ol class="steps">
+    <li>Nel Repertoire l'admin tocca la riga del brano e poi <b class="ui">Edit chords</b>, oppure tocca <b class="ui">Edit chords</b> nell'intestazione del lettore.</li>
+    <li>Tocca una parola: la barra in basso mostra <b class="ui">Chord on “…”</b> e gli accordi già usati nel brano.</li>
+    <li>Tocca un accordo per posarlo sulla parola, oppure ne scrive uno nuovo in <b class="ui">New chord, e.g. F#m7</b> e tocca <b class="ui">Add</b>. <b class="ui">No chord</b> lo rimuove, <b class="ui">Done</b> chiude la barra.</li>
+    <li>Per spostare un accordo lo trascina su un'altra parola.</li>
+    <li>Per riutilizzare gli accordi di una strofa tocca <b class="ui">Copy chords from…</b> sopra una sezione e sceglie la sezione di origine.</li>
+    <li>Se il brano ha una partitura iReal, <b class="ui">From iReal (…)</b> sopra una sezione stende sulle sue righe gli accordi della sezione corrispondente della partitura.</li>
+    <li><b class="ui">Undo</b> in alto a destra annulla l'ultimo passo; al termine si tocca <b class="ui">Save chords</b>.</li>
+  </ol>
+  <p class="steps-title">Controlli dell'editor</p>
+  <ul>
+    <li><b class="ui">Tidy the format</b> compare quando nomi di sezione o accordi non rispettano il formato della band; un tocco li corregge.</li>
+    <li><b class="ui">“Not in the iReal chart: …”</b> elenca gli accordi del testo che la partitura non suona mai.</li>
+    <li><b class="ui">“The chords sound in …, the song is in ….”</b> compare quando gli accordi non corrispondono alla tonalità del brano, con un pulsante per trasporli.</li>
+  </ul>
+  <p>L'editor richiede un testo: se manca, invita ad aggiungerlo prima in Edit song. Dopo il salvataggio la band riceve una push che segnala il cambio degli accordi.</p>
+  <aside class="note tip">Uscendo con modifiche non salvate compare <b class="ui">“Save your changes?”</b> con <b class="ui">Save changes</b>, <b class="ui">Discard</b> e <b class="ui">Keep editing</b>.</aside>
+  <div class="roles">
+    <div data-role="admin">Modifica gli accordi della band per tutti.</div>
+    <div data-role="member">Non ha l'editor degli accordi; propone una correzione con <b class="ui">Suggest a change</b> (vedi <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</div>
+  </div>
+
+  <h2>Importare, ascoltare e annotare</h2>
+
+  <h3 id="art-import-chords-and-lyrics" data-roles="admin,member">Importare accordi e testi in un brano</h3>
+  <p>Accordi e testo possono arrivare dal forum di iReal Pro, da un file o dagli appunti.</p>
+  <ol class="steps">
+    <li>Nel modulo del brano si tocca <b class="ui">Import chords and lyrics</b> al passaggio 1, oppure <b class="ui">Paste or import lyrics</b> al passaggio 3.</li>
+    <li>Si sceglie una scheda: <b class="ui">From the forum</b>, <b class="ui">From file</b> o <b class="ui">Lyrics</b>.</li>
+    <li><b class="ui">From file</b>: con <b class="ui">Choose a file</b> si sceglie un file MusicXML (.musicxml, .mxl), ChordPro (.cho, .chordpro, .pro) o di testo (.txt).</li>
+    <li><b class="ui">Lyrics</b>: si copia il testo altrove e si tocca <b class="ui">Paste from clipboard</b>, oppure lo si incolla nella casella e si tocca <b class="ui">Preview</b>.</li>
+    <li>Si controlla l'anteprima e si tocca <b class="ui">Use these lyrics</b>, oppure <b class="ui">Back</b>.</li>
+    <li>Si salva il brano come di consueto.</li>
+  </ol>
+  <ul>
+    <li>Il testo passa sempre da un'anteprima; se il brano ha già un testo, l'anteprima avvisa che verrà sostituito.</li>
+    <li>Una partitura di soli accordi viene allegata subito, senza anteprima.</li>
+    <li>L'importazione riempie solo i campi vuoti: titolo, artista, tonalità e tempo già inseriti restano.</li>
+    <li>Incollando, le righe vuote separano le sezioni; gli accordi sopra le parole o tra [parentesi] restano agganciati ad esse.</li>
+    <li>Da iReal Pro sul dispositivo: Share › Export › MusicXML, salvataggio in File, poi <b class="ui">From file</b>.</li>
+  </ul>
+  <aside class="note privacy">Testi e partiture importati sono visibili solo alla band. Vanno importati solo contenuti che si ha il diritto di usare.</aside>
+  <div class="roles">
+    <div data-role="admin">Importa in qualsiasi brano mentre lo aggiunge o lo modifica.</div>
+    <div data-role="member">Importa quando suggerisce un nuovo brano; per un brano esistente suggerisce invece la modifica.</div>
+  </div>
+
+  <h3 id="art-import-from-ireal-pro" data-roles="admin,member">Importare una partitura da iReal Pro</h3>
+  <p>Toccando il link di un brano o di una playlist sul forum di iReal Pro si portano nel brano accordi, forma, tonalità e tempo.</p>
+  <p class="steps-title">Nelle app per iPhone, iPad e Android</p>
+  <ol class="steps">
+    <li>Nel modulo del brano si tocca <b class="ui">Import chords and lyrics</b> e si resta su <b class="ui">From the forum</b>.</li>
+    <li><b class="ui">Browse the iReal Pro forum</b> apre il forum all'interno dell'app.</li>
+    <li>Toccando il link di un brano o di una playlist, gli accordi tornano direttamente nel modulo.</li>
+    <li>In alternativa si incolla un link irealb:// in <b class="ui">iReal Pro link</b>.</li>
+  </ol>
+  <p class="steps-title">Sul web</p>
+  <ol class="steps">
+    <li>Nel modulo del brano si tocca <b class="ui">Import chords and lyrics</b> e si resta su <b class="ui">From the forum</b>.</li>
+    <li><b class="ui">Open the iReal Pro forum</b> apre il forum in una finestra separata.</li>
+    <li>Si fa clic destro sul link di un brano o di una playlist e si sceglie Copy Link.</li>
+    <li>Tornati in BandWith si tocca <b class="ui">Paste link</b>, si incolla in <b class="ui">iReal Pro link</b> oppure si trascina il link sulla casella (che mostra <b class="ui">Drop the link here</b>). La finestra del forum si chiude appena il link è inserito.</li>
+  </ol>
+  <p>Il link di una playlist ne mostra i brani (<b class="ui">“… · 12 songs”</b>). I brani che corrispondono al titolo inserito sono in cima; <b class="ui">Find a song</b> restringe l'elenco e un tocco sceglie il brano. <b class="ui">Change</b> torna al link.</p>
+  <p class="steps-title">Cosa viene importato</p>
+  <ul>
+    <li>Accordi e forma (sezioni, battute, ritornelli), più tonalità, stile, tempo e indicazione di tempo. Niente melodia, niente testo.</li>
+    <li>Titolo, compositore (come artista), tonalità e BPM riempiono i campi vuoti del modulo.</li>
+    <li>La partitura compare nelle viste <b class="ui">Chords</b> e <b class="ui">Structure</b> del lettore e l'editor degli accordi può usarla per posizionare gli accordi.</li>
+  </ul>
+  <aside class="note tip">Se il browser blocca la finestra del forum, occorre consentire i pop-up per BandWith e riprovare.</aside>
+  <div class="devnote" data-devices="web">Il forum non può aprirsi all'interno della pagina: si apre in una finestra separata e il link si riporta con <b class="ui">Paste link</b>, incollandolo o trascinandolo.</div>
+
+  <h3 id="art-open-a-chart-from-another-app" data-roles="admin,member">Aprire una partitura MusicXML da un'altra app</h3>
+  <ol class="steps">
+    <li>Da un'altra app (ad esempio iReal Pro o File) si condivide o si apre un file MusicXML con BandWith.</li>
+    <li>BandWith apre il foglio <b class="ui">Received file</b>: l'admin vede <b class="ui">Attach the chord chart</b>, il membro <b class="ui">Suggest the chord chart</b>.</li>
+    <li>Si sceglie il brano di destinazione, cercandolo con <b class="ui">Find a song</b>. Se il brano ha già una partitura, viene indicato che sarà sostituita.</li>
+    <li>Si tocca <b class="ui">Open chords</b> per controllarla, oppure <b class="ui">Done</b>.</li>
+  </ol>
+  <ul>
+    <li>Per un brano nuovo occorre prima aggiungerlo: il file resta in attesa in <b class="ui">Import chords and lyrics</b> › <b class="ui">From file</b> › <b class="ui">Received file</b>, dove <b class="ui">Use it</b> lo allega.</li>
+    <li><b class="ui">Discard the file</b> scarta il file.</li>
+    <li>Una partitura con testo ma senza sigle di accordi non produce una partitura di accordi; per usarne il testo si apre Edit del brano › <b class="ui">Paste or import lyrics</b> › <b class="ui">From file</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">La partitura viene allegata subito al brano della band.</div>
+    <div data-role="member">La partitura arriva all'admin come suggerimento; il brano della band resta invariato finché non viene accettata.</div>
+  </div>
+  <div class="devnote" data-devices="web">Non disponibile: la ricezione di file da altre app funziona nelle app per iPhone, iPad e Android.</div>
+
+  <h3 id="art-import-a-song-list" data-roles="admin">Importare un elenco di brani</h3>
+  <p>Si possono aggiungere molti brani insieme da un file CSV o di testo, oppure caricare il repertorio predefinito.</p>
+  <ol class="steps">
+    <li>Nel Repertoire, su <b class="ui">Songs</b>, l'admin tocca <b class="ui">Import song list</b> (il pulsante di caricamento in alto a destra). Con la libreria vuota c'è anche <b class="ui">Import list (CSV/TXT)</b>.</li>
+    <li>Sceglie un file .csv, .tsv o .txt fino a 2 MB.</li>
+    <li>La riga sopra l'elenco indica quanti brani sono stati importati e quanti erano già in libreria.</li>
+  </ol>
+  <p class="steps-title">Formato del file</p>
+  <ul>
+    <li>Un foglio di calcolo salvato come CSV (Excel, Numbers, Google Sheets) con riga di intestazione. Colonne lette: title (o song, name, track), artist (o band, performer), key, bpm (o tempo), duration (o length, time; in m:ss o in secondi) e genre.</li>
+    <li>Un semplice elenco scritto in Note: un brano per riga, nella forma “Titolo - Artista”, “Titolo, Artista” o solo “Titolo”. Righe numerate e righe vuote sono ammesse.</li>
+    <li>Fino a 2000 brani per file.</li>
+  </ul>
+  <p>I brani con lo stesso titolo e artista di uno già in libreria vengono saltati. I brani importati entrano come <b class="ui">Ready</b>.</p>
+  <p class="steps-title">Caricare il repertorio predefinito</p>
+  <ol class="steps">
+    <li>Con la libreria vuota si tocca <b class="ui">Load 700+ songs</b>.</li>
+    <li>L'app aggiunge i brani della raccolta non ancora presenti in libreria e indica quanti sono.</li>
+  </ol>
+  <aside class="note privacy">L'importazione di un elenco è riservata agli admin, perché finisce direttamente nella libreria della band. I membri suggeriscono un brano alla volta e un admin li esamina uno per uno.</aside>
+  <div class="roles">
+    <div data-role="admin">Vede <b class="ui">Import song list</b> e <b class="ui">Load 700+ songs</b>.</div>
+    <div data-role="member">Non vede questi pulsanti.</div>
+  </div>
+
+  <h3 id="art-play-a-song-recording" data-roles="admin,member">Ascoltare una registrazione, aprire una partitura o un link</h3>
+  <ol class="steps">
+    <li>Nel Repertoire si tocca il pulsante tondo <b class="ui">Play</b> sulla riga, oppure la riga e poi <b class="ui">Play</b>.</li>
+    <li>Una registrazione (file caricato, link Google Drive o qualsiasi link audio) parte nel mini player, che offre <b class="ui">Pause</b>, <b class="ui">Play</b> e <b class="ui">Stop</b>, più <b class="ui">Lyrics</b> per aprire il lettore.</li>
+    <li>Un link Spotify o YouTube si apre fuori dall'app.</li>
+    <li>Per la partitura si tocca la riga e poi <b class="ui">Open chart</b>.</li>
+  </ol>
+  <aside class="note tip">Se non si apre nulla, l'app mostra <b class="ui">“Could not open this song. Check its recording or links.”</b> Se un link non funziona nel player, <b class="ui">Open the link</b> lo apre altrove.</aside>
+
+  <h3 id="art-my-notes-and-files" data-roles="admin,member">Le mie note e i miei file su un brano</h3>
+  <p>Ognuno può aggiungere note private sul brano, su una riga, su una parola o su un accordo, e conservare file propri.</p>
+  <aside class="note privacy">Note e file personali appartengono solo a chi li crea: nessun altro nella band li vede, admin compresi. Il brano della band non cambia per gli altri.</aside>
+  <p class="steps-title">Aggiungere una nota</p>
+  <ol class="steps">
+    <li>Si apre il brano nel lettore (<b class="ui">Lyrics</b> o <b class="ui">Chords</b>) o nello Stage mode.</li>
+    <li>Si attiva <b class="ui">My notes</b> sotto le schede del brano. La prima volta un foglio spiega la funzione; si chiude con <b class="ui">Got it</b>.</li>
+    <li>Si tocca <b class="ui">Add note</b> e poi la riga desiderata, oppure <b class="ui">Note on the whole song</b>.</li>
+    <li>Per una riga si sceglie l'oggetto della nota: <b class="ui">Whole line</b>, una delle sue parole o uno dei suoi accordi.</li>
+    <li>Si scrive in <b class="ui">My note</b> e si tocca <b class="ui">Save note</b>.</li>
+  </ol>
+  <ul>
+    <li>Le note compaiono evidenziate sotto la riga; quelle sull'intero brano sopra il testo.</li>
+    <li>Toccando una nota la si modifica o la si elimina con <b class="ui">Delete note</b>.</li>
+    <li>La nota resta sulla sua riga anche quando un admin modifica gli accordi o sposta le sezioni. Se la riga non esiste più, la nota sale in cima per non andare persa.</li>
+    <li>Disattivando <b class="ui">My notes</b> le note si nascondono, ad esempio sul palco; l'interruttore resta memorizzato sul dispositivo.</li>
+  </ul>
+  <p class="steps-title">Aggiungere un file personale</p>
+  <ol class="steps">
+    <li>Con <b class="ui">My notes</b> attivo si tocca <b class="ui">Add file</b> e si sceglie una registrazione o una partitura.</li>
+    <li>Il file compare come chip sotto la barra: toccandolo si apre, con la sua X e una conferma si rimuove.</li>
+  </ol>
+  <p>Per condividere una nota con la band si tocca <b class="ui">Suggest to the band</b> nel foglio della nota: arriva all'admin come suggerimento, insieme alla riga a cui si riferiva.</p>
+  <div class="devnote" data-devices="phone,phoneLand,duoClosed">Nello Stage mode la barra usa solo pulsanti a icona, così resta su un'unica riga sopra il testo.</div>
+
+  <h2>I suggerimenti dei membri</h2>
+
+  <h3 id="art-suggest-a-song" data-roles="member">Suggerire un nuovo brano</h3>
+  <p>Il membro propone un brano per il repertorio; un admin lo approva o lo rifiuta.</p>
+  <ol class="steps">
+    <li>Nel Repertoire, su <b class="ui">Songs</b>, il membro tocca <b class="ui">Suggest a song</b> (il + in alto a destra).</li>
+    <li>Compila il modulo come per qualsiasi brano: solo <b class="ui">Song title *</b> è obbligatorio. Può importare accordi e testo e allegare registrazione o partitura.</li>
+    <li>Invia subito con <b class="ui">Suggest now</b>, oppure percorre i passaggi e tocca <b class="ui">Suggest a song</b> all'ultimo.</li>
+  </ol>
+  <p class="steps-title">Cosa succede dopo</p>
+  <ul>
+    <li>Il brano compare nel Repertoire con l'etichetta <b class="ui">Suggested</b>, visibile a tutta la band.</li>
+    <li>Gli admin della band ricevono una push <b class="ui">“Song suggested · …”</b>; più brani suggeriti nell'arco di un minuto generano un'unica push.</li>
+    <li>Se un admin lo approva, il brano passa a <b class="ui">Learning</b> e il membro riceve una push. Se lo rifiuta, brano e file vengono eliminati e il membro riceve una push con la motivazione, se indicata.</li>
+  </ul>
+  <p>I file allegati a un brano suggerito restano in una cartella personale del membro finché un admin non accetta il brano.</p>
+
+  <h3 id="art-suggest-a-change-to-a-song" data-roles="member">Suggerire una modifica a un brano</h3>
+  <p>Il membro invia all'admin una correzione di testo o accordi, oppure una nota per tutta la band.</p>
+  <figure class="shot" data-shot="music-suggestions" data-device="phone"><figcaption>Una correzione del testo con Changes, Before e After e i pulsanti di revisione.</figcaption></figure>
+  <ol class="steps">
+    <li>Nel Repertoire tocca la riga del brano e poi <b class="ui">Suggest a change</b>.</li>
+    <li>Sceglie <b class="ui">Lyrics or chords</b> oppure <b class="ui">Note for the band</b>.</li>
+    <li>Per testo o accordi modifica il contenuto di <b class="ui">Lyrics with chords</b>; gli accordi vanno tra parentesi prima della parola: [Am]word. La riga sotto la casella riassume le modifiche, ad esempio <b class="ui">“Chords changed on 2 lines”</b>.</li>
+    <li>Se utile, aggiunge un <b class="ui">Message for the admin (optional)</b>.</li>
+    <li>Per una nota scrive in <b class="ui">Note for the whole band</b>.</li>
+    <li>Tocca <b class="ui">Send suggestion</b>: il foglio mostra <b class="ui">Sent to the admin</b> e si chiude.</li>
+  </ol>
+  <aside class="note tip">Il brano della band resta invariato per tutti finché l'admin non accetta il suggerimento.</aside>
+  <p>Si può partire anche da una nota personale: aprendola e toccando <b class="ui">Suggest to the band</b>, la nota viene inviata insieme alla riga a cui si riferiva.</p>
+  <p>Gli admin ricevono una push intitolata secondo il tipo: <b class="ui">“Lyrics correction · …”</b>, <b class="ui">“Chords correction · …”</b> o <b class="ui">“Note for the band · …”</b>.</p>
+
+  <h3 id="art-my-song-suggestions" data-roles="member">Seguire o ritirare i propri suggerimenti</h3>
+  <ol class="steps">
+    <li>Nel Repertoire, su <b class="ui">Songs</b>, il membro tocca <b class="ui">My suggestions</b>; la riga indica quanti sono in attesa dell'admin.</li>
+    <li><b class="ui">Waiting</b> elenca quelli ancora aperti, <b class="ui">Reviewed</b> gli altri con il relativo esito.</li>
+    <li>Toccandone uno lo si apre: <b class="ui">Changes</b>, <b class="ui">Before</b> e <b class="ui">After</b> mostrano la differenza; uno già esaminato riporta la motivazione dell'admin, se indicata.</li>
+    <li>Per ritirare un suggerimento in attesa si tocca <b class="ui">Withdraw suggestion</b> e si conferma con un secondo <b class="ui">Withdraw suggestion</b>, oppure si sceglie <b class="ui">Keep it</b>.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Etichetta</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Waiting</b></td><td>Non ancora esaminato.</td></tr>
+      <tr><td><b class="ui">Accepted</b></td><td>Applicato così come è stato inviato.</td></tr>
+      <tr><td><b class="ui">Accepted with changes</b></td><td>Applicato dall'admin con modifiche proprie.</td></tr>
+      <tr><td><b class="ui">Not accepted</b></td><td>Rifiutato.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">Ritirare un nuovo brano suggerito elimina il brano e i file allegati; gli admin non lo vedono più.</aside>
+
+  <h3 id="art-review-song-suggestions" data-roles="admin">Esaminare i suggerimenti dei membri</h3>
+  <p>L'admin accetta, accetta con modifiche o rifiuta le proposte dei membri, con una motivazione facoltativa.</p>
+  <ol class="steps">
+    <li>Nel Repertoire, su <b class="ui">Songs</b>, tocca <b class="ui">Suggestions from members</b> (che indica <b class="ui">“… to review”</b>), oppure la push ricevuta.</li>
+    <li>Su <b class="ui">Waiting</b> tocca un suggerimento: sono indicati autore, data e messaggio.</li>
+    <li>Esamina <b class="ui">Changes</b> (righe aggiunte e rimosse), <b class="ui">Before</b> e <b class="ui">After</b>. Per un nuovo brano, un riepilogo elenca cosa contiene.</li>
+    <li>Facoltativamente scrive una <b class="ui">Reason (…, will see it)</b>.</li>
+    <li>Tocca <b class="ui">Accept</b>, <b class="ui">Accept with changes</b> o <b class="ui">Reject</b>.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Pulsante</th><th>Effetto</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Accept</b></td><td>La modifica viene applicata al brano della band; un nuovo brano passa a Learning.</td></tr>
+      <tr><td><b class="ui">Accept with changes</b></td><td>L'admin modifica prima il testo, poi tocca <b class="ui">Accept with these changes</b>. Per un nuovo brano si apre il modulo del brano.</td></tr>
+      <tr><td><b class="ui">Reject</b></td><td>Non cambia nulla; un nuovo brano suggerito viene eliminato insieme ai suoi file.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Il membro riceve una push con l'esito e la motivazione.</li>
+    <li>Se il brano è cambiato dopo il suggerimento, la schermata avvisa che il confronto è con la versione attuale.</li>
+    <li>Una nota per la band viene aggiunta alle note del brano.</li>
+    <li>Un suggerimento che include una partitura di accordi sostituisce anche quella del brano.</li>
+    <li>I suggerimenti esaminati restano su <b class="ui">Reviewed</b>.</li>
+  </ul>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">I suggerimenti si aprono nel secondo pannello, accanto al Repertoire.</div>
+
+  <h2>Le setlist</h2>
+
+  <h3 id="art-build-a-setlist" data-roles="admin">Comporre una setlist</h3>
+  <p>La scaletta (setlist) si crea nel Repertoire: si aggiungono brani dalla libreria, si ordinano e si salva.</p>
+  <ol class="steps">
+    <li>Nel Repertoire l'admin tocca <b class="ui">Setlists</b> e poi <b class="ui">New setlist</b> (il + in alto a destra). Se non ci sono ancora setlist c'è anche <b class="ui">Create first setlist</b>.</li>
+    <li>Inserisce un <b class="ui">Setlist name *</b>, ad esempio Jazz night 1st set, e tocca <b class="ui">Create setlist</b>.</li>
+    <li>Tocca la nuova setlist nell'elenco per aprirla.</li>
+    <li>Tocca <b class="ui">Add songs from library…</b>; cerca con <b class="ui">Search library…</b> o filtra con un chip di genere. Un tocco aggiunge il brano, un secondo tocco lo toglie; i brani già in setlist sono evidenziati.</li>
+    <li><b class="ui">Done</b> chiude la libreria.</li>
+    <li>Trascinando un brano per la maniglia (<b class="ui">Drag to reorder</b>) lo sposta; la X sulla riga lo rimuove.</li>
+    <li>Se vuole, cambia il <b class="ui">Setlist name</b> in alto.</li>
+    <li>Tocca <b class="ui">Save setlist</b>.</li>
+  </ol>
+  <p class="steps-title">Cosa mostra l'editor</p>
+  <ul>
+    <li><b class="ui">Setlist order (… songs)</b> con il <b class="ui">Total</b> della durata.</li>
+    <li>Se la setlist ha più set, un'etichetta per set con i suoi brani e la durata, e un'etichetta <b class="ui">Set 1</b>, <b class="ui">Set 2</b> sul primo brano di ogni set.</li>
+    <li>Quanti brani non hanno durata: aggiungendola con Edit il totale diventa esatto.</li>
+  </ul>
+  <p>Dopo il salvataggio i membri attivi della band ricevono un'unica push con le modifiche, ad esempio <b class="ui">“Setlist updated · Rooftop set”</b> e <b class="ui">“Leo M.: 2 songs moved, 1 added.”</b>; anche un cambio di nome viene segnalato.</p>
+  <aside class="note tip">Uscendo dall'editor con modifiche non salvate compare <b class="ui">“Save the setlist changes?”</b> con <b class="ui">Save changes</b>, <b class="ui">Discard</b> e <b class="ui">Keep editing</b>.</aside>
+  <div class="roles">
+    <div data-role="admin">Crea, modifica, rinomina ed elimina le setlist.</div>
+    <div data-role="member">Apre le setlist in sola lettura: ordine, set, durata e <b class="ui">Export setlist as PDF</b>. Niente campo nome, libreria, maniglie né Save.</div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">La setlist si apre nel secondo pannello, accanto all'elenco delle setlist.</div>
+  <figure class="shot" data-shot="music-setlist-editor" data-device="phone"><figcaption>L'editor della setlist con la libreria aperta e l'ordine della setlist sotto.</figcaption></figure>
+
+  <h3 id="art-setlists-and-sets" data-roles="admin,member">Setlist, set e modelli</h3>
+  <p>Una setlist è un elenco ordinato di brani della band, in cui ogni brano compare una sola volta. Può essere divisa in set (Set 1, Set 2…), ad esempio prima e dopo una pausa.</p>
+  <ul>
+    <li>I set si creano impostando la setlist di un gig: <b class="ui">Add set</b> nel modulo del gig, oppure <b class="ui">New set</b> aggiungendo brani dalla panoramica del gig.</li>
+    <li>Nell'editor delle setlist del Repertoire i set sono visibili e i brani si spostano da un set all'altro trascinandoli oltre il confine; un brano nuovo entra nell'ultimo set. I set vuoti scompaiono al salvataggio.</li>
+    <li>Le setlist contrassegnate come modelli mostrano l'etichetta <b class="ui">Template</b> nell'elenco. Il modulo del gig propone le setlist salvate sotto <b class="ui">Load from templates</b>.</li>
+    <li>Caricando una setlist salvata in un gig, il gig ne riceve una copia propria, con il nome del gig (ad esempio “Rooftop Session setlist”). Modificare in seguito la setlist del gig non cambia quella di partenza.</li>
+    <li>Ogni setlist di un gig compare anche nel Repertoire sotto <b class="ui">Setlists</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Scrive le setlist ovunque: nel Repertoire, nel modulo del gig, nella panoramica del gig e nello Stage mode.</div>
+    <div data-role="member">Legge tutte le setlist della band; la modifica è riservata agli admin.</div>
+  </div>
+
+  <h3 id="art-attach-a-setlist-to-a-gig" data-roles="admin">Associare una setlist a un gig</h3>
+  <p>Brani o una setlist salvata si aggiungono mentre si crea un gig; su un gig esistente si usa la sua sezione <b class="ui">SETLIST</b>.</p>
+  <ol class="steps">
+    <li>L'admin crea un gig (vedi <a data-ref="create-a-gig">Creare un gig</a>). Per un gig già esistente si apre il gig e si usa invece la sua sezione <b class="ui">SETLIST</b>, che offre gli stessi modelli e brani.</li>
+    <li>Apre la sezione <b class="ui">Setlist &amp; songs</b>.</li>
+    <li>Per partire da una setlist salvata la tocca sotto <b class="ui">Load from templates</b>. Quando ci sono già brani, <b class="ui">Templates</b> ripropone l'elenco come <b class="ui">Replace with a template</b>.</li>
+    <li>Per aggiungere brani tocca <b class="ui">From library</b> sotto un set, oppure <b class="ui">Manual</b> per inserirne uno a mano. <b class="ui">Add songs</b> aggiunge a un set a scelta.</li>
+    <li><b class="ui">Add set</b> crea un altro set, a cui si dà un nome in <b class="ui">Set name...</b>; <b class="ui">Remove set</b> lo elimina.</li>
+    <li>Salva il gig.</li>
+  </ol>
+  <p>Il gig riceve una setlist propria con il nome del gig. Quando la setlist del gig cambia, la formazione riceve un'unica push con le modifiche.</p>
+  <aside class="note tip">Se il gig non ha setlist, la panoramica mostra <b class="ui">NO SETLIST ASSIGNED</b>; l'admin può aggiungere brani direttamente lì (vedi <a data-ref="edit-a-gig-setlist">Modificare la setlist dalla panoramica</a>).</aside>
+
+  <h3 id="art-edit-a-gig-setlist" data-roles="admin">Modificare la setlist di un gig dalla panoramica</h3>
+  <p>Brani riordinati, aggiunti e rimossi direttamente nel gig.</p>
+  <ol class="steps">
+    <li>L'admin apre un gig in programma: la sezione <b class="ui">SETLIST</b> della panoramica ne mostra i brani.</li>
+    <li>Per spostare un brano tiene premuto e trascina; da tastiera mette a fuoco la maniglia e usa le frecce su e giù.</li>
+    <li>Per rimuovere un brano tocca la sua X (<b class="ui">Remove song</b>).</li>
+    <li>Per aggiungere brani tocca <b class="ui">Add songs</b>. Con più set, <b class="ui">Which set?</b> chiede dove: si tocca un set o <b class="ui">New set</b>.</li>
+    <li>In <b class="ui">Add songs</b> spunta i brani (<b class="ui">From library</b>) e tocca <b class="ui">Add … songs</b>. I brani già presenti nel set mostrano <b class="ui">In set</b>. <b class="ui">Manual</b> crea un brano nuovo e lo aggiunge.</li>
+    <li>Tocca <b class="ui">Save</b> nella barra <b class="ui">Unsaved changes</b>, oppure <b class="ui">Cancel</b> per annullare.</li>
+  </ol>
+  <ul>
+    <li>Nulla viene scritto prima di <b class="ui">Save</b>. A quel punto la formazione del gig (chiunque non abbia rifiutato) riceve un'unica push, ad esempio <b class="ui">“Setlist updated · Rooftop Session”</b> e <b class="ui">“Leo M.: 1 song moved, 1 added.”</b></li>
+    <li>Un gig ancora senza setlist ne riceve una al salvataggio, con il nome del gig.</li>
+    <li>Uscendo dal gig con modifiche non salvate compare <b class="ui">“Save the setlist changes?”</b>.</li>
+    <li>Toccando <b class="ui">SETLIST</b> o il numero di brani si apre l'elenco completo in un foglio, modificabile allo stesso modo.</li>
+    <li>I preventivi mostrano qui la setlist in sola lettura. Su un gig passato la si modifica nel foglio (<b class="ui">SETLIST</b> o il numero di brani); i brani di una prova con <b class="ui">EDIT</b> accanto a <b class="ui">FOCUS SONGS</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Modifica la setlist nella panoramica dei gig della band in programma.</div>
+    <div data-role="member">Vede brani, artisti e durate in sola lettura. Senza setlist, il foglio indica <b class="ui">“The band admin has not attached a setlist yet.”</b></div>
+  </div>
+  <div class="devnote" data-devices="tablet">Il workspace del gig ha una scheda <b class="ui">SETLIST</b> dedicata, accanto a <b class="ui">OVERVIEW</b>, <b class="ui">RIDER &amp; STAGE</b> e <b class="ui">MONEY</b>.</div>
+
+  <h3 id="art-export-a-setlist-pdf" data-roles="admin,member">Esportare una setlist in PDF</h3>
+  <ol class="steps">
+    <li>Nel Repertoire si tocca <b class="ui">Setlists</b> e si apre una setlist.</li>
+    <li>Si tocca <b class="ui">Export setlist as PDF</b> (il pulsante documento in alto a destra).</li>
+    <li>Sul telefono si sceglie la destinazione nel foglio di condivisione; sul web il PDF viene scaricato.</li>
+  </ol>
+  <p>Il PDF riporta il nome della band, il nome della setlist e ogni brano con artista, tonalità, BPM, durata e set. Il pulsante è grigio finché la setlist è vuota.</p>
+
+  <h3 id="art-delete-a-setlist" data-roles="admin">Eliminare una setlist</h3>
+  <ol class="steps">
+    <li>Nel Repertoire l'admin tocca <b class="ui">Setlists</b> e apre la setlist.</li>
+    <li>Tocca <b class="ui">Delete setlist</b> (il cestino rosso in alto a destra).</li>
+    <li>La conferma elenca i gig in programma che perdono la setlist.</li>
+    <li>Conferma con <b class="ui">Delete</b> o annulla con <b class="ui">Cancel</b>.</li>
+  </ol>
+  <aside class="note warning">I gig che usano la setlist la perdono; i brani restano in libreria. L'operazione è irreversibile.</aside>
+
+  <h2>Notifiche e permessi</h2>
+
+  <h3 id="art-music-notifications" data-roles="admin,member">Notifiche su brani e setlist</h3>
+  <table class="grid">
+    <thead><tr><th>Modifica</th><th>Chi viene avvisato</th><th>Come</th></tr></thead>
+    <tbody>
+      <tr><td>Salvataggio della setlist di un gig (panoramica o modulo del gig)</td><td>La formazione del gig, tranne chi ha salvato</td><td>Un'unica push: <b class="ui">“Setlist updated · &lt;gig&gt;”</b> con <b class="ui">“2 songs moved, 1 added”</b></td></tr>
+      <tr><td>Salvataggio di una setlist nel Repertoire</td><td>I membri attivi della band, tranne chi ha salvato</td><td>Un'unica push: <b class="ui">“Setlist updated · &lt;setlist&gt;”</b>, oppure l'avviso del cambio di nome</td></tr>
+      <tr><td>Modifica di un brano (modulo o editor degli accordi)</td><td>I membri attivi della band, tranne chi ha salvato</td><td>Un'unica push: <b class="ui">“Song updated · &lt;song&gt;”</b> con i campi modificati</td></tr>
+      <tr><td>Brano aggiunto da un admin</td><td>Il resto della band</td><td>Avviso nella casella, senza push</td></tr>
+      <tr><td>Brano o modifica suggeriti</td><td>Gli admin attivi della band</td><td>Push</td></tr>
+      <tr><td>Suggerimento esaminato</td><td>Il membro che l'ha proposto</td><td>Push, con la motivazione</td></tr>
+      <tr><td>Setlist riordinata nello Stage mode</td><td>La band</td><td>Avviso nella casella, senza push</td></tr>
+    </tbody>
+  </table>
+  <p>I testi sono scritti nella lingua impostata nell'app di ciascuno. Un gig aperto ricarica la setlist appena un admin la modifica, così i membri vedono il nuovo ordine senza aggiornare.</p>
+
+  <h3 id="art-music-what-members-can-do" data-roles="admin,member,deputy">Cosa possono fare admin, membri e deputy con brani e setlist</h3>
+  <table class="grid">
+    <thead><tr><th>Azione</th><th>Admin</th><th>Membro</th></tr></thead>
+    <tbody>
+      <tr><td>Leggere tutti i brani, testi, accordi e file</td><td>Sì</td><td>Sì</td></tr>
+      <tr><td>Aggiungere un brano alla libreria</td><td>Sì, come Ready</td><td>Lo suggerisce, come Suggested</td></tr>
+      <tr><td>Modificare, trasporre per la band, modificare gli accordi, eliminare un brano</td><td>Sì</td><td>No: suggerisce una modifica</td></tr>
+      <tr><td>Importare un elenco di brani o caricare i 700+ brani</td><td>Sì</td><td>No</td></tr>
+      <tr><td>Esaminare i suggerimenti</td><td>Sì, tutti quelli della band</td><td>Vede solo i propri</td></tr>
+      <tr><td>Note e file personali</td><td>Solo i propri</td><td>Solo i propri</td></tr>
+      <tr><td>Leggere le setlist ed esportarle in PDF</td><td>Sì</td><td>Sì</td></tr>
+      <tr><td>Creare, modificare, riordinare, eliminare setlist</td><td>Sì</td><td>No</td></tr>
+      <tr><td>Aprire lo Stage mode su un gig in programma</td><td>Sì, come leader</td><td>Sì, come follower</td></tr>
+      <tr><td>Spostare il brano corrente della band, riordinare sul palco, avviare il click della band</td><td>Sì</td><td>No: scorre i brani e usa il click solo sul proprio telefono</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Gli admin non vedono note e file dei membri. I membri vedono solo i propri suggerimenti; gli admin li vedono tutti.</aside>
+  <div class="roles">
+    <div data-role="deputy">Il deputy non è membro della band: niente Repertoire, setlist né Stage mode. I suoi gig da deputy mostrano data, orari, luogo, ruolo e compenso offerto.</div>
+  </div>
+
+  <h2>Stage mode</h2>
+
+  <h3 id="art-stage-mode" data-roles="admin,member">Stage mode</h3>
+  <p>Lo Stage mode è la schermata nera del giorno del gig, leggibile a colpo d'occhio, con programma della serata, setlist e testo o accordi di ogni brano.</p>
+  <p class="steps-title">Aprire lo Stage mode</p>
+  <ol class="steps">
+    <li>Si apre un gig della band in programma e si tocca il pulsante <b class="ui">Play</b> in alto a destra (<b class="ui">Open stage mode</b>); il giorno del gig è evidenziato.</li>
+    <li>Oppure, nella Home, si tocca <b class="ui">Go live</b> sotto il prossimo gig.</li>
+    <li>Per uscire si tocca la X (<b class="ui">Exit stage mode</b>).</li>
+  </ol>
+  <p class="steps-title">Cosa contiene la schermata</p>
+  <ul>
+    <li><b class="ui">Stage mode · &lt;date&gt;</b>, titolo del gig, luogo e città.</li>
+    <li>Il programma della serata: Load in, Soundcheck, Show ed End in formato 24 ore. Il prossimo momento è evidenziato come <b class="ui">Next · …</b>, quelli passati sono attenuati.</li>
+    <li>La <b class="ui">Setlist</b> con numeri, titoli, tonalità e durata; il brano corrente è evidenziato. I brani tolti per la serata sono barrati e il conteggio sopra l'elenco dice quanti sono (<b class="ui">· 2 struck off</b>).</li>
+    <li>Una seconda scheda, con il nome della propria vista (<b class="ui">Lyrics</b>, <b class="ui">Chords</b> o <b class="ui">Structure</b>), mostra il brano corrente e lo segue quando cambia.</li>
+    <li><b class="ui">Prev</b> e <b class="ui">Next</b> in basso, con in mezzo il pulsante del click.</li>
+  </ul>
+  <p class="steps-title">Nella scheda del brano</p>
+  <ul>
+    <li>Si passa tra <b class="ui">Lyrics</b>, <b class="ui">Chords</b> e <b class="ui">Structure</b>; la scelta è condivisa con il lettore.</li>
+    <li>Con − e + si cambia la dimensione del testo.</li>
+    <li>Con − tonalità + si traspone per sé; cambia solo il proprio schermo.</li>
+    <li><b class="ui">My notes</b> mostra le note private sopra la versione della band.</li>
+    <li>Il programma della serata si nasconde per lasciare più spazio al brano.</li>
+    <li>Dove c'è spazio (un telefono in orizzontale, un iPad, un dispositivo a doppio schermo aperto su entrambi i pannelli) la setlist resta in una colonna accanto al brano: toccando un brano lì si passa a quello.</li>
+  </ul>
+  <p class="steps-title">Da sapere</p>
+  <ul>
+    <li>Lo Stage mode è disponibile per i gig della band in programma, non per prove, preventivi, gig passati o gig personali.</li>
+    <li>Lo schermo resta acceso finché lo Stage mode è aperto.</li>
+    <li>Senza setlist compare <b class="ui">“No setlist attached to this gig.”</b></li>
+    <li>Nelle app per telefono e tablet, aprendo il gig la setlist con testi e partiture viene conservata sul dispositivo, così lo Stage mode funziona senza internet. Con il logout la copia viene rimossa.</li>
+    <li>Senza internet e senza copia sul dispositivo compare <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> con <b class="ui">Try again</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Guida la band: sposta il brano corrente per tutti, riordina la setlist tenendo premuto e trascinando un brano, toglie brani per la serata e avvia il click della band (vedi <a data-ref="lead-stage-mode">Guidare la band</a>).</div>
+    <div data-role="member">Segue il leader o scorre i brani per conto proprio (vedi <a data-ref="follow-in-stage-mode">Seguire il leader</a>).</div>
+    <div data-role="deputy">Nessuno Stage mode: i deputy non hanno accesso alle setlist della band.</div>
+  </div>
+  <figure class="shot" data-shot="music-stage" data-device="phone"><figcaption>Lo Stage mode il giorno del gig: programma, setlist e Prev / Next.</figcaption></figure>
+
+  <h3 id="art-lead-stage-mode" data-roles="admin">Guidare la band nello Stage mode</h3>
+  <p>L'admin sposta il brano corrente per tutti, cambia l'ordine dal vivo e toglie i brani che stasera non si suonano.</p>
+  <ol class="steps">
+    <li>Apre lo Stage mode sul gig.</li>
+    <li>Controlla lo stato accanto alla setlist: <b class="ui">Live</b> indica che la band lo segue (<b class="ui">Band follows you</b>).</li>
+    <li>Con <b class="ui">Next</b> o <b class="ui">Prev</b> porta la band al brano successivo o precedente, oppure tocca un brano qualsiasi dell'elenco (<b class="ui">Go to …</b>).</li>
+    <li>Per cambiare l'ordine tiene premuto un brano finché si solleva, lo trascina al nuovo posto e lo rilascia. Uno scorrimento rapido continua a far scorrere l'elenco e un tocco rende ancora il brano corrente.</li>
+    <li>Per saltare un brano stasera tocca il pulsante tondo − in fondo alla sua riga (<b class="ui">Strike … off tonight</b>): il titolo viene barrato e <b class="ui">Prev</b> / <b class="ui">Next</b> lo scavalcano. Il + (<b class="ui">Bring back …</b>) lo rimette.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Stato</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Live</b></td><td>Connesso via internet: i membri lo seguono.</td></tr>
+      <tr><td><b class="ui">Live · BT</b></td><td>Connesso via internet e in trasmissione anche via Bluetooth.</td></tr>
+      <tr><td><b class="ui">Bluetooth</b></td><td>Niente internet: i membri vicini lo seguono via Bluetooth.</td></tr>
+      <tr><td><b class="ui">Offline</b></td><td>Al momento non arriva nulla alla band.</td></tr>
+      <tr><td><b class="ui">Saving…</b>, <b class="ui">Saved</b>, <b class="ui">Not saved</b></td><td>Dopo un trascinamento: il nuovo ordine viene salvato poco dopo l'ultimo spostamento. <b class="ui">Saved</b> compare per un attimo, poi torna lo stato.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>I membri che aprono lo Stage mode più tardi si allineano al brano corrente.</li>
+    <li>Un nuovo ordine vale per tutti, anche per chi ha smesso di seguire, e viene salvato nella setlist del gig; il gig dietro lo Stage mode lo mostra subito.</li>
+    <li>Chiudendo lo Stage mode viene salvato anche uno spostamento ancora in attesa.</li>
+    <li>Se più admin guidano contemporaneamente, prevale lo spostamento più recente.</li>
+    <li>Togliere un brano vale solo per la serata: la setlist del gig lo conserva. I membri che seguono lo vedono barrato e lo saltano anche loro, via internet o Bluetooth. Il telefono ricorda i brani tolti per quel gig anche se si chiude e si riapre lo Stage mode.</li>
+  </ul>
+  <aside class="note tip">Il telefono del leader va tenuto sbloccato: lo Stage mode mantiene lo schermo acceso, e un telefono bloccato interrompe la sincronizzazione della band.</aside>
+
+  <h3 id="art-follow-in-stage-mode" data-roles="member">Seguire il leader nello Stage mode</h3>
+  <p>Il membro lascia che il telefono dell'admin giri i brani, oppure li scorre da solo.</p>
+  <ol class="steps">
+    <li>Apre lo Stage mode sul gig. Il follow è attivo: il pulsante accanto alla setlist indica <b class="ui">Waiting for leader</b> finché il telefono dell'admin non viene rilevato, poi <b class="ui">Following leader</b>.</li>
+    <li>Brano corrente, testo e accordi cambiano quando l'admin va avanti.</li>
+    <li>Per guardare avanti da solo tocca <b class="ui">Prev</b>, <b class="ui">Next</b> o un brano: il follow si interrompe e il pulsante diventa <b class="ui">Follow leader</b>.</li>
+    <li>Toccando <b class="ui">Follow leader</b> torna al brano del leader e riprende a seguirlo.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">· BT</b> dopo l'etichetta indica il collegamento al leader via Bluetooth.</li>
+    <li><b class="ui">Offline</b> indica che al momento nulla può raggiungere il telefono.</li>
+    <li>Il membro non può spostare il brano degli altri né cambiare l'ordine.</li>
+  </ul>
+
+  <h3 id="art-stage-click" data-roles="admin,member">Il click nello Stage mode</h3>
+  <p>Il click è un metronomo visivo sul bordo dello schermo, sincronizzato tra i telefoni della band.</p>
+  <ol class="steps">
+    <li>Nello Stage mode il pulsante del click si trova tra <b class="ui">Prev</b> e <b class="ui">Next</b> e mostra il BPM del brano corrente.</li>
+    <li>Toccandolo (<b class="ui">Start the click</b>) un bagliore lampeggia sul bordo dello schermo a ogni battito, più intenso sul primo della battuta.</li>
+    <li>Toccandolo di nuovo (<b class="ui">Stop the click</b>) si ferma.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Chi lo avvia</th><th>Effetto</th></tr></thead>
+    <tbody>
+      <tr><td>Admin</td><td>Il click parte su tutti i telefoni in Stage mode, a tempo con quello del leader.</td></tr>
+      <tr><td>Membro</td><td>Il click parte solo sul suo telefono.</td></tr>
+      <tr><td>Membro, mentre è attivo il click del leader</td><td>Il pulsante lo nasconde o lo mostra sul suo telefono (<b class="ui">Hide the click on this phone</b>, <b class="ui">Show the click</b>).</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Il click è solo visivo, senza suono, e non blocca i tocchi sullo schermo.</li>
+    <li>I battiti per battuta derivano dall'indicazione di tempo della partitura iReal del brano, altrimenti sono 4.</li>
+    <li>Un brano senza BPM non può avviare il click (<b class="ui">No BPM for this song</b>); il BPM si aggiunge nel modulo del brano.</li>
+    <li>Passando a un altro brano, il click del brano precedente si nasconde.</li>
+    <li>I telefoni restano allineati entro circa 20–40 ms: adatto a un count-in e come riferimento di tempo, non come click in-ear.</li>
+    <li>Il click della band richiede internet: non viene trasmesso via Bluetooth.</li>
+  </ul>
+
+  <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode senza internet (Bluetooth)</h3>
+  <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente e l'ordine. I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet.</p>
+  <p class="steps-title">Preparazione prima del gig</p>
+  <ol class="steps">
+    <li>Tutti aprono il gig almeno una volta con la connessione attiva: l'app conserva sul telefono la setlist (con testi e partiture) e la chiave Bluetooth del gig.</li>
+    <li>Si attiva il Bluetooth e si consente a BandWith di usarlo.</li>
+    <li>Sul palco tutti aprono lo Stage mode. Il leader mostra <b class="ui">Bluetooth</b> o <b class="ui">Live · BT</b>; i membri mostrano <b class="ui">· BT</b> dopo l'etichetta del follow.</li>
+  </ol>
+  <p class="steps-title">Se non si collega</p>
+  <ul>
+    <li><b class="ui">“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”</b></li>
+    <li><b class="ui">“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.”</b> Compare quando sono stati aggiunti o tolti brani dopo l'ultimo caricamento della setlist sul telefono; un semplice cambio d'ordine non crea problemi.</li>
+  </ul>
+  <aside class="note privacy">Ogni gig ha una propria chiave segreta, consegnata solo ai membri attivi della band. Solo i telefoni con la chiave trovano il leader e ne accettano i messaggi.</aside>
+  <div class="devnote" data-devices="web">Niente sincronizzazione Bluetooth e niente copia della setlist sul dispositivo: sul web lo Stage mode richiede internet.</div>
+
+  <h3 id="art-stage-mode-on-devices" data-roles="admin,member">Stage mode su telefoni, tablet e dispositivi a doppio schermo</h3>
+  <p>La disposizione dello Stage mode cambia secondo il dispositivo e la postura.</p>
+  <div class="devnote" data-devices="phone">Una colonna: intestazione, programma della serata, setlist o brano, Prev / Next in basso.</div>
+  <div class="devnote" data-devices="phoneLand,duoClosed">In orizzontale (basso e largo), orari e momenti della serata stanno a sinistra, setlist o brano a destra. Con un brano aperto, la colonna di sinistra mostra invece la setlist, per saltare a qualsiasi brano.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Lo Stage mode si apre accanto al pannello dell'elenco. <b class="ui">Hide sidebar</b> gli dà tutto lo schermo: orari e momenti nel primo pannello, setlist o brano nel secondo, divisi sul bordo dei pannelli in modo che nulla cada sulla piega. Con un brano aperto, la setlist sta in una colonna accanto (sul primo pannello quando il dispositivo è aperto su entrambi). <b class="ui">Show sidebar</b> riporta l'elenco. La scelta resta memorizzata sul dispositivo.</div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Open stage mode</b> si trova nella barra laterale e il giorno del gig ne è l'azione principale. <b class="ui">Hide sidebar</b> nasconde la barra nello Stage mode.</div>
+  <div class="devnote" data-devices="duoLaptop">Spia da palco: il dispositivo si appoggia sul pavimento del palco come un monitor. La metà superiore mostra il contatore (<b class="ui">Song … of …</b>), titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo. La metà inferiore ha grandi pulsanti <b class="ui">Prev</b> e <b class="ui">Next</b> e l'avanzamento del set; i brani tolti per la serata vengono saltati e i loro segmenti di avanzamento attenuati. Anche frecce, Pagina su/giù e Spazio fanno avanzare, quindi funzionano le pedaliere Bluetooth voltapagina.</div>
+  <div class="devnote" data-devices="web">Funzionano la sincronizzazione via internet e il click; niente Bluetooth né copia offline della setlist.</div>
+  <p>Il tasto Indietro di Android ed Esc chiudono prima lo Stage mode, non il gig sottostante.</p>
+
+  <h2>Domande frequenti</h2>
+  <dl class="faq">
+    <dt>I membri possono modificare brani o setlist?</dt>
+    <dd>No. Leggono tutti i brani e le setlist e suggeriscono nuovi brani e modifiche a testi, accordi o note, che un admin esamina. Le setlist sono modificabili solo dagli admin.</dd>
+    <dt>Chi vede le mie note su un brano?</dt>
+    <dd>Solo chi le scrive: né la band né gli admin. Per condividerne una si apre e si tocca <b class="ui">Suggest to the band</b>.</dd>
+    <dt>Trasporre un brano nel lettore lo cambia per tutti?</dt>
+    <dd>No, nel lettore e nello Stage mode cambia solo il proprio schermo. Per la band l'admin usa <b class="ui">Transpose for the band</b> nel modulo del brano.</dd>
+    <dt>La setlist di un gig modificata cambia quella salvata da cui è stata caricata?</dt>
+    <dd>No. Il gig ne riceve una copia propria con il nome del gig; la setlist di partenza resta com'era.</dd>
+    <dt>La band riceve una notifica per ogni brano spostato?</dt>
+    <dd>No. Nulla viene inviato prima del salvataggio; poi ognuno riceve un'unica push che riassume le modifiche.</dd>
+    <dt>Lo Stage mode funziona senza internet?</dt>
+    <dd>Nelle app per telefono e tablet sì, se il gig è stato aperto una volta online: il telefono del leader mantiene la band sincronizzata via Bluetooth. Sul web serve internet.</dd>
+    <dt>Il click si sente?</dt>
+    <dd>No, è solo visivo: un bagliore sul bordo dello schermo a ogni battito.</dd>
+    <dt>Perché il telefono smette di seguire il leader?</dt>
+    <dd>Perché toccando da sé <b class="ui">Prev</b>, <b class="ui">Next</b> o un brano il follow si interrompe. <b class="ui">Follow leader</b> riporta al brano del leader.</dd>
+    <dt>Cosa succede a un brano suggerito che l'admin rifiuta?</dt>
+    <dd>Viene eliminato con i file allegati e il membro riceve una push con la motivazione, se indicata.</dd>
+  </dl>
+</section>

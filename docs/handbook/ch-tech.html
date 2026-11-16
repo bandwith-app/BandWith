@@ -1,0 +1,44 @@
+<section class="chapter" id="ch-tech">
+  <h1>Appendice tecnica</h1>
+  <p class="lead">Una panoramica dell'architettura, per capire come è costruita l'app e dove vivono i dati.</p>
+
+  <h2>Un solo codice per tutti i terminali</h2>
+  <p>BandWith è un'unica applicazione web scritta in <b>React 18</b> e <b>TypeScript</b>, costruita con <b>Vite</b> e stilizzata con <b>Tailwind CSS 4</b>. La stessa applicazione gira nel browser e, impacchettata con <b>Capacitor 8</b>, come app nativa per iOS/iPadOS e Android. Il layout si adatta in base alla dimensione della finestra (layout largo da 744 × 600 px) e, su iPhone Duo, alla postura riportata dal sistema (chiuso, Book, Laptop, orizzontale).</p>
+  <p>Le funzioni native arrivano da plugin Capacitor: autenticazione biometrica (Face ID, Touch ID, impronta) e archivio sicuro per l'accesso rapido e il blocco app; Bluetooth Low Energy per lo Stage senza internet; notifiche push e locali; foglio di condivisione e file system per PDF e partiture; vibrazione (haptics), tastiera, barra di stato, schermata di avvio e browser interno per l'accesso con Google/Apple e per iReal Pro.</p>
+
+  <h2>Backend: Supabase</h2>
+  <ul>
+    <li><b>Database:</b> PostgreSQL gestito da Supabase. Band, membri, eventi, preventivi, contratti, transazioni, brani, scalette, chat, attrezzatura e notifiche sono tabelle del database.</li>
+    <li><b>Autenticazione:</b> email e password (con conferma via email), Google e Apple. Sul telefono le credenziali per l'accesso rapido restano nell'archivio sicuro del dispositivo.</li>
+    <li><b>Tempo reale:</b> i canali realtime di Supabase aggiornano all'istante gig aperti, lineup, scalette, compiti, chat, presenza online e la Stage mode condivisa.</li>
+    <li><b>Archivio file:</b> loghi della band, PDF, registrazioni dei brani, file personali.</li>
+    <li><b>Edge Functions</b> (codice lato server): invio email, invio push, inviti ai membri, eliminazione dell'account, feed del calendario dei sostituti.</li>
+  </ul>
+
+  <h2>Privacy applicata sul server</h2>
+  <p>Le regole «chi vede cosa» non sono solo nascoste nell'interfaccia: sono imposte dal database.</p>
+  <ul>
+    <li><b>Row Level Security</b> su ogni tabella: ogni persona legge solo le righe delle proprie band, e solo gli admin scrivono gig, preventivi, contratti, scalette e listini.</li>
+    <li><b>Permessi per colonna:</b> un membro legge il proprio compenso e la logistica, mai i compensi degli altri o i totali; ogni nuova colonna leggibile richiede un permesso esplicito.</li>
+    <li><b>Accesso anonimo chiuso:</b> le tabelle non sono leggibili senza account. Le pagine pubbliche (preventivo, risposta del sostituto, rider) usano funzioni dedicate che, dato un token segreto di 64 caratteri nel link, restituiscono solo i campi previsti; per esempio il rider non restituisce mai cliente né compensi.</li>
+    <li><b>Stage via Bluetooth:</b> ogni gig ha una chiave segreta data solo ai membri attivi; solo i telefoni con la chiave trovano il leader e accettano i suoi messaggi.</li>
+    <li><b>Dati personali:</b> esportazione completa da <b class="ui">Export my data</b> ed eliminazione dell'account con cancellazione lato server.</li>
+  </ul>
+
+  <h2>Notifiche</h2>
+  <p>Gli eventi importanti (invito a un gig, sondaggio, proposta, messaggio in chat, pagamento, cambi nella band, risposte di clienti e sostituti) creano una notifica nel database, mostrata nell'inbox in app. Una funzione server la invia come push tramite i servizi di Apple (APNs) e Google (Firebase Cloud Messaging, cioè i servizi Google Play su Android) ai dispositivi registrati, con il badge del numero di non letti; il testo viene tradotto sul server nella lingua preferita del destinatario. L'app rinnova il token del dispositivo a ogni avvio, segnala nelle impostazioni quando il telefono blocca le notifiche e, al ritorno dallo sfondo, recupera subito chat, campanella e badge. Le spunte di consegna della chat diventano doppie quando la push raggiunge il telefono del destinatario. Gli elementi urgenti mostrano anche un avviso in app, anche con le push spente. Sul web non ci sono push: vale la campanella.</p>
+
+  <h2>Offline</h2>
+  <p>Il dispositivo conserva una copia locale di band, gig e scalette (con testi e partiture dei gig già aperti). La copia è legata al ruolo: contiene solo ciò che quel ruolo può leggere (un membro non ha mai cliente né prezzi in cache) e serve solo a riempire lo schermo finché il server non risponde, senza mai sovrascrivere dati più freschi. A ogni caricamento dell'elenco delle band l'app registra il ruolo per band; se cambia, scarta i dati in cache di quell'account (restano profilo, band aperta e coda delle modifiche) e li ricarica per il nuovo ruolo, in entrambe le direzioni. Creazione, modifica ed eliminazione di gig e prove offline finiscono in una coda di sincronizzazione che parte da sola al ritorno della rete; una striscia sotto la barra di stato mostra lo stato (<b class="ui">You’re offline · showing cached info</b>, modifiche in attesa, <b class="ui">Sync now</b>). Non funzionano offline: salvare il preventivo in sé, inviare messaggi, rispondere agli inviti ed entrare in una band, il primo accesso su un dispositivo, eliminare un gig.</p>
+
+  <h2>Lingue</h2>
+  <p>Un modulo di traduzione interno copre tutta l'interfaccia in sei lingue (English, Italiano, Español, Français, Deutsch, Português), con date, importi e orari localizzati. I documenti per il cliente seguono la lingua del cliente, le push e le email del server quella preferita di ogni destinatario, salvata sul profilo.</p>
+
+  <h2>Hosting e distribuzione</h2>
+  <ul>
+    <li><b>Web:</b> l'app, la guida Academy (<b>/academy/</b>) e le pagine pubbliche (preventivo, risposta del sostituto, rider, disiscrizione) sono pubblicate su <b>Vercel</b> all'indirizzo bandwith-beryl.vercel.app.</li>
+    <li><b>iOS/iPadOS:</b> app nativa distribuita tramite i canali Apple, che ne gestiscono anche gli aggiornamenti.</li>
+    <li><b>Android:</b> app nativa firmata, distribuita come file APK da un link fisso alla versione più recente. L'app controlla da sola se esiste una versione nuova (all'avvio e al ritorno dallo sfondo, al massimo ogni qualche ora), la scarica e la passa all'installatore di Android, che chiede conferma (<b class="ui">Update</b> › <b class="ui">Install</b>).</li>
+    <li><b>Guida Academy:</b> viene costruita insieme all'app e inclusa nelle app native, quindi si apre anche offline; le sue schermate sono catturate per ogni terminale.</li>
+  </ul>
+</section>
