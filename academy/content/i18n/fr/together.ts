@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTES** : la note de la répétition, s’il y en a une.",
             "**TÂCHES** : les tâches de préparation et combien sont faites. Touche une tâche pour la cocher.",
             "**COÛT DU STUDIO** : la salle, les heures, le total et **Partagé entre {count} présents**, avec le montant **CHACUN**.",
-            "Boutons en bas : **MODIFIER**, **CHAT RÉPÉTITION** et **SUPPRIMER** pour les admins ; **CHAT RÉPÉTITION** pour les membres qui ont répondu présent ou peut-être.",
+            "Boutons en bas : **MODIFIER**, **CHAT RÉPÉTITION** et **SUPPRIMER** pour les admins ; **CHAT RÉPÉTITION** pour les membres qui ont répondu présent.",
           ],
         },
         {
@@ -296,7 +296,7 @@ const together: AreaText = {
       summary: "Dis à l’admin si tu viens, change ta réponse, ou retire-toi plus tard.",
       roles: ["member"],
       kind: "task",
-      keywords: ["répondre", "présent", "peut-être", "absent", "refuser la répétition", "se retirer"],
+      keywords: ["répondre", "présent", "absent", "refuser la répétition", "se retirer"],
       related: ["the-rehearsal-page", "rehearsal-and-chat-notifications"],
       body: [
         {
@@ -304,8 +304,9 @@ const together: AreaText = {
           title: "Répondre",
           items: [
             "Ouvre la répétition depuis la notification « Nouvelle répétition » ou depuis le **Calendrier**.",
-            "Sur la carte **Tu viens ?**, touche **PRÉSENT**, **PEUT-ÊTRE** ou **ABSENT**. La carte indique avant quand répondre (« Réponds d’ici le … pour que l’admin puisse confirmer la salle. »).",
+            "Sur la carte **Tu viens ?**, touche **PRÉSENT** ou **ABSENT**. La carte indique avant quand répondre (« Réponds d’ici le … pour que l’admin puisse confirmer la salle. »).",
             "Pour changer plus tard, touche **Changer** sur la carte **Ta réponse** et choisis de nouveau.",
+            "Si tu avais répondu peut-être, la carte affiche « Ta réponse était Peut-être. Choisis PRÉSENT ou ABSENT. » : choisis l’une des deux.",
           ],
         },
         {
@@ -350,7 +351,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Les admins du groupe reçoivent une notification « Nouvelle proposition de répétition » et un push. Sur ton accueil et dans le **Calendrier**, la proposition apparaît comme **Ta proposition de répétition** avec **Attente admin** jusqu’à ce qu’un admin en fasse un sondage ou l’ignore.",
+          text: "Les admins du groupe reçoivent une notification « Nouvelle proposition de répétition » et un push. Sur ton accueil et dans le **Calendrier**, la proposition apparaît comme **Ta proposition de répétition** avec **Attente admin** et **Ouverte jusqu’au** son dernier jour : le dernier de tes jours préférés dans la semaine qui suit, ou 7 jours sans jour choisi. Elle reste jusqu’à ce qu’un admin en fasse un sondage ou la refuse, ou que ce jour passe : elle quitte alors toutes les listes.",
         },
         {
           type: "note",
@@ -362,7 +363,7 @@ const together: AreaText = {
           title: "Cas particuliers",
           items: [
             "Pas encore dans un groupe : tu vois **Groupe requis**, avec **Créer un groupe**.",
-            "Si un admin ignore ta proposition, tu reçois « Proposition de répétition ignorée » et elle quitte ta liste.",
+            "Si un admin refuse ta proposition, tu reçois « Proposition de répétition refusée » (notification et push), avec le motif s’il en a donné un, et elle quitte ta liste.",
             "Tu as changé d’avis ? Touche **Retirer** sur ta proposition, puis de nouveau **Retirer** sur « Retirer ta proposition ? ». Les admins ne la voient plus.",
           ],
         },
@@ -372,10 +373,10 @@ const together: AreaText = {
     {
       id: "handle-a-rehearsal-proposal",
       title: "Traiter la proposition de répétition d’un membre",
-      summary: "Transforme la proposition d’un membre en sondage de disponibilités, ou ignore-la.",
+      summary: "Transforme la proposition d’un membre en sondage de disponibilités, ou refuse-la.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["proposition", "créer un sondage", "ignorer la proposition", "demande d’un membre"],
+      keywords: ["proposition", "créer un sondage", "refuser la proposition", "ignorer la proposition", "demande d’un membre"],
       related: ["propose-a-rehearsal", "create-a-rehearsal-poll"],
       body: [
         {
@@ -384,7 +385,8 @@ const together: AreaText = {
             "Trouve la proposition sous **Planification des répétitions** dans la carte À traiter de l’accueil ou dans le **Calendrier**. Elle affiche **Proposition de répétition d’un membre**, **Proposée par**, les **Jours préférés** et la note. Tu peux aussi l’ouvrir depuis la notification « Nouvelle proposition de répétition ».",
             "Touche **Créer sondage** (dans la feuille de la notification : **Créer un sondage à partir de la proposition**). Le créateur de sondage s’ouvre avec le thème comme titre, la note, et les jours préférés présélectionnés.",
             "Ajoute des créneaux et publie comme dans [[create-a-rehearsal-poll]].",
-            "Ou touche **Ignorer** pour fermer la proposition sans sondage. Le membre qui l’a proposée reçoit « Proposition de répétition ignorée ».",
+            "Ou touche **Refuser** pour fermer la proposition sans sondage. Dans **Refuser cette proposition ?**, saisis si tu veux un **Motif**, puis touche **Refuser**. Le membre qui l’a proposée reçoit « Proposition de répétition refusée » (notification et push) avec ton motif.",
+            "Si tu ne fais rien, la proposition quitte la liste après le jour indiqué dans **Ouverte jusqu’au**.",
           ],
         },
         {
@@ -600,7 +602,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Pour fermer la proposition d’un membre qui n’a pas encore de sondage, utilise plutôt **Ignorer** (voir [[handle-a-rehearsal-proposal]]).",
+          text: "Pour fermer la proposition d’un membre qui n’a pas encore de sondage, utilise plutôt **Refuser** (voir [[handle-a-rehearsal-proposal]]).",
         },
       ],
     },
@@ -620,7 +622,7 @@ const together: AreaText = {
             ["Proposition (**Attente admin**)", "Un membre a demandé une répétition.", "Le membre qui l’a proposée et les admins."],
             ["Sondage (**Sondage · Actif**)", "Un admin a publié des dates à voter.", "Les membres invités et les admins."],
             ["Confirmée (**Répétition · Confirmée**)", "Une date a été validée ; la répétition est dans le calendrier.", "Toutes les personnes de la répétition."],
-            ["Ignorée ou supprimée", "Fermée sans répétition.", "Personne : elle quitte les listes."],
+            ["Refusée, expirée ou supprimée", "Fermée sans répétition (une proposition expire après le jour de **Ouverte jusqu’au**).", "Personne : elle quitte les listes."],
           ],
         },
         {
@@ -630,7 +632,7 @@ const together: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Publie les sondages, transforme les propositions en sondages, valide les dates, ignore et supprime. N’importe quel admin du groupe peut le faire, pas seulement celui qui a publié." },
+            { role: "admin", text: "Publie les sondages, transforme les propositions en sondages, valide les dates, refuse et supprime. N’importe quel admin du groupe peut le faire, pas seulement celui qui a publié." },
             { role: "member", text: "Propose (une fois par semaine), vote, répond **Pas dispo** et voit qui a voté pour quoi." },
             { role: "deputy", text: "Ne participe pas aux sondages du groupe." },
           ],
@@ -807,7 +809,7 @@ const together: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Peut ouvrir la discussion de n’importe quel événement du groupe." },
-            { role: "member", text: "Ne voit le bouton de discussion qu’après avoir répondu présent (ou peut-être, pour les répétitions). Les membres qui refusent perdent l’accès : « Tu ne peux écrire que dans les événements auxquels tu participes. »" },
+            { role: "member", text: "Ne voit le bouton de discussion qu’après avoir répondu présent. Les membres qui refusent perdent l’accès : « Tu ne peux écrire que dans les événements auxquels tu participes. »" },
           ],
         },
         {
@@ -994,7 +996,7 @@ const together: AreaText = {
     },
     {
       q: "Pourquoi je ne peux pas ouvrir la discussion de la répétition ?",
-      a: "Les membres voient **CHAT RÉPÉTITION** après avoir répondu **PRÉSENT** ou **PEUT-ÊTRE**. Si tu as refusé, tu n’y as plus accès.",
+      a: "Les membres voient **CHAT RÉPÉTITION** après avoir répondu **PRÉSENT**. Si tu as refusé, tu n’y as plus accès.",
       roles: ["member"],
     },
     {
@@ -1017,7 +1019,7 @@ const together: AreaText = {
   ],
 
   glossary: [
-    { term: "Proposition de répétition", definition: "La demande de répétition d’un membre, avec un thème et des jours préférés. Elle attend un admin.", see: "propose-a-rehearsal" },
+    { term: "Proposition de répétition", definition: "La demande de répétition d’un membre, avec un thème et des jours préférés. Elle attend un admin jusqu’à son dernier jour préféré.", see: "propose-a-rehearsal" },
     { term: "Sondage de dispos", definition: "Une liste de dates proposées sur lesquelles le groupe vote avant qu’un admin en choisisse une.", see: "create-a-rehearsal-poll" },
     { term: "Créneau proposé", definition: "Une date avec une heure de début et de fin proposée dans un sondage.", see: "create-a-rehearsal-poll" },
     { term: "Mode de planification", definition: "Le choix entre **Planifier** et **Sondage** quand un admin commence une nouvelle répétition.", see: "create-a-rehearsal" },

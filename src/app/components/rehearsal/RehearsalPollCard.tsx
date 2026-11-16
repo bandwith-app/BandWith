@@ -16,7 +16,7 @@ import {
   pollAnsweredCount,
   finalizePollIntoRehearsal,
   POLL_CLOSED,
-  dismissPoll,
+  declineProposal,
   deletePoll,
   cleanNotesWithoutDays,
   isPollVotingClosed,
@@ -24,7 +24,9 @@ import {
 } from '@/lib/services/rehearsalPolls';
 import { PollDetails } from './PollDetails';
 import { canDeletePoll, canVoteInPoll, canWithdrawProposal } from '@/lib/pollPermissions';
-import { notifyProposalDismissed } from '@/lib/services/pollNotices';
+import { notifyProposalDeclined } from '@/lib/services/pollNotices';
+import { proposalLastDay } from '@/lib/proposalExpiry';
+import { ProposalDeclinePanel } from './ProposalDeclinePanel';
 import { haptic } from '@/lib/haptics';
 import { StepPad, Card, Tag, PillButton, PillField } from '@/app/components/bw';
 import { personName } from '@/lib/personName';
@@ -55,7 +57,8 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
   const [finalizingOptionId, setFinalizingOptionId] = useState<string | null>(null);
   const [showLocationInput, setShowLocationInput] = useState<string | null>(null); // optionId when admin clicks lock-in
   const [finalLocation, setFinalLocation] = useState(() => poll.location?.trim() || t('Band Practice Space'));
-  const [dismissing, setDismissing] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [showDeclineConfirm, setShowDeclineConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
@@ -198,16 +201,24 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
     }
   };
 
-  // Dismiss proposal
-  const handleDismiss = async () => {
-    setDismissing(true);
-    const { error } = await dismissPoll(poll.id);
-    setDismissing(false);
-    if (!error) {
-      onShowToast?.(t('Proposal dismissed.'), 'info');
-      void notifyProposalDismissed(poll, currentUserId);
-      onPollUpdated?.();
+  // Decline proposal: the member is told (inbox + push), with the reason if any.
+  const handleDecline = async (reason: string) => {
+    setDeclining(true);
+    const { declined, error } = await declineProposal(poll.id);
+    setDeclining(false);
+    if (error) {
+      onShowToast?.(t('Could not decline the proposal. Try again.'), 'error');
+      return;
     }
+    setShowDeclineConfirm(false);
+    if (declined) {
+      onShowToast?.(t('Proposal declined.'), 'info');
+      void notifyProposalDeclined(poll, currentUserId, reason);
+    } else {
+      // Withdrawn or turned into a poll meanwhile.
+      onShowToast?.(t('This proposal is no longer pending.'), 'info');
+    }
+    onPollUpdated?.();
   };
 
   // Permanently delete poll
@@ -245,6 +256,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
     // Only show to band admins or the member who proposed it
     const isAuthor = poll.created_by === currentUserId;
     if (!isAdmin && !isAuthor) return null;
+    const lastDay = proposalLastDay(poll.created_at, poll.preferred_days);
 
     return (
       <Card className="w-full gap-4">
@@ -287,6 +299,15 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
         {/* Optional Notes */}
         {cleanNotesWithoutDays(poll.notes) && <p className="bw-body-md">{cleanNotesWithoutDays(poll.notes)}</p>}
 
+        {/* It lapses after its last day (proposalExpiry.ts) */}
+        {lastDay && (
+          <p className="bw-body-sm text-muted-foreground">
+            {t('Open until {date}', {
+              date: dateName(new Date(lastDay + 'T12:00:00'), { weekday: 'short', day: 'numeric', month: 'short' }),
+            })}
+          </p>
+        )}
+
         {/* The proposer: withdraw it while it is pending */}
         {!isAdmin && canWithdrawProposal(poll, currentUserId) &&
           (!showWithdrawConfirm ? (
@@ -319,10 +340,19 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
           ))}
 
         {/* Admin Actions */}
-        {isAdmin && (
+        {isAdmin && showDeclineConfirm && (
+          <ProposalDeclinePanel
+            id={`proposal-decline-${poll.id}`}
+            name={personName(poll.creator_profile, t('Band member'))}
+            busy={declining}
+            onCancel={() => setShowDeclineConfirm(false)}
+            onConfirm={handleDecline}
+          />
+        )}
+        {isAdmin && !showDeclineConfirm && (
           <div className="flex items-center justify-end gap-2">
-            <PillButton variant="ghost" size="sm" fullWidth={false} loading={dismissing} onClick={handleDismiss}>
-              {t('Dismiss')}
+            <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => setShowDeclineConfirm(true)}>
+              {t('Decline')}
             </PillButton>
             <PillButton
               variant="dark"

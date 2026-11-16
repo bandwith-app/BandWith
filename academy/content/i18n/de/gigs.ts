@@ -755,7 +755,7 @@ const gigs: AreaText = {
       summary: "Sag einem Gig zu oder ab, sieh deine Gage und wer sonst spielt, und prüfe auf Überschneidungen.",
       roles: ["member", "admin"],
       kind: "task",
-      keywords: ["Antwort", "RSVP", "Gig zusagen", "Gig absagen", "Einladung", "bist du dabei", "vielleicht", "Verfügbarkeit"],
+      keywords: ["Antwort", "RSVP", "Gig zusagen", "Gig absagen", "Einladung", "bist du dabei", "Verfügbarkeit"],
       related: ["drop-out-of-a-gig", "gig-notifications", "free-slots-and-conflicts", "what-members-see-on-a-gig"],
       body: [
         { type: "p", text: "Fügt dich ein Admin zu einem Gig hinzu, bekommst du die Mitteilung **Gig-Einladung**. Antworten kannst du im Posteingang, im Antwortfenster oder direkt im Gig." },
@@ -783,7 +783,7 @@ const gigs: AreaText = {
           items: [
             "Prüfe bei **Bist du dabei?** Datum, Uhrzeit, **Zeiten**, Location und **Deine Gage**.",
             "Sieh dir **Besetzung bisher · {count} von {total} dabei** an: wer sonst spielt, mit Instrument und Antwort.",
-            "Wähle **DABEI**, **VIELLEICHT — SAGE SPÄTER BESCHEID** oder **KANN NICHT**.",
+            "Wähle **DABEI** oder **KANN NICHT**.",
             "Füge eine **Notiz für die Band (optional)** hinzu und tippe auf **Antwort senden**.",
           ],
         },
@@ -793,7 +793,6 @@ const gigs: AreaText = {
           items: [
             "Nach einer Zusage erscheint **Du bist dabei!** und die Person, die den Gig erstellt hat, wird informiert.",
             "Nach einer Absage erscheint **Du hast für dieses Event abgesagt.**; alle Admins der Band erfahren, dass Ersatz nötig ist, und der Gig verschwindet aus deinem Kalender.",
-            "**Vielleicht** lässt den Gig in deinem Kalender, deine Antwort ist als „vielleicht“ markiert.",
           ],
         },
         { type: "note", tone: "privacy", text: "Die Einladung zeigt nur deine eigene Gage oder **Noch offen**. Die Besetzungsliste zeigt Namen, Instrumente und Antworten, nie die Gage von jemandem." },

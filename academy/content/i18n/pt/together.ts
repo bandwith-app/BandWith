@@ -272,7 +272,7 @@ const together: AreaText = {
             "**NOTAS**: a nota do ensaio, quando houver.",
             "**TAREFAS**: as tarefas de preparação e quantas estão feitas. Toque numa tarefa para marcá-la.",
             "**CUSTO DO ESTÚDIO**: a sala, as horas, o total e **Dividido entre {count} presentes**, com o valor **CADA**.",
-            "Botões no final: **EDITAR**, **CHAT DO ENSAIO** e **EXCLUIR** para os admins; **CHAT DO ENSAIO** para os membros que responderam que vão ou talvez.",
+            "Botões no final: **EDITAR**, **CHAT DO ENSAIO** e **EXCLUIR** para os admins; **CHAT DO ENSAIO** para os membros que responderam que vão.",
           ],
         },
         {
@@ -296,7 +296,7 @@ const together: AreaText = {
       summary: "Diga ao admin se você vem, mude a sua resposta ou desista depois.",
       roles: ["member"],
       kind: "task",
-      keywords: ["rsvp", "vou", "talvez", "não posso", "recusar ensaio", "desistir"],
+      keywords: ["rsvp", "vou", "não posso", "recusar ensaio", "desistir"],
       related: ["the-rehearsal-page", "rehearsal-and-chat-notifications"],
       body: [
         {
@@ -304,8 +304,9 @@ const together: AreaText = {
           title: "Responder",
           items: [
             "Abra o ensaio pela notificação “Novo ensaio” ou pelo **Calendário**.",
-            "No cartão **Você vem?**, toque em **VOU**, **TALVEZ** ou **NÃO POSSO**. O cartão diz até quando responder (“Responda até … para o admin confirmar a sala.”).",
+            "No cartão **Você vem?**, toque em **VOU** ou **NÃO POSSO**. O cartão diz até quando responder (“Responda até … para o admin confirmar a sala.”).",
             "Para mudar depois, toque em **Trocar** no cartão **Sua resposta** e escolha de novo.",
+            "Se antes você respondeu talvez, o cartão diz “Sua resposta era Talvez. Escolha VOU ou NÃO POSSO.”: escolha uma.",
           ],
         },
         {
@@ -350,7 +351,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Os admins da banda recebem uma notificação “Nova proposta de ensaio” e um push. Na sua tela Início e no **Calendário**, a proposta aparece como **Sua proposta de ensaio** com **Aguarda admin** até um admin transformá-la em enquete ou descartá-la.",
+          text: "Os admins da banda recebem uma notificação “Nova proposta de ensaio” e um push. Na sua tela Início e no **Calendário**, a proposta aparece como **Sua proposta de ensaio** com **Aguarda admin** e **Aberta até** o seu último dia: o último dos seus dias preferidos na semana seguinte, ou 7 dias se você não escolheu nenhum. Ela fica até um admin transformá-la em enquete ou recusá-la, ou até esse dia passar: aí sai de todas as listas.",
         },
         {
           type: "note",
@@ -362,7 +363,7 @@ const together: AreaText = {
           title: "Casos especiais",
           items: [
             "Ainda sem banda: você vê **Banda necessária**, com **Criar uma banda**.",
-            "Se um admin descartar a sua proposta, você recebe “Proposta de ensaio descartada” e ela sai da sua lista.",
+            "Se um admin recusar a sua proposta, você recebe “Proposta de ensaio recusada” (notificação e push), com o motivo se ele informou um, e ela sai da sua lista.",
             "Mudou de ideia? Toque em **Retirar** na sua proposta e depois em **Retirar** de novo em “Retirar sua proposta?”. Os admins deixam de vê-la.",
           ],
         },
@@ -372,10 +373,10 @@ const together: AreaText = {
     {
       id: "handle-a-rehearsal-proposal",
       title: "Responder à proposta de ensaio de um membro",
-      summary: "Transforme a proposta de um membro numa enquete de disponibilidade ou descarte-a.",
+      summary: "Transforme a proposta de um membro numa enquete de disponibilidade ou recuse-a.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["proposta", "criar enquete", "descartar proposta", "pedido de membro"],
+      keywords: ["proposta", "criar enquete", "recusar proposta", "descartar proposta", "pedido de membro"],
       related: ["propose-a-rehearsal", "create-a-rehearsal-poll"],
       body: [
         {
@@ -384,7 +385,8 @@ const together: AreaText = {
             "Encontre a proposta em **Organização de ensaios**, nas Pendências da tela Início ou no **Calendário**. Ela mostra **Proposta de ensaio de um membro**, **Proposta de**, os **Dias preferidos** e a nota. Você também pode abri-la pela notificação “Nova proposta de ensaio”.",
             "Toque em **Criar enquete** (na janela da notificação: **Criar enquete a partir da proposta**). O criador de enquetes abre com o tema como título, a nota e os dias preferidos já selecionados.",
             "Adicione horários e publique como em [[create-a-rehearsal-poll]].",
-            "Ou toque em **Descartar** para fechar a proposta sem enquete. O membro que a fez recebe “Proposta de ensaio descartada”.",
+            "Ou toque em **Recusar** para fechar a proposta sem enquete. Em **Recusar esta proposta?**, digite se quiser um **Motivo** e toque em **Recusar**. O membro que a fez recebe “Proposta de ensaio recusada” (notificação e push) com o seu motivo.",
+            "Se você não fizer nada, a proposta sai da lista depois do dia mostrado em **Aberta até**.",
           ],
         },
         {
@@ -600,7 +602,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Para fechar a proposta de um membro que ainda não tem enquete, use **Descartar** (veja [[handle-a-rehearsal-proposal]]).",
+          text: "Para fechar a proposta de um membro que ainda não tem enquete, use **Recusar** (veja [[handle-a-rehearsal-proposal]]).",
         },
       ],
     },
@@ -620,7 +622,7 @@ const together: AreaText = {
             ["Proposta (**Aguarda admin**)", "Um membro pediu um ensaio.", "O membro que propôs e os admins."],
             ["Enquete (**Enquete · Ativa**)", "Um admin publicou datas para votação.", "Os membros convidados e os admins."],
             ["Confirmado (**Ensaio · Confirmado**)", "Uma data foi fixada; o ensaio está no calendário.", "Todos que estão no ensaio."],
-            ["Descartada ou excluída", "Fechada sem ensaio.", "Ninguém: sai das listas."],
+            ["Recusada, expirada ou excluída", "Fechada sem ensaio (uma proposta expira depois do dia em **Aberta até**).", "Ninguém: sai das listas."],
           ],
         },
         {
@@ -630,7 +632,7 @@ const together: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Publica enquetes, transforma propostas em enquetes, fixa datas, descarta e exclui. Qualquer admin da banda pode fazer isso, não só quem publicou." },
+            { role: "admin", text: "Publica enquetes, transforma propostas em enquetes, fixa datas, recusa e exclui. Qualquer admin da banda pode fazer isso, não só quem publicou." },
             { role: "member", text: "Propõe (uma por semana), vota, responde **Nenhuma dá** e vê quem votou em quê." },
             { role: "deputy", text: "Não participa das enquetes da banda." },
           ],
@@ -807,7 +809,7 @@ const together: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Pode abrir a conversa de qualquer evento da banda." },
-            { role: "member", text: "Só vê o botão da conversa depois de responder que vai (ou talvez, nos ensaios). Os membros que recusam perdem o acesso: “Você só pode enviar mensagens nos eventos de que participa.”" },
+            { role: "member", text: "Só vê o botão da conversa depois de responder que vai. Os membros que recusam perdem o acesso: “Você só pode enviar mensagens nos eventos de que participa.”" },
           ],
         },
         {
@@ -994,7 +996,7 @@ const together: AreaText = {
     },
     {
       q: "Por que não consigo abrir o chat do ensaio?",
-      a: "Os membros veem **CHAT DO ENSAIO** depois de responder **VOU** ou **TALVEZ**. Se você recusou, não tem mais acesso.",
+      a: "Os membros veem **CHAT DO ENSAIO** depois de responder **VOU**. Se você recusou, não tem mais acesso.",
       roles: ["member"],
     },
     {
@@ -1017,7 +1019,7 @@ const together: AreaText = {
   ],
 
   glossary: [
-    { term: "Proposta de ensaio", definition: "O pedido de ensaio de um membro, com um tema e dias preferidos. Fica esperando um admin.", see: "propose-a-rehearsal" },
+    { term: "Proposta de ensaio", definition: "O pedido de ensaio de um membro, com um tema e dias preferidos. Fica esperando um admin até o seu último dia preferido.", see: "propose-a-rehearsal" },
     { term: "Enquete de disponibilidade", definition: "Uma lista de datas propostas em que a banda vota antes de um admin escolher uma.", see: "create-a-rehearsal-poll" },
     { term: "Horário proposto", definition: "Uma data com horário de início e fim oferecida numa enquete.", see: "create-a-rehearsal-poll" },
     { term: "Modo de agendamento", definition: "A escolha entre **Agendar já** e **Enquete** quando um admin começa um novo ensaio.", see: "create-a-rehearsal" },

@@ -279,7 +279,7 @@ const together: AreaModule = {
             '**NOTES**: the rehearsal note, when there is one.',
             '**TASKS**: the prep tasks and how many are done. Tap a task to tick it.',
             '**STUDIO COST**: the room, the hours, the total and **Split between {count} going**, with the amount **EACH**.',
-            'Buttons at the bottom: **EDIT**, **REHEARSAL CHAT** and **DELETE** for admins; **REHEARSAL CHAT** for members who answered going or maybe.',
+            'Buttons at the bottom: **EDIT**, **REHEARSAL CHAT** and **DELETE** for admins; **REHEARSAL CHAT** for members who answered going.',
           ],
         },
         {
@@ -303,7 +303,7 @@ const together: AreaModule = {
       summary: 'Tell the admin whether you are coming, change your answer, or drop out later.',
       roles: ['member'],
       kind: 'task',
-      keywords: ['rsvp', 'going', 'maybe', "can't", 'decline rehearsal', 'drop out'],
+      keywords: ['rsvp', 'going', "can't", 'decline rehearsal', 'drop out'],
       related: ['the-rehearsal-page', 'rehearsal-and-chat-notifications'],
       body: [
         {
@@ -311,8 +311,9 @@ const together: AreaModule = {
           title: 'Answer',
           items: [
             'Open the rehearsal from the "New Rehearsal" notification or from the **Calendar**.',
-            'On the **Are you coming?** card, tap **GOING**, **MAYBE** or **CAN\'T**. The card says by when to answer ("Answer by … so the admin can confirm the room.").',
+            'On the **Are you coming?** card, tap **GOING** or **CAN\'T**. The card says by when to answer ("Answer by … so the admin can confirm the room.").',
             'To change it later, tap **Change** on the **Your RSVP** card and pick again.',
+            'If you answered maybe before, the card says "Your answer was Maybe. Choose GOING or CAN\'T.": pick one.',
           ],
         },
         {
@@ -357,7 +358,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'The band admins get a "New Rehearsal Proposal" notification and push. On your Home screen and in the **Calendar**, the proposal shows as **Your rehearsal proposal** with **Pending admin** until an admin turns it into a poll or dismisses it.',
+          text: 'The band admins get a "New Rehearsal Proposal" notification and push. On your Home screen and in the **Calendar**, the proposal shows as **Your rehearsal proposal** with **Pending admin** and **Open until** its last day: the last of your preferred days in the coming week, or 7 days without one. It stays until an admin turns it into a poll or declines it, or that day passes: then it leaves every list.',
         },
         {
           type: 'note',
@@ -369,7 +370,7 @@ const together: AreaModule = {
           title: 'Edge cases',
           items: [
             'Not in a band yet: you see **Band required**, with **Create a band**.',
-            'If an admin dismisses your proposal, you get "Rehearsal proposal dismissed" and it leaves your list.',
+            'If an admin declines your proposal, you get "Rehearsal proposal declined" (a notification and a push), with the reason if they gave one, and it leaves your list.',
             'Changed your mind? Tap **Withdraw** on your proposal, then **Withdraw** again on "Withdraw your proposal?". The admins no longer see it.',
           ],
         },
@@ -379,10 +380,10 @@ const together: AreaModule = {
     {
       id: 'handle-a-rehearsal-proposal',
       title: 'Handle a member\'s rehearsal proposal',
-      summary: 'Turn a member\'s proposal into an availability poll, or dismiss it.',
+      summary: 'Turn a member\'s proposal into an availability poll, or decline it.',
       roles: ['admin'],
       kind: 'task',
-      keywords: ['proposal', 'build poll', 'dismiss proposal', 'member request'],
+      keywords: ['proposal', 'build poll', 'decline proposal', 'dismiss proposal', 'member request'],
       related: ['propose-a-rehearsal', 'create-a-rehearsal-poll'],
       body: [
         {
@@ -391,7 +392,8 @@ const together: AreaModule = {
             'Find the proposal under **Rehearsal scheduling** in the Home Action center or in the **Calendar**. It shows **Member rehearsal proposal**, **Proposed by**, the **Preferred days** and the note. You can also open it from the "New Rehearsal Proposal" notification.',
             'Tap **Build poll** (in the notification sheet: **Build poll from proposal**). The poll builder opens with the topic as title, the note, and the preferred days preselected.',
             'Add date slots and publish as in [[create-a-rehearsal-poll]].',
-            'Or tap **Dismiss** to close the proposal without a poll. The member who proposed it gets "Rehearsal proposal dismissed".',
+            'Or tap **Decline** to close the proposal without a poll. In **Decline this proposal?**, optionally type a **Reason**, then tap **Decline**. The member who proposed it gets "Rehearsal proposal declined" (a notification and a push) with your reason.',
+            'If you do nothing, the proposal leaves the list after the day shown in **Open until**.',
           ],
         },
         {
@@ -607,7 +609,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'To close a member\'s proposal that has no poll yet, use **Dismiss** instead (see [[handle-a-rehearsal-proposal]]).',
+          text: 'To close a member\'s proposal that has no poll yet, use **Decline** instead (see [[handle-a-rehearsal-proposal]]).',
         },
       ],
     },
@@ -627,7 +629,7 @@ const together: AreaModule = {
             ['Proposal (**Pending admin**)', 'A member asked for a rehearsal.', 'The member who proposed it and the admins.'],
             ['Poll (**Poll · Active**)', 'An admin published dates to vote on.', 'Invited members and the admins.'],
             ['Confirmed (**Rehearsal · Confirmed**)', 'A date was locked in; the rehearsal is in the calendar.', 'Everyone on the rehearsal.'],
-            ['Dismissed or deleted', 'Closed without a rehearsal.', 'Nobody: it leaves the lists.'],
+            ['Declined, expired or deleted', 'Closed without a rehearsal (a proposal expires after the day in **Open until**).', 'Nobody: it leaves the lists.'],
           ],
         },
         {
@@ -637,7 +639,7 @@ const together: AreaModule = {
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: 'Publishes polls, turns proposals into polls, locks in dates, dismisses and deletes. Any admin of the band can do it, not only the one who published.' },
+            { role: 'admin', text: 'Publishes polls, turns proposals into polls, locks in dates, declines and deletes. Any admin of the band can do it, not only the one who published.' },
             { role: 'member', text: 'Proposes (one per week), votes, answers **None work**, and sees who voted for what.' },
             { role: 'deputy', text: 'Not part of band polls.' },
           ],
@@ -814,7 +816,7 @@ const together: AreaModule = {
           type: 'roles',
           rows: [
             { role: 'admin', text: 'Can open the chat of any event of the band.' },
-            { role: 'member', text: 'Sees the chat button only after answering going (or maybe, on rehearsals). Members who decline lose access: "You can only message in events you are participating in."' },
+            { role: 'member', text: 'Sees the chat button only after answering going. Members who decline lose access: "You can only message in events you are participating in."' },
           ],
         },
         {
@@ -1001,7 +1003,7 @@ const together: AreaModule = {
     },
     {
       q: 'Why can I not open the rehearsal chat?',
-      a: 'Members see **REHEARSAL CHAT** after answering **GOING** or **MAYBE**. If you declined, you no longer have access.',
+      a: 'Members see **REHEARSAL CHAT** after answering **GOING**. If you declined, you no longer have access.',
       roles: ['member'],
     },
     {
@@ -1024,7 +1026,7 @@ const together: AreaModule = {
   ],
 
   glossary: [
-    { term: 'Rehearsal proposal', definition: 'A member\'s request for a rehearsal, with a topic and preferred days. It waits for an admin.', see: 'propose-a-rehearsal' },
+    { term: 'Rehearsal proposal', definition: 'A member\'s request for a rehearsal, with a topic and preferred days. It waits for an admin until its last preferred day.', see: 'propose-a-rehearsal' },
     { term: 'Availability poll', definition: 'A list of candidate dates the band votes on before an admin picks one.', see: 'create-a-rehearsal-poll' },
     { term: 'Candidate slot', definition: 'One date with a start and end time offered in a poll.', see: 'create-a-rehearsal-poll' },
     { term: 'Scheduling mode', definition: 'The switch between **Schedule directly** and **Poll availability** when an admin starts a new rehearsal.', see: 'create-a-rehearsal' },

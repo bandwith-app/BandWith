@@ -210,7 +210,7 @@ const together: AreaText = {
             "**NOTAS**: la nota del ensayo, si la hay.",
             "**TAREAS**: las tareas previas y cuántas están hechas. Toca una tarea para marcarla.",
             "**COSTE DE SALA**: la sala, las horas, el total y **Dividido entre {count} asistentes**, con el importe **POR PERSONA**.",
-            "Botones abajo: **EDITAR**, **CHAT DEL ENSAYO** y **ELIMINAR** para los admins; **CHAT DEL ENSAYO** para los miembros que han respondido que van o quizás.",
+            "Botones abajo: **EDITAR**, **CHAT DEL ENSAYO** y **ELIMINAR** para los admins; **CHAT DEL ENSAYO** para los miembros que han respondido que van.",
           ],
         },
         {
@@ -230,7 +230,7 @@ const together: AreaText = {
       summary: "Dile al admin si vas, cambia tu respuesta o retírate más tarde.",
       roles: ["member"],
       kind: "task",
-      keywords: ["responder", "voy", "quizás", "no puedo", "rechazar ensayo", "retirarse"],
+      keywords: ["responder", "voy", "no puedo", "rechazar ensayo", "retirarse"],
       related: ["the-rehearsal-page", "rehearsal-and-chat-notifications"],
       body: [
         {
@@ -238,8 +238,9 @@ const together: AreaText = {
           title: "Responde",
           items: [
             "Abre el ensayo desde la notificación «Nuevo ensayo» o desde el **Calendario**.",
-            "En la tarjeta **¿Vienes?**, toca **VOY**, **QUIZÁS** o **NO PUEDO**. La tarjeta dice hasta cuándo puedes responder («Responde antes del … para que el admin pueda confirmar la sala.»).",
+            "En la tarjeta **¿Vienes?**, toca **VOY** o **NO PUEDO**. La tarjeta dice hasta cuándo puedes responder («Responde antes del … para que el admin pueda confirmar la sala.»).",
             "Para cambiarla más tarde, toca **Cambiar** en la tarjeta **Tu respuesta** y vuelve a elegir.",
+            "Si antes respondiste quizás, la tarjeta dice «Tu respuesta era Quizás. Elige VOY o NO PUEDO.»: elige una.",
           ],
         },
         {
@@ -278,14 +279,14 @@ const together: AreaText = {
             "Toca **Enviar al admin**.",
           ],
         },
-        { type: "p", text: "Los admins de la banda reciben una notificación y una push de nueva propuesta de ensayo. En tu pantalla de Inicio y en el **Calendario**, la propuesta aparece como **Tu propuesta de ensayo** con **Espera admin** hasta que un admin la convierta en encuesta o la descarte." },
+        { type: "p", text: "Los admins de la banda reciben una notificación y una push de nueva propuesta de ensayo. En tu pantalla de Inicio y en el **Calendario**, la propuesta aparece como **Tu propuesta de ensayo** con **Espera admin** y **Abierta hasta el** su último día: el último de tus días preferidos de la semana siguiente, o 7 días si no elegiste ninguno. Sigue ahí hasta que un admin la convierta en encuesta o la rechace, o hasta que pase ese día: entonces sale de todas las listas." },
         { type: "note", tone: "warning", text: "Puedes enviar una propuesta cada 7 días por banda. Cuando la has usado, la pantalla muestra **Límite semanal alcanzado** y la fecha de la **Próxima propuesta disponible**. El servidor también comprueba el límite." },
         {
           type: "list",
           title: "Casos especiales",
           items: [
             "Si aún no estás en una banda, ves **Necesitas una banda**, con **Crear una banda**.",
-            "Si un admin descarta tu propuesta, recibes «Propuesta de ensayo descartada» y desaparece de tu lista.",
+            "Si un admin rechaza tu propuesta, recibes «Propuesta de ensayo rechazada» (notificación y push), con el motivo si lo indicó, y desaparece de tu lista.",
             "¿Has cambiado de idea? Toca **Retirar** en tu propuesta y luego **Retirar** otra vez en «¿Retirar tu propuesta?». Los admins dejan de verla.",
           ],
         },
@@ -295,10 +296,10 @@ const together: AreaText = {
     {
       id: "handle-a-rehearsal-proposal",
       title: "Gestiona la propuesta de ensayo de un miembro",
-      summary: "Convierte la propuesta de un miembro en una encuesta de disponibilidad, o descártala.",
+      summary: "Convierte la propuesta de un miembro en una encuesta de disponibilidad, o recházala.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["propuesta", "crear encuesta", "descartar propuesta", "petición de un miembro"],
+      keywords: ["propuesta", "crear encuesta", "rechazar propuesta", "descartar propuesta", "petición de un miembro"],
       related: ["propose-a-rehearsal", "create-a-rehearsal-poll"],
       body: [
         {
@@ -307,7 +308,8 @@ const together: AreaText = {
             "Busca la propuesta en **Organización de ensayos**, en los Pendientes de Inicio o en el **Calendario**. Muestra **Propuesta de ensayo de un miembro**, **Propuesta de**, los **Días preferidos** y la nota. También puedes abrirla desde la notificación de nueva propuesta de ensayo.",
             "Toca **Crear encuesta** (en la hoja de la notificación: **Crear encuesta desde la propuesta**). El editor de encuestas se abre con el tema como título, la nota y los días preferidos ya marcados.",
             "Añade franjas de fecha y publícala como en [[create-a-rehearsal-poll]].",
-            "O toca **Descartar** para cerrar la propuesta sin encuesta. El miembro que la propuso recibe «Propuesta de ensayo descartada».",
+            "O toca **Rechazar** para cerrar la propuesta sin encuesta. En **¿Rechazar esta propuesta?**, escribe si quieres un **Motivo** y toca **Rechazar**. El miembro que la propuso recibe «Propuesta de ensayo rechazada» (notificación y push) con tu motivo.",
+            "Si no haces nada, la propuesta sale de la lista después del día que indica **Abierta hasta el**.",
           ],
         },
         { type: "note", tone: "tip", text: "La propuesta de un miembro no lleva canciones, lugar ni coste. Añádelos en el editor antes de publicar." },
@@ -477,7 +479,7 @@ const together: AreaText = {
           ],
         },
         { type: "note", tone: "warning", text: "Todas las fechas propuestas y los votos de los miembros se borran para siempre. No se puede deshacer, y no se avisa a los miembros." },
-        { type: "p", text: "Para cerrar la propuesta de un miembro que aún no tiene encuesta, usa **Descartar** (consulta [[handle-a-rehearsal-proposal]])." },
+        { type: "p", text: "Para cerrar la propuesta de un miembro que aún no tiene encuesta, usa **Rechazar** (consulta [[handle-a-rehearsal-proposal]])." },
       ],
     },
     {
@@ -496,14 +498,14 @@ const together: AreaText = {
             ["Propuesta (**Espera admin**)", "Un miembro ha pedido un ensayo.", "El miembro que la propuso y los admins."],
             ["Encuesta (**Encuesta · Activa**)", "Un admin ha publicado fechas para votar.", "Los miembros invitados y los admins."],
             ["Confirmado (**Ensayo · Confirmado**)", "Se ha fijado una fecha; el ensayo está en el calendario.", "Todos los del ensayo."],
-            ["Descartada o borrada", "Cerrada sin ensayo.", "Nadie: sale de las listas."],
+            ["Rechazada, caducada o borrada", "Cerrada sin ensayo (una propuesta caduca después del día de **Abierta hasta el**).", "Nadie: sale de las listas."],
           ],
         },
         { type: "p", text: "Las propuestas y encuestas abiertas aparecen en Inicio, en **Pendientes**, y arriba del **Calendario**, en **Organización de ensayos ({count})**. En el **Calendario** siguen el filtro por banda." },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Publica encuestas, convierte propuestas en encuestas, fija fechas, descarta y borra. Puede hacerlo cualquier admin de la banda, no solo el que publicó." },
+            { role: "admin", text: "Publica encuestas, convierte propuestas en encuestas, fija fechas, rechaza y borra. Puede hacerlo cualquier admin de la banda, no solo el que publicó." },
             { role: "member", text: "Propone (una por semana), vota, responde **Ninguna va** y ve quién ha votado qué." },
             { role: "deputy", text: "No participa en las encuestas de la banda." },
           ],
@@ -652,7 +654,7 @@ const together: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Puede abrir el chat de cualquier evento de la banda." },
-            { role: "member", text: "Ve el botón del chat solo después de responder que va (o quizás, en los ensayos). Los miembros que rechazan pierden el acceso: «Solo puedes escribir en eventos en los que participas.»" },
+            { role: "member", text: "Ve el botón del chat solo después de responder que va. Los miembros que rechazan pierden el acceso: «Solo puedes escribir en eventos en los que participas.»" },
           ],
         },
         {
@@ -812,7 +814,7 @@ const together: AreaText = {
     },
     {
       q: "¿Por qué no puedo abrir el chat del ensayo?",
-      a: "Los miembros ven **CHAT DEL ENSAYO** después de responder **VOY** o **QUIZÁS**. Si has rechazado, ya no tienes acceso.",
+      a: "Los miembros ven **CHAT DEL ENSAYO** después de responder **VOY**. Si has rechazado, ya no tienes acceso.",
       roles: ["member"],
     },
     {
@@ -835,7 +837,7 @@ const together: AreaText = {
   ],
 
   glossary: [
-    { term: "Propuesta de ensayo", definition: "La petición de ensayo de un miembro, con un tema y días preferidos. Espera a un admin.", see: "propose-a-rehearsal" },
+    { term: "Propuesta de ensayo", definition: "La petición de ensayo de un miembro, con un tema y días preferidos. Espera a un admin hasta su último día preferido.", see: "propose-a-rehearsal" },
     { term: "Encuesta de disponibilidad", definition: "Una lista de fechas propuestas que la banda vota antes de que un admin elija una.", see: "create-a-rehearsal-poll" },
     { term: "Horario propuesto", definition: "Una fecha con hora de inicio y de fin que se ofrece en una encuesta.", see: "create-a-rehearsal-poll" },
     { term: "Modo de programación", definition: "El selector entre **Programar ya** y **Encuesta** cuando un admin empieza un ensayo nuevo.", see: "create-a-rehearsal" },

@@ -240,7 +240,7 @@ export const ProposeRehearsalModal: React.FC<ProposeRehearsalModalProps> = ({
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder={t('e.g. Volare → September segue, and the new medley ending.')}
+                  placeholder={t('e.g. The two new songs and the set endings')}
                   className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[72px] resize-none"
                   maxLength={400}
                 />

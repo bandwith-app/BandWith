@@ -748,7 +748,7 @@ const gigs: AreaText = {
       summary: "Acepta o rechaza un concierto, ve tu caché y quién más toca, y comprueba si hay solapamientos.",
       roles: ["member", "admin"],
       kind: "task",
-      keywords: ["responder", "aceptar concierto", "rechazar concierto", "invitación", "te apuntas", "quizás", "disponibilidad", "rsvp"],
+      keywords: ["responder", "aceptar concierto", "rechazar concierto", "invitación", "te apuntas", "disponibilidad", "rsvp"],
       related: ["drop-out-of-a-gig", "gig-notifications", "free-slots-and-conflicts", "what-members-see-on-a-gig"],
       body: [
         { type: "p", text: "Cuando un admin te añade a un concierto, recibes una notificación **Invitación a concierto**. Puedes responder desde el buzón, desde la hoja de respuesta o desde el propio concierto." },
@@ -776,7 +776,7 @@ const gigs: AreaText = {
           items: [
             "En **¿Puedes ir?**, revisa la fecha, la hora, los **Horarios**, el lugar y **Tu caché**.",
             "Mira **Formación hasta ahora · {count} de {total} van**: quién más toca, con su instrumento y su respuesta.",
-            "Elige **VOY**, **QUIZÁS — CONFIRMO LUEGO** o **NO PUEDO IR**.",
+            "Elige **VOY** o **NO PUEDO IR**.",
             "Añade una **Nota para la banda (opcional)** y toca **Enviar respuesta**.",
           ],
         },
@@ -786,7 +786,6 @@ const gigs: AreaText = {
           items: [
             "Al aceptar aparece **¡Estás confirmado!** y se avisa a quien creó el concierto.",
             "Al rechazar aparece **Te diste de baja de este evento.**, se avisa a todos los admins de la banda de que hace falta un sustituto y el concierto desaparece de tu calendario.",
-            "**Quizás** deja el concierto en tu calendario con tu respuesta marcada como quizás.",
           ],
         },
         { type: "note", tone: "privacy", text: "La invitación solo muestra tu propio caché, o **Por hablar**. La lista de la formación muestra nombres, instrumentos y respuestas, nunca el caché de nadie." },
