@@ -168,39 +168,47 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
         className="flex-1 grid grid-cols-7 gap-x-1 gap-y-0.5"
         style={{ gridTemplateRows: `auto repeat(${weeks}, minmax(28px, 1fr))` }}
       >
-        {weekdayNames().map((w) => (
-          <span key={w} role="columnheader" className="bw-label-xs uppercase text-muted-foreground text-center pb-0.5">
-            {w}
-          </span>
+        {/* Rows for assistive tech only (`contents`: the cells stay in the grid's layout). */}
+        <div role="row" className="contents">
+          {weekdayNames().map((w) => (
+            <span key={w} role="columnheader" className="bw-label-xs uppercase text-muted-foreground text-center pb-0.5">
+              {w}
+            </span>
+          ))}
+        </div>
+        {Array.from({ length: weeks }, (_, wk) => (
+          <div key={wk} role="row" className="contents">
+            {cells.slice(wk * 7, wk * 7 + 7).map((d, j) => {
+              const i = wk * 7 + j;
+              if (!d) return <span key={`pad-${i}`} aria-hidden />;
+              const list = byDay.get(d) ?? [];
+              const kinds = KIND_ORDER.filter((k) => list.some((e) => e.kind === k)).slice(0, 3);
+              const isSel = d === selected;
+              const isToday = d === today;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  role="gridcell"
+                  aria-selected={isSel}
+                  aria-label={`${dayLabel(d, { weekday: 'long', month: 'long', day: 'numeric' })}${list.length ? `, ${list.length === 1 ? t('{count} event', { count: list.length }) : t('{count} events', { count: list.length })}` : ''}`}
+                  onClick={() => select(d)}
+                  className={cn(
+                    'h-full max-h-11 self-center rounded-[12px] flex flex-col items-center justify-center gap-0.5 cursor-pointer',
+                    isSel ? 'bg-surface-inverse text-surface-inverse-foreground' : isToday ? 'ring-[1.5px] ring-inset ring-foreground' : '',
+                  )}
+                >
+                  <span className="bw-label-md leading-none">{Number(d.slice(8, 10))}</span>
+                  <span className="flex gap-0.5 h-1.5" aria-hidden>
+                    {kinds.map((k) => (
+                      <span key={k} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `var(--accent-${k})` }} />
+                    ))}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         ))}
-        {cells.map((d, i) => {
-          if (!d) return <span key={`pad-${i}`} aria-hidden />;
-          const list = byDay.get(d) ?? [];
-          const kinds = KIND_ORDER.filter((k) => list.some((e) => e.kind === k)).slice(0, 3);
-          const isSel = d === selected;
-          const isToday = d === today;
-          return (
-            <button
-              key={d}
-              type="button"
-              role="gridcell"
-              aria-selected={isSel}
-              aria-label={`${dayLabel(d, { weekday: 'long', month: 'long', day: 'numeric' })}${list.length ? `, ${list.length === 1 ? t('{count} event', { count: list.length }) : t('{count} events', { count: list.length })}` : ''}`}
-              onClick={() => select(d)}
-              className={cn(
-                'h-full max-h-11 self-center rounded-[12px] flex flex-col items-center justify-center gap-0.5 cursor-pointer',
-                isSel ? 'bg-surface-inverse text-surface-inverse-foreground' : isToday ? 'ring-[1.5px] ring-inset ring-foreground' : '',
-              )}
-            >
-              <span className="bw-label-md leading-none">{Number(d.slice(8, 10))}</span>
-              <span className="flex gap-0.5 h-1.5" aria-hidden>
-                {kinds.map((k) => (
-                  <span key={k} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `var(--accent-${k})` }} />
-                ))}
-              </span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );

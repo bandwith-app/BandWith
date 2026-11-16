@@ -266,12 +266,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   }, [startOnboarding]);
 
   // Unified Back Navigation Handler (used by Android soft key, Escape key, and back buttons)
-  const handleBack = useCallback(() => {
+  // True when it stepped back; false on the root screen (nothing to leave).
+  const handleBack = useCallback((): boolean => {
     // 1. A sheet open on top (Terms, invite a member, "Enable Face ID?")
-    if (closeTopOverlay()) return;
+    if (closeTopOverlay()) return true;
     // …or a modal in AddSongs (custom song, import)
     if (closeAddSongsModalRef.current && closeAddSongsModalRef.current()) {
-      return;
+      return true;
     }
 
     const s = backNavStateRef.current;
@@ -279,24 +280,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     // 2. Screen modes: forgot-password -> where it was opened from
     if (s.screenMode === 'forgot-password') {
       setScreenMode(s.forgotFrom);
-      return;
+      return true;
     }
 
     // 3. Screen modes: sign-in -> welcome
     if (s.screenMode === 'sign-in') {
       setScreenMode('welcome');
-      return;
+      return true;
     }
 
     // 4. Welcome screen (root screen)
     if (s.screenMode === 'welcome' && !s.path) {
       // If inline invite input is open, close it first
       if (closeInviteInputRef.current && closeInviteInputRef.current()) {
-        return;
+        return true;
       }
       // Double tap to exit on Android (iOS apps don't quit themselves; on the
       // web Escape has nothing to leave).
-      if (Capacitor.getPlatform() !== 'android') return;
+      if (Capacitor.getPlatform() !== 'android') return false;
       const now = Date.now();
       if (now - lastBackPressRef.current < 2000) {
         App.exitApp();
@@ -305,7 +306,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         setExitToast(t('Tap again to exit'));
         setTimeout(() => setExitToast(null), 2000);
       }
-      return;
+      return true;
     }
 
     // 5. Flow navigation: CREATOR PATH
@@ -314,32 +315,32 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       // Step 1: Intent selector
       if (!s.isAuthenticated || s.currentStep <= 1) {
         handleBackToWelcome();
-        return;
+        return true;
       }
       // Step 2: Band creation -> back to Intent selector (step 1)
       if (s.currentStep === 2) {
         goToStep(1);
-        return;
+        return true;
       }
       // Step 3: Profile setup -> back to Band creation (step 2)
       if (s.currentStep === 3) {
         goToStep(2);
-        return;
+        return true;
       }
       // Step 4: Invite members -> back to Profile setup (step 3)
       if (s.currentStep === 4) {
         goToStep(3);
-        return;
+        return true;
       }
       // Step 5: Add songs -> back to Invite members (step 4)
       if (s.currentStep === 5) {
         goToStep(4);
-        return;
+        return true;
       }
       // Step 6: Completion screen -> back to Add songs (step 5)
       if (s.currentStep === 6) {
         goToStep(5);
-        return;
+        return true;
       }
     }
 
@@ -349,12 +350,12 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       if (s.currentStep <= 1) {
         startOnboarding('creator');
         goToStep(1);
-        return;
+        return true;
       }
       // Step 2: Completion -> back to Profile setup (step 1)
       if (s.currentStep === 2) {
         goToStep(1);
-        return;
+        return true;
       }
     }
 
@@ -363,26 +364,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       if (s.currentStep === 0) {
         if (s.inviteData) {
           handleBackToWelcome();
-          return;
+          return true;
         }
         if (s.joinerSubStep === 'invite-waiting' || s.joinerSubStep === 'no-invites') {
           setJoinerSubStep('email-lookup');
-          return;
+          return true;
         }
         if (s.joinerSubStep === 'email-lookup') {
           handleBackToWelcome();
-          return;
+          return true;
         }
       }
       // Step 1 or higher in joiner -> back to step 0 (invite landing / lookup)
       if (s.currentStep >= 1) {
         goToStep(0);
-        return;
+        return true;
       }
     }
 
     // Fallback: return to welcome screen
     handleBackToWelcome();
+    return true;
   }, [handleBackToWelcome, goToStep, startOnboarding]);
 
   // Register Capacitor hardware/soft-key back button listener + Escape key for web
@@ -414,6 +416,25 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleBack]);
+
+  // Web build: the browser's Back steps back like Escape and Android Back,
+  // through one history entry kept on top (as in the signed-in app, which
+  // reuses it); on the first screen it leaves as usual.
+  const handleBackRef = useRef(handleBack);
+  useEffect(() => {
+    handleBackRef.current = handleBack;
+  }, [handleBack]);
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    const arm = () => window.history.pushState({ ...(window.history.state || {}), bwBack: true }, '');
+    if (!window.history.state?.bwBack) arm();
+    const onPop = () => {
+      if (handleBackRef.current()) arm();
+      else window.history.back();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // iPhone Duo, open: BRAND page on the left (with the named steps during
   // onboarding), the screen on the right (Figma "Duo · 01").

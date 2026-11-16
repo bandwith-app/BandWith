@@ -2050,6 +2050,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
                 return (
                   <div key={r.slotStart} role="listitem" className="flex-1 min-w-0 flex flex-col items-center gap-1">
                     <span
+                      role="img"
                       aria-label={`${r.slotStart}: ${t('{free} of {total} free', { free: r.free, total: r.total })}`}
                       className={cn('w-full h-7 rounded-lg', heatLevel(r) === 0 && 'bg-foreground/[0.08]', !inside && 'opacity-45')}
                       style={heatStyle(r)}
@@ -2192,7 +2193,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
 
     const tile = (label: string, value: string) => (
       <div className="flex-1 min-w-0 rounded-[16px] bg-white/15 px-3 py-2 flex flex-col gap-1">
-        <span className="bw-label-xs opacity-80">{label}</span>
+        <span className="bw-label-xs opacity-95">{label}</span>
         <span className="bw-label-md tabular-nums truncate">{value}</span>
       </div>
     );

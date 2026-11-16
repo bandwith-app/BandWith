@@ -101,7 +101,9 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   follow,
   click,
   startedAt,
-  zIndex,
+  // Set inline, so the wedge stays when a hub (search, Calendar) lies under
+  // Stage mode: the Laptop rule hides inline-less page splits while a hub is open.
+  zIndex = 125,
   lyricsOn: lyricsOnProp,
   onLyricsOnChange,
   onClose,
@@ -462,7 +464,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
       {/* The click's glow goes above the wedge (Stage mode's own sits under it). */}
       {click && clickUi.show && clickUi.state && typeof document !== 'undefined' &&
         createPortal(
-          <StageClickFrame state={clickUi.state} offset={click.offset} accent="var(--accent)" onDone={clickUi.onDone} zIndex={(zIndex ?? 125) + 1} />,
+          <StageClickFrame state={clickUi.state} offset={click.offset} accent="var(--accent)" onDone={clickUi.onDone} zIndex={zIndex + 1} />,
           document.body,
         )}
     </>

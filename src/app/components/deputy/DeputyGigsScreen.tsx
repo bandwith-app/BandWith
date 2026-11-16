@@ -124,15 +124,21 @@ export const DeputyGigsScreen: React.FC<{
   );
 
   if (standalone) {
+    // Duo in Laptop pose: the full-screen form layout (`.bw-fold-form`, as
+    // Sign in does) keeps the title on the Display and starts the gig cards
+    // on the Deck, so no reply field lies across the fold.
     return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col">
-        <header className="px-4 flex items-end gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 24px)' }}>
-          <div className="flex flex-col gap-1 flex-1 min-w-0">
-            <p className="bw-label-sm text-muted-foreground">BandWith</p>
-            <h1 className="bw-display-lg">{t('Deputy gigs')}</h1>
-          </div>
-          <AcademyHelpButton article="deputy-gigs" />
-        </header>
+      <div className="bw-fold-form min-h-screen bg-background text-foreground flex flex-col">
+        {/* The wrapper takes the Display's height; the title stays at its top. */}
+        <div>
+          <header className="px-4 flex items-end gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 24px)' }}>
+            <div className="flex flex-col gap-1 flex-1 min-w-0">
+              <p className="bw-label-sm text-muted-foreground">BandWith</p>
+              <h1 className="bw-display-lg">{t('Deputy gigs')}</h1>
+            </div>
+            <AcademyHelpButton article="deputy-gigs" />
+          </header>
+        </div>
         <div className="pt-4">{body}</div>
       </div>
     );

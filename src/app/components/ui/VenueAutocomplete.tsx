@@ -174,6 +174,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
           disabled={disabled}
           autoFocus={autoFocus}
           required={required}
+          role="combobox"
           aria-autocomplete="list"
           aria-expanded={isOpen}
           aria-controls={isOpen ? listboxId : undefined}

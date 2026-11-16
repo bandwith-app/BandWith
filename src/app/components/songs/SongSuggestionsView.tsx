@@ -159,7 +159,7 @@ export const SongSuggestionsView: React.FC = () => {
                 title={isAdmin ? t('Suggestions') : t('My suggestions')}
                 titleSize="h1"
               >
-                <div className="flex flex-wrap gap-2 pb-1" role="tablist">
+                <div className="flex flex-wrap gap-2 pb-1" role="group" aria-label={isAdmin ? t('Suggestions') : t('My suggestions')}>
                   <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={pending.length}>
                     {t('Waiting')}
                   </Selector>
@@ -357,7 +357,7 @@ const SuggestionDetail: React.FC<{
           </label>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label={t('Before and after')}>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Before and after')}>
               <Selector size="md" selected={view === 'changes'} onClick={() => setView('changes')}>{t('Changes')}</Selector>
               <Selector size="md" selected={view === 'before'} onClick={() => setView('before')}>{t('Before')}</Selector>
               <Selector size="md" selected={view === 'after'} onClick={() => setView('after')}>{t('After')}</Selector>

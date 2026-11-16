@@ -1125,6 +1125,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
                               key={d.dayIndex}
                               className={cn('flex-1 min-w-0 h-7 rounded-full flex items-center justify-center bw-label-xs text-foreground', (!c || c.free === 0) && 'bg-foreground/[0.08] text-muted-foreground')}
                               style={heatStyle(c)}
+                              role={c ? 'img' : undefined}
                               aria-label={c ? t('{day}: {free} of {total} free', { day: shortWeekday(d.dayIndex), free: c.free, total: c.total }) : undefined}
                             >
                               {c ? `${c.free}/${c.total}` : '–'}

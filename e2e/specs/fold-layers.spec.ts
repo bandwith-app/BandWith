@@ -1,5 +1,5 @@
-import { test, expect, type App } from '../fixtures';
-import { isWide, openCreate } from '../support/flows';
+import { test, expect, DB_KEY, DEMO_USER_ID, type App } from '../fixtures';
+import { isWide, openCreate, openEvent, SEED } from '../support/flows';
 
 /**
  * Layers that must work on special layouts.
@@ -57,6 +57,65 @@ test.describe('Duo Laptop pose: nothing on the fold', () => {
     await app.check('Create menu');
     await app.page.getByRole('dialog').last().getByRole('button', { name: new RegExp(`^${app.t('New gig')}`, 'i') }).first().click();
     await app.check('gig wizard');
+  });
+});
+
+/**
+ * The account leaves its band (the demo user stays signed in): with deputy
+ * gigs it lands on "Deputy gigs", without them on onboarding. Like a fresh
+ * install, the offline cache of the band session is cleared.
+ */
+async function leaveBand(app: App, keepDeputyGigs: boolean) {
+  await app.page.evaluate(
+    ({ k, me, keep }) => {
+      const d = JSON.parse(localStorage.getItem(k) || '{}');
+      d.band_members = (d.band_members || []).filter((m: { user_id: string }) => m.user_id !== me);
+      if (!keep) {
+        d.demo_deputy_gigs = [];
+        d.band_deputies = (d.band_deputies || []).filter((x: { user_id?: string }) => x.user_id !== me);
+      }
+      localStorage.setItem(k, JSON.stringify(d));
+      for (const key of Object.keys(localStorage)) if (key.startsWith('bw:')) localStorage.removeItem(key);
+      indexedDB.deleteDatabase('bandwith_offline_db');
+    },
+    { k: DB_KEY, me: DEMO_USER_ID, keep: keepDeputyGigs },
+  );
+  await app.page.reload();
+}
+
+test.describe('Duo Laptop pose: screens off the fold', () => {
+  test('@laptop Stage mode: no setlist row rests on the fold', async ({ app }) => {
+    await openEvent(app, SEED.gigToday);
+    await app.page.getByRole('button', { name: app.t('Open stage mode'), exact: true }).filter({ visible: true }).first().click();
+    await expect(app.page.getByRole('button', { name: new RegExp(`^${app.t('Go to')} `) }).first()).toBeVisible();
+    // Laptop pose: the floor wedge covers Stage mode, also when the gig was
+    // opened over a hub (search, Calendar).
+    await expect(app.page.getByRole('region', { name: app.t('Song controls') })).toBeVisible();
+    await app.check('Stage mode');
+  });
+
+  test('@laptop Deputy gigs: the reply field is off the fold', async ({ app }) => {
+    await leaveBand(app, true);
+    await expect(app.page.getByRole('textbox').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+    await app.check('Deputy gigs');
+  });
+
+  test('@laptop onboarding: "What brings you here?" keeps its path cards off the fold', async ({ app }) => {
+    await leaveBand(app, false);
+    await expect(app.page.getByRole('radio', { name: new RegExp(app.t('Manage my band')) })).toBeVisible({ timeout: 30_000 });
+    await app.check('What brings you here?');
+  });
+
+  test.describe('signed out', () => {
+    test.use({ autoOpen: false });
+
+    test('@laptop Create account: no field or Show password on the fold', async ({ app }) => {
+      await app.page.addInitScript(() => localStorage.removeItem('bw-demo-session'));
+      await app.page.goto('/');
+      await app.page.getByRole('button', { name: app.t('Get started'), exact: true }).click();
+      await expect(app.page.getByRole('heading', { name: new RegExp(app.t('Create account'), 'i') }).first()).toBeVisible();
+      await app.check('Create account');
+    });
   });
 });
 

@@ -14,13 +14,15 @@ interface DotMeterProps {
   onColor?: string;
   offColor?: string;
   peakColor?: string;
+  /** Accessible name of the meter (what it measures). */
+  label?: string;
 }
 
 /**
  * Dot meter: a grid of dots filled row-major. The last lit dot is the
  * "peak" in accent ink; when the meter is full every dot is peak.
  */
-export const DotMeter: React.FC<DotMeterProps> = ({ value, rows = 4, cols = 12, dot = 10, className, onColor = 'var(--dot-on)', offColor = 'var(--dot-off)', peakColor = 'var(--accent-ink)' }) => {
+export const DotMeter: React.FC<DotMeterProps> = ({ value, rows = 4, cols = 12, dot = 10, className, onColor = 'var(--dot-on)', offColor = 'var(--dot-off)', peakColor = 'var(--accent-ink)', label }) => {
   const total = rows * cols;
   const clamped = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
   const lit = clamped > 0 ? Math.max(1, Math.round(clamped * total)) : 0;
@@ -49,6 +51,7 @@ export const DotMeter: React.FC<DotMeterProps> = ({ value, rows = 4, cols = 12, 
     <div
       className={cn('flex flex-col gap-1 w-full', className)}
       role="meter"
+      aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(clamped * 100)}
@@ -107,7 +110,7 @@ export const Metric: React.FC<MetricProps> = ({ label, value, fill, variant = 'd
       {/* Long labels (de, es) wrap to 2 lines; flex-1 keeps the values of a row of metrics level. */}
       <span className="bw-label-md flex-1 line-clamp-2 [overflow-wrap:anywhere]">{label}</span>
       <DotText text={value} size={dashboard ? 34 : 24} label={`${label}: ${value}`} />
-      <DotMeter value={fill} rows={dashboard ? 4 : 2} cols={dashboard ? 12 : 6} dot={10} />
+      <DotMeter value={fill} rows={dashboard ? 4 : 2} cols={dashboard ? 12 : 6} dot={10} label={label} />
     </Comp>
   );
 };

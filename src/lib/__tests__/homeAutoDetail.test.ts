@@ -23,6 +23,11 @@ describe('homeAutoDetail', () => {
     expect(run([{ loading: true }, { hasNext: false }, {}])).toEqual([false, false, true]);
   });
 
+  it('never opens the gig behind the inbox; it shows once the inbox closes', () => {
+    // The events arrive while the inbox opened from Home is on screen.
+    expect(run([{ loading: true }, { covered: true }, { covered: true }, {}])).toEqual([false, false, false, true]);
+  });
+
   it('does not replace a detail that is already open', () => {
     expect(run([{ hasSelected: true }])).toEqual([false]);
   });

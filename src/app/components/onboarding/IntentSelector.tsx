@@ -4,7 +4,7 @@ import { ArrowUpRight } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useOnboarding } from '@/lib/OnboardingContext';
 import { useAuth } from '@/lib/AuthContext';
-import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
+import { Kicker, PillButton } from '@/app/components/bw/Form';
 import { DotMatrixRadio, WizardTop, wizardStep } from './OnboardingChrome';
 import { useT } from '@/lib/i18n';
 
@@ -69,97 +69,106 @@ export const IntentSelector: React.FC<IntentSelectorProps> = ({
     else if (choice === 'band') onSelectBand();
   };
 
+  // AuthScreen's layout, split in two blocks so the Duo in Laptop pose can
+  // use the full-screen form layout (`.bw-fold-form`, as Sign in does): the
+  // title holds the Display, the path cards start on the Deck, so no card
+  // lies across the fold. Elsewhere it looks the same.
   return (
-    <AuthScreen
-      top={<WizardTop onBack={onBack} step={step} total={total} />}
-      bodyClassName="pt-2 gap-3"
-      footer={
+    <div className="bw-auth-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
+      <div className="shrink-0" style={{ paddingTop: 'var(--safe-top)' }}>
+        <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
+          <WizardTop onBack={onBack} step={step} total={total} />
+        </div>
+        <div className="flex flex-col px-4 pt-2 gap-3">
+          <Kicker overline={t('Choose your path')} title={t('What brings you here?')} />
+          <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
+            {t('Choose how you want to use BandWith. You can change this later.')}
+          </p>
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col px-4 pt-3 pb-6 gap-3">
+        <div role="radiogroup" aria-label={t('Choose your path')} className="flex flex-col gap-3">
+          {OPTIONS.map((opt, i) => {
+            const selected = choice === opt.id;
+            return (
+              <motion.button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setChoice(opt.id)}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 + i * 0.08, duration: 0.4 }}
+                className={cn(
+                  'w-full text-left flex flex-col gap-3 p-5 rounded-[24px] transition-colors',
+                  'active:scale-[var(--press-scale,0.97)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
+                  // Selected card is the dark Figma card; scoping `dark` flips the tokens inside it.
+                  selected ? 'dark bg-sheet text-foreground border border-transparent' : 'bg-card text-foreground border border-border',
+                )}
+              >
+                <span className="flex items-center justify-between w-full">
+                  <span className="flex items-center gap-1" aria-hidden="true">
+                    {Array.from({ length: 5 }).map((_, d) => (
+                      <span
+                        key={d}
+                        className={cn(
+                          'w-2.5 h-2.5 rounded-full',
+                          d < opt.dots ? (selected ? 'bg-accent' : 'bg-dot-on') : 'bg-dot-off',
+                        )}
+                      />
+                    ))}
+                  </span>
+                  <span
+                    className={cn(
+                      'inline-flex items-center h-7 px-3 rounded-full bw-label-sm',
+                      opt.accentBadge ? 'bg-accent text-accent-foreground' : 'border border-border text-muted-foreground',
+                    )}
+                  >
+                    {opt.badge}
+                  </span>
+                </span>
+                <span className="bw-h1">{opt.title}</span>
+                <span
+                  className={cn(
+                    'text-[16px] leading-[1.45] tracking-[-0.003em]',
+                    selected ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                >
+                  {opt.description}
+                </span>
+                <span className="flex items-center gap-2">
+                  <DotMatrixRadio checked={selected} />
+                  <span className={cn('bw-label-sm', selected ? 'text-accent' : 'text-muted-foreground')}>
+                    {selected ? t('Selected') : t('Select')}
+                  </span>
+                </span>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {user?.email && (
+          <p className="bw-body-sm text-muted-foreground break-words">
+            {t('Signed in as {account}', { account: user.email })}
+            {' · '}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="underline underline-offset-4 text-foreground disabled:opacity-40"
+            >
+              {t('Sign out')}
+            </button>
+          </p>
+        )}
+      </div>
+      <div className="shrink-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
         <PillButton onClick={handleContinue} disabled={!choice} trailingIcon={<ArrowUpRight className="w-5 h-5" />}>
           {t('Continue')}
         </PillButton>
-      }
-    >
-      <Kicker overline={t('Choose your path')} title={t('What brings you here?')} />
-      <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
-        {t('Choose how you want to use BandWith. You can change this later.')}
-      </p>
-
-      <div role="radiogroup" aria-label={t('Choose your path')} className="flex flex-col gap-3">
-        {OPTIONS.map((opt, i) => {
-          const selected = choice === opt.id;
-          return (
-            <motion.button
-              key={opt.id}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => setChoice(opt.id)}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 + i * 0.08, duration: 0.4 }}
-              className={cn(
-                'w-full text-left flex flex-col gap-3 p-5 rounded-[24px] transition-colors',
-                'active:scale-[var(--press-scale,0.97)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
-                // Selected card is the dark Figma card; scoping `dark` flips the tokens inside it.
-                selected ? 'dark bg-sheet text-foreground border border-transparent' : 'bg-card text-foreground border border-border',
-              )}
-            >
-              <span className="flex items-center justify-between w-full">
-                <span className="flex items-center gap-1" aria-hidden="true">
-                  {Array.from({ length: 5 }).map((_, d) => (
-                    <span
-                      key={d}
-                      className={cn(
-                        'w-2.5 h-2.5 rounded-full',
-                        d < opt.dots ? (selected ? 'bg-accent' : 'bg-dot-on') : 'bg-dot-off',
-                      )}
-                    />
-                  ))}
-                </span>
-                <span
-                  className={cn(
-                    'inline-flex items-center h-7 px-3 rounded-full bw-label-sm',
-                    opt.accentBadge ? 'bg-accent text-accent-foreground' : 'border border-border text-muted-foreground',
-                  )}
-                >
-                  {opt.badge}
-                </span>
-              </span>
-              <span className="bw-h1">{opt.title}</span>
-              <span
-                className={cn(
-                  'text-[16px] leading-[1.45] tracking-[-0.003em]',
-                  selected ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {opt.description}
-              </span>
-              <span className="flex items-center gap-2">
-                <DotMatrixRadio checked={selected} />
-                <span className={cn('bw-label-sm', selected ? 'text-accent' : 'text-muted-foreground')}>
-                  {selected ? t('Selected') : t('Select')}
-                </span>
-              </span>
-            </motion.button>
-          );
-        })}
       </div>
-
-      {user?.email && (
-        <p className="bw-body-sm text-muted-foreground break-words">
-          {t('Signed in as {account}', { account: user.email })}
-          {' · '}
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            className="underline underline-offset-4 text-foreground disabled:opacity-40"
-          >
-            {t('Sign out')}
-          </button>
-        </p>
-      )}
-    </AuthScreen>
+    </div>
   );
 };
 

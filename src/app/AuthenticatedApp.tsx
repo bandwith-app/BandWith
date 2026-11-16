@@ -2988,6 +2988,9 @@ export default function AuthenticatedApp() {
       // The account hub too: its trailing page is the profile, not a gig.
       onHome: activeTab === 'Home' && !hubOpen && !isIdentityOpen,
       hasSelected: !!selectedEvent,
+      // The inbox covers Home: no gig opens behind it (the Duo rail's Back
+      // would close that gig first).
+      covered: isNotificationsOpen,
       // Bands still loading: which band's gig is not known yet (cold launch).
       loading: eventsLoading || bandsLoading,
       hasNext: !!next,
@@ -2996,7 +2999,7 @@ export default function AuthenticatedApp() {
     if (!open || !next) return;
     handleEventCardClick(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [twoPane, activeTab, hubOpen, eventsLoading, visuallyFilteredEvents, selectedEvent, shownBandId, bandsLoading, isIdentityOpen]);
+  }, [twoPane, activeTab, hubOpen, eventsLoading, visuallyFilteredEvents, selectedEvent, shownBandId, bandsLoading, isIdentityOpen, isNotificationsOpen]);
 
   /**
    * The member's own lineup row is still loading (weak signal) or could not
@@ -4692,7 +4695,12 @@ export default function AuthenticatedApp() {
               removeNotifications(ids);
             }}
             onMarkAsRead={(id) => { const nid = id || selectedNotification?.id; if (nid) markNotificationAsRead(nid).then(() => refetchNotifications?.()); if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); } }}
-            onMarkAllAsRead={() => { markAllNotificationsAsRead().then(() => refetchNotifications?.()); }}
+            onMarkAllAsRead={() => {
+              // The open list is a snapshot: clear its unread dots and count too.
+              setSelectedNotifications((p) => p.map((n) => (n.read ? n : { ...n, read: true })));
+              setSelectedNotification((n) => (n && !n.read ? { ...n, read: true } : n));
+              markAllNotificationsAsRead().then(() => refetchNotifications?.());
+            }}
             onDelete={(id) => {
               // Deleted for real (it used to come back on the next refresh).
               const ids = id
@@ -4817,6 +4825,22 @@ export default function AuthenticatedApp() {
             currentUserId={user?.id}
             onClose={() => closeSelectedEventRef.current()}
             onOpenBandSettings={isAdmin ? () => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); } : undefined}
+            // Show readiness "No contract yet": Contracts & docs (the hub's
+            // DOCUMENTS), with the new contract filled in for this gig.
+            onOpenContract={(newForThisGig) => {
+              const ev = selectedEvent;
+              inItemBand(ev.band_id, "prepare a contract", () => {
+                closeSelectedEventRef.current();
+                setContractPrefill(newForThisGig ? {
+                  eventId: ev.eventId ?? null,
+                  eventName: ev.title || '',
+                  clientName: ev.clientCompany || ev.clientName || '',
+                  clientEmail: ev.clientEmail || '',
+                  eventDate: ev.date || '',
+                } : null);
+                setShowContracts(true);
+              });
+            }}
             userResponse={selectedEventMembership?.status === "confirmed" ? "accepted" : selectedEventMembership?.status === "declined" ? "declined" : selectedEventMembership?.status === "maybe" ? "maybe" : selectedEventMembership?.status === "pending" ? "pending" : "accepted"}
             onAccept={handleEventAccept}
             onDecline={handleEventDecline}

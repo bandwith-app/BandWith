@@ -1,5 +1,5 @@
 import { test, expect, type App } from '../fixtures';
-import { openEvent, SEED } from '../support/flows';
+import { escapeRe, eventDetail, openEvent, openEventHere, SEED } from '../support/flows';
 
 /**
  * RSVP (#174): a member answers a gig or a rehearsal with GOING or CAN'T
@@ -70,6 +70,39 @@ test.describe('member RSVP', () => {
       await expect(app.page.getByText(new RegExp(app.t('Maybe'), 'i')).first()).toBeVisible();
       await expectGoingOrCant(app);
       await app.check(`${ev.kind} legacy maybe`);
+    });
+  }
+});
+
+test.describe('member answers a gig invitation, then opens an event at once', () => {
+  test.use({ role: 'member' });
+
+  const ANSWERS = [
+    { button: 'ACCEPT', toast: "You're confirmed!", reopen: SEED.wedding },
+    // Out of the gig: it leaves the member's calendar, so another event.
+    { button: 'DECLINE', toast: 'You dropped out of this event.', reopen: SEED.rehearsalTomorrow },
+  ];
+
+  for (const a of ANSWERS) {
+    test(`${a.button}: the event opened right after stays open`, async ({ app }) => {
+      await setMyAnswer(app, SEED.wedding, 'pending');
+      // Both events from the calendar agenda (no search layer left beneath).
+      const card = (title: string) =>
+        app.page.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).filter({ visible: true }).first();
+      await app.tab('Calendar');
+      await expect(card(SEED.wedding)).toBeVisible();
+      await openEventHere(app, SEED.wedding);
+      await app.page.getByRole('button', { name: app.t(a.button), exact: true }).click();
+      // The gig closes at once; saving and syncing go on in the background.
+      await expect(app.page.getByText(app.t(a.toast)).first()).toBeVisible();
+      await expect(eventDetail(app)).toBeHidden();
+      await expect(card(a.reopen)).toBeVisible();
+      await openEventHere(app, a.reopen);
+      // The member reads it while the background sync finishes (about 3 s
+      // in the demo): nothing may close it meanwhile.
+      await app.page.waitForTimeout(4000);
+      await expect(eventDetail(app)).toBeVisible();
+      await expect(eventDetail(app).getByText(a.reopen, { exact: false }).first()).toBeVisible();
     });
   }
 });

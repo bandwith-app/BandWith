@@ -24,6 +24,25 @@ for (const role of ['admin', 'member'] as const) {
       await checkWholeScreen(app, `Calendar (${role})`);
     });
 
+    test('@smoke Mark all as read clears the Unread count and the red dots', async ({ app }) => {
+      await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')} \\(`) }).filter({ visible: true }).first().click();
+      await expect(app.page.getByRole('heading', { name: app.t('Inbox'), exact: true })).toBeVisible();
+      await app.settle();
+      const markAll = app.page.getByRole('button', { name: app.t('Mark all as read'), exact: true });
+      const unreadFilter = app.page.getByRole('button', { name: new RegExp(`^${app.t('Unread')}`) });
+      const dots = app.page.getByLabel(app.t('Unread'), { exact: true }).filter({ visible: true });
+      await expect(unreadFilter).toHaveAccessibleName(new RegExp(`^${app.t('Unread')}\\s*[1-9]`));
+      await expect(dots.first()).toBeVisible();
+      await markAll.click();
+      await expect(markAll).toBeHidden();
+      await expect(dots).toHaveCount(0);
+      await expect(unreadFilter).toHaveAccessibleName(new RegExp(`^${app.t('Unread')}\\s*0?$`));
+      await app.check('inbox after Mark all as read');
+      // Nothing comes back with the next refresh of the list either.
+      await unreadFilter.click();
+      await expect(app.page.getByRole('heading', { name: app.t('All caught up'), exact: true })).toBeVisible();
+    });
+
     test('the notifications inbox lists the alerts and opens one', async ({ app }) => {
       await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}`) }).first().click();
       const inbox = app.page.getByRole('button', { name: app.t('Close notifications'), exact: true }).first();

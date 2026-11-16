@@ -17,10 +17,17 @@ export interface HomeAutoDetailInput {
   loading: boolean;
   /** There is an upcoming gig to show. */
   hasNext: boolean;
+  /**
+   * A layer opened from Home covers it (the notifications inbox): the gig
+   * waits until it closes. Opened behind the inbox, the gig's Back became the
+   * newest one and the Duo rail's Back closed it instead of the inbox.
+   */
+  covered?: boolean;
 }
 
 export function homeAutoDetail(done: boolean, input: HomeAutoDetailInput): { done: boolean; open: boolean } {
   if (!input.onHome) return { done: false, open: false };
+  if (input.covered) return { done, open: false };
   if (done || !input.twoPane || input.hasSelected || input.loading || !input.hasNext) return { done, open: false };
   return { done: true, open: true };
 }
