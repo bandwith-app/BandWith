@@ -462,7 +462,7 @@ const gigs: AreaModule = {
           items: [
             'Open the gig. Admins change it right on its page: the pencil at the top, the pencil next to the venue, the time tiles, and **EDIT** next to a section.',
             'A sheet opens with only that part, for example **Title, date & times**, **Venue & location** or **Lineup**.',
-            'Make your changes and tap **Save**. It stays off until something changed. **Cancel**, Back or a swipe down closes the sheet and keeps the gig as it was.',
+            'Make your changes and tap **Save**. It stays off until something changed. **Cancel**, ✕, Back or a swipe down closes the sheet and keeps the gig as it was. If you changed something, **Save your changes?** asks first: **Save changes**, **Discard** or **Keep editing**. Opening another part of the gig asks the same.',
             'The setlist is edited right in the **SETLIST** section, with its own **Save** (see [[edit-a-gig-setlist]]).',
           ],
         },
@@ -774,6 +774,7 @@ const gigs: AreaModule = {
           items: [
             'Open the gig from the notification or the calendar. The header shows **INVITE PENDING**.',
             'In **Your RSVP** · **Are you in?**, tap **ACCEPT** or **DECLINE**.',
+            'If you answered maybe before, the card says "Your answer was Maybe. Choose GOING or CAN\'T.": pick one.',
           ],
         },
         {

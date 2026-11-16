@@ -450,7 +450,7 @@ const gigs: AreaText = {
           items: [
             "Abre el concierto. Los admins lo cambian directamente en su página: el lápiz de arriba, el lápiz junto al lugar, los recuadros de horarios y **EDITAR** junto a una sección.",
             "Se abre una hoja solo con esa parte, por ejemplo **Título, fecha y horarios**, **Sala y ubicación** o **Formación**.",
-            "Haz los cambios y toca **Guardar**. Sigue desactivado hasta que cambies algo. **Cancelar**, Atrás o deslizar hacia abajo cierran la hoja y dejan el concierto como estaba.",
+            "Haz los cambios y toca **Guardar**. Sigue desactivado hasta que cambies algo. **Cancelar**, ✕, Atrás o deslizar hacia abajo cierran la hoja y dejan el concierto como estaba. Si cambiaste algo, antes pregunta **¿Guardar los cambios?**: **Guardar cambios**, **Descartar** o **Seguir editando**. Abrir otra parte del concierto pregunta lo mismo.",
             "La setlist se edita directamente en la sección **SETLIST**, con su propio **Guardar** (consulta [[edit-a-gig-setlist]]).",
           ],
         },
@@ -758,6 +758,7 @@ const gigs: AreaText = {
           items: [
             "Abre el concierto desde la notificación o desde el calendario. La cabecera muestra **INVITACIÓN PENDIENTE**.",
             "En **Tu respuesta** · **¿Te apuntas?**, toca **ACEPTAR** o **RECHAZAR**.",
+            "Si antes respondiste quizás, la tarjeta dice «Tu respuesta era Quizás. Elige VOY o NO PUEDO.»: elige una.",
           ],
         },
         {

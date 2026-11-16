@@ -141,7 +141,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Schließt du das Fenster mit **Abbrechen**, Zurück oder nach unten wischen, bleibt die Probe, wie sie war. Fokus-Songs speicherst du mit **Speichern** im Setlist-Fenster.",
+          text: "Schließt du das Fenster mit **Abbrechen**, ✕, Zurück oder nach unten wischen, bleibt die Probe, wie sie war. Hast du etwas geändert, fragt zuerst **Änderungen speichern?**: **Änderungen sichern**, **Verwerfen** oder **Weiter bearbeiten**. Dasselbe fragt es, wenn du einen anderen Teil der Probe öffnest. Fokus-Songs speicherst du mit **Speichern** im Setlist-Fenster.",
         },
         {
           type: "list",

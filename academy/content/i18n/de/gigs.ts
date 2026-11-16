@@ -453,7 +453,7 @@ const gigs: AreaText = {
           items: [
             "Öffne den Gig. Admins ändern ihn direkt auf seiner Seite: der Stift oben, der Stift neben der Location, die Zeit-Kacheln und **ÄNDERN** neben einem Bereich.",
             "Ein Fenster öffnet sich nur mit diesem Teil, zum Beispiel **Titel, Datum & Zeiten**, **Location & Adresse** oder **Besetzung**.",
-            "Nimm deine Änderungen vor und tippe auf **Speichern**. Der Button bleibt aus, bis sich etwas geändert hat. **Abbrechen**, Zurück oder nach unten wischen schließt das Fenster, und der Gig bleibt, wie er war.",
+            "Nimm deine Änderungen vor und tippe auf **Speichern**. Der Button bleibt aus, bis sich etwas geändert hat. **Abbrechen**, ✕, Zurück oder nach unten wischen schließt das Fenster, und der Gig bleibt, wie er war. Hast du etwas geändert, fragt zuerst **Änderungen speichern?**: **Änderungen sichern**, **Verwerfen** oder **Weiter bearbeiten**. Dasselbe fragt es, wenn du einen anderen Teil des Gigs öffnest.",
             "Die Setlist bearbeitest du direkt im Bereich **SETLIST**, mit eigenem **Speichern** (siehe [[edit-a-gig-setlist]]).",
           ],
         },
@@ -765,6 +765,7 @@ const gigs: AreaText = {
           items: [
             "Öffne den Gig über die Mitteilung oder den Kalender. Der Kopfbereich zeigt **EINLADUNG OFFEN**.",
             "Tippe bei **Deine Antwort** · **Bist du dabei?** auf **ZUSAGEN** oder **ABSAGEN**.",
+            "Hattest du vorher vielleicht geantwortet, steht auf der Karte „Deine Antwort war Vielleicht. Wähle DABEI oder KANN NICHT.“: wähle eins davon.",
           ],
         },
         {
