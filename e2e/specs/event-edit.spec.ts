@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures';
-import { openEvent, eventDetail, SEED } from '../support/flows';
+import { openEvent, eventDetail, systemBack, SEED } from '../support/flows';
 import {
   EVENT_IDS,
   editSheet,
@@ -307,4 +307,79 @@ test.describe('Show readiness (admin)', () => {
     await expect.poll(values).toContain(SEED.clients[0]);
     await app.check('new contract for the gig');
   });
+
+  // Emulator pass 11-16 (iPad landscape): the form scrolled in the top part
+  // of the pane and CREATE CONTRACT floated mid-screen over the tab bar's
+  // place. Like the other composers: the form fills the pane, the action sits
+  // at its bottom edge, the tab bar steps away.
+  test('the new contract form fills the pane, its action pinned at the bottom', async ({ app }) => {
+    await openEvent(app, SEED.gigToday);
+    const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await app.settle();
+    await expect(app.page.getByRole('heading', { name: app.t('Create contract'), exact: true })).toBeVisible();
+    const create = app.page.getByRole('button', { name: app.t('Create contract'), exact: true });
+    const layout = await create.evaluate((button) => {
+      const pane = button.closest('.bw-pane-detail') as HTMLElement;
+      const scroller = [...pane.querySelectorAll('div')].find((d) => getComputedStyle(d).overflowY === 'auto') as HTMLElement;
+      const nav = document.querySelector('.bw-nav-bar');
+      const navBox = nav && getComputedStyle(nav).display !== 'none' ? nav.getBoundingClientRect() : null;
+      return {
+        pane: pane.getBoundingClientRect().toJSON(),
+        button: button.getBoundingClientRect().toJSON(),
+        scrollerBottom: scroller.getBoundingClientRect().bottom,
+        navOverPane: !!navBox && navBox.height > 0 && navBox.right > pane.getBoundingClientRect().left && navBox.top < innerHeight,
+      };
+    });
+    // The action sits at the bottom of the pane (safe area + 16), not above an empty band.
+    expect(layout.pane.bottom - layout.button.bottom, 'gap under CREATE CONTRACT').toBeLessThan(48);
+    // The fields scroll down to the action bar.
+    expect(layout.button.top - layout.scrollerBottom, 'gap between the fields and the action').toBeLessThan(24);
+    expect(layout.navOverPane, 'tab bar over the form').toBe(false);
+    await app.check('new contract form');
+  });
+
+  // Emulator pass 11-16: Back from Contracts & docs went to the Calendar. It
+  // returns to the gig, whichever Back the device has: the screen's own (in
+  // the Duo rail on a Duo), or the system Back (Android, Escape).
+  for (const how of ['the screen Back', 'the system Back'] as const) {
+    test(`@smoke opened from "No contract yet", ${how} returns to the gig`, async ({ app }) => {
+      await openEvent(app, SEED.gigToday);
+      const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+      await row.scrollIntoViewIfNeeded();
+      await row.click();
+      await app.settle();
+      const form = app.page.getByRole('heading', { name: app.t('Create contract'), exact: true });
+      await expect(form).toBeVisible();
+      await app.check('new contract from the gig');
+      const hub = app.page.getByRole('heading', { name: app.t('Contracts & docs'), exact: true });
+      if (how === 'the screen Back') {
+        await app.button('Back', { exact: true }).last().click();
+        await app.settle();
+        await expect(form).toBeHidden();
+        await expect(hub).toBeVisible();
+        await app.button('Go back', { exact: true }).last().click();
+      } else {
+        await systemBack(app);
+        await app.settle();
+        await expect(form).toBeHidden();
+        await expect(hub).toBeVisible();
+        await systemBack(app);
+      }
+      await app.settle();
+      await expect(hub).toBeHidden();
+      await expect(eventDetail(app)).toBeVisible();
+      await expect(eventDetail(app).getByText(SEED.gigToday).first()).toBeVisible();
+      await app.check('back on the gig from Contracts & docs');
+      // And the gig's own Back still closes it, back to the Calendar.
+      if (how === 'the screen Back') {
+        await app.button('Back', { exact: true }).last().click();
+      } else {
+        await systemBack(app);
+      }
+      await app.settle();
+      await expect(eventDetail(app)).toBeHidden();
+    });
+  }
 });

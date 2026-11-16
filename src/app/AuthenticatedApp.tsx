@@ -1300,6 +1300,7 @@ export default function AuthenticatedApp() {
     setShowInventory(false);
     setShowContracts(false);
     setContractPrefill(null);
+    contractsReturnRef.current = null;
     setShowTaskTemplates(false);
     setShowPastEvents(false);
     setShowDeputyGigs(false);
@@ -1508,6 +1509,27 @@ export default function AuthenticatedApp() {
   const [showContracts, setShowContracts] = useState(false);
   // "Prepare contract" on an accepted quote opens Contracts with this filled in.
   const [contractPrefill, setContractPrefill] = useState<ContractPrefill | null>(null);
+  /**
+   * Contracts & docs opened from a gig (show readiness "No contract yet"):
+   * its Back reopens that gig, and the gig's own Back still goes where it
+   * went before (a tab, a chat).
+   */
+  const contractsReturnRef = useRef<{ event: EventData; tab: TabName | null; chat: ChatItem | null } | null>(null);
+  // The calendar's search stays under a gig opened from it, and under
+  // Contracts & docs opened from that gig: Back closes those first.
+  const calendarCovered = !!selectedEvent || showContracts;
+  const closeContracts = () => {
+    setShowContracts(false);
+    setContractPrefill(null);
+    const back = contractsReturnRef.current;
+    contractsReturnRef.current = null;
+    if (!back) return;
+    // The list's copy: the gig may have changed meanwhile (its contract now exists).
+    const fresh = eventsRef.current.find((e) => back.event.eventId && e.eventId === back.event.eventId) ?? back.event;
+    eventReturnTabRef.current = back.tab;
+    eventReturnChatRef.current = back.chat;
+    handleEventCardClickRef.current(fresh);
+  };
   // A quote notification opens that quote in Quotes.
   const [quoteFocus, setQuoteFocus] = useState<string | null>(null);
   const [showTaskTemplates, setShowTaskTemplates] = useState(false);
@@ -2043,6 +2065,7 @@ export default function AuthenticatedApp() {
     setShowAnalytics(false);
     setShowInventory(false);
     setShowContracts(false); setContractPrefill(null);
+    contractsReturnRef.current = null;
     setShowTaskTemplates(false);
     setShowPastEvents(false);
     setShowDeputyGigs(false);
@@ -2498,7 +2521,7 @@ export default function AuthenticatedApp() {
         return true;
       }
       if (s.showContracts) {
-        setShowContracts(false); setContractPrefill(null);
+        closeContracts();
         return true;
       }
       if (s.showTaskTemplates) {
@@ -4021,7 +4044,7 @@ export default function AuthenticatedApp() {
             <ChatView key="chat" chatFilter={chatFilter} setChatFilter={setChatFilter} chatSearch={chatSearch} setChatSearch={setChatSearch} filteredChats={filteredChats} unreadCounts={chatUnreadCounts} onChatClick={(c) => { c.unread = 0; setSelectedChat(c); }} onStartChat={() => setShowNewChat(true)} selectedChatUuid={wideLayout && twoPane ? selectedChat?.uuid : null} loading={chatsLoading && !realChats?.length} loadFailed={!!chatsError && !realChats?.length} onDeleteChat={async (c) => { if (!c.uuid) return; const { error } = await deleteChatService(c.uuid); if (error) setSaveToast({ message: t('Could not delete the chat. Try again.'), type: 'error' }); else refetchChats?.(); }} />
           )}
           {activeTab === "Events" && (
-            <EventsView key="events" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={calendarEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} eventOpen={!!selectedEvent} onCreateEvent={(type: 'gig' | 'rehearsal' | 'quote' = 'gig', date?: string) => {
+            <EventsView key="events" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={calendarEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} eventOpen={calendarCovered} onCreateEvent={(type: 'gig' | 'rehearsal' | 'quote' = 'gig', date?: string) => {
               if (date) {
                 setCreateEventInitialDate(date);
               } else {
@@ -4053,7 +4076,7 @@ export default function AuthenticatedApp() {
           )}
           {/* PLG: Solo mode fallback for Chat tab */}
           {activeTab === "Chat" && isSolo && (
-            <EventsView key="events-solo" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={visuallyFilteredEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} eventOpen={!!selectedEvent} onCreateEvent={(type?: string, date?: string) => { setEditingPersonalGig(date ? { id: '', title: '', eventDate: date } : null); setShowPersonalGigModal(true); }} onOpenPastEvents={() => setShowPastEvents(true)} isAdmin={false} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} />
+            <EventsView key="events-solo" loading={eventsLoading} eventFilter={eventFilter} setEventFilter={setEventFilter} eventSearch={eventSearch} setEventSearch={setEventSearch} eventView={eventView} groupedEvents={groupedEvents} allEvents={visuallyFilteredEvents} rawEvents={searchableEvents} onEventClick={handleEventCardClick} selectedEventId={wideLayout && twoPane ? selectedEvent?.eventId ?? null : null} eventOpen={calendarCovered} onCreateEvent={(type?: string, date?: string) => { setEditingPersonalGig(date ? { id: '', title: '', eventDate: date } : null); setShowPersonalGigModal(true); }} onOpenPastEvents={() => setShowPastEvents(true)} isAdmin={false} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} />
           )}
         </AnimatePresence>
 
@@ -4264,7 +4287,7 @@ export default function AuthenticatedApp() {
               }}
             />
           )}
-          {showContracts && realBand && isAdminOfBand(realBand.id) && <ContractsView key="contracts" onBack={() => { setShowContracts(false); setContractPrefill(null); }} bandId={realBand.id} prefill={contractPrefill} />}
+          {showContracts && realBand && isAdminOfBand(realBand.id) && <ContractsView key="contracts" onBack={closeContracts} bandId={realBand.id} prefill={contractPrefill} />}
           {showTaskTemplates && realBand && <TaskTemplatesView key="task-templates" onBack={() => setShowTaskTemplates(false)} bandId={realBand.id} userId={user?.id} canEdit={isAdminOfBand(realBand.id)} events={isAdminOfBand(realBand.id) ? templateTargetEvents : []} onNotify={(message) => setSaveToast({ message, type: 'success' })} onUseTemplate={(template, kind) => {
             setShowTaskTemplates(false);
             setCreateEventInitialTasks((template.tasks || []).map((t) => ({ title: t.title, templateId: template.id, dueOffset: t.dueOffset })));
@@ -4830,6 +4853,10 @@ export default function AuthenticatedApp() {
             onOpenContract={(newForThisGig) => {
               const ev = selectedEvent;
               inItemBand(ev.band_id, "prepare a contract", () => {
+                // Back from Contracts & docs returns to this gig.
+                contractsReturnRef.current = { event: ev, tab: eventReturnTabRef.current, chat: eventReturnChatRef.current };
+                eventReturnTabRef.current = null;
+                eventReturnChatRef.current = null;
                 closeSelectedEventRef.current();
                 setContractPrefill(newForThisGig ? {
                   eventId: ev.eventId ?? null,
