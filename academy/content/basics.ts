@@ -99,7 +99,7 @@ const basics: AreaModule = {
           items: [
             "**Please enter email and password**: one of the two fields is empty.",
             "Wrong password: tap **Forgot password?** under the password field (see [[forgot-password]]).",
-            "A Google or Apple sign-in that was cancelled, or an expired email link, shows its error on the sign-in screen. Try again.",
+            "A Google or Apple sign-in that was cancelled, or an expired email link, says what went wrong: in the app on the sign-in screen, on the web on its own screen with **Back to sign in**. Try again.",
             "**Can’t load your bands**: you are signed in but the app couldn't load your bands (no connection, server error, outdated app). Your bands are safe. Tap **Try again**, or update BandWith.",
           ],
         },
@@ -127,6 +127,7 @@ const basics: AreaModule = {
           ],
         },
         { type: "p", text: "Opened an old link or tapped it by mistake? Tap **Keep my current password** and nothing changes." },
+        { type: "p", text: "Link expired or already used? Some email apps open links before you do, and that uses them up. On the web BandWith shows **Link expired**: tap **Send a new link**. In the app the sign-in screen says so: tap **Forgot password?**. Open the new link straight away, in the same browser where you asked for it." },
         { type: "note", tone: "tip", text: "After a password change, Face ID / fingerprint sign-in stops for that account. Sign in once with the new password to turn it back on." },
         { type: "p", text: "Accounts that sign in only with Google or Apple have no BandWith password: manage the password with Google or Apple instead." },
       ],

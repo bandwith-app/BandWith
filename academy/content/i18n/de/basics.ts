@@ -92,7 +92,7 @@ const basics: AreaText = {
           items: [
             "**Bitte gib E-Mail und Passwort ein**: Eines der beiden Felder ist leer.",
             "Falsches Passwort: Tippe unter dem Passwortfeld auf **Passwort vergessen?** (siehe [[forgot-password]]).",
-            "Eine abgebrochene Google- oder Apple-Anmeldung oder ein abgelaufener E-Mail-Link zeigt den Fehler auf dem Anmeldebildschirm. Versuch es einfach noch mal.",
+            "Eine abgebrochene Google- oder Apple-Anmeldung oder ein abgelaufener E-Mail-Link sagt dir, was schiefging: in der App auf dem Anmeldebildschirm, im Web auf einem eigenen Bildschirm mit **Zurück zur Anmeldung**. Versuch es einfach noch mal.",
             "**Deine Bands können nicht geladen werden**: Du bist angemeldet, aber die App konnte deine Bands nicht laden (keine Verbindung, Serverfehler, veraltete App). Deine Bands sind sicher. Tippe auf **Erneut versuchen** oder aktualisiere BandWith.",
           ],
         },
@@ -120,6 +120,7 @@ const basics: AreaText = {
           ],
         },
         { type: "p", text: "Einen alten Link geöffnet oder versehentlich darauf getippt? Tippe auf **Aktuelles Passwort behalten**, dann ändert sich nichts." },
+        { type: "p", text: "Link abgelaufen oder schon benutzt? Manche E-Mail-Apps öffnen Links vor dir und verbrauchen sie damit. Im Web zeigt BandWith **Link abgelaufen**: Tippe auf **Neuen Link senden**. In der App steht es auf dem Anmeldebildschirm: Tippe auf **Passwort vergessen?**. Öffne den neuen Link sofort, im selben Browser, in dem du ihn angefordert hast." },
         { type: "note", tone: "tip", text: "Nach einer Passwortänderung funktioniert die Anmeldung mit Face ID / Fingerabdruck für dieses Konto nicht mehr. Melde dich einmal mit dem neuen Passwort an, um sie wieder einzuschalten." },
         { type: "p", text: "Konten, die sich nur mit Google oder Apple anmelden, haben kein BandWith-Passwort: Das Passwort verwaltest du dann bei Google oder Apple." },
       ],

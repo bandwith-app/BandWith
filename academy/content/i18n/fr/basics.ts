@@ -92,7 +92,7 @@ const basics: AreaText = {
           items: [
             "**Saisis ton e-mail et ton mot de passe** : l’un des deux champs est vide.",
             "Mauvais mot de passe : touche **Mot de passe oublié ?** sous le champ du mot de passe (voir [[forgot-password]]).",
-            "Une connexion Google ou Apple annulée, ou un lien e-mail expiré, affiche son erreur sur l’écran de connexion. Réessaie.",
+            "Une connexion Google ou Apple annulée, ou un lien e-mail expiré, indique ce qui n’a pas marché : dans l’app sur l’écran de connexion, sur le web sur un écran à part avec **Retour à la connexion**. Réessaie.",
             "**Impossible de charger tes groupes** : tu es connecté, mais l’app n’a pas pu charger tes groupes (pas de connexion, erreur serveur, app pas à jour). Tes groupes ne risquent rien. Touche **Réessayer**, ou mets BandWith à jour.",
           ],
         },
@@ -120,6 +120,7 @@ const basics: AreaText = {
           ],
         },
         { type: "p", text: "Tu as ouvert un ancien lien ou touché le lien par erreur ? Touche **Garder mon mot de passe actuel** et rien ne change." },
+        { type: "p", text: "Lien expiré ou déjà utilisé ? Certaines applis de messagerie ouvrent les liens avant toi, ce qui les consomme. Sur le web, BandWith affiche **Lien expiré** : touche **Envoyer un nouveau lien**. Dans l’app, l’écran de connexion te le dit : touche **Mot de passe oublié ?**. Ouvre le nouveau lien tout de suite, dans le navigateur où tu l’as demandé." },
         { type: "note", tone: "tip", text: "Après un changement de mot de passe, la connexion par Face ID / empreinte s’arrête pour ce compte. Connecte-toi une fois avec le nouveau mot de passe pour la réactiver." },
         { type: "p", text: "Les comptes qui se connectent uniquement avec Google ou Apple n’ont pas de mot de passe BandWith : gère le mot de passe chez Google ou Apple." },
       ],

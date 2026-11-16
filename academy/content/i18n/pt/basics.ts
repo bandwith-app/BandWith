@@ -92,7 +92,7 @@ const basics: AreaText = {
           items: [
             "**Digite seu e-mail e senha**: um dos dois campos está vazio.",
             "Senha errada: toque em **Esqueceu a senha?** abaixo do campo de senha (veja [[forgot-password]]).",
-            "Um login com Google ou Apple cancelado, ou um link de e-mail expirado, mostra o erro na tela de login. Tente de novo.",
+            "Um login com Google ou Apple cancelado, ou um link de e-mail expirado, diz o que deu errado: no app na tela de login, na web numa tela própria com **Voltar ao login**. Tente de novo.",
             "**Não foi possível carregar suas bandas**: você entrou, mas o app não conseguiu carregar suas bandas (sem conexão, erro no servidor, app desatualizado). Suas bandas estão seguras. Toque em **Tentar de novo** ou atualize o BandWith.",
           ],
         },
@@ -120,6 +120,7 @@ const basics: AreaText = {
           ],
         },
         { type: "p", text: "Abriu um link antigo ou tocou nele sem querer? Toque em **Manter minha senha atual** e nada muda." },
+        { type: "p", text: "Link expirado ou já usado? Alguns apps de e-mail abrem os links antes de você, e isso os consome. Na web o BandWith mostra **Link expirado**: toque em **Enviar um novo link**. No app a tela de login avisa: toque em **Esqueceu a senha?**. Abra o novo link na hora, no mesmo navegador em que você o pediu." },
         { type: "note", tone: "tip", text: "Depois de trocar a senha, o login com Face ID / impressão digital para de funcionar nessa conta. Entre uma vez com a nova senha para reativá-lo." },
         { type: "p", text: "Contas que entram só com Google ou Apple não têm senha do BandWith: a senha é gerenciada pelo Google ou pela Apple." },
       ],

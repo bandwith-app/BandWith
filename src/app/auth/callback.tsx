@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react';
 import { supabase, RECOVERY_FLAG } from '@/lib/supabase';
 import { Loader2 } from '@/app/components/icons';
 import { t, useT } from '@/lib/i18n';
-import { authErrorMessage } from '@/lib/authErrors';
+import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
+import { DuoAuthLayout } from '@/app/components/onboarding/DuoAuthLayout';
+import {
+  authScreenUrl,
+  callbackProblem,
+  callbackProblemText,
+  callbackUrlError,
+  type AuthCallbackProblem,
+  type AuthScreenTarget,
+} from '@/lib/authCallback';
 
 /**
  * Auth callback page — handles OAuth redirects from Google/Apple.
@@ -13,15 +22,24 @@ import { authErrorMessage } from '@/lib/authErrors';
  * 2. Sets the session via supabase.auth.setSession()
  * 3. Cleans the URL hash so isAuthCallback() won't match on next render
  * 4. Redirects to the main app root
+ *
+ * When the link can't sign in (expired or already used, opened in another
+ * browser, Google cancelled) it shows why, with a way forward: a new reset
+ * link or the sign-in screen. Never a blank page.
  */
 export default function AuthCallback() {
   // Re-render on a language change; the text below uses the module t().
   useT();
   const [status, setStatus] = useState<'processing' | 'redirecting'>('processing');
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<AuthCallbackProblem | null>(null);
+  const isRecovery = new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
 
   useEffect(() => {
     let cancelled = false;
+
+    const fail = (err: unknown) => {
+      if (!cancelled) setProblem(callbackProblem(err));
+    };
 
     const handleCallback = async () => {
       try {
@@ -34,45 +52,43 @@ export default function AuthCallback() {
         // Also check query params (PKCE flow or error callback)
         const queryParams = new URLSearchParams(window.location.search);
         const code = queryParams.get('code');
-        const errorDesc = queryParams.get('error_description');
 
-        if (errorDesc) {
-          console.error('[AuthCallback] OAuth error:', errorDesc);
-          // Expired reset / confirmation link, cancelled sign-in…: in the
-          // app's language, never the server's text.
-          setError(authErrorMessage({ code: queryParams.get('error_code') ?? queryParams.get('error') ?? undefined, message: errorDesc }));
-          // Wait a moment then redirect back
-          setTimeout(() => {
-            if (!cancelled) {
-              cleanupAndRedirect(false);
-            }
-          }, 3000);
+        // Expired reset link (otp_expired), cancelled sign-in (access_denied)…:
+        // Supabase puts the error in the query and/or the fragment.
+        const urlError = callbackUrlError(window.location.search, window.location.hash);
+        if (urlError) {
+          console.error('[AuthCallback] Auth error in URL:', urlError.code || urlError.error);
+          fail(urlError);
           return;
         }
 
         if (code) {
-          // PKCE flow. With detectSessionInUrl the client may already have
-          // exchanged the code during init; getSession() waits for that.
+          // PKCE flow. With detectSessionInUrl the client exchanges the code
+          // itself while it starts; initialize() returns that attempt's
+          // error (a code already used, a stale code verifier…).
+          const auth = supabase.auth as { initialize?: () => Promise<{ error: unknown }> };
+          const init = typeof auth.initialize === 'function' ? await auth.initialize() : { error: null };
+          if (init.error) {
+            console.error('[AuthCallback] PKCE exchange error:', init.error);
+            fail(init.error);
+            return;
+          }
           const { data: { session: existing } } = await supabase.auth.getSession();
+          // No session yet: the client didn't try (no code verifier in this
+          // browser), so try here; that error says which case it is.
           const { error: exchangeError } = existing
             ? { error: null }
             : await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
             console.error('[AuthCallback] PKCE exchange error:', exchangeError);
-            setError(authErrorMessage(exchangeError));
-            setTimeout(() => {
-              if (!cancelled) cleanupAndRedirect(false);
-            }, 3000);
+            fail(exchangeError);
             return;
           }
           console.log('[AuthCallback] PKCE exchange successful');
         } else if (accessToken) {
           // Tokens in the URL fragment (legacy implicit flow) are rejected:
           // they cannot be tied to a sign-in this app started (login CSRF).
-          setError(t('This sign-in link is no longer valid. Please sign in again.'));
-          setTimeout(() => {
-            if (!cancelled) cleanupAndRedirect(false);
-          }, 3000);
+          fail({ code: 'flow_state_not_found' });
           return;
         } else {
           // No tokens found — auth listener might have already caught them,
@@ -81,10 +97,7 @@ export default function AuthCallback() {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
             console.warn('[AuthCallback] No session found');
-            setError(t('Sign in did not complete. Please try again.'));
-            setTimeout(() => {
-              if (!cancelled) cleanupAndRedirect(false);
-            }, 3000);
+            fail(null);
             return;
           }
         }
@@ -96,10 +109,7 @@ export default function AuthCallback() {
         cleanupAndRedirect(true);
       } catch (err) {
         console.error('[AuthCallback] Unexpected error:', err);
-        setError(t('An unexpected error occurred'));
-        setTimeout(() => {
-          if (!cancelled) cleanupAndRedirect(false);
-        }, 3000);
+        fail(err);
       }
     };
 
@@ -130,19 +140,45 @@ export default function AuthCallback() {
     };
   }, []);
 
+  if (problem) {
+    return <CallbackProblemScreen problem={problem} recovery={isRecovery} />;
+  }
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-4">
       <Loader2 className="w-8 h-8 animate-spin text-white" />
-      {error ? (
-        <>
-          <span className="text-red-400 text-sm font-medium">{error}</span>
-          <span className="text-white/40 text-xs">{t('Redirecting back...')}</span>
-        </>
-      ) : (
-        <span className="text-white/60 text-sm font-medium">
-          {status === 'processing' ? t('Completing sign in...') : t('Redirecting...')}
-        </span>
-      )}
+      <span className="text-white/60 text-sm font-medium">
+        {status === 'processing' ? t('Completing sign in...') : t('Redirecting...')}
+      </span>
     </div>
+  );
+}
+
+/** The link didn't sign in: say why and offer the way forward (no auto-redirect). */
+function CallbackProblemScreen({ problem, recovery }: { problem: AuthCallbackProblem; recovery: boolean }) {
+  const { title, body } = callbackProblemText(problem, recovery);
+  const go = (screen: AuthScreenTarget) => {
+    // Replace: Back must not return to this dead link.
+    window.location.replace(authScreenUrl(window.location.origin, screen));
+  };
+  return (
+    <DuoAuthLayout>
+      <AuthScreen
+        bodyClassName="pt-10"
+        footer={
+          <>
+            {recovery && <PillButton onClick={() => go('forgot-password')}>{t('Send a new link')}</PillButton>}
+            <PillButton variant={recovery ? 'ghost' : 'primary'} size={recovery ? 'md' : 'lg'} onClick={() => go('sign-in')}>
+              {t('Back to sign in')}
+            </PillButton>
+          </>
+        }
+      >
+        <div role="alert" className="flex flex-col gap-4">
+          <Kicker overline={recovery ? t('Account recovery') : t('Sign in')} title={title} />
+          <p className="text-[16px] leading-[1.45] text-muted-foreground max-w-[340px]">{body}</p>
+        </div>
+      </AuthScreen>
+    </DuoAuthLayout>
   );
 }
