@@ -63,6 +63,9 @@ traces and screenshots of failed tests to `e2e/.results/`.
 The iPhone Duo postures are emulated through the same contract the native shell uses
 (`window.__bwApplyRegions`, the `bwregions` event and the `--bw-*` CSS variables), so the
 app takes its real Duo code paths without any test-only code.
+The on-screen keyboard likewise: `support/keyboard.ts` fires the window events the
+Keyboard plugin fires on iOS and Android (`keyboardWillShow`, `keyboardDidShow`, …) and
+shrinks the viewport by the keyboard's height, as the native resize does.
 
 Tags in test titles:
 

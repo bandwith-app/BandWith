@@ -19,8 +19,9 @@ if (Capacitor.isNativePlatform()) {
     document.documentElement.setAttribute("data-platform", "android");
   }
   void enableEdgeToEdge();
-  installKeyboardInsets();
 }
+// The keyboard's window events (Keyboard plugin, iOS and Android); idle in a browser.
+installKeyboardInsets();
 // Layout attributes (Duo rail, two panes, tablet width) on every platform, so
 // the iPad layout also runs in Safari and on desktop browsers.
 installDuoLayout();
