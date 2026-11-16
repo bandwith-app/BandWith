@@ -34,7 +34,7 @@ pnpm e2e:models:coverage                     # lifecycle models: states, transit
 `models/` holds XState models of the riskiest multi-step lifecycles (RSVP, rehearsal
 proposals, availability polls, overview card edits, quotes, deputies, auth links), for
 tests only. `@xstate/graph` generates one path per transition and
-`specs/lifecycles.spec.ts` runs each one as a test ("<lifecycle>: <event → event>").
+`specs/xstate-lifecycles.spec.ts` runs each one as a test ("<lifecycle>: <event → event>").
 Paths the app gets wrong today are listed in the model's `knownBugs` and not run.
 Diagrams, states, events and paths: [docs/lifecycles](../docs/lifecycles/README.md)
 (`pnpm e2e:models:docs` rewrites them after a model changes).

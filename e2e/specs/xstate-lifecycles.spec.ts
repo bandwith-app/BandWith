@@ -14,6 +14,10 @@ import type { Lifecycle } from '../models/lifecycle.ts';
  * on ipad-landscape and duo-laptop (titles tagged @laptop, the Duo Laptop
  * project's tag); a path with a gesture only some layouts allow runs only
  * there (e.g. @duo-book).
+ *
+ * The file name sorts last on purpose: CI shards split the test list by
+ * count, in file order, so the model paths (slower than most tests) end up
+ * split across two shards instead of all landing in the first one.
  */
 
 const DB_KEY = 'bw-demo-db-v6';

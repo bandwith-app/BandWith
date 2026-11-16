@@ -14,7 +14,7 @@
  * - `generatePaths` walks the machine with @xstate/graph and returns one path
  *   per transition (the shortest way to reach its source state, then the
  *   transition), with paths that are the prefix of a longer one dropped. Every
- *   path becomes one Playwright test (e2e/specs/lifecycles.spec.ts).
+ *   path becomes one Playwright test (e2e/specs/xstate-lifecycles.spec.ts).
  * - `knownBugs` lists paths that fail because the APP is wrong. They are not
  *   run (the suite must stay green) and the coverage report prints them.
  *

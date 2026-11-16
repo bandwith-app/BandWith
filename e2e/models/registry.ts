@@ -1,4 +1,4 @@
-/** Every model with its Playwright steps (used by e2e/specs/lifecycles.spec.ts). */
+/** Every model with its Playwright steps (used by e2e/specs/xstate-lifecycles.spec.ts). */
 import type { Lifecycle } from './lifecycle.ts';
 import type { ModelSteps } from './steps.ts';
 import { rsvpGigSteps, rsvpRehearsalSteps } from './rsvp.steps.ts';
