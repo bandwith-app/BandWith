@@ -21,7 +21,12 @@ test.describe('Duo Laptop pose: nothing on the fold', () => {
     test('@laptop Log personal gig and its venue search stay off the fold', async ({ app }) => {
       await openCreate(app, 'Add personal gig');
       await app.check('Log personal gig');
-      const venue = app.page.getByPlaceholder(app.t('Search venue or location...')).filter({ visible: true }).first();
+      // The field's placeholder changed in #180 ("Search venue…").
+      const venue = app.page
+        .getByPlaceholder(app.t('Search venue…'))
+        .or(app.page.getByPlaceholder(app.t('Search venue or location...')))
+        .filter({ visible: true })
+        .first();
       await venue.click();
       await venue.fill('Blackbox');
       await expect(venueSuggestion(app, 'Blackbox').first()).toBeVisible();
