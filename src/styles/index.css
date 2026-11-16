@@ -462,6 +462,22 @@
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-fold-form > :last-child {
   padding-bottom: 12px !important;
 }
+/* Keyboard up: the web view ends at the keys but the fold stays put, so only
+   a ~100 px strip of the Deck is left. A form with a header on the Display,
+   a scroller and an action bar squeezed its scroller to a sliver behind the
+   bar (Create contract, gig wizard). There the whole layer scrolls as one,
+   so keyboardInsets.ts can bring the field being typed in onto that strip. */
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-fold-form.flex-col:has(> .flex-1.overflow-y-auto) {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-fold-form.flex-col:has(> .flex-1.overflow-y-auto) > * {
+  flex-shrink: 0 !important;
+}
+:root[data-bw-posture="tabletop"][data-keyboard="open"] .bw-fold-form.flex-col > .flex-1.overflow-y-auto {
+  flex: none !important;
+  overflow: visible !important;
+}
 
 /* Hubs (Identity, Repertoire, Members…) are one scroller: in Laptop pose the
    header holds the Display and stays, and the cards and rows scroll on the

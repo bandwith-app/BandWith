@@ -1,5 +1,8 @@
-import { test, expect, DB_KEY, DEMO_USER_ID, type App } from '../fixtures';
-import { isWide, openCreate, openEvent, SEED } from '../support/flows';
+import type { Locator } from '@playwright/test';
+import { test, expect, type App } from '../fixtures';
+import { eventDetail, isWide, leaveBand, openCreate, openEvent, SEED } from '../support/flows';
+import { openHubPage } from '../support/hub';
+import { focusedField, showKeyboard } from '../support/keyboard';
 
 /**
  * Layers that must work on special layouts.
@@ -60,29 +63,6 @@ test.describe('Duo Laptop pose: nothing on the fold', () => {
   });
 });
 
-/**
- * The account leaves its band (the demo user stays signed in): with deputy
- * gigs it lands on "Deputy gigs", without them on onboarding. Like a fresh
- * install, the offline cache of the band session is cleared.
- */
-async function leaveBand(app: App, keepDeputyGigs: boolean) {
-  await app.page.evaluate(
-    ({ k, me, keep }) => {
-      const d = JSON.parse(localStorage.getItem(k) || '{}');
-      d.band_members = (d.band_members || []).filter((m: { user_id: string }) => m.user_id !== me);
-      if (!keep) {
-        d.demo_deputy_gigs = [];
-        d.band_deputies = (d.band_deputies || []).filter((x: { user_id?: string }) => x.user_id !== me);
-      }
-      localStorage.setItem(k, JSON.stringify(d));
-      for (const key of Object.keys(localStorage)) if (key.startsWith('bw:')) localStorage.removeItem(key);
-      indexedDB.deleteDatabase('bandwith_offline_db');
-    },
-    { k: DB_KEY, me: DEMO_USER_ID, keep: keepDeputyGigs },
-  );
-  await app.page.reload();
-}
-
 test.describe('Duo Laptop pose: screens off the fold', () => {
   test('@laptop Stage mode: no setlist row rests on the fold', async ({ app }) => {
     await openEvent(app, SEED.gigToday);
@@ -115,6 +95,104 @@ test.describe('Duo Laptop pose: screens off the fold', () => {
       await app.page.getByRole('button', { name: app.t('Get started'), exact: true }).click();
       await expect(app.page.getByRole('heading', { name: new RegExp(app.t('Create account'), 'i') }).first()).toBeVisible();
       await app.check('Create account');
+    });
+  });
+});
+
+/**
+ * Laptop pose with the keyboard up: the web view ends at the keyboard but the
+ * fold stays where it is, so only a strip of the Deck is left above the keys.
+ * The field being typed in rests there (or on the Display), never on the fold
+ * band or under a pinned header (seen on the Duo simulator: Deputy gigs'
+ * message field at y 418–488, inside the fold band).
+ */
+test.describe('Duo Laptop pose: the field being typed in stays in sight', () => {
+  async function typeOnDeck(app: App, field: Locator, fold: { top: number; bottom: number }, scrolledTo?: number) {
+    const kb = await showKeyboard(app, field, { scrolledTo });
+    // On the Deck strip between the fold band and the keys; a field taller
+    // than that strip (a long text box) rests whole on the Display instead.
+    const rests = async () => {
+      const at = await focusedField(app);
+      expect(at, 'a focused field').not.toBeNull();
+      const where = `field at ${at!.top}–${at!.bottom}, fold ${fold.top}–${fold.bottom}, keyboard from ${at!.viewH}`;
+      const onDeck = at!.top >= fold.bottom && at!.bottom <= at!.viewH;
+      const tall = at!.bottom - at!.top > at!.viewH - fold.bottom;
+      const onDisplay = at!.top >= 0 && at!.bottom <= fold.top;
+      expect(onDeck || (tall && onDisplay), where).toBe(true);
+      expect(at!.shows, `nothing covers the field (${where})`).toBe(true);
+    };
+    await rests();
+    await field.pressSequentially('See you there');
+    await expect(field).toHaveValue(/See you there/);
+    await rests();
+    await kb.hide();
+  }
+
+  test('@laptop Deputy gigs: the message to the band stays on the Deck while typing', async ({ app, duo }) => {
+    await leaveBand(app, true);
+    const note = app.page.getByPlaceholder(app.t('e.g. I can bring my own amp')).filter({ visible: true }).first();
+    await expect(note).toBeVisible({ timeout: 30_000 });
+    await app.settle();
+    // Where iOS's own focus scroll left it on the simulator: on the fold.
+    await typeOnDeck(app, note, duo!.foldBand!, 418);
+    await app.check('Deputy gigs after typing');
+  });
+
+  test('@laptop Deputy gigs over the app: the message stays clear of the pinned header', async ({ app, duo }) => {
+    await openHubPage(app, 'Deputy gigs');
+    const note = app.page.getByPlaceholder(app.t('e.g. I can bring my own amp')).filter({ visible: true }).first();
+    await typeOnDeck(app, note, duo!.foldBand!, 418);
+    await app.check('Deputy gigs (in the app) after typing');
+  });
+
+  test('@laptop Create contract: a field stays on the Deck while typing', async ({ app, duo }) => {
+    await openEvent(app, SEED.gigToday);
+    const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await app.settle();
+    await expect(app.page.getByRole('heading', { name: app.t('Create contract'), exact: true })).toBeVisible();
+    const fields = app.page.locator('.bw-fold-form input:visible, .bw-fold-form textarea:visible');
+    await expect(fields.first()).toBeVisible();
+    await typeOnDeck(app, fields.first(), duo!.foldBand!);
+    await typeOnDeck(app, fields.last(), duo!.foldBand!);
+    await app.check('Create contract after typing');
+  });
+
+  test('@laptop the gig wizard: a field stays on the Deck while typing', async ({ app, duo }) => {
+    await app.tab('Create');
+    await app.page.getByRole('dialog').last().getByRole('button', { name: new RegExp(`^${app.t('New gig')}`, 'i') }).first().click();
+    await app.settle();
+    const fields = app.page.locator('.bw-fold-form input[type="text"]:visible, .bw-fold-form input:not([type]):visible, .bw-fold-form textarea:visible');
+    await expect(fields.first()).toBeVisible();
+    await typeOnDeck(app, fields.first(), duo!.foldBand!);
+    await app.check('gig wizard after typing');
+  });
+
+  test.describe('signed out', () => {
+    test.use({ autoOpen: false });
+    test.beforeEach(async ({ app }) => {
+      await app.page.addInitScript(() => localStorage.removeItem('bw-demo-session'));
+      await app.page.goto('/');
+    });
+
+    test('@laptop Sign in: email and password stay on the Deck while typing', async ({ app, duo }) => {
+      await app.button('Sign in').first().click();
+      const email = app.page.getByPlaceholder('you@yourband.com');
+      await expect(email).toBeVisible();
+      await typeOnDeck(app, email, duo!.foldBand!);
+      await typeOnDeck(app, app.page.getByPlaceholder(app.t('Your password')), duo!.foldBand!);
+      await app.check('Sign in after typing');
+    });
+
+    test('@laptop Create account: every field stays on the Deck while typing', async ({ app, duo }) => {
+      await app.page.getByRole('button', { name: app.t('Get started'), exact: true }).click();
+      const name = app.page.getByPlaceholder(app.t('Your name'));
+      await expect(name).toBeVisible();
+      await typeOnDeck(app, name, duo!.foldBand!);
+      await typeOnDeck(app, app.page.getByPlaceholder('you@email.com'), duo!.foldBand!);
+      await typeOnDeck(app, app.page.getByPlaceholder(app.t('Password'), { exact: true }), duo!.foldBand!);
+      await app.check('Create account after typing');
     });
   });
 });

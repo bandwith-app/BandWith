@@ -1,5 +1,5 @@
 import { expect, type Locator } from '@playwright/test';
-import type { App } from '../fixtures';
+import { DB_KEY, DEMO_USER_ID, type App } from '../fixtures';
 
 /**
  * Shared steps. Keep them about what the user does ("open the gig from the
@@ -122,4 +122,27 @@ export async function checkWholeScreen(app: App, where: string, maxSteps = 8) {
     });
     if (!moved) return;
   }
+}
+
+/**
+ * The account leaves its band (the demo user stays signed in): with deputy
+ * gigs it lands on "Deputy gigs", without them on onboarding. Like a fresh
+ * install, the offline cache of the band session is cleared.
+ */
+export async function leaveBand(app: App, keepDeputyGigs: boolean) {
+  await app.page.evaluate(
+    ({ k, me, keep }) => {
+      const d = JSON.parse(localStorage.getItem(k) || '{}');
+      d.band_members = (d.band_members || []).filter((m: { user_id: string }) => m.user_id !== me);
+      if (!keep) {
+        d.demo_deputy_gigs = [];
+        d.band_deputies = (d.band_deputies || []).filter((x: { user_id?: string }) => x.user_id !== me);
+      }
+      localStorage.setItem(k, JSON.stringify(d));
+      for (const key of Object.keys(localStorage)) if (key.startsWith('bw:')) localStorage.removeItem(key);
+      indexedDB.deleteDatabase('bandwith_offline_db');
+    },
+    { k: DB_KEY, me: DEMO_USER_ID, keep: keepDeputyGigs },
+  );
+  await app.page.reload();
 }
