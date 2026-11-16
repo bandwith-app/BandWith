@@ -73,7 +73,11 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   // Who votes and the vote-by time (098). Nobody left out = every member.
   const [excluded, setExcluded] = useState<string[]>([]);
   const [voteByTime, setVoteByTime] = useState('18:00');
-  const { selectedBand } = useBand();
+  const { selectedBand, refreshMembers } = useBand();
+  // Who votes: the roster as it is now (someone may have just joined).
+  useEffect(() => {
+    if (isOpen) void refreshMembers?.();
+  }, [isOpen]);
   const roster = useMemo(
     () =>
       selectedBand?.id === bandId

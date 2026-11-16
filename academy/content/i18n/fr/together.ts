@@ -53,7 +53,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Chaque membre de l’effectif reçoit une notification « Nouvelle répétition » et un push, et la répétition apparaît dans son calendrier avec une carte **Tu viens ?** (voir [[answer-a-rehearsal-invite]]). Tu es marqué présent.",
+          text: "Chaque membre de l’effectif reçoit une notification « Nouvelle répétition » et un push, et la répétition apparaît dans son calendrier avec une carte **Tu viens ?** (voir [[answer-a-rehearsal-invite]]). Tu es marqué présent, sauf si tu t’es retiré de l’effectif : tu gères quand même la répétition.",
         },
         {
           type: "devices",

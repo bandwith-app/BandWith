@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCoManage, leaveBandBlock, memberInstrument, parseFeeInput } from '../bandMembership';
+import { bandsUnchanged, canCoManage, isRosterChange, leaveBandBlock, memberInstrument, parseFeeInput } from '../bandMembership';
 
 describe('leaveBandBlock', () => {
   const members = [
@@ -50,5 +50,30 @@ describe('canCoManage', () => {
   it('is open to every plan during the beta', () => {
     expect(canCoManage('single_band')).toBe(true);
     expect(canCoManage(null)).toBe(true);
+  });
+});
+
+describe('roster refresh', () => {
+  it('reloads the rosters on join and leave notices only', () => {
+    expect(isRosterChange('member_joined')).toBe(true);
+    expect(isRosterChange('member_left')).toBe(true);
+    expect(isRosterChange('event_invite')).toBe(false);
+    expect(isRosterChange(undefined)).toBe(false);
+  });
+
+  const band = (members: { user_id: string; role: string }[]) => ({ id: 'b1', name: 'Band', members });
+
+  it('keeps the band list when nothing changed', () => {
+    const a = [band([{ user_id: 'a1', role: 'admin' }])];
+    const b = [band([{ user_id: 'a1', role: 'admin' }])];
+    expect(bandsUnchanged(a, b)).toBe(true);
+  });
+
+  it('takes the new list when someone joined, left or changed role', () => {
+    const before = [band([{ user_id: 'a1', role: 'admin' }])];
+    expect(bandsUnchanged(before, [band([{ user_id: 'a1', role: 'admin' }, { user_id: 'n1', role: 'member' }])])).toBe(false);
+    expect(bandsUnchanged(before, [band([])])).toBe(false);
+    expect(bandsUnchanged(before, [band([{ user_id: 'a1', role: 'member' }])])).toBe(false);
+    expect(bandsUnchanged(before, [])).toBe(false);
   });
 });

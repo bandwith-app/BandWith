@@ -263,7 +263,7 @@ const gigs: AreaText = {
           title: "Ce qui se passe quand tu touches Créer le concert",
           items: [
             "Le concert est enregistré comme confirmé et apparaît dans le calendrier de chaque personne du line-up.",
-            "Tu es dans le line-up comme confirmé. Chaque autre musicien est en attente et reçoit une invitation avec seulement son propre cachet. Voir [[gig-notifications]].",
+            "Si tu es dans le line-up, tu es confirmé. Chaque autre musicien est en attente et reçoit une invitation avec seulement son propre cachet. Voir [[gig-notifications]].",
             "Tu reçois une note dans les alertes indiquant que le concert attend la confirmation des autres.",
             "Si l’enregistrement échoue, l’assistant reste ouvert avec ce que tu as saisi, et le concert est aussi gardé dans tes brouillons.",
             "Sans connexion, le concert est enregistré sur l’appareil : **Enregistré hors ligne • Synchro dès la connexion**.",
@@ -294,8 +294,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Choisir qui joue",
           items: [
-            "**Line-up type** prend les 1, 2 ou 3 premières personnes de l’effectif, ou tout le monde pour **Groupe complet**. Tu restes toujours dans le line-up.",
-            "La carte de l’effectif indique **Effectif · {count} sur {total}**. Coche ou décoche chaque musicien. Ta propre ligne indique **Toi · {role}** et ne peut pas être décochée.",
+            "**Line-up type** prend les 1, 2 ou 3 premières personnes de l’effectif, ou tout le monde pour **Groupe complet**. Un line-up type t’inclut toujours.",
+            "La carte de l’effectif indique **Effectif · {count} sur {total}**. Coche ou décoche chaque musicien. Ta propre ligne indique **Toi · {role}** et est déjà cochée : décoche-la si tu ne joues pas. Tu gères toujours le concert, sans cachet, invitation ni réponse de ta part.",
             "Chaque ligne montre l’instrument du musicien d’après l’effectif du groupe (ou **Admin** / **Membre** si aucun instrument n’est indiqué).",
             "Repliée, la carte montre jusqu’à cinq avatars, le nombre de musiciens et **{amount} total estimé**.",
           ],

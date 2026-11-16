@@ -263,7 +263,7 @@ const gigs: AreaText = {
           title: "Was passiert, wenn du auf Gig erstellen tippst",
           items: [
             "Der Gig wird als bestätigt gespeichert und erscheint im Kalender aller in der Besetzung.",
-            "Du stehst als bestätigt in der Besetzung. Alle anderen Musiker sind offen und bekommen eine Einladung, nur mit ihrer eigenen Gage. Siehe [[gig-notifications]].",
+            "Stehst du in der Besetzung, bist du bestätigt. Alle anderen Musiker sind offen und bekommen eine Einladung, nur mit ihrer eigenen Gage. Siehe [[gig-notifications]].",
             "Du bekommst im Posteingang einen Hinweis, dass der Gig auf die Bestätigung der anderen wartet.",
             "Schlägt das Speichern fehl, bleibt der Assistent mit deinen Eingaben offen, und der Gig wird außerdem in deinen Entwürfen gesichert.",
             "Ohne Verbindung wird der Gig auf dem Gerät gespeichert: **Offline gespeichert • Wird bei Verbindung synchronisiert**.",
@@ -294,8 +294,8 @@ const gigs: AreaText = {
           type: "list",
           title: "Festlegen, wer spielt",
           items: [
-            "**Besetzungsvorlage** wählt die ersten 1, 2 oder 3 Personen der Besetzung, bei **Ganze Band** alle. Du selbst bleibst immer in der Besetzung.",
-            "Die Besetzungskarte zeigt **Besetzung · {count} von {total}**. Hak jeden Musiker an oder ab. Deine eigene Zeile zeigt **Du · {role}** und lässt sich nicht abhaken.",
+            "**Besetzungsvorlage** wählt die ersten 1, 2 oder 3 Personen der Besetzung, bei **Ganze Band** alle. Eine Vorlage schließt dich immer ein.",
+            "Die Besetzungskarte zeigt **Besetzung · {count} von {total}**. Hak jeden Musiker an oder ab. Deine eigene Zeile zeigt **Du · {role}** und ist schon angehakt: Hak sie ab, wenn du nicht spielst. Du verwaltest den Gig weiter, ohne eigene Gage, Einladung oder Antwort.",
             "Jede Zeile zeigt das Instrument des Musikers aus der Bandbesetzung (oder **Admin** / **Mitglied**, wenn kein Instrument eingetragen ist).",
             "Zugeklappt zeigt die Karte bis zu fünf Avatare, die Zahl der Musiker und **{amount} geschätzt gesamt**.",
           ],

@@ -60,7 +60,7 @@ const together: AreaModule = {
         },
         {
           type: 'p',
-          text: 'Every member on the roster gets a "New Rehearsal" notification and a push, and the rehearsal appears in their calendar with an **Are you coming?** card (see [[answer-a-rehearsal-invite]]). You are marked as going.',
+          text: 'Every member on the roster gets a "New Rehearsal" notification and a push, and the rehearsal appears in their calendar with an **Are you coming?** card (see [[answer-a-rehearsal-invite]]). You are marked as going, unless you took yourself off the roster: you still manage the rehearsal.',
         },
         {
           type: 'devices',

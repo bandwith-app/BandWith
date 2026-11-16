@@ -39,7 +39,7 @@ const together: AreaText = {
         },
         { type: "note", tone: "tip", text: "**Siguiente** en el segundo paso sigue desactivado hasta que el ensayo tenga un lugar y una fecha. Elige **A def.** si aún no has reservado una sala." },
         { type: "note", tone: "tip", text: "Sin conexión, el ensayo se guarda en tu dispositivo («Guardado sin conexión • Se sincronizará al conectarte») y se envía cuando vuelves a tener conexión." },
-        { type: "p", text: "Cada miembro de la plantilla recibe una notificación «Nuevo ensayo» y una push, y el ensayo aparece en su calendario con una tarjeta **¿Vienes?** (consulta [[answer-a-rehearsal-invite]]). Tú quedas marcado como que vas." },
+        { type: "p", text: "Cada miembro de la plantilla recibe una notificación «Nuevo ensayo» y una push, y el ensayo aparece en su calendario con una tarjeta **¿Vienes?** (consulta [[answer-a-rehearsal-invite]]). Tú quedas marcado como que vas, salvo que te hayas quitado de la plantilla: sigues gestionando el ensayo." },
         {
           type: "devices",
           rows: [

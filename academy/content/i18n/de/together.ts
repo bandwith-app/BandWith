@@ -53,7 +53,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Jedes Mitglied in der Besetzung bekommt die Mitteilung „Neue Probe“ und eine Push-Mitteilung, und die Probe erscheint in seinem Kalender mit einer Karte **Kommst du?** (siehe [[answer-a-rehearsal-invite]]). Du selbst bist als dabei markiert.",
+          text: "Jedes Mitglied in der Besetzung bekommt die Mitteilung „Neue Probe“ und eine Push-Mitteilung, und die Probe erscheint in seinem Kalender mit einer Karte **Kommst du?** (siehe [[answer-a-rehearsal-invite]]). Du selbst bist als dabei markiert, außer du hast dich aus der Besetzung genommen: Die Probe verwaltest du trotzdem.",
         },
         {
           type: "devices",

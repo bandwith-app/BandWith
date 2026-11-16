@@ -53,7 +53,7 @@ const together: AreaText = {
         },
         {
           type: "p",
-          text: "Cada membro do elenco recebe uma notificação “Novo ensaio” e um push, e o ensaio aparece no calendário dele com um cartão **Você vem?** (veja [[answer-a-rehearsal-invite]]). Você fica marcado como presente.",
+          text: "Cada membro do elenco recebe uma notificação “Novo ensaio” e um push, e o ensaio aparece no calendário dele com um cartão **Você vem?** (veja [[answer-a-rehearsal-invite]]). Você fica marcado como presente, a menos que tenha se tirado do elenco: você continua gerenciando o ensaio.",
         },
         {
           type: "devices",

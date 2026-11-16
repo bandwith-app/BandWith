@@ -185,6 +185,7 @@ import { personName, personFirstName, personInitials } from "@/lib/personName";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
 import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
+import { newEventInvites } from "@/lib/eventLineup";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
 import { bandFilterOptions, bandToActivateForCreate, filterByBand, matchesBandFilter, normalizeBandFilter } from "@/lib/bandFilter";
 import { visibleEventsFor } from "@/lib/eventVisibility";
@@ -3304,12 +3305,14 @@ export default function AuthenticatedApp() {
       // Taken off the lineup on edit (not the editor, not who had declined): told so.
       let removedOnEdit: string[] = [];
       const persistMembers = async (eventId: string, isEdit?: boolean): Promise<string> => {
-        if (!data.members?.length) return 'no members in payload';
-        let membersToInvite = data.members;
+        // Editing a gig down to nobody (the admin took themselves off too).
+        const clearing = !!(isEdit && data._lineupCleared && !data.members?.length);
+        if (!data.members?.length && !clearing) return 'no members in payload';
+        let membersToInvite = data.members || [];
         if (isRehearsalWizard && data.audienceIds?.length > 0) {
           membersToInvite = data.members.filter((m: any) => data.audienceIds.includes(m.id));
         }
-        if (!membersToInvite.length) return 'filtered to 0 members';
+        if (!membersToInvite.length && !clearing) return 'filtered to 0 members';
 
         // Edit = diff: keep everyone's RSVP (status, responded_at, reason),
         // remove only who was taken out, add the new ones as pending.
@@ -3612,8 +3615,10 @@ export default function AuthenticatedApp() {
               const invitedIds = data.audienceIds?.length > 0 ? data.audienceIds : data.members?.map((m: any) => m.id) || [];
               const perMemberFees: Record<string, number> = {};
               (data.members || []).forEach((m: any) => { if (m.id && m.fee) perMemberFees[m.id] = parseFloat(m.fee) || 0; });
-              await notifyEventMembersCreated(realBand.id, saved.id, title || "Event", date, time || "20:00", eventType, user.id, creatorName, invitedIds, { venue: location, memberFees: perMemberFees, feeTbd: !!data.feeTbd });
-              const invitedCount = invitedIds.length > 0 ? invitedIds.filter((id: string) => id !== user.id).length : (realBand.member_count || 1) - 1;
+              // A gig with nobody on it invites no one (an empty list would mean the whole band).
+              const invites = newEventInvites(!!isRehearsalWizard, invitedIds, user.id, realBand.member_count || 1);
+              if (invites.send) await notifyEventMembersCreated(realBand.id, saved.id, title || "Event", date, time || "20:00", eventType, user.id, creatorName, invitedIds, { venue: location, memberFees: perMemberFees, feeTbd: !!data.feeTbd });
+              const invitedCount = invites.pendingCount;
               if (invitedCount > 0) await notifyEventPendingConfirmations(user.id, realBand.id, saved.id, title || "Event", eventType, invitedCount);
             } catch (err) { console.error("Notify error:", err); }
           }

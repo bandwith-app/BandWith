@@ -272,7 +272,7 @@ const gigs: AreaModule = {
           title: 'What happens when you tap Create gig',
           items: [
             'The gig is saved as confirmed and appears on the calendar of everyone in the lineup.',
-            'You are on the lineup as confirmed. Every other musician is pending and gets an invitation with their own fee only. See [[gig-notifications]].',
+            'If you are on the lineup, you are confirmed. Every other musician is pending and gets an invitation with their own fee only. See [[gig-notifications]].',
             'You get an inbox note saying the gig is waiting for the others to confirm.',
             'If the save fails, the wizard stays open with what you typed, and the gig is also kept in your drafts.',
             'With no connection, the gig is saved on the device: **Saved offline • Will sync when connected**.',
@@ -303,8 +303,8 @@ const gigs: AreaModule = {
           type: 'list',
           title: 'Choosing who plays',
           items: [
-            '**Lineup preset** picks the first 1, 2 or 3 people of the roster, or everyone for **Full band**. You always stay in the lineup.',
-            'The roster card reads **Roster · {count} of {total}**. Tick or untick each musician. Your own row says **You · {role}** and cannot be unticked.',
+            '**Lineup preset** picks the first 1, 2 or 3 people of the roster, or everyone for **Full band**. A preset always includes you.',
+            'The roster card reads **Roster · {count} of {total}**. Tick or untick each musician. Your own row says **You · {role}** and starts ticked: untick it when you don’t play. You still manage the gig, with no fee, invitation or RSVP of your own.',
             'Each row shows the musician’s instrument from the band roster (or **Admin** / **Member** when no instrument is set).',
             'Folded, the card shows up to five avatars, the musician count and **{amount} est. total**.',
           ],

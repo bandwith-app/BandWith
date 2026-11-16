@@ -4,6 +4,9 @@ import { getBands, getBand, BandWithMembers } from './services/bands';
 import { getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { getBandPricing } from './services/pricing';
 import { setActiveCurrency } from './currency';
+import { onAppResume } from './appResume';
+import { subscribeToNotifications } from './services/notifications';
+import { bandsUnchanged, isRosterChange } from './bandMembership';
 
 export type MemberRole = 'admin' | 'member';
 
@@ -37,6 +40,12 @@ interface BandContextType {
   error: Error | null;
   selectBand: (bandId: string) => void;
   refreshBands: () => Promise<void>;
+  /**
+   * Reloads the bands and their rosters without a loading state. Lineup,
+   * invite and who-plays pickers call it when they open, so someone who just
+   * joined (or left) is there without signing out and in again.
+   */
+  refreshMembers: () => Promise<void>;
   isAdmin: boolean;
   currentMemberRole: MemberRole | null;
 }
@@ -65,6 +74,8 @@ export const BandProvider: React.FC<BandProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const hasLoadedCacheRef = useRef(false);
+  const bandsRef = useRef(bands);
+  bandsRef.current = bands;
   /**
    * Account whose band list is known (fetched, or read from its cache, or the
    * fetch failed for good). Until it matches the signed-in user, `loading`
@@ -162,6 +173,14 @@ export const BandProvider: React.FC<BandProviderProps> = ({ children }) => {
       }
 
       const fetchedBands = data || [];
+      // Same bands and rosters as on screen: keep the objects, so a refresh
+      // (picker opened, app back in front) doesn't redraw or refetch anything.
+      if (selectedBand && bandsUnchanged(bandsRef.current, fetchedBands)) {
+        setError(null);
+        setResolvedFor(user.id);
+        setLoading(false);
+        return;
+      }
       setBands(fetchedBands);
       setOfflineItem(bandsCacheKey, fetchedBands).catch(() => {});
       hasLoadedCacheRef.current = true;
@@ -194,6 +213,27 @@ export const BandProvider: React.FC<BandProviderProps> = ({ children }) => {
       setLoading(false);
     }
   }, [isAuthenticated, user, selectedBand, bands.length, bandsCacheKey, selectedBandCacheKey]);
+
+  // The latest fetchBands, for listeners set up once.
+  const fetchBandsRef = useRef(fetchBands);
+  fetchBandsRef.current = fetchBands;
+  const refreshMembers = useCallback(() => fetchBandsRef.current(), []);
+
+  // Rosters change while the app is open: someone joins with an invite, leaves
+  // or is removed. The database tells the rest of the band (member_joined /
+  // member_left, migration 046), and the app reloads the rosters then and
+  // when it comes back to the front (the notice may have been muted or missed).
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    const offNotice = subscribeToNotifications((n) => {
+      if (isRosterChange(n.type)) void fetchBandsRef.current();
+    });
+    const offResume = onAppResume(() => { void fetchBandsRef.current(); });
+    return () => {
+      offNotice();
+      offResume();
+    };
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     // A new account (or the same one after signing out and in): start clean
@@ -258,6 +298,7 @@ export const BandProvider: React.FC<BandProviderProps> = ({ children }) => {
     error,
     selectBand,
     refreshBands: fetchBands,
+    refreshMembers,
     isAdmin,
     currentMemberRole,
   };
