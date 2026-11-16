@@ -1,0 +1,54 @@
+# Notifications
+
+[← Screen map](README.md) · profile phone-portrait
+
+## admin (5 screens)
+
+_Leo M., admin of the demo band Velvet Static_ · source: [notifications.admin.mmd](notifications.admin.mmd)
+
+```mermaid
+flowchart LR
+  s0["Inbox ⌂<br/><small>Inbox</small>"]
+  s1["URGENT GIG INVITATION JAZZ … ⌂<br/><small>URGENT GIG INVITA…</small>"]
+  s2["Clear all notifications?<br/><small>Inbox › Clear all notific…</small>"]
+  s3["Availability check: Jazz Cl…<br/><small>Availability chec…</small>"]
+  s4["Suggestions<br/><small>Repertoire › Suggestions</small>"]
+  x0(["→ Home"])
+  s0 -->|"Close notifications"| x0
+  s0 -->|"Clear all notificatio…"| s2
+  s0 -->|"Gig invitation 2h ago…"| s3
+  s0 -->|"Alert 3h ago Lyrics c…"| s4
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0,s1 root
+  class s0,s4 flagged
+  class x0 stub
+```
+
+## member (6 screens)
+
+_Leo M. as a member of Velvet Static (not admin)_ · source: [notifications.member.mmd](notifications.member.mmd)
+
+```mermaid
+flowchart LR
+  s0["Inbox ⌂<br/><small>Inbox</small>"]
+  s1["URGENT GIG INVITATION JAZZ … ⌂<br/><small>URGENT GIG INVITA…</small>"]
+  s2["Clear all notifications?<br/><small>Inbox › Clear all notific…</small>"]
+  s3["Availability check: Jazz Cl…<br/><small>Availability chec…</small>"]
+  s4["Suggestions<br/><small>Repertoire › Suggestions</small>"]
+  s5["RSVP: Jazz Club Night<br/><small>RSVP: Jazz Club N…</small>"]
+  x0(["→ Home"])
+  s0 -->|"Close notifications"| x0
+  s0 -->|"Clear all notificatio…"| s2
+  s0 -->|"Gig invitation 2h ago…"| s3
+  s0 -->|"Alert 3h ago Lyrics c…"| s4
+  s1 -->|"Dismiss alert"| x0
+  s1 -->|"Jazz Club Night Urgen… / CONFIRM"| s5
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0,s1 root
+  class s0,s2,s4,s5 flagged
+  class x0 stub
+```

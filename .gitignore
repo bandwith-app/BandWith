@@ -57,3 +57,7 @@ e2e/.app/
 e2e/.results*/
 e2e/.report/
 e2e/RESUME.md
+
+# Screen-map crawler output (a small sample is committed)
+e2e/crawl/out/*
+!e2e/crawl/out/sample/

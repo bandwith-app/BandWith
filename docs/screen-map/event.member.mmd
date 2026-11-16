@@ -1,0 +1,44 @@
+flowchart LR
+  s0["Rooftop Session ⌂<br/><small>Rooftop Session</small>"]
+  s1["Weekly rehearsal ⌂<br/><small>Weekly rehearsal</small>"]
+  s2["Vocal lesson ⌂<br/><small>Vocal lesson</small>"]
+  s3["BandWith Academy<br/><small>Rooftop Session › BandWith Academy</small>"]
+  s4["Setlist · 10<br/><small>Rooftop Session › Setlist · 10</small>"]
+  s5["Rider & stage<br/><small>Rooftop Session › Rider & stage</small>"]
+  s6["Lineup · 5<br/><small>Rooftop Session › Lineup · 5</small>"]
+  s7["Fee & payouts<br/><small>Rooftop Session › Fee & payouts</small>"]
+  s8["Logistics & notes<br/><small>Rooftop Session › Logistics & notes</small>"]
+  s9["BandWith Academy<br/><small>Weekly rehearsal › BandWith Academy</small>"]
+  s10["Rehearsal options<br/><small>Weekly rehearsal › Rehearsal options</small>"]
+  s11["Lineup · 5<br/><small>Weekly rehearsal › Lineup · 5</small>"]
+  s12["Focus songs · 0<br/><small>Weekly rehearsal › Focus songs · 0</small>"]
+  s13["Weekly Rehearsal<br/><small>Weekly Rehearsal</small>"]
+  s14["BandWith Academy<br/><small>Vocal lesson › BandWith Academy</small>"]
+  s15["Logistics & notes<br/><small>Vocal lesson › Logistics & notes</small>"]
+  s16["Edit personal gig<br/><small>Edit personal gig</small>"]
+  x0(["→ Calendar"])
+  x1(["→ Home"])
+  s0 -->|"Back"| x0
+  s0 -->|"Help for this screen"| s3
+  s0 -->|"Open stage mode"| x1
+  s0 -->|"Setlist · 10 songs / Lyrics & charts · 0 o… +1"| s4
+  s0 -->|"No rider yet To do / OPEN: RIDER & STAGE +1"| s5
+  s0 -->|"Lineup · 5 of 5 confi… / DETAILS: LINEUP · 5/5 …"| s6
+  s0 -->|"PAYOUT DETAILS"| s7
+  s0 -->|"Dress code All black …"| s8
+  s1 -->|"Back"| x0
+  s1 -->|"Help for this screen"| s9
+  s1 -->|"More options"| s10
+  s1 -->|"Open lineup details"| s11
+  s1 -->|"SETLIST: FOCUS SONGS / No songs picked for t…"| s12
+  s1 -->|"REHEARSAL CHAT"| s13
+  s2 -->|"Back"| x0
+  s2 -->|"Help for this screen"| s14
+  s2 -->|"DETAILS: NOTES / No personal notes add…"| s15
+  s2 -->|"EDIT"| s16
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0,s1,s2 root
+  class s0,s1,s2,s4,s13,s16 flagged
+  class x0,x1 stub

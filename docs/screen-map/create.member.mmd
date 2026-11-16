@@ -1,0 +1,16 @@
+flowchart LR
+  s0["Create ⌂<br/><small>Create</small>"]
+  s1["Log personal gig<br/><small>Log personal gig</small>"]
+  x0(["→ Calendar"])
+  x1(["→ Home"])
+  x2(["→ Polls & proposals"])
+  s0 -->|"Calendar"| x0
+  s0 -->|"Close create menu / Close"| x1
+  s0 -->|"Add personal gig Log …"| s1
+  s0 -->|"Propose rehearsal Sug…"| x2
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s1 flagged
+  class x0,x1,x2 stub

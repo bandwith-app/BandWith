@@ -1,0 +1,121 @@
+name: Screen map
+
+# The screen/state crawler (e2e/crawl). Not a required check: it maps every
+# screen and layer per role and device and flags dead ends; the result is an
+# artifact (map.json, screenshots, Mermaid diagrams, findings.md).
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Time budget per role × profile in minutes (empty = 30 admin/member, 4 others)
+        required: false
+        default: ''
+      roles:
+        description: Roles (comma separated)
+        required: false
+        default: admin,member,deputy,noband,signedout,client
+  schedule:
+    # Nightly, 02:30 UTC.
+    - cron: '30 2 * * *'
+
+concurrency:
+  group: screen-map
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    name: Crawl (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [phone-portrait, ipad-landscape, duo-laptop, duo-book]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+      - name: Install browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium webkit
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium webkit
+      - name: Crawl
+        env:
+          CRAWL_PROFILES: ${{ matrix.profile }}
+          CRAWL_ROLES: ${{ inputs.roles || 'admin,member,deputy,noband,signedout,client' }}
+          CRAWL_MINUTES: ${{ inputs.minutes }}
+          CRAWL_MINUTES_APP: '30'
+          CRAWL_FRESH: '1'
+          E2E_WORKERS: '2'
+        run: pnpm e2e:crawl
+      - name: Upload the map
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screen-map-${{ matrix.profile }}
+          path: |
+            e2e/crawl/out/map.json
+            e2e/crawl/out/findings.md
+            e2e/crawl/out/screens/
+            e2e/crawl/out/mermaid/
+            e2e/crawl/out/runs/
+          retention-days: 14
+
+  report:
+    name: Merge
+    needs: crawl
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: screen-map-*
+          path: e2e/crawl/out-parts
+      - name: Merge every profile into one map
+        run: |
+          mkdir -p e2e/crawl/out/runs e2e/crawl/out/screens
+          for d in e2e/crawl/out-parts/*/; do
+            cp -R "$d"runs/. e2e/crawl/out/runs/ 2>/dev/null || true
+            cp -R "$d"screens/. e2e/crawl/out/screens/ 2>/dev/null || true
+          done
+          CRAWL_DOCS=1 pnpm e2e:crawl:report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screen-map
+          path: |
+            e2e/crawl/out/map.json
+            e2e/crawl/out/findings.md
+            e2e/crawl/out/screens/
+            e2e/crawl/out/mermaid/
+            docs/screen-map/
+          retention-days: 30

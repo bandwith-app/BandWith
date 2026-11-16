@@ -1,0 +1,55 @@
+# Auth & onboarding
+
+[← Screen map](README.md) · profile phone-portrait
+
+## noband (2 screens)
+
+_Leo M. signed in with no band and no deputy gigs_ · source: [auth.noband.mmd](auth.noband.mmd)
+
+```mermaid
+flowchart LR
+  s0["What brings you here? ⌂<br/><small>What brings you here?</small>"]
+  s1["Your music, your schedule, …<br/><small>Your music, your schedule, your way.</small>"]
+  s0 -->|"Back"| s1
+  s0 -.->|"Esc"| s1
+  s1 -->|"Get started / Sign in"| s0
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0 flagged
+```
+
+## signedout (6 screens)
+
+_Nobody signed in: the sign-in and sign-up screens_ · source: [auth.signedout.mmd](auth.signedout.mmd)
+
+```mermaid
+flowchart LR
+  s0["Your music, your schedule, … ⌂<br/><small>Your music, your schedule, your way.</small>"]
+  s1["Create account<br/><small>Create account</small>"]
+  s2["Sign in<br/><small>Sign in</small>"]
+  s3["Terms of Service<br/><small>Terms of Service</small>"]
+  s4["Privacy Policy<br/><small>Privacy Policy</small>"]
+  s5["Reset password<br/><small>Reset password</small>"]
+  s0 -->|"Get started"| s1
+  s0 -->|"Sign in"| s2
+  s1 -->|"Back"| s0
+  s1 -->|"Terms"| s3
+  s1 -->|"Privacy Policy"| s4
+  s1 -.->|"Esc"| s0
+  s2 -->|"Back"| s0
+  s2 -->|"Forgot password?"| s5
+  s2 -->|"Create an account"| s1
+  s2 -.->|"Esc"| s0
+  s3 -->|"Close"| s1
+  s3 -.->|"Esc"| s1
+  s4 -->|"Close"| s1
+  s4 -.->|"Esc"| s1
+  s5 -->|"Back"| s2
+  s5 -.->|"Esc"| s2
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+```

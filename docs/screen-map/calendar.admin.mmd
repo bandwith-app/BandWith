@@ -1,0 +1,20 @@
+flowchart LR
+  s0["Calendar ⌂<br/><small>Calendar</small>"]
+  s1["BandWith Academy<br/><small>BandWith Academy</small>"]
+  s2["Search events<br/><small>Search events</small>"]
+  s3["Past Events<br/><small>Past Events</small>"]
+  s4["Create<br/><small>Create</small>"]
+  x0(["→ Event detail gig / rehearsal / quote / personal"])
+  x1(["→ Home"])
+  s0 -->|"Help for this screen"| s1
+  s0 -->|"Search events"| s2
+  s0 -->|"GIG INDOOR Rooftop Se… / REHEARSAL ONCE Weekly…"| x0
+  s0 -->|"Past events archive"| s3
+  s0 -->|"Home"| x1
+  s0 -->|"Create"| s4
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0,s3 flagged
+  class x0,x1 stub

@@ -1,0 +1,11 @@
+flowchart LR
+  s0["What brings you here? ⌂<br/><small>What brings you here?</small>"]
+  s1["Your music, your schedule, …<br/><small>Your music, your schedule, your way.</small>"]
+  s0 -->|"Back"| s1
+  s0 -.->|"Esc"| s1
+  s1 -->|"Get started / Sign in"| s0
+  classDef root stroke-width:3px
+  classDef flagged stroke:#d33,stroke-width:2px
+  classDef stub fill:none,stroke-dasharray: 3 3
+  class s0 root
+  class s0 flagged

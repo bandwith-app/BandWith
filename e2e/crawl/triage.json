@@ -1,0 +1,137 @@
+{
+  "dead-control|*|Dead control \"Mark all as read\" on \"Inbox\"": {
+    "verdict": "real",
+    "note": "The inbox list is a snapshot taken when it opens (AuthenticatedApp sets selectedNotifications once), so neither the automatic mark-as-read on open nor the Mark read button ever updates it: Unread stays 3, the red dots stay, and Mark read does nothing visible",
+    "test": "e2e: open the Inbox from the Home bell, tap \"Mark all as read\": expect the Unread count to be gone (or 0), no \"Unread\" dots, and the Mark read button hidden"
+  },
+  "dead-control|*|Dead control \"(unnamed checkbox)\" on \"Rooftop Session\"": {
+    "verdict": "real",
+    "note": "Show readiness row \"No contract yet · To do\": the only To-do row with no action (ReadinessSection gets no onOpen for contract), and its DotCheckbox is an unnamed role=checkbox that does nothing",
+    "test": "e2e: admin opens an upcoming gig without a contract; the \"No contract yet\" readiness row opens the contract step (or is not shown as a tappable To-do row)"
+  },
+  "privacy|member|member sees private data on \"Inbox\"": {
+    "verdict": "false-positive",
+    "note": "Seed artifact: the demo \"Quote accepted · Client A accepted Q-2026-0014\" notification was addressed to Leo as admin; the crawler makes Leo a member by changing his role, so his old notification stays"
+  },
+  "privacy|member|member sees private data on \"Clear all notifications?\"": {
+    "verdict": "false-positive",
+    "note": "Same seed notification as the Inbox finding (addressed to Leo while he was admin)"
+  },
+  "axe|*|axe critical: aria-allowed-attr": {
+    "verdict": "real",
+    "note": "VenueAutocomplete input (#ovw-venue, Log/Edit personal gig .pr-8) carries combobox ARIA attributes without role=combobox"
+  },
+  "axe|*|axe critical: aria-required-children": {
+    "verdict": "real",
+    "note": "SongSuggestionsView: role=tablist around Selector buttons that are not role=tab"
+  },
+  "axe|*|axe serious: aria-meter-name": {
+    "verdict": "real",
+    "note": "bw/Metric.tsx renders role=meter with no aria-label (event cards on Home, Calendar, Past Events)"
+  },
+  "axe|*|axe serious: aria-toggle-field-name": {
+    "verdict": "real",
+    "note": "DotCheckbox's inner role=checkbox has no name (tasks, readiness, lineup, roster, New gig)"
+  },
+  "axe|*|axe serious: nested-interactive": {
+    "verdict": "real",
+    "note": "Calendar event cards (role=button) contain other buttons"
+  },
+  "axe|*|axe serious: color-contrast": {
+    "verdict": "real",
+    "note": "opacity-70 labels on the coloured event headers fall below 4.5:1"
+  },
+  "axe|*|axe serious: label-content-name-mismatch": {
+    "verdict": "real",
+    "note": "aria-label replaces the visible text on many buttons (e.g. MARK READ → \"Mark all as read\"); voice-control users can't say what they see"
+  },
+  "axe|*|axe serious: scrollable-region-focusable": {
+    "verdict": "real",
+    "note": "Setlist sheet scroll area (.pb-4) is not reachable by keyboard"
+  },
+  "back-mismatch|*|System Back ≠ \"Back\" on \"Reset password\"": {
+    "verdict": "false-positive",
+    "note": "Crawler bug (fixed): the Back outcome was reused from the Sign in screen instead of clicked; Reset password's Back goes to Sign in like Android Back"
+  },
+  "back-mismatch|*|Browser Back does nothing on \"What brings you here?\" (web build)": {
+    "verdict": "real",
+    "note": "Web build only: onboarding has no popstate handler, so the browser Back button does nothing; Escape and Android Back work"
+  },
+  "privacy|member|member sees private data on \"Availability check: Jazz Club Night\"": {
+    "verdict": "false-positive",
+    "note": "Same seed \"Quote accepted · Q-2026-0014\" notification (addressed to Leo while admin), visible in the inbox list beside the detail on wide screens"
+  },
+  "no-exit|*|No way out of \"BANDWITH RUN THE BAND.\"": {
+    "verdict": "false-positive",
+    "note": "The Deputy gigs home on wide screens is the first screen, with nothing under it (rule now skips full-screen roots)"
+  },
+  "axe|*|axe serious: aria-prohibited-attr": {
+    "verdict": "real",
+    "note": "New rehearsal slot dots: aria-label on a plain span (no role), e.g. \"18:00: 5 of 5 free\""
+  },
+  "back-mismatch|*|System Back ≠ \"Close Account Hub\" on \"Edit profile\"": {
+    "verdict": "false-positive",
+    "note": "By design: Close Account Hub closes the whole hub, Back steps back to its first page (rule now compares only plain Back / Close on deeper layers)"
+  },
+  "back-mismatch|*|System Back ≠ \"Close Account Hub\" on \"Who you are\"": {
+    "verdict": "false-positive",
+    "note": "Crawler: the tab under the hub is not part of the state; checked by hand, Close, Escape and browser Back all return to the tab the hub was opened from"
+  },
+  "back-mismatch|*|System Back ≠ \"Close create menu\" on \"Create\"": {
+    "verdict": "false-positive",
+    "note": "Crawler: iPad Home with or without the event in the detail pane; checked by hand, Close, Escape and browser Back all return to the same screen"
+  },
+  "dead-control|*|Dead control \"(unnamed checkbox)\" on \"Quotes\"": {
+    "verdict": "real",
+    "note": "Same \"No contract yet\" readiness row as on Rooftop Session (iPad: the gig is in the detail pane beside Quotes)"
+  },
+  "dead-control|*|Dead control \"40th birthday party: €2,318\" on \"Quotes\"": {
+    "verdict": "false-positive",
+    "note": "Pipeline chart bar: a tap toggles the amount label by opacity only, which the crawler cannot see"
+  },
+  "dead-control|*|Dead control \"Client A — Wedding: €3,904\" on \"Quotes\"": {
+    "verdict": "false-positive",
+    "note": "Pipeline chart bar: a tap toggles the amount label by opacity only"
+  },
+  "dead-control|*|Dead control \"Year-end gala: €5,734\" on \"Quotes\"": {
+    "verdict": "false-positive",
+    "note": "Pipeline chart bar: a tap toggles the amount label by opacity only"
+  },
+  "dead-control|*|Dead control \"Edit\" on \"Edit profile\"": {
+    "verdict": "false-positive",
+    "note": "iPad: Edit opens Edit profile, which is already open in the hub detail"
+  },
+  "dead-control|*|Dead control \"Step 1: Event & lineup\" on \"New gig\"": {
+    "verdict": "false-positive",
+    "note": "The wizard is already on step 1"
+  },
+  "back-mismatch|*|Browser Back does nothing on \"BANDWITH SET UP YOUR BAND. 1 CREATE ACCO\" (web build)": {
+    "verdict": "real",
+    "note": "Same as \"What brings you here?\": web build only, onboarding has no popstate handler; Escape and Android Back work"
+  },
+  "axe|*|axe critical: aria-required-parent": {
+    "verdict": "real",
+    "note": "Calendar month grid on Duo Laptop: role=columnheader / gridcell without a role=row parent"
+  },
+  "layout|*|Layout on \"Create account\"": {
+    "verdict": "real",
+    "note": "Duo Laptop pose: the project rule is that no control sits on the hinge (see the earlier sign-in / inbox fixes); the Show password button of the sign-up form sits on the hinge"
+  },
+  "layout|*|Layout on \"Deputy gigs\"": {
+    "verdict": "real",
+    "note": "Duo Laptop pose: the project rule is that no control sits on the hinge (see the earlier sign-in / inbox fixes); the deputy reply textarea sits on the hinge"
+  },
+  "layout|*|Layout on \"Stage mode: Rooftop Session\"": {
+    "verdict": "real",
+    "note": "Duo Laptop pose: the project rule is that no control sits on the hinge (see the earlier sign-in / inbox fixes); setlist rows (Go to / Strike / Reorder) sit on the hinge at first render"
+  },
+  "layout|*|Layout on \"What brings you here?\"": {
+    "verdict": "real",
+    "note": "Duo Laptop pose: the project rule is that no control sits on the hinge (see the earlier sign-in / inbox fixes); the \"Manage my band\" path card is cut by the hinge"
+  },
+  "back-mismatch|*|System Back ≠ \"Back\" on \"Availability check: Jazz Club Night\"": {
+    "verdict": "real",
+    "note": "Duo Book: with a gig open and the Inbox on top, the rail Back closes the gig hidden under the Inbox and leaves the Inbox open (recorded: before = Rooftop Session > Inbox > Availability check, after Back = Inbox > Availability check); Escape and browser Back close the Inbox",
+    "test": "e2e (duo-book): open a gig, open the Inbox from the bell, tap the rail Back: expect the Inbox to close and the gig to stay open (same as systemBack(app))"
+  }
+}
