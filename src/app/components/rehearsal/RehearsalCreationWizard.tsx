@@ -2350,7 +2350,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
           animate={{ opacity: 1, y: 0 }}
           data-wizard-type="rehearsal"
           style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-          className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
         >
           {/* Header */}
           <header className="bw-edit-head shrink-0 px-4 pb-4 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
@@ -2424,7 +2424,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
         animate={{ opacity: 1, y: 0 }}
         data-wizard-type="rehearsal"
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
-        className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+        className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
       >
         {/* Header: Top Bar + wizard steps (Figma "Rehearsal / New") */}
         <header className="shrink-0 px-4 pb-3 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>

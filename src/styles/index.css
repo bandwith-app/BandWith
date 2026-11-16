@@ -438,9 +438,20 @@
 /* Full-screen forms (gig wizard, Edit event: `.bw-fold-form`, a header, a
    scroller and an action bar) like the event detail: the header stays on the
    Display, the fields and actions lie on the Deck, so none crosses the fold. */
-[data-bw-posture="tabletop"] .bw-fold-form > :first-child {
-  min-height: var(--bw-display-h);
+/* :root wins over the status-block header rule (it keeps its clearance). */
+:root[data-bw-posture="tabletop"] .bw-fold-form > :first-child {
+  min-height: max(var(--bw-display-h), var(--bw-status-bottom, 0px));
   margin-bottom: calc(var(--bw-deck-top) - var(--bw-display-h));
+}
+/* A form that scrolls as one (poll, propose rehearsal, personal gig) keeps
+   its header on the Display while the fields scroll on the Deck under it, so
+   a scrolled field never rests across the fold (keyboard up: plain scroll). */
+:root[data-bw-posture="tabletop"]:not([data-keyboard="open"]) .bw-fold-form.overflow-y-auto > :first-child {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: var(--bw-deck-top);
+  margin-bottom: 0;
 }
 /* The layer already keeps its bottom clear of the Deck bar (above). */
 :root[data-bw-rail-host][data-bw-posture="tabletop"] .bw-fold-form > :last-child {
@@ -728,6 +739,11 @@
 /* Keyboard up: the floating tab bar would sit right above it, over the search
    results or the field being typed in (worst on a phone in landscape). */
 html[data-keyboard="open"] .bw-nav-bar {
+  display: none !important;
+}
+/* The poll builder's Back / Publish bar likewise sat over the venue
+   suggestions of its Location field; it comes back with the keyboard down. */
+html[data-keyboard="open"] .bw-poll-cta {
   display: none !important;
 }
 

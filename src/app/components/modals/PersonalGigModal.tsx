@@ -278,7 +278,8 @@ export const PersonalGigModal: React.FC<PersonalGigModalProps> = ({
         className="bw-pane-detail fixed inset-0 z-[110] flex flex-col bg-background text-foreground"
       >
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto">
+          {/* Laptop pose: the header holds the Display, the form starts on the Deck. */}
+          <div className="bw-fold-form flex-1 overflow-y-auto">
             {/* Header block */}
             <header
               className="bg-accent-personal text-accent-personal-foreground px-4 pb-6 flex flex-col gap-3"
