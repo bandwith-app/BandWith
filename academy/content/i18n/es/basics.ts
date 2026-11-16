@@ -91,7 +91,7 @@ const basics: AreaText = {
           items: [
             "**Introduce tu email y contraseña**: uno de los dos campos está vacío.",
             "Contraseña incorrecta: toca **¿Olvidaste la contraseña?** bajo el campo de la contraseña (consulta [[forgot-password]]).",
-            "Si cancelas el acceso con Google o Apple, o el enlace del email ha caducado, el error aparece en la pantalla de acceso. Vuelve a intentarlo.",
+            "Si cancelas el acceso con Google o Apple, o el enlace del email ha caducado, BandWith dice qué ha fallado: en la app en la pantalla de acceso, en la web en una pantalla propia con **Volver a entrar**. Vuelve a intentarlo.",
             "**No se pueden cargar tus bandas**: has entrado, pero la app no ha podido cargar tus bandas (sin conexión, error del servidor, app desactualizada). Tus bandas están a salvo. Toca **Reintentar** o actualiza BandWith.",
           ],
         },
@@ -119,6 +119,7 @@ const basics: AreaText = {
           ],
         },
         { type: "p", text: "¿Has abierto un enlace antiguo o lo has tocado sin querer? Toca **Mantener mi contraseña actual** y no cambia nada." },
+        { type: "p", text: "¿El enlace ha caducado o ya se usó? Algunas apps de correo abren los enlaces antes que tú, y eso los gasta. En la web BandWith muestra **Enlace caducado**: toca **Enviar un enlace nuevo**. En la app lo indica la pantalla de acceso: toca **¿Olvidaste la contraseña?**. Abre el enlace nuevo enseguida, en el mismo navegador en el que lo pediste." },
         { type: "note", tone: "tip", text: "Después de cambiar la contraseña, el acceso con Face ID / huella deja de funcionar para esa cuenta. Entra una vez con la contraseña nueva para reactivarlo." },
         { type: "p", text: "Las cuentas que solo entran con Google o Apple no tienen contraseña de BandWith: gestiona la contraseña en Google o Apple." },
       ],

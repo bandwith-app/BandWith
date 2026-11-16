@@ -7,7 +7,7 @@ import React, {
 } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase, getSafeUser, getSessionOfflineSafe, signIn, signUp, signOut, resetPassword, signInWithOAuth, updatePassword, RECOVERY_FLAG } from './supabase';
-import { authErrorMessage } from './authErrors';
+import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHandled, wasLaunchUrlHandled } from './authCallback';
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
@@ -288,13 +288,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     let removeDeepLinkListener: (() => void) | undefined;
     let disposed = false;
     if (Capacitor.isNativePlatform()) {
-      const handleAuthUrl = async (url: string | undefined) => {
+      // `fromLaunch`: the URL that cold-started the app (getLaunchUrl), which
+      // Capacitor keeps returning for the whole run, also after a reload.
+      const handleAuthUrl = async (url: string | undefined, fromLaunch = false) => {
         if (!url || !url.includes('auth/callback')) return;
         let parsed: URL;
         try {
           parsed = new URL(url);
         } catch {
           return;
+        }
+        // The launch link was handled at an earlier start of this run (sign-out
+        // reloads the WebView): it would re-run its spent code or show its old
+        // error on the welcome screen.
+        if (fromLaunch) {
+          if (wasLaunchUrlHandled(url)) return;
+          markLaunchUrlHandled(url);
         }
         const closeBrowser = async () => {
           try {
@@ -304,12 +313,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // In-app browser may already be closed
           }
         };
+        const isRecoveryLink = parsed.searchParams.get(RECOVERY_FLAG) === '1';
         const code = parsed.searchParams.get('code');
         if (!code) {
           // Expired reset / confirmation link, or a cancelled sign-in.
-          const errorCode = parsed.searchParams.get('error_code') || parsed.searchParams.get('error');
-          if (errorCode) {
-            setAuthError(authErrorMessage({ code: errorCode, message: parsed.searchParams.get('error_description') ?? '' }));
+          const urlError = callbackUrlError(parsed.search, parsed.hash);
+          if (urlError) {
+            setAuthError(callbackProblemText(callbackProblem(urlError), isRecoveryLink).body);
             await closeBrowser();
           }
           return;
@@ -317,12 +327,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
           console.error('[DeepLink] Could not complete sign-in:', error.message);
-          setAuthError(authErrorMessage(error));
           await closeBrowser();
+          // The same sign-in delivered twice, or a stale launch link: the
+          // code is spent but the person is signed in, so nothing failed.
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) return;
+          // A launch link with no code verifier on this device belongs to an
+          // earlier run: nothing to tell the person.
+          if (fromLaunch && callbackProblem(error) === 'other_browser') return;
+          setAuthError(callbackProblemText(callbackProblem(error), isRecoveryLink).body);
           return;
         }
         setAuthError(null);
-        if (parsed.searchParams.get(RECOVERY_FLAG) === '1') {
+        if (isRecoveryLink) {
           setIsPasswordRecovery(true);
         }
         await closeBrowser();
@@ -341,7 +358,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
           // App opened via a URL while it was closed
           const launch = await App.getLaunchUrl();
-          await handleAuthUrl(launch?.url);
+          await handleAuthUrl(launch?.url, true);
         } catch (err) {
           console.error('[DeepLink] Error setting up deep link listener:', err);
         }

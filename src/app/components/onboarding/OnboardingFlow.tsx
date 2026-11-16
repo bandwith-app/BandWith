@@ -24,6 +24,7 @@ import { declineInvitation, declineInvitationByToken, inviteErrorMessage, Invite
 import { closeTopOverlay, isEditableTarget } from '@/lib/overlayBack';
 import { DuoAuthLayout, CREATOR_BRAND_STEPS, SOLO_BRAND_STEPS } from './DuoAuthLayout';
 import { t } from '@/lib/i18n';
+import { AUTH_SCREEN_PARAM, authScreenFromUrl } from '@/lib/authCallback';
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -57,10 +58,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   const { isAuthenticated, user, authError } = useAuth();
 
-  // Screen mode state
+  // Screen mode state. From a dead auth link (/auth/callback error screen):
+  // straight to "Reset password" or the sign-in screen.
   const [screenMode, setScreenMode] = useState<ScreenMode>(
-    path ? 'flow' : 'welcome'
+    () => authScreenFromUrl(window.location.search) ?? (path ? 'flow' : 'welcome')
   );
+  useEffect(() => {
+    // Drop it from the address bar so a refresh opens the normal start.
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(AUTH_SCREEN_PARAM)) return;
+    url.searchParams.delete(AUTH_SCREEN_PARAM);
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, []);
 
   // Joiner flow state
   const [joinerSubStep, setJoinerSubStep] = useState<JoinerSubStep>('email-lookup');

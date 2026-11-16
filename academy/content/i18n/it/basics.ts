@@ -92,7 +92,7 @@ const basics: AreaText = {
           items: [
             "**Inserisci email e password**: uno dei due campi è vuoto.",
             "Password sbagliata: tocca **Password dimenticata?** sotto il campo della password (vedi [[forgot-password]]).",
-            "Un accesso con Google o Apple annullato, o un link email scaduto, mostra l’errore nella schermata di accesso. Riprova.",
+            "Un accesso con Google o Apple annullato, o un link email scaduto, dice cosa è andato storto: nell’app nella schermata di accesso, sul web in una schermata apposita con **Torna all’accesso**. Riprova.",
             "**Impossibile caricare le tue band**: hai fatto l’accesso, ma l’app non è riuscita a caricare le tue band (niente connessione, errore del server, app non aggiornata). Le tue band sono al sicuro. Tocca **Riprova** oppure aggiorna BandWith.",
           ],
         },
@@ -120,6 +120,7 @@ const basics: AreaText = {
           ],
         },
         { type: "p", text: "Hai aperto un vecchio link o l’hai toccato per sbaglio? Tocca **Mantieni la password attuale** e non cambia nulla." },
+        { type: "p", text: "Link scaduto o già usato? Alcune app di posta aprono i link prima di te, e così li consumano. Sul web BandWith mostra **Link scaduto**: tocca **Invia un nuovo link**. Nell’app lo dice la schermata di accesso: tocca **Password dimenticata?**. Apri subito il nuovo link, nello stesso browser in cui l’hai richiesto." },
         { type: "note", tone: "tip", text: "Dopo un cambio di password, l’accesso con Face ID / impronta si disattiva per quell’account. Accedi una volta con la nuova password per riattivarlo." },
         { type: "p", text: "Gli account che accedono solo con Google o Apple non hanno una password BandWith: la password si gestisce da Google o da Apple." },
       ],
