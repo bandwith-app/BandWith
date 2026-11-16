@@ -1,0 +1,112 @@
+# Flow catalogue
+
+Every user flow the app has, the spec that covers it, and what still needs a real device.
+A new feature adds its row here plus a spec (see the PR template).
+
+Profiles: **full** = `phone-portrait` + `ipad-landscape`; **all** = every profile
+(`@smoke`); **laptop** = `duo-laptop` (`@laptop`). Every test also runs the page-health
+check (`app.check`) on each screen it reaches.
+
+## Home, notifications, calendar
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Home: every card renders, top to bottom (admin and member) | `home-calendar` | all |
+| Home: See all, Upcoming cards, a quote draft, Review payouts | `home-calendar` | full |
+| Notifications inbox → open a notification (poll vote sheet) → close | `home-calendar` | full |
+| Calendar renders, top to bottom (admin and member) | `home-calendar` | all |
+| Calendar: next / previous month, Today | `home-calendar` | full |
+| Calendar: filters All / Gigs / Rehearsals / Quotes | `home-calendar` | full |
+| Calendar: search by venue, close search | `home-calendar` | full |
+| Calendar: open a gig, rehearsal, quote, personal gig, and back | `home-calendar` | full |
+| Home in Spanish and German: translated, fits | `i18n` | all |
+| Calendar, a gig and the Account hub in Spanish and German | `i18n` | full |
+
+## Gig and rehearsal overview (#178 card edits)
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Title, date & times; venue; fee (extra band fee, member fees, TBD) | `event-edit` | full |
+| Lineup: untick yourself; an empty lineup never invites everyone; presets; musician fee → payouts | `event-edit` | full |
+| Setlist: load a template, remove a song | `event-edit` | full |
+| To-dos: load a list, add, rename, delete | `event-edit` | full |
+| Client & notes | `event-edit` | full |
+| Rehearsal: roster, studio cost (paid / free), focus songs, notes | `event-edit` | full |
+| Personal gig keeps its Edit button; gigs/rehearsals have none | `event-edit` | full |
+| Leaving an editor with unsaved changes asks (Cancel, ✕, Escape) | `unsaved-changes` | full |
+
+## Members, privacy, RSVP
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Member: gigs and rehearsal are read-only; no client, price or colleagues' fees | `member-readonly` | all (portrait and landscape) |
+| Member: Home and Calendar never show a client or gig price | `member-readonly` | all |
+| Member: own fee is shown | `member-readonly` | full |
+| Admin → member on the same device: cached client and price are gone | `member-readonly` | all |
+| RSVP: only GOING / CAN'T, the answer sticks (rehearsal and gig) | `rsvp` | full |
+| RSVP: an old "maybe" asks to choose (rehearsal and gig) | `rsvp` | full |
+| Rehearsal proposals: member proposes; admin sees "Open until", declines with a reason | `rehearsal-proposals` | full |
+
+## Rider & stage
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Open from the gig, Back / Escape (also from the input-list editor) | `rider-stage` | full |
+| Tablet: Rider & stage tab and back to Overview | `rider-stage` | full |
+| Build input list from lineup; Update / Keep after a lineup change | `rider-stage` | full |
+| No "seen" anywhere | `rider-stage` | full |
+| Member: read-only | `rider-stage` | all |
+
+## Create
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Gig / quote / rehearsal wizard: ✕ or Back half-way asks Save draft / Discard / Keep editing | `create-wizards` | full |
+| Save draft shows under Drafts on Home; Discard leaves nothing | `create-wizards` | full |
+| An untouched wizard just closes | `create-wizards` | full |
+| Poll builder: header Back, CTA Back, system Back ask before discarding | `polls` | phone only |
+| Poll builder with nothing typed: Back doesn't ask | `polls` | phone only |
+| Poll location suggests venues | `polls` | full |
+| Poll on Home: fast votes, last tap wins; admin locks in a date | `polls` | full |
+| iPad composers: venue suggestions (gig, rehearsal) | `fold-layers` | iPad |
+| Duo Laptop: Create menu, gig wizard, rehearsal wizard, poll builder, Propose rehearsal, Log personal gig off the fold | `fold-layers` | laptop |
+
+## Settings, assets, chat
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Account hub lists identity, band, assets, app settings | `settings` | all |
+| Members: list → member | `settings` | full |
+| Pricing: every tab, Save changes, close | `settings` | full |
+| Deputy gigs | `settings` | full |
+| Contracts & docs: filters, a document, no "Seen" | `settings` | full |
+| Member hub: no band settings, pricing, contracts or invite | `settings` | all |
+| Gear: add sheet, Speakers category, custom category ≤ 40 characters | `gear` | full |
+| Gear as member: band and others' gear locked | `gear` | all |
+| Chat: list, band chat sends a message (admin and member) | `chat` | full |
+| Chat: event strip opens the gig; Back to chat, then list | `chat` | full |
+
+## Navigation and sign-in
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Every layer closes with system Back and with its own Back / ✕ (notifications, Create menu, search, gig, hub page, chat) | `layers-back` | full (some all) |
+| Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
+| Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
+| Already signed in: Back to sign in lands in the app | `auth-callback` | full |
+
+## Manual only
+
+These need a real device; run them from the device test matrix before a release.
+
+- **Real Duo hinge**: posture changes while a layer is open, spanning, the physical fold
+  (the suite emulates the postures, not the hardware).
+- **Android APK installer**: install, update over an older version, the in-app update notice.
+- **Push notifications**: delivery, tapping one opens the right screen, translated text.
+- **Real keyboard**: the on-screen keyboard covering fields, Return / Done, autocorrect,
+  hardware keyboard on the iPad.
+- **Bluetooth stage sync**: two phones offline in Stage mode, synced click.
+- **Native sharing and files**: share sheets (rider PDF, quote), file pickers, camera.
+- **Sign in with Google / Apple and real email links** (the suite only tests the callback
+  errors).
+- **Calendar feed subscription** in the phone's calendar app.

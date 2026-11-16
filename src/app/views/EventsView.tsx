@@ -28,6 +28,7 @@ import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
+import { useSystemBack } from '@/lib/backStack';
 import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
 
@@ -68,6 +69,8 @@ interface EventsViewProps {
   focusMonth?: string | null;
   /** Tablet, two panes: the event open beside the calendar (outlined). */
   selectedEventId?: string | null;
+  /** An event detail is open (any layout): Back closes it before the search under it. */
+  eventOpen?: boolean;
 }
 
 const FILTERS = ['ALL', 'GIGS', 'REHEARSALS', 'QUOTES', 'DRAFTS'] as const;
@@ -260,6 +263,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
   currentUserId,
   focusMonth,
   selectedEventId = null,
+  eventOpen = false,
 }) => {
   const t = useT();
   useCurrency(); // re-render money labels when the band currency changes
@@ -332,6 +336,18 @@ export const EventsView: React.FC<EventsViewProps> = ({
     setSearchTab('ALL');
     setEventSearch('');
   };
+
+  // Android Back, the browser's Back and Escape close the search, like its own
+  // Back. An event picked from it opens on top (or beside it) and closes first.
+  const pickedFromSearchRef = useRef(false);
+  useEffect(() => {
+    if (!eventOpen) pickedFromSearchRef.current = false;
+  }, [eventOpen]);
+  useSystemBack(searchOpen, () => {
+    if (eventOpen && pickedFromSearchRef.current) return false;
+    closeSearch();
+    return true;
+  });
 
   const [warningPopoverId, setWarningPopoverId] = useState<number | null>(null);
   const [suggestionPopoverId, setSuggestionPopoverId] = useState<number | null>(null);
@@ -1511,7 +1527,10 @@ export const EventsView: React.FC<EventsViewProps> = ({
                               <button
                                 type="button"
                                 // Opens on the first tap even with the keyboard up.
-                                {...keyboardSafeTap(() => onEventClick(ev))}
+                                {...keyboardSafeTap(() => {
+                                  pickedFromSearchRef.current = true;
+                                  onEventClick(ev);
+                                })}
                                 aria-current={selectedEventId && ev.eventId === selectedEventId ? 'true' : undefined}
                                 className={cn(
                                   'w-full flex items-center gap-4 p-3 rounded-[24px] bg-card text-left active:scale-[0.99] transition-transform cursor-pointer',
