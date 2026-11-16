@@ -24,6 +24,11 @@ import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
 
+/** Pill in a half-width slot: one line when it fits, else the label wraps
+ *  inside it instead of running out ("Mapa de montaje", "Kalender ansehen"). */
+const WRAP_PILL = 'max-w-full h-auto py-2 whitespace-normal leading-tight [overflow-wrap:anywhere]';
+const CARD_PILL = cn(WRAP_PILL, 'min-h-9 text-left');
+
 interface DashboardData {
   eventStats: {
     totalEvents: number;
@@ -784,7 +789,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             };
             return (
               <div className="rounded-[24px] p-4 flex flex-col gap-2 min-w-0 bg-accent text-accent-foreground">
-                <span className="bw-label-md truncate">{t('Next Soundcheck')}</span>
+                <span className="bw-label-md line-clamp-2 [overflow-wrap:anywhere]">{t('Next Soundcheck')}</span>
                 <span className="flex items-end gap-1.5">
                   <DotText text={value} size={24} label={`${value}${suffix ? ` ${suffix}` : ''}`} />
                   {suffix && <span className="bw-body-lg leading-none">{suffix}</span>}
@@ -798,8 +803,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   size="sm"
                   variant="dark"
                   fullWidth={false}
-                  className="self-start mt-auto"
-                  icon={<MapPin className="w-4 h-4" />}
+                  className={cn('self-start mt-auto', CARD_PILL)}
+                  icon={<MapPin className="w-4 h-4 shrink-0" />}
                   onClick={openLoadIn}
                   disabled={!nextMemberGig}
                 >
@@ -813,7 +818,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               nextMemberGig?.setlist_song_count ?? nextMemberGig?.song_count ?? (Array.isArray(nextMemberGig?.setlist) ? nextMemberGig.setlist.length : undefined);
             return (
               <div className="rounded-[24px] p-4 flex flex-col gap-2 min-w-0 bg-card text-card-foreground">
-                <span className="bw-label-md truncate">{t('My setlist')}</span>
+                <span className="bw-label-md line-clamp-2 [overflow-wrap:anywhere]">{t('My setlist')}</span>
                 <DotText text={songCount != null ? String(songCount) : '--'} size={24} label={songCount != null ? t('{count} songs', { count: songCount }) : t('No song count')} />
                 <span className="bw-label-sm text-muted-foreground truncate">
                   {songCount != null ? t('Next gig songs') : nextMemberGig?.setlist_id ? t('Setlist linked') : t('No setlist yet')}
@@ -822,7 +827,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   size="sm"
                   variant="outline"
                   fullWidth={false}
-                  className="self-start mt-auto"
+                  className={cn('self-start mt-auto', CARD_PILL)}
                   onClick={() => onQuickAction?.('Setlist & Repertoire')}
                 >
                   {t('View Setlist')}
@@ -985,11 +990,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           <div className="flex gap-3">
-            <PillButton size="md" className="flex-1 min-w-0" onClick={() => onQuickAction?.('View Calendar')}>
+            <PillButton size="md" className={cn('flex-1 min-w-0 min-h-11 text-center', WRAP_PILL)} onClick={() => onQuickAction?.('View Calendar')}>
               {t('View calendar')}
-              <ArrowUpRight className="w-4 h-4" />
+              <ArrowUpRight className="w-4 h-4 shrink-0" />
             </PillButton>
-            <PillButton size="md" variant="dark" className="flex-1 min-w-0" onClick={() => onQuickAction?.('View Analytics')}>
+            <PillButton size="md" variant="dark" className={cn('flex-1 min-w-0 min-h-11 text-center', WRAP_PILL)} onClick={() => onQuickAction?.('View Analytics')}>
               {t('View Analytics')}
             </PillButton>
           </div>

@@ -622,9 +622,9 @@ const people: AreaText = {
           title: "Ce que tu vois",
           items: [
             "Deux onglets : **Éléments** et **Kits** ([[gear-kits]]).",
-            "Un champ de recherche (**Rechercher matériel, micros, câbles…**) et des puces de catégorie avec leur nombre : **Tout**, **Instruments**, **Câbles**, **Micros**, **Pieds**, **Lumières**, **Étuis**, **Autre**.",
+            "Un champ de recherche (**Rechercher matériel, micros, câbles…**) et des puces de catégorie avec leur nombre : **Tout**, **Instruments**, **Câbles**, **Micros**, **Enceintes**, **Pieds**, **Lumières**, **Étuis**, les catégories créées par le groupe, puis **Autre**.",
             "Chaque élément : nom, point de statut, et une ligne avec « Perso · {name} » pour le matériel de quelqu’un, la catégorie, « qté {count} » et l’emplacement.",
-            "Les éléments que tu peux changer ont un bouton de modification et un bouton de suppression.",
+            "Les éléments que tu peux changer ont un bouton de modification et un bouton de suppression. Ceux que tu ne peux pas changer affichent un cadenas, et une note sous la liste indique qui peut les modifier.",
           ],
         },
         {
@@ -661,6 +661,7 @@ const people: AreaText = {
             "Saisis le **Nom de la ligne**, par exemple « Shure SM58 ».",
             "Admins : sous **Appartient à**, choisis **Le groupe** ou **Moi (perso)**. Les éléments des membres sont toujours à eux.",
             "Choisis une **Catégorie** et un **Statut**, règle la **Quantité** et remplis **Emplacement / qui l’a**.",
+            "Aucune catégorie ne convient ? Touche **Perso** et saisis un **Nom de la catégorie** (40 caractères max.). Elle apparaît ensuite comme puce pour tout le groupe.",
             "Ajoute si tu veux le **Numéro de série**, la **Date d’achat**, le **Prix d’achat** et des **Notes**.",
             "Touche **Enregistrer l’élément**.",
           ],
@@ -677,7 +678,7 @@ const people: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Peut modifier chaque élément, changer à qui il appartient et tout supprimer." },
-            { role: "member", text: "Ne peut modifier et supprimer que les éléments marqués comme les siens. La feuille indique « Matériel perso : le groupe le voit, seuls toi et les admins pouvez le modifier. » Les autres éléments s’affichent sans boutons." },
+            { role: "member", text: "Ne peut modifier et supprimer que les éléments marqués comme les siens. La feuille indique « Matériel perso : le groupe le voit, seuls toi et les admins pouvez le modifier. » Les autres éléments affichent un cadenas à la place des boutons." },
           ],
         },
         { type: "note", tone: "warning", text: "La corbeille d’une ligne, ou **Supprimer l’élément** dans la feuille, demande d’abord « Supprimer {name} ? ». Supprimer un élément le retire aussi de tous les kits." },

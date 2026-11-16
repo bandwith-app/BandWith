@@ -56,11 +56,15 @@ import {
 import {
   canonicalCategory,
   createInventoryItem,
+  customCategories,
   deleteInventoryItem,
   INVENTORY_CATEGORIES,
+  isCustomCategory,
+  sameCategory,
   toInventoryRow,
   updateInventoryItem,
 } from '../inventory';
+import { setLocalePref } from '@/lib/i18n';
 
 beforeEach(() => {
   calls.length = 0;
@@ -245,8 +249,48 @@ describe('task templates', () => {
 
 describe('inventory', () => {
   it('keeps the Figma category order, then the extra categories', () => {
-    expect(INVENTORY_CATEGORIES).toEqual(['Instruments', 'Cables', 'Microphones', 'Stands', 'Lighting', 'Cases', 'Other']);
+    expect(INVENTORY_CATEGORIES).toEqual(['Instruments', 'Cables', 'Microphones', 'Speakers', 'Stands', 'Lighting', 'Cases', 'Other']);
     expect(canonicalCategory('microphones')).toBe('Microphones');
+    expect(canonicalCategory(' speakers ')).toBe('Speakers');
+  });
+
+  it("keeps a band's own category as typed; blank files under Other", () => {
+    expect(canonicalCategory('  In-ear monitors ')).toBe('In-ear monitors');
+    expect(canonicalCategory('')).toBe('Other');
+    expect(canonicalCategory(null)).toBe('Other');
+    expect(isCustomCategory('Keys')).toBe(true);
+    expect(isCustomCategory('lighting')).toBe(false);
+    expect(sameCategory('keys', 'Keys')).toBe(true);
+    expect(sameCategory('Keys', 'Other')).toBe(false);
+    expect(customCategories([{ category: 'keys' }, { category: 'Brass' }, { category: 'Keys' }, { category: 'Cables' }, { category: '' }])).toEqual([
+      'Brass',
+      'keys',
+    ]);
+  });
+
+  it('writes the canonical spelling and checks a custom category', () => {
+    const base = { name: 'Sub', quantity: 1, status: 'available' };
+    expect(toInventoryRow({ ...base, category: 'speakers' }).row).toMatchObject({ category: 'Speakers' });
+    expect(toInventoryRow({ ...base, category: ' Keys ' }).row).toMatchObject({ category: 'Keys' });
+    expect(toInventoryRow({ ...base, category: '   ' }).error).not.toBeNull();
+    expect(toInventoryRow({ ...base, category: 'x'.repeat(41) }).error).not.toBeNull();
+    expect(toInventoryRow({ ...base, category: 'x'.repeat(40) }).error).toBeNull();
+  });
+
+  it('files a built-in category typed in the app language under the built-in one', () => {
+    setLocalePref('es');
+    try {
+      expect(toInventoryRow({ name: 'Sub', quantity: 1, status: 'available', category: 'altavoces' }).row).toMatchObject({ category: 'Speakers' });
+      expect(toInventoryRow({ name: 'Sub', quantity: 1, status: 'available', category: 'Vientos' }).row).toMatchObject({ category: 'Vientos' });
+    } finally {
+      setLocalePref('en');
+    }
+  });
+
+  it('explains a category the database does not accept yet (before 127)', async () => {
+    handler = () => ({ data: null, error: { code: '23514', message: 'new row for relation "inventory" violates check constraint "inventory_category_check"' } });
+    const { error } = await createInventoryItem('b1', { name: 'Sub', category: 'Speakers', quantity: 1, status: 'available' });
+    expect(error?.message).toMatch(/can't be saved yet/);
   });
 
   it('writes status and the optional fields (no unknown columns)', async () => {

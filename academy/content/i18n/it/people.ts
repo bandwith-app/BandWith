@@ -622,9 +622,9 @@ const people: AreaText = {
           title: "Cosa vedi",
           items: [
             "Due schede: **Elementi** e **Kit** ([[gear-kits]]).",
-            "Un campo di ricerca (**Cerca attrezzatura, microfoni, cavi…**) e i chip delle categorie con i conteggi: **Tutto**, **Strumenti**, **Cavi**, **Microfoni**, **Supporti**, **Luci**, **Custodie**, **Altro**.",
+            "Un campo di ricerca (**Cerca attrezzatura, microfoni, cavi…**) e i chip delle categorie con i conteggi: **Tutto**, **Strumenti**, **Cavi**, **Microfoni**, **Casse**, **Supporti**, **Luci**, **Custodie**, le categorie create dalla band, poi **Altro**.",
             "Ogni oggetto: nome, pallino di stato e una riga con “Personale · {name}” per l’attrezzatura di qualcuno, la categoria, “qtà {count}” e la posizione.",
-            "Gli oggetti che puoi cambiare hanno un pulsante per modificare e uno per eliminare.",
+            "Gli oggetti che puoi cambiare hanno un pulsante per modificare e uno per eliminare. Quelli che non puoi cambiare mostrano un lucchetto, e una nota sotto l’elenco dice chi può modificarli.",
           ],
         },
         {
@@ -661,6 +661,7 @@ const people: AreaText = {
             "Scrivi il **Nome della voce**, per esempio “Shure SM58”.",
             "Admin: sotto **Di chi è**, scegli **La band** o **Mia (personale)**. Gli oggetti dei membri sono sempre loro.",
             "Scegli una **Categoria** e uno **Stato**, imposta la **Quantità** e compila **Posizione / chi ce l’ha**.",
+            "Nessuna categoria va bene? Tocca **Personalizzata** e scrivi un **Nome della categoria** (fino a 40 caratteri). Poi compare come chip per tutta la band.",
             "Se vuoi, aggiungi **Numero di serie**, **Data di acquisto**, **Prezzo di acquisto** e **Note**.",
             "Tocca **Salva oggetto**.",
           ],
@@ -677,7 +678,7 @@ const people: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Può modificare ogni oggetto, cambiare di chi è ed eliminare qualsiasi cosa." },
-            { role: "member", text: "Può modificare ed eliminare solo gli oggetti segnati come suoi. Il foglio dice “Attrezzatura personale: la band la vede, solo tu e gli admin potete modificarla.” Gli altri oggetti compaiono senza pulsanti." },
+            { role: "member", text: "Può modificare ed eliminare solo gli oggetti segnati come suoi. Il foglio dice “Attrezzatura personale: la band la vede, solo tu e gli admin potete modificarla.” Gli altri oggetti mostrano un lucchetto al posto dei pulsanti." },
           ],
         },
         { type: "note", tone: "warning", text: "Il cestino su una riga, o **Elimina oggetto** nel foglio, chiede prima “Eliminare {name}?”. Eliminando un oggetto lo togli anche da tutti i kit." },

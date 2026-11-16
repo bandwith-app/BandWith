@@ -104,7 +104,8 @@ export const Metric: React.FC<MetricProps> = ({ label, value, fill, variant = 'd
         className,
       )}
     >
-      <span className="bw-label-md truncate">{label}</span>
+      {/* Long labels (de, es) wrap to 2 lines; flex-1 keeps the values of a row of metrics level. */}
+      <span className="bw-label-md flex-1 line-clamp-2 [overflow-wrap:anywhere]">{label}</span>
       <DotText text={value} size={dashboard ? 34 : 24} label={`${label}: ${value}`} />
       <DotMeter value={fill} rows={dashboard ? 4 : 2} cols={dashboard ? 12 : 6} dot={10} />
     </Comp>

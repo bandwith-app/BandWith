@@ -617,9 +617,9 @@ const people: AreaText = {
           title: "Qué ves",
           items: [
             "Dos pestañas: **Elementos** y **Kits** ([[gear-kits]]).",
-            "Un campo de búsqueda (**Buscar equipo, micros, cables…**) y etiquetas de categoría con su número: **Todo**, **Instrumentos**, **Cables**, **Micrófonos**, **Soportes**, **Iluminación**, **Estuches**, **Otro**.",
+            "Un campo de búsqueda (**Buscar equipo, micros, cables…**) y etiquetas de categoría con su número: **Todo**, **Instrumentos**, **Cables**, **Micrófonos**, **Altavoces**, **Soportes**, **Iluminación**, **Estuches**, las categorías propias de la banda y luego **Otro**.",
             "Cada elemento: nombre, punto de estado y una línea con «Personal · {name}» para el equipo propio de alguien, la categoría, «cant. {count}» y la ubicación.",
-            "Los elementos que puedes cambiar tienen un botón de editar y uno de eliminar.",
+            "Los elementos que puedes cambiar tienen un botón de editar y uno de eliminar. Los que no puedes cambiar muestran un candado, y una nota bajo la lista dice quién puede cambiarlos.",
           ],
         },
         {
@@ -656,6 +656,7 @@ const people: AreaText = {
             "Escribe el **Nombre del concepto**, por ejemplo «Shure SM58».",
             "Admins: en **De quién es**, elige **La banda** o **Mío (personal)**. Los elementos de los miembros siempre son suyos.",
             "Elige una **Categoría** y un **Estado**, fija la **Cantidad** y rellena **Ubicación / quién lo tiene**.",
+            "¿Ninguna categoría encaja? Toca **Personalizada** y escribe un **Nombre de la categoría** (hasta 40 caracteres). Luego aparece como etiqueta para toda la banda.",
             "Si quieres, añade el **Número de serie**, la **Fecha de compra**, el **Precio de compra** y las **Notas**.",
             "Toca **Guardar artículo**.",
           ],
@@ -672,7 +673,7 @@ const people: AreaText = {
           type: "roles",
           rows: [
             { role: "admin", text: "Puede editar todos los elementos, cambiar de quién son y eliminar cualquier cosa." },
-            { role: "member", text: "Solo puede editar y eliminar los elementos marcados como suyos. La hoja dice «Equipo personal: la banda lo ve, solo tú y los admins podéis cambiarlo.» Los demás elementos se muestran sin botones." },
+            { role: "member", text: "Solo puede editar y eliminar los elementos marcados como suyos. La hoja dice «Equipo personal: la banda lo ve, solo tú y los admins podéis cambiarlo.» Los demás elementos muestran un candado en lugar de los botones." },
           ],
         },
         { type: "note", tone: "warning", text: "La papelera de una fila, o **Eliminar artículo** en la hoja, pregunta antes «¿Eliminar …?». Al eliminar un elemento también se quita de todos los kits." },

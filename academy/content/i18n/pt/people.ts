@@ -622,9 +622,9 @@ const people: AreaText = {
           title: 'O que você vê',
           items: [
             'Duas abas: **Itens** e **Kits** ([[gear-kits]]).',
-            'Um campo de busca (**Buscar equipamento, microfones, cabos…**) e chips de categoria com contagens: **Tudo**, **Instrumentos**, **Cabos**, **Microfones**, **Suportes**, **Iluminação**, **Cases**, **Outro**.',
+            'Um campo de busca (**Buscar equipamento, microfones, cabos…**) e chips de categoria com contagens: **Tudo**, **Instrumentos**, **Cabos**, **Microfones**, **Caixas de som**, **Suportes**, **Iluminação**, **Cases**, as categorias próprias da banda e depois **Outro**.',
             'Cada item: nome, ponto de status e uma linha com “Pessoal · {name}” para o equipamento de alguém, a categoria, “qtd. {count}” e a localização.',
-            'Os itens que você pode mudar têm um botão de editar e um de excluir.',
+            'Os itens que você pode mudar têm um botão de editar e um de excluir. Os que você não pode mudar mostram um cadeado, e uma nota abaixo da lista diz quem pode alterá-los.',
           ],
         },
         {
@@ -661,6 +661,7 @@ const people: AreaText = {
             'Digite o **Nome do item**, por exemplo “Shure SM58”.',
             'Admins: em **De quem é**, escolham **A banda** ou **Meu (pessoal)**. Os itens dos membros são sempre deles.',
             'Escolha uma **Categoria** e um **Status**, defina a **Quantidade** e preencha **Onde está / com quem**.',
+            'Nenhuma categoria serve? Toque em **Personalizada** e digite um **Nome da categoria** (até 40 caracteres). Ela aparece como chip para toda a banda.',
             'Se quiser, adicione **Número de série**, **Data da compra**, **Preço de compra** e **Notas**.',
             'Toque em **Salvar item**.',
           ],
@@ -677,7 +678,7 @@ const people: AreaText = {
           type: 'roles',
           rows: [
             { role: 'admin', text: 'Pode editar todos os itens, mudar de quem eles são e excluir qualquer um.' },
-            { role: 'member', text: 'Só pode editar e excluir os itens marcados como seus. A janela diz “Equipamento pessoal: a banda vê, só você e os admins podem alterar.” Os outros itens aparecem sem botões.' },
+            { role: 'member', text: 'Só pode editar e excluir os itens marcados como seus. A janela diz “Equipamento pessoal: a banda vê, só você e os admins podem alterar.” Os outros itens mostram um cadeado no lugar dos botões.' },
           ],
         },
         { type: 'note', tone: 'warning', text: 'A lixeira de uma linha, ou **Excluir item** na janela, pergunta antes “Excluir {name}?”. Excluir um item também o tira de todos os kits.' },
