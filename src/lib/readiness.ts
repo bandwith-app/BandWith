@@ -15,7 +15,7 @@ export interface ReadinessItem {
   /** For lineup, setlist, lyrics and to-dos: how many of how many. */
   count?: { done: number; total: number };
   /** Rider: its version and where it stands. Contract: signed or not. */
-  state?: 'none' | 'draft' | 'sent' | 'seen' | 'unsigned' | 'signed';
+  state?: 'none' | 'draft' | 'sent' | 'unsigned' | 'signed';
   version?: number;
 }
 
@@ -32,8 +32,9 @@ export interface ReadinessInput {
   /**
    * The gig's rider (bw_event_rider, members may read it): null when there is
    * none yet. Leave it out where it isn't known (no band, older database).
+   * Done once it is sent: a rider sent as a PDF can't tell whether the venue read it.
    */
-  rider?: { version: number; sent: boolean; seen: boolean } | null;
+  rider?: { version: number; sent: boolean } | null;
   /** Admins only: the gig's contract, null when there is none. */
   contract?: { signed: boolean } | null;
   tasks: { is_completed: boolean }[];
@@ -73,8 +74,8 @@ export function computeReadiness(input: ReadinessInput): Readiness {
     const r = input.rider;
     items.push({
       key: 'rider',
-      done: !!r?.seen,
-      state: !r ? 'none' : r.seen ? 'seen' : r.sent ? 'sent' : 'draft',
+      done: !!r?.sent,
+      state: !r ? 'none' : r.sent ? 'sent' : 'draft',
       ...(r ? { version: r.version } : {}),
     });
   }

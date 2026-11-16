@@ -654,7 +654,7 @@ const business: AreaText = {
       summary: "Guarda los riders técnicos junto a tus contratos, compártelos como enlace web y envía versiones nuevas.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["rider técnico", "enlace del rider", "plano de escenario", "lista de canales", "local", "nueva versión", "visto"],
+      keywords: ["rider técnico", "enlace del rider", "plano de escenario", "lista de canales", "local", "nueva versión", "pdf"],
       related: ["contracts-and-docs", "send-a-contract", "rider-and-stage"],
       body: [
         {
@@ -667,14 +667,14 @@ const business: AreaText = {
             "Para enviarlo, usa **Enviar** como en un contrato, o **Enlace web** (**⋯** > **Compartir enlace web**) para compartir una página de solo lectura para el local.",
           ],
         },
-        { type: "p", text: "Cuando el local abre el enlace web, el rider muestra **Visto** con la fecha («Visto por el local»). Después de un cambio, toca **⋯** > **Nueva versión**: el rider vuelve a **Borrador** como versión siguiente, y lo vuelves a compartir para que el local la vea." },
+        { type: "p", text: "Una vez compartido, el rider muestra **Enviado**. Después de un cambio, toca **⋯** > **Nueva versión**: el rider vuelve a **Borrador** como versión siguiente, y lo vuelves a compartir para que el local la vea." },
         { type: "p", text: "Los riders no tienen **Marcar como firmado**." },
       ],
     },
     {
       id: "contract-statuses",
       title: "Estados de los contratos y riders",
-      summary: "Borrador, Enviado, Visto, Firmado y Caducado.",
+      summary: "Borrador, Enviado, Firmado y Caducado.",
       roles: ["admin"],
       kind: "reference",
       keywords: ["estado del contrato", "contrato caducado", "pendiente", "firmado"],
@@ -686,7 +686,6 @@ const business: AreaText = {
           rows: [
             ["**Borrador**", "Creado, aún sin enviar."],
             ["**Enviado**", "Compartido con el cliente."],
-            ["**Visto** (contratos) / **Visto** (riders)", "En los riders: el local ha abierto el enlace web."],
             ["**Firmado**", "Has tocado **Marcar como firmado**. Definitivo: se puede ver, descargar o eliminar, pero no editar."],
             ["**Caducado**", "Aparece cuando ha pasado la fecha **Válido hasta**, o cuando ha pasado la fecha del evento sin que estuviera firmado. No cambia nada en el documento; es solo cómo se muestra."],
           ],

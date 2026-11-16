@@ -4,6 +4,7 @@ import { starterStage, isStageEmpty, type LineupPlayer, type StageData } from '@
 import { getEventRider, getEventStage, riderShareLink, saveEventStage, type EventRider } from '@/lib/services/eventStage';
 import { buildContractPdf, contractFileName, createContract, fetchBandName, standardTerms, updateContract, type Contract } from '@/lib/services/contracts';
 import { shareFile, shareLink } from '@/lib/nativeFiles';
+import { docLanguageFor } from '@/lib/i18n/docLanguage';
 
 interface Options {
   eventId?: string;
@@ -118,10 +119,16 @@ export function useEventStage({ eventId, bandId, eventTitle, eventDate, venueNam
     return true;
   }, [eventId, bandId, eventTitle, eventDate, venueName, t]);
 
-  /**
-   * Admins: share the venue's web link (opening it marks the rider seen). A
-   * rider still in draft is marked sent once the link has gone out.
-   */
+  /** Admins: a rider still in draft is marked sent once the link or the PDF has gone out. */
+  const markSent = useCallback(async () => {
+    if (!rider || rider.sentAt) return;
+    const now = new Date().toISOString();
+    const status = rider.viewedAt ? 'viewed' : 'sent';
+    const { error: upErr } = await updateContract(rider.id, { status, sent_at: now });
+    if (!upErr) setRider({ ...rider, sentAt: now, status });
+  }, [rider]);
+
+  /** Admins: share the venue's web link. */
   const shareRiderLink = useCallback(async (): Promise<'shared' | 'copied' | 'cancelled' | 'failed'> => {
     if (!rider) return 'failed';
     setError(null);
@@ -137,20 +144,20 @@ export function useEventStage({ eventId, bandId, eventTitle, eventDate, venueNam
         text: t('Technical rider for {event}: stage plot, input list and who brings what.', { event: eventTitle }),
         dialogTitle: t('Share rider link'),
       });
-      if (res !== 'cancelled' && !rider.sentAt) {
-        const now = new Date().toISOString();
-        const { error: upErr } = await updateContract(rider.id, { status: rider.viewedAt ? 'viewed' : 'sent', sent_at: now });
-        if (!upErr) setRider({ ...rider, sentAt: now, status: rider.viewedAt ? 'viewed' : 'sent' });
-      }
+      if (res !== 'cancelled') await markSent();
       return res;
     } catch (e: any) {
       console.warn('[rider] share link:', e);
       setError(t('Could not share the link.'));
       return 'failed';
     }
-  }, [rider, eventTitle, t]);
+  }, [rider, eventTitle, markSent, t]);
 
-  /** Rider PDF with the stage, for the share sheet. Members get it without client details. */
+  /**
+   * Rider PDF with the stage, for the share sheet, in the venue's language
+   * (like the other client documents). Members get it without client
+   * details. Shared by an admin (not just downloaded), it counts as sent.
+   */
   const shareRiderPdf = useCallback(async (): Promise<void> => {
     if (!bandId) return;
     setError(null);
@@ -163,22 +170,27 @@ export function useEventStage({ eventId, bandId, eventTitle, eventDate, venueNam
       status: rider?.status || 'draft',
       event_name: eventTitle,
       event_date: eventDate || null,
+      client_name: venueName || null,
+      version: rider?.version,
       created_at: new Date().toISOString(),
     };
     try {
       const bandName = await fetchBandName(bandId);
-      const blob = buildContractPdf(doc, { bandName, lang: getLocale(), stage: shown });
-      await shareFile(blob, contractFileName(doc), { title: doc.title, dialogTitle: t('Share rider PDF') });
+      // The rider made here is filed under the venue (createRider), so its language is remembered there.
+      const blob = buildContractPdf(doc, { bandName, lang: docLanguageFor(venueName || eventTitle), stage: shown });
+      const res = await shareFile(blob, contractFileName(doc), { title: doc.title, dialogTitle: t('Share rider PDF') });
+      if (res === 'shared' && isAdmin) await markSent();
     } catch (e: any) {
       console.warn('[rider] PDF:', e);
       setError(t('Could not create the PDF.'));
     }
-  }, [bandId, eventId, eventTitle, eventDate, rider, shown, t]);
+  }, [bandId, eventId, eventTitle, eventDate, venueName, isAdmin, rider, shown, markSent, t]);
 
   return {
     available,
     loading,
     error,
+    lineup,
     stage: shown,
     saved,
     isSuggestion,
@@ -214,6 +226,7 @@ export function useDraftStage({ lineup, isAdmin }: { lineup: LineupPlayer[]; isA
     available: true,
     loading: false,
     error: null,
+    lineup,
     stage: shown,
     saved: !!stage,
     isSuggestion: !stage && !!suggestion,

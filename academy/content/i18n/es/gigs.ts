@@ -588,7 +588,7 @@ const gigs: AreaText = {
             ["**Formación · {done} de {total} confirmados**", "Todos los que no han rechazado han confirmado."],
             ["**Setlist · {count} canciones**", "El concierto tiene al menos una canción."],
             ["**Letras y acordes · {done} de {total} canciones**", "Cada canción de la setlist tiene letra o acordes."],
-            ["**Rider v{version} · visto por el local**", "El local ha abierto el enlace del rider."],
+            ["**Rider v{version} · enviado al local**", "El enlace o el PDF del rider se ha compartido con el local."],
             ["**Contrato firmado**", "El contrato del concierto está firmado (solo admins)."],
             ["**Anticipo pagado**", "El anticipo está pagado, cuando hay uno (solo admins)."],
             ["**Tareas · {done} de {total} hechas**", "Todas las tareas están marcadas. Solo aparece si el concierto tiene tareas."],
@@ -663,8 +663,9 @@ const gigs: AreaText = {
             "En **Plano de escenario**, toca **EDITAR**. Bajo el plano, la primera fila de botones (**Añadir un músico**) añade un instrumento: voz, guitarra, bajo, teclados, batería, percusión, saxo o trompeta. La segunda fila (**Añadir equipo**) añade **Otro músico**, un monitor, un altavoz o una caja DI. Mantén pulsado un sitio vacío para tener esas mismas opciones ahí mismo.",
             "Mantén pulsado un elemento hasta que se levante, arrástralo y suéltalo; un deslizamiento rápido sigue desplazando la página. Toca un elemento para cambiar su código corto y su texto, o para quitarlo. Fija el **Nombre de la disposición**, el **Ancho del escenario (m)** y el **Fondo del escenario (m)**, y toca **GUARDAR PLANO**. **+ NUEVA DISPOSICIÓN** y **ELIMINAR DISPOSICIÓN** gestionan varias disposiciones.",
             "Al guardar el plano se rellena sola la lista de canales: cada instrumento añade sus canales habituales en el orden de la mesa (batería: bombo, caja, OH L y OH R; bajo: un canal DI; una caja DI: su propia línea). Al quitar un elemento se quitan sus canales.",
-            "En **Lista de canales**, toca **EDITAR LISTA** para afinarla: **AÑADIR CANAL**, cambia **FUENTE**, **MIC / DI** y **Quién**, arrastra para reordenar y toca **GUARDAR LISTA**. Tus cambios se mantienen cuando vuelves a guardar el plano.",
-            "En **Quién trae qué**, revisa la lista sugerida a partir de la formación, escribe **LA BANDA TRAE** y **EL LOCAL PONE** (uno por línea), marca **El local lo ha aceptado** cuando esté cerrado y toca **GUARDAR**.",
+            "Junto a **Lista de canales**, toca **EDITAR LISTA** para afinarla: **AÑADIR CANAL**, cambia **FUENTE**, **MIC / DI** y **Quién**, arrastra para reordenar y toca **GUARDAR LISTA**. Tus cambios se mantienen cuando vuelves a guardar el plano. **CREAR DESDE LA FORMACIÓN** en el editor vuelve a empezar la lista con los instrumentos de la formación.",
+            "Si aún no hay canales, toca **CREAR DESDE LA FORMACIÓN** en **Lista de canales**. Si después cambia la formación, la lista ofrece **ACTUALIZAR DESDE LA FORMACIÓN** o **MANTENER ESTA LISTA**. Si editaste la lista a mano, BandWith pregunta antes (**¿Rehacer la lista de canales?**), porque tus cambios se sustituirían.",
+            "Junto a **Quién trae qué**, toca **EDITAR**, revisa la lista sugerida a partir de la formación, escribe **LA BANDA TRAE** y **EL LOCAL PONE** (uno por línea), marca **El local lo ha aceptado** cuando esté cerrado y toca **GUARDAR**.",
           ],
         },
         {
@@ -673,7 +674,7 @@ const gigs: AreaText = {
           items: [
             "Toca **COMPARTIR ENLACE CON EL LOCAL** (o **Compartir enlace del rider**) y envíalo como siempre.",
             "O toca **PDF** / **Compartir PDF del rider** para tener un archivo.",
-            "El rider muestra **ENVIADO AL LOCAL {date}** y, cuando el local abre el enlace, **ABIERTO {date}**. La preparación pasa a **Rider v{version} · visto por el local**.",
+            "El rider muestra **ENVIADO AL LOCAL {date}**. La preparación pasa a **Rider v{version} · enviado al local**. Compartir el PDF también cuenta como envío; guardarlo en el teléfono, no.",
           ],
         },
         {
@@ -683,7 +684,6 @@ const gigs: AreaText = {
             "El local abre el enlace en un navegador, sin cuenta.",
             "Muestra el rider, los horarios y el lugar del concierto, el plano de escenario, la lista de canales y quién trae qué, en el idioma del local cuando está disponible.",
             "Nunca muestra el cliente ni ningún caché.",
-            "Al abrirla, el rider queda marcado como visto para la banda. Si la banda revisa su propio enlace (vista previa), no cuenta.",
           ],
         },
         {

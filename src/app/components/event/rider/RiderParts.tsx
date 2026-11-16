@@ -13,14 +13,13 @@ type T = ReturnType<typeof useT>;
 export const shortDate = (iso?: string | null): string =>
   iso ? new Date(iso).toLocaleDateString(intlLocale('en-GB'), { day: 'numeric', month: 'short' }) : '';
 
-/** "Sent 1 Dec · seen by the venue 2 Dec", "Not sent yet". */
+/**
+ * "Sent 1 Dec", "Not sent yet". Whether the venue has seen it is not shown:
+ * a rider sent as a PDF can't tell.
+ */
 export function riderStatusLine(rider: EventRider | null, t: T): string {
   if (!rider) return t('No rider linked to this gig yet');
-  if (rider.viewedAt && rider.sentAt) {
-    return t('Sent {sent} · seen by the venue {seen}', { sent: shortDate(rider.sentAt), seen: shortDate(rider.viewedAt) });
-  }
-  if (rider.viewedAt) return t('Seen by the venue {seen}', { seen: shortDate(rider.viewedAt) });
-  if (rider.sentAt) return t('Sent {sent} · not seen yet', { sent: shortDate(rider.sentAt) });
+  if (rider.sentAt) return t('Sent {date}', { context: 'rider', date: shortDate(rider.sentAt) });
   return t('Not sent yet');
 }
 
@@ -164,7 +163,7 @@ export const VenueAgreedTag: React.FC<{ agreed: boolean }> = ({ agreed }) => {
   );
 };
 
-/** Dark rider card on the Rider & stage screen: version, sent, seen. */
+/** Dark rider card on the Rider & stage screen: version and sent, then the ways to send it. */
 export const RiderStatusCard: React.FC<{
   rider: EventRider | null;
   eventTitle: string;
@@ -183,18 +182,13 @@ export const RiderStatusCard: React.FC<{
         <span className="bw-label-sm min-w-0 truncate">
           {rider ? t('TECHNICAL RIDER · V{version}', { version: rider.version }) : t('TECHNICAL RIDER')}
         </span>
-        {rider?.viewedAt ? (
-          <Tag variant="accent" className="h-5 px-2">{t('SEEN')}</Tag>
-        ) : rider?.sentAt ? (
-          <Tag className="bg-white/15 text-white h-5 px-2">{t('SENT')}</Tag>
-        ) : null}
+        {rider?.sentAt ? <Tag className="bg-white/15 text-white h-5 px-2">{t('SENT')}</Tag> : null}
       </div>
       {rider ? (
         <>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {tile(t('VERSION'), `v${rider.version}`)}
             {tile(t('SENT'), shortDate(rider.sentAt))}
-            {tile(t('SEEN'), shortDate(rider.viewedAt))}
           </div>
           <p className="bw-body-sm text-white/70">{t('Linked to {event}.', { event: eventTitle })}</p>
         </>
@@ -208,7 +202,7 @@ export const RiderStatusCard: React.FC<{
 
 /**
  * "Rider & stage" card on the gig screen (Figma "Phone · Next"): rider
- * version and sent / seen, then the plot and inputs at a glance. On the
+ * version and sent, then the plot and inputs at a glance. On the
  * iPhone Duo a small plot thumbnail replaces the tiles (Figma "Duo · Next").
  */
 export const RiderStageCard: React.FC<{
@@ -243,12 +237,6 @@ export const RiderStageCard: React.FC<{
               .join(' · ') || t('Set up the stage')}
           </span>
           <span className="bw-label-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
-            {rider?.viewedAt && (
-              <span className="inline-flex items-center gap-1 text-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden />
-                {t('SEEN {date}', { date: shortDate(rider.viewedAt).toUpperCase() })}
-              </span>
-            )}
             {rider?.sentAt && <span>{t('SENT {date}', { date: shortDate(rider.sentAt).toUpperCase() })}</span>}
             {!rider && <span>{t('No rider linked to this gig yet')}</span>}
           </span>

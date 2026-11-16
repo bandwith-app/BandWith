@@ -84,7 +84,10 @@ const STATUS_DOT: Record<ContractStatus, string> = {
   expired: 'bg-destructive',
 };
 
-/** Status label for display (the status itself stays the stored value). */
+/**
+ * Status label for display (the status itself stays the stored value).
+ * Riders never show "seen": one sent as a PDF can't tell, so it stays Sent.
+ */
 const useStatusLabel = (rider = false) => {
   const t = useT();
   return useCallback(
@@ -92,7 +95,7 @@ const useStatusLabel = (rider = false) => {
       const labels: Record<ContractStatus, string> = {
         draft: t('Draft'),
         sent: t('Sent'),
-        viewed: rider ? t('Seen') : t('Viewed'),
+        viewed: rider ? t('Sent') : t('Viewed'),
         signed: t('Signed'),
         expired: t('Expired'),
       };
@@ -106,7 +109,7 @@ const StatusDot: React.FC<{ status: ContractStatus; rider?: boolean }> = ({ stat
   const statusLabel = useStatusLabel(rider);
   return (
     <span className="flex items-center gap-1.5 shrink-0">
-      <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[status] ?? 'bg-muted-foreground')} aria-hidden />
+      <span className={cn('w-2 h-2 rounded-full', STATUS_DOT[rider && status === 'viewed' ? 'sent' : status] ?? 'bg-muted-foreground')} aria-hidden />
       <span className="bw-label-xs">{statusLabel(status)}</span>
     </span>
   );
@@ -708,11 +711,6 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
                         {[
                           t('Linked to {event}', { event: contract.event_name || t('a gig') }),
                           `v${contract.version ?? 1}`,
-                          contract.viewed_at
-                            ? t('Seen {date}', {
-                                date: new Date(contract.viewed_at).toLocaleDateString(intlLocale('en-GB'), { day: 'numeric', month: 'short' }),
-                              })
-                            : null,
                         ]
                           .filter(Boolean)
                           .join(' · ')
@@ -1005,9 +1003,6 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
             {viewingContract.expires_at && <SheetInfo label={t('Valid until')}>{formatContractDate(viewingContract.expires_at, intlLocale('en-GB'))}</SheetInfo>}
             {isRider(viewingContract) && <SheetInfo label={t('Version')}>{`v${viewingContract.version ?? 1}`}</SheetInfo>}
             {viewingContract.sent_at && <SheetInfo label={t('Sent')}>{formatContractDate(viewingContract.sent_at, intlLocale('en-GB'))}</SheetInfo>}
-            {isRider(viewingContract) && viewingContract.viewed_at && (
-              <SheetInfo label={t('Seen by the venue')}>{formatContractDate(viewingContract.viewed_at, intlLocale('en-GB'))}</SheetInfo>
-            )}
             {viewingContract.signed_at && <SheetInfo label={t('Signed')}>{formatContractDate(viewingContract.signed_at, intlLocale('en-GB'))}</SheetInfo>}
             {viewingContract.content && (
               <SheetInfo label={isRider(viewingContract) ? t('Requirements & notes') : t('Notes & terms')}>

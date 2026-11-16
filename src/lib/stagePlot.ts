@@ -48,6 +48,11 @@ export interface InputChannel {
   who: string;
   /** The plot item it was made for: removing the item removes its channels. */
   itemId?: string;
+  /**
+   * Built from the lineup (lineupKey) and not touched since: "<key>:<index>/<count>".
+   * Editing the channel drops it; "<key>:-" marks a list kept after the lineup changed.
+   */
+  auto?: string;
 }
 
 export interface StageData {
@@ -134,7 +139,8 @@ const asInput = (v: unknown): InputChannel | null => {
   if (!source && !mic) return null;
   const kind: InputKind = o.kind === 'di' || /^di\b/i.test(mic) ? 'di' : 'mic';
   const itemId = str(o.itemId ?? o.item_id, 40);
-  return { id: str(o.id, 40) || newId(), source, mic, kind, who: str(o.who, 30), ...(itemId ? { itemId } : {}) };
+  const auto = str(o.auto, 24);
+  return { id: str(o.id, 40) || newId(), source, mic, kind, who: str(o.who, 30), ...(itemId ? { itemId } : {}), ...(auto ? { auto } : {}) };
 };
 
 const asLines = (v: unknown): string[] =>
@@ -180,7 +186,15 @@ export function toStageRow(d: StageData): StageRow {
         ...(i.instrument ? { instrument: i.instrument } : {}),
       })),
     })),
-    inputs: clean.inputs.map((c) => ({ id: c.id, source: c.source, mic: c.mic, kind: c.kind, who: c.who, ...(c.itemId ? { itemId: c.itemId } : {}) })),
+    inputs: clean.inputs.map((c) => ({
+      id: c.id,
+      source: c.source,
+      mic: c.mic,
+      kind: c.kind,
+      who: c.who,
+      ...(c.itemId ? { itemId: c.itemId } : {}),
+      ...(c.auto ? { auto: c.auto } : {}),
+    })),
     mixer: clean.mixer || null,
     band_brings: clean.bandBrings,
     venue_provides: clean.venueProvides,
@@ -344,12 +358,109 @@ export function starterStage(lineup: LineupPlayer[], t: Tr = plain): StageData {
     items.push({ id: newId(), kind: 'speaker', x: 0.03, y: 0.8 });
     items.push({ id: newId(), kind: 'speaker', x: 0.97, y: 0.8 });
   }
+  // Remembers the lineup it was built from (lineupInputsOffer).
+  const key = lineupKey(lineup);
+  const list = inputs.sort((a, b) => a.group - b.group).map((x) => x.c);
   return {
     ...EMPTY_STAGE,
     plots: items.length > 0 ? [{ id: newId(), name: t('Full band'), widthM: 6, depthM: 4, items }] : [],
-    inputs: inputs.sort((a, b) => a.group - b.group).map((x) => x.c),
+    inputs: list.map((c, i) => ({ ...c, auto: `${key}:${i}/${list.length}` })),
   };
 }
+
+/**
+ * Short fingerprint of who plays what on the lineup (first names and
+ * instruments, in any order). The input list built from a lineup keeps it,
+ * so a later change of the lineup can be noticed.
+ */
+export function lineupKey(lineup: LineupPlayer[]): string {
+  const parts = lineup.map((p) => `${firstName(p.name).toLowerCase()}=${instrumentKeys(p.instrument).join('+')}`).sort();
+  let h = 0x811c9dc5;
+  for (const ch of parts.join(',')) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * The input list made from the lineup's instruments (the channels of the
+ * starter stage, in desk order), linked to the players of `plot` that have
+ * the same instrument, so removing one from the plot still removes them.
+ */
+export function inputsFromLineup(lineup: LineupPlayer[], t: Tr = plain, plot?: StagePlot): InputChannel[] {
+  const starter = starterStage(lineup, t);
+  const made = new Map((starter.plots[0]?.items ?? []).map((i) => [i.id, i] as const));
+  const free = playersOf(plot).filter((p) => p.instrument);
+  const relink = new Map<string, string | undefined>();
+  return starter.inputs.map(({ itemId, ...c }) => {
+    if (!itemId) return c;
+    if (!relink.has(itemId)) {
+      const inst = made.get(itemId)?.instrument;
+      const at = inst ? free.findIndex((p) => p.instrument === inst) : -1;
+      relink.set(itemId, at >= 0 ? free.splice(at, 1)[0].id : undefined);
+    }
+    const id = relink.get(itemId);
+    return id ? { ...c, itemId: id } : c;
+  });
+}
+
+const autoParts = (c: InputChannel) => {
+  const m = /^(\w+):(?:(\d+)\/(\d+)|-)$/.exec(c.auto ?? '');
+  return m ? { key: m[1], index: m[2] != null ? Number(m[2]) : -1, count: m[3] != null ? Number(m[3]) : -1 } : null;
+};
+
+/**
+ * True when the list is not exactly the one built from a lineup: a channel
+ * was edited, added, removed or moved by hand (or the list predates the
+ * lineup fingerprint). An empty list has nothing to lose.
+ */
+export function inputsEditedByHand(inputs: InputChannel[]): boolean {
+  if (inputs.length === 0) return false;
+  const first = autoParts(inputs[0]);
+  return !inputs.every((c, i) => {
+    const a = autoParts(c);
+    return !!a && !!first && a.key === first.key && a.index === i && a.count === inputs.length;
+  });
+}
+
+/** A channel the user changed: it no longer counts as built from the lineup. */
+export const handEdited = (c: InputChannel): InputChannel => {
+  if (!c.auto) return c;
+  const { auto: _auto, ...rest } = c;
+  return rest;
+};
+
+/**
+ * What the input list can offer from the lineup:
+ * - `build`: the list is empty and the lineup has instruments with channels;
+ * - `update`: the list was built from an earlier lineup and differs from the
+ *   current one (`edited`: hand edits would be replaced, so ask first);
+ * - `none`: nothing to offer (already the lineup's list, kept on purpose,
+ *   or no way to tell).
+ */
+export function lineupInputsOffer(
+  inputs: InputChannel[],
+  lineup: LineupPlayer[],
+  t: Tr = plain,
+): { kind: 'none' | 'build' | 'update'; edited: boolean } {
+  const edited = inputsEditedByHand(inputs);
+  const fresh = starterStage(lineup, t).inputs;
+  if (fresh.length === 0) return { kind: 'none', edited };
+  if (inputs.length === 0) return { kind: 'build', edited: false };
+  const builtFrom = inputs.map(autoParts).find(Boolean)?.key;
+  if (!builtFrom || builtFrom === lineupKey(lineup)) return { kind: 'none', edited };
+  const same =
+    fresh.length === inputs.length &&
+    fresh.every((c, i) => c.source === inputs[i].source && c.mic === inputs[i].mic && c.kind === inputs[i].kind && c.who === inputs[i].who);
+  return { kind: same ? 'none' : 'update', edited };
+}
+
+/** Keeps the list as it is after the lineup changed: no more offers until the lineup changes again. */
+export const keepInputs = (inputs: InputChannel[], lineup: LineupPlayer[]): InputChannel[] => {
+  const key = lineupKey(lineup);
+  return inputs.map((c) => ({ ...c, auto: `${key}:-` }));
+};
 
 /** Lead vocal first, then the drummer, then everyone else. */
 const rank = (key: string | undefined) =>

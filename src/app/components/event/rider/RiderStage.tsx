@@ -7,7 +7,17 @@ import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { springs } from '@/styles/motion';
-import { duplicatePlot, newId, stageSize, syncInputs, type StageData, type StagePlot } from '@/lib/stagePlot';
+import {
+  duplicatePlot,
+  inputsFromLineup,
+  keepInputs,
+  lineupInputsOffer,
+  newId,
+  stageSize,
+  syncInputs,
+  type StageData,
+  type StagePlot,
+} from '@/lib/stagePlot';
 import { CardHead, InputListTable, PlotTabs, RiderStatusCard, VenueAgreedTag, WhoBringsWhat, shortDate } from './RiderParts';
 import { StagePlotView, plotRatio } from './StagePlotView';
 import { InputListEditor } from './InputListEditor';
@@ -52,6 +62,28 @@ function useWidth<E extends HTMLElement>(): [React.RefObject<E | null>, number] 
   return [ref, w];
 }
 
+/** Edit action of a section, at its top right (plot, input list, who brings what). */
+const SectionEdit: React.FC<{ label: string; ariaLabel?: string; onClick: () => void }> = ({ label, ariaLabel, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={ariaLabel}
+    className="h-9 px-1 shrink-0 bw-button-sm inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+  >
+    <Pencil className="w-3.5 h-3.5" />
+    {label}
+  </button>
+);
+
+/** Under a section's title: its meta (channels, venue agreed) and its edit action. */
+const SectionBar: React.FC<{ meta?: React.ReactNode; action?: React.ReactNode }> = ({ meta, action }) =>
+  meta || action ? (
+    <div className="flex items-center justify-between gap-3 min-h-9 -my-1">
+      <span className="min-w-0 bw-label-xs text-muted-foreground">{meta}</span>
+      {action}
+    </div>
+  ) : null;
+
 /**
  * Everything on the Rider & stage page, shared by the pushed screen (phone,
  * iPhone Duo) and the iPad "Rider & stage" tab. Wide containers lay the cards
@@ -82,6 +114,7 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
   const [editingBrings, setEditingBrings] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
   const [ref, width] = useWidth<HTMLDivElement>();
   const plots = stage?.plots ?? [];
   const plot = plots.find((p) => p.id === plotId) ?? plots[0];
@@ -130,6 +163,15 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
   };
   const save = (next: StageData) => state.save(next);
   const base: StageData = stage ?? { plots: [], inputs: [], mixer: '', bandBrings: [], venueProvides: [], venueAgreed: false };
+  // The input list from the lineup's instruments: offered when the list is
+  // empty, or when the lineup changed since the list was made from it. A list
+  // edited by hand is only replaced after asking.
+  const offer = isAdmin && !isSuggestion ? lineupInputsOffer(base.inputs, state.lineup, t) : null;
+  const fromLineup = () => inputsFromLineup(state.lineup, t, plots[0]);
+  const rebuildInputs = () =>
+    run('rebuild', async () => {
+      if (await save({ ...base, inputs: fromLineup() })) setConfirmRebuild(false);
+    });
 
   if (!stage && !isAdmin) {
     return (
@@ -191,31 +233,46 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
         </span>
       </section>
     ) : (
+      // Everything that sends the rider sits together on its card: the venue's
+      // link (or creating the rider first) and the PDF.
       <RiderStatusCard
         rider={rider}
         eventTitle={eventTitle}
         action={
-          isAdmin ? (
-            rider ? (
-              <PillButton variant="white" size="md" loading={busy === 'link'} onClick={() => run('link', shareLinkNow)}>
-                <Link className="w-4 h-4" />
-                {t('SHARE LINK WITH THE VENUE')}
+          <div className="flex flex-col gap-2">
+            {isAdmin &&
+              (rider ? (
+                <PillButton variant="white" size="md" loading={busy === 'link'} onClick={() => run('link', shareLinkNow)}>
+                  <Link className="w-4 h-4" />
+                  {t('SHARE LINK WITH THE VENUE')}
+                </PillButton>
+              ) : (
+                <PillButton variant="primary" size="md" loading={busy === 'create'} onClick={() => run('create', state.createRider)}>
+                  <Plus className="w-4 h-4" />
+                  {t('CREATE RIDER')}
+                </PillButton>
+              ))}
+            {!draft && (
+              <PillButton
+                variant={isAdmin ? 'outline' : 'white'}
+                size="md"
+                className={isAdmin ? 'border-white text-white' : undefined}
+                loading={busy === 'pdf'}
+                onClick={() => run('pdf', state.shareRiderPdf)}
+              >
+                <Share2 className="w-4 h-4" />
+                {t('SHARE RIDER PDF')}
               </PillButton>
-            ) : (
-              <PillButton variant="primary" size="md" loading={busy === 'create'} onClick={() => run('create', state.createRider)}>
-                <Plus className="w-4 h-4" />
-                {t('CREATE RIDER')}
-              </PillButton>
-            )
-          ) : undefined
+            )}
+          </div>
         }
       />
     );
 
   async function shareLinkNow() {
     const res = await state.shareRiderLink();
-    if (res === 'copied') setNotice(t('Link copied. The venue sees the rider without an account; you see when they open it.'));
-    else if (res === 'shared') setNotice(t('Link shared. You will see here when the venue opens it.'));
+    if (res === 'copied') setNotice(t('Link copied. The venue sees the rider without an account.'));
+    else if (res === 'shared') setNotice(t('Link shared with the venue.'));
   }
 
   const plotEditing = editingPlot && plot && editingPlot.id === plot.id;
@@ -227,13 +284,11 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
         <span className="flex items-center gap-2 ml-auto">
           {plot && layout === 'stack' && <span className="bw-label-xs text-muted-foreground">{stageSize(plot).toUpperCase()}</span>}
           {isAdmin && canEditPlot && !editingPlot && (
-            <button
-              type="button"
+            <SectionEdit
+              label={t('EDIT')}
+              ariaLabel={t('Edit the stage plot')}
               onClick={() => setEditingPlot(plot ?? { id: newId(), name: t('Full band'), widthM: 6, depthM: 4, items: [] })}
-              className="h-8 px-1 bw-button-sm text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              {t('EDIT')}
-            </button>
+            />
           )}
         </span>
       </div>
@@ -284,26 +339,63 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
     </section>
   );
 
+  // Each section has its edit action at its top right, under its title.
+  const inputsBar = (
+    <SectionBar
+      meta={[t('{count} CH', { count: base.inputs.length }), base.mixer.toUpperCase()].filter(Boolean).join(' · ')}
+      action={isAdmin && <SectionEdit label={t('EDIT LIST')} onClick={() => setEditingInputs(true)} />}
+    />
+  );
+  const bringsBar = (
+    <SectionBar
+      meta={<VenueAgreedTag agreed={base.venueAgreed} />}
+      action={isAdmin && <SectionEdit label={t('EDIT')} ariaLabel={t('Edit who brings what')} onClick={() => setEditingBrings(true)} />}
+    />
+  );
+
+  const lineupNote = offer && offer.kind !== 'none' && (
+    <div className="mb-2 rounded-[16px] border-[1.5px] border-dashed border-foreground/30 p-3 flex items-center gap-3 flex-wrap">
+      <span className="flex-1 min-w-[180px] bw-body-sm text-muted-foreground">
+        {offer.kind === 'build'
+          ? t('Make the channels from the instruments on the lineup.')
+          : t('The lineup changed since this list was made from it.')}
+      </span>
+      <span className="flex items-center gap-2 flex-wrap">
+        {offer.kind === 'update' && (
+          <PillButton
+            size="sm"
+            variant="outline"
+            fullWidth={false}
+            loading={busy === 'keep'}
+            disabled={!!busy}
+            onClick={() => run('keep', () => save({ ...base, inputs: keepInputs(base.inputs, state.lineup) }))}
+          >
+            {t('KEEP THIS LIST')}
+          </PillButton>
+        )}
+        <PillButton
+          size="sm"
+          fullWidth={false}
+          loading={busy === 'rebuild'}
+          disabled={!!busy}
+          onClick={() => (offer.edited ? setConfirmRebuild(true) : rebuildInputs())}
+        >
+          {offer.kind === 'build' ? t('BUILD FROM LINEUP') : t('UPDATE FROM LINEUP')}
+        </PillButton>
+      </span>
+    </div>
+  );
+
   const inputsCard = (
     <section className="bg-card rounded-[24px] p-4 flex flex-col gap-1" aria-label={t('Input list')}>
       {layout === 'board' && (
-        <CardHead
-          title={t('INPUT LIST')}
-          meta={[t('{count} CH', { count: base.inputs.length }), base.mixer.toUpperCase()].filter(Boolean).join(' · ')}
-          className="pb-1"
-        />
+        <>
+          <CardHead title={t('INPUT LIST')} />
+          {inputsBar}
+        </>
       )}
+      {lineupNote}
       <InputListTable inputs={base.inputs} limit={layout === 'stack' ? 8 : undefined} />
-      {isAdmin && layout === 'board' && (
-        <button
-          type="button"
-          onClick={() => setEditingInputs(true)}
-          className="mt-2 self-start h-9 px-1 bw-button-sm inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-          {t('EDIT LIST')}
-        </button>
-      )}
     </section>
   );
 
@@ -313,22 +405,12 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
       aria-label={t('Who brings what')}
     >
       {layout === 'board' && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
           <h3 className="bw-h2">{t('WHO BRINGS WHAT')}</h3>
-          <VenueAgreedTag agreed={base.venueAgreed} />
+          {bringsBar}
         </div>
       )}
       <WhoBringsWhat stage={base} />
-      {isAdmin && layout === 'board' && (
-        <button
-          type="button"
-          onClick={() => setEditingBrings(true)}
-          className="self-start h-9 px-1 bw-button-sm inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-          {t('EDIT')}
-        </button>
-      )}
     </section>
   );
 
@@ -392,6 +474,7 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
           eventTitle={eventTitle}
           inputs={base.inputs}
           people={people}
+          fromLineup={inputsFromLineup(state.lineup, t).length > 0 ? fromLineup : undefined}
           onCancel={() => setEditingInputs(false)}
           onSave={async (inputs) => {
             const ok = await save({ ...base, inputs });
@@ -400,6 +483,28 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
           }}
         />
       )}
+      <BwSheet
+        open={confirmRebuild}
+        onClose={() => setConfirmRebuild(false)}
+        closeLabel={t('Close')}
+        zIndex={130}
+        overline={t('Input list')}
+        title={t('Rebuild the input list?')}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <PillButton variant="outline" className="border-sheet-foreground text-sheet-foreground" disabled={busy === 'rebuild'} onClick={() => setConfirmRebuild(false)}>
+              {t('CANCEL')}
+            </PillButton>
+            <PillButton loading={busy === 'rebuild'} onClick={rebuildInputs}>
+              {t('REBUILD LIST')}
+            </PillButton>
+          </div>
+        }
+      >
+        <p className="bw-body-md text-sheet-foreground/80">
+          {t('The channels of the current lineup replace this list, and your changes to it are lost.')}
+        </p>
+      </BwSheet>
       <BringsEditorSheet
         open={editingBrings}
         stage={base}
@@ -418,15 +523,16 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
       <div ref={ref} className="flex flex-col gap-4">
         {feedback}
         {suggestionNote}
+        {/* The rider and its sending actions first, then plot, inputs, who brings what. */}
         {cols === 3 ? (
-          <div className="grid grid-cols-[1.15fr_1fr_1fr] gap-4 items-start">
-            <div className="flex flex-col gap-4 min-w-0">
-              {plotCard}
-              {riderCard}
+          <>
+            {riderCard}
+            <div className="grid grid-cols-[1.15fr_1fr_1fr] gap-4 items-start">
+              <div className="min-w-0">{plotCard}</div>
+              <div className="min-w-0">{inputsCard}</div>
+              <div className="min-w-0">{bringsCard}</div>
             </div>
-            <div className="min-w-0">{inputsCard}</div>
-            <div className="min-w-0">{bringsCard}</div>
-          </div>
+          </>
         ) : cols === 2 ? (
           <>
             {riderCard}
@@ -460,40 +566,15 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
   const rest = (
     <>
       <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="bw-h1">{t('INPUT LIST')}</h2>
-          <span className="bw-label-xs text-muted-foreground">
-            {[t('{count} CH', { count: base.inputs.length }), base.mixer.toUpperCase()].filter(Boolean).join(' · ')}
-          </span>
-        </div>
+        <h2 className="bw-h1">{t('INPUT LIST')}</h2>
+        {inputsBar}
         {inputsCard}
       </section>
       <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="bw-h1 min-w-0">{t('WHO BRINGS WHAT')}</h2>
-          <span className="flex items-center gap-2 shrink-0">
-            <VenueAgreedTag agreed={base.venueAgreed} />
-            {isAdmin && (
-              <IconButton label={t('Edit who brings what')} icon={<Pencil />} size="sm" variant="ghost" onClick={() => setEditingBrings(true)} />
-            )}
-          </span>
-        </div>
+        <h2 className="bw-h1 min-w-0">{t('WHO BRINGS WHAT')}</h2>
+        {bringsBar}
         {bringsCard}
       </section>
-      {!draft && (
-      <div className={cn('grid gap-3', isAdmin ? 'grid-cols-[1fr_1.3fr]' : 'grid-cols-1')}>
-        {isAdmin && (
-          <PillButton variant="outline" size="lg" onClick={() => setEditingInputs(true)}>
-            <Pencil className="w-4 h-4" />
-            {t('EDIT LIST')}
-          </PillButton>
-        )}
-        <PillButton variant="primary" size="lg" loading={busy === 'pdf'} onClick={() => run('pdf', state.shareRiderPdf)}>
-          <Share2 className="w-4 h-4" />
-          {t('SHARE RIDER PDF')}
-        </PillButton>
-      </div>
-      )}
       {editors}
     </>
   );
@@ -542,15 +623,10 @@ export const RiderStageContent: React.FC<RiderStageProps & { layout: 'stack' | '
   );
 };
 
-/** "SENT TO THE VENUE 1 DEC · OPENED 2 DEC". */
+/** "SENT TO THE VENUE 1 DEC" (whether the venue opened it isn't shown: a PDF can't tell). */
 function riderMeta(rider: EventStageState['rider'], t: T): string {
   if (!rider) return t('NO RIDER LINKED YET');
-  return [
-    rider.sentAt ? t('SENT TO THE VENUE {date}', { date: shortDate(rider.sentAt).toUpperCase() }) : t('NOT SENT YET'),
-    rider.viewedAt ? t('OPENED {date}', { date: shortDate(rider.viewedAt).toUpperCase() }) : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  return rider.sentAt ? t('SENT TO THE VENUE {date}', { date: shortDate(rider.sentAt).toUpperCase() }) : t('NOT SENT YET');
 }
 
 /** Plot editing on every device: name, size, move and add items, save. */
@@ -722,6 +798,13 @@ export const RiderStageScreen: React.FC<RiderStageProps & { onClose: () => void;
   const { state, isAdmin, eventTitle } = props;
   const [busy, setBusy] = useState(false);
   const laptop = useLaptopPose();
+  // Android Back, the browser's Back and Escape go back to the gig (or
+  // wherever the screen was opened from), not past it to Home. Editors and
+  // sheets opened on top register later, so they close first.
+  useSystemBack(true, () => {
+    onClose();
+    return true;
+  });
   const share = async () => {
     setBusy(true);
     try {

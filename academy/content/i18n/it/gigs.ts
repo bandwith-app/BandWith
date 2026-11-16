@@ -593,7 +593,7 @@ const gigs: AreaText = {
             ["**Formazione · {done} su {total} confermati**", "Tutti quelli che non hanno rifiutato hanno confermato."],
             ["**Scaletta · {count} brani**", "Il gig ha almeno un brano."],
             ["**Testi e accordi · {done} su {total} brani**", "Ogni brano della scaletta ha il testo o una griglia di accordi."],
-            ["**Rider v{version} · visto dal locale**", "Il locale ha aperto il link del rider."],
+            ["**Rider v{version} · inviato al locale**", "Il link o il PDF del rider è stato condiviso con il locale."],
             ["**Contratto firmato**", "Il contratto del gig è firmato (solo admin)."],
             ["**Acconto pagato**", "L’acconto è pagato, quando è previsto (solo admin)."],
             ["**Cose da fare · {done} su {total} fatte**", "Ogni attività è spuntata. Compare solo se il gig ha delle attività."],
@@ -668,8 +668,9 @@ const gigs: AreaText = {
             "Sotto **Pianta palco**, tocca **MODIFICA**. Sotto la pianta, la prima riga di etichette (**Aggiungi un musicista**) aggiunge uno strumento: voce, chitarra, basso, tastiere, batteria, percussioni, sax o tromba. La seconda riga (**Aggiungi attrezzatura**) aggiunge **Altro musicista**, una spia, una cassa o una DI box. Tieni premuto un punto vuoto per avere le stesse scelte proprio lì.",
             "Tieni premuto un elemento finché non si solleva, poi trascinalo e lascialo; uno scorrimento rapido fa ancora scorrere la pagina. Tocca un elemento per cambiarne la sigla e la didascalia, o per toglierlo. Imposta **Nome disposizione**, **Larghezza palco (m)** e **Profondità palco (m)**, poi **SALVA PIANTA**. **+ NUOVA DISPOSIZIONE** ed **ELIMINA DISPOSIZIONE** gestiscono più disposizioni.",
             "Salvando la pianta, l’input list si compila da sola: ogni strumento aggiunge i suoi canali abituali nell’ordine del mixer (batteria: Kick, Snare, OH L e OH R; basso: un canale DI; una DI box: la sua linea). Togliendo un elemento si tolgono i suoi canali.",
-            "Sotto **Input list**, tocca **MODIFICA LISTA** per rifinire: **AGGIUNGI CANALE**, cambia **SORGENTE**, **MIC / DI** e **Chi**, trascina per riordinare, poi **SALVA LISTA**. Le tue modifiche restano quando salvi di nuovo la pianta.",
-            "Sotto **Chi porta cosa**, controlla l’elenco suggerito in base alla formazione, scrivi **LA BAND PORTA** e **IL LOCALE FORNISCE** (una voce per riga), spunta **Il locale ha confermato** quando è tutto deciso e tocca **SALVA**.",
+            "Accanto a **Input list**, tocca **MODIFICA LISTA** per rifinire: **AGGIUNGI CANALE**, cambia **SORGENTE**, **MIC / DI** e **Chi**, trascina per riordinare, poi **SALVA LISTA**. Le tue modifiche restano quando salvi di nuovo la pianta. **CREA DALLA FORMAZIONE** nell’editor riparte dagli strumenti della formazione.",
+            "Se non ci sono ancora canali, tocca **CREA DALLA FORMAZIONE** sotto **Input list**. Se poi la formazione cambia, la lista propone **AGGIORNA DALLA FORMAZIONE** o **TIENI QUESTA LISTA**. Se hai modificato la lista a mano, BandWith chiede prima (**Ricreare la input list?**), perché le tue modifiche verrebbero sostituite.",
+            "Accanto a **Chi porta cosa**, tocca **MODIFICA**, controlla l’elenco suggerito in base alla formazione, scrivi **LA BAND PORTA** e **IL LOCALE FORNISCE** (una voce per riga), spunta **Il locale ha confermato** quando è tutto deciso e tocca **SALVA**.",
           ],
         },
         {
@@ -678,7 +679,7 @@ const gigs: AreaText = {
           items: [
             "Tocca **CONDIVIDI IL LINK COL LOCALE** (o **Condividi link del rider**) e mandalo come fai di solito.",
             "Oppure tocca **PDF** / **Condividi PDF del rider** per avere un file.",
-            "Il rider mostra **INVIATO AL LOCALE {date}** e, quando il locale apre il link, **APERTO {date}**. La preparazione diventa **Rider v{version} · visto dal locale**.",
+            "Il rider mostra **INVIATO AL LOCALE {date}**. La preparazione diventa **Rider v{version} · inviato al locale**. Anche condividere il PDF conta come invio; salvarlo sul telefono no.",
           ],
         },
         {
@@ -688,7 +689,6 @@ const gigs: AreaText = {
             "Il locale apre il link in un browser, senza account.",
             "Mostra il rider, gli orari e il locale del gig, la pianta del palco, l’input list e chi porta cosa, nella lingua del locale quando è disponibile.",
             "Non mostra mai il cliente né alcun compenso.",
-            "Aprendola, il rider risulta visto per la band. Se è la band a controllare il proprio link (anteprima), no.",
           ],
         },
         {

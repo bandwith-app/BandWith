@@ -48,7 +48,7 @@ export function useGigReadiness(
       if (cancelled) return;
       setDocs({
         eventId,
-        rider: r && !r.error ? (r.data ? { version: r.data.version, sent: !!r.data.sentAt, seen: !!r.data.viewedAt } : null) : undefined,
+        rider: r && !r.error ? (r.data ? { version: r.data.version, sent: !!r.data.sentAt } : null) : undefined,
         contract: c && !c.error ? c.data : undefined,
       });
     })().catch(() => !cancelled && setDocs({ eventId, rider: undefined, contract: undefined }));

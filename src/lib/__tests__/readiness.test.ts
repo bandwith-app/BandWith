@@ -70,15 +70,19 @@ describe('computeReadiness', () => {
     expect(computeReadiness({ ...ready, lyricsCovered: 12 }).items.find((i) => i.key === 'lyrics')?.done).toBe(true);
   });
 
-  it('needs the rider seen by the venue', () => {
+  it('needs the rider sent to the venue (seen is not tracked: a PDF cannot tell)', () => {
     expect(keys(ready)).not.toContain('rider');
     expect(computeReadiness({ ...ready, rider: null }).items.find((i) => i.key === 'rider')).toMatchObject({ done: false, state: 'none' });
-    expect(computeReadiness({ ...ready, rider: { version: 3, sent: true, seen: false } }).items.find((i) => i.key === 'rider')).toMatchObject({
+    expect(computeReadiness({ ...ready, rider: { version: 3, sent: false } }).items.find((i) => i.key === 'rider')).toMatchObject({
       done: false,
+      state: 'draft',
+      version: 3,
+    });
+    expect(computeReadiness({ ...ready, rider: { version: 3, sent: true } }).items.find((i) => i.key === 'rider')).toMatchObject({
+      done: true,
       state: 'sent',
       version: 3,
     });
-    expect(computeReadiness({ ...ready, rider: { version: 3, sent: true, seen: true } }).items.find((i) => i.key === 'rider')?.done).toBe(true);
   });
 
   it('adds the contract only when passed (admins)', () => {

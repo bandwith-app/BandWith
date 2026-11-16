@@ -657,7 +657,7 @@ const business: AreaText = {
       summary: "Bewahre Technical Rider bei deinen Verträgen auf, teile sie als Web-Link und schick neue Versionen.",
       roles: ["admin"],
       kind: "task",
-      keywords: ["Technical Rider", "Rider-Link", "Bühnenplan", "Kanalliste", "Location", "neue Version", "gesehen"],
+      keywords: ["Technical Rider", "Rider-Link", "Bühnenplan", "Kanalliste", "Location", "neue Version", "pdf"],
       related: ["contracts-and-docs", "send-a-contract", "rider-and-stage"],
       body: [
         {
@@ -670,14 +670,14 @@ const business: AreaText = {
             "Zum Verschicken nutze **Senden** wie bei einem Vertrag oder **Web-Link** (**⋯** > **Web-Link teilen**), um eine Seite für die Location zu teilen, die sie nur lesen kann.",
           ],
         },
-        { type: "p", text: "Öffnet die Location den Web-Link, zeigt der Rider **Gesehen** mit Datum („Von der Location gesehen“). Nach einer Änderung tippe auf **⋯** > **Neue Version**: Der Rider geht als nächste Version zurück auf **Entwurf**, und du teilst ihn erneut, damit die Location ihn sieht." },
+        { type: "p", text: "Sobald er geteilt ist, zeigt der Rider **Gesendet**. Nach einer Änderung tippe auf **⋯** > **Neue Version**: Der Rider geht als nächste Version zurück auf **Entwurf**, und du teilst ihn erneut, damit die Location ihn sieht." },
         { type: "p", text: "Rider haben kein **Als signiert markieren**." },
       ],
     },
     {
       id: "contract-statuses",
       title: "Status von Verträgen und Ridern",
-      summary: "Entwurf, Gesendet, Angesehen oder Gesehen, Signiert und Abgelaufen.",
+      summary: "Entwurf, Gesendet, Signiert und Abgelaufen.",
       roles: ["admin"],
       kind: "reference",
       keywords: ["Vertragsstatus", "abgelaufener Vertrag", "offen", "unterschrieben", "signiert"],
@@ -689,7 +689,6 @@ const business: AreaText = {
           rows: [
             ["**Entwurf**", "Erstellt, noch nicht gesendet."],
             ["**Gesendet**", "Mit dem Kunden geteilt."],
-            ["**Angesehen** / **Gesehen**", "Bei Ridern: Die Location hat den Web-Link geöffnet."],
             ["**Signiert**", "Du hast auf **Als signiert markieren** getippt. Endgültig: Er lässt sich ansehen, herunterladen oder löschen, aber nicht bearbeiten."],
             ["**Abgelaufen**", "Wird angezeigt, wenn das Datum **Gültig bis** überschritten ist oder das Eventdatum vorbei ist, während er noch nicht unterschrieben war. Am Dokument ändert sich nichts; es ist nur die Anzeige."],
           ],
