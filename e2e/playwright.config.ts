@@ -17,6 +17,9 @@ const CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './specs',
+  // CI runs the lifecycle model paths in their own job ("E2E lifecycles"):
+  // the shards set E2E_SKIP_LIFECYCLES=1.
+  testIgnore: process.env.E2E_SKIP_LIFECYCLES ? /xstate-lifecycles\.spec\.ts$/ : undefined,
   outputDir: './.results',
   timeout: 60_000,
   expect: { timeout: 10_000 },

@@ -15,9 +15,8 @@ import type { Lifecycle } from '../models/lifecycle.ts';
  * project's tag); a path with a gesture only some layouts allow runs only
  * there (e.g. @duo-book).
  *
- * The file name sorts last on purpose: CI shards split the test list by
- * count, in file order, so the model paths (slower than most tests) end up
- * split across two shards instead of all landing in the first one.
+ * CI runs this file in its own job, "E2E lifecycles", beside the three
+ * E2E shards (which skip it with E2E_SKIP_LIFECYCLES=1).
  */
 
 const DB_KEY = 'bw-demo-db-v6';

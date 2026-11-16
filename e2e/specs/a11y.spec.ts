@@ -19,9 +19,23 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
  * or put in brackets. Renaming them touches every screen and language; a
  * follow-up. Everything else on these screens must pass.
  */
-const CHROME_NAME_MISMATCH = /aria-label="(Notifications|Open Identity and Account Hub|Open profile|Close profile|Chat)\b/;
+const CHROME_NAME_MISMATCH = /^(Notifications|Open Identity and Account Hub|Open profile|Close profile|Chat)\b/;
 
 async function scan(app: App, where: string, layer?: import('@playwright/test').Locator) {
+  // axe blends text with the opacity of its ancestors: a layer still fading
+  // in (opacity 0 → 1 as it opens) fails color-contrast on every line. Wait
+  // until the layer is fully opaque, then until nothing moves.
+  if (layer) {
+    await expect
+      .poll(() =>
+        layer.evaluate((e) => {
+          let o = 1;
+          for (let n: Element | null = e; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+          return o;
+        }),
+      )
+      .toBe(1);
+  }
   await app.settle();
   let builder = new AxeBuilder({ page: app.page }).setLegacyMode(true).withTags(TAGS);
   if (layer) {
@@ -32,11 +46,19 @@ async function scan(app: App, where: string, layer?: import('@playwright/test').
     builder = builder.include('[data-a11y-scan]');
   }
   const { violations } = await builder.analyze();
-  const bad = violations
-    .filter((v) => v.impact === 'critical' || v.impact === 'serious')
-    .map((v) =>
-      v.id === 'label-content-name-mismatch' ? { ...v, nodes: v.nodes.filter((n) => !CHROME_NAME_MISMATCH.test(n.html)) } : v,
-    )
+  // Match the element's own aria-label: axe cuts long attribute values in
+  // `html` ("Open Identity and Ac..."), so matching that snippet misses.
+  const chrome = async (target: unknown[]) =>
+    CHROME_NAME_MISMATCH.test(
+      (await app.page.evaluate((sel) => document.querySelector(sel)?.getAttribute('aria-label') ?? '', String(target.at(-1)))),
+    );
+  const serious = [];
+  for (const v of violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')) {
+    const nodes = [];
+    for (const n of v.nodes) if (v.id !== 'label-content-name-mismatch' || !(await chrome(n.target))) nodes.push(n);
+    serious.push({ ...v, nodes });
+  }
+  const bad = serious
     .filter((v) => v.nodes.length > 0)
     .map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(' ') + ' ' + n.html.slice(0, 160)).join(' | ')}`);
   // Soft: one run lists every screen that fails.
@@ -50,6 +72,14 @@ test.describe('axe: no critical or serious violations', () => {
 
   test('Home', async ({ app }) => {
     await scan(app, 'Home');
+  });
+
+  test('Home with the profile initials showing', async ({ app }) => {
+    // The profile button shows the initials for a second on Home (then
+    // flips to the photo) and again on hover: the known chrome exception
+    // must hold in both faces, not only once the photo is up.
+    await app.page.getByRole('button', { name: app.t('Open Identity and Account Hub') }).hover();
+    await scan(app, 'Home (initials)');
   });
 
   test('Calendar', async ({ app }) => {
@@ -86,9 +116,15 @@ test.describe('axe: no critical or serious violations', () => {
   test('Suggestions', async ({ app }) => {
     await app.page.getByRole('button', { name: /^Notifications/ }).filter({ visible: true }).first().click();
     await app.page.getByRole('button', { name: /Lyrics correction/ }).first().click();
-    const view = app.page.getByRole('heading', { name: app.t('Suggestions') }).first();
-    await expect(view).toBeVisible();
-    await scan(app, 'Suggestions', app.page.locator('.bw-pane-detail').last());
+    // The notification opens that suggestion (the list only shows while it
+    // loads): wait for the detail itself, not for the list's heading.
+    const view = app.page.getByRole('dialog', { name: app.t('Suggestions') });
+    await expect(view.getByRole('group', { name: app.t('Before and after') })).toBeVisible();
+    await scan(app, 'Suggestion', view);
+    // Back in the view: the list with its Waiting / Reviewed picker.
+    await view.getByRole('button', { name: app.t('Back'), exact: true }).first().click();
+    await expect(view.getByRole('group', { name: app.t('Suggestions') })).toBeVisible();
+    await scan(app, 'Suggestions', view);
   });
 
   test('New rehearsal', async ({ app }) => {
