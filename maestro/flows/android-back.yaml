@@ -1,0 +1,70 @@
+# Android system Back (#179/#180/#185): each press closes only the top
+# layer, never leaves the app: calendar search, the date picker, Contracts
+# & docs opened from a gig, and the layer stack.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: android-back
+tags: [android]
+---
+- runFlow: ../subflows/start.yaml
+# Calendar search: Back closes the keyboard, then the search.
+- runFlow:
+    file: ../subflows/tap-until.yaml
+    env:
+      TARGET: "Calendar"
+      EXPECT: "Search events"
+- tapOn: "Search events"
+- tapOn: "Search title, venue, city, client…"
+- inputText: "Rooftop"
+- takeScreenshot: back-search-open
+- pressKey: back
+- pressKey: back
+- assertNotVisible: "Search title, venue, city, client…"
+- assertVisible: "(?i)november 2026"
+# Date picker: Back closes only the picker, then the sheet, then the gig.
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Edit title, date & times"
+- tapOn: "(?i)today .*2026"
+- takeScreenshot: back-datepicker-open
+- pressKey: back
+- assertVisible: "Event title"
+- pressKey: back
+- assertNotVisible: "Event title"
+- assertVisible: "(?i)show readiness.*"
+# Contracts & docs from the gig: Back leaves the form, then returns to the gig.
+- scrollUntilVisible:
+    element: "No contract yet.*"
+    timeout: 40000
+- tapOn: "No contract yet.*"
+- assertVisible: "(?i)create contract"
+- pressKey: back
+- assertVisible: "(?i)contracts & docs"
+- pressKey: back
+- assertVisible: "(?i)show readiness.*"
+- pressKey: back
+- assertVisible: "Search events"
+# Layer stack: the inbox (on Home) and the Create menu close with Back.
+# (A fresh start: "Home" as a selector also matches Android's own Home button.)
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Notifications.*"
+- assertVisible: "Mark all as read|MARK READ"
+- pressKey: back
+- assertNotVisible: "Mark all as read|MARK READ"
+- assertVisible: "(?i)action center"
+- tapOn: "Create"
+- assertVisible: "(?i)new gig.*"
+- pressKey: back
+- assertNotVisible: "(?i)new gig.*"
+- assertVisible: "Calendar"
+- takeScreenshot: back-still-in-app

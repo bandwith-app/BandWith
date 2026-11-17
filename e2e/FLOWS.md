@@ -123,9 +123,34 @@ Every path of the XState models in `models/`; the list of paths per model is in
 | Deputies: list, unlink, Find a deputy → Ask in the app; claim link → Deputy gigs → answers; no-band home | `xstate-lifecycles` | phone-portrait (+ wide subset) |
 | Auth links: expired (query / fragment) → new link → reset; server error → sign in; Back not to the dead link | `xstate-lifecycles` | phone-portrait (+ wide subset) |
 
+## On emulators (Maestro)
+
+`scripts/emulator-check.sh` runs these on the iOS simulator (iPhone 17 Pro Max, iPad Pro
+11) and the Android emulator (Pixel 7, API 36) with the real native shell; releases need a
+passing run of the commit (see [maestro/README.md](../maestro/README.md)). The Duo postures
+are a manual checklist the script prints.
+
+| Flow | Maestro flow | Devices |
+| --- | --- | --- |
+| Home, Calendar, a gig, Chat, Settings, Repertoire render (no blank screen) | `smoke` | iPhone, iPad, Android |
+| Notifications: Mark all as read clears the unread count (admin and member) | `mark-all-read` | iPhone, iPad, Android |
+| RSVP: after answering a gig invitation, the event opened right after stays open | `rsvp-reopen` | iPhone, iPad, Android |
+| "No contract yet" → Contracts & docs, filled in → Back → Go back → the gig | `contracts-back` | iPhone, iPad, Android |
+| Member never sees the client (Home, gig, scrolled) | `member-no-client` | iPhone, iPad, Android |
+| Role change on the same device, cache kept (admin → member, member → admin + contract prefill) | `role-change-cache` | iPhone, iPad, Android |
+| Overview edit sheet: "Save your changes?", Keep editing / Discard | `unsaved-changes` | iPhone, iPad, Android |
+| Venue suggestion: one tap picks it and closes the list | `venue-one-tap` | iPhone, iPad, Android |
+| On-screen keyboard over the main input screens (gig overview sheets, Create contract, poll location, gig wizard, chat, Sign in, Create account): the focused field is in sight above the keyboard, not covered, and does not jump; phones hide the poll CTA bar; an edit sheet's Cancel still takes the tap | `keyboard-*` (one per screen) | iPhone, iPad, Android |
+| A gig scrolled to the end keeps Back on screen | `pinned-topbar` | iPhone, Android |
+| System Back: calendar search (keyboard, then search), date picker, Contracts & docs → gig, inbox, Create menu | `android-back` | Android |
+
 ## Manual only
 
-These need a real device; run them from the device test matrix before a release.
+These need a real device (or the Duo simulator's Device Hub); run them from the device test
+matrix before a release.
+
+- **Duo postures** (Closed, Book, Laptop, Open; the checklist `scripts/emulator-check.sh`
+  prints), signed off with `scripts/emulator-check.sh --duo-ok`.
 
 - **Real Duo hinge**: posture changes while a layer is open, spanning, the physical fold
   (the suite emulates the postures, not the hardware).
@@ -133,7 +158,8 @@ These need a real device; run them from the device test matrix before a release.
 - **Push notifications**: delivery, tapping one opens the right screen, translated text.
 - **Real keyboard**: Return / Done, autocorrect, hardware keyboard on the iPad, WebKit's
   own focus scrolling (the suite fires the Keyboard plugin's window events and shrinks the
-  viewport, see `support/keyboard.ts`; it does not run the real keyboard).
+  viewport, see `support/keyboard.ts`; it does not run the real keyboard; the on-screen keyboard over the main input screens
+  runs on emulators, `maestro/flows/keyboard-*.yaml`).
 - **Bluetooth stage sync**: two phones offline in Stage mode, synced click.
 - **Native sharing and files**: share sheets (rider PDF, quote), file pickers, camera.
 - **Sign in with Google / Apple and real email links** (the suite only tests the callback

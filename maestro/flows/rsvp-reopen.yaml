@@ -1,0 +1,32 @@
+# #180: a member answers a gig invitation (ACCEPT), then opens an event at
+# once: it stays open while the answer syncs in the background.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: rsvp-reopen
+tags: [ios, android]
+---
+- runFlow:
+    file: ../subflows/start.yaml
+    env:
+      SETUP: "role=member&pending=Client%20A%20%E2%80%94%20Wedding"
+      ROLE: member
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: client a — wedding
+- tapOn: "ACCEPT"
+- assertVisible: "(?i)you're confirmed!?"
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: client a — wedding
+# The demo's background sync takes about 3 s: nothing may close the event.
+- extendedWaitUntil:
+    notVisible: "Back"
+    timeout: 6000
+    optional: true
+- assertVisible: "Back"
+- assertVisible: "(?i)client a — wedding"
+- takeScreenshot: rsvp-reopen-still-open

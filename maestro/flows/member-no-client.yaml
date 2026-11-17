@@ -1,0 +1,24 @@
+# #180: a member never sees the client (gig detail, Home), any orientation.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: member-no-client
+tags: [ios, android]
+---
+- runFlow:
+    file: ../subflows/start.yaml
+    env:
+      SETUP: role=member
+      ROLE: member
+- assertNotVisible: "(?i).*aurora events.*"
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- assertNotVisible: "(?i).*aurora events.*"
+- scroll
+- assertNotVisible: "(?i).*aurora events.*"
+- scroll
+- assertNotVisible: "(?i).*aurora events.*"
+- takeScreenshot: member-gig-no-client

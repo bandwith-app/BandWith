@@ -1,0 +1,26 @@
+# On-screen keyboard (#180, #186), a gig's venue sheet. A field is focused and typed in;
+# the keyboard probe (setup/bw-maestro-setup.js, subflows/type-and-check.yaml)
+# checks the keyboard came up, the field is in sight above it, not covered,
+# and got there in one move (no jump).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: keyboard-sheet-venue
+tags: [ios, android, keyboard]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Edit venue"
+- runFlow:
+    file: ../subflows/type-and-check.yaml
+    env:
+      FIELD: "Address"
+      TEXT: " 1"
+      SHOT: keyboard-sheet-venue-01-address

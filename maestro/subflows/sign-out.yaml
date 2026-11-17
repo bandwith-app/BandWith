@@ -1,0 +1,21 @@
+# Signs out of the demo (setup link signout=1): the welcome screen.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - openLink: "app.bandwith.mobile://auth/maestro?signout=1"
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: "com.bandwith.app://auth/maestro?signout=1"
+- extendedWaitUntil:
+    notVisible: "Calendar"
+    timeout: 30000

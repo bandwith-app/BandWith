@@ -1,0 +1,28 @@
+# #183/#185: "No contract yet" opens Contracts & docs with a new contract
+# for the gig, filled in; Back leaves the form, then returns to the gig.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: contracts-back
+tags: [ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- scrollUntilVisible:
+    element: "No contract yet.*"
+    timeout: 40000
+- tapOn: "No contract yet.*"
+- assertVisible: "(?i)create contract"
+- assertVisible: "(?i).*aurora events.*"
+- takeScreenshot: contracts-create-prefilled
+- tapOn: "Back"
+- assertVisible: "(?i)contracts & docs"
+- assertNotVisible: "(?i)create contract"
+- tapOn: "Go back"
+- assertVisible: "(?i)show readiness.*"
+- assertVisible: "(?i)rooftop session"
+- takeScreenshot: contracts-back-on-gig

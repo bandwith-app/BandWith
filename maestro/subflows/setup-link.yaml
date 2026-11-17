@@ -1,0 +1,26 @@
+# Opens the setup link: bw-maestro-setup.js applies it to the demo database
+# and reloads the app. env SETUP: the link's parameters (always with a
+# role=); ROLE: that role, checked on Home's role chip after the reload.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - openLink: "app.bandwith.mobile://auth/maestro?${SETUP}"
+      # iOS asks before an app opens its own custom-scheme link.
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: "com.bandwith.app://auth/maestro?${SETUP}"
+# The reload lands on Home, where the role chip shows the new role.
+- extendedWaitUntil:
+    visible: ${ROLE.toUpperCase()}
+    timeout: 30000
+- runFlow: wait-app.yaml

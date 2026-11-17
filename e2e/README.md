@@ -110,6 +110,20 @@ Tags in test titles:
 No `data-testid` unless a control has no accessible name a user would recognise; then add
 the missing `aria-label` instead, which helps screen readers too.
 
+## Emulator check (Maestro)
+
+A browser can't prove the native shell: the iOS WKWebView, the Android WebView,
+Android's system Back, the on-screen keyboard. `scripts/emulator-check.sh` builds the demo
+app of HEAD for the iOS simulator and the Android emulator and runs the Maestro flows in
+[`maestro/`](../maestro/README.md) on an iPhone, an iPad and an Android emulator. Nothing
+ships without it: `scripts/release-android.sh --publish` and `scripts/deploy-web.sh` (the
+only way to deploy the web app) refuse a commit without a passing run and the Duo
+postures signed off (`scripts/emulator-check.sh --duo-ok`). Which flows it covers:
+[FLOWS.md › On emulators](FLOWS.md#on-emulators-maestro).
+
+Order before any release: CI green → merge → `scripts/emulator-check.sh` on the merged
+commit → Duo checklist → `--duo-ok` → deploy / builds / release.
+
 ## Manual-only
 
 Some things only a real device can check (the hinge, the APK installer, push, the real

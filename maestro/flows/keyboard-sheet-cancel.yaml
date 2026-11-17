@@ -1,0 +1,28 @@
+# Keyboard up in a gig's venue sheet (#180): the sheet's Cancel takes the first
+# tap ("Save your changes?"); it doesn't only close the keyboard.
+# Android only: with the keyboard up, WKWebView scrolls its page and the
+# positions iOS reports for its elements are off by that scroll, so a Maestro
+# tap there lands elsewhere (checked by hand on iOS).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: keyboard-sheet-cancel
+tags: [android, keyboard]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Edit venue"
+- tapOn: "Address"
+- inputText: " 1"
+- takeScreenshot: keyboard-sheet-cancel-01-typing
+- tapOn: "(?i)cancel"
+- assertVisible: "(?i)save your changes\\??"
+- takeScreenshot: keyboard-sheet-cancel-02-asked
+- tapOn: "Discard"

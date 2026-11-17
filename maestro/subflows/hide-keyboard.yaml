@@ -1,0 +1,20 @@
+# Closes the on-screen keyboard. Android: system Back (Maestro's
+# hideKeyboard). iOS: the setup link blur=1 (a tap outside a field doesn't
+# blur it in WKWebView, and Maestro's hideKeyboard can't close its keyboard).
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - openLink: "app.bandwith.mobile://auth/maestro?blur=1"
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"

@@ -1,0 +1,27 @@
+# Focuses a field, types into it, and asks the keyboard probe
+# (bw-maestro-setup.js) whether the field is in sight above the keyboard and
+# stayed put. env FIELD: the field (label or placeholder regex); FIELD_ID
+# (optional): its id, tapped instead on Android, where a field without a
+# <label> shows no text (its placeholder isn't in the DevTools hierarchy);
+# TEXT: what to type; SHOT: screenshot name.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      true: ${maestro.platform == 'android' && typeof FIELD_ID != 'undefined' && FIELD_ID.length > 0}
+    commands:
+      - tapOn:
+          id: ${FIELD_ID}
+- runFlow:
+    when:
+      true: ${!(maestro.platform == 'android' && typeof FIELD_ID != 'undefined' && FIELD_ID.length > 0)}
+    commands:
+      - tapOn: ${FIELD}
+- inputText: ${TEXT}
+- extendedWaitUntil:
+    visible: "bw-kb (ok|fail).*"
+    timeout: 15000
+- takeScreenshot: ${SHOT}
+- copyTextFrom: "bw-kb (ok|fail).*"
+- runScript: keyboard-verdict.js
+- assertVisible: ${output.keyboardExpect}

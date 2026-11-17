@@ -1,0 +1,7 @@
+# The app is up: its Calendar tab is on screen (not Android's own "Home"
+# navigation button, hence not "Home").
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible: "Calendar"
+    timeout: 60000

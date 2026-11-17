@@ -1,0 +1,17 @@
+# Taps TARGET until EXPECT shows: once more if the first tap only met the
+# urgent pop-up closing (see bw-maestro-setup.js). env TARGET, EXPECT: regexes.
+appId: ${APP_ID}
+---
+- tapOn: ${TARGET}
+- extendedWaitUntil:
+    visible: ${EXPECT}
+    timeout: 4000
+    optional: true
+- runFlow:
+    when:
+      notVisible: ${EXPECT}
+    commands:
+      - tapOn: ${TARGET}
+- extendedWaitUntil:
+    visible: ${EXPECT}
+    timeout: 10000

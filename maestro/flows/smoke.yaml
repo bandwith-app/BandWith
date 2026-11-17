@@ -1,0 +1,35 @@
+# Smoke: the main screens render (no blank screen) on this device, as admin.
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: smoke
+tags: [smoke, ios, android]
+---
+- runFlow: ../subflows/start.yaml
+- assertVisible: "(?i)action center"
+- takeScreenshot: smoke-01-home
+- runFlow:
+    file: ../subflows/tap-until.yaml
+    env:
+      TARGET: "Calendar"
+      EXPECT: "(?i)november 2026"
+- takeScreenshot: smoke-02-calendar
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- assertVisible: "(?i)show readiness.*"
+- takeScreenshot: smoke-03-gig
+- tapOn: "Back"
+# Back keeps the calendar's scroll position: the month header may be off screen.
+- assertVisible: "Search events"
+- tapOn: "Chat.*"
+- assertVisible: "(?i).*velvet static.*"
+- takeScreenshot: smoke-04-chat
+- tapOn: "Settings"
+- assertVisible: "(?i)repertoire.*"
+- takeScreenshot: smoke-05-settings
+- tapOn: "(?i)repertoire.*"
+- assertVisible: "(?i).*songs.*"
+- takeScreenshot: smoke-06-songs

@@ -1,0 +1,40 @@
+# #185: a gig scrolled to the end keeps Back on screen (pinned top bar).
+appId: ${APP_ID}
+# Android: read the WebView through Chrome DevTools (the accessibility tree
+# lags behind layers that open); needs the debug build (CAP_DEBUG).
+androidWebViewHierarchy: devtools
+name: pinned-topbar
+tags: [ios, android, phone-only]
+---
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/open-event.yaml
+    env:
+      TITLE: rooftop session
+- scroll
+- scroll
+- scroll
+- scroll
+- assertVisible: "(?i)(setlist|rider & stage|client & notes|tasks).*"
+# The gig's Back, pinned at the top: above the content now on screen (an id
+# "Back" alone would also match Android's own Back button at the bottom).
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertVisible:
+          id: "Back"
+          above: "(?i)(setlist|rider & stage|client & notes|tasks).*"
+      - takeScreenshot: pinned-topbar-scrolled
+      - tapOn:
+          id: "Back"
+          above: "(?i)(setlist|rider & stage|client & notes|tasks).*"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "Back"
+      - takeScreenshot: pinned-topbar-scrolled
+      - tapOn: "Back"
+# Back keeps the calendar's scroll position: the month header may be off screen.
+- assertVisible: "Search events"
