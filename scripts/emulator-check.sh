@@ -67,6 +67,8 @@ DUO_CHECKLIST='Duo (iPhone Duo simulator, Device Hub postures; Maestro cannot se
   [ ] Laptop: Create account, What brings you here?, Deputy reply, Stage mode off the fold.
   [ ] Laptop: "No contract yet" -> Contracts & docs -> rail Back -> back on the gig.
   [ ] Posture change (Closed -> Open -> Laptop) with a gig open: it stays open, still usable.
+  [ ] Every posture: a rehearsal -> Open live mode (rail) -> Next song -> Exit live mode, and the rail /
+      system Back, return to the rehearsal; Laptop: the floor wedge is off the fold.
 Then: scripts/emulator-check.sh --duo-ok'
 
 usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
