@@ -24,8 +24,5 @@ tags: [ios, android, keyboard]
       true: ${FORM == 'phone'}
     commands:
       - assertNotVisible: "(?i)publish poll"
-      - runFlow:
-          file: ../subflows/hide-keyboard.yaml
-          env:
-            BLUR: "(?i)availability poll"
+      - runFlow: ../subflows/hide-keyboard.yaml
       - assertVisible: "(?i)publish poll"

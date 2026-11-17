@@ -16,14 +16,25 @@ tags: [ios, android, phone-only]
 - scroll
 - scroll
 - assertVisible: "(?i)(setlist|rider & stage|client & notes|tasks).*"
+# The gig's Back, pinned at the top: above the content now on screen (an id
+# "Back" alone would also match Android's own Back button at the bottom).
 - runFlow:
-    file: ../subflows/assert-label.yaml
-    env:
-      LABEL: "Back"
-- takeScreenshot: pinned-topbar-scrolled
+    when:
+      platform: Android
+    commands:
+      - assertVisible:
+          id: "Back"
+          above: "(?i)(setlist|rider & stage|client & notes|tasks).*"
+      - takeScreenshot: pinned-topbar-scrolled
+      - tapOn:
+          id: "Back"
+          above: "(?i)(setlist|rider & stage|client & notes|tasks).*"
 - runFlow:
-    file: ../subflows/tap-label.yaml
-    env:
-      LABEL: "Back"
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "Back"
+      - takeScreenshot: pinned-topbar-scrolled
+      - tapOn: "Back"
 # Back keeps the calendar's scroll position: the month header may be off screen.
 - assertVisible: "Search events"

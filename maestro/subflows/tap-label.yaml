@@ -1,6 +1,8 @@
 # Taps a control that only has an accessibility label (an icon button's
 # aria-label). iOS exposes it as the element's label; Android's DevTools
 # hierarchy (androidWebViewHierarchy: devtools) as its id. env LABEL: regex.
+# Not for "Back" / "Home": on Android those ids also match the system
+# navigation buttons (com.android.launcher3:id/back, …).
 appId: ${APP_ID}
 ---
 - runFlow:

@@ -21,6 +21,10 @@ tags: [ios, android, keyboard]
     timeout: 40000
 - tapOn: "No contract yet.*"
 - assertVisible: "(?i)create contract"
+# The form scrolls inside its sheet; iOS reports the notes box as visible
+# before it is on screen, so scroll first.
+- scroll
+- scroll
 - scrollUntilVisible:
     element: "Technical specifications.*|Notes (&|&amp;) terms"
     timeout: 40000

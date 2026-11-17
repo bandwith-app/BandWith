@@ -24,6 +24,7 @@
  *                         and the invitation pop-ups are dropped
  *     signout=1           signed out: the welcome screen (Sign in, Create
  *                         account)
+ *     blur=1              closes the on-screen keyboard (no reload)
  * - closes the urgent pop-up whenever it shows up;
  * - answers Photon / Open-Meteo with canned data (e2e/support/network.ts);
  * - the keyboard probe (below): is the field being typed in in sight?
@@ -130,6 +131,12 @@
     }
     if (!/maestro/.test(u.pathname + u.host)) return;
     var p = u.searchParams;
+    // blur=1: close the on-screen keyboard (iOS: a tap outside a field
+    // doesn't blur it in WKWebView, and Maestro's hideKeyboard can't).
+    if (p.get('blur') === '1') {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      return;
+    }
     var db = JSON.parse(localStorage.getItem(DB_KEY) || '{}');
     var role = p.get('role');
     if (role === 'admin' || role === 'member') {

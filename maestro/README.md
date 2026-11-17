@@ -113,7 +113,8 @@ screenshots at its key steps.
   link, not through the UI: `app.bandwith.mobile://auth/maestro?role=member`
   (iOS) / `com.bandwith.app://auth/maestro?…` (Android). The app ignores these
   links; `setup/bw-maestro-setup.js` applies them to the demo database and
-  reloads (`role`, `keep=1` to keep the offline cache, `pending=<event title>`).
+  reloads (`role`, `keep=1` to keep the offline cache, `pending=<event title>`,
+  `signout=1`; `blur=1` only closes the keyboard).
   iOS asks "Open in BandWith?" first; the subflow answers it.
 - The setup script also fixes the clock (Mon 16 Nov 2026, 10:00 device time,
   like the e2e suite), signs in to the demo, marks the role tours seen, closes
@@ -130,8 +131,9 @@ screenshots at its key steps.
   One flow per screen, so one bug doesn't hide the others.
   The Android AVD has a hardware keyboard (Maestro types with it) and
   `show_ime_with_hard_keyboard=1`, so the on-screen one still comes up.
-  `subflows/hide-keyboard.yaml` closes it (Android Back; on iOS a tap outside
-  the field, Maestro's `hideKeyboard` can't close a WKWebView keyboard).
+  `subflows/hide-keyboard.yaml` closes it (Android Back; on iOS the setup link
+  `blur=1`: a tap outside a field doesn't blur it in WKWebView and Maestro's
+  `hideKeyboard` can't close its keyboard).
 - A new fix that a browser can't prove (system Back, keyboard, native plugin,
   WebView-only CSS) gets a flow here and a row in [e2e/FLOWS.md](../e2e/FLOWS.md).
 

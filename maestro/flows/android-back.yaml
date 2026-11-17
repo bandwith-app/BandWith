@@ -51,11 +51,17 @@ tags: [android]
 - assertVisible: "(?i)show readiness.*"
 - pressKey: back
 - assertVisible: "Search events"
-# Layer stack: the inbox and the Create menu close with Back.
-- tapOn: "Notifications.*"
+# Layer stack: the inbox (on Home) and the Create menu close with Back.
+# (A fresh start: "Home" as a selector also matches Android's own Home button.)
+- runFlow: ../subflows/start.yaml
+- runFlow:
+    file: ../subflows/tap-label.yaml
+    env:
+      LABEL: "Notifications.*"
 - assertVisible: "Mark all as read|MARK READ"
 - pressKey: back
-- assertNotVisible: "Mark all as read"
+- assertNotVisible: "Mark all as read|MARK READ"
+- assertVisible: "(?i)action center"
 - tapOn: "Create"
 - assertVisible: "(?i)new gig.*"
 - pressKey: back
