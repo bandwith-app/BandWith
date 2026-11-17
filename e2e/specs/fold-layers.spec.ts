@@ -176,8 +176,19 @@ test.describe('Duo Laptop pose: the field being typed in stays in sight', () => 
    * message at 850–920, hidden). The field rests on the Display instead.
    */
   test.describe('keyboard over the whole Deck', () => {
-    const typeOnDisplay = (app: App, field: Locator, fold: { top: number; bottom: number }) =>
-      typeOnDeck(app, field, fold, undefined, DUO_KEYBOARD_DECK_H);
+    async function typeOnDisplay(app: App, field: Locator, fold: { top: number; bottom: number }, backInSight = true) {
+      await typeOnDeck(app, field, fold, undefined, DUO_KEYBOARD_DECK_H);
+      // The rail's search field closes with the keyboard.
+      if (!backInSight) return;
+      // Keyboard down: the header is pinned again and the field is back in
+      // sight, not left under it.
+      const after = await field.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + Math.min(24, r.width / 2), (r.top + r.bottom) / 2);
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), shows: !!at && (at === el || el.contains(at)) };
+      });
+      expect(after.shows, `the field shows after the keyboard closes (${after.top}–${after.bottom})`).toBe(true);
+    }
     // A hub row further down: scrolled onto the Deck (under the pinned
     // header, above the Deck bar) and tapped there, as a person does.
     async function openLowerHubPage(app: App, source: string, deckTop: number) {
@@ -219,7 +230,7 @@ test.describe('Duo Laptop pose: the field being typed in stays in sight', () => 
         await app.page.getByRole('button', { name: app.t(label), exact: true }).filter({ visible: true }).first().click();
         const search = app.page.getByPlaceholder(app.t(placeholder)).filter({ visible: true }).first();
         await expect(search).toBeVisible();
-        await typeOnDisplay(app, search, duo!.foldBand!);
+        await typeOnDisplay(app, search, duo!.foldBand!, false);
         await app.check(`${page} search after typing, keyboard over the Deck`);
       });
     }

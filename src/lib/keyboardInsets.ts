@@ -191,14 +191,20 @@ export function installKeyboardInsets(): void {
     padded.clear();
   };
   // Pinned headers let go of their scroller's top while the keyboard is up.
+  // When it closes they pin again and the scroller goes back to where it was,
+  // so the field is not left under its header.
   const unpinned = new Map<HTMLElement, string>();
-  const unpin = (head: HTMLElement) => {
+  const scrolledFrom = new Map<HTMLElement, number>();
+  const unpin = (head: HTMLElement, scroller: HTMLElement) => {
     if (!unpinned.has(head)) unpinned.set(head, head.style.position);
+    if (!scrolledFrom.has(scroller)) scrolledFrom.set(scroller, scroller.scrollTop);
     head.style.position = 'relative';
   };
   const repin = () => {
     unpinned.forEach((value, head) => { head.style.position = value; });
     unpinned.clear();
+    scrolledFrom.forEach((top, scroller) => { scroller.scrollTop = top; });
+    scrolledFrom.clear();
   };
   const close = () => {
     webViewWait?.stop();
@@ -224,7 +230,7 @@ export function installKeyboardInsets(): void {
     };
     let { clip, delta } = where();
     if (delta === null && clip.heads.length) {
-      clip.heads.forEach(unpin);
+      clip.heads.forEach((head) => unpin(head, scroller));
       ({ delta } = where());
     }
     if (!delta) return;
