@@ -56,6 +56,8 @@ export function laptopRevealDelta(
 }
 
 const FIELD = 'input, textarea, select';
+/** Less than this off the view's height is not a keyboard (an accessory bar, rounding). */
+const KEYBOARD_MIN = 80;
 
 /**
  * The box the person sees as the field: an input often sits in a styled
@@ -142,11 +144,12 @@ export function fixedLayoutStale(): boolean {
  *
  * Keyboard resize is 'native' (capacitor.config.ts), so the web view already
  * ends at the top of the keyboard. The home-indicator / navigation-bar inset
- * in --safe-bottom then only adds dead space above the keyboard. On iOS
- * env(safe-area-inset-bottom) drops to 0 by itself once the web view ends
- * above the home indicator, in step with the layout; on Android the inset
- * Capacitor injects does not, and theme.css zeroes it while this attribute
- * is set.
+ * in --safe-bottom then only adds dead space above the keyboard. On Android
+ * the inset Capacitor injects stays put, and theme.css zeroes it while this
+ * attribute is set. On iOS env(safe-area-inset-bottom) drops to 0 once the
+ * web view ends above the home indicator, but not always in step with 100vh:
+ * there theme.css zeroes it from `data-keyboard-covers` (below), set at the
+ * first sign that the keyboard covers the view.
  *
  * It follows the window events the Keyboard plugin fires on iOS and Android
  * (`keyboardWillShow`, `keyboardDidShow`, `keyboardWillHide`,
@@ -166,9 +169,47 @@ export function installKeyboardInsets(): void {
     const el = document.activeElement as HTMLElement | null;
     return !!el && (el.matches(FIELD) || el.isContentEditable);
   };
+  // iOS: from the moment the keyboard covers the bottom of the view there is
+  // no home indicator under the content, so its inset (--safe-bottom) is 0:
+  // <html data-keyboard-covers> (theme.css). WKWebView moves 100vh, the web
+  // view's height and env(safe-area-inset-bottom) to the keyboard in separate
+  // steps, in no fixed order. When 100vh went first, layers pinned to it
+  // (index.css) rose with the keyboard while env() still held the 34 px
+  // inset, then dropped 34 px when it caught up: the chat's message box went
+  // 862 → 515 → 549 (emulator check, 1 run in 15). The attribute follows the
+  // first of those steps, through a ResizeObserver on a 100vh box (its
+  // callback runs before that frame is painted) and the resize event, and
+  // stays until the keyboard goes down; env() then reads 0 anyway.
+  let freeW = window.innerWidth;
+  let freeH = window.innerHeight;
+  let vhBox: HTMLElement | null = null;
+  const covers = () => {
+    if (!vhBox || !vhBox.isConnected) {
+      if (!document.body) return false;
+      vhBox = document.createElement('div');
+      vhBox.setAttribute('aria-hidden', 'true');
+      vhBox.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
+      document.body.appendChild(vhBox);
+      try {
+        new ResizeObserver(() => markCovered()).observe(vhBox);
+      } catch {
+        /* no ResizeObserver: the resize event and keyboardWillShow still mark it */
+      }
+    }
+    const vh = vhBox.getBoundingClientRect().height;
+    const h = window.innerHeight;
+    return (vh > 0 && vh < h - KEYBOARD_MIN) || (window.innerWidth === freeW && h < freeH - KEYBOARD_MIN);
+  };
+  const markCovered = () => {
+    // Android zeroes the inset with the keyboard flag (theme.css).
+    if (root.getAttribute('data-platform') === 'android') return;
+    if (root.getAttribute('data-keyboard') !== 'open' || root.hasAttribute('data-keyboard-covers')) return;
+    if (covers()) root.setAttribute('data-keyboard-covers', '');
+  };
   const open = () => {
     if (!typing()) return;
     root.setAttribute('data-keyboard', 'open');
+    markCovered();
     tell(true);
     // Android has already shrunk the WebView by keyboardWillShow: a hidden
     // field moves now, with the keyboard, well before the WebView's own scroll.
@@ -209,6 +250,7 @@ export function installKeyboardInsets(): void {
   const close = () => {
     webViewWait?.stop();
     root.removeAttribute('data-keyboard');
+    root.removeAttribute('data-keyboard-covers');
     unpad();
     repin();
     tell(false);
@@ -343,7 +385,13 @@ export function installKeyboardInsets(): void {
     if (root.getAttribute('data-keyboard') === 'open' && !typing()) close();
   };
   window.addEventListener('resize', () => {
-    if (root.getAttribute('data-keyboard') !== 'open') return;
+    if (root.getAttribute('data-keyboard') !== 'open') {
+      // The view's size with the keyboard down (rotation, Split View…).
+      freeW = window.innerWidth;
+      freeH = window.innerHeight;
+      return;
+    }
+    markCovered();
     if (!typing()) return close();
     revealSoon();
   });

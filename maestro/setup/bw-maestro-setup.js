@@ -207,7 +207,11 @@
   // for a second with the on-screen keyboard up, and says what it found in a
   // 2 px status element Maestro reads by its label:
   //   "bw-kb wait"               following the field
-  //   "bw-kb ok"                 in sight, uncovered, got there in one move
+  //   "bw-kb hidden"             the keyboard went down after a verdict
+  //   "bw-kb ok (top …)"         in sight, uncovered, got there in one move
+  //                              (its path: top, h web view height, vh 100vh,
+  //                              v/o visual viewport height/offset, sb env()
+  //                              bottom inset, k keyboard flag)
   //   "bw-kb fail: <why>"        no keyboard came up, the field is hidden
   //                              (below the web view's bottom, which ends at
   //                              the keyboard), covered by something else,
@@ -238,6 +242,42 @@
   var keyboardUp = function () {
     return document.documentElement.getAttribute('data-keyboard') === 'open';
   };
+  // The home-indicator inset as CSS sees it right now (env() lags the web
+  // view's size on iOS at times), for the probe's trace.
+  var insetEl = null;
+  var inset = function () {
+    if (!insetEl) {
+      insetEl = document.createElement('div');
+      insetEl.setAttribute('aria-hidden', 'true');
+      insetEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)';
+      document.body.appendChild(insetEl);
+    }
+    return Math.round(parseFloat(getComputedStyle(insetEl).paddingBottom) || 0);
+  };
+  // 100vh in px: WKWebView moves it to the keyboard in its own step.
+  var vhEl = null;
+  var vhPx = function () {
+    if (!vhEl) {
+      vhEl = document.createElement('div');
+      vhEl.setAttribute('aria-hidden', 'true');
+      vhEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
+      document.body.appendChild(vhEl);
+    }
+    return Math.round(vhEl.getBoundingClientRect().height);
+  };
+  // One sample: the field's top, the web view's height, env()'s bottom inset.
+  var sample = function (el) {
+    var vv = window.visualViewport;
+    return {
+      top: Math.round(el.getBoundingClientRect().top),
+      h: window.innerHeight,
+      vh: vhPx(),
+      sb: inset(),
+      v: vv ? Math.round(vv.height) : window.innerHeight,
+      o: vv ? Math.round(vv.offsetTop + window.scrollY) : Math.round(window.scrollY),
+      k: keyboardUp() ? 1 : 0,
+    };
+  };
   var STEP = 100; // ms between samples
   var REST = 1000; // ms without moving (and the keyboard up) = at rest
   var LIMIT = 8000; // ms to come to rest
@@ -262,9 +302,15 @@
     // of one smooth move to its place. The path lists where it rested.
     // A smaller dip before the move (the view resizing a frame ahead of the
     // scroll) passes.
+    // Each resting place with the web view's height and the bottom inset
+    // there ("515 h609 sb34"), so a failure says what moved the field.
     var path = [];
-    f.tops.forEach(function (t) {
-      if (!path.length || Math.abs(t - path[path.length - 1]) > 2) path.push(t);
+    var last = null;
+    f.samples.forEach(function (x) {
+      if (last === null || Math.abs(x.top - last) > 2) {
+        path.push(x.top + ' h' + x.h + ' vh' + x.vh + ' v' + x.v + ' o' + x.o + ' sb' + x.sb + ' k' + x.k);
+        last = x.top;
+      }
     });
     var up = 0, down = 0;
     for (var i = 1; i < f.tops.length; i++) {
@@ -273,7 +319,7 @@
       else up -= d;
     }
     if (Math.min(up, down) > 24) why.push(name + ' jumped (top ' + path.slice(0, 12).join(' > ') + ')');
-    say(why.length ? 'bw-kb fail: ' + why.join('; ') : 'bw-kb ok');
+    say(why.length ? 'bw-kb fail: ' + why.join('; ') : 'bw-kb ok (top ' + path.slice(0, 12).join(' > ') + ')');
   };
   var tick = function () {
     var f = follow;
@@ -282,9 +328,11 @@
       follow = null;
       return;
     }
-    var top = Math.round(f.el.getBoundingClientRect().top);
+    var x = sample(f.el);
+    var top = x.top;
     var last = f.tops[f.tops.length - 1];
     f.tops.push(top);
+    f.samples.push(x);
     var now = performance.now();
     if (Math.abs(top - last) > 1 || !keyboardUp()) f.still = now;
     if (now - f.still >= REST) f.rested = true;
@@ -298,7 +346,8 @@
   var start = function (el) {
     if (follow) clearTimeout(follow.timer);
     var now = performance.now();
-    follow = { el: el, tops: [Math.round(el.getBoundingClientRect().top)], start: now, still: now, rested: false };
+    var first = sample(el);
+    follow = { el: el, tops: [first.top], samples: [first], start: now, still: now, rested: false };
     say('bw-kb wait');
     follow.timer = setTimeout(tick, STEP);
   };
@@ -316,6 +365,14 @@
     if (isField(el) && !follow) start(el);
   };
   window.addEventListener('keyboardDidShow', again);
+  // The keyboard going down outdates a verdict: a flow waiting for the
+  // keyboard to settle must not read the last one. iOS hides and re-shows
+  // it when Maestro types (XCTest's synthetic hardware keyboard), and the
+  // page moves again a second later; "bw-kb hidden" until it is back and the
+  // field has come to rest (keyboardDidShow follows it again).
+  window.addEventListener('keyboardWillHide', function () {
+    if (!follow) say('bw-kb hidden');
+  });
   if (window.visualViewport) window.visualViewport.addEventListener('resize', again);
 
   // The App plugin proxy exists once the app module has registered it.

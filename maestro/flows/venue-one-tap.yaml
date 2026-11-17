@@ -14,6 +14,17 @@ tags: [ios, android]
 - extendedWaitUntil:
     visible: "(?i)villa necchi studios.*"
     timeout: 10000
+# Tap only once the keyboard has settled. On iOS Maestro types with XCTest's
+# synthetic hardware keyboard, and iOS answers by hiding the on-screen
+# keyboard and bringing it back about a second later: the page moves again
+# then, and a tap aimed at the suggestion landed on the keyboard ("Villa
+# Necchiy"). The keyboard probe (setup/bw-maestro-setup.js) says "bw-kb
+# hidden" while it is down and gives its verdict once the field has rested a
+# second with the keyboard up.
+- extendedWaitUntil:
+    visible: "bw-kb (ok|fail).*"
+    timeout: 15000
+- assertVisible: "(?i)villa necchi studios.*"
 - takeScreenshot: venue-suggestions
 - tapOn: "(?i)villa necchi studios.*"
 - assertNotVisible: "(?i)villa necchi hall.*"

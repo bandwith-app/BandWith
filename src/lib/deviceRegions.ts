@@ -188,10 +188,13 @@ export function installDuoLayout(): void {
     // A column that runs the full height has no block to avoid.
     if (rail > 0 && s && s.h < vh * 0.6) {
       const atBottom = s.y + s.h / 2 > vh / 2;
-      root.style.setProperty('--bw-rail-clear-top', atBottom ? '0px' : `${Math.max(0, Math.round(s.y + s.h + 8 - 40))}px`);
+      // Where the rail group may start below a block at the top (DuoRail's
+      // top spacer takes away its own top padding).
+      if (atBottom) root.style.removeProperty('--bw-rail-camera-top');
+      else root.style.setProperty('--bw-rail-camera-top', `${Math.max(0, Math.round(s.y + s.h + 8))}px`);
       root.style.setProperty('--bw-rail-clear-bottom', atBottom ? `${Math.max(0, Math.round(vh - s.y + 8))}px` : '0px');
     } else {
-      root.style.removeProperty('--bw-rail-clear-top');
+      root.style.removeProperty('--bw-rail-camera-top');
       root.style.removeProperty('--bw-rail-clear-bottom');
     }
     // Closed and turned over in landscape (~466 px tall, camera at the

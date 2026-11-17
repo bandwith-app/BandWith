@@ -213,13 +213,20 @@
 /* Software keyboard open (src/lib/keyboardInsets.ts): with resize 'native' the
    web view already ends at the keyboard, so the navigation-bar inset would only
    leave dead space above it. Android only: the inset Capacitor injects (and its
-   floor) stays put with the keyboard up. On iOS env(safe-area-inset-bottom)
-   drops to 0 by itself once the web view ends above the home indicator, in
-   step with the layout; zeroing it from keyboardWillShow, half a second before
+   floor) stays put with the keyboard up. On iOS see the next rule; zeroing
+   it there from keyboardWillShow, half a second before
    the web view shrinks, dropped every bottom sheet by the home indicator's
    34 px and lifted it again (the gig title bounced). Specific enough to beat
    the Android floor above. */
 :root[data-platform="android"][data-keyboard="open"] {
+  --safe-bottom: 0px;
+}
+/* iOS: zeroed only once the keyboard covers the bottom of the view
+   (keyboardInsets.ts sets data-keyboard-covers at the first of WKWebView's
+   steps: 100vh, the view's height or env()). env() alone sometimes came a
+   frame or more after 100vh: the chat's message box rose with the keyboard
+   on the 34 px inset, then dropped 34 px. */
+html.is-native:not(.is-android)[data-keyboard="open"][data-keyboard-covers] {
   --safe-bottom: 0px;
 }
 

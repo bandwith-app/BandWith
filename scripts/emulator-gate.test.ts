@@ -192,3 +192,15 @@ describe('scripts/release-android.sh --publish', () => {
     rmSync(r.root, { recursive: true, force: true });
   });
 });
+
+describe('scripts/emulator-check.sh', () => {
+  // 1.0.6 gate: on SwiftShader, with both iOS simulators running alongside,
+  // the Android WebView stalled while typing ("BandWith isn't responding")
+  // and keyboard-create-account's probe never answered.
+  it('boots the check emulator on the Mac GPU, not software rendering', () => {
+    const src = readFileSync(path.join(SCRIPTS, 'emulator-check.sh'), 'utf8');
+    const boot = src.slice(src.indexOf('boot_avd() {'), src.indexOf('wait_avd() {'));
+    expect(boot).toMatch(/-gpu "\$\{BW_AVD_GPU:-host\}"/);
+    expect(boot).not.toMatch(/swiftshader/);
+  });
+});

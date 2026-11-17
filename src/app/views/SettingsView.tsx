@@ -43,6 +43,7 @@ import { checkPushPermissions, openNotificationSettings, subscribeToPush } from 
 import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/app/components/ui/utils';
 import { useRailLayout } from '@/lib/deviceRegions';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { usePosture, useLaptopPoseEnabled, setLaptopPoseEnabled } from '@/lib/posture';
 import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
@@ -156,6 +157,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // and the section you are changing is on the trailing page, so one is
   // always selected (Notifications first).
   const { twoPane } = useRailLayout();
+  // Laptop pose (one pane): Settings is a hub like the Account hub it opens
+  // from. That puts it over the page's own fold split (Band desk, Planner:
+  // z-70, later in #root; index.css hides a split while a hub is open), and
+  // its top bar holds the Display so the rows scroll on the Deck, never
+  // resting on the fold.
+  const laptop = useLaptopPose();
   const selectedSection: SettingsSection | null = twoPane ? activeSection ?? 'notifications' : activeSection;
 
   const handleBack = () => {
@@ -732,7 +739,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   /* Figma: Top Bar — back circle + H2 title. On the Duo, Back is in the rail. */
   const renderTopBar = (title: string, withBack: boolean) => (
     <div
-      className="px-4 shrink-0 bg-[var(--bg)] sticky top-0 z-30 bw-status-clear"
+      className="bw-hub-head px-4 shrink-0 bg-[var(--bg)] sticky top-0 z-30 bw-status-clear"
       style={{
         paddingTop: 'calc(var(--safe-top) + 8px)',
       }}
@@ -770,7 +777,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <>
     <motion.div
       {...slideUp}
-      className={cn(layerClass, twoPane && 'bw-pane-hub')}
+      className={cn(layerClass, (twoPane || laptop) && 'bw-pane-hub')}
       style={layerStyle}
     >
       {renderTopBar(twoPane ? getSectionTitle(leadingSection) : getSectionTitle(), true)}
