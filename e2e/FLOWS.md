@@ -79,6 +79,8 @@ check (`app.check`) on each screen it reaches.
 | iPad composers: venue suggestions (gig, rehearsal) | `fold-layers` | iPad |
 | Duo Laptop: Create menu, gig wizard, rehearsal wizard, poll builder, Propose rehearsal, Log personal gig off the fold | `fold-layers` | laptop |
 | Duo Laptop: Stage mode (floor wedge), Deputy gigs, What brings you here?, Create account off the fold | `fold-layers` | laptop |
+| Duo Laptop: Settings & account (from Home, Calendar, Chat) sits over the page, its rows and Privacy & account off the fold; Help & support, Deputy gigs, Repertoire, Gear, Contracts, To-do lists, Members, Pricing opened from Home sit over the page | `hub-layers-laptop` | laptop |
+| Duo rail: every button on screen, clear of the camera block and on top, on Home, Calendar, Chat and a gig, in every Duo posture and closed with the camera top-left (landscape-primary) | `duo-rail` | Duo profiles |
 | Duo Laptop, keyboard up: the field being typed in rests on the Deck strip (or whole on the Display), never on the fold or under a pinned header: Deputy gigs (home and in the app), Create contract, gig wizard, Sign in, Create account | `fold-layers` | laptop |
 
 ## Settings, assets, chat

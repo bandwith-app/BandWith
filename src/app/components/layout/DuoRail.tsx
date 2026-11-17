@@ -107,6 +107,46 @@ const motionFrom = (edge: 'left' | 'right') => {
   };
 };
 
+/** Spacing of a rail packed into a short column (see DuoRail, `fit`). */
+export const RAIL_COMPACT = { padTop: 8, gap: 6, pillPy: 6, groupGap: 6 } as const;
+const RAIL_NORMAL = { padTop: 40, gap: 14, pillPy: 12, groupGap: 8 } as const;
+
+/**
+ * How the side rail fits its column: 'normal' (Figma spacing), 'compact'
+ * (RAIL_COMPACT) or 'scroll' (too long even then). Computed from the rail's
+ * pills and the column clearances deviceRegions sets (camera block top or
+ * bottom, the tight landscape spacing), so it doesn't depend on the spacing
+ * the rail currently has.
+ */
+export function railFit(el: HTMLElement): 'normal' | 'compact' | 'scroll' {
+  const root = getComputedStyle(document.documentElement);
+  const px = (name: string, fallback: number) => {
+    const v = root.getPropertyValue(name).trim();
+    const n = v ? parseFloat(v) : NaN;
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const padTop = px('--bw-rail-pad-top', RAIL_NORMAL.padTop);
+  const gap = px('--bw-rail-gap', RAIL_NORMAL.gap);
+  const cameraTop = px('--bw-rail-camera-top', 0);
+  const clearBottom = px('--bw-rail-clear-bottom', 0);
+  const pills = Array.from(el.children).filter((c): c is HTMLElement => c instanceof HTMLElement && c.getAttribute('aria-hidden') !== 'true');
+  let items = 0;
+  let gaps = 0;
+  for (const p of pills) {
+    const kids = Array.from(p.children) as HTMLElement[];
+    items += kids.reduce((sum, k) => sum + k.offsetHeight, 0);
+    gaps += Math.max(0, kids.length - 1);
+  }
+  const groupGaps = Math.max(0, el.children.length - 1);
+  const need = (s: { padTop: number; gap: number; pillPy: number; groupGap: number }) =>
+    Math.max(s.padTop, cameraTop) + items + pills.length * 2 * s.pillPy + gaps * s.gap + groupGaps * s.groupGap + clearBottom;
+  const avail = el.clientHeight;
+  if (!avail || !pills.length) return 'normal';
+  if (need({ ...RAIL_NORMAL, padTop, gap }) <= avail) return 'normal';
+  if (need(RAIL_COMPACT) <= avail) return 'compact';
+  return 'scroll';
+}
+
 /** Laptop pose: the bar groups rise from the Deck's bottom edge. */
 const deckMotion = {
   initial: { y: 24, opacity: 0 },
@@ -131,6 +171,43 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
   const [fieldTop, setFieldTop] = useState(0);
   const searchBtnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // A short column (closed, turned, with the camera block at the top: 466 pt
+  // less 90 for the camera) can be shorter than the rail group: the Chat tab
+  // and a gig carry up to eight buttons. Then the rail packs tighter
+  // ('compact': smaller margins, gaps and pill padding), and if even that
+  // doesn't fit, the column itself scrolls ('scroll'), so every button stays
+  // reachable. Measured from the buttons, so any set of screen actions fits.
+  const railRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<'normal' | 'compact' | 'scroll'>('normal');
+  useLayoutEffect(() => {
+    const el = railRef.current;
+    if (!el || onDeck) {
+      setFit('normal');
+      return;
+    }
+    const measure = () => setFit(railFit(el));
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true });
+    window.addEventListener('bwlayout', measure);
+    return () => {
+      ro?.disconnect();
+      mo.disconnect();
+      window.removeEventListener('bwlayout', measure);
+    };
+  }, [onDeck]);
+  const fitStyle: React.CSSProperties | undefined =
+    onDeck || fit === 'normal'
+      ? undefined
+      : ({
+          '--bw-rail-pad-top': `${RAIL_COMPACT.padTop}px`,
+          '--bw-rail-gap': `${RAIL_COMPACT.gap}px`,
+          '--bw-rail-pill-py': `${RAIL_COMPACT.pillPy}px`,
+          '--bw-rail-group-gap': `${RAIL_COMPACT.groupGap}px`,
+        } as React.CSSProperties);
 
   const initials = (() => {
     const name = profile?.full_name?.trim();
@@ -220,13 +297,19 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
   return (
     <>
       <div
+        ref={railRef}
+        data-fit={onDeck ? undefined : fit}
         // Dark layers (Stage mode) get the dark-theme tokens: dark glass, light icons.
         // Scrolls (scrollbar hidden) when the keyboard shrinks the viewport
         // below the rail group, so the bottom actions stay reachable; safe
         // centring keeps the top reachable too once it overflows.
         className={cn(
           // bw-duo-rail: Stage mode full screen hides it (src/styles/stage.css).
-          'bw-duo-rail fixed z-[190] flex items-center gap-2 pointer-events-none',
+          'bw-duo-rail fixed z-[190] flex items-center',
+          onDeck ? 'gap-2' : 'gap-[var(--bw-rail-group-gap,8px)]',
+          // Only a rail too long for its column takes touches itself, so it
+          // can be scrolled; otherwise taps between the pills pass through.
+          fit === 'scroll' && !onDeck ? 'pointer-events-auto' : 'pointer-events-none',
           onDeck
             ? 'flex-row justify-center-safe overflow-x-auto overflow-y-hidden'
             : 'flex-col justify-center-safe overflow-y-auto overflow-x-hidden',
@@ -253,6 +336,7 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
                 paddingTop: 'var(--bw-rail-pad-top, 40px)',
                 width: 'var(--bw-rail-w)',
                 ...(onLeft ? { left: 0 } : { right: 0 }),
+                ...fitStyle,
               }
         }
         // Any other rail button closes the search field.
@@ -263,14 +347,14 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
         {/* Equal spacers keep the group centred as in Figma; their minimum heights
             (deviceRegions) step it away from the clock / camera block, top or
             bottom, only when the two would meet. */}
-        {!onDeck && <span aria-hidden style={{ flex: '1 1 0', minHeight: 'var(--bw-rail-clear-top, 0px)' }} />}
+        {!onDeck && <span aria-hidden style={{ flex: '1 1 0', minHeight: 'max(0px, calc(var(--bw-rail-camera-top, 0px) - var(--bw-rail-pad-top, 40px)))' }} />}
         <AnimatePresence initial={false}>
           {tabsVisible && (
             <motion.nav
               key="tabs"
               aria-label={t('Main')}
               {...containerMotion}
-              className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-3 flex-col')}
+              className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-[var(--bw-rail-pill-py,12px)] flex-col')}
             >
               {tabs.slice(0, 2).map((tab) => (
                 <Cell key={tab.key} label={tab.label} onClick={tab.onClick} dot={tab.isActive} active={tab.isActive} badgeCount={tab.badgeCount}>
@@ -302,7 +386,7 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
             role="toolbar"
             aria-label={t('Screen actions, search and profile')}
             {...containerMotion}
-            className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-3 flex-col')}
+            className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-[var(--bw-rail-pill-py,12px)] flex-col')}
           >
             {back && (
               <Cell label={back.label} onClick={() => { haptic.tap(); back.run(); }}>
