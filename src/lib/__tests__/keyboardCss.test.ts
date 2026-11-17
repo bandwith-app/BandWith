@@ -28,12 +28,19 @@ const rules = (css: string) =>
   [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
 
 describe('keyboard up: the home-indicator inset', () => {
-  it('is zeroed on Android only, never from the keyboard flag alone (iOS)', async () => {
+  it('is zeroed on Android with the keyboard flag, on iOS only once the keyboard covers the view', async () => {
     const zeroing = rules(await readCss('theme.css')).filter((r) => /data-keyboard="open"/.test(r.selector) && /--safe-bottom:\s*0/.test(r.body));
     expect(zeroing.length).toBeGreaterThan(0);
     for (const r of zeroing) {
-      for (const part of r.selector.split(',')) expect(part).toMatch(/\[data-platform="android"\]/);
+      for (const part of r.selector.split(',')) {
+        // Never from the keyboard flag alone on iOS (keyboardWillShow comes
+        // half a second before anything moves).
+        expect(/\[data-platform="android"\]/.test(part) || /\[data-keyboard-covers\]/.test(part), part).toBe(true);
+      }
     }
+    // iOS (keyboardInsets.covers.test.ts): 100vh can reach the keyboard a
+    // frame before env() does; the message box rose on the inset, then fell.
+    expect(zeroing.some((r) => /is-native:not\(\.is-android\).*\[data-keyboard-covers\]/.test(r.selector))).toBe(true);
   });
 });
 

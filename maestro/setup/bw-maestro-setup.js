@@ -209,7 +209,9 @@
   //   "bw-kb wait"               following the field
   //   "bw-kb hidden"             the keyboard went down after a verdict
   //   "bw-kb ok (top …)"         in sight, uncovered, got there in one move
-  //                              (its path: top, web view height, env inset)
+  //                              (its path: top, h web view height, vh 100vh,
+  //                              v/o visual viewport height/offset, sb env()
+  //                              bottom inset, k keyboard flag)
   //   "bw-kb fail: <why>"        no keyboard came up, the field is hidden
   //                              (below the web view's bottom, which ends at
   //                              the keyboard), covered by something else,
@@ -252,9 +254,29 @@
     }
     return Math.round(parseFloat(getComputedStyle(insetEl).paddingBottom) || 0);
   };
+  // 100vh in px: WKWebView moves it to the keyboard in its own step.
+  var vhEl = null;
+  var vhPx = function () {
+    if (!vhEl) {
+      vhEl = document.createElement('div');
+      vhEl.setAttribute('aria-hidden', 'true');
+      vhEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
+      document.body.appendChild(vhEl);
+    }
+    return Math.round(vhEl.getBoundingClientRect().height);
+  };
   // One sample: the field's top, the web view's height, env()'s bottom inset.
   var sample = function (el) {
-    return { top: Math.round(el.getBoundingClientRect().top), h: window.innerHeight, sb: inset() };
+    var vv = window.visualViewport;
+    return {
+      top: Math.round(el.getBoundingClientRect().top),
+      h: window.innerHeight,
+      vh: vhPx(),
+      sb: inset(),
+      v: vv ? Math.round(vv.height) : window.innerHeight,
+      o: vv ? Math.round(vv.offsetTop + window.scrollY) : Math.round(window.scrollY),
+      k: keyboardUp() ? 1 : 0,
+    };
   };
   var STEP = 100; // ms between samples
   var REST = 1000; // ms without moving (and the keyboard up) = at rest
@@ -286,7 +308,7 @@
     var last = null;
     f.samples.forEach(function (x) {
       if (last === null || Math.abs(x.top - last) > 2) {
-        path.push(x.top + ' h' + x.h + ' sb' + x.sb);
+        path.push(x.top + ' h' + x.h + ' vh' + x.vh + ' v' + x.v + ' o' + x.o + ' sb' + x.sb + ' k' + x.k);
         last = x.top;
       }
     });
