@@ -1,6 +1,8 @@
 # Next big updates: rehearsal live mode with notes (A), getting paid with Stripe Connect (B)
 
 Status: **plan only, no product code.** Written 2026-11-16, on top of `main` 030dcae (release 1.0.6 being finished).
+**Update B (Stripe payments) is on hold since 2026-11-17, by the user's decision.** Only update A goes ahead; B0 (accountant, lawyer, Stripe setup) and B1 do not start until the user lifts the hold. The B sections stay as a reference.
+
 Work starts **after the user has tried 1.0.6**. Nothing here is decided until the open questions (§5) are answered.
 
 Contents
