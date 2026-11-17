@@ -4,28 +4,14 @@
  * Used by site/vite.config.ts as <!--@name--> placeholders.
  */
 import { CHANNELS, GROUPS, channelUrl, pad2, type Channel } from './features';
-import { shot } from './site';
+import { academyArticle, shot } from './site';
 import { GIG, ROLES, SECTIONS, WHO, countFor, FIELDS } from './roles';
+import { picksHtml } from '../ui/heroScreen';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const meter = (n = 10) => `<span class="strip__meter" aria-hidden="true">${'<i></i>'.repeat(n)}</span>`;
 const accentVar = (c: Channel) => `var(--${c.accent === 'rehearsal' ? 'rehearsal-ink' : c.accent})`;
 const grouped = () => GROUPS.map((g) => ({ g, list: CHANNELS.filter((c) => c.group === g) }));
-
-/** One channel strip (nav panel and home rack). */
-function strip(c: Channel, big: boolean) {
-  const tag = c.live ? 'a' : 'div';
-  const href = c.live ? ` href="${channelUrl(c)}"` : ' aria-disabled="true"';
-  return (
-    `<${tag} class="strip${c.live ? '' : ' is-soon'}"${href} data-strip data-accent="${c.accent}" data-shot="${shot(c.shot)}" data-name="${esc(c.name)}" data-line="${esc(c.line)}" style="--c: ${accentVar(c)}">` +
-    `<span class="strip__ch">CH ${pad2(c.ch)}</span>` +
-    `${meter(big ? 14 : 10)}` +
-    `<span class="strip__track" aria-hidden="true"><span class="strip__cap"></span></span>` +
-    `<span class="strip__name">${esc(big ? c.name : c.short)}</span>` +
-    (c.live ? '<span class="strip__live">Live</span>' : '') +
-    `</${tag}>`
-  );
-}
 
 /**
  * Features panel (nav, ≥1081px): four calm groups of text rows and one
@@ -48,8 +34,33 @@ export function featurePanel() {
   return `<div class="fp__groups">${groups}</div>`;
 }
 
+/**
+ * Home channel explorer: the eleven strips are tabs. The selected one pushes
+ * its fader up and shows its screen, three things it does and its Guide
+ * article; ui/rack.ts drives the selection and the auto-play.
+ */
 export function rackHome() {
-  return CHANNELS.map((c) => strip(c, true)).join('');
+  const first = CHANNELS[0];
+  const tabs = CHANNELS.map((c, i) =>
+    `<button type="button" class="strip rx__tab" role="tab" id="rx-tab-${c.ch}" aria-selected="${i === 0}" aria-controls="rx-panel" tabindex="${i === 0 ? 0 : -1}" data-rx-tab="${i}" style="--c: ${accentVar(c)}">` +
+    `<span class="strip__ch">CH ${pad2(c.ch)}</span>${meter(12)}` +
+    `<span class="strip__track" aria-hidden="true"><span class="strip__cap"></span></span>` +
+    `<span class="strip__name">${esc(c.short)}</span>${c.live ? '<span class="strip__live">Live</span>' : ''}</button>`,
+  ).join('');
+  return (
+    `<div class="rx__strips" role="tablist" aria-label="The eleven channels">${tabs}</div>` +
+    `<div class="rx__panel" id="rx-panel" role="tabpanel" aria-labelledby="rx-tab-${first.ch}" style="--c: ${accentVar(first)}">` +
+      `<div class="crop rx__crop" data-rx-crop data-crop="${first.crop.join(' ')}"><img class="crop__img" src="${shot(first.shot)}" alt="" width="780" height="1688" loading="lazy" decoding="async" /></div>` +
+      `<div class="rx__copy" data-rx-copy>` +
+        `<p class="rx__ch mono" data-rx-ch>CH ${pad2(first.ch)} · ${first.group}</p>` +
+        `<h3 class="rx__name" data-rx-name>${esc(first.name)}</h3>` +
+        `<p class="rx__line" data-rx-line>${esc(first.line)}</p>` +
+        `<ul class="rx__pts" data-rx-pts>${first.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` +
+        `<p class="rx__links"><a class="rx__guide" data-rx-guide href="${academyArticle(first.guide)}">Read it in the Guide <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>` +
+        `<a class="btn btn--lime btn--sm rx__page" data-rx-page href="${first.live ? channelUrl(first) : '#'}"${first.live ? '' : ' hidden'}>Open the page <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a></p>` +
+      `</div>` +
+    `</div>`
+  );
 }
 
 /** Menu sheet (≤1080px): the same four groups, one row per channel. */
@@ -112,6 +123,7 @@ export const GENERATED: Record<string, () => string> = {
   'roles-card': rolesCard,
   'feature-panel': featurePanel,
   'rack-home': rackHome,
+  'hero-picks': picksHtml,
   'menu-rows': menuRows,
   'foot-features': footFeatures,
 };

@@ -1,40 +1,122 @@
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { CHANNELS, channelUrl, pad2 } from '../content/features';
+import { academyArticle, shot } from '../content/site';
+import type { Clock } from '../motion/clock';
+import { focusCrop } from './crop';
 
 /**
- * Home rack: eleven channel strips. When the rack comes into view the band
- * "sound-checks" it: every fader rises to its own level and its meter lights
- * to match, left to right. Hover or focus a live strip and it goes to full.
+ * Home channel explorer. The eleven strips are tabs: the selected strip pushes
+ * its fader up and the panel shows its screen (zoomed), three things it does
+ * and its Guide article. While nobody has touched it, it plays the channels
+ * in order; the selected strip's meter fills on the page clock like a timer
+ * (two bars per channel), then the next one comes up. Any click, key or
+ * focus hands control to the visitor.
  */
-export function initRack(root: HTMLElement | null, reduce: boolean) {
-  if (!root) return;
-  const strips = Array.from(root.querySelectorAll<HTMLElement>('[data-strip]'));
-  const LEVELS = [0.62, 0.48, 0.7, 0.4, 0.55, 0.66, 0.92, 0.5, 0.58, 0.44, 0.6];
+const BARS = 32; // 16th-note steps per channel (two bars at 112 BPM)
+const IDLE = [0.34, 0.22, 0.4, 0.18, 0.3, 0.36, 0.26, 0.2, 0.32, 0.24, 0.28];
 
-  const light = (s: HTMLElement, lv: number) => {
-    const cells = Array.from(s.querySelectorAll<HTMLElement>('.strip__meter i')).reverse();
-    const on = Math.round(lv * cells.length);
-    cells.forEach((c, i) => c.classList.toggle('on', i < on));
+export function initRack(root: HTMLElement | null, clock: Clock, reduce: boolean) {
+  if (!root) return;
+  const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-rx-tab]'));
+  const strip = root.querySelector<HTMLElement>('.rx__strips');
+  const panel = root.querySelector<HTMLElement>('#rx-panel');
+  const crop = root.querySelector<HTMLElement>('[data-rx-crop]');
+  const copy = root.querySelector<HTMLElement>('[data-rx-copy]');
+  const out = {
+    ch: root.querySelector<HTMLElement>('[data-rx-ch]'),
+    name: root.querySelector<HTMLElement>('[data-rx-name]'),
+    line: root.querySelector<HTMLElement>('[data-rx-line]'),
+    pts: root.querySelector<HTMLElement>('[data-rx-pts]'),
+    guide: root.querySelector<HTMLAnchorElement>('[data-rx-guide]'),
+    page: root.querySelector<HTMLAnchorElement>('[data-rx-page]'),
+  };
+  if (!tabs.length || !panel) return;
+
+  const meters = tabs.map((t) => Array.from(t.querySelectorAll<HTMLElement>('.strip__meter i')).reverse());
+  const light = (i: number, lv: number) => {
+    const on = Math.round(lv * meters[i].length);
+    meters[i].forEach((c, k) => c.classList.toggle('on', k < on));
   };
 
-  strips.forEach((s, i) => {
-    const lv = { v: reduce ? LEVELS[i % LEVELS.length] : 0 };
-    const target = LEVELS[i % LEVELS.length];
-    const apply = () => { s.style.setProperty('--lv', lv.v.toFixed(3)); light(s, lv.v); };
-    apply();
-    if (!reduce) {
-      ScrollTrigger.create({
-        trigger: root, start: 'top 75%', once: true,
-        onEnter: () => gsap.to(lv, { v: target, duration: 1.1, ease: 'expo.out', delay: i * 0.06, onUpdate: apply }),
-      });
-    }
-    if (s.tagName === 'A') {
-      const up = () => { gsap.to(lv, { v: 1, duration: reduce ? 0 : 0.45, ease: 'power3.out', overwrite: true, onUpdate: apply }); };
-      const down = () => { gsap.to(lv, { v: target, duration: reduce ? 0 : 0.6, ease: 'power3.out', overwrite: true, onUpdate: apply }); };
-      s.addEventListener('pointerenter', up);
-      s.addEventListener('focus', up);
-      s.addEventListener('pointerleave', down);
-      s.addEventListener('blur', down);
-    }
+  let cur = 0;
+  let auto = !reduce;
+  let started = false;
+
+  const level = () => tabs.forEach((t, i) => {
+    const lv = i === cur ? 1 : IDLE[i % IDLE.length];
+    t.style.setProperty('--lv', String(lv));
+    if (i !== cur || !auto) light(i, lv);
   });
+
+  function select(i: number, focus = false) {
+    cur = (i + tabs.length) % tabs.length;
+    const c = CHANNELS[cur];
+    tabs.forEach((t, k) => {
+      const on = k === cur;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      t.classList.toggle('is-on', on);
+    });
+    if (focus) tabs[cur].focus();
+    // Keep the selected strip in view inside the row (phones), without moving the page.
+    if (strip && strip.scrollWidth > strip.clientWidth) {
+      const t = tabs[cur];
+      const left = t.offsetLeft - (strip.clientWidth - t.offsetWidth) / 2;
+      strip.scrollTo({ left, behavior: reduce ? 'auto' : 'smooth' });
+    }
+    panel!.setAttribute('aria-labelledby', tabs[cur].id);
+    panel!.style.setProperty('--c', tabs[cur].style.getPropertyValue('--c'));
+    if (crop) focusCrop(crop, { y0: c.crop[0], y1: c.crop[1] }, shot(c.shot));
+    const fill = () => {
+      if (out.ch) out.ch.textContent = `CH ${pad2(c.ch)} · ${c.group}`;
+      if (out.name) out.name.textContent = c.name;
+      if (out.line) out.line.textContent = c.line;
+      if (out.pts) {
+        out.pts.replaceChildren(...c.points.map((p) => { const li = document.createElement('li'); li.textContent = p; return li; }));
+      }
+      if (out.guide) out.guide.href = academyArticle(c.guide);
+      if (out.page) { out.page.hidden = !c.live; out.page.href = c.live ? channelUrl(c) : '#'; }
+    };
+    if (reduce || !copy) fill();
+    else {
+      copy.classList.add('is-out');
+      window.setTimeout(() => { fill(); copy.classList.remove('is-out'); }, 200);
+    }
+    level();
+  }
+
+  const takeOver = () => {
+    if (!auto) return;
+    auto = false;
+    root.classList.remove('is-auto');
+    level();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => { takeOver(); select(i); });
+    t.addEventListener('keydown', (e) => {
+      const k = e.key;
+      const j = k === 'ArrowRight' || k === 'ArrowDown' ? cur + 1 : k === 'ArrowLeft' || k === 'ArrowUp' ? cur - 1 : k === 'Home' ? 0 : k === 'End' ? tabs.length - 1 : null;
+      if (j === null) return;
+      e.preventDefault();
+      takeOver();
+      select(j, true);
+    });
+  });
+  root.addEventListener('focusin', takeOver);
+  strip?.addEventListener('pointerdown', takeOver);
+
+  level();
+  if (reduce) return;
+
+  // Auto-play while on screen: the selected meter is the timer.
+  root.classList.add('is-auto');
+  let visible = false;
+  let left = BARS;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) started = true; }, { threshold: 0.35 }).observe(root);
+  clock.onStep(() => {
+    if (!auto || !started || !visible || document.hidden) return;
+    left--;
+    light(cur, 1 - left / BARS);
+    if (left <= 0) { left = BARS; select(cur + 1); light(cur, 0); }
+  });
+  light(cur, 0);
 }

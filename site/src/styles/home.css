@@ -3,18 +3,28 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── Chaos, then order ─────────────────────────────────────────── */
+@property --sorted { syntax: '<number>'; inherits: true; initial-value: 0; }
 .noise { isolation: isolate; overflow: clip; }
+@media (prefers-reduced-motion: no-preference) { .noise { transition: --sorted .7s var(--ease); } }
 .photo--noise::after { background: linear-gradient(90deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.74) 45%, rgba(5,5,5,.86) 100%), linear-gradient(180deg, rgba(5,5,5,1) 0%, rgba(5,5,5,0) 18%, rgba(5,5,5,0) 82%, rgba(5,5,5,1) 100%); }
 .noise__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 40px clamp(32px, 4vw, 72px); align-items: center; }
 .noise__h { display: grid; gap: 0.12em; font-size: clamp(40px, min(5vw, 7.4svh), 84px); }
 .noise__a { transition: opacity .6s var(--ease), color .6s; }
-.noise__b { color: var(--lime); }
+/* The answer line waits as an outline and fills with lime as the chat gets sorted (--sorted: 0…1). */
+.noise__b {
+  justify-self: start; color: transparent; -webkit-text-stroke: 1.5px rgba(255,255,255,.22);
+  background: linear-gradient(90deg, var(--lime) 0 calc(var(--sorted, 0) * 100%), transparent calc(var(--sorted, 0) * 100%));
+  -webkit-background-clip: text; background-clip: text;
+  transition: -webkit-text-stroke-color .6s;
+}
+.noise.is-done .noise__b { -webkit-text-stroke-color: transparent; }
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) { .noise__b { color: var(--lime); -webkit-text-stroke: 0; } }
 .noise__lead { margin-top: 28px; }
 .noise__count { margin: 28px 0 0; color: var(--fg-dim); }
 .noise__count b { color: var(--lime); font-weight: 600; }
 
 .noise__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.noise__item { display: grid; gap: 6px; justify-items: start; }
+.noise__item { position: relative; display: grid; gap: 6px; justify-items: start; transition: opacity .5s var(--ease); }
 .bubble {
   max-width: 100%; padding: 11px 16px 12px; border-radius: 22px 22px 22px 6px;
   background: #1b1b1b; border: 1px solid rgba(255,255,255,.08);
@@ -27,24 +37,47 @@
 .fix__ch { --c: var(--lime); flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 99px; background: var(--c); color: #000; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: var(--track-mono); }
 .noise__item.is-sorted .bubble { transform: none; background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.14); }
 .noise__item.is-sorted .bubble p { color: var(--fg-dim); }
-.noise__item.is-sorted .fix { opacity: 1; transform: none; }
+.noise__item.is-sorted .fix { opacity: .55; transform: none; }
+/* The message being answered right now is the one that's lit. */
+.noise__item.is-current .bubble { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.3); }
+.noise__item.is-current .bubble p { color: var(--fg); }
+.noise__item.is-current .fix { opacity: 1; font-size: 15px; }
+.noise__item::before {
+  content: ""; position: absolute; left: -18px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px;
+  background: var(--lime); opacity: 0; transform: scaleY(.3); transition: opacity .4s, transform .5s var(--ease);
+}
+.noise__item.is-current::before { opacity: 1; transform: none; }
 
 .noise__screen { margin: 0; width: clamp(250px, 23vw, 360px); }
 .noise__crop { width: 100%; aspect-ratio: 4 / 5; }
+.noise__cap {
+  --c: var(--lime); position: relative; margin: 16px 0 0; padding-left: 16px; min-height: 2.6em;
+  font-size: 16px; line-height: 1.3; color: var(--fg); transition: opacity .3s;
+}
+.noise__cap::before { content: ""; position: absolute; left: 0; top: .35em; width: 8px; height: 8px; border-radius: 3px; background: var(--c); }
+.noise__cap.is-idle { color: var(--fg-dim); font-family: var(--font-mono); font-size: 12px; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.noise__cap.is-idle::before { background: var(--fg-dim); }
+.noise__mini { display: none; }
 
-/* Pinned (desktop): the scene fills the screen; the answer line writes itself in at the end. */
+/* Pinned (desktop): the scene fills the screen. */
 .noise.is-pinned { padding-block: 0; }
 .noise.is-pinned .noise__pin { min-height: 100svh; display: flex; align-items: center; padding-top: 72px; }
-.noise.is-pinned .noise__b { clip-path: inset(0 100% 0 0); transition: clip-path 1s var(--ease); }
-.noise.is-pinned.is-done .noise__b { clip-path: inset(0); }
 .noise.is-done .noise__a { opacity: .35; }
 
 @media (max-width: 1080px), (max-height: 639px) {
   .noise__grid { grid-template-columns: minmax(0, 1fr); }
   .noise__screen { display: none; }
-  .noise__list { gap: 18px; max-width: 560px; }
+  .noise__list { gap: 22px; max-width: 560px; }
+  .noise__item::before { left: -12px; }
+  /* Each message carries its own zoom: blurred and dim until it's sorted. */
+  .noise__mini {
+    display: block; width: 100%; max-width: 420px; aspect-ratio: 2 / 1; margin-top: 4px; --r: 18px;
+    opacity: .28; filter: blur(6px) grayscale(1); transition: opacity .6s var(--ease), filter .6s var(--ease);
+  }
+  .noise__item.is-sorted .noise__mini { opacity: .7; filter: none; }
+  .noise__item.is-current .noise__mini { opacity: 1; }
 }
-@media (max-width: 720px) { .bubble { --dx: 0px !important; } }
+@media (max-width: 720px) { .bubble { --dx: 0px !important; } .noise__item::before { left: -10px; } }
 
 /* ── One night ─────────────────────────────────────────────────── */
 .night { position: relative; padding-block: var(--section-y); background: var(--ink); }
@@ -90,18 +123,67 @@
   .nt__crop { width: 100%; aspect-ratio: 5 / 4; --r: 20px; }
 }
 
-/* ── Rack ──────────────────────────────────────────────────────── */
-.rack__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 8px; }
-.rack .strip { min-height: 400px; padding: 16px 12px 18px; }
-.rack .strip__name { font-size: 16px; }
-.rack .strip__meter { grid-auto-rows: 5px; }
+/* ── Rack: the channel explorer ─────────────────────────────────── */
+.rx { display: grid; gap: 14px; }
+.rx__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 8px; }
+.rx__tab { min-height: 230px; padding: 14px 10px 14px; font: inherit; text-align: left; cursor: pointer; }
+.rx__tab .strip__name { font-size: 14px; }
+.rx__tab .strip__meter { grid-auto-rows: 5px; }
 .strip__meter i.on { background: var(--c); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 50%, transparent); }
-@media (max-width: 1320px) { .rack__strips { grid-template-columns: repeat(6, minmax(0, 1fr)); } .rack .strip { min-height: 320px; } }
-@media (max-width: 860px) { .rack__strips { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rx__tab:hover { background: rgba(255,255,255,.06); }
+.rx__tab:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.rx__tab[aria-selected="true"] { background: rgba(255,255,255,.08); border-color: color-mix(in srgb, var(--c) 55%, transparent); color: var(--fg); }
+.rx__tab[aria-selected="true"] .strip__cap { background: var(--c); border-color: var(--c); }
+.rx__tab[aria-selected="true"] .strip__cap::after { background: #000; }
+/* The selected strip's meter is the auto-play timer: no transition lag. */
+.rx.is-auto .rx__tab[aria-selected="true"] .strip__meter i { transition: none; }
+
+.rx__panel {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(28px, 4vw, 64px); align-items: center;
+  padding: clamp(20px, 3vw, 40px); border-radius: var(--radius); background: #111; border: 1px solid rgba(255,255,255,.07);
+}
+.rx__crop { --r: 24px; width: 100%; aspect-ratio: 16 / 11; }
+.rx__copy { transition: opacity .2s linear, transform .35s var(--ease); }
+.rx__copy.is-out { opacity: 0; transform: translateY(6px); }
+.rx__ch { margin: 0 0 14px; font-size: 12px; color: var(--c); }
+.rx__name { margin: 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(32px, 3.6vw, 56px); line-height: .92; letter-spacing: -0.03em; }
+.rx__line { margin: 14px 0 0; font-size: 19px; line-height: 1.4; color: var(--fg); }
+.rx__pts { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 0; }
+.rx__pts li { position: relative; padding: 12px 0 12px 22px; border-top: 1px solid var(--line); font-size: 16px; line-height: 1.4; color: var(--fg-2); }
+.rx__pts li::before { content: ""; position: absolute; left: 0; top: 19px; width: 8px; height: 8px; border-radius: 3px; background: var(--c); }
+.rx__links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 24px 0 0; }
+.rx__guide { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg); text-decoration: none; }
+.rx__guide .ico { width: 15px; height: 15px; color: var(--lime); transition: transform .4s var(--ease); }
+.rx__guide:hover .ico { transform: translate(3px, -3px); }
+
+@media (max-width: 1320px) { .rx__tab { min-height: 200px; } .rx__tab .strip__name { font-size: 12px; } }
+/* Narrower: the strips become a row you swipe; the panel stacks. */
+@media (max-width: 1080px) {
+  .rx__strips { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: calc(var(--gutter) * -1); padding: 2px var(--gutter) 6px; }
+  .rx__strips::-webkit-scrollbar { display: none; }
+  .rx__tab { flex: none; width: 92px; min-height: 176px; scroll-snap-align: center; }
+  .rx__panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .rx__crop { aspect-ratio: 4 / 5; }
+}
+@media (max-width: 600px) {
+  .rx__panel { grid-template-columns: minmax(0, 1fr); }
+  .rx__crop { aspect-ratio: 16 / 10; }
+}
+/* Short screens (phones and Duo on their side): compact strips, the meter does the talking. */
+@media (max-height: 600px) {
+  .rx__tab { min-height: 0; gap: 10px; }
+  .rx__tab .strip__track { display: none; }
+  .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
+  .rx__crop { aspect-ratio: 1 / 1; }
+}
 @media (max-width: 560px) {
-  .rack__strips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rack .strip { min-height: 250px; }
-  .rack .strip__name { font-size: 15px; }
+  .rx__tab { width: 84px; min-height: 0; padding: 12px 10px; gap: 10px; }
+  .rx__tab .strip__track { display: none; }
+  .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
+  .rx__tab .strip__name { font-size: 12px; }
+  .rx__panel { padding: 14px 14px 22px; border-radius: 28px; gap: 22px; }
+  .rx__crop { --r: 18px; }
+  .rx__line { font-size: 17px; }
 }
 
 /* ── Same gig, three views ──────────────────────────────────────── */
@@ -190,10 +272,3 @@
 
 /* ── Get band ──────────────────────────────────────────────────── */
 .getband { padding-bottom: calc(var(--section-y) + var(--radius)); }
-
-/* Phones: compact strips, the meter does the talking. */
-@media (max-width: 560px) {
-  .rack .strip { min-height: 0; grid-template-rows: auto auto auto auto; gap: 8px; padding: 12px 12px 14px; }
-  .rack .strip__track { display: none; }
-  .rack .strip__meter { grid-auto-rows: 3px; gap: 2px; }
-}

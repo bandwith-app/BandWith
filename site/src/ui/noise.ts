@@ -16,9 +16,12 @@ const ANSWERS: { shot: string; region: Region; where: string; c: string }[] = [
 /**
  * "Chaos, then order". A late-night group chat, one message per question a
  * band asks every week. Scrolling sorts them one by one: the bubble
- * straightens, gets its answer (a channel of the app) and the phone shows the
- * part of the real screen that answers it. Desktop: pinned and scroll-driven.
- * Elsewhere: each message sorts itself as it reaches the middle of the screen.
+ * straightens, gets its answer (a channel of the app) and the screen shows the
+ * part of the app that answers it, with the answer repeated under it. The
+ * message being answered stays lit; the ghost line "It could run on one app."
+ * fills in as the chat gets sorted. Desktop: pinned and scroll-driven.
+ * Elsewhere: each message sorts itself as it reaches the middle of the screen
+ * and carries its own zoom.
  */
 export function initNoise(root: HTMLElement | null, ctx: Ctx) {
   if (!root) return;
@@ -27,7 +30,15 @@ export function initNoise(root: HTMLElement | null, ctx: Ctx) {
   const where = root.querySelector<HTMLElement>('[data-noise-where]');
   const count = root.querySelector<HTMLElement>('[data-noise-n]');
   const pin = root.querySelector<HTMLElement>('[data-noise-pin]');
+  const cap = root.querySelector<HTMLElement>('[data-noise-cap]');
   const n = items.length;
+  // The answer, as the item states it (without its channel chip): repeated under the screen.
+  const answer = items.map((el) => {
+    const fix = el.querySelector('.fix')?.cloneNode(true) as HTMLElement | undefined;
+    fix?.querySelector('.fix__ch')?.remove();
+    return fix?.textContent?.trim() ?? '';
+  });
+  const capIdle = cap?.textContent ?? '';
 
   // Every bubble starts a little askew, like a chat at 1 a.m.
   items.forEach((el, i) => {
@@ -40,18 +51,49 @@ export function initNoise(root: HTMLElement | null, ctx: Ctx) {
     k = Math.max(0, Math.min(n, k));
     if (k === step) return;
     step = k;
-    items.forEach((el, i) => el.classList.toggle('is-sorted', i < k));
+    items.forEach((el, i) => {
+      el.classList.toggle('is-sorted', i < k);
+      el.classList.toggle('is-current', i === k - 1);
+    });
+    root.style.setProperty('--sorted', String(k / n));
     const a = ANSWERS[Math.max(0, k - 1)];
     if (crop && a) {
       focusCrop(crop, a.region, `/shots/${a.shot}@phone.webp`);
-      window.setTimeout(() => { if (where) where.textContent = a.where; crop.style.setProperty('--c', a.c); }, 240);
+      window.setTimeout(() => {
+        if (where) where.textContent = a.where;
+        crop.style.setProperty('--c', a.c);
+        if (cap) { cap.textContent = k ? answer[k - 1] : capIdle; cap.classList.toggle('is-idle', !k); cap.style.setProperty('--c', a.c); }
+      }, 240);
     }
     root.classList.toggle('is-done', k >= n);
     if (count) count.textContent = String(k);
   };
 
+  // Narrow screens have no side screen: each message carries its own zoom,
+  // blurred until the message is sorted. Built only when that layout is used.
+  let minis = false;
+  function addMinis() {
+    if (minis) return;
+    minis = true;
+    items.forEach((el, i) => {
+      const a = ANSWERS[i];
+      if (!a) return;
+      const box = document.createElement('div');
+      box.className = 'crop noise__mini';
+      box.setAttribute('aria-hidden', 'true');
+      box.style.setProperty('--c', a.c);
+      box.innerHTML = `<img class="crop__img" src="/shots/${a.shot}@phone.webp" alt="" width="780" height="1688" loading="lazy" decoding="async" />`;
+      el.append(box);
+      fitCrop(box, a.region);
+    });
+  }
+
   if (crop) fitCrop(crop, ANSWERS[0].region);
-  if (ctx.reduce) { set(n); return; }
+  if (ctx.reduce) {
+    if (window.matchMedia('(max-width: 1080px), (max-height: 639px)').matches) addMinis();
+    set(n);
+    return;
+  }
   set(0);
 
   const mm = gsap.matchMedia();
@@ -66,6 +108,7 @@ export function initNoise(root: HTMLElement | null, ctx: Ctx) {
       });
       return () => { st.kill(); root.classList.remove('is-pinned'); step = -1; set(0); };
     }
+    addMinis();
     const sts = items.map((el, i) => ScrollTrigger.create({
       trigger: el, start: 'top 62%', end: 'bottom top',
       onEnter: () => set(Math.max(step, i + 1)),

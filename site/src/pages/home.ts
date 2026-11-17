@@ -58,7 +58,7 @@ if (!reduce) {
 /* ───────────── Sections ───────────── */
 initNoise(document.querySelector('[data-noise]'), ctx);
 initNight(document.querySelector('[data-night]'), ctx);
-initRack(document.querySelector('[data-rack]'), reduce);
+initRack(document.querySelector('[data-rack]'), clock, reduce);
 initRoles(document.querySelector('[data-roles]'), reduce);
 initDevices(document.querySelector('[data-devices]'), reduce);
 

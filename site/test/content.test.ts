@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync } from 'fs';
 import path from 'path';
 import { CHANNELS, GROUPS } from '../src/content/features';
-import { PUSHES } from '../src/ui/heroScreen';
+import { PUSHES, picksHtml } from '../src/ui/heroScreen';
 import { BY_ID } from '../../academy/content';
 import { GENERATED } from '../src/content/render';
 
@@ -12,6 +12,28 @@ describe('site content', () => {
   it('has eleven channels numbered 1–11 with unique slugs', () => {
     expect(CHANNELS.map((c) => c.ch)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(new Set(CHANNELS.map((c) => c.slug)).size).toBe(11);
+  });
+
+  it('gives every channel a Guide article and three points for the home explorer', () => {
+    for (const c of CHANNELS) {
+      expect(BY_ID.has(c.guide), `${c.slug} guide → ${c.guide}`).toBe(true);
+      expect(c.points, c.slug).toHaveLength(3);
+      for (const p of c.points) expect(p.length, `${c.slug}: ${p}`).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it('renders the explorer as eleven tabs bound to one panel', () => {
+    const html = GENERATED['rack-home']();
+    expect(html.match(/role="tab"/g)).toHaveLength(11);
+    expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
+    expect(html).toContain('id="rx-panel" role="tabpanel"');
+  });
+
+  it('gives the hero one chip per notification, the first one pressed', () => {
+    const html = picksHtml();
+    expect(html.match(/<button/g)).toHaveLength(PUSHES.length);
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    expect(new Set(PUSHES.map((p) => p.chip)).size).toBe(PUSHES.length);
   });
 
   it('links only Academy articles that exist', () => {
