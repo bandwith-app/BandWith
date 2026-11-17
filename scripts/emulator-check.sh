@@ -190,8 +190,14 @@ boot_avd() {
     local running; running="$(adb -s "$ANDROID_SERIAL_ID" emu avd name 2>/dev/null | head -1 | tr -d '\r')"
     [ "$running" = "$AVD_NAME" ] || { echo "Port $AVD_PORT is used by another emulator ($running): not touching it." >&2; exit 1; }
   else
+    # The Mac's GPU, not SwiftShader: with software rendering and the two
+    # iOS simulators running alongside, the WebView's main thread skipped
+    # frames for seconds at a time while typing and Android raised "BandWith
+    # isn't responding" (Input dispatching timed out), so a keyboard flow's
+    # probe never answered (1.0.6 gate, keyboard-create-account). Headless
+    # host rendering works (emulator 37); BW_AVD_GPU overrides it.
     emulator -avd "$AVD_NAME" -port "$AVD_PORT" -no-window -no-audio -no-boot-anim -no-snapshot-save \
-      -gpu swiftshader_indirect >"$RUN_DIR/emulator.log" 2>&1 &
+      -gpu "${BW_AVD_GPU:-host}" >"$RUN_DIR/emulator.log" 2>&1 &
     EMULATOR_PID=$!
   fi
 }
