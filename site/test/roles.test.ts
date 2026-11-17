@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIELDS, ROLES, countFor, hiddenWhy } from '../src/content/roles';
-import { rolesCard } from '../src/content/render';
+import { rolesCard } from '../src/content/rolesCard';
 
 const get = (id: string) => FIELDS.find((f) => f.id === id)!;
 

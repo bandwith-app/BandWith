@@ -44,7 +44,7 @@ export const SECTIONS: Section[] = [
     fields: [
       { id: 'price', label: 'Band fee', value: { admin: '€2,400' } },
       { id: 'fees', label: 'Fees', value: { admin: 'Five fees · €1,900 to pay out', member: 'Your fee · €400', deputy: 'Fee offered · €180' } },
-      { id: 'deposit', label: 'Deposit', value: { admin: '€600 · paid' } },
+      { id: 'deposit', label: 'Deposit', value: { admin: '€732 · paid' } },
     ],
   },
   {
