@@ -1,0 +1,731 @@
+<section class="chapter" id="ch-music">
+  <h1>Repertoire, setlists and Stage mode</h1>
+  <p class="lead">All of the band's songs live in one library, the Repertoire. Admins build the gig setlists from it, and on stage everyone reads lyrics and chords while staying on the same song as the rest of the band.</p>
+
+  <h2>The Repertoire and its songs</h2>
+
+  <h3 id="art-repertoire-overview" data-roles="admin,member">The Repertoire screen</h3>
+  <p>The Repertoire is the band's song library. Every song in it belongs to the band, and every active member of the band can read every song. Setlists are built from these songs.</p>
+  <p class="steps-title">Open the Repertoire</p>
+  <ol class="steps">
+    <li>On Home, tap the <b class="ui">Repertoire</b> tile under <b class="ui">Quick Actions</b>.</li>
+    <li>Or tap your avatar at the top (<b class="ui">Open Identity and Account Hub</b>) and tap <b class="ui">Repertoire</b> under <b class="ui">Band assets &amp; workflows</b>.</li>
+  </ol>
+  <p class="steps-title">What is on the screen</p>
+  <ul>
+    <li><b class="ui">Songs</b> and <b class="ui">Setlists</b> at the top switch between the two lists. Each shows how many there are.</li>
+    <li>The search field filters the list you are on: <b class="ui">Search songs, artists…</b> matches titles and artists, <b class="ui">Search setlists…</b> matches setlist names.</li>
+    <li>The <b class="ui">Band repertoire</b> card shows the number of <b class="ui">Songs</b> and <b class="ui">Setlists</b>, the <b class="ui">Total duration</b> of all songs, and <b class="ui">Status readiness</b>: one dot per song, coloured by status, with the counts for <b class="ui">Ready</b>, <b class="ui">Learning</b> and <b class="ui">Suggested</b> below.</li>
+    <li>Each song row shows the title, the artist and key, the duration and the BPM. A <b class="ui">Suggested</b> or <b class="ui">Learning</b> tag shows when the song is not ready yet.</li>
+    <li>The round <b class="ui">Play</b> button at the left of a row plays the song's recording or opens its link. It is greyed out when the song has neither.</li>
+    <li>Tap anywhere else on a song row to open its menu (see <a data-ref="song-menu-actions">Song menu: every action</a>).</li>
+    <li>Above the songs, admins see <b class="ui">Suggestions from members</b> when something waits for review; members always see <b class="ui">My suggestions</b> (see <a data-ref="review-song-suggestions">Review members' suggestions</a> and <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</li>
+  </ul>
+  <table class="grid">
+    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Ready</b></td><td>The band plays it. Songs an admin adds or imports start here.</td></tr>
+      <tr><td><b class="ui">Learning</b></td><td>The band is working on it. An approved suggestion starts here.</td></tr>
+      <tr><td><b class="ui">Suggested</b></td><td>A member proposed it. It waits for an admin to approve or reject it.</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin">Sees <b class="ui">Import song list</b> and <b class="ui">Add song</b> at the top right on the Songs list, and <b class="ui">New setlist</b> on the Setlists list. Can edit, change the status of and delete every song.</div>
+    <div data-role="member">Reads every song and setlist. The + button at the top right is <b class="ui">Suggest a song</b> on the Songs list; there is no button on the Setlists list.</div>
+    <div data-role="deputy">A deputy is not a band member and has no Repertoire. Deputies see only the gigs they were asked to play (see <a data-ref="deputy-gigs">Deputy gigs</a>).</div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">The Repertoire is the list column. A setlist, a song form or the suggestions open beside it in the second pane.</div>
+  <div class="devnote" data-devices="duoLaptop">The <b class="ui">Band repertoire</b> card moves to the top half (the Display), and the lists stay on the bottom half.</div>
+  <figure class="shot" data-shot="music-repertoire" data-device="phone"><figcaption>The Repertoire with the Band repertoire card and the song list.</figcaption></figure>
+
+  <h3 id="art-add-a-song" data-roles="admin">Add a song to the repertoire</h3>
+  <p>A song goes in with three short steps; only the title is required.</p>
+  <ol class="steps">
+    <li>In the Repertoire, on <b class="ui">Songs</b>, tap <b class="ui">Add song</b> (the + button at the top right). With an empty library you can also tap <b class="ui">Add first song</b>.</li>
+    <li>On step 1, <b class="ui">Song</b>, type the <b class="ui">Song title *</b> and, if you know it, the <b class="ui">Original artist</b>. To bring in chords or lyrics now, tap <b class="ui">Import chords and lyrics</b> (see <a data-ref="import-chords-and-lyrics">Import chords and lyrics into a song</a>).</li>
+    <li>Tap <b class="ui">Next</b>. On step 2, <b class="ui">Details · optional</b>, fill in <b class="ui">Duration</b>, <b class="ui">BPM</b>, <b class="ui">Key</b> and <b class="ui">Genre</b> if you want.</li>
+    <li>Tap <b class="ui">Next</b>. On step 3, <b class="ui">Files &amp; links · optional</b>, add a recording, a chart, links, notes or lyrics.</li>
+    <li>Tap <b class="ui">Add song</b>. The button turns into <b class="ui">Added!</b> and the form closes.</li>
+  </ol>
+  <p>You can save at any step: tap <b class="ui">Add song now</b> under the fields to save with what you have so far.</p>
+  <aside class="note tip">If a song with the same title and artist is already in the library, the form says <b class="ui">“… is already in your library. Save again to add a second copy.”</b> Tapping the save button again creates a second copy.</aside>
+  <p class="steps-title">What happens after you save</p>
+  <ul>
+    <li>The song is added with the status <b class="ui">Ready</b>.</li>
+    <li>Everyone else in the band gets a note in their notifications inbox (no push).</li>
+    <li>Files you picked are uploaded when you save, into the band's private storage. If the save fails, they are removed again.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Adds songs straight into the library as <b class="ui">Ready</b>.</div>
+    <div data-role="member">Uses the same form, titled <b class="ui">Suggest a song</b>. The song is added as <b class="ui">Suggested</b> and waits for an admin (see <a data-ref="suggest-a-song">Suggest a new song</a>).</div>
+  </div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Close</b> sits in the rail, under the clock, instead of the top right of the form.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">The form opens in the second pane, beside the Repertoire.</div>
+
+  <h3 id="art-song-fields" data-roles="admin,member">Every field of a song</h3>
+  <p>The song form has three steps. Only the title is required; the other steps are marked optional and can be skipped.</p>
+  <table class="grid">
+    <thead><tr><th>Field</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Song title *</b></td><td>The song's name. Required.</td></tr>
+      <tr><td><b class="ui">Original artist</b></td><td>Shown under the title everywhere and used to spot duplicates.</td></tr>
+      <tr><td><b class="ui">Import chords and lyrics</b></td><td>Brings in a chord chart and lyrics from the iReal Pro forum, a file or the clipboard. Once a chart is attached, a <b class="ui">Chord chart</b> card shows its key, style, tempo, bars and sections, with <b class="ui">Preview chords</b>, <b class="ui">Replace</b> and an X to remove it.</td></tr>
+      <tr><td><b class="ui">Duration</b></td><td>Minutes and seconds in two boxes (min : sec). Used for setlist totals.</td></tr>
+      <tr><td><b class="ui">BPM</b></td><td>Tempo, up to 3 digits. Stage mode's click uses it.</td></tr>
+      <tr><td><b class="ui">Key</b></td><td>Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control.</td></tr>
+      <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Tools under BPM to find the tempo (see <a data-ref="transpose-and-tempo">Transpose a song and find its tempo</a>).</td></tr>
+      <tr><td><b class="ui">Transpose for the band</b></td><td>Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose.</td></tr>
+      <tr><td><b class="ui">Genre</b></td><td>Tags to pick from the band's genres, or a new one with the dashed <b class="ui">Genre</b> chip, then <b class="ui">Add genre</b>. Genres filter the library when you build a setlist.</td></tr>
+      <tr><td><b class="ui">Recording</b></td><td>An audio file: MP3, M4A or WAV, max 50 MB.</td></tr>
+      <tr><td><b class="ui">Chart / sheet music</b></td><td>A PDF or photo, max 20 MB.</td></tr>
+      <tr><td><b class="ui">Choose files</b></td><td>Picks one or more files, which the app sorts into Recording or Chart by type. Files from iCloud Drive, Google Drive or Dropbox: tap <b class="ui">Choose files</b>, then <b class="ui">Browse</b>, and pick the app under Locations.</td></tr>
+      <tr><td><b class="ui">YouTube video</b></td><td>A link to the song on YouTube. Must start with https://.</td></tr>
+      <tr><td><b class="ui">Sheet music</b></td><td>A link to a PDF or sheet music online, used instead of an uploaded chart. Must start with https://.</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>A link to a chord page, saved into the song's notes as “Chords: &lt;link&gt;”. Must start with https://.</td></tr>
+      <tr><td><b class="ui">Notes</b></td><td>Band notes on the song: arrangement ideas, key changes.</td></tr>
+      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>The song's lyrics, with chords inline if you want (see <a data-ref="lyrics-and-chords-format">How lyrics and chords are written</a>). <b class="ui">Paste or import lyrics</b> under the box opens the import sheet on its Lyrics tab.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Uploaded recordings and charts are stored privately for the band: only band members can open them.</aside>
+  <aside class="note tip">If the title is empty when you pick a file, the file name becomes the title.</aside>
+
+  <h3 id="art-song-menu-actions" data-roles="admin,member">Song menu: every action</h3>
+  <p>Tap a song row in the Repertoire to open its menu. Items appear only when they apply to that song.</p>
+  <table class="grid">
+    <thead><tr><th>Item</th><th>What it does</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Play</b></td><td>Plays the recording in the mini player, or opens the Spotify or YouTube link.</td><td>Everyone, when the song has a recording or link</td></tr>
+      <tr><td><b class="ui">Lyrics</b></td><td>Opens the song reader on the lyrics.</td><td>Everyone, when the song has lyrics</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>Opens the song reader on the chord chart.</td><td>Everyone, when the song has an iReal chart</td></tr>
+      <tr><td><b class="ui">Open chart</b></td><td>Opens the uploaded chart or the sheet music link.</td><td>Everyone, when the song has one</td></tr>
+      <tr><td><b class="ui">Open in Ultimate Guitar</b></td><td>Opens a search for the song on Ultimate Guitar, outside the app.</td><td>Everyone</td></tr>
+      <tr><td><b class="ui">Edit chords</b></td><td>Opens the chord editor.</td><td>Admins, when the song has lyrics</td></tr>
+      <tr><td><b class="ui">Edit</b></td><td>Opens the song form.</td><td>Admins</td></tr>
+      <tr><td><b class="ui">Suggest a change</b></td><td>Sends a correction or a note to the admin.</td><td>Members</td></tr>
+      <tr><td><b class="ui">Mark as ready</b></td><td>Sets the status to Ready.</td><td>Admins, when the song is not Ready</td></tr>
+      <tr><td><b class="ui">Approve · learning</b></td><td>Approves a suggested song and sets it to Learning.</td><td>Admins, on a Suggested song</td></tr>
+      <tr><td><b class="ui">Back to learning</b></td><td>Moves a Ready song back to Learning.</td><td>Admins, on a Ready song</td></tr>
+      <tr><td><b class="ui">Delete</b></td><td>Deletes the song after a confirmation.</td><td>Admins</td></tr>
+    </tbody>
+  </table>
+  <aside class="note tip">Moving a suggested song to Learning or Ready from this menu accepts the member's suggestion, and deleting it rejects it. Either way the member who suggested it is told.</aside>
+
+  <h3 id="art-edit-or-delete-a-song" data-roles="admin">Edit, approve or delete a song</h3>
+  <p class="steps-title">Edit a song</p>
+  <ol class="steps">
+    <li>In the Repertoire, tap the song row, then tap <b class="ui">Edit</b>.</li>
+    <li>Change what you need on any of the three steps. Tap <b class="ui">Save now</b> to save from step 1 or 2, or <b class="ui">Next</b> and then <b class="ui">Save song</b> on step 3.</li>
+  </ol>
+  <p>Only the fields you changed are saved, so a bandmate's change to another field at the same time is kept. The rest of the band gets one push, for example <b class="ui">“Song updated · Paper Boats”</b> with <b class="ui">“Leo M. changed: key, tempo.”</b></p>
+  <p class="steps-title">Change a song's status</p>
+  <ol class="steps">
+    <li>Tap the song row.</li>
+    <li>Tap <b class="ui">Mark as ready</b>, <b class="ui">Approve · learning</b> or <b class="ui">Back to learning</b>. The tag on the row changes at once.</li>
+  </ol>
+  <p class="steps-title">Delete a song</p>
+  <ol class="steps">
+    <li>Tap the song row, then tap <b class="ui">Delete</b>.</li>
+    <li>The confirmation names the setlists that lose the song and the upcoming gigs that play it.</li>
+    <li>Tap <b class="ui">Delete</b> to confirm, or <b class="ui">Cancel</b>.</li>
+  </ol>
+  <aside class="note warning">Deleting a song removes it from every setlist that has it, and its uploaded recording and chart are deleted for good. This can't be undone.</aside>
+  <div class="roles">
+    <div data-role="admin">Edits, changes the status of and deletes every band song.</div>
+    <div data-role="member">Cannot edit or delete band songs. Uses <b class="ui">Suggest a change</b> instead (see <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</div>
+  </div>
+
+  <h2>Lyrics, chords and key</h2>
+
+  <h3 id="art-lyrics-and-chords-format" data-roles="admin,member">How lyrics and chords are written</h3>
+  <p>Lyrics are plain text with a few simple marks. The same text holds the words and the chords, so one song serves the singer and the players.</p>
+  <p class="steps-title">The marks</p>
+  <ul>
+    <li>A section starts with a heading line: <code># Verse 1</code> or <code>[Chorus]</code>.</li>
+    <li>A blank line separates stanzas.</li>
+    <li>A chord goes in brackets right before the word it falls on: <code>[Am]word</code>. In the reader it shows above that word.</li>
+    <li><code>**bold**</code> and <code>*italic*</code> work inside a line.</li>
+    <li>JSON also works, for example a list of lines or a list of sections with a name and lines.</li>
+  </ul>
+  <p class="steps-title">What the app tidies when the song is saved</p>
+  <ul>
+    <li>Section names are put in one form: “Rit.” becomes Chorus, “[Strofa 2]” becomes Verse 2. Names in Italian, Spanish, French, German and Portuguese are understood.</li>
+    <li>Verses without numbers are numbered when there are several.</li>
+    <li>A line of chords above a line of words (chords-over-lyrics sheets) is merged into inline chords.</li>
+    <li>A chord standing before a space is attached to the next word.</li>
+  </ul>
+  <p>Section names are written in English in the text, but each person sees them in their own app language.</p>
+  <aside class="note tip">If the lyrics can't be drawn, the reader says <b class="ui">“These lyrics can’t be shown. Check their format in Edit song.”</b></aside>
+
+  <h3 id="art-read-a-song" data-roles="admin,member">Read lyrics and chords</h3>
+  <p>The full-screen reader lets you switch views, change the text size and transpose for yourself.</p>
+  <ol class="steps">
+    <li>In the Repertoire, tap the song row and tap <b class="ui">Lyrics</b> or <b class="ui">Chords</b>. From the mini player, tap <b class="ui">Lyrics</b>.</li>
+    <li>Switch between <b class="ui">Lyrics</b>, <b class="ui">Chords</b> and <b class="ui">Structure</b> with the tabs under the title. Only the views the song has are shown.</li>
+    <li>Tap the − and + buttons (<b class="ui">Smaller text</b>, <b class="ui">Bigger text</b>) at the top to change the text size.</li>
+    <li>To read in another key, use − and + around the key under the tabs. Tap the key to go back to the original.</li>
+    <li>Tap X (<b class="ui">Close lyrics</b>) to close the reader.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>View</th><th>What it shows</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lyrics</b></td><td>The words only, chords hidden.</td></tr>
+      <tr><td><b class="ui">Chords</b></td><td>The words with their chords above them, or the iReal chart if the lyrics have no chords.</td></tr>
+      <tr><td><b class="ui">Structure</b></td><td>The iReal chart bar by bar, or each section's chord progression in boxes.</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Your view is remembered</p>
+  <ul>
+    <li>The first time, the reader opens on the view for your instrument in the band: singers on Lyrics; guitar, keys and bass on Chords; drums, percussion and horns on Structure.</li>
+    <li>After that it opens on the view you last picked on this device. The same choice applies in Stage mode.</li>
+    <li>The text size is kept on this device and shared with Stage mode.</li>
+  </ul>
+  <p>If the song is playing in the mini player, a play/pause button shows in the reader's header. Admins also see <b class="ui">Edit chords</b> there.</p>
+  <div class="devnote" data-devices="duoLaptop">The song fills the top half (the Display) and the reader's controls move to the bottom half (the Deck).</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">The reader opens in the second pane, beside the Repertoire.</div>
+  <figure class="shot" data-shot="music-reader" data-device="phone"><figcaption>The song reader with the Lyrics, Chords and Structure tabs.</figcaption></figure>
+
+  <h3 id="art-transpose-and-tempo" data-roles="admin,member">Transpose a song and find its tempo</h3>
+  <p>Change the key for the whole band or only on your screen, and set the BPM by tapping along or from the recording.</p>
+  <table class="grid">
+    <thead><tr><th>Where</th><th>What it changes</th><th>Who</th></tr></thead>
+    <tbody>
+      <tr><td>Song form, <b class="ui">Transpose for the band</b></td><td>The song's key, its chord chart and the chords in its lyrics, for everyone, once you save.</td><td>Admins</td></tr>
+      <tr><td>Reader and Stage mode, − key +</td><td>Only what your screen shows. The song stays in its key for the band. Kept per song on this device.</td><td>Everyone</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Transpose for the whole band</p>
+  <ol class="steps">
+    <li>Open the song's menu and tap <b class="ui">Edit</b>, then <b class="ui">Next</b> to reach <b class="ui">Details · optional</b>.</li>
+    <li>Under <b class="ui">Key</b>, tap <b class="ui">Transpose down a semitone</b> (−) or <b class="ui">Transpose up a semitone</b> (+). The number between them shows how far you moved.</li>
+    <li>Tap <b class="ui">Save now</b>. The band is notified that the key and chords changed.</li>
+  </ol>
+  <p class="steps-title">Find the BPM</p>
+  <ol class="steps">
+    <li>In the song form, on <b class="ui">Details · optional</b>, tap <b class="ui">Tap</b> in time with the song. After two taps the BPM fills in; the count of taps shows next to the button.</li>
+    <li>Or tap <b class="ui">BPM from the recording</b>, when the song has an audio file. The tempo is worked out on your device.</li>
+    <li>If the result is half or double the real tempo, tap ÷2 or ×2.</li>
+  </ol>
+  <aside class="note tip">A tempo from the recording is an estimate: the form says <b class="ui">“Estimated from the recording: check it by tapping along.”</b></aside>
+
+  <h3 id="art-chord-editor" data-roles="admin">Edit a song's chords</h3>
+  <p>In the chord editor you put chords on words by tapping, move them by dragging and copy them between sections.</p>
+  <ol class="steps">
+    <li>In the Repertoire, tap the song row and tap <b class="ui">Edit chords</b>. You can also tap <b class="ui">Edit chords</b> in the song reader's header.</li>
+    <li>Tap a word. The bar at the bottom shows <b class="ui">Chord on “…”</b> and the chords the song already uses.</li>
+    <li>Tap a chord to put it on the word, or type a new one in <b class="ui">New chord, e.g. F#m7</b> and tap <b class="ui">Add</b>. <b class="ui">No chord</b> removes it, <b class="ui">Done</b> closes the bar.</li>
+    <li>To move a chord, drag it onto another word.</li>
+    <li>To reuse a verse's chords, tap <b class="ui">Copy chords from…</b> above a section and pick the section to copy from.</li>
+    <li>If the song has an iReal chart, tap <b class="ui">From iReal (…)</b> above a section to lay the matching chart section's chords over its lines.</li>
+    <li>Tap <b class="ui">Undo</b> at the top right to step back. When you are done, tap <b class="ui">Save chords</b>.</li>
+  </ol>
+  <p class="steps-title">Checks the editor makes</p>
+  <ul>
+    <li><b class="ui">Tidy the format</b> shows when section names or chords are not in the band's format; one tap fixes them.</li>
+    <li><b class="ui">“Not in the iReal chart: …”</b> lists chords in the lyrics that the chart never plays.</li>
+    <li><b class="ui">“The chords sound in …, the song is in ….”</b> shows when the chords don't fit the song's key, with a button to transpose them.</li>
+  </ul>
+  <p>The chord editor needs lyrics: with none, it says to add them in Edit song first. After you save, the band gets a push that the chords changed.</p>
+  <aside class="note tip">Leaving with changes not saved asks <b class="ui">“Save your changes?”</b> with <b class="ui">Save changes</b>, <b class="ui">Discard</b> and <b class="ui">Keep editing</b>.</aside>
+  <div class="roles">
+    <div data-role="admin">Edits the band's chords for everyone.</div>
+    <div data-role="member">Has no chord editor. Suggests a chord correction with <b class="ui">Suggest a change</b> (see <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</div>
+  </div>
+
+  <h2>Import, listen and annotate</h2>
+
+  <h3 id="art-import-chords-and-lyrics" data-roles="admin,member">Import chords and lyrics into a song</h3>
+  <p>Chords and lyrics can come from the iReal Pro forum, a file or the clipboard.</p>
+  <ol class="steps">
+    <li>In the song form, tap <b class="ui">Import chords and lyrics</b> on step 1, or <b class="ui">Paste or import lyrics</b> on step 3.</li>
+    <li>Pick a tab: <b class="ui">From the forum</b>, <b class="ui">From file</b> or <b class="ui">Lyrics</b>.</li>
+    <li><b class="ui">From file</b>: tap <b class="ui">Choose a file</b> and pick a MusicXML (.musicxml, .mxl), ChordPro (.cho, .chordpro, .pro) or text (.txt) file.</li>
+    <li><b class="ui">Lyrics</b>: copy the lyrics elsewhere, then tap <b class="ui">Paste from clipboard</b>, or paste them into the box and tap <b class="ui">Preview</b>.</li>
+    <li>Check the preview and tap <b class="ui">Use these lyrics</b>, or <b class="ui">Back</b>.</li>
+    <li>Save the song as usual.</li>
+  </ol>
+  <ul>
+    <li>Lyrics always show in a preview first. If the song already has lyrics, the preview says these replace them.</li>
+    <li>A chord chart on its own is attached straight away, without a preview.</li>
+    <li>Whatever the import brings fills in empty fields only: a title, artist, key and tempo you already typed stay.</li>
+    <li>When pasting, empty lines separate sections; chords above the words or in [brackets] stay with them.</li>
+    <li>From iReal Pro on your device: Share › Export › MusicXML, save it to Files, then use <b class="ui">From file</b>.</li>
+  </ul>
+  <aside class="note privacy">Only your band sees the lyrics and charts you import. Import only what you have the right to use.</aside>
+  <div class="roles">
+    <div data-role="admin">Imports into any song while adding or editing it.</div>
+    <div data-role="member">Imports while suggesting a new song. For an existing song, suggests the change instead.</div>
+  </div>
+
+  <h3 id="art-import-from-ireal-pro" data-roles="admin,member">Import a chord chart from iReal Pro</h3>
+  <p>Tap a song or playlist link on the iReal Pro forum to bring its chords, form, key and tempo into a song.</p>
+  <p class="steps-title">In the iPhone, iPad and Android apps</p>
+  <ol class="steps">
+    <li>In the song form, tap <b class="ui">Import chords and lyrics</b> and stay on <b class="ui">From the forum</b>.</li>
+    <li>Tap <b class="ui">Browse the iReal Pro forum</b>. The forum opens inside the app.</li>
+    <li>Tap a song or a playlist link. Its chords come straight back to the form.</li>
+    <li>Or paste an irealb:// link into <b class="ui">iReal Pro link</b>.</li>
+  </ol>
+  <p class="steps-title">On the web</p>
+  <ol class="steps">
+    <li>In the song form, tap <b class="ui">Import chords and lyrics</b> and stay on <b class="ui">From the forum</b>.</li>
+    <li>Tap <b class="ui">Open the iReal Pro forum</b>. The forum opens in its own window.</li>
+    <li>Right-click a song or playlist link and choose Copy Link.</li>
+    <li>Back in BandWith, tap <b class="ui">Paste link</b>, paste into <b class="ui">iReal Pro link</b>, or drag the link onto the box (it says <b class="ui">Drop the link here</b>). The forum window closes once the link is in.</li>
+  </ol>
+  <p>A playlist link shows its songs (<b class="ui">“… · 12 songs”</b>). Songs matching your title are listed first; type in <b class="ui">Find a song</b> to narrow the list, and tap a song to use it. <b class="ui">Change</b> goes back to the link.</p>
+  <p class="steps-title">What comes in</p>
+  <ul>
+    <li>The chords and the form (sections, bars, repeats), plus key, style, tempo and time signature. No melody, no lyrics.</li>
+    <li>The title, composer (as artist), key and BPM fill the form's empty fields.</li>
+    <li>The chart shows in the song reader's <b class="ui">Chords</b> and <b class="ui">Structure</b> views, and the chord editor can use it to place chords.</li>
+  </ul>
+  <aside class="note tip">If your browser blocks the forum window, allow pop-ups for BandWith and try again.</aside>
+  <div class="devnote" data-devices="web">The forum can't open inside the page, so it opens in a separate window and you bring the link back with <b class="ui">Paste link</b>, a paste, or a drag.</div>
+
+  <h3 id="art-open-a-chart-from-another-app" data-roles="admin,member">Open a MusicXML chart from another app</h3>
+  <ol class="steps">
+    <li>In another app (for example iReal Pro or Files), share or open a MusicXML file with BandWith.</li>
+    <li>BandWith opens a <b class="ui">Received file</b> sheet. Admins see <b class="ui">Attach the chord chart</b>; members see <b class="ui">Suggest the chord chart</b>.</li>
+    <li>Pick the song it belongs to, using <b class="ui">Find a song</b> to search. A song that already has a chart says it will be replaced.</li>
+    <li>Tap <b class="ui">Open chords</b> to check it, or <b class="ui">Done</b>.</li>
+  </ol>
+  <ul>
+    <li>For a new song, add the song first: the file waits in <b class="ui">Import chords and lyrics</b> › <b class="ui">From file</b> › <b class="ui">Received file</b>, where <b class="ui">Use it</b> attaches it.</li>
+    <li>Tap <b class="ui">Discard the file</b> if you don't want it.</li>
+    <li>A score with lyrics but no chord symbols gives no chord chart; to use its lyrics, open the song's Edit › <b class="ui">Paste or import lyrics</b> › <b class="ui">From file</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">The chart is attached to the band song at once.</div>
+    <div data-role="member">The chart goes to the admin as a suggestion. The band's song stays the same until they accept it.</div>
+  </div>
+  <div class="devnote" data-devices="web">Not available: receiving files from other apps works in the iPhone, iPad and Android apps.</div>
+
+  <h3 id="art-import-a-song-list" data-roles="admin">Import a song list</h3>
+  <p>Add many songs at once from a CSV or text file, or load the curated repertoire.</p>
+  <ol class="steps">
+    <li>In the Repertoire, on <b class="ui">Songs</b>, tap <b class="ui">Import song list</b> (the upload button at the top right). With an empty library you can also tap <b class="ui">Import list (CSV/TXT)</b>.</li>
+    <li>Pick a .csv, .tsv or .txt file, up to 2 MB.</li>
+    <li>The line above the list says how many songs were imported and how many were already in your library.</li>
+  </ol>
+  <p class="steps-title">What the file can look like</p>
+  <ul>
+    <li>A spreadsheet saved as CSV (Excel, Numbers, Google Sheets) with a header row. Columns that are read: title (or song, name, track), artist (or band, performer), key, bpm (or tempo), duration (or length, time; m:ss or seconds) and genre.</li>
+    <li>A plain list typed in Notes: one song per line, as “Title - Artist”, “Title, Artist” or just “Title”. Numbered lines and blank lines are fine.</li>
+    <li>Up to 2000 songs per file.</li>
+  </ul>
+  <p>Songs with the same title and artist as one already in the library are skipped. Imported songs are added as <b class="ui">Ready</b>.</p>
+  <p class="steps-title">Load the curated repertoire</p>
+  <ol class="steps">
+    <li>With an empty library, tap <b class="ui">Load 700+ songs</b>.</li>
+    <li>The app adds the curated songs that aren't in your library yet and says how many.</li>
+  </ol>
+  <aside class="note privacy">Importing a song list is admin-only, because it goes straight into the band's library. Members suggest songs one at a time, and an admin reviews each one.</aside>
+  <div class="roles">
+    <div data-role="admin">Sees <b class="ui">Import song list</b> and <b class="ui">Load 700+ songs</b>.</div>
+    <div data-role="member">Doesn't see these buttons.</div>
+  </div>
+
+  <h3 id="art-play-a-song-recording" data-roles="admin,member">Play a recording, open a chart or a link</h3>
+  <ol class="steps">
+    <li>In the Repertoire, tap the round <b class="ui">Play</b> button on a song row, or tap the row and tap <b class="ui">Play</b>.</li>
+    <li>A recording (an uploaded file, a Google Drive link or any audio link) plays in the mini player. Use <b class="ui">Pause</b>, <b class="ui">Play</b> and <b class="ui">Stop</b> there, and <b class="ui">Lyrics</b> to open the song reader.</li>
+    <li>A Spotify or YouTube link opens outside the app.</li>
+    <li>To see the chart, tap the row and tap <b class="ui">Open chart</b>.</li>
+  </ol>
+  <aside class="note tip">If nothing opens, the app says <b class="ui">“Could not open this song. Check its recording or links.”</b> If a link fails in the player, <b class="ui">Open the link</b> opens it elsewhere.</aside>
+
+  <h3 id="art-my-notes-and-files" data-roles="admin,member">My notes and files on a song</h3>
+  <p>Anyone can add private notes on a song, a line, a word or a chord, and keep their own files with it.</p>
+  <aside class="note privacy">Your notes and files are yours only: nobody else in the band sees them, admins included. The band's song doesn't change for the others.</aside>
+  <p class="steps-title">Add a note</p>
+  <ol class="steps">
+    <li>Open the song in the reader (<b class="ui">Lyrics</b> or <b class="ui">Chords</b>) or in Stage mode.</li>
+    <li>Turn on <b class="ui">My notes</b> under the song's tabs. The first time, a sheet explains what they are; tap <b class="ui">Got it</b>.</li>
+    <li>Tap <b class="ui">Add note</b>, then tap the line you want. Or tap <b class="ui">Note on the whole song</b>.</li>
+    <li>For a line, choose what the note is on: <b class="ui">Whole line</b>, one of its words, or one of its chords.</li>
+    <li>Type in <b class="ui">My note</b> and tap <b class="ui">Save note</b>.</li>
+  </ol>
+  <ul>
+    <li>Your notes show under their line, highlighted. Notes on the whole song show above the lyrics.</li>
+    <li>Tap a note to change it, or remove it with <b class="ui">Delete note</b>.</li>
+    <li>A note stays on its line even when an admin edits the chords or moves sections. If its line is no longer in the song, it moves to the top so it isn't lost.</li>
+    <li>Turn <b class="ui">My notes</b> off to hide them, for example on stage. The switch is kept on this device.</li>
+  </ul>
+  <p class="steps-title">Add your own file</p>
+  <ol class="steps">
+    <li>With <b class="ui">My notes</b> on, tap <b class="ui">Add file</b> and pick a recording or a score.</li>
+    <li>It shows as a chip under the bar. Tap it to open it; tap its X and confirm to remove it.</li>
+  </ol>
+  <p>To share a note with the band, tap <b class="ui">Suggest to the band</b> in the note sheet. It goes to the admin as a suggestion, with the line it was on.</p>
+  <div class="devnote" data-devices="phone,phoneLand,duoClosed">In Stage mode the bar uses icon buttons only, so it stays on one row above the lyrics.</div>
+
+  <h2>Members' suggestions</h2>
+
+  <h3 id="art-suggest-a-song" data-roles="member">Suggest a new song</h3>
+  <p>A member proposes a song for the repertoire; an admin approves or rejects it.</p>
+  <ol class="steps">
+    <li>In the Repertoire, on <b class="ui">Songs</b>, tap <b class="ui">Suggest a song</b> (the + button at the top right).</li>
+    <li>Fill in the form as for any song: <b class="ui">Song title *</b> is the only required field. You can import chords and lyrics and attach a recording or a chart.</li>
+    <li>Tap <b class="ui">Suggest now</b> to send it early, or go through the steps and tap <b class="ui">Suggest a song</b> on the last one.</li>
+  </ol>
+  <p class="steps-title">What happens next</p>
+  <ul>
+    <li>The song appears in the Repertoire with a <b class="ui">Suggested</b> tag, for everyone in the band.</li>
+    <li>The band's admins get a push: <b class="ui">“Song suggested · …”</b>. Several songs suggested within a minute send one push.</li>
+    <li>When an admin approves it, it moves to <b class="ui">Learning</b> and you get a push. If it's rejected, the song and its files are deleted, and you get a push with the admin's reason if they gave one.</li>
+  </ul>
+  <p>Files you attach to a suggested song are kept in your own folder until an admin accepts the song.</p>
+
+  <h3 id="art-suggest-a-change-to-a-song" data-roles="member">Suggest a change to a song</h3>
+  <p>A member sends the admin a correction to the lyrics or chords, or a note for the whole band.</p>
+  <figure class="shot" data-shot="music-suggestions" data-device="phone"><figcaption>A lyrics correction with Changes, Before and After, and the review buttons.</figcaption></figure>
+  <ol class="steps">
+    <li>In the Repertoire, tap the song row and tap <b class="ui">Suggest a change</b>.</li>
+    <li>Choose <b class="ui">Lyrics or chords</b> or <b class="ui">Note for the band</b>.</li>
+    <li>For lyrics or chords, change the text in <b class="ui">Lyrics with chords</b>. Chords go in brackets before the word: [Am]word. The line under the box says what you changed, for example <b class="ui">“Chords changed on 2 lines”</b>.</li>
+    <li>Add a <b class="ui">Message for the admin (optional)</b> if it helps.</li>
+    <li>For a note, type it in <b class="ui">Note for the whole band</b>.</li>
+    <li>Tap <b class="ui">Send suggestion</b>. The sheet says <b class="ui">Sent to the admin</b> and closes.</li>
+  </ol>
+  <aside class="note tip">The band's song stays the same for everyone until the admin accepts the suggestion.</aside>
+  <p>You can also start from one of your notes: open it and tap <b class="ui">Suggest to the band</b>. The note is sent with the line it was on.</p>
+  <p>The admins get a push named after the kind: <b class="ui">“Lyrics correction · …”</b>, <b class="ui">“Chords correction · …”</b> or <b class="ui">“Note for the band · …”</b>.</p>
+
+  <h3 id="art-my-song-suggestions" data-roles="member">Follow or withdraw your suggestions</h3>
+  <ol class="steps">
+    <li>In the Repertoire, on <b class="ui">Songs</b>, tap <b class="ui">My suggestions</b>. Its line says how many wait for the admin.</li>
+    <li><b class="ui">Waiting</b> lists the ones still open; <b class="ui">Reviewed</b> lists the rest with their outcome.</li>
+    <li>Tap one to see it. <b class="ui">Changes</b>, <b class="ui">Before</b> and <b class="ui">After</b> show the difference; a reviewed one shows the admin's reason if they gave one.</li>
+    <li>To take a waiting suggestion back, tap <b class="ui">Withdraw suggestion</b>, then <b class="ui">Withdraw suggestion</b> again to confirm, or <b class="ui">Keep it</b>.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Tag</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Waiting</b></td><td>Not reviewed yet.</td></tr>
+      <tr><td><b class="ui">Accepted</b></td><td>Applied as you sent it.</td></tr>
+      <tr><td><b class="ui">Accepted with changes</b></td><td>The admin applied it with their own edits.</td></tr>
+      <tr><td><b class="ui">Not accepted</b></td><td>Rejected.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">Withdrawing a suggested new song deletes the song and the files you attached. The admins no longer see it.</aside>
+
+  <h3 id="art-review-song-suggestions" data-roles="admin">Review members' suggestions</h3>
+  <p>Admins accept, accept with changes or reject what members propose, with an optional reason.</p>
+  <ol class="steps">
+    <li>In the Repertoire, on <b class="ui">Songs</b>, tap <b class="ui">Suggestions from members</b> (it shows <b class="ui">“… to review”</b>). You can also tap the push you received.</li>
+    <li>On <b class="ui">Waiting</b>, tap a suggestion. It says who suggested it and when, with their message.</li>
+    <li>Look at <b class="ui">Changes</b> (lines added and removed), <b class="ui">Before</b> and <b class="ui">After</b>. For a new song, a summary lists what it includes.</li>
+    <li>Optionally write a <b class="ui">Reason (…, will see it)</b>.</li>
+    <li>Tap <b class="ui">Accept</b>, <b class="ui">Accept with changes</b> or <b class="ui">Reject</b>.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Button</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Accept</b></td><td>The change is applied to the band song. A new song moves to Learning.</td></tr>
+      <tr><td><b class="ui">Accept with changes</b></td><td>You edit the text first, then tap <b class="ui">Accept with these changes</b>. For a new song, the song form opens.</td></tr>
+      <tr><td><b class="ui">Reject</b></td><td>Nothing changes. A suggested new song is deleted, with its files.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>The member gets a push with the outcome and your reason.</li>
+    <li>If the song changed after the suggestion, the screen warns that you are comparing with its current version.</li>
+    <li>A note for the band is added to the song's notes.</li>
+    <li>A suggestion that includes a chord chart also replaces the song's chart.</li>
+    <li>Reviewed suggestions stay on <b class="ui">Reviewed</b>.</li>
+  </ul>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Suggestions open in the second pane, beside the Repertoire.</div>
+
+  <h2>Setlists</h2>
+
+  <h3 id="art-build-a-setlist" data-roles="admin">Build a setlist</h3>
+  <p>A setlist is created in the Repertoire: add songs from the library, put them in order and save.</p>
+  <ol class="steps">
+    <li>In the Repertoire, tap <b class="ui">Setlists</b>, then <b class="ui">New setlist</b> (the + button at the top right). With no setlists yet you can also tap <b class="ui">Create first setlist</b>.</li>
+    <li>Type a <b class="ui">Setlist name *</b>, for example Jazz night 1st set, and tap <b class="ui">Create setlist</b>.</li>
+    <li>Tap the new setlist in the list to open it.</li>
+    <li>Tap <b class="ui">Add songs from library…</b>. Search with <b class="ui">Search library…</b> or tap a genre chip to filter. Tap a song to add it; tap it again to take it out. Songs in the setlist are highlighted.</li>
+    <li>Tap <b class="ui">Done</b> to close the library.</li>
+    <li>Drag a song by its grip (<b class="ui">Drag to reorder</b>) to move it. Tap X on a row to remove it.</li>
+    <li>Change the <b class="ui">Setlist name</b> at the top if you want.</li>
+    <li>Tap <b class="ui">Save setlist</b>.</li>
+  </ol>
+  <p class="steps-title">What the editor shows</p>
+  <ul>
+    <li><b class="ui">Setlist order (… songs)</b> with the <b class="ui">Total</b> running time.</li>
+    <li>When the setlist has more than one set, a tag per set with its songs and time, and a <b class="ui">Set 1</b>, <b class="ui">Set 2</b> tag on the first song of each set.</li>
+    <li>How many songs have no duration: add one with Edit for an exact total.</li>
+  </ul>
+  <p>After you save, the band's active members get one push with what changed, for example <b class="ui">“Setlist updated · Rooftop set”</b> and <b class="ui">“Leo M.: 2 songs moved, 1 added.”</b> A rename is mentioned too.</p>
+  <aside class="note tip">Leaving the editor with changes not saved asks <b class="ui">“Save the setlist changes?”</b> with <b class="ui">Save changes</b>, <b class="ui">Discard</b> and <b class="ui">Keep editing</b>.</aside>
+  <div class="roles">
+    <div data-role="admin">Creates, edits, renames and deletes setlists.</div>
+    <div data-role="member">Opens setlists read-only: the order, sets and running time, and <b class="ui">Export setlist as PDF</b>. No name field, no library, no grips, no Save.</div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">The setlist opens in the second pane, beside the list of setlists.</div>
+  <figure class="shot" data-shot="music-setlist-editor" data-device="phone"><figcaption>The setlist editor with the library open and the setlist order below.</figcaption></figure>
+
+  <h3 id="art-setlists-and-sets" data-roles="admin,member">Setlists, sets and templates</h3>
+  <p>A setlist is an ordered list of band songs, in which each song appears only once. It can be split into sets (Set 1, Set 2…), for example before and after a break.</p>
+  <ul>
+    <li>Sets are made when you set up a gig's setlist: <b class="ui">Add set</b> in the gig form, or <b class="ui">New set</b> when adding songs in the gig overview.</li>
+    <li>In the Repertoire's setlist editor you see the sets and can move songs between them by dragging across the boundary; a new song joins the last set. Empty sets disappear when you save.</li>
+    <li>Setlists marked as templates show a <b class="ui">Template</b> tag in the list. The gig form offers your saved setlists under <b class="ui">Load from templates</b>.</li>
+    <li>When you load a saved setlist into a gig, the gig gets its own copy, named after the gig (for example “Rooftop Session setlist”). Changing the gig's setlist later doesn't change the one you loaded from.</li>
+    <li>Every gig setlist also appears in the Repertoire under <b class="ui">Setlists</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Writes setlists everywhere: in the Repertoire, the gig form, the gig overview and Stage mode.</div>
+    <div data-role="member">Reads every setlist of the band. Setlists are admin-only to edit.</div>
+  </div>
+
+  <h3 id="art-attach-a-setlist-to-a-gig" data-roles="admin">Attach a setlist to a gig</h3>
+  <p>Add songs or a saved setlist while you create a gig; on an existing gig, use its <b class="ui">SETLIST</b> section.</p>
+  <ol class="steps">
+    <li>Create a gig (see <a data-ref="create-a-gig">Create a gig</a>). For a gig you already have, open it and use its <b class="ui">SETLIST</b> section instead, which offers the same templates and songs.</li>
+    <li>Open the <b class="ui">Setlist &amp; songs</b> section.</li>
+    <li>To start from a saved setlist, tap it under <b class="ui">Load from templates</b>. Once there are songs, <b class="ui">Templates</b> shows the list again as <b class="ui">Replace with a template</b>.</li>
+    <li>To add songs, tap <b class="ui">From library</b> under a set, or <b class="ui">Manual</b> to type one in. <b class="ui">Add songs</b> adds to a set you pick.</li>
+    <li>Tap <b class="ui">Add set</b> for another set and give it a name in <b class="ui">Set name...</b>; <b class="ui">Remove set</b> deletes it.</li>
+    <li>Save the gig.</li>
+  </ol>
+  <p>The gig gets its own setlist, named after the gig. When the gig's setlist changes, the lineup gets one push with what changed.</p>
+  <aside class="note tip">If the gig has no setlist, its overview says <b class="ui">NO SETLIST ASSIGNED</b>; admins can add songs right there (see <a data-ref="edit-a-gig-setlist">Edit a gig's setlist from its overview</a>).</aside>
+
+  <h3 id="art-edit-a-gig-setlist" data-roles="admin">Edit a gig's setlist from its overview</h3>
+  <p>Reorder, add and remove songs right in the gig, without opening the edit form.</p>
+  <ol class="steps">
+    <li>Open an upcoming gig. The <b class="ui">SETLIST</b> section of the overview shows its songs.</li>
+    <li>To move a song, long-press it and drag it. With a keyboard, focus its grip and use the up and down arrows.</li>
+    <li>To remove a song, tap its X (<b class="ui">Remove song</b>).</li>
+    <li>To add songs, tap <b class="ui">Add songs</b>. With more than one set, <b class="ui">Which set?</b> asks where; tap a set or <b class="ui">New set</b>.</li>
+    <li>In <b class="ui">Add songs</b>, tick the songs (<b class="ui">From library</b>), then tap <b class="ui">Add … songs</b>. Songs already in the set show <b class="ui">In set</b>. <b class="ui">Manual</b> creates a new song and adds it.</li>
+    <li>Tap <b class="ui">Save</b> in the <b class="ui">Unsaved changes</b> bar, or <b class="ui">Cancel</b> to drop the changes.</li>
+  </ol>
+  <ul>
+    <li>Nothing is written until you tap <b class="ui">Save</b>. Then the gig's lineup (everyone who hasn't declined) gets one push, for example <b class="ui">“Setlist updated · Rooftop Session”</b> and <b class="ui">“Leo M.: 1 song moved, 1 added.”</b></li>
+    <li>A gig with no setlist yet gets one when you save, named after the gig.</li>
+    <li>Leaving the gig with changes not saved asks <b class="ui">“Save the setlist changes?”</b>.</li>
+    <li>Tapping <b class="ui">SETLIST</b> or the song count opens the full list in a sheet, where you can edit the same way.</li>
+    <li>Quotes show the setlist read-only here. On a past gig you edit it in the sheet (<b class="ui">SETLIST</b> or the song count); a rehearsal's songs with <b class="ui">EDIT</b> next to <b class="ui">FOCUS SONGS</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Edits the setlist in the overview of upcoming band gigs.</div>
+    <div data-role="member">Sees the songs, artists and durations read-only. With no setlist, the sheet says <b class="ui">“The band admin has not attached a setlist yet.”</b></div>
+  </div>
+  <div class="devnote" data-devices="tablet">The gig workspace has its own <b class="ui">SETLIST</b> tab next to <b class="ui">OVERVIEW</b>, <b class="ui">RIDER &amp; STAGE</b> and <b class="ui">MONEY</b>.</div>
+
+  <h3 id="art-export-a-setlist-pdf" data-roles="admin,member">Export a setlist as PDF</h3>
+  <ol class="steps">
+    <li>In the Repertoire, tap <b class="ui">Setlists</b> and open a setlist.</li>
+    <li>Tap <b class="ui">Export setlist as PDF</b> (the document button at the top right).</li>
+    <li>On a phone, pick where to send it in the share sheet. On the web, the PDF downloads.</li>
+  </ol>
+  <p>The PDF has the band name, the setlist name and each song with artist, key, BPM, duration and set. The button is greyed out while the setlist is empty.</p>
+
+  <h3 id="art-delete-a-setlist" data-roles="admin">Delete a setlist</h3>
+  <ol class="steps">
+    <li>In the Repertoire, tap <b class="ui">Setlists</b> and open the setlist.</li>
+    <li>Tap <b class="ui">Delete setlist</b> (the red bin at the top right).</li>
+    <li>The confirmation names the upcoming gigs that lose their setlist.</li>
+    <li>Tap <b class="ui">Delete</b> to confirm, or <b class="ui">Cancel</b>.</li>
+  </ol>
+  <aside class="note warning">Gigs that use the setlist lose it; the songs stay in your library. This can't be undone.</aside>
+
+  <h2>Notifications and permissions</h2>
+
+  <h3 id="art-music-notifications" data-roles="admin,member">Notifications about songs and setlists</h3>
+  <table class="grid">
+    <thead><tr><th>Change</th><th>Who hears</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>A gig's setlist saved (overview or gig form)</td><td>The gig's lineup, except whoever saved</td><td>One push: <b class="ui">“Setlist updated · &lt;gig&gt;”</b> with <b class="ui">“2 songs moved, 1 added”</b></td></tr>
+      <tr><td>A setlist saved in the Repertoire</td><td>The band's active members, except whoever saved</td><td>One push: <b class="ui">“Setlist updated · &lt;setlist&gt;”</b>, or that it was renamed</td></tr>
+      <tr><td>A song edited (form or chord editor)</td><td>The band's active members, except whoever saved</td><td>One push: <b class="ui">“Song updated · &lt;song&gt;”</b> with the fields changed</td></tr>
+      <tr><td>A song added by an admin</td><td>The rest of the band</td><td>Inbox note, no push</td></tr>
+      <tr><td>A song suggested or a change suggested</td><td>The band's active admins</td><td>Push</td></tr>
+      <tr><td>A suggestion reviewed</td><td>The member who suggested it</td><td>Push, with the reason</td></tr>
+      <tr><td>Setlist reordered in Stage mode</td><td>The band</td><td>Inbox note, no push</td></tr>
+    </tbody>
+  </table>
+  <p>Texts are written in each person's own app language. An open gig reloads its setlist as soon as an admin changes it, so members see the new order without refreshing.</p>
+
+  <h3 id="art-music-what-members-can-do" data-roles="admin,member,deputy">What admins, members and deputies can do with songs and setlists</h3>
+  <table class="grid">
+    <thead><tr><th>Action</th><th>Admin</th><th>Member</th></tr></thead>
+    <tbody>
+      <tr><td>Read every song, lyrics, chords and files</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Add a song to the library</td><td>Yes, as Ready</td><td>Suggests it, as Suggested</td></tr>
+      <tr><td>Edit, transpose for the band, edit chords, delete a song</td><td>Yes</td><td>No: suggests a change</td></tr>
+      <tr><td>Import a song list or load 700+ songs</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Review suggestions</td><td>Yes, all of the band's</td><td>Sees only their own</td></tr>
+      <tr><td>My notes and my files</td><td>Own only</td><td>Own only</td></tr>
+      <tr><td>Read setlists and export them as PDF</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Create, edit, reorder, delete setlists</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Open Stage mode on an upcoming gig</td><td>Yes, as leader</td><td>Yes, as follower</td></tr>
+      <tr><td>Move the band's current song, reorder on stage, start the band's click</td><td>Yes</td><td>No: steps and clicks on their own phone only</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Admins don't see members' notes or files. Members see only their own suggestions; admins see all of them.</aside>
+  <div class="roles">
+    <div data-role="deputy">A deputy is not a band member: no Repertoire, no setlists and no Stage mode. Their deputy gigs show the date, times, venue, role and fee offered.</div>
+  </div>
+
+  <h2>Stage mode</h2>
+
+  <h3 id="art-stage-mode" data-roles="admin,member">Stage mode</h3>
+  <p>Stage mode is the black, glanceable gig-day screen, with the run of show, the setlist and each song's lyrics or chords.</p>
+  <p class="steps-title">Open Stage mode</p>
+  <ol class="steps">
+    <li>Open an upcoming band gig and tap the <b class="ui">Play</b> button at the top right (<b class="ui">Open stage mode</b>). On gig day it is highlighted.</li>
+    <li>Or, on Home, tap <b class="ui">Go live</b> under your next gig.</li>
+    <li>To leave, tap X (<b class="ui">Exit stage mode</b>).</li>
+  </ol>
+  <p class="steps-title">What is on the screen</p>
+  <ul>
+    <li><b class="ui">Stage mode · &lt;date&gt;</b>, the gig title, venue and city.</li>
+    <li>The run of show: Load in, Soundcheck, Show and End in 24-hour time. The next one is highlighted as <b class="ui">Next · …</b>; past ones fade.</li>
+    <li>The <b class="ui">Setlist</b> with numbers, titles, key and duration. The current song is highlighted. Songs struck off for tonight are crossed out, and the count above the list says how many (<b class="ui">· 2 struck off</b>).</li>
+    <li>A second tab named after your song view (<b class="ui">Lyrics</b>, <b class="ui">Chords</b> or <b class="ui">Structure</b>) shows the current song and follows it as it changes.</li>
+    <li><b class="ui">Prev</b> and <b class="ui">Next</b> at the bottom, with the click button between them.</li>
+  </ul>
+  <p class="steps-title">In the song tab</p>
+  <ul>
+    <li>Switch between <b class="ui">Lyrics</b>, <b class="ui">Chords</b> and <b class="ui">Structure</b>; the choice is shared with the song reader.</li>
+    <li>Change the text size with − and +.</li>
+    <li>Transpose for yourself with − key +. Only your screen changes.</li>
+    <li><b class="ui">My notes</b> shows your private notes over the band's version.</li>
+    <li>The run of show hides to give the song more room.</li>
+    <li>Where there is room (a phone on its side, an iPad, a dual-screen device open over both panes), the setlist stays in a column beside the song. Tap a song there to go to it.</li>
+  </ul>
+  <p class="steps-title">Good to know</p>
+  <ul>
+    <li>Stage mode is offered for upcoming band gigs, not for rehearsals, quotes, past gigs or personal gigs.</li>
+    <li>The screen stays awake while Stage mode is open.</li>
+    <li>With no setlist, it says <b class="ui">“No setlist attached to this gig.”</b></li>
+    <li>In the phone and tablet apps, the setlist with lyrics and charts is kept on the device when you open the gig, so Stage mode works without internet. Signing out removes it.</li>
+    <li>Without internet and no copy on the device, it says <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> with <b class="ui">Try again</b>.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Leads the band: moves the band's current song, reorders the setlist by holding and dragging a song, strikes songs off for tonight and starts the band's click (see <a data-ref="lead-stage-mode">Lead the band in Stage mode</a>).</div>
+    <div data-role="member">Follows the leader, or steps through the songs alone (see <a data-ref="follow-in-stage-mode">Follow the leader in Stage mode</a>).</div>
+    <div data-role="deputy">No Stage mode: deputies don't have the band's setlists.</div>
+  </div>
+  <figure class="shot" data-shot="music-stage" data-device="phone"><figcaption>Stage mode on gig day: run of show, setlist and Prev / Next.</figcaption></figure>
+
+  <h3 id="art-lead-stage-mode" data-roles="admin">Lead the band in Stage mode</h3>
+  <p>As admin, move the current song for everyone, change the order live and strike off songs you won't play tonight.</p>
+  <ol class="steps">
+    <li>Open Stage mode on the gig.</li>
+    <li>Check the status next to the setlist: <b class="ui">Live</b> means the band follows you (<b class="ui">Band follows you</b>).</li>
+    <li>Tap <b class="ui">Next</b> or <b class="ui">Prev</b> to move the band to the next or previous song, or tap any song in the list (<b class="ui">Go to …</b>).</li>
+    <li>To change the order, hold a song until it lifts, drag it to its new place and let go. A quick swipe still scrolls the list, and a tap still makes the song current.</li>
+    <li>To skip a song tonight, tap the round − button at the end of its row (<b class="ui">Strike … off tonight</b>). The title is crossed out and <b class="ui">Prev</b> / <b class="ui">Next</b> jump over it. Tap + (<b class="ui">Bring back …</b>) to put it back.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Live</b></td><td>Connected over the internet: members follow you.</td></tr>
+      <tr><td><b class="ui">Live · BT</b></td><td>Connected over the internet and sending over Bluetooth too.</td></tr>
+      <tr><td><b class="ui">Bluetooth</b></td><td>No internet: members nearby follow you over Bluetooth.</td></tr>
+      <tr><td><b class="ui">Offline</b></td><td>Nothing reaches the band right now.</td></tr>
+      <tr><td><b class="ui">Saving…</b>, <b class="ui">Saved</b>, <b class="ui">Not saved</b></td><td>After a drag: the new order is saved shortly after your last move. <b class="ui">Saved</b> shows for a moment, then the status returns.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Members who open Stage mode later catch up on the current song.</li>
+    <li>A new order applies to everyone, also members who stopped following, and is saved to the gig's setlist. The gig behind Stage mode shows it at once.</li>
+    <li>Closing Stage mode saves a move still waiting for its save.</li>
+    <li>If several admins lead at once, the newest move wins.</li>
+    <li>Striking a song off is for tonight only: the gig's setlist keeps it. Members following you see it crossed out and skip it too, over the internet or Bluetooth. Your phone remembers the struck songs for that gig if you close Stage mode and open it again.</li>
+  </ul>
+  <aside class="note tip">Keep the leader's phone unlocked: Stage mode keeps the screen awake, and a locked leader's phone stops the band's sync.</aside>
+
+  <h3 id="art-follow-in-stage-mode" data-roles="member">Follow the leader in Stage mode</h3>
+  <p>As a member, let the admin's phone turn your songs, or step through them yourself.</p>
+  <ol class="steps">
+    <li>Open Stage mode on the gig. Following is on: the button next to the setlist says <b class="ui">Waiting for leader</b> until the admin's phone is seen, then <b class="ui">Following leader</b>.</li>
+    <li>Your current song, lyrics and chords change when the admin moves on.</li>
+    <li>To look ahead on your own, tap <b class="ui">Prev</b>, <b class="ui">Next</b> or a song. Following stops and the button says <b class="ui">Follow leader</b>.</li>
+    <li>Tap <b class="ui">Follow leader</b> to jump back to the leader's song and follow again.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">· BT</b> after the label means you are linked to the leader over Bluetooth.</li>
+    <li><b class="ui">Offline</b> means nothing can reach your phone right now.</li>
+    <li>Members cannot move anyone else's song or change the order.</li>
+  </ul>
+
+  <h3 id="art-stage-click" data-roles="admin,member">Use the click in Stage mode</h3>
+  <p>The click is a visual metronome around the screen edge, in time across the band's phones.</p>
+  <ol class="steps">
+    <li>In Stage mode, the click button sits between <b class="ui">Prev</b> and <b class="ui">Next</b>. It shows the current song's BPM.</li>
+    <li>Tap it (<b class="ui">Start the click</b>). A glow flashes around the screen edge on every beat, brighter on the first beat of the bar.</li>
+    <li>Tap it again (<b class="ui">Stop the click</b>) to stop.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Who starts it</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td>Admin</td><td>The click runs on every phone in Stage mode, in time with the leader's phone.</td></tr>
+      <tr><td>Member</td><td>The click runs on the member's own phone only.</td></tr>
+      <tr><td>Member, while the leader's click runs</td><td>The button hides or shows it on the member's phone (<b class="ui">Hide the click on this phone</b>, <b class="ui">Show the click</b>).</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>The click is visual only: there is no sound. It doesn't block taps on the screen.</li>
+    <li>The beats in a bar come from the time signature of the song's iReal chart, otherwise 4.</li>
+    <li>A song without a BPM can't start a click (<b class="ui">No BPM for this song</b>). Add the BPM in the song form.</li>
+    <li>Moving to another song hides the click for the song before.</li>
+    <li>Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.</li>
+    <li>The band's click needs the internet: it isn't sent over Bluetooth.</li>
+  </ul>
+
+  <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode without internet (Bluetooth)</h3>
+  <p>In the iPhone, iPad and Android apps, the admin's phone also sends the current song and the order over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.</p>
+  <p class="steps-title">Get ready before the gig</p>
+  <ol class="steps">
+    <li>Everyone opens the gig once while online. The app keeps the setlist (with lyrics and charts) and the gig's Bluetooth key on the phone.</li>
+    <li>Turn Bluetooth on and allow BandWith to use it.</li>
+    <li>On stage, everyone opens Stage mode. The leader shows <b class="ui">Bluetooth</b> or <b class="ui">Live · BT</b>; members show <b class="ui">· BT</b> after their follow label.</li>
+  </ol>
+  <p class="steps-title">When it doesn't connect</p>
+  <ul>
+    <li><b class="ui">“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”</b></li>
+    <li><b class="ui">“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.”</b> This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine.</li>
+  </ul>
+  <aside class="note privacy">Each gig has its own secret key, given only to the band's active members. Only phones with the key find the leader and accept its messages.</aside>
+  <div class="devnote" data-devices="web">No Bluetooth sync and no copy of the setlist on the device: Stage mode on the web needs the internet.</div>
+
+  <h3 id="art-stage-mode-on-devices" data-roles="admin,member">Stage mode on phones, tablets and dual-screen devices</h3>
+  <p>Stage mode lays out differently on each device and posture.</p>
+  <div class="devnote" data-devices="phone">One column: header, run of show, setlist or song, Prev / Next at the bottom.</div>
+  <div class="devnote" data-devices="phoneLand,duoClosed">On its side (short and wide), the times and steps sit on the left and the setlist or song on the right. With a song open, the left column shows the setlist instead, so you can jump to any song.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Stage mode opens beside the list pane. <b class="ui">Hide sidebar</b> gives it the whole screen: the times and steps sit on the first pane and the setlist or song on the second, split at the panes' edge so nothing sits on the fold. With a song open, the setlist sits in a column beside it (on the first pane when the device is open over both). <b class="ui">Show sidebar</b> brings the list back. The choice is kept on the device.</div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Open stage mode</b> is in the rail; on gig day it is the rail's main action. <b class="ui">Hide sidebar</b> hides the rail in Stage mode.</div>
+  <div class="devnote" data-devices="duoLaptop">Floor wedge: stand the device on the stage floor like a monitor. The top half shows the song counter (<b class="ui">Song … of …</b>), title, key, BPM, next song and elapsed time, or the lyrics. The bottom half has big <b class="ui">Prev</b> and <b class="ui">Next</b> pads and the set's progress; songs struck off for tonight are skipped and their progress segments dimmed. Arrow keys, Page Up/Down and Space also step, so Bluetooth page-turner pedals work.</div>
+  <div class="devnote" data-devices="web">Live sync over the internet and the click work. No Bluetooth, and no offline copy of the setlist.</div>
+  <p>Android Back and Escape leave Stage mode first, not the gig underneath.</p>
+
+  <h2>FAQ</h2>
+  <dl class="faq">
+    <dt>Can members edit songs or setlists?</dt>
+    <dd>No. Members read every song and setlist. They suggest new songs and changes to lyrics, chords or notes, and an admin reviews them. Setlists are admin-only to edit.</dd>
+    <dt>Who sees my notes on a song?</dt>
+    <dd>Only you. Not the band, not the admins. To share one, open it and tap <b class="ui">Suggest to the band</b>.</dd>
+    <dt>I transposed a song in the reader. Did it change for everyone?</dt>
+    <dd>No. Transposing in the reader or in Stage mode changes only your screen. To change the key for the band, an admin uses <b class="ui">Transpose for the band</b> in the song form.</dd>
+    <dt>Why can't I import a song list?</dt>
+    <dd>Importing a list goes straight into the band's library, so it is admin-only. Members suggest songs one at a time.</dd>
+    <dt>Does changing a gig's setlist change the saved setlist I loaded it from?</dt>
+    <dd>No. A gig gets its own copy, named after the gig. The setlist you loaded from stays as it was.</dd>
+    <dt>Does the band get a notification for every song I move?</dt>
+    <dd>No. Nothing is sent until you save. Then each person gets one push summing up what changed.</dd>
+    <dt>Does Stage mode work without internet?</dt>
+    <dd>In the phone and tablet apps, yes: open the gig once while online, and the leader's phone keeps the band in sync over Bluetooth. On the web Stage mode needs the internet.</dd>
+    <dt>Can I hear the click?</dt>
+    <dd>No. The click is visual: a glow around the screen edge on each beat.</dd>
+    <dt>Why does my phone stop following the leader?</dt>
+    <dd>Tapping <b class="ui">Prev</b>, <b class="ui">Next</b> or a song yourself stops following. Tap <b class="ui">Follow leader</b> to go back to the leader's song.</dd>
+    <dt>What happens to a suggested song that the admin rejects?</dt>
+    <dd>It is deleted with the files you attached, and you get a push with the admin's reason if they gave one.</dd>
+    <dt>Why don't I see the iReal Pro forum inside the app on the web?</dt>
+    <dd>The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap <b class="ui">Paste link</b>, or drag the link onto the box.</dd>
+  </dl>
+</section>

@@ -1,0 +1,592 @@
+<section class="chapter" id="ch-business">
+  <h1>Quotes, contracts and money</h1>
+  <p class="lead">From pricing a show and sending it to the client, through the client's yes and the confirmed gig, to the paperwork and paying the musicians. Admins run all of it; members see only their own fee.</p>
+
+  <h2>Building a quote</h2>
+
+  <h3 id="art-create-a-quote" data-roles="admin">Create a quote</h3>
+  <p>A quote is the offer you send a client before a gig is booked. Saving a quote also puts a tentative event on its date in the admins' calendar, so the date is held while you wait for an answer.</p>
+  <p class="steps-title">Start the quote</p>
+  <ol class="steps">
+    <li>Tap <b class="ui">Create</b> (the + in the bottom bar), then <b class="ui">New quote</b>. You can also tap <b class="ui">+</b> (<b class="ui">New quote</b>) at the top right of the Quotes screen.</li>
+    <li>In step 1, <b class="ui">EVENT &amp; LINEUP</b>, type the <b class="ui">Client name</b> and, if you want, an <b class="ui">Event title</b>. Without a title the quote is named from the event type and client, for example <b class="ui">Wedding - Client A</b>.</li>
+    <li>Pick the <b class="ui">Event type</b>: <b class="ui">Wedding</b>, <b class="ui">Corporate</b>, <b class="ui">Private party</b>, <b class="ui">Festival</b>, <b class="ui">Club</b>, <b class="ui">Pub</b> or <b class="ui">Other</b>.</li>
+    <li>Check the lineup under <b class="ui">Lineup formation package</b>. The musicians and their fees come from your <a data-ref="pricing-sheet">pricing sheet</a>; tap <b class="ui">Customize</b> to change who plays and each fee.</li>
+    <li>Add any <b class="ui">Extra sets &amp; add-ons (optional)</b> chips, and the <b class="ui">Client email</b> and <b class="ui">Client phone</b> if you have them. The email is needed later to send the quote by email.</li>
+    <li>Tap <b class="ui">Next</b>. In step 2, <b class="ui">DATE &amp; VENUE</b>, search the <b class="ui">Venue / location</b>, pick the <b class="ui">Event date</b>, the <b class="ui">Start</b> and <b class="ui">End</b> times, the <b class="ui">Number of sets</b> and <b class="ui">Mins per set</b>, and the <b class="ui">Guest count (optional)</b>.</li>
+    <li>Tap <b class="ui">Next</b>. Step 3, <b class="ui">REVIEW &amp; CONFIRM</b>, shows the summary and the <b class="ui">Breakdown</b>; open <b class="ui">Billing, discounts, VAT &amp; deposit</b>, <b class="ui">Production &amp; travel</b> or <b class="ui">Multi-option proposal &amp; terms</b> to fine-tune them.</li>
+    <li>Tap <b class="ui">Save &amp; share</b>. The quote gets its number (for example Q-2026-0014) and the share screen opens (<a data-ref="share-a-quote">Share a quote with the client</a>).</li>
+  </ol>
+  <figure class="shot" data-shot="quote-wizard-review" data-device="phone"><figcaption>Step 3 of a new quote: the summary, the breakdown and the three drawers.</figcaption></figure>
+  <p>The <b class="ui">Total estimate</b> at the bottom updates as you type, on every step. Tap a step bar at the top, or <b class="ui">Lineup</b> and <b class="ui">Venue</b> on the summary card, to jump back. You can't reach step 3 before an event type and a date are set.</p>
+  <aside class="note tip">To keep a quote without sending it, close the wizard with ✕ and choose <b class="ui">Save draft</b> (see <a data-ref="quote-drafts">Save a quote as a draft</a>).</aside>
+  <aside class="note warning">A quote needs a connection to be saved, because the number comes from the database. Offline, only its calendar event is kept and the app says: <b class="ui">Offline: the event was saved, but the quote itself needs a connection. Create it again when you are back online.</b></aside>
+  <div class="devnote" data-devices="tablet">The iPad opens a one-screen composer instead of the steps: five cards (<b class="ui">Client &amp; event</b>, <b class="ui">Lineup &amp; rate</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Production &amp; travel</b>, <b class="ui">Billing &amp; terms</b>) beside a <b class="ui">Live PDF</b> preview, <b class="ui">As the client sees it</b>, in the client's language. <b class="ui">Edit</b> on the last two cards opens their settings in a sheet. The header shows how many of the 5 cards are ready and has <b class="ui">Save draft</b>. At the bottom of the preview you get <b class="ui">Share</b> and <b class="ui">Send quote</b>.</div>
+  <div class="devnote" data-devices="duoBook">Opened like a book, the Duo shows the live quote on the other page during steps 1 and 2.</div>
+  <div class="devnote" data-devices="duoLaptop">In laptop posture the quote preview fills the top half and the form, with its buttons, moves to the bottom half.</div>
+  <div class="devnote" data-devices="duoClosed">On the closed Duo the close button sits in the side rail, under the clock.</div>
+  <div class="roles">
+    <div data-role="admin">Creates, edits, sends and deletes quotes.</div>
+    <div data-role="member">Can't open quotes: the menu entry is hidden and the database only returns quotes to admins. A member hears about a quote only if the admin asks the lineup for availability.</div>
+    <div data-role="deputy">Never sees quotes.</div>
+  </div>
+
+  <h3 id="art-quote-price-lines" data-roles="admin">Lineup, extras, travel and production on a quote</h3>
+  <p>A quote adds up these lines: the lineup base, extra sets and custom items, then travel, accommodation and production when they are charged separately. Defaults come from the <a data-ref="pricing-sheet">pricing sheet</a>; anything you type on the quote wins, for that quote only.</p>
+  <table class="grid">
+    <thead><tr><th>Line</th><th>Where you set it on the quote</th></tr></thead>
+    <tbody>
+      <tr><td>Lineup base</td><td>Step 1, <b class="ui">Lineup formation package</b>. With flat packages you pick <b class="ui">Solo</b>, <b class="ui">Duo</b>, <b class="ui">Trio</b>, <b class="ui">Full band</b> or one of your packages. With per-musician pricing, <b class="ui">Customize</b> adds or removes musicians and lets you type each <b class="ui">Fee for {name}</b>.</td></tr>
+      <tr><td>Base fee override</td><td>Drawer <b class="ui">Billing, discounts, VAT &amp; deposit</b>, field <b class="ui">Base fee override</b>: replaces the computed lineup base.</td></tr>
+      <tr><td>Extra sets &amp; add-ons</td><td>Step 1 chips, from your catalogue. Per-person items follow the lineup size; per-km items follow the travel distance.</td></tr>
+      <tr><td>Custom line items</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Custom Line Item</b>: <b class="ui">Item name</b>, <b class="ui">Quantity</b> and <b class="ui">Price</b>, then <b class="ui">Add item</b>. <b class="ui">Remove item</b> deletes it.</td></tr>
+      <tr><td>Sound &amp; lighting</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Sound &amp; lighting production</b>: <b class="ui">Included in base</b> or <b class="ui">Separate fee</b>, tier <b class="ui">Standard PA</b>, <b class="ui">Pro PA</b> or <b class="ui">Client PA</b>, and the <b class="ui">Production fee</b>.</td></tr>
+      <tr><td>Travel</td><td>Step 2 calculates the one-way distance from the band's home base when you pick a venue. In <b class="ui">Travel &amp; transport</b> choose <b class="ui">Included</b>, <b class="ui">Separate fee</b> or <b class="ui">Client arranged</b>, and adjust the distance or the <b class="ui">Travel fee</b>.</td></tr>
+      <tr><td>Accommodation</td><td><b class="ui">Hotel &amp; accommodation</b>: <b class="ui">Included</b>, <b class="ui">Separate fee</b>, <b class="ui">Client hotel</b> or <b class="ui">Not needed</b>, with <b class="ui">Rooms</b>, <b class="ui">Nights</b> and the <b class="ui">Accommodation fee</b>.</td></tr>
+    </tbody>
+  </table>
+  <p>Under the lineup, the line <b class="ui">Musician fees</b> (or <b class="ui">Package fee</b>) shows the lineup total. When your pricing sheet adds a band fund, it says so, for example <b class="ui">incl. +10% fund</b>.</p>
+  <p>Travel is free up to your free local radius: the step 2 chip says <b class="ui">≤{distance} free</b> or how much is billable. If the band has no home base yet, no distance is calculated and you type it in the travel field.</p>
+  <aside class="note privacy">Musician fees on a quote are internal. The client's PDF and page show the lineup as one line (for example <b class="ui">MAIN BAND · 5pc band</b>), never what each musician earns. When the quote becomes a gig, each musician is told only their own fee.</aside>
+  <aside class="note tip">With seasonal pricing on, step 2 shows <b class="ui">Peak season rate</b>, <b class="ui">Off-peak rate</b> or <b class="ui">Standard season</b> and the base fee follows the event month, until you type your own base fee.</aside>
+
+  <h3 id="art-quote-billing-and-terms" data-roles="admin">Discount, VAT, deposit, validity and terms</h3>
+  <p class="steps-title">Billing</p>
+  <ol class="steps">
+    <li>In step 3, open <b class="ui">Billing, discounts, VAT &amp; deposit</b>.</li>
+    <li>Under <b class="ui">Package discount</b> choose <b class="ui">None</b>, <b class="ui">% off</b> or <b class="ui">{currency} off</b>, then type the <b class="ui">Discount value</b>.</li>
+    <li>Change the <b class="ui">VAT rate</b> if this quote needs a different one, or turn on <b class="ui">VAT exempt</b> (<b class="ui">Quote at 0% VAT</b>).</li>
+    <li>Set the <b class="ui">Deposit</b> (<b class="ui">Booking deposit</b>) percentage, or <b class="ui">None</b>.</li>
+    <li>Pick the <b class="ui">Validity</b>: the quote is valid for that many days from today, shown as <b class="ui">Valid until {date}</b>.</li>
+    <li>Leave <b class="ui">Show bank details on PDF</b> on to print your bank account on the PDF. If it says <b class="ui">Add your bank account in Branding &amp; payment</b>, add it first (<a data-ref="branding-and-payment">Add your logo, signature and bank details to quotes</a>).</li>
+  </ol>
+  <p class="steps-title">Proposal and terms</p>
+  <ol class="steps">
+    <li>Open <b class="ui">Multi-option proposal &amp; terms</b>.</li>
+    <li>Turn on <b class="ui">Multi-option comparison</b> to offer several lineup sizes side by side. The app fills in tiers from your packages; change each <b class="ui">Tier name</b>, <b class="ui">Musicians</b>, <b class="ui">Gross fee</b>, <b class="ui">Discount</b> and <b class="ui">Lineup / instrumentation</b>, tap <b class="ui">Add option tier</b> for more, or remove one. The PDF gets a summary page with the comparison table.</li>
+    <li>Type a <b class="ui">Quote subtitle (optional)</b>, shown under the title on the PDF.</li>
+    <li>Tick the <b class="ui">Payment methods</b> you accept: <b class="ui">Bank transfer</b>, <b class="ui">Credit card</b>, <b class="ui">Cash</b>.</li>
+    <li>Pick the <b class="ui">Cancellation policy</b>: <b class="ui">Flexible</b>, <b class="ui">Moderate</b> or <b class="ui">Strict</b>.</li>
+    <li>Write anything the client should read under <b class="ui">Client message / notes</b>.</li>
+  </ol>
+  <p>The totals are worked out the same way on screen, in the PDF, on the client page and in the database: subtotal, minus the discount, plus VAT, then the deposit as a share of the total.</p>
+  <aside class="note tip">Online deposit links (<b class="ui">Card · Stripe</b>, <b class="ui">PayPal</b>) are shown but switched off; the on-screen message points to the bank transfer details.</aside>
+
+  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Ask the lineup before the client says yes</h3>
+  <ol class="steps">
+    <li>In step 3 of a new quote, turn on <b class="ui">Ask the lineup now</b> (under <b class="ui">Lineup availability</b>). On iPad the switch is under the live PDF: <b class="ui">Check who is free before you send</b>.</li>
+    <li>Save the quote with <b class="ui">Save &amp; share</b>, or close it and choose <b class="ui">Save draft</b>. Either way the musicians are asked.</li>
+    <li>Follow the answers on the quote's calendar event: it shows <b class="ui">Availability: {free} of {total} free</b> and a list you can open.</li>
+  </ol>
+  <p>A toast confirms it, for example <b class="ui">Quote Q-2026-0014 saved · availability asked to 4</b>. With the switch off, musicians are asked only when the quote becomes a gig.</p>
+  <div class="roles">
+    <div data-role="admin">Turns the check on when creating the quote (not when editing one) and sees every answer.</div>
+    <div data-role="member">Gets an <b class="ui">Availability check</b> notification for the date, with their own fee, and answers it like any RSVP. The quote itself, the client and the total stay hidden, and the event is not on their calendar until it is confirmed as a gig.</div>
+  </div>
+  <aside class="note privacy">In the availability check each musician sees only their own fee, never the quote total or the others' fees.</aside>
+
+  <h3 id="art-quote-drafts" data-roles="admin">Save a quote as a draft</h3>
+  <ol class="steps">
+    <li>In a new quote, tap ✕ (<b class="ui">Close quote wizard</b>) or <b class="ui">Cancel</b>, or use the system back gesture.</li>
+    <li>In <b class="ui">Save this quote as a draft?</b>, tap <b class="ui">Save draft</b>. <b class="ui">Discard</b> throws away what you typed; <b class="ui">Keep editing</b> goes back to the quote.</li>
+    <li>Find the draft under <b class="ui">Drafts</b> on Home (shown as <b class="ui">Quote · Draft</b>), in the Quotes screen with the <b class="ui">Draft</b> tag, and on its day in the calendar.</li>
+    <li>When it is ready to go, open it and use <b class="ui">Share quote</b>.</li>
+  </ol>
+  <div class="devnote" data-devices="tablet">On iPad, <b class="ui">Save draft</b> is in the composer header.</div>
+  <aside class="note privacy">The app confirms <b class="ui">Saved as a draft quote that members can't see.</b> In the calendar a draft quote shows <b class="ui">HIDDEN FROM MEMBERS</b>. The musicians get the availability check only if you turned on <b class="ui">Ask the lineup now</b>.</aside>
+
+  <h2>Pricing sheet, branding and client language</h2>
+
+  <h3 id="art-pricing-sheet" data-roles="admin">The pricing sheet (Pricing &amp; services)</h3>
+  <p>It holds the band's rates, packages, add-ons, travel, sound, tax and branding: the defaults every new quote starts from. Open it from your account hub: tap your avatar at the top of Home, then <b class="ui">Band settings</b> (it opens on <b class="ui">Branding &amp; payment</b>; the rates are under <b class="ui">Lineup &amp; rates</b>). <b class="ui">Branding &amp; payment</b> on a quote's share screen opens it too. The sheet is called <b class="ui">Pricing &amp; services</b>, under <b class="ui">Universal quote engine</b>.</p>
+  <p>The dark strip at the top, <b class="ui">Live sample quote</b>, prices a sample gig with your current settings as you change them. Tap <b class="ui">Save changes</b> at the bottom to keep your changes.</p>
+  <table class="grid">
+    <thead><tr><th>Tab</th><th>What you set</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lineup &amp; rates</b></td><td><b class="ui">1. Base pricing model</b>: <b class="ui">Per-musician rate</b> (a <b class="ui">Default fee per musician</b>, optionally <b class="ui">Use individual member fees</b> from each member's profile, a <b class="ui">Default lineup size</b> and a separate <b class="ui">External / sub musician rate</b>) or <b class="ui">Flat packages</b> (your <b class="ui">Formation packages</b>, each with its price; <b class="ui">Add package</b>, hide or remove one). <b class="ui">2. Band fund / agency markup</b>: <b class="ui">None</b>, a <b class="ui">Fixed {symbol}</b> amount per gig or a <b class="ui">Markup on lineup</b> percentage.</td></tr>
+      <tr><td><b class="ui">Sets &amp; add-ons</b></td><td>The <b class="ui">Sets &amp; add-ons catalog</b>: extras that appear as chips in step 1 of the quote. <b class="ui">Add extra</b> with a <b class="ui">Service name</b>, <b class="ui">Price</b>, <b class="ui">Category</b> and <b class="ui">Unit</b> (<b class="ui">Flat Fee</b>, <b class="ui">Per Musician</b>, <b class="ui">Per Hour</b>, per km or mile). <b class="ui">Quick-add starter presets</b> adds the <b class="ui">Wedding</b>, <b class="ui">Club / Show</b> or <b class="ui">Corporate / AV</b> sets. Each item can be active or hidden in the wizard, or deleted.</td></tr>
+      <tr><td><b class="ui">Travel &amp; sound</b></td><td><b class="ui">1. Travel &amp; mileage rules</b>: the <b class="ui">Band home base</b>, the <b class="ui">Default travel policy</b>, the <b class="ui">Travel calculation mode</b> (<b class="ui">Per vehicle</b>, <b class="ui">Per musician</b>, flat per km or mile), the <b class="ui">Number of vehicles</b>, the <b class="ui">Free local radius</b> and the rate per km or mile, with a worked example. <b class="ui">2. Sound &amp; lighting packages</b>: the <b class="ui">Default production policy</b> and the prices of the standard and pro packages and of an extra sound zone.</td></tr>
+      <tr><td><b class="ui">Rules &amp; tax</b></td><td><b class="ui">1. Country &amp; currency</b>, <b class="ui">2. Seasonal pricing</b> (peak-season markup and off-peak discount), <b class="ui">3. Tax, deposit &amp; validity</b> (default VAT rate, <b class="ui">Booking deposit</b>, <b class="ui">Default validity</b> in days). <b class="ui">Reset to recommended defaults</b> asks before it resets every rate and service.</td></tr>
+      <tr><td><b class="ui">Branding &amp; payment</b></td><td>Logo, signer and signature, bank account, payment terms, contact and legal details, and the PDF disclaimer (see <a data-ref="branding-and-payment">Add your logo, signature and bank details to quotes</a>).</td></tr>
+    </tbody>
+  </table>
+  <aside class="note tip">Changing the pricing sheet never changes a quote already saved: it applies to the quotes you create next.</aside>
+  <div class="roles">
+    <div data-role="admin">Opens and edits the pricing sheet.</div>
+    <div data-role="member">No access at all. If reached anyway, it shows <b class="ui">Admin access required</b>: <b class="ui">Only band administrators can access and configure the financial and logistical formulas for this band.</b></div>
+  </div>
+
+  <h3 id="art-branding-and-payment" data-roles="admin">Add your logo, signature and bank details to quotes</h3>
+  <p>They make the quote PDF look like your band's and tell clients how to pay.</p>
+  <ol class="steps">
+    <li>Open the pricing sheet on <b class="ui">Branding &amp; payment</b> (account hub &gt; <b class="ui">Band settings</b>, or <b class="ui">Branding &amp; payment</b> on a quote's share screen).</li>
+    <li>Under <b class="ui">1. Band identity, logo &amp; sign-off</b>, check the <b class="ui">Band name</b> and <b class="ui">Band bio / tagline</b>, then tap <b class="ui">Upload logo</b>.</li>
+    <li>Type the <b class="ui">Signer full name</b> and, if you want, the <b class="ui">Signer role / title (optional)</b>. For the <b class="ui">Authorised signature (optional)</b> tap <b class="ui">Upload image</b> or <b class="ui">Draw signature</b> and sign above the line (<b class="ui">Clear pad</b> starts again).</li>
+    <li>Under <b class="ui">2. Payment &amp; bank account</b>, pick the <b class="ui">Bank account format</b> (<b class="ui">Europe · IBAN</b>, <b class="ui">USA · ABA routing</b>, <b class="ui">Other · SWIFT</b>), then the <b class="ui">Account holder</b> and the account details.</li>
+    <li>Type your <b class="ui">Default payment terms</b>, for example <b class="ui">Deposit on booking, balance on the event date</b>.</li>
+    <li>Fill in <b class="ui">3. Band contact &amp; legal details</b> if your clients need them (booking email, phone, website, legal name, tax ID, address).</li>
+    <li>Adjust <b class="ui">4. Quote PDF disclaimer</b> if you like; <code>{days}</code> is replaced by the validity period. <b class="ui">Reset text</b> restores the default.</li>
+    <li>Tap <b class="ui">Save changes</b>. An open quote preview regenerates on its own.</li>
+  </ol>
+  <p>The signer's name and signature sit at the bottom of every quote PDF; without a signer, the band name is used. While the logo or the bank account is missing, the share screen reminds you with <b class="ui">Complete your band branding</b>.</p>
+  <aside class="note privacy">Bank details are printed only on quotes with <b class="ui">Show bank details on PDF</b> on, and they are masked inside the app.</aside>
+
+  <h3 id="art-client-language" data-roles="admin">Send documents in the client's language</h3>
+  <p>Quotes, contracts and riders can go out in English, Italian, Spanish, French, German or Portuguese, whatever language your app uses. Every screen that sends something to a client has a <b class="ui">Client language</b> picker with six chips: EN, IT, ES, FR, DE, PT. It changes the PDF, the message that goes with it and the client's web page; your app stays in your language.</p>
+  <p class="steps-title">Where you find it</p>
+  <ul>
+    <li>On the quote share screen (<b class="ui">PDF ready</b>), under the PDF preview. Changing it rebuilds the PDF in the new language.</li>
+    <li>In the iPad quote composer, under the <b class="ui">Live PDF</b>.</li>
+    <li>In the <b class="ui">Send to client</b> sheet of contracts and riders.</li>
+  </ul>
+  <p>The first time, documents start in the app's language. The language you pick is remembered for that client on this device (by email or, when there is no email, by name), so their next quote or contract opens in the same language. Nothing about it is stored on the server.</p>
+  <p>Once a quote link has been sent, the client page and its emails keep the language the client already received. When the page has no language, it follows the client's browser.</p>
+  <p>Texts the app wrote for you (starter packages, services, default payment terms) are translated in the client document; anything you typed yourself is printed as you wrote it.</p>
+
+  <h2>Sending and following up a quote</h2>
+
+  <h3 id="art-share-a-quote" data-roles="admin">Share a quote with the client</h3>
+  <p>Send the client a personal link to accept or decline, or just the PDF, by WhatsApp, text, email or any app.</p>
+  <ol class="steps">
+    <li>Open the share screen: <b class="ui">Save &amp; share</b> in the wizard, <b class="ui">Share quote</b> on the quote, or <b class="ui">SHARE QUOTE</b> on its calendar event.</li>
+    <li>Wait for the A4 preview. Move through the pages with the page chips or arrows; tap ↻ (<b class="ui">Regenerate PDF preview</b>) after a change.</li>
+    <li>Pick the <b class="ui">Client language</b>.</li>
+    <li>Under <b class="ui">Send to client</b>, pick how the personal link goes out: <b class="ui">WhatsApp</b>, <b class="ui">Text message</b>, <b class="ui">Email</b> or <b class="ui">Copy message &amp; link</b>. Each sends a ready message with the link, the total and your name.</li>
+    <li>Or, under <b class="ui">PDF only</b>, tap <b class="ui">Share PDF document</b> (the system share sheet) or <b class="ui">Download PDF</b> to send the file yourself.</li>
+    <li>Tap <b class="ui">Done</b>.</li>
+  </ol>
+  <figure class="shot" data-shot="quote-share" data-device="phone"><figcaption>The share screen: PDF preview, client language, link channels and PDF only.</figcaption></figure>
+  <p>The screen explains: <b class="ui">A personal link where {name} can accept the quote, decline it or ask you questions. You get a notification for each answer.</b> WhatsApp and text messages use the client phone on the quote.</p>
+  <p>A draft becomes <b class="ui">Sent</b> as soon as something actually leaves: a link message through any channel, or the PDF through <b class="ui">Share PDF document</b>. <b class="ui">Download PDF</b> alone does not change the status.</p>
+  <aside class="note tip">Opening the share screen does not send anything. If the client link can't be prepared, it says <b class="ui">The client link could not be prepared. Check your connection and reopen this screen.</b> and the PDF channels still work.</aside>
+  <div class="devnote" data-devices="web">On a computer <b class="ui">Download PDF</b> saves the file to your computer; there is no system share sheet, so <b class="ui">Share PDF document</b> downloads it too.</div>
+  <div class="devnote" data-devices="tablet">The iPad composer adds <b class="ui">Send quote</b>, which emails the link straight away (see <a data-ref="send-quote-by-email">Send a quote by email</a>).</div>
+
+  <h3 id="art-send-quote-by-email" data-roles="admin">Send a quote by email</h3>
+  <p class="steps-title">From any device</p>
+  <ol class="steps">
+    <li>Make sure the quote has a <b class="ui">Client email</b> (edit the quote if not).</li>
+    <li>Open the share screen and pick the <b class="ui">Client language</b>.</li>
+    <li>Under <b class="ui">Send to client</b>, tap <b class="ui">Email</b> (<b class="ui">To {email}, with the PDF</b>).</li>
+  </ol>
+  <p class="steps-title">On iPad</p>
+  <ol class="steps">
+    <li>Fill in the composer, including the client email.</li>
+    <li>Tap <b class="ui">Send quote</b> under the live PDF. The quote is saved, the share screen opens and the email goes out by itself once the link and PDF are ready.</li>
+  </ol>
+  <p>The confirmation is <b class="ui">Email sent to {email}</b>. If BandWith can't send it, your mail app opens with the same message and link: <b class="ui">Your mail app opened with the message and the link.</b> Either way the quote is marked <b class="ui">Sent</b>.</p>
+  <aside class="note warning">You can send one email per minute per quote: <b class="ui">An email was just sent. Wait a minute and try again.</b> Without a client email, <b class="ui">Send quote</b> tells you and the other channels stay available.</aside>
+
+  <h3 id="art-client-quote-page" data-roles="admin">What the client sees: the quote page</h3>
+  <p>The link opens a page on the BandWith website, where the client accepts, declines or writes to the band, with no account and no app.</p>
+  <p class="steps-title">On the page</p>
+  <ul>
+    <li>A greeting with the band name, the quote title and number, date, time, venue, city, guests, line-up and music.</li>
+    <li><b class="ui">What's in the quote</b>: the line items, subtotal, discount, VAT, total, deposit and validity date, plus options, notes and terms; a <b class="ui">Download the PDF</b> button.</li>
+    <li><b class="ui">Does it work for you?</b>: to accept, the client types <b class="ui">Your full name</b>, ticks <b class="ui">I accept this quote ({ref}, version {n}).</b> and taps <b class="ui">Accept the quote</b>.</li>
+    <li><b class="ui">Decline the quote</b>: an optional reason, then <b class="ui">Decline</b>.</li>
+    <li><b class="ui">Questions or changes?</b>: the client writes a message and taps <b class="ui">Send message</b>; the band's reply appears on the same page.</li>
+  </ul>
+  <p>Acceptance records the typed name, the date and time and the version the client saw. The page says it is not a legal signature: a contract, if needed, is signed separately.</p>
+  <table class="grid">
+    <thead><tr><th>Situation</th><th>What the client sees</th></tr></thead>
+    <tbody>
+      <tr><td>Quote edited after sending</td><td><b class="ui">Updated on {date}</b>. If they had the page open, accepting shows <b class="ui">The quote was just updated.</b> and nothing is recorded until they check the new version.</td></tr>
+      <tr><td>Accepted</td><td><b class="ui">Accepted. Thank you!</b> with who and when. Accept and decline disappear; they can still write.</td></tr>
+      <tr><td>Declined</td><td><b class="ui">You declined this quote.</b> They can still accept it or write.</td></tr>
+      <tr><td>Validity date passed</td><td><b class="ui">This quote expired on {date}.</b> Accept and decline disappear; they can write.</td></tr>
+      <tr><td>Link replaced or turned off</td><td><b class="ui">This link doesn't work.</b> with a hint to ask the band for a new one.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">The page shows only the summary you published, the band name and the conversation: never the musicians, their fees or your internal notes.</aside>
+  <aside class="note tip"><b class="ui">Preview page</b> on the quote shows exactly what the client sees; nothing you do in the preview is recorded.</aside>
+
+  <h3 id="art-client-confirmation" data-roles="admin">Follow up a sent quote</h3>
+  <p>Open the quote from the Quotes screen. The <b class="ui">Client confirmation</b> section tracks the link in four steps: <b class="ui">Sent</b>, <b class="ui">Viewed</b>, <b class="ui">Discussing</b>, then <b class="ui">Accepted</b> or <b class="ui">Declined</b>. It refreshes on its own every 20 seconds.</p>
+  <figure class="shot" data-shot="quote-client-confirmation" data-device="phone"><figcaption>Client confirmation on a quote the client opened and asked about.</figcaption></figure>
+  <p class="steps-title">Reply to the client</p>
+  <ol class="steps">
+    <li>Read the messages under <b class="ui">Conversation</b>.</li>
+    <li>Type in <b class="ui">Reply to the client</b> and tap <b class="ui">Send reply</b>.</li>
+  </ol>
+  <p>Your reply appears on the client's page, and they also get it by email when the quote has a client email.</p>
+  <p class="steps-title">Other actions</p>
+  <ul>
+    <li><b class="ui">Remind client</b>: opens the share screen with a reminder message (until the client answers).</li>
+    <li><b class="ui">Send the update</b>: appears after you edit a sent quote, because <b class="ui">The client's page already shows version {n}. Let them know.</b></li>
+    <li><b class="ui">Preview page</b>: opens the client page in preview mode.</li>
+    <li><b class="ui">Copy link</b>: copies the bare link.</li>
+    <li><b class="ui">New link</b>: the old link stops working and you send the client the new one; it also turns a switched-off link back on.</li>
+    <li><b class="ui">Turn off link</b>: the client can no longer open the quote until you create a new link.</li>
+    <li><b class="ui">Quote history</b>: every send, reminder, view, update, answer and link change, with the time.</li>
+  </ul>
+  <p>Admins get a push and an in-app notification when the client opens the quote the first time, accepts, declines or writes.</p>
+  <aside class="note warning"><b class="ui">New link</b> and <b class="ui">Turn off link</b> ask first, because the client's current link stops working right away.</aside>
+  <p>A quote never sent shows <b class="ui">Send to client</b> here instead.</p>
+
+  <h3 id="art-record-client-answer" data-roles="admin">Record an answer given by phone or in person</h3>
+  <ol class="steps">
+    <li>Open the quote from the Quotes screen.</li>
+    <li>Under <b class="ui">Client answered by phone or in person?</b>, tap <b class="ui">Accepted</b> or <b class="ui">Declined</b>.</li>
+  </ol>
+  <p><b class="ui">Accepted</b> also confirms the quote's calendar event as a gig (<b class="ui">Quote accepted. The gig is confirmed.</b>) and the lineup is notified. The client page then shows the quote as accepted and stops offering accept and decline. The admin who records the answer gets no notification.</p>
+  <p>These buttons appear on quotes that are <b class="ui">Sent</b>, <b class="ui">Viewed</b> or <b class="ui">Discussing</b>. On a <b class="ui">Draft</b> you sent outside the app, use <b class="ui">Mark as sent</b> first; it only changes the status and sends nothing.</p>
+
+  <h2>From quote to gig, and managing quotes</h2>
+
+  <h3 id="art-quote-to-gig" data-roles="admin,member">Turn an accepted quote into a gig</h3>
+  <p>The quote's date is confirmed as a gig and lands on everyone's calendar, with the lineup and fees.</p>
+  <p class="steps-title">From the quote</p>
+  <ol class="steps">
+    <li>When the client accepts on the page, open the quote.</li>
+    <li>In the accepted card, tap <b class="ui">Create gig from quote</b> (or <b class="ui">Confirm &amp; open gig</b> when the quote already has its calendar event).</li>
+    <li>The gig opens. For a contract, tap <b class="ui">Prepare contract</b> on the quote (see <a data-ref="create-a-contract">Create or edit a contract</a>).</li>
+  </ol>
+  <p class="steps-title">From the calendar</p>
+  <ol class="steps">
+    <li>Open the quote event on its day.</li>
+    <li>Tap <b class="ui">CONFIRM AS GIG</b>. On the <b class="ui">Quote confirmed as Gig!</b> message you can tap <b class="ui">UNDO</b> for 8 seconds.</li>
+  </ol>
+  <p>The tentative event becomes a confirmed gig. If the quote had no event (an old quote), a new confirmed gig is created with the date, venue, client and total, and the quote's musicians become its lineup with their fees. The creator is confirmed; the others are asked to RSVP.</p>
+  <aside class="note tip">A client's yes on the page does not confirm the gig by itself: the admin decides when, with one of the buttons above. Recording <b class="ui">Accepted</b> in the app, on the other hand, confirms it right away.</aside>
+  <aside class="note warning">Musicians typed by name without a BandWith account can't be added to a gig. If the lineup could not be saved, the app says: <b class="ui">Gig created, but its lineup was not added. Add the musicians in the gig.</b></aside>
+  <div class="roles">
+    <div data-role="admin">Confirms the quote and sees the band fee.</div>
+    <div data-role="member">The gig appears on their calendar with a notification and their own fee only (see <a data-ref="what-members-see-of-money">What members see of money</a>).</div>
+  </div>
+
+  <h3 id="art-revert-gig-to-quote" data-roles="admin">Turn a gig back into a quote</h3>
+  <ol class="steps">
+    <li>Open the gig.</li>
+    <li>Tap <b class="ui">REVERT TO QUOTE</b> at the bottom.</li>
+    <li>Read the warning and tap <b class="ui">Revert to quote</b>, or <b class="ui">Keep the gig</b>.</li>
+  </ol>
+  <p>The warning explains: <b class="ui">Back to a quote: the gig leaves the musicians' calendars until you confirm it again. Their answers are kept.</b> The linked quote goes back to where it was before the yes: <b class="ui">Viewed</b> or <b class="ui">Sent</b> if the client had it, <b class="ui">Draft</b> if it was never shared.</p>
+  <p>Rehearsals and personal gigs have no <b class="ui">REVERT TO QUOTE</b>: they never were quotes.</p>
+  <aside class="note tip">A member who opens a link to the gig in the meantime sees <b class="ui">Not confirmed yet</b>; the gig comes back to their calendar as soon as it is confirmed again.</aside>
+
+  <h3 id="art-edit-duplicate-delete-quote" data-roles="admin">Edit, duplicate or delete a quote</h3>
+  <p class="steps-title">Edit</p>
+  <ol class="steps">
+    <li>Open the quote and tap <b class="ui">Edit quote</b> (or <b class="ui">EDIT QUOTE</b> on its calendar event).</li>
+    <li>Open the sections you need: <b class="ui">Client &amp; occasion</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Lineup &amp; extra sets</b>, <b class="ui">Pricing, logistics &amp; billing</b>, <b class="ui">Proposal options &amp; terms</b>.</li>
+    <li>Tap <b class="ui">Save</b>, or <b class="ui">Save &amp; share</b> to send it right away.</li>
+  </ol>
+  <p>You can edit quotes that are <b class="ui">Draft</b>, <b class="ui">Sent</b>, <b class="ui">Viewed</b> or <b class="ui">Discussing</b>. If the client already has the link, their page switches to the new version (<b class="ui">The client's page now shows version {n}.</b>); use <b class="ui">Send the update</b> to tell them.</p>
+  <p class="steps-title">Duplicate</p>
+  <ol class="steps">
+    <li>Open the quote and tap <b class="ui">Duplicate</b> at the bottom. The copy is a new <b class="ui">Draft</b> with its own number (<b class="ui">Quote duplicated as {number}</b>) and no client link yet.</li>
+  </ol>
+  <p class="steps-title">Delete</p>
+  <ol class="steps">
+    <li>Open the quote, tap <b class="ui">Delete this quote</b> and confirm <b class="ui">Delete {label}? This cannot be undone.</b></li>
+  </ol>
+  <aside class="note warning">Deleting a quote cannot be undone, and its client link stops working. To free the date too, delete the quote event from the calendar.</aside>
+
+  <h3 id="art-quotes-overview" data-roles="admin">The Quotes screen</h3>
+  <p>This is your sales pipeline: every quote, its status and what it could be worth. On Home, <b class="ui">ACTIVE QUOTES</b> opens <b class="ui">Quotes</b>; the number on Home counts quote events still to come.</p>
+  <ul>
+    <li><b class="ui">Pipeline potential</b>: the value of every quote not declined or expired. Below it, one dot column per quote (up to seven): taller means bigger, brighter means closer to a yes (accepted is in the accent colour). Tap a column to see its amount.</li>
+    <li><b class="ui">All quotes</b>: one card per quote with its title, status tag, number of items and date; tap a card to open it.</li>
+    <li><b class="ui">+</b> (<b class="ui">New quote</b>) at the top right starts a quote.</li>
+  </ul>
+  <p>Quotes also live in the calendar as tentative events, with the <b class="ui">Quote</b> filter; draft quotes show only to the admin.</p>
+  <p>The open quote shows the date, the <b class="ui">Line items</b> with subtotal, discount, VAT and <b class="ui">Total</b>, the deposit, how many days it is still valid, when it was sent and opened, the <b class="ui">Client</b> details, then <a data-ref="client-confirmation">Client confirmation</a> and the actions.</p>
+
+  <h3 id="art-quote-statuses" data-roles="admin">Quote statuses</h3>
+  <table class="grid">
+    <thead><tr><th>Status</th><th>Meaning</th><th>How it gets there</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Draft</b></td><td>Saved, not sent. Only admins see it.</td><td>Creating or duplicating a quote, or reverting a gig whose quote was never shared.</td></tr>
+      <tr><td><b class="ui">Sent</b></td><td>The client has it.</td><td>A link message or the PDF left through a channel, or <b class="ui">Mark as sent</b>.</td></tr>
+      <tr><td><b class="ui">Viewed</b></td><td>The client opened the link.</td><td>The first visit to the client page.</td></tr>
+      <tr><td><b class="ui">Discussing</b></td><td>The client wrote to you.</td><td>A message from the client page before an answer.</td></tr>
+      <tr><td><b class="ui">Accepted</b></td><td>The client said yes.</td><td>Accepted on the page, or <b class="ui">Accepted</b> recorded in the app.</td></tr>
+      <tr><td><b class="ui">Declined</b></td><td>The client said no.</td><td>Declined on the page, or <b class="ui">Declined</b> recorded in the app. The client can still accept later.</td></tr>
+      <tr><td><b class="ui">Expired</b></td><td>Past its validity date.</td><td>After the validity date the client page stops offering accept; the quote shows <b class="ui">Expired</b> where it shows the days left.</td></tr>
+    </tbody>
+  </table>
+  <p>On the quote's calendar event the status comes with a line that tells you the next step, for example <b class="ui">Draft · not sent to the client</b> or <b class="ui">The client said yes: Confirm as gig to put it on everyone's calendar.</b></p>
+
+  <h2>Contracts and riders</h2>
+
+  <h3 id="art-contracts-and-docs" data-roles="admin">Contracts &amp; docs</h3>
+  <p>This is where the band keeps its performance agreements and technical riders. On Home, tap <b class="ui">Contracts</b> under <b class="ui">Quick Actions</b>, or open your account hub and tap <b class="ui">Contracts &amp; docs</b>.</p>
+  <figure class="shot" data-shot="contracts-list" data-device="phone"><figcaption>Contracts &amp; docs: search, tabs, totals and the documents.</figcaption></figure>
+  <ul>
+    <li><b class="ui">Search documents</b> by title, client or event.</li>
+    <li>Tabs <b class="ui">All</b>, <b class="ui">Contracts</b> and <b class="ui">Riders</b>, each with its count.</li>
+    <li><b class="ui">Total docs</b>, <b class="ui">Signed</b> and <b class="ui">Pending</b> (draft, sent or viewed).</li>
+    <li>One card per document with its status, client, event date and the gig it is linked to. Tap it to view it; <b class="ui">⋯</b> opens its actions.</li>
+    <li><b class="ui">+</b> (<b class="ui">Create document</b>) at the top right.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sees, creates, sends, signs off and deletes every document of the band.</div>
+    <div data-role="member">No access: contracts hold the client and the gig price, so the entry is hidden and the database returns nothing to members.</div>
+    <div data-role="deputy">No access.</div>
+  </div>
+  <div class="devnote" data-devices="duoLaptop">In laptop posture the three totals sit on the top half.</div>
+
+  <h3 id="art-create-a-contract" data-roles="admin">Create or edit a contract</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Contracts &amp; docs</b>, tap <b class="ui">+</b> (<b class="ui">Create document</b>).</li>
+    <li>Under <b class="ui">Document type</b>, keep <b class="ui">Contract</b>.</li>
+    <li>Under <b class="ui">For a band event</b>, tap one of your upcoming gigs, or <b class="ui">None</b>. Picking a gig <b class="ui">Fills in the event, date and client from the gig.</b></li>
+    <li>Check the <b class="ui">Document title *</b>, <b class="ui">Event name</b>, <b class="ui">Client / venue *</b> and <b class="ui">Client email</b>.</li>
+    <li>Set the <b class="ui">Event date</b> and, if you want, <b class="ui">Valid until</b>.</li>
+    <li>Write the <b class="ui">Notes &amp; terms</b>, or tap <b class="ui">Use standard terms</b> to start from the standard clauses (performance, fee and payment, cancellation, venue, hospitality, breaks, recordings, force majeure) and edit them.</li>
+    <li>Tap <b class="ui">Create contract</b>.</li>
+  </ol>
+  <p>From an accepted quote, <b class="ui">Prepare contract</b> opens this form already filled in with the gig, client, email and date, titled <b class="ui">Performance agreement · {event}</b>.</p>
+  <p>From a gig, the readiness line <b class="ui">No contract yet</b> opens the same form filled in for that gig (<a data-ref="show-readiness">show readiness</a>). Back, from the form or from <b class="ui">Contracts &amp; docs</b>, returns to the gig.</p>
+  <figure class="shot" data-shot="contracts-new-for-gig" data-device="phone"><figcaption>Create contract opened from “No contract yet” on a gig: title, event, client, email and date already filled in.</figcaption></figure>
+  <p>To change a document, tap it and then <b class="ui">Edit</b>, or <b class="ui">⋯</b> &gt; <b class="ui">Edit</b>, and tap <b class="ui">Save changes</b>. A signed contract can no longer be edited.</p>
+  <aside class="note tip">Payment terms go in <b class="ui">Notes &amp; terms</b>. The standard text says the deposit confirms the booking and the balance is due on the event date: change it to match what you agreed in the quote.</aside>
+  <p>The contract PDF ends with two signature lines, <b class="ui">For {band}</b> and <b class="ui">For {client}</b>, to sign on paper or in the client's own tool. BandWith does not collect signatures: it records the signature date when you tap <b class="ui">Mark as signed</b>.</p>
+  <div class="devnote" data-devices="tablet">In landscape the form fills the right pane and <b class="ui">Create contract</b> sits at its bottom edge; the tab pill steps aside while you write.</div>
+  <div class="devnote" data-devices="duoLaptop">In Laptop pose the header stays on the top half, the fields and <b class="ui">Create contract</b> on the bottom half. The field you type in stays in sight, above the keyboard or just above the fold.</div>
+
+  <h3 id="art-send-a-contract" data-roles="admin">Send, export and sign off a contract</h3>
+  <p class="steps-title">Send to the client</p>
+  <ol class="steps">
+    <li>Tap the contract, then <b class="ui">Send</b> (or <b class="ui">⋯</b> &gt; <b class="ui">Send to client</b>).</li>
+    <li>Check the <b class="ui">Client email</b> and pick the <b class="ui">Client language</b>; the <b class="ui">Message</b> field shows the text that goes with the PDF.</li>
+    <li>Tap <b class="ui">Share PDF</b>: the share sheet opens with the PDF and the message; pick Mail or any app and send it.</li>
+    <li>Once shared, the contract is marked <b class="ui">Sent</b>.</li>
+  </ol>
+  <div class="devnote" data-devices="web">On a computer there is no share sheet: the PDF is downloaded and your mail app opens with the message. Attach the PDF, send the email, then tap <b class="ui">Mark as sent</b> (or <b class="ui">Not sent yet</b> to leave it as it is).</div>
+  <p class="steps-title">Export or print</p>
+  <ol class="steps">
+    <li>Tap the contract, then <b class="ui">PDF</b> (or <b class="ui">⋯</b> &gt; <b class="ui">Download PDF</b>), and print it from the saved file.</li>
+  </ol>
+  <p class="steps-title">Record the signature</p>
+  <ol class="steps">
+    <li>When the signed copy comes back, tap the contract, then <b class="ui">Mark as signed</b>. The status becomes <b class="ui">Signed</b> with today's date, and editing and sending are switched off.</li>
+  </ol>
+  <p class="steps-title">Delete</p>
+  <ol class="steps">
+    <li>Tap <b class="ui">⋯</b> &gt; <b class="ui">Delete</b> and confirm: <b class="ui">The document is removed for the whole band. Copies already sent to the client are not affected.</b></li>
+  </ol>
+  <aside class="note tip">A signed contract linked to a gig counts as done in the gig's show readiness (see <a data-ref="show-readiness">show readiness</a>).</aside>
+
+  <h3 id="art-contract-riders" data-roles="admin">Riders in Contracts &amp; docs</h3>
+  <p>Keep technical riders with your contracts, share them as a web link and send new versions.</p>
+  <ol class="steps">
+    <li>Tap <b class="ui">+</b> (<b class="ui">Create document</b>) and pick <b class="ui">Rider</b> under <b class="ui">Document type</b>.</li>
+    <li>Link it to a gig under <b class="ui">For a band event</b>, so it carries that gig's stage plot, input list and who brings what.</li>
+    <li>Write the <b class="ui">Requirements &amp; notes</b>, or tap <b class="ui">Use standard rider</b> (stage, power, sound, times, backstage, hospitality, parking).</li>
+    <li>Tap <b class="ui">Create rider</b>.</li>
+    <li>To send it, use <b class="ui">Send</b> as for a contract, or <b class="ui">Web link</b> (<b class="ui">⋯</b> &gt; <b class="ui">Share web link</b>) to share a read-only page for the venue.</li>
+  </ol>
+  <p>Once shared, the rider shows <b class="ui">Sent</b>. After a change, <b class="ui">⋯</b> &gt; <b class="ui">New version</b> takes the rider back to <b class="ui">Draft</b> as the next version, which you share again so the venue sees it.</p>
+  <p>Riders have no <b class="ui">Mark as signed</b>.</p>
+
+  <h3 id="art-contract-statuses" data-roles="admin">Contract and rider statuses</h3>
+  <table class="grid">
+    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Draft</b></td><td>Created, not sent yet.</td></tr>
+      <tr><td><b class="ui">Sent</b></td><td>Shared with the client.</td></tr>
+      <tr><td><b class="ui">Signed</b></td><td>You tapped <b class="ui">Mark as signed</b>. Final: it can be viewed, downloaded or deleted, not edited.</td></tr>
+      <tr><td><b class="ui">Expired</b></td><td>Shown when the <b class="ui">Valid until</b> date has passed, or the event date has passed while it was still unsigned. Nothing in the document changes; only the way it is shown.</td></tr>
+    </tbody>
+  </table>
+  <p>Your account hub counts the documents still to sign and the drafts.</p>
+
+  <h2>The band's money</h2>
+
+  <h3 id="art-money-on-home" data-roles="admin,member">Money on Home</h3>
+  <table class="grid">
+    <thead><tr><th>On Home</th><th>What it counts</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">REVENUE</b> (admins)</td><td>This year's fees of confirmed and completed gigs. Tap it to open <b class="ui">Money flow</b>.</td></tr>
+      <tr><td><b class="ui">ACTIVE QUOTES</b> (admins)</td><td>Quote events still to come. Tap it to open Quotes.</td></tr>
+      <tr><td><b class="ui">Revenue vs last month</b> (admins)</td><td>The change in gig revenue, next to <b class="ui">Gigs this month</b>.</td></tr>
+      <tr><td><b class="ui">UPCOMING PAY</b> (members)</td><td>Your own fees for confirmed gigs coming up.</td></tr>
+      <tr><td><b class="ui">TOTAL EARNED</b> (members)</td><td>Your own fees for gigs already played.</td></tr>
+    </tbody>
+  </table>
+  <p><b class="ui">Money flow</b> is the band ledger: <b class="ui">Net profit</b>, <b class="ui">Revenue</b> and <b class="ui">Expenses</b> for this year, and <b class="ui">Recent activity</b>, the income and expenses you recorded. <b class="ui">+</b> (<b class="ui">Add transaction</b>) adds one (see <a data-ref="add-a-transaction">Record income or an expense</a>).</p>
+  <aside class="note tip">The two revenues differ: <b class="ui">REVENUE</b> on Home adds up gig fees, while <b class="ui">Revenue</b> in Money flow adds up the income you recorded. A payment shows in Money flow only once it is recorded as income.</aside>
+  <p>In <b class="ui">Upcoming</b>, admins see each gig's band fee; members see their own fee (<b class="ui">Your fee</b>) or the time.</p>
+  <aside class="note privacy">Money flow, REVENUE and ACTIVE QUOTES are for admins only; the ledger itself is readable only by admins in the database.</aside>
+
+  <h3 id="art-add-a-transaction" data-roles="admin">Record income or an expense</h3>
+  <ol class="steps">
+    <li>On Home, tap <b class="ui">REVENUE</b> to open <b class="ui">Money flow</b>.</li>
+    <li>Tap <b class="ui">+</b> (<b class="ui">Add transaction</b>) at the top right.</li>
+    <li>Pick <b class="ui">Income</b> or <b class="ui">Expense</b>.</li>
+    <li>Type a <b class="ui">Description</b> (for example <b class="ui">Jazz Night @ Blue Note</b>), the <b class="ui">Amount</b> and the <b class="ui">Date</b>.</li>
+    <li>Pick a <b class="ui">Category</b>: for income <b class="ui">GIG</b>, <b class="ui">REHEARSAL</b>, <b class="ui">MERCHANDISE</b>, <b class="ui">ROYALTIES</b> or <b class="ui">OTHER</b>; for expenses <b class="ui">EQUIPMENT</b>, <b class="ui">TRAVEL</b>, <b class="ui">STUDIO</b>, <b class="ui">MARKETING</b>, <b class="ui">FEES</b> or <b class="ui">OTHER</b>.</li>
+    <li>Tap <b class="ui">Add income</b> or <b class="ui">Add expense</b>.</li>
+  </ol>
+  <p>The totals and <b class="ui">Recent activity</b> update at once. Every income you add sends a <b class="ui">Payment received</b> notification to the band admins.</p>
+
+  <h3 id="art-payouts-due" data-roles="admin,member,deputy">Payouts due and marking musicians paid</h3>
+  <p>A payout is due when a band gig is over (confirmed or completed), the musician confirmed, has a fee above zero and is not marked paid yet. This is the band paying its musicians, not the client paying the band.</p>
+  <p class="steps-title">Pay one musician or all of them (admins)</p>
+  <ol class="steps">
+    <li>On Home, under <b class="ui">Action center</b> &gt; <b class="ui">Payouts ({count})</b>, tap <b class="ui">Review payouts</b> on the gig; or open the gig and tap <b class="ui">FEE &amp; PAYOUTS</b>.</li>
+    <li>The <b class="ui">Fee &amp; payouts</b> sheet shows the <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> with the amount, and each musician with their fee and <b class="ui">PAID</b> or <b class="ui">PENDING</b>.</li>
+    <li>Tap the round toggle next to a musician to mark them paid; tap it again to undo.</li>
+    <li>Or tap <b class="ui">MARK ALL AS PAID</b> to mark everyone still unpaid.</li>
+  </ol>
+  <p>Analytics has the same list with <b class="ui">MARK ALL AS PAID</b> per gig (see <a data-ref="analytics">Analytics</a>). A paid musician leaves the list at once.</p>
+  <div class="roles">
+    <div data-role="admin">Sees every musician owed on every gig and marks them paid.</div>
+    <div data-role="member">Sees only their own payout: <b class="ui">Your payouts ({count})</b> on Home with <b class="ui">You're owed {amount}</b> and <b class="ui">View payout</b>. On the gig, <b class="ui">PAYOUT DETAILS</b> shows <b class="ui">Your assigned fee</b> and <b class="ui">PAID</b> or <b class="ui">PENDING</b>. Members can't change fees or payouts.</div>
+    <div data-role="deputy">Like a member: only their own fee for the gig they cover.</div>
+  </div>
+  <div class="devnote" data-devices="tablet">On iPad the gig workspace has a <b class="ui">MONEY</b> tab (admins only) with the same fee and payouts list.</div>
+
+  <h3 id="art-currency-and-tax" data-roles="admin">Set the band currency and tax</h3>
+  <ol class="steps">
+    <li>Open the pricing sheet and tap <b class="ui">Rules &amp; tax</b>.</li>
+    <li>Under <b class="ui">1. Country &amp; currency</b>, tap your <b class="ui">Country</b>. It sets the currency and its standard VAT rate (for example Italy, EUR, 22%). Pick <b class="ui">Other</b> if yours is not listed.</li>
+    <li>Change the <b class="ui">Currency</b> if needed: EUR €, USD $, GBP £ or CHF.</li>
+    <li>Under <b class="ui">3. Tax, deposit &amp; validity</b>, adjust the <b class="ui">Default VAT rate</b>; live shows can qualify for a reduced rate.</li>
+    <li>Tap <b class="ui">Save changes</b>.</li>
+  </ol>
+  <p>Every money label in the app follows the band currency; each quote keeps the currency it was created with.</p>
+  <aside class="note tip">Kilometres or miles is a personal setting, not a band one: Settings &gt; <b class="ui">Distance</b>. It only changes how distances and rates are shown on your device; saved quotes and prices stay the same.</aside>
+
+  <h3 id="art-what-members-see-of-money" data-roles="admin,member,deputy">What members see of money</h3>
+  <aside class="note privacy">Members and deputies see only their own fee and the logistics. They never see other people's fees, quote totals, the gig price, the client or the band finances. This is enforced by the database, not only hidden in the app.</aside>
+  <table class="grid">
+    <thead><tr><th>Topic</th><th>Admin</th><th>Member or deputy</th></tr></thead>
+    <tbody>
+      <tr><td>Quotes</td><td>Everything</td><td>Nothing; only an availability check with their own fee, if asked</td></tr>
+      <tr><td>Gig fee</td><td><b class="ui">Band fee</b>, every musician's fee, band fund, deposit</td><td><b class="ui">Your fee</b> only</td></tr>
+      <tr><td>Payouts</td><td>Everyone owed</td><td>Their own payout and <b class="ui">PAID</b> / <b class="ui">PENDING</b></td></tr>
+      <tr><td>Contracts and riders</td><td>Everything</td><td>Nothing</td></tr>
+      <tr><td>Money flow</td><td>Everything</td><td>Nothing</td></tr>
+      <tr><td>Home metrics</td><td><b class="ui">REVENUE</b>, <b class="ui">ACTIVE QUOTES</b></td><td><b class="ui">UPCOMING PAY</b>, <b class="ui">TOTAL EARNED</b> (their own)</td></tr>
+      <tr><td>Analytics</td><td>The whole band</td><td>No entry point</td></tr>
+      <tr><td>To-do lists</td><td>Create and edit</td><td>Read; tick off tasks on their events</td></tr>
+    </tbody>
+  </table>
+  <p>Admins change fees; a member can never change a fee, a role or a payout, not even their own.</p>
+
+  <h3 id="art-analytics" data-roles="admin">Analytics (Data insights)</h3>
+  <p>On Home, scroll to the bottom and tap <b class="ui">View Analytics</b>. The screen is called <b class="ui">Data insights</b>, with the band name and the year above the title, and covers the current calendar year.</p>
+  <figure class="shot" data-shot="analytics" data-device="phone"><figcaption>Data insights: totals, revenue change and the monthly breakdown.</figcaption></figure>
+  <table class="grid">
+    <thead><tr><th>Card</th><th>What it shows</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Total revenue</b></td><td>This year's fees of confirmed and completed gigs (the same number as <b class="ui">REVENUE</b> on Home).</td></tr>
+      <tr><td><b class="ui">Total events</b>, <b class="ui">Confirmed</b>, <b class="ui">Upcoming</b></td><td>How many events the band has, how many are confirmed and how many are still to come.</td></tr>
+      <tr><td><b class="ui">Revenue vs previous period</b></td><td>The percentage change in revenue; <b class="ui">--</b> when there is nothing to compare.</td></tr>
+      <tr><td><b class="ui">Monthly breakdown</b></td><td>Six dot columns, one per month up to the current one (highlighted), scaled to the best month. Hover over or long-press a month for its amount. Below: <b class="ui">Total earnings {year}</b>.</td></tr>
+      <tr><td><b class="ui">Revenue by event type</b></td><td>This year's booked gigs grouped by type (Wedding, Corporate, Private party, Festival, Club, Pub, Gig, Other), highest first, with the number of gigs, the amount and its share. Rehearsals and personal gigs are left out.</td></tr>
+      <tr><td><b class="ui">Payouts due</b></td><td>One card per gig that is over and still owes musicians: who is owed what, the total and <b class="ui">MARK ALL AS PAID</b>.</td></tr>
+      <tr><td><b class="ui">Members</b></td><td>Per-member stats for the year (see <a data-ref="member-stats">Member stats</a>).</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Analytics opens from an admin-only button; fees by type and payouts come from data only admins can read.</aside>
+  <div class="devnote" data-devices="duoBook,duoLand">With the Duo open, <b class="ui">Revenue by event type</b> and <b class="ui">Payouts due</b> move to the second screen, titled <b class="ui">Where it comes from</b>.</div>
+  <div class="devnote" data-devices="duoLaptop">In laptop posture the four totals sit on the top half.</div>
+
+  <h3 id="art-member-stats" data-roles="admin,member">Member stats</h3>
+  <p>The <b class="ui">Members</b> card at the bottom of Analytics lists every musician with a line like <b class="ui">{count} played · {count} coming up · {count} rehearsals</b>, plus declines and <b class="ui">awaiting reply</b> when there are any, their earnings, and a <b class="ui">{amount} not paid yet</b> tag when the band still owes them money.</p>
+  <p class="steps-title">How it counts</p>
+  <ul>
+    <li>Played: band gigs this year, confirmed or completed, that the musician confirmed and that are in the past; their fee counts as earned.</li>
+    <li>Coming up: the same, still to come.</li>
+    <li>Rehearsals: past rehearsals they confirmed, not cancelled.</li>
+    <li>Declined: every event they said no to. Awaiting reply: upcoming events they have not answered.</li>
+    <li>Not paid yet: earned minus what was marked paid.</li>
+  </ul>
+  <p>You come first, then active members by number of gigs. People who left the band are listed last with <b class="ui">Former member</b>.</p>
+  <div class="roles">
+    <div data-role="admin">Sees every member.</div>
+    <div data-role="member">The database returns only their own row, titled <b class="ui">Your year</b>. Members have no button to open Analytics.</div>
+  </div>
+
+  <h2>To-do lists</h2>
+
+  <h3 id="art-todo-and-task-templates" data-roles="admin,member">To-do lists</h3>
+  <p>A to-do list is a template: a named set of tasks, each due a number of days before or after the event. Using a list on a gig, rehearsal or quote copies its tasks onto that event, with real due dates; from then on the tasks are ticked off on the event itself. They work as reusable checklists for gigs, weddings, rehearsals or festivals.</p>
+  <p>Open <b class="ui">To-do lists</b> from Home &gt; <b class="ui">Quick Actions</b> &gt; <b class="ui">To-do lists</b>, or from your account hub. The header reads <b class="ui">Workflows &amp; checklists</b>.</p>
+  <ul>
+    <li><b class="ui">Search to-do lists</b> by name or description.</li>
+    <li>One card per list with its category tag (<b class="ui">Wedding</b>, <b class="ui">Corporate</b>, <b class="ui">Festival</b>, <b class="ui">Private party</b>, <b class="ui">Rehearsal</b>, <b class="ui">Other</b>), the number of tasks and the description. Starter lists carry <b class="ui">Default</b>.</li>
+    <li>Tap a list to see its <b class="ui">Tasks ({count})</b> with due offsets and <b class="ui">Required</b> tags, and <b class="ui">Use this list</b>.</li>
+    <li><b class="ui">⋯</b> on a card: <b class="ui">Duplicate</b>, <b class="ui">Edit</b> and <b class="ui">Delete</b> (starter lists can't be deleted).</li>
+    <li>With no lists yet: <b class="ui">New to-do list</b> or <b class="ui">Add starter lists</b> (Wedding gig checklist, Corporate event, Festival set, Rehearsal session).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Creates, edits, duplicates, deletes and uses lists, and edits the tasks on events.</div>
+    <div data-role="member">Opens To-do lists from the account hub and reads them, without <b class="ui">+</b>, <b class="ui">⋯</b> or <b class="ui">Use this list</b>. On events they can tick tasks off, not add, rename or delete them.</div>
+    <div data-role="deputy">No to-do lists.</div>
+  </div>
+  <aside class="note tip">Starter lists are written in English and shown in your app language until you edit them.</aside>
+
+  <h3 id="art-create-a-todo-list" data-roles="admin">Create or edit a to-do list</h3>
+  <ol class="steps">
+    <li>In <b class="ui">To-do lists</b>, tap <b class="ui">+</b> (<b class="ui">New to-do list</b>).</li>
+    <li>Type the <b class="ui">List name</b> (for example <b class="ui">Festival preparation</b>) and a <b class="ui">Description</b>.</li>
+    <li>Pick a <b class="ui">Category</b>.</li>
+    <li>Under <b class="ui">New task</b>, type a task (for example <b class="ui">Charge in-ears</b>).</li>
+    <li>Pick when it is <b class="ui">Due</b>: 14, 7, 3 or 1 day before, <b class="ui">Day of event</b>, or 1 day after.</li>
+    <li>If needed, tap <b class="ui">Required</b> to switch it to <b class="ui">Optional</b>, then <b class="ui">Add task</b>.</li>
+    <li>Repeat for each task; ✕ removes one.</li>
+    <li>Tap <b class="ui">Create list ({count} tasks)</b>.</li>
+  </ol>
+  <p>A task still in the field when you save is saved too. To change a list, tap <b class="ui">⋯</b> &gt; <b class="ui">Edit</b> and <b class="ui">Save changes</b>; <b class="ui">⋯</b> &gt; <b class="ui">Duplicate</b> copies it.</p>
+  <aside class="note warning"><b class="ui">Delete</b> removes the list for the whole band; <b class="ui">Events already created keep their tasks.</b></aside>
+
+  <h3 id="art-use-a-todo-list" data-roles="admin">Use a to-do list on a gig, rehearsal or quote</h3>
+  <p class="steps-title">From To-do lists</p>
+  <ol class="steps">
+    <li>Tap a list, then <b class="ui">Use this list</b>.</li>
+    <li>Under <b class="ui">Start new, with these tasks</b>, tap <b class="ui">New gig</b>, <b class="ui">New rehearsal</b> or <b class="ui">New quote</b>. The gig and rehearsal forms open with the tasks filled in; for a quote, the tasks are added when the quote is saved.</li>
+    <li>Or tap <b class="ui">An existing gig, rehearsal or quote</b> and pick an upcoming event or one of your <b class="ui">Saved drafts</b>.</li>
+  </ol>
+  <p class="steps-title">From the gig form</p>
+  <ol class="steps">
+    <li>In a new gig, open the tasks section and tap a list under <b class="ui">Load a to-do list</b>; you can then add or delete tasks.</li>
+  </ol>
+  <p>Due dates are worked out from the event date: a task due "7 days before" a gig on 20 June is due on 13 June. Tasks the event already has (same title) are skipped: <b class="ui">"{title}" already has these tasks</b>.</p>
+
+  <h3 id="art-event-tasks" data-roles="admin,member">Tick off an event's tasks</h3>
+  <ol class="steps">
+    <li>Open the gig or rehearsal.</li>
+    <li>Scroll to <b class="ui">TASKS</b>: it says <b class="ui">{done} of {total} done</b> and lists each task with <b class="ui">Due {date}</b>.</li>
+    <li>Tap a task to tick it off; tap it again to untick it.</li>
+  </ol>
+  <p>Everyone on the event sees the same list and the ticks update for everyone. Open tasks count in the gig's show readiness, and the account hub counts the tasks due this week and those overdue.</p>
+  <p>To add, rename or remove tasks, an admin edits the event and changes its tasks there (see <a data-ref="create-a-gig">Create a gig</a>).</p>
+  <p>Gig tasks are for the whole lineup; only rehearsal tasks can be given to one or several members, in the rehearsal form.</p>
+  <div class="roles">
+    <div data-role="admin">Adds, renames, removes and ticks tasks.</div>
+    <div data-role="member">Ticks tasks on their own events. Anything else is refused: <b class="ui">Only band admins can edit tasks; members can only mark them done</b>.</div>
+  </div>
+
+  <h2>FAQ</h2>
+  <dl class="faq">
+    <dt>Can members see a quote or its total?</dt>
+    <dd>No. Quotes are admin-only, in the app and in the database. A member only gets an availability check, with their own fee, if <b class="ui">Ask the lineup now</b> is on.</dd>
+    <dt>Does the client need an account to accept?</dt>
+    <dd>No. The personal link opens a web page where they type their name, tick the box and tap <b class="ui">Accept the quote</b>.</dd>
+    <dt>Is an accepted quote a signed contract?</dt>
+    <dd>No. It records the name, date and version the client accepted. For a signature, prepare a contract from the accepted quote.</dd>
+    <dt>The client accepted. Why is the gig not on the calendar yet?</dt>
+    <dd>A yes on the client page does not confirm the gig by itself. Open the quote and tap <b class="ui">Create gig from quote</b>, or tap <b class="ui">CONFIRM AS GIG</b> on the quote event.</dd>
+    <dt>If I change a quote after sending it, does the client see the change?</dt>
+    <dd>Yes: their page shows the new version with <b class="ui">Updated on</b>. Tap <b class="ui">Send the update</b> on the quote to let them know.</dd>
+    <dt>Can I send the quote in Italian while my app is in English?</dt>
+    <dd>Yes. Pick IT under <b class="ui">Client language</b> on the share screen. It is remembered for that client on this device.</dd>
+    <dt>Why does REVENUE on Home differ from Revenue in Money flow?</dt>
+    <dd><b class="ui">REVENUE</b> on Home adds up this year's confirmed gig fees; Money flow adds up the income transactions you recorded.</dd>
+    <dt>How do I pay a deputy or a member?</dt>
+    <dd>Pay them outside the app, then mark them paid on the gig's <b class="ui">Fee &amp; payouts</b> sheet or with <b class="ui">MARK ALL AS PAID</b>.</dd>
+    <dt>Can a member change their own fee?</dt>
+    <dd>No. Only admins change fees and payouts.</dd>
+    <dt>Why can't I revert a rehearsal to a quote?</dt>
+    <dd>Rehearsals and personal gigs never were quotes, so they have no <b class="ui">REVERT TO QUOTE</b>.</dd>
+    <dt>Can clients pay the deposit online?</dt>
+    <dd>No: the Stripe and PayPal buttons are switched off; use the bank transfer details on the PDF.</dd>
+    <dt>Members don't see Contracts. Is something wrong?</dt>
+    <dd>No. Contracts hold the client and the gig price, so only admins can open them.</dd>
+  </dl>
+</section>

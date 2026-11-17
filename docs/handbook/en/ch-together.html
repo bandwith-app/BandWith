@@ -1,0 +1,360 @@
+<section class="chapter" id="ch-together">
+  <h1>Rehearsals, polls and chat</h1>
+  <p class="lead">Schedule rehearsals, find a date the whole band can make, and talk to each other in band, event and direct chats.</p>
+
+  <h2>Scheduling rehearsals</h2>
+
+  <h3 id="art-create-a-rehearsal" data-roles="admin">Create a rehearsal</h3>
+  <p>Admins schedule a rehearsal directly when they already know the date. To find out first when people are free, they run an <a data-ref="create-a-rehearsal-poll">availability poll</a> instead.</p>
+  <p class="steps-title">On a phone</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> (the + in the bottom bar) → <b class="ui">New rehearsal</b>, or in the <b class="ui">Calendar</b> an empty day → <b class="ui">Rehearsal</b>.</li>
+    <li>Leave <b class="ui">Scheduling mode</b> on <b class="ui">Schedule directly</b>.</li>
+    <li><b class="ui">Rehearsal title (optional)</b>: without a title, the rehearsal is named after its session type (for example <b class="ui">Full Band Rehearsal</b>).</li>
+    <li><b class="ui">Session type</b>: <b class="ui">Full Band</b>, <b class="ui">Vocals</b>, <b class="ui">Rhythm</b>, <b class="ui">Acoustic</b> or <b class="ui">Other</b>. Vocals, Rhythm and Acoustic preselect the members whose instrument matches; Other opens the full roster.</li>
+    <li>In the <b class="ui">Band roster</b>, tap a member to add or remove them, or tap <b class="ui">Select all</b>; then <b class="ui">Next</b>.</li>
+    <li>Place: type it under <b class="ui">Search venue or studio…</b> or tap a quick choice (<b class="ui">Band HQ</b>, <b class="ui">Studio A</b>, <b class="ui">Home Studio</b>, <b class="ui">TBD</b>).</li>
+    <li><b class="ui">Rehearsal date</b>, <b class="ui">Start time</b>, <b class="ui">End time</b>.</li>
+    <li><b class="ui">Recurrence</b>: <b class="ui">One time</b>, <b class="ui">Weekly</b>, <b class="ui">Biweekly</b> or <b class="ui">Monthly</b>.</li>
+    <li><b class="ui">Venue cost</b>: <b class="ui">Free</b> or <b class="ui">Paid</b>. For a paid room, enter the <b class="ui">Total studio cost</b>; the card shows the amount <b class="ui">Per person</b>. Then <b class="ui">Next</b>.</li>
+    <li><b class="ui">REVIEW &amp; CONFIRM</b> sums everything up; <b class="ui">Session &amp; roster</b> or <b class="ui">Date &amp; studio</b> go back to change something. This is also where you can add <a data-ref="rehearsal-songs-and-prep-tasks">songs and prep tasks</a>.</li>
+    <li><b class="ui">Create rehearsal</b>.</li>
+  </ol>
+  <aside class="note tip"><b class="ui">Next</b> on the second step stays disabled until the rehearsal has a place and a date. If the room is not booked yet, pick <b class="ui">TBD</b>.</aside>
+  <aside class="note tip">Without a connection the rehearsal is kept on the device (<b class="ui">Saved offline • Will sync when connected</b>) and sent as soon as you are back online.</aside>
+  <p>Every member on the roster gets a <b class="ui">New Rehearsal</b> notification with a push, and finds the rehearsal in their calendar with an <b class="ui">Are you coming?</b> card (see <a data-ref="answer-a-rehearsal-invite">Answer a rehearsal invite</a>). The admin is marked as going, unless they took themselves off the roster; either way they still manage the rehearsal.</p>
+  <div class="devnote" data-devices="tablet">On an iPad the wizard is one screen with four cards (<b class="ui">Session</b>, <b class="ui">Date &amp; time</b>, <b class="ui">Place &amp; cost</b>, <b class="ui">Focus, note &amp; tasks</b>) and a <b class="ui">Live preview</b> <b class="ui">As the band sees it</b>. The <b class="ui">Next 7 days</b> strip shows how many members are free each day (<b class="ui">From band calendars</b>). There is also a <b class="ui">Goal / notes (optional)</b> field for the band. When the card counter is complete, tap <b class="ui">Schedule rehearsal</b>.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLaptop,duoLand">On iPhone Duo the phone wizard is used; close and back move to the side rail when the rail is shown.</div>
+  <figure class="shot" data-shot="shot-rehearsal-wizard" data-device="phone"><figcaption>The rehearsal wizard, step 1: session type and roster.</figcaption></figure>
+  <div class="roles">
+    <div data-role="admin">Creates, edits and deletes rehearsals.</div>
+    <div data-role="member">Cannot create rehearsals: the <b class="ui">Create</b> menu shows <b class="ui">Propose rehearsal</b> instead (see <a data-ref="propose-a-rehearsal">Propose a rehearsal</a>).</div>
+    <div data-role="deputy">Is not a band member and never sees the wizard.</div>
+  </div>
+
+  <h3 id="art-rehearsal-songs-and-prep-tasks" data-roles="admin">Add songs and prep tasks to a rehearsal</h3>
+  <p>They are added on the last wizard step (<b class="ui">REVIEW &amp; CONFIRM</b>) or later by <a data-ref="edit-a-rehearsal">editing the rehearsal</a>. The songs become the rehearsal setlist, which members see as <b class="ui">FOCUS SONGS</b>.</p>
+  <ul>
+    <li><b>Songs</b>: in the <b class="ui">Setlist</b> card, <b class="ui">Add songs</b> picks them from the repertoire, or <b class="ui">Setlist template</b> starts from a saved setlist. In the editor you search the library, add a song by hand (<b class="ui">Manual</b>: <b class="ui">Song title *</b> and <b class="ui">Artist</b>) and finish with <b class="ui">Done</b>. The X under <b class="ui">Selected songs</b> removes a song.</li>
+    <li><b>Tasks</b>: in the <b class="ui">Prep tasks</b> card, a <b class="ui">Quick add</b> suggestion (for example <b class="ui">Bring chord charts</b>, <b class="ui">Record audio</b>) or your own text under <b class="ui">New task</b> + <b class="ui">Add</b>. The X under <b class="ui">Band tasks</b> removes a task.</li>
+    <li>On a rehearsal that is already scheduled, <b class="ui">EDIT</b> next to <b class="ui">TASKS</b> opens <b class="ui">Tasks</b>, with <b class="ui">Add</b> and, while there are no tasks, <b class="ui">Load a to-do list</b>, which adds every task of a saved <a data-ref="todo-and-task-templates">to-do list template</a>.</li>
+  </ul>
+  <aside class="note privacy">Only admins choose and change the rehearsal setlist; members open it from <b class="ui">FOCUS SONGS</b> read-only.</aside>
+
+  <h3 id="art-edit-a-rehearsal" data-roles="admin">Edit a rehearsal</h3>
+  <p>A rehearsal is edited right on its page, one part at a time: date, times, room, roster, cost, focus songs, notes and tasks.</p>
+  <ol class="steps">
+    <li>Open the rehearsal from the <b class="ui">Calendar</b> or from Home.</li>
+    <li>Tap the part to change: the pencil at the top or the <b class="ui">START</b> and <b class="ui">END</b> tiles, the <b class="ui">ROOM</b> tile, or <b class="ui">EDIT</b> next to <b class="ui">ATTENDANCE</b>, <b class="ui">FOCUS SONGS</b>, <b class="ui">NOTES</b>, <b class="ui">TASKS</b> or <b class="ui">STUDIO COST</b>.</li>
+    <li>A sheet opens with only that part. <b class="ui">Title, date &amp; times</b> also has <b class="ui">Recurrence</b>; <b class="ui">Band roster</b> has <b class="ui">Select all</b>.</li>
+    <li>Tap <b class="ui">Save</b>, which stays off until something changed.</li>
+  </ol>
+  <p>Closing the sheet with <b class="ui">Cancel</b>, ✕, Back or a swipe down keeps the rehearsal as it was. If something changed, <b class="ui">Save your changes?</b> asks first: <b class="ui">Save changes</b>, <b class="ui">Discard</b> or <b class="ui">Keep editing</b>; opening another part of the rehearsal asks the same. Focus songs are saved with <b class="ui">Save</b> in the setlist sheet. A new date, new times or a new place send <b class="ui">Rehearsal updated</b> with a push to the people on the rehearsal; members added to the roster get the <b class="ui">New Rehearsal</b> invite.</p>
+  <aside class="note tip">Past rehearsals are edited the same way, also on an iPad. Members see the page without the pencils and without <b class="ui">EDIT</b>.</aside>
+
+  <h3 id="art-delete-a-rehearsal" data-roles="admin">Delete (cancel) a rehearsal</h3>
+  <p>On the rehearsal, tap <b class="ui">DELETE</b> (under <b class="ui">REHEARSAL CHAT</b>), then <b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b> to keep it.</p>
+  <aside class="note warning">Deleting cannot be undone. A recurring rehearsal is one event, so deleting it removes every date of the series.</aside>
+  <p>The people on the rehearsal get <b class="ui">Rehearsal cancelled</b> with a push. If they open it from an old notification, they see <b class="ui">Rehearsal cancelled</b> and a note that an admin removed it.</p>
+
+  <h3 id="art-rehearsal-drafts" data-roles="admin">Save a rehearsal as a draft</h3>
+  <ol class="steps">
+    <li>In the wizard, after typing something, tap <b class="ui">Cancel</b> or the close button.</li>
+    <li>In <b class="ui">Save this rehearsal as a draft?</b>: <b class="ui">Save draft</b>, <b class="ui">Discard</b> (throws it away) or <b class="ui">Keep editing</b>.</li>
+    <li>Pick the draft up again from Drafts on Home or from its day in the calendar.</li>
+    <li>To throw it away, reopen it, close the wizard and tap <b class="ui">Delete draft</b>.</li>
+  </ol>
+  <aside class="note privacy">Drafts are visible only to the person who made them; members get nothing until the rehearsal is created.</aside>
+  <p>If saving the rehearsal fails, the wizard stays open and the rehearsal is also kept as a draft, so nothing is lost.</p>
+  <div class="devnote" data-devices="tablet">On an iPad the one-screen composer has its own save-as-draft button in the header.</div>
+
+  <h3 id="art-recurring-rehearsals" data-roles="admin,member">Recurring rehearsals</h3>
+  <p>With a <b class="ui">Recurrence</b> other than <b class="ui">One time</b>, BandWith saves one rehearsal with a repeat rule; the next dates show in the calendar about four months ahead, up to 24 dates.</p>
+  <table class="grid">
+    <thead><tr><th>Recurrence</th><th>Shown on the rehearsal</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">One time</b></td><td><b class="ui">ONCE</b></td></tr>
+      <tr><td><b class="ui">Weekly</b></td><td><b class="ui">EVERY {day}</b> (for example <b class="ui">EVERY TUESDAY</b>)</td></tr>
+      <tr><td><b class="ui">Biweekly</b></td><td><b class="ui">EVERY OTHER {day}</b></td></tr>
+      <tr><td><b class="ui">Monthly</b></td><td><b class="ui">MONTHLY</b></td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing or deleting it changes every date.</aside>
+
+  <h2>The rehearsal page and answers</h2>
+
+  <h3 id="art-the-rehearsal-page" data-roles="admin,member">The rehearsal page</h3>
+  <p>It opens from the <b class="ui">Calendar</b> or Home. It is blue, the rehearsal colour, and has:</p>
+  <ul>
+    <li><b class="ui">Are you coming?</b>: the answer card for invited members.</li>
+    <li>The <b class="ui">START</b>, <b class="ui">END</b> and <b class="ui">ROOM</b> tiles.</li>
+    <li><b class="ui">ATTENDANCE</b>: who is invited and what they answered.</li>
+    <li><b class="ui">FOCUS SONGS</b>: up to eight songs, with <b class="ui">+ {count} MORE</b> and <b class="ui">SETLIST</b> for the whole list.</li>
+    <li><b class="ui">NOTES</b>: the rehearsal note, when there is one.</li>
+    <li><b class="ui">TASKS</b>: the prep tasks and how many are done; tap one to tick it.</li>
+    <li><b class="ui">STUDIO COST</b>: room, hours, total and <b class="ui">Split between {count} going</b> with the amount <b class="ui">EACH</b>.</li>
+    <li>At the bottom: <b class="ui">REHEARSAL CHAT</b> and <b class="ui">DELETE</b> for admins, who change everything else with <b class="ui">EDIT</b> on each part; <b class="ui">REHEARSAL CHAT</b> for members who answered going.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sees everything, including <b class="ui">STUDIO COST</b>, and can edit or delete.</div>
+    <div data-role="member">Sees the rehearsal only when on the roster: times, room, attendance, songs, notes and tasks, but not the room cost. Dropping out is in the <b class="ui">More options</b> menu.</div>
+    <div data-role="deputy">Is asked for gigs, not rehearsals, and does not see band rehearsals.</div>
+  </div>
+  <aside class="note privacy">The room's total cost is band money and stays with admins. During a poll, members see only their own share (<b class="ui">€12 each</b>).</aside>
+
+  <h3 id="art-answer-a-rehearsal-invite" data-roles="member">Answer a rehearsal invite or drop out</h3>
+  <ol class="steps">
+    <li>The member opens the rehearsal from the <b class="ui">New Rehearsal</b> notification or from the <b class="ui">Calendar</b>.</li>
+    <li>On the <b class="ui">Are you coming?</b> card, they tap <b class="ui">GOING</b> or <b class="ui">CAN'T</b>; the card says by when to answer (<b class="ui">Answer by … so the admin can confirm the room.</b>).</li>
+    <li>To change the answer: <b class="ui">Change</b> on the <b class="ui">Your RSVP</b> card.</li>
+    <li>If they answered maybe in the past, the card says <b class="ui">Your answer was Maybe. Choose GOING or CAN'T.</b>: they pick one of the two.</li>
+    <li>To drop out: <b class="ui">More options</b> (the … button at the top) → <b class="ui">Rehearsal options</b> → <b class="ui">Drop out of this rehearsal</b> → <b class="ui">DROP OUT</b>. The admin is notified.</li>
+  </ol>
+  <aside class="note warning">After <b class="ui">CAN'T</b> or dropping out, the rehearsal leaves the member's calendar; to be added back they have to ask an admin.</aside>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand">On iPhone Duo, <b class="ui">More options</b> sits in the side rail with the other header actions.</div>
+
+  <h2>Proposals and availability polls</h2>
+
+  <h3 id="art-propose-a-rehearsal" data-roles="member">Propose a rehearsal (members)</h3>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">Propose rehearsal</b>; in an empty <b class="ui">Calendar</b>, <b class="ui">Propose rehearsal</b> is also there directly.</li>
+    <li>Members of several bands pick the band in <b class="ui">Choose band</b>.</li>
+    <li><b class="ui">Topic</b> (required), for example "Practice new setlist transitions".</li>
+    <li>Optional: <b class="ui">Preferred days (optional)</b> and <b class="ui">Notes or songs (optional)</b>.</li>
+    <li><b class="ui">Submit to admin</b>.</li>
+  </ol>
+  <p>The admins get <b class="ui">New Rehearsal Proposal</b> with a push. On the member's Home and in the <b class="ui">Calendar</b>, the proposal shows as <b class="ui">Your rehearsal proposal</b> with <b class="ui">Pending admin</b> and <b class="ui">Open until</b> its last day: the last of the preferred days in the coming week, or 7 days if none were chosen. It stays until an admin turns it into a poll or declines it, or until that day passes: then it leaves every list.</p>
+  <aside class="note warning">One proposal every 7 days per band, to keep scheduling focused. Once it is used, the screen shows <b class="ui">Weekly limit reached</b> and the <b class="ui">Next available proposal</b> date. The limit is also checked by the server.</aside>
+  <ul>
+    <li>Without a band the member sees <b class="ui">Band required</b>, with <b class="ui">Create a band</b>.</li>
+    <li>If an admin declines it, the member gets <b class="ui">Rehearsal proposal declined</b> (a notification and a push), with the reason if one was given, and the proposal leaves their list.</li>
+    <li>To withdraw it: <b class="ui">Withdraw</b>, then <b class="ui">Withdraw</b> again on <b class="ui">Withdraw your proposal?</b>; the admins no longer see it.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Does not propose: creates the rehearsal or a poll directly (see <a data-ref="create-a-rehearsal">Create a rehearsal</a>).</div>
+  </div>
+
+  <h3 id="art-handle-a-rehearsal-proposal" data-roles="admin">Handle a member's rehearsal proposal</h3>
+  <ol class="steps">
+    <li>The proposal is under <b class="ui">Rehearsal scheduling</b> (the Home Action center or the <b class="ui">Calendar</b>) or opens from the <b class="ui">New Rehearsal Proposal</b> notification. It shows <b class="ui">Member rehearsal proposal</b>, <b class="ui">Proposed by</b>, the <b class="ui">Preferred days</b> and the note.</li>
+    <li><b class="ui">Build poll</b> (in the notification sheet: <b class="ui">Build poll from proposal</b>) opens the builder with the topic as title, the note and the preferred days preselected; add slots and publish as in <a data-ref="create-a-rehearsal-poll">Create an availability poll</a>.</li>
+    <li>Or <b class="ui">Decline</b> closes the proposal without a poll: in <b class="ui">Decline this proposal?</b>, optionally type a <b class="ui">Reason</b> and tap <b class="ui">Decline</b>. The member gets <b class="ui">Rehearsal proposal declined</b> (a notification and a push) with the reason.</li>
+    <li>If nobody acts, the proposal leaves the list after the day shown in <b class="ui">Open until</b>.</li>
+  </ol>
+  <aside class="note tip">A proposal carries no songs, place or cost: add them in the builder before publishing.</aside>
+
+  <h3 id="art-create-a-rehearsal-poll" data-roles="admin">Create an availability poll</h3>
+  <p class="steps-title">On a phone</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">New rehearsal</b>, then switch <b class="ui">Scheduling mode</b> to <b class="ui">Poll availability</b>: the <b class="ui">Availability poll</b> builder opens.</li>
+    <li><b class="ui">Poll title</b> and, optionally, <b class="ui">Goal / notes (optional)</b>.</li>
+    <li>Under <b class="ui">Who votes</b>, tap a member to leave them out; the admin always votes.</li>
+    <li>Under <b class="ui">Place, cost &amp; songs</b>: <b class="ui">Location / studio</b> (type a few letters and pick a suggestion, or keep what you typed), <b class="ui">Room cost</b> (the <b class="ui">Split</b> shows each person's share) and <b class="ui">Focus songs</b> (<b class="ui">Add</b>).</li>
+    <li>Dates with <b class="ui">Whole week preset</b>: <b class="ui">This week</b> or <b class="ui">Next week</b>, the <b class="ui">Include days</b>, <b class="ui">Start</b> and <b class="ui">End</b>, then <b class="ui">Add selected days to poll</b>; each day shows how many members are free. Or <b class="ui">Custom date / time</b>: <b class="ui">Candidate date</b>, <b class="ui">Start</b>, <b class="ui">End</b> and <b class="ui">Add slot to poll</b>.</li>
+    <li>Under <b class="ui">Candidate slots</b>, remove one slot with <b class="ui">Remove slot</b> or all of them with <b class="ui">Clear all</b>.</li>
+    <li>Optional: <b class="ui">Vote by</b>, a day and a time (see <a data-ref="poll-who-votes-and-deadline">Who votes and the vote-by deadline</a>).</li>
+    <li><b class="ui">Publish poll</b>.</li>
+  </ol>
+  <p>The members asked to vote get <b class="ui">Vote on Rehearsal Times</b> with a push. The poll shows as <b class="ui">Poll · Active</b> on Home and in the <b class="ui">Calendar</b> under <b class="ui">Rehearsal scheduling</b>.</p>
+  <p>Changed your mind? <b class="ui">Back</b> (at the top or bottom, or the phone's Back) returns to the rehearsal form; <b class="ui">Close</b> leaves the builder. If anything changed, the app asks first, <b class="ui">Discard this poll?</b>: <b class="ui">Keep editing</b> or <b class="ui">Discard</b>. With no changes it simply closes. Polls have no drafts.</p>
+  <p>Publishing is blocked when the title is missing (<b class="ui">Please give your poll a title.</b>), when there is no slot (<b class="ui">Add at least one candidate time slot for members to vote on.</b>) or when the deadline falls after the first slot (<b class="ui">Pick a day before the first slot</b>). A slot with the same day and start time cannot be added twice (<b class="ui">This slot is already added.</b>).</p>
+  <div class="devnote" data-devices="tablet">On an iPad the poll is a one-screen composer, <b class="ui">New rehearsal</b> with <b class="ui">Poll · members vote on dates</b>, with the cards <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (a week strip coloured by how many members are free; tap a day to add it with the chosen times), <b class="ui">Place, cost &amp; songs</b> and <b class="ui">Vote deadline &amp; note</b>. The <b class="ui">Live preview</b> shows the slots <b class="ui">As members vote</b>, with the <b class="ui">Top pick</b>.</div>
+  <figure class="shot" data-shot="shot-poll-builder" data-device="phone"><figcaption>The availability poll builder on a phone.</figcaption></figure>
+  <aside class="note privacy">The free counts come from everyone's calendars, but only the number is shown (<b class="ui">4 of 5 free</b>), never who is busy or why.</aside>
+
+  <h3 id="art-poll-who-votes-and-deadline" data-roles="admin,member">Who votes and the vote-by deadline</h3>
+  <p>By default every active member votes. Leaving someone out under <b class="ui">Who votes</b> gives the poll an invite list:</p>
+  <ul>
+    <li>Only invited members get the notification and vote. The other members can open the poll read-only, marked <b class="ui">Not invited</b>; the server refuses their votes.</li>
+    <li>Admins of the band always see the poll; the admin who publishes it is always on the list.</li>
+    <li>When the date is locked in, only the invited members are put on the rehearsal: the admin too, if invited or if they voted. Either way, the admin manages it.</li>
+    <li>The share of the room cost is divided by the number of people asked to vote.</li>
+  </ul>
+  <p><b class="ui">Vote by</b> is a day between today and the first slot, plus a time (18:00 by default). Members see, for example, <b class="ui">Vote by Fri 11 Dec, 18:00</b>.</p>
+  <aside class="note warning">At the vote-by time voting closes: <b class="ui">Voting closed</b> and <b class="ui">Voting has closed. An admin will lock in a date.</b> appear. The server refuses later votes; admins can still lock in a date or delete the poll.</aside>
+
+  <h3 id="art-vote-in-a-rehearsal-poll" data-roles="member,admin">Vote in an availability poll</h3>
+  <p class="steps-title">From the poll card</p>
+  <ol class="steps">
+    <li>On Home (Action center) or in the <b class="ui">Calendar</b>, the <b class="ui">Poll · Active</b> card has a <b class="ui">Vote now</b>, <b class="ui">Voted</b> or <b class="ui">None work</b> badge.</li>
+    <li>Tap each date pad that works (more than one is fine); tap it again to take the vote back.</li>
+    <li><b class="ui">Details</b> shows every date with <b class="ui">{count}/{total} available</b>, the <b class="ui">Top pick</b> (the most voted) and who voted. After a vote the details close by themselves (<b class="ui">Closing in …s</b>), unless you tap <b class="ui">Keep open</b>.</li>
+    <li>If, after voting, no date works after all: <b class="ui">None work</b> in the details.</li>
+  </ol>
+  <p class="steps-title">From the notification</p>
+  <ol class="steps">
+    <li>The <b class="ui">Vote on Rehearsal Times</b> push or the notification in the bell → <b class="ui">Vote now</b>.</li>
+    <li>In <b class="ui">Rehearsal availability</b>, under <b class="ui">Select the dates that work for you</b>, tap the dates you can make.</li>
+    <li><b class="ui">Done</b>, or <b class="ui">None work</b> if none of them suits you.</li>
+  </ol>
+  <p><b class="ui">None work</b> clears your votes and tells the admins that no date suits you (<b class="ui">No date works for …</b>); voting for a date later replaces that answer. While voting you see the place and your own share (<b class="ui">Blackbox Studios · €12 each</b>), the songs, <b class="ui">{answered} of {total} answered</b>, the deadline if there is one and, under <b class="ui">Responses</b>, who voted for which date.</p>
+  <aside class="note tip">Votes update live for everyone. Without a connection the vote is not saved and <b class="ui">Failed to register vote. Please try again.</b> appears.</aside>
+  <figure class="shot" data-shot="shot-poll-card" data-device="phone"><figcaption>An active poll on Home with its date pads and details.</figcaption></figure>
+  <div class="devnote" data-devices="duoLaptop">In Laptop pose the vote sheet puts members and days on the top screen, and your day pads with <b class="ui">Lock {day}</b> (admin) or <b class="ui">Done</b> (member) on the bottom one.</div>
+
+  <h3 id="art-lock-in-a-poll-date" data-roles="admin">Lock in a date and create the rehearsal</h3>
+  <ol class="steps">
+    <li>On the poll card, <b class="ui">Details · Lock in</b> (in the notification sheet: <b class="ui">Responses · Lock in a date</b>).</li>
+    <li><b class="ui">Lock in</b> next to the chosen date, often the <b class="ui">Top pick</b>.</li>
+    <li>Check the <b class="ui">Rehearsal location</b>, prefilled with the poll's place or <b class="ui">Band Practice Space</b>.</li>
+    <li><b class="ui">Confirm &amp; create event</b>.</li>
+  </ol>
+  <ul>
+    <li>A confirmed rehearsal is created on that date and time, with the poll's title, place and note; the room cost becomes the studio cost and the songs its setlist.</li>
+    <li>The invited members are put on the rehearsal and answer it as usual (<a data-ref="answer-a-rehearsal-invite">Answer a rehearsal invite</a>); the admin is marked as going.</li>
+    <li>The poll closes and leaves the Action center. Members get <b class="ui">Rehearsal Confirmed!</b> in the bell, without a push.</li>
+  </ul>
+  <aside class="note tip">If another admin has just locked in the date, <b class="ui">This poll was already locked in or closed.</b> appears and no second rehearsal is created.</aside>
+
+  <h3 id="art-delete-a-rehearsal-poll" data-roles="admin">Delete a poll</h3>
+  <p>From <b class="ui">Details · Lock in</b> or from the poll's notification, tap <b class="ui">Delete poll</b>, then <b class="ui">Delete poll</b> again on <b class="ui">Delete rehearsal poll?</b> (or <b class="ui">Cancel</b>).</p>
+  <aside class="note warning">The proposed dates and votes are deleted for good, with no way to undo, and members are not notified.</aside>
+  <p>To close a proposal that has no poll yet, use <b class="ui">Decline</b> instead (see <a data-ref="handle-a-rehearsal-proposal">Handle a member's rehearsal proposal</a>).</p>
+
+  <h3 id="art-rehearsal-polls-explained" data-roles="admin,member">How proposals and polls work</h3>
+  <table class="grid">
+    <thead><tr><th>Stage</th><th>What it means</th><th>Who sees it</th></tr></thead>
+    <tbody>
+      <tr><td>Proposal (<b class="ui">Pending admin</b>)</td><td>A member asked for a rehearsal.</td><td>The member who proposed it and the admins.</td></tr>
+      <tr><td>Poll (<b class="ui">Poll · Active</b>)</td><td>An admin published dates to vote on.</td><td>Invited members and the admins.</td></tr>
+      <tr><td>Confirmed (<b class="ui">Rehearsal · Confirmed</b>)</td><td>A date was locked in; the rehearsal is in the calendar.</td><td>Everyone on the rehearsal.</td></tr>
+      <tr><td>Declined, expired or deleted</td><td>Closed without a rehearsal (a proposal expires after the day in <b class="ui">Open until</b>).</td><td>Nobody: it leaves the lists.</td></tr>
+    </tbody>
+  </table>
+  <p>Open proposals and polls show in the Home <b class="ui">Action center</b> and at the top of the <b class="ui">Calendar</b> under <b class="ui">Rehearsal scheduling ({count})</b>, where they follow the band filter.</p>
+  <div class="roles">
+    <div data-role="admin">Publishes polls, turns proposals into polls, locks in dates, declines and deletes: any admin of the band, not only the one who published.</div>
+    <div data-role="member">Proposes (once a week), votes, answers <b class="ui">None work</b> and sees who voted for what.</div>
+    <div data-role="deputy">Not part of band polls.</div>
+  </div>
+  <div class="devnote" data-devices="duoLaptop">In Laptop pose the Home "Band desk" lists the polls you have not voted on and the proposals waiting for a poll; tap one to open it.</div>
+
+  <h2>Chat</h2>
+
+  <h3 id="art-the-chat-inbox" data-roles="admin,member">The chat inbox</h3>
+  <p><b class="ui">Chat</b> in the bottom bar gathers every band, event and direct chat; the badge counts unread messages.</p>
+  <ul>
+    <li>Filters <b class="ui">ALL</b>, <b class="ui">DIRECT</b>, <b class="ui">BANDS</b>, <b class="ui">EVENTS</b>, each with its own unread count.</li>
+    <li>Chats with unread messages come first. Each row shows the name (<b class="ui"> · Band</b> for the band chat), the time, the last message, and either the unread count or the ticks of your own last message; with two or more bands, also the band it belongs to.</li>
+    <li>A green dot on a direct chat means that person is online.</li>
+    <li><b class="ui">Search chats…</b> (at least two letters) finds chats, people and words in messages, grouped as <b class="ui">CHATS</b>, <b class="ui">PEOPLE</b> and <b class="ui">MESSAGES</b>; <b class="ui">Clear search</b> goes back to the list.</li>
+    <li>A swipe to the left deletes a chat (<a data-ref="delete-a-chat">Delete a chat</a>); the + (<b class="ui">New chat</b>) at the top starts one (<a data-ref="start-a-chat">Start a chat</a>).</li>
+  </ul>
+  <figure class="shot" data-shot="shot-chat-inbox" data-device="phone"><figcaption>The chat inbox with the type filters.</figcaption></figure>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">The list and the open conversation sit side by side; the open chat is highlighted in the list.</div>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLand">On iPhone Duo the search field lives in the side rail.</div>
+  <aside class="note tip">In solo mode (no band) there is no chat: the <b class="ui">Chat</b> tab opens the calendar.</aside>
+
+  <h3 id="art-start-a-chat" data-roles="admin,member">Start a chat</h3>
+  <ol class="steps">
+    <li>In <b class="ui">Chat</b>, the + (<b class="ui">New chat</b>) at the top.</li>
+    <li><b class="ui">Chat type</b>: <b class="ui">DIRECT</b>, <b class="ui">BAND</b> or <b class="ui">EVENT</b>.</li>
+    <li>Pick a person (<b class="ui">Search admins…</b> or <b class="ui">Search members…</b>), a band (<b class="ui">Search bands…</b>) or an event (<b class="ui">Search events…</b>).</li>
+    <li>The button at the bottom: <b class="ui">Message {name}</b> or <b class="ui">Open {name} chat</b>.</li>
+  </ol>
+  <p>If the chat already exists, BandWith opens it instead of making a second one: a band has one chat with every active member, an event one chat with its lineup. You can also message someone from the band's member list with the member's message button, which appears only when one of you is an admin.</p>
+  <div class="roles">
+    <div data-role="admin"><b class="ui">DIRECT</b> lists every member of their bands; <b class="ui">EVENT</b> every event of the bands they run.</div>
+    <div data-role="member"><b class="ui">DIRECT</b> lists only the <b class="ui">Admins</b> (<b class="ui">Direct messages are limited to band admins.</b>); <b class="ui">EVENT</b> only the events they are on and did not decline.</div>
+  </div>
+
+  <h3 id="art-send-and-reply-to-messages" data-roles="admin,member">Send, reply and mention</h3>
+  <ul>
+    <li><b>Send</b>: <b class="ui">Write a message…</b> at the bottom, then <b class="ui">Send message</b> (or Enter on a keyboard).</li>
+    <li><b>Reply to one message</b>: on a phone or tablet, swipe it to the right; with a mouse, hover over it and click <b class="ui">Reply to message</b>. The composer shows <b class="ui">Replying to {name}</b>; <b class="ui">Cancel reply</b> stops.</li>
+    <li><b>Mention</b>: type @ and the start of a name, then tap the person in the suggestions (Enter picks the first). Mentions show in bold and highlighted for everyone, but send no extra notification: every message already notifies everyone in the chat.</li>
+    <li>In band and event chats each message shows the sender, with <b class="ui"> · Admin</b> for admins.</li>
+    <li>The latest 50 messages load; for older ones, scroll up and tap <b class="ui">Load earlier messages</b>.</li>
+    <li>Plain text only: no attachments or photos, reactions, editing or deleting single messages.</li>
+    <li>Without a connection the message is not sent and goes back into the composer with <b class="ui">Message not sent. Check your connection and try again.</b>, ready to send again once online.</li>
+  </ul>
+  <div class="devnote" data-devices="duoLaptop">In Laptop pose the messages fill the top screen and the composer opens on the bottom one.</div>
+
+  <h3 id="art-event-and-rehearsal-chats" data-roles="admin,member">Event and rehearsal chats</h3>
+  <p>On a gig, tap <b class="ui">EVENT CHAT</b>; on a rehearsal, <b class="ui">REHEARSAL CHAT</b>. The chat includes the lineup (everyone who did not decline) and the band admins; people added to the lineup later join it with the next message.</p>
+  <p>A strip at the top shows the title, <b class="ui">Today</b> / <b class="ui">Tomorrow</b> or the date, <b class="ui">Load-in {time}</b> (or <b class="ui">Start {time}</b>), the place and, when it applies, <b class="ui">Cancelled</b> or <b class="ui">Past event</b>; tapping it opens the event (see <a data-ref="gig-workspace">the gig workspace</a>).</p>
+  <aside class="note privacy">The strip and the side pane show logistics only (times, place, status), never the fee or the client.</aside>
+  <div class="roles">
+    <div data-role="admin">Opens the chat of any event of the band.</div>
+    <div data-role="member">Sees the button only after answering going. Declining means losing access: <b class="ui">You can only message in events you are participating in.</b></div>
+  </div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">With two panes (an iPad in landscape, iPhone Duo open), a context pane beside the conversation shows the times (<b class="ui">Load in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b>, <b class="ui">Out</b>), the place, the status, <b class="ui">In this chat · Lineup {count}/{total}</b>, who is online and <b class="ui">Open gig</b>.</div>
+  <figure class="shot" data-shot="shot-event-chat" data-device="tablet"><figcaption>An event chat on iPad with the event strip and the context pane.</figcaption></figure>
+  <aside class="note tip">Personal gigs have no chat: <b class="ui">Event chats are available for band events.</b></aside>
+
+  <h3 id="art-who-can-message-whom" data-roles="admin,member,deputy">Who can message whom</h3>
+  <table class="grid">
+    <thead><tr><th>Chat</th><th>Admin</th><th>Member</th></tr></thead>
+    <tbody>
+      <tr><td>Band chat</td><td>Yes, in bands they are active in</td><td>Yes, in bands they are active in</td></tr>
+      <tr><td>Event chat</td><td>Any event of the band</td><td>Only events they are on and did not decline</td></tr>
+      <tr><td>Direct message</td><td>Anyone in their bands</td><td>Only admins of a band they share</td></tr>
+    </tbody>
+  </table>
+  <p>Two members cannot message each other directly: they talk in the band or event chat. The rules are checked when a chat starts and on every send. When a rule stops you, the composer is replaced by a lock with the reason, for example <b class="ui">Direct messaging is only available with band admins.</b> or <b class="ui">You no longer have access to this chat.</b> (after leaving the band or being taken off the gig).</p>
+  <div class="roles">
+    <div data-role="deputy">Is not a band member and is in no band, event or direct chat. The band reaches them with deputy requests (<b class="ui">Ask in the app</b>) and they answer in Deputy gigs (see <a data-ref="deputy-in-the-app">Answer deputy requests in the app</a>).</div>
+  </div>
+  <aside class="note privacy">A direct chat stays between its two people: BandWith never reuses it for a conversation with anyone else, so nobody else reads its history.</aside>
+
+  <h3 id="art-message-receipts-and-online-status" data-roles="admin,member">Ticks, read receipts and online status</h3>
+  <table class="grid">
+    <thead><tr><th>Mark</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Clock (<b class="ui">Sending</b>)</td><td>On its way.</td></tr>
+      <tr><td>One tick (<b class="ui">Sent</b>)</td><td>Saved on the server.</td></tr>
+      <tr><td>Two grey ticks (<b class="ui">Delivered</b>)</td><td>It reached the other people's phones.</td></tr>
+      <tr><td>Two coloured ticks (<b class="ui">Read</b>)</td><td>They opened the chat after the message.</td></tr>
+    </tbody>
+  </table>
+  <p>In band and event chats the ticks change only once everyone has received or read the message; people who joined after it was sent do not count. The header of a direct chat shows <b class="ui">Online</b> or <b class="ui">Offline</b>; a group chat shows <b class="ui">{count} members · {count} online</b>.</p>
+
+  <h3 id="art-delete-a-chat" data-roles="admin,member">Delete a chat</h3>
+  <p>In the list, swipe the chat to the left and tap the delete button, or in the open chat tap <b class="ui">Delete chat</b> (the bin) at the top right; confirm with <b class="ui">Delete</b> or back out with <b class="ui">Cancel</b>.</p>
+  <table class="grid">
+    <thead><tr><th>Chat</th><th>What is deleted</th></tr></thead>
+    <tbody>
+      <tr><td>Direct chat</td><td>Every message, for both people.</td></tr>
+      <tr><td>Band or event chat</td><td>Only your own messages, for everyone; the others keep the rest.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note warning">This cannot be undone. The chat leaves the list until a new message arrives; then it comes back with only the new messages.</aside>
+
+  <h2>Notifications</h2>
+
+  <h3 id="art-rehearsal-and-chat-notifications" data-roles="admin,member">Notifications for rehearsals, polls and chat</h3>
+  <table class="grid">
+    <thead><tr><th>When</th><th>Who is told</th><th>Push</th></tr></thead>
+    <tbody>
+      <tr><td>A member proposes a rehearsal</td><td>The band admins</td><td>Yes</td></tr>
+      <tr><td>An admin publishes a poll</td><td>The members asked to vote</td><td>Yes</td></tr>
+      <tr><td>A date is locked in</td><td>The people put on the rehearsal</td><td>No, bell only</td></tr>
+      <tr><td>A rehearsal is created, or someone is added to one</td><td>The invited members</td><td>Yes</td></tr>
+      <tr><td>Date, time or place changes</td><td>The people on the rehearsal</td><td>Yes</td></tr>
+      <tr><td>A rehearsal is deleted</td><td>The people on the rehearsal</td><td>Yes</td></tr>
+      <tr><td>A member answers or drops out</td><td>The admin who created it</td><td>Only for dropping out</td></tr>
+      <tr><td>A new chat message</td><td>Everyone else in the chat</td><td>Yes</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>A poll notification opens the vote sheet, a rehearsal notification opens the rehearsal, a chat notification opens the chat.</li>
+    <li>When the app opens, an unread poll or proposal shows once in a small pop-up.</li>
+    <li>No push arrives for the chat open on screen; opening a chat marks its notifications as read.</li>
+    <li>If the notification belongs to another of the user's bands, the app first asks whether to switch to that band.</li>
+    <li>All pushes are turned off in <b class="ui">Settings</b> with <b class="ui">Push notifications</b> (<b class="ui">Gig invites, polls, chat messages</b>); the bell still keeps every notification.</li>
+  </ul>
+
+  <h2>FAQ</h2>
+  <dl class="faq">
+    <dt>Can a member create a rehearsal?</dt>
+    <dd>No. Members tap <b class="ui">Propose rehearsal</b> and the admins decide, scheduling it directly or running a poll.</dd>
+    <dt>Why does a poll say Not invited?</dt>
+    <dd>The admin left the member out under <b class="ui">Who votes</b>: they can read the poll, but only invited members vote on it.</dd>
+    <dt>Can members see what the rehearsal room costs?</dt>
+    <dd>During a poll, only their own share (<b class="ui">€12 each</b>); the total on the rehearsal page is shown to admins only.</dd>
+    <dt>Can a member message another member directly?</dt>
+    <dd>Only if one of them is an admin of a band they share; otherwise they use the band chat or the event chat.</dd>
+    <dt>If I delete a band chat, does the band lose the conversation?</dt>
+    <dd>No, only your own messages are erased. In a direct chat, though, every message is erased for both people.</dd>
+  </dl>
+</section>

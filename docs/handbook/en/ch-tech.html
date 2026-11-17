@@ -1,0 +1,44 @@
+<section class="chapter" id="ch-tech">
+  <h1>Technical appendix</h1>
+  <p class="lead">An overview of the architecture: how the app is built and where the data lives.</p>
+
+  <h2>One codebase for every device</h2>
+  <p>BandWith is a single web application written in <b>React 18</b> and <b>TypeScript</b>, built with <b>Vite</b> and styled with <b>Tailwind CSS 4</b>. The same application runs in the browser and, packaged with <b>Capacitor 8</b>, as a native app for iOS/iPadOS and Android. The layout adapts to the size of the window (the wide layout from 744 × 600 px) and, on iPhone Duo, to the posture the system reports (closed, Book, Laptop, landscape).</p>
+  <p>Native features come from Capacitor plugins: biometric authentication (Face ID, Touch ID, fingerprint) and secure storage for quick sign-in and app lock; Bluetooth Low Energy for Stage without internet; push and local notifications; the share sheet and file system for PDFs and charts; haptics, keyboard, status bar, splash screen and an in-app browser for Google/Apple sign-in and for iReal Pro.</p>
+
+  <h2>Backend: Supabase</h2>
+  <ul>
+    <li><b>Database:</b> PostgreSQL managed by Supabase. Bands, members, events, quotes, contracts, transactions, songs, setlists, chats, gear and notifications are database tables.</li>
+    <li><b>Authentication:</b> email and password (with email confirmation), Google and Apple. On the phone, the credentials for quick sign-in stay in the device's secure storage.</li>
+    <li><b>Realtime:</b> Supabase realtime channels update open gigs, lineups, setlists, tasks, chats, online presence and the shared Stage mode instantly.</li>
+    <li><b>File storage:</b> band logos, PDFs, song recordings, personal files.</li>
+    <li><b>Edge Functions</b> (server-side code): sending email, sending push, member invites, account deletion, the deputies' calendar feed.</li>
+  </ul>
+
+  <h2>Privacy enforced on the server</h2>
+  <p>The “who sees what” rules aren't just hidden in the interface: the database enforces them.</p>
+  <ul>
+    <li><b>Row Level Security</b> on every table: each person reads only the rows of their own bands, and only admins write gigs, quotes, contracts, setlists and pricing sheets.</li>
+    <li><b>Column permissions:</b> a member reads their own fee and the logistics, never other people's fees or totals; every new readable column needs an explicit grant.</li>
+    <li><b>No anonymous access:</b> tables can't be read without an account. The public pages (quote, deputy reply, rider) use dedicated functions that, given a secret 64-character token in the link, return only the fields they are meant to; the rider, for example, never returns the client or any fee.</li>
+    <li><b>Stage over Bluetooth:</b> each gig has a secret key given only to active members; only phones with the key find the leader and accept its messages.</li>
+    <li><b>Personal data:</b> a full export from <b class="ui">Export my data</b>, and account deletion with server-side erasure.</li>
+  </ul>
+
+  <h2>Notifications</h2>
+  <p>Important events (a gig invite, a poll, a proposal, a chat message, a payout, changes in the band, replies from clients and deputies) create a notification in the database, shown in the in-app inbox. A server function sends it as a push through Apple's (APNs) and Google's (Firebase Cloud Messaging, that is Google Play services on Android) services to the registered devices, with an unread-count badge; the text is translated on the server into the recipient's preferred language. The app refreshes the device token at every launch, says in Settings when the phone is blocking notifications and, when it comes back from the background, fetches chats, the bell and the badge straight away. Chat delivery ticks turn double when the push reaches the recipient's phone. Urgent items also show an in-app alert, even with push switched off. On the web there is no push: the bell does the job.</p>
+
+  <h2>Offline</h2>
+  <p>The device keeps a local copy of bands, gigs and setlists (with the lyrics and charts of gigs already opened). The copy is tied to the role: it holds only what that role can read (a member never has the client or prices in the cache), and it only fills the screen until the server answers, never overwriting fresher data. Each time the band list loads, the app records the role per band; if it changes, it throws away that account's cached data (keeping the profile, the open band and the queue of changes) and loads it again for the new role, in both directions. Creating, editing and deleting gigs and rehearsals offline goes into a sync queue that starts on its own when the network comes back; a strip under the status bar shows the state (<b class="ui">You’re offline · showing cached info</b>, pending changes, <b class="ui">Sync now</b>). These don't work offline: saving the quote itself, sending messages, answering invites and joining a band, the first sign-in on a device, deleting a gig.</p>
+
+  <h2>Languages</h2>
+  <p>A built-in translation module covers the whole interface in six languages (English, Italiano, Español, Français, Deutsch, Português), with localised dates, amounts and times. Client documents follow the client's language; server pushes and emails follow each recipient's preferred language, saved on their profile.</p>
+
+  <h2>Hosting and distribution</h2>
+  <ul>
+    <li><b>Web:</b> the app, the Academy guide (<b>/academy/</b>) and the public pages (quote, deputy reply, rider, unsubscribe) are published on <b>Vercel</b> at bandwith-beryl.vercel.app.</li>
+    <li><b>iOS/iPadOS:</b> a native app distributed through Apple's channels, which also handle its updates.</li>
+    <li><b>Android:</b> a signed native app, distributed as an APK file from a fixed link to the latest version. The app checks by itself whether there is a new version (at launch and when it comes back from the background, at most every few hours), downloads it and hands it to the Android installer, which asks for confirmation (<b class="ui">Update</b> › <b class="ui">Install</b>).</li>
+    <li><b>Academy guide:</b> it is built with the app and included in the native apps, so it opens offline too; its screenshots are captured on every device.</li>
+  </ul>
+</section>

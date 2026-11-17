@@ -1,0 +1,220 @@
+<section class="chapter" id="ch-devices">
+  <h1>BandWith on every device</h1>
+  <p class="lead">BandWith is the same app everywhere, with the same data and the same rules. What changes is the layout, the way you move around and the few features that need the phone's hardware. This part describes each device; the features themselves are in Part III, with a note for each device next to every one of them.</p>
+  <span class="anchor" id="art-device-differences"></span>
+
+  <h2>The devices at a glance</h2>
+  <table class="grid">
+    <thead><tr><th>Device</th><th>Layout</th><th>What's different</th></tr></thead>
+    <tbody>
+      <tr><td>iPhone / Android phone, portrait</td><td>One screen at a time, tab bar at the bottom</td><td>The reference layout. Face ID / fingerprint, app lock, push notifications and Bluetooth Stage sync all work.</td></tr>
+      <tr><td>Phone in landscape</td><td>Still the phone layout (a phone on its side is never treated as a tablet)</td><td>The tab bar hides while the keyboard is open.</td></tr>
+      <tr><td>iPad, Android tablet, desktop browser</td><td>Wide layout: list column (320–420 px) with the detail beside it, in landscape or in portrait from 960 px wide</td><td>Floating labelled tab pill, centred sheets, <b class="ui">Create</b> as a popover, one-screen composers for new gigs, rehearsals and quotes.</td></tr>
+      <tr><td>iPhone Duo, closed (outer display)</td><td>One page, with the side rail in the system column</td><td>Back, Search and your profile live in the rail.</td></tr>
+      <tr><td>iPhone Duo, open like a book (Book)</td><td>Two pages: lists on the left, details on the right</td><td>Wizards show a live preview on the left page.</td></tr>
+      <tr><td>iPhone Duo in Laptop pose</td><td>Upper half (Display) to read, lower half (Deck) to touch</td><td>Special layouts: Band desk, Planner, Find a date, Floor wedge, Quote desk. Can be switched off in <b class="ui">Settings › iPhone Duo</b>.</td></tr>
+      <tr><td>iPhone Duo, fully open in landscape</td><td>Two even pages, from 860 px wide</td><td>Like Book, with the rail beside them.</td></tr>
+      <tr><td>Android</td><td>Same as the phone or tablet</td><td>System Back button and back gesture, <b class="ui">Tap again to exit</b>, contacts import. Installed from an APK file and updated from the app with <b class="ui">Update</b> › <b class="ui">Install</b>.</td></tr>
+      <tr><td>Web (bandwith-beryl.vercel.app)</td><td>Phone layout in a narrow window, wide layout from 744 px</td><td>No push, no Face ID / fingerprint, no app lock, no Bluetooth Stage sync. Escape and the browser's Back close open layers.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Features by device</h3>
+  <p>Every band feature (calendar, gigs, quotes, contracts, money, rehearsals, polls, chat, repertoire, setlists, Stage mode, members, deputies, gear, settings) is there on every device. These are the only real differences:</p>
+  <table class="grid matrix">
+    <thead><tr><th>Feature</th><th>iOS phone</th><th>Android phone</th><th>iPad / tablet</th><th>Web</th><th>iPhone Duo</th></tr></thead>
+    <tbody>
+      <tr><td>Quick sign-in (Face ID / fingerprint)</td><td>Yes</td><td>Yes (fingerprint or iris)</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+      <tr><td>App lock</td><td>Yes</td><td>Yes, also with PIN/pattern</td><td>Yes</td><td>No (never locks)</td><td>Yes</td></tr>
+      <tr><td>Push notifications</td><td>Yes</td><td>Yes (through Google Play services)</td><td>Yes</td><td>No: the bell in the app</td><td>Yes</td></tr>
+      <tr><td>Stage mode over the internet + click</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Bluetooth Stage and offline copy of the setlist</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Import members from contacts</td><td>No (type the addresses)</td><td>Yes</td><td>No</td><td>No</td><td>No</td></tr>
+      <tr><td>Open a chart from another app</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Import from iReal Pro</td><td>Yes, in-app browser</td><td>Yes, in-app browser</td><td>Yes</td><td>Yes: the forum opens in another window and you bring the link back with <b class="ui">Paste link</b>, paste or drag</td><td>Yes</td></tr>
+      <tr><td>Sharing a PDF</td><td>System share sheet</td><td>System share sheet</td><td>Share sheet + <b class="ui">Send quote</b> in the composer</td><td><b class="ui">Download PDF</b> saves the file; <b class="ui">Share PDF document</b> downloads it</td><td>Share sheet</td></tr>
+      <tr><td>Update from the app (<b class="ui">Update</b> › <b class="ui">Install</b>)</td><td>No: updates come from the system</td><td>Yes, also from <b class="ui">Settings › About</b></td><td>No: updates come from the system</td><td>Not needed: the site is always the latest version</td><td>No: updates come from the system</td></tr>
+      <tr><td>Screen stays on in Stage mode</td><td>Yes</td><td>Yes</td><td>Yes</td><td>—</td><td>Yes</td></tr>
+      <tr><td>One-screen composer (gig, rehearsal, poll, quote)</td><td>No: step-by-step wizard</td><td>No: step-by-step wizard</td><td>Yes</td><td>Yes, from 744 px</td><td>No: step-by-step wizard, with a preview on the other page</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Phone (iPhone and Android)</h2>
+  <span class="anchor" id="art-iphone-and-android-phones"></span>
+  <p>On a phone you see one screen at a time, with the tab bar at the bottom: <b class="ui">Home</b>, <b class="ui">Calendar</b>, <b class="ui">Create</b>, <b class="ui">Chat</b> and <b class="ui">Settings</b>. Sheets slide up from the bottom; you close them with their close button, by swiping them down or, on Android, with Back. The screenshots in Part III are taken on a phone.</p>
+  <ul>
+    <li><b>Landscape.</b> Turn the phone sideways and the layout stays the phone layout: a phone in landscape is never wide enough for two panes. The tab bar hides while the keyboard is up so it doesn't cover what you type; when the keyboard leaves little room, the screen scrolls as one.</li>
+    <li><b>Back.</b> iPhone has no system Back button: use the button at the top left of each screen, or swipe the open sheet down. In a gig workspace, as soon as you scroll, the top bar (Back, help, the edit pencil, Stage mode, options) stays pinned at the top: over the header it takes the event's colour, past the header the page background and the gig's title. So Back is always within reach, even past <b class="ui">Rider &amp; stage</b> or at the bottom of the page.</li>
+    <li><b>Stage mode.</b> One column: the header, the run of show, the setlist or song, and <b class="ui">Prev</b> / <b class="ui">Next</b> at the bottom. On its side (short and wide), times and cues sit on the left and the setlist or song on the right. The notes toolbar uses icons only, so it stays on one line above the text. Stage mode and the floor wedge keep the screen awake.</li>
+    <li><b>Hardware.</b> Face ID / Touch ID for quick sign-in and app lock, push notifications, Bluetooth Stage sync, opening charts sent from other apps.</li>
+    <li><b>Contacts.</b> On iPhone and iPad there is no button to import contacts (the system offers no contact picker to this kind of app): you type the addresses.</li>
+  </ul>
+
+  <h3>Android only</h3>
+  <span class="anchor" id="art-android-app"></span>
+  <ul>
+    <li><b>First install.</b> The Android app comes as an APK file from the release page, not from a store. Open <b class="ui">BandWith.apk</b>, allow installs from your browser or Files app when Android asks, then tap <b class="ui">Install</b>. Play Protect may call it an unknown app: tap <b class="ui">More details</b> › <b class="ui">Install anyway</b>. If you have a test copy of BandWith that didn't come from the release page, uninstall it first; your data is on the server and nothing is lost.</li>
+    <li><b>Updates.</b> When a new version is out, a message says <b class="ui">BandWith … is available</b>. Tap <b class="ui">Update</b>: BandWith downloads the file and shows how far it is. The first time, Android asks whether BandWith may install apps: tap <b class="ui">Allow</b>, turn on <b class="ui">Allow from this source</b> and come back to the app, then tap <b class="ui">Install</b>. After that an update is just <b class="ui">Update</b> › <b class="ui">Install</b>. <b class="ui">Settings</b> › <b class="ui">About</b> has the same button.</li>
+    <li>The system Back button and the back gesture close the top layer first (sheet, picker, page). For example: in a new gig, Back first closes the open song picker, then asks whether to save a draft; on a person's page it closes the person first, then the <b class="ui">Band members</b> list; in Settings it goes from a section back to the list of sections. On Home you see <b class="ui">Tap again to exit</b>, and a second Back closes the app. On the lock screen, Back leaves the app.</li>
+    <li>Quick sign-in uses your fingerprint (or iris, where the phone has it); the button is called <b class="ui">Use Fingerprint</b>. App lock can fall back to the phone's PIN or pattern.</li>
+    <li>On the invite step of creating a band, <b class="ui">Import from contacts</b> picks bandmates from your address book.</li>
+    <li>Stage mode keeps the screen on.</li>
+    <li>Push notifications come through Google Play services. If they don't arrive, the app's <b class="ui">Notifications</b> settings say whether the phone is blocking them; the inbox and the urgent pop-up still show everything while the app is open.</li>
+  </ul>
+
+  <h2>iPad and tablets</h2>
+  <span class="anchor" id="art-ipad-layout"></span>
+  <p>Any window at least 744 px wide and 600 px tall gets the wide layout: iPad (also iPad mini in portrait), Android tablets and desktop browsers.</p>
+  <ul>
+    <li><b>List and detail.</b> In landscape (or in portrait on large iPads, from 960 px), lists sit in a column on the left (320–420 px) and the item you open fills the rest. Your selection stays highlighted in the list. An event opened from Home, search or the calendar opens beside the list and stays outlined in the results.</li>
+    <li><b>Navigation.</b> The tab bar is a floating pill with icons and labels, over both panes; the active tab is filled. <b class="ui">Create</b> opens as a popover above its button.</li>
+    <li><b>Sheets.</b> They open as centred cards, without a grabber. Sign-in, onboarding and the lock screen stay in a readable column in the middle instead of stretching across the window.</li>
+    <li><b>Hubs.</b> The menu, the notifications inbox and the other hubs take the whole window until you open something; then they step back to the list column with the open page beside it.</li>
+    <li><b>Home.</b> The second pane shows the next event beside Home (never a draft or a quote), once per visit; if you close it, it stays closed until you leave Home and come back. Until there is an event, the pane says <b class="ui">Pick an event</b>.</li>
+    <li><b>One-screen composers.</b> New gig, new rehearsal, poll and new quote open as a single screen: every step in numbered cards, with a live preview beside them and, in the header, a count of the cards that are ready next to the button that saves the draft. Saving works exactly as in the step-by-step wizard.
+      <ul>
+        <li>Gig: a composer with a preview; the month is shown inline in the <b class="ui">Date &amp; time</b> card, with the counts below; <b class="ui">Rider &amp; stage</b> can be prepared before the gig is created.</li>
+        <li>Quote: five cards (<b class="ui">Client &amp; event</b>, <b class="ui">Lineup &amp; rate</b>, <b class="ui">Date &amp; venue</b>, <b class="ui">Production &amp; travel</b>, <b class="ui">Billing &amp; terms</b>) beside a <b class="ui">Live PDF</b> preview, “As the client sees it”, in the client's language; under the preview, <b class="ui">Share</b> and <b class="ui">Send quote</b>, which emails the link straight away.</li>
+        <li>Rehearsal: four cards (<b class="ui">Session</b>, <b class="ui">Date &amp; time</b>, <b class="ui">Place &amp; cost</b>, <b class="ui">Focus, note &amp; tasks</b>) with a <b class="ui">Live preview</b>, “As the band sees it”; the <b class="ui">Next 7 days</b> strip shows how many members are free each day (<b class="ui">From band calendars</b>).</li>
+        <li>Poll: <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (a week coloured by how many members are free; tap a day to add it with the chosen times), <b class="ui">Place, cost &amp; songs</b>, <b class="ui">Vote deadline &amp; note</b>, with an “As members vote” preview and the <b class="ui">Top pick</b>.</li>
+      </ul>
+    </li>
+    <li><b>Tabbed gig workspace.</b> Band gigs have the tabs <b class="ui">OVERVIEW</b>, <b class="ui">SETLIST</b>, <b class="ui">RIDER &amp; STAGE</b> and, for admins, <b class="ui">MONEY</b>. In a wide window the overview has two columns; the rider is a board where you also edit the stage plot; the GEAR KIT section sits in the rider tab; <b class="ui">MONEY</b> holds the fee and payouts.</li>
+    <li><b>Event chat.</b> In landscape, three columns: the chat list, the thread and a context pane with the times (<b class="ui">Load in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b>, <b class="ui">Out</b>), venue, status, <b class="ui">In this chat · Lineup {count}/{total}</b>, who is online and <b class="ui">Open gig</b>.</li>
+    <li><b>Repertoire.</b> The Repertoire is the list column; a setlist, a song card, the reader and suggestions open in the second pane.</li>
+    <li><b>Stage mode.</b> Opens beside the list. <b class="ui">Hide sidebar</b> gives it the whole screen: times and cues in the first pane, the setlist or song in the second; <b class="ui">Show sidebar</b> brings the list back. The choice is remembered on the device.</li>
+    <li><b>Members and gear.</b> A person's page opens in the detail column; deputies sit in two columns when the screen is wide. The inventory is called <b class="ui">Gear &amp; kits</b>: kits are a strip of tiles above the items, with no Items/Kits tabs.</li>
+    <li><b>Contracts.</b> In landscape the <b class="ui">Create contract</b> form fills the whole detail pane: the navigation pill moves aside as it does for the composers, and the button that creates the contract sits on the bottom edge of the pane.</li>
+    <li><b>Keyboard.</b> With a hardware keyboard, Escape closes the top layer (Escape typed in a field stays with the field).</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="basics-tablet-home" data-device="tablet"><figcaption>The wide layout: navigation pill, list column and the event's detail.</figcaption></figure>
+    <figure class="shot" data-shot="gig-workspace-admin" data-device="tablet"><figcaption>The gig workspace on iPad, with the OVERVIEW / SETLIST / RIDER &amp; STAGE / MONEY tabs.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="tablet"><figcaption>The quote composer: five cards and the Live PDF as the client sees it.</figcaption></figure>
+    <figure class="shot" data-shot="shot-rehearsal-wizard" data-device="tablet"><figcaption>The rehearsal composer with the band's availability over the next 7 days.</figcaption></figure>
+    <figure class="shot" data-shot="shot-poll-builder" data-device="tablet"><figcaption>The poll composer: a week coloured by free members, and a preview of the vote.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="tablet"><figcaption>An event chat in three columns, with the gig's context pane.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="tablet"><figcaption>Stage mode beside the list.</figcaption></figure>
+    <figure class="shot" data-shot="people-gear" data-device="tablet"><figcaption>Gear &amp; kits: kits as tiles above the items.</figcaption></figure>
+  </div>
+
+  <h2>Web (browser)</h2>
+  <span class="anchor" id="art-using-the-web-app"></span>
+  <p>At <b>bandwith-beryl.vercel.app</b> you sign in with the same account; your bands, gigs and settings are the same as in the app. A narrow window gets the phone layout; from 744 px wide you get the wide layout described above for the iPad.</p>
+  <ul>
+    <li><b>Sign-in.</b> Google and Apple open in the same tab and bring you back to the app (in the phone apps they open in an in-app browser; closing it without signing in makes the buttons work again). There is no quick sign-in: you sign in with your password, Google or Apple.</li>
+    <li><b>App lock.</b> The web version never locks: a web page can't trust a device check. On a shared computer, sign out with <b class="ui">Sign out</b> when you are done.</li>
+    <li><b>Notifications.</b> No push: use the bell in the app.</li>
+    <li><b>Stage mode.</b> Live sync over the internet and the click work; there is no Bluetooth and no offline copy of the setlist, so you need a connection.</li>
+    <li><b>Files.</b> <b class="ui">Download PDF</b> saves the file to the computer; there is no system share sheet, so <b class="ui">Share PDF document</b> downloads the PDF. Receiving files from other apps (opening a chart) isn't available.</li>
+    <li><b>iReal Pro.</b> The forum doesn't open inside the page: it opens in another window, and you bring the link back with <b class="ui">Paste link</b>, by pasting it or by dragging it in.</li>
+    <li><b>Import from contacts</b> isn't available.</li>
+    <li><b>Keyboard and Back.</b> Escape closes the top layer. The browser's Back works like Android Back but never closes anything outside the app; from Home it leaves the site. While you set up your account, Back goes to the previous onboarding step; on the first one it leaves the site.</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="basics-home-admin" data-device="web"><figcaption>The admin's Home in a desktop browser.</figcaption></figure>
+    <figure class="shot" data-shot="analytics" data-device="web"><figcaption>Analytics in the browser.</figcaption></figure>
+  </div>
+
+  <h2>iPhone Duo: the four postures</h2>
+  <p>On a dual-screen phone the app changes its layout depending on how the device is opened. In every posture there is no tab bar at the bottom: the system column (with the clock, battery and camera) becomes the <b>rail</b>, which holds the navigation and the screen's controls. The design rule: every screen works in every posture, and nothing ever lies across the fold.</p>
+
+  <h3>The rail</h3>
+  <span class="anchor" id="art-duo-closed"></span>
+  <p>From top to bottom, the rail holds:</p>
+  <ol class="steps">
+    <li>The tabs <b class="ui">Home</b>, <b class="ui">Calendar</b>, <b class="ui">Create</b> and <b class="ui">Chat</b>; they hide while a full-screen page is open.</li>
+    <li>Back, then the current screen's own actions (a wizard's close, such as <b class="ui">Close gig wizard</b>, <b class="ui">New chat</b>, <b class="ui">Open stage mode</b>, <b class="ui">More options</b>), then Search.</li>
+    <li>Your profile, which opens the menu over any screen (<b class="ui">Open profile</b>). It takes the place of the phone's Settings tab.</li>
+  </ol>
+  <p>Search opens a field beside the rail; with the keyboard up, the field sits just above it. With the device open, search stays on the left page and the event you pick opens on the right. The rail follows the system column: on the right normally, on the left when the app runs in a left-hand Split View window. On the day of a gig, <b class="ui">Open stage mode</b> is the rail's main action; in Stage mode, <b class="ui">Hide sidebar</b> hides the rail.</p>
+
+  <h3>Closed (outer display)</h3>
+  <p>Closed, the phone shows one page with the rail beside it. Screens have no Back or Search in their top bar: they are in the rail, under the clock, and so is the close of each wizard (<b class="ui">Close gig wizard</b>, the quote's close, the song card's <b class="ui">Close</b>). A person's page and a member's details open full screen. Rehearsals use the phone's step-by-step wizard. Turned on its side with the keyboard up, forms scroll as one so the field stays in view; Stage mode on its side puts times and cues on the left and the setlist or song on the right.</p>
+  <div class="gallery duo">
+    <figure class="shot" data-shot="basics-home-admin" data-device="duoClosed"><figcaption>Home on the closed Duo, with the rail on the right.</figcaption></figure>
+    <figure class="shot" data-shot="calendar-month" data-device="duoClosed"><figcaption>Calendar: Search and actions in the rail.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="duoClosed"><figcaption>Stage mode, closed.</figcaption></figure>
+  </div>
+
+  <h3>Open like a book (Book)</h3>
+  <span class="anchor" id="art-duo-book"></span>
+  <p>Open like a book, the app uses both pages: lists stay on the left and the item you open is on the right. Until you open one, the right page says <b class="ui">Pick an event</b>, <b class="ui">Pick a chat</b> or <b class="ui">Your band, side by side</b>, with <b class="ui">Details open on this side.</b> The rail stays in the system column.</p>
+  <ul>
+    <li><b>Sign-in and onboarding:</b> the BandWith brand page with the named steps on the left, the form on the right. For a deputy without a band, <b class="ui">Deputy gigs</b> puts the brand on the first screen and their gigs on the second.</li>
+    <li><b>Settings:</b> sections on the left, the open section on the right (<b class="ui">Notifications</b> to begin with). While you confirm <b class="ui">Delete account</b>, what will be deleted stays readable on the left. The account menu takes the whole window until you open something.</li>
+    <li><b>Notifications:</b> the list on the left, the selected item, ready to answer, on the right.</li>
+    <li><b>Switch band:</b> the sheet opens on the right beside Home. Home opens the next event beside the dashboard, as on iPad.</li>
+    <li><b>New gig:</b> on step 1 the left page shows the gig as the band will see it, while you fill it in; on steps 2 and 3 the calendar stays on the left. <b>New quote:</b> on steps 1 and 2 the other page shows the live quote as the client will read it.</li>
+    <li><b>Gig workspace:</b> the gig opens on the right; a sheet such as <b class="ui">Fee &amp; payouts</b> opens on the right while the gig moves to the left.</li>
+    <li><b>Analytics:</b> <b class="ui">Revenue by event type</b> and <b class="ui">Payouts due</b> move to the second screen, titled <b class="ui">Where it comes from</b>.</li>
+    <li><b>Chat:</b> list and thread side by side; event chats add the context pane with times, venue, lineup and <b class="ui">Open gig</b>.</li>
+    <li><b>Repertoire, setlists, songs, suggestions:</b> in the second pane beside the list. <b>Members, kits:</b> on the second screen beside the list.</li>
+    <li><b>Stage mode:</b> beside the list; with <b class="ui">Hide sidebar</b>, times and cues on the first page and the setlist or song on the second, split exactly at the edge of the panes.</li>
+  </ul>
+  <div class="gallery wide">
+    <figure class="shot" data-shot="gig-wizard-step1" data-device="duoBook"><figcaption>New gig in Book: the gig preview on the left, the form on the right.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="duoBook"><figcaption>A quote in Book: the client's document beside the form.</figcaption></figure>
+    <figure class="shot" data-shot="basics-settings-privacy" data-device="duoBook"><figcaption>Settings: sections on the left, the open section on the right.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="duoBook"><figcaption>An event chat with the context pane.</figcaption></figure>
+  </div>
+
+  <h3>Laptop pose</h3>
+  <span class="anchor" id="art-duo-laptop-pose"></span>
+  <p>Stand the phone half folded with the fold across, like a small laptop. After a moment (so it doesn't flicker while you move it), the app splits at the fold: the upper half (the <b>Display</b>) shows things to read, the lower half (the <b>Deck</b>) holds every control. Sheets, menus and the keyboard open on the Deck; short messages (toasts) show on the Display. The rail runs along the bottom edge of the Deck, close to your hands. Entering or leaving the pose never changes the screen you are on.</p>
+  <p>Forms keep their header on the Display and every field on the Deck: <b class="ui">Sign in</b>, creating an account, <b class="ui">What brings you here?</b> (the choices are on the Deck; scroll to reach <b class="ui">Continue</b>), <b class="ui">Deputy gigs</b>, the gig, rehearsal and poll forms, <b class="ui">Create contract</b> and the inbox. While you type, the field you are in always stays in sight: just above the keyboard or, when the keyboard covers the whole Deck, whole on the Display just above the fold. No field ever ends up on the fold.</p>
+  <p>The role tours put each card's icon and title on the Display and its text and buttons on the Deck, both in the tour's dark colours, so the title stays readable.</p>
+  <table class="grid">
+    <thead><tr><th>Screen</th><th>Display (upper half)</th><th>Deck (lower half)</th></tr></thead>
+    <tbody>
+      <tr><td>Home: <b>Band desk</b></td><td>The next gig as a poster (the next rehearsal if no gig is confirmed)</td><td>What needs doing (votes, payouts, RSVPs), polls you haven't voted in and pending proposals, create buttons, tabs</td></tr>
+      <tr><td>Calendar: <b>Planner</b></td><td>The month with a dot per kind of event and the counts <b class="ui">Gigs</b>, <b class="ui">Rehearsals</b>, <b class="ui">Fees</b> (admins only) and <b class="ui">Free weekends</b></td><td>The filters, the day's <b class="ui">Agenda</b> with <b class="ui">Previous day</b> / <b class="ui">Next day</b> and, for admins, <b class="ui">+ Gig</b> / <b class="ui">+ Rehearsal</b>; empty days say <b class="ui">Nothing on this day.</b></td></tr>
+      <tr><td>Poll: <b>Find a date</b></td><td>Members × candidate days, the best day lit, how many have voted</td><td>Your own pad for each day, then <b class="ui">Lock {day}</b> (admin) or <b class="ui">Done</b> (member)</td></tr>
+      <tr><td>Stage mode: <b>Floor wedge</b></td><td>On black: the <b class="ui">Song … of …</b> counter, title, key, BPM, the next song and elapsed time, or the lyrics</td><td>Big <b class="ui">Prev</b> / <b class="ui">Next</b> pads and the set's progress; the arrow keys, Page Up/Down and Space step through, so Bluetooth page-turner pedals work. The device sits on the stage like a monitor wedge</td></tr>
+      <tr><td>Quote: <b>Quote desk</b></td><td>The quote as the client reads it</td><td>The lines with quantity steppers, discount, VAT and sending</td></tr>
+      <tr><td>Rider &amp; stage</td><td>The stage plot</td><td>The rider and its controls</td></tr>
+      <tr><td>Gig workspace</td><td>The title and the time tiles</td><td>Everything else</td></tr>
+      <tr><td>Chat</td><td>The messages</td><td>The message box</td></tr>
+      <tr><td>Repertoire and reader</td><td>The <b class="ui">Band repertoire</b> card, or the song</td><td>The lists, or the reader's controls</td></tr>
+      <tr><td>Contracts, analytics, members</td><td>The three contract totals, the four analytics totals, the three member counters</td><td>The lists</td></tr>
+      <tr><td>Account menu, events, menus</td><td>The profile card, the event's header</td><td>The rows and details, which scroll</td></tr>
+      <tr><td>New gig</td><td>A compact preview of the gig you are creating</td><td>The form</td></tr>
+      <tr><td>Sign-in, account, <b class="ui">Create contract</b>, inbox</td><td>Title and header (and, at sign-in, Google / Apple)</td><td>The fields and the action button, or the scrolling list</td></tr>
+      <tr><td>Role tours</td><td>The card's icon and title</td><td>Text and buttons</td></tr>
+    </tbody>
+  </table>
+  <div class="gallery duo">
+    <figure class="shot" data-shot="basics-home-admin" data-device="duoLaptop"><figcaption>Band desk.</figcaption></figure>
+    <figure class="shot" data-shot="calendar-month" data-device="duoLaptop"><figcaption>Planner.</figcaption></figure>
+    <figure class="shot" data-shot="shot-poll-card" data-device="duoLaptop"><figcaption>Find a date.</figcaption></figure>
+    <figure class="shot" data-shot="music-stage" data-device="duoLaptop"><figcaption>Floor wedge.</figcaption></figure>
+    <figure class="shot" data-shot="quote-wizard-review" data-device="duoLaptop"><figcaption>Quote desk.</figcaption></figure>
+    <figure class="shot" data-shot="gig-wizard-step1" data-device="duoLaptop"><figcaption>New gig with a compact preview.</figcaption></figure>
+    <figure class="shot" data-shot="shot-event-chat" data-device="duoLaptop"><figcaption>Chat: messages above, typing below.</figcaption></figure>
+    <figure class="shot" data-shot="basics-menu" data-device="duoLaptop"><figcaption>Account menu: profile above, rows below.</figcaption></figure>
+  </div>
+  <p class="steps-title">Switch Laptop pose off</p>
+  <ol class="steps">
+    <li>Open the menu, tap <b class="ui">Settings &amp; account</b>, then <b class="ui">iPhone Duo</b>.</li>
+    <li>Switch <b class="ui">Laptop pose</b> off: the half-folded phone then keeps the normal layout.</li>
+  </ol>
+  <aside class="note tip">The <b class="ui">iPhone Duo</b> section appears only on phones that report a fold.</aside>
+
+  <h3>Fully open in landscape</h3>
+  <span class="anchor" id="art-duo-landscape"></span>
+  <p>Fully open and turned sideways, the display is wide (from 860 px): the app splits it into two even pages, as in Book, with lists on the left, details on the right and the rail in the system column; deputies appear in two columns. Laid completely flat with the fold across, the open display counts as one tall page instead. In a Split View window narrower than the screen, the app uses the layout that fits the window.</p>
+
+  <h2>Going back and closing layers</h2>
+  <span class="anchor" id="art-back-behaviour-devices"></span>
+  <table class="grid">
+    <thead><tr><th>Device</th><th>How you go back</th></tr></thead>
+    <tbody>
+      <tr><td>iPhone</td><td>The back button at the top left of each screen; sheets swipe down.</td></tr>
+      <tr><td>Android</td><td>The Back button and back gesture close the top layer first; on Home, <b class="ui">Tap again to exit</b>.</td></tr>
+      <tr><td>iPad / web with a keyboard</td><td>Escape closes the top layer (not while you are typing in a field).</td></tr>
+      <tr><td>Web</td><td>The browser's Back works like Android Back, and never leaves the app except from Home. During onboarding it goes back one step at a time.</td></tr>
+      <tr><td>iPhone Duo</td><td>Back is in the rail, not in the screens' top bar.</td></tr>
+    </tbody>
+  </table>
+  <p>On every device Back closes one layer at a time: first a date or time picker (the sheet beneath stays open), then a sheet or dialog, then an inner section, then the full-screen page. Screens opened from another one go back to where they came from: for example, <b class="ui">Contracts &amp; docs</b> opened from a gig's <b class="ui">No contract yet</b> row goes back to the gig, with the screen's own button, with system Back and with the Duo rail's Back. The full detail is in <a data-ref="back-behaviour">Going back and closing things</a>.</p>
+</section>

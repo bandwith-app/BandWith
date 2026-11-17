@@ -14,7 +14,7 @@
 @page {
   size: A4;
   margin: 18mm 18mm 20mm 18mm;
-  @bottom-left { content: "BandWith · Funzioni e comportamenti"; font: 7.5pt -apple-system, sans-serif; color: #8a8f8b; }
+  @bottom-left { content: "{footer}"; font: 7.5pt -apple-system, sans-serif; color: #8a8f8b; }
   @bottom-right { content: counter(page); font: 600 8pt -apple-system, sans-serif; color: #5d625f; }
 }
 @page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }

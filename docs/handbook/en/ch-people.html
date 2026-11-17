@@ -1,0 +1,481 @@
+<section class="chapter" id="ch-people">
+  <h1>Members, deputies and gear</h1>
+  <p class="lead">Who is in the band, who stands in when someone can't play, the gear you take to gigs, and the rules on who can see which data.</p>
+
+  <h2>The band and its members</h2>
+
+  <h3 id="art-band-members" data-roles="admin,member">The Band members screen</h3>
+  <p><b class="ui">Band members</b> lists everyone in the band you have selected. The band's name sits above the title.</p>
+  <p class="steps-title">Open it</p>
+  <ol class="steps">
+    <li>On Home, under <b class="ui">Quick Actions</b>, tap <b class="ui">Members</b>.</li>
+    <li>Or tap your avatar at the top right to open the Account Hub, then <b class="ui">Members</b> in the current band card.</li>
+  </ol>
+  <p class="steps-title">What you see</p>
+  <ul>
+    <li>Three counters: <b class="ui">Total</b>, <b class="ui">Admins</b> and <b class="ui">Members</b>.</li>
+    <li>One row per person: photo or initials, name (the stage name when one is set), instrument and role (<b class="ui">Admin</b> or <b class="ui">Member</b>). A <b class="ui">Pro</b> tag marks people on a paid plan.</li>
+    <li>Tap a row to open that person's page (<a data-ref="member-detail">a member's page</a>).</li>
+    <li>The <b class="ui">⋯</b> button (<b class="ui">Actions for {name}</b>) on each row opens a short menu: <b class="ui">Email</b>; on your own row <b class="ui">Leave band</b>; for admins, on other people's rows, <b class="ui">Make admin</b> or <b class="ui">Make member</b> and <b class="ui">Remove from band</b>.</li>
+    <li>Only admins see the <b class="ui">Invite member</b> button (top right and at the bottom) and, under the list, the <b class="ui">Deputies</b> section (<a data-ref="deputies">deputies</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sees everyone, invites people, changes roles, removes members and manages deputies.</div>
+    <div data-role="member">Sees everyone and their contact details, and can email them. No invite button, no role changes, no deputies list.</div>
+  </div>
+  <figure class="shot" data-shot="people-band-members" data-device="phone"><figcaption>Band members as an admin: counters, the lineup and the Invite member button.</figcaption></figure>
+  <div class="devnote" data-devices="duoLaptop">The three counters sit on the top half; the list of people is on the bottom half.</div>
+  <div class="devnote" data-devices="duoBook,duoLand,tablet">A person's page opens beside the list instead of covering it.</div>
+  <div class="devnote" data-devices="android">The Back gesture closes a person's page first, then Band members.</div>
+  <aside class="note tip">An empty band shows <b class="ui">No members yet</b> and, for admins, <b class="ui">Invite first member</b>.</aside>
+
+  <h3 id="art-invite-members" data-roles="admin">Invite someone to the band</h3>
+  <p>Nobody is added to a band without saying yes: the admin sends an invitation and the person accepts it.</p>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, the admin taps <b class="ui">Invite member</b> (the + at the top right or the button at the bottom).</li>
+    <li>They type at least 3 characters of a name or an email address in the search field.</li>
+    <li>If the person already uses BandWith, they appear under <b class="ui">Found in BandWith</b>: tap <b class="ui">Invite</b> next to them.</li>
+    <li>If nobody is found, type the full email address and tap <b class="ui">Invite {email}</b>.</li>
+    <li>Before sending, pick the role under <b class="ui">Role</b>: <b class="ui">Member</b> (<b class="ui">Can view band content</b>) or <b class="ui">Admin</b> (<b class="ui">Manage members, events &amp; settings</b>). Member is the default.</li>
+    <li>For someone new to BandWith, the sheet then shows the <b class="ui">Invite code</b>: <b class="ui">Share invite</b> sends the link and code through any app, <b class="ui">Copy code</b> copies the code.</li>
+  </ol>
+  <p class="steps-title">What happens next</p>
+  <ul>
+    <li>Existing user: they get a notification and, the next time they open BandWith, a <b class="ui">Band invite</b> card. The admin sees <b class="ui">Invite sent to {name}</b>.</li>
+    <li>New person: BandWith emails the invite when it can. The admin sees <b class="ui">Invite emailed to {name}</b> or, without an email, <b class="ui">Invite created for {name}. Share it so they can join.</b></li>
+    <li>An invite is valid for 7 days. When 2 days or less are left, the invited address gets one reminder email. If it runs out, the admin gets an email.</li>
+    <li>Inviting the same address again renews the invite for another 7 days.</li>
+    <li>When the person joins, the whole band gets <b class="ui">{name} joined {band}</b>.</li>
+  </ul>
+  <aside class="note privacy">Search results show email addresses partly hidden (for example gi•••@…) unless you type the exact address. People already in the band don't appear.</aside>
+  <figure class="shot" data-shot="people-invite" data-device="phone"><figcaption>The Invite member sheet with search, results and the role choice.</figcaption></figure>
+  <aside class="note tip">The invite is tied to the email address: to join, the person must sign in with that address.</aside>
+
+  <h3 id="art-accept-an-invite" data-roles="admin,member">Join a band from an invite</h3>
+  <p class="steps-title">You already use BandWith</p>
+  <ol class="steps">
+    <li>When the app opens, a <b class="ui">Band invite</b> card shows who invited you, the band, its size and your role (<b class="ui">as member</b> or <b class="ui">as admin</b>).</li>
+    <li><b class="ui">Join band</b> confirms: <b class="ui">You joined {band}</b> appears and the band is added to the band switcher.</li>
+    <li><b class="ui">Decline</b> says no. The X (<b class="ui">Decide later</b>) puts it off: the card comes back next time.</li>
+  </ol>
+  <p class="steps-title">You are new to BandWith</p>
+  <ol class="steps">
+    <li>Open the invite link from the message or email; or, on the welcome screen, tap <b class="ui">I have an invite code</b>, paste the code or link in <b class="ui">Invite code or link</b> and tap <b class="ui">Join</b>.</li>
+    <li>Check the band card and tap <b class="ui">Accept &amp; continue</b> (or <b class="ui">Decline invitation</b>).</li>
+    <li>Create your account or sign in with the email address the invite was sent to.</li>
+  </ol>
+  <p class="steps-title">If it doesn't work</p>
+  <ul>
+    <li><b class="ui">This invite was sent to a different email</b>: you are signed in with another address; sign out and use the invited one.</li>
+    <li><b class="ui">This invite has expired</b> or <b class="ui">isn't valid any more</b>: an admin needs to invite you again.</li>
+    <li><b class="ui">That doesn't look like an invite code</b>: paste the full code or the whole link.</li>
+  </ul>
+
+  <h2>Roles, leaving and removal</h2>
+
+  <h3 id="art-member-roles" data-roles="admin,member">Admin and member roles</h3>
+  <p>Every person in a band is either an <b class="ui">Admin</b> or a <b class="ui">Member</b>. A band can have several admins; the person who creates a band is its first admin.</p>
+  <div class="roles">
+    <div data-role="admin">Creates and edits gigs, rehearsals and quotes; sets fees and marks payouts; edits setlists, songs, contracts, to-do lists and gear kits; invites and removes people; changes roles; manages deputies; edits the band details and pricing; sees the band's finances and analytics.</div>
+    <div data-role="member">Sees the band's gigs and logistics, answers invitations to play, reads setlists and songs, suggests songs and changes, keeps private song notes, chats, adds and edits their own personal gear, and sees only their own fee.</div>
+  </div>
+  <aside class="note warning">A band needs at least one admin. The app won't let you remove the last admin or turn them into a member: <b class="ui">A band needs at least one admin. Make someone else admin first.</b> The same rule blocks deleting your account while you are the only admin of a band.</aside>
+  <p>Co-managing a band (being one of several admins) is a paid-plan feature: for people on the free plan, <b class="ui">Make admin</b> shows <b class="ui">Requires a Pro account to co-manage</b>.</p>
+  <p>For the full list of data each role can read, see <a data-ref="who-sees-what">Who sees what</a>.</p>
+
+  <h3 id="art-make-admin" data-roles="admin">Make someone admin, or turn an admin back into a member</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, the admin taps <b class="ui">⋯</b> on the person's row, or taps the row to open their page.</li>
+    <li>Tap <b class="ui">Make admin</b> to give admin rights, or <b class="ui">Make member</b> to take them away.</li>
+  </ol>
+  <p>The change is saved at once, with no confirmation. The person sees their new role the next time their band list loads. Their phone then drops the band data it kept for offline use and loads it again for the new role: a new admin sees the client and prices, a former admin no longer keeps them on the phone.</p>
+  <aside class="note warning">The last admin can't be turned into a member: make someone else admin first.</aside>
+  <aside class="note tip">Nobody can change their own role: your own page and the <b class="ui">⋯</b> menu on your own row show no role buttons. To become a member again, ask another admin.</aside>
+
+  <h3 id="art-remove-a-member" data-roles="admin">Remove a member from the band</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, the admin taps <b class="ui">⋯</b> on the person's row and then <b class="ui">Remove from band</b>, or opens their page and taps <b class="ui">Remove from band</b> at the bottom.</li>
+    <li>On the <b class="ui">Remove from band?</b> sheet, tap <b class="ui">Remove</b>; <b class="ui">Cancel</b> keeps them.</li>
+  </ol>
+  <p class="steps-title">What happens</p>
+  <ul>
+    <li>The person loses access to the band's events, chats and repertoire right away.</li>
+    <li>They get the notification <b class="ui">Removed from {band}</b>; the rest of the band gets <b class="ui">{name} left {band}</b>.</li>
+    <li>Their past gigs, answers and payouts stay in the band's records.</li>
+    <li>They can be invited again later.</li>
+  </ul>
+  <aside class="note warning">There is no undo. To bring the person back, send a new invite, which they have to accept.</aside>
+
+  <h3 id="art-leave-a-band" data-roles="admin,member">Leave a band</h3>
+  <div class="roles">
+    <div data-role="member">Can leave any band they are in, whenever they want.</div>
+    <div data-role="admin">Can leave while the band has another admin. If they are the only one, the app asks them to make someone else admin first (<a data-ref="make-admin">make someone admin</a>).</div>
+  </div>
+  <ol class="steps">
+    <li>Open <b class="ui">Band members</b> for that band.</li>
+    <li>Tap <b class="ui">⋯</b> on your own row, then <b class="ui">Leave band</b> (or open your own row and use <b class="ui">Leave band</b> at the bottom).</li>
+    <li>The <b class="ui">Leave {band}?</b> sheet warns that you lose access to the band's events, chats and repertoire. <b class="ui">Leave band</b> confirms, <b class="ui">Cancel</b> backs out.</li>
+  </ol>
+  <p>The others get <b class="ui">{name} left {band}</b>. The app moves you to your other band or, if you have none, to the start screen. You can join again only with a new invite.</p>
+  <aside class="note warning">Deleting your account (Settings, <b class="ui">Delete account</b>) also takes you out of every band. If you are the only admin of a band, make someone else admin first.</aside>
+
+  <h2>Member page, fees and band details</h2>
+
+  <h3 id="art-member-detail" data-roles="admin,member">A member’s page</h3>
+  <p>Tap a person on <b class="ui">Band members</b> to open it.</p>
+  <ul>
+    <li>At the top: photo, name, instrument and role.</li>
+    <li><b class="ui">Gigs this year</b>: gigs played plus gigs coming up, with a dot meter. <b class="ui">Paid · {year}</b>: what they were paid and how much is still owed.</li>
+    <li><b class="ui">Next for {name}</b>: their upcoming events in this band, each with their answer (confirmed, pending, declined).</li>
+    <li><b class="ui">Contacts</b>: email and phone, each with a copy button; tap one to write or call.</li>
+    <li><b class="ui">Message</b> opens a direct chat. <b class="ui">Make admin</b> / <b class="ui">Make member</b> and <b class="ui">Remove from band</b> are for admins.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sees the gigs and pay counters for everyone, and every action except on their own page.</div>
+    <div data-role="member">Sees the gigs and pay counters only on their own page. On someone else's page: name, instrument, next events and contacts. <b class="ui">Message</b> appears only on an admin's page, because members can start a direct chat only with admins.</div>
+  </div>
+  <aside class="note privacy">A member never sees what another member is paid. The counters come from the server, which returns everyone's figures to admins and only a member's own row to that member.</aside>
+  <div class="devnote" data-devices="phone,duoClosed">Opens full screen.</div>
+  <div class="devnote" data-devices="duoBook,duoLand">Opens on the second screen, next to the list.</div>
+  <div class="devnote" data-devices="tablet">Opens in the detail column beside the list.</div>
+
+  <h3 id="art-default-fees-and-instruments" data-roles="admin,member">Default fees and instruments</h3>
+  <p>Each person in a band can have a default fee. When an admin adds them to a new gig or quote, their fee is pre-filled with it (rehearsals carry no fee); without one, the band's member rate from <b class="ui">Pricing, fees &amp; services</b> is used. The admin can still change the fee on each gig.</p>
+  <p class="steps-title">Admins: change a member's instrument or default fee</p>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, tap the person's row.</li>
+    <li>Under <b class="ui">In the band</b>, fill in <b class="ui">Instrument in this band</b> (when empty, their profile instrument is shown) and <b class="ui">Default fee</b> (optional, a number like 150).</li>
+    <li>Tap <b class="ui">Save</b>. The default fee is used for new gigs.</li>
+  </ol>
+  <p>A member who opens their own row sees <b class="ui">Your default fee in this band: {fee}</b>, when they have one.</p>
+  <p>Your own primary instrument is set on your profile: avatar, <b class="ui">Edit</b> on the profile card, the <b class="ui">Primary instrument / role</b> field. It shows on your Account Hub card.</p>
+  <p>The instrument next to each name on <b class="ui">Band members</b> is the one stored for that person in this band; the deputies' <b class="ui">Who covers what</b> card groups the band by these instruments.</p>
+  <aside class="note privacy">Default fees follow the money rule: admins see everyone's, a member sees only their own.</aside>
+
+  <h3 id="art-band-details" data-roles="admin">Change the band’s name, logo, city and bio</h3>
+  <ol class="steps">
+    <li>The admin taps the avatar at the top right to open the Account Hub.</li>
+    <li>In the current band card, they tap <b class="ui">Edit</b>.</li>
+    <li>Under <b class="ui">Band logo</b>, tap <b class="ui">Upload</b> (or <b class="ui">Change</b>) and pick an image; the bin (<b class="ui">Remove logo</b>) takes it off.</li>
+    <li>Change <b class="ui">Band name</b>, <b class="ui">Home base city</b> (pick one of the <b class="ui">Suggested places</b> so travel fees can use its location) and <b class="ui">Band bio / tagline (optional)</b>.</li>
+    <li>Tap <b class="ui">Save details</b>; <b class="ui">Cancel</b> or <b class="ui">Close</b> leave without saving.</li>
+  </ol>
+  <p>The logo shows on the band card, in the band switcher and on quote PDFs. The home base city becomes the starting point for travel fees in the pricing sheet.</p>
+  <p><b class="ui">Band settings</b>, under the band card, opens the band's branding and pricing (bank account, musician rates, quote services): see <a data-ref="pricing-sheet">the pricing sheet</a>.</p>
+  <aside class="note privacy">Members see the band's name, logo, city and bio, never its bank, tax or pricing details.</aside>
+
+  <h2>Deputies</h2>
+
+  <h3 id="art-deputies" data-roles="admin,deputy">Deputies: stand-in musicians</h3>
+  <p>A deputy is a musician outside the band who plays when a member can't. The band keeps a list of deputies with their instrument, contacts and usual fee. Deputies don't need a BandWith account.</p>
+  <p class="steps-title">How it works</p>
+  <ul>
+    <li>An admin adds deputies on <b class="ui">Band members</b>, under <b class="ui">Deputies</b> (<a data-ref="add-a-deputy">add a deputy</a>).</li>
+    <li>When a member declines a gig, the admin taps <b class="ui">Find a deputy</b> in the gig's lineup and sends a request by WhatsApp, SMS or email (<a data-ref="ask-a-deputy">ask a deputy</a>).</li>
+    <li>The message carries a private link to a reply page, where the deputy answers in one tap, without an account (<a data-ref="deputy-reply-page">the reply page</a>).</li>
+    <li>The admins get a notification with the answer.</li>
+    <li>If the deputy opens BandWith from that link and signs in, their account is linked to the band's entry. From then on the band can use <b class="ui">Ask in the app</b> and the deputy answers in <b class="ui">Deputy gigs</b> (<a data-ref="deputy-gigs">Deputy gigs</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Adds, edits and deletes deputies; sees their phone, email, usual fee and notes; sends, follows and cancels requests; unlinks a deputy's account.</div>
+    <div data-role="member">Doesn't see the deputies list or the requests. A member who opens a deputy link of their own band is told <b class="ui">You're already in {band}</b>.</div>
+    <div data-role="deputy">Sees only their own requests: band name, gig title, date, load-in, soundcheck and show times, venue and city, the role and the fee offered. The street address appears only after they say yes.</div>
+  </div>
+  <aside class="note privacy">A deputy never sees the client, the gig price, the other musicians' fees, the setlist, the chat or anything else in the band.</aside>
+  <aside class="note tip">A deputy who says yes is not added to the gig's lineup: the admins follow them under <b class="ui">Deputies asked</b> in the lineup sheet.</aside>
+
+  <h3 id="art-add-a-deputy" data-roles="admin">Add, edit or delete a deputy</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, the admin scrolls down to <b class="ui">Deputies</b>.</li>
+    <li>Tap <b class="ui">Add deputy</b> (the + next to the title). In <b class="ui">Who covers what</b>, the + next to an instrument with <b class="ui">No deputy yet</b> opens the form with that instrument filled in.</li>
+    <li>Fill in <b class="ui">Name</b> (required), <b class="ui">Instrument</b>, <b class="ui">Phone (WhatsApp)</b>, <b class="ui">Email</b>, <b class="ui">Usual fee</b> and <b class="ui">Notes</b> (for example <b class="ui">Reads charts, has own gear</b>).</li>
+    <li>Tap <b class="ui">Add deputy</b>.</li>
+  </ol>
+  <p class="steps-title">Edit or delete</p>
+  <ol class="steps">
+    <li>Tap the deputy in the list.</li>
+    <li>Change the fields and tap <b class="ui">Save</b>.</li>
+    <li>To delete: <b class="ui">Delete deputy</b>, then <b class="ui">Delete</b> on the <b class="ui">Delete deputy?</b> sheet.</li>
+  </ol>
+  <p><b class="ui">Who covers what</b> lists each instrument the band plays, the members who play it and its deputies. The line above says <b class="ui">Every instrument in the band has a deputy.</b> or how many have none.</p>
+  <p>A deputy with a BandWith account shows the <b class="ui">On BandWith</b> tag, and their sheet says they answer in the app.</p>
+  <aside class="note warning">Deleting a deputy removes them from the band's list. Past requests keep their name and answer. They can be added again later.</aside>
+  <aside class="note privacy">Only admins see this list (<b class="ui">Only admins see this list.</b>).</aside>
+  <div class="devnote" data-devices="tablet,duoLand">On a wide screen the deputies are shown in two columns.</div>
+
+  <h3 id="art-ask-a-deputy" data-roles="admin">Ask a deputy to cover a gig</h3>
+  <p>You can ask a deputy when a member has declined an upcoming band gig. Rehearsals, personal gigs and past gigs don't offer it.</p>
+  <figure class="shot" data-shot="people-find-deputy" data-device="phone"><figcaption>Find a deputy, replacing a member who declined: each deputy with Ask in the app, WhatsApp, SMS and Email.</figcaption></figure>
+  <ol class="steps">
+    <li>The admin opens the gig and, in the <b class="ui">LINEUP</b> section, taps the list of names (not <b class="ui">EDIT</b>) to open the <b class="ui">Lineup</b> sheet.</li>
+    <li>Next to the member who declined, tap <b class="ui">Find a deputy</b>. The sheet shows <b class="ui">Replacing {name}</b> and the band's deputies, those who play the same instrument first.</li>
+    <li>For a deputy on BandWith, tap <b class="ui">Ask in the app</b>: the deputy gets a notification.</li>
+    <li>Otherwise tap <b class="ui">WhatsApp</b>, <b class="ui">SMS</b> or <b class="ui">Email</b>: the messaging app opens with the gig details and the reply link filled in, and the message is sent from the phone.</li>
+    <li>Back in BandWith, the answer appears under the deputy's name: <b class="ui">Asked · no answer yet</b>, <b class="ui">Available</b>, <b class="ui">Will confirm later</b> or <b class="ui">Can't make it</b>, with their note if any.</li>
+  </ol>
+  <p class="steps-title">After the answer</p>
+  <ul>
+    <li>After a yes, the buttons send the recap instead (<b class="ui">Send recap</b>, <b class="ui">Recap in the app</b>), with the full address and the calendar link.</li>
+    <li>If the date, times or venue change after the answer, the deputy is flagged with <b class="ui">The gig changed after their answer: send them the update.</b> and the buttons send the update (<b class="ui">Send update</b>, <b class="ui">Update in the app</b>).</li>
+    <li><b class="ui">Copy link</b> copies the reply link. <b class="ui">Cancel request</b> withdraws the request; a linked deputy gets a notification.</li>
+    <li>The lineup sheet lists every open request under <b class="ui">Deputies asked</b>.</li>
+  </ul>
+  <p class="steps-title">What the request says</p>
+  <ul>
+    <li>Band name, gig title, date and time, venue and city, the role and the fee.</li>
+    <li>The fee is the replaced member's fee on this gig or, when none is set, the deputy's usual fee.</li>
+    <li>The street address goes only into the recap and the update, after a yes.</li>
+  </ul>
+  <aside class="note tip"><b class="ui">Already sent a moment ago.</b> means a double tap: the same in-app request goes out at most once every 2 minutes.</aside>
+  <aside class="note tip">If the band has no deputies yet, the sheet offers <b class="ui">Add deputies</b>, which takes you to the list.</aside>
+
+  <h2>The deputy's side</h2>
+
+  <h3 id="art-deputy-reply-page" data-roles="deputy,admin">The deputy reply page</h3>
+  <p>The link in a request opens a small web page in the deputy's browser, with no app or account needed. It shows in the deputy's language when available.</p>
+  <p class="steps-title">What the deputy sees</p>
+  <ul>
+    <li><b class="ui">{band} is looking for a deputy for this gig.</b> with the date, load-in, soundcheck and show times, venue, city, role and fee offered.</li>
+    <li>Three answers, <b class="ui">Yes, I'm available</b>, <b class="ui">Not sure yet, I'll confirm later</b>, <b class="ui">No, I can't</b>, and the <b class="ui">Message to the band (optional)</b> field.</li>
+    <li>After a yes: the address, <b class="ui">Open in Maps</b> and <b class="ui">Add to your calendar</b> (<b class="ui">Apple Calendar · Outlook</b>, <b class="ui">Google Calendar</b> or <b class="ui">Subscribe · updates by itself</b>).</li>
+    <li><b class="ui">Change your answer</b> stays available until the gig.</li>
+    <li>If the band changes the gig after the answer: <b class="ui">Something changed</b> with the old and new values, and the buttons <b class="ui">Still OK</b> or <b class="ui">I can't anymore</b>.</li>
+    <li><b class="ui">Get BandWith</b> opens the app and links the account (<a data-ref="deputy-gigs">Deputy gigs</a>).</li>
+  </ul>
+  <p class="steps-title">When the link stops working</p>
+  <ul>
+    <li><b class="ui">This request is closed.</b>: the band withdrew the request.</li>
+    <li><b class="ui">The gig was cancelled.</b></li>
+    <li><b class="ui">This gig is over.</b>: from the day after the gig.</li>
+    <li><b class="ui">This link doesn't work.</b>: the band unlinked the deputy or the link is wrong; ask the band to send the request again.</li>
+  </ul>
+  <aside class="note privacy">The link is the key: anyone who has it can answer. If it reached the wrong person, an admin can unlink the deputy, which replaces every link (<a data-ref="unlink-a-deputy">unlink a deputy</a>).</aside>
+
+  <h3 id="art-deputy-in-the-app" data-roles="deputy">Answer deputy requests in the app</h3>
+  <p>The deputy links their BandWith account to a band's deputy list, starting from the reply link.</p>
+  <ol class="steps">
+    <li>The deputy opens the link the band sent and taps <b class="ui">Get BandWith</b>.</li>
+    <li>In the app, they create an account or sign in. The welcome screen says <b class="ui">{band} calls you as a deputy.</b></li>
+    <li>After <b class="ui">Linking your account to the band…</b>, <b class="ui">You're on {band}'s deputy list</b> appears.</li>
+    <li>Tap <b class="ui">OK</b>: the requests from that band are listed in <b class="ui">Deputy gigs</b>.</li>
+  </ol>
+  <p class="steps-title">Other messages</p>
+  <ul>
+    <li><b class="ui">This link belongs to another account</b>: the band linked it to someone else; a new request is needed.</li>
+    <li><b class="ui">You're already in {band}</b>: the person is a member of that band, so they can't be its deputy.</li>
+    <li><b class="ui">Couldn't link your account to the band. Check your connection.</b>: tap <b class="ui">Try again</b>; the app also retries by itself when the connection is back.</li>
+  </ul>
+  <p>From then on the band's admins can ask in the app and the deputy gets notifications. The admins are told <b class="ui">{deputy} is on BandWith</b>.</p>
+  <aside class="note tip">The link waits even if the deputy has to sign up first or the app restarts.</aside>
+
+  <h3 id="art-deputy-gigs" data-roles="deputy">Deputy gigs</h3>
+  <p>Every request bands have sent you as a deputy, with your answers, the address after a yes and the calendar links.</p>
+  <p class="steps-title">Where to find it</p>
+  <ul>
+    <li>With no band of your own, <b class="ui">Deputy gigs</b> is the Home screen. The <b class="ui">Playing in a band too?</b> box offers <b class="ui">Set up your band</b> and <b class="ui">Sign out</b>.</li>
+    <li>With a band: avatar, then <b class="ui">Deputy gigs</b> (<b class="ui">Requests from {count} bands</b>) at the top of the Account Hub.</li>
+    <li>Tapping a deputy notification opens it straight at that request.</li>
+  </ul>
+  <p class="steps-title">Each request</p>
+  <ul>
+    <li>The gig title and band, with a status: <b class="ui">Waiting for your answer</b>, <b class="ui">You said yes</b>, <b class="ui">You'll confirm later</b>, <b class="ui">You said you can't</b>, <b class="ui">Request withdrawn</b>, <b class="ui">Gig cancelled</b> or <b class="ui">Gig over</b>.</li>
+    <li>Date, load-in, soundcheck, show, venue, city, role and <b class="ui">Fee offered</b>. The address appears after a yes.</li>
+    <li>To answer: <b class="ui">Yes</b>, <b class="ui">Not sure yet</b> or <b class="ui">No, I can't</b>, with an optional message; later, <b class="ui">Change your answer</b>.</li>
+    <li>If the gig changed: <b class="ui">Something changed</b>, then <b class="ui">Still OK</b> or <b class="ui">I can't anymore</b>.</li>
+    <li>After a yes: <b class="ui">Open in Maps</b>, <b class="ui">Add to calendar</b>, <b class="ui">Google Calendar</b> and <b class="ui">Subscribe to my gigs</b>.</li>
+  </ul>
+  <p>Open requests come first, closed ones are under <b class="ui">Past and closed</b>. Requests show from 30 days ago on. The line at the top lists the <b class="ui">Bands that call you as a deputy</b>.</p>
+  <p><b class="ui">Subscribe to my gigs</b> adds a calendar feed of your confirmed gigs with that band: it follows every change and marks cancelled gigs, so your calendar stays right without opening BandWith.</p>
+  <figure class="shot" data-shot="people-deputy-gigs" data-device="phone"><figcaption>Deputy gigs: a request from another band waiting for an answer.</figcaption></figure>
+  <div class="devnote" data-devices="duoBook,duoLand">As the Home screen, the BandWith brand page sits on the first screen and the gigs on the second, as at sign-in.</div>
+  <div class="devnote" data-devices="duoLaptop">As the Home screen in Laptop pose, the header stays on the upper half and the requests on the lower half. While you type a message the box stays in sight, above the keyboard or just above the fold.</div>
+
+  <h3 id="art-unlink-a-deputy" data-roles="admin">Unlink a deputy’s BandWith account</h3>
+  <p>For when the wrong person opened the link, or the deputy changed account.</p>
+  <ol class="steps">
+    <li>On <b class="ui">Band members</b>, under <b class="ui">Deputies</b>, the admin taps the deputy with the <b class="ui">On BandWith</b> tag.</li>
+    <li>In the <b class="ui">On BandWith</b> box, tap <b class="ui">Unlink account</b>.</li>
+    <li>On the <b class="ui">Unlink BandWith account?</b> sheet, tap <b class="ui">Unlink</b>.</li>
+  </ol>
+  <p class="steps-title">What happens</p>
+  <ul>
+    <li>That account stops getting requests in the app and no longer sees this band's gigs in <b class="ui">Deputy gigs</b>.</li>
+    <li>Every link already sent to the deputy is replaced: the old reply pages, calendar feeds and app links stop working.</li>
+    <li>The answers already given stay as they were.</li>
+    <li>Send the next request by message; opening its new link from the app links the right account again.</li>
+  </ul>
+  <aside class="note warning">This can't be undone: the old links never work again.</aside>
+
+  <h3 id="art-deputy-notifications" data-roles="admin,deputy">Deputy notifications</h3>
+  <table class="grid">
+    <thead><tr><th>When</th><th>Who</th><th>Notification</th></tr></thead>
+    <tbody>
+      <tr><td>The deputy answers or changes the answer</td><td>All active admins</td><td><b class="ui">{deputy} is available</b>, <b class="ui">will confirm later</b> or <b class="ui">can't make it</b>, with the gig and their note</td></tr>
+      <tr><td>The deputy confirms after a change</td><td>All active admins</td><td><b class="ui">{deputy} is OK with the changes</b></td></tr>
+      <tr><td>A deputy links their account</td><td>All active admins</td><td><b class="ui">{deputy} is on BandWith</b></td></tr>
+      <tr><td>A new request, or <b class="ui">Ask in the app</b> again</td><td>Linked deputy</td><td><b class="ui">{band}: can you play?</b></td></tr>
+      <tr><td><b class="ui">Recap in the app</b> after a yes</td><td>Linked deputy</td><td><b class="ui">You're confirmed: {gig}</b></td></tr>
+      <tr><td>Date, times or venue change after they answered</td><td>Linked deputy</td><td><b class="ui">{gig} has changed</b>, with what changed and <b class="ui">Still OK?</b></td></tr>
+      <tr><td>The gig is cancelled</td><td>Linked deputy</td><td><b class="ui">{gig} is cancelled</b></td></tr>
+      <tr><td>The admin cancels the request</td><td>Linked deputy</td><td><b class="ui">{band} no longer needs you</b></td></tr>
+    </tbody>
+  </table>
+  <p>Admin notifications open the gig; deputy notifications open <b class="ui">Deputy gigs</b> at that request. A deputy without the app gets nothing automatically: send the update from <b class="ui">Find a deputy</b>.</p>
+  <aside class="note tip">Bursts are merged: the same request, recap or change notice reaches a deputy at most once every 2 minutes.</aside>
+
+  <h2>Gear and kits</h2>
+
+  <h3 id="art-gear-inventory" data-roles="admin,member">Gear &amp; inventory</h3>
+  <p>The band's equipment list, with the category, status, location and owner of each item.</p>
+  <p class="steps-title">Open it</p>
+  <ol class="steps">
+    <li>Admins: on Home, under <b class="ui">Quick Actions</b>, <b class="ui">Gear list</b>.</li>
+    <li>Everyone: avatar, then the <b class="ui">Gear &amp; inventory</b> tile under <b class="ui">Band assets &amp; workflows</b>.</li>
+  </ol>
+  <p class="steps-title">What you see</p>
+  <ul>
+    <li>Two tabs: <b class="ui">Items</b> and <b class="ui">Kits</b> (<a data-ref="gear-kits">kits</a>).</li>
+    <li>A search field (<b class="ui">Search equipment, mics, cables…</b>) and category chips with counts: <b class="ui">All</b>, <b class="ui">Instruments</b>, <b class="ui">Cables</b>, <b class="ui">Microphones</b>, <b class="ui">Speakers</b>, <b class="ui">Stands</b>, <b class="ui">Lighting</b>, <b class="ui">Cases</b>, the band's own categories, then <b class="ui">Other</b>.</li>
+    <li>Each item: name, status dot, and a line with <b class="ui">Personal · {name}</b> for someone's own gear, the category, <b class="ui">qty {count}</b> and the location.</li>
+    <li>Items you may change have an edit and a delete button. Items you can't change show a lock instead, and a note under the list says who can change them.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Adds, edits and deletes any item, the band's and the members' personal gear, and manages kits.</div>
+    <div data-role="member">Sees all the band's gear and kits. Adds their own gear with <b class="ui">Add my gear</b> and can change or delete only that.</div>
+  </div>
+  <p>The Account Hub tile shows the item count and a status line: <b class="ui">{count} in repair</b>, <b class="ui">{count} missing</b> or <b class="ui">All in order</b>.</p>
+  <figure class="shot" data-shot="people-gear" data-device="phone"><figcaption>The band's gear list, with kits and items.</figcaption></figure>
+  <div class="devnote" data-devices="tablet">The screen is called <b class="ui">Gear &amp; kits</b>: kits are a strip of tiles above the items, with no Items/Kits tabs.</div>
+  <div class="devnote" data-devices="duoBook,duoLand">A kit opens on the second screen.</div>
+
+  <h3 id="art-add-gear" data-roles="admin,member">Add, edit or delete an item of gear</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Gear &amp; inventory</b>, tap <b class="ui">Add equipment</b> (admins) or <b class="ui">Add my gear</b> (members), or the + at the top right.</li>
+    <li>Type the <b class="ui">Item name</b>, for example <b class="ui">Shure SM58</b>.</li>
+    <li>Admins only: under <b class="ui">Belongs to</b>, pick <b class="ui">The band</b> or <b class="ui">Me (personal)</b>. Items a member adds are always theirs.</li>
+    <li>Pick a <b class="ui">Category</b> and a <b class="ui">Status</b>, set the <b class="ui">Quantity</b> and fill in <b class="ui">Location / who has it</b>.</li>
+    <li>No category fits? Tap <b class="ui">Custom</b> and type a <b class="ui">Category name</b> (up to 40 characters), which then shows as a chip for the whole band.</li>
+    <li>Optional: <b class="ui">Serial number</b>, <b class="ui">Purchase date</b>, <b class="ui">Purchase price</b> and <b class="ui">Notes</b>.</li>
+    <li>Tap <b class="ui">Save item</b>.</li>
+  </ol>
+  <p class="steps-title">Edit or delete</p>
+  <ol class="steps">
+    <li>Tap the item (<b class="ui">Edit {name}</b>), change it and tap <b class="ui">Save changes</b>.</li>
+    <li>To delete it: <b class="ui">Delete item</b> in the sheet, or the bin on the item's row.</li>
+  </ol>
+  <div class="roles">
+    <div data-role="admin">Can edit every item, change who it belongs to, and delete anything.</div>
+    <div data-role="member">Can edit and delete only items marked as theirs. The sheet says <b class="ui">Personal gear: the band sees it, only you and the admins can change it.</b> Other items show a lock instead of the buttons.</div>
+  </div>
+  <aside class="note warning">The bin on a row and <b class="ui">Delete item</b> ask first with <b class="ui">Delete {name}?</b>. Deleting an item also takes it out of every kit.</aside>
+  <aside class="note privacy">Everyone in the band sees every item, its status and where it is. <b class="ui">Serial number</b>, <b class="ui">Purchase date</b> and <b class="ui">Purchase price</b> are shown only to admins and, for personal gear, to its owner.</aside>
+
+  <h3 id="art-gear-status" data-roles="admin,member">Gear status and location</h3>
+  <p>The status is picked when you edit an item, from <b class="ui">Available</b>, <b class="ui">In use</b>, <b class="ui">Maintenance</b> and <b class="ui">Lost</b>, and it feeds the kit and Account Hub counters.</p>
+  <table class="grid">
+    <thead><tr><th>Status</th><th>Meaning</th><th>Ready for a gig?</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Available</b></td><td>In its place, free to take</td><td>Yes</td></tr>
+      <tr><td><b class="ui">In use</b></td><td>Out with someone</td><td>Yes</td></tr>
+      <tr><td><b class="ui">Maintenance</b></td><td>Being repaired</td><td>No: counted as <b class="ui">repair</b></td></tr>
+      <tr><td><b class="ui">Lost</b></td><td>Missing</td><td>No: counted as <b class="ui">missing</b></td></tr>
+    </tbody>
+  </table>
+  <p><b class="ui">Location / who has it</b> is free text: a room, a case, a van or a person's name. Use it to find gear before a gig.</p>
+  <p>Kits count their ready items (<b class="ui">{ready}/{total} ready</b>) and warn about the rest (<b class="ui">{count} items need a look · check it before {gig}.</b>).</p>
+
+  <h3 id="art-gear-kits" data-roles="admin">Create and edit a gear kit</h3>
+  <p>A kit bundles the gear you take to one kind of gig, for example the club PA or the acoustic duo set.</p>
+  <ol class="steps">
+    <li>On <b class="ui">Gear &amp; inventory</b>, the admin opens the <b class="ui">Kits</b> tab and taps <b class="ui">New kit</b>.</li>
+    <li>Type the <b class="ui">Kit name</b> (up to 80 characters) and, if you like, <b class="ui">Notes</b>, such as how it packs.</li>
+    <li>Under <b class="ui">Items from your inventory</b>, tick the items, searching when the list is long.</li>
+    <li>Tap <b class="ui">Create kit</b>.</li>
+  </ol>
+  <p class="steps-title">Edit or delete</p>
+  <ol class="steps">
+    <li>Open the kit and tap <b class="ui">Edit</b>.</li>
+    <li>Change the name, notes or items and tap <b class="ui">Save changes</b>.</li>
+    <li>To delete it: <b class="ui">Delete kit</b>, then a second tap (<b class="ui">Tap again to delete the kit</b>). The items stay in the inventory.</li>
+  </ol>
+  <p class="steps-title">The kit page</p>
+  <ul>
+    <li>Counters: <b class="ui">Items</b>, <b class="ui">Cases</b> and <b class="ui">Ready</b>.</li>
+    <li><b class="ui">Next gig with this kit</b>, and a warning when items are in maintenance or lost.</li>
+    <li>The list of items with their status.</li>
+    <li><b class="ui">Use for a gig</b> (<a data-ref="kit-for-a-gig">use a kit for a gig</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Creates, edits, deletes and uses kits.</div>
+    <div data-role="member">Sees the kits, their items and readiness, without edit buttons.</div>
+  </div>
+
+  <h3 id="art-kit-for-a-gig" data-roles="admin,member">Use a kit for a gig</h3>
+  <p>Attaching a kit to a gig tells the band what goes on the van.</p>
+  <p class="steps-title">From the gig</p>
+  <ol class="steps">
+    <li>Open the gig and, in the <b class="ui">GEAR KIT</b> section, tap <b class="ui">PICK A KIT</b> (or <b class="ui">CHANGE</b> if one is set).</li>
+    <li>In <b class="ui">Kit for this gig</b>, tap <b class="ui">Add kit</b> next to each kit you need; <b class="ui">Kit added</b> takes one off.</li>
+    <li>Tap <b class="ui">Done</b>.</li>
+  </ol>
+  <p class="steps-title">From the kit</p>
+  <ol class="steps">
+    <li>Open the kit and tap <b class="ui">Use for a gig</b>.</li>
+    <li>Tap <b class="ui">Add kit</b> next to each upcoming gig, then <b class="ui">Done</b>.</li>
+  </ol>
+  <p>The gig then shows the kit with its items and <b class="ui">All ready</b> or how many need a look; the kit shows its next gig.</p>
+  <div class="roles">
+    <div data-role="admin">Picks and changes the kits on upcoming band gigs.</div>
+    <div data-role="member">Sees the gig's kit and its readiness, without the <b class="ui">PICK A KIT</b> button.</div>
+  </div>
+  <aside class="note tip">Kits are for band gigs only: rehearsals, quotes and personal gigs have no <b class="ui">GEAR KIT</b> section. Using a kit doesn't change the items' status.</aside>
+  <div class="devnote" data-devices="tablet">The <b class="ui">GEAR KIT</b> section is in the gig's rider tab.</div>
+
+  <h2>Who sees what</h2>
+
+  <h3 id="art-who-sees-what" data-roles="admin,member,deputy">Who sees what</h3>
+  <p>Money, quote prices, contracts and other people's fees are protected by the server, not only hidden in the app: a member's phone never receives them.</p>
+  <table class="grid">
+    <thead><tr><th>Data</th><th>Admin</th><th>Member</th></tr></thead>
+    <tbody>
+      <tr><td>Gig details (date, times, venue, address, dress code, notes, rider and stage plan)</td><td>Everything, plus client, gig price, deposit, payment status, internal notes and contract</td><td>The logistics of the gigs they play and haven't declined. Never the client, price, deposit, internal notes or contract</td></tr>
+      <tr><td>Gig lineup and answers</td><td>Everyone, with fees and payouts</td><td>Who plays and their answers, without fees</td></tr>
+      <tr><td>Own fee</td><td>Yes</td><td>Yes: their fee per gig, paid or not, their default fee and their own <b class="ui">Paid · {year}</b></td></tr>
+      <tr><td>Other people's fees</td><td>Yes, for every member and deputy</td><td>No</td></tr>
+      <tr><td>Quotes and quote totals</td><td>Yes: create, send and see all</td><td>No. A quote's availability check shows only the date</td></tr>
+      <tr><td>Band finances, payments and analytics</td><td>Yes</td><td>No. Only their own earnings</td></tr>
+      <tr><td>Pricing, bank and tax details</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Setlists</td><td>Create, edit, attach to gigs</td><td>Read only</td></tr>
+      <tr><td>Repertoire (songs, lyrics, chords)</td><td>Add, edit, delete, import</td><td>Read; suggest songs and changes; private notes and files only they see</td></tr>
+      <tr><td>Contracts and riders</td><td>Yes</td><td>No contracts. The gig shows the rider's version and the stage plan</td></tr>
+      <tr><td>Chat</td><td>Band chat, gig chats, direct chats with anyone in the band</td><td>Band chat, chats of gigs they play, direct chats only with admins</td></tr>
+      <tr><td>Gear and kits</td><td>See and change everything</td><td>See every item, its status and location; serial number, purchase date and price only on their own personal gear; change only their own personal gear</td></tr>
+      <tr><td>Member contact details</td><td>Email and phone of everyone in the band</td><td>Email and phone of everyone in the band</td></tr>
+      <tr><td>Deputy list and requests</td><td>Yes: contacts, usual fees, notes, answers</td><td>No</td></tr>
+      <tr><td>Personal gigs and private song notes</td><td>Only their own</td><td>Only their own</td></tr>
+    </tbody>
+  </table>
+  <table class="grid">
+    <thead><tr><th>Data</th><th>Deputy</th></tr></thead>
+    <tbody>
+      <tr><td>Gig details</td><td>Only for gigs they were asked to play: band name, title, date, load-in, soundcheck and show times, venue and city. The street address only after a yes</td></tr>
+      <tr><td>Own fee</td><td>The fee offered in each request</td></tr>
+      <tr><td>Other fees, quotes, finances, pricing</td><td>No</td></tr>
+      <tr><td>Lineup, setlists, repertoire, contracts, chat, gear</td><td>No</td></tr>
+      <tr><td>Member contact details</td><td>No</td></tr>
+      <tr><td>Deputy info</td><td>Their own requests and the name the band saved for them</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Members and deputies see only their own fee and the logistics, never other people's fees, quote totals or the band's finances.</aside>
+  <aside class="note tip">A member's personal gigs (the ones outside any band) are private: bands never see their title, venue or time.</aside>
+
+  <h2>FAQ</h2>
+  <dl class="faq">
+    <dt>The person I invited says the invite doesn't work.</dt>
+    <dd>They must sign in with the exact email address the invite was sent to. If it expired, invite them again.</dd>
+    <dt>Does a deputy need the app?</dt>
+    <dd>No. The request link opens a web page where they answer in one tap. With the app they get notifications and see all their requests in <b class="ui">Deputy gigs</b>.</dd>
+    <dt>The wrong person opened a deputy link. What do I do?</dt>
+    <dd>Open the deputy on <b class="ui">Band members</b>, tap <b class="ui">Unlink account</b> and confirm. All old links stop working; send the next request by message.</dd>
+  </dl>
+</section>
