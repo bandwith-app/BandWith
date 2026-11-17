@@ -5,7 +5,7 @@ export type TabName = 'Home' | 'Events' | 'Chat' | 'More';
 
 // View modes
 export type EventViewMode = 'list' | 'calendar';
-export type RehearsalViewMode = 'index' | 'overview' | 'setlist' | 'tasks' | 'live' | 'post';
+export type RehearsalViewMode = 'index' | 'overview' | 'setlist' | 'tasks';
 
 // Card types for expanded state
 export type ExpandedCardType = 'finance' | 'pending' | 'quotes' | 'confirmed' | 'rehearsal' | 'fee' | null;

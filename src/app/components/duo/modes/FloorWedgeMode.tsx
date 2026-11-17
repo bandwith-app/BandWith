@@ -86,6 +86,8 @@ export interface FloorWedgeModeProps {
    * (src/lib/stageChrome.ts); otherwise Exit is in the rail.
    */
   onClose?: () => void;
+  /** Name of the Exit button: "Exit live mode" on a rehearsal (default "Exit stage mode"). */
+  exitLabel?: string;
 }
 
 export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
@@ -107,8 +109,10 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   lyricsOn: lyricsOnProp,
   onLyricsOnChange,
   onClose,
+  exitLabel: exitLabelProp,
 }) => {
   const t = useT();
+  const exitLabel = exitLabelProp ?? t('Exit stage mode');
   // Stage mode full screen hides the rail, which holds Exit and the toggle:
   // the Deck shows them instead.
   const { rail, twoPane } = useRailLayout();
@@ -346,8 +350,8 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               </button>
               <button
                 type="button"
-                aria-label={t('Exit stage mode')}
-                title={t('Exit stage mode')}
+                aria-label={exitLabel}
+                title={exitLabel}
                 onClick={() => {
                   haptic.tap();
                   onClose?.();

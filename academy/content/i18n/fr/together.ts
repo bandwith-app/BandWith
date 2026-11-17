@@ -255,8 +255,8 @@ const together: AreaText = {
       summary: "Ce qu’une répétition montre aux admins et aux membres.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["détail de la répétition", "présences", "coût du studio", "morceaux à travailler"],
-      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks"],
+      keywords: ["détail de la répétition", "présences", "coût du studio", "morceaux à travailler", "mode live"],
+      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks", "stage-mode"],
       body: [
         {
           type: "p",
@@ -266,6 +266,7 @@ const together: AreaText = {
           type: "list",
           items: [
             "**Tu viens ?** : la carte de réponse pour les membres invités (voir [[answer-a-rehearsal-invite]]).",
+            "**Ouvrir le mode live**, le bouton lecture en haut à droite (dans la barre latérale sur un appareil à double écran), sur les répétitions à venir : les morceaux à travailler avec paroles, accords et clic, l’admin qui guide. Voir [[stage-mode]].",
             "Tuiles horaires : **DÉBUT**, **FIN** et **SALLE**.",
             "**PRÉSENCES** : qui est invité et ce qu’il a répondu.",
             "**MORCEAUX À BOSSER** : jusqu’à huit morceaux, avec **+ {count} AUTRES** et **SETLIST** pour voir toute la liste.",

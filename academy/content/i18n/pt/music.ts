@@ -1109,7 +1109,7 @@ const music: AreaText = {
             ["Minhas notas e meus arquivos", "Só os próprios", "Só os próprios"],
             ["Ler setlists e exportá-las em PDF", "Sim", "Sim"],
             ["Criar, editar, reordenar, excluir setlists", "Sim", "Não"],
-            ["Abrir o Modo palco num show futuro", "Sim, como líder", "Sim, seguindo o líder"],
+            ["Abrir o Modo palco num show futuro, ou o Modo ao vivo num ensaio futuro", "Sim, como líder", "Sim, seguindo o líder"],
             ["Mudar a música atual da banda, reordenar no palco, iniciar o clique da banda", "Sim", "Não: avança e usa o clique só no próprio celular"],
           ],
         },
@@ -1131,10 +1131,10 @@ const music: AreaText = {
     {
       id: "stage-mode",
       title: "Modo palco",
-      summary: "Uma tela preta, fácil de ler de relance, para o dia do show, com o roteiro, a setlist e a letra ou os acordes de cada música.",
+      summary: "Uma tela ao vivo preta, fácil de ler de relance, com a setlist e a letra ou os acordes de cada música: no dia do show com o roteiro, num ensaio como Modo ao vivo.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação"],
+      keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação", "ensaio", "modo ao vivo", "ensaio ao vivo"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1144,6 +1144,7 @@ const music: AreaText = {
             "Abra um show futuro da banda e toque no botão **Tocar** no canto superior direito (**Abrir modo palco**). No dia do show, ele fica destacado.",
             "Ou, na tela Início, toque em **Go live** embaixo do seu próximo show.",
             "Para sair, toque no X (**Sair do modo palco**).",
+            "Num ensaio futuro da banda o mesmo botão é **Abrir modo ao vivo**. Ele abre o Modo ao vivo (abaixo); para sair, **Sair do modo ao vivo**.",
           ],
         },
         {
@@ -1171,9 +1172,21 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Num ensaio: o Modo ao vivo",
+          items: [
+            "**Modo ao vivo · <data>** e o título do ensaio no topo.",
+            "A setlist são as músicas em foco do ensaio, na ordem delas. Sem nenhuma escolhida, aparece “Nenhuma música escolhida para este ensaio ainda.”",
+            "Letra, acordes, transposição, tamanho do texto, o clique e Minhas notas funcionam como num show.",
+            "O admin guia e os membros seguem, pela internet e por Bluetooth, como num show. Qualquer pessoa no ensaio pode abrir.",
+            "Sem roteiro (sem horários de montagem, passagem de som, show ou fim) e sem tirar músicas por hoje.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "O Modo ao vivo num ensaio: as músicas em foco, os acordes da música atual e Anterior / Próxima, sem roteiro." },
+        {
+          type: "list",
           title: "Bom saber",
           items: [
-            "O Modo palco é oferecido para os próximos shows da banda, não para ensaios, orçamentos, shows passados ou shows pessoais.",
+            "O Modo palco existe para os shows futuros da banda e, como Modo ao vivo, para os ensaios futuros da banda; não para orçamentos, eventos passados nem shows pessoais.",
             "A tela fica acesa enquanto o Modo palco está aberto.",
             "Sem setlist, ele diz “Nenhuma setlist vinculada a este show.”",
             "Nos apps de celular e tablet, a setlist com letras e cifras fica guardada no dispositivo quando você abre o show, então o Modo palco funciona sem internet. Sair da conta apaga essa cópia.",

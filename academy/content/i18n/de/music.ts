@@ -1109,7 +1109,7 @@ const music: AreaText = {
             ["Meine Notizen und meine Dateien", "Nur eigene", "Nur eigene"],
             ["Setlists lesen und als PDF exportieren", "Ja", "Ja"],
             ["Setlists erstellen, bearbeiten, umsortieren, löschen", "Ja", "Nein"],
-            ["Bühnenmodus bei einem kommenden Gig öffnen", "Ja, als Leader", "Ja, als Follower"],
+            ["Bühnenmodus bei einem kommenden Gig öffnen, oder den Live-Modus bei einer kommenden Probe", "Ja, als Leader", "Ja, als Follower"],
             ["Den aktuellen Song der Band wechseln, auf der Bühne umsortieren, den Klick der Band starten", "Ja", "Nein: blättert und klickt nur auf dem eigenen Handy"],
           ],
         },
@@ -1131,10 +1131,10 @@ const music: AreaText = {
     {
       id: "stage-mode",
       title: "Bühnenmodus",
-      summary: "Ein schwarzer Bildschirm für den Gig-Tag, auf einen Blick lesbar: Ablauf, Setlist und Songtext oder Akkorde jedes Songs.",
+      summary: "Ein schwarzer Live-Bildschirm, auf einen Blick lesbar, mit Setlist und Songtext oder Akkorden jedes Songs: am Gig-Tag mit dem Ablauf, bei einer Probe als Live-Modus.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus"],
+      keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus", "Probe", "Live-Modus", "Probe live"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1144,6 +1144,7 @@ const music: AreaText = {
             "Öffne einen kommenden Gig der Band und tippe oben rechts auf den Button **Abspielen** (**Bühnenmodus öffnen**). Am Gig-Tag ist er hervorgehoben.",
             "Oder tippe auf Start unter deinem nächsten Gig auf **Go live**.",
             "Zum Verlassen tippe auf X (**Bühnenmodus beenden**).",
+            "Bei einer kommenden Probe der Band heißt derselbe Button **Live-Modus öffnen**. Er öffnet den Live-Modus (unten); zum Verlassen **Live-Modus beenden**.",
           ],
         },
         {
@@ -1171,9 +1172,21 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Bei einer Probe: der Live-Modus",
+          items: [
+            "**Live-Modus · <Datum>** und der Titel der Probe oben.",
+            "Die Setlist sind die Fokus-Songs der Probe, in ihrer Reihenfolge. Ist keiner gewählt, steht dort „Für diese Probe sind noch keine Songs ausgewählt.“",
+            "Songtext, Akkorde, Transponieren, Textgröße, der Klick und Meine Notizen funktionieren wie bei einem Gig.",
+            "Der Admin leitet, die Mitglieder folgen, über das Internet und über Bluetooth, wie bei einem Gig. Alle, die bei der Probe dabei sind, können ihn öffnen.",
+            "Kein Ablauf (keine Zeiten für Aufbau, Soundcheck, Show oder Ende) und kein Streichen von Songs für heute.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "Der Live-Modus bei einer Probe: die Fokus-Songs, die Akkorde des aktuellen Songs und Zurück / Weiter, ohne Ablauf." },
+        {
+          type: "list",
           title: "Gut zu wissen",
           items: [
-            "Den Bühnenmodus gibt es für kommende Gigs der Band, nicht für Proben, Angebote, vergangene Gigs oder persönliche Gigs.",
+            "Der Bühnenmodus gibt es für kommende Gigs der Band und, als Live-Modus, für kommende Proben der Band; nicht für Angebote, vergangene Termine oder persönliche Gigs.",
             "Der Bildschirm bleibt an, solange der Bühnenmodus offen ist.",
             "Ohne Setlist steht dort „Diesem Gig ist keine Setlist zugeordnet.“",
             "In den Apps für Handy und Tablet wird die Setlist mit Songtexten und Charts beim Öffnen des Gigs auf dem Gerät gespeichert, sodass der Bühnenmodus ohne Internet funktioniert. Beim Abmelden wird sie entfernt.",

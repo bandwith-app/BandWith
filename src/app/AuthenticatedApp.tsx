@@ -128,8 +128,6 @@ const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m
 import type { ContractPrefill } from "@/app/views/ContractsView";
 const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
 const CreateEventModal = lazyLayer(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
-const RehearsalLiveView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalLiveView").then(m => ({ default: m.RehearsalLiveView })));
-const RehearsalPostView = lazyLayer(() => import("@/app/components/rehearsal/RehearsalPostView").then(m => ({ default: m.RehearsalPostView })));
 const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
 const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
 const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
@@ -1474,7 +1472,6 @@ export default function AuthenticatedApp() {
   // Rehearsal state
   const [rehearsalIndex, setRehearsalIndex] = useState(0);
   const [rehearsalViewMode, setRehearsalViewMode] = useState<RehearsalViewMode>("overview");
-  const [isLive, setIsLive] = useState(false);
 
   const [showBandMembers, setShowBandMembers] = useState(false);
   const [showSetlistManager, setShowSetlistManager] = useState(false);
@@ -1543,7 +1540,6 @@ export default function AuthenticatedApp() {
       setShowDeputyGigs(true);
     }
   }, [deputyClaim.result]);
-  const [liveInterval, setLiveInterval] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [votePollId, setVotePollId] = useState<string | null>(null);
@@ -1886,15 +1882,6 @@ export default function AuthenticatedApp() {
   }, [events, eventMembersMap, user?.id, realBand?.id, isAdminOfBand]);
 
   const currentRehearsal = upcomingRehearsals[rehearsalIndex] || upcomingRehearsals[0];
-  // Who is on it (not who declined), for live mode's check-in and the summary.
-  const rehearsalLineup = useMemo(
-    () =>
-      (currentRehearsal?.eventId ? eventMembersMap[currentRehearsal.eventId] || [] : [])
-        .filter((m) => m.status !== "declined")
-        .map((m, i) => ({ userId: m.userId || `member-${i}`, name: m.name })),
-    [currentRehearsal?.eventId, eventMembersMap],
-  );
-
   const memoizedBandMembers = useMemo(() => {
     if (!realBand?.members) return [];
     return realBand.members.map((m) => ({
@@ -1975,7 +1962,6 @@ export default function AuthenticatedApp() {
     if (expandedCard === "rehearsal") {
       setRehearsalViewMode(upcomingRehearsals.length > 1 ? "index" : "overview");
     } else {
-      if (isLive) toggleLive();
       setRehearsalViewMode("overview");
     }
   }, [expandedCard]);
@@ -2267,18 +2253,6 @@ export default function AuthenticatedApp() {
     else if (rehearsalIndex === upcomingRehearsals.length - 1) setRehearsalIndex((p) => p - 1);
   };
 
-  const toggleLive = () => {
-    if (!isLive) {
-      setIsLive(true);
-      setLiveInterval(setInterval(() => {}, 1000));
-      setRehearsalViewMode("live");
-    } else {
-      if (liveInterval) clearInterval(liveInterval);
-      setIsLive(false);
-      setRehearsalViewMode("post");
-    }
-  };
-
   // Android hardware / gesture back button — hierarchical navigation
   const lastBackPressRef = useRef<number>(0);
   const backNavStateRef = useRef({
@@ -2309,7 +2283,6 @@ export default function AuthenticatedApp() {
     selectedEvent,
     expandedCard,
     rehearsalViewMode,
-    isLive,
     showSettings,
     showBandMembers,
     showSetlistManager,
@@ -2353,7 +2326,6 @@ export default function AuthenticatedApp() {
     selectedEvent,
     expandedCard,
     rehearsalViewMode,
-    isLive,
     showSettings,
     showBandMembers,
     showSetlistManager,
@@ -2483,12 +2455,7 @@ export default function AuthenticatedApp() {
         return true;
       }
       if (s.expandedCard) {
-        if (s.expandedCard === "rehearsal" && (s.rehearsalViewMode === "live" || s.rehearsalViewMode === "post")) {
-          if (s.isLive) toggleLive();
-          setRehearsalViewMode("overview");
-        } else {
-          setExpandedCard(null);
-        }
+        setExpandedCard(null);
         return true;
       }
       if (s.showSettings) {
@@ -4150,7 +4117,7 @@ export default function AuthenticatedApp() {
           {isAdmin && expandedCard === "quotes" && <QuotesExpanded key="quotes-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} realQuotes={realQuotes} quoteStats={quotesStats} loading={quotesLoading} onShowToast={(msg, type) => setSaveToast({ message: msg, type })} onQuotesChanged={() => { refetchExpandedQuotes(); refetchDashboard?.(); }} onOpenBandSettings={() => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); }} onOpenEvent={(eventId) => { setExpandedCard(null); navigateToEvent(eventId); }} onPrepareContract={(prefill) => { if (!realBand || !isAdminOfBand(realBand.id)) return; setExpandedCard(null); setContractPrefill(prefill); setShowContracts(true); }} focusQuoteId={quoteFocus} onFocusConsumed={() => setQuoteFocus(null)} />}
           {expandedCard === "confirmed" && <ConfirmedExpanded key="confirmed-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} events={myConfirmedEvents} loading={confirmedEventsLoading} />}
           {expandedCard === "rehearsal" && currentRehearsal ? (
-            <RehearsalExpanded key="rehearsal-expanded" upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} rehearsalIndex={rehearsalIndex} setRehearsalIndex={setRehearsalIndex} rehearsalViewMode={rehearsalViewMode} setRehearsalViewMode={setRehearsalViewMode} isLive={isLive} onClose={() => setExpandedCard(null)} onDecline={handleRehearsalDecline} />
+            <RehearsalExpanded key="rehearsal-expanded" upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} rehearsalIndex={rehearsalIndex} setRehearsalIndex={setRehearsalIndex} rehearsalViewMode={rehearsalViewMode} setRehearsalViewMode={setRehearsalViewMode} onGoLive={() => { const id = currentRehearsal.eventId; setExpandedCard(null); if (id) handleGoLive(id); }} onClose={() => setExpandedCard(null)} onDecline={handleRehearsalDecline} />
           ) : expandedCard === "rehearsal" ? (
             <ExpandedCardWrapper key="expanded-card-wrapper" backgroundColor="#3B82F6" onClose={() => setExpandedCard(null)} origin={{ top: "18%", left: "3%", right: "42%", bottom: "52%" }}>
               <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3">
@@ -4225,25 +4192,6 @@ export default function AuthenticatedApp() {
 
       <React.Suspense fallback={null}>
         <AnimatePresence>
-          {/* z-185 like the views inside: under the iPhone Duo rail (190),
-              where live mode puts its Exit. Each lazy view suspends inside
-              its own layer: suspending the whole list stalled live mode's
-              exit, leaving it under the summary. */}
-          {rehearsalViewMode === "live" && expandedCard === "rehearsal" && currentRehearsal && (
-            <motion.div key="rehearsal-live" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[185]">
-              <React.Suspense fallback={null}>
-                <RehearsalLiveView rehearsal={currentRehearsal} lineup={rehearsalLineup} onClose={() => setRehearsalViewMode("overview")} onFinish={() => setRehearsalViewMode("post")} />
-              </React.Suspense>
-            </motion.div>
-          )}
-          {rehearsalViewMode === "post" && expandedCard === "rehearsal" && currentRehearsal && (
-            <motion.div key="rehearsal-post" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[185]">
-              <React.Suspense fallback={null}>
-                <RehearsalPostView rehearsal={currentRehearsal} lineup={rehearsalLineup} upcoming={upcomingRehearsals} onClose={() => setRehearsalViewMode("overview")} />
-              </React.Suspense>
-            </motion.div>
-          )}
-
           {showBandMembers && <BandMembersView key="band-members" onClose={() => setShowBandMembers(false)} />}
           {showSetlistManager && <SetlistManagerView key="setlist-manager" onClose={() => setShowSetlistManager(false)} />}
           {showSettings && (

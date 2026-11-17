@@ -255,8 +255,8 @@ const together: AreaText = {
       summary: "Was eine Probe Admins und Mitgliedern zeigt.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["Probendetails", "Anwesenheit", "Studiokosten", "Fokus-Songs"],
-      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks"],
+      keywords: ["Probendetails", "Anwesenheit", "Studiokosten", "Fokus-Songs", "Live-Modus"],
+      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks", "stage-mode"],
       body: [
         {
           type: "p",
@@ -266,6 +266,7 @@ const together: AreaText = {
           type: "list",
           items: [
             "**Kommst du?**: die Antwortkarte für eingeladene Mitglieder (siehe [[answer-a-rehearsal-invite]]).",
+            "**Live-Modus öffnen**, der Play-Button oben rechts (in der Seitenleiste auf einem Gerät mit zwei Bildschirmen), bei kommenden Proben: die Fokus-Songs mit Songtext, Akkorden und Klick, der Admin leitet. Siehe [[stage-mode]].",
             "Zeitkacheln: **START**, **ENDE** und **RAUM**.",
             "**ANWESENHEIT**: wer eingeladen ist und was geantwortet wurde.",
             "**FOKUS-SONGS**: bis zu acht Songs, mit **+ … WEITERE** und **SETLIST** für die ganze Liste.",

@@ -65,6 +65,18 @@ check (`app.check`) on each screen it reaches.
 | No "seen" anywhere | `rider-stage` | full |
 | Member: read-only | `rider-stage` | all |
 
+## Live mode (Stage mode on gigs, Live mode on rehearsals)
+
+| Flow | Spec | Profiles |
+| --- | --- | --- |
+| Rehearsal: admin and member open Live mode from an upcoming rehearsal (header play button or the Duo rail); its focus songs show, with chords; no run of show (load in, soundcheck, show, end) and nothing to strike off for tonight | `stage-live` | all |
+| Rehearsal: Exit live mode (the screen's ✕ or the Duo rail's) and system Back return to the rehearsal | `stage-live` | all |
+| A past rehearsal and a personal gig offer no live mode | `stage-live` | all |
+| A rehearsal without focus songs says "No songs picked for this rehearsal yet." | `stage-live` | full |
+| Gig Stage mode unchanged: name, run of show, strike off; Exit and system Back return to the gig | `stage-live` | all |
+| Live sync between two devices: the admin's Next reaches a member following (rehearsal and gig) | `stage-live` | full |
+| The Home rehearsal card's "Enter live mode" / "Check in / live" open the same live mode (no separate local session) | vitest `RehearsalExpanded.live` | unit |
+
 ## Create
 
 | Flow | Spec | Profiles |
@@ -163,7 +175,7 @@ matrix before a release.
   own focus scrolling (the suite fires the Keyboard plugin's window events and shrinks the
   viewport, see `support/keyboard.ts`; it does not run the real keyboard; the on-screen keyboard over the main input screens
   runs on emulators, `maestro/flows/keyboard-*.yaml`).
-- **Bluetooth stage sync**: two phones offline in Stage mode, synced click.
+- **Bluetooth stage sync**: two phones offline in Stage mode (gig) or Live mode (rehearsal), synced click.
 - **Native sharing and files**: share sheets (rider PDF, quote), file pickers, camera.
 - **Sign in with Google / Apple and real email links** (the suite only tests the callback
   errors).

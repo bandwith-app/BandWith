@@ -262,8 +262,8 @@ const together: AreaModule = {
       summary: 'What a rehearsal shows to admins and to members.',
       roles: ['admin', 'member'],
       kind: 'reference',
-      keywords: ['rehearsal detail', 'attendance', 'studio cost', 'focus songs'],
-      related: ['answer-a-rehearsal-invite', 'edit-a-rehearsal', 'event-and-rehearsal-chats', 'rehearsal-songs-and-prep-tasks'],
+      keywords: ['rehearsal detail', 'attendance', 'studio cost', 'focus songs', 'live mode'],
+      related: ['answer-a-rehearsal-invite', 'edit-a-rehearsal', 'event-and-rehearsal-chats', 'rehearsal-songs-and-prep-tasks', 'stage-mode'],
       body: [
         {
           type: 'p',
@@ -273,6 +273,7 @@ const together: AreaModule = {
           type: 'list',
           items: [
             '**Are you coming?**: the answer card for invited members (see [[answer-a-rehearsal-invite]]).',
+            '**Open live mode**, the play button at the top right (in the side rail on a dual-screen device), on upcoming rehearsals: the focus songs with lyrics, chords and the click, the admin leading. See [[stage-mode]].',
             'Time tiles: **START**, **END** and **ROOM**.',
             '**ATTENDANCE**: who is invited and what they answered.',
             '**FOCUS SONGS**: up to eight songs, with **+ {count} MORE** and **SETLIST** to see the whole list.',

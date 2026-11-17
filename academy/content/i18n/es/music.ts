@@ -986,7 +986,7 @@ const music: AreaText = {
             ["Mis notas y mis archivos", "Solo los suyos", "Solo los suyos"],
             ["Leer setlists y exportarlas en PDF", "Sí", "Sí"],
             ["Crear, editar, reordenar y eliminar setlists", "Sí", "No"],
-            ["Abrir el Modo escenario en un próximo concierto", "Sí, como líder", "Sí, como seguidor"],
+            ["Abrir el Modo escenario en un próximo concierto, o el Modo en vivo en un próximo ensayo", "Sí, como líder", "Sí, como seguidor"],
             ["Mover la canción actual de la banda, reordenar en el escenario, iniciar el clic de la banda", "Sí", "No: avanza y usa el clic solo en su propio teléfono"],
           ],
         },
@@ -1002,10 +1002,10 @@ const music: AreaText = {
     {
       id: "stage-mode",
       title: "Modo escenario",
-      summary: "Una pantalla negra para el día del concierto, fácil de leer de un vistazo, con el horario, la setlist y la letra o los acordes de cada canción.",
+      summary: "Una pantalla en vivo negra, fácil de leer de un vistazo, con la setlist y la letra o los acordes de cada canción: el día del concierto con el horario, en un ensayo como Modo en vivo.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación"],
+      keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación", "ensayo", "modo en vivo", "ensayo en vivo"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1015,6 +1015,7 @@ const music: AreaText = {
             "Abre un próximo concierto de la banda y toca el botón **Reproducir** de arriba a la derecha (**Abrir modo escenario**). El día del concierto aparece resaltado.",
             "O, en Inicio, toca **Go live** debajo de tu próximo concierto.",
             "Para salir, toca la X (**Salir del modo escenario**).",
+            "En un próximo ensayo de la banda el mismo botón es **Abrir modo en vivo**. Abre el Modo en vivo (abajo); para salir, **Salir del modo en vivo**.",
           ],
         },
         {
@@ -1042,9 +1043,21 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "En un ensayo: Modo en vivo",
+          items: [
+            "**Modo en vivo · <fecha>** y el título del ensayo arriba.",
+            "La setlist son las canciones a ensayar, en su orden. Si no se eligió ninguna, dice “Aún no hay canciones elegidas para este ensayo.”",
+            "Letra, acordes, transposición, tamaño del texto, el clic y Mis notas funcionan como en un concierto.",
+            "El admin guía y los miembros siguen, por internet y por Bluetooth, como en un concierto. Cualquiera que esté en el ensayo puede abrirlo.",
+            "Sin horario (sin horas de carga, prueba de sonido, show o fin) y sin quitar canciones para esta noche.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "El Modo en vivo en un ensayo: las canciones a ensayar, los acordes de la canción actual y Anterior / Siguiente, sin horario." },
+        {
+          type: "list",
           title: "Conviene saber",
           items: [
-            "El Modo escenario se ofrece para los próximos conciertos de la banda, no para ensayos, presupuestos, conciertos pasados ni conciertos personales.",
+            "El Modo escenario está disponible en los próximos conciertos de la banda y, como Modo en vivo, en los próximos ensayos de la banda; no en presupuestos, eventos pasados ni conciertos personales.",
             "La pantalla no se apaga mientras el Modo escenario está abierto.",
             "Sin setlist, dice «Este concierto no tiene setlist.»",
             "En las apps de móvil y tablet, la setlist con letras y cifrados se guarda en el dispositivo cuando abres el concierto, así que el Modo escenario funciona sin internet. Al cerrar sesión se borra.",

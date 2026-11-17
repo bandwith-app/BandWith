@@ -62,6 +62,7 @@ import { FeePayoutsContent } from '@/app/components/event/FeePayoutsContent';
 import { DotCheckbox } from '@/app/components/ui/DotCheckbox';
 import { useEventTasks } from '@/lib/services/eventTasks';
 import { isGigOver, isLiveDay } from '@/lib/gigTiming';
+import { liveKind } from '@/lib/liveMode';
 import { computeReadiness, hasLyricsOrChart } from '@/lib/readiness';
 import { eventContractState } from '@/lib/services/contracts';
 import { ReadinessSection } from '@/app/components/event/ReadinessSection';
@@ -674,8 +675,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     [isPersonalGig, isPast, event, allEvents],
   );
 
-  // Stage mode is offered for upcoming band gigs and promoted (filled) on gig day.
-  const canStage = eventType === 'gig' && !isPast && !isPersonalGig;
+  // Stage mode is offered for upcoming band gigs and promoted (filled) on gig
+  // day. Upcoming band rehearsals open the same live screen as "Live mode",
+  // without the gig's run of show (src/lib/liveMode.ts).
+  const stageKind = liveKind({ eventType, isPast, isPersonalGig });
+  const canStage = stageKind !== null;
+  const isRehearsalLive = stageKind === 'rehearsal';
+  const openStageLabel = isRehearsalLive ? t('Open live mode') : t('Open stage mode');
 
   // Live Stage mode: the admin's song steps and new order reach every
   // member with Stage mode open (private channel, migration 085).
@@ -691,7 +697,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     if (canStage) prefetchStageKey(event.eventId);
   }, [canStage, event.eventId]);
   const isGigDay = isLiveDay(gigTimes);
-  // "Go live" from Home opens the gig straight in Stage mode (once, on open).
+  // "Go live" opens the gig (or rehearsal) straight in live mode (once, on open).
   useEffect(() => {
     if (startInStage && canStage) setIsStageOpen(true);
     // "Review payouts" from Home opens the gig on its Fee & payouts sheet.
@@ -708,7 +714,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         }
       : undefined,
     {
-      label: t('Open stage mode'),
+      label: openStageLabel,
       icon: <Play />,
       pane: true,
       prominent: isGigDay,
@@ -1240,8 +1246,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             haptic.medium();
             setIsStageOpen(true);
           }}
-          aria-label={t('Open stage mode')}
-          title={t('Stage mode')}
+          aria-label={openStageLabel}
+          title={isRehearsalLive ? t('Live mode') : t('Stage mode')}
           className="w-11 h-11 -mr-2.5 rounded-full flex items-center justify-center shrink-0 active:scale-[var(--press-scale)] transition-transform cursor-pointer"
           style={isGigDay ? heroChipStyle : undefined}
         >
@@ -2748,18 +2754,24 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       <AnimatePresence>
         {isStageOpen && (
           <StageMode
+            kind={stageKind ?? 'gig'}
             title={event.title}
             venue={venueName !== 'TBD' ? venueName : undefined}
             city={event.venueCity}
             dateLabel={hasHeroDate ? formatEventDateShort(event.date) : t('TBD')}
             date={event.date}
             accentColor="var(--accent-gig)"
-            steps={[
-              { label: t('Load in'), time: event.loadInTime, display: t('TBD') },
-              { label: t('Soundcheck'), time: event.soundcheckTime, display: t('TBD') },
-              { label: t('Show'), time: gigTimes.start, display: t('TBD') },
-              { label: t('End'), time: event.endTime, display: t('TBD') },
-            ]}
+            steps={
+              // A rehearsal has no evening phases or times in live mode.
+              isRehearsalLive
+                ? []
+                : [
+                    { label: t('Load in'), time: event.loadInTime, display: t('TBD') },
+                    { label: t('Soundcheck'), time: event.soundcheckTime, display: t('TBD') },
+                    { label: t('Show'), time: gigTimes.start, display: t('TBD') },
+                    { label: t('End'), time: event.endTime, display: t('TBD') },
+                  ]
+            }
             songs={stageLive.songs}
             bandId={event.band_id ?? undefined}
             songsLoading={setlistLoading}
@@ -2797,6 +2809,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             onToggle: stageLive.setFollowing,
           }}
           onClose={() => setIsStageOpen(false)}
+          exitLabel={isRehearsalLive ? t('Exit live mode') : undefined}
         />
       )}
 
