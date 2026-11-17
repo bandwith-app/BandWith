@@ -27,6 +27,7 @@ Contents
 - **B** lets the client pay the **deposit and the final balance** from the public quote page (`/quote.html`), on Stripe-hosted Checkout. The band is the merchant of record on **its own connected account** (direct charges, Stripe-hosted onboarding, Stripe liable for losses, platform fee 0 in the pilot). The admin splits the money in the app on the existing fee model: members see only their own share. Automatic transfers to members (separate charges and transfers) are a **later, separate phase (B6)**, only after the legal answers, because it moves loss liability to the platform.
 - The money never passes through the app binary: the client pays on the web page, so App Store 3.1.3(e) and Google Play's Payments policy (physical services) apply, and in-app purchase is not used.
 - Every phase ships behind a **server-side, per-band feature flag** with a global **kill switch**, and goes through the same gates as today: failing-first tests, e2e on 10 profiles, XState lifecycle models in the required "E2E lifecycles" check, Maestro for native-only paths, the emulator release gate with `--duo-ok`, axe, 6 languages, Academy and both handbook PDFs, and a crawler re-run.
+- **Releases are manual.** Each phase ends at "release candidate ready + gate passed". The user and their partner decide when to run the web deploy, the APK publish and the TestFlight / store builds (§11).
 
 ## 2. What exists today (the plan builds on it)
 
@@ -230,6 +231,8 @@ Stripe now treats Standard / Express / Custom as **legacy account types** and re
 
 ### 4.8 Rollout
 
+Each step below starts only when the user decides (releases are manual, see §11). The plan prepares each one up to "release candidate ready + gate passed".
+
 1. **Test mode end to end** (sandbox): onboarding with test data, deposit, balance, refund, dispute (test cards), payout simulation, reconciliation. Run on all devices (§8) and by the user.
 2. **Live, internal:** the user's own band with a real €1–€5 payment from the user's own card, a refund, and reconciliation the next day.
 3. **Live pilot:** one real band (the partner's?), flag on for that band only, for 2–4 weeks with a daily reconciliation report to the user.
@@ -357,7 +360,7 @@ From the project rules (`bandwith-no-regressions`, `-integration-test-matrix`, `
    - `split` (planned → paid_manual; planned → held_not_onboarded → transferring → paid → reversed; failed → retried).
    Every state and every transition is covered (100%, as the current 104/104, 129/129).
 4. **Maestro** (native only, `maestro/flows`): live rehearsal with the keyboard (free-text note on iPhone/iPad/Android), Android system Back inside the notes pad, BLE status label; payments: Settings → Payments opens the browser and `app.bandwith.mobile://payments/return` brings the app back to the right screen (iOS and Android), Back during the redirect, QR sheet.
-5. **Release gate:** `scripts/emulator-check.sh` passes on the **exact release commit**, plus the Duo checklist signed with `--duo-ok`. `deploy-web.sh` and `release-android.sh --publish` refuse anything else. Before release, every fixed item is re-checked on the iPhone, iPad and Android emulators and the Duo sim, not only in Playwright.
+5. **Release gate:** `scripts/emulator-check.sh` passes on the **exact release commit**, plus the Duo checklist signed with `--duo-ok`. `deploy-web.sh` and `release-android.sh --publish` refuse anything else. These scripts are run only by the user's decision; a phase ends at "release candidate ready + gate passed". Before a release candidate is reported, every fixed item is re-checked on the iPhone, iPad and Android emulators and the Duo sim, not only in Playwright.
 6. **axe** (`a11y.spec.ts`): the live rehearsal, NotesPad, To practise card, song strip, Settings → Payments, quote page payment states, split sheet. No new exceptions.
 7. **Every Duo posture:** closed portrait and landscape (4 rotations), book, laptop (notes pad in the lower half), open. Every layer inside a hub portals to `<body>`.
 8. **6 languages:** every string through `t()` (the i18n test fails on missing keys). Presets go through `builtins.ts`, push texts through the DB triggers, quote-page strings through `src/quote/strings.ts`, and Stripe Checkout's locale is set from the client's language. Overflow scan in Duo closed / open / laptop for one long language (DE) and IT.
@@ -408,7 +411,7 @@ Estimates are focused working days of implementation sessions, including tests a
 | A3 | 2–3 d | Home crowding on Duo closed; song page conflict with 109 notes | To practise on Home, song page, next rehearsal + live badges; 109 private notes unchanged (tests) |
 | A4 | 1–1.5 d | push spam, untranslated pushes | one summary push per member, 6 languages, prefs respected |
 | A5 | 1.5–2.5 d | preset edits break built-in translations | band presets (if yes), Academy + both PDFs regenerated, crawler clean |
-| **A total** | **12–18 d** | | release 1.1.0 passes the full gate |
+| **A total** | **12–18 d** | | release candidate 1.1.0 ready and the full gate passed (releasing is the user's call) |
 | B0 | user / pro time, 2–6 weeks | no legal owner for the platform; DAC7 or licence answer blocks B6 or even B3 | written answers to §5 B and §6; Stripe platform account in the right name; legacy functions removed |
 | B1 | 3–4 d | webhook wrong in Deno (raw body); grants leak | signature/idempotency/out-of-order tests green; migrations dry-run; nothing visible |
 | B2 | 2–3 d | deep link back fails on one platform; account country wrong | onboarding out and back on iOS/Android/web (Maestro); statuses only from webhook |
@@ -444,13 +447,16 @@ One change to the default order: **start B0 on day 1** and merge **B1 (server-on
 
 1.0.7 ships the Stage mode refactor alone, so any regression in gig Stage mode is caught before rehearsal features land on top of it.
 
-Each release follows the same steps:
+**Releases are never started automatically.** Web deploy, Android APK publish and TestFlight / store builds are triggered by hand by the user and their partner, when they decide. Every phase in this plan ends at **"release candidate ready + gate passed"**; releasing is the user's call, never a phase step.
+
+Each phase ends with the same steps:
 1. CI green and merge.
 2. Emulator pass on the fixed items, plus a smoke run.
 3. `emulator-check.sh` and `--duo-ok` on the exact commit.
-4. One `[deploy]` through `deploy-web.sh`.
-5. `release-android.sh --publish`, then the TestFlight upload via Organizer.
-6. Academy and both handbook PDFs.
+4. Academy and both handbook PDFs updated.
+5. **Release candidate ready:** the commit sha, what's in it, and the gate marker are reported to the user. Stop here.
+
+Only when the user says so: `[deploy]` through `deploy-web.sh`, `release-android.sh --publish`, and the TestFlight upload via Organizer. The "Visible to" column in the table above describes the release candidate's flags, not a date.
 
 ## 12. Sources checked (2026-11-16)
 
