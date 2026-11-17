@@ -123,26 +123,39 @@
   .nt__crop { width: 100%; aspect-ratio: 5 / 4; --r: 20px; }
 }
 
-/* ── Rack: the channel explorer ─────────────────────────────────── */
-.rx { display: grid; gap: 14px; }
-.rx__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 8px; }
-.rx__tab { min-height: 230px; padding: 14px 10px 14px; font: inherit; text-align: left; cursor: pointer; }
-.rx__tab .strip__name { font-size: 14px; }
-.rx__tab .strip__meter { grid-auto-rows: 5px; }
-.strip__meter i.on { background: var(--c); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 50%, transparent); }
-.rx__tab:hover { background: rgba(255,255,255,.06); }
-.rx__tab:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-.rx__tab[aria-selected="true"] { background: rgba(255,255,255,.08); border-color: color-mix(in srgb, var(--c) 55%, transparent); color: var(--fg); }
+/* ── Rack: the channel explorer ─────────────────────────────────
+   One console: the strips are its top edge, the panel is the rest.
+   Only the selected channel is lit (like a solo); the others sit grey
+   at their resting level and warm up a little under the pointer. */
+.rx { display: grid; border-radius: var(--radius); background: #111; border: 1px solid rgba(255,255,255,.07); overflow: hidden; }
+.rx__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; padding: 10px; background: #0b0b0b; border-bottom: 1px solid rgba(255,255,255,.07); }
+.rx__tab { min-height: 0; gap: 9px; padding: 12px 10px; border: 0; border-radius: 14px; background: none; font: inherit; text-align: left; cursor: pointer; }
+.rx__tab .strip__ch { font-size: 10px; }
+.rx__tab .strip__name { font-size: 13px; color: var(--fg-dim); transition: color .3s; }
+.rx__tab .strip__meter { grid-auto-rows: 4px; gap: 3px; }
+.rx__tab .strip__meter i { background: rgba(255,255,255,.045); }
+.rx__tab .strip__meter i.on { background: rgba(255,255,255,.2); }
+.rx__tab .strip__track { min-height: 30px; width: 3px; }
+.rx__tab .strip__cap { width: 22px; height: 10px; margin-left: -11px; bottom: calc(var(--lv) * (100% - 10px)); }
+.rx__tab .strip__cap::after { opacity: .25; }
+.rx__tab:hover { background: rgba(255,255,255,.04); }
+.rx__tab:hover .strip__name { color: var(--fg-2); }
+.rx__tab:hover .strip__meter i.on { background: color-mix(in srgb, var(--c) 45%, #2a2a2a); }
+.rx__tab:focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; }
+.rx__tab[aria-selected="true"] { background: rgba(255,255,255,.07); color: var(--fg); }
+.rx__tab[aria-selected="true"] .strip__ch { color: var(--c); }
+.rx__tab[aria-selected="true"] .strip__name { color: var(--fg); }
+.rx__tab[aria-selected="true"] .strip__meter i.on { background: var(--c); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 50%, transparent); }
 .rx__tab[aria-selected="true"] .strip__cap { background: var(--c); border-color: var(--c); }
-.rx__tab[aria-selected="true"] .strip__cap::after { background: #000; }
+.rx__tab[aria-selected="true"] .strip__cap::after { background: #000; opacity: 1; }
 /* The selected strip's meter is the auto-play timer: no transition lag. */
 .rx.is-auto .rx__tab[aria-selected="true"] .strip__meter i { transition: none; }
 
 .rx__panel {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(28px, 4vw, 64px); align-items: center;
-  padding: clamp(20px, 3vw, 40px); border-radius: var(--radius); background: #111; border: 1px solid rgba(255,255,255,.07);
+  padding: clamp(20px, 3vw, 40px);
 }
-.rx__crop { --r: 24px; width: 100%; aspect-ratio: 16 / 11; }
+.rx__crop { --r: 24px; width: 100%; aspect-ratio: 16 / 10; }
 .rx__copy { transition: opacity .2s linear, transform .35s var(--ease); }
 .rx__copy.is-out { opacity: 0; transform: translateY(6px); }
 .rx__ch { margin: 0 0 14px; font-size: 12px; color: var(--c); }
@@ -156,32 +169,33 @@
 .rx__guide .ico { width: 15px; height: 15px; color: var(--lime); transition: transform .4s var(--ease); }
 .rx__guide:hover .ico { transform: translate(3px, -3px); }
 
-@media (max-width: 1320px) { .rx__tab { min-height: 200px; } .rx__tab .strip__name { font-size: 12px; } }
+@media (max-width: 1320px) { .rx__tab { padding-inline: 8px; } .rx__tab .strip__name { font-size: 11.5px; } }
 /* Narrower: the strips become a row you swipe; the panel stacks. */
 @media (max-width: 1080px) {
-  .rx__strips { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: calc(var(--gutter) * -1); padding: 2px var(--gutter) 6px; }
+  .rx__strips { display: flex; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding: 8px; }
   .rx__strips::-webkit-scrollbar { display: none; }
-  .rx__tab { flex: none; width: 92px; min-height: 176px; scroll-snap-align: center; }
+  .rx__tab { flex: none; width: 84px; scroll-snap-align: center; }
   .rx__panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
   .rx__crop { aspect-ratio: 4 / 5; }
 }
 @media (max-width: 600px) {
+  .rx { border-radius: 28px; }
   .rx__panel { grid-template-columns: minmax(0, 1fr); }
   .rx__crop { aspect-ratio: 16 / 10; }
 }
 /* Short screens (phones and Duo on their side): compact strips, the meter does the talking. */
 @media (max-height: 600px) {
-  .rx__tab { min-height: 0; gap: 10px; }
+  .rx__tab { gap: 8px; padding-block: 10px; }
   .rx__tab .strip__track { display: none; }
   .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
   .rx__crop { aspect-ratio: 1 / 1; }
 }
 @media (max-width: 560px) {
-  .rx__tab { width: 84px; min-height: 0; padding: 12px 10px; gap: 10px; }
+  .rx__tab { width: 76px; padding: 10px 8px; gap: 8px; }
   .rx__tab .strip__track { display: none; }
   .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
-  .rx__tab .strip__name { font-size: 12px; }
-  .rx__panel { padding: 14px 14px 22px; border-radius: 28px; gap: 22px; }
+  .rx__tab .strip__name { font-size: 11px; }
+  .rx__panel { padding: 14px 14px 22px; gap: 22px; }
   .rx__crop { --r: 18px; }
   .rx__line { font-size: 17px; }
 }

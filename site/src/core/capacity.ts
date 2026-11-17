@@ -63,7 +63,7 @@ export async function renderCapacity() {
     el.hidden = false;
     el.classList.toggle('is-full', full);
     const t = el.querySelector('[data-cap-chip-text]');
-    if (t) t.textContent = full ? 'Full · waitlist' : `${spotsLeft(c)} spots left`;
+    if (t) t.textContent = full ? 'Waitlist' : `${spotsLeft(c)} left`;
   });
 
   document.querySelectorAll<HTMLElement>('[data-cap-line]').forEach((el) => {

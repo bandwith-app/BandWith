@@ -44,9 +44,9 @@ export function rackHome() {
   const first = CHANNELS[0];
   const tabs = CHANNELS.map((c, i) =>
     `<button type="button" class="strip rx__tab" role="tab" id="rx-tab-${c.ch}" aria-selected="${i === 0}" aria-controls="rx-panel" tabindex="${i === 0 ? 0 : -1}" data-rx-tab="${i}" style="--c: ${accentVar(c)}">` +
-    `<span class="strip__ch">CH ${pad2(c.ch)}</span>${meter(12)}` +
+    `<span class="strip__ch">CH ${pad2(c.ch)}</span>${meter(8)}` +
     `<span class="strip__track" aria-hidden="true"><span class="strip__cap"></span></span>` +
-    `<span class="strip__name">${esc(c.short)}</span>${c.live ? '<span class="strip__live">Live</span>' : ''}</button>`,
+    `<span class="strip__name">${esc(c.short)}</span></button>`,
   ).join('');
   return (
     `<div class="rx__strips" role="tablist" aria-label="The eleven channels">${tabs}</div>` +
