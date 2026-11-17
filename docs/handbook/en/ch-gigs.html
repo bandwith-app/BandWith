@@ -1,0 +1,542 @@
+<section class="chapter" id="ch-gigs">
+  <h1>Calendar and gigs</h1>
+  <p class="lead">One calendar holds every gig, rehearsal and personal date. You create gigs from here, and run each one from its own workspace: lineup, fees, setlist, rider.</p>
+
+  <h2>The calendar</h2>
+
+  <h3 id="art-calendar-overview" data-roles="admin,member">The calendar</h3>
+  <p>Tap <b class="ui">Calendar</b> in the bottom bar. From top to bottom: the filters, open rehearsal polls, the month grid with its legend, and the <b class="ui">Upcoming</b> list.</p>
+  <figure class="shot" data-shot="calendar-month" data-device="phone"><figcaption>The Calendar tab: type filters, the month grid and the first upcoming cards.</figcaption></figure>
+  <ul>
+    <li>Type filter: <b class="ui">ALL</b>, <b class="ui">GIGS</b>, <b class="ui">REHEARSALS</b>, <b class="ui">QUOTES</b>, <b class="ui">DRAFTS</b>; the selected one shows how many events it holds (<a data-ref="filter-the-calendar">filters</a>).</li>
+    <li>Band filter, above it, only with two or more bands: <b class="ui">All bands</b>, one pill per band, <b class="ui">Personal</b>.</li>
+    <li><b class="ui">Rehearsal scheduling ({count})</b>: polls open for votes and proposals waiting for an admin (<a data-ref="rehearsal-polls-explained">rehearsal polls</a>).</li>
+    <li>Grid: <b class="ui">Previous month</b> / <b class="ui">Next month</b> (the arrows at the top left) or a sideways swipe; <b class="ui">Today</b> at the top right when you are on another month. Each day takes the colour of its event, a small number means several events, and today has a ring.</li>
+    <li>Legend: <b class="ui">gig</b>, <b class="ui">rehearsal</b>, <b class="ui">quote</b> (admins only), <b class="ui">personal</b>; admins with drafts also see <b class="ui">draft · only you</b> (a dashed, faded square).</li>
+    <li><b class="ui">Upcoming</b>: one card per event, soonest first; recurring rehearsals get a card for each of their next dates.</li>
+    <li>At the bottom, <b class="ui">{count} past events</b> with the <b class="ui">Past events archive</b> link; <b class="ui">See all</b> next to <b class="ui">Upcoming</b> opens it too.</li>
+  </ul>
+  <p class="steps-title">The event card</p>
+  <ul>
+    <li>Colour and type (<b class="ui">GIG</b>, <b class="ui">REHEARSAL</b>, <b class="ui">QUOTE</b>, <b class="ui">DRAFT</b>, <b class="ui">PERSONAL</b>) and a status chip such as <b class="ui">CONFIRMED</b>, <b class="ui">WEEKLY</b>, <b class="ui">SENT</b> or <b class="ui">DRAFT · ONLY YOU</b>.</li>
+    <li>The band name (if you are in several bands); date, start time, venue and address.</li>
+    <li>Two meters: on the left <b class="ui">LINEUP</b> (gigs and quotes) or <b class="ui">GOING</b> (rehearsals); on the right <b class="ui">FEE</b> (admins), <b class="ui">YOUR FEE</b> (members), <b class="ui">QUOTE</b> (quotes) or <b class="ui">LENGTH</b> (rehearsals).</li>
+    <li>A warning such as <b class="ui">2 details missing</b> when the venue, date or fee is missing: it opens the <b class="ui">Missing info</b> list, then <b class="ui">Edit</b> opens the event. Admins also see <b class="ui">No end time</b>, <b class="ui">No client info</b> and <b class="ui">No team assigned</b>.</li>
+    <li><b class="ui">Sync</b> with a turning arrow: an event saved offline that has not reached the server yet (<a data-ref="live-updates-and-offline">offline</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Every event of the bands they manage, except gigs they declined themselves; quotes, drafts, the <b class="ui">QUOTES</b> and <b class="ui">DRAFTS</b> filters, band fees on the cards and the create buttons.</div>
+    <div data-role="member">Only the gigs and rehearsals an admin added them to and they have not declined, plus their own personal gigs. Never the admins’ quotes or drafts; cards show <b class="ui">YOUR FEE</b>, never the band fee.</div>
+    <div data-role="deputy">Not on the band calendar: their gigs are in <b class="ui">Deputy gigs</b> (<a data-ref="deputies-on-a-gig">what a deputy sees</a>).</div>
+  </div>
+  <p>With nothing scheduled, the list shows <b class="ui">Nothing scheduled</b>, with <b class="ui">Gig</b>, <b class="ui">Rehearsal</b> and <b class="ui">Quote</b> for admins and <b class="ui">Propose rehearsal</b> for members. With a filter on, <b class="ui">Show All Events</b> clears it.</p>
+
+  <h3 id="art-filter-the-calendar" data-roles="admin,member">Filter the calendar by type or band</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Calendar</b>, tap a type pill: <b class="ui">ALL</b>, <b class="ui">GIGS</b>, <b class="ui">REHEARSALS</b>, <b class="ui">QUOTES</b> or <b class="ui">DRAFTS</b>. The grid, the legend and the list follow it.</li>
+    <li>With two or more bands, tap a pill in the row above: <b class="ui">All bands</b>, a band or <b class="ui">Personal</b>.</li>
+    <li><b class="ui">ALL</b> and <b class="ui">All bands</b> show everything again.</li>
+  </ol>
+  <p>The filters combine (<b class="ui">GIGS</b> + one band = that band’s gigs only). The band filter only narrows: it never shows you more than you can already see.</p>
+  <div class="roles">
+    <div data-role="admin"><b class="ui">QUOTES</b> and <b class="ui">DRAFTS</b> appear for the bands they manage. Picking a band where they are only a member hides those filters, the fees and the create buttons, as for any member.</div>
+    <div data-role="member">Only <b class="ui">ALL</b>, <b class="ui">GIGS</b> and <b class="ui">REHEARSALS</b>.</div>
+  </div>
+  <ul>
+    <li><b class="ui">Personal</b> appears only when you have personal gigs; it has no band fees and no create buttons (personal gigs are added from <b class="ui">Create</b>).</li>
+    <li>If you leave a band, or are down to one, a band filter that no longer exists goes back to <b class="ui">All bands</b> on its own.</li>
+    <li>With one band selected, a new gig lands in that band.</li>
+  </ul>
+
+  <h3 id="art-search-events" data-roles="admin,member">Search events</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Calendar</b>, tap <b class="ui">Search events</b> (the magnifier at the top right) and type: it searches <b class="ui">title, venue, city, client</b> and notes.</li>
+    <li>Narrow with <b class="ui">ALL</b>, <b class="ui">GIGS</b>, <b class="ui">REHEARSALS</b>, <b class="ui">QUOTES</b> (admins only) and <b class="ui">PAST</b>; tap a result to open it.</li>
+    <li><b class="ui">Close search</b> (top left) or Escape closes and clears the search.</li>
+  </ol>
+  <p>Upcoming events come first, soonest first, then past ones, most recent first. With no match: <b class="ui">No matching events</b>.</p>
+  <div class="devnote" data-devices="duoClosed,duoBook,duoLaptop,duoLand">Search is the rail’s <b class="ui">Search</b>. On an open device it stays on the left page and the event you pick opens on the right.</div>
+  <div class="devnote" data-devices="tablet">The event you pick opens beside the list and stays outlined in the results.</div>
+  <div class="devnote" data-devices="android">Back first hides the keyboard, then closes the search. An event opened from the results closes first, back to the results.</div>
+
+  <h3 id="art-add-from-a-free-day" data-roles="admin,member">Open a day or add an event from the grid</h3>
+  <ul>
+    <li>A day with one event opens that event.</li>
+    <li>A day with several events opens the <b class="ui">{count} events</b> panel under the grid: pick the event, or <b class="ui">Close day</b>.</li>
+    <li>An empty day opens <b class="ui">Free day</b>. Admins see <b class="ui">Nothing scheduled yet. Add something for the band:</b> and the <b class="ui">Gig</b>, <b class="ui">Rehearsal</b> and <b class="ui">Quote</b> tiles to start an event on that date.</li>
+    <li><b class="ui">Dismiss date selection</b> (the X) or another tap on the same day closes the panel.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">The tiles start the <a data-ref="create-a-gig">gig</a>, <a data-ref="create-a-rehearsal">rehearsal</a> or <a data-ref="create-a-quote">quote</a> wizard with the date already filled in.</div>
+    <div data-role="member">A free day shows <b class="ui">Nothing scheduled on this day.</b> with no tiles; for a date of your own: <b class="ui">Create</b> → <b class="ui">Add personal gig</b> (<a data-ref="personal-gigs">personal gigs</a>).</div>
+  </div>
+  <aside class="note tip">A dashed, faded day is a saved draft: tapping it opens the draft, not a new event (<a data-ref="gig-drafts">drafts</a>).</aside>
+
+  <h3 id="art-free-slots-and-conflicts" data-roles="admin,member">Band availability and schedule conflicts</h3>
+  <p>When an admin picks a date in the gig wizard, the picker counts how many active members have nothing else on that day, in any of their calendars. Counts only: never who is busy or why.</p>
+  <p class="steps-title">The <b class="ui">Event date</b> picker</p>
+  <ul>
+    <li>Days run from grey to green: the greener, the more members are free. Legend: <b class="ui">Free in band calendars · {n} members</b>.</li>
+    <li>With a start and end time set, only that window counts (someone busy in the morning is free for the evening); a window past midnight runs into the next day.</li>
+    <li>Under the calendar: <b class="ui">{free} of {total} free · no conflicts</b> when everyone is free, otherwise <b class="ui">{free} of {total} free</b>.</li>
+    <li>A day with a band event has a grey dot; if you pick it, the sheet stays open, warns (for example <b class="ui">Dec 12 has a gig</b>) and offers the next free day, one tap away.</li>
+    <li>Shortcuts: <b class="ui">Today</b>, <b class="ui">Tomorrow</b>, <b class="ui">Weekend</b>.</li>
+  </ul>
+  <p class="steps-title">What counts as busy</p>
+  <ul>
+    <li>Gigs and rehearsals not declined, in any band, and personal gigs. Cancelled events and quotes don’t count.</li>
+    <li>A commitment without an end time counts as three hours from its start.</li>
+    <li>When you edit a gig, its own lineup doesn’t count as busy.</li>
+    <li>Bands with a single member get no counts.</li>
+  </ul>
+  <p class="steps-title">Conflicts the app points out</p>
+  <ul>
+    <li>Invitations: the invitation and the RSVP sheet show <b class="ui">No schedule conflicts in your calendar</b> or the other event on that date (for example <b class="ui">You’re already booked</b>) (<a data-ref="answer-a-gig-invitation">answer an invitation</a>).</li>
+    <li>Personal gigs on the date of a band gig or rehearsal: <b class="ui">SCHEDULE CONFLICT</b>, with a button to tell that band’s admin (<a data-ref="personal-gigs">personal gigs</a>).</li>
+  </ul>
+  <aside class="note privacy">Personal gigs are private: bands only see that the person is busy, never the title, venue or fee.</aside>
+  <div class="devnote" data-devices="tablet">In the composer the month sits right in the <b class="ui">Date &amp; time</b> card, with the same counts under it.</div>
+  <div class="devnote" data-devices="duoLaptop">The Planner shows the month’s <b class="ui">Free weekends</b> on the top half (<a data-ref="calendar-on-tablet-and-duo">the calendar on iPad and Duo</a>).</div>
+
+  <h2>Creating and managing a gig</h2>
+
+  <h3 id="art-create-a-gig" data-roles="admin">Create a gig</h3>
+  <p>Only admins create gigs; members log their outside dates as <a data-ref="personal-gigs">personal gigs</a>.</p>
+  <p class="steps-title">Start</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> (the + in the bottom bar) → <b class="ui">New gig</b>; or a free day → <b class="ui">Gig</b>, or <b class="ui">Gig</b> on an empty calendar.</li>
+    <li><b class="ui">Step 1 of 3 · Event &amp; lineup</b> opens. The three segments at the top show the step; tap one to go back to a step you have already reached.</li>
+  </ol>
+  <figure class="shot" data-shot="gig-wizard-step1" data-device="phone"><figcaption>Step 1 of the gig wizard: title, client, event type, lineup preset and roster.</figcaption></figure>
+  <p class="steps-title">Step 1 · Event &amp; lineup</p>
+  <ol class="steps">
+    <li><b class="ui">Event title</b>: left empty, the app builds one from the type and the client (for example "Wedding - Client A"), or "Club Gig" without a client.</li>
+    <li><b class="ui">Client / promoter</b> (optional).</li>
+    <li><b class="ui">Event type</b>, required: <b class="ui">Wedding</b>, <b class="ui">Corporate</b>, <b class="ui">Private party</b>, <b class="ui">Festival</b>, <b class="ui">Club</b>, <b class="ui">Pub</b>, <b class="ui">Other</b>.</li>
+    <li><b class="ui">Lineup preset</b> (<b class="ui">Solo</b>, <b class="ui">Duo</b>, <b class="ui">Trio</b>, <b class="ui">Full band</b>) or tick musicians one by one; <b class="ui">Customize</b> opens the roster, <b class="ui">Done</b> folds it.</li>
+    <li>A fee next to each name, or <b class="ui">Fee to be discussed (TBD)</b>; an <b class="ui">Extra band fee / services</b> if needed (<a data-ref="gig-lineup-and-fees">lineup and fees</a>). Then <b class="ui">Next</b>.</li>
+  </ol>
+  <p class="steps-title">Step 2 · Date &amp; venue</p>
+  <ol class="steps">
+    <li><b class="ui">Venue / location</b>: search and pick a result, or a quick chip: <b class="ui">TBD</b>, <b class="ui">Main Stage</b>, <b class="ui">Private Venue</b>.</li>
+    <li><b class="ui">Event date</b>, the only required field of the step; the picker shows who is free (<a data-ref="free-slots-and-conflicts">availability</a>).</li>
+    <li><b class="ui">Start time</b> and <b class="ui">End time</b> (20:00 and 23:30 to start with); the length shows next to <b class="ui">End time</b>.</li>
+    <li><b class="ui">Add</b> under <b class="ui">Load-in (optional)</b> and <b class="ui">Soundcheck (optional)</b> for call times. Then <b class="ui">Next</b>.</li>
+  </ol>
+  <p class="steps-title">Step 3 · Review &amp; confirm</p>
+  <ol class="steps">
+    <li>The summary (title, date and times, venue, lineup); <b class="ui">Edit lineup</b> and <b class="ui">Edit date &amp; venue</b> go back.</li>
+    <li><b class="ui">Setlist &amp; songs</b> (optional): a saved setlist from <b class="ui">Load from templates</b>, songs from the library with <b class="ui">Add songs</b>, more sets with <b class="ui">Add set</b> (<a data-ref="build-a-setlist">build a setlist</a>).</li>
+    <li><b class="ui">Logistics, guests &amp; setting</b> (optional): <b class="ui">Setting</b> (<b class="ui">Indoor</b>/<b class="ui">Outdoor</b>), <b class="ui">Estimated guests</b>, <b class="ui">Performance duration</b>.</li>
+    <li><b class="ui">Tasks &amp; band notes</b> (optional): a list from <b class="ui">Load a to-do list</b>, tasks typed and added with <b class="ui">Add</b>, <b class="ui">Band notes</b> for directions.</li>
+    <li><b class="ui">Create gig</b>.</li>
+  </ol>
+  <p class="steps-title">After Create gig</p>
+  <ul>
+    <li>The gig is saved as confirmed and appears on the calendar of the whole lineup.</li>
+    <li>If the admin is on the lineup, they are confirmed; everyone else is pending and gets an invitation showing only their own fee (<a data-ref="gig-notifications">notifications</a>). The admin gets an inbox note: the gig is waiting for the others to confirm.</li>
+    <li>If the save fails, the wizard stays open with what was typed, and the gig is kept in the drafts too.</li>
+    <li>With no connection the gig is saved on the device: <b class="ui">Saved offline • Will sync when connected</b>.</li>
+  </ul>
+  <aside class="note tip">Closing the wizard after typing something asks <b class="ui">Save this gig as a draft?</b> (<a data-ref="gig-drafts">drafts</a>).</aside>
+  <div class="devnote" data-devices="tablet">A new gig opens as a one-screen composer with a live preview instead of the three steps (<a data-ref="create-a-gig-on-ipad">gigs on iPad</a>).</div>
+  <div class="devnote" data-devices="duoBook,duoLand">On step 1 the left page shows the gig as the band will see it, filling in as you type; on steps 2 and 3 the calendar stays on the left.</div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Close gig wizard</b> sits in the rail, under the clock.</div>
+  <div class="devnote" data-devices="android">The back gesture closes the open song picker first, then offers to save a draft.</div>
+
+  <h3 id="art-gig-lineup-and-fees" data-roles="admin">Lineup and fees in the gig wizard</h3>
+  <ul>
+    <li><b class="ui">Lineup preset</b> picks the first 1, 2 or 3 people of the roster, or everyone with <b class="ui">Full band</b>; a preset always includes the admin. Their row, <b class="ui">You · {role}</b>, starts ticked: untick it when the admin doesn’t play. They still manage the gig, with no fee, invitation or RSVP of their own.</li>
+    <li>The card reads <b class="ui">Roster · {count} of {total}</b>; each musician is ticked one by one, with the instrument from the band roster (or <b class="ui">Admin</b> / <b class="ui">Member</b> when none is set).</li>
+    <li>Folded, the card shows up to five avatars, the musician count and <b class="ui">{amount} est. total</b>.</li>
+  </ul>
+  <p class="steps-title">Each musician’s fee</p>
+  <ul>
+    <li>Their default fee from the band roster, when they have one; otherwise the band’s pricing settings: the core-member rate for the first core members, the session-musician rate for the others (<a data-ref="payouts-due">payments and income</a>).</li>
+    <li>Any amount can be typed in the <b class="ui">Fee for {name}</b> field.</li>
+  </ul>
+  <p class="steps-title">Band money</p>
+  <ul>
+    <li><b class="ui">Extra band fee / services</b>: what the band charges on top of the fees; chips such as <b class="ui">+ Sound (€300)</b> add the active services from the pricing settings.</li>
+    <li>Band fee = musicians’ fees + extra; whatever is not paid out to musicians is the <b class="ui">Band fund</b>.</li>
+    <li><b class="ui">Fee to be discussed (TBD)</b>: the date is confirmed now, the money later. The fields hide, every fee is saved as 0, invitations say the fee is to be discussed and the gig shows <b class="ui">To be discussed</b>.</li>
+  </ul>
+  <aside class="note privacy">Each musician only ever sees their own fee, everywhere (invitation, card, gig). Other fees, the extra and the band total stay with admins.</aside>
+  <aside class="note tip">If a musician’s fee is changed later, only that musician is notified.</aside>
+
+  <h3 id="art-gig-times-and-venue" data-roles="admin,member">Gig times, venue and logistics</h3>
+  <ul>
+    <li><b class="ui">Start time</b> and <b class="ui">End time</b> frame the show; an end earlier than the start means it runs past midnight (21:00–02:00 is one gig that ends the next morning).</li>
+    <li>A gig stays upcoming until its day is over or, past midnight, until the show really ends; then it becomes a past gig.</li>
+    <li><b class="ui">Load-in (optional)</b> and <b class="ui">Soundcheck (optional)</b> are call times: they appear as <b class="ui">LOAD IN</b> and <b class="ui">SOUNDCHECK</b> on the gig, on the member’s Home card and in Stage mode. Nothing is invented: a time nobody set reads <b class="ui">TBD</b>.</li>
+    <li><b class="ui">Venue / location</b>: pick a suggestion, with one tap even with the keyboard up. A named place fills in the venue and its street; a plain address becomes the venue itself. City, region, postcode and country are filled in too.</li>
+    <li>On the gig, the venue name (or <b class="ui">MAP</b>) opens the maps app; <b class="ui">Logistics &amp; notes</b> has <b class="ui">Copy</b> for the full address and <b class="ui">Maps</b>.</li>
+    <li>Leave the venue empty or <b class="ui">TBD</b> when it isn’t known: the card warns <b class="ui">Missing venue</b>.</li>
+    <li>For a gig in the next seven days with a city, the wizard shows <b class="ui">Forecast: {temp}° {sky}</b> and the sunset time; the gig’s header shows the weather until the day has passed.</li>
+    <li><b class="ui">Setting</b>: <b class="ui">Indoor</b> or <b class="ui">Outdoor</b>; editing keeps the saved value (also <b class="ui">HYBRID</b>, from quotes) unless you change it.</li>
+    <li><b class="ui">Estimated guests</b>: minus and plus (steps of 10) or the chips 50, 100, 150, 200, <b class="ui">300+</b>. <b class="ui">Performance duration</b>: from 15 minutes to 6 hours.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sets and changes every field.</div>
+    <div data-role="member">Sees the times, venue, address, setting, guests, dress code and band notes; is notified when the date, times, call times or venue change.</div>
+    <div data-role="deputy">Sees the date, load-in, soundcheck, show times, venue, city and address of the gig they are asked for.</div>
+  </div>
+
+  <h3 id="art-create-a-gig-on-ipad" data-roles="admin">Create a gig on iPad</h3>
+  <p>On iPad (or another wide window without the dual-screen rail) <b class="ui">New gig</b> opens the composer: the same fields, the same gig as the step wizard. Once created, the gig is changed right on its page (<a data-ref="edit-a-gig">edit a gig</a>).</p>
+  <figure class="shot" data-shot="ipad-gig-composer" data-device="tablet"><figcaption>The iPad composer: numbered cards on the left, the live preview on the right.</figcaption></figure>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">New gig</b>.</li>
+    <li><b class="ui">1 Event</b>: type, title, client.</li>
+    <li><b class="ui">2 Date &amp; time</b>: a day in the month, <b class="ui">Start time</b> and <b class="ui">End time</b>; under the month, how many members are free.</li>
+    <li><b class="ui">3 Venue</b>: the venue search.</li>
+    <li><b class="ui">4 Lineup</b>: a preset or ticked musicians, with their fees to check.</li>
+    <li><b class="ui">5 Fee</b>: <b class="ui">Fixed</b> or <b class="ui">TBD</b>; it shows <b class="ui">Musicians {amount}</b> and <b class="ui">Band {amount}</b>.</li>
+    <li>Extras from the buttons under the cards: <b class="ui">Setlist</b>, <b class="ui">Rider &amp; stage</b>, <b class="ui">Logistics</b> (call times, setting, guests, duration), <b class="ui">Tasks</b>; each opens a sheet that closes with <b class="ui">Done</b>.</li>
+    <li>Check the <b class="ui">Live preview</b> (<b class="ui">As the band sees it</b>) and the checklist under it.</li>
+    <li><b class="ui">Create gig</b>, or <b class="ui">Save draft</b> to finish later.</li>
+  </ol>
+  <p><b class="ui">Create gig</b> needs a type and a date. In landscape the cards and the preview sit side by side.</p>
+  <aside class="note tip">With <b class="ui">Rider &amp; stage</b> the stage plot and the rider are prepared before the gig exists, and saved with it when you create it (<a data-ref="rider-and-stage">rider and stage plot</a>).</aside>
+
+  <h3 id="art-gig-drafts" data-roles="admin">Save and continue a gig draft</h3>
+  <ol class="steps">
+    <li>Close the wizard after typing something: the X (<b class="ui">Close gig wizard</b>), <b class="ui">Cancel</b> or Back.</li>
+    <li>In <b class="ui">Save this gig as a draft?</b>: <b class="ui">Save draft</b> saves it, <b class="ui">Discard</b> throws it away, <b class="ui">Keep editing</b> goes back.</li>
+    <li>To pick it up: <b class="ui">Drafts</b> on Home, its day in the calendar (dashed and faded) or the <b class="ui">DRAFTS</b> filter. The sheet shows what it holds and <b class="ui">Still a draft: only you can see it.</b></li>
+    <li><b class="ui">Continue editing</b> reopens the wizard where you left it; <b class="ui">Delete draft</b> and then <b class="ui">Delete</b> removes it.</li>
+  </ol>
+  <aside class="note privacy">Drafts belong to the admin who made them: members get no notification and don’t see the gig until it is created.</aside>
+  <ul>
+    <li>Drafts are kept on the device (they work offline) and sync to the admin’s other devices.</li>
+    <li>A draft without a date appears only under <b class="ui">Drafts</b> on Home.</li>
+    <li>A failed save becomes a draft automatically; once the gig is created, the draft is removed.</li>
+    <li>Reopening a draft and choosing <b class="ui">Delete draft</b> in the leave sheet removes it from Drafts too.</li>
+  </ul>
+  <aside class="note warning">Deleting a draft can’t be undone; nothing had been sent to the band, so nobody else is affected.</aside>
+
+  <h3 id="art-edit-a-gig" data-roles="admin">Edit a gig</h3>
+  <p>A gig is changed right on its page, one part at a time.</p>
+  <ol class="steps">
+    <li>Open the gig. The admin finds the controls on the page itself: the pencil at the top, the pencil next to the venue, the time tiles and <b class="ui">EDIT</b> next to a section.</li>
+    <li>A sheet opens with only that part, for example <b class="ui">Title, date &amp; times</b>, <b class="ui">Venue &amp; location</b> or <b class="ui">Lineup</b>.</li>
+    <li>Make the changes and tap <b class="ui">Save</b>, which stays off until something changed. <b class="ui">Cancel</b>, ✕, Back or a swipe down closes the sheet and leaves the gig as it was; if you changed something, <b class="ui">Save your changes?</b> asks first: <b class="ui">Save changes</b>, <b class="ui">Discard</b> or <b class="ui">Keep editing</b>. Opening another part of the gig asks the same.</li>
+    <li>The setlist is edited right in the <b class="ui">SETLIST</b> section, with its own <b class="ui">Save</b> (<a data-ref="edit-a-gig-setlist">edit the setlist</a>).</li>
+  </ol>
+  <p class="steps-title">What each part changes</p>
+  <ul>
+    <li><b class="ui">Title, date &amp; times</b> (the pencil at the top, or a time tile): title, event type, date, start and end, load-in and soundcheck.</li>
+    <li><b class="ui">Venue &amp; location</b> (the pencil next to the venue, or the venue when it reads <b class="ui">TBD</b>): venue name, address, city and <b class="ui">Setting</b>.</li>
+    <li><b class="ui">Lineup</b> (<b class="ui">EDIT</b> next to <b class="ui">LINEUP</b>, or <b class="ui">ADD MUSICIAN</b>): a <b class="ui">Lineup preset</b> or who plays, with their fees. The pencil on the fee card (<b class="ui">Edit fee</b>): the fees, <b class="ui">Fee to be discussed (TBD)</b> and the extra band fee.</li>
+    <li><b class="ui">TASKS</b> and <b class="ui">CLIENT &amp; NOTES</b>: <b class="ui">EDIT</b> to add, rename or delete to-dos (or <b class="ui">Load a to-do list</b>) and to change the client and the <b class="ui">Notes for the band</b>.</li>
+  </ul>
+  <p class="steps-title">What the band is told</p>
+  <ul>
+    <li>New musicians get an invitation and anyone taken off the lineup is told; everyone already on it keeps their answer.</li>
+    <li>A new date, time, call time or venue: one <b class="ui">Gig updated</b> notification listing the changes.</li>
+    <li>A changed fee: notified to that musician only.</li>
+    <li>Setlist: one notification with the songs moved, added or removed.</li>
+  </ul>
+  <aside class="note tip">Past gigs are edited the same way. Members see the page without the pencils and without <b class="ui">EDIT</b>.</aside>
+  <p>A quote opens the <a data-ref="create-a-quote">quote</a> editor instead; a personal gig opens its own form (<a data-ref="personal-gigs">personal gigs</a>).</p>
+
+  <h3 id="art-delete-a-gig" data-roles="admin">Delete a gig</h3>
+  <ol class="steps">
+    <li>At the bottom of the gig, <b class="ui">DELETE</b> (on a past gig: <b class="ui">REMOVE FROM ARCHIVE</b>).</li>
+    <li><b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b>.</li>
+  </ol>
+  <ul>
+    <li>The gig leaves every calendar; you see <b class="ui">Event deleted</b>.</li>
+    <li>Everyone on the lineup who had not declined gets <b class="ui">Gig cancelled</b>; deputies who were asked are told too.</li>
+    <li>The gig’s own setlist is deleted with it, unless another event uses it; the songs stay in the library.</li>
+    <li>A quote the gig came from stays in Quotes as a record, without the link to the gig.</li>
+  </ul>
+  <aside class="note warning">Deleting can’t be undone. There is no separate "cancelled" status: deleting is how you call off a gig.</aside>
+  <aside class="note tip">If the gig goes back to negotiation, <b class="ui">REVERT TO QUOTE</b> takes it off the musicians’ calendars but keeps their answers (<a data-ref="create-a-quote">quotes</a>).</aside>
+  <p>Without a connection the delete fails with <b class="ui">No connection. Try again when you are online.</b> and the gig stays open.</p>
+
+  <h2>The gig workspace</h2>
+
+  <h3 id="art-gig-workspace" data-roles="admin,member">The gig workspace</h3>
+  <p>Tapping a gig anywhere (calendar, Home, search, a notification) opens its workspace: the top in the gig colour, the content on a sheet below.</p>
+  <figure class="shot" data-shot="gig-workspace-admin" data-device="phone"><figcaption>A gig as the admin sees it: header, call times, readiness and fee.</figcaption></figure>
+  <p class="steps-title">The header</p>
+  <ul>
+    <li>Back on the left. On the right: <b class="ui">Help for this screen</b> (?), the pencil (<b class="ui">Edit title, date &amp; times</b>, admins) and <b class="ui">Open stage mode</b> (play) on upcoming band gigs, filled on the gig day (<a data-ref="stage-mode">Stage mode</a>).</li>
+    <li>Once you scroll, this bar stays pinned at the top, so Back is always in reach: over the header it keeps the gig colour, further down it shows the gig’s title.</li>
+    <li>Chips: <b class="ui">GIG</b> (or <b class="ui">PAST GIG</b>), <b class="ui">CONFIRMED</b>, <b class="ui">INVITE PENDING</b> while your answer is open, the event type (<b class="ui">WEDDING</b>, <b class="ui">CLUB</b>…), the band name.</li>
+    <li>The title, the day in large dots, the month; the venue (with <b class="ui">MAP</b> to open maps), the address, the date with start and end time.</li>
+    <li>The weather for the date; on a past gig, <b class="ui">ATTENDANCE</b> with the number of members.</li>
+  </ul>
+  <p class="steps-title">The sections, in order</p>
+  <ul>
+    <li>If your invitation is open: <b class="ui">Your RSVP</b> · <b class="ui">Are you in?</b> with <b class="ui">ACCEPT</b> and <b class="ui">DECLINE</b> (<a data-ref="answer-a-gig-invitation">answering</a>).</li>
+    <li>The <b class="ui">LOAD IN</b>, <b class="ui">SOUNDCHECK</b> and <b class="ui">SHOW</b> tiles.</li>
+    <li><b class="ui">SHOW READINESS</b> on upcoming gigs (<a data-ref="show-readiness">readiness</a>).</li>
+    <li><b class="ui">GEAR KIT</b>: the inventory kit going to this gig (<a data-ref="gear-kits">kits</a>).</li>
+    <li>The fee card: <b class="ui">Band fee</b> with <b class="ui">FEE &amp; PAYOUTS</b> (admins), <b class="ui">Your fee</b> with <b class="ui">PAYOUT DETAILS</b> (members) (<a data-ref="fee-and-payouts-on-a-gig">fee and payouts</a>).</li>
+    <li><b class="ui">LINEUP · {confirmed}/{total}</b>: who plays and their answers; a tap or <b class="ui">DETAILS</b> opens the full list.</li>
+    <li><b class="ui">RIDER &amp; STAGE</b> with <b class="ui">OPEN</b> (<a data-ref="rider-and-stage">rider</a>); <b class="ui">SETLIST</b> with the song count (<a data-ref="gig-setlist">setlist</a>).</li>
+    <li><b class="ui">TASKS</b> with <b class="ui">{done} of {total} done</b>: a tap ticks the task.</li>
+    <li><b class="ui">CLIENT &amp; NOTES</b> (admins) or <b class="ui">NOTES</b>: a tap or <b class="ui">DETAILS</b> opens <b class="ui">Logistics &amp; notes</b> (venue, copy address, client contacts, dress code, setting, guests, notes). There admins have <b class="ui">EDIT</b> to change the client and the notes.</li>
+    <li>Actions. Admins: <b class="ui">EVENT CHAT</b>, <b class="ui">REVERT TO QUOTE</b>, <b class="ui">DELETE</b>; everything else is changed in its own section (<a data-ref="edit-a-gig">edit a gig</a>). Members: <b class="ui">DROP OUT</b>, <b class="ui">EVENT CHAT</b> (<a data-ref="event-and-rehearsal-chats">chat</a>).</li>
+  </ul>
+  <p>On a past gig the header turns grey with <b class="ui">PAST GIG</b> and <b class="ui">COMPLETED</b>; the actions become <b class="ui">VIEW SETLIST</b> and <b class="ui">EVENT CHAT</b> (admins, and members who accepted), plus <b class="ui">REMOVE FROM ARCHIVE</b> for admins, who still change the gig from its sections. Stage mode, readiness and the find-a-deputy button are gone.</p>
+  <div class="devnote" data-devices="tablet">Under the time tiles, band gigs get the <b class="ui">OVERVIEW</b>, <b class="ui">SETLIST</b>, <b class="ui">RIDER &amp; STAGE</b> and, for admins, <b class="ui">MONEY</b> tabs; in a wide window the overview runs in two columns. The gig opens beside the calendar.</div>
+  <div class="devnote" data-devices="duoClosed">Back and <b class="ui">Open stage mode</b> move into the rail; on the gig day Stage mode is its main action.</div>
+  <div class="devnote" data-devices="duoBook,duoLand">The gig opens on the right page; a sheet such as <b class="ui">Fee &amp; payouts</b> takes the right page and the gig moves to the left.</div>
+  <div class="devnote" data-devices="duoLaptop">The title and time tiles sit on the top half, the rest on the bottom half; Stage mode turns into a floor wedge.</div>
+
+  <h3 id="art-show-readiness" data-roles="admin,member">Show readiness</h3>
+  <p>Upcoming band gigs show <b class="ui">SHOW READINESS · {done}/{total}</b>, one line per check, worded for what is done or still open. Every open line is marked <b class="ui">To do</b>; the lines follow their urgency: time, venue, lineup, setlist, contract, deposit, rider, lyrics, tasks. Home shows the same count under the next gig, with the most urgent open line.</p>
+  <table class="grid">
+    <thead><tr><th>Done</th><th>Still open</th><th>Done when</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Start time set</b></td><td><b class="ui">No start time yet</b></td><td>The gig has a real start time. Listed only while missing.</td></tr>
+      <tr><td><b class="ui">Venue set</b></td><td><b class="ui">No venue yet</b></td><td>The gig has a venue other than TBD. Listed only while missing.</td></tr>
+      <tr><td><b class="ui">Lineup · {done} of {total} confirmed</b></td><td>The same line with fewer confirmed; <b class="ui">No musicians on the lineup yet</b> if the lineup is empty</td><td>Everyone who has not declined has confirmed.</td></tr>
+      <tr><td><b class="ui">Setlist · {count} songs</b></td><td><b class="ui">No setlist yet</b></td><td>At least one song.</td></tr>
+      <tr><td><b class="ui">Lyrics &amp; charts · every song covered</b></td><td><b class="ui">Lyrics &amp; charts · {done} of {total} songs</b></td><td>Every setlist song has lyrics or a chord chart. Only when the setlist has songs.</td></tr>
+      <tr><td><b class="ui">Rider v{version} · sent to the venue</b></td><td><b class="ui">Rider v{version} · not sent yet</b> or <b class="ui">No rider yet</b></td><td>The rider link or PDF has been shared with the venue.</td></tr>
+      <tr><td><b class="ui">Contract signed</b></td><td><b class="ui">Contract not signed yet</b> or <b class="ui">No contract yet</b></td><td>The gig’s contract is signed (admins only).</td></tr>
+      <tr><td><b class="ui">Deposit paid</b></td><td><b class="ui">Deposit not paid yet</b></td><td>The deposit is paid, when one is due (admins only).</td></tr>
+      <tr><td><b class="ui">To-dos · {done} of {total} done</b></td><td>The same line, with fewer tasks ticked</td><td>Every task is ticked. Only when the gig has tasks.</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin">Every check, contract and deposit included. Tapping a line opens the lineup, the setlist (also from the lyrics line), the rider or <b class="ui">Contracts &amp; docs</b>. <b class="ui">No contract yet</b> opens a new contract already filled in for this gig (title, event, client, email and date): check it and tap <b class="ui">Create contract</b>. Back, also the phone’s Back and the Duo rail’s, returns to the gig.</div>
+    <div data-role="member">The same checks, without the contract and the deposit, which are the band’s business.</div>
+  </div>
+  <p>The section appears only once the lineup and the setlist have loaded, so it never flashes a wrong "no setlist".</p>
+
+  <h3 id="art-gig-setlist" data-roles="admin,member">Edit a gig’s setlist from the gig</h3>
+  <ol class="steps">
+    <li>In an upcoming band gig, scroll to <b class="ui">SETLIST</b>.</li>
+    <li>Long-press and drag to move a song; the X removes it; <b class="ui">Add songs</b> picks from the library (with several sets, you choose the set first).</li>
+    <li><b class="ui">Unsaved changes</b> appears: <b class="ui">Save</b> or <b class="ui">Cancel</b>.</li>
+  </ol>
+  <p>Saving sends the lineup one notification, for example "2 songs moved, 1 added". Leaving with unsaved changes asks <b class="ui">Save the setlist changes?</b>.</p>
+  <ul>
+    <li>Numbers that run across sets (01, 02…), title, artist, key, length, and <b class="ui">LYRICS</b> when there are lyrics or a chart.</li>
+    <li><b class="ui">SET FLOW · ENERGY</b>: a dot column per song, as tall as the song is long, from <b class="ui">OPENER → ENCORE</b> (2 to 24 songs); <b class="ui">{duration} TOTAL</b> for the set.</li>
+    <li>The song count opens <b class="ui">Setlist · {count}</b> in a sheet.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Edits it here: reorder, <b class="ui">Add songs</b>, or <b class="ui">Load from templates</b> while it is empty (also on a past gig, in the sheet).</div>
+    <div data-role="member">Read-only. Without a setlist: <b class="ui">The band admin has not attached a setlist yet.</b></div>
+  </div>
+  <aside class="note tip">The setlist is kept on the phone: at a venue with no signal, Stage mode still has the songs. If it was never loaded, the section says so.</aside>
+  <p>Setlists from scratch, sets and templates: <a data-ref="build-a-setlist">build a setlist</a>.</p>
+
+  <h3 id="art-rider-and-stage" data-roles="admin,member">Rider and stage plot</h3>
+  <p>Every band gig has <b class="ui">RIDER &amp; STAGE</b>: <b class="ui">OPEN</b> shows the rider, the stage plot, the input list and who brings what.</p>
+  <p class="steps-title">Set it up (admins)</p>
+  <ol class="steps">
+    <li><b class="ui">Technical rider</b>: <b class="ui">CREATE RIDER</b> if the gig has none.</li>
+    <li><b class="ui">Stage plot</b> → <b class="ui">EDIT</b>. Under the plot, the first row of chips (<b class="ui">Add a musician</b>) adds an instrument: vocals, guitar, bass, keys, drums, percussion, sax or trumpet. The second (<b class="ui">Add gear</b>) adds <b class="ui">Other musician</b>, a wedge, a speaker or a DI box. Holding an empty spot gives the same choices right there.</li>
+    <li>Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. A tap on an item changes its short code and caption, or removes it. Set <b class="ui">Layout name</b>, <b class="ui">Stage width (m)</b> and <b class="ui">Stage depth (m)</b> and tap <b class="ui">SAVE PLOT</b>. <b class="ui">+ NEW LAYOUT</b> and <b class="ui">DELETE LAYOUT</b> manage several layouts.</li>
+    <li>Saving the plot fills the input list for you: each instrument adds its usual channels in desk order (drums: Kick, Snare, OH L and OH R; bass: one DI channel; a DI box: its own line). Removing an item removes its channels.</li>
+    <li>Next to <b class="ui">Input list</b>, <b class="ui">EDIT LIST</b> to fine-tune: <b class="ui">ADD CHANNEL</b>, change <b class="ui">SOURCE</b>, <b class="ui">MIC / DI</b> and <b class="ui">Who</b>, drag to reorder, <b class="ui">SAVE LIST</b>. These changes stay when the plot is saved again. <b class="ui">BUILD FROM LINEUP</b> in the editor starts again from the lineup’s instruments.</li>
+    <li>With no channels yet, <b class="ui">BUILD FROM LINEUP</b> under <b class="ui">Input list</b> creates the list. If the lineup changes later, the list offers <b class="ui">UPDATE FROM LINEUP</b> or <b class="ui">KEEP THIS LIST</b>; if the list was edited by hand, BandWith asks first (<b class="ui">Rebuild the input list?</b>), because those changes would be replaced.</li>
+    <li>Next to <b class="ui">Who brings what</b>, <b class="ui">EDIT</b>: check the list suggested from the lineup, fill in <b class="ui">BAND BRINGS</b> and <b class="ui">VENUE PROVIDES</b> (one item per line), tick <b class="ui">The venue agreed to this</b> once it is settled, <b class="ui">SAVE</b>.</li>
+  </ol>
+  <p class="steps-title">Send it to the venue</p>
+  <ul>
+    <li><b class="ui">SHARE LINK WITH THE VENUE</b> (or <b class="ui">Share rider link</b>) for the link, <b class="ui">PDF</b> / <b class="ui">Share rider PDF</b> for a file.</li>
+    <li>The rider shows <b class="ui">SENT TO THE VENUE {date}</b> and readiness turns to <b class="ui">Rider v{version} · sent to the venue</b>. Sharing the PDF counts as sent too; saving it to the phone does not.</li>
+    <li>The venue opens the link in a browser, with no account, and sees the rider, the gig’s times and venue, the stage plot, the input list and who brings what, in its own language when available. Never the client or any fee.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Creates and edits everything, the stage plot included, on every device, and shares the link. The plot of a past gig is read-only.</div>
+    <div data-role="member">Everything read-only, plus <b class="ui">Share rider PDF</b>. Before anything is set up: <b class="ui">The band hasn’t set up the stage for this gig yet.</b></div>
+  </div>
+  <div class="devnote" data-devices="tablet">Rider &amp; stage is a tab of the gig, laid out as a board; in the composer it can be prepared before the gig is created.</div>
+
+  <h3 id="art-fee-and-payouts-on-a-gig" data-roles="admin,member">Fee and payouts on a gig</h3>
+  <ol class="steps">
+    <li>The admin taps <b class="ui">FEE &amp; PAYOUTS</b> on the fee card (on iPad, the <b class="ui">MONEY</b> tab).</li>
+    <li>The <b class="ui">Admin only</b> sheet shows the <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> with the amount still owed, and <b class="ui">MUSICIANS · {paid} OF {total} PAID</b>.</li>
+    <li>The round <b class="ui">{name} paid</b> switch marks a musician paid or not; <b class="ui">MARK ALL AS PAID</b> marks everyone.</li>
+    <li>The pencil (<b class="ui">Edit fee</b>) changes the fees, <b class="ui">Fee to be discussed (TBD)</b> or the extra band fee.</li>
+  </ol>
+  <ul>
+    <li>Fee card, admins: <b class="ui">Band fee</b>, <b class="ui">Musician payouts ({count})</b>, <b class="ui">Band fund</b> (what stays with the band), <b class="ui">Deposit</b> with its share and <b class="ui">paid</b>; tags <b class="ui">DEPOSIT DUE</b> and <b class="ui">To be discussed</b> (Fee TBD).</li>
+    <li>Members: <b class="ui">Your fee</b> and <b class="ui">PAYOUT DETAILS</b>, which opens <b class="ui">Your assigned fee</b> with a paid or not paid badge.</li>
+    <li>After a band gig has taken place, every confirmed musician with a fee above zero and not marked paid is due; pending and declined musicians are owed nothing. Shows that end after midnight count only once they are over.</li>
+    <li>On Home, admins see <b class="ui">Payouts due</b> with <b class="ui">Review payouts</b> (opens the gig on this sheet); members see <b class="ui">Your payout</b> with <b class="ui">View payout</b>.</li>
+  </ul>
+  <aside class="note privacy">A member only ever sees their own fee and payout; the band fee, other musicians’ fees, the band fund and the deposit are for admins.</aside>
+  <aside class="note tip">Here the band pays its musicians. The client paying the band, invoices and the ledger are in <a data-ref="payouts-due">payments and income</a>.</aside>
+
+  <h2>Answers, drop-outs and deputies</h2>
+
+  <h3 id="art-answer-a-gig-invitation" data-roles="member,admin">Answer a gig invitation</h3>
+  <p>Anyone added to a gig gets a <b class="ui">Gig invitation</b> notification and answers from the gig, the inbox or the RSVP sheet.</p>
+  <ul>
+    <li>From the gig (header <b class="ui">INVITE PENDING</b>): <b class="ui">Your RSVP</b> · <b class="ui">Are you in?</b> → <b class="ui">ACCEPT</b> or <b class="ui">DECLINE</b>. If you answered maybe in the past, the card says <b class="ui">Your answer was Maybe. Choose GOING or CAN'T.</b>: pick one of the two.</li>
+    <li>From the inbox (the bell → <b class="ui">Gig invitation</b>): <b class="ui">Invitation details</b> with the date, <b class="ui">Timings</b>, venue and <b class="ui">Allocated fee</b> (your own fee); <b class="ui">Schedule conflict</b> or <b class="ui">No schedule conflicts in your calendar</b>; then <b class="ui">Accept event</b> or <b class="ui">Decline</b>. <b class="ui">Add to Google Calendar</b> adds the date to your calendar.</li>
+    <li>From the RSVP sheet <b class="ui">Can you make it?</b>: date, time, <b class="ui">Timings</b>, venue, <b class="ui">Your fee</b> and <b class="ui">Lineup so far · {count} of {total} in</b> (who plays, with instrument and answer). Choose <b class="ui">GOING</b> or <b class="ui">CAN’T MAKE IT</b>, add a <b class="ui">Note for the band (optional)</b> if you like, and send with <b class="ui">Send RSVP</b>.</li>
+  </ul>
+  <ul>
+    <li>Accepting: <b class="ui">You’re confirmed!</b> and a notice to whoever created the gig.</li>
+    <li>Declining: <b class="ui">You dropped out of this event.</b>, a notice to every admin of the band that a replacement is needed, and the gig leaves your calendar.</li>
+  </ul>
+  <aside class="note privacy">The invitation shows only the recipient’s own fee (or <b class="ui">to be discussed</b>); the lineup list shows names, instruments and answers, never fees.</aside>
+  <p>A quote can ask about your availability for a date: <b class="ui">Availability check</b> · <b class="ui">Are you free?</b> with <b class="ui">I’M FREE</b> and <b class="ui">NOT FREE</b>. The answer is about the date only; the gig arrives when the admin confirms it.</p>
+
+  <h3 id="art-drop-out-of-a-gig" data-roles="member">Drop out of a gig</h3>
+  <ol class="steps">
+    <li>At the bottom of the gig, <b class="ui">DROP OUT</b>.</li>
+    <li>At <b class="ui">Drop out?</b>, <b class="ui">Confirm drop</b> (or <b class="ui">CANCEL</b>).</li>
+  </ol>
+  <p><b class="ui">You dropped out of this event.</b> appears and the gig leaves the member’s calendar; every active admin of the band and the gig’s creator are notified that a replacement is needed.</p>
+  <aside class="note warning">You can’t undo a drop-out yourself: to play after all, an admin has to add the member to the lineup again.</aside>
+  <p><b class="ui">DROP OUT</b> stays greyed out until your own answer has loaded; on a weak connection you see <b class="ui">Could not load your answer. Check your connection.</b></p>
+
+  <h3 id="art-find-a-deputy" data-roles="admin">Find a deputy for a gig</h3>
+  <ol class="steps">
+    <li><b class="ui">LINEUP</b> (or <b class="ui">DETAILS</b>) opens <b class="ui">Lineup · {count}</b>; next to someone who declined, <b class="ui">Find a deputy</b>.</li>
+    <li><b class="ui">Replacing {name}</b> lists the band’s deputies, those on the same instrument first, with their usual fee.</li>
+    <li>A deputy on BandWith: <b class="ui">Ask in the app</b>, which sends them a notification. Anyone else: a request by message (WhatsApp, Messages or Mail, with the details filled in) or <b class="ui">Copy link</b>; the deputy answers in one tap, with no app, and the admin gets a notification.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">Deputies asked</b>, in the lineup sheet: each deputy, who they replace and the status <b class="ui">Asked · no answer yet</b>, <b class="ui">Available</b>, <b class="ui">Will confirm later</b> or <b class="ui">Can’t make it</b>.</li>
+    <li>If the gig changes after they answered: <b class="ui">Changed after their answer · send the update</b>, which you open to send <b class="ui">Send update</b> (or <b class="ui">Update in the app</b>).</li>
+    <li>After a yes, a recap with <b class="ui">Send recap</b> / <b class="ui">Recap in the app</b>; <b class="ui">Cancel request</b> withdraws the request.</li>
+  </ul>
+  <p><b class="ui">Find a deputy</b> exists on upcoming band gigs only. With no deputies: <b class="ui">No deputies yet. Add them in Band members → Deputies.</b> (<a data-ref="deputies">deputies</a>).</p>
+
+  <h3 id="art-deputies-on-a-gig" data-roles="deputy,admin">What a deputy sees</h3>
+  <p>A deputy is not a band member and never opens the workspace: they see the request, from the link in a message, or in the app under <b class="ui">Deputy gigs</b> if their account is linked to the band.</p>
+  <ul>
+    <li>The band and the gig title; <b class="ui">Date</b>, <b class="ui">Load-in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b> (start and end), <b class="ui">Venue</b>, <b class="ui">City</b>, <b class="ui">Address</b>; their <b class="ui">Role</b> and the <b class="ui">Fee offered</b>.</li>
+    <li><b class="ui">Open in Maps</b>, <b class="ui">Add to calendar</b>, <b class="ui">Google Calendar</b> and <b class="ui">Subscribe to my gigs</b> (a calendar feed of all their deputy gigs).</li>
+    <li>In <b class="ui">Can you make it?</b> they answer <b class="ui">Yes</b>, <b class="ui">Not sure yet</b> or <b class="ui">No, I can’t</b>, with an optional <b class="ui">Message to the band</b>. The status becomes <b class="ui">You said yes</b>, <b class="ui">You’ll confirm later</b> or <b class="ui">You said you can’t</b>; <b class="ui">Change your answer</b> changes it.</li>
+    <li>If the date, times or venue change afterwards: <b class="ui">Something changed</b> with the old and new values, and the question <b class="ui">Still OK</b>.</li>
+    <li>Deleted gig: <b class="ui">Gig cancelled</b>; withdrawn request: <b class="ui">Request withdrawn</b>; finished gig: <b class="ui">Gig over</b>.</li>
+  </ul>
+  <aside class="note privacy">A deputy sees only their own fee and the logistics: never the client, the band fee, other musicians’ fees or the band’s finances.</aside>
+
+  <h3 id="art-what-members-see-on-a-gig" data-roles="admin,member,deputy">What admins, members and deputies see on a gig</h3>
+  <p>Members and deputies see only their own fee and the logistics. The rules are enforced by the server, not only hidden in the app: a member’s phone never receives the band fee, the client or other people’s fees. When your role in a band changes, the phone drops what it kept of that band for offline use and loads it again for the new role: as an admin you see the client, as a member never.</p>
+  <figure class="shot" data-shot="gig-workspace-member" data-device="phone"><figcaption>The same gig as a member sees it: Your fee, no client, no band money.</figcaption></figure>
+  <table class="grid">
+    <thead><tr><th>On a band gig</th><th>Admin</th><th>Member</th></tr></thead>
+    <tbody>
+      <tr><td>Title, date, times, call times, venue, address</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Band notes, dress code, setting, guests</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Client name, phone, email, company</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Band fee, extra band fee, band fund, deposit, payment status</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Each musician’s fee and paid status</td><td>Everyone’s</td><td>Own only</td></tr>
+      <tr><td>Lineup names, instruments and answers</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Setlist</td><td>Edit</td><td>Read</td></tr>
+      <tr><td>Rider, stage plot, input list, who brings what</td><td>Edit</td><td>Read</td></tr>
+      <tr><td>Gear kit</td><td>Pick and change</td><td>Read</td></tr>
+      <tr><td>Tasks</td><td>Add, rename, delete, tick</td><td>Tick</td></tr>
+      <tr><td>Contract and deposit in readiness</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Find a deputy, deputies asked</td><td>Yes</td><td>No</td></tr>
+      <tr><td>Edit, delete, revert to quote</td><td>Yes</td><td>No</td></tr>
+    </tbody>
+  </table>
+  <div class="roles">
+    <div data-role="admin">Every event of the band and every field. In a band where they are only a member, they see its gigs as a member.</div>
+    <div data-role="member">Only the gigs they are on and have not declined. Never quotes: a quote only reaches them as an availability check, and becomes a gig on their calendar when the admin confirms it.</div>
+    <div data-role="deputy">Only their own request: logistics, role, fee offered (<a data-ref="deputies-on-a-gig">what a deputy sees</a>).</div>
+  </div>
+  <p>On a band member’s page, <b class="ui">Next for {name}</b> lists their next events with the day, start, part and answer: logistics only, never a fee or client.</p>
+
+  <h2>Personal gigs, archive and Home</h2>
+
+  <h3 id="art-personal-gigs" data-roles="member,admin">Log a personal gig</h3>
+  <p>An outside date only the person who logs it can see: it blocks the date for their bands and keeps track of what they earn.</p>
+  <ol class="steps">
+    <li><b class="ui">Create</b> → <b class="ui">Add personal gig</b> (members) or <b class="ui">Log personal gig</b> (admins).</li>
+    <li>Required: <b class="ui">Gig title *</b>, <b class="ui">Date *</b>, <b class="ui">Start *</b>, <b class="ui">End *</b>; optional: <b class="ui">Venue / location (optional)</b>, <b class="ui">My personal fee (optional)</b>, <b class="ui">Personal notes (optional)</b>.</li>
+    <li><b class="ui">Create personal gig</b>.</li>
+  </ol>
+  <aside class="note privacy">Bands only see that the person is busy on that date, in the availability counts; the title, venue, fee and notes stay private.</aside>
+  <ul>
+    <li>A pink header with <b class="ui">PERSONAL</b> and <b class="ui">ONLY YOU</b>; the <b class="ui">CALL</b>, <b class="ui">START</b> and <b class="ui">END</b> tiles.</li>
+    <li>If a band gig or rehearsal falls on the same date: <b class="ui">SCHEDULE CONFLICT</b>; <b class="ui">NOTIFY {band} ADMIN</b> warns that band’s admins and then reads <b class="ui">ADMIN NOTIFIED</b>.</li>
+    <li><b class="ui">EARNINGS</b>: <b class="ui">My fee</b> and a <b class="ui">Paid</b> switch; these fees count in <b class="ui">Earned</b> in the archive.</li>
+    <li><b class="ui">EDIT</b> and <b class="ui">DELETE</b> (then <b class="ui">Confirm delete</b>).</li>
+  </ul>
+  <p>No lineup, setlist, rider or chat. To play it with others, the form offers <b class="ui">Create a free band</b>.</p>
+
+  <h3 id="art-past-events" data-roles="admin,member">Past events archive</h3>
+  <ol class="steps">
+    <li>On <b class="ui">Calendar</b>, <b class="ui">Past events archive</b> at the bottom (or <b class="ui">See all</b> next to <b class="ui">Upcoming</b>).</li>
+    <li>At the top, <b class="ui">Played in {year}</b> and <b class="ui">Earned</b>; the <b class="ui">All</b>, <b class="ui">Paid</b> and <b class="ui">Unpaid</b> filters; a tap opens the event.</li>
+  </ol>
+  <p>Events by month, most recent first; each row has the date, title, place and a status: for gigs <b class="ui">Client paid</b> / <b class="ui">Client unpaid</b> (admins) or <b class="ui">Paid to you</b> / <b class="ui">Not paid yet</b> (members); <b class="ui">Rehearsal</b>, <b class="ui">Quote</b> or <b class="ui">Draft</b> for the rest. The filters use the same words.</p>
+  <div class="roles">
+    <div data-role="admin"><b class="ui">Earned</b> adds up the band fees of the year’s gigs; <b class="ui">Client paid</b> / <b class="ui">Client unpaid</b> say whether the client has paid the band.</div>
+    <div data-role="member"><b class="ui">Earned</b> adds up their own fees; <b class="ui">Paid to you</b> / <b class="ui">Not paid yet</b> say whether their own fee was marked paid. Quotes never appear.</div>
+  </div>
+  <p>A gig becomes past at the end of its day or, if it runs past midnight, when the show ends.</p>
+
+  <h3 id="art-gig-on-home" data-roles="admin,member">Gigs on Home</h3>
+  <ul>
+    <li>The next gig card: date, call times (load-in, soundcheck), venue, the setlist link and, for members, <b class="ui">Your fee</b>.</li>
+    <li>Under it: <b class="ui">Show readiness · {done}/{total}</b> and <b class="ui">Go live</b>, which opens the gig straight in Stage mode.</li>
+    <li><b class="ui">Action center</b>: <b class="ui">Payouts ({count})</b> for admins, <b class="ui">Your payouts ({count})</b> for members (<a data-ref="fee-and-payouts-on-a-gig">payouts</a>).</li>
+    <li><b class="ui">Drafts</b> (admins): unfinished gigs, rehearsals and quotes, with <b class="ui">Only you can see these.</b></li>
+  </ul>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">With two panes, Home opens the next upcoming event (not a draft or a quote) beside the dashboard, once per visit. Closed, it stays closed until you leave Home and come back; folding the device or switching apps does not reopen it.</div>
+
+  <h2>Notifications, sync and devices</h2>
+
+  <h3 id="art-gig-notifications" data-roles="admin,member,deputy">Notifications a gig sends</h3>
+  <p>They land in the inbox (the bell) in each person’s own language; the ones that ask for an action or change someone’s plans also arrive as a push. Nobody is notified of their own actions.</p>
+  <table class="grid">
+    <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+    <tbody>
+      <tr><td>A gig is created</td><td>Each musician on the lineup</td><td>An invitation with date, time, venue and their own fee, or "fee to be discussed". Push.</td></tr>
+      <tr><td>A gig is created</td><td>The admin who created it</td><td>The gig is waiting for {count} members to confirm. Inbox.</td></tr>
+      <tr><td>A musician is added while editing</td><td>That musician</td><td>An invitation. Push.</td></tr>
+      <tr><td>A musician accepts</td><td>The gig’s creator</td><td>Gig confirmed by that musician.</td></tr>
+      <tr><td>A musician declines or drops out</td><td>Every active admin of the band and the gig’s creator</td><td>Drop-out; a replacement is needed. Push.</td></tr>
+      <tr><td>Date, times, call times or venue change</td><td>Everyone on the lineup who has not declined</td><td><b class="ui">Gig updated</b> with what is new. Push.</td></tr>
+      <tr><td>A musician’s fee changes</td><td>That musician only</td><td>Their fee changed. Push.</td></tr>
+      <tr><td>The setlist is saved with changes</td><td>The lineup</td><td>One summary, for example "2 songs moved, 1 added".</td></tr>
+      <tr><td>A quote is confirmed as a gig</td><td>The lineup</td><td><b class="ui">Gig confirmed</b>. Inbox.</td></tr>
+      <tr><td>The gig is deleted</td><td>Everyone on the lineup who has not declined, and deputies asked</td><td><b class="ui">Gig cancelled</b>. Push.</td></tr>
+      <tr><td>A personal gig clashes and NOTIFY is tapped</td><td>The admins of that band</td><td><b class="ui">Schedule conflict</b>: the person is booked elsewhere.</td></tr>
+    </tbody>
+  </table>
+  <aside class="note privacy">Fees in notifications are always the recipient’s own. Drafts never notify anyone.</aside>
+  <p>To choose which notifications reach you: <a data-ref="notifications-inbox">notifications and inbox</a>.</p>
+
+  <h3 id="art-live-updates-and-offline" data-roles="admin,member">Live updates and working offline</h3>
+  <ul>
+    <li>When someone changes the lineup, the tasks or the setlist, the open gig reloads that part at once; when someone saves the gig, the open one takes the new values, keeping your own unsaved setlist edits.</li>
+    <li>Payouts marked paid update Home straight away.</li>
+    <li>A gig created or edited offline is saved on the device with <b class="ui">Saved offline • Will sync when connected</b>; its card shows <b class="ui">Sync</b> until the gig, setlist, tasks, lineup and rider reach the server.</li>
+    <li>Drafts are kept on the device and work offline.</li>
+    <li>The setlist of a gig you opened before is kept on the phone: Stage mode works with no signal.</li>
+    <li>Deleting a gig needs a connection.</li>
+  </ul>
+
+  <h3 id="art-calendar-on-tablet-and-duo" data-roles="admin,member">The calendar on iPad and dual-screen devices</h3>
+  <div class="devnote" data-devices="tablet">The calendar and the open event side by side, with the event outlined in the list. Gigs get the <b class="ui">OVERVIEW / SETLIST / RIDER &amp; STAGE / MONEY</b> tabs; <b class="ui">New gig</b> opens the composer.</div>
+  <div class="devnote" data-devices="duoLaptop">The calendar turns into the Planner. Top half: the month with a dot per kind of event and the counts <b class="ui">Gigs</b>, <b class="ui">Rehearsals</b>, <b class="ui">Fees</b> (admins only), <b class="ui">Free weekends</b>. Bottom half: the filters, the day’s <b class="ui">Agenda</b> with <b class="ui">Previous day</b> and <b class="ui">Next day</b>, <b class="ui">+ Gig</b> / <b class="ui">+ Rehearsal</b> for admins. Empty days read <b class="ui">Nothing on this day.</b></div>
+  <div class="devnote" data-devices="duoBook,duoLand">The calendar on the left page, the open event on the right; search keeps its results on the left; in the gig wizard, on step 1, the left page shows the live preview.</div>
+  <div class="devnote" data-devices="duoClosed">Back, <b class="ui">Search</b>, <b class="ui">Close gig wizard</b>, <b class="ui">Open stage mode</b> and <b class="ui">More options</b> live in the side rail, not on each screen.</div>
+  <aside class="note tip">Every screen fits every posture. If a sheet opens over a gig on an open device, the gig moves to the left page and the sheet takes the right.</aside>
+
+  <h2>FAQ</h2>
+  <dl class="faq">
+    <dt>Why can’t a member create a gig?</dt>
+    <dd>Only admins create gigs. A member can log a personal gig or propose a rehearsal from <b class="ui">Create</b>.</dd>
+    <dt>Why did a gig disappear from the calendar?</dt>
+    <dd>The member declined it or dropped out, an admin took them off the lineup, or the gig was deleted. A gig turned back into a quote also leaves members’ calendars.</dd>
+    <dt>How do I confirm the date before the fee is agreed?</dt>
+    <dd>With <b class="ui">Fee to be discussed (TBD)</b>: the gig is confirmed and invitations say the fee is to be discussed; set the fees later with the pencil on the fee card (<b class="ui">Edit fee</b>).</dd>
+    <dt>Can I duplicate a gig?</dt>
+    <dd>There is no duplicate feature: create a new gig and load the same setlist from <b class="ui">Load from templates</b> and the same tasks from <b class="ui">Load a to-do list</b>.</dd>
+    <dt>Can band gigs go into the phone’s calendar?</dt>
+    <dd>From an invitation, with <b class="ui">Add to Google Calendar</b>. Deputies can also use <b class="ui">Subscribe to my gigs</b> for a live feed.</dd>
+    <dt>Can I edit the stage plot on my phone?</dt>
+    <dd>Yes, on every device: hold an item to move it, or an empty spot to add one there. The plot of a past gig is read-only.</dd>
+  </dl>
+</section>
