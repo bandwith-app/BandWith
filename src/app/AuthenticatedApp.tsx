@@ -2072,6 +2072,11 @@ export default function AuthenticatedApp() {
     setSelectedChat(null);
     setSelectedEvent(null);
     setSelectedNotification(null);
+    // The inbox (list or a notification, z-101) and Calendar's "Search events"
+    // (z-70) sit above the hub (z-60): close them, or the hub opens unseen.
+    setSelectedNotifications([]);
+    setInboxOpen(false);
+    window.dispatchEvent(new Event('bw:close-event-search'));
     setExpandedCard(null);
     setIsPlusMenuOpen(false);
     openIdentity();
