@@ -337,6 +337,15 @@ export const EventsView: React.FC<EventsViewProps> = ({
     setEventSearch('');
   };
 
+  // The Duo rail's "Open profile" closes the search: the hub opens under it.
+  const closeSearchRef = useRef(closeSearch);
+  closeSearchRef.current = searchOpen ? closeSearch : () => {};
+  useEffect(() => {
+    const close = () => closeSearchRef.current();
+    window.addEventListener('bw:close-event-search', close);
+    return () => window.removeEventListener('bw:close-event-search', close);
+  }, []);
+
   // Android Back, the browser's Back and Escape close the search, like its own
   // Back. An event picked from it opens on top (or beside it) and closes first.
   const pickedFromSearchRef = useRef(false);
