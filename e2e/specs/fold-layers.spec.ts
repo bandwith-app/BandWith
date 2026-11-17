@@ -1,8 +1,8 @@
 import type { Locator } from '@playwright/test';
 import { test, expect, type App } from '../fixtures';
-import { eventDetail, isWide, leaveBand, openCreate, openEvent, SEED } from '../support/flows';
-import { openHubPage } from '../support/hub';
-import { focusedField, showKeyboard } from '../support/keyboard';
+import { escapeRe, eventDetail, isWide, leaveBand, openCreate, openEvent, SEED } from '../support/flows';
+import { hubRow, openHub, openHubPage } from '../support/hub';
+import { DUO_KEYBOARD_DECK_H, focusedField, showKeyboard } from '../support/keyboard';
 
 /**
  * Layers that must work on special layouts.
@@ -107,8 +107,8 @@ test.describe('Duo Laptop pose: screens off the fold', () => {
  * message field at y 418–488, inside the fold band).
  */
 test.describe('Duo Laptop pose: the field being typed in stays in sight', () => {
-  async function typeOnDeck(app: App, field: Locator, fold: { top: number; bottom: number }, scrolledTo?: number) {
-    const kb = await showKeyboard(app, field, { scrolledTo });
+  async function typeOnDeck(app: App, field: Locator, fold: { top: number; bottom: number }, scrolledTo?: number, height?: number) {
+    const kb = await showKeyboard(app, field, { scrolledTo, height });
     // On the Deck strip between the fold band and the keys; a field taller
     // than that strip (a long text box) rests whole on the Display instead.
     const rests = async () => {
@@ -167,6 +167,93 @@ test.describe('Duo Laptop pose: the field being typed in stays in sight', () => 
     await expect(fields.first()).toBeVisible();
     await typeOnDeck(app, fields.first(), duo!.foldBand!);
     await app.check('gig wizard after typing');
+  });
+
+  /**
+   * The EV Duo simulator's keyboard covers the whole Deck: the web view ends
+   * at the fold (456 pt), so a hub's pinned header (it holds the Display)
+   * covered the whole view and the field had nowhere to rest (Deputy gigs'
+   * message at 850–920, hidden). The field rests on the Display instead.
+   */
+  test.describe('keyboard over the whole Deck', () => {
+    async function typeOnDisplay(app: App, field: Locator, fold: { top: number; bottom: number }, backInSight = true) {
+      await typeOnDeck(app, field, fold, undefined, DUO_KEYBOARD_DECK_H);
+      // The rail's search field closes with the keyboard.
+      if (!backInSight) return;
+      // Keyboard down: the header is pinned again and the field is back in
+      // sight, not left under it.
+      const after = await field.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + Math.min(24, r.width / 2), (r.top + r.bottom) / 2);
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), shows: !!at && (at === el || el.contains(at)) };
+      });
+      expect(after.shows, `the field shows after the keyboard closes (${after.top}–${after.bottom})`).toBe(true);
+    }
+    // A hub row further down: scrolled onto the Deck (under the pinned
+    // header, above the Deck bar) and tapped there, as a person does.
+    async function openLowerHubPage(app: App, source: string, deckTop: number) {
+      await openHub(app);
+      const row = hubRow(app, source);
+      await row.evaluate((el, y) => {
+        let s = el.parentElement;
+        while (s && !/(auto|scroll)/.test(getComputedStyle(s).overflowY)) s = s.parentElement;
+        if (s) s.scrollTop += el.getBoundingClientRect().top - y;
+      }, deckTop + 24);
+      await row.click();
+      await app.settle();
+    }
+
+    test('@laptop Deputy gigs over the app: the message rests on the Display', async ({ app, duo }) => {
+      await openHubPage(app, 'Deputy gigs');
+      const note = app.page.getByPlaceholder(app.t('e.g. I can bring my own amp')).filter({ visible: true }).first();
+      await typeOnDisplay(app, note, duo!.foldBand!);
+      await app.check('Deputy gigs (in the app) after typing, keyboard over the Deck');
+    });
+
+    test('@laptop Account hub: the band details rest on the Display', async ({ app, duo }) => {
+      await openHub(app);
+      await app.page.getByRole('region', { name: app.t('Current band') }).getByRole('button', { name: app.t('Edit'), exact: true }).click();
+      const name = app.page.locator('#hub-band-name');
+      await expect(name).toBeVisible();
+      await typeOnDisplay(app, name, duo!.foldBand!);
+      await typeOnDisplay(app, app.page.locator('#hub-band-bio'), duo!.foldBand!);
+      await app.check('Account hub band details after typing, keyboard over the Deck');
+    });
+
+    // On the Duo a hub's search lives in the rail (Duo/Rail Search Field).
+    for (const [page, label, placeholder] of [
+      ['Gear & inventory', 'Search equipment', 'Search equipment, mics, cables…'],
+      ['Contracts & docs', 'Search documents', 'Search by title, client or event…'],
+    ] as const) {
+      test(`@laptop ${page}: the search field rests on the Display`, async ({ app, duo }) => {
+        await openLowerHubPage(app, page, duo!.foldBand!.bottom);
+        await app.page.getByRole('button', { name: app.t(label), exact: true }).filter({ visible: true }).first().click();
+        const search = app.page.getByPlaceholder(app.t(placeholder)).filter({ visible: true }).first();
+        await expect(search).toBeVisible();
+        await typeOnDisplay(app, search, duo!.foldBand!, false);
+        await app.check(`${page} search after typing, keyboard over the Deck`);
+      });
+    }
+
+    test('@laptop Gear & inventory: Add equipment rests on the Display', async ({ app, duo }) => {
+      await openLowerHubPage(app, 'Gear & inventory', duo!.foldBand!.bottom);
+      await app.page.getByRole('button', { name: app.t('Add equipment'), exact: true }).filter({ visible: true }).first().click();
+      const name = app.page.getByPlaceholder(app.t('e.g. Vocal mic, drum kit, DI box')).filter({ visible: true }).first();
+      await expect(name).toBeVisible();
+      await typeOnDisplay(app, name, duo!.foldBand!);
+      await app.check('Add equipment after typing, keyboard over the Deck');
+    });
+
+    test('@laptop Members: the invite search rests on the Display', async ({ app, duo }) => {
+      await openHub(app);
+      await app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Members'))} \\(\\d+\\)`) }).first().click();
+      await app.settle();
+      await app.page.getByRole('button', { name: app.t('Invite member') }).filter({ visible: true }).first().click();
+      const search = app.page.getByPlaceholder(app.t('Name or email address…')).filter({ visible: true }).first();
+      await expect(search).toBeVisible();
+      await typeOnDisplay(app, search, duo!.foldBand!);
+      await app.check('Invite member after typing, keyboard over the Deck');
+    });
   });
 
   test.describe('signed out', () => {

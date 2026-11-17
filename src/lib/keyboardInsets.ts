@@ -82,16 +82,23 @@ function scrollerOf(el: HTMLElement): HTMLElement {
 
 const isPage = (s: HTMLElement) => s === document.scrollingElement || s === document.documentElement;
 
-/** The part of a scroller that shows, below a header pinned at its top. */
-function clipOf(scroller: HTMLElement, field: HTMLElement): Span {
+/**
+ * The part of a scroller that shows, below a header pinned at its top, and
+ * the pinned headers that cut it.
+ */
+function clipOf(scroller: HTMLElement, field: HTMLElement): Span & { heads: HTMLElement[] } {
   const r = isPage(scroller) ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
   let top = Math.max(0, r.top);
+  const heads: HTMLElement[] = [];
   for (const child of Array.from(scroller.children) as HTMLElement[]) {
     if (child.contains(field) || getComputedStyle(child).position !== 'sticky') continue;
     const c = child.getBoundingClientRect();
-    if (c.height > 0 && c.top <= top + 1) top = Math.max(top, c.bottom);
+    if (c.height > 0 && c.top <= top + 1) {
+      top = Math.max(top, c.bottom);
+      heads.push(child);
+    }
   }
-  return { top, bottom: Math.min(window.innerHeight, r.bottom) };
+  return { top, bottom: Math.min(window.innerHeight, r.bottom), heads };
 }
 
 /**
@@ -183,19 +190,49 @@ export function installKeyboardInsets(): void {
     padded.forEach((value, scroller) => { scroller.style.paddingBottom = value; });
     padded.clear();
   };
+  // Pinned headers let go of their scroller's top while the keyboard is up.
+  // When it closes they pin again and the scroller goes back to where it was,
+  // so the field is not left under its header.
+  const unpinned = new Map<HTMLElement, string>();
+  const scrolledFrom = new Map<HTMLElement, number>();
+  const unpin = (head: HTMLElement, scroller: HTMLElement) => {
+    if (!unpinned.has(head)) unpinned.set(head, head.style.position);
+    if (!scrolledFrom.has(scroller)) scrolledFrom.set(scroller, scroller.scrollTop);
+    head.style.position = 'relative';
+  };
+  const repin = () => {
+    unpinned.forEach((value, head) => { head.style.position = value; });
+    unpinned.clear();
+    scrolledFrom.forEach((top, scroller) => { scroller.scrollTop = top; });
+    scrolledFrom.clear();
+  };
   const close = () => {
     webViewWait?.stop();
     root.removeAttribute('data-keyboard');
     unpad();
+    repin();
     tell(false);
   };
   // Laptop pose: the field rests on the strip of the Deck above the keyboard
   // (or on the Display), never on the fold band (laptopRevealDelta). A field
   // near the end of its scroller first gets room below it to rise into.
+  // When the keyboard covers the whole Deck (the iPhone Duo's: the web view
+  // ends at the fold) a hub's header, pinned over the Display, covers all of
+  // the web view and leaves the field no place: that header lets go of the
+  // top while the keyboard is up and scrolls away, and the field rests on
+  // the Display just above the fold.
   const revealInLaptopPose = (el: HTMLElement, bands: { displayH: number; deckTop: number }) => {
     const scroller = scrollerOf(el);
-    const r = fieldBox(el).getBoundingClientRect();
-    const delta = laptopRevealDelta({ top: r.top, bottom: r.bottom }, clipOf(scroller, el), bands, window.innerHeight, scroller.scrollTop);
+    const where = () => {
+      const r = fieldBox(el).getBoundingClientRect();
+      const clip = clipOf(scroller, el);
+      return { clip, delta: laptopRevealDelta({ top: r.top, bottom: r.bottom }, clip, bands, window.innerHeight, scroller.scrollTop) };
+    };
+    let { clip, delta } = where();
+    if (delta === null && clip.heads.length) {
+      clip.heads.forEach((head) => unpin(head, scroller));
+      ({ delta } = where());
+    }
     if (!delta) return;
     const short = Math.ceil(scroller.scrollTop + delta - (scroller.scrollHeight - scroller.clientHeight));
     // The page itself gets its room on <body>.

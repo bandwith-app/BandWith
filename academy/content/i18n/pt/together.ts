@@ -541,7 +541,7 @@ const together: AreaText = {
           rows: [
             {
               devices: ["duoLaptop"],
-              text: "Na posição Laptop, a janela de votação mostra membros e dias na tela de cima e as suas datas, com **Fixar** e **Pronto**, na tela de baixo.",
+              text: "Na posição Laptop, a janela de votação mostra membros e dias na tela de cima e as suas datas, com **Fixar {day}** / **Fixe uma data** e **Pronto**, na tela de baixo.",
             },
           ],
         },
