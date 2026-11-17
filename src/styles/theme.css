@@ -211,10 +211,15 @@
 }
 
 /* Software keyboard open (src/lib/keyboardInsets.ts): with resize 'native' the
-   web view already ends at the keyboard, so the home-indicator / navigation-bar
-   inset would only leave dead space above it. Declared after the platform
-   rules at equal specificity so it overrides the Android floor too. */
-:root[data-keyboard="open"] {
+   web view already ends at the keyboard, so the navigation-bar inset would only
+   leave dead space above it. Android only: the inset Capacitor injects (and its
+   floor) stays put with the keyboard up. On iOS env(safe-area-inset-bottom)
+   drops to 0 by itself once the web view ends above the home indicator, in
+   step with the layout; zeroing it from keyboardWillShow, half a second before
+   the web view shrinks, dropped every bottom sheet by the home indicator's
+   34 px and lifted it again (the gig title bounced). Specific enough to beat
+   the Android floor above. */
+:root[data-platform="android"][data-keyboard="open"] {
   --safe-bottom: 0px;
 }
 

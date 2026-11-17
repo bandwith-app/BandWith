@@ -4,6 +4,18 @@
 # (optional): its id, tapped instead on Android, where a field without a
 # <label> shows no text (its placeholder isn't in the DevTools hierarchy);
 # TEXT: what to type; SHOT: screenshot name.
+#
+# iOS types after the probe's answer. Maestro types there with XCTest's
+# synthetic hardware-keyboard events, and iOS answers the first one by hiding
+# the on-screen keyboard and bringing it back about a second later
+# (keyboardWillHide, then keyboardWillShow: the web view grows back to full
+# height and shrinks again). A person typing on the on-screen keyboard never
+# causes that (checked on the simulator: key taps fire no keyboard events), so
+# typing inside the probe's window measured Maestro, not the app. The probe
+# itself is unchanged: from the tap until the field has rested a second with
+# the keyboard up.
+# Android types inside the window, as before (its AVD types with a hardware
+# keyboard and keeps the on-screen one up).
 appId: ${APP_ID}
 ---
 - runFlow:
@@ -17,7 +29,11 @@ appId: ${APP_ID}
       true: ${!(maestro.platform == 'android' && typeof FIELD_ID != 'undefined' && FIELD_ID.length > 0)}
     commands:
       - tapOn: ${FIELD}
-- inputText: ${TEXT}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - inputText: ${TEXT}
 - extendedWaitUntil:
     visible: "bw-kb (ok|fail).*"
     timeout: 15000
@@ -25,3 +41,11 @@ appId: ${APP_ID}
 - copyTextFrom: "bw-kb (ok|fail).*"
 - runScript: keyboard-verdict.js
 - assertVisible: ${output.keyboardExpect}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${TEXT}
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: ${SHOT}-typed

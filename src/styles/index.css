@@ -760,6 +760,17 @@
   }
 }
 
+/* iOS app, the keyboard shrinking the web view (native resize): for a few
+   frames WKWebView already has vh and env(safe-area-inset-bottom) at the new
+   size while fixed layers stay pinned to the old bottom (956 on an iPhone 17
+   Pro Max instead of 609). A bottom sheet then took its new height on the old
+   bottom and a chat's message box lost the home-indicator inset there: the
+   field dropped, then rose to its place. Pinned to the bottom of 100vh, they
+   move once. Anywhere else 100% is never above 100vh, so this is 0. */
+html.is-native:not(.is-android) :is(.bw-pane-detail.fixed.inset-0, .bw-sheet.fixed.bottom-0) {
+  bottom: max(0px, calc(100% - 100vh));
+}
+
 /* Keyboard up: the floating tab bar would sit right above it, over the search
    results or the field being typed in (worst on a phone in landscape). */
 html[data-keyboard="open"] .bw-nav-bar {

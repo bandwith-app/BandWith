@@ -279,7 +279,15 @@ else
 fi
 
 # ---------------------------------------------------------------- install
-for udid in $IPHONE $IPAD; do xcrun simctl bootstatus "$udid" -b >/dev/null; done
+for udid in $IPHONE $IPAD; do
+  xcrun simctl bootstatus "$udid" -b >/dev/null
+  # Maestro types with XCTest's synthetic hardware keyboard. With automatic
+  # minimization on (the default), the iPad then takes a hardware keyboard to
+  # be attached and from then on shows only its 68 px shortcut bar, even
+  # across reboots: the keyboard flows saw no keyboard. Off, every focus
+  # brings up the full on-screen keyboard, as for a person without one.
+  xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences AutomaticMinimizationEnabled -bool false
+done
 for udid in $IPHONE $IPAD; do
   xcrun simctl uninstall "$udid" "$IOS_APP_ID" >/dev/null 2>&1 || true
   xcrun simctl install "$udid" "$APP"

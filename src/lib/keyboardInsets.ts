@@ -95,13 +95,51 @@ function clipOf(scroller: HTMLElement, field: HTMLElement): Span {
 }
 
 /**
+ * Android: how long the WebView gets to start scrolling a hidden field into
+ * view itself after keyboardDidShow (it starts 20-100 ms after it on a Pixel
+ * 7), how long a scroll of it may pause between frames on a busy device, and
+ * the frame or so after its scrollend.
+ */
+const WEBVIEW_SCROLL_WAIT = 250;
+const WEBVIEW_SCROLL_QUIET = 400;
+const WEBVIEW_SCROLL_SETTLE = 50;
+
+let fixedProbe: HTMLElement | null = null;
+
+/**
+ * True while fixed layers are still laid out for the web view's previous
+ * size. Right after the web view shrinks to the keyboard (native resize),
+ * WKWebView reports the new height (innerHeight 609 on an iPhone 17 Pro Max)
+ * a few frames before its fixed-position layout follows: a layer pinned to
+ * the bottom still ends at the old bottom (956), so a field in a sheet reads
+ * as under the keyboard although it lands well in sight. Scrolling on those
+ * numbers put the gig title under its sheet's header.
+ */
+export function fixedLayoutStale(): boolean {
+  if (typeof document === 'undefined' || !document.body) return false;
+  if (!fixedProbe || !fixedProbe.isConnected) {
+    fixedProbe = document.createElement('div');
+    fixedProbe.setAttribute('aria-hidden', 'true');
+    fixedProbe.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:0;visibility:hidden;pointer-events:none';
+    document.body.appendChild(fixedProbe);
+  }
+  const r = fixedProbe.getBoundingClientRect();
+  // No layout at all (a test DOM): nothing to wait for.
+  if (!r.width) return false;
+  return Math.abs(r.bottom - document.documentElement.clientHeight) > 1;
+}
+
+/**
  * Marks <html data-keyboard="open"> while the software keyboard is up, and
  * keeps the field being typed in where it can be read.
  *
  * Keyboard resize is 'native' (capacitor.config.ts), so the web view already
  * ends at the top of the keyboard. The home-indicator / navigation-bar inset
- * in --safe-bottom then only adds dead space above the keyboard; theme.css
- * zeroes it while this attribute is set.
+ * in --safe-bottom then only adds dead space above the keyboard. On iOS
+ * env(safe-area-inset-bottom) drops to 0 by itself once the web view ends
+ * above the home indicator, in step with the layout; on Android the inset
+ * Capacitor injects does not, and theme.css zeroes it while this attribute
+ * is set.
  *
  * It follows the window events the Keyboard plugin fires on iOS and Android
  * (`keyboardWillShow`, `keyboardDidShow`, `keyboardWillHide`,
@@ -125,7 +163,15 @@ export function installKeyboardInsets(): void {
     if (!typing()) return;
     root.setAttribute('data-keyboard', 'open');
     tell(true);
+    // Android has already shrunk the WebView by keyboardWillShow: a hidden
+    // field moves now, with the keyboard, well before the WebView's own scroll.
+    if (root.getAttribute('data-platform') === 'android') requestAnimationFrame(() => reveal(true));
   };
+  // A scroll the WebView is animating (Android): last scroll event, until scrollend.
+  let lastScroll = -Infinity;
+  document.addEventListener('scroll', () => { lastScroll = performance.now(); }, { capture: true, passive: true });
+  document.addEventListener('scrollend', () => { lastScroll = -Infinity; }, { capture: true, passive: true });
+  const scrollInFlight = () => performance.now() - lastScroll < WEBVIEW_SCROLL_QUIET;
   // Room added under a scroller so its last field can rise above the keyboard.
   const padded = new Map<HTMLElement, string>();
   const pad = (box: HTMLElement, extra: number) => {
@@ -138,6 +184,7 @@ export function installKeyboardInsets(): void {
     padded.clear();
   };
   const close = () => {
+    webViewWait?.stop();
     root.removeAttribute('data-keyboard');
     unpad();
     tell(false);
@@ -158,15 +205,31 @@ export function installKeyboardInsets(): void {
   // The field being typed in stays in sight: on a short screen (a phone in
   // landscape: ~216 px left) it could sit under the keyboard or a pinned
   // footer, and the web view does not scroll it up by itself.
-  const reveal = () => {
+  // Frames waited for fixed layers to catch up with the web view's size.
+  let staleFrames = 0;
+  const reveal = (early = false) => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || !(el.matches(FIELD) || el.isContentEditable)) return;
+    // Measure only once fixed layers sit where they will be painted
+    // (fixedLayoutStale); the next frame usually has them.
+    if (fixedLayoutStale()) {
+      if (staleFrames++ < 30) requestAnimationFrame(() => reveal(early));
+      return;
+    }
+    staleFrames = 0;
     const p = getPosture();
     if (p.posture === 'tabletop' && p.fold?.orientation === 'horizontal' && p.bands) {
       revealInLaptopPose(el, p.bands);
       return;
     }
     const r = el.getBoundingClientRect();
+    if (root.getAttribute('data-platform') === 'android' && (r.top < 0 || r.bottom > window.innerHeight) && (!early || scrollInFlight())) {
+      awaitWebViewScroll(el);
+      return;
+    }
+    bringIntoSight(el, r);
+  };
+  const bringIntoSight = (el: HTMLElement, r: DOMRect) => {
     // Already well inside the visible area (clear of a pinned footer): leave it.
     const limit = window.innerHeight - 96;
     if (r.top >= 64 && r.bottom <= limit) return;
@@ -186,13 +249,50 @@ export function installKeyboardInsets(): void {
       scroller.scrollTop += extra;
     });
   };
+  // Android: the WebView usually scrolls a focused field it cannot show into
+  // view by itself just after keyboardDidShow (centred, animated, on the
+  // compositor: a scroll of ours while it runs is added to its own, and the
+  // poll's Location field went past the top). Not always, though: then the
+  // field stayed under the keyboard. A hidden field is moved at
+  // keyboardWillShow (above), long before that scroll, which then finds it in
+  // sight and does nothing. Later on (or while a scroll is running) wait until
+  // the WebView has scrolled and come to rest (scrollend, or no scroll for a
+  // while), or clearly is not going to, then move the field if still hidden.
+  let webViewWait: { el: HTMLElement; stop: () => void } | null = null;
+  const awaitWebViewScroll = (el: HTMLElement) => {
+    if (webViewWait?.el === el) return;
+    webViewWait?.stop();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const later = (ms: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(done, ms);
+    };
+    const onScroll = () => later(WEBVIEW_SCROLL_QUIET);
+    const onScrollEnd = () => later(WEBVIEW_SCROLL_SETTLE);
+    const stop = () => {
+      clearTimeout(timer);
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('scrollend', onScrollEnd, true);
+      if (webViewWait === wait) webViewWait = null;
+    };
+    const done = () => {
+      stop();
+      if (document.activeElement !== el || root.getAttribute('data-keyboard') !== 'open') return;
+      bringIntoSight(el, el.getBoundingClientRect());
+    };
+    const wait = { el, stop };
+    webViewWait = wait;
+    document.addEventListener('scroll', onScroll, true);
+    document.addEventListener('scrollend', onScrollEnd, true);
+    later(WEBVIEW_SCROLL_WAIT);
+  };
   // The web view shrinks to the keyboard's top only after keyboardDidShow
   // on some devices, so reveal again once its size has settled.
   let settle: ReturnType<typeof setTimeout> | undefined;
   const revealSoon = () => {
-    requestAnimationFrame(reveal);
+    requestAnimationFrame(() => reveal());
     clearTimeout(settle);
-    settle = setTimeout(reveal, 320);
+    settle = setTimeout(() => reveal(), 320);
   };
   window.addEventListener('keyboardWillShow', open);
   window.addEventListener('keyboardDidShow', revealSoon);

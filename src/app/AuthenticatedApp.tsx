@@ -189,6 +189,7 @@ import { newEventInvites } from "@/lib/eventLineup";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
 import { bandFilterOptions, bandToActivateForCreate, filterByBand, matchesBandFilter, normalizeBandFilter } from "@/lib/bandFilter";
 import { visibleEventsFor } from "@/lib/eventVisibility";
+import { installKeyboardDismissOnTouch } from "@/lib/keyboardDismiss";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -292,29 +293,15 @@ export default function AuthenticatedApp() {
         }
 
         // Added once per app run (AuthenticatedApp can mount again after a sign-out).
+        // A touch outside the field closes the keyboard once its tap is over
+        // (src/lib/keyboardDismiss.ts), so the tap still reaches its button.
         const w = window as Window & { __bwKeyboardTouch?: boolean };
         if (!w.__bwKeyboardTouch) {
-        w.__bwKeyboardTouch = true;
-        document.addEventListener(
-          "touchstart",
-          (e) => {
-            const target = e.target as HTMLElement;
-            const a = document.activeElement as HTMLElement;
-            // Areas marked data-keep-keyboard (the chat) keep it up: there it
-            // closes with a swipe down on the messages or Android Back.
-            // data-keep-keyboard="android" keeps it up on Android only.
-            const keep = target.closest?.('[data-keep-keyboard]') as HTMLElement | null;
-            if (keep && (keep.dataset.keepKeyboard !== 'android' || Capacitor.getPlatform() === 'android')) return;
-            if (
-              a &&
-              ["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName) &&
-              !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
-            ) {
-              Keyboard.hide().catch(() => {});
-            }
-          },
-          { passive: true }
-        );
+          w.__bwKeyboardTouch = true;
+          installKeyboardDismissOnTouch({
+            hide: () => { Keyboard.hide().catch(() => {}); },
+            platform: Capacitor.getPlatform(),
+          });
         }
       } catch (err) {
         console.log("Native plugin init:", err);

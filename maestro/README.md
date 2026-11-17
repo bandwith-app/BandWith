@@ -131,6 +131,14 @@ screenshots at its key steps.
   One flow per screen, so one bug doesn't hide the others.
   The Android AVD has a hardware keyboard (Maestro types with it) and
   `show_ime_with_hard_keyboard=1`, so the on-screen one still comes up.
+  On iOS the subflow types after the probe's answer: Maestro types there with
+  XCTest's synthetic hardware-keyboard events, and iOS answers the first one
+  by hiding the on-screen keyboard and showing it again a second later (the
+  web view grows back and shrinks again). Taps on the on-screen keys fire no
+  keyboard events, so that bounce is Maestro's, not something a person sees.
+  The script turns off the simulators' keyboard auto-minimization: after
+  Maestro's synthetic typing the iPad otherwise shows only its shortcut bar,
+  even after a reboot, and the probe sees no keyboard.
   `subflows/hide-keyboard.yaml` closes it (Android Back; on iOS the setup link
   `blur=1`: a tap outside a field doesn't blur it in WKWebView and Maestro's
   `hideKeyboard` can't close its keyboard).
