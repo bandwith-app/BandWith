@@ -16,6 +16,11 @@ import type { App } from '../fixtures';
 
 /** iPhone Duo keyboard in Laptop pose (951 → 601 pt on the simulator). */
 export const DUO_KEYBOARD_H = 350;
+/**
+ * The keyboard of the EV Duo simulator in Laptop pose: it covers the whole
+ * Deck (951 → 456 pt: the web view ends at the fold, `--bw-deck-h: 0`).
+ */
+export const DUO_KEYBOARD_DECK_H = 495;
 
 const fire = (app: App, name: string, height?: number) =>
   app.page.evaluate(
