@@ -196,14 +196,15 @@ const together: AreaText = {
       summary: "Qué muestra un ensayo a los admins y a los miembros.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["detalle del ensayo", "asistencia", "coste de sala", "canciones a ensayar"],
-      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks"],
+      keywords: ["detalle del ensayo", "asistencia", "coste de sala", "canciones a ensayar", "modo en vivo"],
+      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks", "stage-mode"],
       body: [
         { type: "p", text: "Abre un ensayo desde el **Calendario** o desde Inicio. Su página es azul, el color de los ensayos, y tiene estas partes:" },
         {
           type: "list",
           items: [
             "**¿Vienes?**: la tarjeta de respuesta para los miembros invitados (consulta [[answer-a-rehearsal-invite]]).",
+            "**Abrir modo en vivo**, el botón de reproducir arriba a la derecha (en la barra lateral en un dispositivo de doble pantalla), en los próximos ensayos: las canciones a ensayar con letra, acordes y clic, con el admin guiando. Consulta [[stage-mode]].",
             "Las casillas de horarios: **INICIO**, **FIN** y **SALA**.",
             "**ASISTENCIA**: quién está invitado y qué ha respondido.",
             "**CANCIONES A ENSAYAR**: hasta ocho canciones, con **+ {count} MÁS** y **SETLIST** para ver la lista entera.",

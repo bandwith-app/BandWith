@@ -1109,7 +1109,7 @@ const music: AreaText = {
             ["Le mie note e i miei file", "Solo i propri", "Solo i propri"],
             ["Leggere le scalette ed esportarle in PDF", "Sì", "Sì"],
             ["Creare, modificare, riordinare, eliminare scalette", "Sì", "No"],
-            ["Aprire la Modalità palco su un gig in programma", "Sì, come leader", "Sì, come chi segue"],
+            ["Aprire la Modalità palco su un gig in programma, o la Modalità live su una prova in programma", "Sì, come leader", "Sì, come chi segue"],
             ["Spostare il brano corrente della band, riordinare sul palco, avviare il click della band", "Sì", "No: scorre i brani e usa il click solo sul proprio telefono"],
           ],
         },
@@ -1131,10 +1131,10 @@ const music: AreaText = {
     {
       id: "stage-mode",
       title: "Modalità palco",
-      summary: "Una schermata nera, leggibile a colpo d’occhio, per il giorno del gig: programma, scaletta e testo o accordi di ogni brano.",
+      summary: "Una schermata live nera, leggibile a colpo d’occhio, con la scaletta e il testo o gli accordi di ogni brano: il giorno del gig con il programma, a una prova come Modalità live.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto"],
+      keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto", "prova", "modalità live", "prova live"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1144,6 +1144,7 @@ const music: AreaText = {
             "Apri un gig della band in programma e tocca il pulsante **Riproduci** in alto a destra (**Apri modalità palco**). Il giorno del gig è evidenziato.",
             "Oppure, nella Home, tocca **Go live** sotto il tuo prossimo gig.",
             "Per uscire, tocca la X (**Esci dalla modalità palco**).",
+            "Su una prova della band in programma lo stesso pulsante è **Apri modalità live**. Apre la Modalità live (vedi sotto); per uscire, **Esci dalla modalità live**.",
           ],
         },
         {
@@ -1171,9 +1172,21 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "A una prova: la Modalità live",
+          items: [
+            "**Modalità live · <data>** e il titolo della prova in alto.",
+            "La scaletta sono i brani da provare della prova, nel loro ordine. Se non ne è stato scelto nessuno dice “Ancora nessun brano scelto per questa prova.”",
+            "Testo, accordi, trasposizione, dimensione del testo, il click e Le mie note funzionano come in un gig.",
+            "L’admin guida e i membri seguono, via internet e via Bluetooth, come in un gig. Chiunque sia nella prova può aprirla.",
+            "Niente programma della serata (nessun orario di carico, soundcheck, show o fine) e niente brani da togliere per stasera.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "La Modalità live a una prova: i brani da provare, gli accordi del brano corrente e Indietro / Avanti, senza programma della serata." },
+        {
+          type: "list",
           title: "Buono a sapersi",
           items: [
-            "La Modalità palco è disponibile per i gig della band in programma, non per prove, preventivi, gig passati o gig personali.",
+            "La Modalità palco è disponibile per i gig della band in programma e, come Modalità live, per le prove della band in programma; non per preventivi, eventi passati o gig personali.",
             "Lo schermo resta acceso finché la Modalità palco è aperta.",
             "Senza scaletta, dice “Nessuna scaletta collegata a questo gig.”",
             "Nelle app per telefono e tablet, la scaletta con testi e spartiti resta salvata sul dispositivo quando apri il gig, così la Modalità palco funziona senza internet. Uscendo dall’account viene cancellata.",

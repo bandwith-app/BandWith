@@ -1109,7 +1109,7 @@ const music: AreaText = {
             ["Mes notes et mes fichiers", "Les siens seulement", "Les siens seulement"],
             ["Lire les setlists et les exporter en PDF", "Oui", "Oui"],
             ["Créer, modifier, réordonner, supprimer des setlists", "Oui", "Non"],
-            ["Ouvrir le mode scène sur un concert à venir", "Oui, comme leader", "Oui, comme suiveur"],
+            ["Ouvrir le mode scène sur un concert à venir, ou le mode live sur une répétition à venir", "Oui, comme leader", "Oui, comme suiveur"],
             ["Changer le morceau en cours du groupe, réordonner sur scène, lancer le clic du groupe", "Oui", "Non : avance et lance le clic sur son propre téléphone seulement"],
           ],
         },
@@ -1131,10 +1131,10 @@ const music: AreaText = {
     {
       id: "stage-mode",
       title: "Mode scène",
-      summary: "Un écran noir, lisible d’un coup d’œil le jour du concert, avec le déroulé, la setlist et les paroles ou accords de chaque morceau.",
+      summary: "Un écran live noir, lisible d’un coup d’œil, avec la setlist et les paroles ou accords de chaque morceau : le jour du concert avec le déroulé, à une répétition en mode live.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["scène", "jour du concert", "live", "déroulé", "go live", "mode concert"],
+      keywords: ["scène", "jour du concert", "live", "déroulé", "go live", "mode concert", "répétition", "mode live", "répétition live"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1144,6 +1144,7 @@ const music: AreaText = {
             "Ouvre un concert du groupe à venir et touche le bouton **Lecture** en haut à droite (**Ouvrir le mode scène**). Le jour du concert, il est mis en avant.",
             "Ou, sur l’accueil, touche **Go live** sous ton prochain concert.",
             "Pour quitter, touche X (**Quitter le mode scène**).",
+            "Sur une répétition du groupe à venir, le même bouton s’appelle **Ouvrir le mode live**. Il ouvre le mode live (ci-dessous) ; pour quitter, **Quitter le mode live**.",
           ],
         },
         {
@@ -1171,9 +1172,21 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "À une répétition : le mode live",
+          items: [
+            "**Mode live · <date>** et le titre de la répétition en haut.",
+            "La setlist, ce sont les morceaux à travailler de la répétition, dans leur ordre. Sans morceau choisi, il indique « Aucun morceau choisi pour cette répétition. »",
+            "Paroles, accords, transposition, taille du texte, le clic et Mes notes fonctionnent comme pour un concert.",
+            "L’admin guide et les membres suivent, par internet et par Bluetooth, comme pour un concert. Toute personne de la répétition peut l’ouvrir.",
+            "Pas de déroulé (pas d’heures d’installation, de balance, de show ou de fin) et pas de morceaux à retirer pour ce soir.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "Le mode live à une répétition : les morceaux à travailler, les accords du morceau en cours et Précédent / Suivant, sans déroulé." },
+        {
+          type: "list",
           title: "Bon à savoir",
           items: [
-            "Le mode scène est proposé pour les concerts du groupe à venir, pas pour les répétitions, les devis, les concerts passés ni les concerts perso.",
+            "Le mode scène est proposé pour les concerts du groupe à venir et, en mode live, pour les répétitions du groupe à venir ; pas pour les devis, les événements passés ni les concerts perso.",
             "L’écran reste allumé tant que le mode scène est ouvert.",
             "Sans setlist, il indique « Aucune setlist liée à ce concert. »",
             "Dans les apps téléphone et tablette, la setlist avec paroles et grilles est gardée sur l’appareil quand tu ouvres le concert : le mode scène marche sans internet. Te déconnecter la supprime.",

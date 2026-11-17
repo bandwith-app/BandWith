@@ -560,7 +560,7 @@
       <tr><td>Note e file personali</td><td>Solo i propri</td><td>Solo i propri</td></tr>
       <tr><td>Leggere le setlist ed esportarle in PDF</td><td>Sì</td><td>Sì</td></tr>
       <tr><td>Creare, modificare, riordinare, eliminare setlist</td><td>Sì</td><td>No</td></tr>
-      <tr><td>Aprire lo Stage mode su un gig in programma</td><td>Sì, come leader</td><td>Sì, come follower</td></tr>
+      <tr><td>Aprire lo Stage mode su un gig in programma, o il Live mode su una prova in programma</td><td>Sì, come leader</td><td>Sì, come follower</td></tr>
       <tr><td>Spostare il brano corrente della band, riordinare sul palco, avviare il click della band</td><td>Sì</td><td>No: scorre i brani e usa il click solo sul proprio telefono</td></tr>
     </tbody>
   </table>
@@ -572,12 +572,13 @@
   <h2>Stage mode</h2>
 
   <h3 id="art-stage-mode" data-roles="admin,member">Stage mode</h3>
-  <p>Lo Stage mode è la schermata nera del giorno del gig, leggibile a colpo d'occhio, con programma della serata, setlist e testo o accordi di ogni brano.</p>
+  <p>Lo Stage mode è la schermata live nera, leggibile a colpo d'occhio, con setlist e testo o accordi di ogni brano: il giorno del gig con il programma della serata, a una prova come Live mode.</p>
   <p class="steps-title">Aprire lo Stage mode</p>
   <ol class="steps">
     <li>Si apre un gig della band in programma e si tocca il pulsante <b class="ui">Play</b> in alto a destra (<b class="ui">Open stage mode</b>); il giorno del gig è evidenziato.</li>
     <li>Oppure, nella Home, si tocca <b class="ui">Go live</b> sotto il prossimo gig.</li>
     <li>Per uscire si tocca la X (<b class="ui">Exit stage mode</b>).</li>
+    <li>Su una prova della band in programma lo stesso pulsante è <b class="ui">Open live mode</b>: apre il Live mode (sotto); per uscire, <b class="ui">Exit live mode</b>.</li>
   </ol>
   <p class="steps-title">Cosa contiene la schermata</p>
   <ul>
@@ -596,9 +597,18 @@
     <li>Il programma della serata si nasconde per lasciare più spazio al brano.</li>
     <li>Dove c'è spazio (un telefono in orizzontale, un iPad, un dispositivo a doppio schermo aperto su entrambi i pannelli) la setlist resta in una colonna accanto al brano: toccando un brano lì si passa a quello.</li>
   </ul>
+  <p class="steps-title">A una prova: il Live mode</p>
+  <ul>
+    <li><b class="ui">Live mode · &lt;date&gt;</b> e il titolo della prova in alto.</li>
+    <li>La setlist sono i brani da provare (focus songs), nel loro ordine. Se non ne è stato scelto nessuno compare <b class="ui">“No songs picked for this rehearsal yet.”</b></li>
+    <li>Testo, accordi, trasposizione, dimensione del testo, click e My notes funzionano come in un gig.</li>
+    <li>L'admin guida e i membri seguono, via internet e via Bluetooth, come in un gig. Chiunque sia nella prova può aprirlo.</li>
+    <li>Niente programma della serata (nessun orario di load in, soundcheck, show o fine) e niente brani da togliere per la serata.</li>
+  </ul>
+  <figure class="shot" data-shot="music-rehearsal-live" data-device="phone"><figcaption>Il Live mode a una prova: i brani da provare, gli accordi del brano corrente e Prev / Next, senza programma della serata.</figcaption></figure>
   <p class="steps-title">Da sapere</p>
   <ul>
-    <li>Lo Stage mode è disponibile per i gig della band in programma, non per prove, preventivi, gig passati o gig personali.</li>
+    <li>Lo Stage mode è disponibile per i gig della band in programma e, come Live mode, per le prove della band in programma; non per preventivi, eventi passati o gig personali.</li>
     <li>Lo schermo resta acceso finché lo Stage mode è aperto.</li>
     <li>Senza setlist compare <b class="ui">“No setlist attached to this gig.”</b></li>
     <li>Nelle app per telefono e tablet, aprendo il gig la setlist con testi e partiture viene conservata sul dispositivo, così lo Stage mode funziona senza internet. Con il logout la copia viene rimossa.</li>

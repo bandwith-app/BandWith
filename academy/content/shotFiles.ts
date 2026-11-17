@@ -17,6 +17,7 @@ export const SHOT_FILES: Record<string, ShotDevice[]> = {
   'gig-workspace-member': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'ipad-gig-composer': ['tablet', 'web', 'duoBook'],
   'music-reader': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
+  'music-rehearsal-live': ['phone', 'tablet', 'web'],
   'music-repertoire': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'music-setlist-editor': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'music-stage': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],

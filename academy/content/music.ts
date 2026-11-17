@@ -1119,7 +1119,7 @@ const music: AreaModule = {
             ["My notes and my files", "Own only", "Own only"],
             ["Read setlists and export them as PDF", "Yes", "Yes"],
             ["Create, edit, reorder, delete setlists", "Yes", "No"],
-            ["Open Stage mode on an upcoming gig", "Yes, as leader", "Yes, as follower"],
+            ["Open Stage mode on an upcoming gig, or Live mode on an upcoming rehearsal", "Yes, as leader", "Yes, as follower"],
             ["Move the band's current song, reorder on stage, start the band's click", "Yes", "No: steps and clicks on their own phone only"],
           ],
         },
@@ -1141,10 +1141,10 @@ const music: AreaModule = {
     {
       id: "stage-mode",
       title: "Stage mode",
-      summary: "A black, glanceable gig-day screen with the run of show, the setlist and each song's lyrics or chords.",
+      summary: "A black, glanceable live screen with the setlist and each song's lyrics or chords: on gig day with the run of show, at a rehearsal as Live mode.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode"],
+      keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode", "rehearsal", "live mode", "rehearsal live"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1154,6 +1154,7 @@ const music: AreaModule = {
             "Open an upcoming band gig and tap the **Play** button at the top right (**Open stage mode**). On gig day it is highlighted.",
             "Or, on Home, tap **Go live** under your next gig.",
             "To leave, tap X (**Exit stage mode**).",
+            "On an upcoming band rehearsal the same button is **Open live mode**. It opens Live mode (below); to leave, **Exit live mode**.",
           ],
         },
         {
@@ -1181,9 +1182,21 @@ const music: AreaModule = {
         },
         {
           type: "list",
+          title: "At a rehearsal: Live mode",
+          items: [
+            "**Live mode · <date>** and the rehearsal's title at the top.",
+            "The setlist is the rehearsal's focus songs, in their order. With none picked it says “No songs picked for this rehearsal yet.”",
+            "Lyrics, chords, transpose, text size, the click and My notes work as on a gig.",
+            "The admin leads and members follow, over the internet and over Bluetooth, as on a gig. Everyone on the rehearsal can open it.",
+            "No run of show (no load in, soundcheck, show or end times) and no striking songs off for tonight.",
+          ],
+        },
+        { type: "shot", id: "music-rehearsal-live", caption: "Live mode at a rehearsal: the focus songs, the current song's chords and Prev / Next, with no run of show." },
+        {
+          type: "list",
           title: "Good to know",
           items: [
-            "Stage mode is offered for upcoming band gigs, not for rehearsals, quotes, past gigs or personal gigs.",
+            "Stage mode is offered for upcoming band gigs and, as Live mode, for upcoming band rehearsals; not for quotes, past events or personal gigs.",
             "The screen stays awake while Stage mode is open.",
             "With no setlist, it says “No setlist attached to this gig.”",
             "In the phone and tablet apps, the setlist with lyrics and charts is kept on the device when you open the gig, so Stage mode works without internet. Signing out removes it.",
@@ -1485,6 +1498,12 @@ const music: AreaModule = {
     {
       id: "music-stage",
       how: "On Home, tap Go live under the next gig (Rooftop Session, today). Stay on the Setlist tab with the run of show visible.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "music-rehearsal-live",
+      how: "Give Weekly rehearsal focus songs (Paper Boats, Harbor Lights, Superstition, I Wish), open it from the Calendar, tap Open live mode, then the Chords tab.",
       role: "admin",
       viewport: "phone",
     },

@@ -255,8 +255,8 @@ const together: AreaText = {
       summary: "O que um ensaio mostra aos admins e aos membros.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["detalhes do ensaio", "presença", "custo do estúdio", "músicas em foco"],
-      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks"],
+      keywords: ["detalhes do ensaio", "presença", "custo do estúdio", "músicas em foco", "modo ao vivo"],
+      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks", "stage-mode"],
       body: [
         {
           type: "p",
@@ -266,6 +266,7 @@ const together: AreaText = {
           type: "list",
           items: [
             "**Você vem?**: o cartão de resposta para os membros convidados (veja [[answer-a-rehearsal-invite]]).",
+            "**Abrir modo ao vivo**, o botão de play no canto superior direito (na barra lateral num aparelho de duas telas), nos ensaios futuros: as músicas em foco com letra, acordes e clique, com o admin guiando. Veja [[stage-mode]].",
             "Blocos de horário: **INÍCIO**, **FIM** e **SALA**.",
             "**PRESENÇA**: quem foi convidado e o que respondeu.",
             "**MÚSICAS EM FOCO**: até oito músicas, com **+ {count} MAIS** e **SETLIST** para ver a lista completa.",

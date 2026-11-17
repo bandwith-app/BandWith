@@ -26,6 +26,7 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
+import type { LiveKind } from '@/lib/liveMode';
 
 export interface StageStep {
   label: string;
@@ -82,6 +83,12 @@ export interface StageLiveControls {
 }
 
 interface StageModeProps {
+  /**
+   * 'gig' (default): Stage mode with the evening's run of show.
+   * 'rehearsal': Live mode, the same live screen without phases and times
+   * (pass no steps) and without striking songs off for tonight.
+   */
+  kind?: LiveKind;
   title: string;
   venue?: string;
   /** Venue city, shown after the venue ("Venue · City"). */
@@ -124,6 +131,7 @@ const to24h = (time?: string): string => {
  * animation; the only motion is the 200ms fade on entry.
  */
 export const StageMode: React.FC<StageModeProps> = ({
+  kind = 'gig',
   title,
   venue,
   city,
@@ -142,6 +150,9 @@ export const StageMode: React.FC<StageModeProps> = ({
   onClose,
 }) => {
   const t = useT();
+  const rehearsal = kind === 'rehearsal';
+  // Struck off for tonight is a gig-night thing: not on rehearsals.
+  const canStrike = !rehearsal && !!live?.canStrike;
   // The screen stays on while Stage mode is open (lyrics and chords are read
   // hands-free; a locked leader's phone stops the band's sync too).
   useKeepAwake(true);
@@ -275,6 +286,7 @@ export const StageMode: React.FC<StageModeProps> = ({
     setBarHidden(!barHidden);
   };
   const barLabel = full ? t('Show sidebar') : t('Hide sidebar');
+  const exitLabel = rehearsal ? t('Exit live mode') : t('Exit stage mode');
 
   // Full screen across two panes: times and steps on the leading pane, the
   // setlist / lyrics on the trailing one, split at the panes' edge (the fold
@@ -351,7 +363,7 @@ export const StageMode: React.FC<StageModeProps> = ({
       ref={stageRef}
       role="dialog"
       aria-modal="true"
-      aria-label={t('Stage mode: {title}', { title })}
+      aria-label={rehearsal ? t('Live mode: {title}', { title }) : t('Stage mode: {title}', { title })}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -384,7 +396,7 @@ export const StageMode: React.FC<StageModeProps> = ({
           <div className="flex flex-col gap-2 min-w-0">
             <span className="flex items-center gap-2 bw-label-sm text-white">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: accentColor }} />
-              {t('Stage mode · {date}', { date: dateLabel })}
+              {rehearsal ? t('Live mode · {date}', { date: dateLabel }) : t('Stage mode · {date}', { date: dateLabel })}
             </span>
             <FitText as="h1" text={title} sizes={compactHead ? FIT.stageCompact : FIT.stage} maxLines={compactHead ? 1 : 2} className="bw-display-lg text-white" />
             {(venue || city) && !compactHead && (
@@ -399,20 +411,22 @@ export const StageMode: React.FC<StageModeProps> = ({
             // stacked in the narrow column of the short-and-wide layout.
             <span className="flex items-center gap-2 shrink-0 [@media(max-height:520px)_and_(min-width:600px)]:flex-col">
               <IconButton label={barLabel} variant="sheet" icon={<PanelLeft />} onClick={toggleBar} className="border-white/40 text-white" />
-              <IconButton label={t('Exit stage mode')} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
+              <IconButton label={exitLabel} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
             </span>
           ) : (
             <span className="flex items-center gap-2 shrink-0">
               {hasBar && (
                 <HeaderAction pane label={barLabel} variant="sheet" icon={<PanelLeft />} onClick={toggleBar} className="border-white/40 text-white" />
               )}
-              <HeaderAction pane label={t('Exit stage mode')} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
+              <HeaderAction pane label={exitLabel} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
             </span>
           )}
         </div>
 
         {/* Run of show (its own container: one row of four when short and wide enough) */}
         {/* Hidden while reading lyrics: the song needs the room more than the times. */}
+        {/* None on a rehearsal (no steps): no load in, soundcheck or show. */}
+        {steps.length > 0 && (
         <div
           className={cn(
             '@container shrink-0 [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-2',
@@ -451,6 +465,7 @@ export const StageMode: React.FC<StageModeProps> = ({
           })}
         </ol>
         </div>
+        )}
 
         {/* Setlist beside the song (wide layouts only; a phone held upright keeps the tabs). */}
         {showSide && (
@@ -666,7 +681,9 @@ export const StageMode: React.FC<StageModeProps> = ({
                 )}
               </div>
             ) : songs.length === 0 && !songsLoading ? (
-              <p className="bw-body-md text-white/70">{t('No setlist attached to this gig.')}</p>
+              <p className="bw-body-md text-white/70">
+                {rehearsal ? t('No songs picked for this rehearsal yet.') : t('No setlist attached to this gig.')}
+              </p>
             ) : (
               <SortableSongList
                 songs={stageRows}
@@ -679,7 +696,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 rowClassName="rounded-none pl-0 border-b border-white/15 last:border-b-0"
                 isCurrent={(_, i) => i === current}
                 rowAction={
-                  live?.canStrike && live.toggleSkip
+                  canStrike && live?.toggleSkip
                     ? (row, i) => {
                         const struck = isStruck(row.song);
                         return (

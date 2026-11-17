@@ -255,8 +255,8 @@ const together: AreaText = {
       summary: "Cosa mostra una prova agli admin e ai membri.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["dettaglio prova", "presenze", "costo sala", "brani da provare"],
-      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks"],
+      keywords: ["dettaglio prova", "presenze", "costo sala", "brani da provare", "modalità live"],
+      related: ["answer-a-rehearsal-invite", "edit-a-rehearsal", "event-and-rehearsal-chats", "rehearsal-songs-and-prep-tasks", "stage-mode"],
       body: [
         {
           type: "p",
@@ -266,6 +266,7 @@ const together: AreaText = {
           type: "list",
           items: [
             "**Ci sarai?**: la scheda per rispondere, per i membri invitati (vedi [[answer-a-rehearsal-invite]]).",
+            "**Apri modalità live**, il pulsante play in alto a destra (nella barra laterale su un dispositivo a doppio schermo), sulle prove in programma: i brani da provare con testo, accordi e click, con l’admin che guida. Vedi [[stage-mode]].",
             "Riquadri degli orari: **INIZIO**, **FINE** e **SALA**.",
             "**PRESENZE**: chi è invitato e cosa ha risposto.",
             "**BRANI DA PROVARE**: fino a otto brani, con **+ ALTRI {count}** e **SCALETTA** per vedere l’elenco completo.",

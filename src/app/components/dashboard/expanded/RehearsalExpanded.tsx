@@ -4,8 +4,6 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
-  MapPin,
-  Mic2,
   Play,
   Radio,
   X
@@ -32,7 +30,8 @@ interface RehearsalExpandedProps {
   setRehearsalIndex: (index: number | ((prev: number) => number)) => void;
   rehearsalViewMode: RehearsalViewMode;
   setRehearsalViewMode: (mode: RehearsalViewMode) => void;
-  isLive: boolean;
+  /** Opens the rehearsal in live mode (the same live screen as a gig's Stage mode). */
+  onGoLive: () => void;
   onClose: () => void;
   onDecline: () => void;
 }
@@ -51,7 +50,7 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
   setRehearsalIndex,
   rehearsalViewMode,
   setRehearsalViewMode,
-  isLive,
+  onGoLive,
   onClose,
   onDecline
 }) => {
@@ -61,8 +60,6 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
     overview: t('Rehearsal'),
     setlist: t('Setlist'),
     tasks: t('Tasks'),
-    live: t('Live'),
-    post: t('Summary'),
   };
   // Shown names of the event status (the value stays as it is).
   const statusLabel: Record<string, string> = {
@@ -82,7 +79,7 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
       } else {
         onClose();
       }
-    } else if (!isLive) {
+    } else {
       setRehearsalViewMode('overview');
     }
   };
@@ -276,7 +273,7 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
               <PillButton
                 variant="dark"
                 icon={<Play className="w-[18px] h-[18px]" />}
-                onClick={() => setRehearsalViewMode('live')}
+                onClick={onGoLive}
               >
                 {t('Enter live mode')}
               </PillButton>
@@ -386,28 +383,6 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
             </motion.div>
           )}
 
-          {/* LIVE VIEW (Placeholder) */}
-          {rehearsalViewMode === 'live' && (
-            <motion.div
-              key="live"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex-1 flex flex-col items-center justify-center text-center gap-6 py-10"
-            >
-              <span className="relative w-28 h-28 rounded-full bg-accent-rehearsal text-accent-rehearsal-foreground flex items-center justify-center">
-                <span className="absolute inset-0 rounded-full bg-accent-rehearsal/30 animate-ping" aria-hidden="true" />
-                <Mic2 className="relative w-10 h-10" />
-              </span>
-              <div className="flex flex-col gap-2">
-                <h2 className="bw-display-lg">{t('Live session')}</h2>
-                <p className="bw-label-sm text-muted-foreground">{t('Recording & tracking time')}</p>
-              </div>
-              <DotText text="00:00:00" size={34} label={t('Elapsed {time}', { time: '00:00:00' })} />
-              <PillButton variant="outline" fullWidth={false} className="text-destructive border-destructive" onClick={() => setRehearsalViewMode('overview')}>
-                {t('End session')}
-              </PillButton>
-            </motion.div>
-          )}
         </AnimatePresence>
       </div>
 
@@ -423,7 +398,7 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
             <PillButton
               className="flex-1 min-w-0"
               icon={<Radio className="w-[18px] h-[18px]" />}
-              onClick={() => setRehearsalViewMode('live')}
+              onClick={onGoLive}
             >
               {t('Check in / live')}
             </PillButton>
