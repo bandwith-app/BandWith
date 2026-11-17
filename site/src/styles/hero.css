@@ -1,0 +1,95 @@
+/* ── Hero: copy left, a zoomed piece of the app right, the equalizer underneath ── */
+.hero {
+  --eq-h: clamp(150px, 26svh, 260px);
+  position: relative; isolation: isolate; overflow: hidden;
+  min-height: 100svh; display: flex; flex-direction: column;
+}
+.hero__inner {
+  position: relative; z-index: 2; flex: 1;
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); align-items: center;
+  gap: clamp(40px, 6vw, 112px);
+  padding-top: calc(var(--nav-h) + clamp(40px, 9vh, 104px));
+  padding-bottom: calc(var(--eq-h) * .62);
+}
+/* The title is sized by its own column, so it can never run out of it. */
+.hero__copy { min-width: 0; container-type: inline-size; }
+.hero__screen { container: shot / inline-size; }
+.hero__kicker { color: var(--fg); }
+.led { width: 8px; height: 8px; border-radius: 3px; background: var(--lime); box-shadow: 0 0 12px var(--lime); animation: blink 1.07s steps(2, jump-none) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+.hero__title { margin: 24px 0 0; font-size: clamp(40px, 12.4cqi, 136px); line-height: .86; letter-spacing: -0.04em; }
+.hero__title .line { display: block; overflow: hidden; padding-bottom: 0.05em; white-space: nowrap; }
+.hero__title .line > span { display: block; }
+.hero__title em { font-style: normal; color: var(--lime); }
+.hero__lead { max-width: 31em; margin: 28px 0 0; font-size: clamp(17px, 1.35vw, 20px); line-height: 1.45; color: var(--fg-2); }
+.hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+.hero__cap { margin-top: 22px; padding: 0; border: 0; color: var(--fg-dim); }
+
+/* Right: the screen the latest notification opens. */
+.hero__screen {
+  position: relative; margin: 0; justify-self: end;
+  width: max(260px, min(100%, 430px, calc((100svh - var(--nav-h) - var(--eq-h) * .5 - 200px) * .8)));
+}
+.hero__crop {
+  --r: 32px; width: 100%; aspect-ratio: 4 / 5;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 70px 120px -60px rgba(213,251,70,.38), 0 40px 80px -40px rgba(0,0,0,.95);
+}
+.hero__crop .crop__tag { left: 16px; bottom: 16px; }
+/* Chips under the screen: story bars. The playing one fills on the beat; a tap picks one. */
+.hero__picks {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; padding: 2px 14px 0;
+  border-radius: 18px; background: rgba(10,10,10,.82); border: 1px solid rgba(255,255,255,.07);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.pick {
+  display: grid; gap: 9px; align-content: start; min-height: 46px; padding: 12px 0 0; border: 0; background: none;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: var(--track-mono); text-transform: uppercase;
+  text-align: left; color: var(--fg-dim); cursor: pointer; transition: color .25s;
+}
+.pick__bar { display: block; height: 3px; border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; }
+.pick__bar i { display: block; height: 100%; background: var(--c, var(--lime)); transform-origin: 0 50%; transform: scaleX(var(--t, 0)); transition: transform .14s linear; }
+.pick:hover, .pick[aria-pressed="true"] { color: var(--fg); }
+.pick:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; border-radius: 6px; }
+@container shot (max-width: 330px) { .hero__picks { gap: 6px; padding-inline: 10px; } .pick { font-size: 10px; letter-spacing: 0.02em; } }
+.toasts { list-style: none; margin: 0; padding: 0; position: absolute; z-index: 3; top: -30px; left: -40px; right: 28px; height: 0; }
+.hero__eq {
+  position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; width: 100%; height: var(--eq-h);
+  -webkit-mask-image: linear-gradient(to top, #000 35%, transparent 100%); mask-image: linear-gradient(to top, #000 35%, transparent 100%);
+}
+
+.toast {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: start;
+  padding: 13px 16px 14px 13px; border-radius: 24px;
+  background: rgba(30, 30, 30, 0.78); border: 1px solid rgba(255,255,255,.1);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: 0 24px 50px -18px rgba(0,0,0,.85);
+}
+.toast__app { width: 38px; height: 38px; border-radius: 10px; }
+.toast__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.toast__meta { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--fg-dim); }
+.toast__meta span { color: #fff; }
+.toast__meta i { width: 6px; height: 6px; border-radius: 2px; background: var(--c, var(--lime)); }
+.toast__meta em { font-style: normal; margin-left: auto; }
+.toast[data-kind="rehearsal"] { --c: #3c72ff; }
+.toast[data-kind="quote"] { --c: var(--quote); }
+.toast[data-kind="personal"] { --c: var(--personal); }
+.toast b { font-family: var(--font-text); font-weight: 600; font-size: 14.5px; line-height: 1.25; }
+.toast__txt { font-size: 13.5px; line-height: 1.32; color: var(--fg-2); }
+
+/* One column: phones, Duo closed, tall tablets. The screen sits under the copy. */
+@media (max-width: 860px), (max-width: 1100px) and (orientation: portrait) {
+  .hero { --eq-h: clamp(120px, 18svh, 190px); min-height: 0; }
+  .hero__inner { grid-template-columns: minmax(0, 1fr); gap: 64px; padding-top: calc(var(--nav-h) + 48px); }
+  .hero__title { font-size: clamp(40px, 13cqi, 120px); }
+  .hero__screen { justify-self: center; width: min(100%, 440px); }
+  .toasts { left: 14px; right: 14px; top: -34px; }
+}
+@media (max-width: 720px) {
+  .hero__cta .btn { flex: 1 1 auto; }
+  .hero__picks { gap: 6px; padding-inline: 10px; }
+  .pick { font-size: 10px; }
+  .hero__crop { --r: 26px; }
+  .toast { padding: 11px 13px 12px 11px; border-radius: 20px; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+  .toast__app { width: 32px; height: 32px; border-radius: 8px; }
+}
