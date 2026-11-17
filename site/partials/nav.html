@@ -1,0 +1,46 @@
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav" data-nav>
+  <a class="nav__brand" href="/" aria-label="BandWith home" data-brand>
+    <svg class="mark" viewBox="0 0 286 286" aria-hidden="true" data-mark><rect x="0" y="0" width="88" height="88" rx="30"/><rect x="0" y="99" width="88" height="88" rx="30"/><rect x="0" y="198" width="88" height="88" rx="30"/><rect x="99" y="99" width="88" height="187" rx="30"/><rect x="198" y="0" width="88" height="88" rx="30"/><rect x="198" y="99" width="88" height="88" rx="30"/><rect x="198" y="198" width="88" height="88" rx="30"/></svg>
+    <span class="nav__word">BandWith</span>
+  </a>
+  <nav class="nav__deck" aria-label="Main" data-deck>
+    <span class="nav__cap" aria-hidden="true" data-cap><i></i></span>
+    <button type="button" class="nav__item" aria-expanded="false" aria-controls="rack-panel" data-rack-btn><b>11</b><span class="nav__t" data-roll>Features</span><svg class="ico nav__chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+    <a class="nav__item" href="/#night" data-nav-page="night"><b>24h</b><span class="nav__t" data-roll>One night</span></a>
+    <a class="nav__item" href="https://bandwith-beryl.vercel.app/academy/" data-guide><b>6</b><span class="nav__t" data-roll>Guide</span><svg class="ico nav__ext" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+  </nav>
+  <div class="nav__actions">
+    <a class="cap-chip" href="/get/" data-cap-chip hidden><span class="cap-chip__led" aria-hidden="true"></span><span data-cap-chip-text></span></a>
+    <a class="btn btn--lime btn--sm nav__cta" href="/get/" data-magnetic data-nav-page="get">Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <button class="nav__menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Open menu" data-menu-btn><i></i><i></i><i></i></button>
+  </div>
+</header>
+
+<!-- Features panel (≥1081px): the rack. Hover a strip to preview it. -->
+<div class="rackp" id="rack-panel" data-rack-panel hidden>
+  <div class="rackp__preview" aria-hidden="true">
+    <div class="rackp__shot"><img data-rackp-img src="/shots/music-stage@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" /></div>
+    <div class="rackp__copy">
+      <p class="label" data-rackp-ch>CH 07</p>
+      <p class="rackp__name" data-rackp-name>Stage mode</p>
+      <p class="rackp__line" data-rackp-line>One song on every phone.</p>
+    </div>
+  </div>
+  <nav class="rackp__strips" aria-label="Features">
+    <!--@rack-panel-->
+  </nav>
+</div>
+
+<!-- Menu sheet (≤1080px) -->
+<div class="menu" id="menu" data-menu hidden>
+  <nav class="menu__links" aria-label="Features">
+    <p class="label menu__label">Features</p>
+    <!--@menu-rows-->
+  </nav>
+  <div class="menu__foot">
+    <a class="menu__guide" href="https://bandwith-beryl.vercel.app/academy/">Guide · 6 languages <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <a class="btn btn--lime menu__cta" href="/get/">Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <p class="menu__note" data-cap-note><span class="led"></span>Private beta · iPhone, Android &amp; web</p>
+  </div>
+</div>

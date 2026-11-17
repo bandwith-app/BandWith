@@ -33,6 +33,8 @@ jobs:
       - run: pnpm e2e:models:docs --check
       - run: pnpm test:run
       - run: pnpm build
+      # Product site (site/): its own static build.
+      - run: pnpm build:site
 
   e2e:
     name: E2E (${{ matrix.shard }}/3)
