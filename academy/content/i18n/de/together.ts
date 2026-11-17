@@ -541,7 +541,7 @@ const together: AreaText = {
           rows: [
             {
               devices: ["duoLaptop"],
-              text: "In der Laptop-Haltung zeigt das Abstimmungsfenster Mitglieder und Tage auf dem oberen Bildschirm und deine Terminfelder mit **Festlegen** und **Fertig** auf dem unteren.",
+              text: "In der Laptop-Haltung zeigt das Abstimmungsfenster Mitglieder und Tage auf dem oberen Bildschirm und deine Terminfelder mit **{day} festlegen** / **Termin festlegen** und **Fertig** auf dem unteren.",
             },
           ],
         },

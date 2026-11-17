@@ -541,7 +541,7 @@ const together: AreaText = {
           rows: [
             {
               devices: ["duoLaptop"],
-              text: "En position ordinateur, la feuille de vote affiche les membres et les jours sur l’écran du haut, et tes cases de jours avec **Valider** et **OK** sur l’écran du bas.",
+              text: "En position ordinateur, la feuille de vote affiche les membres et les jours sur l’écran du haut, et tes cases de jours avec **Valider {day}** / **Valide une date** et **OK** sur l’écran du bas.",
             },
           ],
         },

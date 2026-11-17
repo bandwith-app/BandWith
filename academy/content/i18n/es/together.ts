@@ -426,7 +426,7 @@ const together: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "En postura portátil, la hoja de votación pone los miembros y los días en la pantalla de arriba, y tus botones de día con **Fijar** y **Listo** en la de abajo." },
+            { devices: ["duoLaptop"], text: "En postura portátil, la hoja de votación pone los miembros y los días en la pantalla de arriba, y tus botones de día con **Fijar {day}** / **Fija una fecha** y **Listo** en la de abajo." },
           ],
         },
       ],

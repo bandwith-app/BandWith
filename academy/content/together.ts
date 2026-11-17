@@ -548,7 +548,7 @@ const together: AreaModule = {
           rows: [
             {
               devices: ['duoLaptop'],
-              text: 'In Laptop pose the vote sheet puts members and days on the top screen, and your day pads with **Lock in** and **Done** on the bottom screen.',
+              text: 'In Laptop pose the vote sheet puts members and days on the top screen, and your day pads with **Lock {day}** / **Lock a date** and **Done** on the bottom screen.',
             },
           ],
         },
