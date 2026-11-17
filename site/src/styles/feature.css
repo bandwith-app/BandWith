@@ -13,14 +13,14 @@
 .fhero__lead { margin-top: 28px; }
 .fhero__chips { margin-top: 28px; }
 .fhero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-.fhero__device { --w: clamp(240px, min(24vw, calc((100svh - 200px) * 0.462)), 340px); }
+.fhero__crop { --r: 32px; width: clamp(280px, min(32vw, calc((100svh - 220px) * 0.8)), 460px); aspect-ratio: 4 / 5; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 70px 120px -60px rgba(213,251,70,.32), 0 40px 80px -40px rgba(0,0,0,.95); }
 html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: hidden; }
 @media (max-width: 900px) {
   .fhero { min-height: 0; padding-bottom: 0; }
   .fhero__grid { grid-template-columns: minmax(0, 1fr); }
-  .fhero__phone { justify-self: center; margin-bottom: -22%; }
-  .fhero__device { --w: min(72vw, 300px); }
-  .fhero + .sec { padding-top: calc(var(--section-y) + 12%); }
+  .fhero { padding-bottom: 24px; }
+  .fhero__phone { justify-self: stretch; }
+  .fhero__crop { width: min(100%, 460px); margin-inline: auto; }
 }
 @media (max-width: 720px) { .fhero__cta .btn { flex: 1 1 auto; } }
 
@@ -33,11 +33,10 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .flow__step.is-on { opacity: 1; }
 .flow__n { margin: 0 0 16px; color: var(--lime); }
 .flow__step p:not(.flow__n) { margin: 0; max-width: 30em; font-size: 18px; line-height: 1.5; color: var(--fg-2); }
-.flow__sticky { position: sticky; top: calc(50svh - min(24vw, calc((100svh - 180px) * 0.462), 320px) * 1.08); display: grid; justify-items: center; gap: 18px; }
-.flow__device { --w: min(24vw, calc((100svh - 180px) * 0.462), 320px); transition: box-shadow .5s var(--ease); }
-.flow__device .device__screen img { width: 100%; height: auto; }
-.flow__device::after { content: ""; position: absolute; inset: calc(var(--w) * 0.026); z-index: 3; border-radius: calc(var(--w) * 0.13); pointer-events: none; box-shadow: inset 0 0 0 0 var(--lime); opacity: 0; }
-.flow__device.is-glow::after { opacity: 1; animation: edgeBeat 2.4s steps(1) infinite; }
+.flow__sticky { --cw: min(100%, 36vw, calc((100svh - 220px) * 0.8), 440px); position: sticky; top: calc(50svh - var(--cw) * 0.625 - 20px); display: grid; justify-items: center; gap: 18px; }
+.flow__crop { width: var(--cw); aspect-ratio: 4 / 5; }
+.flow__crop::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.flow__crop.is-glow::after { opacity: 1; animation: edgeBeat 2.4s steps(1) infinite; }
 @keyframes edgeBeat {
   0% { box-shadow: inset 0 0 0 6px var(--lime), inset 0 0 40px 10px rgba(213,251,70,.7); }
   12% { box-shadow: inset 0 0 0 2px rgba(213,251,70,.5), inset 0 0 20px 2px rgba(213,251,70,.2); }
@@ -51,12 +50,16 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .flow__badge { display: inline-flex; align-items: center; gap: 8px; margin: 0; height: 32px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); color: var(--fg); }
 .flow__badge span { width: 8px; height: 8px; border-radius: 3px; background: var(--lime); box-shadow: 0 0 10px var(--lime); }
 .flow__badge[data-tone="bt"] span { background: var(--rehearsal-ink); box-shadow: 0 0 10px var(--rehearsal-ink); }
+/* Phones: the screen sticks on top, the steps scroll under it. */
 @media (max-width: 720px) {
-  .flow__grid { grid-template-columns: minmax(0, 1fr) 34vw; gap: 18px; }
-  .flow__sticky { top: calc(var(--nav-h) + 16px); }
-  .flow__device { --w: 34vw; }
-  .flow__badge { height: 26px; padding: 0 9px; font-size: 9px; }
-  .flow__step { padding: 56px 0; }
+  .flow__grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .flow__phone { order: -1; position: sticky; top: calc(var(--nav-h) - 4px); z-index: 2; align-self: start; padding: 8px 0 14px; background: linear-gradient(180deg, var(--ink) 82%, rgba(5,5,5,0)); }
+  .flow__sticky { position: relative; top: 0; --cw: 100%; }
+  .flow__crop { aspect-ratio: 16 / 10; --r: 20px; }
+  .flow__badge { position: absolute; left: 12px; top: 12px; z-index: 4; height: 26px; padding: 0 10px; font-size: 10px; background: rgba(5,5,5,.8); }
+  .flow__step { padding: 44px 0; }
+  .flow__step:first-child { padding-top: 28px; }
+  .flow__step:last-child { padding-bottom: 40svh; }
   .flow__step p:not(.flow__n) { font-size: 16px; }
   .flow__step .h3 { font-size: 24px; }
 }

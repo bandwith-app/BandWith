@@ -1,52 +1,45 @@
-/* ── Hero ───────────────────────────────────────────────────────── */
-.hero { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; isolation: isolate; }
-.hero__gl, .hero__poster, .hero__shade { position: absolute; inset: 0; width: 100%; height: 100%; }
-.hero__gl { z-index: -2; }
-.hero__poster {
-  z-index: -3;
-  background-image: radial-gradient(circle at center, rgba(255,255,255,.07) 34%, transparent 36%);
-  background-size: 22px 22px;
-  mask-image: linear-gradient(to top, #000 10%, transparent 80%);
+/* ── Hero: copy left, a zoomed piece of the app right, the equalizer underneath ── */
+.hero {
+  --eq-h: clamp(150px, 26svh, 260px);
+  position: relative; isolation: isolate; overflow: hidden;
+  min-height: 100svh; display: flex; flex-direction: column;
 }
-.hero.gl-ready .hero__poster { opacity: 0; }
-.hero__shade { z-index: -1; pointer-events: none; background: radial-gradient(ellipse 60% 44% at 22% 50%, rgba(5,5,5,.88) 0%, rgba(5,5,5,.55) 50%, rgba(5,5,5,0) 100%), linear-gradient(180deg, rgba(5,5,5,.92) 0%, rgba(5,5,5,.55) 34%, rgba(5,5,5,0) 62%), linear-gradient(0deg, rgba(5,5,5,.9) 0%, rgba(5,5,5,0) 22%); }
-.hero__inner { padding-top: calc(var(--nav-h) + clamp(48px, 10vh, 120px)); }
+.hero__inner {
+  position: relative; z-index: 2; flex: 1;
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); align-items: center;
+  gap: clamp(40px, 6vw, 112px);
+  padding-top: calc(var(--nav-h) + clamp(40px, 9vh, 104px));
+  padding-bottom: calc(var(--eq-h) * .62);
+}
+/* The title is sized by its own column, so it can never run out of it. */
+.hero__copy { min-width: 0; container-type: inline-size; }
 .hero__kicker { color: var(--fg); }
 .led { width: 8px; height: 8px; border-radius: 3px; background: var(--lime); box-shadow: 0 0 12px var(--lime); animation: blink 1.07s steps(2, jump-none) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
-.hero__title { font-size: clamp(58px, 12.2vw, 210px); line-height: 0.84; letter-spacing: -0.04em; }
-.hero__title .line { display: block; overflow: hidden; padding-bottom: 0.04em; }
+.hero__title { margin: 24px 0 0; font-size: clamp(40px, 12.4cqi, 136px); line-height: .86; letter-spacing: -0.04em; }
+.hero__title .line { display: block; overflow: hidden; padding-bottom: 0.05em; white-space: nowrap; }
 .hero__title .line > span { display: block; }
 .hero__title em { font-style: normal; color: var(--lime); }
-.hero__lead { max-width: 30em; margin: 28px 0 0; font-size: clamp(17px, 1.4vw, 21px); line-height: 1.4; color: var(--fg-2); }
-.hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+.hero__lead { max-width: 31em; margin: 28px 0 0; font-size: clamp(17px, 1.35vw, 20px); line-height: 1.45; color: var(--fg-2); }
+.hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+.hero__cap { margin-top: 22px; padding: 0; border: 0; color: var(--fg-dim); }
 
-
-/* Hero phone: the real admin home rising out of the equalizer */
-.hero__inner { position: relative; z-index: 2; padding-bottom: clamp(72px, 12vh, 140px); }
-.hero__stage {
-  --pw: clamp(230px, 21vw, 330px);
-  position: absolute; z-index: 1; top: var(--stage-top, 44vh); bottom: 0;
-  right: calc(var(--gutter) + 4.5vw); width: var(--pw);
-  pointer-events: none; perspective: 1800px;
+/* Right: the screen the latest notification opens. */
+.hero__screen {
+  position: relative; margin: 0; justify-self: end;
+  width: max(260px, min(100%, 430px, calc((100svh - var(--nav-h) - var(--eq-h) * .5 - 150px) * .8)));
 }
-.hero__phone { transform-style: preserve-3d; will-change: transform; }
-.hero__device {
-  --w: var(--pw); --accent: var(--lime);
-  transform: rotateY(-14deg) rotateX(7deg) rotateZ(2.5deg); transform-origin: 50% 100%;
-  box-shadow: 0 80px 160px -40px rgba(213,251,70,.42), -30px 40px 80px -30px rgba(0,0,0,.9), inset 0 0 0 2px #000;
-  -webkit-mask-image: linear-gradient(180deg, #000 55%, rgba(0,0,0,.25) 88%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 55%, rgba(0,0,0,.25) 88%, transparent 100%);
+.hero__crop {
+  --r: 32px; width: 100%; aspect-ratio: 4 / 5;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 70px 120px -60px rgba(213,251,70,.38), 0 40px 80px -40px rgba(0,0,0,.95);
 }
-.hero__device::after { /* glass glare */
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(115deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 32%);
+.hero__crop .crop__tag { left: 16px; bottom: 16px; }
+.toasts { list-style: none; margin: 0; padding: 0; position: absolute; z-index: 3; top: -30px; left: -40px; right: 28px; height: 0; }
+.hero__eq {
+  position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; width: 100%; height: var(--eq-h);
+  -webkit-mask-image: linear-gradient(to top, #000 35%, transparent 100%); mask-image: linear-gradient(to top, #000 35%, transparent 100%);
 }
 
-.toasts {
-  list-style: none; margin: 0; padding: 0; position: absolute; z-index: 2;
-  top: clamp(96px, 13vh, 130px); right: calc(var(--pw) * 0.7); width: clamp(280px, 23vw, 336px);
-}
 .toast {
   position: absolute; top: 0; left: 0; right: 0;
   display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: start;
@@ -67,12 +60,17 @@
 .toast b { font-family: var(--font-text); font-weight: 600; font-size: 14.5px; line-height: 1.25; }
 .toast__txt { font-size: 13.5px; line-height: 1.32; color: var(--fg-2); }
 
-
-/* ≤900px: the phone sits under the copy, the banners land on top of it. */
-@media (max-width: 900px) {
-  .hero { min-height: 0; overflow: hidden; }
-  .hero__inner { padding-bottom: 40px; }
-  .hero__stage { --pw: min(62vw, 300px); position: relative; top: auto; right: auto; bottom: auto; width: var(--pw); margin: 8px auto 0; height: calc(var(--pw) * 1.45); }
-  .hero__device { transform: rotateX(8deg); }
-  .toasts { top: 14%; left: 50%; right: auto; width: min(calc(100vw - 32px), 340px); transform: translateX(-50%); }
+/* One column: phones, Duo closed, tall tablets. The screen sits under the copy. */
+@media (max-width: 860px), (max-width: 1100px) and (orientation: portrait) {
+  .hero { --eq-h: clamp(120px, 18svh, 190px); min-height: 0; }
+  .hero__inner { grid-template-columns: minmax(0, 1fr); gap: 64px; padding-top: calc(var(--nav-h) + 48px); }
+  .hero__title { font-size: clamp(40px, 13cqi, 120px); }
+  .hero__screen { justify-self: center; width: min(100%, 440px); }
+  .toasts { left: 14px; right: 14px; top: -34px; }
+}
+@media (max-width: 720px) {
+  .hero__cta .btn { flex: 1 1 auto; }
+  .hero__crop { --r: 26px; }
+  .toast { padding: 11px 13px 12px 11px; border-radius: 20px; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+  .toast__app { width: 32px; height: 32px; border-radius: 8px; }
 }

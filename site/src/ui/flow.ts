@@ -1,18 +1,19 @@
-import { gsap } from 'gsap';
+import { fitCrop, focusCrop, parseRegion } from './crop';
 
 /**
- * Feature walkthrough: numbered steps on the left, one sticky phone on the
- * right (CSS sticky, no pin). The step crossing the middle of the screen
- * becomes current; the phone swaps to its capture and its status badge.
- * A step with data-glow shows the Stage click glow around the screen.
+ * Feature walkthrough: numbered steps on the left, one sticky screen on the
+ * right (CSS sticky, no pin; on phones it sticks on top). The step crossing
+ * the middle of the screen becomes current; the screen pans and zooms to the
+ * part of the capture the step talks about (data-shot + data-region) and its
+ * status badge changes. A step with data-glow shows the Stage click glow.
  */
-export function initFlow(root: HTMLElement | null, reduce: boolean) {
+export function initFlow(root: HTMLElement | null) {
   if (!root) return;
   const steps = Array.from(root.querySelectorAll<HTMLElement>('[data-flow-step]'));
-  const img = root.querySelector<HTMLImageElement>('[data-flow-img]');
   const badge = root.querySelector<HTMLElement>('[data-flow-badge]');
   const device = root.querySelector<HTMLElement>('[data-flow-device]');
-  if (!steps.length || !img) return;
+  if (!steps.length || !device) return;
+  fitCrop(device, parseRegion(steps[0].dataset.region));
 
   let cur = -1;
   const set = (i: number) => {
@@ -23,13 +24,7 @@ export function initFlow(root: HTMLElement | null, reduce: boolean) {
     device?.classList.toggle('is-glow', s.hasAttribute('data-glow'));
     if (badge) badge.lastChild!.textContent = s.dataset.badge ?? '';
     badge?.setAttribute('data-tone', /bluetooth/i.test(s.dataset.badge ?? '') ? 'bt' : 'live');
-    const src = s.dataset.shot;
-    if (!src || img.getAttribute('src') === src) return;
-    if (reduce) { img.src = src; return; }
-    gsap.to(img, { autoAlpha: 0, duration: 0.18, onComplete: () => {
-      img.src = src;
-      gsap.to(img, { autoAlpha: 1, duration: 0.4, delay: 0.05 });
-    } });
+    focusCrop(device, parseRegion(s.dataset.region), s.dataset.shot);
   };
 
   const io = new IntersectionObserver((entries) => {

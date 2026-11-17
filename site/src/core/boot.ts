@@ -10,6 +10,7 @@ import { dotSvg } from '../ui/dotText';
 import { initNav } from '../ui/nav';
 import { initFootEq } from '../ui/footEq';
 import { renderCapacity } from './capacity';
+import { initCrops } from '../ui/crop';
 
 /**
  * Shared start for every page. `boot()` runs first (plugins, smooth scroll,
@@ -106,6 +107,7 @@ export function boot(): Ctx {
 }
 
 export function finish(ctx: Ctx) {
+  initCrops();
   const { reduce, fine, lenis } = ctx;
 
   if (!reduce) {

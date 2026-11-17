@@ -6,7 +6,7 @@
     <meta name="description" content="BandWith runs a working band: gigs, quotes, rehearsals, setlists, fees and Stage mode on one shared app. Everyone sees their part. Private beta on iPhone, Android and the web." />
     <meta property="og:title" content="BandWith · Run the band. Play the show." />
     <meta property="og:description" content="Gigs, quotes, rehearsals, setlists, fees and the show itself, on one app for the whole band." />
-    <link rel="preload" as="image" href="/shots/basics-home-admin@phone.webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/shots/gig-workspace-admin@phone.webp" fetchpriority="high" />
   </head>
   <body data-page="home">
     <!--#sprite-->
@@ -15,32 +15,30 @@
     <main id="main">
       <!-- ─────────────────────────── HERO ─────────────────────────── -->
       <section class="hero" id="top" data-hero>
-        <canvas class="hero__gl" data-hero-gl aria-hidden="true"></canvas>
-        <div class="hero__poster" aria-hidden="true"></div>
-        <div class="hero__shade" aria-hidden="true"></div>
-
         <div class="hero__inner wrap">
-          <p class="label hero__kicker" data-hero-kicker><span class="led"></span>Private beta · iPhone · Android · Web</p>
-          <h1 class="hero__title" data-hero-title>
-            <span class="line"><span>Run the band.</span></span>
-            <span class="line"><span>Play the <em>show.</em></span></span>
-          </h1>
-          <p class="hero__lead" data-hero-lead>Gigs, quotes, rehearsals, setlists, fees and the show itself, on one app for the whole band. Everyone sees their part. Only theirs.</p>
-          <div class="hero__cta" data-hero-cta>
-            <a class="btn btn--lime" href="/get/" data-magnetic>Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-            <a class="btn btn--ghost" href="#noise">See it work <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
-          </div>
-          <p class="cap-line" data-cap-line hidden><span class="cap-line__led" aria-hidden="true"></span><span data-cap-text></span></p>
-        </div>
-
-        <div class="hero__stage" data-hero-stage aria-hidden="true">
-          <div class="hero__phone" data-hero-phone>
-            <div class="device hero__device">
-              <div class="device__screen"><img class="shot__img" src="/shots/basics-home-admin@phone.webp" alt="" width="390" height="844" fetchpriority="high" decoding="async" /></div>
+          <div class="hero__copy">
+            <p class="label hero__kicker" data-hero-kicker><span class="led"></span>Private beta · iPhone · Android · Web</p>
+            <h1 class="hero__title" data-hero-title>
+              <span class="line"><span>Run the band.</span></span>
+              <span class="line"><span>Play the <em>show.</em></span></span>
+            </h1>
+            <p class="hero__lead" data-hero-lead>Gigs, quotes, rehearsals, setlists, fees and the show itself, in one app for the whole band. Everyone sees their part. Only theirs.</p>
+            <div class="hero__cta" data-hero-cta>
+              <a class="btn btn--lime" href="/get/" data-magnetic>Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+              <a class="btn btn--ghost" href="#noise">See it work <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
             </div>
+            <p class="cap-line hero__cap" data-cap-line hidden><span class="cap-line__led" aria-hidden="true"></span><span data-cap-text></span></p>
           </div>
-          <ol class="toasts" data-toasts></ol>
+
+          <figure class="hero__screen" data-hero-stage>
+            <ol class="toasts" data-toasts aria-hidden="true"></ol>
+            <div class="crop hero__crop" data-hero-crop>
+              <img class="crop__img" src="/shots/gig-workspace-admin@phone.webp" alt="The gig page: Client A — Wedding at Villa Necchi, Saturday 21 November." width="780" height="1688" fetchpriority="high" decoding="async" />
+              <span class="crop__tag"><i></i><span data-hero-where>CH 01 · The gig</span></span>
+            </div>
+          </figure>
         </div>
+        <canvas class="hero__eq" data-hero-eq aria-hidden="true"></canvas>
       </section>
 
       <!-- ─────────────────── CHAOS, THEN ORDER ─────────────────── -->
@@ -87,18 +85,12 @@
               </li>
             </ol>
 
-            <div class="noise__phone" aria-hidden="true">
-              <div class="device noise__device">
-                <div class="device__screen">
-                  <img class="noise__shot is-on" data-noise-shot src="/shots/shot-poll-card@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="noise__shot" data-noise-shot src="/shots/gig-workspace-member@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="noise__shot" data-noise-shot src="/shots/music-setlist-editor@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="noise__shot" data-noise-shot src="/shots/people-find-deputy@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="noise__shot" data-noise-shot src="/shots/quote-client-confirmation@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="noise__shot" data-noise-shot src="/shots/analytics@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" />
-                </div>
+            <figure class="noise__screen" aria-hidden="true">
+              <div class="crop noise__crop" data-noise-crop>
+                <img class="crop__img" src="/shots/shot-poll-card@phone.webp" alt="" width="780" height="1688" loading="lazy" decoding="async" />
+                <span class="crop__tag"><i></i><span data-noise-where>CH 04 · Rehearsals</span></span>
               </div>
-            </div>
+            </figure>
           </div>
         </div>
       </section>
@@ -108,7 +100,7 @@
         <div class="night__pin" data-night-pin>
           <header class="wrap night__head">
             <div>
-              <p class="label"><span class="led"></span>One night · Sat 15 Nov</p>
+              <p class="label"><span class="led"></span>One night · Saturday</p>
               <h2 class="h2" id="night-h" data-split>One gig,<br />start to finish.</h2>
             </div>
             <b class="night__clock" data-night-clock role="img" aria-label="14:02"></b>
@@ -117,18 +109,18 @@
             <article class="nt" data-night-scene data-time="14:02" style="--c: var(--quote)">
               <div class="nt__copy">
                 <p class="nt__time mono">14:02 · Quotes &amp; contracts</p>
-                <h3 class="nt__title">The client says yes.</h3>
-                <p class="nt__text">The quote you sent this morning comes back confirmed. The gig lands in everyone’s calendar, deposit and all.</p>
+                <h3 class="nt__title">The client writes back.</h3>
+                <p class="nt__text">The quote you sent this morning comes back with a question. You answer on the same page, they accept, and the gig lands in everyone’s calendar.</p>
               </div>
-              <div class="device nt__device" data-night-device><div class="device__screen"><img src="/shots/quote-client-confirmation@phone.webp" alt="A client’s quote, confirmed in BandWith" width="390" height="844" loading="lazy" decoding="async" /></div></div>
+              <div class="crop nt__crop" data-night-device data-crop="0 0.31"><img class="crop__img" src="/shots/quote-client-confirmation@phone.webp" alt="The quote page: sent, viewed, now discussing, with the client’s question" width="780" height="1688" loading="lazy" decoding="async" /></div>
             </article>
             <article class="nt" data-night-scene data-time="16:40" style="--c: var(--personal)">
               <div class="nt__copy">
                 <p class="nt__time mono">16:40 · Deputies</p>
-                <h3 class="nt__title">Bass is covered.</h3>
-                <p class="nt__text">Ale is sick. A deputy who plays bass and is free tonight says yes in the app, and gets only what they need to play.</p>
+                <h3 class="nt__title">Keys are covered.</h3>
+                <p class="nt__text">Lena can’t make it. Ask a deputy who’s free tonight, right in the app. They say yes and get only what they need to play.</p>
               </div>
-              <div class="device nt__device" data-night-device><div class="device__screen"><img src="/shots/people-find-deputy@phone.webp" alt="Finding a deputy bass player for the gig" width="390" height="844" loading="lazy" decoding="async" /></div></div>
+              <div class="crop nt__crop" data-night-device data-crop="0.29 0.76"><img class="crop__img" src="/shots/people-find-deputy@phone.webp" alt="Find a deputy: players who are free, with their usual fee" width="780" height="1688" loading="lazy" decoding="async" /></div>
             </article>
             <article class="nt nt--photo" data-night-scene data-time="17:00" style="--c: var(--lime)">
               <div class="photo" aria-hidden="true"><img src="/photos/stage-empty-1200.webp" srcset="/photos/stage-empty-1200.webp 1200w, /photos/stage-empty-2400.webp 2400w" sizes="(min-width: 1081px) 80vw, 100vw" alt="" loading="lazy" decoding="async" /></div>
@@ -137,7 +129,7 @@
                 <h3 class="nt__title">Load-in. Everyone knows where.</h3>
                 <p class="nt__text">Call times, address, rider and stage plot on one page. Each member sees their own fee. Nobody else’s.</p>
               </div>
-              <div class="device nt__device" data-night-device><div class="device__screen"><img src="/shots/gig-workspace-member@phone.webp" alt="The gig page as a member sees it" width="390" height="844" loading="lazy" decoding="async" /></div></div>
+              <div class="crop nt__crop" data-night-device data-crop="0.02 0.45"><img class="crop__img" src="/shots/gig-workspace-member@phone.webp" alt="The gig page as a member sees it" width="780" height="1688" loading="lazy" decoding="async" /></div>
             </article>
             <article class="nt nt--photo" data-night-scene data-time="21:00" style="--c: var(--lime)">
               <div class="photo" aria-hidden="true"><img src="/photos/club-gig-1200.webp" srcset="/photos/club-gig-1200.webp 1200w, /photos/club-gig-2400.webp 2400w" sizes="(min-width: 1081px) 80vw, 100vw" alt="" loading="lazy" decoding="async" /></div>
@@ -147,7 +139,7 @@
                 <p class="nt__text">The leader moves to the next song and every phone follows. When the venue Wi‑Fi drops, Bluetooth takes over.</p>
                 <a class="nt__link" href="/features/stage/">See Stage mode <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
               </div>
-              <div class="device nt__device" data-night-device><div class="device__screen"><img src="/shots/music-stage@phone.webp" alt="Stage mode: run of show and setlist" width="390" height="844" loading="lazy" decoding="async" /></div></div>
+              <div class="crop nt__crop" data-night-device data-crop="0.4 1"><img class="crop__img" src="/shots/music-stage@phone.webp" alt="Stage mode: run of show and setlist" width="780" height="1688" loading="lazy" decoding="async" /></div>
             </article>
             <article class="nt nt--photo" data-night-scene data-time="23:45" style="--c: var(--lime)">
               <div class="photo" aria-hidden="true"><img src="/photos/bass-close-1200.webp" srcset="/photos/bass-close-1200.webp 1200w, /photos/bass-close-2400.webp 2400w" sizes="(min-width: 1081px) 80vw, 100vw" alt="" loading="lazy" decoding="async" /></div>
@@ -156,7 +148,7 @@
                 <h3 class="nt__title">Paid before the van’s packed.</h3>
                 <p class="nt__text">Mark the client’s payment, settle each fee. The night closes in the app, not in a spreadsheet on Tuesday.</p>
               </div>
-              <div class="device nt__device" data-night-device><div class="device__screen"><img src="/shots/analytics@phone.webp" alt="Fees and payouts in BandWith" width="390" height="844" loading="lazy" decoding="async" /></div></div>
+              <div class="crop nt__crop" data-night-device data-crop="0.04 0.5"><img class="crop__img" src="/shots/analytics@phone.webp" alt="Fees and payouts in BandWith" width="780" height="1688" loading="lazy" decoding="async" /></div>
             </article>
           </div>
           <div class="wrap night__foot" aria-hidden="true"><span class="night__bar" data-night-bar></span></div>
@@ -177,46 +169,18 @@
         </div>
       </section>
 
-      <!-- ─────────────────── SAME GIG, TWO SIDES ─────────────────── -->
-      <section class="sec sec--bone sides" id="sides" data-sides aria-labelledby="sides-h" data-light>
+      <!-- ─────────────────── SAME GIG, THREE VIEWS ─────────────────── -->
+      <section class="sec sec--bone roles" id="sides" aria-labelledby="sides-h" data-light>
         <div class="wrap">
           <div class="head">
             <p class="label">Privacy by role</p>
-            <h2 class="h2" id="sides-h" data-split>Same gig.<br />Two sides.</h2>
-            <p class="lead">The admin runs the deal: the client, the deposit, the contract, every fee. Members get what they need to play: times, setlist, their own fee. Drag the phone to compare.</p>
+            <h2 class="h2" id="sides-h" data-split>Same gig.<br />Three views.</h2>
+            <p class="lead">The admin runs the deal. Members get what they need to play. A deputy gets only the request. Switch the view and watch what each phone receives.</p>
           </div>
-          <div class="sides__grid">
-            <div class="sides__list" data-side="admin">
-              <p class="sides__who"><span class="tag tag--ink">Admin</span>Leo, who books the gigs</p>
-              <ul>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Readiness 5 of 6, contract and deposit included</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>The client, the quote and the contract</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Every member’s fee and what’s still owed</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Edits the setlist, rider and lineup</li>
-              </ul>
-            </div>
-            <div class="cmp" data-cmp style="--x: 50%">
-              <div class="device cmp__device">
-                <div class="device__screen">
-                  <img class="cmp__img" src="/shots/gig-workspace-admin@phone.webp" alt="The gig as the admin sees it: readiness 5 of 6, with contract signed and deposit paid" width="390" height="844" loading="lazy" decoding="async" />
-                  <img class="cmp__img cmp__img--b" src="/shots/gig-workspace-member@phone.webp" alt="The same gig as a member sees it: readiness 3 of 4, no contract or deposit" width="390" height="844" loading="lazy" decoding="async" />
-                  <span class="cmp__line" aria-hidden="true"><span class="cmp__knob"><svg class="ico" aria-hidden="true"><use href="#i-chevron-left"/></svg><svg class="ico" aria-hidden="true"><use href="#i-chevron-right"/></svg></span></span>
-                  <span class="cmp__tag cmp__tag--a" aria-hidden="true">Admin</span>
-                  <span class="cmp__tag cmp__tag--b" aria-hidden="true">Member</span>
-                </div>
-              </div>
-              <input class="cmp__range" type="range" min="0" max="100" value="50" step="1" data-cmp-range aria-label="Compare the admin and member view of the gig" />
-            </div>
-            <div class="sides__list" data-side="member">
-              <p class="sides__who"><span class="tag">Member</span>Sara, who sings</p>
-              <ul>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Readiness 3 of 4: what she can act on</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Call times, address, setlist and gear</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Her own fee, never anyone else’s</li>
-                <li><svg class="ico" aria-hidden="true"><use href="#i-eye-off"/></svg>No client details, no contract</li>
-              </ul>
-            </div>
+          <div class="rv" data-roles data-role="admin">
+            <!--@roles-card-->
           </div>
+          <p class="rv__note"><svg class="ico" aria-hidden="true"><use href="#i-eye-off"/></svg><span>Hidden here means never sent. The server leaves these details out, so a member’s phone never receives the band fee, the client or anyone else’s fee.</span></p>
         </div>
       </section>
 

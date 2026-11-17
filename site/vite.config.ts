@@ -66,7 +66,6 @@ export default defineConfig({
     outDir: path.resolve(root, 'dist'),
     emptyOutDir: true,
     target: 'es2022',
-    chunkSizeWarningLimit: 600, // the Three.js hero chunk loads on its own, after the page
     assetsInlineLimit: 0,
     rollupOptions: {
       input: Object.fromEntries(Object.entries(PAGES).map(([k, v]) => [k, path.resolve(root, v)])),

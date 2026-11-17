@@ -19,7 +19,7 @@ if (!reduce) {
   gsap.to('.fhero__photo img', { yPercent: 8, scale: 1.06, ease: 'none', scrollTrigger: { trigger: '.fhero', start: 'top top', end: 'bottom top', scrub: true } });
 }
 
-initFlow(document.querySelector('[data-flow]'), reduce);
+initFlow(document.querySelector('[data-flow]'));
 initStageDemo(document.querySelector('[data-stage-demo]'), reduce);
 initDevices(document.querySelector('[data-devices]'), reduce);
 

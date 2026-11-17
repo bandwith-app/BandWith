@@ -71,7 +71,7 @@ export async function renderCapacity() {
     el.hidden = false;
     el.classList.toggle('is-full', full);
     const t = el.querySelector('[data-cap-text]') ?? el;
-    t.textContent = full ? 'Every spot is taken right now. Join the waitlist.' : `${c.taken} of ${c.cap} spots taken · ${c.todayLeft} left today`;
+    t.textContent = full ? 'Every spot is taken right now. Join the waitlist.' : `${spotsLeft(c)} of ${c.cap} spots left · ${c.todayLeft} open today`;
   });
 
   document.querySelectorAll<HTMLElement>('[data-cap-meter]').forEach((el) => {

@@ -2,14 +2,15 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { initNavMark } from './navMark';
 import { storageGet, storageSet } from '../core/storage';
+import { fitCrop, focusCrop, parseRegion } from './crop';
 
 /**
  * The nav as a small channel strip (every page).
  * - Logo: a three-band meter that plays only while hovered (navMark.ts).
  * - Deck: Features (opens the rack panel), One night, Guide. One fader cap
  *   glides to the item under the pointer and parks on the current page.
- * - Features panel (≥1081px): eleven channel strips; hovering one previews
- *   its screen on the left.
+ * - Features panel (≥1081px): the eleven channels in four groups; the row
+ *   under the pointer (or focus) previews a zoomed piece of its screen.
  * - After the first screen the bar tightens; over bone sheets it turns light.
  * - ≤1080px: the menu button opens the pill into a full-height sheet.
  */
@@ -90,19 +91,25 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
   const panel = document.querySelector<HTMLElement>('[data-rack-panel]');
   let closeT = 0;
   if (rackBtn && panel) {
-    const img = panel.querySelector<HTMLImageElement>('[data-rackp-img]');
-    const chOut = panel.querySelector<HTMLElement>('[data-rackp-ch]');
-    const nameOut = panel.querySelector<HTMLElement>('[data-rackp-name]');
-    const lineOut = panel.querySelector<HTMLElement>('[data-rackp-line]');
-    const strips = Array.from(panel.querySelectorAll<HTMLElement>('[data-strip]'));
+    const crop = panel.querySelector<HTMLElement>('[data-fp-crop]');
+    const chOut = panel.querySelector<HTMLElement>('[data-fp-ch]');
+    const nameOut = panel.querySelector<HTMLElement>('[data-fp-name]');
+    const lineOut = panel.querySelector<HTMLElement>('[data-fp-line]');
+    const strips = Array.from(panel.querySelectorAll<HTMLElement>('[data-fp]'));
     const current = strips.find((s) => s.getAttribute('href') === location.pathname) ?? strips.find((s) => !s.classList.contains('is-soon')) ?? strips[0];
+    let shown: HTMLElement | null = null;
 
     const preview = (s: HTMLElement) => {
+      if (s === shown) return;
+      shown = s;
       strips.forEach((x) => x.classList.toggle('is-on', x === s));
-      if (img && s.dataset.shot && img.getAttribute('src') !== s.dataset.shot) img.src = s.dataset.shot;
-      if (chOut) chOut.textContent = s.querySelector('.strip__ch')?.textContent ?? '';
+      if (crop && s.dataset.shot) {
+        if (panel.hidden) { const img = crop.querySelector('img'); if (img) img.src = s.dataset.shot; }
+        else focusCrop(crop, parseRegion(s.dataset.crop), s.dataset.shot);
+      }
+      if (chOut) chOut.textContent = s.dataset.ch ?? '';
       if (nameOut) nameOut.textContent = s.dataset.name ?? '';
-      if (lineOut) lineOut.textContent = s.classList.contains('is-soon') ? 'This page is coming soon.' : s.dataset.line ?? '';
+      if (lineOut) lineOut.textContent = s.classList.contains('is-soon') ? `${s.dataset.line} Page coming soon.` : s.dataset.line ?? '';
       panel.style.setProperty('--c', s.style.getPropertyValue('--c'));
     };
     strips.forEach((s) => {
@@ -117,8 +124,11 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
       rackBtn.setAttribute('aria-expanded', String(on));
       sync();
       if (on) {
+        shown = null;
+        panel.hidden = true;
         preview(current);
         panel.hidden = false;
+        if (crop) fitCrop(crop, parseRegion(current.dataset.crop));
         if (!reduce) gsap.fromTo(panel, { autoAlpha: 0, y: -10, clipPath: 'inset(0% 0% 100% 0% round 32px)' }, { autoAlpha: 1, y: 0, clipPath: 'inset(0% 0% 0% 0% round 32px)', duration: 0.6, ease: 'expo.out' });
         if (focus) (strips.find((s) => s.tagName === 'A') ?? strips[0]).focus({ preventScroll: true });
       } else if (reduce) panel.hidden = true;

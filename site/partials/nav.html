@@ -17,26 +17,25 @@
   </div>
 </header>
 
-<!-- Features panel (≥1081px): the rack. Hover a strip to preview it. -->
-<div class="rackp" id="rack-panel" data-rack-panel hidden>
-  <div class="rackp__preview" aria-hidden="true">
-    <div class="rackp__shot"><img data-rackp-img src="/shots/music-stage@phone.webp" alt="" width="390" height="844" loading="lazy" decoding="async" /></div>
-    <div class="rackp__copy">
-      <p class="label" data-rackp-ch>CH 07</p>
-      <p class="rackp__name" data-rackp-name>Stage mode</p>
-      <p class="rackp__line" data-rackp-line>One song on every phone.</p>
-    </div>
-  </div>
-  <nav class="rackp__strips" aria-label="Features">
-    <!--@rack-panel-->
+<!-- Features panel (≥1081px): grouped channels + a preview of the one under the pointer. -->
+<div class="rackp fp" id="rack-panel" data-rack-panel hidden>
+  <nav class="fp__nav" aria-label="Features">
+    <!--@feature-panel-->
+    <p class="fp__note"><i aria-hidden="true"></i>Live page. The others are on their way; the app already does all of it.</p>
   </nav>
+  <aside class="fp__preview" aria-hidden="true">
+    <div class="crop fp__crop" data-fp-crop><img class="crop__img" src="/shots/music-stage@phone.webp" alt="" width="780" height="1688" loading="lazy" decoding="async" /></div>
+    <p class="fp__ch mono" data-fp-ch>CH 07</p>
+    <p class="fp__pname" data-fp-name>Stage mode</p>
+    <p class="fp__line" data-fp-line>One song on every phone.</p>
+  </aside>
 </div>
 
 <!-- Menu sheet (≤1080px) -->
 <div class="menu" id="menu" data-menu hidden>
   <nav class="menu__links" aria-label="Features">
-    <p class="label menu__label">Features</p>
     <!--@menu-rows-->
+    <p class="menu__soon"><i aria-hidden="true"></i>Live page. The others are on their way.</p>
   </nav>
   <div class="menu__foot">
     <a class="menu__guide" href="https://bandwith-beryl.vercel.app/academy/">Guide · 6 languages <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
