@@ -80,6 +80,11 @@ check (`app.check`) on each screen it reaches.
 | Rehearsal session survives closing Live mode and restarting the app | `rehearsal-session` | full |
 | Rehearsal session between two devices: the admin's start, pause and end reach a member (summary without Resume) | `rehearsal-session` | full |
 | Rehearsal session lifecycle (start → pause → resume → end → summary → page; restart) | model `rehearsal-live` | phone-portrait |
+| Rehearsal notes: Mark in Live mode (song + minute), write it at the pause with a preset and text, read it on the rehearsal page (Duo Laptop: the notes pad's Mark and one-tap preset) | `rehearsal-notes` | all |
+| Rehearsal notes: a member marks Practised on a note for them, no OK, no Edit on others' notes | `rehearsal-notes` | full |
+| Rehearsal notes: an admin confirms OK and assigns a new note to a member | `rehearsal-notes` | full |
+| Rehearsal notes between two devices: a mark shows on the other phone's Live mode | `rehearsal-notes` | full |
+| Rehearsal note lifecycle (mark → write → save → page → OK → reopen) | model `rehearsal-note` | phone-portrait |
 | The Home rehearsal card's "Enter live mode" / "Check in / live" open the same live mode (no separate local session) | vitest `RehearsalExpanded.live` | unit |
 
 ## Create

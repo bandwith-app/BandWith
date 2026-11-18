@@ -20,6 +20,7 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
+import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
 /**
  * Floor wedge (Stage mode in Laptop pose): the phone stands on the stage
@@ -97,6 +98,8 @@ export interface FloorWedgeModeProps {
    * (starting and ending stay in Live mode, unfolded).
    */
   session?: RehearsalSessionControls;
+  /** Rehearsal notes (plan A2): the notes pad on the deck. */
+  notes?: LiveNotes;
 }
 
 export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
@@ -120,6 +123,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   onClose,
   exitLabel: exitLabelProp,
   session: sessionProp,
+  notes: notesProp,
 }) => {
   const t = useT();
   const exitLabel = exitLabelProp ?? t('Exit stage mode');
@@ -175,6 +179,8 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   }, [go]);
 
   const song = count > 0 ? songs[index] : null;
+  const notes = notesProp?.controls.enabled ? notesProp : undefined;
+  const noteSheets = useNoteSheets(notes?.controls);
   // Song view as in Stage mode (Lyrics / Chords / Structure, transpose, My
   // notes): the same per-device preference and per-song transpose, so folding
   // from Book keeps what the player picked there.
@@ -434,6 +440,14 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           {mine && <MyNotesBar />}
         </div>
       )}
+      {notes && (
+        <WedgeNotesPad
+          controls={notes.controls}
+          sheets={noteSheets}
+          song={song ? { songId: song.songId, title: song.title, lyrics: song.lyrics } : null}
+          onMark={() => notes.controls.mark({ songId: song?.songId ?? null, songTitle: song?.title ?? null, markedAtS: notes.elapsed() })}
+        />
+      )}
       <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"
@@ -502,6 +516,9 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           <StageClickFrame state={clickUi.state} offset={click.offset} accent="var(--accent)" onDone={clickUi.onDone} zIndex={zIndex + 1} />,
           document.body,
         )}
+      {notes && (
+        <NoteSheetsHost sheets={noteSheets} controls={notes.controls} songs={notes.songs} members={notes.members} currentSongId={song?.songId ?? null} />
+      )}
     </>
   );
 };

@@ -1195,6 +1195,17 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Notas do ensaio",
+          items: [
+            "No modo ao vivo toque em **Marcar** quando algo precisar de trabalho: guarda a música que está tocando e o minuto, e vocês continuam tocando.",
+            "Na pausa (ou no resumo) toque em **Para escrever** e em **Escrever** em cada marca: escolha no que trabalhar (**Andamento**, **Tom**, **Final**, **Solo**, **Revisar**, **Perfeito**, ou **Repetir uma seção** se a música tiver estrutura), escreva algumas palavras e diga **Para quem é**.",
+            "Admins escrevem para a banda toda ou para qualquer membro; membros, para a banda ou para si mesmos. A banda toda lê todas as notas.",
+            "Quem recebe a nota toca em **Praticado** depois de trabalhar nela; um admin toca em **OK** quando a banda já tem (o autor também, numa nota para membros).",
+            "A página do ensaio lista as notas em **NOTAS DO ENSAIO**, por música. As notas chegam na hora aos outros celulares no modo ao vivo; sem internet ficam no celular e vão quando a conexão voltar. No Duo dobrado como um notebook, a tela no chão tem um bloco de notas: **Marcar**, um preset com um toque, ou **Escrever…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bom saber",
           items: [
             "O Modo palco existe para os shows futuros da banda e, como Modo ao vivo, para os ensaios futuros da banda; não para orçamentos, eventos passados nem shows pessoais.",

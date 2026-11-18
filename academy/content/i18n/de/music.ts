@@ -1195,6 +1195,17 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Probennotizen",
+          items: [
+            "Tippe im Live-Modus auf **Markieren**, wenn etwas Arbeit braucht: Der laufende Song und die Minute werden gemerkt, und ihr spielt weiter.",
+            "In der Pause (oder in der Übersicht) tippe auf **Zu schreiben** und bei jeder Markierung auf **Schreiben**: Wähle, woran ihr arbeitet (**Tempo**, **Tonart**, **Schluss**, **Solo**, **Durchgehen**, **Sitzt**, oder **Einen Teil wiederholen**, wenn der Song eine Struktur hat), schreib ein paar Worte dazu und wähle **Für wen**.",
+            "Admins schreiben für die ganze Band oder für jedes Mitglied; Mitglieder für die Band oder für sich selbst. Die ganze Band liest alle Notizen.",
+            "Wer eine Notiz bekommt, tippt nach dem Üben auf **Geübt**; ein Admin tippt auf **OK**, wenn die Band es kann (bei einer Notiz an Mitglieder auch die Person, die sie geschrieben hat).",
+            "Die Seite der Probe zeigt die Notizen unter **PROBENNOTIZEN**, nach Song. Notizen erscheinen sofort auf den anderen Handys im Live-Modus; ohne Internet warten sie auf dem Handy und gehen raus, sobald es wieder online ist. Auf dem Duo, wie ein Laptop gefaltet, hat der Bildschirm am Boden einen Notizblock: **Markieren**, ein Preset mit einem Tipp, oder **Schreiben…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Gut zu wissen",
           items: [
             "Der Bühnenmodus gibt es für kommende Gigs der Band und, als Live-Modus, für kommende Proben der Band; nicht für Angebote, vergangene Termine oder persönliche Gigs.",

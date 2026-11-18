@@ -104,6 +104,7 @@ const BACK_FK: Record<string, string> = {
   setlists: 'setlist_id',
   quotes: 'quote_id',
   song_proposals: 'proposal_id',
+  rehearsal_notes: 'note_id',
 };
 
 const KNOWN_TABLES = new Set([...Object.values(FK_TABLE), ...Object.keys(BACK_FK)]);
@@ -300,6 +301,77 @@ const parseLogic = (expr: string, mode: 'or' | 'and'): Pred => {
   return mode === 'or' ? (r) => parts.some((p) => p(r)) : (r) => parts.every((p) => p(r));
 };
 
+// ------------------------------------------------------ database changes --
+
+/**
+ * Tables published to Realtime (postgres_changes) in the demo: a write is
+ * applied to the other tabs' copy of the demo and reaches their channels,
+ * like the real thing (two tabs = two band members in the same rehearsal).
+ */
+const REALTIME_TABLES = new Set(['rehearsal_notes', 'rehearsal_note_assignees']);
+type DbChange = { table: string; eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: Row | null; old: Row | null };
+const dbListeners = new Set<(c: DbChange) => void>();
+let dbBus: BroadcastChannel | null = null;
+const rowKey = (t: string) => (t === 'rehearsal_note_assignees' ? ['note_id', 'user_id'] : ['id']);
+const sameRow = (t: string, a: Row, b: Row) => rowKey(t).every((k) => a[k] === b[k]);
+
+/** Another tab wrote: the same change here (memory only; that tab saved it). */
+const applyRemote = (c: DbChange) => {
+  const rows = table(c.table);
+  if (c.eventType === 'DELETE' && c.old) {
+    getDB()[c.table] = rows.filter((r) => !sameRow(c.table, r, c.old!));
+  } else if (c.new) {
+    const at = rows.findIndex((r) => sameRow(c.table, r, c.new!));
+    if (at >= 0) rows[at] = clone(c.new);
+    else rows.push(clone(c.new));
+  }
+};
+const openDbBus = () => {
+  if (dbBus || typeof BroadcastChannel === 'undefined') return dbBus;
+  dbBus = new BroadcastChannel('bw-demo-db');
+  dbBus.onmessage = (e: MessageEvent) => {
+    const c = e.data as DbChange;
+    if (!c || !REALTIME_TABLES.has(c.table)) return;
+    applyRemote(c);
+    dbListeners.forEach((l) => l(c));
+  };
+  return dbBus;
+};
+const emitChange = (c: DbChange) => {
+  if (!REALTIME_TABLES.has(c.table)) return;
+  const all = [c];
+  // 132's touch trigger: a change of assignees updates its note.
+  if (c.table === 'rehearsal_note_assignees') {
+    const noteId = (c.new ?? c.old)?.note_id;
+    const note = table('rehearsal_notes').find((n) => n.id === noteId);
+    if (note) {
+      note.updated_at = new Date().toISOString();
+      all.push({ table: 'rehearsal_notes', eventType: 'UPDATE', new: clone(note), old: { id: note.id } });
+    }
+  }
+  for (const x of all) {
+    openDbBus()?.postMessage(x);
+    setTimeout(() => dbListeners.forEach((l) => l(x)), 0);
+  }
+};
+
+/** 132's guard trigger, for the demo: the author, and who confirmed OK. */
+const guardNote = (row: Row, before?: Row) => {
+  if (!before) {
+    row.created_by = row.created_by ?? demoUid();
+    row.ok_by = null;
+    row.ok_at = null;
+    return;
+  }
+  if (row.status === 'ok' && before.status !== 'ok') {
+    row.ok_by = demoUid();
+    row.ok_at = new Date().toISOString();
+  } else if (row.status !== 'ok') {
+    row.ok_by = null;
+    row.ok_at = null;
+  }
+};
+
 // ----------------------------------------------------------- query builder --
 
 const UNIQUE_KEYS: Record<string, string[]> = {
@@ -484,7 +556,9 @@ class DemoQuery implements PromiseLike<Result> {
       case 'insert': {
         const rows = (Array.isArray(this.payload) ? this.payload : [this.payload!]).map((r) => this.withDefaults(r));
         if (this.name === 'song_suggestions') rows.forEach(fillSuggestion);
+        if (this.name === 'rehearsal_notes') rows.forEach((r) => guardNote(r));
         t.push(...rows);
+        rows.forEach((r) => emitChange({ table: this.name, eventType: 'INSERT', new: clone(r), old: null }));
         // 108's trigger: a member's suggested song gets its suggestion row.
         if (this.name === 'songs') rows.forEach(suggestedSongRow);
         persist();
@@ -498,11 +572,18 @@ class DemoQuery implements PromiseLike<Result> {
             ? t.find((x) => keys.every((k) => x[k] === r[k]))
             : undefined;
           if (existing) {
-            if (!this.ignoreDuplicates) Object.assign(existing, r, { updated_at: new Date().toISOString() });
+            if (!this.ignoreDuplicates) {
+              const before = { ...existing };
+              Object.assign(existing, r, { updated_at: new Date().toISOString() });
+              if (this.name === 'rehearsal_notes') guardNote(existing, before);
+              emitChange({ table: this.name, eventType: 'UPDATE', new: clone(existing), old: before });
+            }
             out.push(existing);
           } else {
             const row = this.withDefaults(r);
+            if (this.name === 'rehearsal_notes') guardNote(row);
             t.push(row);
+            emitChange({ table: this.name, eventType: 'INSERT', new: clone(row), old: null });
             out.push(row);
           }
         }
@@ -511,7 +592,12 @@ class DemoQuery implements PromiseLike<Result> {
       }
       case 'update': {
         const rows = this.matches();
-        for (const r of rows) Object.assign(r, this.payload, { updated_at: new Date().toISOString() });
+        for (const r of rows) {
+          const before = { ...r };
+          Object.assign(r, this.payload, { updated_at: new Date().toISOString() });
+          if (this.name === 'rehearsal_notes') guardNote(r, before);
+          emitChange({ table: this.name, eventType: 'UPDATE', new: clone(r), old: before });
+        }
         persist();
         return this.shape(rows);
       }
@@ -520,6 +606,12 @@ class DemoQuery implements PromiseLike<Result> {
         const gone = new Set(rows);
         const kept = t.filter((r) => !gone.has(r));
         getDB()[this.name] = kept;
+        // A note's assignees go with it (on delete cascade).
+        if (this.name === 'rehearsal_notes') {
+          const ids = new Set(rows.map((r) => r.id));
+          getDB().rehearsal_note_assignees = table('rehearsal_note_assignees').filter((a) => !ids.has(a.note_id));
+        }
+        rows.forEach((r) => emitChange({ table: this.name, eventType: 'DELETE', new: null, old: clone(r) }));
         persist();
         return this.shape(rows);
       }
@@ -621,9 +713,9 @@ const auth = {
 // ---------------------------------------------------- realtime / storage --
 
 /**
- * Demo channels: database changes never arrive, but broadcast and presence
- * reach the other tabs of the same demo (BroadcastChannel), so two tabs can
- * try live features such as Stage mode's "follow the leader".
+ * Demo channels: broadcast and presence reach the other tabs of the same demo
+ * (BroadcastChannel), so two tabs can try live features such as Stage mode's
+ * "follow the leader"; database changes arrive for REALTIME_TABLES only.
  */
 const makeChannel = (name: string) => {
   const handlers: { type: string; event?: string; cb: (msg: any) => void }[] = [];
@@ -644,20 +736,41 @@ const makeChannel = (name: string) => {
     };
     return bc;
   };
+  const changes: { event: string; table: string; filter?: string; cb: (msg: any) => void }[] = [];
+  const onChange = (c: DbChange) => {
+    for (const h of changes) {
+      if (h.table !== c.table || (h.event !== '*' && h.event !== c.eventType)) continue;
+      if (h.filter) {
+        // "column=eq.value" (the only filter the app uses); deletes can't be filtered.
+        const [col, rest] = h.filter.split('=');
+        const want = rest?.startsWith('eq.') ? rest.slice(3) : rest;
+        const row = c.new ?? c.old;
+        if (c.eventType !== 'DELETE' && String(row?.[col]) !== want) continue;
+      }
+      h.cb({ schema: 'public', table: c.table, eventType: c.eventType, new: c.new ?? {}, old: c.old ?? {} });
+    }
+  };
   const ch: any = {
     topic: name,
-    on: (type: string, filter: { event?: string } | undefined, cb: (msg: any) => void) => {
+    on: (type: string, filter: { event?: string; table?: string; filter?: string } | undefined, cb: (msg: any) => void) => {
       if ((type === 'broadcast' || type === 'presence') && typeof cb === 'function') {
         handlers.push({ type, event: filter?.event, cb });
+      } else if (type === 'postgres_changes' && filter?.table && typeof cb === 'function') {
+        changes.push({ event: filter.event ?? '*', table: filter.table, filter: filter.filter, cb });
       }
       return ch;
     },
     subscribe: (cb?: (status: string) => void) => {
+      if (changes.length > 0) {
+        openDbBus();
+        dbListeners.add(onChange);
+      }
       if (handlers.length > 0) open();
       setTimeout(() => cb?.('SUBSCRIBED'), 0);
       return ch;
     },
     unsubscribe: async () => {
+      dbListeners.delete(onChange);
       bc?.close();
       bc = null;
       return 'ok';

@@ -20,12 +20,30 @@ export interface SeedSession {
   played?: string[];
 }
 
+/** A rehearsal note (migration 132) seeded on the occurrence. */
+export interface SeedNote {
+  id: string;
+  /** Focus song title; null = a general note. */
+  song: string | null;
+  preset?: string | null;
+  body?: string | null;
+  status?: 'marked' | 'open' | 'ok';
+  /** For me (scope members, I'm the assignee); otherwise for the band. */
+  forMe?: boolean;
+  /** Practised by me already. */
+  practised?: boolean;
+  /** Written by another band member (not me). */
+  byOther?: boolean;
+  markedAtS?: number | null;
+}
+
 /**
  * Opens the app with "Weekly rehearsal" (tomorrow) given three focus songs
- * and, optionally, a saved session for that occurrence.
+ * and, optionally, a saved session and notes for that occurrence.
  */
-export async function openWithFocusSongs(app: App, session?: SeedSession) {
+export async function openWithFocusSongs(app: App, session?: SeedSession, notes: SeedNote[] = []) {
   const seed = JSON.stringify(session ?? null);
+  const seedNotes = JSON.stringify(notes);
   const body = `(db, ids) => {
     const reh = ids.byTitle('Weekly rehearsal');
     const song = (title) => db.songs.find((s) => s.title === title);
@@ -55,6 +73,20 @@ export async function openWithFocusSongs(app: App, session?: SeedSession) {
         created_at: iso(s.minutesAgo), updated_at: iso(0),
       }];
     }
+    const other = db.band_members.find((m) => m.band_id === reh.band_id && m.user_id !== ids.me).user_id;
+    const at = new Date(Date.now() - 3600000).toISOString();
+    db.rehearsal_notes = [];
+    db.rehearsal_note_assignees = [];
+    ${seedNotes}.forEach((n, i) => {
+      db.rehearsal_notes.push({
+        id: n.id, band_id: reh.band_id, event_id: reh.id, occurrence_date: String(reh.event_date).slice(0, 10),
+        session_id: null, song_id: n.song ? song(n.song).id : null, song_title: n.song, preset: n.preset ?? null,
+        section: null, body: n.body ?? null, scope: n.forMe ? 'members' : 'band', status: n.status ?? 'open',
+        marked_at_s: n.markedAtS ?? null, created_by: n.byOther ? other : ids.me, ok_by: null, ok_at: null,
+        created_at: new Date(Date.parse(at) + i * 1000).toISOString(), updated_at: at,
+      });
+      if (n.forMe) db.rehearsal_note_assignees.push({ note_id: n.id, user_id: ids.me, practised_at: n.practised ? at : null, created_at: at });
+    });
   }`;
   // eslint-disable-next-line no-new-func
   await openWith(app, new Function(`return ${body}`)() as never);
@@ -81,4 +113,18 @@ export async function savedSession(app: App) {
   const db = await app.readDb();
   const reh = db.events.find((e) => e.title === WEEKLY)!;
   return (db.rehearsal_sessions ?? []).find((r) => r.event_id === reh.id) as Record<string, any> | undefined;
+}
+
+/** The notes bar in Live mode (Mark, the notes). */
+export const notesBar = (app: App, title = WEEKLY) => liveDialog(app, title).getByRole('region', { name: app.t('Rehearsal notes') });
+
+/** A sheet by its title (BwSheet's dialog is named by its heading). */
+export const sheet = (app: App, title: string | RegExp) =>
+  app.page.getByRole('dialog').filter({ has: app.page.getByRole('heading', { name: title }) });
+
+/** The saved notes of "Weekly rehearsal" in the demo database. */
+export async function savedNotes(app: App) {
+  const db = await app.readDb();
+  const reh = db.events.find((e) => e.title === WEEKLY)!;
+  return ((db.rehearsal_notes ?? []) as Record<string, any>[]).filter((r) => r.event_id === reh.id);
 }

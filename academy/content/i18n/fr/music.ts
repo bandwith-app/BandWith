@@ -1195,6 +1195,17 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Notes de répétition",
+          items: [
+            "En mode live, touchez **Marquer** quand quelque chose est à retravailler : le morceau en cours et la minute sont gardés, et vous continuez à jouer.",
+            "À la pause (ou dans le résumé), touchez **À écrire** puis **Écrire** sur chaque marque : choisissez sur quoi travailler (**Tempo**, **Tonalité**, **Fin**, **Solo**, **À revoir**, **Parfait**, ou **Répéter une section** si le morceau a une structure), ajoutez quelques mots et indiquez **Pour qui**.",
+            "Les admins écrivent pour tout le groupe ou pour n’importe quel membre ; les membres, pour le groupe ou pour eux-mêmes. Tout le groupe lit toutes les notes.",
+            "La personne visée touche **Travaillé** après avoir bossé la note ; un admin touche **OK** quand le groupe l’a en place (l’auteur aussi, pour une note aux membres).",
+            "La page de la répétition liste les notes sous **NOTES DE RÉPÉTITION**, par morceau. Les notes arrivent tout de suite sur les autres téléphones en mode live ; sans internet elles attendent sur le téléphone et partent au retour du réseau. Sur le Duo plié comme un portable, l’écran au sol a un bloc-notes : **Marquer**, un preset en un geste, ou **Écrire…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bon à savoir",
           items: [
             "Le mode scène est proposé pour les concerts du groupe à venir et, en mode live, pour les répétitions du groupe à venir ; pas pour les devis, les événements passés ni les concerts perso.",

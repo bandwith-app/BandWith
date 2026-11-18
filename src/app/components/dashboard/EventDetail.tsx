@@ -51,8 +51,10 @@ import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh'
 import { useStageLive, SETLIST_ORDER_SAVED, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
 import { RehearsalSessionCard } from './RehearsalSession';
+import { NoteSheetsHost, RehearsalNotesSection, useNoteSheets, type LiveNotes } from './RehearsalNotes';
+import { useRehearsalNotes } from '@/app/components/event/useRehearsalNotes';
 import { useBandFlag } from '@/lib/flags';
-import { occurrenceDate } from '@/lib/rehearsalSession';
+import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
 import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
@@ -715,6 +717,33 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     send: stageLive.sendSession,
     bridge: sessionBridge,
   });
+  // Rehearsal notes (plan A2, 132): Mark in Live mode, write later; the
+  // rehearsal's page lists them. Flag `rehearsal_notes` (flags.ts).
+  const notesOn = useBandFlag(event.band_id, 'rehearsal_notes');
+  const rehearsalNotes = useRehearsalNotes({
+    enabled: notesOn && isRehearsal && !isPersonalGig && !!event.band_id,
+    bandId: event.band_id ?? undefined,
+    eventId: event.eventId,
+    date: occurrenceDate(event.date),
+    userId: currentUserId,
+    isAdmin,
+  });
+  const noteSongs = useMemo(() => setlistSongs.map((s) => ({ songId: s.songId, title: s.title, lyrics: s.lyrics })), [setlistSongs]);
+  const noteMembers = useMemo(
+    () => resolvedMembers.filter((m) => !!m.userId && m.status !== 'declined').map((m) => ({ userId: m.userId, name: m.name })),
+    [resolvedMembers],
+  );
+  const sessionStateRef = useRef(rehearsalSession.state);
+  sessionStateRef.current = rehearsalSession.state;
+  const liveNotes: LiveNotes | undefined = rehearsalNotes.enabled
+    ? {
+        controls: rehearsalNotes,
+        songs: noteSongs,
+        members: noteMembers,
+        elapsed: () => (sessionStateRef.current ? elapsedSeconds(sessionStateRef.current, Date.now()) : null),
+      }
+    : undefined;
+  const pageNoteSheets = useNoteSheets(rehearsalNotes);
   // The Bluetooth key is fetched while online, so Stage mode can sync offline on stage.
   useEffect(() => {
     if (canStage) prefetchStageKey(event.eventId);
@@ -2028,6 +2057,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 </section>
               )}
 
+              {/* ─── REHEARSAL NOTES (A2): what to work on, by song ─── */}
+              {rehearsalNotes.enabled && (
+                <section className="flex flex-col gap-6">
+                  <SectionTitle title={t('REHEARSAL NOTES')} />
+                  <RehearsalNotesSection controls={rehearsalNotes} songs={noteSongs} members={noteMembers} sheets={pageNoteSheets} />
+                  {!isStageOpen && (
+                    <NoteSheetsHost sheets={pageNoteSheets} controls={rehearsalNotes} songs={noteSongs} members={noteMembers} />
+                  )}
+                </section>
+              )}
+
               {/* ─── NOTE (rehearsal): set in the iPad composer, Figma "Focus & note" ─── */}
               {isRehearsal && !isPersonalGig && (!!event.notes?.trim() || canEditOverview) && (
                 <section className="flex flex-col gap-6" aria-label={t('Notes')}>
@@ -2810,6 +2850,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
             session={isRehearsalLive ? rehearsalSession : undefined}
+            notes={isRehearsalLive ? liveNotes : undefined}
             songOpen={stageSongOpen}
             onSongOpenChange={setStageSongOpen}
             onClose={() => setIsStageOpen(false)}
@@ -2843,6 +2884,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           onClose={() => setIsStageOpen(false)}
           exitLabel={isRehearsalLive ? t('Exit live mode') : undefined}
           session={isRehearsalLive ? rehearsalSession : undefined}
+          notes={isRehearsalLive ? liveNotes : undefined}
         />
       )}
 
