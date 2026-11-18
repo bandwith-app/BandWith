@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { onAppResume } from '@/lib/appResume';
+import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
 import { useAuth } from '@/lib/AuthContext';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
@@ -327,20 +328,9 @@ export const useEvents = (
 
   useEffect(() => {
     fetchEvents();
-    
-    // Poll for updates every 60 seconds to keep events in sync across devices
-    // Polling is disabled when modals are open to prevent keyboard issues
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        const hasModalOpen = document.querySelector('[data-modal-open="true"]') || 
-                            document.querySelector('.fixed.inset-0.z-\\[100\\]');
-        if (!hasModalOpen) {
-          fetchEvents(true);
-        }
-      }
-    }, 60000); // 60 seconds
-    
-    return () => clearInterval(pollInterval);
+    // Realtime (below) keeps the list fresh; this is only a slow safety net,
+    // plus a refresh when the app comes back (src/lib/safetyNetPoll.ts).
+    return startSafetyNetPoll(() => fetchEvents(true));
   }, [fetchEvents, bandId]);
 
   useRefetchOnRoleChange(() => fetchEvents(true));
@@ -865,30 +855,11 @@ export const useNotifications = (options?: {
     return unsubscribe;
   }, [isAuthenticated]);
 
-  // Polling fallback - refresh every 60 seconds to catch missed realtime events
-  // Polling is disabled when modals are open to prevent keyboard issues
+  // Realtime delivers new notifications; refresh when the app comes back and,
+  // as a safety net for a dropped socket, every few minutes.
   useEffect(() => {
     if (!isAuthenticated) { setLoading(false); return; }
-    
-    const pollInterval = setInterval(() => {
-      // Only poll if document is visible
-      if (document.visibilityState === 'visible') {
-        // Check if any modal is open by looking for common modal classes
-        const hasModalOpen = document.querySelector('[data-modal-open="true"]') || 
-                            document.querySelector('.fixed.inset-0.z-\\[100\\]');
-        if (!hasModalOpen) {
-          console.log('[useNotifications] Polling for updates...');
-          fetchNotifications(true);
-        }
-      }
-    }, 60000); // 60 seconds - reduced frequency
-    // Back from the background: don't wait up to a minute for what arrived.
-    const offResume = onAppResume(() => { fetchNotifications(true); });
-
-    return () => {
-      clearInterval(pollInterval);
-      offResume();
-    };
+    return startSafetyNetPoll(() => fetchNotifications(true));
   }, [isAuthenticated, fetchNotifications]);
 
   return { notifications, loading, error, refetch: fetchNotifications, setNotifications };
@@ -1092,21 +1063,12 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
     fetchData();
   }, [fetchData]);
 
-  // Poll for dashboard updates every 30 seconds (increased frequency for fee sync)
+  // Changes arrive through Realtime (events, event_members below) and when the
+  // app comes back; the timer is only a slow safety net. It used to fetch the
+  // five dashboard queries every 30 s.
   useEffect(() => {
     if (!bandId) return;
-    
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        const hasModalOpen = document.querySelector('[data-modal-open="true"]') || 
-                            document.querySelector('.fixed.inset-0.z-\\[100\\]');
-        if (!hasModalOpen) {
-          fetchData(true);
-        }
-      }
-    }, 30000);
-    
-    return () => clearInterval(pollInterval);
+    return startSafetyNetPoll(() => fetchData(true));
   }, [bandId, fetchData]);
 
   useRefetchOnRoleChange(() => fetchData(true));
@@ -1117,6 +1079,18 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
     if (!bandId) return;
 
     const uniqueChannelName = `dash-events-sync-${Math.random().toString(36).substring(2, 9)}`;
+    // One refresh per burst: saving an event rewrites its line-up row by row.
+    let burst: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (burst) clearTimeout(burst);
+      burst = setTimeout(() => {
+        burst = null;
+        console.log('[useDashboardData] Events or fees changed, refreshing all counters...');
+        fetchData(true).catch((err) => {
+          console.error('[useDashboardData] Error refreshing:', err);
+        });
+      }, 800);
+    };
 
     const channel = supabase
       .channel(uniqueChannelName)
@@ -1128,13 +1102,11 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
           table: 'events',
           filter: Array.isArray(bandId) ? undefined : `band_id=eq.${bandId}`,
         },
-        () => {
-          console.log('[useDashboardData] Events changed, refreshing all counters...');
-          fetchData(true).catch((err) => {
-            console.error('[useDashboardData] Error refreshing:', err);
-          });
-        }
+        refresh
       )
+      // Fees, payouts and line-ups live in event_members (RLS: only rows this
+      // user may see), so a fee change shows at once instead of on a timer.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_members' }, refresh)
       .subscribe((status) => {
         if (status !== 'SUBSCRIBED') {
           console.log('[useDashboardData] Events subscription status:', status);
@@ -1144,6 +1116,7 @@ export const useDashboardData = (bandId: string | null, userId?: string | null) 
       });
 
     return () => {
+      if (burst) clearTimeout(burst);
       supabase.removeChannel(channel);
     };
   }, [bandId, fetchData]);
