@@ -256,7 +256,7 @@ Server enforcement means an old build **cannot** get Pro for free: the limit is 
 | B. Web link-out where allowed (US + EU), no IAP | admin sees a link to the web in US/EU; nothing elsewhere | US 0% (may change), EU 10% + reporting; rest of world: cannot sell | per-storefront logic, EU entitlement, reporting | Apple review outside US/EU; US rate may change; non-EU/US admins stuck on iOS |
 | C. IAP only on iOS from the start | same as A, but needs the App Store now | 15% | StoreKit now, App Store listing now | App Store submission is not wanted yet |
 
-**Recommendation: A.** It matches the 2026-11-18 pricing decision (Paddle on the web, iOS without prices until the App Store, then IAP at the same price). For the testers on TestFlight on 1 January, the admin who wants Pro pays on the web (from a computer, Android, or the iPhone's browser); the iOS app then shows Pro because the plan is on the band.
+**Decided by the user on 2026-11-18: A.** It matches the 2026-11-18 pricing decision (Paddle on the web, iOS without prices until the App Store, then IAP at the same price). For the testers on TestFlight on 1 January, the admin who wants Pro pays on the web (from a computer, Android, or the iPhone's browser); the iOS app then shows Pro because the plan is on the band.
 
 ### 8.3 Google
 
@@ -329,7 +329,7 @@ Slack: about a week before mid-December. The risk is outside the code: VAT numbe
 
 ## 13. Decisions for the user
 
-1. **iOS sales (§8.2)**: A (recommended), B or C.
+1. ~~**iOS sales (§8.2)**~~ **Decided 2026-11-18: A.** No sales, prices or web links on iOS while on TestFlight; IAP at the same price (plus the US web link) when the App Store submission is decided (P7).
 2. **If Paddle is not live on 1 January**: (recommended) switch limits on anyway, because founding bands have their free months and new bands get the trial, and turn checkout on the day Paddle is verified; or keep everything free until checkout works.
 3. **Admins over the limit after a downgrade (§4.2)**: (default) after the grace period only the payer or creator stays admin; or every existing admin keeps the role until they leave.
 4. **Minimum version on 1 January (§7.2)**: (recommended) block builds older than the mid-December release; or only a soft "update available".
