@@ -19,6 +19,8 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { eventKindOf, type EventKind, HeaderAction, IconButton, NavBackButton, Tag, PillButton } from '@/app/components/bw';
 import { supabase } from '@/lib/supabase';
+import { createChatSync } from '@/lib/chatSync';
+import { onAppResume } from '@/lib/appResume';
 import { getMessages, sendMessage, markChatAsRead, subscribeToChat, subscribeToReceipts, getChatParticipants, deleteChat, getChat, receiptFor, chatErrorMessage } from '@/lib/services/chats';
 import type { Message, ChatParticipant, ReceiptStatus } from '@/lib/services/chats';
 import { ReceiptTicks } from '@/app/components/chat/ReceiptTicks';
@@ -489,17 +491,10 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     };
     document.addEventListener('visibilitychange', onVisible);
 
-    const unsubscribe = subscribeToChat(chat.id, (message) => {
-      if (!live()) return;
-      setMessages(prev => appendIncoming(prev, message));
-      markRead();
-    });
-
-    const unsubscribeReceipts = subscribeToReceipts((changedChatId) => {
-      if (changedChatId === chat.id) loadParticipants();
-    });
-
-    const pollInterval = setInterval(async () => {
+    // Realtime first: the latest page is fetched again only when the channel
+    // (re)joins, when the app comes back, or slowly while the channel is down
+    // (src/lib/chatSync.ts). Never on a fast timer: that was most of our egress.
+    const refreshLatest = async () => {
       const { data } = await getMessages(chat.id, { limit: CHAT_PAGE_SIZE });
       if (!live()) return;
       if (data) {
@@ -507,13 +502,26 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         setMessages(prev => mergeLatestPage(prev, data));
       }
       loadParticipants();
-    }, 3000);
+    };
+    const sync = createChatSync(refreshLatest);
+    const offResume = onAppResume(() => sync.catchUp());
+
+    const unsubscribe = subscribeToChat(chat.id, (message) => {
+      if (!live()) return;
+      setMessages(prev => appendIncoming(prev, message));
+      markRead();
+    }, { onStatus: (status) => sync.onStatus(status) });
+
+    const unsubscribeReceipts = subscribeToReceipts((changedChatId) => {
+      if (changedChatId === chat.id) loadParticipants();
+    });
 
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
+      sync.stop();
+      offResume();
       unsubscribe();
       unsubscribeReceipts();
-      clearInterval(pollInterval);
       setActiveChat(null);
     };
   }, [chat.id, user?.id]);

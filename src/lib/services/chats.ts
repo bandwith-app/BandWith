@@ -1145,7 +1145,11 @@ export const deleteChat = async (
 
 export const subscribeToChat = (
   chatId: string,
-  onMessage: (message: Message) => void
+  onMessage: (message: Message) => void,
+  options?: {
+    /** Every status the channel reports: 'SUBSCRIBED' once joined (again after a drop), others when down. */
+    onStatus?: (status: string) => void;
+  }
 ) => {
   console.log('[subscribeToChat] Subscribing to chat:', chatId);
   
@@ -1176,6 +1180,7 @@ export const subscribeToChat = (
     )
     .subscribe((status) => {
       console.log('[subscribeToChat] Subscription status:', status);
+      options?.onStatus?.(status);
     });
 
   return () => {
