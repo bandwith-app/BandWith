@@ -29,6 +29,7 @@ import type { StageBleStatus } from '@/app/components/event/useStageBle';
 import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './RehearsalSession';
+import { NoteSheetsHost, RehearsalNotesBar, marksToWrite, useNoteSheets, type LiveNotes } from './RehearsalNotes';
 
 export interface StageStep {
   label: string;
@@ -110,6 +111,8 @@ interface StageModeProps {
   live?: StageLiveControls;
   /** Rehearsal session (Live mode timer, plan A1b): rehearsals only. */
   session?: RehearsalSessionControls;
+  /** Rehearsal notes (plan A2): Mark, the notes, writing them at the pause. */
+  notes?: LiveNotes;
   /**
    * Song view open (controlled, optional): shared with the Laptop pose
    * (FloorWedgeMode) so folding keeps the lyrics up.
@@ -150,6 +153,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   accentColor = 'var(--accent-gig, #D5FB46)',
   live,
   session: sessionProp,
+  notes: notesProp,
   songOpen,
   onSongOpenChange,
   onClose,
@@ -157,6 +161,8 @@ export const StageMode: React.FC<StageModeProps> = ({
   const t = useT();
   const rehearsal = kind === 'rehearsal';
   const session = rehearsal && sessionProp?.enabled ? sessionProp : undefined;
+  const notes = rehearsal && notesProp?.controls.enabled ? notesProp : undefined;
+  const noteSheets = useNoteSheets(notes?.controls);
   // The summary: up when the session ends, or on request once ended.
   const [summaryAsked, setSummaryAsked] = useState(false);
   const summaryOpen = !!session && session.status === 'ended' && (session.justEnded || summaryAsked);
@@ -535,6 +541,22 @@ export const StageMode: React.FC<StageModeProps> = ({
           {session && (
             <RehearsalSessionBar session={session} accentColor={accentColor} onShowSummary={() => setSummaryAsked(true)} className="pb-2" />
           )}
+          {notes && (
+            <RehearsalNotesBar
+              controls={notes.controls}
+              sheets={noteSheets}
+              accentColor={accentColor}
+              paused={session?.status === 'paused'}
+              onMark={() =>
+                notes.controls.mark({
+                  songId: songs[current]?.songId ?? null,
+                  songTitle: songs[current]?.title ?? null,
+                  markedAtS: notes.elapsed(),
+                })
+              }
+              className="pb-2"
+            />
+          )}
           <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
             {views.length > 1 ? (
               <span className="flex items-center gap-1 min-w-0" role="tablist" aria-label={t('Setlist')}>
@@ -841,9 +863,20 @@ export const StageMode: React.FC<StageModeProps> = ({
                 : undefined
             }
             onClose={closeSummary}
+            marks={notes ? marksToWrite(notes.controls).length : 0}
+            onWriteMarks={notes ? () => noteSheets.setListOpen(true) : undefined}
           />
         )}
       </AnimatePresence>
+      {notes && (
+        <NoteSheetsHost
+          sheets={noteSheets}
+          controls={notes.controls}
+          songs={notes.songs}
+          members={notes.members}
+          currentSongId={songs[current]?.songId ?? null}
+        />
+      )}
     </motion.div>
   );
 };

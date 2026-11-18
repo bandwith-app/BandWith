@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 export const FLAG_DEFAULTS = {
   /** Timer, pause and saved summary in rehearsal Live mode (A1b). */
   rehearsal_sessions: true,
+  /** Notes in rehearsal Live mode and on the rehearsal's page (A2). */
+  rehearsal_notes: true,
 } as const satisfies Record<string, boolean>;
 
 export type FlagKey = keyof typeof FLAG_DEFAULTS;

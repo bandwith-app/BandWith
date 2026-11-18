@@ -151,7 +151,10 @@ export const RehearsalSummaryDialog: React.FC<{
   /** The admin can go on rehearsing (the gap counts as a pause). */
   onResume?: () => void;
   onClose: () => void;
-}> = ({ summary, accentColor, onResume, onClose }) => {
+  /** Marks still to write (plan A2): a button opens the notes. */
+  marks?: number;
+  onWriteMarks?: () => void;
+}> = ({ summary, accentColor, onResume, onClose, marks = 0, onWriteMarks }) => {
   const t = useT();
   return (
     <motion.div
@@ -192,6 +195,18 @@ export const RehearsalSummaryDialog: React.FC<{
             ))
           )}
         </ol>
+        {onWriteMarks && marks > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              haptic.tap();
+              onWriteMarks();
+            }}
+            className="min-h-14 rounded-[20px] border border-white text-white bw-button-sm shrink-0"
+          >
+            {t('Marks to write: {count}', { count: marks })}
+          </button>
+        )}
         <div className={cn('grid gap-3 shrink-0', onResume ? 'grid-cols-2' : 'grid-cols-1')}>
           {onResume && (
             <button

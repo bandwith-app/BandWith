@@ -1066,6 +1066,17 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Notas del ensayo",
+          items: [
+            "En el Modo en vivo toca **Marcar** cuando algo necesite trabajo: guarda la canción que suena y el minuto, y seguís tocando.",
+            "En la pausa (o en el resumen) toca **Por escribir** y **Escribir** en cada marca: elige en qué trabajar (**Tempo**, **Tono**, **Final**, **Solo**, **Repasar**, **Clavado**, o **Repetir una sección** si la canción tiene estructura), añade unas palabras y di **Para quién es**.",
+            "Los admins escriben para toda la banda o para cualquier miembro; los miembros, para la banda o para sí mismos. Toda la banda lee todas las notas.",
+            "A quien va dirigida una nota toca **Practicado** tras trabajarla; un admin toca **OK** cuando la banda la tiene (también el autor, en una nota para miembros).",
+            "La página del ensayo lista las notas en **NOTAS DEL ENSAYO**, por canción. Las notas llegan al momento a los demás teléfonos en Modo en vivo; sin internet esperan en el teléfono y se envían al volver la conexión. En el Duo plegado como un portátil, la pantalla del suelo tiene un bloc de notas: **Marcar**, un preset con un toque, o **Escribir…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Conviene saber",
           items: [
             "El Modo escenario está disponible en los próximos conciertos de la banda y, como Modo en vivo, en los próximos ensayos de la banda; no en presupuestos, eventos pasados ni conciertos personales.",

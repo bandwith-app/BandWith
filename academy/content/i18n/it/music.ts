@@ -1195,6 +1195,17 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Note della prova",
+          items: [
+            "In Modalità live tocca **Segna** quando qualcosa va sistemato: tiene il brano in corso e il minuto, e continuate a suonare.",
+            "In pausa (o nel riepilogo) tocca **Da scrivere** e **Scrivi** su ogni segno: scegli su cosa lavorare (**Tempo**, **Tonalità**, **Finale**, **Solo**, **Da rivedere**, **Perfetto**, o **Ripetere una sezione** se il brano ha una struttura), aggiungi due parole e indica **Per chi è**.",
+            "Gli admin scrivono per tutta la band o per qualsiasi membro; i membri per la band o per sé. Tutta la band legge tutte le note.",
+            "Chi riceve una nota tocca **Provato** dopo averci lavorato; un admin tocca **OK** quando la band ce l’ha (anche l’autore, per una nota ai membri).",
+            "La pagina della prova elenca le note sotto **NOTE DELLA PROVA**, per brano. Le note arrivano subito agli altri telefoni in Modalità live; senza internet restano sul telefono e partono quando torna online. Sul Duo piegato come un laptop, lo schermo a terra ha un blocco note: **Segna**, un preset con un tocco, o **Scrivi…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Buono a sapersi",
           items: [
             "La Modalità palco è disponibile per i gig della band in programma e, come Modalità live, per le prove della band in programma; non per preventivi, eventi passati o gig personali.",

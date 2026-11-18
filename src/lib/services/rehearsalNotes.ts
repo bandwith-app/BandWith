@@ -1,0 +1,97 @@
+/**
+ * Rehearsal notes (migration 132). Reads are by rehearsal occurrence (Live
+ * mode, the rehearsal page) or by band (To practise, A3); writes are
+ * idempotent upserts by the note's own id, so the offline outbox can replay.
+ */
+import { supabase } from '@/lib/supabase';
+import { fromNoteRow, toNoteRow, type RehearsalNote } from '@/lib/rehearsalNotes';
+
+/** Must match the SELECT grants in 132 (rehearsalNotesMigration.test.ts). */
+export const NOTE_COLUMNS =
+  'id, band_id, event_id, occurrence_date, session_id, song_id, song_title, preset, section, body, scope, status, marked_at_s, created_by, ok_by, ok_at, created_at, updated_at';
+export const ASSIGNEE_COLUMNS = 'note_id, user_id, practised_at';
+
+const SELECT = `${NOTE_COLUMNS}, rehearsal_note_assignees(${ASSIGNEE_COLUMNS})`;
+
+const parse = (rows: unknown): RehearsalNote[] =>
+  Array.isArray(rows) ? rows.map(fromNoteRow).filter((n): n is RehearsalNote => !!n) : [];
+
+/** Notes of one rehearsal occurrence; `null` when they couldn't be read (offline). */
+export async function fetchOccurrenceNotes(eventId: string, date: string): Promise<RehearsalNote[] | null> {
+  const { data, error } = await supabase
+    .from('rehearsal_notes')
+    .select(SELECT)
+    .eq('event_id', eventId)
+    .eq('occurrence_date', date)
+    .order('created_at', { ascending: true });
+  return error ? null : parse(data);
+}
+
+/** A band's notes that are not OK yet (To practise, From last time). */
+export async function fetchOpenBandNotes(bandId: string): Promise<RehearsalNote[] | null> {
+  const { data, error } = await supabase
+    .from('rehearsal_notes')
+    .select(SELECT)
+    .eq('band_id', bandId)
+    .neq('status', 'ok')
+    .order('created_at', { ascending: false })
+    .limit(300);
+  return error ? null : parse(data);
+}
+
+/**
+ * Save a note and its assignees. `before` = the assignees saved until now
+ * (removed ones are deleted, new ones added). Same call twice = no change.
+ */
+export async function saveNote(note: RehearsalNote, before: string[]): Promise<{ error: unknown }> {
+  // Update first, insert when it isn't there yet: an upsert would run the
+  // insert guard on a note that is already OK (132 refuses a new OK note).
+  const row = toNoteRow(note);
+  const changes: Partial<typeof row> = { ...row };
+  delete changes.id;
+  delete changes.band_id;
+  delete changes.event_id;
+  delete changes.occurrence_date;
+  const upd = await supabase.from('rehearsal_notes').update(changes).eq('id', note.id).select('id');
+  if (upd.error) return { error: upd.error };
+  if (!upd.data?.length) {
+    const ins = await supabase.from('rehearsal_notes').insert(row);
+    // Already there but not mine to change (someone else's note): nothing to do.
+    if (ins.error && (ins.error as { code?: string }).code !== '23505') return { error: ins.error };
+  }
+  const want = note.scope === 'members' ? note.assignees.map((a) => a.userId) : [];
+  const gone = before.filter((u) => !want.includes(u));
+  const added = want.filter((u) => !before.includes(u));
+  if (gone.length) {
+    const { error: e } = await supabase.from('rehearsal_note_assignees').delete().eq('note_id', note.id).in('user_id', gone);
+    if (e) return { error: e };
+  }
+  if (added.length) {
+    const { error: e } = await supabase
+      .from('rehearsal_note_assignees')
+      .upsert(added.map((user_id) => ({ note_id: note.id, user_id })), { onConflict: 'note_id,user_id', ignoreDuplicates: true });
+    if (e) return { error: e };
+  }
+  return { error: null };
+}
+
+export async function deleteNote(id: string): Promise<{ error: unknown }> {
+  const { error } = await supabase.from('rehearsal_notes').delete().eq('id', id);
+  return { error };
+}
+
+/** Practised (or not) by me. */
+export async function setPractised(noteId: string, userId: string, practised: boolean): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from('rehearsal_note_assignees')
+    .update({ practised_at: practised ? new Date().toISOString() : null })
+    .eq('note_id', noteId)
+    .eq('user_id', userId);
+  return { error };
+}
+
+/** OK (confirmed at a rehearsal) or back to open. */
+export async function setNoteOk(noteId: string, ok: boolean): Promise<{ error: unknown }> {
+  const { error } = await supabase.from('rehearsal_notes').update({ status: ok ? 'ok' : 'open' }).eq('id', noteId);
+  return { error };
+}

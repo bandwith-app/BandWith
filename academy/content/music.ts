@@ -1205,6 +1205,17 @@ const music: AreaModule = {
         },
         {
           type: "list",
+          title: "Rehearsal notes",
+          items: [
+            "In Live mode tap **Mark** when something needs work: it keeps the song playing and the minute, and you go on playing.",
+            "At the pause (or in the summary) tap **To write** and **Write** each mark: pick what to work on (**Tempo**, **Key**, **Ending**, **Solo**, **Review**, **Nailed it**, or **Repeat a section** when the song has a structure), add a few words, and say **Who it’s for**.",
+            "Admins write for the whole band or for any member; members write for the band or for themselves. The whole band reads every note.",
+            "Whoever a note is for taps **Practised** after working on it; an admin taps **OK** when the band has it (the author can too, on a note to members).",
+            "The rehearsal's page lists the notes under **REHEARSAL NOTES**, by song. Notes reach the other phones in Live mode at once; without internet they wait on the phone and go when back online. On the Duo folded like a laptop, the floor screen has a notes pad: **Mark**, a preset in one tap, or **Write…**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Good to know",
           items: [
             "Stage mode is offered for upcoming band gigs and, as Live mode, for upcoming band rehearsals; not for quotes, past events or personal gigs.",

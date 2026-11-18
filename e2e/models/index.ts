@@ -11,5 +11,6 @@ import { quote } from './quote.model.ts';
 import { deputy } from './deputy.model.ts';
 import { auth } from './auth.model.ts';
 import { rehearsalLive } from './rehearsal-live.model.ts';
+import { rehearsalNote } from './rehearsal-note.model.ts';
 
-export const MODELS: Lifecycle[] = [rsvpGig, rsvpRehearsal, proposal, poll, cardEdit, setlistDraft, quote, deputy, auth, rehearsalLive];
+export const MODELS: Lifecycle[] = [rsvpGig, rsvpRehearsal, proposal, poll, cardEdit, setlistDraft, quote, deputy, auth, rehearsalLive, rehearsalNote];
