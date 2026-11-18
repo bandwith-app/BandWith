@@ -10,8 +10,10 @@ import { authErrorKind } from '@/lib/authErrors';
  * - `other_browser`: the code can only be exchanged where the flow started
  *   (PKCE code verifier), and this browser doesn't have it.
  * - `cancelled`: the person backed out of Google / Apple.
+ * - `beta_full`: Google / Apple would create a new account, and every beta
+ *   spot is taken (migration 128).
  */
-export type AuthCallbackProblem = 'link_expired' | 'other_browser' | 'cancelled' | 'network' | 'unknown';
+export type AuthCallbackProblem = 'link_expired' | 'other_browser' | 'cancelled' | 'beta_full' | 'network' | 'unknown';
 
 type UrlError = { error: string; code: string; description: string };
 
@@ -37,6 +39,7 @@ export function callbackProblem(err: unknown): AuthCallbackProblem {
   const kind = authErrorKind({ ...(e as object), code, message });
   if (kind === 'link_expired') return 'link_expired';
   if (kind === 'network') return 'network';
+  if (kind === 'beta_full') return 'beta_full';
   // access_denied without a more precise code: Google / Apple cancelled.
   if (e.error === 'access_denied' || code === 'access_denied') return 'cancelled';
   return 'unknown';
@@ -46,6 +49,9 @@ export function callbackProblem(err: unknown): AuthCallbackProblem {
 export function callbackProblemText(problem: AuthCallbackProblem, recovery: boolean): { title: string; body: string } {
   if (problem === 'network') {
     return { title: t('Sign-in didn’t complete'), body: t('Check your connection and try again.') };
+  }
+  if (problem === 'beta_full') {
+    return { title: t('BandWith is full for now'), body: t('Join the waitlist on bandwith.fun. Invited by a band? Sign up with the email the invite was sent to.') };
   }
   if (recovery) {
     if (problem === 'other_browser') {

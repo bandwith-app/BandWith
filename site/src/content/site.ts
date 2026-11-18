@@ -14,3 +14,9 @@ export const ACADEMY_HOME = `${APP_URL}/academy/`;
 /** Academy captures, served at /shots/ (see site/vite.config.ts). */
 export type ShotDevice = 'phone' | 'tablet' | 'web' | 'duoClosed' | 'duoBook' | 'duoLaptop';
 export const shot = (id: string, device: ShotDevice = 'phone') => `/shots/${id}@${device}.webp`;
+
+/** iPhone & iPad door: TestFlight's public link (it installs TestFlight first). */
+export const TESTFLIGHT_URL = 'https://testflight.apple.com/join/8zJGuprA';
+
+/** Android door: always the newest APK release (scripts/release-android.sh). */
+export const APK_URL = 'https://github.com/bandwith-app/BandWith/releases/latest/download/BandWith.apk';

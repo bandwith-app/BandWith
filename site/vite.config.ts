@@ -69,7 +69,9 @@ function academyShots(): Plugin {
 export default defineConfig({
   root,
   base: '/',
-  envDir: root,
+  // The app's .env files (repo root): the site reads only VITE_SUPABASE_URL and
+  // VITE_SUPABASE_PUBLISHABLE_KEY (public) for the beta counter and the waitlist.
+  envDir: path.resolve(root, '..'),
   plugins: [partials(), academyShots()],
   server: { port: 5180, host: '127.0.0.1' },
   preview: { port: 5181, host: '127.0.0.1' },

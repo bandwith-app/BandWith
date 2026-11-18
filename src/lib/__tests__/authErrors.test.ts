@@ -21,19 +21,32 @@ describe('auth errors in the app language', () => {
     expect(authErrorKind(new TypeError('Load failed'))).toBe('network');
     expect(authErrorKind({ message: 'For security purposes, you can only request this after 52 seconds.' })).toBe('rate_limit');
     expect(authErrorKind({ message: 'User already registered' })).toBe('already_registered');
-    expect(authErrorKind({ status: 500, message: 'Database error saving new user' })).toBe('unknown');
+    expect(authErrorKind({ status: 500, message: 'Something odd' })).toBe('unknown');
     expect(authErrorKind(null)).toBe('unknown');
   });
 
   it('never shows the server text', () => {
     expect(authErrorMessage({ code: 'invalid_credentials', message: 'Invalid login credentials' })).toBe('Wrong email or password.');
-    expect(authErrorMessage({ message: 'Database error saving new user' })).toBe('Something went wrong. Please try again.');
+    expect(authErrorMessage({ message: 'Something odd' })).toBe('Something went wrong. Please try again.');
     expect(authErrorMessage(new TypeError('Failed to fetch'))).toBe('Check your connection and try again.');
   });
 
   it('translates', () => {
     setLocalePref('it');
     expect(authErrorMessage({ code: 'invalid_credentials' })).toBe('Email o password errata.');
+  });
+
+  // Migration 128 refuses a new account when every beta spot is taken; Auth
+  // answers with its generic database error, which then means "full".
+  it('tells the person the beta is full, and what to do', () => {
+    const refused = { status: 500, code: 'unexpected_failure', message: 'Database error saving new user' };
+    expect(authErrorKind(refused)).toBe('beta_full');
+    expect(authErrorMessage(refused)).toBe('BandWith is full for now. Join the waitlist on bandwith.fun. Invited by a band? Sign up with the email the invite was sent to.');
+    for (const lang of ['it', 'es', 'fr', 'de', 'pt'] as const) {
+      setLocalePref(lang);
+      expect(authErrorMessage(refused), lang).not.toContain('Invited by a band');
+      expect(authErrorMessage(refused), lang).toContain('bandwith.fun');
+    }
   });
 });
 
