@@ -63,6 +63,47 @@ Checked in the code on `main` 030dcae.
 
 ## 3. Update A: rehearsals in live mode, notes to practise
 
+### 3.0 Status after #197 and revisions (2026-11-18, approved by the user)
+
+**What #197 shipped** (merged 2026-11-17, `src/lib/liveMode.ts`):
+- Upcoming band rehearsals open the same live screen as gigs ("Live mode"): the setlist (focus songs), lyrics and chords, transpose, click, my notes, admin leads, members follow over Realtime and Bluetooth.
+- There is no run of show and no strike-off.
+- No migration was needed: 085/087 check the band, not the event type.
+- Tests: e2e `stage-live.spec.ts` on 10 profiles, vitest `liveMode`, `StageMode.rehearsal`, `RehearsalExpanded.live`. This covers most of A0.2/A0.3 and A1.1/A1.2/A1.4.
+
+**What #197 removed:** the legacy local rehearsal view (`RehearsalLiveView`, `RehearsalPostView`, `rehearsalSession.ts`). With it went the timer and pause, the per-song verdicts, the check-ins and the end-of-rehearsal summary.
+- This plan had said to retire it only after the new path covered them. No data was lost, since that view never saved anything, but those functions are gone today.
+
+**Revisions (these replace the matching parts of 3.1–3.3, §5, §7.1, §10 and §11):**
+1. **Timer + pause come back** in the rehearsal Live mode (small).
+2. **Check-ins are dropped.** RSVP already says who comes, and tracking lateness among friends adds friction for little value. The `rehearsal_session_arrivals` table is dropped from the data model.
+3. **The end-of-rehearsal summary comes back and is saved** (`rehearsal_sessions.summary`). It is where marks become notes.
+4. **"Mark now, write later."** Musicians have their hands on their instruments, so typing during a song is unrealistic.
+   - During a song there is one big **Mark** button. One tap records the song and the minute (`rehearsal_notes` row with `status = 'marked'`, `marked_at_s`, no preset or text yet). It works from the Duo on the amp too.
+   - At the pause, or in the summary, marks become notes: a preset or text, and the assignees.
+   - Anyone with a free hand can still write a full note on the spot.
+   - The check becomes `status = 'marked' OR preset IS NOT NULL OR body IS NOT NULL`.
+5. **Section presets ("Verse 3 to repeat") appear only when the song has structure headings** (`# Verse 1`, `# Chorus` in `songFormat.ts`). Otherwise use free text.
+6. **New: open notes suggest focus songs.** When the admin creates the next rehearsal or a poll (097 `focus_song_ids`), songs with open notes are pre-selected, and the admin can untick them.
+7. **New: tempo and key notes become song change suggestions.**
+   - A "Tempo: 96" or "Key: F#m" note can be turned, with one tap, into a song change suggestion through the existing flow (108, `SuggestSongChangeSheet` with a prefilled note).
+   - An admin note applies directly with the admin's existing editing rights.
+8. **Band-editable presets are downgraded to "only if asked"** (A5 optional). The built-in translated presets come first.
+9. **Later, not now:** the same notes after a gig (debrief; the model is per event, so it costs little).
+10. **Not now:** audio recording of the rehearsal (storage cost on the free tiers; see the scaling plan, #203).
+
+**Revised phases for A** (replacing the A rows in §7.1 and §10; A0.1 flags still needed):
+
+| Phase | What | Estimate |
+| --- | --- | --- |
+| A1b | Flag layer (A0.1). Timer + pause in rehearsal Live mode. `rehearsal_sessions` migration (no arrivals). Saved summary (duration, songs played). `rehearsal-live` XState model. | ~2 d |
+| A2 | Notes: Mark now / write later, presets (section chips only with structure), text, band / members, live sync, offline queue, Practised / OK. `rehearsal-note` model. Duo Laptop notes pad. | 3–5 d |
+| A3 | To practise: Home card, song page strip, next rehearsal "From last time" + live badges. Focus-song suggestion (097). Tempo/key note → song suggestion (108). | 2–3 d |
+| A4 | One summary push at session end, translated, prefs respected. Academy + both handbooks. | ~1 d |
+| **Total** | | **8–11 d** |
+
+**Releases stay manual.** Nothing goes to production (web deploy, APK, TestFlight / store) without the user's explicit confirmation. Each phase stops at "release candidate ready + gate passed".
+
 ### 3.1 Product shape
 
 **Live rehearsal** (same engine as Stage mode, without gig phases)
@@ -253,6 +294,9 @@ My proposed default is in **bold**. A default is used only if the user agrees.
 - **Q-A6 Who leads the live rehearsal?** **The band admin, as for gigs.** A "hand the lead to…" option can come later.
 - **Q-A7 Notes on songs outside the setlist, or a general note with no song?** **Both allowed. A song can be added to the session on the fly.**
 - **Q-A8 What happens to the preset wording** ("Da rivedere", "Solo ok", "Strofa 3 da ripetere/approfondire")? The user confirms the list and the English keys.
+- **Q-A9 (added 11-18) Drop check-ins?** **Yes, RSVP already covers who comes** (see 3.0).
+- **Q-A10 (added 11-18) "Mark now, write later" during songs?** **Yes, one big Mark button, with details at the pause or in the summary** (see 3.0).
+- Q-A3 is revised: band-editable presets only if the band asks for them.
 
 **Update B**
 - **Q-B1 Who owns the band's Stripe account?** **The admin who onboards, as an individual or the band's company.** What happens when they leave the band?
@@ -311,6 +355,8 @@ None of the points below is a conclusion. They are questions to put to professio
 - Migration numbers come from the reserved blocks (A 130–134, B 140–154).
 
 ### 7.1 Update A phases and PRs
+
+> **Superseded on 2026-11-18 by the revised phases in 3.0** (#197 shipped most of A0 and A1). The table below is kept for reference.
 
 | Phase | PRs (each its own PR) | Depends on |
 | --- | --- | --- |
@@ -413,7 +459,7 @@ Estimates are focused working days of implementation sessions, including tests a
 | A3 | 2–3 d | Home crowding on Duo closed; song page conflict with 109 notes | To practise on Home, song page, next rehearsal + live badges; 109 private notes unchanged (tests) |
 | A4 | 1–1.5 d | push spam, untranslated pushes | one summary push per member, 6 languages, prefs respected |
 | A5 | 1.5–2.5 d | preset edits break built-in translations | band presets (if yes), Academy + both PDFs regenerated, crawler clean |
-| **A total** | **12–18 d** | | release candidate 1.1.0 ready and the full gate passed (releasing is the user's call) |
+| **A total** | **12–18 d** (revised 11-18: **8–11 d** remaining, see 3.0) | | release candidate 1.1.0 ready and the full gate passed (releasing is the user's call) |
 | B0 | user / pro time, 2–6 weeks | no legal owner for the platform; DAC7 or licence answer blocks B6 or even B3 | written answers to §5 B and §6; Stripe platform account in the right name; legacy functions removed |
 | B1 | 3–4 d | webhook wrong in Deno (raw body); grants leak | signature/idempotency/out-of-order tests green; migrations dry-run; nothing visible |
 | B2 | 2–3 d | deep link back fails on one platform; account country wrong | onboarding out and back on iOS/Android/web (Maestro); statuses only from webhook |
@@ -436,6 +482,7 @@ Cross-cutting risks
 | Version | Contents | Visible to |
 | --- | --- | --- |
 | 1.0.6 | current release, the user tries it first | all |
+| *(11-18)* | *#197 already merged rehearsal Live mode (the core of A1). Next release candidate: A1b–A4 per 3.0, as 1.1.0. Production only after the user confirms.* | |
 | **1.0.7** | A0 only: flag layer, Stage mode characterisation tests, refactor (no visible change); B0 runs in parallel; legacy Stripe functions removed | all (nothing new to see) |
 | **1.1.0** | A1–A4: live rehearsal, notes, To practise, summary push; flag `rehearsal_live` on for the user's own band first, then everyone after a week | all |
 | 1.1.1 | A5 presets/polish + fixes from 1.1.0 testers; B1 server foundation merged with flag off | all / nobody |
