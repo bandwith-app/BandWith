@@ -22,12 +22,16 @@ import {
   quoteEmailVars,
   type QuoteEmailKind,
 } from "../_shared/quote-email-strings.ts";
+import { replyTo } from "../_shared/email-reply-to.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain
 // is verified in Resend; the resend.dev test sender only delivers to the Resend
 // account owner.
 const FROM_EMAIL = Deno.env.get("EMAIL_FROM") || "BandWith <onboarding@resend.dev>";
+// Replies reach a person, not noreply@: the EMAIL_REPLY_TO inbox (ciao@bandwith.fun).
+const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO");
+const REPLY = replyTo({ configured: REPLY_TO });
 // The deployed web app (= Supabase Auth site_url, the APP_URL secret). Note: bandwith.app belongs
 // to an unrelated product; never link to it.
 const DEFAULT_APP_URL = "https://app.bandwith.fun"; // = src/lib/appUrl.ts
@@ -205,7 +209,7 @@ async function sendProductUpdate(admin: SupabaseClient, data: DispatchData) {
     }
     const unsubscribeUrl = `${appUrl()}/unsubscribe.html?u=${encodeURIComponent(id)}&s=${sig}`;
     const { subject, html } = renderEmail("product-update", { ...base, To: to, UnsubscribeURL: unsubscribeUrl });
-    emails.push({ from: FROM_EMAIL, to: [to], subject, html, headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` } });
+    emails.push({ from: FROM_EMAIL, ...REPLY, to: [to], subject, html, headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` } });
   }
 
   if (emails.length) await resend("/emails/batch", emails);
@@ -500,7 +504,8 @@ async function sendQuoteClientEmail(
   console.log(`Sending ${type} (${kind}) email`);
   try {
     const result = await resend("/emails", {
-      from: FROM_EMAIL,
+      // The client's reply reaches the admin who sent the quote.
+      from: FROM_EMAIL, ...replyTo({ configured: REPLY_TO, person: caller.email }),
       to: [to],
       subject,
       html,
@@ -658,7 +663,7 @@ serve(async (req) => {
 
     console.log(`Sending ${type} email`);
 
-    const result = await resend("/emails", { from: FROM_EMAIL, to: [to], subject, html });
+    const result = await resend("/emails", { from: FROM_EMAIL, ...REPLY, to: [to], subject, html });
     console.log("Email sent:", result.id);
     if (invitation) {
       await admin.from("band_invitations").update({ email_sent_at: new Date().toISOString() }).eq("id", invitation.id);
