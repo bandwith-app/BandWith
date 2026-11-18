@@ -91,7 +91,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
     const fetchSongs = async () => {
       setLoading(true);
       setLoadError(null);
-      const { data, error } = await getSongs(selectedBand.id);
+      const { data, error } = await getSongs(selectedBand.id, { columns: 'list' });
       if (cancelled) return;
       if (error) setLoadError(userMessage(error, t("Couldn't load your song library.")));
       else if (data) setSongs(data);

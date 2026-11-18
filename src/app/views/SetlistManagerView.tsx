@@ -278,12 +278,23 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     };
     refresh(false);
     const onChange = () => refresh(true);
+    // A chord edit only changes that song's lyrics: patch it here rather than
+    // downloading every song (with lyrics) and every setlist again.
+    const onSongSaved = (e: Event) => {
+      const detail = (e as CustomEvent<{ id?: string; lyrics?: string } | undefined>).detail;
+      if (!detail?.id || typeof detail.lyrics !== 'string') {
+        refresh(true);
+        return;
+      }
+      const { id, lyrics } = detail;
+      setSongs((prev) => prev.map((s) => (s.id === id ? { ...s, lyrics } : s)));
+    };
     window.addEventListener(SUGGESTIONS_CHANGED, onChange);
-    window.addEventListener(SONG_SAVED, onChange);
+    window.addEventListener(SONG_SAVED, onSongSaved);
     return () => {
       alive = false;
       window.removeEventListener(SUGGESTIONS_CHANGED, onChange);
-      window.removeEventListener(SONG_SAVED, onChange);
+      window.removeEventListener(SONG_SAVED, onSongSaved);
     };
   }, [selectedBand?.id, isAdmin, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

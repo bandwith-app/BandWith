@@ -89,6 +89,17 @@ export interface SetlistWithSongs extends Setlist {
 // SONGS CRUD
 // ============================================
 
+/**
+ * Every song column except lyrics, chord_chart and notes, which are about 80%
+ * of a song row. Pickers and lists that only show titles use these
+ * (Supabase egress, docs/plans/scaling-and-costs.md); the repertoire, the
+ * reader and the editor still load full songs.
+ */
+export const SONG_LIST_COLUMNS =
+  'id, band_id, title, artist, duration_seconds, bpm, key, genre, category, status, priority, ' +
+  'audio_url, chart_url, spotify_id, apple_music_id, youtube_url, times_played, last_played_at, ' +
+  'added_by, created_at, updated_at';
+
 export const getSongs = async (
   bandId: string,
   options?: {
@@ -97,12 +108,14 @@ export const getSongs = async (
     category?: string;
     search?: string;
     limit?: number;
+    /** 'list': no lyrics, chord chart or notes (they come back undefined). */
+    columns?: 'list' | 'full';
   }
 ): Promise<{ data: Song[] | null; error: Error | null }> => {
   try {
     let query = supabase
       .from('songs')
-      .select('*')
+      .select(options?.columns === 'list' ? SONG_LIST_COLUMNS : '*')
       .eq('band_id', bandId)
       .order('title', { ascending: true });
 
@@ -134,7 +147,8 @@ export const getSongs = async (
 
     if (error) throw error;
 
-    return { data, error: null };
+    // A list-columns row has no lyrics/chord_chart/notes: those fields stay undefined.
+    return { data: data as unknown as Song[] | null, error: null };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -392,6 +406,30 @@ export const getSetlists = async (
   } catch (error: any) {
     return { data: null, error };
   }
+};
+
+/**
+ * The song ids of several setlists, in running order, from one query that
+ * downloads no song data (getSetlist loads every full song of one setlist).
+ */
+export const getSetlistSongIds = async (
+  setlistIds: string[]
+): Promise<{ data: Map<string, string[]>; error: Error | null }> => {
+  const ids = new Map<string, string[]>();
+  if (setlistIds.length === 0) return { data: ids, error: null };
+  const { data, error } = await supabase
+    .from('setlist_songs')
+    .select('setlist_id, song_id')
+    .in('setlist_id', setlistIds)
+    .order('set_number', { ascending: true })
+    .order('position', { ascending: true });
+  if (error) return { data: ids, error };
+  for (const row of (data ?? []) as { setlist_id: string; song_id: string }[]) {
+    const list = ids.get(row.setlist_id) ?? [];
+    list.push(row.song_id);
+    ids.set(row.setlist_id, list);
+  }
+  return { data: ids, error: null };
 };
 
 export const getSetlist = async (setlistId: string): Promise<{ data: SetlistWithSongs | null; error: Error | null }> => {

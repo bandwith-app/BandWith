@@ -26,7 +26,8 @@ import {
   RecurrenceType,
 } from './types';
 import { useBand } from '@/lib/BandContext';
-import { getSongs, getSetlists, getSetlist, type Song, type Setlist } from '@/lib/services/songs';
+import { type Song, type Setlist } from '@/lib/services/songs';
+import { loadRehearsalLibrary } from '@/lib/rehearsalLibrary';
 import { supabase } from '@/lib/supabase';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
 import { saveEventDraft, deleteEventDraft, newDraftId, type EventDraft } from '@/lib/wizardDrafts';
@@ -396,23 +397,12 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
   useEffect(() => {
     if (!selectedBand?.id) return;
     const fetchSongData = async () => {
-      const [songsRes, setlistsRes, taskTplRes] = await Promise.all([
-        getSongs(selectedBand.id),
-        getSetlists(selectedBand.id),
+      const [lib, taskTplRes] = await Promise.all([
+        loadRehearsalLibrary(selectedBand.id),
         supabase.from('task_templates').select('*').eq('band_id', selectedBand.id).order('created_at', { ascending: false }),
       ]);
-      if (songsRes.data) {
-        setLibrary(songsRes.data.map(dbSongToRehearsalSong));
-      }
-      if (setlistsRes.data) {
-        const templatePromises = setlistsRes.data.map(async (sl) => {
-          const { data: full } = await getSetlist(sl.id);
-          const songIds = full?.songs?.map(ss => ss.song_id) || [];
-          return dbSetlistToTemplate(sl, songIds);
-        });
-        const loaded = await Promise.all(templatePromises);
-        setTemplates(loaded);
-      }
+      setLibrary(lib.songs.map(dbSongToRehearsalSong));
+      setTemplates(lib.setlists.map(({ setlist, songIds }) => dbSetlistToTemplate(setlist, songIds)));
       if (taskTplRes.data) {
         setTaskTemplatesDB(taskTplRes.data);
       }
