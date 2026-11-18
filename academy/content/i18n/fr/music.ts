@@ -1184,6 +1184,17 @@ const music: AreaText = {
         { type: "shot", id: "music-rehearsal-live", caption: "Le mode live à une répétition : les morceaux à travailler, les accords du morceau en cours et Précédent / Suivant, sans déroulé." },
         {
           type: "list",
+          title: "Le minuteur de la répétition",
+          items: [
+            "L’admin touche **Commencer la répétition** dans le mode live. Le temps défile pour tout le groupe : les membres le voient mais ne le pilotent pas.",
+            "**Pause** arrête le temps (une pause ne compte pas) et **Reprendre** repart. **Terminer** demande d’abord : **Continuer** ou **Terminer maintenant**.",
+            "À la fin, tout le monde voit le **Résumé de la répétition** : le temps répété sans les pauses et les morceaux joués (chaque morceau à l’écran pendant que le temps défilait compte une fois). L’admin peut encore **Reprendre la répétition**.",
+            "La séance est enregistrée : fermer le mode live ou relancer l’app la conserve, et la page de la répétition l’affiche sous **SÉANCE DE RÉPÉTITION**. Une répétition récurrente a une séance par date.",
+            "Sans internet, le temps de l’admin continue et s’enregistre au retour en ligne. Sur le Duo plié comme un portable, l’écran au sol affiche le temps et, pour l’admin, **Pause** / **Reprendre**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bon à savoir",
           items: [
             "Le mode scène est proposé pour les concerts du groupe à venir et, en mode live, pour les répétitions du groupe à venir ; pas pour les devis, les événements passés ni les concerts perso.",

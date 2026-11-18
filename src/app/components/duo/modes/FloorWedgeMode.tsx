@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { stepOver } from '@/lib/stageLive';
-import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Minus, PanelLeft, Pause, Play, Plus, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useKeepAwake } from '@/lib/posture';
@@ -17,6 +17,9 @@ import { useT } from '@/lib/i18n';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useStageBarHidden } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
+import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
+import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
+import { formatClock } from '@/lib/rehearsalSession';
 
 /**
  * Floor wedge (Stage mode in Laptop pose): the phone stands on the stage
@@ -88,6 +91,12 @@ export interface FloorWedgeModeProps {
   onClose?: () => void;
   /** Name of the Exit button: "Exit live mode" on a rehearsal (default "Exit stage mode"). */
   exitLabel?: string;
+  /**
+   * Rehearsal session (plan A1b): the wedge shows its clock instead of the
+   * time since the mode opened, and the admin can pause / resume it here
+   * (starting and ending stay in Live mode, unfolded).
+   */
+  session?: RehearsalSessionControls;
 }
 
 export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
@@ -110,6 +119,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   onLyricsOnChange,
   onClose,
   exitLabel: exitLabelProp,
+  session: sessionProp,
 }) => {
   const t = useT();
   const exitLabel = exitLabelProp ?? t('Exit stage mode');
@@ -194,7 +204,11 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   const next = index + 1 < count ? songs[index + 1] : null;
   const clickUi = useStageClickUi(click, song);
   const start = startedAt !== undefined ? new Date(startedAt).getTime() : mountedAt;
-  const elapsed = clock(Math.max(0, (now - start) / 1000));
+  const session = sessionProp?.enabled && sessionProp.status !== 'idle' ? sessionProp : undefined;
+  const sessionSeconds = useSessionSeconds(session?.state ?? null, session?.status ?? 'idle');
+  const elapsed = session ? formatClock(sessionSeconds) : clock(Math.max(0, (now - start) / 1000));
+  const sessionToggle =
+    session?.canControl && (session.status === 'live' || session.status === 'paused') ? session : undefined;
 
   // Time left in the set, when every remaining song has a duration.
   const remaining = songs.slice(index).map((s) => durationSeconds(s.duration ?? null));
@@ -206,7 +220,10 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
     <div className={cn('bw-fold-pad flex flex-col gap-3 pt-3 pb-4 bg-black text-white select-none', showLyrics ? 'h-full' : 'min-h-full')}>
       <div className="flex items-baseline justify-between gap-4 bw-label-md uppercase text-white/60">
         <span className="truncate">{[setLabel, title].filter(Boolean).join(' · ') || t('Stage')}</span>
-        <span className="shrink-0 tabular-nums" aria-label={t('Elapsed {time}', { time: elapsed })}>{elapsed}</span>
+        <span className="shrink-0 tabular-nums" aria-label={session ? t('Rehearsed {time}', { time: elapsed }) : t('Elapsed {time}', { time: elapsed })}>
+          {session?.status === 'paused' ? `${t('Paused')} · ` : ''}
+          {elapsed}
+        </span>
       </div>
       {!song ? (
         <p className="bw-display-lg text-white/70">{songsLoading ? t('Loading setlist…') : t('No setlist')}</p>
@@ -281,7 +298,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 
   const deck = (
     <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3 text-white">
-      {(follow || hasLyrics || ownChrome) && (
+      {(follow || hasLyrics || ownChrome || sessionToggle) && (
         <div className="flex items-center justify-between gap-3 min-h-11 shrink-0">
           {hasLyrics ? (
             <button
@@ -300,6 +317,20 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             </button>
           ) : (
             <span />
+          )}
+          {sessionToggle && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.tap();
+                if (sessionToggle.status === 'live') sessionToggle.pause();
+                else sessionToggle.resume();
+              }}
+              className="flex items-center gap-2 min-h-11 px-4 rounded-full bw-label-md uppercase border border-white/40 text-white"
+            >
+              {sessionToggle.status === 'live' ? <Pause className="w-4 h-4" aria-hidden /> : <Play className="w-4 h-4" aria-hidden />}
+              {sessionToggle.status === 'live' ? t('Pause') : t('Resume')}
+            </button>
           )}
           {!follow ? null : follow.isLeader ? (
             <span className="flex items-center gap-2 bw-label-md uppercase text-white/70" role="status">

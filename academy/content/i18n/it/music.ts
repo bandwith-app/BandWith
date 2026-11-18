@@ -1184,6 +1184,17 @@ const music: AreaText = {
         { type: "shot", id: "music-rehearsal-live", caption: "La Modalità live a una prova: i brani da provare, gli accordi del brano corrente e Indietro / Avanti, senza programma della serata." },
         {
           type: "list",
+          title: "Il timer della prova",
+          items: [
+            "L’admin tocca **Inizia la prova** nella Modalità live. Il tempo scorre per tutta la band: i membri lo vedono ma non lo comandano.",
+            "**Pausa** ferma il tempo (una pausa non conta) e **Riprendi** lo fa ripartire. **Termina** chiede prima: **Continua** o **Termina ora**.",
+            "Alla fine tutti vedono il **Riepilogo della prova**: il tempo provato senza pause e i brani suonati (ogni brano a schermo mentre il tempo scorreva conta una volta). L’admin può ancora **Riprendi la prova**.",
+            "La sessione viene salvata: chiudere la Modalità live o riavviare l’app la mantiene, e la pagina della prova la mostra sotto **SESSIONE DI PROVA**. Una prova ricorrente ha una sessione per data.",
+            "Senza internet il tempo dell’admin continua e si salva quando torna online. Sul Duo piegato come un laptop, lo schermo a terra mostra il tempo e, per l’admin, **Pausa** / **Riprendi**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Buono a sapersi",
           items: [
             "La Modalità palco è disponibile per i gig della band in programma e, come Modalità live, per le prove della band in programma; non per preventivi, eventi passati o gig personali.",

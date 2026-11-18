@@ -1184,6 +1184,17 @@ const music: AreaText = {
         { type: "shot", id: "music-rehearsal-live", caption: "Der Live-Modus bei einer Probe: die Fokus-Songs, die Akkorde des aktuellen Songs und Zurück / Weiter, ohne Ablauf." },
         {
           type: "list",
+          title: "Der Probentimer",
+          items: [
+            "Der Admin tippt im Live-Modus auf **Probe starten**. Die Zeit läuft für die ganze Band: Mitglieder sehen sie, steuern sie aber nicht.",
+            "**Pause** hält die Zeit an (eine Pause zählt nicht) und **Fortsetzen** macht weiter. **Beenden** fragt zuerst: **Weitermachen** oder **Jetzt beenden**.",
+            "Am Ende sehen alle die **Probenübersicht**: die geprobte Zeit ohne Pausen und die gespielten Songs (jeder Song, der lief, während die Zeit lief, zählt einmal). Der Admin kann noch **Probe fortsetzen**.",
+            "Die Session wird gespeichert: Live-Modus schließen oder die App neu starten behält sie, und die Seite der Probe zeigt sie unter **PROBENSESSION**. Eine wiederkehrende Probe hat eine Session pro Datum.",
+            "Ohne Internet läuft die Zeit des Admins weiter und wird gespeichert, sobald er wieder online ist. Auf dem Duo, wie ein Laptop gefaltet, zeigt der Bodenbildschirm die Zeit und für den Admin **Pause** / **Fortsetzen**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Gut zu wissen",
           items: [
             "Der Bühnenmodus gibt es für kommende Gigs der Band und, als Live-Modus, für kommende Proben der Band; nicht für Angebote, vergangene Termine oder persönliche Gigs.",

@@ -22,7 +22,9 @@ const DICTS: Record<Exclude<Locale, 'en'>, Record<string, string>> = {
 };
 
 export function tr(locale: Locale, source: string, vars?: Record<string, string | number>): string {
-  const text = locale === 'en' ? source : (DICTS[locale][source] ?? source);
+  // `{ context }` picks the "Source|context" entry first, as the app's t() does.
+  const ctx = vars?.context !== undefined ? DICTS[locale as Exclude<Locale, 'en'>]?.[`${source}|${vars.context}`] : undefined;
+  const text = locale === 'en' ? source : (ctx ?? DICTS[locale][source] ?? source);
   return vars ? text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : text;
 }
 

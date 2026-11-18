@@ -8,5 +8,6 @@ import { proposalSteps } from './proposal.steps.ts';
 import { quoteSteps } from './quote.steps.ts';
 import { deputySteps } from './deputy.steps.ts';
 import { authSteps } from './auth.steps.ts';
+import { rehearsalLiveSteps } from './rehearsal-live.steps.ts';
 
-export const MODEL_STEPS = [rsvpGigSteps, rsvpRehearsalSteps, proposalSteps, pollSteps, cardEditSteps, setlistDraftSteps, quoteSteps, deputySteps, authSteps] as unknown as ModelSteps<Lifecycle>[];
+export const MODEL_STEPS = [rsvpGigSteps, rsvpRehearsalSteps, proposalSteps, pollSteps, cardEditSteps, setlistDraftSteps, quoteSteps, deputySteps, authSteps, rehearsalLiveSteps] as unknown as ModelSteps<Lifecycle>[];
