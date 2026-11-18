@@ -19,6 +19,7 @@ export type AuthErrorKind =
   | 'signup_disabled'
   | 'invalid_email'
   | 'link_expired'
+  | 'beta_full'
   | 'network'
   | 'unknown';
 
@@ -61,6 +62,9 @@ export function authErrorKind(error: unknown): AuthErrorKind {
       return 'link_expired';
   }
 
+  // The beta's account limit (migration 128) refuses the insert in the
+  // database; Auth only ever says "Database error saving new user".
+  if (message.includes('database error saving new user')) return 'beta_full';
   if (name === 'AuthRetryableFetchError' || e.status === 0) return 'network';
   if (/failed to fetch|load failed|network ?error|networkerror|fetch failed|offline/.test(message)) return 'network';
   if (message.includes('invalid login credentials')) return 'invalid_credentials';
@@ -94,6 +98,8 @@ export function authErrorMessage(error: unknown): string {
       return t('Enter a valid email address.');
     case 'link_expired':
       return t('This link has expired or was already used. Ask for a new one.');
+    case 'beta_full':
+      return `${t('BandWith is full for now')}. ${t('Join the waitlist on bandwith.fun. Invited by a band? Sign up with the email the invite was sent to.')}`;
     case 'network':
       return t('Check your connection and try again.');
     default:

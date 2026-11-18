@@ -28,14 +28,11 @@ html.is-full .capblock__nums b { color: var(--personal); }
 .gdoor__facts .ico { width: 16px; height: 16px; margin-top: 2px; color: #000; }
 .gdoor__act { margin-top: auto; padding-top: 12px; }
 .gdoor__btn { width: 100%; }
-.gdoor__btn--full { display: none; }
 
 /* Forms */
 .bform { display: flex; flex-direction: column; gap: 14px; margin-top: auto; padding-top: 8px; }
 .bform__fields { display: grid; gap: 10px; }
-.bform__fields--2 { grid-template-columns: 1fr 1fr; }
 .fld { display: grid; gap: 6px; min-width: 0; }
-.fld--wide { grid-column: 1 / -1; }
 .fld > span { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: #5c5b5a; }
 .fld input { width: 100%; height: 52px; padding: 0 16px; border: 1px solid rgba(0,0,0,.14); border-radius: 16px; background: #fff; color: #000; font-size: 16px; transition: border-color .25s, box-shadow .25s; }
 .fld input:focus { outline: none; border-color: #000; box-shadow: 0 0 0 3px rgba(0,0,0,.08); }
@@ -56,7 +53,6 @@ html.is-full .capblock__nums b { color: var(--personal); }
 .bform.is-busy button[type="submit"] { cursor: progress; opacity: .7; }
 .bform.is-closed .bform__status { padding: 12px 14px; border-radius: 14px; background: rgba(0,0,0,.06); }
 @media (max-width: 1080px) { .gdoors__grid { grid-template-columns: minmax(0, 1fr); max-width: 640px; margin: 0 auto; } }
-@media (max-width: 420px) { .bform__fields--2 { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Full: waitlist first, doors closed ────────────────────────── */
 .full { display: none; padding-bottom: 24px; }
@@ -66,17 +62,16 @@ html.is-full .full { display: block; }
 .full .h2 { color: #fff; }
 .full .lead { margin-top: 20px; }
 .bform--wait { margin: 0; padding: 28px; border-radius: var(--radius-md); background: var(--card); color: #000; }
-html.is-full .gdoor { opacity: .55; }
-html.is-full .gdoor .bform, html.is-full [data-web-door] { display: none; }
-html.is-full .gdoor__btn--full { display: inline-flex; }
-html.is-full .gdoor__act { display: block; }
-html.is-full #android .gdoor__line::after, html.is-full #ios .gdoor__line::after { content: " Closed while every spot is taken."; color: #c4004e; }
-html.is-full #android, html.is-full #ios { justify-content: flex-start; }
 @media (max-width: 900px) { .full__card { grid-template-columns: minmax(0, 1fr); } }
-
-/* Android and iOS doors get a waitlist button when full. */
-.gdoor .gdoor__act--full { display: none; }
-html.is-full .gdoor .gdoor__act--full { display: block; }
+.full__inv { margin: 20px 0 0; max-width: 34em; font-size: 16px; line-height: 1.5; color: var(--fg-2); }
+.full__inv-shut { display: none; }
+/* invites: only band invites get in, so the doors stay open for them. */
+.gdoors__inv { display: none; margin-bottom: 16px; color: var(--lime); }
+html.is-invites .gdoors__inv { display: block; }
+/* full: nobody gets in. Doors stay reachable (an update, a sign-in) but quiet. */
+html.is-full:not(.is-invites) .gdoor { opacity: .55; }
+html.is-full:not(.is-invites) .full__inv-open { display: none; }
+html.is-full:not(.is-invites) .full__inv-shut { display: inline; }
 
 /* ── What happens next ─────────────────────────────────────────── */
 .steps4 { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: s; }
@@ -106,6 +101,3 @@ html.is-full .gdoor .gdoor__act--full { display: block; }
 .faq__list a { color: var(--lime); }
 @media (max-width: 900px) { .faq__grid { grid-template-columns: minmax(0, 1fr); } }
 
-/* Preview switch between the open and the full state (dev / ?capacity=). */
-.cap-to-open, html.is-full .cap-to-full { display: none; }
-html.is-full .cap-to-open { display: inline; }

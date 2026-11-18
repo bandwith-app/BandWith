@@ -3,7 +3,7 @@
   <head>
     <!--#head-->
     <title>Get the beta · BandWith</title>
-    <meta name="description" content="Join the BandWith private beta: sign up on the web, get the Android APK, or a TestFlight invite for iPhone and iPad. Free while in beta, with a limited number of spots." />
+    <meta name="description" content="Join the BandWith private beta: sign up on the web, download the Android APK, or install it on iPhone and iPad with TestFlight. Free while in beta, with a limited number of spots." />
     <meta property="og:title" content="Get the BandWith beta" />
     <meta property="og:description" content="Web, Android or iPhone & iPad. Free while in beta." />
   </head>
@@ -21,24 +21,25 @@
             <p class="lead">Pick the door that fits your phone. The whole band can join through different doors: you all land in the same app.</p>
             <div class="capblock gethead__cap" data-cap-block>
               <div class="capblock__nums" aria-hidden="true">
-                <span><b data-cap-num="left">–</b> spots left</span>
-                <span><b data-cap-num="today">–</b> open today</span>
+                <span><b data-cap-num="left">–</b> open spots left</span>
+                <span><b data-cap-num="kept">–</b> kept for band invites</span>
               </div>
               <div class="ledm" data-cap-meter data-cells="40"></div>
               <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
-              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a class="cap-to-full" href="?capacity=full">see the full state</a><a class="cap-to-open" href="?capacity=open">see the open state</a></p>
+              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ─────────────────────────── FULL ─────────────────────────── -->
+      <!-- ─────────────────── FULL (open spots gone) ─────────────────── -->
       <section class="full" id="waitlist" aria-labelledby="full-h">
         <div class="wrap full__card">
           <div>
             <p class="label"><span class="led led--pink"></span>Sold out tonight</p>
             <h2 class="h2" id="full-h">Tonight’s show is full.</h2>
-            <p class="lead">Every beta spot is taken right now. Spots come back when people stop using the app, and we add more as we make it lighter. Leave your email and you’ll be first to know.</p>
+            <p class="lead">Every open spot is taken right now. We add more as we make the app lighter. Leave your email and you’ll be first to know.</p>
+            <p class="full__inv">Invited by a band that’s already inside? <span class="full__inv-open">Your spot is kept: pick your door below and sign up with the email the invite was sent to.</span><span class="full__inv-shut">The spots kept for band invites are taken too. Join the waitlist and we’ll write as soon as there’s room.</span></p>
           </div>
           <form class="bform bform--wait" data-beta-form="waitlist" novalidate>
             <div class="bform__fields">
@@ -46,7 +47,7 @@
               <input class="hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" data-hp />
             </div>
             <button class="btn btn--lime" type="submit">Tell me when there’s room <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-bell"/></svg></button>
-            <p class="bform__fine">One email when a spot opens, then you have 72 hours to take it. <a href="https://app.bandwith.fun/legal/privacy.html">Privacy</a></p>
+            <p class="bform__fine">One email when there’s room. Nothing else. <a href="https://app.bandwith.fun/legal/privacy.html">Privacy</a></p>
             <p class="bform__status" data-form-status role="status"></p>
             <p class="bform__done" data-form-done tabindex="-1" hidden></p>
           </form>
@@ -55,6 +56,7 @@
 
       <!-- ─────────────────────────── DOORS ─────────────────────────── -->
       <section class="gdoors" aria-label="Three ways in">
+        <p class="wrap gdoors__inv mono">Invited by a band? Your door is still open.</p>
         <div class="wrap gdoors__grid">
           <!-- WEB -->
           <article class="gdoor" id="web" aria-labelledby="web-h">
@@ -69,8 +71,7 @@
               <li><svg class="ico" aria-hidden="true"><use href="#i-minus"/></svg>No Bluetooth or offline Stage mode</li>
             </ul>
             <div class="gdoor__act">
-              <a class="btn btn--ink gdoor__btn" href="https://app.bandwith.fun/?start=signup&amp;src=site" data-web-door>Create your account <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-              <a class="btn btn--ink gdoor__btn gdoor__btn--full" href="#waitlist">Join the waitlist <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+              <a class="btn btn--ink gdoor__btn" href="https://app.bandwith.fun/?start=signup&amp;src=site" data-door="web">Create your account <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
             </div>
           </article>
 
@@ -81,20 +82,14 @@
               <p class="mono gdoor__no">Door 02</p>
             </header>
             <h2 class="gdoor__name" id="android-h">Android</h2>
-            <p class="gdoor__line">We email you a link to the APK. Install it, then sign up in the app. It tells you when an update is ready.</p>
-            <form class="bform" data-beta-form="android" novalidate>
-              <div class="bform__fields bform__fields--2">
-                <label class="fld"><span>First name</span><input name="first_name" autocomplete="given-name" required data-what="first name" /><em class="fld__err" data-err-for="first_name"></em></label>
-                <label class="fld"><span>Last name</span><input name="last_name" autocomplete="family-name" required data-what="last name" /><em class="fld__err" data-err-for="last_name"></em></label>
-                <label class="fld fld--wide"><span>Email</span><input name="email" type="email" autocomplete="email" required inputmode="email" /><em class="fld__err" data-err-for="email"></em></label>
-                <input class="hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" data-hp />
-              </div>
-              <button class="btn btn--ink gdoor__btn" type="submit">Send me the APK <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-mail"/></svg></button>
-              <p class="bform__fine">We use your name and email only for the beta. <a href="https://app.bandwith.fun/legal/privacy.html">Privacy</a></p>
-              <p class="bform__status" data-form-status role="status"></p>
-              <p class="bform__done" data-form-done tabindex="-1" hidden></p>
-            </form>
-            <div class="gdoor__act gdoor__act--full"><a class="btn btn--ink gdoor__btn" href="#waitlist">Join the waitlist <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a></div>
+            <p class="gdoor__line">The APK downloads straight away. Open it to install, then sign up in the app. Android asks once to allow installs from your browser.</p>
+            <ul class="gdoor__facts">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Every feature, offline Stage mode and Bluetooth sync</li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>The app tells you when an update is ready</li>
+            </ul>
+            <div class="gdoor__act">
+              <a class="btn btn--ink gdoor__btn" href="https://github.com/bandwith-app/BandWith/releases/latest/download/BandWith.apk" data-door="android">Download the APK <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-download"/></svg></a>
+            </div>
           </article>
 
           <!-- iOS -->
@@ -104,20 +99,14 @@
               <p class="mono gdoor__no">Door 03</p>
             </header>
             <h2 class="gdoor__name" id="ios-h">iPhone &amp; iPad</h2>
-            <p class="gdoor__line">We add you as a tester and Apple emails your invite. Install TestFlight, open the invite, sign up in the app.</p>
-            <form class="bform" data-beta-form="ios" novalidate>
-              <div class="bform__fields bform__fields--2">
-                <label class="fld"><span>First name</span><input name="first_name" autocomplete="given-name" required data-what="first name" /><em class="fld__err" data-err-for="first_name"></em></label>
-                <label class="fld"><span>Last name</span><input name="last_name" autocomplete="family-name" required data-what="last name" /><em class="fld__err" data-err-for="last_name"></em></label>
-                <label class="fld fld--wide"><span>Apple Account email</span><input name="email" type="email" autocomplete="email" required inputmode="email" aria-describedby="ios-hint" /><em class="fld__hint" id="ios-hint">The email you use for the App Store, so TestFlight can find you.</em><em class="fld__err" data-err-for="email"></em></label>
-                <input class="hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" data-hp />
-              </div>
-              <button class="btn btn--ink gdoor__btn" type="submit">Send my TestFlight invite <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-mail"/></svg></button>
-              <p class="bform__fine">We use your name and Apple Account email only for the beta. <a href="https://app.bandwith.fun/legal/privacy.html">Privacy</a></p>
-              <p class="bform__status" data-form-status role="status"></p>
-              <p class="bform__done" data-form-done tabindex="-1" hidden></p>
-            </form>
-            <div class="gdoor__act gdoor__act--full"><a class="btn btn--ink gdoor__btn" href="#waitlist">Join the waitlist <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a></div>
+            <p class="gdoor__line">The beta comes through TestFlight, Apple’s app for testing. The link sets up TestFlight first, then BandWith. Sign up in the app.</p>
+            <ul class="gdoor__facts">
+              <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Every feature, offline Stage mode and Bluetooth sync</li>
+              <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Updates arrive through TestFlight</li>
+            </ul>
+            <div class="gdoor__act">
+              <a class="btn btn--ink gdoor__btn" href="https://testflight.apple.com/join/8zJGuprA" data-door="ios">Open TestFlight <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+            </div>
           </article>
         </div>
       </section>
@@ -130,10 +119,10 @@
             <h2 class="h2" id="next-h" data-split>From the door<br />to the stage.</h2>
           </div>
           <ol class="steps4" data-reveal-group>
-            <li data-reveal-item><b class="mono">01</b><h3>Confirm your email</h3><p>We send a link. One tap, so nobody can sign you up by mistake.</p></li>
-            <li data-reveal-item><b class="mono">02</b><h3>You’re in</h3><p>Android: the APK link. iPhone and iPad: Apple’s TestFlight invite. Web: you’re already there.</p></li>
-            <li data-reveal-item><b class="mono">03</b><h3>Sign up in the app</h3><p>Create your band, or join one with the invite your bandmates send you.</p></li>
-            <li data-reveal-item><b class="mono">04</b><h3>Your spot is held</h3><p>For 14 days after you’re let in. Once you use the app, it stays yours while you keep using it.</p></li>
+            <li data-reveal-item><b class="mono">01</b><h3>Open your door</h3><p>Web: it opens in your browser. Android: the APK downloads. iPhone and iPad: TestFlight, then BandWith.</p></li>
+            <li data-reveal-item><b class="mono">02</b><h3>Create your account</h3><p>With your email, Google or Apple. That’s the moment you take a spot.</p></li>
+            <li data-reveal-item><b class="mono">03</b><h3>Bring the band</h3><p>Create your band and invite the others, or join with the invite your bandmates send you.</p></li>
+            <li data-reveal-item><b class="mono">04</b><h3>The spot is yours</h3><p>For as long as you keep your account. Downloads alone don’t take a spot.</p></li>
           </ol>
         </div>
       </section>
@@ -148,7 +137,7 @@
           <div class="why__copy">
             <p>BandWith runs on free plans while it’s in beta. They’re generous, but they have a ceiling: data sent to phones each month, live connections at the same moment, emails per day.</p>
             <p>We measured what one active band member uses and set the number of spots so the app stays fast for everyone inside, with room to spare. When we make the app lighter, the number goes up.</p>
-            <p>A spot is one person who used the app in the last 30 days. If you stop using it, your spot goes back to the line.</p>
+            <p>A spot is one account. Part of the spots is kept for people invited by a band that’s already inside, so no band is left halfway in.</p>
           </div>
         </div>
       </section>
@@ -162,8 +151,9 @@
           </div>
           <div class="faq__list">
             <details><summary>Is it free?</summary><p>Yes, while it’s in beta. If that ever changes, you’ll hear it from us first, well before anything changes for your band.</p></details>
-            <details><summary>My band is already on BandWith. Do I wait in line?</summary><p>No. Part of the spots is kept for people invited by a band that’s already inside, and for their deputies. Ask your admin for the invite link.</p></details>
-            <details><summary>Why do you need my Apple Account email?</summary><p>TestFlight sends the invite to the email of your Apple Account. If you use another one, the invite can’t reach the App Store on your phone.</p></details>
+            <details><summary>My band is already on BandWith. Do I wait in line?</summary><p>No. Part of the spots is kept for people invited by a band that’s already inside, and for their deputies. Ask your admin for the invite, then sign up with the email it was sent to.</p></details>
+            <details><summary>Do I need TestFlight on iPhone?</summary><p>Yes. While BandWith is in beta, Apple delivers it through TestFlight, its free app for testing. The link installs TestFlight first, then BandWith. Updates arrive there too.</p></details>
+            <details><summary>Android says the app comes from an unknown source.</summary><p>That’s normal for an app installed outside the Play Store. Allow installs from your browser once, then install. The app tells you when a new version is ready.</p></details>
             <details><summary>Can we use different phones in the same band?</summary><p>Yes. iPhone, Android and the web all share the same band, live. Only the Bluetooth part of Stage mode needs the phone apps.</p></details>
             <details><summary>Who sees my data?</summary><p>Your band sees what your role allows. Members see their own fee, never anyone else’s. We don’t sell data or show ads. <a href="https://app.bandwith.fun/legal/privacy.html">Read the privacy policy</a>.</p></details>
             <details><summary>Where do I learn how it works?</summary><p>In the <a href="https://app.bandwith.fun/academy/">BandWith Academy</a>: every screen, for admins, members and deputies, in six languages.</p></details>

@@ -55,6 +55,17 @@ describe('auth callback errors', () => {
     setLocalePref('it');
     expect(callbackProblemText('link_expired', true).title).toBe('Link scaduto');
   });
+
+  // Google / Apple sign-in that would create a new account while the beta is
+  // full (migration 128): Auth comes back with its generic database error.
+  it('says the beta is full when Google or Apple could not create the account', () => {
+    setLocalePref('en');
+    const url = '?error=server_error&error_code=unexpected_failure&error_description=Database+error+saving+new+user';
+    expect(callbackProblem(callbackUrlError(url, ''))).toBe('beta_full');
+    const text = callbackProblemText('beta_full', false);
+    expect(text.title).toBe('BandWith is full for now');
+    expect(text.body).toMatch(/waitlist on bandwith\.fun.*email the invite was sent to/);
+  });
 });
 
 describe('screen to open after a dead link', () => {

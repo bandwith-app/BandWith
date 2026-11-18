@@ -3890,6 +3890,8 @@ const dict: Dictionary = {
   "Choose a password different from your current one.": "Wähle ein anderes Passwort als dein aktuelles.",
   "This password is too easy to guess. Choose a longer one.": "Dieses Passwort ist zu leicht zu erraten. Wähle ein längeres.",
   "New accounts can’t be created right now. Try again later.": "Neue Konten können gerade nicht angelegt werden. Versuch es später noch mal.",
+  "BandWith is full for now": "BandWith ist gerade voll",
+  "Join the waitlist on bandwith.fun. Invited by a band? Sign up with the email the invite was sent to.": "Trag dich auf bandwith.fun in die Warteliste ein. Hat dich eine Band eingeladen? Registrier dich mit der E-Mail, an die die Einladung ging.",
   "This link has expired or was already used. Ask for a new one.": "Dieser Link ist abgelaufen oder wurde schon benutzt. Fordere einen neuen an.",
   "We couldn’t delete your account. Check your connection and try again. If it keeps failing, see Help & support in Settings.": "Dein Konto konnte nicht gelöscht werden. Prüfe deine Verbindung und versuch es noch mal. Wenn es weiter nicht klappt, sieh unter Einstellungen › Hilfe & Support nach.",
   // Setlist edits in the gig overview (107)
