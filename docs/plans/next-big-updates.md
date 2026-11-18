@@ -194,6 +194,16 @@ These decisions replace the matching parts of 4.1–4.8, §5, §7.2 and §10. B 
   - Sending e-invoices to SDI through a provider's API is a possible later phase (B8), only if the accountant says it is worth it.
 - **Clients can still pay outside the app** (cash, bank transfer). The admin marks the deposit or balance received by hand, as today.
 
+**Deposit tweaks without Stripe (decided 2026-11-18, ~2–3 d).** Today the client can only accept on `/quote.html`. Bank details are only on the PDF, and **nothing in the app ever writes `events.deposit_paid`**, so readiness keeps saying the deposit is due.
+
+The four tweaks:
+1. The admin marks **Deposit received** with a method (transfer / cash / other). That sets `deposit_paid` and **confirms the gig** through the shared RPC.
+2. After Accept, the quote page shows how to pay: amount, IBAN, a payment reference with the quote ref, and a due date if set. Client-facing only, through the token RPC.
+3. The acceptance text names the deposit to be paid (neutral wording, not a signature).
+4. The band's own payment link (the existing `stripe_payment_link` / PayPal.me field), if set, appears on the page and the PDF. Receipt is still marked by hand.
+
+**Order agreed with the user (11-18):** egress fixes #206 → rehearsal A1b → A2 → A3 → A4 → **deposit tweaks** → one release candidate with the emulator gate. One app change at a time. The Stripe phases (B1+) stay on hold.
+
 **Revised B phases** (B6 removed):
 
 | Phase | What | Estimate |
