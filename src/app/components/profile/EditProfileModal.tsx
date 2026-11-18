@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { realName } from '@/lib/personName';
 import { t, useT } from '@/lib/i18n';
-import { resizeImageToDataUrl } from '@/lib/imageResize';
+import { uploadAvatar } from '@/lib/avatarUpload';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -105,35 +105,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setError(null);
 
     try {
-      // 1. Generate optimized compact thumbnail (256x256 square)
-      const optimizedDataUrl = await resizeImageToDataUrl(file, 256);
-      let finalAvatarUrl = optimizedDataUrl;
+      // The 256 px JPEG goes to Storage, not the original photo
+      // (src/lib/avatarUpload.ts); inline thumbnail if Storage is unreachable.
+      const finalAvatarUrl = await uploadAvatar(user.id, file);
 
-      // 2. Try Supabase Storage ('avatars') if configured
-      try {
-        const ext = file.name.split('.').pop() || 'jpg';
-        const filePath = `${user.id}/avatar.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(filePath, file, { upsert: true });
-
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(filePath);
-
-          if (urlData?.publicUrl) {
-            finalAvatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-          }
-        } else {
-          console.warn('[EditProfileModal] Supabase Storage upload note (using optimized thumbnail fallback):', uploadError.message);
-        }
-      } catch (storageErr) {
-        console.warn('[EditProfileModal] Storage bucket unavailable, using optimized thumbnail fallback:', storageErr);
-      }
-
-      // 3. Persist the avatar URL in profiles table
+      // Persist the avatar URL in profiles table
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: finalAvatarUrl, updated_at: new Date().toISOString() })
