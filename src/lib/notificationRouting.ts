@@ -51,6 +51,8 @@ export function notificationTarget(
     kind === 'deputy_joined' ||
     (kind === 'setlist_updated' && !!eventId) ||
     kind === 'rehearsal_reminder' ||
+    // The summary when a rehearsal session ends: the rehearsal and its notes (133).
+    kind === 'rehearsal_notes_added' ||
     kind === 'rehearsal_poll_finalized'
   ) {
     return { screen: 'event', eventId };

@@ -1212,6 +1212,7 @@ const music: AreaText = {
             "A página da música mostra **Dos ensaios** acima das tuas notas. Uma nota de **Tempo** ou **Tom** que indica o valor (por exemplo “Tempo: 96” ou “Tom: Bb”) tem um botão: os admins **Definir na música**, os membros **Sugerir à banda**.",
             "A página do próximo ensaio mostra **DA ÚLTIMA VEZ**: as notas em aberto de ensaios anteriores sobre as suas músicas. Os admins tocam em **OK** quando a banda já consegue. No Modo ao vivo, um selo em cada música abre as suas notas da última vez.",
             "Quando um admin cria um ensaio, **Das notas de ensaio em aberto** oferece as músicas com notas em aberto como músicas para trabalhar, um toque cada. Uma nova sondagem de ensaio já as escolhe; remove as que não precisas.",
+            "Quando um ensaio termina, quem tem músicas para praticar recebe uma só notificação push com elas (“Para praticar: …”), no seu idioma; quem o terminou vê o resumo. **Notificações push** nos Ajustes desliga-a.",
           ],
         },
         {

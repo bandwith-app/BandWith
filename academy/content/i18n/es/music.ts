@@ -1083,6 +1083,7 @@ const music: AreaText = {
             "La página de la canción muestra **De los ensayos** encima de tus notas. Una nota de **Tempo** o **Tonalidad** que indica el valor (por ejemplo “Tempo: 96” o “Tonalidad: Bb”) tiene un botón: los admins **Poner en la canción**, los miembros **Sugerir a la banda**.",
             "La página del próximo ensayo muestra **DE LA ÚLTIMA VEZ**: las notas abiertas de ensayos anteriores sobre sus canciones. Los admins tocan **OK** cuando la banda ya lo tiene. En el Modo en vivo una insignia en cada canción abre sus notas de la última vez.",
             "Cuando un admin crea un ensayo, **De las notas de ensayo abiertas** ofrece las canciones con notas abiertas como canciones a trabajar, un toque cada una. Una nueva encuesta de ensayo ya las elige; quita las que no necesites.",
+            "Cuando termina un ensayo, quien tenga canciones para practicar recibe una sola push con ellas (“Para practicar: …”), en su idioma; quien lo terminó ve el resumen. **Notificaciones push** en Ajustes la desactiva.",
           ],
         },
         {
