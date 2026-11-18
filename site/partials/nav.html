@@ -6,13 +6,19 @@
   </a>
   <nav class="nav__deck" aria-label="Main" data-deck>
     <span class="nav__cap" aria-hidden="true" data-cap><i></i></span>
-    <button type="button" class="nav__item" aria-expanded="false" aria-controls="rack-panel" data-rack-btn><b>11</b><span class="nav__t" data-roll>Features</span><svg class="ico nav__chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
-    <a class="nav__item" href="/#night" data-nav-page="night"><b>24h</b><span class="nav__t" data-roll>One night</span></a>
-    <a class="nav__item" href="https://bandwith-beryl.vercel.app/academy/" data-guide><b>6</b><span class="nav__t" data-roll>Guide</span><svg class="ico nav__ext" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <button type="button" class="nav__item" aria-expanded="false" aria-controls="rack-panel" data-rack-btn><span class="nav__t" data-roll>Features</span><svg class="ico nav__chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+    <a class="nav__item" href="/#night" data-nav-page="night"><span class="nav__t" data-roll>How it works</span></a>
+    <a class="nav__item" href="https://bandwith-beryl.vercel.app/academy/" data-guide><span class="nav__t" data-roll>Guide</span><svg class="ico nav__ext" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
   </nav>
   <div class="nav__actions">
-    <a class="cap-chip" href="/get/" data-cap-chip hidden><span class="cap-chip__led" aria-hidden="true"></span><span data-cap-chip-text></span></a>
-    <a class="btn btn--lime btn--sm nav__cta" href="/get/" data-magnetic data-nav-page="get">Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <!-- The web app: sign in, or create an account in the browser (the waitlist while every spot is taken). -->
+    <div class="nav__web" aria-label="Web app" role="group">
+      <a class="nav__login" href="https://bandwith-beryl.vercel.app/?bw_screen=sign-in">Log in</a>
+      <a class="nav__signup" href="https://bandwith-beryl.vercel.app/?start=signup&amp;src=site-nav" data-web-door>Sign up <span class="nav__sub">on the web</span></a>
+      <a class="nav__signup nav__signup--full" href="/get/#waitlist">Waitlist</a>
+    </div>
+    <!-- The native apps: TestFlight on iPhone and iPad, the APK on Android. -->
+    <a class="btn btn--lime btn--sm nav__cta" href="/get/" data-magnetic data-nav-page="get">Get the app<span class="nav__left">iOS · Android</span> <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
     <button class="nav__menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Open menu" data-menu-btn><i></i><i></i><i></i></button>
   </div>
 </header>
@@ -21,7 +27,6 @@
 <div class="rackp fp" id="rack-panel" data-rack-panel hidden>
   <nav class="fp__nav" aria-label="Features">
     <!--@feature-panel-->
-    <p class="fp__note"><i aria-hidden="true"></i>Live page. The others are on their way; the app already does all of it.</p>
   </nav>
   <aside class="fp__preview" aria-hidden="true">
     <div class="crop fp__crop" data-fp-crop><img class="crop__img" src="/shots/music-stage@phone.webp" alt="" width="780" height="1688" loading="lazy" decoding="async" /></div>
@@ -35,11 +40,16 @@
 <div class="menu" id="menu" data-menu hidden>
   <nav class="menu__links" aria-label="Features">
     <!--@menu-rows-->
-    <p class="menu__soon"><i aria-hidden="true"></i>Live page. The others are on their way.</p>
   </nav>
   <div class="menu__foot">
     <a class="menu__guide" href="https://bandwith-beryl.vercel.app/academy/">Guide · 6 languages <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-    <a class="btn btn--lime menu__cta" href="/get/">Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <a class="btn btn--lime menu__cta" href="/get/">Get the app · iOS &amp; Android <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <p class="label menu__weblabel">Web app · nothing to install</p>
+    <div class="menu__web">
+      <a class="menu__guide" href="https://bandwith-beryl.vercel.app/?bw_screen=sign-in">Log in</a>
+      <a class="menu__guide" href="https://bandwith-beryl.vercel.app/?start=signup&amp;src=site-menu" data-web-door>Sign up</a>
+      <a class="menu__guide nav__signup--full" href="/get/#waitlist">Join the waitlist</a>
+    </div>
     <p class="menu__note" data-cap-note><span class="led"></span>Private beta · iPhone, Android &amp; web</p>
   </div>
 </div>

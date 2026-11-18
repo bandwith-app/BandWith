@@ -1,0 +1,99 @@
+/* ══════════════════════════════════════════════════════════════════
+   Fees & payouts: "Play the gig. Pay the band." (src/ui/demos/money.ts)
+   One phone, Leo's or Sara's; beside it, what that phone holds.
+   Sizes inside the phone use container units (cqw).
+   ══════════════════════════════════════════════════════════════════ */
+
+.md { display: grid; gap: 20px; }
+.md__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.md__roles { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 99px; background: #000; max-width: 100%; }
+.md__roles button { display: grid; justify-items: start; gap: 1px; min-width: 0; height: 52px; padding: 0 20px; border: 0; border-radius: 99px; background: none; color: #fff; text-align: left; cursor: pointer; transition: background-color .35s var(--ease), color .35s var(--ease); }
+.md__roles button b { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: var(--track-mono); text-transform: uppercase; white-space: nowrap; align-self: end; }
+.md__roles button em { font-style: normal; font-size: 12px; color: var(--fg-dim); align-self: start; }
+.md__roles button[aria-checked="true"] { background: var(--lime); color: #000; }
+.md__roles button[aria-checked="true"] em { color: rgba(0,0,0,.6); }
+.md__reset { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid rgba(0,0,0,.18); border-radius: 99px; background: none; color: #000; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; cursor: pointer; }
+.md__reset .ico { width: 15px; height: 15px; }
+.md__reset:hover { border-color: #000; }
+.md button:focus-visible, .mdp__sheet:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+.md__floor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(20px, 4vw, 64px); align-items: center; padding: clamp(20px, 3vw, 48px); border-radius: var(--radius); background: var(--ink); color: #fff; }
+.md__side { min-width: 0; display: grid; align-content: center; }
+.md__kick { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 11px; color: var(--fg-2); }
+.md__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); }
+.md__gig { margin: 14px 0 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 4.4vw, 64px); line-height: .9; letter-spacing: -0.03em; text-transform: uppercase; overflow-wrap: anywhere; }
+.md__venue { margin: 10px 0 0; font-size: 11px; color: var(--fg-dim); }
+.md__sees { margin-top: clamp(20px, 3vw, 40px); }
+.md__lab { margin: 0 0 10px; font-size: 11px; color: var(--fg-dim); }
+.md__sees ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.md__sees li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 46px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 15px; }
+.md__sees li span { min-width: 0; overflow-wrap: anywhere; }
+.md__sees li b { font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.02em; text-align: right; }
+.md__sees .ico { width: 16px; height: 16px; }
+.md__sees .is-yes .ico, .md__sees .is-yes b { color: var(--lime); }
+.md__sees .is-no { color: var(--fg-dim); }
+.md__sees .is-no span { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.35); }
+.md__sees .is-no .ico { color: var(--personal); }
+.md__log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; min-height: 1.4em; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--ink-copy); }
+.md__log b { color: #000; font-weight: 600; }
+.md__nojs { color: var(--ink-copy); }
+
+/* ── The phone ─────────────────────────────────────────────────── */
+.md__phone { display: grid; justify-items: center; }
+.mdp { position: relative; container-type: inline-size; overflow: hidden; width: clamp(280px, 27vw, 350px); aspect-ratio: 390 / 844; border-radius: 13% / 6%; border: 5px solid #0d0d0d; outline: 1px solid rgba(255,255,255,.16); background: #2b2b2b; color: #fff; }
+.mdp__screen { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 2.2cqw; padding: 8cqw 5cqw 5cqw; }
+.mdp__screen::-webkit-scrollbar { display: none; }
+.mdp__screen > * { flex: none; }
+.mdp__k { display: flex; align-items: center; gap: 2cqw; margin: 0; font-family: var(--font-mono); font-size: 2.9cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.mdp__dot { width: 2cqw; height: 2cqw; border-radius: 50%; background: #e32; }
+.mdp__dot--m { background: var(--lime); }
+.mdp__h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 9cqw; line-height: .9; letter-spacing: -0.03em; text-transform: uppercase; }
+.mdp__lab { margin: 1.4cqw 0 0; font-family: var(--font-mono); font-size: 3cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
+.mdp__home { display: grid; gap: 2cqw; padding: 4.4cqw; border-radius: 6cqw; background: #3a3a3a; }
+.mdp__hrow { display: flex; align-items: baseline; justify-content: space-between; gap: 2cqw; }
+.mdp__ht { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 6cqw; line-height: 1; text-transform: uppercase; }
+.mdp__amt { margin: 0; font-family: var(--font-mono); font-weight: 600; font-size: 6.4cqw; font-variant-numeric: tabular-nums; }
+.mdp__av { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin: 0; }
+.mdp__av i { display: grid; place-items: center; width: 8.4cqw; height: 8.4cqw; margin-right: -1.2cqw; border-radius: 50%; background: #fff; color: #000; box-shadow: 0 0 0 .6cqw #3a3a3a; font-family: var(--font-mono); font-style: normal; font-size: 2.6cqw; }
+.mdp__av span { margin-left: 3.4cqw; font-size: 3.2cqw; color: var(--fg-2); }
+.mdp__view { justify-self: start; min-height: 10cqw; padding: 0 4.6cqw; border: 0; border-radius: 99px; background: #fff; color: #000; font-family: var(--font-display); font-weight: 700; font-size: 3.4cqw; text-transform: uppercase; cursor: pointer; }
+
+.mdp__sheet { display: grid; gap: 2.4cqw; margin: 2cqw -5cqw -6cqw; padding: 3cqw 5cqw 7cqw; border-radius: 7cqw 7cqw 0 0; background: #161616; box-shadow: 0 -2cqw 6cqw rgba(0,0,0,.35); flex: 1 0 auto; align-content: start; }
+.mdp__grab { justify-self: center; width: 11cqw; height: 1.2cqw; border-radius: 99px; background: rgba(255,255,255,.25); }
+.mdp__h2 { margin: -1cqw 0 0; font-family: var(--font-display); font-weight: 700; font-size: 7cqw; line-height: .95; text-transform: uppercase; }
+.mdp__big { margin: -1.4cqw 0 0; font-family: var(--font-mono); font-weight: 600; font-size: 8cqw; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.mdp__due { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; margin: 0; padding: 3cqw 4cqw; border-radius: 4.6cqw; background: var(--lime); color: #000; font-family: var(--font-mono); font-size: 3cqw; letter-spacing: 0.03em; }
+.mdp__due b { font-size: 4.2cqw; font-variant-numeric: tabular-nums; }
+.mdp__rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.2cqw; }
+.mdp__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 1.8cqw; padding: 1.2cqw; border-radius: 99px; background: rgba(255,255,255,.08); transition: background-color .4s var(--ease); }
+.mdp__ini { display: grid; place-items: center; width: 7.6cqw; height: 7.6cqw; border-radius: 50%; background: #fff; color: #000; font-family: var(--font-mono); font-style: normal; font-size: 2.6cqw; }
+.mdp__nm { min-width: 0; font-family: var(--font-mono); font-size: 2.7cqw; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mdp__fee { font-family: var(--font-mono); font-weight: 600; font-size: 3.2cqw; font-variant-numeric: tabular-nums; }
+.mdp__badge { padding: .8cqw 1.8cqw; border-radius: 99px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); font-family: var(--font-mono); font-size: 2.2cqw; font-weight: 600; letter-spacing: 0.04em; }
+.mdp__badge.is-paid { background: var(--lime); color: #000; box-shadow: none; }
+.mdp__sw { position: relative; display: grid; place-items: center; width: 7.6cqw; height: 7.6cqw; padding: 0; border: 0; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.4); color: transparent; cursor: pointer; transition: background-color .3s var(--ease), color .3s, transform .2s var(--ease); }
+.mdp__sw::after { content: ""; position: absolute; inset: -6px; }
+.mdp__sw .ico { width: 4cqw; height: 4cqw; }
+.mdp__sw:active { transform: scale(.9); }
+.mdp__sw[aria-checked="true"] { background: var(--lime); color: #000; box-shadow: none; }
+.mdp__fund { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; margin: 0; min-height: 10cqw; padding: 0 4cqw; border-radius: 99px; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.3); font-family: var(--font-mono); font-size: 2.8cqw; text-transform: uppercase; }
+.mdp__fund b { font-size: 3.2cqw; }
+.mdp__all { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 0 0 3cqw #161616, 0 -4cqw 6cqw #161616; display: flex; align-items: center; justify-content: center; gap: 2cqw; min-height: 12cqw; margin-top: 1cqw; border: 0; border-radius: 99px; background: var(--lime); color: #000; font-family: var(--font-display); font-weight: 700; font-size: 3.8cqw; cursor: pointer; transition: transform .2s var(--ease); }
+.mdp__all .ico { width: 4.4cqw; height: 4.4cqw; }
+.mdp__all:active { transform: scale(.97); }
+.mdp__own { display: flex; align-items: flex-end; justify-content: space-between; gap: 3cqw; padding: 4cqw; border-radius: 5cqw; background: rgba(255,255,255,.08); }
+.mdp__own .mdp__lab { margin: 0; }
+.mdp__own .mdp__big { margin: 1cqw 0 0; font-size: 11cqw; }
+.mdp__own .mdp__badge { font-size: 3cqw; padding: 1.4cqw 3cqw; margin-bottom: 2cqw; }
+.mdp[data-role="member"] .mdp__sheet { flex: 0 0 auto; margin-bottom: 0; border-radius: 7cqw; }
+
+@media (max-width: 900px) {
+  .md__floor { grid-template-columns: minmax(0, 1fr); }
+  .mdp { width: min(84vw, 350px); }
+}
+@media (max-width: 520px) {
+  .md__floor { padding: 16px 12px 20px; border-radius: 28px; }
+  .md__roles { width: 100%; }
+  .md__roles button { padding: 0 14px; }
+  .mdp { border-width: 3px; }
+}

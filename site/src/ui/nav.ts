@@ -7,7 +7,7 @@ import { fitCrop, focusCrop, parseRegion } from './crop';
 /**
  * The nav as a small channel strip (every page).
  * - Logo: a three-band meter that plays only while hovered (navMark.ts).
- * - Deck: Features (opens the rack panel), One night, Guide. One fader cap
+ * - Deck: Features (opens the rack panel), How it works (the night), Guide. One fader cap
  *   glides to the item under the pointer and parks on the current page.
  * - Features panel (≥1081px): the eleven channels in four groups; the row
  *   under the pointer (or focus) previews a zoomed piece of its screen.

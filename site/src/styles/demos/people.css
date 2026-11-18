@@ -1,0 +1,184 @@
+/* ══════════════════════════════════════════════════════════════════
+   People page: the Try it demo (src/ui/demos/people.ts)
+   Two HTML phones (Leo, admin · Ivo M., deputy). Sizes inside a phone
+   use container units (cqw) so the screens scale with the phone.
+   ══════════════════════════════════════════════════════════════════ */
+
+.pd { display: grid; gap: 20px; min-width: 0; }
+.pd__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.pd__steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pd__steps li { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 1px solid rgba(0,0,0,.18); border-radius: 99px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--ink-copy); transition: background-color .35s var(--ease), color .35s var(--ease), border-color .35s; }
+.pd__steps b { font-weight: 500; color: #8a8987; }
+.pd__steps li.is-cur { background: #000; border-color: #000; color: #fff; }
+.pd__steps li.is-cur b { color: var(--lime); }
+.pd__steps li.is-done { color: rgba(0,0,0,.42); border-color: rgba(0,0,0,.1); }
+.pd__steps li.is-done b { color: transparent; width: 1.2em; background: center / 12px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E"); }
+.pd__reset { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid rgba(0,0,0,.18); border-radius: 99px; background: none; color: #000; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; cursor: pointer; }
+.pd__reset .ico { width: 15px; height: 15px; }
+.pd__reset:hover { border-color: #000; }
+
+.pd__floor { display: grid; grid-template-columns: minmax(0, 330px) minmax(96px, 240px) minmax(0, 330px); justify-content: center; align-items: start; gap: clamp(12px, 2vw, 32px); padding: clamp(20px, 3vw, 40px); border-radius: var(--radius); background: var(--ink); color: #fff; }
+.pd__side { display: grid; gap: 12px; min-width: 0; }
+.pd__who { min-height: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
+.pd__legend { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-family: var(--font-mono); font-size: 11px; line-height: 1.4; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); transition: color .4s var(--ease); }
+.pd__legend .ico { flex: none; width: 14px; height: 14px; }
+.pd__legend.is-open { color: var(--lime); }
+
+/* The wire: what just travelled between the phones. */
+.pd__wire { align-self: center; display: grid; justify-items: center; gap: 12px; min-width: 0; }
+.pd__line { position: relative; width: 100%; height: 2px; background: repeating-linear-gradient(90deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px); }
+.pd__line i { --p: 0; position: absolute; top: 50%; left: calc(var(--p) * 100%); width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 16px 4px rgba(213,251,70,.55); opacity: 0; visibility: hidden; }
+.pd__wire b { max-width: 100%; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); text-align: center; overflow-wrap: anywhere; }
+.pd__wire[data-dir] b { color: var(--lime); }
+.pd__wtext { max-width: 100%; font-family: var(--font-display); font-weight: 700; font-size: clamp(15px, 1.4vw, 20px); line-height: 1.1; letter-spacing: -0.01em; text-transform: uppercase; text-align: center; overflow-wrap: anywhere; }
+
+.pd__note { min-height: 1.4em; margin: 0; font-size: 15px; color: var(--ink-copy); overflow-wrap: anywhere; }
+.pd__log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--ink-copy); }
+.pd__log li { display: flex; gap: 12px; min-width: 0; }
+.pd__log li span { min-width: 0; overflow-wrap: anywhere; }
+.pd__log time { color: #8a8987; }
+.pd__log b { color: #000; font-weight: 600; }
+.pd__jump { position: fixed; z-index: 60; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: inline-flex; align-items: center; height: 48px; max-width: calc(100vw - 32px); padding: 0 20px; border: 0; border-radius: 99px; background: var(--lime); color: #000; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: var(--track-mono); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 10px 30px rgba(0,0,0,.35); cursor: pointer; }
+.pd__jump[hidden] { display: none; }
+.pd__nojs { margin: 0; color: var(--ink-copy); }
+.pd noscript img { width: min(100%, 320px); height: auto; border-radius: 28px; }
+
+/* ── A phone ───────────────────────────────────────────────────── */
+.pdp { position: relative; justify-self: center; width: 100%; max-width: max(240px, calc((100svh - 110px) * 0.5)); aspect-ratio: 390 / 780; container-type: inline-size; overflow: hidden; isolation: isolate; border-radius: 13% / 6%; border: 5px solid #0d0d0d; outline: 1px solid rgba(255,255,255,.16); background: #000; color: #fff; }
+.pdp__screen { position: absolute; inset: 0; padding: 8cqw 5cqw 5cqw; font-family: var(--font-text); font-size: 3.5cqw; line-height: 1.35; }
+.pdp__screen p { margin: 0; }
+.pdp .ico { width: 3.8cqw; height: 3.8cqw; flex: none; }
+.pdp :where(button) { font: inherit; color: inherit; cursor: pointer; }
+.pd button:focus-visible, .pd textarea:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.pdp__kick { display: flex; align-items: center; gap: 2cqw; font-family: var(--font-mono); font-size: 2.9cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
+.pdp__dot { width: 2cqw; height: 2cqw; border-radius: 50%; background: var(--lime); }
+.pdp__title { margin-top: 2.4cqw !important; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 8.4cqw; line-height: .92; letter-spacing: -0.03em; }
+.pdp__sub { margin-top: 1.6cqw !important; font-family: var(--font-mono); font-size: 2.8cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+
+/* Buttons inside the phones */
+.pdb { display: inline-flex; align-items: center; justify-content: center; gap: 1.8cqw; min-height: 9.6cqw; padding: 0 4cqw; border: 1px solid transparent; border-radius: 99px; background: none; font-family: var(--font-display) !important; font-weight: 700; font-size: 3.2cqw !important; letter-spacing: 0.01em; text-transform: uppercase; white-space: nowrap; transition: background-color .25s, transform .2s var(--ease); }
+.pdb:active { transform: scale(.96); }
+.pdb--lime { background: var(--lime); color: #000 !important; }
+.pdb--lime:hover { background: #e2ff70; }
+.pdb--white { background: #fff; color: #000 !important; }
+.pdb--white:hover { background: #e9e9e9; }
+.pdb--line { border-color: rgba(255,255,255,.7); }
+.pdb--line:hover { background: rgba(255,255,255,.1); }
+.pdb--ghost { padding: 0 2.4cqw; text-decoration: underline; text-underline-offset: .6cqw; }
+.pdb--full { width: 100%; min-height: 10.6cqw; }
+.pdlink { align-self: flex-start; min-height: 8cqw; padding: 0; border: 0; background: none; font-family: var(--font-mono) !important; font-size: 2.9cqw !important; letter-spacing: var(--track-mono); text-transform: uppercase; text-decoration: underline; text-underline-offset: .6cqw; }
+.pd .is-next { animation: pdRing 1.6s var(--ease) infinite; }
+@keyframes pdRing { 0% { box-shadow: 0 0 0 0 rgba(213,251,70,.8); } 70%, 100% { box-shadow: 0 0 0 4cqw rgba(213,251,70,0); } }
+
+/* A status line with a coloured dot */
+.pdst { display: flex; align-items: center; gap: 2cqw; font-family: var(--font-mono); font-size: 2.9cqw; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pdst::before { content: ""; flex: none; width: 2.2cqw; height: 2.2cqw; border-radius: 50%; background: #f5a524; }
+.pdst[data-tone="yes"]::before { background: #2fd27a; }
+.pdst[data-tone="no"]::before { background: #ff3b4e; }
+.pdst[data-tone="off"]::before { background: currentColor; opacity: .4; }
+
+/* Leo: the gig behind, the Lineup sheet, the Find a deputy sheet */
+.pds { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 2.4cqw; padding: 3cqw 5cqw 6cqw; border-radius: 7cqw 7cqw 0 0; background: var(--sheet); overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; transition: opacity .4s var(--ease); }
+.pds::-webkit-scrollbar { display: none; }
+.pds > *, .pdp__screen--ivo > * { flex-shrink: 0; }
+.pds--line { top: 40cqw; }
+.pds--dep { top: 9cqw; z-index: 2; background: #262626; box-shadow: 0 -4cqw 10cqw rgba(0,0,0,.6); }
+.pdp__screen:has(.pds--dep) .pdg, .pdp__screen:has(.pds--dep) .pds--line { opacity: .3; }
+.pds__grab { flex: none; align-self: center; width: 10cqw; height: 1.2cqw; border-radius: 99px; background: rgba(255,255,255,.5); }
+.pds__h { margin: 1cqw 0 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 6.4cqw; line-height: 1; letter-spacing: -0.02em; }
+.pds__lab { margin-top: 2cqw !important; font-family: var(--font-mono); font-size: 2.6cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.pdl { display: grid; gap: 1.8cqw; margin: 0; padding: 0; list-style: none; }
+.pdl__row { display: grid; grid-template-columns: 8.4cqw minmax(0, 1fr) auto; align-items: center; gap: 1.6cqw 2.6cqw; padding: 2.2cqw 2.6cqw; border-radius: 4cqw; background: rgba(255,255,255,.08); }
+.pdl__av { display: grid; place-items: center; width: 8.4cqw; height: 8.4cqw; border-radius: 50%; background: #fff; color: #000; font-family: var(--font-display); font-weight: 700; font-size: 3.2cqw; }
+.pdl__n { display: grid; min-width: 0; }
+.pdl__n b { font-family: var(--font-mono); font-weight: 500; font-size: 3cqw; letter-spacing: var(--track-mono); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdl__n em { font-style: normal; font-size: 3cqw; color: var(--fg-dim); }
+.pdl__st { display: inline-flex; align-items: center; gap: 1.4cqw; font-family: var(--font-mono); font-size: 2.6cqw; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pdl__st::before { content: ""; width: 2cqw; height: 2cqw; border-radius: 50%; background: #2fd27a; }
+.pdl__row.is-out .pdl__av, .pdl__row.is-out .pdl__n { opacity: .55; }
+.pdl__row.is-out .pdl__st { color: #ff5a6a; }
+.pdl__row.is-out .pdl__st::before { background: #ff3b4e; }
+.pdl__find { grid-column: 2 / -1; justify-self: start; }
+.pda { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.4cqw; width: 100%; padding: 2.6cqw 3cqw; border: 0; border-radius: 4cqw; background: rgba(255,255,255,.08); text-align: left; }
+.pda:hover { background: rgba(255,255,255,.13); }
+.pda__n { display: grid; min-width: 0; }
+.pda__n b { font-family: var(--font-mono); font-weight: 500; font-size: 3cqw; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pda__n em { font-style: normal; font-size: 3cqw; color: var(--fg-dim); overflow-wrap: anywhere; }
+
+.pds__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 3cqw; }
+.pds__over { font-family: var(--font-mono); font-size: 2.8cqw; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pds__t { margin: 1cqw 0 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 8cqw; line-height: .95; letter-spacing: -0.03em; }
+.pds__x { display: grid; place-items: center; flex: none; width: 9.6cqw; height: 9.6cqw; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: none; }
+.pds__x:hover { background: rgba(255,255,255,.1); }
+.pds__p { font-size: 3.1cqw; line-height: 1.4; color: var(--fg-2); }
+.pdd { display: grid; gap: 2.4cqw; margin: 0; padding: 0; list-style: none; }
+.pdd__c { display: flex; flex-direction: column; align-items: flex-start; gap: 2.2cqw; padding: 3.6cqw; border-radius: 4.4cqw; background: rgba(255,255,255,.08); }
+.pdd__n { display: flex; flex-wrap: wrap; align-items: center; gap: 2cqw; }
+.pdd__n b { font-family: var(--font-mono); font-weight: 500; font-size: 3.2cqw; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pdtag { display: inline-flex; align-items: center; height: 5cqw; padding: 0 2cqw; border-radius: 99px; background: var(--lime); color: #000; font-family: var(--font-mono); font-size: 2.5cqw; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pdd__l { margin-top: -1cqw !important; font-size: 3.2cqw; color: var(--fg-dim); }
+.pdd__st { display: grid; gap: 1cqw; }
+.pdd__q, .pdr__q { font-size: 3.1cqw; color: var(--fg-2); overflow-wrap: anywhere; }
+.pdd__sent { font-size: 3cqw; color: var(--fg-2); }
+.pdd__or { font-family: var(--font-mono); font-size: 2.5cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.pdd__msg { display: flex; flex-wrap: wrap; gap: 1.6cqw; }
+.pdd__msg .pdb { min-height: 8.6cqw; padding: 0 3cqw; font-size: 2.9cqw !important; }
+.pdd__links { display: flex; flex-wrap: wrap; gap: 0 4cqw; }
+
+/* Ivo: Deputy gigs */
+.pdp__screen--ivo { display: flex; flex-direction: column; gap: 3cqw; background: #2b2b2b; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; }
+.pdp__screen--ivo::-webkit-scrollbar { display: none; }
+.pdv__head { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+.pdv__h { margin: 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 8.4cqw; line-height: 1; letter-spacing: -0.03em; }
+.pdv__help { display: grid; place-items: center; flex: none; width: 9.6cqw; height: 9.6cqw; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; font-family: var(--font-mono); font-size: 3.6cqw; }
+.pdv__line { font-size: 3.3cqw; color: var(--fg-dim); }
+.pdv__empty { margin-top: 6cqw !important; font-size: 3.5cqw; color: var(--fg-2); }
+.pdv__lab { font-family: var(--font-mono); font-size: 2.8cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.pdr { flex: none; display: flex; flex-direction: column; gap: 2.6cqw; padding: 5cqw; border-radius: 6cqw; background: #1b1b1b; }
+.pdr__band { font-family: var(--font-mono); font-size: 2.8cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
+.pdr__t { margin-top: -1.4cqw !important; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 7cqw; line-height: .95; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.pdr__dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.3cqw 4cqw; margin: 1cqw 0 0; font-size: 3.3cqw; }
+.pdr__dl dt { color: var(--fg-dim); }
+.pdr__dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pdr__dl .is-addr { margin: 0 -1.4cqw; padding: 0 1.4cqw; border-radius: 1.4cqw; font-weight: 600; color: var(--lime); }
+.pdr__ans { display: flex; flex-direction: column; gap: 2cqw; }
+.pdr__can { margin-top: 1cqw !important; font-family: var(--font-mono); font-size: 3cqw; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.pdr__msg { display: grid; gap: 1.4cqw; }
+.pdr__msg span { font-family: var(--font-mono); font-size: 2.5cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.pdr__msg textarea { width: 100%; min-height: 11cqw; padding: 2.4cqw 3.6cqw; border: 0; border-radius: 4cqw; background: rgba(255,255,255,.07); color: #fff; font-family: var(--font-text); font-size: max(3.3cqw, 12px); line-height: 1.3; resize: none; }
+.pdr__msg textarea::placeholder { color: var(--fg-dim); }
+.pdr__go { display: flex; flex-wrap: wrap; gap: 1.6cqw; }
+.pdr__go .pdb { min-height: 8.6cqw; padding: 0 3cqw; font-size: 2.9cqw !important; }
+.pdr__go .pdb--ghost { padding: 0 1.4cqw; }
+
+/* A notification banner */
+.pdpush { position: absolute; z-index: 10; top: 3cqw; left: 3cqw; right: 3cqw; display: flex; gap: 3cqw; padding: 3cqw; border-radius: 5cqw; background: rgba(58,58,58,.94); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 3cqw 8cqw rgba(0,0,0,.5); color: #fff; }
+.pdpush__ic { display: grid; place-items: center; flex: none; width: 9cqw; height: 9cqw; border-radius: 2.4cqw; background: var(--lime); color: #000; }
+.pdpush__ic .ico { width: 4.6cqw; height: 4.6cqw; }
+.pdpush__tx { display: grid; gap: .4cqw; min-width: 0; font-size: 3cqw; line-height: 1.3; }
+.pdpush__tx em { font-style: normal; font-family: var(--font-mono); font-size: 2.4cqw; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
+.pdpush__tx b { font-size: 3.3cqw; }
+.pdpush__tx span { color: var(--fg-2); overflow-wrap: anywhere; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pd .is-next { animation: none; box-shadow: 0 0 0 1cqw rgba(213,251,70,.45); }
+}
+
+/* Mid widths: the phones stay side by side, the wire shrinks to a line. */
+@media (max-width: 999px) {
+  .pd__floor { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); gap: 12px; }
+  .pd__wire b, .pd__wtext { display: none; }
+}
+/* Narrow: the phones stack, the wire runs down between them. */
+@media (max-width: 639px) {
+  .pd__floor { grid-template-columns: minmax(0, 1fr); justify-items: center; padding: 18px 12px 22px; border-radius: 28px; gap: 8px; }
+  .pd__side { width: min(100%, 340px); }
+  .pd__wire { grid-auto-flow: column; align-items: center; justify-content: center; height: 64px; gap: 14px; }
+  .pd__line { width: 2px; height: 52px; background: repeating-linear-gradient(180deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px); }
+  .pd__line i { top: calc(var(--p) * 100%); left: 50%; margin: -6px 0 0 -6px; }
+  .pd__wire { grid-template-columns: auto minmax(0, 1fr); width: min(100%, 340px); justify-content: start; }
+  .pd__wire b { display: block; text-align: left; }
+  .pd__wtext { display: none; }
+  .pdp { border-width: 3px; }
+  .pd__steps li { height: 34px; padding: 0 10px; font-size: 11px; }
+}

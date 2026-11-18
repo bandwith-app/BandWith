@@ -19,17 +19,28 @@ const SHOTS = path.resolve(root, '../academy/public/shots');
 
 const PAGES: Record<string, string> = {
   home: 'index.html',
+  calendarGigs: 'features/calendar-gigs/index.html',
+  quotesContracts: 'features/quotes-contracts/index.html',
+  money: 'features/money/index.html',
+  rehearsalsPolls: 'features/rehearsals-polls/index.html',
+  chat: 'features/chat/index.html',
+  songs: 'features/songs/index.html',
   stage: 'features/stage/index.html',
+  stagePlotRider: 'features/stage-plot-rider/index.html',
+  people: 'features/people/index.html',
+  privacy: 'features/privacy/index.html',
+  devices: 'features/devices/index.html',
   get: 'get/index.html',
 };
 
 function partials(): Plugin {
   const read = (name: string) => readFileSync(path.resolve(root, 'partials', `${name}.html`), 'utf8');
-  // <!--#name--> = a file in site/partials; <!--@name--> = generated from the channel list.
+  // <!--#name--> = a file in site/partials; <!--@name--> = generated from the channel list;
+  // <!--@page:slug--> / <!--@page-head:slug--> = a channel page from content/pages/<slug>.ts.
   const fill = (html: string) =>
     html
       .replace(/<!--#([a-z-]+)-->/g, (_, name: string) => read(name))
-      .replace(/<!--@([a-z-]+)-->/g, (m, name: string) => GENERATED[name]?.() ?? m);
+      .replace(/<!--@([a-z-]+)(?::([a-z-]+))?-->/g, (m, name: string, arg?: string) => GENERATED[name]?.(arg) ?? m);
   return {
     name: 'bw-partials',
     transformIndexHtml: { order: 'pre', handler: (html) => fill(fill(html)) },

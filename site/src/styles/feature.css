@@ -79,8 +79,10 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .dash { color: var(--fg-dim); }
 
 /* ── Bento of details ──────────────────────────────────────────── */
+.details + .learn.sec--bone { margin-top: 0; padding-top: calc(var(--section-y) * .5); border-radius: 0; }
+.details.sec--bone { padding-bottom: calc(var(--section-y) * .5); }
 .bento { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.bento__c { display: grid; align-content: start; gap: 10px; min-height: 220px; padding: 28px; border-radius: var(--radius-md); background: #121212; border: 1px solid rgba(255,255,255,.07); }
+.bento__c { display: grid; align-content: start; gap: 10px; min-height: 220px; padding: 28px; border-radius: var(--radius-md); background: #121212; border: 1px solid rgba(255,255,255,.07); color: #fff; }
 .bento__c--wide { grid-column: span 2; }
 .bento__c .ico { width: 26px; height: 26px; color: var(--lime); margin-bottom: 18px; }
 .bento__c b { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; text-transform: uppercase; letter-spacing: -0.01em; }
@@ -102,6 +104,11 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .nextch__inner { display: grid; justify-items: start; gap: 12px; }
 .nextch__name { margin: 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(44px, 7vw, 120px); line-height: .88; letter-spacing: -0.035em; }
 .nextch__name b { display: block; font-family: var(--font-mono); font-size: 14px; font-weight: 500; letter-spacing: var(--track-mono); color: var(--quote); margin-bottom: 14px; }
+.nextch__link { color: inherit; text-decoration: none; transition: color .3s; }
+.nextch__link .nextch__arrow { width: .7em; height: .7em; margin-left: .08em; vertical-align: -.02em; color: var(--lime); transition: transform .5s var(--ease); }
+.nextch__link:hover { color: var(--lime); }
+.nextch__link:hover .nextch__arrow { transform: translateX(.12em); }
+.nextch__link:focus-visible { outline: 2px solid var(--lime); outline-offset: 6px; border-radius: 8px; }
 .nextch__line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 0; font-size: 19px; color: var(--fg-2); }
 .nextch__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 
