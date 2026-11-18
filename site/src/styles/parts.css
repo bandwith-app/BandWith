@@ -35,7 +35,9 @@
 .dv__frame[data-frame="duoBook"], .dv__frame[data-frame="duoLaptop"], .dv__frame[data-frame="duoClosed"] { --p: 10px; --r: 20px; }
 .dv__frame[data-frame="web"]::before { content: ""; position: absolute; left: 14px; top: 11px; width: 44px; height: 9px; background: radial-gradient(circle at 4.5px 4.5px, #ff5f57 4px, transparent 4.5px), radial-gradient(circle at 21.5px 4.5px, #febc2e 4px, transparent 4.5px), radial-gradient(circle at 38.5px 4.5px, #28c840 4px, transparent 4.5px); }
 .dv__frame::after { content: ""; position: absolute; z-index: 3; background: #0d0d0d; opacity: 0; transition: opacity .4s; }
-.dv__frame[data-frame="duoBook"]::after { opacity: 1; left: calc(50% - 5px); width: 10px; top: 0; bottom: 0; }
+/* Duo book: the app's own panes don't sit on the middle of a capture, so the
+   hinge is marked on the bezel only (top and bottom), never over the screen. */
+.dv__frame[data-frame="duoBook"]::after { opacity: 1; left: calc(50% - 2px); width: 4px; top: -1px; bottom: -1px; background: linear-gradient(rgba(255,255,255,.28) 0 var(--p), transparent var(--p) calc(100% - var(--p)), rgba(255,255,255,.28) calc(100% - var(--p))); border-radius: 2px; }
 .dv__frame[data-frame="duoLaptop"]::after { opacity: 1; top: calc(50% - 5px); height: 10px; left: 0; right: 0; }
 .dv__frame > img { position: absolute; left: var(--p); right: var(--p); top: var(--pt); bottom: var(--p); width: calc(100% - 2 * var(--p)); height: calc(100% - var(--p) - var(--pt)); object-fit: cover; object-position: top; border-radius: calc(var(--r) - var(--p)); }
 .dv__cap { margin: 0; min-height: 1.3em; color: var(--fg-2); text-align: center; text-transform: none; font-size: 13px; letter-spacing: 0; }

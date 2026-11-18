@@ -169,11 +169,29 @@ button, input { font: inherit; color: inherit; }
 .nav__deck .nav__item:hover .ch i { transform: translateY(-100%); }
 
 .nav__actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
-/* Spots left, inside the beta button: one control, not two. */
+/* The native apps button names its platforms; the web app sits beside it. */
 .nav__left { display: inline-flex; align-items: center; margin-left: 10px; padding-left: 10px; border-left: 1px solid rgba(0,0,0,.22); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; opacity: .72; }
-.nav__left[hidden] { display: none; }
 .nav.is-light .nav__left { border-left-color: rgba(213,251,70,.3); }
-@media (max-width: 420px) { .nav__left { display: none; } }
+.nav__web { display: flex; align-items: center; gap: 4px; }
+.nav__login, .nav__signup { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; text-decoration: none; color: var(--fg-2); white-space: nowrap; transition: color .3s, background-color .3s, border-color .3s; }
+.nav__login:hover { color: var(--fg); }
+.nav__signup { border: 1px solid rgba(255,255,255,.18); color: var(--fg); }
+.nav__signup:hover { border-color: rgba(255,255,255,.45); }
+.nav__sub { color: var(--fg-dim); }
+.nav__login:focus-visible, .nav__signup:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.nav.is-light .nav__login { color: #4a4947; }
+.nav.is-light .nav__login:hover, .nav.is-light .nav__signup { color: #000; }
+.nav.is-light .nav__signup { border-color: rgba(0,0,0,.18); }
+.nav.is-light .nav__sub { color: #6b6a68; }
+/* Every spot taken: the web sign-up turns into the waitlist. */
+.nav__signup--full { display: none !important; }
+html.is-full .nav__web [data-web-door], html.is-full .menu__web [data-web-door] { display: none !important; }
+html.is-full .nav__signup--full { display: inline-flex !important; }
+html.is-full .menu__web .nav__signup--full { display: flex !important; }
+@media (max-width: 1320px) { .nav__sub { display: none; } }
+@media (max-width: 1180px) { .nav__left { display: none; } }
+/* With the menu button, the web links live in the menu sheet. */
+@media (max-width: 1080px) { .nav__web { display: none; } }
 
 /* Menu button: three levels, not a hamburger. */
 .nav__menu { display: none; position: relative; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.08); color: var(--fg); cursor: pointer; transition: background-color .3s; }
@@ -225,8 +243,8 @@ button, input { font: inherit; color: inherit; }
 .menu__row.is-active .menu__sp { opacity: 1; }
 .menu__row:active .menu__w { translate: 8px 0; }
 @media (hover: hover) { .menu__row:hover .menu__w { translate: 10px 0; } }
-.menu__foot { display: grid; gap: 14px; }
-.menu__cta { width: 100%; min-height: 60px; font-size: 17px; }
+.menu__foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.menu__cta { width: 100%; min-height: 60px; font-size: clamp(14px, 4vw, 17px); white-space: normal; text-align: center; }
 .menu__note { margin: 0; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--fg-dim); }
 .menu__note .led { animation: none; }
 
@@ -380,6 +398,9 @@ html.has-motion [data-ab] { visibility: hidden; }
 .menu__row:not(.is-soon) b { color: var(--lime); }
 .menu__guide { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border-radius: 999px; border: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 15px; text-decoration: none; }
 .menu__guide .ico { width: 16px; height: 16px; }
+.menu__weblabel { margin: 6px 0 -4px; text-align: center; color: var(--fg-dim); }
+.menu__web { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.menu__web .menu__guide { font-size: 13px; padding: 0 12px; text-align: center; }
 
 /* Footer columns. */
 .foot__cols { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 32px; margin-top: clamp(56px, 9vh, 96px); padding-top: 32px; border-top: 1px solid var(--line); }

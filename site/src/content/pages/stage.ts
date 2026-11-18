@@ -44,19 +44,6 @@ export const page: ChannelPage = {
       { what: 'Transposes for their own screen', admin: true, member: true, deputy: false },
     ],
   },
-  devices: {
-    shot: 'music-stage',
-    heading: { lines: ['Your phone.', 'Or a floor wedge.'] },
-    lead: 'On a phone it’s one column. Open an iPad or a Duo and the setlist sits beside the song. Fold the Duo like a laptop, stand it on the stage floor, and it becomes a wedge with big Prev and Next.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · header, run of show, setlist or song, Prev / Next at the bottom.', alt: 'Stage mode on a phone' },
-      { dev: 'tablet', cap: 'iPad · beside the list; Hide sidebar gives it the whole screen.', alt: 'Stage mode on an iPad' },
-      { dev: 'web', cap: 'Web · live sync and the click work. No Bluetooth, no offline copy.', alt: 'Stage mode in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · Open stage mode is the rail’s main action on gig day.', alt: 'Stage mode on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · times and steps on one pane, the setlist or song on the other.', alt: 'Stage mode on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · a floor wedge: song, key, BPM and next song on top, big Prev / Next below.', alt: 'Stage mode on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['Made for', 'a dark stage.'] },
     items: [

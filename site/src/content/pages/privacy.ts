@@ -45,18 +45,6 @@ export const page: ChannelPage = {
       { what: 'Direct messages', admin: 'Anyone in the band', member: 'Admins only', deputy: false },
     ],
   },
-  devices: {
-    shot: 'gig-workspace-member',
-    heading: { lines: ['Same rules.', 'Every screen.'] },
-    lead: 'The rules live on the server, so they hold on every device. A member who opens the gig on an iPad, a Duo or the web gets the same part, and no more.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · a member’s gig: times, venue, address and readiness. No contract, no deposit.', alt: 'A member’s gig on a phone' },
-      { dev: 'tablet', cap: 'iPad · the calendar beside the gig. The member’s card says Your fee.', alt: 'A member’s gig on an iPad' },
-      { dev: 'web', cap: 'Web · the lineup with answers and no fees; Your fee under readiness.', alt: 'A member’s gig in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · the same gig on one screen, with no edit buttons.', alt: 'A member’s gig on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the calendar with Your fee on one screen, the gig on the other.', alt: 'A member’s gig on a Surface Duo open like a book' },
-    ],
-  },
   details: {
     heading: { lines: ['Not hidden.', 'Never sent.'], em: 'sent.' },
     items: [

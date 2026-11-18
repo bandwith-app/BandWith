@@ -1,13 +1,12 @@
 /**
  * Shared script of the channel pages (/features/<slug>/): hero intro, the
- * walkthrough, the device switcher. Each page's own entry imports this
+ * walkthrough. Each page's own entry imports this
  * first, then its demo (if any) and calls runChannelPage(initDemo).
  */
 // core/boot first: its base CSS must come before the page's own styles.
 import { boot, finish, type Ctx } from '../core/boot';
 import '../styles/feature.css';
 import { gsap } from 'gsap';
-import { initDevices } from '../ui/devices';
 import { initFlow } from '../ui/flow';
 
 export function runChannelPage(initDemo?: (ctx: Ctx) => void) {
@@ -25,7 +24,6 @@ export function runChannelPage(initDemo?: (ctx: Ctx) => void) {
 
   initFlow(document.querySelector('[data-flow]'));
   initDemo?.(ctx);
-  initDevices(document.querySelector('[data-devices]'), reduce);
 
   finish(ctx);
 }

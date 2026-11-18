@@ -45,18 +45,6 @@ export const page: ChannelPage = {
       { what: 'Creates kits, picks one for a gig', admin: true, member: false, deputy: false },
     ],
   },
-  devices: {
-    shot: 'people-band-members',
-    heading: { lines: ['The band,', 'side by side.'] },
-    lead: 'On a phone, a person’s page opens full screen. On an iPad it opens in the column beside the list. On an open Duo it opens on the second screen.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · counters, the lineup, and Invite member at the bottom.', alt: 'Band members on a phone' },
-      { dev: 'tablet', cap: 'iPad · the list in the middle; a person’s page opens in the column beside it.', alt: 'Band members on an iPad' },
-      { dev: 'web', cap: 'Web · the same list and Invite member, in any browser.', alt: 'Band members in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · one screen, with back, help and + on the rail.', alt: 'Band members on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the list on one screen; a person’s page opens on the other.', alt: 'Band members on a Surface Duo open like a book' },
-    ],
-  },
   details: {
     heading: { lines: ['Made for', 'last-minute calls.'] },
     items: [

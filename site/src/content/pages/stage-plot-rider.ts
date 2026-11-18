@@ -44,18 +44,6 @@ export const page: ChannelPage = {
       { what: 'Keeps riders and new versions in Contracts & docs', admin: true, member: false, deputy: false },
     ],
   },
-  devices: {
-    shot: 'gig-workspace-admin',
-    heading: { lines: ['Hold and drag,', 'on any screen.'] },
-    lead: 'The plot is drawn by finger on every device: hold an item until it lifts, then move it. On an iPad, Rider & stage gets its own tab in the gig, laid out as a board.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · RIDER & STAGE is a section of the gig; OPEN shows it all.', alt: 'A gig on a phone' },
-      { dev: 'tablet', cap: 'iPad · RIDER & STAGE is its own tab, and the composer prepares it before the gig exists.', alt: 'A gig on an iPad, with the Overview, Setlist, Rider & stage and Money tabs' },
-      { dev: 'web', cap: 'Web · the gig opens beside the calendar; the plot is edited here too.', alt: 'A gig in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · the gig on one screen, Back in the side rail.', alt: 'A gig on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the gig on the right page; a sheet takes the right page and the gig moves left.', alt: 'A gig on a Surface Duo open like a book' },
-    ],
-  },
   details: {
     heading: { lines: ['Less to explain', 'at load-in.'] },
     items: [

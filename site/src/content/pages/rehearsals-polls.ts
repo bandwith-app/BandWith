@@ -45,19 +45,6 @@ export const page: ChannelPage = {
       { what: 'Sees the room cost', admin: 'The total', member: 'Their share, in a poll', deputy: false },
     ],
   },
-  devices: {
-    shot: 'shot-poll-card',
-    heading: { lines: ['Vote on a phone.', 'Lock in anywhere.'] },
-    lead: 'The poll card follows you: on Home, in the Calendar, beside an open gig on an iPad. Fold a Duo like a laptop and the vote sheet splits into a grid on top and your pads below.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · the poll in the Action center: date pads, then every date with Lock in.', alt: 'An availability poll on a phone' },
-      { dev: 'tablet', cap: 'iPad · the Action center beside the open gig; the poll sits under Rehearsal scheduling.', alt: 'An availability poll on an iPad' },
-      { dev: 'web', cap: 'Web · the same two columns, with Delete poll under the dates.', alt: 'An availability poll in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · one column, with Create and the bell in the side rail.', alt: 'An availability poll on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the poll on one pane, the gig you had open on the other.', alt: 'An availability poll on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · members and days on top, your pads and the Lock button below.', alt: 'The vote sheet on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['Less back', 'and forth.'] },
     items: [

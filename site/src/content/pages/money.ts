@@ -45,18 +45,6 @@ export const page: ChannelPage = {
       { what: 'Opens Analytics', admin: true, member: false, deputy: false },
     ],
   },
-  devices: {
-    shot: 'analytics',
-    heading: { lines: ['Numbers on a phone.', 'Two pages on a Duo.'] },
-    lead: 'Data insights is one column of cards on a phone, an iPad and the web. Open a Duo like a book and the second screen, Where it comes from, shows revenue by event type and payouts due. On iPad a gig’s MONEY tab holds its fee and payouts.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · totals, Revenue vs previous period and the Monthly breakdown, then types, payouts and members.', alt: 'Data insights on a phone' },
-      { dev: 'tablet', cap: 'iPad · the same cards in one wide column.', alt: 'Data insights on an iPad' },
-      { dev: 'web', cap: 'Web · Data insights in any browser, for the current calendar year.', alt: 'Data insights in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · the cards on one screen; Back and help sit in the side rail.', alt: 'Data insights on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · Data insights on one page; Where it comes from, with gig types and payouts due, on the other.', alt: 'Data insights on a Surface Duo open like a book' },
-    ],
-  },
   details: {
     heading: { lines: ['The fine print', 'on money.'] },
     items: [

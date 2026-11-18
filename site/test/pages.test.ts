@@ -34,12 +34,6 @@ describe('channel pages', () => {
         }
       });
 
-      it('shows device tabs only for devices that were captured', () => {
-        const have = SHOT_FILES[p.devices.shot] ?? [];
-        expect(p.devices.tabs.length).toBeGreaterThan(0);
-        for (const t of p.devices.tabs) expect(have, `${p.devices.shot}@${t.dev}`).toContain(t.dev);
-      });
-
       it('links Academy articles that exist and icons that are in the sprite', () => {
         for (const l of p.learn) expect(BY_ID.has(l.id), l.id).toBe(true);
         for (const i of [...p.hero.chips.map((x) => x.icon), ...p.details.items.map((x) => x.icon)]) {
@@ -59,6 +53,8 @@ describe('channel pages', () => {
         const html = pageMain(c.slug);
         expect(html.match(/<h1/g)).toHaveLength(1);
         expect(html).not.toMatch(/undefined|\[object Object\]/);
+        // Devices are shown once, on the home page: no device switcher here.
+        expect(html).not.toMatch(/data-devices(?!-demo)/);
         expect(pageHead(c.slug)).toContain(`<title>${p.title.replace(/&/g, '&amp;')} · BandWith</title>`);
       });
 

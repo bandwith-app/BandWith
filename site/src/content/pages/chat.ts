@@ -44,19 +44,6 @@ export const page: ChannelPage = {
       { what: 'Sees who is online', admin: true, member: true, deputy: false },
     ],
   },
-  devices: {
-    shot: 'shot-event-chat',
-    heading: { lines: ['The thread.', 'And the gig beside it.'] },
-    lead: 'On a phone the event strip sits above the thread. On an iPad, the web or an open Duo, a pane beside it shows the times, who’s in the chat and who’s online, with Open gig.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · the event strip on top, the thread, Write a message… at the bottom.', alt: 'An event chat on a phone' },
-      { dev: 'tablet', cap: 'iPad · the list, the thread and a context pane: Load in, Soundcheck, Show, Out and the lineup.', alt: 'An event chat on an iPad' },
-      { dev: 'web', cap: 'Web · the same three columns in a browser window.', alt: 'An event chat in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · one column; Back and Delete chat move to the side rail.', alt: 'An event chat on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the thread on one pane, the times and the lineup on the other.', alt: 'An event chat on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · messages on the top screen, the composer on the bottom one.', alt: 'An event chat on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['Fewer threads.', 'Clear rules.'] },
     items: [

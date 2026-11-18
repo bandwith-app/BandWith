@@ -45,19 +45,6 @@ export const page: ChannelPage = {
       { what: 'Sees show readiness', admin: 'Every check', member: 'No contract or deposit', deputy: false },
     ],
   },
-  devices: {
-    shot: 'calendar-month',
-    heading: { lines: ['A pocket calendar.', 'Or a planner.'] },
-    lead: 'On a phone it’s one column. On an iPad or an open Duo, the event opens beside the calendar. Fold the Duo like a laptop and the calendar becomes the Planner.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · filters, the month grid, then Upcoming with one card per event.', alt: 'The calendar on a phone' },
-      { dev: 'tablet', cap: 'iPad · the calendar and the open event side by side. New gig opens a one-screen composer.', alt: 'The calendar on an iPad' },
-      { dev: 'web', cap: 'Web · the same calendar in a browser, the event beside it. No push: check the bell.', alt: 'The calendar in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · Back, Search and Open stage mode live in the side rail.', alt: 'The calendar on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the calendar on the left page, the event you open on the right.', alt: 'The calendar on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · the Planner: the month with Gigs, Rehearsals, Fees and Free weekends on top, the day’s Agenda below.', alt: 'The Planner on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['Small things', 'that save a call.'] },
     items: [

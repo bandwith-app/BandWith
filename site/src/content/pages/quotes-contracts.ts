@@ -43,19 +43,6 @@ export const page: ChannelPage = {
       { what: 'Creates, sends and signs off contracts and riders', admin: true, member: false, deputy: false },
     ],
   },
-  devices: {
-    shot: 'quote-wizard-review',
-    heading: { lines: ['Steps on a phone.', 'One screen on iPad.'] },
-    lead: 'On a phone a quote is three steps. On an iPad the composer puts five cards beside a Live PDF, as the client sees it, in the client’s language. On a Duo the quote stays in sight while you type.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · three steps; the last one shows the summary, the breakdown and the Total estimate.', alt: 'Step 3 of a new quote on a phone' },
-      { dev: 'tablet', cap: 'iPad · five cards beside the Live PDF, with Save draft, Share and Send quote.', alt: 'The quote composer on an iPad' },
-      { dev: 'web', cap: 'Web · a wide window gets the same cards and Live PDF.', alt: 'The quote composer in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · the steps on one screen; close the quote from the side rail.', alt: 'A new quote on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the quote on one page; in steps 1 and 2 the live quote sits on the other while you type.', alt: 'A new quote on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · the quote preview on the top half, the form and its buttons below.', alt: 'A new quote on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['The small print,', 'taken care of.'] },
     items: [

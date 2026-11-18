@@ -45,18 +45,6 @@ export const page: ChannelPage = {
       { what: 'Reads setlists, exports them as PDF', admin: true, member: true, deputy: false },
     ],
   },
-  devices: {
-    shot: 'music-reader',
-    heading: { lines: ['One song.', 'Or the whole list.'] },
-    lead: 'On a phone the song takes the screen. On an iPad, in a wide browser or on an open Duo, the Repertoire stays on one side and the song opens on the other. In Laptop pose the song fills the top half and its controls move to the bottom half.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · tabs, − key +, My notes, then the song.', alt: 'The song reader on a phone' },
-      { dev: 'tablet', cap: 'iPad · the Repertoire in the list column, the song open beside it.', alt: 'The song reader beside the Repertoire on an iPad' },
-      { dev: 'web', cap: 'Web · the same reader. The iReal Pro forum opens in its own window; paste the link back.', alt: 'The song reader in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · one page; Back, Search and your profile sit in the rail.', alt: 'The song reader on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the songs on the left page, the reader on the right.', alt: 'The song reader on a Surface Duo open like a book' },
-    ],
-  },
   details: {
     heading: { lines: ['Written for', 'the players.'] },
     items: [

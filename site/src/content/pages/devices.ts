@@ -44,19 +44,6 @@ export const page: ChannelPage = {
       { what: 'Bluetooth sync in Stage mode', admin: 'In the apps', member: 'In the apps', deputy: { dash: 'No Stage mode' } },
     ],
   },
-  devices: {
-    shot: 'calendar-month',
-    heading: { lines: ['One calendar.', 'Six shapes.'] },
-    lead: 'Every screen fits every posture. On an iPad the list and the detail sit side by side. A dual-screen phone puts the rail in its system column, opens like a book, or stands half folded with things to read on top and every control below.',
-    tabs: [
-      { dev: 'phone', cap: 'Phone · one screen at a time, the tab bar at the bottom.', alt: 'The calendar on a phone' },
-      { dev: 'tablet', cap: 'iPad · the calendar in the list column, the event you open beside it, a floating tab pill with labels.', alt: 'The calendar on an iPad' },
-      { dev: 'web', cap: 'Web · the phone layout in a narrow window, the wide layout from 744 px. No push, no Bluetooth.', alt: 'The calendar in a web browser' },
-      { dev: 'duoClosed', cap: 'Duo closed · one page; the tabs, Back, Search and your profile live in the side rail.', alt: 'The calendar on a closed Surface Duo' },
-      { dev: 'duoBook', cap: 'Duo book · the calendar on the left page, the event you open on the right.', alt: 'The calendar on a Surface Duo open like a book' },
-      { dev: 'duoLaptop', cap: 'Duo laptop · the Planner: the month and its counts on top, the day’s agenda and + Gig / + Rehearsal below.', alt: 'The calendar on a Surface Duo folded like a laptop' },
-    ],
-  },
   details: {
     heading: { lines: ['Built for', 'where you are.'] },
     items: [

@@ -14,7 +14,6 @@
  *   Lena on the wedding), Luca T. (bass, usual fee €180).
  * - No prices of the product, no promises of features the app doesn't have.
  */
-import type { ShotDevice } from '../site';
 
 /** Icon ids from site/partials/sprite.html (without the "i-" prefix). */
 export type Icon =
@@ -40,8 +39,6 @@ export type FlowStep = {
 /** true = "Yes", false = "No", a string = a short yes-with-detail ("Their own"). `{ dash }` = n/a with a word. */
 export type Cell = boolean | string | { dash: string };
 export type RoleRow = { what: string; admin: Cell; member: Cell; deputy: Cell };
-
-export type DeviceTab = { dev: ShotDevice; cap: string; alt: string };
 
 export type Detail = { icon: Icon; title: string; body: string; wide?: boolean };
 
@@ -69,7 +66,6 @@ export type ChannelPage = {
   /** Optional interactive demo (markup and script per kind, see render.ts / ui/demos). */
   demo?: { kind: string; heading: Heading; lead: string };
   roles: { heading: Heading; lead: string; rows: RoleRow[] };
-  devices: { shot: string; heading: Heading; lead: string; tabs: DeviceTab[] };
   details: { heading: Heading; items: Detail[] };
   learn: Learn[];
 };

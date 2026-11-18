@@ -79,8 +79,10 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .dash { color: var(--fg-dim); }
 
 /* ── Bento of details ──────────────────────────────────────────── */
+.details + .learn.sec--bone { margin-top: 0; padding-top: calc(var(--section-y) * .5); border-radius: 0; }
+.details.sec--bone { padding-bottom: calc(var(--section-y) * .5); }
 .bento { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.bento__c { display: grid; align-content: start; gap: 10px; min-height: 220px; padding: 28px; border-radius: var(--radius-md); background: #121212; border: 1px solid rgba(255,255,255,.07); }
+.bento__c { display: grid; align-content: start; gap: 10px; min-height: 220px; padding: 28px; border-radius: var(--radius-md); background: #121212; border: 1px solid rgba(255,255,255,.07); color: #fff; }
 .bento__c--wide { grid-column: span 2; }
 .bento__c .ico { width: 26px; height: 26px; color: var(--lime); margin-bottom: 18px; }
 .bento__c b { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; text-transform: uppercase; letter-spacing: -0.01em; }

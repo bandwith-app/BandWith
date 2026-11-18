@@ -3,8 +3,8 @@
  * page's <head> extras and <main>. Used at build time by the partials plugin:
  *   <!--@page-head:quotes-contracts-->  and  <!--@page:quotes-contracts-->
  * Section order and tone: hero, how it works (dark), try it (bone, if the
- * page has a demo), who sees what (dark), works on (bone), the small things
- * (dark), learn it (bone), next channel (dark).
+ * page has a demo), who sees what (dark), the small things + learn it (one
+ * bone sheet), next channel (dark). Devices are shown once, on the home page.
  */
 import { CHANNELS, bySlug, channelUrl, pad2, type Channel } from './features';
 import { academyArticle, shot } from './site';
@@ -126,22 +126,6 @@ function roles(page: ChannelPage, bone: boolean) {
   );
 }
 
-function devices(page: ChannelPage, bone: boolean) {
-  const d = page.devices;
-  const tabs = d.tabs.map((t, i) => `<button type="button" role="tab" aria-selected="${i === 0}" data-dev="${t.dev}" data-cap="${esc(t.cap)}" data-alt="${esc(t.alt)}">${esc(DEV_LABEL[t.dev])}</button>`).join('');
-  return (
-    `<section class="sec${bone ? ' sec--bone' : ''} fdevices" id="devices" aria-labelledby="fdev-h"${bone ? ' data-light' : ''}><div class="wrap">` +
-      `<div class="head"><p class="label">Works on</p><h2 class="h2" id="fdev-h" data-split>${h2(d.heading)}</h2><p class="lead">${esc(d.lead)}</p></div>` +
-      `<div class="dv" data-devices data-shot="${esc(d.shot)}">` +
-        `<div class="dv__tabs" role="tablist" aria-label="Device">${tabs}</div>` +
-        `<figure class="dv__stage"><div class="dv__frame" data-frame="${d.tabs[0].dev}" style="--ar: 0.462"></div></figure>` +
-        `<p class="dv__cap mono" data-dev-cap aria-live="polite"></p>` +
-      `</div>` +
-    `</div></section>`
-  );
-}
-const DEV_LABEL = { phone: 'Phone', tablet: 'iPad', web: 'Web', duoClosed: 'Duo closed', duoBook: 'Duo book', duoLaptop: 'Duo laptop' } as const;
-
 function details(page: ChannelPage, bone: boolean) {
   const items = page.details.items.map((x) =>
     `<li class="bento__c${x.wide ? ' bento__c--wide' : ''}" data-reveal-item>${ico(x.icon)}<b>${esc(x.title)}</b><p>${esc(x.body)}</p></li>`,
@@ -190,7 +174,7 @@ export function pageMain(slug: string) {
   const { page, ch } = getPage(slug);
   // Each section keeps the tone its styles are made for (as on Stage).
   return [
-    hero(page, ch), flow(page), demo(page, true), roles(page, false), devices(page, true),
-    details(page, false), learn(page, true), next(ch, false),
+    hero(page, ch), flow(page), demo(page, true), roles(page, false),
+    details(page, true), learn(page, true), next(ch, false),
   ].join('');
 }

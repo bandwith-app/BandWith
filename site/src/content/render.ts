@@ -49,7 +49,6 @@ export function rackHome() {
     `<span class="strip__name">${esc(c.short)}</span></button>`,
   ).join('');
   return (
-    `<div class="rx__strips" role="tablist" aria-label="The eleven channels">${tabs}</div>` +
     `<div class="rx__panel" id="rx-panel" role="tabpanel" aria-labelledby="rx-tab-${first.ch}" style="--c: ${accentVar(first)}">` +
       `<div class="crop rx__crop" data-rx-crop data-crop="${first.crop.join(' ')}"><img class="crop__img" src="${shot(first.shot)}" alt="" width="780" height="1688" loading="lazy" decoding="async" /></div>` +
       `<div class="rx__copy" data-rx-copy>` +
@@ -60,7 +59,8 @@ export function rackHome() {
         `<p class="rx__links"><a class="rx__guide" data-rx-guide href="${academyArticle(first.guide)}">Read it in the Guide <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>` +
         `<a class="btn btn--lime btn--sm rx__page" data-rx-page href="${first.live ? channelUrl(first) : '#'}"${first.live ? '' : ' hidden'}>Open the page <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a></p>` +
       `</div>` +
-    `</div>`
+    `</div>` +
+    `<div class="rx__strips" role="tablist" aria-label="The eleven channels">${tabs}</div>`
   );
 }
 

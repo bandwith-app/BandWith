@@ -124,11 +124,11 @@
 }
 
 /* ── Rack: the channel explorer ─────────────────────────────────
-   One console: the strips are its top edge, the panel is the rest.
+   One console: the screen on top, the channel strips along the bottom edge.
    Only the selected channel is lit (like a solo); the others sit grey
    at their resting level and warm up a little under the pointer. */
 .rx { display: grid; border-radius: var(--radius); background: #111; border: 1px solid rgba(255,255,255,.07); overflow: hidden; }
-.rx__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; padding: 10px; background: #0b0b0b; border-bottom: 1px solid rgba(255,255,255,.07); }
+.rx__strips { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; padding: 10px; background: #0b0b0b; border-top: 1px solid rgba(255,255,255,.07); }
 .rx__tab { min-height: 0; gap: 9px; padding: 12px 10px; border: 0; border-radius: 14px; background: none; font: inherit; text-align: left; cursor: pointer; }
 .rx__tab .strip__ch { font-size: 10px; }
 .rx__tab .strip__name { font-size: 13px; color: var(--fg-dim); transition: color .3s; }
@@ -170,6 +170,44 @@
 .rx__guide:hover .ico { transform: translate(3px, -3px); }
 
 @media (max-width: 1320px) { .rx__tab { padding-inline: 8px; } .rx__tab .strip__name { font-size: 11.5px; } }
+/* Wide screens: title, screen and strips fill exactly one screen. The
+   screen takes whatever height is left; if the copy needs more, it grows. */
+@media (min-width: 1081px) {
+  .rack { min-height: 100svh; display: flex; flex-direction: column; padding-block: calc(var(--nav-h) + 28px) 28px; }
+  .rack > .wrap { flex: 1; display: flex; flex-direction: column; width: 100%; }
+  .rack .head { margin-bottom: clamp(20px, 3svh, 32px); }
+  .rack .h2 { font-size: clamp(40px, min(5.4vw, 7.4svh), 96px); }
+  .rx { flex: 1; grid-template-rows: 1fr auto; }
+  .rx__panel { align-items: stretch; padding: clamp(18px, 2.2vw, 32px); }
+  .rx__crop { aspect-ratio: auto; height: 100%; min-height: 220px; }
+  .rx__copy { align-self: center; }
+  .rx__name { font-size: clamp(28px, 3vw, 46px); }
+  .rx__line { margin-top: 10px; font-size: 17px; }
+  .rx__pts { margin-top: 14px; }
+  .rx__pts li { padding: 9px 0 9px 22px; font-size: 15px; }
+  .rx__pts li::before { top: 16px; }
+  .rx__links { margin-top: 18px; }
+  .rx__strips { padding: 8px; }
+  .rx__tab { gap: 7px; padding: 10px 8px; }
+  .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
+  .rx__tab .strip__track { min-height: 24px; }
+}
+/* Tablets and phones: less air above, so the console starts higher. On
+   phones the intro line goes; the strips say "pick one" by themselves. */
+@media (max-width: 1080px) {
+  .rack { padding-top: calc(var(--nav-h) + 32px); }
+  .rack .head { margin-bottom: 24px; }
+}
+@media (max-width: 760px) {
+  .rack { padding-top: calc(var(--nav-h) + 16px); }
+  .rack .head .lead { display: none; }
+  .rx__links { margin-top: 16px; }
+}
+@media (min-width: 1081px) and (max-height: 800px) {
+  .rx__pts li:nth-child(n+3) { display: none; }
+  .rx__tab .strip__track { display: none; }
+}
+
 /* Narrower: the strips become a row you swipe; the panel stacks. */
 @media (max-width: 1080px) {
   .rx__strips { display: flex; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding: 8px; }
@@ -181,7 +219,8 @@
 @media (max-width: 600px) {
   .rx { border-radius: 28px; }
   .rx__panel { grid-template-columns: minmax(0, 1fr); }
-  .rx__crop { aspect-ratio: 16 / 10; }
+  .rx__crop { aspect-ratio: 16 / 9; }
+  .rx__pts { display: none; }
 }
 /* Short screens (phones and Duo on their side): compact strips, the meter does the talking. */
 @media (max-height: 600px) {
@@ -189,6 +228,7 @@
   .rx__tab .strip__track { display: none; }
   .rx__tab .strip__meter { grid-auto-rows: 3px; gap: 2px; }
   .rx__crop { aspect-ratio: 1 / 1; }
+  .rx__pts li:nth-child(n+3) { display: none; }
 }
 @media (max-width: 560px) {
   .rx__tab { width: 76px; padding: 10px 8px; gap: 8px; }
