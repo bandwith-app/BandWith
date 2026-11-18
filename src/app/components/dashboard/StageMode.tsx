@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
@@ -27,6 +27,8 @@ import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
 import type { LiveKind } from '@/lib/liveMode';
+import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
+import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './RehearsalSession';
 
 export interface StageStep {
   label: string;
@@ -106,6 +108,8 @@ interface StageModeProps {
   onRetrySongs?: () => void;
   accentColor?: string;
   live?: StageLiveControls;
+  /** Rehearsal session (Live mode timer, plan A1b): rehearsals only. */
+  session?: RehearsalSessionControls;
   /**
    * Song view open (controlled, optional): shared with the Laptop pose
    * (FloorWedgeMode) so folding keeps the lyrics up.
@@ -145,12 +149,22 @@ export const StageMode: React.FC<StageModeProps> = ({
   onRetrySongs,
   accentColor = 'var(--accent-gig, #D5FB46)',
   live,
+  session: sessionProp,
   songOpen,
   onSongOpenChange,
   onClose,
 }) => {
   const t = useT();
   const rehearsal = kind === 'rehearsal';
+  const session = rehearsal && sessionProp?.enabled ? sessionProp : undefined;
+  // The summary: up when the session ends, or on request once ended.
+  const [summaryAsked, setSummaryAsked] = useState(false);
+  const summaryOpen = !!session && session.status === 'ended' && (session.justEnded || summaryAsked);
+  const summary = summaryOpen ? summaryOf(session.state, songs.length) : null;
+  const closeSummary = () => {
+    setSummaryAsked(false);
+    session?.dismissSummary();
+  };
   // Struck off for tonight is a gig-night thing: not on rehearsals.
   const canStrike = !rehearsal && !!live?.canStrike;
   // The screen stays on while Stage mode is open (lyrics and chords are read
@@ -248,6 +262,8 @@ export const StageMode: React.FC<StageModeProps> = ({
 
   // Android Back and Escape leave Stage mode first, not the gig beneath.
   useSystemBack(true, onClose);
+  // …and the rehearsal summary on top of it first.
+  useSystemBack(summaryOpen, closeSummary);
 
   // Steps in order on the gig day; an end after midnight lands on the next day.
   const stepDates = useMemo(() => timelineDates(date, steps.map((s) => s.time)), [date, steps]);
@@ -516,6 +532,9 @@ export const StageMode: React.FC<StageModeProps> = ({
 
         {/* Setlist */}
         <section className={cn('flex flex-col flex-1 min-h-0 gap-1 [@media(max-height:520px)_and_(min-width:600px)]:col-start-2 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-span-3', split && 'col-start-2 row-start-1 row-span-3', split && showSide && 'row-span-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-2')} aria-label={t('Setlist')}>
+          {session && (
+            <RehearsalSessionBar session={session} accentColor={accentColor} onShowSummary={() => setSummaryAsked(true)} className="pb-2" />
+          )}
           <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
             {views.length > 1 ? (
               <span className="flex items-center gap-1 min-w-0" role="tablist" aria-label={t('Setlist')}>
@@ -808,6 +827,23 @@ export const StageMode: React.FC<StageModeProps> = ({
       {showClick && clickState && click && (
         <StageClickFrame state={clickState} offset={click.offset} accent={accentColor} onDone={clickUi.onDone} />
       )}
+      <AnimatePresence>
+        {summary && session && (
+          <RehearsalSummaryDialog
+            summary={summary}
+            accentColor={accentColor}
+            onResume={
+              session.canControl
+                ? () => {
+                    closeSummary();
+                    session.resume();
+                  }
+                : undefined
+            }
+            onClose={closeSummary}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

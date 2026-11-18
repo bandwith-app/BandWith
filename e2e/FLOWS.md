@@ -75,6 +75,11 @@ check (`app.check`) on each screen it reaches.
 | A rehearsal without focus songs says "No songs picked for this rehearsal yet." | `stage-live` | full |
 | Gig Stage mode unchanged: name, run of show, strike off; Exit and system Back return to the gig | `stage-live` | all |
 | Live sync between two devices: the admin's Next reaches a member following (rehearsal and gig) | `stage-live` | full |
+| Rehearsal session: a running session shows its clock in Live mode and on the rehearsal page; members get no controls; before the start only the admin sees Start rehearsal (Duo Laptop: the floor wedge's clock and Pause) | `rehearsal-session` | all |
+| Rehearsal session: start, pause (clock stands), resume, two songs, End asks first, summary (songs played) saved and on the rehearsal page | `rehearsal-session` | full |
+| Rehearsal session survives closing Live mode and restarting the app | `rehearsal-session` | full |
+| Rehearsal session between two devices: the admin's start, pause and end reach a member (summary without Resume) | `rehearsal-session` | full |
+| Rehearsal session lifecycle (start → pause → resume → end → summary → page; restart) | model `rehearsal-live` | phone-portrait |
 | The Home rehearsal card's "Enter live mode" / "Check in / live" open the same live mode (no separate local session) | vitest `RehearsalExpanded.live` | unit |
 
 ## Create

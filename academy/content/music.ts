@@ -1194,6 +1194,17 @@ const music: AreaModule = {
         { type: "shot", id: "music-rehearsal-live", caption: "Live mode at a rehearsal: the focus songs, the current song's chords and Prev / Next, with no run of show." },
         {
           type: "list",
+          title: "The rehearsal timer",
+          items: [
+            "The admin taps **Start rehearsal** in Live mode. The clock runs for the whole band: members see it but don't control it.",
+            "**Pause** stops the clock (a break doesn't count) and **Resume** goes on. **End** asks first: **Keep going** or **End now**.",
+            "At the end everyone sees the **Rehearsal summary**: the time rehearsed without breaks, and the songs played (each song on screen while the clock ran counts once). The admin can still **Resume rehearsal**.",
+            "The session is saved: closing Live mode or restarting the app keeps it, and the rehearsal's page shows it under **REHEARSAL SESSION**. A recurring rehearsal has one session per date.",
+            "Without internet the admin's clock keeps going and is saved when back online. On the Duo folded like a laptop, the floor screen shows the clock and the admin's **Pause** / **Resume**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Good to know",
           items: [
             "Stage mode is offered for upcoming band gigs and, as Live mode, for upcoming band rehearsals; not for quotes, past events or personal gigs.",

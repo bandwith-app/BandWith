@@ -48,7 +48,11 @@ import { listDeputyRequests, type DeputyRequest } from '@/lib/services/deputies'
 import { KeyValueRow, LINK_CLASS, MemberRow, SectionTitle, type ResolvedMember } from '@/app/components/event/parts';
 import { useEventMembers } from '@/app/components/event/useEventMembers';
 import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh';
-import { useStageLive, SETLIST_ORDER_SAVED } from '@/app/components/event/useStageLive';
+import { useStageLive, SETLIST_ORDER_SAVED, type StageSessionBridge } from '@/app/components/event/useStageLive';
+import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
+import { RehearsalSessionCard } from './RehearsalSession';
+import { useBandFlag } from '@/lib/flags';
+import { occurrenceDate } from '@/lib/rehearsalSession';
 import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
@@ -685,12 +689,31 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
   // Live Stage mode: the admin's song steps and new order reach every
   // member with Stage mode open (private channel, migration 085).
+  // Rehearsal session (plan A1b, 131): Live mode's timer and the saved
+  // summary, one per occurrence. Flag `rehearsal_sessions` (flags.ts).
+  const sessionsOn = useBandFlag(event.band_id, 'rehearsal_sessions');
+  const sessionBridge = useRef<StageSessionBridge>({});
   const stageLive = useStageLive({
     eventId: isPersonalGig ? undefined : event.eventId,
     setlistId: event.setlistId,
     songs: setlistSongs,
     open: isStageOpen,
     isLeader: isAdmin,
+    session: sessionBridge,
+  });
+  const liveSong = stageLive.songs[stageLive.index];
+  const rehearsalSession = useRehearsalSession({
+    enabled: sessionsOn && isRehearsal && !isPersonalGig && !!event.band_id,
+    bandId: event.band_id,
+    eventId: event.eventId,
+    date: occurrenceDate(event.date),
+    open: isStageOpen,
+    isLeader: isAdmin,
+    currentSong: liveSong?.songId ? { id: liveSong.songId, title: liveSong.title } : null,
+    total: stageLive.songs.length,
+    connected: stageLive.connected,
+    send: stageLive.sendSession,
+    bridge: sessionBridge,
   });
   // The Bluetooth key is fetched while online, so Stage mode can sync offline on stage.
   useEffect(() => {
@@ -1997,6 +2020,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 </section>
               )}
 
+              {/* ─── REHEARSAL SESSION (A1b): the saved timer and songs played ─── */}
+              {isRehearsal && !isPersonalGig && rehearsalSession.state && (
+                <section className="flex flex-col gap-6">
+                  <SectionTitle title={t('REHEARSAL SESSION')} />
+                  <RehearsalSessionCard state={rehearsalSession.state} status={rehearsalSession.status} total={numSongs} />
+                </section>
+              )}
+
               {/* ─── NOTE (rehearsal): set in the iPad composer, Figma "Focus & note" ─── */}
               {isRehearsal && !isPersonalGig && (!!event.notes?.trim() || canEditOverview) && (
                 <section className="flex flex-col gap-6" aria-label={t('Notes')}>
@@ -2778,6 +2809,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             songsError={setlistError}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
+            session={isRehearsalLive ? rehearsalSession : undefined}
             songOpen={stageSongOpen}
             onSongOpenChange={setStageSongOpen}
             onClose={() => setIsStageOpen(false)}
@@ -2810,6 +2842,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           }}
           onClose={() => setIsStageOpen(false)}
           exitLabel={isRehearsalLive ? t('Exit live mode') : undefined}
+          session={isRehearsalLive ? rehearsalSession : undefined}
         />
       )}
 

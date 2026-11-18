@@ -4142,6 +4142,27 @@ const dict: Dictionary = {
   "This download is not newer than your BandWith. Try again later.": "Ce téléchargement n’est pas plus récent que ton BandWith. Réessaie plus tard.",
   "This copy of BandWith can’t be updated. Uninstall it, then install BandWith from the release page once.": "Cette copie de BandWith ne peut pas être mise à jour. Désinstalle-la, puis installe BandWith une fois depuis la page des versions.",
   "Couldn’t update inside the app. The download opens in your browser.": "Mise à jour impossible dans l’app. Le téléchargement s’ouvre dans le navigateur.",
+  // Rehearsal session (Live mode timer, A1b)
+  "End|session": "Terminer",
+  "End now": "Terminer maintenant",
+  "End rehearsal?": "Terminer la répétition ?",
+  "Ended": "Terminée",
+  "Keep going": "Continuer",
+  "No songs played in live mode.": "Aucun morceau joué en mode live.",
+  "Not started": "Pas commencée",
+  "Paused": "En pause",
+  "REHEARSAL SESSION": "SÉANCE DE RÉPÉTITION",
+  "Rehearsal summary": "Résumé de la répétition",
+  "Rehearsal timer": "Minuteur de la répétition",
+  "Rehearsed {time}": "Temps de répétition {time}",
+  "Rehearsing": "Répétition en cours",
+  "Resume": "Reprendre",
+  "Resume rehearsal": "Reprendre la répétition",
+  "Saved when back online": "Enregistrée au retour en ligne",
+  "Start rehearsal": "Commencer la répétition",
+  "{h} h {m} min": "{h} h {m} min",
+  "{m} min": "{m} min",
+  "{played} of {total} songs played": "{played} morceaux joués sur {total}",
 };
 
 export default dict;

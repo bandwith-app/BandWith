@@ -1184,6 +1184,17 @@ const music: AreaText = {
         { type: "shot", id: "music-rehearsal-live", caption: "O Modo ao vivo num ensaio: as músicas em foco, os acordes da música atual e Anterior / Próxima, sem roteiro." },
         {
           type: "list",
+          title: "O cronômetro do ensaio",
+          items: [
+            "O admin toca em **Começar o ensaio** no Modo ao vivo. O tempo corre para a banda toda: os membros veem, mas não controlam.",
+            "**Pausar** para o tempo (um intervalo não conta) e **Retomar** continua. **Encerrar** pergunta antes: **Continuar** ou **Encerrar agora**.",
+            "No fim, todos veem o **Resumo do ensaio**: o tempo ensaiado sem intervalos e as músicas tocadas (cada música na tela enquanto o tempo corria conta uma vez). O admin ainda pode **Retomar o ensaio**.",
+            "A sessão é salva: fechar o Modo ao vivo ou reiniciar o app a mantém, e a página do ensaio a mostra em **SESSÃO DE ENSAIO**. Um ensaio recorrente tem uma sessão por data.",
+            "Sem internet, o tempo do admin continua e é salvo quando voltar a ficar online. No Duo dobrado como um notebook, a tela no chão mostra o tempo e, para o admin, **Pausar** / **Retomar**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bom saber",
           items: [
             "O Modo palco existe para os shows futuros da banda e, como Modo ao vivo, para os ensaios futuros da banda; não para orçamentos, eventos passados nem shows pessoais.",

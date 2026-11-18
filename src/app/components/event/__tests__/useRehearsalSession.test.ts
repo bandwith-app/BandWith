@@ -1,0 +1,114 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+
+const fetchMock = vi.fn();
+const saveMock = vi.fn();
+vi.mock('@/lib/services/rehearsalSessions', () => ({
+  fetchRehearsalSession: (...a: unknown[]) => fetchMock(...a),
+  saveRehearsalSession: (...a: unknown[]) => saveMock(...a),
+}));
+
+import { useRehearsalSession } from '../useRehearsalSession';
+import type { StageSessionBridge } from '../useStageLive';
+import { startSession, toRow } from '@/lib/rehearsalSession';
+
+const CTX = { bandId: 'band-1', eventId: 'event-1', date: '2026-11-19' };
+
+const setup = (over: Partial<Parameters<typeof useRehearsalSession>[0]> = {}) => {
+  const bridge: { current: StageSessionBridge } = { current: {} };
+  const send = vi.fn();
+  const hook = renderHook((p: Partial<Parameters<typeof useRehearsalSession>[0]>) =>
+    useRehearsalSession({
+      enabled: true,
+      ...CTX,
+      open: true,
+      isLeader: true,
+      currentSong: { id: 's1', title: 'Paper Boats' },
+      total: 3,
+      connected: true,
+      send,
+      bridge,
+      ...over,
+      ...p,
+    }),
+  { initialProps: {} });
+  return { ...hook, bridge, send };
+};
+
+beforeEach(() => {
+  localStorage.clear();
+  fetchMock.mockReset().mockResolvedValue(null);
+  saveMock.mockReset().mockResolvedValue({ error: null });
+});
+
+describe('useRehearsalSession (A1b)', () => {
+  it('the admin starts it: sent to the band, saved, the current song counts as played', async () => {
+    const { result, send } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.start());
+    expect(result.current.status).toBe('live');
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ v: 1, eventId: 'event-1', date: '2026-11-19' }));
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    const row = saveMock.mock.calls[0][0];
+    expect(row).toMatchObject({ band_id: 'band-1', event_id: 'event-1', occurrence_date: '2026-11-19', ended_at: null });
+    await waitFor(() => expect(result.current.state?.played).toEqual([{ id: 's1', title: 'Paper Boats' }]));
+  });
+
+  it('offline: kept on the device, saved when the network is back', async () => {
+    saveMock.mockResolvedValue({ error: { message: 'offline' } });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.unsaved).toBe(true));
+    expect(localStorage.getItem('bw-rehearsal-session:event-1|2026-11-19')).toContain('"dirty":true');
+    saveMock.mockResolvedValue({ error: null });
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    expect(localStorage.getItem('bw-rehearsal-session:event-1|2026-11-19')).toContain('"dirty":false');
+  });
+
+  it('an unsaved session on the device wins over the server after a restart, and is saved', async () => {
+    const mine = startSession(Date.now() - 60_000);
+    localStorage.setItem('bw-rehearsal-session:event-1|2026-11-19', JSON.stringify({ row: toRow(mine, CTX, 3, Date.now()), dirty: true }));
+    fetchMock.mockResolvedValue(null);
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.state?.startedAt).toBe(mine.startedAt);
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+  });
+
+  it('a member shows what is saved, then follows the admin on the channel', async () => {
+    const saved = startSession(Date.now() - 5 * 60_000);
+    fetchMock.mockResolvedValue({ state: saved, summary: null });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    expect(result.current.canControl).toBe(false);
+    act(() => bridge.current.receive?.({ v: 1, eventId: 'event-1', date: '2026-11-19', row: { ...toRow(saved, CTX, 3, Date.now()), ended_at: new Date().toISOString() } }));
+    expect(result.current.status).toBe('ended');
+    expect(result.current.justEnded).toBe(true);
+    // Another rehearsal's session is ignored.
+    act(() => bridge.current.receive?.({ v: 1, eventId: 'event-2', date: '2026-11-19', row: null }));
+    expect(result.current.status).toBe('ended');
+    // A member never writes.
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('the admin answers a late arrival with the running session', async () => {
+    const { result, bridge } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(bridge.current.latest?.()).toBeNull();
+    act(() => result.current.start());
+    expect(bridge.current.latest?.()).toMatchObject({ v: 1, eventId: 'event-1', row: { occurrence_date: '2026-11-19' } });
+  });
+
+  it('off (flag, not a band rehearsal): nothing read or written', async () => {
+    const { result } = setup({ enabled: false });
+    act(() => result.current.start());
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.status).toBe('idle');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+});

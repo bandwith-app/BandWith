@@ -45,9 +45,23 @@ export interface LiveSongRef {
   setNumber?: number;
 }
 
+/** Channel event carrying the rehearsal session (useRehearsalSession). */
+export const SESSION_EVENT = 'session';
+
+/**
+ * A rehearsal session riding on the live channel: what to do with one that
+ * arrives, and (leader) the newest one to send to late arrivals.
+ */
+export interface StageSessionBridge {
+  receive?: (payload: unknown) => void;
+  latest?: () => unknown;
+}
+
 interface Options<T extends LiveSongRef> {
   /** Gig id; band gigs only (the channel checks band membership). */
   eventId?: string;
+  /** Rehearsal session (Live mode timer) carried on the same channel. */
+  session?: { current: StageSessionBridge };
   setlistId?: string;
   /** Saved setlist, in saved order. */
   songs: T[];
@@ -98,7 +112,9 @@ const SAVE_DELAY_MS = 700;
  * - Someone opening Stage mode joins the channel's presence; the leader's app
  *   then sends its state again so late arrivals catch up.
  */
-export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader }: Options<T>) {
+export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader, session }: Options<T>) {
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const clientId = useMemo(() => Math.random().toString(36).slice(2, 10), []);
   const [order, setOrder] = useState<string[] | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
@@ -228,6 +244,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const state = parseStageState(msg?.payload);
         if (state) receive(state);
       })
+      .on('broadcast', { event: SESSION_EVENT }, (msg: { payload?: unknown }) => {
+        sessionRef.current?.current.receive?.(msg?.payload);
+      })
       .on('broadcast', { event: CLICK_EVENT }, (msg: { payload?: unknown }) => {
         const state = parseClickState(msg?.payload);
         if (state) receiveClick(state);
@@ -256,6 +275,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
           void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickRef.current });
         }
+        // So does the rehearsal session (timer) the leader runs.
+        const sessionNow = isLeader ? sessionRef.current?.current.latest?.() : null;
+        if (sessionNow) void channel.send({ type: 'broadcast', event: SESSION_EVENT, payload: sessionNow });
         if (!ledRef.current || !lastRef.current) return;
         if (lastRef.current.from !== clientId) return;
         void channel.send({ type: 'broadcast', event: 'state', payload: lastRef.current });
@@ -455,9 +477,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [isLeader, setlistId, ordered, send, songId, index, flushSave],
   );
 
+  /** Send the rehearsal session to everyone in Live mode (leader). */
+  const sendSession = useCallback((payload: unknown) => {
+    void channelRef.current?.send({ type: 'broadcast', event: SESSION_EVENT, payload });
+  }, []);
+
   return {
     /** The setlist in its live order. */
     songs: ordered,
+    sendSession,
     index,
     select,
     go,

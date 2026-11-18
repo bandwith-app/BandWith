@@ -797,6 +797,16 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_my_pending_invitations':
       data = [];
       break;
+    // Feature flags (130): platform switches, and the band's own for its members.
+    case 'bw_band_features': {
+      const bools = (rows: Row[]) => Object.fromEntries(rows.filter((r) => typeof r.enabled === 'boolean').map((r) => [r.key, r.enabled]));
+      const member = table('band_members').some((r) => r.band_id === args.p_band_id && r.user_id === DEMO_USER.id);
+      data = {
+        platform: bools(table('platform_switches')),
+        band: member ? bools(table('band_features').filter((r) => r.band_id === args.p_band_id)) : {},
+      };
+      break;
+    }
     case 'bw_preview_invitation':
     case 'bw_accept_invitation':
     case 'bw_decline_invitation':

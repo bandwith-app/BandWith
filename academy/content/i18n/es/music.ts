@@ -1055,6 +1055,17 @@ const music: AreaText = {
         { type: "shot", id: "music-rehearsal-live", caption: "El Modo en vivo en un ensayo: las canciones a ensayar, los acordes de la canción actual y Anterior / Siguiente, sin horario." },
         {
           type: "list",
+          title: "El temporizador del ensayo",
+          items: [
+            "El admin toca **Empezar el ensayo** en el Modo en vivo. El reloj corre para toda la banda: los miembros lo ven pero no lo controlan.",
+            "**Pausa** detiene el reloj (un descanso no cuenta) y **Reanudar** sigue. **Terminar** pregunta antes: **Seguir** o **Terminar ahora**.",
+            "Al final todos ven el **Resumen del ensayo**: el tiempo ensayado sin descansos y las canciones tocadas (cada canción en pantalla mientras corría el reloj cuenta una vez). El admin aún puede **Reanudar el ensayo**.",
+            "La sesión se guarda: cerrar el Modo en vivo o reiniciar la app la mantiene, y la página del ensayo la muestra en **SESIÓN DE ENSAYO**. Un ensayo recurrente tiene una sesión por fecha.",
+            "Sin internet el reloj del admin sigue y se guarda al volver a estar en línea. En el Duo plegado como un portátil, la pantalla del suelo muestra el reloj y, para el admin, **Pausa** / **Reanudar**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Conviene saber",
           items: [
             "El Modo escenario está disponible en los próximos conciertos de la banda y, como Modo en vivo, en los próximos ensayos de la banda; no en presupuestos, eventos pasados ni conciertos personales.",
