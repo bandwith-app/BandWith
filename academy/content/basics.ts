@@ -1035,7 +1035,7 @@ const basics: AreaModule = {
             ["Dual-screen, Laptop pose", "Upper half (Display) to read, lower half (Deck) to touch", "Special layouts: Band desk, Planner, Find a date, Floor wedge, Quote desk. Can be switched off in **Settings › iPhone Duo**."],
             ["Dual-screen, fully open in landscape", "Two even pages from 860 px wide", "Like Book, with the rail beside them."],
             ["Android", "Same as the phone or tablet", "System Back and back gesture, **Tap again to exit**, contacts import. Installed from an APK file."],
-            ["Web (bandwith-beryl.vercel.app)", "Phone layout in a narrow window, wide layout from 744 px", "No push, no Face ID / fingerprint, no app lock, no Bluetooth Stage sync. Escape and browser Back close layers."],
+            ["Web (app.bandwith.fun)", "Phone layout in a narrow window, wide layout from 744 px", "No push, no Face ID / fingerprint, no app lock, no Bluetooth Stage sync. Escape and browser Back close layers."],
           ],
         },
         {
@@ -1223,13 +1223,13 @@ const basics: AreaModule = {
     {
       id: "using-the-web-app",
       title: "In a web browser",
-      summary: "What works at bandwith-beryl.vercel.app and what needs the phone app.",
+      summary: "What works at app.bandwith.fun and what needs the phone app.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["web", "browser", "desktop", "computer", "website", "laptop"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Open bandwith-beryl.vercel.app and sign in with the same account. Your bands, gigs and settings are the same as in the app. A narrow window gets the phone layout; from 744 px wide you get the tablet layout ([[ipad-layout]])." },
+        { type: "p", text: "Open app.bandwith.fun and sign in with the same account. Your bands, gigs and settings are the same as in the app. A narrow window gets the phone layout; from 744 px wide you get the tablet layout ([[ipad-layout]])." },
         {
           type: "list",
           title: "Not on the web",

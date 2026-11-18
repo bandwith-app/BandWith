@@ -6,7 +6,7 @@
  * `unlockedThisRun` below, survives a trip to the background but not a cold
  * start.
  *
- * Native only (iOS, iPadOS, Android). On the web (bandwith-beryl.vercel.app) there
+ * Native only (iOS, iPadOS, Android). On the web (app.bandwith.fun) there
  * is no device check a page can trust, and closing the tab of a shared
  * computer is what signing out is for, so the web never locks.
  *

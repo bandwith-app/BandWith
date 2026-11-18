@@ -24,7 +24,7 @@ export type Role = 'admin' | 'member' | 'deputy';
  *  duoLaptop    dual-screen in laptop posture (top half content, bottom half controls)
  *  duoLand      dual-screen fully open in landscape
  *  android      Android-specific behaviour (back gesture, APK…)
- *  web          the browser version at bandwith-beryl.vercel.app
+ *  web          the browser version at app.bandwith.fun
  */
 export type Device =
   | 'phone'

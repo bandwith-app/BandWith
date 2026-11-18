@@ -1028,7 +1028,7 @@ const basics: AreaText = {
             ["Dual-Screen, Laptop-Haltung", "Obere Hälfte (Display) zum Lesen, untere Hälfte (Deck) zum Tippen", "Eigene Layouts: Band-Pult, Planer, Termin finden, Bühnenmonitor, Angebots-Pult. Abschaltbar unter **Einstellungen › iPhone Duo**."],
             ["Dual-Screen, ganz aufgeklappt im Querformat", "Zwei gleich große Seiten ab 860 px Breite", "Wie Buch, mit der Leiste daneben."],
             ["Android", "Wie Handy oder Tablet", "System-Zurück und Zurück-Geste, **Zum Beenden erneut tippen**, Kontakte-Import. Installation per APK-Datei."],
-            ["Web (bandwith-beryl.vercel.app)", "Handy-Layout in einem schmalen Fenster, breites Layout ab 744 px", "Kein Push, kein Face ID / Fingerabdruck, keine App-Sperre, kein Bühnen-Sync per Bluetooth. Escape und „Zurück“ im Browser schließen Ebenen."],
+            ["Web (app.bandwith.fun)", "Handy-Layout in einem schmalen Fenster, breites Layout ab 744 px", "Kein Push, kein Face ID / Fingerabdruck, keine App-Sperre, kein Bühnen-Sync per Bluetooth. Escape und „Zurück“ im Browser schließen Ebenen."],
           ],
         },
         {
@@ -1216,13 +1216,13 @@ const basics: AreaText = {
     {
       id: "using-the-web-app",
       title: "Im Webbrowser",
-      summary: "Was unter bandwith-beryl.vercel.app funktioniert und was die Handy-App braucht.",
+      summary: "Was unter app.bandwith.fun funktioniert und was die Handy-App braucht.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["Web", "Browser", "Desktop", "Computer", "Website", "Laptop"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Öffne bandwith-beryl.vercel.app und melde dich mit demselben Konto an. Deine Bands, Gigs und Einstellungen sind dieselben wie in der App. Ein schmales Fenster bekommt das Handy-Layout; ab 744 px Breite bekommst du das Tablet-Layout ([[ipad-layout]])." },
+        { type: "p", text: "Öffne app.bandwith.fun und melde dich mit demselben Konto an. Deine Bands, Gigs und Einstellungen sind dieselben wie in der App. Ein schmales Fenster bekommt das Handy-Layout; ab 744 px Breite bekommst du das Tablet-Layout ([[ipad-layout]])." },
         {
           type: "list",
           title: "Nicht im Web",

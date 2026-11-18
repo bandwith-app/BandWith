@@ -63,8 +63,8 @@ describe('screen to open after a dead link', () => {
     expect(authScreenFromUrl('?bw_screen=sign-in')).toBe('sign-in');
     expect(authScreenFromUrl('?bw_screen=flow')).toBeNull();
     expect(authScreenFromUrl('')).toBeNull();
-    expect(authScreenUrl('https://bandwith-beryl.vercel.app', 'forgot-password')).toBe(
-      'https://bandwith-beryl.vercel.app/?bw_screen=forgot-password'
+    expect(authScreenUrl('https://app.bandwith.fun', 'forgot-password')).toBe(
+      'https://app.bandwith.fun/?bw_screen=forgot-password'
     );
   });
 });

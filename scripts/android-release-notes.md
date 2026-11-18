@@ -20,4 +20,4 @@ When a new version is out, BandWith says **BandWith … is available** (also in 
 ### Aggiornamenti
 Quando esce una nuova versione, BandWith dice **BandWith … è disponibile** (anche in **Impostazioni** › **Informazioni**). Tocca **Aggiorna**: l'app la scarica e mostra a che punto è. Solo la prima volta Android chiede di permettere a BandWith di installare app: tocca **Consenti**, attiva **Consenti da questa origine** e torna indietro. Poi tocca **Installa**. Da lì in poi un aggiornamento è **Aggiorna** › **Installa**. Se l'aggiornamento nell'app non riesce, il download si apre nel browser.
 
-Guide: https://bandwith-beryl.vercel.app/academy/
+Guide: https://app.bandwith.fun/academy/

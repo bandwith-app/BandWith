@@ -36,7 +36,7 @@ function Shot({ id, caption, device: pinned }: { id: string; caption: string; de
               <i />
               <i />
               <i />
-              <span>bandwith-beryl.vercel.app</span>
+              <span>app.bandwith.fun</span>
             </div>
           )}
           <div

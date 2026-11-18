@@ -1017,7 +1017,7 @@ const basics: AreaText = {
             ["Doble pantalla, postura portátil", "Mitad de arriba (Display) para leer, mitad de abajo (Deck) para tocar", "Diseños especiales: escritorio de la banda, planificador, busca una fecha, monitor de suelo, mesa de presupuestos. Se puede desactivar en **Ajustes › iPhone Duo**."],
             ["Doble pantalla, abierto del todo en horizontal", "Dos páginas iguales desde 860 px de ancho", "Como el modo libro, con la barra lateral al lado."],
             ["Android", "Igual que el móvil o la tablet", "Atrás del sistema y gesto de volver, **Toca otra vez para salir**, importar contactos. Se instala desde un archivo APK."],
-            ["Web (bandwith-beryl.vercel.app)", "Diseño de móvil en una ventana estrecha, diseño ancho desde 744 px", "Sin push, sin Face ID / huella, sin bloqueo de la app, sin sincronización por Bluetooth en el Modo escenario. Escape y el Atrás del navegador cierran capas."],
+            ["Web (app.bandwith.fun)", "Diseño de móvil en una ventana estrecha, diseño ancho desde 744 px", "Sin push, sin Face ID / huella, sin bloqueo de la app, sin sincronización por Bluetooth en el Modo escenario. Escape y el Atrás del navegador cierran capas."],
           ],
         },
         {
@@ -1205,13 +1205,13 @@ const basics: AreaText = {
     {
       id: "using-the-web-app",
       title: "En un navegador web",
-      summary: "Qué funciona en bandwith-beryl.vercel.app y qué necesita la app del móvil.",
+      summary: "Qué funciona en app.bandwith.fun y qué necesita la app del móvil.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["web", "navegador", "escritorio", "ordenador", "sitio web", "portátil"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Abre bandwith-beryl.vercel.app y entra con la misma cuenta. Tus bandas, conciertos y ajustes son los mismos que en la app. Una ventana estrecha usa el diseño de móvil; desde 744 px de ancho tienes el diseño de tablet ([[ipad-layout]])." },
+        { type: "p", text: "Abre app.bandwith.fun y entra con la misma cuenta. Tus bandas, conciertos y ajustes son los mismos que en la app. Una ventana estrecha usa el diseño de móvil; desde 744 px de ancho tienes el diseño de tablet ([[ipad-layout]])." },
         {
           type: "list",
           title: "No disponible en la web",
