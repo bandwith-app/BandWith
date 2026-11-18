@@ -1,7 +1,7 @@
 # Next big updates: rehearsal live mode with notes (A), getting paid with Stripe Connect (B)
 
 Status: **plan only, no product code.** Written 2026-11-16, on top of `main` 030dcae (release 1.0.6 being finished).
-**Update B (Stripe payments) is on hold since 2026-11-17, by the user's decision.** Only update A goes ahead; B0 (accountant, lawyer, Stripe setup) and B1 do not start until the user lifts the hold. The B sections stay as a reference.
+**Update B (Stripe payments) is on hold since 2026-11-17, by the user's decision.** Only update A goes ahead; B0 (accountant, lawyer, Stripe setup) and B1 do not start until the user lifts the hold. The B sections stay as a reference. **On 2026-11-18 the user set B's flow and decisions (§4.0): Stripe optional, the invoicing admin holds the account, no member accounts, a split ledger with cash/transfer, the deposit confirms the gig, and the balance is sent with one tap.**
 
 Work starts **after the user has tried 1.0.6**. Nothing here is decided until the open questions (§5) are answered.
 
@@ -155,6 +155,70 @@ All new, additive. Migration numbers: take the next free number at the time, and
 
 ## 4. Update B: getting paid in the app with Stripe Connect
 
+### 4.0 The user's flow and decisions (2026-11-18)
+
+These decisions replace the matching parts of 4.1–4.8, §5, §7.2 and §10. B stays **on hold for building** until the user says to start; this records the design.
+
+**The flow the user wants**
+1. Create the quote.
+2. Send it.
+3. The client sees it and pays the deposit.
+4. The money arrives and the app updates every status.
+5. The gig.
+6. During the evening the app prepares the final balance (without the deposit).
+7. The client receives it and pays.
+8. The money arrives and the app notifies.
+9. The admin divides the gig's money with the members and pays them.
+
+**Decisions**
+- **Stripe is an optional extra, never required.** Bank transfer and cash keep working exactly as today. A band turns on card payments only if its invoicing admin connects a Stripe account. Bands without Stripe see no change (flag off = today's screens, byte-identical).
+- **The admin always invoices the client**, so the Stripe account belongs to **the invoicing admin** (as an individual or a business). Other admins of the band see the payment statuses but don't manage the account. This answers Q-B1.
+  - If that admin leaves the band, card payments switch off for new requests until another admin connects their own account. Past payments stay readable.
+- **No friction for members: no member ever needs a Stripe account.** Automatic member payouts (**B6**, separate charges and transfers) are **dropped**, together with the platform liability, member KYC and held-funds questions. Direct charges on the admin's account stay the only model.
+- **Splits = ledger only (B5).**
+  - The app proposes each member's share from the fees already on the gig; the remainder goes to the band fund.
+  - The admin pays each member by hand and records **how**: cash, bank transfer or other. This needs a `paid_method` column next to `event_members.paid_at` in a new migration, with its GRANT, and `bw_set_member_paid` extended.
+  - A member sees only their own share, whether it is paid, when, and how.
+  - Payouts due (#74) keeps working unchanged.
+- **The deposit paid confirms the gig automatically.**
+  - On the webhook for a paid deposit, the server does what `gigFromAcceptedQuote` (`src/lib/services/quotes.ts`) does today in the admin's app: the tentative event becomes confirmed, or a confirmed event is created from the quote with its lineup. Then the usual lineup notifications go out.
+  - To keep one source of truth, that logic moves into one SECURITY DEFINER RPC that both the app and the webhook call. The tests pin today's behaviour first (the `quote` XState model).
+  - It is idempotent: a confirmed gig stays confirmed, and replayed events do nothing.
+- **The balance is prepared automatically and sent with one tap.**
+  - When the gig's last set starts (from the run of show; or at the show's end time if there are no sets), the app prepares the balance request: total minus the deposit received minus any refunds.
+  - The admin gets a push: "Balance ready: €X. Send?". One tap sends it through the same quote link and email (template previewed and approved by the user first). Edits before sending are possible (extra hour, extras).
+  - Nothing is sent without that tap.
+- **Invoices (needs the accountant, §6).** The app does not issue Italian fiscal invoices in the pilot.
+  - It prepares the deposit request and the **balance request** (non-fiscal) and stores the number of the real invoice the admin issues in their own software.
+  - Under the general Italian VAT rule an advance payment normally needs its own invoice when it is received, and the balance invoice then refers to it. The accountant confirms this for each regime (ordinary, flat-rate…).
+  - Sending e-invoices to SDI through a provider's API is a possible later phase (B8), only if the accountant says it is worth it.
+- **Clients can still pay outside the app** (cash, bank transfer). The admin marks the deposit or balance received by hand, as today.
+
+**Deposit tweaks without Stripe (decided 2026-11-18, ~2–3 d).** Today the client can only accept on `/quote.html`. Bank details are only on the PDF, and **nothing in the app ever writes `events.deposit_paid`**, so readiness keeps saying the deposit is due.
+
+The four tweaks:
+1. The admin marks **Deposit received** with a method (transfer / cash / other). That sets `deposit_paid` and **confirms the gig** through the shared RPC.
+2. After Accept, the quote page shows how to pay: amount, IBAN, a payment reference with the quote ref, and a due date if set. Client-facing only, through the token RPC.
+3. The acceptance text names the deposit to be paid (neutral wording, not a signature).
+4. The band's own payment link (the existing `stripe_payment_link` / PayPal.me field), if set, appears on the page and the PDF. Receipt is still marked by hand.
+
+**Order agreed with the user (11-18):** egress fixes #206 → rehearsal A1b → A2 → A3 → A4 → **deposit tweaks** → one release candidate with the emulator gate. One app change at a time. The Stripe phases (B1+) stay on hold.
+
+**Revised B phases** (B6 removed):
+
+| Phase | What | Estimate |
+| --- | --- | --- |
+| B0 | Accountant (invoicing regime of the admin, deposit invoice, cash payments to members), Stripe platform account and its legal owner, remove legacy prod functions | user time |
+| B1 | Server foundation (flag off): migrations, webhook with signature + idempotency, money module, demo adapter | 3–4 d |
+| B2 | Optional Stripe connection for the invoicing admin (Settings → Payments), hosted onboarding, deep link back | 2–3 d |
+| B3 | Pay the deposit from the quote page. Statuses + pushes. **Gig auto-confirmed** (shared RPC). Refunds. | 3–5 d |
+| B4 | Balance prepared at the last set, push "Send?", one-tap send, pay the balance, fiscal invoice number fields | 3–5 d |
+| B5 | Split ledger with payment method (cash / transfer / other), member sees own line, CSV export | 2–3 d |
+| B7 | Reconciliation, kill switch drill, runbook (before any live key) | 2–3 d |
+| **Total** | | **15–23 d** |
+
+**Releases stay manual:** nothing goes to production without the user's explicit confirmation.
+
 ### 4.1 Recommended Connect model
 
 Stripe now treats Standard / Express / Custom as **legacy account types** and recommends the **Accounts v2 API** (configurations + responsibilities) for new platforms. The plan uses v2 terms and gives the legacy equivalent in brackets.
@@ -299,14 +363,14 @@ My proposed default is in **bold**. A default is used only if the user agrees.
 - Q-A3 is revised: band-editable presets only if the band asks for them.
 
 **Update B**
-- **Q-B1 Who owns the band's Stripe account?** **The admin who onboards, as an individual or the band's company.** What happens when they leave the band?
+- **Q-B1 Who owns the band's Stripe account?** **Answered 11-18: the admin who invoices the client** (§4.0).
 - **Q-B2 Who is the platform?** The Stripe platform account needs a legal owner (the user as sole trader? a company?). This must be settled before any live key (see §6).
 - **Q-B3 Platform fee?** **0% in the pilot.** Later: a percentage, a flat fee, or part of a subscription.
 - **Q-B4 Countries in the pilot?** **Italy only. Brazil excluded.** The US later.
 - **Q-B5 Payment methods?** **Card + Apple Pay / Google Pay through Checkout.** SEPA Direct Debit or bank transfer through Stripe later, because settlement is slower.
 - **Q-B6 Is the app's final document a tax invoice?** **No, it's a "final payment request". The band issues the fiscal invoice in its own tool.** The accountant decides.
 - **Q-B7 When can members be paid out of a payment, and how long can a split wait for a member who has not onboarded?** **After the gig is over and the funds are available, and for B6 a hold of at most N days, then the admin pays by hand.**
-- **Q-B8 Automatic member payouts (B6) at all?** **Not in the pilot.** The ledger (B5) comes first, and B6 is decided after the lawyer's answer.
+- **Q-B8 Automatic member payouts (B6) at all?** **Answered 11-18: no.** Members never need a Stripe account; the ledger (B5) records cash / transfer / other (§4.0).
 - **Q-B9 Which band is the live pilot?** Who is its admin, and in which country is it registered?
 - **Q-B10 Deposit policy texts** (refundable or not, cancellation terms): the band's own, shown on the quote page? **Yes, from the band's quote terms. The app doesn't define them.**
 
@@ -377,7 +441,7 @@ None of the points below is a conclusion. They are questions to put to professio
 | **B3 Deposit** | `payments-checkout`, Pay the deposit on `/quote.html`, success/processing states, admin push, `events.deposit_*` via RPC, refund from the app, QR "pay on the client's phone". Replaces `ONLINE_DEPOSITS_ENABLED`. | B2 |
 | **B4 Final balance** | final payment request document (6 languages, client language), fiscal number fields, send by link/email (template preview → user approval → deploy), manual reminders. | B3, accountant's answer on Q-B6 |
 | **B5 Splits ledger** | split sheet on the payment (defaults from member fees), member's own line only, "paid by hand" through 093, refund-after-payout flag, CSV export. | B3 (B4 not required) |
-| **B6 Automatic payouts** (optional) | member recipient onboarding, separate charges and transfers for new requests, held state, reversals. | lawyer's answers, B5 |
+| ~~**B6 Automatic payouts**~~ (dropped 11-18, §4.0) | member recipient onboarding, separate charges and transfers for new requests, held state, reversals. | lawyer's answers, B5 |
 | **B7 Ops** | `payments-reconcile` + daily report, kill switch drill, monitoring (failed webhooks count, stuck processing > 1 h), runbook. **Before the live pilot.** | B3 |
 
 ### 7.3 What can run in parallel sessions
