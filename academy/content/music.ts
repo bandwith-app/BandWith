@@ -1216,6 +1216,16 @@ const music: AreaModule = {
         },
         {
           type: "list",
+          title: "To practise, and the next rehearsal",
+          items: [
+            "Home shows **To practise**: the songs with open notes for you or the band, newest rehearsal first. Tap **Practised** on a note for you; tap the song to open its page. On the Duo folded like a laptop, the songs are in the desk's **Action items**.",
+            "The song's page shows **From rehearsals** above your notes. A **Tempo** or **Key** note that names the value (for example “Tempo: 96” or “Key: Bb”) gets a button: admins **Set on the song**, members **Suggest to the band**.",
+            "The next rehearsal's page shows **FROM LAST TIME**: open notes from earlier rehearsals on its songs. Admins tap **OK** when the band has it. In Live mode a badge on each song opens its notes from last time.",
+            "When an admin creates a rehearsal, **From open rehearsal notes** offers the songs with open notes as focus songs, one tap each. A new rehearsal poll picks them in advance; remove the ones you don't need.",
+          ],
+        },
+        {
+          type: "list",
           title: "Good to know",
           items: [
             "Stage mode is offered for upcoming band gigs and, as Live mode, for upcoming band rehearsals; not for quotes, past events or personal gigs.",

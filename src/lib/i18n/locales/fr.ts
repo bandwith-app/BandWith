@@ -4206,6 +4206,23 @@ const dict: Dictionary = {
   "Write": "Écrire",
   "Mark": "Marquer",
   "Note": "Note",
+  // Plan A3: To practise, From last time, song page strip
+  "Add focus song: {title}": "Ajouter un morceau à travailler : {title}",
+  "FROM LAST TIME": "DE LA DERNIÈRE FOIS",
+  "From last time": "De la dernière fois",
+  "From last time · {title}: {count}": "De la dernière fois · {title} : {count}",
+  "From open rehearsal notes": "Des notes de répétition ouvertes",
+  "From rehearsals": "Des répétitions",
+  "From rehearsals · {count}": "Des répétitions · {count}",
+  "From the rehearsal of {date}": "De la répétition du {date}",
+  "Key: {key}": "Tonalité : {key}",
+  "More songs: {count}": "Autres morceaux : {count}",
+  "Picked from open rehearsal notes. Remove the ones you don’t need.": "Choisis dans les notes de répétition ouvertes. Retire ceux dont tu n’as pas besoin.",
+  "Set on the song: {what}": "Appliquer au morceau : {what}",
+  "Suggest to the band: {what}": "Suggérer au groupe : {what}",
+  "To practise": "À travailler",
+  "To practise · {title}": "À travailler · {title}",
+  "{bpm} BPM": "{bpm} BPM",
 };
 
 export default dict;

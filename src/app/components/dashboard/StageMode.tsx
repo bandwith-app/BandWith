@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
@@ -30,6 +30,8 @@ import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './RehearsalSession';
 import { NoteSheetsHost, RehearsalNotesBar, marksToWrite, useNoteSheets, type LiveNotes } from './RehearsalNotes';
+import { EarlierNotesSheet } from './FromLastTime';
+import { openCountBySong } from '@/lib/toPractise';
 
 export interface StageStep {
   label: string;
@@ -163,6 +165,10 @@ export const StageMode: React.FC<StageModeProps> = ({
   const session = rehearsal && sessionProp?.enabled ? sessionProp : undefined;
   const notes = rehearsal && notesProp?.controls.enabled ? notesProp : undefined;
   const noteSheets = useNoteSheets(notes?.controls);
+  // A3: each song's open notes from last time, as a badge that opens them.
+  const earlier = notes?.earlier;
+  const earlierCounts = useMemo(() => (earlier ? openCountBySong(earlier.notes) : {}), [earlier]);
+  const [earlierSong, setEarlierSong] = useState<string | null>(null);
   // The summary: up when the session ends, or on request once ended.
   const [summaryAsked, setSummaryAsked] = useState(false);
   const summaryOpen = !!session && session.status === 'ended' && (session.justEnded || summaryAsked);
@@ -737,7 +743,27 @@ export const StageMode: React.FC<StageModeProps> = ({
                 rowClassName="rounded-none pl-0 border-b border-white/15 last:border-b-0"
                 isCurrent={(_, i) => i === current}
                 rowAction={
-                  canStrike && live?.toggleSkip
+                  earlier
+                    ? (row) => {
+                        const id = row.song.songId;
+                        const count = id ? earlierCounts[id] ?? 0 : 0;
+                        if (!id || count === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              haptic.tap();
+                              setEarlierSong(id);
+                            }}
+                            aria-label={t('From last time · {title}: {count}', { title: row.song.title, count })}
+                            className="min-w-11 h-11 px-3 flex items-center justify-center gap-1 rounded-full border border-white/40 text-white bw-label-sm"
+                          >
+                            <StickyNote className="w-4 h-4" aria-hidden />
+                            {count}
+                          </button>
+                        );
+                      }
+                    : canStrike && live?.toggleSkip
                     ? (row, i) => {
                         const struck = isStruck(row.song);
                         return (
@@ -868,6 +894,14 @@ export const StageMode: React.FC<StageModeProps> = ({
           />
         )}
       </AnimatePresence>
+      {earlier && (
+        <EarlierNotesSheet
+          songId={earlierSong}
+          title={songs.find((s) => s.songId === earlierSong)?.title ?? ''}
+          earlier={earlier}
+          onClose={() => setEarlierSong(null)}
+        />
+      )}
       {notes && (
         <NoteSheetsHost
           sheets={noteSheets}

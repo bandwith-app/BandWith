@@ -53,6 +53,9 @@ import { useRehearsalSession } from '@/app/components/event/useRehearsalSession'
 import { RehearsalSessionCard } from './RehearsalSession';
 import { NoteSheetsHost, RehearsalNotesSection, useNoteSheets, type LiveNotes } from './RehearsalNotes';
 import { useRehearsalNotes } from '@/app/components/event/useRehearsalNotes';
+import { useBandNotes } from '@/app/components/event/useBandNotes';
+import { FromLastTimeSection, type EarlierNotes } from './FromLastTime';
+import { fromLastTime } from '@/lib/toPractise';
 import { useBandFlag } from '@/lib/flags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
 import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
@@ -735,12 +738,23 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   );
   const sessionStateRef = useRef(rehearsalSession.state);
   sessionStateRef.current = rehearsalSession.state;
+  // A3: notes from earlier rehearsals on this one's songs ("From last time",
+  // Live mode badges), read band-wide (useBandNotes, shared with Home).
+  const bandNotes = useBandNotes(event.band_id, currentUserId, rehearsalNotes.enabled);
+  const lastTime = useMemo(
+    () => fromLastTime(bandNotes.notes, setlistSongs.map((s) => s.songId).filter((id): id is string => !!id), occurrenceDate(event.date) ?? ''),
+    [bandNotes.notes, setlistSongs, event.date],
+  );
+  const earlierNotes: EarlierNotes | undefined = rehearsalNotes.enabled
+    ? { notes: lastTime.flatMap((g) => g.notes), userId: currentUserId, isAdmin, practised: bandNotes.practised, ok: bandNotes.ok }
+    : undefined;
   const liveNotes: LiveNotes | undefined = rehearsalNotes.enabled
     ? {
         controls: rehearsalNotes,
         songs: noteSongs,
         members: noteMembers,
         elapsed: () => (sessionStateRef.current ? elapsedSeconds(sessionStateRef.current, Date.now()) : null),
+        earlier: earlierNotes,
       }
     : undefined;
   const pageNoteSheets = useNoteSheets(rehearsalNotes);
@@ -2054,6 +2068,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 <section className="flex flex-col gap-6">
                   <SectionTitle title={t('REHEARSAL SESSION')} />
                   <RehearsalSessionCard state={rehearsalSession.state} status={rehearsalSession.status} total={numSongs} />
+                </section>
+              )}
+
+              {/* ─── FROM LAST TIME (A3): open notes from earlier rehearsals on these songs ─── */}
+              {earlierNotes && lastTime.length > 0 && (
+                <section className="flex flex-col gap-6">
+                  <SectionTitle title={t('FROM LAST TIME')} />
+                  <FromLastTimeSection groups={lastTime} earlier={earlierNotes} />
                 </section>
               )}
 

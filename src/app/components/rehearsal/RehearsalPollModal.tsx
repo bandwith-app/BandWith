@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Sparkles, Send, ChevronLeft, ChevronRight, MapPin, Plus, Check } from '@/app/components/icons';
 import { useBand } from '@/lib/BandContext';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
+import { useFocusSuggestions } from './useFocusSuggestions';
 import { getActiveSymbol as sym } from '@/lib/currency';
 import { pollShareLabel } from './PollDetails';
 import { cn } from '@/app/components/ui/utils';
@@ -200,6 +201,26 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
     timeSlots.map((s) => ({ date: s.proposed_date, start: s.start_time, end: s.end_time })),
     isOpen
   );
+
+  // A3: songs with open rehearsal notes start picked (not for a member's proposal).
+  const focusSuggest = useFocusSuggestions(bandId, isOpen && !initialProposal);
+  const [suggestedIds, setSuggestedIds] = useState<string[]>([]);
+  const suggestTried = React.useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      suggestTried.current = false;
+      setSuggestedIds([]);
+      return;
+    }
+    if (initialProposal || suggestTried.current || !focusSuggest.ready || baseline === null) return;
+    suggestTried.current = true;
+    // Only on an untouched builder: the picks become its starting point.
+    if (focusSongs.length > 0 || focusSuggest.songs.length === 0) return;
+    setFocusSongs(focusSuggest.songs);
+    setSuggestedIds(focusSuggest.songs.map((s) => s.id));
+    setBaseline(snapshotOf({ title, notes, location, roomCost, focusSongs: focusSuggest.songs, excluded, timeSlots, voteBy, voteByTime }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialProposal, focusSuggest.ready, focusSuggest.songs, baseline]);
 
   // Pre-fill if opening from a member proposal
   useEffect(() => {
@@ -508,6 +529,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
               {t('Add')}
             </button>
           </div>
+          {focusSongs.some((s) => suggestedIds.includes(s.id)) && (
+            <span className="bw-body-sm text-muted-foreground">{t('Picked from open rehearsal notes. Remove the ones you don’t need.')}</span>
+          )}
         </div>
       </>
     );

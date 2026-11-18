@@ -1206,6 +1206,16 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Para praticar, e o próximo ensaio",
+          items: [
+            "O Início mostra **Para praticar**: as músicas com notas em aberto para ti ou para a banda, do ensaio mais recente. Toca em **Praticado** numa nota para ti; toca na música para abrir a sua página. No Duo dobrado como um portátil, as músicas estão nas **Pendências** da secretária.",
+            "A página da música mostra **Dos ensaios** acima das tuas notas. Uma nota de **Tempo** ou **Tom** que indica o valor (por exemplo “Tempo: 96” ou “Tom: Bb”) tem um botão: os admins **Definir na música**, os membros **Sugerir à banda**.",
+            "A página do próximo ensaio mostra **DA ÚLTIMA VEZ**: as notas em aberto de ensaios anteriores sobre as suas músicas. Os admins tocam em **OK** quando a banda já consegue. No Modo ao vivo, um selo em cada música abre as suas notas da última vez.",
+            "Quando um admin cria um ensaio, **Das notas de ensaio em aberto** oferece as músicas com notas em aberto como músicas para trabalhar, um toque cada. Uma nova sondagem de ensaio já as escolhe; remove as que não precisas.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bom saber",
           items: [
             "O Modo palco existe para os shows futuros da banda e, como Modo ao vivo, para os ensaios futuros da banda; não para orçamentos, eventos passados nem shows pessoais.",

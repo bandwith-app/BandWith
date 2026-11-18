@@ -1206,6 +1206,16 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Da studiare, e la prova dopo",
+          items: [
+            "La Home mostra **Da studiare**: i brani con note aperte per te o per la band, dalla prova più recente. Tocca **Provato** su una nota per te; tocca il brano per aprirne la pagina. Sul Duo piegato come un laptop, i brani sono in **Da fare** sulla scrivania.",
+            "La pagina del brano mostra **Dalle prove** sopra le tue note. Una nota **Tempo** o **Tonalità** che indica il valore (per esempio “Tempo: 96” o “Tonalità: Bb”) ha un pulsante: gli admin **Imposta sul brano**, i membri **Suggerisci alla band**.",
+            "La pagina della prova successiva mostra **DALL’ULTIMA VOLTA**: le note aperte delle prove precedenti sui suoi brani. Gli admin toccano **OK** quando la band ci è arrivata. In Modalità live un badge su ogni brano apre le sue note dall’ultima volta.",
+            "Quando un admin crea una prova, **Dalle note di prova aperte** propone i brani con note aperte come brani su cui concentrarsi, un tocco ciascuno. Un nuovo sondaggio di prova li sceglie già; togli quelli che non servono.",
+          ],
+        },
+        {
+          type: "list",
           title: "Buono a sapersi",
           items: [
             "La Modalità palco è disponibile per i gig della band in programma e, come Modalità live, per le prove della band in programma; non per preventivi, eventi passati o gig personali.",

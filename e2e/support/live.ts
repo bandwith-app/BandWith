@@ -35,6 +35,8 @@ export interface SeedNote {
   /** Written by another band member (not me). */
   byOther?: boolean;
   markedAtS?: number | null;
+  /** From an earlier rehearsal: this many days before the occurrence (plan A3). */
+  daysBefore?: number;
 }
 
 /**
@@ -79,7 +81,9 @@ export async function openWithFocusSongs(app: App, session?: SeedSession, notes:
     db.rehearsal_note_assignees = [];
     ${seedNotes}.forEach((n, i) => {
       db.rehearsal_notes.push({
-        id: n.id, band_id: reh.band_id, event_id: reh.id, occurrence_date: String(reh.event_date).slice(0, 10),
+        id: n.id, band_id: reh.band_id, event_id: reh.id, occurrence_date: n.daysBefore
+          ? new Date(Date.parse(String(reh.event_date).slice(0, 10) + 'T12:00:00Z') - n.daysBefore * 86400000).toISOString().slice(0, 10)
+          : String(reh.event_date).slice(0, 10),
         session_id: null, song_id: n.song ? song(n.song).id : null, song_title: n.song, preset: n.preset ?? null,
         section: null, body: n.body ?? null, scope: n.forMe ? 'members' : 'band', status: n.status ?? 'open',
         marked_at_s: n.markedAtS ?? null, created_by: n.byOther ? other : ids.me, ok_by: null, ok_at: null,
