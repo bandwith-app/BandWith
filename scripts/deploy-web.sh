@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploys the web app to production on Vercel (bandwith-beryl.vercel.app):
+# Deploys the web app to production on Vercel (app.bandwith.fun, also
+# served at the old bandwith-beryl.vercel.app):
 #   npx vercel@latest deploy --prod --yes
 # Every production deploy goes through this script, from a clean checkout of
 # the commit to ship (e.g. the vercel-prod worktree on origin/main).

@@ -1028,7 +1028,7 @@ const basics: AreaText = {
             ["Duas telas, posição notebook", "Metade de cima (Display) para ler, metade de baixo (Deck) para tocar", "Layouts especiais: mesa da banda, planejador, achar uma data, retorno de palco, mesa de orçamento. Pode ser desativada em **Ajustes › iPhone Duo**."],
             ["Duas telas, totalmente aberto em paisagem", "Duas páginas iguais a partir de 860 px de largura", "Como o modo livro, com a barra lateral ao lado."],
             ["Android", "Igual ao celular ou ao tablet", "Voltar do sistema e gesto de voltar, **Toque de novo para sair**, importação de contatos. Instalado por um arquivo APK."],
-            ["Web (bandwith-beryl.vercel.app)", "Layout de celular numa janela estreita, layout largo a partir de 744 px", "Sem push, sem Face ID / impressão digital, sem bloqueio do app, sem sincronização do Modo palco por Bluetooth. Esc e o Voltar do navegador fecham as camadas."],
+            ["Web (app.bandwith.fun)", "Layout de celular numa janela estreita, layout largo a partir de 744 px", "Sem push, sem Face ID / impressão digital, sem bloqueio do app, sem sincronização do Modo palco por Bluetooth. Esc e o Voltar do navegador fecham as camadas."],
           ],
         },
         {
@@ -1216,13 +1216,13 @@ const basics: AreaText = {
     {
       id: "using-the-web-app",
       title: "No navegador",
-      summary: "O que funciona em bandwith-beryl.vercel.app e o que precisa do app de celular.",
+      summary: "O que funciona em app.bandwith.fun e o que precisa do app de celular.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["web", "navegador", "computador", "desktop", "site", "notebook"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Abra bandwith-beryl.vercel.app e entre com a mesma conta. Suas bandas, shows e ajustes são os mesmos do app. Uma janela estreita recebe o layout de celular; a partir de 744 px de largura, você tem o layout de tablet ([[ipad-layout]])." },
+        { type: "p", text: "Abra app.bandwith.fun e entre com a mesma conta. Suas bandas, shows e ajustes são os mesmos do app. Uma janela estreita recebe o layout de celular; a partir de 744 px de largura, você tem o layout de tablet ([[ipad-layout]])." },
         {
           type: "list",
           title: "Não disponível na web",

@@ -66,7 +66,7 @@ LANGS = {
         'cover_sub': 'Diviso per terminale: iPhone e Android, iPad e tablet, web,\n'
                      'iPhone Duo chiuso, Book, Laptop e orizzontale. Ruoli, privacy, pagine per clienti,\n'
                      'sostituti e locali, e una breve appendice tecnica.',
-        'cover_foot': 'Novembre 2026 · bandwith-beryl.vercel.app',
+        'cover_foot': 'Novembre 2026 · app.bandwith.fun',
     },
     'en': {
         'out': 'BandWith-features-and-behaviour.pdf',
@@ -89,7 +89,7 @@ LANGS = {
         'cover_sub': 'Organised by device: iPhone and Android, iPad and tablets, the web,\n'
                      'iPhone Duo closed, Book, Laptop and landscape. Roles, privacy, the pages for clients,\n'
                      'deputies and venues, and a short technical appendix.',
-        'cover_foot': 'November 2026 · bandwith-beryl.vercel.app',
+        'cover_foot': 'November 2026 · app.bandwith.fun',
     },
 }
 L = dict(LANGS['it'], code='it')  # set by main()

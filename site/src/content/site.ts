@@ -2,7 +2,7 @@
  * Addresses the site links to. The app keeps its definitive address
  * (src/lib/appUrl.ts); bandwith.app belongs to an unrelated product: never link to it.
  */
-export const APP_URL = 'https://bandwith-beryl.vercel.app';
+export const APP_URL = 'https://app.bandwith.fun';
 
 /** Web door: the app opens straight on Create account (?start=signup). */
 export const SIGNUP_URL = `${APP_URL}/?start=signup&src=site`;

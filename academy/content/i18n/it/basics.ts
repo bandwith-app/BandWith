@@ -1028,7 +1028,7 @@ const basics: AreaText = {
             ["Doppio schermo, posizione laptop", "Metà alta (Display) per leggere, metà bassa (Deck) per toccare", "Layout speciali: Scrivania della band, Planner, Trova una data, Spia da palco, Banco preventivi. Si possono disattivare in **Impostazioni › iPhone Duo**."],
             ["Doppio schermo, tutto aperto in orizzontale", "Due pagine uguali da 860 px di larghezza", "Come a libro, con la barra laterale accanto."],
             ["Android", "Come il telefono o il tablet", "Indietro di sistema e gesto indietro, **Tocca di nuovo per uscire**, importazione dei contatti. Si installa da un file APK."],
-            ["Web (bandwith-beryl.vercel.app)", "Layout del telefono in una finestra stretta, layout largo da 744 px", "Niente push, niente Face ID / impronta, niente blocco app, niente sincronizzazione Bluetooth della Modalità palco. Esc e Indietro del browser chiudono i livelli."],
+            ["Web (app.bandwith.fun)", "Layout del telefono in una finestra stretta, layout largo da 744 px", "Niente push, niente Face ID / impronta, niente blocco app, niente sincronizzazione Bluetooth della Modalità palco. Esc e Indietro del browser chiudono i livelli."],
           ],
         },
         {
@@ -1216,13 +1216,13 @@ const basics: AreaText = {
     {
       id: "using-the-web-app",
       title: "In un browser web",
-      summary: "Cosa funziona su bandwith-beryl.vercel.app e cosa richiede l’app per telefono.",
+      summary: "Cosa funziona su app.bandwith.fun e cosa richiede l’app per telefono.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["web", "browser", "desktop", "computer", "sito", "portatile"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Apri bandwith-beryl.vercel.app e accedi con lo stesso account. Band, gig e impostazioni sono gli stessi dell’app. Una finestra stretta usa il layout del telefono; da 744 px di larghezza hai il layout del tablet ([[ipad-layout]])." },
+        { type: "p", text: "Apri app.bandwith.fun e accedi con lo stesso account. Band, gig e impostazioni sono gli stessi dell’app. Una finestra stretta usa il layout del telefono; da 744 px di larghezza hai il layout del tablet ([[ipad-layout]])." },
         {
           type: "list",
           title: "Non disponibile sul web",

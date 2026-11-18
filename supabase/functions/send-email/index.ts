@@ -30,9 +30,10 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const FROM_EMAIL = Deno.env.get("EMAIL_FROM") || "BandWith <onboarding@resend.dev>";
 // The deployed web app (= Supabase Auth site_url, the APP_URL secret). Note: bandwith.app belongs
 // to an unrelated product; never link to it.
-const DEFAULT_APP_URL = "https://bandwith-beryl.vercel.app"; // = src/lib/appUrl.ts
-// The previous address (Cloudflare Pages): links to it stay allowed.
-const LEGACY_APP_HOSTS = ["bandwith.pages.dev", "band-with.vercel.app"];
+const DEFAULT_APP_URL = "https://app.bandwith.fun"; // = src/lib/appUrl.ts
+// Previous addresses: they still serve the app and installed apps (up to
+// 1.0.7) still send links on bandwith-beryl.vercel.app, so they stay allowed.
+const LEGACY_APP_HOSTS = ["bandwith-beryl.vercel.app", "bandwith.pages.dev", "band-with.vercel.app"];
 
 type EmailType =
   | "onboarding_invite"

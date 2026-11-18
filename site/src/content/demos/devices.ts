@@ -10,7 +10,7 @@ export const markup = () =>
       `<button type="button" class="dd__reset" data-dd-reset><svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>Start over</button>` +
     `</div>` +
     `<div class="dd__floor"><div class="dd__stage"><div class="dd__frame">` +
-      `<div class="dd__chrome" aria-hidden="true"><i></i><i></i><i></i><span>bandwith-beryl.vercel.app</span></div>` +
+      `<div class="dd__chrome" aria-hidden="true"><i></i><i></i><i></i><span>app.bandwith.fun</span></div>` +
       `<div class="dd__scr" aria-label="The calendar, schematic">${screenHtml()}</div>` +
     `</div></div></div>` +
     `<p class="dd__note" data-dd-note aria-live="polite">Phone: one screen at a time, the tab bar at the bottom.</p>` +

@@ -1028,7 +1028,7 @@ const basics: AreaText = {
             ["Double écran, position ordinateur", "Moitié haute (Display) pour lire, moitié basse (Deck) pour toucher", "Mises en page spéciales : bureau du groupe, planning, trouver une date, retour de scène, bureau des devis. Désactivable dans **Réglages › iPhone Duo**."],
             ["Double écran, complètement ouvert en paysage", "Deux pages égales à partir de 860 px de large", "Comme le livre, avec le rail à côté."],
             ["Android", "Comme le téléphone ou la tablette", "Retour système et geste retour, **Touche encore pour quitter**, import des contacts. Installé depuis un fichier APK."],
-            ["Web (bandwith-beryl.vercel.app)", "Mise en page téléphone dans une fenêtre étroite, mise en page large à partir de 744 px", "Pas de push, pas de Face ID / empreinte, pas de verrouillage, pas de synchro Bluetooth du mode scène. Échap et le Retour du navigateur ferment les couches."],
+            ["Web (app.bandwith.fun)", "Mise en page téléphone dans une fenêtre étroite, mise en page large à partir de 744 px", "Pas de push, pas de Face ID / empreinte, pas de verrouillage, pas de synchro Bluetooth du mode scène. Échap et le Retour du navigateur ferment les couches."],
           ],
         },
         {
@@ -1216,13 +1216,13 @@ const basics: AreaText = {
     {
       id: "using-the-web-app",
       title: "Dans un navigateur web",
-      summary: "Ce qui fonctionne sur bandwith-beryl.vercel.app et ce qui demande l’app mobile.",
+      summary: "Ce qui fonctionne sur app.bandwith.fun et ce qui demande l’app mobile.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["web", "navigateur", "ordinateur", "pc", "site", "portable"],
       related: ["device-differences", "ipad-layout", "back-behaviour"],
       body: [
-        { type: "p", text: "Ouvre bandwith-beryl.vercel.app et connecte-toi avec le même compte. Tes groupes, tes concerts et tes réglages sont les mêmes que dans l’app. Une fenêtre étroite reçoit la mise en page téléphone ; à partir de 744 px de large, tu as la mise en page tablette ([[ipad-layout]])." },
+        { type: "p", text: "Ouvre app.bandwith.fun et connecte-toi avec le même compte. Tes groupes, tes concerts et tes réglages sont les mêmes que dans l’app. Une fenêtre étroite reçoit la mise en page téléphone ; à partir de 744 px de large, tu as la mise en page tablette ([[ipad-layout]])." },
         {
           type: "list",
           title: "Absent du web",
