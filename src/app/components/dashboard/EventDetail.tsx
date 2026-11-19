@@ -32,6 +32,7 @@ import { useRailAction, useRailOwnsChrome } from '@/lib/railActions';
 import { DotText } from '@/app/components/bw';
 import { IconButton, NavBackButton, Tag, BwSheet } from '@/app/components/bw/Screen';
 import { PillButton, Selector } from '@/app/components/bw/Form';
+import { AddToCalendar } from '@/app/components/calendar/AddToCalendar';
 import { haptic } from '@/lib/haptics';
 import { useT, dateName, intlLocale, getLocale } from '@/lib/i18n';
 import { QuoteShareModal } from '@/app/components/quotes/QuoteShareModal';
@@ -939,6 +940,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const fullLocationQuery = [venueName !== 'TBD' ? venueName : '', venueAddress, venueCityPart].filter(Boolean).join(', ');
   const venueShown = venueName === 'TBD' ? t('TBD') : venueName;
 
+  // "Add to calendar": a saved event with a date, that the user is part of.
+  const calendarDate =
+    !isQuote && !isPast && !!event.eventId && /^[0-9a-f-]{36}$/i.test(event.eventId) && (isPersonalGig || userResponse !== 'declined')
+      ? occurrenceDate(event.date)
+      : null;
+
   const handleOpenMaps = () => {
     if (!hasValidLocation) return;
     openMaps(fullLocationQuery);
@@ -1579,6 +1586,27 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
               {/* ─── TIME TILES ─── */}
               {timeTiles && <div className={cn('bw-ed-times-sheet', spanAll)}>{timeTiles}</div>}
+
+              {/* ─── ADD TO CALENDAR (not for quotes, past or declined events) ─── */}
+              {calendarDate && (
+                <AddToCalendar
+                  className={spanAll}
+                  event={{
+                    eventId: event.eventId as string,
+                    title: event.title,
+                    bandName: isPersonalGig ? null : event.band_name,
+                    rehearsal: isRehearsal,
+                    date: calendarDate,
+                    loadIn: event.loadInTime,
+                    soundcheck: event.soundcheckTime,
+                    start: event.timeSet === false ? null : event.time,
+                    end: event.endTime,
+                    venue: hasValidLocation ? venueName : null,
+                    city: event.venueCity,
+                    address: venueAddress,
+                  }}
+                />
+              )}
 
               {/* ─── iPad: gig workspace tabs ─── */}
               {tab && (

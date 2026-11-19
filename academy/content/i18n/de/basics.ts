@@ -717,7 +717,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["Einstellungen", "Optionen", "Präferenzen", "App-Einstellungen"],
-      related: ["notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Öffne das Menü (den letzten Tab) und tippe auf **Einstellungen & Konto**. **Einstellungen** listet die Bereiche auf:" },
         {
@@ -725,6 +725,7 @@ const basics: AreaText = {
           head: ["Bereich", "Was drin ist", "Gilt für"],
           rows: [
             ["**Mitteilungen**", "**Push-Mitteilungen**, **E-Mail-Mitteilungen**, **Produktneuigkeiten**", "Dein Konto (alle Geräte)"],
+            ["**Kalender-Sync**", "Ein privater Link zu deinen Terminen für **Apple Kalender**, **Google Kalender** oder Outlook ([[calendar-sync]])", "Dein Konto (alle Geräte)"],
             ["**Darstellung**", "Design: **Hell**, **Dunkel**, **System**", "Dieses Gerät"],
             ["**Einheiten**", "**Kilometer** oder **Meilen**", "Dieses Gerät"],
             ["**Datenschutz & Konto**", "**App-Sperre**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
@@ -765,6 +766,57 @@ const basics: AreaText = {
         { type: "p", text: "Die Zeile oben fasst es zusammen, zum Beispiel **Push- & E-Mail-Mitteilungen an** oder **Alle Mitteilungen pausiert**. Der eigene Schalter **Mitteilungen** im Menü schaltet Push und E-Mail gemeinsam ein oder aus." },
         { type: "p", text: "Diese Einstellungen werden in deinem Konto gespeichert und gelten deshalb auf allen deinen Geräten. Schlägt das Speichern fehl, springt der Schalter zurück und die App sagt dir, warum." },
         { type: "note", tone: "tip", text: "Dringende Einladungen und Umfragen zeigen immer ein Pop-up, auch wenn Push aus ist. Im Posteingang bleibt alles erhalten." },
+      ],
+    },
+    {
+      id: "calendar-sync",
+      title: "Termine mit deinem Kalender synchronisieren",
+      summary: "Deine Gigs und Proben in Apple, Google oder Outlook Kalender, von selbst aktuell.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["kalender", "synchronisieren", "abonnieren", "apple kalender", "google kalender", "outlook", "ics", "webcal", "zum kalender hinzufügen"],
+      related: ["settings-overview", "notification-settings", "privacy-and-account-settings"],
+      body: [
+        { type: "p", text: "**Kalender-Sync** gibt dir einen privaten Link zu deinen BandWith-Terminen. Füge ihn einmal im Kalender deines Telefons oder Computers hinzu: neue Gigs, geänderte Zeiten und Absagen kommen von selbst an." },
+        {
+          type: "steps",
+          title: "Apple Kalender (iPhone, iPad, Mac)",
+          items: [
+            "Öffne das Menü, tippe auf **Einstellungen & Konto**, dann auf **Kalender-Sync**.",
+            "Tippe auf **Apple Kalender**.",
+            "Bestätige das Abo in der Kalender-App.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Google Kalender (Android und Web)",
+          items: [
+            "Tippe in **Kalender-Sync** auf **Google Kalender**.",
+            "Google Kalender öffnet sich mit dem Link: Bestätige, um ihn hinzuzufügen. Danach erscheint er auf jedem Gerät mit diesem Google-Konto.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Outlook oder ein anderer Kalender",
+          items: [
+            "Tippe in **Kalender-Sync** auf **Link kopieren**.",
+            "Füge in deinem Kalender einen Kalender per URL (Abonnement) hinzu und füge den Link ein.",
+          ],
+        },
+        { type: "p", text: "Nur ein Termin: Öffne den Gig oder die Probe und tippe unter den Zeiten auf **Zum Kalender hinzufügen** (Apple Kalender, Outlook) oder **Google Kalender**. Das fügt eine Kopie hinzu: Nutze **Kalender-Sync**, wenn Änderungen nachkommen sollen." },
+        {
+          type: "list",
+          title: "Was der Kalender zeigt",
+          items: [
+            "Die Gigs und Proben, bei denen du dabei bist und die du nicht abgesagt hast. Admins sehen alle Termine der Band, außer denen, die sie abgesagt haben.",
+            "Deine persönlichen Gigs.",
+            "Wiederkehrende Proben, als wiederkehrender Termin.",
+            "Aufbau-, Soundcheck- und Showzeiten, den Ort und deine Rolle.",
+            "Nie Angebote, Entwürfe oder abgesagte Termine. Ein abgesagter Termin verschwindet aus dem Kalender.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Der Kalender zeigt nie Gagen, Kundendaten oder Notizen. Wer den Link hat, sieht deine Termine, also teile ihn nicht. Falls doch, tippe auf **Neuen Link erstellen**: Der alte funktioniert nicht mehr und du fügst den neuen erneut hinzu." },
+        { type: "note", tone: "tip", text: "Kalender prüfen den Link alle paar Stunden; Google kann bis zu einem Tag brauchen. In der App ist eine Änderung sofort da." },
       ],
     },
     {

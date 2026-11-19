@@ -1027,6 +1027,8 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 
 // -------------------------------------------------------------------- rpc --
 
+let demoCalendarToken = '';
+
 const rpc = (fn: string, args: Row = {}) => {
   let data: any = null;
   let error: any = null;
@@ -1039,6 +1041,14 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_my_pending_invitations':
       data = [];
       break;
+    // Calendar sync (165): a fixed link per demo session; rotate makes a new one.
+    case 'bw_my_calendar_token': {
+      if (args.p_rotate || !demoCalendarToken) {
+        demoCalendarToken = Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+      }
+      data = demoCalendarToken;
+      break;
+    }
     // Feature flags (130): platform switches, and the band's own for its members.
     case 'bw_band_features': {
       const bools = (rows: Row[]) => Object.fromEntries(rows.filter((r) => typeof r.enabled === 'boolean').map((r) => [r.key, r.enabled]));

@@ -23,6 +23,8 @@ export interface DeputyGig {
   role?: string | null;
   /** The reply page, so the entry leads back to the details. */
   url?: string | null;
+  /** A rehearsal reads "Rehearsal 19:00–22:00" instead of "Show …". */
+  kind?: 'gig' | 'rehearsal';
 }
 
 export interface GigLabels {
@@ -32,16 +34,18 @@ export interface GigLabels {
   role: string;
   /** Title of a gig without a name (the feed). */
   gig?: string;
+  /** Rehearsal times, and the title of one without a name. */
+  rehearsal?: string;
 }
 
 /** For the feed, which has no app translations at hand. */
 export const GIG_LABELS: Record<string, GigLabels> = {
-  en: { loadIn: 'Load-in', soundcheck: 'Soundcheck', show: 'Show', role: 'Role', gig: 'Gig' },
-  it: { loadIn: 'Carico', soundcheck: 'Soundcheck', show: 'Show', role: 'Ruolo', gig: 'Gig' },
-  es: { loadIn: 'Montaje', soundcheck: 'Prueba de sonido', show: 'Show', role: 'Rol', gig: 'Concierto' },
-  fr: { loadIn: 'Installation', soundcheck: 'Balances', show: 'Concert', role: 'Rôle', gig: 'Concert' },
-  de: { loadIn: 'Aufbau', soundcheck: 'Soundcheck', show: 'Show', role: 'Rolle', gig: 'Gig' },
-  pt: { loadIn: 'Montagem', soundcheck: 'Passagem de som', show: 'Show', role: 'Função', gig: 'Show' },
+  en: { loadIn: 'Load-in', soundcheck: 'Soundcheck', show: 'Show', role: 'Role', gig: 'Gig', rehearsal: 'Rehearsal' },
+  it: { loadIn: 'Carico', soundcheck: 'Soundcheck', show: 'Show', role: 'Ruolo', gig: 'Gig', rehearsal: 'Prova' },
+  es: { loadIn: 'Montaje', soundcheck: 'Prueba de sonido', show: 'Show', role: 'Rol', gig: 'Concierto', rehearsal: 'Ensayo' },
+  fr: { loadIn: 'Installation', soundcheck: 'Balances', show: 'Concert', role: 'Rôle', gig: 'Concert', rehearsal: 'Répétition' },
+  de: { loadIn: 'Aufbau', soundcheck: 'Soundcheck', show: 'Show', role: 'Rolle', gig: 'Gig', rehearsal: 'Probe' },
+  pt: { loadIn: 'Montagem', soundcheck: 'Passagem de som', show: 'Show', role: 'Função', gig: 'Show', rehearsal: 'Ensaio' },
 };
 
 const hm = (v?: string | null): [number, number] | null => {
@@ -89,11 +93,14 @@ const details = (g: DeputyGig, l: GigLabels) =>
     g.role ? `${l.role}: ${g.role}` : null,
     g.loadIn ? `${l.loadIn} ${g.loadIn.slice(0, 5)}` : null,
     g.soundcheck ? `${l.soundcheck} ${g.soundcheck.slice(0, 5)}` : null,
-    g.start ? `${l.show} ${g.start.slice(0, 5)}${g.end ? `–${g.end.slice(0, 5)}` : ''}` : null,
+    g.start ? `${g.kind === 'rehearsal' ? l.rehearsal || l.show : l.show} ${g.start.slice(0, 5)}${g.end ? `–${g.end.slice(0, 5)}` : ''}` : null,
     g.url || null,
   ]
     .filter(Boolean)
     .join('\n');
+
+/** "Title · Band", or just the title (personal gigs have no band). */
+const summary = (g: DeputyGig) => (g.bandName ? `${g.title} · ${g.bandName}` : g.title);
 
 const icsText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
 
@@ -123,7 +130,7 @@ export function gigEvent(
   g: DeputyGig,
   labels: GigLabels,
   uid: string,
-  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean } = {},
+  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean; rrule?: string | null } = {},
 ): string[] {
   const w = gigWindow(g);
   const when = w.allDay
@@ -140,7 +147,8 @@ export function gigEvent(
     `DTSTAMP:${utcStamp(opts.now ?? new Date())}`,
     `SEQUENCE:${sequence}`,
     ...when,
-    `SUMMARY:${icsText(`${g.title} · ${g.bandName}`)}`,
+    opts.rrule ? `RRULE:${opts.rrule}` : '',
+    `SUMMARY:${icsText(summary(g))}`,
     location(g) ? `LOCATION:${icsText(location(g))}` : '',
     `DESCRIPTION:${icsText(details(g, labels))}`,
     g.url ? `URL:${g.url}` : '',
@@ -149,12 +157,37 @@ export function gigEvent(
   ].filter(Boolean);
 }
 
-export function calendarFile(events: string[][], name?: string): string {
+/**
+ * A repeating rehearsal (events.recurrence_rule, as the app expands it in
+ * EventsView: weekly / biweekly / monthly, interval, until, count) as an
+ * RRULE, so the calendar repeats it by itself. Unknown rules: null (the
+ * first date only).
+ */
+export function recurrenceRule(rule: unknown): string | null {
+  if (!rule || typeof rule !== 'object') return null;
+  const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
+  const freq = String(r.freq ?? r.frequency ?? '').toLowerCase();
+  const n = Number(r.interval);
+  const every = Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
+  const parts =
+    freq === 'weekly' ? ['FREQ=WEEKLY', `INTERVAL=${every}`]
+    : freq === 'biweekly' ? ['FREQ=WEEKLY', 'INTERVAL=2']
+    : freq === 'monthly' ? ['FREQ=MONTHLY', `INTERVAL=${every}`]
+    : null;
+  if (!parts) return null;
+  const until = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof r.until === 'string' ? r.until : '');
+  const count = Number(r.count);
+  if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}`);
+  else if (Number.isInteger(count) && count >= 1 && count <= 1000) parts.push(`COUNT=${count + 1}`);
+  return parts.join(';');
+}
+
+export function calendarFile(events: string[][], name?: string, prodId = 'Deputy'): string {
   return (
     [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//BandWith//Deputy//EN',
+      `PRODID:-//BandWith//${prodId}//EN`,
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       ...(name ? [`X-WR-CALNAME:${icsText(name)}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'] : []),
@@ -180,7 +213,7 @@ export function googleCalendarUrl(g: DeputyGig, labels: GigLabels): string {
   const dates = w.allDay ? `${ymd(w.day)}/${ymd(nextDay(w.day))}` : `${stamp(w.start)}/${stamp(w.end)}`;
   const q = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `${g.title} · ${g.bandName}`,
+    text: summary(g),
     dates,
     details: details(g, labels),
     location: location(g),

@@ -4291,6 +4291,28 @@ const dict: Dictionary = {
   "Pro offered by BandWith ends on {date}": "O Pro oferecido pelo BandWith termina em {date}",
   "Then the band is on Free: nothing is deleted.": "Depois a banda passa para Free: nada é apagado.",
   "Dismiss plan reminder": "Fechar o lembrete do plano",
+  // Calendar sync (165)
+  "Calendar sync": "Sincronizar calendário",
+  "Your events in Apple or Google Calendar": "Seus eventos no Calendário Apple ou Google",
+  "Your events in your calendar": "Seus eventos no seu calendário",
+  "Gigs, rehearsals and personal gigs you’re part of appear in your phone’s calendar and update by themselves when something changes. Calendars check every few hours; Google can take up to a day.": "Shows, ensaios e shows pessoais dos quais você participa aparecem no calendário do celular e se atualizam sozinhos quando algo muda. Os calendários verificam a cada poucas horas; o Google pode levar até um dia.",
+  "Apple Calendar": "Calendário Apple",
+  "iPhone, iPad and Mac": "iPhone, iPad e Mac",
+  "Android and the web; it then shows on every device signed in to Google": "Android e web; depois aparece em todos os aparelhos conectados ao Google",
+  "Copy the link": "Copiar o link",
+  "For Outlook or another calendar: add a calendar “from URL” and paste it": "Para Outlook ou outro calendário: adicione um calendário “por URL” e cole",
+  "Preparing your link…": "Preparando seu link…",
+  "Calendar sync isn’t available right now. Check your connection and try again.": "A sincronização do calendário não está disponível agora. Verifique sua conexão e tente de novo.",
+  "Only for you": "Só para você",
+  "Anyone with this link sees your events (no fees, no client details). Don’t share it. If you did, make a new one: the old link stops working.": "Quem tiver este link vê seus eventos (sem cachês nem dados do cliente). Não compartilhe. Se compartilhou, crie um novo: o antigo para de funcionar.",
+  "New link ready": "Novo link pronto",
+  "Add it to your calendar again: the old one no longer updates.": "Adicione-o de novo ao seu calendário: o antigo não se atualiza mais.",
+  "Make a new link": "Criar um novo link",
+  "The old link stops working": "O link antigo para de funcionar",
+  "The calendars you added stop updating. You’ll need to add the new link again. Continue?": "Os calendários que você adicionou param de se atualizar. Você vai precisar adicionar o novo link de novo. Continuar?",
+  "Making…": "Criando…",
+  "Couldn’t copy the link. Try again.": "Não foi possível copiar o link. Tente de novo.",
+  "Couldn’t make a new link. Check your connection and try again.": "Não foi possível criar um novo link. Verifique sua conexão e tente de novo.",
 };
 
 export default dict;

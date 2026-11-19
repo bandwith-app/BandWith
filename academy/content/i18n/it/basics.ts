@@ -717,7 +717,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["impostazioni", "preferenze", "opzioni", "impostazioni dell’app"],
-      related: ["notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Apri il menu (l’ultima scheda), poi tocca **Impostazioni e account**. **Impostazioni** elenca le sezioni:" },
         {
@@ -725,6 +725,7 @@ const basics: AreaText = {
           head: ["Sezione", "Cosa contiene", "Vale per"],
           rows: [
             ["**Notifiche**", "**Notifiche push**, **Notifiche email**, **Novità del prodotto**", "Il tuo account (tutti i dispositivi)"],
+            ["**Sincronizza calendario**", "Un link privato ai tuoi eventi per **Calendario Apple**, **Google Calendar** o Outlook ([[calendar-sync]])", "Il tuo account (tutti i dispositivi)"],
             ["**Aspetto**", "Tema: **Chiaro**, **Scuro**, **Sistema**", "Questo dispositivo"],
             ["**Unità di misura**", "**Chilometri** o **Miglia**", "Questo dispositivo"],
             ["**Privacy e account**", "**Blocco app**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
@@ -765,6 +766,57 @@ const basics: AreaText = {
         { type: "p", text: "La riga in alto riassume la situazione, per esempio **avvisi push ed email attivi** o **Tutti gli avvisi in pausa**. L’interruttore **Notifiche** del menu attiva o disattiva push ed email insieme." },
         { type: "p", text: "Queste scelte sono salvate nel tuo account, quindi valgono su tutti i tuoi dispositivi. Se il salvataggio non riesce, l’interruttore torna com’era e l’app spiega il motivo." },
         { type: "note", tone: "tip", text: "Inviti e sondaggi urgenti mostrano sempre un avviso, anche con le push disattivate. Le notifiche nell’app conservano tutto." },
+      ],
+    },
+    {
+      id: "calendar-sync",
+      title: "Sincronizza i tuoi eventi con il calendario",
+      summary: "I tuoi gig e le prove nel calendario Apple, Google o Outlook, aggiornati da soli.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["calendario", "sincronizza", "abbonati", "calendario apple", "google calendar", "outlook", "ics", "webcal", "aggiungi al calendario"],
+      related: ["settings-overview", "notification-settings", "privacy-and-account-settings"],
+      body: [
+        { type: "p", text: "**Sincronizza calendario** ti dà un link privato ai tuoi eventi BandWith. Aggiungilo una volta al calendario del telefono o del computer: nuovi gig, orari cambiati e annullamenti arrivano da soli." },
+        {
+          type: "steps",
+          title: "Calendario Apple (iPhone, iPad, Mac)",
+          items: [
+            "Apri il menu, tocca **Impostazioni e account**, poi **Sincronizza calendario**.",
+            "Tocca **Calendario Apple**.",
+            "Conferma l’abbonamento nell’app Calendario.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Google Calendar (Android e web)",
+          items: [
+            "In **Sincronizza calendario**, tocca **Google Calendar**.",
+            "Si apre Google Calendar con il link già inserito: conferma per aggiungerlo. Poi compare su ogni dispositivo collegato a quell’account Google.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Outlook o un altro calendario",
+          items: [
+            "In **Sincronizza calendario**, tocca **Copia il link**.",
+            "Nel tuo calendario aggiungi un calendario da URL (abbonamento) e incolla il link.",
+          ],
+        },
+        { type: "p", text: "Un solo evento: apri il gig o la prova e tocca **Aggiungi al calendario** sotto gli orari (Calendario Apple, Outlook) oppure **Google Calendar**. Così aggiungi una copia: usa **Sincronizza calendario** se vuoi che i cambiamenti arrivino da soli." },
+        {
+          type: "list",
+          title: "Cosa mostra il calendario",
+          items: [
+            "I gig e le prove in cui ci sei e che non hai rifiutato. Gli admin vedono tutti gli eventi della band, tranne quelli che hanno rifiutato.",
+            "I tuoi gig personali.",
+            "Le prove ricorrenti, come evento ricorrente.",
+            "Orari di carico, soundcheck e show, il luogo e il tuo ruolo.",
+            "Mai preventivi, bozze o eventi rifiutati. Un evento annullato sparisce dal calendario.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Il calendario non mostra mai compensi, dati del cliente o note. Chi ha il link può vedere i tuoi eventi, quindi non condividerlo. Se l’hai fatto, tocca **Crea un nuovo link**: il vecchio smette di funzionare e aggiungi di nuovo quello nuovo." },
+        { type: "note", tone: "tip", text: "I calendari controllano il link ogni poche ore; Google può metterci fino a un giorno. Nell’app un cambiamento è immediato." },
       ],
     },
     {

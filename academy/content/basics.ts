@@ -724,7 +724,7 @@ const basics: AreaModule = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["settings", "preferences", "options", "app settings"],
-      related: ["notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Open the menu (the last tab), then tap **Settings & account**. **App settings** lists the sections:" },
         {
@@ -732,6 +732,7 @@ const basics: AreaModule = {
           head: ["Section", "What's in it", "Applies to"],
           rows: [
             ["**Notifications**", "**Push notifications**, **Email notifications**, **Product news**", "Your account (all devices)"],
+            ["**Calendar sync**", "A private link to your events for **Apple Calendar**, **Google Calendar** or Outlook ([[calendar-sync]])", "Your account (all devices)"],
             ["**Appearance**", "Theme: **Light**, **Dark**, **System**", "This device"],
             ["**Units**", "**Kilometres** or **Miles**", "This device"],
             ["**Privacy & account**", "**App lock**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
@@ -772,6 +773,57 @@ const basics: AreaModule = {
         { type: "p", text: "The line at the top sums it up, for example **push & email alerts enabled** or **All alerts paused**. The menu's own **Notifications** switch turns push and email on or off together." },
         { type: "p", text: "These choices are saved on your account, so they apply on all your devices. If saving fails, the switch goes back and the app says why." },
         { type: "note", tone: "tip", text: "Urgent invites and polls always show a pop-up, even when push is off. The inbox keeps everything." },
+      ],
+    },
+    {
+      id: "calendar-sync",
+      title: "Sync your events with your calendar",
+      summary: "Your gigs and rehearsals in Apple, Google or Outlook calendar, updated by themselves.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["calendar", "sync", "subscribe", "apple calendar", "google calendar", "outlook", "ics", "webcal", "add to calendar"],
+      related: ["settings-overview", "notification-settings", "privacy-and-account-settings"],
+      body: [
+        { type: "p", text: "**Calendar sync** gives you a private link to your BandWith events. Add it once to the calendar on your phone or computer: new gigs, changed times and cancellations follow by themselves." },
+        {
+          type: "steps",
+          title: "Apple Calendar (iPhone, iPad, Mac)",
+          items: [
+            "Open the menu, tap **Settings & account**, then **Calendar sync**.",
+            "Tap **Apple Calendar**.",
+            "Confirm the subscription in the Calendar app.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Google Calendar (Android and the web)",
+          items: [
+            "In **Calendar sync**, tap **Google Calendar**.",
+            "Google Calendar opens with the link filled in: confirm to add it. It then shows on every device signed in to that Google account.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Outlook or another calendar",
+          items: [
+            "In **Calendar sync**, tap **Copy the link**.",
+            "In your calendar, add a calendar from a URL (subscribe) and paste the link.",
+          ],
+        },
+        { type: "p", text: "Just one event: open the gig or rehearsal and tap **Add to calendar** under the times (Apple Calendar, Outlook) or **Google Calendar**. This adds a copy: use **Calendar sync** if you want changes to follow." },
+        {
+          type: "list",
+          title: "What the calendar shows",
+          items: [
+            "The gigs and rehearsals you are on and haven't declined. Admins get every event of the band, except the ones they declined.",
+            "Your personal gigs.",
+            "Repeating rehearsals, as a repeating event.",
+            "Load-in, soundcheck and show times, the venue and your role.",
+            "Never quotes, drafts or declined events. A cancelled event disappears from the calendar.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "The calendar never shows fees, client details or notes. Anyone with the link can see your events, so don't share it. If you did, tap **Make a new link**: the old link stops working and you add the new one again." },
+        { type: "note", tone: "tip", text: "Calendars check the link every few hours; Google can take up to a day. A change in BandWith is immediate in the app." },
       ],
     },
     {
