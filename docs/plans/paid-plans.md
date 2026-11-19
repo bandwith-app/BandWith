@@ -231,6 +231,16 @@ Server enforcement means an old build **cannot** get Pro for free: the limit is 
   - **Web**: reloads. A long-open tab checks `bw_app_version('web')` on resume against the build's own version (stamped at build time), and reloads at the next safe moment (never during Live mode).
 - Checked at start and on resume, at most every 6 hours, cached on the device; offline never blocks.
 
+Built in P4, with these choices:
+
+- **What is compared**: iOS the build number (`CFBundleVersion`, e.g. `202611172157`), Android the version name (`1.0.8`), the web the bundle's build stamp (`yyyymmddhhmm` UTC, `VITE_WEB_BUILD` from `vite.config.ts`, overridable with `BW_WEB_BUILD`). Versions must match `^[0-9]+(\.[0-9]+)*$`; the store URL must start with `https://`, `itms-beta://` or `itms-apps://` (checks in 162).
+- **Only a fresh answer blocks**: the screen needs a server answer from this session; a cached or failed check never blocks, so a gig with no signal is never stopped.
+- **Live mode first**: while Stage / Live mode is on screen (`.bw-stage`) nothing is shown; it is checked again every 15 s.
+- **The web reloads once on its own** per minimum (sessionStorage), then shows the screen with **Reload**.
+- **iOS**: "Open TestFlight" while `store_url` is empty or not `https://`, "Update" with the App Store page later. **Android**: the in-app installer when it finds the update, otherwise the fixed latest-APK link.
+- The app underneath is `inert` and hidden from screen readers while the screen is up; **Sign out** stays.
+- Rows are written by hand (SQL) on the day; the table starts empty, so nothing changes until then.
+
 ### 7.2 What to set on 1 January
 
 - `min_version` for iOS and Android = the plans-off release (the mid-December build). Builds older than that are the ones that cannot show the block screen either; they keep working, hit server limits with the plain `HINT`, and Android ones still get the existing update offer.

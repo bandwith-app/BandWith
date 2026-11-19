@@ -11,9 +11,16 @@ const androidPush =
   process.env.VITE_ANDROID_PUSH ??
   (existsSync(path.resolve(__dirname, 'android/app/google-services.json')) ? 'true' : 'false')
 
+// The web bundle's version for the minimum version check (paid plans P4,
+// src/lib/minVersion.ts): the build time, yyyymmddhhmm in UTC.
+const webBuild =
+  process.env.BW_WEB_BUILD ??
+  new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)
+
 export default defineConfig(({ mode }) => ({
   define: {
     'import.meta.env.VITE_ANDROID_PUSH': JSON.stringify(androidPush),
+    'import.meta.env.VITE_WEB_BUILD': JSON.stringify(webBuild),
   },
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if

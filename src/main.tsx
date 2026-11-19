@@ -7,6 +7,7 @@ import { OnboardingProvider } from "./lib/OnboardingContext";
 import { ThemeProvider } from "./lib/ThemeContext";
 import App from "./app/App";
 import { ErrorBoundary } from "./app/components/ui/ErrorBoundary";
+import { UpdateRequired } from "./app/components/layout/UpdateRequired";
 import { enableEdgeToEdge } from "./lib/systemBars";
 import { installDuoLayout } from "./lib/deviceRegions";
 import { installKeyboardInsets } from "./lib/keyboardInsets";
@@ -44,6 +45,8 @@ createRoot(document.getElementById("root")!).render(
           <BandProvider>
             <ErrorBoundary fallback="app">
               <App />
+              {/* Paid plans P4: below the server's minimum version, "Update BandWith". */}
+              <UpdateRequired />
             </ErrorBoundary>
           </BandProvider>
         </OnboardingProvider>

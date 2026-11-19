@@ -4223,6 +4223,10 @@ const dict: Dictionary = {
   "To practise": "À travailler",
   "To practise · {title}": "À travailler · {title}",
   "{bpm} BPM": "{bpm} BPM",
+  // Paid plans (P4)
+  "Open TestFlight": "Ouvrir TestFlight",
+  "This version is too old to keep working with your band. Update to carry on: nothing is lost.": "Cette version est trop ancienne pour continuer avec votre groupe. Mettez à jour pour continuer : rien n’est perdu.",
+  "Update BandWith": "Mettre à jour BandWith",
 };
 
 export default dict;
