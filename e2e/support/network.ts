@@ -11,8 +11,15 @@ import type { BrowserContext, Route } from '@playwright/test';
  * - Anything else outside 127.0.0.1 is aborted.
  */
 
+// The app reads these cross-origin: without the CORS header WebKit blocks the
+// read and reports "due to access control checks" as a page error.
 const json = (route: Route, body: unknown) =>
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify(body),
+  });
 
 export const FAKE_VENUES = (q: string) => [
   { name: `${q} Studios`, street: 'Via Ventura', housenumber: '4', city: 'Milano', country: 'Italy', lon: 9.24, lat: 45.48 },
