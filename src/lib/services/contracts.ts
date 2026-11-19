@@ -441,6 +441,8 @@ interface PdfOptions {
   now?: Date;
   /** Riders: the gig's stage (092), drawn after the details. */
   stage?: StageData | null;
+  /** "Generated with BandWith" in the footer (default); off once the plan includes branding (bandWithFooter). */
+  bandWith?: boolean;
 }
 
 /** Builds the PDF bytes (each char of the returned string is one byte). */
@@ -776,7 +778,7 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
   // Footer on every page.
   const generated = now.toLocaleDateString(intlLocale('en-GB', lang), { day: 'numeric', month: 'short', year: 'numeric' });
   pages.forEach((p, i) => {
-    const left = toWinAnsi(tr('Generated with BandWith · {date}', { date: generated }));
+    const left = toWinAnsi(opts.bandWith === false ? tr('Generated on {date}', { date: generated }) : tr('Generated with BandWith · {date}', { date: generated }));
     const right = toWinAnsi(tr('Page {page} of {total}', { page: i + 1, total: pages.length }));
     p.push(`BT /F1 8 Tf 0.5 g ${n(MARGIN)} ${n(MARGIN - 20)} Td ${pdfString(left)} Tj ET`);
     p.push(`BT /F1 8 Tf 0.5 g ${n(PAGE_W - MARGIN - textWidth(right, 8))} ${n(MARGIN - 20)} Td ${pdfString(right)} Tj ET`);

@@ -62,6 +62,8 @@ import { useSystemBack } from '@/lib/backStack';
 import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { madeWithMark } from '@/lib/planText';
 
 /** Readiness dots: 16 per row, one dot per song (scaled down past 48 songs). */
 const READINESS_COLS = 16;
@@ -553,9 +555,11 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         import('@/lib/nativeFiles'),
       ]);
       const name = editingSetlistName.trim() || 'Setlist';
+      const plan = selectedBand?.id ? await fetchBandPlan(String(selectedBand.id)).catch(() => null) : null;
       const { blob, fileName } = generateSetlistPdf({
         name,
         bandName: selectedBand?.name,
+        madeWith: madeWithMark(plan),
         songs: editorRows.map(({ fullIndex, song }) => ({
           title: song.title,
           artist: song.artist,

@@ -27,6 +27,8 @@ import {
 import { currencySymbol } from '@/lib/currency';
 import { getEventTypeLabel, type Quote } from '@/app/data/quotes';
 import type { ClientQuoteItem, ClientQuoteSnapshot, QuoteLinkStatus } from '@/quote/types';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { madeWithMark } from '@/lib/planText';
 
 export type { ClientQuoteSnapshot, QuoteLinkStatus } from '@/quote/types';
 
@@ -405,7 +407,8 @@ export async function republishClientQuote(quote: Quote, bandId: string, bandNam
     const settings = await getBandPricing(bandId);
     let pdfUrl: string | null = null;
     try {
-      const pdf = await generateQuotePdf(quote, bandName, settings, link.lang);
+      const plan = await fetchBandPlan(bandId).catch(() => null);
+      const pdf = await generateQuotePdf(quote, bandName, settings, link.lang, { madeWith: madeWithMark(plan) });
       pdfUrl = await uploadQuotePdfForSharing(bandId, quote.quoteNumber || 'DRAFT', pdf.pdfBlob, pdf.fileName);
     } catch (e) {
       console.warn('[quoteLinks] PDF of the new version not created:', e);

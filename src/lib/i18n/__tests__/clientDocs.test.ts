@@ -54,6 +54,13 @@ describe('contract PDF', () => {
     expect(es).toContain('RIDER T\xc9CNICO');
     expect(es).toContain('P\xe1gina 1 de 1');
   });
+  it('the footer keeps "with BandWith" unless told otherwise (paid plans: branding)', () => {
+    const now = new Date(2026, 10, 10);
+    expect(ascii(buildContractPdfBytes(contract(), { lang: 'en', now }))).toContain('Generated with BandWith');
+    const own = ascii(buildContractPdfBytes(contract(), { lang: 'en', now, bandWith: false }));
+    expect(own).not.toContain('Generated with BandWith'); // the Producer metadata may still name it
+    expect(own).toContain('Generated on');
+  });
 });
 
 describe('standard terms', () => {

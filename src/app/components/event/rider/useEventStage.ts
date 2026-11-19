@@ -5,6 +5,8 @@ import { getEventRider, getEventStage, riderShareLink, saveEventStage, type Even
 import { buildContractPdf, contractFileName, createContract, fetchBandName, standardTerms, updateContract, type Contract } from '@/lib/services/contracts';
 import { shareFile, shareLink } from '@/lib/nativeFiles';
 import { docLanguageFor } from '@/lib/i18n/docLanguage';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { bandWithFooter } from '@/lib/planText';
 
 interface Options {
   eventId?: string;
@@ -177,7 +179,8 @@ export function useEventStage({ eventId, bandId, eventTitle, eventDate, venueNam
     try {
       const bandName = await fetchBandName(bandId);
       // The rider made here is filed under the venue (createRider), so its language is remembered there.
-      const blob = buildContractPdf(doc, { bandName, lang: docLanguageFor(venueName || eventTitle), stage: shown });
+      const bandWith = bandWithFooter(bandId ? await fetchBandPlan(bandId).catch(() => null) : null);
+      const blob = buildContractPdf(doc, { bandName, lang: docLanguageFor(venueName || eventTitle), stage: shown, bandWith });
       const res = await shareFile(blob, contractFileName(doc), { title: doc.title, dialogTitle: t('Share rider PDF') });
       if (res === 'shared' && isAdmin) await markSent();
     } catch (e: any) {

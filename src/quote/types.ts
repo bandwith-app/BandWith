@@ -75,6 +75,8 @@ export interface QuoteLinkView {
   decline_reason: string | null;
   expired: boolean;
   messages: QuoteLinkMessage[];
+  /** 163: the band's plan shows the "Made with BandWith" mark (absent before 163 = no mark). */
+  made_with?: boolean;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
 }

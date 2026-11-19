@@ -387,7 +387,12 @@ function render() {
   if (answer) app.append(answer);
   if (failure) app.append(h('p', { class: 'note err', role: 'alert' }, failure));
   app.append(chatCard(v));
-  app.append(h('p', { class: 'note' }, 'BandWith'));
+  // 163: on a plan without branding, the mark links to BandWith (paid plans §4.3).
+  app.append(
+    v.made_with
+      ? h('p', { class: 'note', 'data-testid': 'made-with' }, h('a', { href: 'https://bandwith.fun', target: '_blank', rel: 'noopener' }, S.madeWith))
+      : h('p', { class: 'note' }, 'BandWith'),
+  );
 }
 
 // New band replies while the page stays open.

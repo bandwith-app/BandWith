@@ -58,6 +58,8 @@ import { useT, intlLocale, translate, getLocale, type Locale } from '@/lib/i18n'
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { bandWithFooter } from '@/lib/planText';
 
 /** Opens the new-contract form filled from an accepted quote (migration 099). */
 export interface ContractPrefill {
@@ -463,7 +465,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
     setActionError(null);
     try {
       const stage = await stageFor(contract);
-      const blob = buildContractPdf(contract, { bandName, lang: docLanguageFor(contract.client_email || contract.client_name), stage });
+      const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));
+      const blob = buildContractPdf(contract, { bandName, lang: docLanguageFor(contract.client_email || contract.client_name), stage, bandWith });
       const { result, location } = await saveFile(blob, contractFileName(contract));
       if (result === 'saved') setNotice(t('PDF saved to {location}', { location: String(location) }));
       else if (result === 'downloaded') setNotice(t('PDF downloaded'));
@@ -530,7 +533,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
       rememberDocLanguage(email, sendLang);
       const { subject, body } = buildSendMessage(contract, bandName, sendLang);
       const stage = await stageFor(contract);
-      const blob = buildContractPdf(contract, { bandName, lang: sendLang, stage });
+      const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));
+      const blob = buildContractPdf(contract, { bandName, lang: sendLang, stage, bandWith });
       const result = await shareFile(blob, contractFileName(contract), { title: subject, text: body, dialogTitle: t('Send to client') });
       if (result === 'cancelled') return;
       if (result === 'shared') {

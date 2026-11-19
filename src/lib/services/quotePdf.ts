@@ -41,6 +41,17 @@ const moneyIn = (lang: Locale) => (amount: number, sym = '€'): string =>
 
 const trIn = (lang: Locale) => (source: string, vars?: TranslateVars) => translate(lang, source, vars);
 
+/** Paid plans §4.3: "Made with BandWith", small and centred at the foot of the page. */
+const drawMadeWith = (ctx: CanvasRenderingContext2D, text: string | null | undefined) => {
+  if (!text) return;
+  ctx.save();
+  ctx.font = '400 18px "Inter", "Helvetica Neue", Arial, sans-serif';
+  ctx.fillStyle = '#9a9a9a';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, CANVAS_W / 2, CANVAS_H - 70);
+  ctx.restore();
+};
+
 const formatFormalEventDate = (dateStr: string | undefined, lang: Locale): string => {
   if (!dateStr) return translate(lang, 'Date TBD');
   const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
@@ -145,10 +156,12 @@ interface SingleQuotePageParams {
   signatureImg: HTMLImageElement | null;
   optionOverride?: QuotePackageOption;
   lang: Locale;
+  /** "Made with BandWith" (paid plans), when the band's plan has no branding. */
+  mark?: string | null;
 }
 
 const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
-  const { quote, bandName, settings, logoImg, signatureImg, optionOverride, lang } = params;
+  const { quote, bandName, settings, logoImg, signatureImg, optionOverride, lang, mark } = params;
   const tr = trIn(lang);
   const formatMoney = moneyIn(lang);
   const canvas = document.createElement('canvas');
@@ -707,6 +720,7 @@ const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
     ctx.fillText(tr('VAT / Tax ID: {id}', { id: settings.tax_vat_id }), sigBlockX, contactY);
   }
 
+  drawMadeWith(ctx, mark);
   return canvas.toDataURL('image/jpeg', 0.94);
 };
 
@@ -717,10 +731,11 @@ interface ProposalSummaryPageParams {
   logoImg: HTMLImageElement | null;
   options: QuotePackageOption[];
   lang: Locale;
+  mark?: string | null;
 }
 
 const renderProposalSummaryPage = (params: ProposalSummaryPageParams): string => {
-  const { quote, bandName, settings, logoImg, options, lang } = params;
+  const { quote, bandName, settings, logoImg, options, lang, mark } = params;
   const tr = trIn(lang);
   const formatMoney = moneyIn(lang);
   const canvas = document.createElement('canvas');
@@ -1000,6 +1015,7 @@ const renderProposalSummaryPage = (params: ProposalSummaryPageParams): string =>
     y += rowH;
   }
 
+  drawMadeWith(ctx, mark);
   return canvas.toDataURL('image/jpeg', 0.94);
 };
 
@@ -1118,8 +1134,11 @@ export async function generateQuotePdf(
   bandName: string,
   settings: BandPricingSettings,
   /** Language the client reads (default English, as before). */
-  lang: Locale = 'en'
+  lang: Locale = 'en',
+  /** Paid plans §4.3: the "Made with BandWith" mark (madeWithMark(plan)). */
+  opts: { madeWith?: boolean } = {},
 ): Promise<QuotePdfGenerationResult> {
+  const mark = opts.madeWith ? translate(lang, 'Made with BandWith') : null;
   const [logoImg, signatureImg] = await Promise.all([
     loadImageSafe(settings.band_logo_url),
     loadImageSafe(settings.signature_url),
@@ -1140,6 +1159,7 @@ export async function generateQuotePdf(
           signatureImg,
           optionOverride: opt,
           lang,
+          mark,
         })
       );
     }
@@ -1152,6 +1172,7 @@ export async function generateQuotePdf(
         logoImg,
         options,
         lang,
+        mark,
       })
     );
   } else {
@@ -1164,6 +1185,7 @@ export async function generateQuotePdf(
         logoImg,
         signatureImg,
         lang,
+        mark,
       })
     );
   }
