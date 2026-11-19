@@ -24,6 +24,10 @@ export function userMessage(error: unknown, fallback: string): string {
   if (msg) console.warn('[BandWith]', msg);
   // "Could not delete the song" → "Could not delete the song. <reason>"
   fallback = /[.!?…]$/.test(fallback) ? fallback : `${fallback}.`;
+  // Paid plans (161): the band's plan has no room; the plan prompt explains the rest.
+  if (/BW_PLAN_LIMIT:/.test(msg)) {
+    return `${fallback} ${t('Your band’s plan has no room for this.')}`;
+  }
   if (/failed to fetch|networkerror|network request failed|load failed|timeout|offline/i.test(msg)) {
     return `${fallback} ${t('Check your connection and try again.')}`;
   }
@@ -37,4 +41,20 @@ export function userMessage(error: unknown, fallback: string): string {
     return `${fallback} ${t('This file type is not supported.')}`;
   }
   return `${fallback} ${t('Try again.')}`;
+}
+
+/**
+ * A plan refusal (161) in words, else what the screen showed before: for
+ * screens that print a service's own message (some are written for people).
+ * The plan prompt (PlanLimitSheet) opens on its own and explains the rest.
+ */
+export function planOr(error: unknown, otherwise: string): string {
+  const msg = error && typeof error === 'object' ? (error as { message?: unknown }).message : null;
+  return typeof msg === 'string' && /BW_PLAN_LIMIT:/.test(msg) ? t('Your band’s plan has no room for this.') : otherwise;
+}
+
+/** A plan refusal (161) as an error written for people, else null: for services that rewrap errors. */
+export function planRefusal(error: unknown): UserError | null {
+  const msg = error && typeof error === 'object' ? (error as { message?: unknown }).message : null;
+  return typeof msg === 'string' && /BW_PLAN_LIMIT:/.test(msg) ? new UserError(t('Your band’s plan has no room for this.')) : null;
 }

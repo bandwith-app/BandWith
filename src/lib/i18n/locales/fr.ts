@@ -4254,6 +4254,26 @@ const dict: Dictionary = {
   "Storage": "Stockage",
   "{used} of {limit} MB": "{used} sur {limit} Mo",
   "{used} of {limit}": "{used} sur {limit}",
+  // Paid plans P3b: limit prompts
+  "Your band’s plan has no room for this.": "Le forfait du groupe n’a plus de place pour cela.",
+  "See your plan": "Voir votre forfait",
+  "Your band’s plan has no room for this. Ask your band admin about the plan.": "Le forfait du groupe n’a plus de place pour cela. Demandez à l’admin du groupe pour le forfait.",
+  "This month’s quote sends are used": "Les envois de devis de ce mois sont épuisés",
+  "This month’s contract sends are used": "Les envois de contrats de ce mois sont épuisés",
+  "No room for another deputy": "Plus de place pour un autre remplaçant",
+  "No room for another admin": "Plus de place pour un autre admin",
+  "No room for another template": "Plus de place pour un autre modèle",
+  "No room for more band gear": "Plus de place pour du matériel du groupe",
+  "Your band’s storage is full": "Le stockage du groupe est plein",
+  "One Free band per account": "Un groupe Free par compte",
+  "Your band’s plan has no room for this": "Le forfait du groupe n’a plus de place pour cela",
+  "{plan} sends {limit} a month, and this month’s are used. Your draft is saved: nothing is lost.": "{plan} envoie {limit} par mois, et ceux de ce mois sont épuisés. Votre brouillon est enregistré : rien n’est perdu.",
+  "This month’s sends are used. Your draft is saved: nothing is lost.": "Les envois de ce mois sont épuisés. Votre brouillon est enregistré : rien n’est perdu.",
+  "Your band uses {used} of {limit} MB. Files already there stay; a new upload needs room.": "Le groupe utilise {used} sur {limit} Mo. Les fichiers déjà là restent ; un nouvel envoi a besoin de place.",
+  "Files already there stay; a new upload needs room.": "Les fichiers déjà là restent ; un nouvel envoi a besoin de place.",
+  "Your account already runs a Free band as admin. To run another, make one of your bands Pro, or let someone else create it and invite you.": "Votre compte gère déjà un groupe Free en tant qu’admin. Pour en gérer un autre, passez l’un de vos groupes en Pro, ou laissez quelqu’un d’autre le créer et vous inviter.",
+  "Your band’s plan has room for {limit}, and {used} are already there. Everything already there stays.": "Le forfait du groupe a de la place pour {limit}, et il y en a déjà {used}. Tout ce qui est déjà là reste.",
+  "Your band’s plan has no room for this. Everything already there stays.": "Le forfait du groupe n’a plus de place pour cela. Tout ce qui est déjà là reste.",
 };
 
 export default dict;

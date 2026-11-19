@@ -4,6 +4,7 @@ import { X, Users, Link, Check, Plus } from '@/app/components/icons';
 import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
+import { userMessage } from '@/lib/userError';
 import { cn } from '@/app/components/ui/utils';
 import { PeekingScrollContainer } from '@/app/components/ui/PeekingScrollContainer';
 import { createBand, type Band as BandRecord } from '@/lib/services/bands';
@@ -81,8 +82,9 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
         onClose();
         resetForm();
       }, 1000);
-    } catch {
-      setError(t('Failed to create band'));
+    } catch (err) {
+      // A plan refusal (161 bands_as_admin) also opens the plan prompt.
+      setError(userMessage(err, t('Failed to create band')));
     } finally {
       setSaving(false);
     }

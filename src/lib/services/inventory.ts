@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
+import { planRefusal } from '@/lib/userError';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Gear / inventory (table `inventory`, migration 006).
@@ -104,6 +105,8 @@ const privateOf = (row: Record<string, unknown>): InventoryPrivate => ({
 const noRowsMessage = () => t("This change wasn't saved: band gear is managed by the admins, personal gear by its owner.");
 
 const asError = (err: unknown, fallback: string) => {
+  const plan = planRefusal(err);
+  if (plan) return plan;
   const e = err as { message?: string; code?: string } | null;
   // A database before 127 accepts only the original categories.
   if (e?.code === '23514' && /category/i.test(e.message || '')) return new Error(t("This category can't be saved yet. Pick another one."));

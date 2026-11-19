@@ -224,6 +224,16 @@ Rules for prompts:
 - Each prompt is translated (6 languages, `t()`), fits every Duo posture, portals to `<body>`, passes axe.
 - One analytics event per prompt shown/acted on, through the existing analytics hook (no new provider).
 
+Built in P3b (part 1, the prompts), with these choices:
+
+- **One wiring for every screen**: the Supabase client's `fetch` (`planAwareFetch`, `src/lib/planLimit.ts`) reads a failed response once (a clone) and turns `BW_PLAN_LIMIT:<key>` into the app-wide event `bw:plan-limit`; `PlanLimitSheet` (in the app shell, portalled, z 320) shows it. No screen needs its own code, and old screens get the prompt too. The demo raises the same refusal as 161 and reports it the same way.
+- **Prompts open from the server's refusal**, not from a guess on the device: the numbers are always the server's, and the draft or form stays as it was (the item sheet, the quote, the contract). The services that rewrap errors (gear, templates, contracts, quote links, member role, deputies, Create band) say "Your band’s plan has no room for this." instead of a raw code or "Only band admins can do this".
+- **Storage**: a refused upload on a band bucket is only a *possible* limit (the storage policy's error does not name it); the sheet opens only when the band's fresh entitlements confirm it is full.
+- **Admins**: the limit, what is already there, "See your plan" (Settings → Plan) and "Not now". **Members**: "Ask your band admin about the plan" and OK. No prices and no web link in the prompt (the plan screen has those rules; never on iOS). **Second band**: the account wording, OK only.
+- **Never over Stage / Live mode** (`.bw-stage`): the refusal is dropped there, the action's own message still says why.
+- **No analytics event**: the app has no product analytics hook to send it to; not adding a provider for this.
+- Part 2 (next PR): the analytics window (`analytics_days`) and the "Made with BandWith" mark (`branding`) on PDFs and the client page (163).
+
 ### 5.3 Before the switch: the beta notice (P3a)
 
 While `plans_enforced` is off and `plan_settings.launch_notice` is set, admins see one dismissible card: plans arrive on a date, the founding offer applies to their band (computed server-side, §6). The date and wording come from the database, so the card can be turned on on the planned notice day without a release.

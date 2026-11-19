@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { planAwareFetch } from './planLimit';
 import { Capacitor } from '@capacitor/core';
 import { createDemoClient } from './demo/demoClient';
 import { isOfflineAuthError, parseStoredSession } from './authSession';
@@ -70,6 +71,8 @@ export const supabase = isDemoMode
           }
         : undefined, // Use default browser localStorage for web
     },
+    // Paid plans P3b: a refusal over the band's plan opens its prompt, from any screen.
+    global: { fetch: planAwareFetch(fetch.bind(globalThis)) },
   }
 );
 
