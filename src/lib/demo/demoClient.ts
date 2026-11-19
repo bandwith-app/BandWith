@@ -9,7 +9,8 @@
 import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
-import { computeEntitlements, type BandPlanRow } from '@/lib/plans';
+import { computeEntitlements, limitFor, type BandPlanRow, type Entitlements, type LimitKey } from '@/lib/plans';
+import { reportPlanLimit } from '@/lib/planLimit';
 
 // v5: song suggestions (108) refer to seed songs added with them.
 const DB_KEY = 'bw-demo-db-v6';
@@ -558,6 +559,7 @@ class DemoQuery implements PromiseLike<Result> {
         const rows = (Array.isArray(this.payload) ? this.payload : [this.payload!]).map((r) => this.withDefaults(r));
         if (this.name === 'song_suggestions') rows.forEach(fillSuggestion);
         if (this.name === 'rehearsal_notes') rows.forEach((r) => guardNote(r));
+        rows.forEach((r) => demoPlanWrite(this.name, r));
         t.push(...rows);
         rows.forEach((r) => emitChange({ table: this.name, eventType: 'INSERT', new: clone(r), old: null }));
         // 108's trigger: a member's suggested song gets its suggestion row.
@@ -593,6 +595,7 @@ class DemoQuery implements PromiseLike<Result> {
       }
       case 'update': {
         const rows = this.matches();
+        for (const r of rows) demoPlanWrite(this.name, { ...r, ...this.payload }, r);
         for (const r of rows) {
           const before = { ...r };
           Object.assign(r, this.payload, { updated_at: new Date().toISOString() });
@@ -627,7 +630,11 @@ class DemoQuery implements PromiseLike<Result> {
     try {
       res = this.run();
     } catch (e: any) {
-      res = { data: null, error: { message: String(e?.message ?? e), code: 'DEMO' }, status: 500, statusText: 'Error' };
+      res = e instanceof DemoPlanLimit
+        ? { data: null, error: e.planLimit, status: 400, statusText: 'Bad Request' }
+        : { data: null, error: { message: String(e?.message ?? e), code: 'DEMO' }, status: 500, statusText: 'Error' };
+      // What planAwareFetch does on the real client.
+      if (e instanceof DemoPlanLimit) reportPlanLimit(e.planLimit);
     }
     // Resolve on a later tick, like a network round-trip.
     return new Promise<Result>((r) => setTimeout(() => r(res), 40)).then(onFulfilled, onRejected);
@@ -897,6 +904,93 @@ function withdrawSuggestion(args: Row): { data: any; error: any } {
   return { data: { status: 'withdrawn', files }, error: null };
 }
 
+// ------------------------------------------------------------ plans --
+
+/** bw_band_entitlements (160) from the demo's own rows, usage counted like bw_plan_count (161). */
+function demoEntitlements(band: string): Entitlements | null {
+  const me = table('band_members').find((r) => r.band_id === band && r.user_id === DEMO_USER.id && r.is_active !== false);
+  const bandPlan = table('band_plans').find((r) => r.band_id === band) ?? null;
+  const account = bandPlan?.billing_account_id ? table('billing_accounts').find((r) => r.id === bandPlan.billing_account_id) : null;
+  const e = computeEntitlements({
+    switches: table('platform_switches') as { key: string; enabled: boolean }[],
+    planLimits: table('plan_limits') as { plan: string; key: string; value: number | null }[],
+    settings: table('plan_settings') as { key: string; value: unknown }[],
+    bandPlan: bandPlan as BandPlanRow | null,
+    payerUserId: (account?.payer_user_id as string | undefined) ?? null,
+    userId: DEMO_USER.id,
+    isMember: !!me,
+    isAdmin: me?.role === 'admin',
+    now: new Date(),
+  });
+  if (e) e.usage = demoUsage(band);
+  return e;
+}
+
+function demoUsage(band: string): Record<string, number> {
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+  const sentThisMonth = (r: Row) => !!r.sent_at && Date.parse(String(r.sent_at)) >= monthStart;
+  return {
+    quotes_sent_month: table('quote_links').filter((r) => r.band_id === band && sentThisMonth(r)).length,
+    contracts_sent_month: table('contracts').filter((r) => r.band_id === band && r.type !== 'rider' && sentThisMonth(r)).length,
+    deputies: table('band_deputies').filter((r) => r.band_id === band).length,
+    admins: table('band_members').filter((r) => r.band_id === band && r.role === 'admin' && r.is_active !== false).length,
+    custom_templates: table('task_templates').filter((r) => r.band_id === band && !r.is_default).length,
+    gear_items: table('inventory').filter((r) => r.band_id === band && !r.owner_id).length,
+    storage_mb: 0,
+  };
+}
+
+/** The server's refusal (161 bw_plan_guard): P0001, the key in MESSAGE and DETAIL. */
+class DemoPlanLimit extends Error {
+  readonly planLimit: { code: string; message: string; details: string; hint: string };
+  constructor(key: LimitKey, used: number, limit: number) {
+    super(`BW_PLAN_LIMIT:${key}`);
+    this.planLimit = {
+      code: 'P0001',
+      message: `BW_PLAN_LIMIT:${key}`,
+      details: `BW_PLAN_LIMIT:${key} used=${used} limit=${limit}`,
+      hint: 'Your band’s plan has no room for this. Update BandWith to see the plans.',
+    };
+  }
+}
+
+/** bw_plan_guard: passes when the plans are off or the key has no number. */
+function demoPlanGuard(band: unknown, key: LimitKey, add = 1) {
+  if (typeof band !== 'string' || !band) return;
+  const switches = table('platform_switches');
+  if (!switches.some((r) => r.key === 'plans_enforced' && r.enabled === true)) return;
+  const e = demoEntitlements(band);
+  const limit = limitFor(e ? { ...e, enforced: true } : null, key);
+  if (limit === null) return;
+  const used = demoUsage(band)[key] ?? 0;
+  if (used + add > limit) throw new DemoPlanLimit(key, used, limit);
+}
+
+/** bw_plan_guard_new_band (161): the Free bands the person runs as an active admin. */
+function demoNewBandGuard() {
+  if (!table('platform_switches').some((r) => r.key === 'plans_enforced' && r.enabled === true)) return;
+  const row = table('plan_limits').find((r) => r.plan === 'free' && r.key === 'bands_as_admin');
+  if (!row || typeof row.value !== 'number') return;
+  const free = (band: unknown) => {
+    const p = table('band_plans').find((r) => r.band_id === band);
+    return !p || p.plan === 'free' || !['active', 'trialing', 'past_due'].includes(String(p.status));
+  };
+  const used = table('band_members').filter((r) => r.user_id === DEMO_USER.id && r.role === 'admin' && r.is_active !== false && free(r.band_id)).length;
+  if (used + 1 > row.value) throw new DemoPlanLimit('bands_as_admin', used, row.value);
+}
+
+/** 161's triggers, for the demo's writes. */
+function demoPlanWrite(name: string, row: Row, before?: Row) {
+  if (name === 'bands' && !before) demoNewBandGuard();
+  if (name === 'band_deputies' && !before) demoPlanGuard(row.band_id, 'deputies');
+  if (name === 'inventory' && !before && !row.owner_id) demoPlanGuard(row.band_id, 'gear_items');
+  if (name === 'task_templates' && !before && !row.is_default) demoPlanGuard(row.band_id, 'custom_templates');
+  if (name === 'contracts' && row.type !== 'rider' && row.sent_at && !before?.sent_at) demoPlanGuard(row.band_id, 'contracts_sent_month');
+  if (name === 'band_members' && row.role === 'admin' && row.is_active !== false && (!before || before.role !== 'admin' || before.is_active === false)) {
+    demoPlanGuard(row.band_id, 'admins');
+  }
+}
+
 // -------------------------------------------------------------------- rpc --
 
 const rpc = (fn: string, args: Row = {}) => {
@@ -924,39 +1018,7 @@ const rpc = (fn: string, args: Row = {}) => {
     // Paid plans (160): same rules as the server, from the demo's own rows, so
     // e2e can switch plans on locally (platform_switches.plans_enforced).
     case 'bw_band_entitlements': {
-      const me = table('band_members').find(
-        (r) => r.band_id === args.p_band_id && r.user_id === DEMO_USER.id && r.is_active !== false,
-      );
-      const bandPlan = table('band_plans').find((r) => r.band_id === args.p_band_id) ?? null;
-      const account = bandPlan?.billing_account_id
-        ? table('billing_accounts').find((r) => r.id === bandPlan.billing_account_id)
-        : null;
-      const e = computeEntitlements({
-        switches: table('platform_switches') as { key: string; enabled: boolean }[],
-        planLimits: table('plan_limits') as { plan: string; key: string; value: number | null }[],
-        settings: table('plan_settings') as { key: string; value: unknown }[],
-        bandPlan: bandPlan as BandPlanRow | null,
-        payerUserId: (account?.payer_user_id as string | undefined) ?? null,
-        userId: DEMO_USER.id,
-        isMember: !!me,
-        isAdmin: me?.role === 'admin',
-        now: new Date(),
-      });
-      // Usage, counted like the server's bw_plan_count (161).
-      if (e) {
-        const band = args.p_band_id;
-        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-        const sentThisMonth = (r: Row) => !!r.sent_at && Date.parse(String(r.sent_at)) >= monthStart;
-        e.usage = {
-          quotes_sent_month: table('quote_links').filter((r) => r.band_id === band && sentThisMonth(r)).length,
-          contracts_sent_month: table('contracts').filter((r) => r.band_id === band && r.type !== 'rider' && sentThisMonth(r)).length,
-          deputies: table('band_deputies').filter((r) => r.band_id === band).length,
-          admins: table('band_members').filter((r) => r.band_id === band && r.role === 'admin' && r.is_active !== false).length,
-          custom_templates: table('task_templates').filter((r) => r.band_id === band && !r.is_default).length,
-          gear_items: table('inventory').filter((r) => r.band_id === band && !r.owner_id).length,
-          storage_mb: 0,
-        };
-      }
+      const e = demoEntitlements(String(args.p_band_id));
       // The server's shape (snake_case).
       data = e && {
         enforced: e.enforced,
@@ -1329,6 +1391,15 @@ const rpc = (fn: string, args: Row = {}) => {
       if (!l) {
         error = { message: 'Publish the quote first', code: 'P0002' };
         break;
+      }
+      if (l.status === 'draft' && args.p_kind !== 'reminded') {
+        try {
+          demoPlanGuard(l.band_id, 'quotes_sent_month');
+        } catch (e) {
+          error = (e as DemoPlanLimit).planLimit;
+          reportPlanLimit(error);
+          break;
+        }
       }
       const now = new Date().toISOString();
       const kind = args.p_kind === 'reminded' ? 'reminded' : l.status === 'draft' ? 'sent' : 'resent';

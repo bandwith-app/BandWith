@@ -177,6 +177,7 @@ import { usePushNotifications } from "@/app/hooks/usePushNotifications";
 import { parseLocalDate } from '@/lib/dates';
 import { addressWithoutCity } from '@/lib/eventAddress';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
+import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
 import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
@@ -3876,6 +3877,8 @@ export default function AuthenticatedApp() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-accent/50">
       <MapsChooserHost />
+      {/* Paid plans P3b: the limit prompt, for every screen. */}
+      <PlanLimitSheet bandId={realBand?.id ? String(realBand.id) : null} onOpenPlan={() => handleGridNav('Settings:plan')} />
       <OfflineBanner
         isOnline={isOnline}
         wasOffline={wasOffline}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, Loader2, Mail, Pencil, Phone, Plus, Trash2, Users } from '@/app/components/icons';
+import { planOr } from '@/lib/userError';
 import { BwSheet, Card, IconButton, Tag } from '@/app/components/bw/Screen';
 import { PillButton, PillField } from '@/app/components/bw/Form';
 import {
@@ -91,7 +92,7 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
     );
     setSaving(false);
     if (e) {
-      setError(deputiesUnavailable(e) ? t('Deputies need the latest app update on the server.') : t('Could not save. Try again.'));
+      setError(deputiesUnavailable(e) ? t('Deputies need the latest app update on the server.') : planOr(e, t('Could not save. Try again.')));
       return;
     }
     setEditing(null);

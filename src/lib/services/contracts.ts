@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { attachEventPrivate } from './eventPrivate';
 import { parseLocalDate, toLocalDateString, todayLocal } from '../dates';
 import { t, translate, intlLocale, type Locale } from '@/lib/i18n';
+import { planRefusal } from '@/lib/userError';
 import { channelLabel, stageSize, type StageData } from '../stagePlot';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ export const errorMessage = (err: unknown, fallback = t('Something went wrong. P
 // technical) goes to the console, never to the screen.
 const asError = (err: unknown, fallback?: string) => {
   console.warn('[contracts]', err);
-  return new Error(fallback ?? t('Something went wrong. Please try again.'));
+  return planRefusal(err) ?? new Error(fallback ?? t('Something went wrong. Please try again.'));
 };
 
 const blankToNull = (v?: string | null) => {

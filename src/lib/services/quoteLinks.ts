@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { APP_URL } from '@/lib/appUrl';
 import { parseLocalDate } from '@/lib/dates';
 import { builtinText } from '@/lib/i18n/builtins';
+import { planRefusal } from '@/lib/userError';
 import { intlLocale, translate, LANGUAGES, type Locale, type TranslateVars } from '@/lib/i18n';
 import { formatDistance } from '@/lib/units';
 import {
@@ -74,7 +75,7 @@ export interface QuoteActivity {
 
 type Result<T> = { data: T | null; error: Error | null };
 
-const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String((e as { message?: string })?.message ?? e)));
+const asError = (e: unknown): Error => planRefusal(e) ?? (e instanceof Error ? e : new Error(String((e as { message?: string })?.message ?? e)));
 
 const isLocale = (v: unknown): v is Locale => LANGUAGES.some((l) => l.id === v);
 

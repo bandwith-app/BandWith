@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
+import { planRefusal } from '@/lib/userError';
 import { builtinText } from '@/lib/i18n/builtins';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -40,6 +41,8 @@ type Result<T> = { data: T | null; error: Error | null };
 const noRowsMessage = () => t("This change wasn't saved: you don't have permission to manage this band's templates.");
 
 const asError = (err: unknown, fallback: string) => {
+  const plan = planRefusal(err);
+  if (plan) return plan;
   const e = err as { message?: string } | null;
   return new Error(e?.message || fallback);
 };

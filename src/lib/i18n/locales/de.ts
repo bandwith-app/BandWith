@@ -4254,6 +4254,26 @@ const dict: Dictionary = {
   "Storage": "Speicher",
   "{used} of {limit} MB": "{used} von {limit} MB",
   "{used} of {limit}": "{used} von {limit}",
+  // Paid plans P3b: limit prompts
+  "Your band’s plan has no room for this.": "Der Plan der Band hat dafür keinen Platz.",
+  "See your plan": "Deinen Plan ansehen",
+  "Your band’s plan has no room for this. Ask your band admin about the plan.": "Der Plan der Band hat dafür keinen Platz. Frag den Admin der Band nach dem Plan.",
+  "This month’s quote sends are used": "Die Angebotsversände dieses Monats sind aufgebraucht",
+  "This month’s contract sends are used": "Die Vertragsversände dieses Monats sind aufgebraucht",
+  "No room for another deputy": "Kein Platz für eine weitere Vertretung",
+  "No room for another admin": "Kein Platz für einen weiteren Admin",
+  "No room for another template": "Kein Platz für eine weitere Vorlage",
+  "No room for more band gear": "Kein Platz für weitere Band-Ausrüstung",
+  "Your band’s storage is full": "Der Speicher der Band ist voll",
+  "One Free band per account": "Eine Free-Band pro Konto",
+  "Your band’s plan has no room for this": "Der Plan der Band hat dafür keinen Platz",
+  "{plan} sends {limit} a month, and this month’s are used. Your draft is saved: nothing is lost.": "{plan} versendet {limit} pro Monat, und die dieses Monats sind aufgebraucht. Dein Entwurf ist gespeichert: Nichts geht verloren.",
+  "This month’s sends are used. Your draft is saved: nothing is lost.": "Die Versände dieses Monats sind aufgebraucht. Dein Entwurf ist gespeichert: Nichts geht verloren.",
+  "Your band uses {used} of {limit} MB. Files already there stay; a new upload needs room.": "Die Band nutzt {used} von {limit} MB. Vorhandene Dateien bleiben; ein neuer Upload braucht Platz.",
+  "Files already there stay; a new upload needs room.": "Vorhandene Dateien bleiben; ein neuer Upload braucht Platz.",
+  "Your account already runs a Free band as admin. To run another, make one of your bands Pro, or let someone else create it and invite you.": "Dein Konto leitet bereits eine Free-Band als Admin. Für eine weitere stell eine deiner Bands auf Pro um, oder lass jemand anderen sie anlegen und dich einladen.",
+  "Your band’s plan has room for {limit}, and {used} are already there. Everything already there stays.": "Der Plan der Band hat Platz für {limit}, und {used} sind schon da. Alles, was schon da ist, bleibt.",
+  "Your band’s plan has no room for this. Everything already there stays.": "Der Plan der Band hat dafür keinen Platz. Alles, was schon da ist, bleibt.",
 };
 
 export default dict;

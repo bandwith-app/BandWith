@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { BAND_MEMBER_COLUMNS, attachMemberFees } from './bandMemberFees';
+import { planRefusal } from '@/lib/userError';
 import { BAND_PUBLIC_COLUMNS, attachBandPrivate } from './bandPrivate';
 
 // Types
@@ -584,7 +585,8 @@ export const updateMemberRole = async (
 
     return { error: null };
   } catch (error: any) {
-    return { error };
+    // 161: no room for another admin on the band's plan (the prompt opens too).
+    return { error: planRefusal(error) ?? error };
   }
 };
 

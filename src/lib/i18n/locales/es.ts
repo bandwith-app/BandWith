@@ -4254,6 +4254,26 @@ const dict: Dictionary = {
   "Storage": "Almacenamiento",
   "{used} of {limit} MB": "{used} de {limit} MB",
   "{used} of {limit}": "{used} de {limit}",
+  // Paid plans P3b: limit prompts
+  "Your band’s plan has no room for this.": "El plan de la banda no tiene espacio para esto.",
+  "See your plan": "Ver tu plan",
+  "Your band’s plan has no room for this. Ask your band admin about the plan.": "El plan de la banda no tiene espacio para esto. Pregunta al admin de la banda por el plan.",
+  "This month’s quote sends are used": "Los envíos de presupuestos de este mes se han agotado",
+  "This month’s contract sends are used": "Los envíos de contratos de este mes se han agotado",
+  "No room for another deputy": "No hay espacio para otro sustituto",
+  "No room for another admin": "No hay espacio para otro admin",
+  "No room for another template": "No hay espacio para otra plantilla",
+  "No room for more band gear": "No hay espacio para más equipo de la banda",
+  "Your band’s storage is full": "El almacenamiento de la banda está lleno",
+  "One Free band per account": "Una banda Free por cuenta",
+  "Your band’s plan has no room for this": "El plan de la banda no tiene espacio para esto",
+  "{plan} sends {limit} a month, and this month’s are used. Your draft is saved: nothing is lost.": "{plan} envía {limit} al mes y los de este mes se han agotado. Tu borrador está guardado: no se pierde nada.",
+  "This month’s sends are used. Your draft is saved: nothing is lost.": "Los envíos de este mes se han agotado. Tu borrador está guardado: no se pierde nada.",
+  "Your band uses {used} of {limit} MB. Files already there stay; a new upload needs room.": "La banda usa {used} de {limit} MB. Los archivos que ya hay se quedan; una nueva subida necesita espacio.",
+  "Files already there stay; a new upload needs room.": "Los archivos que ya hay se quedan; una nueva subida necesita espacio.",
+  "Your account already runs a Free band as admin. To run another, make one of your bands Pro, or let someone else create it and invite you.": "Tu cuenta ya gestiona una banda Free como admin. Para gestionar otra, pasa una de tus bandas a Pro, o deja que otra persona la cree y te invite.",
+  "Your band’s plan has room for {limit}, and {used} are already there. Everything already there stays.": "El plan de la banda tiene espacio para {limit} y ya hay {used}. Todo lo que ya hay se queda.",
+  "Your band’s plan has no room for this. Everything already there stays.": "El plan de la banda no tiene espacio para esto. Todo lo que ya hay se queda.",
 };
 
 export default dict;
