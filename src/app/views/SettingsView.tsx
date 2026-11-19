@@ -28,7 +28,12 @@ import {
   Check,
   BookOpen,
   RotateCcw,
+  Crown,
 } from '@/app/components/icons';
+import { PlanSection } from '@/app/components/plans/PlanSection';
+import { useOptionalBand } from '@/lib/BandContext';
+import { usePlan } from '@/lib/usePlan';
+import { planName } from '@/lib/planText';
 import { LegalSheet, type LegalDoc } from '@/app/components/legal/LegalSheet';
 import { AcademySheet } from '@/app/components/academy/AcademySheet';
 import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
@@ -49,7 +54,7 @@ import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
 
-type SettingsSection = 'notifications' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
+type SettingsSection = 'notifications' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
 interface SettingsViewProps {
   onClose: () => void;
@@ -104,6 +109,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const localePref = useLocalePref();
   const languageName = (id: string) => LANGUAGES.find((l) => l.id === id)?.name ?? 'English';
 
+  // Paid plans (P3a): the band's plan, read from the server (bw_band_entitlements).
+  const planBand = useOptionalBand()?.selectedBand ?? null;
+  const plan = usePlan(planBand?.id);
+
   const themeLabel = mode === 'system' ? t('System') : mode === 'dark' ? t('Dark') : t('Light');
 
   // iPhone Duo: only where the device reports posture (fold / hinge / Duo
@@ -134,6 +143,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
+    ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
     { id: 'privacy', label: t('Privacy & account'), hint: appLockAvailable ? t('App lock, gig privacy, export, delete account') : t('Gig privacy, export, delete account'), icon: Lock },
@@ -324,6 +334,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const getSectionTitle = (section: SettingsSection | null = activeSection): string => {
     switch (section) {
       case 'notifications': return t('Notifications');
+      case 'plan': return t('Plan');
       case 'appearance': return t('Appearance');
       case 'units': return t('Units');
       case 'privacy': return t('Privacy & account');
@@ -726,6 +737,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <>
       {section === null && renderMenu()}
       {section === 'notifications' && renderNotificationsSection()}
+      {section === 'plan' && <PlanSection />}
       {section === 'appearance' && renderAppearanceSection()}
       {section === 'units' && renderUnitsSection()}
       {section === 'privacy' && renderPrivacySection()}

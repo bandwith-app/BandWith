@@ -157,13 +157,11 @@ import { quoteMusicianFee } from "@/lib/services/quoteMath";
 
 import { ChatDetailModal, NewChatModal } from "@/app/components/chat";
 import { EditProfileModal, CreateBandModal } from "@/app/components/profile";
-import { UpgradePricingSheet } from "@/app/components/modals/UpgradePricingSheet";
 import { PersonalGigModal } from "@/app/components/modals/PersonalGigModal";
 import { NoBandRehearsalModal } from "@/app/components/modals/NoBandRehearsalModal";
 import { ChooseBandProposalModal, type BandOption } from "@/app/components/modals/ChooseBandProposalModal";
 import { NotificationDetailModal } from "@/app/components/notifications/NotificationDetailModal";
 import { navigateToNotificationTarget, notificationBandId, notificationTarget } from "@/lib/notificationRouting";
-import { IS_BETA } from "@/lib/beta";
 import { BandSwitchPrompt, type BandSwitchChoice, type BandSwitchRequest } from "@/app/components/modals/BandSwitchPrompt";
 import { EventRSVPSheet } from "@/app/components/notifications/EventRSVPSheet";
 import { ProposeRehearsalModal } from "@/app/components/rehearsal/ProposeRehearsalModal";
@@ -1544,7 +1542,6 @@ export default function AuthenticatedApp() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [votePollId, setVotePollId] = useState<string | null>(null);
   const [showCreateBand, setShowCreateBand] = useState(false);
-  const [showUpgradePricing, setShowUpgradePricing] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingModalInitialTab, setPricingModalInitialTab] = useState<PricingModalTabType>('rates');
   const [pricingReturnTo, setPricingReturnTo] = useState<'settings' | 'control_deck' | 'identity_hub' | null>(null);
@@ -1559,33 +1556,11 @@ export default function AuthenticatedApp() {
     if (realBand?.id && !roleTourSeen(tourRole)) setShowAdminTour(true);
   }, [realBand?.id, tourRole]);
 
-  // Tier-limit check before showing the create band modal
+  // Creating a band: the server decides whether the account may run another
+  // Free band (paid plans 161, bands_as_admin); the modal shows the refusal.
   const handleRequestCreateBand = useCallback(() => {
-    const tier = profile?.sub_tier || 'free_member';
-
-    // Count bands where the current user is admin
-    const adminBandCount = realBands.filter((b) => b.user_role === 'admin').length;
-
-    // Define limits per tier. Paid plans aren't on sale yet, so everyone gets
-    // the free Indie Act allowance (1 band) — before, solo users and members
-    // had 0 and hit a paywall whose Upgrade button did nothing.
-    const limits: Record<string, number> = {
-      free_member: 1,
-      single_band: 1,
-      multi_band: 5,
-      unlimited: Infinity,
-    };
-
-    // Beta: no band limit for anyone.
-    const limit = IS_BETA ? Infinity : limits[tier] ?? 0;
-
-    if (adminBandCount >= limit) {
-      // Hit the ceiling — show upgrade pricing sheet instead
-      setShowUpgradePricing(true);
-    } else {
-      setShowCreateBand(true);
-    }
-  }, [profile?.sub_tier, realBands]);
+    setShowCreateBand(true);
+  }, []);
 
   const [entityCounts, setEntityCounts] = useState<{
     templates: number; documents: number; inventory: number; repertoire: number; status: AssetStatusCounts;
@@ -2030,7 +2005,7 @@ export default function AuthenticatedApp() {
   // first closes the browsing layers that would otherwise sit on top of it.
   // Create/edit flows keep it disabled so nothing typed is lost.
   const railProfileLocked =
-    !isIdentityOpen && (isCreateEventOpen || showPersonalGigModal || showEditProfile || showUpgradePricing || showPricingModal || !!rsvpNotification || !!pollNotification || !!votePollId);
+    !isIdentityOpen && (isCreateEventOpen || showPersonalGigModal || showEditProfile || showPricingModal || !!rsvpNotification || !!pollNotification || !!votePollId);
   const closeHubPages = () => {
     setShowSettings(false);
     setShowBandMembers(false);
@@ -2273,7 +2248,6 @@ export default function AuthenticatedApp() {
     showNewChat,
     showEditProfile,
     showCreateBand,
-    showUpgradePricing,
     showPricingModal,
     showAdminTour,
     isPlusMenuOpen,
@@ -2316,7 +2290,6 @@ export default function AuthenticatedApp() {
     showNewChat,
     showEditProfile,
     showCreateBand,
-    showUpgradePricing,
     showPricingModal,
     showAdminTour,
     isPlusMenuOpen,
@@ -2421,8 +2394,7 @@ export default function AuthenticatedApp() {
         setShowCreateBand(false);
         return true;
       }
-      if (s.showUpgradePricing || s.showPricingModal) {
-        setShowUpgradePricing(false);
+      if (s.showPricingModal) {
         setShowPricingModal(false);
         return true;
       }
@@ -3961,7 +3933,7 @@ export default function AuthenticatedApp() {
             own content per band, so the new band still animates in. */}
         <AnimatePresence mode="wait">
           {(activeTab === "Home" || activeTab === "More") && (
-            <HomeView key={isSolo ? 'dashboard-solo' : 'dashboard'} selectedBand={selectedBand} expandedCard={expandedCard} setExpandedCard={setExpandedCard} upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} onRehearsalClick={handleRehearsalClick} isHidden={isMenuOpen} dashboardData={computedDashboardData} dashboardLoading={dashboardLoading && !masterEventsList?.length} isAdmin={isAdmin} onViewChange={(tab) => setActiveTab(tab as TabName)} onSelectEvent={navigateToEvent} onGoLive={handleGoLive} onReviewPayouts={handleReviewPayouts} onFilterEvents={(filter) => {
+            <HomeView key={isSolo ? 'dashboard-solo' : 'dashboard'} selectedBand={selectedBand} expandedCard={expandedCard} setExpandedCard={setExpandedCard} upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} onRehearsalClick={handleRehearsalClick} isHidden={isMenuOpen} dashboardData={computedDashboardData} dashboardLoading={dashboardLoading && !masterEventsList?.length} isAdmin={isAdmin} onViewChange={(tab) => setActiveTab(tab as TabName)} onSelectEvent={navigateToEvent} onGoLive={handleGoLive} onReviewPayouts={handleReviewPayouts} onOpenPlan={() => handleGridNav('Settings:plan')} onFilterEvents={(filter) => {
               setEventFilter(filter);
               setActiveTab("Events");
             }} onQuickAction={(action) => {
@@ -4291,11 +4263,10 @@ export default function AuthenticatedApp() {
             />
           )}
           {showCreateBand && <CreateBandModal key="create-band" isOpen={showCreateBand} onClose={() => setShowCreateBand(false)} onBandCreated={(id) => { selectBand(id); }} />}
-          <UpgradePricingSheet key="upgrade-pricing-sheet" isOpen={showUpgradePricing} onClose={() => setShowUpgradePricing(false)} currentTier={profile?.sub_tier} limitReached />
           <PendingInvitesPrompt
             key="pending-invites"
             userId={user?.id}
-            hidden={!!expandedCard || !!selectedChat || !!selectedEvent || showSettings || isCreateEventOpen || isIdentityOpen || showUpgradePricing}
+            hidden={!!expandedCard || !!selectedChat || !!selectedEvent || showSettings || isCreateEventOpen || isIdentityOpen}
             onToast={(message, type) => setSaveToast({ message, type })}
             onJoined={(bandId) => {
               refreshBands()

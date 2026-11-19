@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { IS_BETA } from '@/lib/beta';
 import { motion } from 'motion/react';
 import { X, Users, Link, Check, Plus } from '@/app/components/icons';
 import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
@@ -26,12 +25,6 @@ const GENRES = [
   'Folk', 'Metal', 'Reggae', 'Latin', 'World', 'Other'
 ];
 
-/** Built per render so the labels follow the current language. */
-const plans = () => [
-  { id: 'free', name: t('Free'), description: IS_BETA ? t('everything, during the beta') : t('1 band'), price: '€0', available: true },
-  { id: 'pro', name: 'Pro', description: t('coming soon'), price: t('{price}/mo', { price: '€9.99' }), available: false },
-];
-
 /** Adds https:// when the user typed a bare domain. */
 const normalizeWebsite = (raw: string): string | undefined => {
   const v = raw.trim();
@@ -52,7 +45,6 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
   const [genre, setGenre] = useState('');
   const [description, setDescription] = useState('');
   const [website, setWebsite] = useState('');
-  const [plan, setPlan] = useState('free');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +93,6 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
     setGenre('');
     setDescription('');
     setWebsite('');
-    setPlan('free');
     setSuccess(false);
     setError(null);
   };
@@ -109,8 +100,8 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
   if (!isOpen) return null;
 
   const initials = name?.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '??';
-  const PLANS = plans();
-  const planName = PLANS.find((p) => p.id === plan)?.name ?? tr('Free');
+  // Every new band starts on Free (product name, stays English); Settings → Plan shows the rest.
+  const planName = 'Free';
   // Chip labels only — the saved genre stays the English value.
   const genreLabel: Record<string, string> = {
     'Wedding band': tr('Wedding band'),
@@ -207,35 +198,6 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
             placeholder="https://"
           />
 
-          {/* Plan */}
-          <fieldset className="flex flex-col gap-2">
-            <legend className="bw-label-sm text-muted-foreground mb-2">{tr('Plan')}</legend>
-            <div className="grid grid-cols-2 gap-3">
-              {PLANS.map((p) => {
-                const selected = plan === p.id && p.available;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={!p.available}
-                    aria-disabled={!p.available}
-                    onClick={() => { if (p.available) setPlan(p.id); }}
-                    className={cn(
-                      'p-4 rounded-[24px] text-left flex flex-col gap-2 transition-transform',
-                      p.available ? 'active:scale-[0.98]' : 'opacity-50 cursor-not-allowed',
-                      selected ? 'bg-accent text-accent-foreground' : 'bg-card border border-border text-foreground',
-                    )}
-                  >
-                    <span className="bw-label-md">{p.name}</span>
-                    <span className={cn('bw-body-sm', !selected && 'text-muted-foreground')}>
-                      {p.price} · {p.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
         </div>
       </PeekingScrollContainer>
 

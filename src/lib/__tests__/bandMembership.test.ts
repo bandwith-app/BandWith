@@ -47,9 +47,20 @@ describe('parseFeeInput', () => {
 });
 
 describe('canCoManage', () => {
-  it('is open to every plan during the beta', () => {
-    expect(canCoManage('single_band')).toBe(true);
-    expect(canCoManage(null)).toBe(true);
+  const ent = (enforced: boolean, admins: number | null) => ({
+    enforced, plan: 'free' as const, source: null, status: null, trialEndsAt: null, grantUntil: null,
+    isPayer: false, isAdmin: true, limits: { admins }, usage: {}, checkout: false, notice: null,
+  });
+
+  it('is open to every band while the plans are off, or when nothing is known', () => {
+    expect(canCoManage(ent(false, 1), 5)).toBe(true);
+    expect(canCoManage(null, 5)).toBe(true);
+  });
+
+  it("follows the band's admins limit once the plans are on", () => {
+    expect(canCoManage(ent(true, 3), 2)).toBe(true);
+    expect(canCoManage(ent(true, 3), 3)).toBe(false);
+    expect(canCoManage(ent(true, null), 30)).toBe(true);
   });
 });
 

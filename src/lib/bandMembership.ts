@@ -3,10 +3,15 @@
  * who can co-manage, when you can leave, and how a member's instrument and
  * default fee are read and edited.
  */
-import { hasPlanFeature } from '@/lib/beta';
+import { canUse, type Entitlements } from '@/lib/plans';
 
-/** Co-managing a band is a paid feature, open to everyone during the beta. */
-export const canCoManage = (subTier?: string | null): boolean => hasPlanFeature(subTier);
+/**
+ * Whether one more admin fits the band's plan (paid plans, limit `admins`).
+ * Always true while the plans are off or the plan is not known yet; the
+ * server checks it again (161).
+ */
+export const canCoManage = (plan: Entitlements | null | undefined, activeAdmins: number): boolean =>
+  canUse(plan, 'admins', activeAdmins);
 
 interface MemberRow {
   user_id: string;
