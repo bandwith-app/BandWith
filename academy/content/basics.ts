@@ -653,7 +653,7 @@ const basics: AreaModule = {
       keywords: ["push", "alerts", "badge", "urgent", "pop-up", "notification permission"],
       related: ["notifications-inbox", "notification-settings", "change-language"],
       body: [
-        { type: "p", text: "BandWith sends push notifications for gig invites, polls, chat messages, payments and band changes. Tapping a push opens the same screen as the matching inbox item. The app icon shows a badge with your unread count." },
+        { type: "p", text: "BandWith sends push notifications for gig invites, polls, chat messages, payments, band changes and, when a rehearsal ends, the songs you have to practise. Tapping a push opens the same screen as the matching inbox item. The app icon shows a badge with your unread count." },
         { type: "p", text: "Urgent items (a gig invitation, a rehearsal poll or proposal) also show a lime pop-up at the top of the screen with an **Urgent** tag and a button: **CONFIRM**, **VOTE NOW** or **VIEW**. Tap the dimmed screen or the close button (**Dismiss alert**) to put it away. The pop-up shows even when push is off." },
         { type: "p", text: "Pushes and server emails arrive in your app language ([[change-language]]). Duplicate invites to the same event replace each other; chat messages and alerts each stay visible." },
         { type: "p", text: "The first time, your phone asks whether BandWith may send notifications. If you said no, the **Notifications** settings show **Notifications are off on this device** ([[notification-settings]]): tap it to open the phone's settings for BandWith and turn them on." },

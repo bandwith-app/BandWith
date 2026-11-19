@@ -50,6 +50,10 @@ describe('notificationTarget', () => {
     expect(notificationTarget('something_else', {})).toBeNull();
   });
 
+  it('the rehearsal summary (A4, 133) opens the rehearsal and its notes', () => {
+    expect(notificationTarget('rehearsal_notes_added', { kind: 'summary', event_id: 'r1', session_id: 's1' })).toEqual({ screen: 'event', eventId: 'r1' });
+  });
+
   it('falls back to the type inside the push payload', () => {
     expect(notificationTarget('', { type: 'event_confirmed', eventId: 'e' })).toEqual({ screen: 'event', eventId: 'e' });
   });

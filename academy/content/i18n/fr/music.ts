@@ -1212,6 +1212,7 @@ const music: AreaText = {
             "La page du morceau affiche **Des répétitions** au-dessus de tes notes. Une note **Tempo** ou **Tonalité** qui donne la valeur (par exemple « Tempo : 96 » ou « Tonalité : Bb ») a un bouton : les admins **Appliquer au morceau**, les membres **Suggérer au groupe**.",
             "La page de la répétition suivante affiche **DE LA DERNIÈRE FOIS** : les notes ouvertes des répétitions précédentes sur ses morceaux. Les admins touchent **OK** quand le groupe l’a. En mode Live, un badge sur chaque morceau ouvre ses notes de la dernière fois.",
             "Quand un admin crée une répétition, **Des notes de répétition ouvertes** propose les morceaux avec des notes ouvertes comme morceaux à travailler, un toucher chacun. Un nouveau sondage de répétition les choisit déjà ; retire ceux dont tu n’as pas besoin.",
+            "À la fin d’une répétition, chacun qui a des morceaux à travailler reçoit une seule notification avec eux (« À travailler : … »), dans sa langue ; celui qui l’a terminée voit le récapitulatif. **Notifications push** dans les Réglages la coupe.",
           ],
         },
         {

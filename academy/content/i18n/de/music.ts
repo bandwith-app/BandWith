@@ -1212,6 +1212,7 @@ const music: AreaText = {
             "Die Seite des Songs zeigt **Aus den Proben** über deinen Notizen. Eine **Tempo**- oder **Tonart**-Notiz mit dem Wert (zum Beispiel „Tempo: 96“ oder „Tonart: F#m“) bekommt einen Button: Admins **Im Song setzen**, Mitglieder **Der Band vorschlagen**.",
             "Die Seite der nächsten Probe zeigt **VOM LETZTEN MAL**: offene Notizen aus früheren Proben zu ihren Songs. Admins tippen **OK**, wenn die Band es kann. Im Live-Modus öffnet ein Abzeichen an jedem Song seine Notizen vom letzten Mal.",
             "Wenn ein Admin eine Probe anlegt, bietet **Aus offenen Probennotizen** die Songs mit offenen Notizen als Fokus-Songs an, ein Tipp pro Song. Eine neue Probenumfrage wählt sie schon vor; entferne die, die du nicht brauchst.",
+            "Wenn eine Probe endet, bekommt jeder mit Songs zum Üben eine einzige Push-Mitteilung mit ihnen („Zum Üben: …“), in seiner Sprache; wer sie beendet hat, sieht stattdessen die Zusammenfassung. **Push-Mitteilungen** in den Einstellungen schaltet das aus.",
           ],
         },
         {

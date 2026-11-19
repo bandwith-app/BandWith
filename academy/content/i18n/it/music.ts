@@ -1212,6 +1212,7 @@ const music: AreaText = {
             "La pagina del brano mostra **Dalle prove** sopra le tue note. Una nota **Tempo** o **Tonalità** che indica il valore (per esempio “Tempo: 96” o “Tonalità: Bb”) ha un pulsante: gli admin **Imposta sul brano**, i membri **Suggerisci alla band**.",
             "La pagina della prova successiva mostra **DALL’ULTIMA VOLTA**: le note aperte delle prove precedenti sui suoi brani. Gli admin toccano **OK** quando la band ci è arrivata. In Modalità live un badge su ogni brano apre le sue note dall’ultima volta.",
             "Quando un admin crea una prova, **Dalle note di prova aperte** propone i brani con note aperte come brani su cui concentrarsi, un tocco ciascuno. Un nuovo sondaggio di prova li sceglie già; togli quelli che non servono.",
+            "Quando finisce una prova, chi ha brani da studiare riceve una sola push con quei brani (“Da studiare: …”), nella sua lingua; chi l’ha chiusa vede invece il riepilogo. **Notifiche push** nelle Impostazioni la spegne.",
           ],
         },
         {

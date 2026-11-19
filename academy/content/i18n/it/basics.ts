@@ -646,7 +646,7 @@ const basics: AreaText = {
       keywords: ["push", "avvisi", "badge", "urgente", "pop-up", "permesso notifiche"],
       related: ["notifications-inbox", "notification-settings", "change-language"],
       body: [
-        { type: "p", text: "BandWith invia notifiche push per inviti ai gig, sondaggi, messaggi in chat, pagamenti e cambiamenti nella band. Toccando una push si apre la stessa schermata della notifica corrispondente. L’icona dell’app mostra un badge con il numero di non lette." },
+        { type: "p", text: "BandWith invia notifiche push per inviti ai gig, sondaggi, messaggi in chat, pagamenti, cambiamenti nella band e, quando finisce una prova, i brani da studiare. Toccando una push si apre la stessa schermata della notifica corrispondente. L’icona dell’app mostra un badge con il numero di non lette." },
         { type: "p", text: "Le cose urgenti (un invito a un gig, un sondaggio o una proposta di prova) mostrano anche un avviso color lime in cima allo schermo, con l’etichetta **Urgente** e un pulsante: **CONFERMA**, **VOTA ORA** o **VEDI**. Tocca lo schermo oscurato o il pulsante di chiusura (**Chiudi avviso**) per toglierlo. L’avviso compare anche con le push disattivate." },
         { type: "p", text: "Push ed email del server arrivano nella lingua dell’app ([[change-language]]). Gli inviti doppi allo stesso evento si sostituiscono a vicenda; messaggi in chat e avvisi restano tutti visibili." },
         { type: "p", text: "La prima volta il telefono ti chiede se BandWith può inviarti notifiche. Se hai detto di no, nelle impostazioni **Notifiche** compare **Notifiche disattivate su questo dispositivo** ([[notification-settings]]): toccala per aprire le impostazioni del telefono per BandWith e attivarle." },
