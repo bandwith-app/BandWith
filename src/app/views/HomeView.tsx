@@ -13,11 +13,12 @@ import { useBand } from '@/lib/BandContext';
 import { useT, dateName, intlLocale, localDecimal, getLocale } from '@/lib/i18n';
 import { RehearsalPollCard } from '@/app/components/rehearsal/RehearsalPollCard';
 import type { RehearsalPoll } from '@/lib/services/rehearsalPolls';
+import { canVoteInPoll } from '@/lib/pollPermissions';
 import { parseLocalDate } from '@/lib/dates';
 import { useEventDrafts, type EventDraft } from '@/lib/wizardDrafts';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { openMaps } from '@/app/components/ui/MapsLink';
-import { BandDeskMode, type DeskActionItem, type DeskGig } from '@/app/components/duo';
+import { BandDeskMode, useLaptopPose, type DeskActionItem, type DeskGig } from '@/app/components/duo';
 import { NextGigReadiness } from '@/app/components/dashboard/NextGigReadiness';
 import { PayoutsDueCard } from '@/app/components/dashboard/PayoutsDueCard';
 import { ToPractiseCard, shortDay } from '@/app/components/dashboard/ToPractiseCard';
@@ -249,6 +250,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
   // Use the band context for role, fall back to prop for backwards compatibility
   const { isAdmin: isAdminFromContext, selectedBand: contextBand } = useBand();
   const isAdmin = isAdminFromContext ?? _isAdminProp;
+  // Laptop pose: the Band desk covers the whole screen, so the Home under it
+  // is out of reach (no taps, focus or screen reader), not just out of sight.
+  const underDesk = useLaptopPose();
+  const coveredProps = underDesk ? ({ inert: '', 'aria-hidden': true } as Record<string, unknown>) : {};
   // Unfinished wizards: gigs saved on this device, quotes saved as DRAFT.
   const eventDrafts = useEventDrafts(isAdmin && !isSolo ? currentUserId : null, contextBand?.id ?? null);
 
@@ -506,12 +511,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
     for (const p of activePolls) {
       const voted = (p.options || []).some((o) => o.has_voted);
       if (p.status === 'polling' && voted) continue;
+      // A poll with an invite list that leaves you out: admins still see it
+      // (to lock it in), but it is not theirs to vote on (as Home's card says).
+      const invited = canVoteInPoll(p, currentUserId);
       items.push({
         id: `poll-${p.id}`,
         title: p.title || t('Rehearsal poll'),
-        detail: p.status === 'proposed' ? t('Rehearsal proposal · build a poll') : t('Rehearsal poll · vote on dates'),
+        detail:
+          p.status === 'proposed'
+            ? t('Rehearsal proposal · build a poll')
+            : invited
+              ? t('Rehearsal poll · vote on dates')
+              : `${t('Rehearsal poll')} · ${t('Not invited')}`,
         kind: 'rehearsal',
-        urgent: p.status === 'polling',
+        urgent: p.status === 'polling' && invited,
         onSelect: onOpenPoll ? () => onOpenPoll(p) : undefined,
       });
     }
@@ -574,12 +587,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       onCreateRehearsal={onCreateRehearsal}
       onCreateQuote={onCreateQuote}
       onCreateTask={onCreateTask}
+      onOpenAnalytics={isAdmin && onQuickAction ? () => onQuickAction('View Analytics') : undefined}
     />
   );
 
   if (dashboardLoading && !dashboardData?.eventStats && !dashboardData?.memberStats) {
     return (
-      <div className={cn("flex flex-col gap-8 sm:gap-10 relative z-10", isHidden && "opacity-0 pointer-events-none")}>
+      <div className={cn("flex flex-col gap-8 sm:gap-10 relative z-10", isHidden && "opacity-0 pointer-events-none")} {...coveredProps}>
         <HomeSkeleton />
         {bandDesk}
       </div>
@@ -700,6 +714,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         "flex flex-col gap-8 relative z-10 text-foreground",
         isHidden && "opacity-0 pointer-events-none"
       )}
+      {...coveredProps}
     >
       {/* ═══ METRICS (2×2 dot meters) ═══ */}
       <motion.div variants={dashboardItemVariants} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8 gap-y-8">

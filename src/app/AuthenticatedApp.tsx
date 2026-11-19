@@ -58,6 +58,7 @@ import { deleteNotification as deleteNotificationService, createNotification, ge
 import { syncAppBadge } from "@/lib/services/appBadge";
 import { ErrorState } from "@/app/components/ui/ErrorState";
 import { LeadingCompanionSlot } from "@/app/components/duo";
+import { usePosture } from "@/lib/posture";
 import { MiniPlayer } from "@/app/components/ui/MiniPlayer";
 import { LyricsViewer } from "@/app/components/ui/LyricsViewer";
 import { SongSuggestionsView } from "@/app/components/songs/SongSuggestionsView";
@@ -425,6 +426,9 @@ export default function AuthenticatedApp() {
   const [proposalTargetBand, setProposalTargetBand] = useState<BandOption | null>(null);
   const [showRehearsalPollModal, setShowRehearsalPollModal] = useState(false);
   const [pollModalInitialProposal, setPollModalInitialProposal] = useState<RehearsalPoll | null>(null);
+  // Laptop pose: toasts rest on the Display just above the fold (index.css),
+  // so they fade in place instead of sliding up from below, across the fold.
+  const toastRise = usePosture().posture === 'tabletop' ? 0 : 1;
   const [saveToast, setSaveToast] = useState<{
     message: string;
     type: 'success' | 'error' | 'info';
@@ -4983,9 +4987,9 @@ export default function AuthenticatedApp() {
         {saveToast && (
           saveToast.minimal ? (
             <motion.div key="layer-1"
-              initial={{ opacity: 0, y: 16, scale: 0.95 }}
+              initial={{ opacity: 0, y: 16 * toastRise, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.95 }}
+              exit={{ opacity: 0, y: 12 * toastRise, scale: 0.95 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
               className="bw-toast fixed -translate-x-1/2 z-[250] px-4 py-2 rounded-full bw-label-sm text-white/95 bg-black/65 dark:bg-zinc-900/75 backdrop-blur-md border border-white/10 shadow-lg text-center whitespace-nowrap pointer-events-none select-none max-w-[85vw]"
               style={{ bottom: 'calc(var(--content-bottom-clearance) + 8px)', left: 'var(--bw-toast-center, calc((100vw - var(--bw-rail-w, 0px)) / 2))' }}
@@ -4994,9 +4998,9 @@ export default function AuthenticatedApp() {
             </motion.div>
           ) : (
             <motion.div key="layer-2"
-              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              initial={{ opacity: 0, y: 50 * toastRise, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 50, scale: 0.95 }}
+              exit={{ opacity: 0, y: 50 * toastRise, scale: 0.95 }}
               transition={{ duration: 0.2 }}
               className={cn(
                 "bw-toast bw-pane-float bw-status-clear-inset fixed left-4 right-4 max-w-[500px] mx-auto z-[250] p-4 rounded-2xl bw-label-md shadow-2xl flex items-center justify-between gap-3 border backdrop-blur-md",

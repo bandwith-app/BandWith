@@ -513,7 +513,7 @@ const basics: AreaModule = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "Home becomes the Band desk: the next gig as a poster on the upper half (or the next rehearsal when no gig is confirmed), and what needs doing plus the create buttons on the lower half." },
+            { devices: ["duoLaptop"], text: "Home becomes the Band desk: the next gig as a poster on the upper half (or the next rehearsal when no gig is confirmed), and what needs doing plus the create buttons on the lower half. Admins also find **View Analytics** there." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "The second page shows the next gig beside Home, or **Pick an event** until you open one." },
           ],
         },
@@ -1155,7 +1155,7 @@ const basics: AreaModule = {
           type: "table",
           head: ["Screen", "Display (upper half)", "Deck (lower half)"],
           rows: [
-            ["Home: Band desk", "The next gig as a poster (the next rehearsal if no gig is confirmed)", "What needs doing (votes, payouts, RSVPs), create buttons, tabs"],
+            ["Home: Band desk", "The next gig as a poster (the next rehearsal if no gig is confirmed)", "What needs doing (votes, payouts, RSVPs), create buttons, View Analytics (admins), tabs"],
             ["Calendar: Planner", "The month with a dot per kind of event and the month's counts", "The selected day's agenda, **+ Gig** / **+ Rehearsal**"],
             ["Rehearsal poll: Find a date", "Members × candidate days, the best day lit, how many voted", "Your own day pads, then Lock (admin) or Done (member)"],
             ["Stage mode: Floor wedge", "Song counter, title, key, BPM, next song, elapsed time on black", "Big PREV / NEXT pads and the set's progress"],

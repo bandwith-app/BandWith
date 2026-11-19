@@ -503,7 +503,7 @@ const basics: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "Inicio se convierte en el escritorio de la banda: el próximo concierto como un cartel en la mitad de arriba (o el próximo ensayo si no hay ningún concierto confirmado), y lo que queda por hacer y los botones de crear en la mitad de abajo." },
+            { devices: ["duoLaptop"], text: "Inicio se convierte en el escritorio de la banda: el próximo concierto como un cartel en la mitad de arriba (o el próximo ensayo si no hay ningún concierto confirmado), y lo que queda por hacer y los botones de crear en la mitad de abajo. Los admins también encuentran ahí **Ver estadísticas**." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "La segunda página muestra el próximo concierto junto a Inicio, o **Elige un evento** hasta que abras uno." },
           ],
         },
@@ -1137,7 +1137,7 @@ const basics: AreaText = {
           type: "table",
           head: ["Pantalla", "Display (mitad de arriba)", "Deck (mitad de abajo)"],
           rows: [
-            ["Inicio: escritorio de la banda", "El próximo concierto como un cartel (el próximo ensayo si no hay ningún concierto confirmado)", "Lo que queda por hacer (votos, pagos, respuestas), botones de crear, pestañas"],
+            ["Inicio: escritorio de la banda", "El próximo concierto como un cartel (el próximo ensayo si no hay ningún concierto confirmado)", "Lo que queda por hacer (votos, pagos, respuestas), botones de crear, Ver estadísticas (admins), pestañas"],
             ["Calendario: planificador", "El mes con un punto por tipo de evento y los totales del mes", "La agenda del día elegido, **+ Concierto** / **+ Ensayo**"],
             ["Sondeo de ensayo: busca una fecha", "Miembros × días propuestos, el mejor día resaltado, cuántos han votado", "Tus propios botones de día, y luego Cerrar (admin) o Listo (miembro)"],
             ["Modo escenario: monitor de suelo", "Número de canción, título, tonalidad, BPM, siguiente canción y tiempo transcurrido sobre negro", "Grandes botones ANTERIOR / SIGUIENTE y el progreso del set"],

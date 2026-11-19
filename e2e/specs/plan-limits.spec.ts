@@ -105,15 +105,9 @@ test.describe('Limit prompt and Stage mode', () => {
 
 test.describe('Analytics window (analytics_days)', () => {
   const note = (app: App) => app.page.getByTestId('analytics-window').filter({ visible: true });
-  /**
-   * Home → View Analytics, from the keyboard: in the Duo Laptop pose the
-   * fold layer lies over that card (not a plans matter), the key still works.
-   */
+  /** Home → View Analytics (in the Duo Laptop pose, on the Band desk's Deck). */
   const openAnalytics = async (app: App) => {
-    const go = app.button('View Analytics', { exact: true }).first();
-    await go.scrollIntoViewIfNeeded();
-    await go.focus();
-    await app.page.keyboard.press('Enter');
+    await app.button('View Analytics', { exact: true }).first().click();
     await app.settle();
   };
 

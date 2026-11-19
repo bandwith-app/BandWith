@@ -72,6 +72,8 @@ export interface BandDeskModeProps {
   onCreateRehearsal?: () => void;
   onCreateQuote?: () => void;
   onCreateTask?: () => void;
+  /** Opens Analytics (admins: Home's "View Analytics", which the desk covers). */
+  onOpenAnalytics?: () => void;
   /** Compact tab bar for the Deck's bottom edge. */
   children?: React.ReactNode;
   /** See FoldSplit. Default 70 (page level). */
@@ -169,6 +171,7 @@ export const BandDeskMode: React.FC<BandDeskModeProps> = ({
   onCreateRehearsal,
   onCreateQuote,
   onCreateTask,
+  onOpenAnalytics,
   children,
   zIndex,
 }) => {
@@ -234,6 +237,18 @@ export const BandDeskMode: React.FC<BandDeskModeProps> = ({
               ))}
             </div>
           </section>
+        )}
+        {onOpenAnalytics && (
+          <DeckButton
+            tone="inverse"
+            className="w-full"
+            onClick={() => {
+              haptic.tap();
+              onOpenAnalytics();
+            }}
+          >
+            {t('View Analytics')}
+          </DeckButton>
         )}
       </div>
       {children && (

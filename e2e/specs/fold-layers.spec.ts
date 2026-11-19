@@ -64,6 +64,71 @@ test.describe('Duo Laptop pose: nothing on the fold', () => {
 });
 
 test.describe('Duo Laptop pose: screens off the fold', () => {
+  /**
+   * Home in Laptop pose is the Band desk (BandDeskMode over the whole
+   * screen). The normal Home stays mounted under it, so its "View Analytics"
+   * was in the accessibility tree but under the desk: a tap landed on the
+   * desk, and the desk had no way to Analytics. The desk offers it on the
+   * Deck, and the Home under it is out of reach.
+   */
+  test('@laptop Home: View Analytics is a real tap on the Band desk', async ({ app, duo }) => {
+    const desk = app.page.getByRole('region', { name: app.t('Band desk') });
+    await expect(desk).toBeVisible();
+    const go = app.button('View Analytics', { exact: true });
+    await expect(go).toHaveCount(1);
+    await expect(desk.getByRole('button', { name: app.t('View Analytics'), exact: true })).toBeVisible();
+    const box = (await go.boundingBox())!;
+    const fold = duo!.foldBand!;
+    expect(box.y, 'View Analytics on the Deck, below the fold').toBeGreaterThanOrEqual(fold.bottom);
+    await app.check('Band desk');
+    await go.click();
+    await expect(app.page.getByRole('heading', { name: app.t('Monthly breakdown') }).filter({ visible: true }).first()).toBeVisible();
+    await app.check('Analytics from the Band desk');
+  });
+
+  test.describe('member', () => {
+    test.use({ role: 'member' });
+
+    /**
+     * The save toast rests on the Display just above the fold, but it used to
+     * slide in (and out) from 50px lower, across the fold: the health check
+     * caught its Dismiss button there at random (#217). Every frame of its
+     * way in and out stays off the fold.
+     */
+    test('@laptop the save toast never crosses the fold, on its way in or out', async ({ app, duo }) => {
+      const fold = duo!.foldBand!;
+      await openEvent(app, SEED.rehearsalTomorrow);
+      await app.page.evaluate(() => {
+        const w = window as unknown as { __toastFrames: number[][]; __toastStop?: boolean };
+        w.__toastFrames = [];
+        const tick = () => {
+          const t = document.querySelector('.bw-toast');
+          if (t) {
+            const r = t.getBoundingClientRect();
+            w.__toastFrames.push([Math.round(r.top), Math.round(r.bottom)]);
+          }
+          if (!w.__toastStop) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      await app.page.getByRole('button', { name: app.t('Change'), exact: true }).first().click();
+      await app.page.getByRole('radio', { name: app.t("CAN'T"), exact: true }).first().click();
+      const dismiss = app.page.getByRole('button', { name: app.t('Dismiss notification') });
+      await expect(dismiss).toBeVisible();
+      await app.page.waitForTimeout(600);
+      await dismiss.click();
+      await expect(app.page.locator('.bw-toast')).toHaveCount(0);
+      const frames = await app.page.evaluate(() => {
+        const w = window as unknown as { __toastFrames: number[][]; __toastStop?: boolean };
+        w.__toastStop = true;
+        return w.__toastFrames;
+      });
+      expect(frames.length, 'toast frames recorded').toBeGreaterThan(3);
+      const onFold = frames.filter(([top, bottom]) => bottom > fold.top && top < fold.bottom);
+      expect(onFold, `toast frames across the fold ${fold.top}–${fold.bottom}`).toEqual([]);
+    });
+  });
+
   test('@laptop Stage mode: no setlist row rests on the fold', async ({ app }) => {
     await openEvent(app, SEED.gigToday);
     await app.page.getByRole('button', { name: app.t('Open stage mode'), exact: true }).filter({ visible: true }).first().click();

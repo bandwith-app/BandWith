@@ -506,7 +506,7 @@ const basics: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "Start wird zum Band-Pult: oben der nächste Gig als Plakat (oder die nächste Probe, wenn kein Gig bestätigt ist), unten was zu tun ist und die Erstellen-Buttons." },
+            { devices: ["duoLaptop"], text: "Start wird zum Band-Pult: oben der nächste Gig als Plakat (oder die nächste Probe, wenn kein Gig bestätigt ist), unten was zu tun ist und die Erstellen-Buttons. Admins finden dort auch **Statistiken ansehen**." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "Die zweite Seite zeigt neben Start den nächsten Gig oder **Wähle einen Termin**, bis du einen öffnest." },
           ],
         },
@@ -1148,7 +1148,7 @@ const basics: AreaText = {
           type: "table",
           head: ["Bildschirm", "Display (obere Hälfte)", "Deck (untere Hälfte)"],
           rows: [
-            ["Start: Band-Pult", "Der nächste Gig als Plakat (die nächste Probe, wenn kein Gig bestätigt ist)", "Was zu tun ist (Abstimmungen, Auszahlungen, Zusagen), Erstellen-Buttons, Tabs"],
+            ["Start: Band-Pult", "Der nächste Gig als Plakat (die nächste Probe, wenn kein Gig bestätigt ist)", "Was zu tun ist (Abstimmungen, Auszahlungen, Zusagen), Erstellen-Buttons, Statistiken ansehen (Admins), Tabs"],
             ["Kalender: Planer", "Der Monat mit einem Punkt pro Terminart und den Zahlen des Monats", "Die Agenda des gewählten Tages, **+ Gig** / **+ Probe**"],
             ["Probenumfrage: Termin finden", "Mitglieder × mögliche Tage, der beste Tag hervorgehoben, wie viele abgestimmt haben", "Deine eigenen Tagesfelder, dann Festlegen (Admin) oder Fertig (Mitglied)"],
             ["Bühnenmodus: Bühnenmonitor", "Songzähler, Titel, Tonart, BPM, nächster Song, verstrichene Zeit auf Schwarz", "Große Felder ZURÜCK / WEITER und der Fortschritt des Sets"],

@@ -506,7 +506,7 @@ const basics: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "A tela Início vira a mesa da banda: o próximo show como um cartaz na metade de cima (ou o próximo ensaio, quando não há show confirmado) e, na metade de baixo, o que falta fazer e os botões de criar." },
+            { devices: ["duoLaptop"], text: "A tela Início vira a mesa da banda: o próximo show como um cartaz na metade de cima (ou o próximo ensaio, quando não há show confirmado) e, na metade de baixo, o que falta fazer e os botões de criar. Os admins também encontram ali **Ver estatísticas**." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "A segunda página mostra o próximo show ao lado da tela Início, ou **Escolha um evento** até você abrir um." },
           ],
         },
@@ -1148,7 +1148,7 @@ const basics: AreaText = {
           type: "table",
           head: ["Tela", "Display (metade de cima)", "Deck (metade de baixo)"],
           rows: [
-            ["Início: mesa da banda", "O próximo show como um cartaz (o próximo ensaio, se não houver show confirmado)", "O que falta fazer (votos, pagamentos, confirmações), botões de criar, abas"],
+            ["Início: mesa da banda", "O próximo show como um cartaz (o próximo ensaio, se não houver show confirmado)", "O que falta fazer (votos, pagamentos, confirmações), botões de criar, Ver estatísticas (admins), abas"],
             ["Calendário: planejador", "O mês com um ponto por tipo de evento e as contagens do mês", "A agenda do dia selecionado, **+ Show** / **+ Ensaio**"],
             ["Enquete de ensaio: achar uma data", "Membros × dias candidatos, o melhor dia destacado, quantos votaram", "Os seus botões de dia e depois Fixar (admin) ou Pronto (membro)"],
             ["Modo palco: retorno de palco", "Contador de músicas, título, tom, BPM, próxima música e tempo decorrido sobre fundo preto", "Botões grandes ANTERIOR / PRÓXIMA e o andamento do set"],
