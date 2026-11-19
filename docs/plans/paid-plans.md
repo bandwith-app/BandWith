@@ -154,6 +154,16 @@ It is called from:
 
 Triggers skip the service role (imports, admin scripts, the Mirage import) and the demo.
 
+Built in P2 (migration 161), with these choices:
+
+- **Counted live** (`bw_plan_count`), not with `band_usage` counters: nothing can drift, and every count is an indexed `count(*)` on the band. `band_usage` stays (empty) for later if a count ever gets expensive.
+- **Only `authenticated` callers are limited** (`auth.role()`): the service role, SQL and imports always pass.
+- **Contracts**: the first send is when `sent_at` goes from empty to set; resends (which move `sent_at`) are free; **riders never count** (they are technical sheets, not sales).
+- **Templates**: the band's own to-do templates (`task_templates`, not `is_default`); quote and contract wording are not separate tables, so there is nothing else to count.
+- **Storage**: a `RESTRICTIVE` insert policy on `storage.objects` (`bw_plan_storage_ok`) for `song-files/<band>/`, `band-branding/<band>/` and `quotes/quotes/<band>/`; avatars and personal files never count. It fails **open** on any error, so a bug can never block uploads. Old builds see a generic upload error when it refuses; new builds show the storage prompt (P3b).
+- **`bands_as_admin`**: when creating a band, the Free bands the person is an active admin of.
+- The refusal carries `DETAIL = BW_PLAN_LIMIT:<key> used=… limit=…` for support.
+
 ### 4.2 Downgrade and over-limit
 
 Nothing is ever deleted or hidden because of a plan.
