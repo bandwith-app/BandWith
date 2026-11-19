@@ -9,6 +9,7 @@
 import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
+import { computeEntitlements, type BandPlanRow } from '@/lib/plans';
 
 // v5: song suggestions (108) refer to seed songs added with them.
 const DB_KEY = 'bw-demo-db-v6';
@@ -917,6 +918,44 @@ const rpc = (fn: string, args: Row = {}) => {
       data = {
         platform: bools(table('platform_switches')),
         band: member ? bools(table('band_features').filter((r) => r.band_id === args.p_band_id)) : {},
+      };
+      break;
+    }
+    // Paid plans (160): same rules as the server, from the demo's own rows, so
+    // e2e can switch plans on locally (platform_switches.plans_enforced).
+    case 'bw_band_entitlements': {
+      const me = table('band_members').find(
+        (r) => r.band_id === args.p_band_id && r.user_id === DEMO_USER.id && r.is_active !== false,
+      );
+      const bandPlan = table('band_plans').find((r) => r.band_id === args.p_band_id) ?? null;
+      const account = bandPlan?.billing_account_id
+        ? table('billing_accounts').find((r) => r.id === bandPlan.billing_account_id)
+        : null;
+      const e = computeEntitlements({
+        switches: table('platform_switches') as { key: string; enabled: boolean }[],
+        planLimits: table('plan_limits') as { plan: string; key: string; value: number | null }[],
+        settings: table('plan_settings') as { key: string; value: unknown }[],
+        bandPlan: bandPlan as BandPlanRow | null,
+        payerUserId: (account?.payer_user_id as string | undefined) ?? null,
+        userId: DEMO_USER.id,
+        isMember: !!me,
+        isAdmin: me?.role === 'admin',
+        now: new Date(),
+      });
+      // The server's shape (snake_case).
+      data = e && {
+        enforced: e.enforced,
+        plan: e.plan,
+        source: e.source,
+        status: e.status,
+        trial_ends_at: e.trialEndsAt,
+        grant_until: e.grantUntil,
+        is_payer: e.isPayer,
+        is_admin: e.isAdmin,
+        limits: e.limits,
+        usage: e.usage,
+        checkout: e.checkout,
+        notice: e.notice,
       };
       break;
     }
