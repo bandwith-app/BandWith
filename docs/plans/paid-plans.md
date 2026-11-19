@@ -158,7 +158,7 @@ Triggers skip the service role (imports, admin scripts, the Mirage import) and t
 Nothing is ever deleted or hidden because of a plan.
 
 - Over a limit after a downgrade (Pro ended, trial ended, grant ended): existing rows stay readable and editable; only **adding** more is refused.
-- Admins over the limit: during the grace period (`plan_settings.grace_days`) nothing changes; after it, only the payer (or the band creator if there is no payer) keeps admin rights and the others become members. The app warns the band before. (Default, see §13.)
+- Admins over the limit: during the grace period (`plan_settings.grace_days`) nothing changes; after it, only the payer (or the band creator if there is no payer) keeps admin rights and the others become members. The app warns the band before. (Decided 2026-11-18, §13.)
 - Storage over the limit: files stay; new uploads are refused.
 - `past_due` from Paddle: Pro continues until Paddle's dunning ends (`subscription.canceled` or `past_due` beyond grace), then Free.
 
@@ -256,7 +256,7 @@ Server enforcement means an old build **cannot** get Pro for free: the limit is 
 | B. Web link-out where allowed (US + EU), no IAP | admin sees a link to the web in US/EU; nothing elsewhere | US 0% (may change), EU 10% + reporting; rest of world: cannot sell | per-storefront logic, EU entitlement, reporting | Apple review outside US/EU; US rate may change; non-EU/US admins stuck on iOS |
 | C. IAP only on iOS from the start | same as A, but needs the App Store now | 15% | StoreKit now, App Store listing now | App Store submission is not wanted yet |
 
-**Recommendation: A.** It matches the 2026-11-18 pricing decision (Paddle on the web, iOS without prices until the App Store, then IAP at the same price). For the testers on TestFlight on 1 January, the admin who wants Pro pays on the web (from a computer, Android, or the iPhone's browser); the iOS app then shows Pro because the plan is on the band.
+**Decided by the user on 2026-11-18: A.** It matches the 2026-11-18 pricing decision (Paddle on the web, iOS without prices until the App Store, then IAP at the same price). For the testers on TestFlight on 1 January, the admin who wants Pro pays on the web (from a computer, Android, or the iPhone's browser); the iOS app then shows Pro because the plan is on the band.
 
 ### 8.3 Google
 
@@ -315,9 +315,9 @@ Wall-clock, with the pace seen so far (A1b: about 20 minutes of coding and 20 mi
 | When | What |
 | --- | --- |
 | 18 Nov | This plan merged |
-| until ~25 Nov | Rehearsal A2–A4 (parallel session) |
-| ~25–28 Nov | P1 → P2 → P3a → P3b, P4 in parallel, P5 (about 6–8 PRs, ~1.5–2 working days of wall-clock including CI; migrations 160–162 applied after the user's OK) |
-| ~1–3 Dec | Release candidate with plans off: emulator gate, Academy, handbooks (~half a day plus fixes) |
+| 18–19 Nov | Rehearsal A2–A4 finishing (parallel session) |
+| from ~19–20 Nov, on the user's go | P1 → P2 → P3a → P3b, P4 in parallel, P5 (about 6–8 PRs, ~1.5–2 working days of wall-clock including CI; migrations 160–162 applied after the user's OK) |
+| ~24–27 Nov | Release candidate with plans off: emulator gate, Academy, handbooks (~half a day plus fixes) |
 | early Dec | Planned notice to beta bands (the card of §5.3 switched on from the database; email on the user's OK) |
 | by mid-Dec | **Release by the user**: web deploy, APK, TestFlight. About two weeks for testers to update |
 | after release | Deposit tweaks (payments plan) |
@@ -325,15 +325,15 @@ Wall-clock, with the pace seen so far (A1b: about 20 minutes of coding and 20 mi
 | before 1 Jan | Founding report shown to the user; launch-day drill |
 | **1 Jan** | With the user's confirmation: founding and partner grants applied, `min_version` raised, `plans_enforced` on, `plans_trial` on, `plans_checkout` on if Paddle is live |
 
-Slack: about a week before mid-December. The risk is outside the code: VAT number and Paddle verification (§13, decision 2).
+Slack: about two weeks before mid-December (A2–A4 end earlier than first planned, so the build can start as soon as the rehearsal session is done and the user says go). The risk is outside the code: VAT number and Paddle verification (§13, decision 2).
 
 ## 13. Decisions for the user
 
-1. **iOS sales (§8.2)**: A (recommended), B or C.
-2. **If Paddle is not live on 1 January**: (recommended) switch limits on anyway, because founding bands have their free months and new bands get the trial, and turn checkout on the day Paddle is verified; or keep everything free until checkout works.
-3. **Admins over the limit after a downgrade (§4.2)**: (default) after the grace period only the payer or creator stays admin; or every existing admin keeps the role until they leave.
-4. **Minimum version on 1 January (§7.2)**: (recommended) block builds older than the mid-December release; or only a soft "update available".
-5. **Google Play**: stay APK-only for now (recommended); if Play later, external link (10%).
+1. ~~**iOS sales (§8.2)**~~ **Decided 2026-11-18: A.** No sales, prices or web links on iOS while on TestFlight; IAP at the same price (plus the US web link) when the App Store submission is decided (P7).
+2. ~~**If Paddle is not live on 1 January**~~ **Decided 2026-11-18:** switch the limits on anyway (founding bands have their free months, new bands get the trial); `plans_checkout` is turned on the day Paddle is verified.
+3. ~~**Admins over the limit after a downgrade (§4.2)**~~ **Decided 2026-11-18:** after the grace period only the payer (or the band creator) stays admin; the others become members, warned before.
+4. ~~**Minimum version on 1 January (§7.2)**~~ **Decided 2026-11-18:** block builds older than the mid-December release, with an "Update" button.
+5. **Google Play** (still open, no hurry): stay APK-only for now (recommended); if Play later, external link (10%).
 
 ## 14. Sources checked (2026-11-18)
 
