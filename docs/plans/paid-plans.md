@@ -74,10 +74,10 @@ Migration block reserved for this work: **160–169** (A uses 130–134, B uses 
 | `plan_limits (plan, key, value)` | One row per plan and limit key. `value` is an integer; `NULL` = unlimited. Plans: `free`, `pro`, `maestro`. **The migration creates the table empty.** | service role only (SQL from a local, uncommitted file) |
 | `plan_settings (key, value jsonb)` | Non-limit terms: trial length, founding window end, Maestro band cap, grace days. Empty in the migration. | service role only |
 | `billing_accounts (id, payer_user_id, plan, status, provider, provider_customer_id, provider_subscription_id, current_period_end, cancel_at, updated_at)` | One per paying subscription. A Pro subscription covers one band; a Maestro subscription covers up to the Maestro cap. | webhook / service role |
-| `band_plans (band_id PK, billing_account_id NULL, plan, source, status, trial_ends_at, grant_reason, grant_until, updated_at)` | **The band's current plan**, one row per band. `source`: `paddle`, `apple`, `google`, `grant`, `trial`. No row = Free. | webhook / RPCs below / service role |
+| `band_plans (band_id PK, billing_account_id NULL, plan, source, status, trial_ends_at, past_due_since, grant_reason, grant_until, updated_at)` | **The band's current plan**, one row per band. `source`: `paddle`, `apple`, `google`, `grant`, `trial`. No row = Free. | webhook / RPCs below / service role |
 | `billing_events (provider, event_id, received_at, type, payload jsonb, processed_at, error)` | Every webhook event, unique on `(provider, event_id)`, for idempotency and replay. | webhook |
 | `band_usage (band_id, key, period_start, value)` | Counters that are expensive to compute live (storage bytes, sends this month). Updated by triggers. | triggers |
-| `profiles.trial_used_at` (new column) | One trial per account. | `bw_start_trial` |
+| `plan_trials (user_id PK, band_id, started_at)` | One trial per account. A table instead of the `profiles.trial_used_at` column first planned, so the `profiles` grants and old builds stay untouched (decided in P1). | `bw_start_trial` |
 
 Grants: `plan_limits`, `plan_settings`, `billing_*`, `band_usage` get **no** table grants to `anon` / `authenticated`; everything is read through RPCs. `band_plans` likewise. Columns the app reads are listed in `columnGrants.test.ts` only if a direct grant is ever added (none planned).
 
@@ -110,6 +110,7 @@ The webhook ignores the switches: money already in flight is always recorded.
 - Members get `plan` and `limits` (they need them to understand a prompt) but **not** billing details (`is_payer` false, no provider IDs, no period end).
 - `src/lib/plans.ts` (pure, P1): `resolvePlan(row, now)` (status + trial + grant + grace → effective plan), `limitFor(ent, key)`, `canUse(ent, key, used)`, `isOverLimit`. A table of cases in vitest.
 - `src/lib/usePlan.ts`: same caching pattern as `flags.ts` (memory → device → RPC, TTL 10 minutes, refresh on resume and after a limit error).
+- Built in P1 (migration 160): `bw_band_effective_plan(band, at)` is the one SQL resolver (internal, not callable by the app), checked case by case against `src/lib/__fixtures__/planCases.json` in the dry run; `bw_band_entitlements` also returns `is_admin` and, for admins while plans are off, `notice` (§5.3). A key with no row in `plan_limits` is unlimited, so flipping the switch before the values are written limits nothing. Past due with no `grace_days` written keeps the plan until the provider cancels.
 - When `enforced` is false the app treats every limit as unlimited, the same as `IS_BETA` today. `IS_BETA` becomes `!ent.enforced`, read from the server, and `beta.ts` is deleted at the end of P3.
 
 ### 3.4 Limit keys

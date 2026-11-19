@@ -1,0 +1,25 @@
+{
+  "_comment": "Effective plan of a band, shared by src/lib/plans.ts (vitest) and the SQL bw_band_effective_plan (rollback dry run). now = 2026-12-01T12:00:00Z. graceDays null = no grace setting written.",
+  "now": "2026-12-01T12:00:00Z",
+  "cases": [
+    { "name": "no row: Free", "row": null, "graceDays": null, "expect": "free" },
+    { "name": "paid Pro, active", "row": { "plan": "pro", "source": "paddle", "status": "active" }, "graceDays": null, "expect": "pro" },
+    { "name": "paid Maestro band, active", "row": { "plan": "maestro", "source": "paddle", "status": "active" }, "graceDays": null, "expect": "maestro" },
+    { "name": "paid, cancelled", "row": { "plan": "pro", "source": "paddle", "status": "canceled" }, "graceDays": null, "expect": "free" },
+    { "name": "paid, paused", "row": { "plan": "pro", "source": "paddle", "status": "paused" }, "graceDays": null, "expect": "free" },
+    { "name": "paid, ended", "row": { "plan": "pro", "source": "paddle", "status": "ended" }, "graceDays": null, "expect": "free" },
+    { "name": "past due inside the grace days", "row": { "plan": "pro", "source": "paddle", "status": "past_due", "past_due_since": "2026-11-25T12:00:00Z" }, "graceDays": 14, "expect": "pro" },
+    { "name": "past due after the grace days", "row": { "plan": "pro", "source": "paddle", "status": "past_due", "past_due_since": "2026-11-10T12:00:00Z" }, "graceDays": 14, "expect": "free" },
+    { "name": "past due, no grace setting: the provider's dunning decides", "row": { "plan": "pro", "source": "paddle", "status": "past_due", "past_due_since": "2026-01-01T12:00:00Z" }, "graceDays": null, "expect": "pro" },
+    { "name": "past due, no date: still the plan", "row": { "plan": "pro", "source": "paddle", "status": "past_due" }, "graceDays": 14, "expect": "pro" },
+    { "name": "trial running", "row": { "plan": "pro", "source": "trial", "status": "trialing", "trial_ends_at": "2026-12-05T12:00:00Z" }, "graceDays": null, "expect": "pro" },
+    { "name": "trial ended", "row": { "plan": "pro", "source": "trial", "status": "trialing", "trial_ends_at": "2026-11-30T12:00:00Z" }, "graceDays": null, "expect": "free" },
+    { "name": "trial without an end date", "row": { "plan": "pro", "source": "trial", "status": "trialing" }, "graceDays": null, "expect": "free" },
+    { "name": "grant forever (partner band)", "row": { "plan": "pro", "source": "grant", "status": "active", "grant_until": null }, "graceDays": null, "expect": "pro" },
+    { "name": "grant running (founding band)", "row": { "plan": "pro", "source": "grant", "status": "active", "grant_until": "2027-03-31T22:00:00Z" }, "graceDays": null, "expect": "pro" },
+    { "name": "grant ended", "row": { "plan": "pro", "source": "grant", "status": "active", "grant_until": "2026-11-30T23:00:00Z" }, "graceDays": null, "expect": "free" },
+    { "name": "grant revoked", "row": { "plan": "pro", "source": "grant", "status": "ended", "grant_until": null }, "graceDays": null, "expect": "free" },
+    { "name": "Apple subscription active", "row": { "plan": "pro", "source": "apple", "status": "active" }, "graceDays": null, "expect": "pro" },
+    { "name": "a row that says free", "row": { "plan": "free", "source": "grant", "status": "active" }, "graceDays": null, "expect": "free" }
+  ]
+}
