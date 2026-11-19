@@ -29,6 +29,7 @@ import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
 import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
+import { PlanEndingCard } from '@/app/components/plans/PlanEndingCard';
 
 /** Pill in a half-width slot: one line when it fits, else the label wraps
  *  inside it instead of running out ("Mapa de montaje", "Kalender ansehen"). */
@@ -749,6 +750,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {isAdmin && !isSolo && contextBand?.id && (
         <motion.div variants={dashboardItemVariants}>
           <LaunchNoticeCard bandId={contextBand.id} onOpenPlan={onOpenPlan} />
+          <PlanEndingCard bandId={contextBand.id} onOpenPlan={onOpenPlan} />
         </motion.div>
       )}
 

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Crown, ArrowUpRight } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useOptionalBand } from '@/lib/BandContext';
-import { usePlan } from '@/lib/usePlan';
+import { invalidatePlan, usePlan } from '@/lib/usePlan';
+import { startTrial, useTrialOffer } from '@/lib/trial';
+import { PillButton } from '@/app/components/bw';
 import { PLAN_SITE_URL, noticeDate, planLine, planName, planNotice, planUsageRows } from '@/lib/planText';
 import { openExternal } from '@/lib/nativeFiles';
 import { useT } from '@/lib/i18n';
@@ -21,6 +23,19 @@ export const PlanSection: React.FC = () => {
   const rows = planUsageRows(ent);
   const notice = planNotice(ent);
   const canLinkOut = !!ent?.checkout && ent.isAdmin && Capacitor.getPlatform() !== 'ios';
+  // P5: the Pro trial, when the server offers it to this admin (164).
+  const offer = useTrialOffer(band?.id ? String(band.id) : null, !!ent?.isAdmin, ent?.plan);
+  const [starting, setStarting] = useState(false);
+  const [trialError, setTrialError] = useState<string | null>(null);
+  const begin = async () => {
+    if (!band?.id || starting) return;
+    setStarting(true);
+    setTrialError(null);
+    const res = await startTrial(String(band.id));
+    if (res.error) setTrialError(res.error);
+    await invalidatePlan(String(band.id));
+    setStarting(false);
+  };
 
   if (!band) {
     return (
@@ -45,6 +60,23 @@ export const PlanSection: React.FC = () => {
         <div role="note" className="bg-accent text-accent-foreground rounded-[24px] p-4 flex flex-col gap-1">
           <span className="bw-label-md">{t('Plans start on {date}', { date: noticeDate(notice) })}</span>
           <span className="bw-body-sm">{t('Free stays free, with every tool. Pro and Maestro add more room for busy bands.')}</span>
+        </div>
+      )}
+
+      {offer && (
+        <div className="bg-card text-card-foreground rounded-[24px] p-4 flex flex-col gap-3" data-testid="plan-trial">
+          <div className="flex flex-col gap-1">
+            <span className="bw-label-md">{t('Try Pro free for {days} days', { days: offer.days })}</span>
+            <span className="bw-body-sm text-muted-foreground">{t('No card. Once per account; then the band is on Free again, and nothing is deleted.')}</span>
+          </div>
+          <PillButton onClick={() => void begin()} loading={starting}>
+            {t('Start the trial')}
+          </PillButton>
+          {trialError && (
+            <p role="alert" className="bw-body-sm text-destructive">
+              {trialError}
+            </p>
+          )}
         </div>
       )}
 

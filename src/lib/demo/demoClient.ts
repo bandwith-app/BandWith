@@ -940,6 +940,40 @@ function demoUsage(band: string): Record<string, number> {
   };
 }
 
+/** The server's shape of bw_band_entitlements (snake_case). */
+function snakeEntitlements(e: Entitlements | null) {
+  return e && {
+    enforced: e.enforced,
+    plan: e.plan,
+    source: e.source,
+    status: e.status,
+    trial_ends_at: e.trialEndsAt,
+    grant_until: e.grantUntil,
+    is_payer: e.isPayer,
+    is_admin: e.isAdmin,
+    limits: e.limits,
+    usage: e.usage,
+    checkout: e.checkout,
+    notice: e.notice,
+  };
+}
+
+/** 164 bw_trial_days: plan_settings.trial_days, 1–90. */
+function demoTrialDays(): number | null {
+  const v = table('plan_settings').find((r) => r.key === 'trial_days')?.value;
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 90 ? v : null;
+}
+
+/** 164 bw_trial_refusal, for the demo user. */
+function demoTrialRefusal(band: string): string | null {
+  const admin = table('band_members').some((r) => r.band_id === band && r.user_id === DEMO_USER.id && r.role === 'admin' && r.is_active !== false);
+  if (!admin) return 'not_admin';
+  if (!table('platform_switches').some((r) => r.key === 'plans_trial' && r.enabled === true) || demoTrialDays() === null) return 'off';
+  if (table('plan_trials').some((r) => r.user_id === DEMO_USER.id)) return 'used';
+  if (table('band_plans').some((r) => r.band_id === band)) return 'band_had_plan';
+  return null;
+}
+
 /** The server's refusal (161 bw_plan_guard): P0001, the key in MESSAGE and DETAIL. */
 class DemoPlanLimit extends Error {
   readonly planLimit: { code: string; message: string; details: string; hint: string };
@@ -1018,22 +1052,30 @@ const rpc = (fn: string, args: Row = {}) => {
     // Paid plans (160): same rules as the server, from the demo's own rows, so
     // e2e can switch plans on locally (platform_switches.plans_enforced).
     case 'bw_band_entitlements': {
-      const e = demoEntitlements(String(args.p_band_id));
-      // The server's shape (snake_case).
-      data = e && {
-        enforced: e.enforced,
-        plan: e.plan,
-        source: e.source,
-        status: e.status,
-        trial_ends_at: e.trialEndsAt,
-        grant_until: e.grantUntil,
-        is_payer: e.isPayer,
-        is_admin: e.isAdmin,
-        limits: e.limits,
-        usage: e.usage,
-        checkout: e.checkout,
-        notice: e.notice,
-      };
+      data = snakeEntitlements(demoEntitlements(String(args.p_band_id)));
+      break;
+    }
+    // Grants (164): the trial, same rules as the server.
+    case 'bw_trial_offer': {
+      const band = String(args.p_band_id);
+      data = demoTrialRefusal(band) ? null : { plan: 'pro', days: demoTrialDays() };
+      break;
+    }
+    case 'bw_start_trial': {
+      const band = String(args.p_band_id);
+      const why = demoTrialRefusal(band);
+      if (why) {
+        error = { message: `BW_TRIAL:${why}`, code: 'P0001' };
+        break;
+      }
+      const now = new Date();
+      table('plan_trials').push({ user_id: DEMO_USER.id, band_id: band, started_at: now.toISOString() });
+      table('band_plans').push({
+        band_id: band, plan: 'pro', source: 'trial', status: 'trialing',
+        trial_ends_at: new Date(now.getTime() + demoTrialDays()! * 86_400_000).toISOString(),
+      });
+      persist();
+      data = snakeEntitlements(demoEntitlements(band));
       break;
     }
     // Minimum app version (162): the demo's own app_versions rows (none = no minimum).

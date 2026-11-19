@@ -18,19 +18,34 @@ const ALL = import.meta.glob<string>('../../../../supabase/migrations/*.sql', {
 
 const TABLES = ['plan_limits', 'plan_settings', 'billing_accounts', 'band_plans', 'billing_events', 'band_usage', 'plan_trials'];
 
+// The one runtime write a migration may hold: bw_start_trial (164) inserts the
+// caller's own trial row ('pro' / 'trial' / 'trialing', length from
+// plan_settings). Exempted by its exact text, once, in that file only.
+const TRIAL_START =
+  /INSERT INTO public\.band_plans \(band_id, plan, source, status, trial_ends_at\)\s+VALUES \(p_band_id, 'pro', 'trial', 'trialing', now\(\) \+ make_interval\(days => v_days\)\);/;
+const withoutTrialStart = (path: string, body: string) =>
+  path.endsWith('/164_plan_grants.sql') ? body.replace(TRIAL_START, '') : body;
+
 describe('160 paid plans', () => {
   const sql = noComments(sql160);
 
   it('no migration writes plan values, prices or plan rows', () => {
     expect(Object.keys(ALL).length).toBeGreaterThan(100);
     for (const [path, raw] of Object.entries(ALL)) {
-      const body = noComments(raw);
+      const body = withoutTrialStart(path, noComments(raw));
       for (const t of ['plan_limits', 'plan_settings', 'band_plans', 'billing_accounts']) {
         expect(body, `${path} writes ${t}`).not.toMatch(new RegExp(`INSERT\\s+INTO\\s+(public\\.)?${t}\\b`, 'i'));
         expect(body, `${path} writes ${t}`).not.toMatch(new RegExp(`UPDATE\\s+(public\\.)?${t}\\s+SET`, 'i'));
       }
       expect(body, `${path} turns a plans switch on`).not.toMatch(/'plans_(enforced|checkout|trial)'\s*,\s*true/i);
     }
+  });
+
+  it('the trial start in 164 is the only exempted write, and it is still there', () => {
+    const path = Object.keys(ALL).find((k) => k.endsWith('/164_plan_grants.sql'))!;
+    const body = noComments(ALL[path]);
+    expect(body).toMatch(TRIAL_START);
+    expect(body.match(/INSERT\s+INTO\s+(public\.)?band_plans\b/gi)).toHaveLength(1);
   });
 
   it('every table: RLS on, no direct access (read through the RPC only)', () => {
