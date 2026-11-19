@@ -942,6 +942,21 @@ const rpc = (fn: string, args: Row = {}) => {
         isAdmin: me?.role === 'admin',
         now: new Date(),
       });
+      // Usage, counted like the server's bw_plan_count (161).
+      if (e) {
+        const band = args.p_band_id;
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+        const sentThisMonth = (r: Row) => !!r.sent_at && Date.parse(String(r.sent_at)) >= monthStart;
+        e.usage = {
+          quotes_sent_month: table('quote_links').filter((r) => r.band_id === band && sentThisMonth(r)).length,
+          contracts_sent_month: table('contracts').filter((r) => r.band_id === band && r.type !== 'rider' && sentThisMonth(r)).length,
+          deputies: table('band_deputies').filter((r) => r.band_id === band).length,
+          admins: table('band_members').filter((r) => r.band_id === band && r.role === 'admin' && r.is_active !== false).length,
+          custom_templates: table('task_templates').filter((r) => r.band_id === band && !r.is_default).length,
+          gear_items: table('inventory').filter((r) => r.band_id === band && !r.owner_id).length,
+          storage_mb: 0,
+        };
+      }
       // The server's shape (snake_case).
       data = e && {
         enforced: e.enforced,

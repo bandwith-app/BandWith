@@ -194,6 +194,16 @@ Rollback-only, on production, as today: admin of a Free band / Pro band / grant 
 - For members: the plan only, no prices, no buttons.
 - Prices come from Paddle (`Paddle.PricePreview`, localised, VAT included) on the web, never hardcoded. In the app the screen links to the web page (§8).
 
+Built in P3a, with these choices:
+
+- **Where**: Settings → Plan (a section of the app settings, shown when a band is selected), with the plan's name as the row's value. The placeholder sheet with invented tiers and prices (`UpgradePricingSheet`) and the plan picker in Create band are gone; a new band is always Free.
+- **Members** see "Your band is on {plan}. Your band admin looks after the plan." and no meters; **admins** see how it is paid (trial days left, offered by BandWith, paid by you / another admin, failed payment) and, once the plans are on, a meter per counted limit that has a number.
+- **Who pays**: "Paid by another admin of the band", without the name (the payer's name would need a new field in the RPC; not worth it before P6).
+- **Co-admins** follow the band's `admins` limit (`canCoManage(plan, activeAdmins)`), not the person's `sub_tier`; the per-person "Pro" badge is gone. `src/lib/beta.ts` is deleted; `profiles.sub_tier` is still written by onboarding but no longer read for plans.
+- **Creating a band** always opens the form; the server decides (161 `bands_as_admin`) and P3b shows the refusal.
+- **The launch notice** is a dismissible card at the top of Home for admins (once per band and date), opening Settings → Plan.
+- **Web link**: "See the plans on the web" only when `plans_checkout` is on, for admins, never on iOS.
+
 ### 5.2 Limit prompts (P3b)
 
 Every limit has one prompt, opened from the action that hit it (before the server call when `usePlan` already knows, and again from the `BW_PLAN_LIMIT:<key>` error when it did not):

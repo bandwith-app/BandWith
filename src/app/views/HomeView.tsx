@@ -28,6 +28,7 @@ import { openSongPage } from '@/lib/services/rehearsalNotes';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
+import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
 
 /** Pill in a half-width slot: one line when it fits, else the label wraps
  *  inside it instead of running out ("Mapa de montaje", "Kalender ansehen"). */
@@ -87,6 +88,8 @@ interface HomeViewProps {
   userFeeMap?: Record<string, number>;
   /** Opens the Identity hub "Band assets & workflows" (Quick actions ↗). */
   onOpenAllAssets?: () => void;
+  /** Opens Settings → Plan (the launch notice, paid plans P3a). */
+  onOpenPlan?: () => void;
   // ── iPhone Duo · Laptop pose (BandDeskMode) ──
   /** Line-up per event id (AuthenticatedApp `eventMembersMap`): the poster's names and pending RSVPs. */
   eventMembersMap?: Record<string, { name: string; userId?: string; status?: string }[]>;
@@ -208,6 +211,7 @@ const formatEventLocation = (event: any): string | null => {
 
 export const HomeView: React.FC<HomeViewProps> = ({
   selectedBand,
+  onOpenPlan,
   expandedCard: _expandedCard,
   setExpandedCard,
   upcomingRehearsals,
@@ -740,6 +744,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </>
         )}
       </motion.div>
+
+      {/* Paid plans: the launch notice for admins, while the plans are off (§5.3). */}
+      {isAdmin && !isSolo && contextBand?.id && (
+        <motion.div variants={dashboardItemVariants}>
+          <LaunchNoticeCard bandId={contextBand.id} onOpenPlan={onOpenPlan} />
+        </motion.div>
+      )}
 
       {/* ═══ ACTION CENTER (payouts due, rehearsal polls & proposals) ═══ */}
       {(activePolls.length > 0 || payoutGigs.length > 0) && (

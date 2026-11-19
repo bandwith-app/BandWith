@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { Copy, Check, Crown, LogOut, Mail, MessageCircle, Mic, Phone, Trash2, UserCog } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
-import { DotText, PillButton, PillField, Tag } from '@/app/components/bw';
+import { DotText, PillButton, PillField } from '@/app/components/bw';
 import { ScreenHeader } from '@/app/components/bw/Screen';
 import { LineupStatusTag } from '@/app/components/event/LineupSoFar';
 import { supabase } from '@/lib/supabase';
@@ -40,7 +40,6 @@ export const MemberDetail: React.FC<{
   bandId: string;
   viewerId?: string;
   viewerIsAdmin: boolean;
-  isPro: boolean;
   initials: string;
   onClose: () => void;
   onMessage?: () => void;
@@ -51,7 +50,7 @@ export const MemberDetail: React.FC<{
   /** Admins: save the band instrument and default fee; resolves to an error message or null. */
   onSaveBandDetails?: (details: { instrument: string | null; default_fee: number | null }) => Promise<string | null>;
   canBeAdmin: boolean;
-}> = ({ member, bandId, viewerId, viewerIsAdmin, isPro, initials, onClose, onMessage, onToggleRole, onRemove, onLeave, onSaveBandDetails, canBeAdmin }) => {
+}> = ({ member, bandId, viewerId, viewerIsAdmin, initials, onClose, onMessage, onToggleRole, onRemove, onLeave, onSaveBandDetails, canBeAdmin }) => {
   const t = useT();
   const isSelf = !!viewerId && member.user_id === viewerId;
   const canSeeMoney = viewerIsAdmin || isSelf;
@@ -181,7 +180,6 @@ export const MemberDetail: React.FC<{
             <span className="flex items-center gap-2 min-w-0 bw-body-md text-muted-foreground">
               {instrument && <Mic className="w-4 h-4 shrink-0" aria-hidden />}
               <span className="truncate">{[instrumentText(instrument), roleLabel].filter(Boolean).join(' · ')}</span>
-              {isPro && <Tag variant="solid">Pro</Tag>}
             </span>
           </div>
         </div>

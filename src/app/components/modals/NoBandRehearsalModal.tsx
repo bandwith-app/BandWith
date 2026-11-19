@@ -1,5 +1,4 @@
 import React from 'react';
-import { IS_BETA } from '@/lib/beta';
 import { motion, AnimatePresence } from 'motion/react';
 import { RailCover } from '@/lib/railActions';
 import { Users, Plus } from '@/app/components/icons';
@@ -74,7 +73,7 @@ export const NoBandRehearsalModal: React.FC<NoBandRehearsalModalProps> = ({
                 {tr('Create a band')}
               </PillButton>
               <p className="bw-label-xs text-muted-foreground">
-                {IS_BETA ? tr('Free during the beta') : tr('Requires a Pro subscription')}
+                {tr('Free, with every tool')}
               </p>
             </div>
 

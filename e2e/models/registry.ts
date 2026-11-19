@@ -10,5 +10,6 @@ import { deputySteps } from './deputy.steps.ts';
 import { authSteps } from './auth.steps.ts';
 import { rehearsalLiveSteps } from './rehearsal-live.steps.ts';
 import { rehearsalNoteSteps } from './rehearsal-note.steps.ts';
+import { bandPlanSteps } from './band-plan.steps.ts';
 
-export const MODEL_STEPS = [rsvpGigSteps, rsvpRehearsalSteps, proposalSteps, pollSteps, cardEditSteps, setlistDraftSteps, quoteSteps, deputySteps, authSteps, rehearsalLiveSteps, rehearsalNoteSteps] as unknown as ModelSteps<Lifecycle>[];
+export const MODEL_STEPS = [rsvpGigSteps, rsvpRehearsalSteps, proposalSteps, pollSteps, cardEditSteps, setlistDraftSteps, quoteSteps, deputySteps, authSteps, rehearsalLiveSteps, rehearsalNoteSteps, bandPlanSteps] as unknown as ModelSteps<Lifecycle>[];

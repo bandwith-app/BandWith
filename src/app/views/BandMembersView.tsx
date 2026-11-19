@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
-import { isPaidTier } from '@/lib/beta';
+import { usePlan } from '@/lib/usePlan';
+import { limitFor } from '@/lib/plans';
 import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
@@ -384,10 +385,12 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     return '??';
   };
 
-  // Paid plan (Indie Act / single_band is free, so it isn't "Pro").
-  const isProMember = (member: BandMember): boolean => isPaidTier(member.profile?.sub_tier);
-  // Co-managing a band is a paid feature, open to everyone during the beta.
-  const canBeAdmin = (member: BandMember): boolean => canCoManage(member.profile?.sub_tier);
+  // Paid plans: the plan is the band's, not the person's (no "Pro" badge on
+  // people); one more admin must fit the band's admins limit.
+  const bandPlan = usePlan(selectedBand?.id);
+  const activeAdmins = members.filter((m) => m.role === 'admin' && m.is_active !== false).length;
+  const adminLimit = limitFor(bandPlan, 'admins');
+  const canBeAdmin = (_member: BandMember): boolean => canCoManage(bandPlan, activeAdmins);
 
   const stats = useMemo(() => {
     const admins = members.filter((m) => m.role === 'admin').length;
@@ -507,7 +510,6 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                       <div className="flex-1 min-w-0 flex flex-col gap-1">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="bw-label-md truncate">{name}</span>
-                          {isProMember(member) && <Tag variant="solid">Pro</Tag>}
                         </div>
                         <span className="bw-body-sm text-muted-foreground truncate">
                           {[instrumentText(memberInstrument(member)), roleLabel].filter(Boolean).join(' · ')}
@@ -547,7 +549,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                                 ) : canBeAdmin(member) ? (
                                   <MenuRow icon={<Crown />} label={t('Make admin')} onClick={() => handleToggleRole(member)} />
                                 ) : (
-                                  <MenuRow icon={<Crown />} label={t('Make admin')} hint={t('Requires a Pro account to co-manage')} disabled />
+                                  <MenuRow icon={<Crown />} label={t('Make admin')} hint={t('Your band’s plan has room for {count} admins.', { count: adminLimit ?? activeAdmins })} disabled />
                                 )}
                                 <MenuRow icon={<Trash2 />} label={t('Remove from band')} danger onClick={() => handleRemoveMember(member)} />
                               </>
@@ -584,7 +586,6 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
               bandId={selectedBand.id}
               viewerId={authUser?.id}
               viewerIsAdmin={isAdmin}
-              isPro={isProMember(m)}
               initials={getInitials(m)}
               canBeAdmin={canBeAdmin(m)}
               onClose={() => setDetailId(null)}

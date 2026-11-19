@@ -17,7 +17,8 @@ The riskiest multi-step lifecycles of BandWith, written as XState state machines
 | [Auth callback & reset](auth.md) | admin | 9/9 | 11/11 | 5 | 5 | 0 |
 | [Rehearsal session (Live mode)](rehearsal-live.md) | admin | 8/8 | 12/12 | 6 | 6 | 0 |
 | [Rehearsal note (mark, write, OK)](rehearsal-note.md) | admin | 9/9 | 11/11 | 3 | 3 | 0 |
-| **Total** | | 121/121 | 152/152 | 76 | 86 | 0 |
+| [Band plan (trial, paid, past due, grant)](band-plan.md) | admin | 6/6 | 9/9 | 4 | 4 | 0 |
+| **Total** | | 127/127 | 161/161 | 80 | 90 | 0 |
 
 ## Where things live
 
