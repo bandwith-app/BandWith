@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import type { Entitlements } from '../plans';
-import { planLine, planName, planUsageRows, planNotice, PLAN_SITE_URL } from '../planText';
+import { planLine, planName, planUsageRows, planNotice, PLAN_SITE_URL, madeWithMark, bandWithFooter } from '../planText';
 
 const now = new Date('2026-12-01T12:00:00Z');
 const ent = (over: Partial<Entitlements> = {}): Entitlements => ({
@@ -102,5 +102,22 @@ describe('plan text: the launch notice', () => {
 
   it('the plans page lives on the web app', () => {
     expect(PLAN_SITE_URL).toBe('https://app.bandwith.fun/plans');
+  });
+});
+
+describe('plan text: the "Made with BandWith" mark (branding)', () => {
+  it('only when the plans are on and branding is 0', () => {
+    expect(madeWithMark(ent({ limits: { branding: 0 } }))).toBe(true);
+    expect(madeWithMark(ent({ limits: { branding: 1 } }))).toBe(false);
+    expect(madeWithMark(ent({ limits: {} }))).toBe(false);
+    expect(madeWithMark(ent({ enforced: false, limits: { branding: 0 } }))).toBe(false);
+    expect(madeWithMark(null)).toBe(false);
+  });
+  it('the contract footer keeps "with BandWith" unless the plan includes branding', () => {
+    expect(bandWithFooter(null)).toBe(true);
+    expect(bandWithFooter(ent({ enforced: false }))).toBe(true);
+    expect(bandWithFooter(ent({ limits: { branding: 0 } }))).toBe(true);
+    expect(bandWithFooter(ent({ limits: { branding: 1 } }))).toBe(false);
+    expect(bandWithFooter(ent({ limits: {} }))).toBe(false);
   });
 });

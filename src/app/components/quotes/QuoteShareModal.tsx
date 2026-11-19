@@ -44,6 +44,8 @@ import { OnlineDepositLinks } from '@/app/components/quotes/OnlineDeposit';
 import { useT, translate, intlLocale, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { madeWithMark } from '@/lib/planText';
 import {
   buildClientQuoteSnapshot,
   clientLinkMessage,
@@ -149,7 +151,9 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         loadedSettings = await getBandPricing(bandId);
       }
       setSettings(loadedSettings);
-      const generated = await generateQuotePdf(quoteRef.current, bandName, loadedSettings, docLang);
+      // Paid plans §4.3: the mark when the band's plan has no branding.
+      const plan = bandId ? await fetchBandPlan(bandId).catch(() => null) : null;
+      const generated = await generateQuotePdf(quoteRef.current, bandName, loadedSettings, docLang, { madeWith: madeWithMark(plan) });
       setPdfResult(generated);
       setActivePageIndex(0);
     } catch (err) {

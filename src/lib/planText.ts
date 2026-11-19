@@ -5,7 +5,7 @@
  */
 import { APP_URL } from '@/lib/appUrl';
 import { dateName, t } from '@/lib/i18n';
-import type { Entitlements, LimitKey } from '@/lib/plans';
+import { limitFor, type Entitlements, type LimitKey } from '@/lib/plans';
 
 /** The web page with the plans and the checkout (P6). Never linked from iOS. */
 export const PLAN_SITE_URL = `${APP_URL}/plans`;
@@ -88,3 +88,18 @@ export function planNotice(ent: Entitlements | null | undefined): PlanNotice | n
 }
 
 export const noticeDate = (n: PlanNotice): string => longDate(n.date);
+
+// ------------------------------------------------------------ branding --
+
+/** "Made with BandWith" on quote and setlist PDFs: plans on and `branding` = 0 (§4.3). */
+export function madeWithMark(ent: Entitlements | null | undefined): boolean {
+  return !!ent?.enforced && limitFor(ent, 'branding') === 0;
+}
+
+/**
+ * The contract PDF's "Generated with BandWith" line, there since before the
+ * plans: kept while they are off, dropped once the band's plan includes branding.
+ */
+export function bandWithFooter(ent: Entitlements | null | undefined): boolean {
+  return !ent?.enforced || madeWithMark(ent);
+}

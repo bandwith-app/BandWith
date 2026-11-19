@@ -4274,6 +4274,11 @@ const dict: Dictionary = {
   "Your account already runs a Free band as admin. To run another, make one of your bands Pro, or let someone else create it and invite you.": "Il tuo account gestisce già una band Free come admin. Per gestirne un’altra, passa una delle tue band a Pro, oppure lascia che qualcun altro la crei e ti inviti.",
   "Your band’s plan has room for {limit}, and {used} are already there. Everything already there stays.": "Il piano della band ha spazio per {limit} e ce ne sono già {used}. Tutto quello che c’è già resta.",
   "Your band’s plan has no room for this. Everything already there stays.": "Il piano della band non ha spazio per questo. Tutto quello che c’è già resta.",
+  // Paid plans P3b: analytics window
+  "Your plan shows the last {days} days. Older history is on Pro.": "Il tuo piano mostra gli ultimi {days} giorni. Lo storico più vecchio è su Pro.",
+  // Paid plans P3b: the mark
+  "Made with BandWith": "Fatto con BandWith",
+  "Generated on {date}": "Generato il {date}",
 };
 
 export default dict;

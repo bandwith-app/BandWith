@@ -15,6 +15,9 @@ import { toLocalDateString } from '@/lib/dates';
 import { useT, dateName, intlLocale, localDecimal } from '@/lib/i18n';
 import { revenueByType, type GigType, type RevenueEvent } from '@/lib/revenueByType';
 import { useAuth } from '@/lib/AuthContext';
+import { usePlan } from '@/lib/usePlan';
+import { limitFor } from '@/lib/plans';
+import { analyticsWindowStart, inAnalyticsWindow, monthBeforeWindow, windowCutsInto } from '@/lib/analyticsWindow';
 import { MemberStatsCard } from '@/app/components/dashboard/MemberStatsCard';
 import { AnalyticsPayoutsCard, type PayoutPerson } from '@/app/components/dashboard/AnalyticsPayoutsCard';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
@@ -133,6 +136,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
   const [yearGigs, setYearGigs] = useState<RevenueEvent[] | null>(null);
   const bandId = selectedBand?.id;
   const userId = user?.id;
+  // Paid plans (§4.3): a plan with `analytics_days` shows that many days back.
+  const plan = usePlan(bandId ? String(bandId) : null);
+  const windowStart = analyticsWindowStart(plan, now);
+  const windowDays = limitFor(plan, 'analytics_days');
   useEffect(() => {
     if (!bandId) return;
     let cancelled = false;
@@ -152,7 +159,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
         // Gig fees from bw_event_private (078): admins only. A member's
         // months show their own fee (bw_event_member_money, 071).
         type Row = { id: string; event_date: string; status: string; event_type: string };
-        const list = (rows || []) as Row[];
+        const list = ((rows || []) as Row[]).filter((r) => inAnalyticsWindow(r.event_date, windowStart));
         const ids = list.map((r) => r.id);
         let feeOf = new Map<string, number | null>();
         if (!error && isAdmin) {
@@ -179,7 +186,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
     return () => {
       cancelled = true;
     };
-  }, [bandId, isAdmin, userId]);
+  }, [bandId, isAdmin, userId, windowStart]);
 
   // Payouts still due after a show (admins only; Figma "Phone · Next / Analytics").
   const payoutsRaw = usePayoutsDue(isAdmin ? bandId : null, user?.id, isAdmin);
@@ -213,8 +220,21 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
       fee,
       lit,
       current: offset === 0,
+      locked: monthBeforeWindow(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, windowStart),
     };
   });
+  const firstShown = (() => {
+    const first = new Date(now.getFullYear(), now.getMonth() - (MONTH_SPAN - 1), 1);
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const d = first < yearStart ? first : yearStart;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  })();
+  const windowNote =
+    windowStart && windowDays !== null && windowCutsInto(firstShown, windowStart) ? (
+      <p data-testid="analytics-window" className="bw-body-sm text-muted-foreground">
+        {t('Your plan shows the last {days} days. Older history is on Pro.', { days: windowDays })}
+      </p>
+    ) : null;
 
   const byType = revenueByType(yearGigs ?? []);
   const typeLabels: Record<GigType, string> = {
@@ -359,15 +379,15 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
                   ? { role: 'group', 'aria-label': t('Monthly revenue, last six months. Choose a month to open it in the calendar.') }
                   : { role: 'img', 'aria-label': t('Monthly revenue, last six months: {months}', { months: monthly.map((x) => `${x.month} ${money(x.fee)}`).join(', ') }) })}
               >
-                {monthly.map(({ month, yyyyMm, longLabel, fee, lit, current }, i) => {
+                {monthly.map(({ month, yyyyMm, longLabel, fee, lit, current, locked }, i) => {
                   const bar = (
-                    <>
+                    <span className={cn('contents', locked && '[&>*]:opacity-30')}>
                       <span className="flex gap-1">
                         <LedColumn lit={lit} current={current} index={i * 2} />
                         <LedColumn lit={lit} current={current} index={i * 2 + 1} />
                       </span>
                       <span className={cn('bw-label-sm', current ? 'text-foreground' : 'text-muted-foreground')}>{month}</span>
-                    </>
+                    </span>
                   );
                   const motionProps = {
                     initial: { opacity: 0, y: 6 },
@@ -397,6 +417,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ onClose, dashboard
                 <span className="bw-body-lg text-muted-foreground">{t('Total earnings {year}', { year: now.getFullYear() })}</span>
                 <span className="bw-label-md shrink-0">{money(totalRevenue)}</span>
               </div>
+              {windowNote}
             </Card>
 
             {/* Revenue by event type and payouts due (admins only); on the open

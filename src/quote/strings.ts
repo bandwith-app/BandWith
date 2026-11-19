@@ -65,6 +65,7 @@ const en = {
   offlineBody: 'Check your connection and try again.',
   retry: 'Try again',
   preview: 'Preview: what your client sees. Nothing you do here is recorded.',
+  madeWith: 'Made with BandWith',
 };
 
 export type QuoteStrings = typeof en;
@@ -131,6 +132,7 @@ const it: QuoteStrings = {
   offlineBody: 'Controlla la connessione e riprova.',
   retry: 'Riprova',
   preview: 'Anteprima: ciò che vede il cliente. Qui non viene registrato nulla.',
+  madeWith: 'Fatto con BandWith',
 };
 
 const es: QuoteStrings = {
@@ -195,6 +197,7 @@ const es: QuoteStrings = {
   offlineBody: 'Comprueba la conexión e inténtalo de nuevo.',
   retry: 'Reintentar',
   preview: 'Vista previa: lo que ve tu cliente. Aquí no se registra nada.',
+  madeWith: 'Hecho con BandWith',
 };
 
 const fr: QuoteStrings = {
@@ -259,6 +262,7 @@ const fr: QuoteStrings = {
   offlineBody: 'Vérifiez votre connexion et réessayez.',
   retry: 'Réessayer',
   preview: 'Aperçu : ce que voit votre client. Rien n’est enregistré ici.',
+  madeWith: 'Fait avec BandWith',
 };
 
 const de: QuoteStrings = {
@@ -323,6 +327,7 @@ const de: QuoteStrings = {
   offlineBody: 'Prüf deine Verbindung und versuch es noch einmal.',
   retry: 'Erneut versuchen',
   preview: 'Vorschau: Das sieht dein Kunde. Hier wird nichts gespeichert.',
+  madeWith: 'Erstellt mit BandWith',
 };
 
 const pt: QuoteStrings = {
@@ -387,6 +392,7 @@ const pt: QuoteStrings = {
   offlineBody: 'Verifique a conexão e tente de novo.',
   retry: 'Tentar de novo',
   preview: 'Pré-visualização: o que seu cliente vê. Nada é registrado aqui.',
+  madeWith: 'Feito com BandWith',
 };
 
 export const QUOTE_STRINGS: Record<QuoteLang, QuoteStrings> = { en, it, es, fr, de, pt };

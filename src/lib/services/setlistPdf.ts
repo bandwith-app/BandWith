@@ -43,8 +43,10 @@ export function generateSetlistPdf(opts: {
   name: string;
   bandName?: string | null;
   songs: SetlistPdfSong[];
+  /** Paid plans §4.3: "Made with BandWith" at the foot (madeWithMark(plan)). */
+  madeWith?: boolean;
 }): { blob: Blob; fileName: string } {
-  const { name, bandName, songs } = opts;
+  const { name, bandName, songs, madeWith } = opts;
   const pages: string[] = [];
   const total = songs.reduce((a, s) => a + (s.durationSeconds || 0), 0);
   const sets = [...new Set(songs.map((s) => s.setNumber || 1))].sort((a, b) => a - b);
@@ -63,6 +65,10 @@ export function generateSetlistPdf(opts: {
     ctx.fillText(`${(bandName || 'BandWith').toUpperCase()} · ${name.toUpperCase()}`.slice(0, 80), M, H - 70);
     ctx.textAlign = 'right';
     ctx.fillText(t('PAGE {page}', { page: pageNo }), W - M, H - 70);
+    if (madeWith) {
+      ctx.textAlign = 'center';
+      ctx.fillText(t('Made with BandWith').toUpperCase(), W / 2, H - 36);
+    }
     ctx.textAlign = 'left';
     pages.push(canvas.toDataURL('image/jpeg', 0.9));
   };

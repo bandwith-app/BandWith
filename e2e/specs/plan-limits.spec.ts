@@ -102,3 +102,36 @@ test.describe('Limit prompt and Stage mode', () => {
     await expect(app.page.getByTestId('plan-limit-sheet')).toHaveCount(0);
   });
 });
+
+test.describe('Analytics window (analytics_days)', () => {
+  const note = (app: App) => app.page.getByTestId('analytics-window').filter({ visible: true });
+  /**
+   * Home → View Analytics, from the keyboard: in the Duo Laptop pose the
+   * fold layer lies over that card (not a plans matter), the key still works.
+   */
+  const openAnalytics = async (app: App) => {
+    const go = app.button('View Analytics', { exact: true }).first();
+    await go.scrollIntoViewIfNeeded();
+    await go.focus();
+    await app.page.keyboard.press('Enter');
+    await app.settle();
+  };
+
+  test('@smoke on a plan with a window: the last days only, and a note about older history', async ({ app }) => {
+    await app.editDb((db) => {
+      switchPlansOn(db);
+      db.plan_limits.push({ plan: 'free', key: 'analytics_days', value: 30 });
+    });
+    await openAnalytics(app);
+    await expect(note(app)).toBeVisible();
+    await expect(note(app)).toContainText(app.t('Your plan shows the last {days} days. Older history is on Pro.', { days: 30 }));
+    expect(await note(app).innerText()).not.toMatch(/€|\$|£/);
+    await app.check('Analytics with a window');
+  });
+
+  test('plans off (the beta): everything, no note', async ({ app }) => {
+    await openAnalytics(app);
+    await expect(app.page.getByRole('heading', { name: app.t('Monthly breakdown') }).filter({ visible: true }).first()).toBeVisible();
+    await expect(app.page.getByTestId('analytics-window')).toHaveCount(0);
+  });
+});

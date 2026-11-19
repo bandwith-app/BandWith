@@ -232,7 +232,13 @@ Built in P3b (part 1, the prompts), with these choices:
 - **Admins**: the limit, what is already there, "See your plan" (Settings → Plan) and "Not now". **Members**: "Ask your band admin about the plan" and OK. No prices and no web link in the prompt (the plan screen has those rules; never on iOS). **Second band**: the account wording, OK only.
 - **Never over Stage / Live mode** (`.bw-stage`): the refusal is dropped there, the action's own message still says why.
 - **No analytics event**: the app has no product analytics hook to send it to; not adding a provider for this.
-- Part 2 (next PR): the analytics window (`analytics_days`) and the "Made with BandWith" mark (`branding`) on PDFs and the client page (163).
+
+Built in P3b (part 2), with these choices:
+
+- **Analytics window** (`src/lib/analyticsWindow.ts`): with an `analytics_days` number, Analytics counts only the gigs inside the window; months wholly before it are dimmed, and a line says "Your plan shows the last {days} days. Older history is on Pro." Home's totals and the calendar are untouched (§4.3: a view, not a boundary).
+- **The mark** (`branding` = 0 and the plans on, `madeWithMark`): "Made with BandWith" at the foot of quote and setlist PDFs; the client's quote page shows it as a link to bandwith.fun, decided on the server (**163**: `bw_band_shows_mark`, internal; `bw_quote_link_view` is 099 plus `made_with`).
+- **Contracts and riders** already said "Generated with BandWith · date" before the plans: kept while the plans are off, and on a plan that has no branding; a plan that includes branding prints "Generated on date" (`bandWithFooter`).
+- No "Remove the mark" link inside the PDF: the admin finds it on Settings → Plan.
 
 ### 5.3 Before the switch: the beta notice (P3a)
 
