@@ -959,6 +959,12 @@ const rpc = (fn: string, args: Row = {}) => {
       };
       break;
     }
+    // Minimum app version (162): the demo's own app_versions rows (none = no minimum).
+    case 'bw_app_version': {
+      const v = table('app_versions').find((r) => r.platform === args.p_platform);
+      data = v ? { min_version: v.min_version ?? null, latest_version: v.latest_version ?? null, store_url: v.store_url ?? null } : null;
+      break;
+    }
     case 'bw_preview_invitation':
     case 'bw_accept_invitation':
     case 'bw_decline_invitation':
