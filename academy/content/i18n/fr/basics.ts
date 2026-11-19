@@ -506,7 +506,7 @@ const basics: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "L’accueil devient le bureau du groupe : le prochain concert en affiche sur la moitié haute (ou la prochaine répétition quand aucun concert n’est confirmé), et ce qui reste à faire avec les boutons de création sur la moitié basse." },
+            { devices: ["duoLaptop"], text: "L’accueil devient le bureau du groupe : le prochain concert en affiche sur la moitié haute (ou la prochaine répétition quand aucun concert n’est confirmé), et ce qui reste à faire avec les boutons de création sur la moitié basse. Les admins y trouvent aussi **Voir les stats**." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "La deuxième page montre le prochain concert à côté de l’accueil, ou **Choisis un événement** tant que tu n’en as pas ouvert." },
           ],
         },
@@ -1148,7 +1148,7 @@ const basics: AreaText = {
           type: "table",
           head: ["Écran", "Display (moitié haute)", "Deck (moitié basse)"],
           rows: [
-            ["Accueil : bureau du groupe", "Le prochain concert en affiche (la prochaine répétition si aucun concert n’est confirmé)", "Ce qui reste à faire (votes, paiements, réponses), boutons de création, onglets"],
+            ["Accueil : bureau du groupe", "Le prochain concert en affiche (la prochaine répétition si aucun concert n’est confirmé)", "Ce qui reste à faire (votes, paiements, réponses), boutons de création, Voir les stats (admins), onglets"],
             ["Calendrier : planning", "Le mois avec un point par type d’événement et les totaux du mois", "L’agenda du jour sélectionné, **+ Concert** / **+ Répétition**"],
             ["Sondage de répétition : trouver une date", "Membres × jours proposés, le meilleur jour en surbrillance, combien ont voté", "Tes propres pavés de jours, puis Verrouiller (admin) ou OK (membre)"],
             ["Mode scène : retour de scène", "Numéro du morceau, titre, tonalité, BPM, morceau suivant, temps écoulé sur fond noir", "Grands pavés PRÉC. / SUIV. et la progression du set"],

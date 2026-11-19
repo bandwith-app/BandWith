@@ -506,7 +506,7 @@ const basics: AreaText = {
         {
           type: "devices",
           rows: [
-            { devices: ["duoLaptop"], text: "La Home diventa la scrivania della band: il prossimo gig come una locandina nella metà alta (o la prossima prova se non c’è un gig confermato), e le cose da fare con i pulsanti per creare nella metà bassa." },
+            { devices: ["duoLaptop"], text: "La Home diventa la scrivania della band: il prossimo gig come una locandina nella metà alta (o la prossima prova se non c’è un gig confermato), e le cose da fare con i pulsanti per creare nella metà bassa. Gli admin ci trovano anche **Vedi statistiche**." },
             { devices: ["duoBook", "duoLand", "tablet"], text: "La seconda pagina mostra il prossimo gig accanto alla Home, oppure **Scegli un evento** finché non ne apri uno." },
           ],
         },
@@ -1148,7 +1148,7 @@ const basics: AreaText = {
           type: "table",
           head: ["Schermata", "Display (metà alta)", "Deck (metà bassa)"],
           rows: [
-            ["Home: Scrivania della band", "Il prossimo gig come una locandina (la prossima prova se non c’è un gig confermato)", "Le cose da fare (voti, pagamenti, risposte), i pulsanti per creare, le schede"],
+            ["Home: Scrivania della band", "Il prossimo gig come una locandina (la prossima prova se non c’è un gig confermato)", "Le cose da fare (voti, pagamenti, risposte), i pulsanti per creare, Vedi statistiche (admin), le schede"],
             ["Calendario: Planner", "Il mese con un pallino per tipo di evento e i conteggi del mese", "L’agenda del giorno selezionato, **+ Gig** / **+ Prova**"],
             ["Sondaggio prove: Trova una data", "Membri × giorni candidati, il giorno migliore evidenziato, quanti hanno votato", "I tuoi tasti per i giorni, poi Blocca (admin) o Fatto (membro)"],
             ["Modalità palco: Spia da palco", "Numero del brano, titolo, tonalità, BPM, brano successivo, tempo trascorso su sfondo nero", "Grandi tasti PREV / NEXT e l’avanzamento del set"],
