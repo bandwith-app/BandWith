@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BwSheet, PillButton } from '@/app/components/bw';
 import { confirmStorageLimit, onPlanLimit, type PlanLimitHit } from '@/lib/planLimit';
 import { invalidatePlan } from '@/lib/usePlan';
+import { startTrial, useTrialOffer } from '@/lib/trial';
 import { limitFor, type Entitlements, type LimitKey } from '@/lib/plans';
 import { planName } from '@/lib/planText';
 import { useT } from '@/lib/i18n';
@@ -61,6 +62,20 @@ export const PlanLimitSheet: React.FC<{ bandId: string | null; onOpenPlan: () =>
       ? t('Your band’s plan has no room for this. Ask your band admin about the plan.')
       : bodyFor(t, key, used, limit, ent ? planName(ent) : null);
   const canOpenPlan = isAdmin && !!shown?.bandId && key !== 'bands_as_admin';
+  // P5: the first limit an admin meets can start the Pro trial (164 decides).
+  const offer = useTrialOffer(shown?.bandId ?? null, canOpenPlan && !!shown);
+  const [starting, setStarting] = useState(false);
+  const [trialError, setTrialError] = useState<string | null>(null);
+  useEffect(() => setTrialError(null), [shown]);
+  const tryPro = async () => {
+    if (!shown?.bandId || starting) return;
+    setStarting(true);
+    const res = await startTrial(shown.bandId);
+    await invalidatePlan(shown.bandId);
+    setStarting(false);
+    if (res.error) setTrialError(res.error);
+    else close();
+  };
 
   return (
     <BwSheet
@@ -73,9 +88,15 @@ export const PlanLimitSheet: React.FC<{ bandId: string | null; onOpenPlan: () =>
       portal
       footer={
         <div className="flex flex-col gap-2" data-testid="plan-limit-actions">
+          {canOpenPlan && offer && (
+            <PillButton onClick={() => void tryPro()} loading={starting}>
+              {t('Try Pro free for {days} days', { days: offer.days })}
+            </PillButton>
+          )}
           {canOpenPlan ? (
             <>
               <PillButton
+                variant={offer ? 'outline' : undefined}
                 onClick={() => {
                   close();
                   onOpenPlan();
@@ -95,6 +116,11 @@ export const PlanLimitSheet: React.FC<{ bandId: string | null; onOpenPlan: () =>
     >
       <div data-testid="plan-limit-sheet" data-key={key} className="flex flex-col gap-3">
         <p className="bw-body-md text-muted-foreground">{body}</p>
+        {trialError && (
+          <p role="alert" className="bw-body-sm text-destructive">
+            {trialError}
+          </p>
+        )}
       </div>
     </BwSheet>
   );

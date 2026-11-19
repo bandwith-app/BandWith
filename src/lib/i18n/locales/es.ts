@@ -4279,6 +4279,18 @@ const dict: Dictionary = {
   // Paid plans P3b: the mark
   "Made with BandWith": "Hecho con BandWith",
   "Generated on {date}": "Generado el {date}",
+  // Paid plans P5: trial and grants
+  "Your account already used its trial.": "Tu cuenta ya usó su prueba.",
+  "This band already had a plan, so it has no trial.": "Esta banda ya tuvo un plan, así que no tiene prueba.",
+  "Trials are not open yet.": "Las pruebas aún no están abiertas.",
+  "Could not start the trial. Try again.": "No se pudo iniciar la prueba. Inténtalo de nuevo.",
+  "Try Pro free for {days} days": "Prueba Pro gratis durante {days} días",
+  "No card. Once per account; then the band is on Free again, and nothing is deleted.": "Sin tarjeta. Una vez por cuenta; después la banda vuelve a Free y no se borra nada.",
+  "Start the trial": "Empezar la prueba",
+  "Your Pro trial ends on {date}": "Tu prueba de Pro termina el {date}",
+  "Pro offered by BandWith ends on {date}": "El Pro ofrecido por BandWith termina el {date}",
+  "Then the band is on Free: nothing is deleted.": "Después la banda pasa a Free: no se borra nada.",
+  "Dismiss plan reminder": "Cerrar el recordatorio del plan",
 };
 
 export default dict;

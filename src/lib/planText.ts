@@ -17,7 +17,7 @@ export function planName(ent: Entitlements | null | undefined): string {
 }
 
 const DAY_MS = 86_400_000;
-const longDate = (iso: string) => dateName(new Date(iso), { day: 'numeric', month: 'long', year: 'numeric' }, 'en-GB');
+export const longDate = (iso: string): string => dateName(new Date(iso), { day: 'numeric', month: 'long', year: 'numeric' }, 'en-GB');
 
 /** One line under the plan's name. */
 export function planLine(ent: Entitlements | null | undefined, now: Date): string {

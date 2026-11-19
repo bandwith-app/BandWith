@@ -1,5 +1,5 @@
 import { test, expect, DEMO_USER_ID, type App } from '../fixtures';
-import { bandOf, openPlan, planSection, switchPlansOn, type Db } from '../support/plans';
+import { bandOf, daysFromNow, openPlan, planSection, switchPlansOn, type Db } from '../support/plans';
 
 /**
  * Paid plans, P3a (docs/plans/paid-plans.md §5.1, §5.3): Settings → Plan and
@@ -98,5 +98,44 @@ test.describe('Launch notice on Home', () => {
     await app.setRole('member');
     await app.settle();
     await expect(app.page.getByTestId('plan-launch-notice')).toHaveCount(0);
+  });
+});
+
+test.describe('Grants: the Pro trial and its end (P5)', () => {
+  const trialOpen = (db: Db) => {
+    switchPlansOn(db);
+    db.platform_switches.push({ key: 'plans_trial', enabled: true });
+    db.plan_settings = [...(db.plan_settings ?? []), { key: 'trial_days', value: 14 }];
+  };
+  const trial = (app: App) => app.page.getByTestId('plan-trial').filter({ visible: true });
+
+  test('@smoke admin of a band that never had a plan: starts the Pro trial, no card', async ({ app }) => {
+    await app.editDb(trialOpen);
+    await openPlan(app);
+    await expect(trial(app)).toContainText(app.t('Try Pro free for {days} days', { days: 14 }));
+    expect(await trial(app).innerText()).not.toMatch(/€|\$|£/);
+    await app.check('Plan with the trial offer');
+    await trial(app).getByRole('button', { name: app.t('Start the trial') }).click();
+    await expect(section(app)).toContainText('Pro');
+    await expect(trial(app)).toHaveCount(0);
+    await app.check('Plan on the Pro trial');
+  });
+
+  test('members are never offered the trial', async ({ app }) => {
+    await app.editDb(trialOpen);
+    await app.setRole('member');
+    await openPlan(app);
+    await expect(app.page.getByTestId('plan-trial')).toHaveCount(0);
+  });
+
+  test('the last week of a trial: a card on Home for the admin', async ({ app }) => {
+    await app.editDb((db) => {
+      switchPlansOn(db);
+      db.band_plans = [{ band_id: bandOf(db, DEMO_USER_ID), plan: 'pro', source: 'trial', status: 'trialing', trial_ends_at: daysFromNow(3) }];
+    });
+    const card = app.page.getByTestId('plan-ending').filter({ visible: true }).first();
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toContainText(app.t('Then the band is on Free: nothing is deleted.'));
+    await app.check('Home with the trial ending');
   });
 });

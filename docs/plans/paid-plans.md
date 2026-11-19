@@ -253,6 +253,24 @@ All grants are `band_plans` rows with `source = 'grant'` or `'trial'`, so the ap
 - **Partner band (Mirage Music)**: `grant_reason = 'partner'`, `grant_until = NULL` (forever). Applied by hand, when the user says it is ready. Not counted as a paying band in reports.
 - **Ending a grant** (founding window over, no subscription): the band falls to Free with the over-limit rules (§4.2). The app warns the payer before the end (in-app card + push + email through the existing templates, user-approved before deploy).
 
+Built in P5 (migration 164), with these choices:
+
+- **Trial**: `bw_trial_offer(band)` / `bw_start_trial(band)`. Pro, for `plan_settings.trial_days` (a number, 1–90), only while `plans_trial` is on; an admin, once per account (`plan_trials`), never on a band that already had a `band_plans` row. Refusals `BW_TRIAL:not_admin | off | used | band_had_plan`. The app offers it on Settings → Plan and as the first button of an admin's limit prompt. No card, no price.
+- **Founding report**: `bw_founding_candidates()` reads `plan_settings.founding_rules` (`{"launch_date", "min_members", "active_days"}`) and lists the bands created before the launch with enough active members and a gig or rehearsal (not cancelled) in the days before it, leaving out bands that already have a plan row (the partner band, earlier grants). Service role / SQL only; no rules = no rows. Dry run on 2026-11-19 with the rules written only inside the transaction: 2 bands.
+- **Applying the founding grant** (by hand, on launch day, only with the user's OK, after reading the report):
+
+  ```sql
+  INSERT INTO public.band_plans (band_id, plan, source, status, grant_reason, grant_until)
+  SELECT c.band_id, 'pro', 'grant', 'active', 'founding',
+         (SELECT (s.value #>> '{}')::timestamptz FROM public.plan_settings s WHERE s.key = 'founding_window_end')
+    FROM public.bw_founding_candidates() c
+  ON CONFLICT (band_id) DO NOTHING;
+  ```
+
+- **Partner band** (by hand, when the user says so): `INSERT INTO public.band_plans (band_id, plan, source, status, grant_reason) VALUES ('<band id>', 'pro', 'grant', 'active', 'partner');` (no `grant_until` = forever).
+- **Before the end**: a card on Home for the admins in the last 7 days of a trial or a grant (`PlanEndingCard`, dismissed per band and date), and a daily job (`bw-plan-ending-notices`, 08:10 UTC) that leaves an inbox note to each admin 7 days and 1 day before, in their language, once each, only while `plans_enforced` is on.
+- **Not yet**: the push for that note (the push dispatcher `bw_trg_dispatch_push` would need `system/plan_ending` added; a one-line change, kept for the release candidate) and the email (needs the user's approval of the template first).
+
 ## 7. Old app versions and the minimum version
 
 Server enforcement means an old build **cannot** get Pro for free: the limit is checked in the database. What an old build lacks is the explanation (no plan screen, no prompt; at best the plain-English `HINT`). So the minimum version is about clarity, not security.
