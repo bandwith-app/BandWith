@@ -39,7 +39,7 @@ jobs:
   e2e:
     name: E2E (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -66,9 +66,15 @@ jobs:
       - name: Install browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium webkit
+      # apt on the runner sometimes hangs for 20+ minutes: bound each try, retry.
       - name: Install browser system deps
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium webkit
+        run: |
+          for i in 1 2 3; do
+            timeout 360 pnpm exec playwright install-deps chromium webkit && exit 0
+            echo "install-deps try $i failed or timed out, retrying"
+          done
+          exit 1
       - run: pnpm e2e:typecheck
       # The lifecycle model paths run in the "E2E lifecycles" job.
       - run: pnpm e2e --shard=${{ matrix.shard }}/3
@@ -89,7 +95,7 @@ jobs:
   e2e-lifecycles:
     name: E2E lifecycles
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -112,9 +118,15 @@ jobs:
       - name: Install browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium webkit
+      # apt on the runner sometimes hangs for 20+ minutes: bound each try, retry.
       - name: Install browser system deps
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium webkit
+        run: |
+          for i in 1 2 3; do
+            timeout 360 pnpm exec playwright install-deps chromium webkit && exit 0
+            echo "install-deps try $i failed or timed out, retrying"
+          done
+          exit 1
       - run: pnpm e2e:typecheck
       - run: pnpm e2e specs/xstate-lifecycles.spec.ts
       - name: Upload report and traces
