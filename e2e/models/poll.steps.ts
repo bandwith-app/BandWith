@@ -77,7 +77,9 @@ async function lockedEvent(app: App, title: string) {
 export const pollSteps = stepsFor(poll, {
   states: {
     home: async ({ app }) => {
-      await expect(app.page.getByRole('heading', { name: SEED.poll }).first()).toBeVisible();
+      // Home's poll card, or on the Duo Laptop the Band desk's action item
+      // (the Home under the desk is out of reach there).
+      await expect(app.page.getByRole('heading', { name: SEED.poll }).or(actionItem(app, SEED.poll)).first()).toBeVisible();
     },
     builderEmpty: async ({ app }) => {
       // A default title is not something the user typed (RehearsalPollModal baseline).
@@ -151,7 +153,11 @@ export const pollSteps = stepsFor(poll, {
       expect(await dbPoll(app, TITLE)).toBeUndefined();
     },
     restrictedPoll: async ({ app }) => {
-      await expect(pollCard(app, SEED.poll)).toContainText(app.t('Not invited'));
+      // Duo Laptop: the Band desk's action item says so (Home is under it).
+      const item = actionItem(app, SEED.poll);
+      const onDesk = await app.page.getByRole('region', { name: app.t('Band desk') }).isVisible();
+      await expect(onDesk ? item : pollCard(app, SEED.poll)).toContainText(app.t('Not invited'));
+      if (onDesk) await expect(item.getByLabel(app.t('Needs attention'))).toHaveCount(0);
       await app.check('poll the admin is not invited to');
     },
     lockedInWithoutAdmin: async ({ app }) => {

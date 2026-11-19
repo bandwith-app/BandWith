@@ -13,6 +13,7 @@ import { useBand } from '@/lib/BandContext';
 import { useT, dateName, intlLocale, localDecimal, getLocale } from '@/lib/i18n';
 import { RehearsalPollCard } from '@/app/components/rehearsal/RehearsalPollCard';
 import type { RehearsalPoll } from '@/lib/services/rehearsalPolls';
+import { canVoteInPoll } from '@/lib/pollPermissions';
 import { parseLocalDate } from '@/lib/dates';
 import { useEventDrafts, type EventDraft } from '@/lib/wizardDrafts';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
@@ -510,12 +511,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
     for (const p of activePolls) {
       const voted = (p.options || []).some((o) => o.has_voted);
       if (p.status === 'polling' && voted) continue;
+      // A poll with an invite list that leaves you out: admins still see it
+      // (to lock it in), but it is not theirs to vote on (as Home's card says).
+      const invited = canVoteInPoll(p, currentUserId);
       items.push({
         id: `poll-${p.id}`,
         title: p.title || t('Rehearsal poll'),
-        detail: p.status === 'proposed' ? t('Rehearsal proposal · build a poll') : t('Rehearsal poll · vote on dates'),
+        detail:
+          p.status === 'proposed'
+            ? t('Rehearsal proposal · build a poll')
+            : invited
+              ? t('Rehearsal poll · vote on dates')
+              : `${t('Rehearsal poll')} · ${t('Not invited')}`,
         kind: 'rehearsal',
-        urgent: p.status === 'polling',
+        urgent: p.status === 'polling' && invited,
         onSelect: onOpenPoll ? () => onOpenPoll(p) : undefined,
       });
     }
