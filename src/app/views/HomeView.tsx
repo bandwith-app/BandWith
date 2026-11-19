@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowUpRight, EyeOff, MapPin } from '@/app/components/icons';
 import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card } from '@/app/components/bw';
@@ -20,6 +20,11 @@ import { openMaps } from '@/app/components/ui/MapsLink';
 import { BandDeskMode, type DeskActionItem, type DeskGig } from '@/app/components/duo';
 import { NextGigReadiness } from '@/app/components/dashboard/NextGigReadiness';
 import { PayoutsDueCard } from '@/app/components/dashboard/PayoutsDueCard';
+import { ToPractiseCard, shortDay } from '@/app/components/dashboard/ToPractiseCard';
+import { useBandNotes } from '@/app/components/event/useBandNotes';
+import { useBandFlag } from '@/lib/flags';
+import { toPractise } from '@/lib/toPractise';
+import { openSongPage } from '@/lib/services/rehearsalNotes';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
@@ -428,6 +433,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }, [rehearsalPolls, isAdmin, currentUserId, isSolo]);
 
   // Payouts due after a show: admins see every musician, members only their own fee.
+  // To practise (plan A3): open rehearsal notes for me or the band, by song.
+  const notesOn = useBandFlag(isSolo ? null : contextBand?.id, 'rehearsal_notes');
+  const bandNotes = useBandNotes(isSolo ? null : contextBand?.id, currentUserId, notesOn);
+  // Ticked Practised here: stays on Home this visit, to take it back.
+  const [practisedHere, setPractisedHere] = useState<ReadonlySet<string>>(() => new Set());
+  const practiseGroups = useMemo(() => toPractise(bandNotes.notes, currentUserId, practisedHere), [bandNotes.notes, currentUserId, practisedHere]);
+  const onPractised = (id: string, value: boolean) => {
+    setPractisedHere((s) => (s.has(id) ? s : new Set(s).add(id)));
+    bandNotes.practised(id, value);
+  };
   const payoutsDueRaw = usePayoutsDue(isSolo ? null : contextBand?.id, currentUserId, !!isAdmin);
   const payoutGigs = useMemo(() => payoutsDueRaw ?? [], [payoutsDueRaw]);
   const payoutPeople = useMemo(() => {
@@ -529,8 +544,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
         });
       }
     }
+    // To practise (A3): the songs with open rehearsal notes, each opens its page.
+    for (const g of practiseGroups.slice(0, 3)) {
+      items.push({
+        id: `practise-${g.songId}`,
+        title: g.title ?? t('Song'),
+        detail: `${t('To practise')} · ${t('From the rehearsal of {date}', { date: shortDay(g.lastDate) })}`,
+        kind: 'rehearsal',
+        onSelect: contextBand?.id ? () => void openSongPage(g.songId, contextBand.id) : undefined,
+      });
+    }
     return items;
-  }, [activePolls, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t]);
+  }, [activePolls, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t, practiseGroups, contextBand?.id]);
 
   // Each create button shows only when the host passes its handler (role rules live there).
   const bandDesk = (
@@ -753,6 +778,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ))}
           </div>
           )}
+        </motion.div>
+      )}
+
+      {/* ═══ TO PRACTISE (A3): songs with open rehearsal notes for me ═══ */}
+      {practiseGroups.length > 0 && contextBand?.id && (
+        <motion.div variants={dashboardItemVariants} className="flex flex-col gap-3">
+          <SectionHeader title={t('To practise')} />
+          <ToPractiseCard
+            groups={practiseGroups}
+            userId={currentUserId}
+            onOpenSong={(songId) => void openSongPage(songId, contextBand.id)}
+            onPractised={onPractised}
+          />
         </motion.div>
       )}
 

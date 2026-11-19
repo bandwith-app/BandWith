@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Minus, Music2, Pause, Play, Plus, X } from '@/app/components/icons';
 import { IconButton } from '@/app/components/bw/Screen';
 import { LineNotes, MyNotesBar, PersonalLayerScope, PickableLine, useLineRefs } from '@/app/components/songs/PersonalLayer';
+import { FromRehearsalStrip } from '@/app/components/songs/FromRehearsalStrip';
 import { closeLyrics, openLyrics, parseInline, parseLyrics, splitChords, useLyricsDoc } from '@/lib/lyrics';
 import { useOptionalBand } from '@/lib/BandContext';
 import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
@@ -275,6 +276,10 @@ export const LyricsViewer: React.FC = () => {
               {mine && <MyNotesBar className="shrink-0 px-4 pb-2" />}
             </div>
             <div className="bw-reader-body flex-1 min-h-0 overflow-y-auto px-4 pb-16">
+              {/* Open rehearsal notes on this song (A3), for the whole band; My notes (109) stay private. */}
+              {doc.songId && bandId && (
+                <FromRehearsalStrip songId={doc.songId} bandId={bandId} title={doc.title} lyrics={doc.lyrics} />
+              )}
               {/* The band's notes on the song (songs.notes): what admins wrote or accepted from a suggestion. */}
               {doc.notes?.trim() && (
                 <details className="mb-4 rounded-[20px] bg-card text-card-foreground px-4 py-3">

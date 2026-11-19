@@ -201,3 +201,37 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     expect(screen.queryByRole('button', { name: 'Mark' })).toBeNull();
   });
 });
+
+describe('Live mode: notes from last time (A3)', () => {
+  const earlierNote = note({ id: 'old', date: '2026-11-12', status: 'open', preset: 'ending', markedAtS: null });
+  const renderWithEarlier = (ok = vi.fn(), isAdmin = true) => {
+    const c = controls([]);
+    const notes: LiveNotes = {
+      controls: c,
+      songs,
+      members,
+      elapsed: () => 0,
+      earlier: { notes: [earlierNote], userId: ADMIN, isAdmin, practised: vi.fn(), ok },
+    };
+    render(
+      <StageMode kind="rehearsal" title="Weekly rehearsal" dateLabel="Thu 19 Nov" steps={[]} songs={songs} live={{ index: 0 } as never} session={session(null)} notes={notes} onClose={vi.fn()} />,
+    );
+    return ok;
+  };
+
+  it('a badge on the songs with open notes; it opens them and an admin confirms OK', () => {
+    const ok = renderWithEarlier();
+    expect(screen.queryByRole('button', { name: /From last time · Superstition/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'From last time · Paper Boats: 1' }));
+    const list = sheet(/Paper Boats/);
+    expect(within(list).getByText('Ending')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: /OK/ }));
+    expect(ok).toHaveBeenCalledWith('old', true);
+  });
+
+  it('a member sees the notes but cannot confirm a band note', () => {
+    renderWithEarlier(vi.fn(), false);
+    fireEvent.click(screen.getByRole('button', { name: 'From last time · Paper Boats: 1' }));
+    expect(within(sheet(/Paper Boats/)).queryByRole('button', { name: /OK/ })).toBeNull();
+  });
+});

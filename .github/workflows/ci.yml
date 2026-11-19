@@ -39,7 +39,7 @@ jobs:
   e2e:
     name: E2E (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -66,9 +66,35 @@ jobs:
       - name: Install browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium webkit
+      # The runner's Ubuntu mirror can crawl (~50 KB/s for ~436 MB of browser
+      # deps): keep the downloaded .deb files between runs so apt only installs.
+      - name: Cache browser system packages
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-${{ runner.os }}-${{ steps.pw.outputs.version }}-v1
       - name: Install browser system deps
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium webkit
+        run: |
+          echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99bw-keep-debs >/dev/null
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          if compgen -G "$HOME/apt-debs/*.deb" >/dev/null; then sudo cp "$HOME"/apt-debs/*.deb /var/cache/apt/archives/; fi
+          ok=0
+          for i in 1 2 3; do
+            # Retries go to another mirror (the default one is sometimes very slow).
+            if [ "$i" = 2 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
+            if [ "$i" = 3 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://azure.archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
+            if sudo timeout -k 10 480 env "PATH=$PATH" pnpm exec playwright install-deps chromium webkit; then ok=1; break; fi
+            echo "install-deps try $i failed or timed out, retrying"
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+            sudo dpkg --configure -a || true
+          done
+          mkdir -p "$HOME/apt-debs"
+          cp /var/cache/apt/archives/*.deb "$HOME/apt-debs/" 2>/dev/null || true
+          [ "$ok" = 1 ]
       - run: pnpm e2e:typecheck
       # The lifecycle model paths run in the "E2E lifecycles" job.
       - run: pnpm e2e --shard=${{ matrix.shard }}/3
@@ -89,7 +115,7 @@ jobs:
   e2e-lifecycles:
     name: E2E lifecycles
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -112,9 +138,35 @@ jobs:
       - name: Install browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium webkit
+      # The runner's Ubuntu mirror can crawl (~50 KB/s for ~436 MB of browser
+      # deps): keep the downloaded .deb files between runs so apt only installs.
+      - name: Cache browser system packages
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-${{ runner.os }}-${{ steps.pw.outputs.version }}-v1
       - name: Install browser system deps
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium webkit
+        run: |
+          echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99bw-keep-debs >/dev/null
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
+          if compgen -G "$HOME/apt-debs/*.deb" >/dev/null; then sudo cp "$HOME"/apt-debs/*.deb /var/cache/apt/archives/; fi
+          ok=0
+          for i in 1 2 3; do
+            # Retries go to another mirror (the default one is sometimes very slow).
+            if [ "$i" = 2 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
+            if [ "$i" = 3 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://azure.archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
+            if sudo timeout -k 10 480 env "PATH=$PATH" pnpm exec playwright install-deps chromium webkit; then ok=1; break; fi
+            echo "install-deps try $i failed or timed out, retrying"
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+            sudo dpkg --configure -a || true
+          done
+          mkdir -p "$HOME/apt-debs"
+          cp /var/cache/apt/archives/*.deb "$HOME/apt-debs/" 2>/dev/null || true
+          [ "$ok" = 1 ]
       - run: pnpm e2e:typecheck
       - run: pnpm e2e specs/xstate-lifecycles.spec.ts
       - name: Upload report and traces

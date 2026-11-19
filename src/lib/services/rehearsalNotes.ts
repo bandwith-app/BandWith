@@ -5,6 +5,8 @@
  */
 import { supabase } from '@/lib/supabase';
 import { fromNoteRow, toNoteRow, type RehearsalNote } from '@/lib/rehearsalNotes';
+import { openLyrics } from '@/lib/lyrics';
+import { asSongChart } from '@/lib/ireal';
 
 /** Must match the SELECT grants in 132 (rehearsalNotesMigration.test.ts). */
 export const NOTE_COLUMNS =
@@ -94,4 +96,27 @@ export async function setPractised(noteId: string, userId: string, practised: bo
 export async function setNoteOk(noteId: string, ok: boolean): Promise<{ error: unknown }> {
   const { error } = await supabase.from('rehearsal_notes').update({ status: ok ? 'ok' : 'open' }).eq('id', noteId);
   return { error };
+}
+
+/** Opens a band song's page (lyrics and its notes) from To practise. */
+export async function openSongPage(songId: string, bandId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('songs')
+    .select('id, title, artist, key, lyrics, chord_chart, notes')
+    .eq('id', songId)
+    .maybeSingle();
+  if (error || !data) return false;
+  const s = data as { id: string; title: string; artist?: string | null; key?: string | null; lyrics?: string | null; chord_chart?: unknown; notes?: string | null };
+  openLyrics({
+    songId: s.id,
+    bandId,
+    title: s.title,
+    artist: s.artist ?? undefined,
+    songKey: s.key ?? undefined,
+    lyrics: s.lyrics || '',
+    chart: asSongChart(s.chord_chart),
+    view: 'lyrics',
+    notes: s.notes,
+  });
+  return true;
 }

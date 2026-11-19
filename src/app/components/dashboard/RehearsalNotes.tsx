@@ -21,6 +21,7 @@ import {
   type RehearsalNote,
 } from '@/lib/rehearsalNotes';
 import type { RehearsalNotesControls } from '@/app/components/event/useRehearsalNotes';
+import type { EarlierNotes } from './FromLastTime';
 
 type T = ReturnType<typeof useT>;
 
@@ -395,6 +396,8 @@ export interface LiveNotes {
   members: NoteMember[];
   /** Seconds into the session now (null before it starts). */
   elapsed: () => number | null;
+  /** Open notes from earlier rehearsals on these songs (A3): the badges. */
+  earlier?: EarlierNotes;
 }
 
 /** Which sheet is up: the list, or a note being written. */

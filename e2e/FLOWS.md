@@ -84,6 +84,9 @@ check (`app.check`) on each screen it reaches.
 | Rehearsal notes: a member marks Practised on a note for them, no OK, no Edit on others' notes | `rehearsal-notes` | full |
 | Rehearsal notes: an admin confirms OK and assigns a new note to a member | `rehearsal-notes` | full |
 | Rehearsal notes between two devices: a mark shows on the other phone's Live mode | `rehearsal-notes` | full |
+| To practise: Home card by song, Practised on a note for me, the song page's "From rehearsals" (tempo / key → set on the song or suggested), Duo Laptop desk action items | `to-practise` | all |
+| Next rehearsal: "From last time" with OK for admins, Live mode badge opens a song's earlier notes | `to-practise` | full |
+| New rehearsal: focus songs offered from open notes, one tap adds one | `to-practise` | full |
 | Rehearsal note lifecycle (mark → write → save → page → OK → reopen) | model `rehearsal-note` | phone-portrait |
 | The Home rehearsal card's "Enter live mode" / "Check in / live" open the same live mode (no separate local session) | vitest `RehearsalExpanded.live` | unit |
 

@@ -50,6 +50,7 @@ import { heatLevel, toMinutes } from '@/lib/freeSlots';
 import { FreeDots, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { sessionAudience } from '@/lib/sessionRoster';
 import { memberInstrument } from '@/lib/bandMembership';
+import { useFocusSuggestions } from './useFocusSuggestions';
 
 interface TaskTemplateDB {
   id: string;
@@ -745,6 +746,29 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     setSongPickerOpen(false);
   };
 
+  // Plan A3 (097): songs with open rehearsal notes, one tap to add as focus songs.
+  const focusSuggest = useFocusSuggestions(selectedBand?.id, !isEditing && isAdmin);
+  const focusLeft = focusSuggest.songs.filter((s) => !data.setlist.some((x) => x.id === s.id));
+  const addSuggested = (s: { id: string; title: string }) => {
+    const known = library.find((x) => x.id === s.id);
+    const song: RehearsalSong = known ?? { id: s.id, title: s.title, artist: '', duration: '0:00', priority: 'medium', type: 'song' };
+    setData((prev) => (prev.setlist.some((x) => x.id === song.id) ? prev : { ...prev, setlist: [...prev.setlist, song] }));
+  };
+  const renderFocusSuggestions = () =>
+    focusLeft.length > 0 ? (
+      <div className="flex flex-col gap-2" role="group" aria-label={t('From open rehearsal notes')}>
+        <span className="bw-label-xs text-muted-foreground">{t('From open rehearsal notes')}</span>
+        <div className="flex flex-wrap gap-2">
+          {focusLeft.map((s) => (
+            <Selector key={s.id} size="md" selected={false} onClick={() => addSuggested(s)} ariaLabel={t('Add focus song: {title}', { title: s.title })}>
+              <Plus className="w-3.5 h-3.5" />
+              {s.title}
+            </Selector>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const handleAddToQueue = (templateId: string) => {
     setData(prev => ({
       ...prev,
@@ -1235,6 +1259,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
 
   const renderSongLists = () => (
     <>
+      {renderFocusSuggestions()}
       {data.setlist.length > 0 && (
         <div className="flex flex-col gap-2">
           <span className="bw-label-sm text-muted-foreground">{t('Selected songs')} · {data.setlist.length}</span>
@@ -2122,6 +2147,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
             </Selector>
           </div>
         </div>
+        {renderFocusSuggestions()}
         <div className="flex flex-col gap-2">
           <label htmlFor="cmp-rehearsal-note" className="bw-label-xs text-muted-foreground">
             {t('Goal / notes (optional)')}

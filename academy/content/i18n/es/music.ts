@@ -1077,6 +1077,16 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Para practicar, y el próximo ensayo",
+          items: [
+            "Inicio muestra **Para practicar**: las canciones con notas abiertas para ti o para la banda, del ensayo más reciente. Toca **Practicado** en una nota para ti; toca la canción para abrir su página. En el Duo plegado como un portátil, las canciones están en **Pendientes** del escritorio.",
+            "La página de la canción muestra **De los ensayos** encima de tus notas. Una nota de **Tempo** o **Tonalidad** que indica el valor (por ejemplo “Tempo: 96” o “Tonalidad: Bb”) tiene un botón: los admins **Poner en la canción**, los miembros **Sugerir a la banda**.",
+            "La página del próximo ensayo muestra **DE LA ÚLTIMA VEZ**: las notas abiertas de ensayos anteriores sobre sus canciones. Los admins tocan **OK** cuando la banda ya lo tiene. En el Modo en vivo una insignia en cada canción abre sus notas de la última vez.",
+            "Cuando un admin crea un ensayo, **De las notas de ensayo abiertas** ofrece las canciones con notas abiertas como canciones a trabajar, un toque cada una. Una nueva encuesta de ensayo ya las elige; quita las que no necesites.",
+          ],
+        },
+        {
+          type: "list",
           title: "Conviene saber",
           items: [
             "El Modo escenario está disponible en los próximos conciertos de la banda y, como Modo en vivo, en los próximos ensayos de la banda; no en presupuestos, eventos pasados ni conciertos personales.",

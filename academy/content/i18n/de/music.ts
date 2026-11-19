@@ -1206,6 +1206,16 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Zum Üben, und die nächste Probe",
+          items: [
+            "Die Startseite zeigt **Zum Üben**: die Songs mit offenen Notizen für dich oder die Band, neueste Probe zuerst. Tippe **Geübt** bei einer Notiz für dich; tippe den Song, um seine Seite zu öffnen. Auf dem Duo, wie ein Laptop gefaltet, stehen die Songs unter **Zu erledigen** auf dem Schreibtischs.",
+            "Die Seite des Songs zeigt **Aus den Proben** über deinen Notizen. Eine **Tempo**- oder **Tonart**-Notiz mit dem Wert (zum Beispiel „Tempo: 96“ oder „Tonart: F#m“) bekommt einen Button: Admins **Im Song setzen**, Mitglieder **Der Band vorschlagen**.",
+            "Die Seite der nächsten Probe zeigt **VOM LETZTEN MAL**: offene Notizen aus früheren Proben zu ihren Songs. Admins tippen **OK**, wenn die Band es kann. Im Live-Modus öffnet ein Abzeichen an jedem Song seine Notizen vom letzten Mal.",
+            "Wenn ein Admin eine Probe anlegt, bietet **Aus offenen Probennotizen** die Songs mit offenen Notizen als Fokus-Songs an, ein Tipp pro Song. Eine neue Probenumfrage wählt sie schon vor; entferne die, die du nicht brauchst.",
+          ],
+        },
+        {
+          type: "list",
           title: "Gut zu wissen",
           items: [
             "Der Bühnenmodus gibt es für kommende Gigs der Band und, als Live-Modus, für kommende Proben der Band; nicht für Angebote, vergangene Termine oder persönliche Gigs.",
