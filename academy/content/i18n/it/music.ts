@@ -672,10 +672,12 @@ const music: AreaText = {
           title: "Aggiungere una nota",
           items: [
             "Apri il brano nel lettore (**Testo** o **Accordi**) o in Modalità palco.",
-            "Attiva **Le mie note** sotto le schede del brano. La prima volta un foglio spiega cosa sono; tocca **Ho capito**.",
-            "Tocca **Aggiungi nota**, poi tocca la riga che vuoi. Oppure tocca **Nota su tutto il brano**.",
+            "Tocca **Aggiungi nota** (in Modalità palco, **Nota**). **Le mie note** si attivano da sole; la prima volta un foglio spiega cosa sono: tocca **Ho capito**.",
+            "Una barra in fondo allo schermo dice **Tocca la riga dove vuoi la nota**: tocca la riga che vuoi, oppure **Tutto il brano** per una nota su tutto il brano. **Annulla** per uscire.",
+            "Più veloce: tieni premuta una riga per mezzo secondo. Si apre **Nota su questa riga**: tocca **Nota per me**.",
             "Per una riga, scegli a cosa si riferisce la nota: **Tutta la riga**, una delle sue parole o uno dei suoi accordi.",
             "Scrivi in **La mia nota** e tocca **Salva nota**.",
+            "**Nota salvata su «…»** ti dice dove è andata.",
           ],
         },
         {
@@ -701,7 +703,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "In Modalità palco la barra usa solo pulsanti a icona, così resta su una riga sopra il testo." }],
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "In Modalità palco la barra mostra **Nota** e un’icona per **Aggiungi file**, così sta su una riga sopra il testo." }],
         },
       ],
     },
@@ -1199,6 +1201,8 @@ const music: AreaText = {
           items: [
             "In Modalità live tocca **Segna** quando qualcosa va sistemato: tiene il brano in corso e il minuto, e continuate a suonare.",
             "In pausa (o nel riepilogo) tocca **Da scrivere** e **Scrivi** su ogni segno: scegli su cosa lavorare (**Tempo**, **Tonalità**, **Finale**, **Solo**, **Da rivedere**, **Perfetto**, o **Ripetere una sezione** se il brano ha una struttura), aggiungi due parole e indica **Per chi è**.",
+            "Ogni nota su un brano può dire **Dove nel brano**: una sezione e, se vuoi, una delle sue righe (**Riga (facoltativa)**).",
+            "In Modalità live puoi anche tenere premuta una riga del testo e toccare **Nota per la band**: la nota si apre già su quel brano, sezione e riga.",
             "Gli admin scrivono per tutta la band o per qualsiasi membro; i membri per la band o per sé. Tutta la band legge tutte le note.",
             "Chi riceve una nota tocca **Provato** dopo averci lavorato; un admin tocca **OK** quando la band ce l’ha (anche l’autore, per una nota ai membri).",
             "La pagina della prova elenca le note sotto **NOTE DELLA PROVA**, per brano. Le note arrivano subito agli altri telefoni in Modalità live; senza internet restano sul telefono e partono quando torna online. Sul Duo piegato come un laptop, lo schermo a terra ha un blocco note: **Segna**, un preset con un tocco, o **Scrivi…**.",

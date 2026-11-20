@@ -4330,6 +4330,18 @@ const dict: Dictionary = {
   "Couldn’t copy the invite link. Try again.": "Non è stato possibile copiare il link d’invito. Riprova.",
   "Invite cancelled.": "Invito annullato.",
   "We couldn’t cancel the invite. Try again.": "Non siamo riusciti ad annullare l’invito. Riprova.",
+  "Where in the song": "Dove nel brano",
+  "Section to repeat": "Sezione da ripetere",
+  "Whole song": "Tutto il brano",
+  "Line (optional)": "Riga (facoltativa)",
+  "Note on this line": "Nota su questa riga",
+  "Note for me": "Nota per me",
+  "Only you see it, on this line.": "La vedi solo tu, su questa riga.",
+  "A rehearsal note on this point: the whole band sees it.": "Una nota della prova su questo punto: la vede tutta la band.",
+  "Adding a note": "Aggiunta di una nota",
+  "Tap the line for your note": "Tocca la riga dove vuoi la nota",
+  "Note saved on “{line}”": "Nota salvata su «{line}»",
+  "Note saved on the whole song": "Nota salvata su tutto il brano",
 };
 
 export default dict;

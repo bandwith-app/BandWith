@@ -1,7 +1,9 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { BwSheet } from '@/app/components/bw/Screen';
 import { FormError, PillButton, Selector, Toggle } from '@/app/components/bw';
-import { FileText, Info, Lock, Music2, Paperclip, Pencil, Send, StickyNote, Trash2, X } from '@/app/components/icons';
+import { FileText, Info, Lock, Music2, Paperclip, Pencil, Send, StickyNote, Trash2, Users, X } from '@/app/components/icons';
+import { haptic } from '@/lib/haptics';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
@@ -43,8 +45,12 @@ export interface PersonalSong {
 
 // ── the sheets, opened from anywhere ──
 
+/** Where a band note goes: the section and line held (rehearsal notes, 167). */
+export type BandNoteAt = { section: string | null; line: string };
+
 type SheetState =
   | { kind: 'note'; song: PersonalSong; anchor: NoteAnchor; line?: string; note?: PersonalNote }
+  | { kind: 'line'; song: PersonalSong; ref: LineRef; section: string | null; onBandNote?: (at: BandNoteAt) => void }
   | { kind: 'info'; then?: () => void }
   | null;
 let sheet: SheetState = null;
@@ -74,6 +80,8 @@ const withInfo = (then: () => void) => {
 interface ScopeValue {
   song: PersonalSong | null;
   stage: boolean;
+  /** At a rehearsal (Live mode): holding a line can also write a band note there. */
+  onBandNote?: (at: BandNoteAt) => void;
   show: boolean;
   setShow: (v: boolean) => void;
   picking: boolean;
@@ -85,19 +93,20 @@ interface ScopeValue {
 const Scope = React.createContext<ScopeValue | null>(null);
 export const usePersonalScope = () => React.useContext(Scope);
 
-export const PersonalLayerScope: React.FC<{ song: PersonalSong | null; stage?: boolean; children: React.ReactNode }> = ({
-  song,
-  stage = false,
-  children,
-}) => {
+export const PersonalLayerScope: React.FC<{
+  song: PersonalSong | null;
+  stage?: boolean;
+  onBandNote?: (at: BandNoteAt) => void;
+  children: React.ReactNode;
+}> = ({ song, stage = false, onBandNote, children }) => {
   const layer = usePersonalLayer(song?.id);
   const [show, setShow] = useShowMyNotes();
   const [picking, setPicking] = React.useState(false);
   React.useEffect(() => setPicking(false), [song?.id]);
   const placed = React.useMemo(() => placeNotes(song?.lyrics, layer.notes), [song?.lyrics, layer.notes]);
   const value = React.useMemo<ScopeValue>(
-    () => ({ song, stage, show, setShow, picking: picking && show, setPicking, notes: layer.notes, files: layer.files, placed }),
-    [song, stage, show, setShow, picking, layer.notes, layer.files, placed],
+    () => ({ song, stage, onBandNote, show, setShow, picking, setPicking, notes: layer.notes, files: layer.files, placed }),
+    [song, stage, onBandNote, show, setShow, picking, layer.notes, layer.files, placed],
   );
   return <Scope.Provider value={value}>{children}</Scope.Provider>;
 };
@@ -118,31 +127,93 @@ export const openNoteFor = (song: PersonalSong, ref: LineRef | null, note?: Pers
   setSheet({ kind: 'note', song, anchor, line: ref?.text, note });
 };
 
-/** A line while adding a note: tap to put a note on it. */
-export const PickableLine: React.FC<{ refLine: LineRef; children: React.ReactNode }> = ({ refLine, children }) => {
+/** Hold this long on a line for "Note on this line". */
+export const HOLD_MS = 500;
+
+/**
+ * A drawn line of a song with My notes: hold it for "Note on this line" (for
+ * me, or for the band at a rehearsal); while adding a note, tap it.
+ */
+export const PickableLine: React.FC<{ refLine: LineRef; sectionName?: string | null; children: React.ReactNode }> = ({ refLine, sectionName = null, children }) => {
   const t = useT();
   const scope = usePersonalScope();
-  if (!scope?.picking || !scope.song) return <>{children}</>;
+  const timer = React.useRef<number | null>(null);
+  const start = React.useRef<{ x: number; y: number } | null>(null);
+  const held = React.useRef(false);
+  React.useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+  }, []);
+  if (!scope?.song) return <>{children}</>;
   const song = scope.song;
+  const cancel = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = null;
+    start.current = null;
+  };
+  const openMenu = () => {
+    held.current = true;
+    haptic.medium();
+    scope.setPicking(false);
+    setSheet({ kind: 'line', song, ref: refLine, section: sectionName, onBandNote: scope.onBandNote });
+  };
+  const hold = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      held.current = false;
+      start.current = { x: e.clientX, y: e.clientY };
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        openMenu();
+      }, HOLD_MS);
+    },
+    // Scrolling the lyrics is not a hold.
+    onPointerMove: (e: React.PointerEvent) => {
+      if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 10) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onPointerLeave: cancel,
+    onContextMenu: (e: React.MouseEvent) => {
+      // Right click / the system's long press: the same menu, not the browser's.
+      e.preventDefault();
+      cancel();
+      if (!held.current) openMenu();
+    },
+  };
+  const pick = () => {
+    scope.setPicking(false);
+    openNoteFor(song, refLine);
+  };
+  if (!scope.picking) {
+    return (
+      <div {...hold} className="select-none [-webkit-touch-callout:none]">
+        {children}
+      </div>
+    );
+  }
   return (
     <div
+      {...hold}
       role="button"
       tabIndex={0}
       aria-label={t('Add a note on this line')}
       onClick={() => {
-        scope.setPicking(false);
-        openNoteFor(song, refLine);
+        if (held.current) {
+          held.current = false;
+          return;
+        }
+        pick();
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          scope.setPicking(false);
-          openNoteFor(song, refLine);
+          pick();
         }
       }}
       className={cn(
-        'rounded-lg -mx-2 px-2 cursor-pointer outline-dashed outline-1 -outline-offset-1',
-        scope.stage ? 'outline-white/30 active:bg-white/10' : 'outline-foreground/25 active:bg-foreground/5 hover:bg-foreground/5',
+        'rounded-lg -mx-2 px-2 my-0.5 cursor-pointer outline-dashed outline-2 -outline-offset-1 select-none [-webkit-touch-callout:none]',
+        scope.stage ? 'outline-white/60 bg-white/5 active:bg-white/20' : 'outline-foreground/45 bg-foreground/[0.03] active:bg-foreground/10 hover:bg-foreground/5',
       )}
     >
       {children}
@@ -202,10 +273,10 @@ export const MyNotesBar: React.FC<{ className?: string }> = ({ className }) => {
   if (!scope?.song) return null;
   const { song, stage, show, setShow, picking, setPicking, files, placed } = scope;
   const muted = stage ? 'text-white/60' : 'text-muted-foreground';
-  // Stage: icon buttons, so the bar stays one row above the lyrics.
+  // Stage: compact buttons, so the bar stays one row above the lyrics.
   const btn = cn(
     'min-h-9 rounded-full bw-label-sm flex items-center justify-center gap-1.5 border whitespace-nowrap',
-    stage ? 'w-11 h-11' : 'px-3',
+    stage ? 'h-11' : 'px-3',
     stage ? 'border-white/30 text-white' : 'border-border text-foreground',
   );
 
@@ -235,40 +306,43 @@ export const MyNotesBar: React.FC<{ className?: string }> = ({ className }) => {
         >
           <Info className="w-5 h-5" />
         </button>
-        {show && (
-          <div className="flex items-center gap-2 ml-auto">
-            <button
-              type="button"
-              title={t('Add note')}
-              aria-pressed={picking}
-              onClick={() => withInfo(() => setPicking(!picking))}
-              className={cn(btn, picking && (stage ? 'bg-white text-black border-white' : 'bg-foreground text-background border-foreground'))}
-            >
-              <Pencil className="w-4 h-4" />
-              {stage ? <span className="sr-only">{t('Add note')}</span> : t('Add note')}
-            </button>
-            <button type="button" title={t('Add file')} disabled={busy} onClick={() => withInfo(() => fileRef.current?.click())} className={cn(btn, busy && 'opacity-60')}>
-              <Paperclip className="w-4 h-4" />
-              {stage ? <span className="sr-only">{busy ? t('Uploading…') : t('Add file')}</span> : busy ? t('Uploading…') : t('Add file')}
-            </button>
-            <input ref={fileRef} type="file" accept={SONG_FILE_ACCEPT} className="hidden" onChange={pickFile} />
-          </div>
-        )}
-      </div>
-      {show && picking && (
-        <div className={cn('flex flex-wrap items-center gap-2 bw-body-sm', muted)} role="status">
-          <span>{t('Tap a line to add a note on it.')}</span>
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Always here: adding a note turns My notes on (no need to switch them on first). */}
           <button
             type="button"
-            onClick={() => {
-              setPicking(false);
-              openNoteFor(song, null);
-            }}
-            className={cn('underline underline-offset-2', stage ? 'text-white' : 'text-foreground')}
+            aria-label={t('Add note')}
+            aria-pressed={picking}
+            onClick={() =>
+              withInfo(() => {
+                if (!picking) setShow(true);
+                setPicking(!picking);
+              })
+            }
+            className={cn(btn, stage && 'px-3', picking && (stage ? 'bg-white text-black border-white' : 'bg-foreground text-background border-foreground'))}
           >
-            {t('Note on the whole song')}
+            <Pencil className="w-4 h-4" aria-hidden />
+            {stage ? t('Note') : t('Add note')}
           </button>
+          {show && (
+            <>
+              <button type="button" title={t('Add file')} disabled={busy} onClick={() => withInfo(() => fileRef.current?.click())} className={cn(btn, stage && 'w-11', busy && 'opacity-60')}>
+                <Paperclip className="w-4 h-4" />
+                {stage ? <span className="sr-only">{busy ? t('Uploading…') : t('Add file')}</span> : busy ? t('Uploading…') : t('Add file')}
+              </button>
+              <input ref={fileRef} type="file" accept={SONG_FILE_ACCEPT} className="hidden" onChange={pickFile} />
+            </>
+          )}
         </div>
+      </div>
+      {picking && (
+        <PickingBar
+          stage={stage}
+          onWholeSong={() => {
+            setPicking(false);
+            openNoteFor(song, null);
+          }}
+          onCancel={() => setPicking(false)}
+        />
       )}
       {show && files.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label={t('My files')}>
@@ -306,11 +380,100 @@ export const MyNotesBar: React.FC<{ className?: string }> = ({ className }) => {
   );
 };
 
+/**
+ * While adding a note: a bar fixed at the bottom of the screen (it doesn't
+ * scroll away with the lyrics). Portaled to body, so it sits over Stage and
+ * the Duo's hubs alike.
+ */
+const PickingBar: React.FC<{ stage: boolean; onWholeSong: () => void; onCancel: () => void }> = ({ stage, onWholeSong, onCancel }) => {
+  const t = useT();
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  const bar = (
+    <div
+      role="status"
+      aria-label={t('Adding a note')}
+      className="fixed inset-x-0 bottom-0 z-[160] flex justify-center px-4 pointer-events-none"
+      style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }}
+    >
+      <div
+        className={cn(
+          'pointer-events-auto w-full max-w-xl flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[24px] pl-5 pr-2 py-2 shadow-lg',
+          stage ? 'bg-white text-black' : 'bg-foreground text-background',
+        )}
+      >
+        <Pencil className="w-5 h-5 shrink-0" aria-hidden />
+        <span className="bw-label-md flex-1 min-w-[10rem]">{t('Tap the line for your note')}</span>
+        <span className="flex items-center gap-1 ml-auto">
+          <button type="button" onClick={onWholeSong} className="min-h-11 px-3 rounded-full bw-label-sm underline underline-offset-2">
+            {t('Whole song')}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className={cn('min-h-11 px-4 rounded-full bw-label-sm border', stage ? 'border-black/25' : 'border-background/40')}
+          >
+            {t('Cancel')}
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+  return typeof document === 'undefined' ? bar : createPortal(bar, document.body);
+};
+
+/** "Note saved on “…”": where the note went, for a moment. */
+let savedMsg: string | null = null;
+const savedListeners = new Set<() => void>();
+const setSaved = (m: string | null) => {
+  savedMsg = m;
+  savedListeners.forEach((l) => l());
+};
+const SavedToast: React.FC = () => {
+  const msg = React.useSyncExternalStore(
+    (l) => {
+      savedListeners.add(l);
+      return () => savedListeners.delete(l);
+    },
+    () => savedMsg,
+    () => savedMsg,
+  );
+  React.useEffect(() => {
+    if (!msg) return;
+    const id = window.setTimeout(() => setSaved(null), 3500);
+    return () => window.clearTimeout(id);
+  }, [msg]);
+  const node = (
+    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-0 z-[170] flex justify-center px-4 pointer-events-none" style={{ paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }}>
+      {msg && (
+        <p className="pointer-events-auto max-w-xl flex items-center gap-2 rounded-full bg-foreground text-background px-5 py-3 bw-label-md shadow-lg">
+          <StickyNote className="w-5 h-5 shrink-0" aria-hidden />
+          <span className="min-w-0 break-words">{msg}</span>
+        </p>
+      )}
+    </div>
+  );
+  return typeof document === 'undefined' ? node : createPortal(node, document.body);
+};
+
 // ── sheets ──
 
-export const PersonalLayerSheets: React.FC = () => {
+export const PersonalLayerSheets: React.FC = () => (
+  <>
+    <Sheets />
+    <SavedToast />
+  </>
+);
+
+const Sheets: React.FC = () => {
   const t = useT();
   const s = useSheet();
+  const [, setShow] = useShowMyNotes();
   const [body, setBody] = React.useState('');
   const [anchor, setAnchor] = React.useState<NoteAnchor>({ type: 'song' });
   const [busy, setBusy] = React.useState(false);
@@ -327,6 +490,51 @@ export const PersonalLayerSheets: React.FC = () => {
     if (busy) return;
     setSheet(null);
   };
+
+  if (s?.kind === 'line') {
+    const { song, ref, section, onBandNote } = s;
+    const text = lyricsLineText(ref.text);
+    const choice = 'w-full min-h-14 px-4 py-3 rounded-[20px] border border-border flex items-center gap-3 text-left';
+    return (
+      <BwSheet open onClose={() => setSheet(null)} overline={song.title} title={t('Note on this line')} zIndex={165}>
+        <div className="dark flex flex-col gap-3">
+          <p className="bw-body-lg text-foreground">“{text}”</p>
+          <button
+            type="button"
+            className={choice}
+            onClick={() =>
+              withInfo(() => {
+                setShow(true);
+                openNoteFor(song, ref);
+              })
+            }
+          >
+            <Lock className="w-5 h-5 shrink-0" aria-hidden />
+            <span className="flex flex-col">
+              <span className="bw-label-md">{t('Note for me')}</span>
+              <span className="bw-body-sm text-muted-foreground">{t('Only you see it, on this line.')}</span>
+            </span>
+          </button>
+          {onBandNote && (
+            <button
+              type="button"
+              className={choice}
+              onClick={() => {
+                setSheet(null);
+                onBandNote({ section, line: text });
+              }}
+            >
+              <Users className="w-5 h-5 shrink-0" aria-hidden />
+              <span className="flex flex-col">
+                <span className="bw-label-md">{t('Note for the band')}</span>
+                <span className="bw-body-sm text-muted-foreground">{t('A rehearsal note on this point: the whole band sees it.')}</span>
+              </span>
+            </button>
+          )}
+        </div>
+      </BwSheet>
+    );
+  }
 
   if (s?.kind === 'info' || !s) {
     const then = s?.kind === 'info' ? s.then : undefined;
@@ -383,7 +591,15 @@ export const PersonalLayerSheets: React.FC = () => {
     const { error: err } = await savePersonalNote(song.id, anchor, body, note?.id);
     setBusy(false);
     if (err) setError(userMessage(err, t('Couldn’t save the note. Try again.')));
-    else setSheet(null);
+    else {
+      setSheet(null);
+      haptic.confirm();
+      setSaved(
+        anchor.type !== 'song' && line
+          ? t('Note saved on “{line}”', { line: lyricsLineText(line) })
+          : t('Note saved on the whole song'),
+      );
+    }
   };
   const remove = async () => {
     if (!note || busy) return;

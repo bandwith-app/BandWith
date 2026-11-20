@@ -594,10 +594,12 @@ const music: AreaText = {
           title: "Añade una nota",
           items: [
             "Abre la canción en el lector (**Letra** o **Acordes**) o en el Modo escenario.",
-            "Activa **Mis notas** debajo de las pestañas de la canción. La primera vez, una hoja explica qué son; toca **Entendido**.",
-            "Toca **Añadir nota** y luego la línea que quieras. O toca **Nota sobre toda la canción**.",
+            "Toca **Añadir nota** (en el Modo escenario, **Nota**). **Mis notas** se activan solas; la primera vez, una hoja explica qué son: toca **Entendido**.",
+            "Una barra abajo de la pantalla dice **Toca la línea donde quieres la nota**: toca la línea que quieras, o **Toda la canción** para una nota sobre toda la canción. **Cancelar** para salir.",
+            "Más rápido: mantén pulsada una línea medio segundo. Se abre **Nota en esta línea**: toca **Nota para mí**.",
             "Para una línea, elige a qué se refiere la nota: **Toda la línea**, una de sus palabras o uno de sus acordes.",
             "Escribe en **Mi nota** y toca **Guardar nota**.",
+            "**Nota guardada en «…»** te dice dónde quedó.",
           ],
         },
         {
@@ -620,7 +622,7 @@ const music: AreaText = {
         { type: "p", text: "Para compartir una nota con la banda, toca **Sugerir a la banda** en la hoja de la nota. Le llega al admin como sugerencia, con la línea en la que estaba." },
         {
           type: "devices",
-          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "En el Modo escenario, la barra solo usa botones con iconos, así que cabe en una fila encima de la letra." }],
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "En el Modo escenario, la barra muestra **Nota** y un icono para **Añadir archivo**, así que cabe en una fila encima de la letra." }],
         },
       ],
     },
@@ -1070,6 +1072,8 @@ const music: AreaText = {
           items: [
             "En el Modo en vivo toca **Marcar** cuando algo necesite trabajo: guarda la canción que suena y el minuto, y seguís tocando.",
             "En la pausa (o en el resumen) toca **Por escribir** y **Escribir** en cada marca: elige en qué trabajar (**Tempo**, **Tono**, **Final**, **Solo**, **Repasar**, **Clavado**, o **Repetir una sección** si la canción tiene estructura), añade unas palabras y di **Para quién es**.",
+            "Cualquier nota sobre una canción puede indicar **Dónde en la canción**: una sección y, si quieres, una de sus líneas (**Línea (opcional)**).",
+            "En el Modo en vivo también puedes mantener pulsada una línea de la letra y tocar **Nota para la banda**: la nota se abre ya en esa canción, sección y línea.",
             "Los admins escriben para toda la banda o para cualquier miembro; los miembros, para la banda o para sí mismos. Toda la banda lee todas las notas.",
             "A quien va dirigida una nota toca **Practicado** tras trabajarla; un admin toca **OK** cuando la banda la tiene (también el autor, en una nota para miembros).",
             "La página del ensayo lista las notas en **NOTAS DEL ENSAYO**, por canción. Las notas llegan al momento a los demás teléfonos en Modo en vivo; sin internet esperan en el teléfono y se envían al volver la conexión. En el Duo plegado como un portátil, la pantalla del suelo tiene un bloc de notas: **Marcar**, un preset con un toque, o **Escribir…**.",

@@ -9,7 +9,9 @@
  * marks "Practised" for themselves; an admin (or the author of a note to
  * members) confirms it OK. Pure: no I/O.
  */
-import { textSections } from './songFormat';
+import { parseLyrics } from './lyrics';
+import { lyricsLineText } from './personalNotes';
+import { normalizeLyrics } from './songFormat';
 
 /** Built-in presets, stored as keys and shown translated (rehearsalNoteLabels). */
 export const NOTE_PRESETS = ['review', 'repeat_section', 'tempo', 'key', 'ending', 'solo', 'nailed'] as const;
@@ -36,8 +38,10 @@ export interface RehearsalNote {
   /** The song's title when written (the list reads it without the song). */
   songTitle: string | null;
   preset: NotePreset | null;
-  /** A structure heading ("Verse 3") for "Repeat a section". */
+  /** A structure heading ("Verse 3"): where in the song (any note; required for "Repeat a section"). */
   section: string | null;
+  /** One line of that section, chords removed (167): the precise point. */
+  line?: string | null;
   body: string | null;
   scope: NoteScope;
   status: NoteStatus;
@@ -51,13 +55,28 @@ export interface RehearsalNote {
 }
 
 export const MAX_BODY = 1000;
+export const MAX_LINE = 200;
 
-/** The song's structure headings, in order, once each. */
+/** The song's structure headings as Stage draws them ("Rit." → "Chorus"), in order, once each. */
 export function songSections(lyrics: string | null | undefined): string[] {
-  const names = textSections(lyrics || '')
+  const names = parseLyrics(normalizeLyrics(lyrics))
     .map((s) => s.name?.trim())
     .filter((n): n is string => !!n);
   return [...new Set(names)];
+}
+
+/** The lines of one section as drawn, chords removed, once each (a repeated chorus counts once). */
+export function sectionLines(lyrics: string | null | undefined, section: string | null | undefined): string[] {
+  if (!section) return [];
+  const out: string[] = [];
+  for (const s of parseLyrics(normalizeLyrics(lyrics))) {
+    if (s.name?.trim() !== section) continue;
+    for (const l of s.lines) {
+      const text = lyricsLineText(l);
+      if (text && !out.includes(text)) out.push(text);
+    }
+  }
+  return out;
 }
 
 /** Presets offered for a song: "Repeat a section" only when it has structure. */
@@ -146,6 +165,8 @@ export interface NoteRow {
   scope: NoteScope;
   status: NoteStatus;
   marked_at_s: number | null;
+  /** Left out when there's none, so saving works before migration 167; null clears it. */
+  line?: string | null;
 }
 
 /** What the app writes (created_by, ok_by, ok_at and times are set by the database). */
@@ -163,6 +184,8 @@ export const toNoteRow = (n: RehearsalNote): NoteRow => ({
   scope: n.scope,
   status: n.status,
   marked_at_s: n.markedAtS,
+  // '' = the line was taken off an edited note: clear it (null); null/undefined = no line, not sent.
+  ...(n.line?.trim() ? { line: n.line.trim().slice(0, MAX_LINE) } : n.line === '' ? { line: null } : {}),
 });
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
@@ -193,6 +216,7 @@ export function fromNoteRow(row: unknown): RehearsalNote | null {
     songTitle: str(row.song_title),
     preset: isPreset(row.preset) ? row.preset : null,
     section: str(row.section),
+    ...(str(row.line) ? { line: str(row.line) } : {}),
     body: str(row.body),
     scope,
     status,

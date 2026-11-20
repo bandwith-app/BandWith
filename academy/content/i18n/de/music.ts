@@ -672,10 +672,12 @@ const music: AreaText = {
           title: "Eine Notiz hinzufügen",
           items: [
             "Öffne den Song im Reader (**Songtext** oder **Akkorde**) oder im Bühnenmodus.",
-            "Schalte unter den Tabs des Songs **Meine Notizen** ein. Beim ersten Mal erklärt ein Fenster, was das ist; tippe auf **Verstanden**.",
-            "Tippe auf **Notiz hinzufügen** und dann auf die gewünschte Zeile. Oder tippe auf **Notiz zum ganzen Song**.",
+            "Tippe auf **Notiz hinzufügen** (im Bühnenmodus **Notiz**). **Meine Notizen** schalten sich von selbst ein; beim ersten Mal erklärt ein Fenster, was das ist: Tippe auf **Verstanden**.",
+            "Eine Leiste unten am Bildschirm sagt **Tippe auf die Zeile für deine Notiz**: Tippe auf die gewünschte Zeile oder auf **Ganzer Song** für eine Notiz zum ganzen Song. **Abbrechen** beendet das.",
+            "Schneller: Halte eine Zeile eine halbe Sekunde gedrückt. **Notiz zu dieser Zeile** öffnet sich: Tippe auf **Notiz für mich**.",
             "Wähle bei einer Zeile, worauf sich die Notiz bezieht: **Ganze Zeile**, eines ihrer Wörter oder einen ihrer Akkorde.",
             "Schreib in **Meine Notiz** und tippe auf **Notiz speichern**.",
+            "**Notiz gespeichert bei „…“** zeigt dir, wo sie gelandet ist.",
           ],
         },
         {
@@ -701,7 +703,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "Im Bühnenmodus nutzt die Leiste nur Symbol-Buttons und bleibt so in einer Reihe über dem Songtext." }],
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "Im Bühnenmodus zeigt die Leiste **Notiz** und ein Symbol für **Datei hinzufügen**, damit sie in eine Zeile über dem Songtext passt." }],
         },
       ],
     },
@@ -1199,6 +1201,8 @@ const music: AreaText = {
           items: [
             "Tippe im Live-Modus auf **Markieren**, wenn etwas Arbeit braucht: Der laufende Song und die Minute werden gemerkt, und ihr spielt weiter.",
             "In der Pause (oder in der Übersicht) tippe auf **Zu schreiben** und bei jeder Markierung auf **Schreiben**: Wähle, woran ihr arbeitet (**Tempo**, **Tonart**, **Schluss**, **Solo**, **Durchgehen**, **Sitzt**, oder **Einen Teil wiederholen**, wenn der Song eine Struktur hat), schreib ein paar Worte dazu und wähle **Für wen**.",
+            "Jede Notiz zu einem Song kann **Wo im Song** angeben: einen Teil und, wenn du willst, eine seiner Zeilen (**Zeile (optional)**).",
+            "Im Live-Modus kannst du auch eine Zeile des Songtexts gedrückt halten und auf **Notiz für die Band** tippen: Die Notiz öffnet sich direkt mit diesem Song, Teil und dieser Zeile.",
             "Admins schreiben für die ganze Band oder für jedes Mitglied; Mitglieder für die Band oder für sich selbst. Die ganze Band liest alle Notizen.",
             "Wer eine Notiz bekommt, tippt nach dem Üben auf **Geübt**; ein Admin tippt auf **OK**, wenn die Band es kann (bei einer Notiz an Mitglieder auch die Person, die sie geschrieben hat).",
             "Die Seite der Probe zeigt die Notizen unter **PROBENNOTIZEN**, nach Song. Notizen erscheinen sofort auf den anderen Handys im Live-Modus; ohne Internet warten sie auf dem Handy und gehen raus, sobald es wieder online ist. Auf dem Duo, wie ein Laptop gefaltet, hat der Bildschirm am Boden einen Notizblock: **Markieren**, ein Preset mit einem Tipp, oder **Schreiben…**.",

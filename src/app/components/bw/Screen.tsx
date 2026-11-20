@@ -412,6 +412,7 @@ export const BwSheet: React.FC<BwSheetProps> = ({
   picker = false,
   navAnchor = false,
 }) => {
+  const titleId = React.useId();
   const dark = tone === 'dark';
   // On <body> the sheet no longer sits inside the stacking context of the
   // layer that opened it (a hub at z 70, a detail at z 120…): an anchor left
@@ -481,6 +482,7 @@ export const BwSheet: React.FC<BwSheetProps> = ({
             ref={sheetRef}
             role="dialog"
             aria-modal="true"
+            aria-labelledby={titleId}
             tabIndex={-1}
             initial={enter}
             animate={card ? { opacity: 1, y: 0, scale: 1 } : { y: 0 }}
@@ -504,7 +506,7 @@ export const BwSheet: React.FC<BwSheetProps> = ({
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   {overline && <p className={cn('bw-label-sm', dark ? 'text-sheet-foreground/85' : 'text-muted-foreground')}>{overline}</p>}
-                  <h2 className="bw-h1 [overflow-wrap:anywhere]">{title}</h2>
+                  <h2 id={titleId} className="bw-h1 [overflow-wrap:anywhere]">{title}</h2>
                 </div>
                 <IconButton label={closeLabel} icon={<X />} size="sm" variant={dark ? 'sheet' : 'outline'} onClick={onClose} />
               </div>
