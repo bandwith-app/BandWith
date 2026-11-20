@@ -4511,6 +4511,10 @@ const dict: Dictionary = {
   "What the symbols mean": "Was die Symbole bedeuten",
   "Full screen": "Vollbild",
   "Exit full screen": "Vollbild beenden",
+  "Lyrics & chords": "Text & Akkorde",
+  "Song only": "Nur der Song",
+  "Song only: {title}": "Nur der Song: {title}",
+  "Show everything": "Alles anzeigen",
 };
 
 export default dict;

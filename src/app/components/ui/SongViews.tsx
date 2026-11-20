@@ -62,10 +62,17 @@ export function useSongViewPreference(): [SongView, (v: SongView) => void] {
   return [choice ?? defaultSongView(instrument), set];
 }
 
+/**
+ * The views' names (11-20). "Chords" alone read as "the chords only" to the
+ * band, but it was the lyrics with their chords: that view is now "Lyrics &
+ * chords", and the chords-only view (the iReal chart bar by bar, or each
+ * section's progression in boxes) is the "Chord chart". The stored keys
+ * (`chords`, `structure`) stay, so everyone's pick carries over.
+ */
 export const songViewLabel = (v: SongView, t: (k: string) => string) =>
-  v === 'lyrics' ? t('Lyrics') : v === 'chords' ? t('Chords') : t('Structure');
+  v === 'lyrics' ? t('Lyrics') : v === 'chords' ? t('Lyrics & chords') : t('Chord chart');
 
-/** Lyrics · Chords · Structure: one tap switches (only the views this song has). */
+/** Lyrics · Lyrics & chords · Chord chart: one tap switches (only the views this song has). */
 export const SongViewTabs: React.FC<{
   song: SongContent;
   view: SongView;

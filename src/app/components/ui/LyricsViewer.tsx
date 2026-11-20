@@ -15,7 +15,7 @@ import { togglePlay, usePlayer } from '@/lib/audioPlayer';
 import { useSystemBack } from '@/lib/backStack';
 import { useT } from '@/lib/i18n';
 import { availableViews, hasInlineChords, normalizeLyrics, resolveView, sectionLabel } from '@/lib/songFormat';
-import { SongBody, SongViewTabs, useSongViewPreference } from './SongViews';
+import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from './SongViews';
 import type { SongView } from '@/lib/songFormat';
 import { cn } from '@/app/components/ui/utils';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -213,7 +213,7 @@ export const LyricsViewer: React.FC = () => {
     setPreferred(v);
   };
   const showChords = view !== 'lyrics' && (hasChart || hasInlineChords(doc?.lyrics));
-  const kind = view === 'structure' ? tr('Structure') : view === 'chords' ? tr('Chords') : tr('Lyrics');
+  const kind = songViewLabel(view, tr);
   // Transpose on this device: only when there are chords to move.
   const [semitones, setSemitones] = useSongTranspose(doc?.songId);
   const songKey = doc?.songKey || keyLabel(doc?.chart?.key) || null;

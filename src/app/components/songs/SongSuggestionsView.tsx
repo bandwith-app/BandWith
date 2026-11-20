@@ -509,7 +509,7 @@ const NewSongSummary: React.FC<{ song?: SongRow }> = ({ song }) => {
   ].filter(Boolean);
   const extras = [
     song.lyrics?.trim() ? t('Lyrics') : null,
-    song.chord_chart ? t('Chords') : null,
+    song.chord_chart ? t('Chord chart') : null,
     song.audio_url ? t('Recording') : null,
     song.chart_url ? t('Chart') : null,
     song.youtube_url ? 'YouTube' : null,

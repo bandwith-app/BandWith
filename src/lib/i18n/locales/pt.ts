@@ -3390,7 +3390,7 @@ const dict: Dictionary = {
   "Choose a file": "Escolher um arquivo",
   "Only chords and form are imported: no melody, no lyrics.": "Só são importados os acordes e a estrutura: sem melodia, sem letra.",
   "Chord charts from the iReal Pro community": "Cifras da comunidade do iReal Pro",
-  "Chord chart": "Cifra",
+  "Chord chart": "Grade de acordes",
   "Could not load the songs. Try again.": "Não foi possível carregar as músicas. Tente de novo.",
   "Could not save the chord chart. Try again.": "Não foi possível salvar a cifra. Tente de novo.",
   "Attached to {title}": "Associada a {title}",
@@ -4511,6 +4511,10 @@ const dict: Dictionary = {
   "What the symbols mean": "O que significam os símbolos",
   "Full screen": "Tela cheia",
   "Exit full screen": "Sair da tela cheia",
+  "Lyrics & chords": "Letra e acordes",
+  "Song only": "Só a música",
+  "Song only: {title}": "Só a música: {title}",
+  "Show everything": "Mostrar tudo",
 };
 
 export default dict;

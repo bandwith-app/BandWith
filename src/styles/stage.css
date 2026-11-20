@@ -36,3 +36,17 @@
 :root[data-bw-stage-full][data-bw-rail-host] .bw-fold-split--stage .bw-fold-deck {
   padding-bottom: calc(var(--safe-bottom, 0px) + 12px);
 }
+/* Song only (StageSongOnly): full screen too, clear of the system column
+   (the rail's width on the iPhone Duo) and of a landscape notch / cutout. */
+:root[data-bw-stage-full] .bw-song-only {
+  padding-left: max(var(--safe-left, 0px), var(--bw-status-clear-left, 0px));
+  padding-right: max(var(--safe-right, 0px), var(--bw-status-clear-x, 0px));
+}
+:root[data-bw-stage-full][data-bw-rail][data-bw-rail-edge="right"] .bw-song-only {
+  padding-left: 0;
+  padding-right: var(--bw-rail-w);
+}
+:root[data-bw-stage-full][data-bw-rail][data-bw-rail-edge="left"] .bw-song-only {
+  padding-left: var(--bw-rail-w);
+  padding-right: 0;
+}
