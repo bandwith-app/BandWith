@@ -47,6 +47,13 @@
     <li>Inviting the same address again renews the invite for another 7 days.</li>
     <li>When the person joins, the whole band gets <b class="ui">{name} joined {band}</b>.</li>
   </ul>
+  <p class="steps-title">See who hasn’t joined yet</p>
+  <ul>
+    <li>Admins see open invites on <b class="ui">Band members</b> under <b class="ui">Invited</b>: the email, the role and <b class="ui">Not accepted yet</b>, <b class="ui">Expired</b> or <b class="ui">Declined</b>.</li>
+    <li>Tap the ⋯ next to an invite, then <b class="ui">Send again</b>: the invite gets 7 more days and goes out again. For an expired or declined invite the button is <b class="ui">Invite again</b>.</li>
+    <li><b class="ui">Copy link</b> copies the invite link, so the admin can send it themselves to someone new to BandWith.</li>
+    <li><b class="ui">Cancel invite</b>, then <b class="ui">Yes, cancel it</b>: the link and the code stop working.</li>
+  </ul>
   <aside class="note privacy">Search results show email addresses partly hidden (for example gi•••@…) unless you type the exact address. People already in the band don't appear.</aside>
   <figure class="shot" data-shot="people-invite" data-device="phone"><figcaption>The Invite member sheet with search, results and the role choice.</figcaption></figure>
   <aside class="note tip">The invite is tied to the email address: to join, the person must sign in with that address.</aside>
@@ -62,7 +69,7 @@
   <ol class="steps">
     <li>Open the invite link from the message or email; or, on the welcome screen, tap <b class="ui">I have an invite code</b>, paste the code or link in <b class="ui">Invite code or link</b> and tap <b class="ui">Join</b>.</li>
     <li>Check the band card and tap <b class="ui">Accept &amp; continue</b> (or <b class="ui">Decline invitation</b>).</li>
-    <li>Create your account or sign in with the email address the invite was sent to.</li>
+    <li>Create your account or sign in with the email address the invite was sent to. You are in the band as soon as the account is ready.</li>
   </ol>
   <p class="steps-title">If it doesn't work</p>
   <ul>
@@ -124,7 +131,7 @@
   <h3 id="art-member-detail" data-roles="admin,member">A member’s page</h3>
   <p>Tap a person on <b class="ui">Band members</b> to open it.</p>
   <ul>
-    <li>At the top: photo, name, instrument and role.</li>
+    <li>At the top: photo, name, instrument and role. Below, the <b class="ui">Bio</b> the person wrote in their profile, when there is one: everyone in the band sees it.</li>
     <li><b class="ui">Gigs this year</b>: gigs played plus gigs coming up, with a dot meter. <b class="ui">Paid · {year}</b>: what they were paid and how much is still owed.</li>
     <li><b class="ui">Next for {name}</b>: their upcoming events in this band, each with their answer (confirmed, pending, declined).</li>
     <li><b class="ui">Contacts</b>: email and phone, each with a copy button; tap one to write or call.</li>
@@ -132,7 +139,7 @@
   </ul>
   <div class="roles">
     <div data-role="admin">Sees the gigs and pay counters for everyone, and every action except on their own page.</div>
-    <div data-role="member">Sees the gigs and pay counters only on their own page. On someone else's page: name, instrument, next events and contacts. <b class="ui">Message</b> appears only on an admin's page, because members can start a direct chat only with admins.</div>
+    <div data-role="member">Sees the gigs and pay counters only on their own page. On someone else's page: name, instrument, bio, next events and contacts. <b class="ui">Message</b> appears only on an admin's page, because members can start a direct chat only with admins.</div>
   </div>
   <aside class="note privacy">A member never sees what another member is paid. The counters come from the server, which returns everyone's figures to admins and only a member's own row to that member.</aside>
   <div class="devnote" data-devices="phone,duoClosed">Opens full screen.</div>
@@ -197,7 +204,7 @@
     <li>Change the fields and tap <b class="ui">Save</b>.</li>
     <li>To delete: <b class="ui">Delete deputy</b>, then <b class="ui">Delete</b> on the <b class="ui">Delete deputy?</b> sheet.</li>
   </ol>
-  <p><b class="ui">Who covers what</b> lists each instrument the band plays, the members who play it and its deputies. The line above says <b class="ui">Every instrument in the band has a deputy.</b> or how many have none.</p>
+  <p><b class="ui">Who covers what</b> lists each instrument the band plays, the members who play it and its deputies. The line above says <b class="ui">Every instrument in the band has a deputy.</b> or how many have none. Instruments with the same players and the same deputies share one row (for example <i>keys · vocals</i>), so each player appears once; the count of instruments without a deputy still counts each instrument.</p>
   <p>A deputy with a BandWith account shows the <b class="ui">On BandWith</b> tag, and their sheet says they answer in the app.</p>
   <aside class="note warning">Deleting a deputy removes them from the band's list. Past requests keep their name and answer. They can be added again later.</aside>
   <aside class="note privacy">Only admins see this list (<b class="ui">Only admins see this list.</b>).</aside>
