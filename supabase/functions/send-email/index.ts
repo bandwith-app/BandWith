@@ -21,6 +21,10 @@ import {
   quoteEmailDate,
   quoteEmailVars,
   type QuoteEmailKind,
+  quoteBalanceEmailVars,
+  quoteEmailMoney,
+  QUOTE_EMAIL_STRINGS,
+  type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
 
@@ -420,6 +424,15 @@ function quotePdfUrl(raw: string | null, bandId: string): string | null {
   }
 }
 
+/** The snapshot's deposit in the client's language ("" when the quote asks none). */
+function quoteDepositLabel(snap: Record<string, unknown>, lang: ReturnType<typeof pickQuoteEmailLang>): string {
+  const dep = snap.deposit as { amount?: unknown } | null | undefined;
+  const amount = Number(dep?.amount);
+  if (!(amount > 0)) return "";
+  const currency = /^[A-Z]{3}$/.test(String(snap.currency ?? "")) ? String(snap.currency) : "EUR";
+  return quoteEmailMoney(amount, currency, QUOTE_EMAIL_STRINGS[lang].locale);
+}
+
 async function sendQuoteClientEmail(
   admin: SupabaseClient,
   caller: Caller,
@@ -492,6 +505,7 @@ async function sendQuoteClientEmail(
       url: `${appUrl()}/quote.html?t=${encodeURIComponent(link.token)}`,
       pdfAttached: !!pdf,
       reply,
+      deposit: quoteDepositLabel(snap, lang),
     }),
     // The footer's Privacy and Terms links are absolute: relative ones break in mail clients.
     AppURL: appUrl(),
@@ -510,6 +524,92 @@ async function sendQuoteClientEmail(
       subject,
       html,
       ...(pdf ? { attachments: [{ path: pdf, filename }] } : {}),
+    });
+    return jsonResponse({ success: true, id: result.id });
+  } catch (e) {
+    await admin.from("quote_links").update({ last_emailed_at: link.last_emailed_at }).eq("id", link.id);
+    throw e;
+  }
+}
+
+/**
+ * The final balance of an accepted quote (168), emailed to the client in the
+ * quote's language. Everything comes from the database: the recipient, the
+ * link and the balance the admin published on the client's page. Same
+ * one-minute limit and codes as the quote emails, plus "no_balance".
+ */
+async function sendQuoteBalanceEmail(
+  admin: SupabaseClient,
+  caller: Caller,
+  data: { quoteId?: unknown; kind?: unknown },
+) {
+  if (caller.kind !== "user") throw new HttpError(403, "Quote emails are sent from the app");
+  const quoteId = typeof data?.quoteId === "string" && UUID_RE.test(data.quoteId) ? data.quoteId : null;
+  if (!quoteId) throw new HttpError(400, "Missing quote");
+  const kind: QuoteBalanceKind = data?.kind === "reminder" ? "reminder" : data?.kind === "updated" ? "updated" : "sent";
+
+  const { data: linkRow } = await admin
+    .from("quote_links")
+    .select("id, band_id, token, lang, status, snapshot, accepted_snapshot, revoked_at, last_emailed_at, balance, balance_paid_at")
+    .eq("quote_id", quoteId)
+    .maybeSingle();
+  const link = linkRow as
+    | (QuoteLinkRow & { status: string; accepted_snapshot: Record<string, unknown> | null; balance: Record<string, unknown> | null; balance_paid_at: string | null })
+    | null;
+  if (!link) throw new HttpError(404, "This quote has no client link");
+  await requireBandAdmin(admin, caller.id, link.band_id);
+  if (link.revoked_at) throw new HttpError(410, "The client link is turned off");
+  if (link.status !== "accepted" || !link.balance || link.balance_paid_at || !(Number(link.balance.amount) > 0)) {
+    return jsonResponse({ success: false, code: "no_balance", error: "There is no open balance to send" }, 409);
+  }
+  if (link.last_emailed_at && Date.now() - new Date(link.last_emailed_at).getTime() < QUOTE_EMAIL_INTERVAL_MS) {
+    return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
+  }
+
+  const { data: quote } = await admin
+    .from("quotes")
+    .select("client_email, client_name, quote_number, event_name")
+    .eq("id", quoteId)
+    .eq("band_id", link.band_id)
+    .maybeSingle();
+  if (!quote) throw new HttpError(404, "Quote not found");
+  const to = String(quote.client_email ?? "").trim().toLowerCase();
+  if (!EMAIL_RE.test(to)) return jsonResponse({ success: false, code: "no_client_email", error: "The quote has no client email" }, 400);
+
+  if (!RESEND_API_KEY) {
+    return jsonResponse({ success: false, code: "email_not_configured", error: "Email sending is not configured" }, 503);
+  }
+
+  const { data: band } = await admin.from("bands").select("name").eq("id", link.band_id).maybeSingle();
+  const lang = pickQuoteEmailLang(link.lang);
+  const snap = link.accepted_snapshot ?? link.snapshot ?? {};
+  const ref = clean(snap.ref ?? quote.quote_number, "");
+  const vars = {
+    ...quoteBalanceEmailVars({
+      kind,
+      lang,
+      band: clean(band?.name, "BandWith"),
+      ref,
+      event: clean(snap.title ?? quote.event_name, ref),
+      date: quoteEmailDate(snap.date, lang),
+      clientName: clean(quote.client_name, ""),
+      to,
+      url: `${appUrl()}/quote.html?t=${encodeURIComponent(link.token)}`,
+      balance: link.balance,
+    }),
+    AppURL: appUrl(),
+  };
+  const { subject, html } = renderEmail("quote-balance", vars);
+
+  // Claim the slot before sending so two taps don't send twice.
+  await admin.from("quote_links").update({ last_emailed_at: new Date().toISOString() }).eq("id", link.id);
+  console.log(`Sending quote_balance (${kind}) email`);
+  try {
+    const result = await resend("/emails", {
+      from: FROM_EMAIL, ...replyTo({ configured: REPLY_TO, person: caller.email }),
+      to: [to],
+      subject,
+      html,
     });
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
@@ -541,6 +641,9 @@ serve(async (req) => {
     const { type, data: requestData } = (await req.json()) as EmailRequest;
     if ((type as string) === "quote_link" || (type as string) === "quote_reply") {
       return await sendQuoteClientEmail(admin, caller, type as unknown as "quote_link" | "quote_reply", requestData as never);
+    }
+    if ((type as string) === "quote_balance") {
+      return await sendQuoteBalanceEmail(admin, caller, requestData as never);
     }
     const template = TEMPLATE_FOR[type];
     if (!template) throw new HttpError(400, "Unsupported email type");

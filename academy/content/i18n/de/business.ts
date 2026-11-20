@@ -120,7 +120,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Die Summen werden auf dem Bildschirm, im PDF, auf der Kundenseite und in der Datenbank gleich berechnet: Zwischensumme, minus Rabatt, plus MwSt., dann die Anzahlung als Anteil an der Gesamtsumme." },
-        { type: "note", tone: "tip", text: "Online-Links für die Anzahlung (**Karte · Stripe**, **PayPal**) werden angezeigt, sind aber ausgeschaltet: „Zahlungslinks für Kunden kommen nach der Alpha. Nutze bis dahin die Überweisungsdaten.“" },
+        { type: "note", tone: "tip", text: "Sobald der Kunde annimmt, zeigt seine Seite, wie er die Anzahlung bezahlt: deine Bankverbindung mit Kopier-Buttons, einen Verwendungszweck wie Q-2026-0014 · Anzahlung und deinen eigenen Stripe-Zahlungslink, falls eingerichtet (auch im PDF). Wenn das Geld da ist, tippe beim angenommenen Angebot auf **Anzahlung erhalten** und wähle, wie es kam: Der Gig wird bestätigt. **PayPal** bleibt ausgeschaltet." },
       ],
     },
     {
@@ -449,6 +449,39 @@ const business: AreaText = {
             { role: "member", text: "Der Gig erscheint mit einer Mitteilung in seinem Kalender, nur mit der eigenen Gage, siehe [[what-members-see-of-money]]." },
           ],
         },
+      ],
+    },
+    {
+      id: "final-balance",
+      title: "Den Restbetrag beim Kunden anfragen",
+      summary: "Nach dem Ja schickst du dieselbe Angebotsseite noch einmal, mit dem offenen Betrag und wie er bezahlt wird: Überweisung, dein Stripe-Link oder bar.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["restbetrag", "saldo", "schlusszahlung", "offener betrag", "iban", "stripe", "zahlungslink", "bezahlt", "erinnerung"],
+      related: ["quote-to-gig", "client-quote-page", "branding-and-payment", "what-members-see-of-money"],
+      body: [
+        { type: "steps", title: "Restbetrag senden", items: [
+          "Öffne den Gig aus dem angenommenen Angebot und tippe auf der Gagen-Karte auf **RESTBETRAG** (oder im angenommenen Angebot auf **Restbetrag**).",
+          "Prüfe den Betrag: die angenommene Summe, minus die erhaltene Anzahlung, minus **Weitere erhaltene Zahlungen**. Weicht die Gage vom Angebot ab, tippe auf **Gage verwenden** oder **Angebotssumme verwenden**.",
+          "Wähle die Fälligkeit: **Am Tag des Gigs**, **7 Tage danach**, **14 Tage danach** oder **Datum wählen**.",
+          "Wähle die Zahlungswege: **Überweisung**, **Karte · Stripe-Link** und **Bar**, mit einem optionalen Hinweis.",
+          "Tippe auf **Per E-Mail senden**, oder schick es per **WhatsApp** oder mit **Link kopieren**. **Vorschau** öffnet die Kundenseite.",
+        ] },
+        { type: "p", text: "Der Kunde bekommt dieselbe Angebotsseite in der Sprache des Angebots, mit dem Restbetrag oben: Betrag und Fälligkeit, deine Bankverbindung mit Kopier-Schaltflächen und dem Verwendungszweck, eine Schaltfläche **Mit Karte bezahlen** für deinen Stripe-Link und den Hinweis zur Barzahlung. Darunter bleibt das Angebot, mit dem, was schon eingegangen ist." },
+        { type: "list", title: "Was das Blatt vorher prüft", items: [
+          "Anzahlung nicht erfasst: Die ganze Summe wird verlangt, bis du auf **Anzahlung als erhalten markieren** tippst und wählst, wie sie kam (Überweisung, bar, anders).",
+          "Keine Bankverbindung und kein Stripe-Link: Nur Barzahlung wird angeboten, und **Zahlungen einrichten** öffnet die Preisliste.",
+          "Schon angefragt: Unverändert ist erneutes Senden eine Erinnerung (**Erinnerung senden**); geändert wird daraus **Update senden**.",
+          "Nichts mehr offen: keine Anfrage, nur **Als bezahlt markieren**.",
+          "Abgesagter Gig: keine Schaltfläche **RESTBETRAG**. Keine Kunden-E-Mail: Teile den Link.",
+          "Ein Stripe-Link mit festem Preis, ein Gig in einer anderen Währung oder eine Fälligkeit in der Vergangenheit: Das wird vor dem Senden gesagt.",
+        ] },
+        { type: "p", text: "Wenn das Geld da ist, tippe auf **Als bezahlt markieren**: Der Gig gilt als bezahlt (Auszahlungen, Show-Bereitschaft und Statistiken folgen) und die Kundenseite bedankt sich. **Rückgängig** öffnet ihn wieder." },
+        { type: "note", tone: "tip", text: "Trage deinen **Stripe-Zahlungslink** in der Preisliste unter **Branding & Zahlung** ein. BandWith nimmt nie Zahlungen an: Das Geld geht direkt vom Kunden an die Band." },
+        { type: "roles", rows: [
+          { role: "admin", text: "Sendet den Restbetrag und markiert ihn als bezahlt." },
+          { role: "member", text: "Sieht nichts davon: nur die eigene Gage, siehe [[what-members-see-of-money]]." },
+        ] },
       ],
     },
     {
@@ -1033,7 +1066,7 @@ const business: AreaText = {
     { q: "Wie bezahle ich eine Vertretung oder ein Mitglied?", a: "Bezahl sie außerhalb der App und markiere sie dann im Fenster „Gage & Auszahlungen“ des Gigs oder mit ALLE ALS BEZAHLT MARKIEREN als bezahlt.", roles: ["admin"] },
     { q: "Kann ein Mitglied seine eigene Gage ändern?", a: "Nein. Nur Admins ändern Gagen und Auszahlungen.", roles: ["member"] },
     { q: "Warum kann ich eine Probe nicht in ein Angebot zurückverwandeln?", a: "Proben und private Gigs waren nie Angebote, deshalb haben sie kein ZURÜCK ZUM ANGEBOT.", roles: ["admin"] },
-    { q: "Können Kunden die Anzahlung online bezahlen?", a: "Noch nicht. Die Buttons für Stripe und PayPal sind während der Alpha ausgeschaltet; nutze die Überweisungsdaten im PDF.", roles: ["admin"] },
+    { q: "Können Kunden die Anzahlung online bezahlen?", a: "Über deinen eigenen Stripe-Zahlungslink, einzurichten in der Preisliste unter Branding & Zahlung: Kundenseite und PDF zeigen ihn, und das Geld geht direkt an dich. Wenn es da ist, tippe beim angenommenen Angebot auf Anzahlung erhalten.", roles: ["admin"] },
     { q: "Mitglieder sehen keine Verträge. Stimmt etwas nicht?", a: "Doch, alles in Ordnung. Verträge enthalten den Kunden und den Preis des Gigs, deshalb können nur Admins sie öffnen.", roles: ["admin", "member"] },
   ],
 

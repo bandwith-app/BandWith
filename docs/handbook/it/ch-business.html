@@ -70,7 +70,7 @@
     <li>Scrivere in <b class="ui">Client message / notes</b> quanto il cliente deve leggere.</li>
   </ol>
   <p>I totali sono calcolati allo stesso modo a schermo, nel PDF, sulla pagina del cliente e nel database: subtotale, meno lo sconto, più IVA, poi l'acconto come quota del totale.</p>
-  <aside class="note tip">I link di pagamento online dell'acconto (<b class="ui">Card · Stripe</b>, <b class="ui">PayPal</b>) sono visibili ma disattivati; il messaggio a schermo rimanda ai dati per il bonifico.</aside>
+  <aside class="note tip">Quando il cliente accetta, la sua pagina mostra come pagare l'acconto: le coordinate bancarie con i pulsanti per copiarle, una causale come <b class="ui">Q-2026-0014 · Acconto</b> e il link di pagamento Stripe della band, se impostato (lo stampa anche il PDF). Prima dell'accettazione la pagina indica già l'acconto da pagare. Quando arrivano i soldi, tocca <b class="ui">Deposit received</b> sul preventivo accettato e scegli come sono arrivati (bonifico, contanti, altro): il concerto viene confermato (o creato dal preventivo, con la formazione) e la pagina del cliente dice che l'acconto è arrivato. <b class="ui">PayPal</b> resta disattivato.</aside>
 
   <h3 id="art-ask-lineup-availability" data-roles="admin,member">Chiedere la disponibilità prima del sì del cliente</h3>
   <ol class="steps">
@@ -253,6 +253,32 @@
   <div class="roles">
     <div data-role="admin">Conferma il preventivo e vede il compenso della band.</div>
     <div data-role="member">Il gig compare nel suo calendario con una notifica e solo il proprio compenso (vedi <a data-ref="what-members-see-of-money">Cosa vedono i membri del denaro</a>).</div>
+  </div>
+
+  <h3 id="art-final-balance" data-roles="admin,member">Chiedere al cliente il saldo finale</h3>
+  <p>Dopo il sì, la stessa pagina del preventivo torna al cliente con quanto resta da pagare e come pagarlo: bonifico, il link di pagamento Stripe della band o contanti. BandWith non riceve mai i soldi.</p>
+  <p class="steps-title">Inviare il saldo</p>
+  <ol class="steps">
+    <li>Aprire il gig nato dal preventivo accettato e toccare <b class="ui">FINAL BALANCE</b> nella scheda del compenso (o <b class="ui">Final balance</b> sul preventivo accettato).</li>
+    <li>Controllare l'importo: il totale accettato, meno l'acconto ricevuto, meno <b class="ui">Other payments received</b>. Se il compenso del gig è diverso dal preventivo, <b class="ui">Use the gig fee</b> o <b class="ui">Use the quote total</b> sceglie la base.</li>
+    <li>Scegliere la scadenza: <b class="ui">On the gig day</b>, <b class="ui">7 days after</b>, <b class="ui">14 days after</b> o <b class="ui">Pick a date</b>.</li>
+    <li>Scegliere i modi di pagamento: <b class="ui">Bank transfer</b>, <b class="ui">Card · Stripe link</b> e <b class="ui">Cash</b>, con una nota facoltativa.</li>
+    <li>Toccare <b class="ui">Send by email</b>, oppure inviarlo su <b class="ui">WhatsApp</b> o con <b class="ui">Copy link</b>. <b class="ui">Preview</b> apre la pagina del cliente.</li>
+  </ol>
+  <p>La pagina del cliente, nella lingua del preventivo, mostra il saldo in alto: importo e scadenza, le coordinate bancarie con i pulsanti per copiarle e la causale (per esempio <b class="ui">Q-2026-0014 · Saldo</b>), un pulsante <b class="ui">Paga con carta</b> per il link Stripe e la nota sui contanti. Sotto resta il preventivo, con l'acconto e gli altri pagamenti ricevuti. Una volta pagato dice <b class="ui">Saldato. Grazie!</b> e smette di chiedere.</p>
+  <p class="steps-title">Cosa controlla prima il foglio</p>
+  <ul>
+    <li>Acconto non registrato: si chiede l'intero totale finché non si tocca <b class="ui">Mark deposit received</b> (chiede come è arrivato: bonifico, contanti o altro).</li>
+    <li>Né coordinate bancarie né link Stripe: solo contanti, con <b class="ui">Set up payments</b> che porta al listino.</li>
+    <li>Già richiesto: senza modifiche, rinviarlo è <b class="ui">Send a reminder</b>; con modifiche diventa <b class="ui">Send the update</b> e la pagina si aggiorna.</li>
+    <li>Nulla da pagare: nessuna richiesta, solo <b class="ui">Mark as paid</b>. Gig annullato: nessun pulsante.</li>
+    <li>Nessuna email del cliente: WhatsApp o il link. Un link Stripe a prezzo fisso, un gig in un'altra valuta o una scadenza già passata: avvisato prima dell'invio.</li>
+  </ul>
+  <p><b class="ui">Mark as paid</b> segna il gig come pagato (stato del pagamento <i>paid</i>, acconto contato come ricevuto), così compensi, prontezza dello show e statistiche coincidono. <b class="ui">Undo</b> lo riporta a parziale o in attesa. La cronologia del preventivo registra ogni richiesta, promemoria, aggiornamento e pagamento.</p>
+  <aside class="note tip">Il link Stripe si imposta nel listino, <b class="ui">Branding &amp; payment</b>, campo <b class="ui">Stripe payment link</b>. È un semplice link creato nell'account Stripe della band: nessun dato della carta passa da BandWith.</aside>
+  <div class="roles">
+    <div data-role="admin">Invia il saldo e lo segna come pagato.</div>
+    <div data-role="member">Non ne vede nulla: solo il proprio compenso (vedi <a data-ref="what-members-see-of-money">Cosa vedono i membri del denaro</a>).</div>
   </div>
 
   <h3 id="art-revert-gig-to-quote" data-roles="admin">Riportare un gig a preventivo</h3>
@@ -585,7 +611,7 @@
     <dt>Perché una prova non si può riportare a preventivo?</dt>
     <dd>Prove e gig personali non sono mai stati preventivi, quindi non hanno <b class="ui">REVERT TO QUOTE</b>.</dd>
     <dt>I clienti possono pagare l'acconto online?</dt>
-    <dd>No: i pulsanti Stripe e PayPal sono disattivati; si usano i dati per il bonifico riportati sul PDF.</dd>
+    <dd>Sì, con il link di pagamento Stripe della band, da impostare nel listino in <b class="ui">Branding &amp; payment</b>: la pagina del cliente e il PDF lo mostrano e i soldi arrivano direttamente alla band. Quando arrivano, tocca <b class="ui">Deposit received</b> sul preventivo accettato.</dd>
     <dt>I membri non vedono Contracts: è un problema?</dt>
     <dd>No. I contratti contengono il cliente e il prezzo del gig, quindi solo gli admin possono aprirli.</dd>
   </dl>

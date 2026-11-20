@@ -6,8 +6,14 @@
 // with the time, on the version they saw), declines (optional reason) or
 // writes to the band; the band answers from the app and the reply shows
 // up here. `&preview=1` is the admin's own preview: nothing is recorded.
+//
+// 168: once the band asks for the final balance, the same page shows the
+// balance due, by when, and how to pay it (bank details with Copy buttons,
+// the band's own Stripe payment link, cash), above the same quote with
+// what was already received. When the band records it as received, the
+// page says thank you instead.
 
-import type { ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
+import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -251,9 +257,17 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
     line(S.subtotal, money(q.subtotal));
   }
   line(q.vatLabel, money(q.vat));
-  line(S.total, money(q.total), 'grand');
-  if (q.deposit) line(fill(S.deposit, { percent: q.deposit.percent }), money(q.deposit.amount));
-  if (q.validUntil) line(S.validUntil, shortDate(q.validUntil));
+  const b = balanceOf(v);
+  if (b) {
+    // The balance: the agreed total, what was received, what is left.
+    line(b.total !== q.total ? S.agreedTotal : S.total, money(b.total), 'grand');
+    for (const r of b.received) line(r.label, `−${money(r.amount)}`);
+    line(S.balanceRow, money(v.balance_paid ? 0 : b.amount), 'grand');
+  } else {
+    line(S.total, money(q.total), 'grand');
+    if (q.deposit) line(fill(S.deposit, { percent: q.deposit.percent }), money(q.deposit.amount));
+    if (q.validUntil) line(S.validUntil, shortDate(q.validUntil));
+  }
 
   const card = h('section', { class: 'card' }, h('h2', {}, S.itemsTitle), list, totals);
   if (q.discountNote) card.append(h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, q.discountNote));
@@ -266,11 +280,215 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   }
   if (q.notes) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.notes), h('p', { class: 'pre' }, q.notes));
   if (q.terms) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.terms), h('p', { class: 'pre mute', style: 'font-size:15px;line-height:21px' }, q.terms));
+  const pdf = b?.pdfUrl || v.pdf_url;
+  if (b) {
+    // The balance as a document of its own: the page itself, printed.
+    card.append(
+      h(
+        'div',
+        { class: 'stack no-print' },
+        h('button', { class: 'btn light', type: 'button', onclick: () => window.print() }, S.savePdf, arrow()),
+        pdf ? h('a', { class: 'btn light', href: pdf, target: '_blank', rel: 'noopener' }, S.pdf, arrow()) : null,
+      ),
+    );
+    return card;
+  }
   card.append(
-    v.pdf_url
-      ? h('div', { class: 'stack' }, h('a', { class: 'btn light', href: v.pdf_url, target: '_blank', rel: 'noopener' }, S.pdf, arrow()))
+    pdf
+      ? h('div', { class: 'stack' }, h('a', { class: 'btn light', href: pdf, target: '_blank', rel: 'noopener' }, S.pdf, arrow()))
       : h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, S.pdfPending),
   );
+  return card;
+}
+
+// ---------------------------------------------------------------- balance (168)
+
+/** The balance request, only on an accepted quote (the server already checks). */
+const balanceOf = (v: QuoteLinkView): ClientBalance | null => (v.status === 'accepted' && v.balance && v.balance.amount > 0 ? v.balance : null);
+
+/** A payment link the page may turn into a button: https only. */
+const safeHref = (url?: string | null) => (url && /^https:\/\/[^\s"'<>\\]+$/i.test(url) ? url : null);
+
+let copiedKey: string | null = null;
+function copyValue(key: string, value: string) {
+  const done = () => {
+    copiedKey = key;
+    render();
+    window.setTimeout(() => {
+      if (copiedKey === key) {
+        copiedKey = null;
+        render();
+      }
+    }, 2000);
+  };
+  try {
+    void navigator.clipboard.writeText(value).then(done, () => selectValue(key));
+  } catch {
+    selectValue(key);
+  }
+}
+/** No clipboard: select the value so the client can copy it by hand. */
+function selectValue(key: string) {
+  const el = document.querySelector<HTMLElement>(`[data-copy="${key}"]`);
+  if (!el) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+/** An IBAN reads in groups of four (IT60 X054 2811…); Copy still gives the plain value. */
+const groupIban = (value: string) =>
+  /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(value) ? value.replace(/(.{4})(?=.)/g, '$1 ') : value;
+
+function copyRow(dl: HTMLElement, key: string, label: string, value: string) {
+  dl.append(
+    h('dt', {}, label),
+    h(
+      'dd',
+      { class: 'copy-row' },
+      h('span', { 'data-copy': key }, groupIban(value)),
+      h(
+        'button',
+        { class: 'copy no-print', type: 'button', 'aria-label': fill(S.copyLabel, { label }), onclick: () => copyValue(key, value) },
+        copiedKey === key ? S.copied : S.copy,
+      ),
+    ),
+  );
+}
+
+/**
+ * A horizontal fold on screen (dual-screen phone half folded, "laptop"):
+ * the app shell's regions, or the browser's Viewport Segments API.
+ */
+function horizontalFold(): { top: number; bottom: number } | null {
+  const w = window as unknown as {
+    __bwRegions?: { division?: { y: number; w: number; h: number } | null };
+    viewport?: { segments?: DOMRect[] };
+  };
+  const d = w.__bwRegions?.division;
+  if (d && d.w > d.h) return { top: d.y, bottom: d.y + d.h };
+  const segs = w.viewport?.segments;
+  if (segs && segs.length === 2 && segs[0].bottom <= segs[1].top) return { top: segs[0].bottom, bottom: segs[1].top };
+  return null;
+}
+
+/** The balance card (or the accepted card above the deposit) reaches past the fold, so the Copy buttons and Pay start below it. */
+function clearFold(hero: HTMLElement) {
+  const fold = horizontalFold();
+  hero.style.minHeight = '';
+  if (!fold) return;
+  const top = hero.getBoundingClientRect().top + window.scrollY;
+  if (top < fold.top) hero.style.minHeight = `${Math.ceil(fold.bottom + 12 - top)}px`;
+}
+
+// The fold moves with the hinge (and the window): follow it without a re-render.
+for (const type of ['bwregions', 'resize']) {
+  window.addEventListener(type, () => {
+    const hero = document.querySelector<HTMLElement>('[data-balance-hero]');
+    if (hero) clearFold(hero);
+  });
+}
+
+function balanceHero(v: QuoteLinkView, b: ClientBalance) {
+  const name = vars(v).name;
+  if (v.balance_paid) {
+    return h(
+      'section',
+      { class: 'card ink', role: 'status' },
+      h('div', { class: 'kicker' }, `${v.band_name} · ${S.balanceKicker}${v.quote.ref ? ` ${v.quote.ref}` : ''}`),
+      h('h1', { 'data-focus': true, tabindex: '-1' }, S.paidTitle),
+      h('p', {}, v.balance_paid_at ? fill(S.paidBody, { band: v.band_name, date: stampDate(v.balance_paid_at) }) : fill(S.paidBodyNoDate, { band: v.band_name })),
+    );
+  }
+  return h(
+    'section',
+    { class: 'card lime' },
+    h('div', { class: 'kicker' }, `${v.band_name} · ${S.balanceKicker}${v.quote.ref ? ` ${v.quote.ref}` : ''}`),
+    h('h1', {}, S.balanceTitle),
+    h('div', { class: 'big', 'data-testid': 'balance-amount' }, money(b.amount)),
+    b.dueDate ? h('p', { class: 'kicker', style: 'margin-top:10px' }, fill(S.balanceDueBy, { date: shortDate(b.dueDate) })) : null,
+    // The greeting on its own line, as in the emails ("Ciao Giulia," then the sentence).
+    h('p', {}, ...(name ? [fill(S.hello, { name }), h('br')] : []), fill(S.balanceIntro, vars(v))),
+  );
+}
+
+function payCard(v: QuoteLinkView, b: ClientBalance) {
+  const card = h('section', { class: 'card' }, h('h2', {}, S.howTitle));
+  if (b.note) {
+    card.append(h('div', { class: 'kicker', style: 'margin-top:18px' }, fill(S.bandNote, { band: v.band_name })), h('p', { class: 'pre' }, b.note));
+  }
+  if (b.bank && b.bank.length) {
+    const dl = h('dl', { class: 'pay' });
+    b.bank.forEach((r, i) => copyRow(dl, `bank-${i}`, r.label, r.value));
+    copyRow(dl, 'amount', S.balanceRow, money(b.amount));
+    if (b.reference) copyRow(dl, 'ref', S.reference, b.reference);
+    card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.bankTitle), h('div', { style: 'margin-top:12px' }, dl));
+  }
+  const stripe = safeHref(b.stripeUrl);
+  if (stripe) {
+    card.append(
+      h('div', { class: 'kicker', style: 'margin-top:22px' }, S.cardTitle),
+      h(
+        'div',
+        { class: 'stack' },
+        h('a', { class: 'btn', href: stripe, target: '_blank', rel: 'noopener noreferrer' }, fill(S.payCard, { amount: money(b.amount) }), arrow()),
+      ),
+      h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, fill(S.cardNote, { band: v.band_name, amount: money(b.amount) })),
+    );
+  }
+  if (b.cash) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.cashTitle), h('p', { class: 'pre' }, b.cash));
+  card.append(h('p', { class: 'mute', style: 'font-size:14px;line-height:20px;margin-top:22px' }, fill(S.alreadyPaid, vars(v))));
+  return card;
+}
+
+// ---------------------------------------------------------------- deposit (168)
+
+/**
+ * After the client accepted: how to pay the deposit (the band's bank details
+ * with Copy buttons, its own payment link), or that it was received.
+ */
+function depositCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
+  if (v.status !== 'accepted' || !q.deposit || !(q.deposit.amount > 0)) return null;
+  const amount = money(q.deposit.amount);
+  const kicker = h('div', { class: 'kicker' }, `${v.band_name} · ${S.depositKicker}${q.ref ? ` ${q.ref}` : ''}`);
+  if (v.deposit_paid) {
+    return h(
+      'section',
+      { class: 'card', role: 'status', 'data-testid': 'deposit-paid' },
+      kicker,
+      h('h2', { style: 'margin-top:12px' }, S.depositPaidTitle),
+      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount })),
+    );
+  }
+  const pay = q.pay;
+  if (!pay) return null;
+  const card = h(
+    'section',
+    { class: 'card', 'data-testid': 'deposit-pay' },
+    kicker,
+    h('h2', { style: 'margin-top:12px' }, S.depositTitle),
+    h('div', { class: 'big' }, amount),
+    q.deposit.dueDate ? h('p', { class: 'kicker', style: 'margin-top:10px' }, fill(S.balanceDueBy, { date: shortDate(q.deposit.dueDate) })) : null,
+    h('p', {}, fill(S.depositIntro, vars(v))),
+  );
+  if (pay.bank && pay.bank.length) {
+    const dl = h('dl', { class: 'pay' });
+    pay.bank.forEach((r, i) => copyRow(dl, `dep-bank-${i}`, r.label, r.value));
+    copyRow(dl, 'dep-amount', S.depositRow, amount);
+    if (pay.reference) copyRow(dl, 'dep-ref', S.reference, pay.reference);
+    card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.bankTitle), h('div', { style: 'margin-top:12px' }, dl));
+  }
+  const stripe = safeHref(pay.stripeUrl);
+  if (stripe) {
+    card.append(
+      h('div', { class: 'kicker', style: 'margin-top:22px' }, S.cardTitle),
+      h('div', { class: 'stack' }, h('a', { class: 'btn', href: stripe, target: '_blank', rel: 'noopener noreferrer' }, fill(S.payCard, { amount }), arrow())),
+      h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, fill(S.cardNote, { band: v.band_name, amount })),
+    );
+  }
+  card.append(h('p', { class: 'mute', style: 'font-size:14px;line-height:20px;margin-top:22px' }, fill(S.alreadyPaid, vars(v))));
   return card;
 }
 
@@ -335,6 +553,10 @@ function answerCard(v: QuoteLinkView) {
     h('div', { class: 'check' }, box, h('label', { for: 'acc-check' }, fill(S.checkLabel, vars(v)))),
     err('check'),
     h('div', { class: 'stack' }, h('button', { class: 'btn', type: 'button', disabled, onclick: accept }, S.accept, arrow())),
+    // 168: the deposit asked to confirm the date, named before the client accepts.
+    v.quote.deposit && v.quote.deposit.amount > 0
+      ? h('p', { 'data-testid': 'accept-deposit', style: 'font-size:15px;line-height:21px' }, fill(S.acceptDeposit, { ...vars(v), amount: money(v.quote.deposit.amount) }))
+      : null,
     h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, fill(S.acceptNote, vars(v))),
     v.status !== 'declined'
       ? h(
@@ -380,8 +602,25 @@ function render() {
   }
   const v = view;
   if (preview) app.append(h('p', { class: 'note', role: 'note' }, S.preview));
-  const status = statusCard(v);
-  if (status) app.append(status);
+  const b = balanceOf(v);
+  if (b) {
+    // 168: the balance first, then how to pay, then the same quote.
+    const hero = balanceHero(v, b);
+    hero.setAttribute('data-balance-hero', '');
+    app.append(hero);
+    if (!v.balance_paid) app.append(payCard(v, b));
+    clearFold(hero);
+  } else {
+    const status = statusCard(v);
+    if (status) app.append(status);
+    const deposit = depositCard(v, v.quote);
+    if (deposit) {
+      // As the balance: the card above reaches past a fold, so Copy and Pay sit below it.
+      if (status) status.setAttribute('data-balance-hero', '');
+      app.append(deposit);
+      if (status) clearFold(status);
+    }
+  }
   app.append(heroCard(v, v.quote), quoteCard(v, v.quote));
   const answer = answerCard(v);
   if (answer) app.append(answer);
@@ -402,7 +641,9 @@ function poll() {
     if (document.hidden || busy || !view) return;
     try {
       const next = await api.view();
-      if (next && JSON.stringify(next.messages) !== JSON.stringify(view.messages)) {
+      const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
+        JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
+      if (next && changed(next, view)) {
         readFields();
         applyView({ ...next, stale });
         render();
@@ -431,7 +672,8 @@ async function load() {
   // NULL: an unknown, replaced or turned-off link.
   if (next) applyView(next);
   else view = null;
-  document.title = view?.quote ? `${S.kicker} ${view.quote.ref} · ${view.band_name}` : `${S.kicker} · BandWith`;
+  const kicker = view && balanceOf(view) ? S.balanceKicker : S.kicker;
+  document.title = view?.quote ? `${kicker} ${view.quote.ref} · ${view.band_name}` : `${S.kicker} · BandWith`;
   render();
   if (view && !polling) {
     polling = true;

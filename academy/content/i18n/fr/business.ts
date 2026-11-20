@@ -120,7 +120,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Les totaux sont calculés de la même façon à l’écran, dans le PDF, sur la page du client et dans la base de données : sous-total, moins la remise, plus la TVA, puis l’acompte comme part du total." },
-        { type: "note", tone: "tip", text: "Les liens d’acompte en ligne (**Carte · Stripe**, **PayPal**) sont affichés mais désactivés : « Les liens de paiement pour les clients arrivent après l’alpha. Pour l’instant, utilise les infos de virement. »" },
+        { type: "note", tone: "tip", text: "Quand le client accepte, sa page indique comment régler l’acompte : tes coordonnées bancaires avec des boutons pour les copier, une référence comme Q-2026-0014 · Acompte et ton propre lien de paiement Stripe, si tu l’as configuré (le PDF l’imprime aussi). Quand l’argent arrive, touche **Acompte reçu** sur le devis accepté et choisis comment il est arrivé : le concert est confirmé. **PayPal** reste désactivé." },
       ],
     },
     {
@@ -449,6 +449,39 @@ const business: AreaText = {
             { role: "member", text: "Le concert apparaît dans son calendrier avec une notification et seulement son propre cachet, voir [[what-members-see-of-money]]." },
           ],
         },
+      ],
+    },
+    {
+      id: "final-balance",
+      title: "Demander le solde final au client",
+      summary: "Après le oui, renvoyez la même page du devis avec ce qui reste à payer et comment le payer : virement, votre lien Stripe ou espèces.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["solde", "solde final", "paiement final", "reste à payer", "iban", "stripe", "lien de paiement", "payé", "rappel"],
+      related: ["quote-to-gig", "client-quote-page", "branding-and-payment", "what-members-see-of-money"],
+      body: [
+        { type: "steps", title: "Envoyer le solde", items: [
+          "Ouvrez le concert créé depuis le devis accepté et touchez **SOLDE FINAL** sur la carte du cachet (ou **Solde final** sur le devis accepté).",
+          "Vérifiez le montant : le total accepté, moins l’acompte reçu, moins **Autres paiements reçus**. Si le cachet du concert diffère du devis, touchez **Utiliser le cachet du concert** ou **Utiliser le total du devis**.",
+          "Choisissez l’échéance : **Le jour du concert**, **7 jours après**, **14 jours après** ou **Choisir une date**.",
+          "Choisissez les moyens de paiement : **Virement**, **Carte · lien Stripe** et **Espèces**, avec une note facultative.",
+          "Touchez **Envoyer par email**, ou envoyez-le sur **WhatsApp** ou avec **Copier le lien**. **Aperçu** ouvre la page du client.",
+        ] },
+        { type: "p", text: "Le client reçoit la même page du devis, dans la langue du devis, avec le solde en haut : le montant et l’échéance, vos coordonnées bancaires avec des boutons pour les copier et la référence, un bouton **Payer par carte** pour votre lien Stripe et la note sur les espèces. Le devis reste en dessous, avec ce qui a déjà été reçu." },
+        { type: "list", title: "Ce que la fiche vérifie d’abord", items: [
+          "Acompte non enregistré : le total entier est demandé tant que vous n’avez pas touché **Marquer l’acompte reçu** et choisi comment il est arrivé (virement, espèces, autre).",
+          "Ni coordonnées bancaires ni lien Stripe : seules les espèces sont proposées, et **Configurer les paiements** ouvre la grille tarifaire.",
+          "Déjà demandé : sans changement, le renvoyer est un rappel (**Envoyer un rappel**) ; avec des changements, il devient **Envoyer la mise à jour**.",
+          "Plus rien à payer : pas de demande, juste **Marquer comme payé**.",
+          "Concert annulé : pas de bouton **SOLDE FINAL**. Pas d’email client : partagez le lien.",
+          "Un lien Stripe à prix fixe, un concert dans une autre devise ou une échéance passée : c’est signalé avant l’envoi.",
+        ] },
+        { type: "p", text: "Quand l’argent arrive, touchez **Marquer comme payé** : le concert est marqué payé (paiements des musiciens, préparation du show et statistiques suivent) et la page du client remercie. **Annuler** le rouvre." },
+        { type: "note", tone: "tip", text: "Ajoutez votre **Lien de paiement Stripe** dans la grille tarifaire, sur **Image et paiement**. BandWith n’encaisse jamais de paiement : l’argent va directement du client au groupe." },
+        { type: "roles", rows: [
+          { role: "admin", text: "Envoie le solde et le marque payé." },
+          { role: "member", text: "N’en voit rien : seulement son propre cachet, voir [[what-members-see-of-money]]." },
+        ] },
       ],
     },
     {
@@ -1033,7 +1066,7 @@ const business: AreaText = {
     { q: "Comment payer un remplaçant ou un membre ?", a: "Paie-le en dehors de l’app, puis marque-le payé sur la feuille Cachet & paiements du concert ou avec TOUT MARQUER COMME PAYÉ.", roles: ["admin"] },
     { q: "Un membre peut-il changer son propre cachet ?", a: "Non. Seuls les admins changent les cachets et les paiements.", roles: ["member"] },
     { q: "Pourquoi je ne peux pas repasser une répétition en devis ?", a: "Les répétitions et les concerts perso n’ont jamais été des devis : ils n’ont donc pas REPASSER EN DEVIS.", roles: ["admin"] },
-    { q: "Les clients peuvent-ils payer l’acompte en ligne ?", a: "Pas encore. Les boutons Stripe et PayPal sont désactivés pendant l’alpha ; utilise les coordonnées de virement du PDF.", roles: ["admin"] },
+    { q: "Les clients peuvent-ils payer l’acompte en ligne ?", a: "Avec ton propre lien de paiement Stripe, à configurer dans la grille tarifaire, sur Image et paiement : la page du client et le PDF l’affichent, et l’argent t’arrive directement. Quand il arrive, touche Acompte reçu sur le devis accepté.", roles: ["admin"] },
     { q: "Les membres ne voient pas les contrats. Y a-t-il un problème ?", a: "Non. Les contrats contiennent le client et le prix du concert : seuls les admins peuvent les ouvrir.", roles: ["admin", "member"] },
   ],
 

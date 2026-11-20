@@ -8,7 +8,9 @@ import {
   FileSignature,
   Loader2,
   RefreshCw,
+  Receipt,
   Send,
+  Wallet,
   X,
 } from '@/app/components/icons';
 import { Card, Tag } from '@/app/components/bw/Screen';
@@ -48,6 +50,10 @@ export interface QuoteClientLinkProps {
   creatingGig?: boolean;
   hasGig?: boolean;
   onPrepareContract?: () => void;
+  /** Opens the final balance (saldo, migration 168). */
+  onBalance?: () => void;
+  /** Opens "Deposit received" (migration 168). */
+  onDeposit?: () => void;
   notify?: (text: string, tone?: 'ok' | 'error') => void;
 }
 
@@ -62,6 +68,8 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
   creatingGig,
   hasGig,
   onPrepareContract,
+  onBalance,
+  onDeposit,
   notify,
 }) => {
   const t = useT();
@@ -121,6 +129,16 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     return lastUpdate > lastSend;
   }, [activity]);
 
+  // 168: the last word on the deposit in the timeline.
+  const depositIn = useMemo(() => {
+    let on = false;
+    for (const a of activity) {
+      if (a.kind === 'deposit_received') on = true;
+      if (a.kind === 'deposit_reopened') on = false;
+    }
+    return on;
+  }, [activity]);
+
   const channelName = (c: string | null) =>
     c === 'whatsapp' ? 'WhatsApp' : c === 'sms' ? t('Text message') : c === 'email' ? t('Email') : c === 'copy' ? t('copied link') : null;
 
@@ -145,6 +163,24 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
         return t('New link created');
       case 'link_revoked':
         return t('Link turned off');
+      case 'balance_requested':
+        return via ? t('Balance requested via {channel}', { channel: via }) : t('Balance requested');
+      case 'balance_updated':
+        return t('Balance updated');
+      case 'balance_reminded':
+        return via ? t('Balance reminder via {channel}', { channel: via }) : t('Balance reminder sent');
+      case 'balance_paid':
+        return t('Balance received');
+      case 'balance_reopened':
+        return t('Balance open again');
+      case 'deposit_received':
+        return a.body === 'transfer'
+          ? t('Deposit received · bank transfer')
+          : a.body === 'cash'
+            ? t('Deposit received · cash')
+            : t('Deposit received');
+      case 'deposit_reopened':
+        return t('Deposit marked as not received');
       default:
         return '';
     }
@@ -211,7 +247,7 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     // Answered outside the link (by phone, in person) or closed: nothing to
     // send; an accepted quote still gets its next steps.
     if (['ACCEPTED', 'DECLINED', 'EXPIRED', 'ARCHIVED'].includes(quote.status)) {
-      if (quote.status !== 'ACCEPTED' || (!onCreateGig && !onPrepareContract)) return null;
+      if (quote.status !== 'ACCEPTED' || (!onCreateGig && !onPrepareContract && !onBalance && !onDeposit)) return null;
       return (
         <section className="flex flex-col gap-4">
           <h2 className="bw-h1">{t('Next steps')}</h2>
@@ -224,6 +260,16 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
             {onPrepareContract && (
               <PillButton variant="outline" size="md" icon={<FileSignature className="w-4 h-4" />} onClick={onPrepareContract}>
                 {t('Prepare contract')}
+              </PillButton>
+            )}
+            {onDeposit && (
+              <PillButton variant="outline" size="md" icon={<Receipt className="w-4 h-4" />} onClick={onDeposit}>
+                {t('Deposit received')}
+              </PillButton>
+            )}
+            {onBalance && (
+              <PillButton variant="outline" size="md" className={onDeposit ? undefined : '@min-[420px]:col-span-2'} icon={<Wallet className="w-4 h-4" />} onClick={onBalance}>
+                {t('Final balance')}
               </PillButton>
             )}
           </Card>
@@ -321,6 +367,28 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
             {onPrepareContract && (
               <PillButton variant="outline" size="md" className="border-sheet-foreground text-sheet-foreground" icon={<FileSignature className="w-4 h-4" />} onClick={onPrepareContract}>
                 {t('Prepare contract')}
+              </PillButton>
+            )}
+            {onDeposit && (
+              <PillButton
+                variant="outline"
+                size="md"
+                className="border-sheet-foreground text-sheet-foreground"
+                icon={<Receipt className="w-4 h-4" />}
+                onClick={onDeposit}
+              >
+                {depositIn ? t('Deposit · received') : t('Deposit received')}
+              </PillButton>
+            )}
+            {onBalance && (
+              <PillButton
+                variant="outline"
+                size="md"
+                className={cn(!onDeposit && '@min-[420px]:col-span-2', 'border-sheet-foreground text-sheet-foreground')}
+                icon={<Wallet className="w-4 h-4" />}
+                onClick={onBalance}
+              >
+                {link.balance_paid_at ? t('Balance · paid') : link.balance_sent_at ? t('Final balance · asked') : t('Final balance')}
               </PillButton>
             )}
           </div>

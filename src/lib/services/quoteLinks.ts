@@ -26,7 +26,9 @@ import {
 } from '@/lib/services/quoteMath';
 import { currencySymbol } from '@/lib/currency';
 import { getEventTypeLabel, type Quote } from '@/app/data/quotes';
-import type { ClientQuoteItem, ClientQuoteSnapshot, QuoteLinkStatus } from '@/quote/types';
+import type { ClientBalance, ClientQuoteItem, ClientQuotePay, ClientQuoteSnapshot, QuoteLinkStatus } from '@/quote/types';
+import { bankDetailRows, hasBankAccount, type BandPricingSettings } from '@/lib/services/pricing';
+import { safePaymentUrl } from '@/lib/quoteBalance';
 import { fetchBandPlan } from '@/lib/usePlan';
 import { madeWithMark } from '@/lib/planText';
 
@@ -51,6 +53,12 @@ export interface QuoteLinkRow {
   accepted_version: number | null;
   decline_reason: string | null;
   revoked_at: string | null;
+  /** 168: the balance request on the client's page (null before 168 or before any). */
+  balance?: ClientBalance | null;
+  balance_version?: number | null;
+  balance_at?: string | null;
+  balance_sent_at?: string | null;
+  balance_paid_at?: string | null;
 }
 
 export type QuoteActivityKind =
@@ -64,7 +72,14 @@ export type QuoteActivityKind =
   | 'accepted'
   | 'declined'
   | 'link_rotated'
-  | 'link_revoked';
+  | 'link_revoked'
+  | 'balance_requested'
+  | 'balance_updated'
+  | 'balance_reminded'
+  | 'balance_paid'
+  | 'balance_reopened'
+  | 'deposit_received'
+  | 'deposit_reopened';
 
 export interface QuoteActivity {
   id: string;
@@ -87,10 +102,31 @@ export const quoteLinkUrl = (token: string, opts: { preview?: boolean } = {}) =>
 
 // ------------------------------------------------------------------ summary
 
-interface SnapshotDefaults {
+type SnapshotDefaults = {
   default_vat_rate?: number | null;
   default_deposit_rate?: number | null;
   core_members_count?: number | null;
+} & Partial<Omit<BandPricingSettings, 'default_vat_rate' | 'default_deposit_rate' | 'core_members_count'>>;
+
+/**
+ * 168: how to pay the deposit, for the page once the client accepted: the
+ * bank details the PDF prints (unless the quote hides them) and the band's
+ * own payment link. Null when there is nothing to show.
+ */
+export function clientDepositPay(
+  quote: Partial<Quote>,
+  lang: Locale,
+  settings: Partial<Omit<BandPricingSettings, 'default_vat_rate' | 'default_deposit_rate' | 'core_members_count'>>,
+): ClientQuotePay | null {
+  const bank = quote.showBankDetailsOnPdf !== false && hasBankAccount(settings) ? bankDetailRows(settings, lang) : null;
+  const stripeUrl = safePaymentUrl(settings.stripe_payment_link);
+  if (!bank?.length && !stripeUrl) return null;
+  const ref = quote.quoteNumber || '';
+  return {
+    bank: bank?.length ? bank : null,
+    stripeUrl,
+    reference: ref ? translate(lang, '{ref} · Deposit', { ref }) : translate(lang, 'Deposit'),
+  };
 }
 
 const stripColon = (s: string) => s.replace(/\s*:\s*$/, '');
@@ -204,6 +240,7 @@ export function buildClientQuoteSnapshot(quote: Partial<Quote>, lang: Locale, de
         ? Math.round((totals.discount / totals.subtotal) * 100)
         : 0;
   const depositPct = quoteDepositPercent(quote, defaults.default_deposit_rate);
+  const pay = depositPct > 0 ? clientDepositPay(quote, lang, defaults) : null;
 
   const options = (quote.includeProposalSummary ? quote.quoteOptions || [] : [])
     .filter((o) => o && Number.isFinite(Number(o.totalWithVat)))
@@ -249,7 +286,8 @@ export function buildClientQuoteSnapshot(quote: Partial<Quote>, lang: Locale, de
     vat: totals.vat,
     total: totals.total,
     totalLabel: money(totals.total),
-    deposit: depositPct > 0 ? { percent: depositPct, amount: calculateDepositAmount(totals.total, depositPct) } : null,
+    deposit: depositPct > 0 ? { percent: depositPct, amount: calculateDepositAmount(totals.total, depositPct), ...(/^\d{4}-\d{2}-\d{2}$/.test(quote.depositDueDate || '') ? { dueDate: quote.depositDueDate } : {}) } : null,
+    ...(pay ? { pay } : {}),
     validUntil: quote.validUntil || null,
     notes: clean(quote.clientNotes, 1500),
     terms: clean(quote.specialTerms || quote.cancellationTerms, 2000),
@@ -330,17 +368,23 @@ export async function revokeQuoteLink(quoteId: string): Promise<Result<boolean>>
 
 const LINK_COLUMNS =
   'quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
+// 168: read separately, so the quote detail keeps working before 168 is applied.
+const BALANCE_COLUMNS = 'balance, balance_version, balance_at, balance_sent_at, balance_paid_at';
 
 /** The link (if any) and the timeline of a quote. Admins only (RLS). */
 export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link: QuoteLinkRow | null; activity: QuoteActivity[] }>> {
-  const [link, activity] = await Promise.all([
-    supabase.from('quote_links').select(LINK_COLUMNS).eq('quote_id', quoteId).maybeSingle(),
+  const [first, activity] = await Promise.all([
+    supabase.from('quote_links').select(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`).eq('quote_id', quoteId).maybeSingle(),
     supabase
       .from('quote_activity')
       .select('id, kind, body, channel, version, created_at')
       .eq('quote_id', quoteId)
       .order('created_at', { ascending: true }),
   ]);
+  // Before 168 the balance columns don't exist: read the link without them.
+  const link = first.error && /balance/.test(first.error.message || '')
+    ? await supabase.from('quote_links').select(LINK_COLUMNS).eq('quote_id', quoteId).maybeSingle()
+    : first;
   if (link.error) return { data: null, error: asError(link.error) };
   if (activity.error) return { data: null, error: asError(activity.error) };
   const row = link.data as QuoteLinkRow | null;
@@ -365,6 +409,106 @@ export async function sendQuoteEmail(
   const { data, error } = await supabase.functions.invoke('send-email', {
     body: kind === 'reply' ? { type: 'quote_reply', data: { quoteId } } : { type: 'quote_link', data: { quoteId, kind } },
   });
+  if (error) {
+    let code: string | undefined;
+    try {
+      const ctx = (error as { context?: Response }).context;
+      const body = ctx && typeof ctx.json === 'function' ? await ctx.clone().json() : null;
+      code = body?.code;
+    } catch {
+      /* no body */
+    }
+    return { ok: false, code, error: asError(error) };
+  }
+  return { ok: (data as { success?: boolean })?.success !== false };
+}
+
+// ------------------------------------------------------------------ balance (168)
+
+/** Publish (or change) the balance on the client's page. */
+export async function publishQuoteBalance(
+  quoteId: string,
+  balance: ClientBalance,
+): Promise<Result<{ token: string; balance_version: number; changed: boolean }>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_publish', { p_quote_id: quoteId, p_balance: balance });
+  if (error) return { data: null, error: asError(error) };
+  const row = data as { token?: string; balance_version?: number; changed?: boolean } | null;
+  return row?.token
+    ? { data: { token: row.token, balance_version: Number(row.balance_version) || 1, changed: !!row.changed }, error: null }
+    : { data: null, error: new Error('No link') };
+}
+
+export async function markQuoteBalanceSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<string>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
+  return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
+}
+
+/** The balance was received (or not after all): the gig made from the quote follows. */
+export async function markQuoteBalancePaid(quoteId: string, paid: boolean): Promise<Result<{ paid: boolean; event_id: string | null }>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_mark_paid', { p_quote_id: quoteId, p_paid: paid });
+  if (error) return { data: null, error: asError(error) };
+  const row = (data || {}) as { paid?: boolean; event_id?: string | null };
+  return { data: { paid: !!row.paid, event_id: row.event_id ?? null }, error: null };
+}
+
+/**
+ * The gig of an accepted quote, as the balance needs it: status, currency
+ * and date (public columns) with the fee, deposit and payment status from
+ * bw_event_private (078: admins only).
+ */
+export interface BalanceGigRow {
+  id: string;
+  status: string | null;
+  currency: string | null;
+  event_date: string | null;
+  fee: number | null;
+  deposit_amount: number | null;
+  deposit_paid: boolean;
+  payment_status: string | null;
+}
+
+export async function getBalanceGig(quoteId: string, eventId?: string | null): Promise<Result<BalanceGigRow | null>> {
+  let id = eventId || null;
+  if (!id) {
+    const { data: q } = await supabase.from('quotes').select('converted_to_event_id').eq('id', quoteId).maybeSingle();
+    id = (q as { converted_to_event_id?: string | null } | null)?.converted_to_event_id || null;
+  }
+  if (!id) {
+    const { data: rows } = await supabase.from('events').select('id').eq('quote_id', quoteId).order('created_at', { ascending: true }).limit(1);
+    id = (Array.isArray(rows) && (rows[0] as { id?: string } | undefined)?.id) || null;
+  }
+  if (!id) return { data: null, error: null };
+  const [{ data: ev, error }, { getEventPrivate }] = await Promise.all([
+    supabase.from('events').select('id, status, currency, event_date').eq('id', id).maybeSingle(),
+    import('@/lib/services/eventPrivate'),
+  ]);
+  if (error) return { data: null, error: asError(error) };
+  if (!ev) return { data: null, error: null };
+  const priv = (await getEventPrivate([id])).data[0]?.private ?? {};
+  const num = (v: unknown) => (v == null || v === '' ? null : Number(v));
+  const e = ev as { id: string; status?: string | null; currency?: string | null; event_date?: string | null };
+  return {
+    data: {
+      id: e.id,
+      status: e.status ?? null,
+      currency: e.currency ?? null,
+      event_date: e.event_date ?? null,
+      fee: num(priv.fee ?? priv.price),
+      deposit_amount: num(priv.deposit_amount),
+      deposit_paid: !!priv.deposit_paid,
+      payment_status: (priv.payment_status as string | null) ?? null,
+    },
+    error: null,
+  };
+}
+
+/**
+ * Email the balance request through send-email (server: recipient,
+ * language, link and amount come from the database). Codes as
+ * sendQuoteEmail, plus 'no_balance'.
+ */
+export async function sendQuoteBalanceEmail(quoteId: string, kind: 'sent' | 'updated' | 'reminder') {
+  const { data, error } = await supabase.functions.invoke('send-email', { body: { type: 'quote_balance', data: { quoteId, kind } } });
   if (error) {
     let code: string | undefined;
     try {

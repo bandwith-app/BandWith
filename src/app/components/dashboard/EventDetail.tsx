@@ -36,6 +36,7 @@ import { AddToCalendar } from '@/app/components/calendar/AddToCalendar';
 import { haptic } from '@/lib/haptics';
 import { useT, dateName, intlLocale, getLocale } from '@/lib/i18n';
 import { QuoteShareModal } from '@/app/components/quotes/QuoteShareModal';
+import { BalanceRequestSheet } from '@/app/components/quotes/BalanceRequestSheet';
 import { StageMode } from './StageMode';
 import { FloorWedgeMode, useLaptopPose } from '@/app/components/duo';
 import { parseLocalDate } from '@/lib/dates';
@@ -383,7 +384,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     quote: linkedQuote,
     loading: quoteLoading,
     error: quoteError,
-  } = useLinkedQuote(event.eventId, event.quoteId, isQuote || isShareQuoteOpen);
+  } = useLinkedQuote(
+    event.eventId,
+    event.quoteId,
+    // Admins of a confirmed gig made from a quote: the final balance (168).
+    isQuote || isShareQuoteOpen || (isAdmin && eventType === 'gig' && !isPersonalGig),
+  );
+  const [isBalanceOpen, setIsBalanceOpen] = useState(false);
+  // The final balance: admins, a confirmed/completed band gig whose quote the client accepted.
+  const canAskBalance =
+    isAdmin && eventType === 'gig' && !isPersonalGig && !!event.band_id && linkedQuote?.status === 'ACCEPTED';
 
   // Setlist state
   const laptopPose = useLaptopPose();
@@ -1741,6 +1751,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       {t('MARK ALL AS PAID')}
                     </PillButton>
                   )}
+                  {canAskBalance && (
+                    <PillButton variant="white" type="button" onClick={() => setIsBalanceOpen(true)}>
+                      {event.paymentStatus === 'paid' ? t('BALANCE · PAID') : t('FINAL BALANCE')}
+                      <ArrowUpRight className="w-4 h-4" />
+                    </PillButton>
+                  )}
                 </section>
               )}
 
@@ -1877,6 +1893,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     {isAdmin ? t('FEE & PAYOUTS') : t('PAYOUT DETAILS')}
                     <ArrowUpRight className="w-4 h-4" />
                   </PillButton>
+                  {canAskBalance && (
+                    <PillButton variant="white" size="md" type="button" onClick={() => setIsBalanceOpen(true)}>
+                      {event.paymentStatus === 'paid' ? t('BALANCE · PAID') : t('FINAL BALANCE')}
+                      <ArrowUpRight className="w-4 h-4" />
+                    </PillButton>
+                  )}
                 </section>
               )}
 
@@ -2883,6 +2905,26 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         onClose={() => setIsShareQuoteOpen(false)}
         onOpenBandSettings={onOpenBandSettings}
       />
+
+      {canAskBalance && linkedQuote && (
+        <BalanceRequestSheet
+          open={isBalanceOpen}
+          onClose={() => setIsBalanceOpen(false)}
+          quote={linkedQuote}
+          bandId={event.band_id as string}
+          bandName={bands.find((b) => b.id === event.band_id)?.name || event.band_name || selectedBand?.name || ''}
+          eventId={event.eventId}
+          onChanged={onEventUpdated}
+          onOpenPricing={
+            onOpenBandSettings
+              ? () => {
+                  setIsBalanceOpen(false);
+                  onOpenBandSettings();
+                }
+              : undefined
+          }
+        />
+      )}
 
       <AnimatePresence>
         {riderOpen && showRiderStage && (

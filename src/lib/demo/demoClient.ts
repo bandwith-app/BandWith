@@ -1550,6 +1550,138 @@ const rpc = (fn: string, args: Row = {}) => {
       data = rotate ? l.token : true;
       break;
     }
+    // Final balance (168): the same checks and states as the database.
+    case 'bw_quote_balance_publish': {
+      const b = args.p_balance as Record<string, any> | null;
+      const q = table('quotes').find((x) => x.id === args.p_quote_id);
+      const gigId = q?.converted_to_event_id || table('events').find((e) => e.quote_id === args.p_quote_id)?.id || null;
+      const g = gigId ? table('events').find((e) => e.id === gigId) : null;
+      const l = table('quote_links').find((x) => x.quote_id === args.p_quote_id);
+      const fail = (message: string, code = '22023') => (error = { message, code });
+      if (!q) fail('Not allowed', '42501');
+      else if (!b || typeof b !== 'object' || JSON.stringify(b).length > 16000) fail('Invalid balance');
+      else if (!(Number(b.amount) > 0)) fail('Nothing left to pay');
+      else if (!/^[A-Z]{3}$/.test(String(b.currency || ''))) fail('Invalid currency');
+      else if (b.stripeUrl && !/^https:\/\/[^\s"'<>]+$/.test(String(b.stripeUrl))) fail('Invalid payment link');
+      else if (!(b.bank?.length || b.stripeUrl || b.cash)) fail('Add a way to pay');
+      else if (String(g?.status || '').toLowerCase() === 'cancelled') fail('The gig is cancelled');
+      else if (!l) fail('Publish the quote first', 'P0002');
+      else if (l.revoked_at) fail('The client link is turned off');
+      else if (l.status !== 'accepted' && String(q.status || '').toLowerCase() !== 'accepted') fail('The quote is not accepted');
+      if (error || !l || !q) break;
+      const now = new Date().toISOString();
+      if (l.status !== 'accepted') {
+        l.status = 'accepted';
+        l.responded_at ||= now;
+        l.accepted_name = q.client_name || null;
+        l.accepted_version = l.version;
+        table('quote_activity').push({ id: uuid(), quote_id: q.id, band_id: q.band_id, kind: 'accepted', channel: null, version: l.version, body: l.accepted_name, created_at: now });
+      }
+      const changed = JSON.stringify(l.balance ?? null) !== JSON.stringify(b);
+      if (changed) {
+        l.balance = b;
+        l.balance_version = (l.balance_version || 0) + 1;
+        l.balance_at = now;
+        l.balance_paid_at = null;
+        if (l.balance_sent_at) {
+          table('quote_activity').push({ id: uuid(), quote_id: q.id, band_id: q.band_id, kind: 'balance_updated', channel: null, version: l.balance_version, body: String(b!.amountLabel || '').slice(0, 60), created_at: now });
+        }
+      }
+      l.updated_at = now;
+      persist();
+      data = { token: l.token, balance_version: l.balance_version, changed };
+      break;
+    }
+    case 'bw_quote_balance_mark_sent': {
+      const l = table('quote_links').find((x) => x.quote_id === args.p_quote_id);
+      if (!l || !l.balance) {
+        error = { message: 'Publish the balance first', code: 'P0002' };
+        break;
+      }
+      if (l.revoked_at) {
+        error = { message: 'The client link is turned off', code: '22023' };
+        break;
+      }
+      const now = new Date().toISOString();
+      const kind = args.p_kind === 'reminded' && l.balance_sent_at ? 'balance_reminded' : 'balance_requested';
+      table('quote_activity').push({ id: uuid(), quote_id: l.quote_id, band_id: l.band_id, kind, channel: args.p_channel ?? null, version: l.balance_version, body: String(l.balance.amountLabel || '').slice(0, 60), created_at: now });
+      l.balance_sent_at ||= now;
+      l.updated_at = now;
+      persist();
+      data = kind;
+      break;
+    }
+    case 'bw_quote_balance_mark_paid': {
+      const paid = args.p_paid !== false;
+      const q = table('quotes').find((x) => x.id === args.p_quote_id);
+      if (!q) {
+        error = { message: 'Not allowed', code: '42501' };
+        break;
+      }
+      const gigId = q.converted_to_event_id || table('events').find((e) => e.quote_id === q.id)?.id || null;
+      const g = gigId ? table('events').find((e) => e.id === gigId && e.band_id === q.band_id) : null;
+      if (g) {
+        g.payment_status = paid ? 'paid' : g.deposit_paid ? 'partial' : 'pending';
+        if (paid) g.deposit_paid = true;
+      }
+      const l = table('quote_links').find((x) => x.quote_id === q.id);
+      if (l && !!l.balance_paid_at !== paid) {
+        const now = new Date().toISOString();
+        l.balance_paid_at = paid ? now : null;
+        l.updated_at = now;
+        table('quote_activity').push({ id: uuid(), quote_id: q.id, band_id: q.band_id, kind: paid ? 'balance_paid' : 'balance_reopened', channel: null, version: l.balance_version ?? 0, body: String(l.balance?.amountLabel || '').slice(0, 60) || null, created_at: now });
+      }
+      persist();
+      data = { paid, event_id: gigId };
+      break;
+    }
+    // 168: the shared confirm step and the deposit received (as the SQL).
+    case 'bw_quote_confirm_gig':
+    case 'bw_quote_deposit_received': {
+      const q = table('quotes').find((x) => x.id === args.p_quote_id);
+      if (!q) {
+        error = { message: 'Not allowed', code: '42501' };
+        break;
+      }
+      const gigId = q.converted_to_event_id || table('events').find((e) => e.quote_id === q.id)?.id || null;
+      const g = gigId ? table('events').find((e) => e.id === gigId && e.band_id === q.band_id) : null;
+      const confirm = () => {
+        if (g && String(g.status || '').toLowerCase() === 'tentative') g.status = 'confirmed';
+        return !!g && String(g.status || '').toLowerCase() === 'confirmed';
+      };
+      if (fn === 'bw_quote_confirm_gig') {
+        const confirmed = confirm();
+        persist();
+        data = { event_id: g ? gigId : null, confirmed };
+        break;
+      }
+      const received = args.p_received !== false;
+      const l = table('quote_links').find((x) => x.quote_id === q.id);
+      if (String(q.status || '').toLowerCase() !== 'accepted' && l?.status !== 'accepted') {
+        error = { message: 'The quote is not accepted', code: '22023' };
+        break;
+      }
+      if (!g) {
+        data = { event_id: null, received: false, confirmed: false, needs_gig: received };
+        break;
+      }
+      if (String(g.status || '').toLowerCase() === 'cancelled') {
+        error = { message: 'The gig is cancelled', code: '22023' };
+        break;
+      }
+      const method = ['transfer', 'cash', 'other'].includes(String(args.p_method || '').toLowerCase()) ? String(args.p_method).toLowerCase() : 'other';
+      const was = !!g.deposit_paid;
+      g.deposit_paid = received;
+      if (received && Number(args.p_amount) > 0) g.deposit_amount = Number(args.p_amount);
+      if (String(g.payment_status || '').toLowerCase() !== 'paid') g.payment_status = received ? 'partial' : 'pending';
+      const confirmed = received ? confirm() : String(g.status || '').toLowerCase() === 'confirmed';
+      if (was !== received) {
+        table('quote_activity').push({ id: uuid(), quote_id: q.id, band_id: q.band_id, kind: received ? 'deposit_received' : 'deposit_reopened', channel: null, version: l?.version ?? 1, body: received ? method : null, created_at: new Date().toISOString() });
+      }
+      persist();
+      data = { event_id: gigId, received, confirmed, needs_gig: false };
+      break;
+    }
     case 'bw_review_song_suggestion':
       ({ data, error } = reviewSuggestion(args));
       break;

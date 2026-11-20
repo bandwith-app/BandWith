@@ -162,6 +162,26 @@ export function bankDetailParts(s: Partial<BandPricingSettings>, lang: Locale = 
   ].filter(Boolean);
 }
 
+/**
+ * The bank details as label / value rows (the client's balance page shows
+ * each with a Copy button), in the band's bank format and `lang`.
+ */
+export function bankDetailRows(s: Partial<BandPricingSettings>, lang: Locale = 'en'): { label: string; value: string }[] {
+  const region = bankRegionOf(s);
+  const account = bankAccountId(s);
+  const rows: { label: string; value: string }[] = [];
+  const add = (label: string, value?: string | null) => {
+    const v = (value ?? '').trim();
+    if (v) rows.push({ label, value: v.slice(0, 120) });
+  };
+  add(translate(lang, 'Beneficiary'), s.bank_account_holder);
+  add(region === 'eu' ? 'IBAN' : translate(lang, 'Account number'), account);
+  if (region === 'us') add(translate(lang, 'Routing (ABA)'), s.bank_routing_number);
+  add(region === 'eu' ? 'BIC' : 'SWIFT', s.bank_bic_swift);
+  add(translate(lang, 'Bank'), s.bank_name);
+  return rows;
+}
+
 /** The account line alone ("IBAN: …" / "Account: …"), '' when there is none. */
 export function bankAccountLine(s: Partial<BandPricingSettings>, lang: Locale = 'en'): string {
   const account = bankAccountId(s);

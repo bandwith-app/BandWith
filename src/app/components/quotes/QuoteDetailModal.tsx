@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { BalanceRequestSheet } from '@/app/components/quotes/BalanceRequestSheet';
+import { DepositReceivedSheet } from '@/app/components/quotes/DepositReceivedSheet';
 import { motion } from 'motion/react';
 import { ArrowLeft, Check, Copy, Edit2, Send, Share2, Trash2, X } from '@/app/components/icons';
 import { Quote, getEventTypeLabel } from '@/app/data/quotes';
@@ -41,6 +43,8 @@ interface QuoteDetailModalProps {
   onPrepareContract?: (quote: Quote) => void;
   /** Feedback from the client link section. */
   notify?: (text: string, tone?: 'ok' | 'error') => void;
+  /** 168: the deposit was recorded (the quote may have a gig now). */
+  onDepositChanged?: (quote: Quote, eventId: string | null) => void;
 }
 
 const getCurrencySym = (currency?: string): string => currencySymbol(currency || 'EUR');
@@ -72,6 +76,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   creatingGig,
   onPrepareContract,
   notify,
+  onDepositChanged,
 }) => {
   const t = useT();
   const { selectedBand } = useBand();
@@ -79,6 +84,8 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [shareKind, setShareKind] = useState<QuoteMessageKind>('sent');
   const [linkRefresh, setLinkRefresh] = useState(0);
+  const [isBalanceOpen, setIsBalanceOpen] = useState(false);
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
   // Editable until the client accepts or declines; a sent quote's edit is a new version of the client's page.
   const canEdit = ['DRAFT', 'SENT', 'VIEWED', 'NEGOTIATING'].includes(quote.status);
   const openShare = (kind: QuoteMessageKind) => {
@@ -325,6 +332,8 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 creatingGig={creatingGig}
                 hasGig={!!quote.convertedToEventId}
                 onPrepareContract={onPrepareContract ? () => onPrepareContract(quote) : undefined}
+                onBalance={quote.status === 'ACCEPTED' && selectedBand?.id ? () => setIsBalanceOpen(true) : undefined}
+                onDeposit={quote.status === 'ACCEPTED' && selectedBand?.id ? () => setIsDepositOpen(true) : undefined}
                 notify={notify}
               />
             )}
@@ -405,6 +414,43 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         kind={shareKind}
         onLinkChanged={() => setLinkRefresh((n) => n + 1)}
       />
+
+      {quote.status === 'ACCEPTED' && selectedBand?.id && isUuid(quote.id) && (
+        <DepositReceivedSheet
+          open={isDepositOpen}
+          onClose={() => {
+            setIsDepositOpen(false);
+            setLinkRefresh((n) => n + 1);
+          }}
+          quote={quote}
+          onChanged={(r) => {
+            setLinkRefresh((n) => n + 1);
+            onDepositChanged?.(quote, r.eventId);
+          }}
+        />
+      )}
+
+      {quote.status === 'ACCEPTED' && selectedBand?.id && isUuid(quote.id) && (
+        <BalanceRequestSheet
+          open={isBalanceOpen}
+          onClose={() => {
+            setIsBalanceOpen(false);
+            setLinkRefresh((n) => n + 1);
+          }}
+          quote={quote}
+          bandId={selectedBand.id}
+          bandName={selectedBand.name}
+          eventId={quote.convertedToEventId}
+          onOpenPricing={
+            onOpenBandSettings
+              ? () => {
+                  setIsBalanceOpen(false);
+                  onOpenBandSettings();
+                }
+              : undefined
+          }
+        />
+      )}
     </>
   );
 };

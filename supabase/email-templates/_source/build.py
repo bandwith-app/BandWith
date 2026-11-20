@@ -454,8 +454,31 @@ def quote_reply(variant="lime"):
     )
 
 
+# The final balance of an accepted quote (168): the amount, what was paid,
+# the due date and how to pay (bank lines, card on the page, cash). BandWith
+# never takes the money: the page holds the band's own details.
+def quote_balance(variant="lime"):
+    return document(
+        "{{Subject}}",
+        "{{Preheader}}",
+        [
+            hero(variant, "{{Kicker}}", "{{Headline}}", "{{Intro}}", "{{CtaLabel}}", "{{QuoteURL}}",
+                 details([("{{EventLabel}}", "{{EventName}}"), ("{{DateLabel}}", "{{EventDate}}"),
+                          ("{{TotalLabel}}", "{{Total}}"), ("{{ReceivedLabel}}", "{{Received}}"),
+                          ("{{BalanceLabel}}", "{{Balance}}"), ("{{DueLabel}}", "{{DueDate}}")])),
+            info_card([
+                info_block("{{HowTitle}}", "{{HowText}}"),
+                info_block("{{NoteTitle}}", "{{NoteText}}"),
+                link_fallback("{{FallbackTitle}}", "{{FallbackText}}", "{{QuoteURL}}"),
+            ]),
+            footer("{{FooterReason}}", APP),
+        ],
+    )
+
+
 TEMPLATES = {
     "quote-link": quote_link,
+    "quote-balance": quote_balance,
     "quote-reply": quote_reply,
     "reauthentication": reauthentication,
     "product-update": product_update,
@@ -512,6 +535,7 @@ APP_EMAILS = {
     "product-update": "What’s new in BandWith — {{IssueLabel}}",
     "quote-link": "{{Subject}}",
     "quote-reply": "{{Subject}}",
+    "quote-balance": "{{Subject}}",
 }
 AUTH_EMAILS = ["confirm-signup", "reset-password", "magic-link", "change-email", "reauthentication"]
 TS_MODULE = HERE.parent.parent / "functions" / "_shared" / "email-templates.ts"
