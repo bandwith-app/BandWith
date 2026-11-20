@@ -1746,7 +1746,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
                 <Chip key={srv.id} selected={isAdded} onClick={() => toggleBandCustomService(srv)}>
                   {isAdded ? <Check className="w-3 h-3 shrink-0" /> : <Plus className="w-3 h-3 shrink-0" />}
                   <span className="truncate max-w-[180px]">{builtinText(srv.name)}</span>
-                  <span className={cn(!isAdded && 'opacity-70')}>
+                  <span className={cn(!isAdded && 'opacity-85')}>
                     · {currencySymbol}
                     {lineTotal.toLocaleString(intlLocale())}
                   </span>
@@ -1785,7 +1785,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             ) : travelDistanceKm != null && travelDistanceKm > 0 ? (
               <span className="bw-label-sm block truncate">
                 {t('Travel: {distance} from band HQ', { distance: formatDistance(travelDistanceKm, distanceUnit) })}
-                <span className="opacity-70">
+                <span className="opacity-85">
                   {' · '}
                   {billableKm === 0
                     ? t('≤{distance} free', { distance: formatDistance(freeRadius, distanceUnit) })
@@ -2629,7 +2629,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     acoustic: t('Acoustic'),
   };
   const heroChipStyle: React.CSSProperties = { backgroundColor: 'var(--wizard-accent-fg)', color: 'var(--wizard-accent)' };
-  const heroTintStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 14%, transparent)' };
+  const heroTintStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 8%, transparent)' };
   const extrasNames = customItems.map(it => builtinText(it.name || it.description)).filter(Boolean) as string[];
 
   const billingSummary = [

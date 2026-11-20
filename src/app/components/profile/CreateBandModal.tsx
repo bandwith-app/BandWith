@@ -145,7 +145,7 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
             </div>
             <div className="min-w-0 flex flex-col gap-1">
               <h3 className="bw-h2 [overflow-wrap:anywhere]">{name || tr('Band name')}</h3>
-              <p className="bw-body-sm opacity-70 flex items-center gap-1.5">
+              <p className="bw-body-sm opacity-85 flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 shrink-0" />
                 {[genre && genreText(genre), tr('1 member'), planName].filter(Boolean).join(' · ')}
               </p>

@@ -189,7 +189,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   ].filter(Boolean) as { label: string; value: string }[];
 
   const heroChipStyle: React.CSSProperties = { backgroundColor: 'var(--accent-quote-fg)', color: 'var(--accent-quote)' };
-  const heroTintStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 14%, transparent)' };
+  const heroTintStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 8%, transparent)' };
 
   return (
     <>
@@ -249,7 +249,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
             <div className="flex items-end justify-between gap-3">
               <div className="flex-1 min-w-0 flex flex-col items-start gap-1.5">
                 <span className="bw-label-md truncate max-w-full">{venueName}</span>
-                {venueAddress && <span className="bw-label-xs opacity-70 truncate max-w-full">{venueAddress}</span>}
+                {venueAddress && <span className="bw-label-xs opacity-85 truncate max-w-full">{venueAddress}</span>}
                 <span className="mt-1.5 min-h-6 px-2 py-1 rounded-[6px] bw-label-xs inline-block max-w-full leading-[16px]" style={heroTintStyle}>
                   {heroDateTime}
                 </span>

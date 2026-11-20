@@ -58,9 +58,9 @@ tags: [android]
     file: ../subflows/tap-label.yaml
     env:
       LABEL: "Notifications.*"
-- assertVisible: "Mark all as read|MARK READ"
+- assertVisible: "Mark all read|MARK ALL READ"
 - pressKey: back
-- assertNotVisible: "Mark all as read|MARK READ"
+- assertNotVisible: "Mark all read|MARK ALL READ"
 - assertVisible: "(?i)action center"
 - tapOn: "Create"
 - assertVisible: "(?i)new gig.*"

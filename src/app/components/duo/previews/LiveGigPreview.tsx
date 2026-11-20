@@ -67,7 +67,7 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           <Tag variant="solid">{kindLabel}</Tag>
           {typeLabel && <span className="bw-label-xs">{typeLabel}</span>}
-          {setting && <span className="bw-label-xs opacity-70">{setting}</span>}
+          {setting && <span className="bw-label-xs opacity-85">{setting}</span>}
         </div>
         <h2 className={compact ? 'bw-h1 line-clamp-2 [overflow-wrap:anywhere]' : 'bw-display-lg [overflow-wrap:anywhere]'}>{title}</h2>
 
@@ -86,7 +86,7 @@ export const LiveGigPreview: React.FC<LiveGigPreviewProps> = ({
           <Users className="w-4 h-4 shrink-0 mt-[3px]" />
           <span className={compact ? 'bw-body-md truncate' : 'bw-body-md [overflow-wrap:anywhere]'}>
             {lineupCount === 1 ? t('{count} musician', { count: lineupCount }) : t('{count} musicians', { count: lineupCount })}
-            {lineupNames.length > 0 && <span className="opacity-70"> · {lineupNames.join(', ')}</span>}
+            {lineupNames.length > 0 && <span className="opacity-85"> · {lineupNames.join(', ')}</span>}
           </span>
         </div>
 

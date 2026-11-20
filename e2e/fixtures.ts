@@ -182,7 +182,10 @@ export const test = base.extend<Options & { app: App }>({
         expect(errors, `uncaught JS errors by "${where}"`).toEqual([]);
       },
       tab: async (name) => {
-        await page.getByRole('button', { name: t(name), exact: true }).first().click();
+        // A tab with a count badge says it in its name ("Chat, 2 unread").
+        const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const withCount = esc(t('{name}, {count} unread', { name: t(name), count: '__N__' })).replace('__N__', '\\d+\\+?');
+        await page.getByRole('button', { name: new RegExp(`^(${esc(t(name))}|${withCount})$`) }).first().click();
         await settle(page);
       },
       button: (source, opts = {}) => {

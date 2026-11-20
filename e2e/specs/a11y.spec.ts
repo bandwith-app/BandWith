@@ -13,14 +13,6 @@ import { editSheet, openEditor } from '../support/event';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
-/**
- * Known and not fixed here: the app chrome's icon buttons (bell, profile,
- * the Duo rail's tabs) show a count or initials that their names leave out
- * or put in brackets. Renaming them touches every screen and language; a
- * follow-up. Everything else on these screens must pass.
- */
-const CHROME_NAME_MISMATCH = /^(Notifications|Open Identity and Account Hub|Open profile|Close profile|Chat)\b/;
-
 async function scan(app: App, where: string, layer?: import('@playwright/test').Locator | string) {
   // A CSS selector instead of a locator: for layers the fixture would close
   // as soon as a locator touches the page (tours), so only page.evaluate here.
@@ -65,20 +57,10 @@ async function analyze(app: App, where: string, layer: boolean) {
   let builder = new AxeBuilder({ page: app.page }).setLegacyMode(true).withTags(TAGS);
   if (layer) builder = builder.include('[data-a11y-scan]');
   const { violations } = await builder.analyze();
-  // Match the element's own aria-label: axe cuts long attribute values in
-  // `html` ("Open Identity and Ac..."), so matching that snippet misses.
-  const chrome = async (target: unknown[]) =>
-    CHROME_NAME_MISMATCH.test(
-      (await app.page.evaluate((sel) => document.querySelector(sel)?.getAttribute('aria-label') ?? '', String(target.at(-1)))),
-    );
-  const serious = [];
-  for (const v of violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')) {
-    const nodes = [];
-    for (const n of v.nodes) if (v.id !== 'label-content-name-mismatch' || !(await chrome(n.target))) nodes.push(n);
-    serious.push({ ...v, nodes });
-  }
-  const bad = serious
-    .filter((v) => v.nodes.length > 0)
+  // The app chrome (bell, profile, the Duo rail's tabs) has no exception:
+  // a count or initials on a button's face are part of its name (WCAG 2.5.3).
+  const bad = violations
+    .filter((v) => v.impact === 'critical' || v.impact === 'serious')
     .map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(' ') + ' ' + n.html.slice(0, 160)).join(' | ')}`);
   // Soft: one run lists every screen that fails.
   expect.soft(bad, `axe on "${where}"`).toEqual([]);
@@ -95,10 +77,26 @@ test.describe('axe: no critical or serious violations', () => {
 
   test('Home with the profile initials showing', async ({ app }) => {
     // The profile button shows the initials for a second on Home (then
-    // flips to the photo) and again on hover: the known chrome exception
-    // must hold in both faces, not only once the photo is up.
+    // flips to the photo) and again on hover: its name holds the initials,
+    // so both faces pass.
     await app.page.getByRole('button', { name: app.t('Open Identity and Account Hub') }).hover();
     await scan(app, 'Home (initials)');
+  });
+
+  test('Quotes, with an accepted quote on its coloured card', async ({ app }) => {
+    // The accepted card is the quote tint (#9A8878): its client and date line
+    // were black at 70% opacity, 4.2:1.
+    await app.page.getByRole('button', { name: new RegExp(app.t('ACTIVE QUOTES'), 'i') }).first().click();
+    await expect(app.page.getByRole('heading', { name: app.t('All quotes') })).toBeVisible();
+    await scan(app, 'Quotes');
+  });
+
+  test('an availability check and a personal gig', async ({ app }) => {
+    for (const title of [SEED.tentativeGig, SEED.personal]) {
+      await openEvent(app, title);
+      await scan(app, title, eventDetail(app));
+      await app.page.keyboard.press('Escape');
+    }
   });
 
   test('Calendar', async ({ app }) => {
@@ -177,6 +175,21 @@ test.describe('axe: Duo Laptop pose', () => {
       await app.page.keyboard.press('Escape');
       await expect(app.page.locator('[data-a11y-scan]')).toHaveCount(0);
     }
+  });
+
+  test('@laptop a notification\'s detail (its pane scrolls)', async ({ app }) => {
+    // The detail scrolls on its own on the Deck: a keyboard user must be able
+    // to reach it (axe scrollable-region-focusable, seen on the Duo).
+    await app.page.getByRole('button', { name: /^Notifications/ }).filter({ visible: true }).first().click();
+    await app.page.getByRole('button', { name: new RegExp(SEED.tentativeGig) }).first().click();
+    const detail = app.page.locator('.bw-pane-detail').filter({ hasText: SEED.tentativeGig }).last();
+    await expect(detail).toBeVisible();
+    await scan(app, `Notification: ${SEED.tentativeGig}`, detail);
+  });
+
+  test('@laptop an availability check', async ({ app }) => {
+    await openEvent(app, SEED.tentativeGig);
+    await scan(app, SEED.tentativeGig);
   });
 
   test('@laptop Calendar month grid', async ({ app }) => {

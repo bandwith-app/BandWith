@@ -963,7 +963,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         <div className="flex items-end justify-between gap-2">
           <div className="flex flex-col gap-1 min-w-0">
             <span className="bw-label-md truncate">{venue}</span>
-            {address && <span className="bw-label-xs truncate opacity-70">{address}</span>}
+            {address && <span className="bw-label-xs truncate opacity-85">{address}</span>}
           </div>
           <span className="bw-label-xs h-5 px-2 rounded-[4px] inline-flex items-center whitespace-nowrap shrink-0" style={{ backgroundColor: chipBg }}>
             {dateLabel}

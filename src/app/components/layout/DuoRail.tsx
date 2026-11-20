@@ -16,6 +16,7 @@ import { useRailLayout } from '@/lib/deviceRegions';
 import { usePosture } from '@/lib/posture';
 import { KEYBOARD_EVENT, isKeyboardOpen } from '@/lib/keyboardInsets';
 import { useT } from '@/lib/i18n';
+import { badgeText, unreadName, withVisibleText } from '@/lib/a11yNames';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * iPhone Duo side rail, 1:1 with Figma "11 · Foldables":
@@ -68,13 +69,16 @@ const Cell: React.FC<{
   keepFocus?: boolean;
   tone?: 'destructive';
   children: React.ReactNode;
-}> = ({ label, onClick, dot = false, active = true, badgeCount, buttonRef, expanded, keepFocus, tone, children }) => (
+}> = ({ label, onClick, dot = false, active = true, badgeCount, buttonRef, expanded, keepFocus, tone, children }) => {
+  const t = useT();
+  return (
   <button
     ref={buttonRef}
     type="button"
     onClick={onClick}
     onMouseDown={keepFocus ? (e) => e.preventDefault() : undefined}
-    aria-label={label}
+    // The badge's count is in the name (WCAG 2.5.3); the tooltip stays short.
+    aria-label={unreadName(t, label, badgeCount)}
     title={label}
     aria-current={dot && active ? 'page' : undefined}
     aria-expanded={expanded}
@@ -89,13 +93,14 @@ const Cell: React.FC<{
       {children}
       {badgeCount !== undefined && badgeCount > 0 && (
         <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-destructive-solid text-white text-[9px] font-bold flex items-center justify-center leading-none pointer-events-none">
-          {badgeCount > 99 ? '99+' : badgeCount}
+          {badgeText(badgeCount)}
         </span>
       )}
     </span>
     <span aria-hidden="true" className="w-1 h-1 rounded-full bg-accent transition-opacity duration-150" style={{ opacity: dot ? 1 : 0 }} />
   </button>
-);
+  );
+};
 
 const motionFrom = (edge: 'left' | 'right') => {
   const off = edge === 'left' ? -96 : 96;
@@ -438,7 +443,8 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
               type="button"
               onClick={() => { haptic.tap(); onProfile(); }}
               disabled={profileLocked}
-              aria-label={isProfileOpen ? t('Close profile') : t('Open profile')}
+              // Initials on its face (no photo) are part of its name.
+              aria-label={withVisibleText(profile?.avatar_url ? null : initials, isProfileOpen ? t('Close profile') : t('Open profile'))}
               aria-expanded={isProfileOpen}
               className={cn(
                 'w-10 h-10 shrink-0 rounded-full overflow-hidden bg-white border-[1.5px] border-border text-black bw-h3 flex items-center justify-center cursor-pointer',

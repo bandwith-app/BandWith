@@ -65,7 +65,7 @@ export const LiveQuotePreview: React.FC<LiveQuotePreviewProps> = ({
   const t = useT();
   const place = [venue?.trim(), city?.trim()].filter(Boolean).join(', ');
   const chip: React.CSSProperties = { backgroundColor: 'var(--accent-quote-fg)', color: 'var(--accent-quote)' };
-  const tint: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 14%, transparent)' };
+  const tint: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, currentColor 8%, transparent)' };
   return (
     <div className="flex flex-col gap-3 px-4 pt-4 pb-6" aria-live="polite">
       <p className="bw-label-sm text-muted-foreground">{t('Live preview')}</p>
@@ -97,7 +97,7 @@ export const LiveQuotePreview: React.FC<LiveQuotePreviewProps> = ({
           </p>
           <p className="[overflow-wrap:anywhere]">
             {lineup}
-            {lineupNames.length > 0 && <span className="opacity-70"> · {lineupNames.join(', ')}</span>}
+            {lineupNames.length > 0 && <span className="opacity-85"> · {lineupNames.join(', ')}</span>}
           </p>
         </div>
       </section>

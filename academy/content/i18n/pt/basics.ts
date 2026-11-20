@@ -620,7 +620,7 @@ const basics: AreaText = {
             "Alterne entre **Tudo** e **Não lidas**. Os itens não lidos têm um ponto vermelho.",
             "Toque num item. Um convite para show abre primeiro a página de detalhes; a maioria dos outros itens abre direto a tela correspondente (uma conversa, um evento, uma enquete, um orçamento).",
             "Deslize um item para a esquerda e toque em **Excluir** para removê-lo.",
-            "Toque em **Marcar lidas** para marcar tudo como lido: os pontos vermelhos e a contagem de **Não lidas** somem na hora. Ou toque em **Limpar** e depois **Limpar tudo** para esvaziar a lista.",
+            "Toque em **Marcar todas lidas** para marcar tudo como lido: os pontos vermelhos e a contagem de **Não lidas** somem na hora. Ou toque em **Limpar** e depois **Limpar tudo** para esvaziar a lista.",
           ],
         },
         { type: "p", text: "A página de detalhes de um convite para show mostra **Detalhes do evento**: data, **Horários** (montagem, passagem de som, início), **Local**, o seu **Cachê atribuído** e qualquer **Conflito de agenda** com o seu calendário. Toque em **Aceitar evento** ou **Recusar**, ou em **Adicionar ao Google Agenda**. As enquetes de ensaio têm **Votar nas datas**." },

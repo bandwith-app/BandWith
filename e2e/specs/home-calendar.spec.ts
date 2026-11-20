@@ -25,10 +25,10 @@ for (const role of ['admin', 'member'] as const) {
     });
 
     test('@smoke Mark all as read clears the Unread count and the red dots', async ({ app }) => {
-      await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')} \\(`) }).filter({ visible: true }).first().click();
+      await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).filter({ visible: true }).first().click();
       await expect(app.page.getByRole('heading', { name: app.t('Inbox'), exact: true })).toBeVisible();
       await app.settle();
-      const markAll = app.page.getByRole('button', { name: app.t('Mark all as read'), exact: true });
+      const markAll = app.page.getByRole('button', { name: app.t('Mark all read'), exact: true });
       const unreadFilter = app.page.getByRole('button', { name: new RegExp(`^${app.t('Unread')}`) });
       const dots = app.page.getByLabel(app.t('Unread'), { exact: true }).filter({ visible: true });
       await expect(unreadFilter).toHaveAccessibleName(new RegExp(`^${app.t('Unread')}\\s*[1-9]`));

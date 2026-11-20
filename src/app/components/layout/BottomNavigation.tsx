@@ -22,6 +22,7 @@ import { springs } from '@/styles/motion';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { DuoRail } from './DuoRail';
 import { useT } from '@/lib/i18n';
+import { badgeText, unreadName } from '@/lib/a11yNames';
 
 interface BottomNavigationProps {
   activeTab: TabName;
@@ -99,7 +100,7 @@ const NavTab: React.FC<{
   const badge =
     badgeCount !== undefined && badgeCount > 0 ? (
       <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-destructive-solid text-white text-[9px] font-bold flex items-center justify-center leading-none pointer-events-none ring-2 ring-background">
-        {badgeCount > 99 ? '99+' : badgeCount}
+        {badgeText(badgeCount)}
       </span>
     ) : null;
   if (labelled) {
@@ -109,18 +110,20 @@ const NavTab: React.FC<{
         data-tab-key={tabKey}
         onClick={onClick}
         aria-current={isActive ? 'page' : undefined}
-        aria-label={badgeCount ? t('{name}, {count} unread', { name: label, count: badgeCount }) : undefined}
+        aria-label={badgeCount ? unreadName(t, label, badgeCount) : undefined}
         className={cn(
           'relative z-10 outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 h-12 px-[18px] rounded-full flex items-center gap-2 cursor-pointer transition-colors duration-150',
           'bw-label-sm tracking-[0.06em] whitespace-nowrap',
           isActive ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground/[0.06]',
         )}
       >
-        <span className="relative w-5 h-5 flex items-center justify-center">
+        {/* The label comes first in the DOM (the icon is drawn first): the
+            visible text reads "Chat 2" as the name does (WCAG 2.5.3). */}
+        {label}
+        <span className="relative order-first w-5 h-5 flex items-center justify-center">
           <Icon color="currentColor" size={20} strokeWidth={isActive ? 2.2 : 2} />
           {badge}
         </span>
-        {label}
       </button>
     );
   }
@@ -129,7 +132,7 @@ const NavTab: React.FC<{
       data-tab-key={tabKey}
       onClick={onClick}
       // The unread count is in the name: the badge alone isn't read out.
-      aria-label={badgeCount ? t('{name}, {count} unread', { name: label, count: badgeCount }) : label}
+      aria-label={unreadName(t, label, badgeCount)}
       aria-current={isActive ? 'page' : undefined}
       className={cn(
         'relative z-10 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full shrink-0 w-11 h-11 flex flex-col items-center justify-center transition-colors duration-150 cursor-pointer',

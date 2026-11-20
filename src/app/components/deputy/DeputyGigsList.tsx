@@ -189,7 +189,7 @@ export const DeputyGigCard: React.FC<{
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 bw-body-sm">
             {gig.changes.map((k) => (
               <React.Fragment key={k}>
-                <dt className="opacity-70">{k === 'end' ? `${label[k]} →` : label[k]}</dt>
+                <dt className="opacity-85">{k === 'end' ? `${label[k]} →` : label[k]}</dt>
                 <dd className="min-w-0 [overflow-wrap:anywhere]">
                   {beforeValue(k) && <s className="opacity-60 mr-2">{beforeValue(k)}</s>}
                   <strong>{nowValue[k] || t('removed')}</strong>

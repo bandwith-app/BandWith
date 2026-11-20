@@ -122,13 +122,13 @@ const GigPoster: React.FC<{ gig: DeskGig | null; isAdmin: boolean; loading?: boo
         <h1 className="bw-display-lg line-clamp-2 [overflow-wrap:anywhere]">{gig.title}</h1>
         <p className="bw-h3">
           {dayLabel(gig.date)}
-          {place && <span className="opacity-70"> · {place}</span>}
+          {place && <span className="opacity-85"> · {place}</span>}
         </p>
         {times.length > 0 && (
           <dl className="grid gap-3" style={{ gridTemplateColumns: `repeat(${times.length}, minmax(0, 1fr))` }}>
             {times.map((time) => (
               <div key={time.label} className="flex flex-col gap-1">
-                <dt className="bw-label-sm uppercase opacity-70">{time.label}</dt>
+                <dt className="bw-label-sm uppercase opacity-85">{time.label}</dt>
                 <dd className="bw-value-md">{time.value}</dd>
               </div>
             ))}
@@ -140,7 +140,7 @@ const GigPoster: React.FC<{ gig: DeskGig | null; isAdmin: boolean; loading?: boo
           </p>
           {fee && (
             <p className="flex flex-col items-end shrink-0">
-              <span className="bw-label-sm uppercase opacity-70">{t('Fee')}</span>
+              <span className="bw-label-sm uppercase opacity-85">{t('Fee')}</span>
               <span className="bw-value-md">{fee}</span>
             </p>
           )}

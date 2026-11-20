@@ -620,7 +620,7 @@ const basics: AreaText = {
             "Passa da **Tutto** a **Non lette**. Le notifiche non lette hanno un pallino rosso.",
             "Tocca una notifica. Un invito a un gig apre prima la sua pagina di dettaglio; quasi tutte le altre aprono direttamente la loro schermata (una chat, un evento, un sondaggio, un preventivo).",
             "Scorri una notifica verso sinistra e tocca **Elimina** per rimuoverla.",
-            "Tocca **Segna lette** per segnare tutto come letto: i pallini rossi e il conteggio **Non lette** spariscono subito. Oppure tocca **Cancella** e poi **Svuota** per vuotare l’elenco.",
+            "Tocca **Segna tutte lette** per segnare tutto come letto: i pallini rossi e il conteggio **Non lette** spariscono subito. Oppure tocca **Cancella** e poi **Svuota** per vuotare l’elenco.",
           ],
         },
         { type: "p", text: "La pagina di dettaglio di un invito a un gig mostra i **Dettagli evento**: data, **Orari** (carico, soundcheck, inizio), **Locale**, il tuo **Compenso assegnato** e un eventuale **Conflitto di calendario** con i tuoi impegni. Tocca **Accetta evento** o **Rifiuta**, oppure **Aggiungi a Google Calendar**. I sondaggi sulle prove hanno **Vota le date**." },

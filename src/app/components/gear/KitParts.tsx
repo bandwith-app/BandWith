@@ -89,7 +89,7 @@ export const KitReadyMeter: React.FC<{ items: InventoryItem[]; ready: number; to
           ))}
         </span>
       )}
-      <span className={cn('bw-label-xs shrink-0', inverse ? 'opacity-70' : 'text-muted-foreground')}>{t('{ready}/{total} ready', { ready, total })}</span>
+      <span className={cn('bw-label-xs shrink-0', inverse ? 'opacity-85' : 'text-muted-foreground')}>{t('{ready}/{total} ready', { ready, total })}</span>
     </span>
   );
 };
@@ -170,11 +170,11 @@ export const KitTile: React.FC<{ name: string; summary: KitSummary; selected?: b
           <Box className={cn('w-5 h-5', selected && 'text-accent')} />
           <span className="flex items-center gap-2">
             <RepairTag count={summary.repair} />
-            <span className="bw-label-xs opacity-70">{t('Kit')}</span>
+            <span className="bw-label-xs opacity-85">{t('Kit')}</span>
           </span>
         </span>
         <span className="bw-body-lg font-bold leading-tight [overflow-wrap:anywhere]">{name}</span>
-        <span className="bw-label-xs opacity-70">{kitCountsLine(summary)}</span>
+        <span className="bw-label-xs opacity-85">{kitCountsLine(summary)}</span>
         <span className="flex items-center gap-1.5 bw-body-sm min-w-0">
           <Calendar className="w-4 h-4 shrink-0" />
           <span className="truncate">{summary.nextGig ? kitGigLine(summary.nextGig, false) : t('Not booked')}</span>

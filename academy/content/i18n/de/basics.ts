@@ -620,7 +620,7 @@ const basics: AreaText = {
             "Wechsle zwischen **Alle** und **Ungelesen**. Ungelesene Einträge haben einen roten Punkt.",
             "Tippe auf einen Eintrag. Eine Gig-Einladung öffnet zuerst ihre Detailseite; die meisten anderen Einträge öffnen direkt ihren Bildschirm (einen Chat, einen Termin, eine Umfrage, ein Angebot).",
             "Wische einen Eintrag nach links und tippe auf **Löschen**, um ihn zu entfernen.",
-            "Tippe auf **Gelesen**, um alles als gelesen zu markieren: Die roten Punkte und der Zähler bei **Ungelesen** verschwinden sofort. Oder tippe auf **Löschen** und dann **Alle löschen**, um die Liste zu leeren.",
+            "Tippe auf **Alle gelesen**, um alles als gelesen zu markieren: Die roten Punkte und der Zähler bei **Ungelesen** verschwinden sofort. Oder tippe auf **Löschen** und dann **Alle löschen**, um die Liste zu leeren.",
           ],
         },
         { type: "p", text: "Die Detailseite einer Gig-Einladung zeigt **Eventdetails**: Datum, **Zeiten** (Load-in, Soundcheck, Beginn), **Location**, deine **Zugeteilte Gage** und einen eventuellen **Terminkonflikt** mit deinem Kalender. Tippe auf **Event annehmen** oder **Ablehnen** oder auf **Zu Google Kalender hinzufügen**. Probenumfragen haben **Termine abstimmen**." },

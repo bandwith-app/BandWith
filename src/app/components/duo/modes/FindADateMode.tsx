@@ -156,7 +156,7 @@ export const FindADateMode: React.FC<FindADateModeProps> = ({
                     >
                       <span className="block bw-label-xs uppercase">{dayLabel(o.proposed_date, { weekday: 'short' })}</span>
                       <span className="block bw-num">{dayLabel(o.proposed_date, { day: 'numeric' })}</span>
-                      <span className="block bw-label-xs opacity-70">{hhmm(o.start_time)}</span>
+                      <span className="block bw-label-xs opacity-85">{hhmm(o.start_time)}</span>
                       {isBest && <span className="sr-only">{t('Best day')}</span>}
                     </th>
                   );

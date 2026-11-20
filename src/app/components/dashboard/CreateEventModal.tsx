@@ -1445,7 +1445,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               style={isSelected ? { backgroundColor: activeAccentColor, color: activeAccentFg } : undefined}
             >
               <span className="bw-label-md">{eventTypeLabels[opt.value]?.label ?? opt.label}</span>
-              <span className={cn('bw-body-sm', isSelected ? 'opacity-70' : 'text-muted-foreground')}>
+              <span className={cn('bw-body-sm', isSelected ? 'opacity-85' : 'text-muted-foreground')}>
                 {eventTypeLabels[opt.value]?.subtitle ?? opt.subtitle}
               </span>
             </button>
@@ -2173,7 +2173,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           <Tag variant="solid">{modalCategory === 'quote' ? t('Quote') : t('Gig')}</Tag>
           {eventType !== modalCategory && <span className="bw-label-xs">{eventType ? rawWord(eventType) : t('Event')}</span>}
-          <span className="bw-label-xs opacity-70">{rawWord(setting)}</span>
+          <span className="bw-label-xs opacity-85">{rawWord(setting)}</span>
         </div>
         <h3 className="bw-display-lg [overflow-wrap:anywhere]">{getEffectiveTitle()}</h3>
 

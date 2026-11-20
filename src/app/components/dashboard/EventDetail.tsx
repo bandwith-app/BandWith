@@ -1179,7 +1179,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
   const heroChipStyle: React.CSSProperties = { backgroundColor: theme.accentFg, color: theme.accentColor };
   const heroTintStyle: React.CSSProperties = {
-    backgroundColor: 'color-mix(in srgb, currentColor 14%, transparent)',
+    backgroundColor: 'color-mix(in srgb, currentColor 8%, transparent)',
   };
 
   // ─── Client & notes (gig / draft): Client, Phone, Dress code, then notes ───

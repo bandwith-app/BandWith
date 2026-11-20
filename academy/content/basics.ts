@@ -617,7 +617,7 @@ const basics: AreaModule = {
       summary: "Read, answer, mark and clear your notifications.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
-      keywords: ["notifications", "bell", "inbox", "unread", "mark read", "clear", "activity"],
+      keywords: ["notifications", "bell", "inbox", "unread", "mark all read", "clear", "activity"],
       related: ["push-notifications", "notification-settings", "several-bands", "answer-a-gig-invitation"],
       body: [
         {
@@ -627,7 +627,7 @@ const basics: AreaModule = {
             "Switch between **All** and **Unread**. Unread items have a red dot.",
             "Tap an item. A gig invitation opens its detail page first; most other items open their screen directly (a chat, an event, a poll, a quote).",
             "Swipe an item to the left and tap **Delete** to remove it.",
-            "Tap **Mark read** to mark everything as read: the red dots and the **Unread** count clear at once. Or tap **Clear**, then **Clear all**, to empty the list.",
+            "Tap **Mark all read** to mark everything as read: the red dots and the **Unread** count clear at once. Or tap **Clear**, then **Clear all**, to empty the list.",
           ],
         },
         { type: "p", text: "A gig invitation's detail page shows **Event specifications**: date, **Timings** (load-in, soundcheck, start), **Venue**, your **Allocated fee** and any **Schedule conflict** with your calendar. Tap **Accept event** or **Decline**, or **Add to Google Calendar**. Rehearsal polls have **Vote on dates**." },
