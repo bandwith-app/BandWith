@@ -1135,7 +1135,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus", "Probe", "Live-Modus", "Probe live"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1348,6 +1348,70 @@ const music: AreaText = {
             "Die Handys bleiben auf etwa 20–40 ms genau im Takt: richtig zum Einzählen und als Tempo-Referenz, nicht als In-Ear-Klick.",
             "Der Klick der Band braucht Internet: Er wird nicht per Bluetooth gesendet.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Das Audio der Songs von der Regie abspielen",
+      summary: "Der Laptop oder das Tablet eines Admins, per Kabel am Mischpult, spielt die Aufnahme jedes Songs ab, und die Bildschirme der Band springen zum laufenden Song.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["regie", "playback", "backing track", "audio", "mischpult", "wiedergabe", "kabel", "usb-c", "kopfhörerbuchse", "adapter", "pa"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "Der Laptop oder das Tablet eines Admins, am Mischpult angeschlossen, ist die Regie: das einzige Gerät, das das Audio der Songs abspielt. Spielt es einen Song, springen alle Bildschirme im Bühnenmodus zu diesem Song, auch außerhalb der Reihenfolge der Setlist. Die Handys der Mitglieder spielen nie Ton ab.",
+        },
+        {
+          type: "steps",
+          title: "Vor dem Gig",
+          items: [
+            "Gib jedem Song eine **Aufnahme** (eine Audiodatei) im Songformular. Songs ohne Aufnahme bewegen die Band trotzdem, aber es läuft nichts.",
+            "Schließe das Gerät ans Mischpult an (siehe die Kabeltipps unten) und schalte Nicht stören ein, damit keine Mitteilungen über die PA kommen.",
+            "Öffne den Gig online, öffne den Bühnenmodus und tippe auf **Regie: Audio von hier**. Das Gerät lädt das Audio des Abends herunter.",
+            "Warte, bis **Audio bereit** alle Songs zählt (zum Beispiel 10/10): ab dann spielt es ohne Internet. Fehlen noch Songs, öffne den Gig noch einmal online.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Auf der Bühne",
+          items: [
+            "Tippe bei einem Song auf ▶, um ihn abzuspielen. Der Bildschirm aller springt zu diesem Song und zeigt **Läuft gerade** mit der Zeit.",
+            "Der Player oben hat **Abspielen** / **Pause**; am Ende eines Songs spielt dieselbe Taste den nächsten. **Stopp** muss gedrückt gehalten werden, damit ein versehentlicher Tipp die Musik nicht abbricht.",
+            "Für einen Song, der nicht in der Setlist ist, tippe auf + (**Song außerhalb der Setlist spielen**) und wähle ihn im Repertoire. Er kommt direkt nach dem aktuellen Song in die Setlist, für alle.",
+            "Zum Übergeben tippt der andere Admin auf seinem Gerät auf **Regie: Audio von hier** und dann auf **Übernehmen**: dein Audio stoppt. **Deaktivieren** beendet die Regie auf deinem Gerät.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Wer", "Was angezeigt wird"],
+          rows: [
+            ["Die Regie (ein Admin)", "Den Player, ▶ bei jedem Song mit Audio, wohin der Ton geht (**Ausgang**) und wie viele Songs bereit sind."],
+            ["Die anderen Admins und die Mitglieder", "Den laufenden Song, mit **Läuft gerade** oder **Pausiert** und der Zeit. Bist du bei einem anderen Song, bringt dich **Los** dorthin."],
+            ["Alle, wenn die Regie geht", "Der Streifen verschwindet. Der Bühnenmodus funktioniert wie vorher."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Das Kabel zum Mischpult",
+          items: [
+            "Laptops, iPads und Handys mit Kopfhörerbuchse: ein Miniklinkenkabel (3,5 mm) in den Eingang des Mischpults, zum Beispiel 3,5 mm auf zwei 6,3-mm-Klinken oder auf zwei Cinch.",
+            "iPads und iPhones ohne Buchse (USB-C oder Lightning): Apples Adapter von USB-C (oder Lightning) auf 3,5 mm, dann dasselbe Kabel. Zum gleichzeitigen Laden nimm einen Adapter mit USB-C-Ladeanschluss (PD).",
+            "Mischpulte mit USB-Eingang (viele digitale Pulte): ein USB-C-Kabel bringt den Ton direkt hinein. Dasselbe gilt für ein class-compliant USB-Audiointerface.",
+            "Nie Bluetooth: der Ton kommt verspätet und kann abbrechen. Die App warnt dich, wenn der Ton über Bluetooth oder aus dem Lautsprecher des Geräts kommt.",
+            "Stelle die Lautstärke des Geräts fast auf das Maximum und regle den Pegel am Mischpult.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "Löst sich das Kabel, kann der Ton stoppen oder auf den Lautsprecher des Geräts wechseln. Die App zeigt sofort eine Warnung: steck das Kabel wieder ein.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Auf einem Laptop im Browser speichert der Browser das Audio: nutze immer denselben Browser und lösche seine Daten nicht vor dem Gig. Manche Links (zum Beispiel Google Drive) lassen sich nur streamen und brauchen daher Internet." }],
         },
       ],
     },

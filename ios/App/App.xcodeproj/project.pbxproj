@@ -20,6 +20,7 @@
 		A1B2C3D42F00000100000003 /* BandWithBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000004 /* BandWithBridgeViewController.swift */; };
 		A1B2C3D42F00000100000011 /* StageBlePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000012 /* StageBlePlugin.swift */; };
 		A1B2C3D42F00000100000021 /* IrealForumPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000022 /* IrealForumPlugin.swift */; };
+		A1B2C3D42F00000100000031 /* AudioOutputPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000032 /* AudioOutputPlugin.swift */; };
 		D015C9B9264CCA3A63BDDD0E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 014C34C32CF5F88C56C82F28 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
@@ -42,6 +43,7 @@
 		A1B2C3D42F00000100000004 /* BandWithBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandWithBridgeViewController.swift; sourceTree = "<group>"; };
 		A1B2C3D42F00000100000012 /* StageBlePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageBlePlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D42F00000100000022 /* IrealForumPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrealForumPlugin.swift; sourceTree = "<group>"; };
+		A1B2C3D42F00000100000032 /* AudioOutputPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputPlugin.swift; sourceTree = "<group>"; };
 		A9ECA7AF39A6C2E5AEA26419 /* it */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AA7CBBD5D1C48DE03BEC30D2 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -96,6 +98,7 @@
 				A1B2C3D42F00000100000004 /* BandWithBridgeViewController.swift */,
 				A1B2C3D42F00000100000012 /* StageBlePlugin.swift */,
 				A1B2C3D42F00000100000022 /* IrealForumPlugin.swift */,
+				A1B2C3D42F00000100000032 /* AudioOutputPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -245,6 +248,7 @@
 				A1B2C3D42F00000100000003 /* BandWithBridgeViewController.swift in Sources */,
 				A1B2C3D42F00000100000011 /* StageBlePlugin.swift in Sources */,
 				A1B2C3D42F00000100000021 /* IrealForumPlugin.swift in Sources */,
+				A1B2C3D42F00000100000031 /* AudioOutputPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

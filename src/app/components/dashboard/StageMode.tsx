@@ -32,6 +32,8 @@ import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './Rehear
 import { NoteSheetsHost, RehearsalNotesBar, marksToWrite, useNoteSheets, type LiveNotes } from './RehearsalNotes';
 import { EarlierNotesSheet } from './FromLastTime';
 import { openCountBySong } from '@/lib/toPractise';
+import type { StageRegia } from '@/app/components/event/useStageRegia';
+import { NowPlayingStrip, RegiaBar, RegiaExtraSheet, RegiaRowPlay } from './StageRegia';
 
 export interface StageStep {
   label: string;
@@ -57,6 +59,8 @@ export interface StageSong {
   lyrics?: string;
   /** songs.chord_chart (iReal Pro import, src/lib/ireal.ts). */
   chart?: SongChart;
+  /** songs.audio_url: what the Regia plays (stage manager mode). */
+  audio?: string;
 }
 
 /**
@@ -115,6 +119,8 @@ interface StageModeProps {
   session?: RehearsalSessionControls;
   /** Rehearsal notes (plan A2): Mark, the notes, writing them at the pause. */
   notes?: LiveNotes;
+  /** Stage manager mode (useStageRegia): the admin device that plays the audio. */
+  regia?: StageRegia;
   /**
    * Song view open (controlled, optional): shared with the Laptop pose
    * (FloorWedgeMode) so folding keeps the lyrics up.
@@ -156,6 +162,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   live,
   session: sessionProp,
   notes: notesProp,
+  regia,
   songOpen,
   onSongOpenChange,
   onClose,
@@ -179,6 +186,10 @@ export const StageMode: React.FC<StageModeProps> = ({
   };
   // Struck off for tonight is a gig-night thing: not on rehearsals.
   const canStrike = !rehearsal && !!live?.canStrike;
+  // Stage manager mode: the Regia's ▶ on each song with audio, and a song off the setlist.
+  const regiaOn = !!regia?.on && !!live;
+  const [extraOpen, setExtraOpen] = useState(false);
+  const inSetlist = useMemo(() => new Set(songs.map((s) => s.songId).filter((id): id is string => !!id)), [songs]);
   // The screen stays on while Stage mode is open (lyrics and chords are read
   // hands-free; a locked leader's phone stops the band's sync too).
   useKeepAwake(true);
@@ -461,6 +472,9 @@ export const StageMode: React.FC<StageModeProps> = ({
             split && 'col-start-1 row-start-2',
             // Split across two panes the times keep their own column.
             showLyrics && !split && 'hidden',
+            // The Regia's player needs the room on a short screen (the Duo closed or as a book):
+            // the stage manager runs the songs, the setlist must stay in view under the player.
+            regia?.on && !split && '[@media(max-height:760px)_and_(min-height:521px)]:hidden',
           )}
         >
         <ol
@@ -561,6 +575,26 @@ export const StageMode: React.FC<StageModeProps> = ({
                 })
               }
               className="pb-2"
+            />
+          )}
+          {regia && live && songs.length > 0 && (
+            <RegiaBar
+              regia={regia}
+              songs={songs}
+              currentIndex={Math.max(0, current)}
+              canAddSongs={live.canReorder && !!bandId}
+              onAddSong={() => setExtraOpen(true)}
+              accent={accentColor}
+              className="mb-2"
+            />
+          )}
+          {regia?.nowPlaying && live && (
+            <NowPlayingStrip
+              nowPlaying={regia.nowPlaying}
+              inView={regia.nowPlaying.state.songId === songs[Math.max(0, current)]?.id}
+              onGo={!live.isLeader ? () => live.setFollowing(true) : undefined}
+              accent={accentColor}
+              className="pb-1"
             />
           )}
           <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
@@ -743,7 +777,37 @@ export const StageMode: React.FC<StageModeProps> = ({
                 rowClassName="rounded-none pl-0 border-b border-white/15 last:border-b-0"
                 isCurrent={(_, i) => i === current}
                 rowAction={
-                  earlier
+                  regiaOn
+                    ? (row, i) => {
+                        const struck = isStruck(row.song);
+                        return (
+                          <span className="flex items-center gap-2">
+                            {row.song.audio && !struck && (
+                              <RegiaRowPlay
+                                title={row.song.title}
+                                playing={regia!.status === 'playing' && regia!.loadedId === row.song.id}
+                                onPlay={() => void regia!.play(i)}
+                                accent={accentColor}
+                              />
+                            )}
+                            {canStrike && live?.toggleSkip && (
+                              <button
+                                type="button"
+                                aria-pressed={struck}
+                                onClick={() => {
+                                  haptic.tap();
+                                  live.toggleSkip?.(i);
+                                }}
+                                aria-label={struck ? t('Bring back {title}', { title: row.song.title }) : t('Strike {title} off tonight', { title: row.song.title })}
+                                className={cn('w-11 h-11 flex items-center justify-center rounded-full border', struck ? 'border-white/60 text-white' : 'border-white/25 text-white/60')}
+                              >
+                                {struck ? <Plus className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
+                              </button>
+                            )}
+                          </span>
+                        );
+                      }
+                    : earlier
                     ? (row) => {
                         const id = row.song.songId;
                         const count = id ? earlierCounts[id] ?? 0 : 0;
@@ -816,7 +880,8 @@ export const StageMode: React.FC<StageModeProps> = ({
                         {row.song.title}
                         {struck && <span className="sr-only"> · {t('struck off')}</span>}
                       </span>
-                      {meta && !overlay && !struck && (
+                      {/* The Regia's ▶ takes the room of the key and length on a phone. */}
+                      {meta && !overlay && !struck && !regiaOn && (
                         <span className="bw-num text-[14px] font-medium text-white/70 shrink-0" style={MONO}>
                           {meta}
                         </span>
@@ -894,6 +959,19 @@ export const StageMode: React.FC<StageModeProps> = ({
           />
         )}
       </AnimatePresence>
+      {regiaOn && (
+        <RegiaExtraSheet
+          open={extraOpen}
+          bandId={bandId}
+          inSetlist={inSetlist}
+          onPick={(song) => {
+            setExtraOpen(false);
+            void regia!.playExtra(song);
+          }}
+          onClose={() => setExtraOpen(false)}
+          accent={accentColor}
+        />
+      )}
       {earlier && (
         <EarlierNotesSheet
           songId={earlierSong}

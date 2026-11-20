@@ -1006,7 +1006,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación", "ensayo", "modo en vivo", "ensayo en vivo"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1215,6 +1215,70 @@ const music: AreaText = {
             "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen: bien para una cuenta de entrada y como referencia de tempo, no para un clic en los auriculares in-ear.",
             "El clic de la banda necesita internet: no se envía por Bluetooth.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Reproduce el audio de las canciones desde la cabina",
+      summary: "El portátil o la tableta de un admin, conectado a la mesa, reproduce la grabación de cada canción, y las pantallas de la banda pasan a la canción que suena.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["cabina", "pistas", "backing track", "audio", "mesa de mezclas", "reproducción", "cable", "usb-c", "jack de auriculares", "adaptador", "pa"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "El portátil o la tableta de un admin, conectado a la mesa, hace de cabina: es el único dispositivo que reproduce el audio de las canciones. Cuando reproduce una canción, todas las pantallas en el Modo escenario pasan a esa canción, aunque esté fuera del orden del setlist. Los teléfonos de los miembros nunca suenan.",
+        },
+        {
+          type: "steps",
+          title: "Antes del concierto",
+          items: [
+            "Da a cada canción una **Grabación** (un archivo de audio) en la ficha de la canción. Las canciones sin ella mueven igualmente a la banda, pero no suena nada.",
+            "Conecta el dispositivo a la mesa (mira los consejos sobre el cable más abajo) y activa No molestar, para que las notificaciones no salgan por el equipo de sonido.",
+            "Abre el concierto con conexión, abre el Modo escenario y toca **Cabina: audio desde aquí**. El dispositivo descarga el audio de la noche.",
+            "Espera a que **Audio listo** cuente todas las canciones (por ejemplo 10/10): desde ahí suena sin internet. Si aún falta alguna canción, vuelve a abrir el concierto con conexión.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "En el escenario",
+          items: [
+            "Toca ▶ en una canción para reproducirla. La pantalla de todos pasa a esa canción y muestra **Sonando ahora** con el tiempo.",
+            "El reproductor de arriba tiene **Reproducir** / **Pausa**; al terminar una canción, el mismo botón reproduce la siguiente. **Detener** hay que mantenerlo pulsado, así un toque por error no corta la música.",
+            "Para una canción que no está en el setlist, toca + (**Reproducir una canción fuera del setlist**) y elígela del repertorio. Entra en el setlist justo después de la canción actual, para todos.",
+            "Para pasar la cabina, el otro admin toca **Cabina: audio desde aquí** en su dispositivo y luego **Tomarla**: tu audio se detiene. **Desactivar** cierra la cabina en tu dispositivo.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Quién", "Qué ve"],
+          rows: [
+            ["La cabina (un admin)", "El reproductor, ▶ en cada canción con audio, por dónde sale el sonido (**Salida**) y cuántas canciones están listas."],
+            ["Los demás admins y los miembros", "La canción que suena, con **Sonando ahora** o **En pausa** y el tiempo. Si estás en otra canción, **Ir** te lleva a ella."],
+            ["Todos, cuando la cabina sale", "La franja desaparece. El Modo escenario funciona como antes."],
+          ],
+        },
+        {
+          type: "list",
+          title: "El cable a la mesa",
+          items: [
+            "Portátiles, iPad y teléfonos con salida de auriculares: un cable minijack (3,5 mm) a la entrada de la mesa, por ejemplo de 3,5 mm a dos jacks de 6,3 mm o a dos RCA.",
+            "iPad y iPhone sin jack (USB-C o Lightning): el adaptador de Apple de USB-C (o Lightning) a 3,5 mm, y luego el mismo cable. Para cargar a la vez, usa un adaptador con un puerto USB-C de carga (PD).",
+            "Mesas con entrada USB (muchas mesas digitales): un cable USB-C lleva el sonido directamente. Lo mismo vale para una interfaz de audio USB class compliant.",
+            "Nunca Bluetooth: llega con retraso y puede cortarse. La app te avisa cuando el sonido va por Bluetooth o sale por el altavoz del dispositivo.",
+            "Sube el volumen del dispositivo casi al máximo y ajusta el nivel en la mesa.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "Si el cable se suelta, el sonido puede pararse o pasar al altavoz del dispositivo. La app muestra un aviso enseguida: vuelve a conectar el cable.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "En un portátil con el navegador, el audio lo guarda el navegador: usa siempre el mismo navegador y no borres sus datos antes del concierto. Algunos enlaces (por ejemplo Google Drive) solo se pueden escuchar en streaming, así que necesitan internet." }],
         },
       ],
     },
