@@ -1137,7 +1137,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto", "prova", "modalità live", "prova live"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1352,6 +1352,70 @@ const music: AreaText = {
             "I telefoni restano a tempo entro circa 20–40 ms: va bene per un conteggio iniziale e come riferimento di tempo, non come click in cuffia.",
             "Il click della band ha bisogno di internet: non viene inviato via Bluetooth.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Suona l’audio dei brani dalla regia",
+      summary: "Il portatile o il tablet di un admin, collegato al mixer, suona la registrazione di ogni brano, e gli schermi della band passano al brano in play.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["regia", "basi", "base", "audio", "mixer", "riproduzione", "cavo", "usb-c", "jack cuffie", "adattatore", "impianto"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "Il portatile o il tablet di un admin, collegato al mixer, fa da regia: è l’unico dispositivo che suona l’audio dei brani. Quando suona un brano, tutti gli schermi in Modalità palco passano a quel brano, anche fuori dall’ordine della scaletta. I telefoni dei membri non suonano mai.",
+        },
+        {
+          type: "steps",
+          title: "Prima del gig",
+          items: [
+            "Dai a ogni brano una **Registrazione** (un file audio) nella scheda del brano. I brani senza muovono comunque la band, ma non suona niente.",
+            "Collega il dispositivo al mixer (vedi i consigli sul cavo più sotto) e attiva Non disturbare, così le notifiche non escono dall’impianto.",
+            "Apri il gig mentre sei online, apri la Modalità palco e tocca **Regia: audio da qui**. Il dispositivo scarica l’audio della serata.",
+            "Aspetta che **Audio pronto** conti tutti i brani (per esempio 10/10): da lì suona anche senza internet. Se manca ancora qualche brano, riapri il gig online.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Sul palco",
+          items: [
+            "Tocca ▶ su un brano per suonarlo. Lo schermo di tutti passa a quel brano e mostra **In riproduzione** con il tempo.",
+            "Il player in alto ha **Riproduci** / **Pausa**; a fine brano, lo stesso tasto suona il successivo. **Stop** va tenuto premuto, così un tocco per sbaglio non ferma la musica.",
+            "Per un brano che non è in scaletta, tocca + (**Suona un brano fuori scaletta**) e sceglilo dal repertorio. Entra in scaletta subito dopo il brano attuale, per tutti.",
+            "Per passare la regia, l’altro admin tocca **Regia: audio da qui** sul suo dispositivo e poi **Prendila**: il tuo audio si ferma. **Disattiva** chiude la regia sul tuo dispositivo.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Chi", "Cosa vede"],
+          rows: [
+            ["La regia (un admin)", "Il player, ▶ su ogni brano con l’audio, dove esce il suono (**Uscita**) e quanti brani sono pronti."],
+            ["Gli altri admin e i membri", "Il brano in play, con **In riproduzione** o **In pausa** e il tempo. Se sei su un altro brano, **Vai** ti porta lì."],
+            ["Tutti, quando la regia esce", "La striscia sparisce. La Modalità palco funziona come prima."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Il cavo al mixer",
+          items: [
+            "Portatili, iPad e telefoni con l’uscita cuffie: un cavo minijack (3,5 mm) nell’ingresso del mixer, per esempio da 3,5 mm a due jack da 6,3 mm o a due RCA.",
+            "iPad e iPhone senza jack (USB-C o Lightning): l’adattatore Apple da USB-C (o Lightning) a 3,5 mm, poi lo stesso cavo. Per caricare intanto, usa un adattatore con una porta USB-C di ricarica (PD).",
+            "Mixer con ingresso USB (molti mixer digitali): un cavo USB-C porta il suono direttamente dentro. Lo stesso vale per una scheda audio USB class compliant.",
+            "Mai il Bluetooth: arriva in ritardo e può saltare. L’app ti avvisa quando il suono va via Bluetooth o esce dall’altoparlante del dispositivo.",
+            "Alza il volume del dispositivo quasi al massimo e regola il livello sul mixer.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "Se il cavo si stacca, il suono può fermarsi o passare all’altoparlante del dispositivo. L’app mostra subito un avviso: ricollega il cavo.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Su un portatile nel browser, l’audio lo tiene il browser: usa sempre lo stesso browser e non cancellarne i dati prima del gig. Alcuni link (per esempio Google Drive) si possono solo ascoltare in streaming, quindi serve internet." }],
         },
       ],
     },

@@ -1137,7 +1137,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["scène", "jour du concert", "live", "déroulé", "go live", "mode concert", "répétition", "mode live", "répétition live"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1352,6 +1352,70 @@ const music: AreaText = {
             "Les téléphones restent synchronisés à environ 20–40 ms près : parfait pour un décompte et une référence de tempo, pas pour un clic dans les oreillettes.",
             "Le clic du groupe a besoin d’internet : il n’est pas envoyé en Bluetooth.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Lire l’audio des morceaux depuis la régie",
+      summary: "L’ordinateur portable ou la tablette d’un admin, branché à la console, lit l’enregistrement de chaque morceau, et les écrans du groupe passent au morceau en cours.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["régie", "bandes", "backing track", "audio", "console", "lecture", "câble", "usb-c", "prise casque", "adaptateur", "sono"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "L’ordinateur portable ou la tablette d’un admin, branché à la console, fait office de régie : c’est le seul appareil qui lit l’audio des morceaux. Quand il lit un morceau, tous les écrans en mode scène passent à ce morceau, même hors de l’ordre de la setlist. Les téléphones des membres ne jouent jamais de son.",
+        },
+        {
+          type: "steps",
+          title: "Avant le concert",
+          items: [
+            "Donnez à chaque morceau un **Enregistrement** (un fichier audio) dans la fiche du morceau. Les morceaux sans enregistrement font quand même avancer le groupe, mais rien ne joue.",
+            "Branchez l’appareil à la console (voir les conseils sur le câble plus bas) et activez Ne pas déranger, pour que les notifications ne sortent pas dans la sono.",
+            "Ouvrez le concert en ligne, ouvrez le mode scène et touchez **Régie : audio d’ici**. L’appareil télécharge l’audio de la soirée.",
+            "Attendez que **Audio prêt** compte tous les morceaux (par exemple 10/10) : dès lors il joue sans internet. S’il manque encore des morceaux, rouvrez le concert en ligne.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Sur scène",
+          items: [
+            "Touchez ▶ sur un morceau pour le lire. L’écran de chacun passe à ce morceau et affiche **En cours** avec le temps.",
+            "Le lecteur en haut a **Lecture** / **Pause** ; à la fin d’un morceau, le même bouton lit le suivant. **Arrêter** demande un appui long, pour qu’un toucher par erreur ne coupe pas la musique.",
+            "Pour un morceau qui n’est pas dans la setlist, touchez + (**Lire un morceau hors setlist**) et choisissez-le dans le répertoire. Il entre dans la setlist juste après le morceau en cours, pour tous.",
+            "Pour passer la main, l’autre admin touche **Régie : audio d’ici** sur son appareil, puis **La prendre** : votre audio s’arrête. **Désactiver** met fin à la régie sur votre appareil.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Qui", "Ce qui s’affiche"],
+          rows: [
+            ["La régie (un admin)", "Le lecteur, ▶ sur chaque morceau avec audio, où sort le son (**Sortie**) et combien de morceaux sont prêts."],
+            ["Les autres admins et les membres", "Le morceau en cours, avec **En cours** ou **En pause** et le temps. Si vous êtes sur un autre morceau, **Aller** vous y amène."],
+            ["Tout le monde, quand la régie part", "Le bandeau disparaît. Le mode scène fonctionne comme avant."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Le câble vers la console",
+          items: [
+            "Ordinateurs portables, iPad et téléphones avec une prise casque : un câble mini-jack (3,5 mm) vers l’entrée de la console, par exemple de 3,5 mm vers deux jacks 6,35 mm ou deux RCA.",
+            "iPad et iPhone sans prise jack (USB-C ou Lightning) : l’adaptateur Apple USB-C (ou Lightning) vers 3,5 mm, puis le même câble. Pour charger en même temps, prenez un adaptateur avec un port de charge USB-C (PD).",
+            "Consoles avec une entrée USB (beaucoup de consoles numériques) : un seul câble USB-C fait entrer le son directement. Pareil pour une interface audio USB class compliant.",
+            "Jamais en Bluetooth : le son arrive en retard et peut couper. L’app vous prévient quand le son passe en Bluetooth ou sort du haut-parleur de l’appareil.",
+            "Mettez le volume de l’appareil presque au maximum et réglez le niveau sur la console.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "Si le câble se débranche, le son peut s’arrêter ou passer au haut-parleur de l’appareil. L’app affiche aussitôt un avertissement : rebranchez le câble.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Sur un ordinateur portable dans le navigateur, c’est le navigateur qui garde l’audio : utilisez toujours le même et n’effacez pas ses données avant le concert. Certains liens (par exemple Google Drive) ne se lisent qu’en streaming, ils ont donc besoin d’internet." }],
         },
       ],
     },

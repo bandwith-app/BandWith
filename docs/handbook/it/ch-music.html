@@ -710,6 +710,41 @@
     <li>Il click della band richiede internet: non viene trasmesso via Bluetooth.</li>
   </ul>
 
+  <h3 id="art-stage-manager" data-roles="admin,member">Suonare l’audio dei brani dalla regia</h3>
+  <p>Il portatile o il tablet di un admin, collegato al mixer, fa da regia (nell’app in inglese <i>Stage manager</i>): è l’unico dispositivo che suona l’audio dei brani. Quando suona un brano, tutti gli schermi in Stage mode passano a quel brano, anche fuori dall’ordine della scaletta. I telefoni dei membri non suonano mai.</p>
+  <p class="steps-title">Prima del gig</p>
+  <ol class="steps">
+    <li>Ogni brano ha bisogno di una <b class="ui">Recording</b> (un file audio) nella scheda del brano. I brani senza muovono comunque la band, ma non suona niente.</li>
+    <li>Il dispositivo va collegato al mixer (consigli sul cavo più sotto), con Non disturbare attivo, così le notifiche non escono dall’impianto.</li>
+    <li>Si apre il gig online, poi lo Stage mode, e si tocca <b class="ui">Stage manager: play audio here</b>. Il dispositivo scarica l’audio della serata.</li>
+    <li>Quando <b class="ui">Audio ready</b> conta tutti i brani (per esempio 10/10), da lì suona anche senza internet. Se manca ancora qualche brano, si riapre il gig online.</li>
+  </ol>
+  <p class="steps-title">Sul palco</p>
+  <ol class="steps">
+    <li>Toccando ▶ su un brano, parte l’audio. Lo schermo di tutti passa a quel brano e mostra <b class="ui">Now playing</b> con il tempo.</li>
+    <li>Il player in alto ha <b class="ui">Play</b> / <b class="ui">Pause</b>; a fine brano, lo stesso tasto suona il successivo. <b class="ui">Stop</b> va tenuto premuto, così un tocco per sbaglio non ferma la musica.</li>
+    <li>Per un brano fuori scaletta si tocca + (<b class="ui">Play a song not in the setlist</b>) e lo si sceglie dal repertorio. Entra in scaletta subito dopo il brano attuale, per tutti.</li>
+    <li>Per passare la regia, l’altro admin tocca <b class="ui">Stage manager: play audio here</b> sul suo dispositivo e poi <b class="ui">Take over</b>: l’audio del primo si ferma. <b class="ui">Turn off</b> chiude la regia su un dispositivo.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Chi</th><th>Cosa vede</th></tr></thead>
+    <tbody>
+      <tr><td>La regia (un admin)</td><td>Il player, ▶ su ogni brano con l’audio, dove esce il suono (<b class="ui">Output</b>) e quanti brani sono pronti.</td></tr>
+      <tr><td>Gli altri admin e i membri</td><td>Il brano in play, con <b class="ui">Now playing</b> o <b class="ui">Paused</b> e il tempo. Da un altro brano, <b class="ui">Go</b> porta lì.</td></tr>
+      <tr><td>Tutti, quando la regia esce</td><td>La striscia sparisce. Lo Stage mode funziona come prima.</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Il cavo al mixer</p>
+  <ul>
+    <li>Portatili, iPad e telefoni con l’uscita cuffie: un cavo minijack (3,5 mm) nell’ingresso del mixer, per esempio da 3,5 mm a due jack da 6,3 mm o a due RCA.</li>
+    <li>iPad e iPhone senza jack (USB-C o Lightning): l’adattatore Apple da USB-C (o Lightning) a 3,5 mm, poi lo stesso cavo. Per caricare intanto, un adattatore con una porta USB-C di ricarica (PD).</li>
+    <li>Mixer con ingresso USB (molti mixer digitali): un cavo USB-C porta il suono direttamente dentro. Lo stesso vale per una scheda audio USB class compliant.</li>
+    <li>Mai il Bluetooth: arriva in ritardo e può saltare. L’app avvisa quando il suono va via Bluetooth o esce dall’altoparlante del dispositivo.</li>
+    <li>Volume del dispositivo quasi al massimo; il livello si regola sul mixer.</li>
+  </ul>
+  <aside class="note warning">Se il cavo si stacca, il suono può fermarsi o passare all’altoparlante del dispositivo. L’app mostra subito un avviso: va ricollegato il cavo.</aside>
+  <div class="devnote" data-devices="web">Su un portatile nel browser, l’audio lo tiene il browser: va usato sempre lo stesso browser, senza cancellarne i dati prima del gig. Alcuni link (per esempio Google Drive) si possono solo ascoltare in streaming, quindi serve internet.</div>
+
   <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode senza internet (Bluetooth)</h3>
   <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente e l'ordine. I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet.</p>
   <p class="steps-title">Preparazione prima del gig</p>

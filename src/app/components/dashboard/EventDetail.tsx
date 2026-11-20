@@ -49,8 +49,9 @@ import { listDeputyRequests, type DeputyRequest } from '@/lib/services/deputies'
 import { KeyValueRow, LINK_CLASS, MemberRow, SectionTitle, type ResolvedMember } from '@/app/components/event/parts';
 import { useEventMembers } from '@/app/components/event/useEventMembers';
 import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh';
-import { useStageLive, SETLIST_ORDER_SAVED, type StageSessionBridge } from '@/app/components/event/useStageLive';
+import { useStageLive, SETLIST_ORDER_SAVED, type StageRegiaBridge, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
+import { useStageRegia } from '@/app/components/event/useStageRegia';
 import { RehearsalSessionCard } from './RehearsalSession';
 import { NoteSheetsHost, RehearsalNotesSection, useNoteSheets, type LiveNotes } from './RehearsalNotes';
 import { useRehearsalNotes } from '@/app/components/event/useRehearsalNotes';
@@ -387,7 +388,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Setlist state
   const laptopPose = useLaptopPose();
   const [setlistSongs, setSetlistSongs] = useState<
-    { id?: string; songId?: string; setNumber?: number; title: string; artist?: string; duration?: string; key?: string; lyrics?: string; chart?: SongChart }[]
+    { id?: string; songId?: string; setNumber?: number; title: string; artist?: string; duration?: string; key?: string; lyrics?: string; chart?: SongChart; audio?: string }[]
   >([]);
   const [setlistLoading, setSetlistLoading] = useState(false);
   /** The setlist couldn't be fetched and no copy is kept on the device (offline). */
@@ -530,7 +531,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           .from('setlist_songs')
           // songs has duration_seconds, not duration: asking for a missing
           // column makes PostgREST fail the whole query.
-          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart)')
+          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart, audio_url)')
           .eq('setlist_id', event.setlistId)
           .order('set_number', { ascending: true })
           .order('position', { ascending: true });
@@ -564,6 +565,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               bpm: typeof s.song?.bpm === 'number' && s.song.bpm > 0 ? s.song.bpm : undefined,
               lyrics: s.song?.lyrics || undefined,
               chart: asSongChart(s.song?.chord_chart) || undefined,
+              // The Regia (stage manager mode) plays it; nobody else loads it.
+              audio: typeof s.song?.audio_url === 'string' && s.song.audio_url ? s.song.audio_url : undefined,
             }));
           setSetlistSongs(songs);
           writeCachedSetlist(setlistId, songs);
@@ -699,6 +702,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // summary, one per occurrence. Flag `rehearsal_sessions` (flags.ts).
   const sessionsOn = useBandFlag(event.band_id, 'rehearsal_sessions');
   const sessionBridge = useRef<StageSessionBridge>({});
+  const regiaBridge = useRef<StageRegiaBridge>({});
   const stageLive = useStageLive({
     eventId: isPersonalGig ? undefined : event.eventId,
     setlistId: event.setlistId,
@@ -706,6 +710,28 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     open: isStageOpen,
     isLeader: isAdmin,
     session: sessionBridge,
+    regia: regiaBridge,
+  });
+  // Stage manager mode: an admin's device wired to the mixer plays the songs'
+  // audio; Play moves the whole band to that song (useStageRegia).
+  const regiaName = useMemo(() => {
+    const me = currentUserId ? (dbMembers ?? []).find((m) => m.userId === currentUserId) : undefined;
+    return me?.name?.trim().split(/\s+/)[0] ?? null;
+  }, [currentUserId, dbMembers]);
+  const stageRegia = useStageRegia({
+    eventId: isPersonalGig ? undefined : event.eventId,
+    setlistId: event.setlistId,
+    open: isStageOpen,
+    isAdmin,
+    myName: regiaName,
+    clientId: stageLive.clientId,
+    send: stageLive.sendRegia,
+    bridge: regiaBridge,
+    songs: stageLive.songs,
+    currentId: stageLive.currentId,
+    skipped: stageLive.skipped,
+    select: stageLive.select,
+    jumpTo: stageLive.jumpTo,
   });
   const liveSong = stageLive.songs[stageLive.index];
   const rehearsalSession = useRehearsalSession({
@@ -2901,6 +2927,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             live={stageLive}
             session={isRehearsalLive ? rehearsalSession : undefined}
             notes={isRehearsalLive ? liveNotes : undefined}
+            regia={stageRegia}
             songOpen={stageSongOpen}
             onSongOpenChange={setStageSongOpen}
             onClose={() => setIsStageOpen(false)}

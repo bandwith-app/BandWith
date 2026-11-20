@@ -257,3 +257,134 @@ for (const kind of ['rehearsal', 'gig'] as const) {
     });
   });
 }
+
+/** A short silent WAV (8 kHz mono, 16-bit): what the Regia plays in the tests. */
+function silentWav(seconds = 20): Buffer {
+  const rate = 8000;
+  const data = rate * seconds * 2;
+  const b = Buffer.alloc(44 + data);
+  b.write('RIFF', 0);
+  b.writeUInt32LE(36 + data, 4);
+  b.write('WAVE', 8);
+  b.write('fmt ', 12);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36);
+  b.writeUInt32LE(data, 40);
+  return b;
+}
+
+test.describe('Stage manager mode (Regia): the admin plays, the band follows', () => {
+  test.use({ autoOpen: false });
+
+  test('@smoke with the Regia on, the setlist stays usable under the player on every screen', async ({ app }) => {
+    test.skip(isLaptop(), 'the floor wedge is a musician’s screen at their feet: no Regia controls there');
+    const title = SEED.gigToday;
+    await app.page.context().route('**/regia-e2e/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav(), headers: { 'access-control-allow-origin': '*' } }),
+    );
+    await openWith(app, (db) => {
+      db.songs.forEach((s, i) => {
+        s.audio_url = `https://media.example/regia-e2e/${i}.wav`;
+      });
+    });
+    await openEvent(app, title);
+    await openLive(app, 'gig', title);
+    const stage = liveDialog(app, 'gig', title);
+    await stage.getByRole('button', { name: app.t('Stage manager: play audio here') }).click();
+    await expect(stage.getByRole('region', { name: app.t('Stage manager') })).toBeVisible();
+    // At least two songs of the setlist fully on screen, each with its ▶.
+    const rowPlays = stage.getByRole('button', { name: /^Play (?!a song not in)/ });
+    await expect(rowPlays.nth(0)).toBeInViewport({ ratio: 1 });
+    await expect(rowPlays.nth(1)).toBeInViewport({ ratio: 1 });
+  });
+
+  test('the admin plays a song out of order on the Regia: a member jumps to it, sees it playing, and loads no audio', async ({ app }) => {
+    test.slow();
+    test.skip(isLaptop(), 'the floor wedge has its own counter; Stage mode syncs the same way');
+    const title = SEED.gigToday;
+    const audioRequests: string[] = [];
+    await app.page.context().route('**/regia-e2e/**', (route) => {
+      audioRequests.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav(), headers: { 'access-control-allow-origin': '*' } });
+    });
+    await openWith(app, (db) => {
+      db.songs.forEach((s, i) => {
+        s.audio_url = `https://media.example/regia-e2e/${i}.wav`;
+      });
+    });
+
+    // The Regia: the admin's device (the one wired to the mixer).
+    await openEvent(app, title);
+    await openLive(app, 'gig', title);
+    const stage = liveDialog(app, 'gig', title);
+    await stage.getByRole('button', { name: app.t('Stage manager: play audio here') }).click();
+    const bar = stage.getByRole('region', { name: app.t('Stage manager') });
+    await expect(bar).toBeVisible();
+    await expect(bar.getByText(app.t('Audio ready {ready}/{total}', { ready: 10, total: 10 }))).toBeVisible({ timeout: 20_000 });
+    await app.check('Stage mode, Regia on');
+
+    // A member's device, opened after.
+    await becomeMember(app);
+    const { page, other } = await secondDevice(app);
+    const memberAudio: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('regia-e2e')) memberAudio.push(r.url());
+    });
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: app.t('Home'), exact: true }).first()).toBeVisible({ timeout: 30_000 });
+    await settle(page);
+    await openEvent(other, title);
+    await openLive(other, 'gig', title);
+    await expect(nowPlaying(other, 'gig', title, 'Superstition')).toBeVisible({ timeout: 15_000 });
+    // No Regia controls on a member's device.
+    await expect(liveDialog(other, 'gig', title).getByRole('button', { name: app.t('Stage manager: play audio here') })).toHaveCount(0);
+
+    // Play on the fourth song (out of order): the band jumps to it.
+    await stage.getByRole('button', { name: app.t('Play {title}', { title: 'Uptown Funk' }) }).click();
+    await expect(bar.getByRole('button', { name: app.t('Pause'), exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(nowPlaying(other, 'gig', title, 'Uptown Funk')).toBeVisible({ timeout: 15_000 });
+    const strip = liveDialog(other, 'gig', title).getByText(app.t('Now playing'), { exact: true });
+    await expect(strip).toBeVisible({ timeout: 15_000 });
+
+    // Pause on the Regia: the member's strip says so.
+    await bar.getByRole('button', { name: app.t('Pause'), exact: true }).click();
+    await expect(liveDialog(other, 'gig', title).getByText(app.t('Paused'), { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    expect(audioRequests.length).toBeGreaterThan(0);
+    expect(memberAudio).toEqual([]);
+    await page.close();
+  });
+
+  test('a song off the setlist: added right after the current one, everyone sees it', async ({ app }) => {
+    test.slow();
+    test.skip(isLaptop(), 'the floor wedge has its own counter; Stage mode syncs the same way');
+    const title = SEED.gigToday;
+    await app.page.context().route('**/regia-e2e/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav(), headers: { 'access-control-allow-origin': '*' } }),
+    );
+    await openWith(app, (db) => {
+      db.songs.forEach((s, i) => {
+        s.audio_url = `https://media.example/regia-e2e/${i}.wav`;
+      });
+    });
+    await openEvent(app, title);
+    await openLive(app, 'gig', title);
+    const stage = liveDialog(app, 'gig', title);
+    await stage.getByRole('button', { name: app.t('Stage manager: play audio here') }).click();
+    await stage.getByRole('button', { name: app.t('Play a song not in the setlist') }).click();
+    const sheet = app.page.getByRole('dialog', { name: app.t('Play a song not in the setlist') });
+    await sheet.getByRole('searchbox', { name: app.t('Search songs') }).fill('Rehab');
+    await sheet.getByRole('button', { name: /Rehab/ }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(nowPlaying(app, 'gig', title, 'Rehab')).toBeVisible({ timeout: 15_000 });
+    // Right after the first song: second in the list.
+    const rows = stage.getByRole('list', { name: app.t('Setlist') }).first().getByRole('listitem');
+    await expect(rows.nth(1)).toContainText('Rehab', { timeout: 15_000 });
+  });
+});

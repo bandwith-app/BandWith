@@ -1147,7 +1147,7 @@ const music: AreaModule = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode", "rehearsal", "live mode", "rehearsal live"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1362,6 +1362,70 @@ const music: AreaModule = {
             "Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.",
             "The band's click needs the internet: it isn't sent over Bluetooth.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Play the songs' audio from the stage manager device",
+      summary: "An admin's laptop or tablet, cabled to the mixer, plays each song's recording, and the band's screens move to the song that's playing.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["stage manager", "backing track", "audio", "mixer", "playback", "cable", "usb-c", "headphone jack", "adapter", "pa"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "One admin's laptop or tablet, plugged into the mixer, is the stage manager: the only device that plays the songs' audio. When it plays a song, every screen in Stage mode moves to that song, even out of the setlist order. Members' phones never play any sound.",
+        },
+        {
+          type: "steps",
+          title: "Get ready before the gig",
+          items: [
+            "Give each song a **Recording** (an audio file) in the song form. Songs without one still move the band, but nothing plays.",
+            "Plug the device into the mixer (see the cable tips below) and turn on Do Not Disturb, so notifications don't come out of the PA.",
+            "Open the gig while online, open Stage mode and tap **Stage manager: play audio here**. The device downloads tonight's audio.",
+            "Wait until **Audio ready** counts every song (for example 10/10): from then on it plays with no internet. If some songs are still missing, open the gig online again.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "On stage",
+          items: [
+            "Tap ▶ on a song to play it. Everyone's screen moves to that song and shows **Now playing** with the time.",
+            "The player at the top has **Play** / **Pause**; when a song ends, the same button plays the next one. **Stop** needs a hold, so a tap by mistake can't cut the music.",
+            "To play a song that isn't in the setlist, tap + (**Play a song not in the setlist**) and pick it from the repertoire. It goes in the setlist right after the current song, for everyone.",
+            "To hand over, the other admin taps **Stage manager: play audio here** on their device, then **Take over**: your audio stops. **Turn off** ends it on your device.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Who", "What they see"],
+          rows: [
+            ["The stage manager (an admin)", "The player, ▶ on every song with audio, where the sound goes (**Output**) and how many songs are ready."],
+            ["Other admins and members", "The song that's playing, with **Now playing** or **Paused** and the time. If you're on another song, **Go** takes you to it."],
+            ["Everyone, when the stage manager leaves", "The strip goes away. Stage mode works as before."],
+          ],
+        },
+        {
+          type: "list",
+          title: "The cable to the mixer",
+          items: [
+            "Laptops, iPads and phones with a headphone jack: a minijack (3.5 mm) cable into the mixer's input, for example 3.5 mm to two 6.3 mm jacks or to two RCA plugs.",
+            "iPads and iPhones without a jack (USB-C or Lightning): Apple's USB-C (or Lightning) to 3.5 mm adapter, then the same cable. To charge at the same time, use an adapter with a USB-C charging port (PD).",
+            "Mixers with a USB input (many digital mixers): one USB-C cable takes the sound straight in. The same goes for a class-compliant USB audio interface.",
+            "Never Bluetooth: it arrives late and can drop out. The app warns you when the sound goes over Bluetooth or out of the device's speaker.",
+            "Turn the device's volume nearly to the top and set the level on the mixer.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "If the cable comes out, the sound can stop or move to the device's speaker. The app shows a warning at once: plug the cable back in.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Some links (for example Google Drive) can only stream, so they need the internet." }],
         },
       ],
     },

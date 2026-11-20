@@ -29,6 +29,7 @@ import {
   type ClickState,
   type ClockSample,
 } from '@/lib/stageClick';
+import { REGIA_EVENT } from '@/lib/stageRegia';
 
 /** Wall-clock ms with sub-ms steps (smooth for the metronome). */
 const nowMs = () => performance.timeOrigin + performance.now();
@@ -57,11 +58,23 @@ export interface StageSessionBridge {
   latest?: () => unknown;
 }
 
+/**
+ * The Regia (useStageRegia) riding on the live channel: states that arrive,
+ * the newest one of ours for late arrivals, and who left the channel.
+ */
+export interface StageRegiaBridge {
+  receive?: (payload: unknown) => void;
+  latest?: () => unknown;
+  left?: (clientId: string) => void;
+}
+
 interface Options<T extends LiveSongRef> {
   /** Gig id; band gigs only (the channel checks band membership). */
   eventId?: string;
   /** Rehearsal session (Live mode timer) carried on the same channel. */
   session?: { current: StageSessionBridge };
+  /** The Regia (stage manager device), carried on the same channel. */
+  regia?: { current: StageRegiaBridge };
   setlistId?: string;
   /** Saved setlist, in saved order. */
   songs: T[];
@@ -112,9 +125,11 @@ const SAVE_DELAY_MS = 700;
  * - Someone opening Stage mode joins the channel's presence; the leader's app
  *   then sends its state again so late arrivals catch up.
  */
-export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader, session }: Options<T>) {
+export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader, session, regia }: Options<T>) {
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const regiaRef = useRef(regia);
+  regiaRef.current = regia;
   const clientId = useMemo(() => Math.random().toString(36).slice(2, 10), []);
   const [order, setOrder] = useState<string[] | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
@@ -178,7 +193,16 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive });
   const blePublish = ble.publish;
   const hasIds = ordered.length > 0 && ordered.every((s) => !!s.id);
-  const index = hasIds ? indexOf(ordered, songId) : Math.min(fallbackIndex, Math.max(0, ordered.length - 1));
+  // A song the setlist hasn't caught up with yet (played off the setlist on
+  // stage, its row still on its way): stay on the last song found meanwhile.
+  const lastIndexRef = useRef(0);
+  const found = !songId || ordered.some((s) => s.id === songId);
+  const index = hasIds
+    ? found
+      ? indexOf(ordered, songId)
+      : Math.min(lastIndexRef.current, ordered.length - 1)
+    : Math.min(fallbackIndex, Math.max(0, ordered.length - 1));
+  if (hasIds && found) lastIndexRef.current = index;
 
   // The saved order caught up with the live one: drop the override.
   useEffect(() => {
@@ -247,6 +271,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       .on('broadcast', { event: SESSION_EVENT }, (msg: { payload?: unknown }) => {
         sessionRef.current?.current.receive?.(msg?.payload);
       })
+      .on('broadcast', { event: REGIA_EVENT }, (msg: { payload?: unknown }) => {
+        regiaRef.current?.current.receive?.(msg?.payload);
+      })
       .on('broadcast', { event: CLICK_EVENT }, (msg: { payload?: unknown }) => {
         const state = parseClickState(msg?.payload);
         if (state) receiveClick(state);
@@ -278,11 +305,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         // So does the rehearsal session (timer) the leader runs.
         const sessionNow = isLeader ? sessionRef.current?.current.latest?.() : null;
         if (sessionNow) void channel.send({ type: 'broadcast', event: SESSION_EVENT, payload: sessionNow });
+        // …and the Regia's song (what plays, where it is).
+        const regiaNow = regiaRef.current?.current.latest?.();
+        if (regiaNow) void channel.send({ type: 'broadcast', event: REGIA_EVENT, payload: regiaNow });
         if (!ledRef.current || !lastRef.current) return;
         if (lastRef.current.from !== clientId) return;
         void channel.send({ type: 'broadcast', event: 'state', payload: lastRef.current });
       })
       .on('presence', { event: 'leave' }, (msg: { key?: string }) => {
+        if (msg?.key && msg.key !== clientId) regiaRef.current?.current.left?.(msg.key);
         // The click's leader left (closed Stage mode or lost the network): stop showing its click.
         const running = clickRef.current;
         if (!msg?.key || !running || running.from === clientId || running.from !== msg.key) return;
@@ -477,6 +508,25 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [isLeader, setlistId, ordered, send, songId, index, flushSave],
   );
 
+  /**
+   * Leader: make row `id` the current song with this live `order` (a song
+   * just added on stage, whose row the others are still loading).
+   */
+  const jumpTo = useCallback(
+    (id: string, nextOrder: string[]) => {
+      if (!isLeader) return;
+      setOrder(nextOrder);
+      setSongId(id);
+      send({ songId: id, order: nextOrder });
+    },
+    [isLeader, send],
+  );
+
+  /** Send the Regia's state to everyone in Stage mode. */
+  const sendRegia = useCallback((payload: unknown) => {
+    void channelRef.current?.send({ type: 'broadcast', event: REGIA_EVENT, payload });
+  }, []);
+
   /** Send the rehearsal session to everyone in Live mode (leader). */
   const sendSession = useCallback((payload: unknown) => {
     void channelRef.current?.send({ type: 'broadcast', event: SESSION_EVENT, payload });
@@ -486,6 +536,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     /** The setlist in its live order. */
     songs: ordered,
     sendSession,
+    /** This app's id on the channel (one per Stage mode session). */
+    clientId,
+    sendRegia,
+    jumpTo,
+    /** The current song's row id (null before the first song). */
+    currentId: ordered[index]?.id ?? null,
     index,
     select,
     go,

@@ -1137,7 +1137,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação", "ensaio", "modo ao vivo", "ensaio ao vivo"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1352,6 +1352,70 @@ const music: AreaText = {
             "Os celulares ficam no tempo com cerca de 20–40 ms de diferença: bom para uma contagem e como referência de andamento, não para um clique no ouvido.",
             "O clique da banda precisa de internet: ele não é enviado por Bluetooth.",
           ],
+        },
+      ],
+    },
+    {
+      id: "stage-manager",
+      title: "Tocar o áudio das músicas pela cabine",
+      summary: "O notebook ou o tablet de um admin, ligado na mesa de som, toca a gravação de cada música, e as telas da banda passam para a música que está tocando.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["cabine", "playback", "backing track", "áudio", "mesa de som", "reprodução", "cabo", "usb-c", "entrada de fone", "adaptador", "pa"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
+      body: [
+        {
+          type: "p",
+          text: "O notebook ou o tablet de um admin, ligado na mesa de som, é a cabine: o único aparelho que toca o áudio das músicas. Quando ele toca uma música, todas as telas no Modo palco passam para essa música, mesmo fora da ordem do setlist. Os celulares dos membros nunca tocam som.",
+        },
+        {
+          type: "steps",
+          title: "Antes do show",
+          items: [
+            "Dê a cada música uma **Gravação** (um arquivo de áudio) na ficha da música. Músicas sem gravação movem a banda do mesmo jeito, mas nada toca.",
+            "Ligue o aparelho na mesa (veja as dicas de cabo abaixo) e ative o Não perturbe, para as notificações não saírem no PA.",
+            "Abra o show com internet, abra o Modo palco e toque em **Cabine: áudio daqui**. O aparelho baixa o áudio da noite.",
+            "Espere até **Áudio pronto** contar todas as músicas (por exemplo 10/10): a partir daí ele toca sem internet. Se ainda faltar alguma música, abra o show de novo com internet.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "No palco",
+          items: [
+            "Toque em ▶ numa música para tocá-la. A tela de todos passa para essa música e mostra **Tocando agora** com o tempo.",
+            "O player no alto tem **Tocar** / **Pausar**; quando uma música acaba, o mesmo botão toca a próxima. **Parar** precisa ser mantido pressionado, assim um toque sem querer não corta a música.",
+            "Para uma música que não está no setlist, toque em + (**Tocar uma música fora do setlist**) e escolha no repertório. Ela entra no setlist logo depois da música atual, para todos.",
+            "Para passar a cabine, o outro admin toca em **Cabine: áudio daqui** no próprio aparelho e depois em **Assumir**: o seu áudio para. **Desativar** encerra a cabine no seu aparelho.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Quem", "O que vê"],
+          rows: [
+            ["A cabine (um admin)", "O player, ▶ em cada música com áudio, por onde sai o som (**Saída**) e quantas músicas estão prontas."],
+            ["Os outros admins e os membros", "A música que está tocando, com **Tocando agora** ou **Em pausa** e o tempo. Se você estiver em outra música, **Ir** leva você até ela."],
+            ["Todos, quando a cabine sai", "A faixa some. O Modo palco funciona como antes."],
+          ],
+        },
+        {
+          type: "list",
+          title: "O cabo para a mesa",
+          items: [
+            "Notebooks, iPads e celulares com entrada de fone: um cabo P2 (3,5 mm) na entrada da mesa, por exemplo de P2 para dois P10 (6,3 mm) ou para dois RCA.",
+            "iPads e iPhones sem entrada de fone (USB-C ou Lightning): o adaptador da Apple de USB-C (ou Lightning) para 3,5 mm, e depois o mesmo cabo. Para carregar ao mesmo tempo, use um adaptador com porta USB-C de carga (PD).",
+            "Mesas com entrada USB (muitas mesas digitais): um cabo USB-C leva o som direto para dentro. O mesmo vale para uma interface de áudio USB class compliant.",
+            "Nunca Bluetooth: chega atrasado e pode falhar. O app avisa quando o som vai por Bluetooth ou sai pelo alto-falante do aparelho.",
+            "Deixe o volume do aparelho quase no máximo e ajuste o nível na mesa.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "warning",
+          text: "Se o cabo se soltar, o som pode parar ou passar para o alto-falante do aparelho. O app mostra um aviso na hora: ligue o cabo de novo.",
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Num notebook pelo navegador, quem guarda o áudio é o navegador: use sempre o mesmo e não apague os dados dele antes do show. Alguns links (por exemplo Google Drive) só tocam por streaming, então precisam de internet." }],
         },
       ],
     },

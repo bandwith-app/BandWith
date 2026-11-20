@@ -51,6 +51,7 @@ final class BandWithBridgeViewController: CAPBridgeViewController, WKScriptMessa
         // App-local plugins (not npm packages).
         bridge?.registerPluginInstance(StageBlePlugin())
         bridge?.registerPluginInstance(IrealForumPlugin())
+        bridge?.registerPluginInstance(AudioOutputPlugin())
         // Capacitor installs its own user content controller while building
         // the web view, so ours is added here, once that is done.
         guard let controller = webView?.configuration.userContentController else { return }
