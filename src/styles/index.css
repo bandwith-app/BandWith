@@ -492,8 +492,10 @@
 }
 /* A row brought into view (focus, Tab, scrollIntoView) rests below that
    sticky header and above the Deck bar, never under them: Settings grew a
-   row (Calendar sync) and Privacy & account landed under the header. */
-:root[data-bw-posture="tabletop"] .bw-pane-hub {
+   row (Calendar sync) and Privacy & account landed under the header.
+   Not while typing: the keyboard's own focus scroll places the field in
+   the Deck strip, and the extra bottom padding lifted it onto the fold. */
+:root[data-bw-posture="tabletop"]:not([data-keyboard="open"]) .bw-pane-hub {
   scroll-padding-top: var(--bw-deck-top);
   scroll-padding-bottom: var(--content-bottom-clearance);
 }
