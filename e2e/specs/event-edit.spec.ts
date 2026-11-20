@@ -382,4 +382,40 @@ test.describe('Show readiness (admin)', () => {
       await expect(eventDetail(app)).toBeHidden();
     });
   }
+
+  // CI 11-20: a gig opened from Calendar's "Search events" (z-70) sent
+  // Contracts & docs (a hub page, z-60) under the search: Back from the new
+  // contract showed the search results instead of the hub.
+  test('@smoke a gig opened from Search: Back from the new contract shows Contracts & docs, not the search', async ({ app }) => {
+    await app.tab('Calendar');
+    await app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first().click();
+    await app.page.getByPlaceholder(app.t('Search title, venue, city, client…')).filter({ visible: true }).first().fill(SEED.gigToday);
+    await app.settle();
+    const search = app.page.getByRole('dialog', { name: app.t('Search events') });
+    await search.last().getByRole('button', { name: new RegExp(SEED.gigToday, 'i') }).first().click();
+    await expect(eventDetail(app)).toBeVisible();
+    await app.settle();
+    const row = eventDetail(app).getByRole('button', { name: new RegExp(app.t('No contract yet')) });
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    await app.settle();
+    await expect(app.page.getByRole('heading', { name: app.t('Create contract'), exact: true })).toBeVisible();
+    await app.button('Back', { exact: true }).last().click();
+    await app.settle();
+    const hub = app.page.getByRole('heading', { name: app.t('Contracts & docs'), exact: true });
+    await expect(hub).toBeVisible();
+    // On top, not under the search: what's drawn at the title is the title.
+    const onTop = await hub.evaluate((h) => {
+      const r = h.getBoundingClientRect();
+      const el = document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + r.height / 2);
+      return !!el && h.contains(el);
+    });
+    expect(onTop, 'Contracts & docs is drawn above everything').toBe(true);
+    await expect(search).toHaveCount(0);
+    await app.button('Go back', { exact: true }).last().click();
+    await app.settle();
+    await expect(eventDetail(app)).toBeVisible();
+    await expect(eventDetail(app).getByText(SEED.gigToday).first()).toBeVisible();
+    await app.check('back on the gig opened from Search');
+  });
 });
