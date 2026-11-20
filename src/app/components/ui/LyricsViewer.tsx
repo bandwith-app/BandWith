@@ -7,7 +7,8 @@ import { FromRehearsalStrip } from '@/app/components/songs/FromRehearsalStrip';
 import { closeLyrics, openLyrics, parseInline, parseLyrics, splitChords, useLyricsDoc } from '@/lib/lyrics';
 import { useOptionalBand } from '@/lib/BandContext';
 import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
-import { chordLabel, keyLabel } from '@/lib/ireal';
+import { keyLabel } from '@/lib/ireal';
+import { ChordToken } from './MusicSymbol';
 import { transposeChord } from '@/lib/transpose';
 import { TransposeControl, TransposeProvider, useSongTranspose, useTranspose } from './Transpose';
 import { togglePlay, usePlayer } from '@/lib/audioPlayer';
@@ -90,13 +91,13 @@ const LyricsLine: React.FC<{ line: string; hideChords?: boolean }> = ({ line, hi
       {segments.map((seg, k) => {
         if (!seg.chord) return <Inline key={k} text={seg.text} />;
         const [, head, tail] = seg.text.match(/^(\S*)([\s\S]*)$/) || ['', '', seg.text];
-        const label = chordLabel(transposeChord(seg.chord, semitones, flats));
+        const chord = transposeChord(seg.chord, semitones, flats);
         return (
           <React.Fragment key={k}>
             {/* Text first in the DOM: the box's baseline is the lyric's, the chord shows above it. */}
             {/* An inline-block's baseline is its last line: the word stays on the line, the chord sits above it. */}
             <span className="inline-block align-baseline">
-              <span className="block text-[0.62em] font-bold leading-[1.3] pr-[0.35em] whitespace-nowrap">{label}</span>
+              <span className="block text-[0.62em] font-bold leading-[1.3] pr-[0.35em] whitespace-nowrap"><ChordToken token={chord} /></span>
               <span className="block whitespace-pre">{head ? <Inline text={head} /> : '\u00a0'}</span>
             </span>
             {/* A chord on a space already holds one: no double gap. */}

@@ -9,6 +9,7 @@ import { chordLabel, type ChartSection, type SongChart } from './ireal';
 import { isChordToken, parseLyrics, type LyricsSection } from './lyrics';
 import { foldSemitones, parseKey, pitchClass, transposeLyrics, prefersFlats } from './transpose';
 import { instrumentKeys } from './instruments';
+import { chordTokenSymbol } from './musicSymbols';
 
 // ── Section names ──────────────────────────────────────────────────────────
 
@@ -235,13 +236,25 @@ export function songChords(lyrics: string | null | undefined): string[] {
 /** True when the text has inline chords. */
 export const hasInlineChords = (lyrics: string | null | undefined) => songChords(lyrics).length > 0;
 
-/** Chords of a section of the chart, bar by bar ('%' repeats the bar before). */
+/**
+ * Chords of a section of the chart, bar by bar: '%' repeats the bar before,
+ * '%%' the two before; slashes are beats, not chords (src/lib/musicSymbols.ts).
+ */
 export function chartSectionChords(section: ChartSection): string[][] {
   const out: string[][] = [];
   for (const bar of section.bars) {
-    const cs = bar.chords.filter((c) => c && c !== 'x' && c !== 'n' && c !== ' ');
-    if (cs.length === 1 && cs[0] === '%') out.push([...(out[out.length - 1] || [])]);
-    else out.push(cs.filter((c) => c !== '%').map((c) => (c === 'N.C.' ? c : chordLabel(c).replace(/♭/g, 'b').replace(/♯/g, '#'))));
+    const cs = bar.chords.filter((c) => c && c.trim() && c !== '/' && chordTokenSymbol(c) !== 'slash');
+    const sym = cs.length === 1 ? chordTokenSymbol(cs[0]) : null;
+    if (sym === 'repeat-bar') out.push([...(out[out.length - 1] || [])]);
+    else if (sym === 'repeat-two-bars') {
+      const [x, y] = [out[out.length - 2] || [], out[out.length - 1] || []];
+      out.push([...x], [...y]);
+    } else
+      out.push(
+        cs
+          .filter((c) => chordTokenSymbol(c) !== 'repeat-bar' && chordTokenSymbol(c) !== 'repeat-two-bars')
+          .map((c) => (chordTokenSymbol(c) === 'no-chord' ? 'N.C.' : chordLabel(c).replace(/♭/g, 'b').replace(/♯/g, '#'))),
+      );
   }
   return out;
 }

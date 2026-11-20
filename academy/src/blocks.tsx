@@ -7,6 +7,8 @@ import { shotFor, useViewDevice, VIEW_DEVICE_LABEL } from './viewer';
 import { Inline } from './inline';
 import { DeviceGlyph, DEVICE_SHORT } from './devices';
 import { AlertTriangle, Lock, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { MusicSymbol } from '@/app/components/ui/MusicSymbol';
+import type { MusicSymbolId } from '@/lib/musicSymbols';
 
 export function RoleChip({ role, on = true }: { role: Role; on?: boolean }) {
   return <span className={`chip chip--${role}${on ? '' : ' chip--off'}`}>{ROLE_LABEL[role]}</span>;
@@ -171,6 +173,25 @@ function BlockView({ block: b }: { block: Block }) {
       );
     case 'shot':
       return <Shot id={b.id} caption={b.caption} device={b.device} />;
+    case 'symbols':
+      // The app's own symbols (src/app/components/ui/MusicSymbol.tsx), so the guide shows what the chart shows.
+      return (
+        <section className="symbols">
+          {b.title && <h3>{b.title}</h3>}
+          <dl className="symbols__list">
+            {b.rows.map((r, i) => (
+              <div key={i} className="symbols__row">
+                <dt>
+                  <MusicSymbol id={r.symbol as MusicSymbolId} n={r.n} name={r.name} size={1.4} decorative />
+                </dt>
+                <dd>
+                  <Inline text={r.text} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      );
     case 'table':
       return (
         <div className="tableWrap">

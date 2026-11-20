@@ -13,6 +13,7 @@ import { useSystemBack } from '@/lib/backStack';
 import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { isChordToken } from '@/lib/lyrics';
 import { asSongChart, chordLabel, keyLabel, type SongChart } from '@/lib/ireal';
+import { ChordToken } from '@/app/components/ui/MusicSymbol';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
 import {
   applyKeyFix,
@@ -303,7 +304,7 @@ export const ChordEditor: React.FC = () => {
                     drag && samePos(drag.from, pos) && drag.moved && 'opacity-30',
                   )}
                 >
-                  {chordLabel(chord)}
+                  <ChordToken token={chord} />
                 </span>
               ) : (
                 <span className="h-5" aria-hidden />
@@ -328,7 +329,7 @@ export const ChordEditor: React.FC = () => {
             {model.tail.length ? (
               model.tail.map((c, k) => (
                 <span key={k} className="px-1.5 rounded-md bg-foreground text-background bw-label-sm normal-case font-bold leading-5">
-                  {chordLabel(c)}
+                  <ChordToken token={c} />
                 </span>
               ))
             ) : (
@@ -486,7 +487,7 @@ export const ChordEditor: React.FC = () => {
                           selChord === c ? 'bg-foreground text-background' : '',
                         )}
                       >
-                        {chordLabel(c)}
+                        <ChordToken token={c} />
                       </button>
                     ))}
                     {selChord && (
@@ -534,7 +535,7 @@ export const ChordEditor: React.FC = () => {
               style={{ left: drag.x, top: drag.y, transform: 'translate(-50%, -130%)' }}
               aria-hidden
             >
-              {chordLabel(drag.chord)}
+              <ChordToken token={drag.chord} />
             </span>
           )}
         </motion.div>

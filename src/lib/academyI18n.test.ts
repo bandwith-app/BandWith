@@ -31,6 +31,8 @@ function texts(b: Block): string[] {
       return [b.caption];
     case 'table':
       return [...b.head, ...b.rows.flat()];
+    case 'symbols':
+      return [b.title ?? '', ...b.rows.map((r) => r.text)];
   }
 }
 
@@ -49,6 +51,8 @@ function shape(b: Block): string {
       return `shot:${b.id}:${b.device ?? ''}`;
     case 'table':
       return `table:${b.head.length}:${b.rows.map((r) => r.length).join()}`;
+    case 'symbols':
+      return `symbols:${b.rows.map((r) => `${r.symbol}${r.n ?? ''}${r.name ?? ''}`).join()}`;
     default:
       return b.type;
   }

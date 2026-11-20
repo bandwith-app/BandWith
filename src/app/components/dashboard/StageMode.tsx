@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Minus, PanelLeft, Plus, StickyNote, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
@@ -13,7 +13,7 @@ import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover, useRailTone } from '@/lib/railActions';
 import { setStatusBarTone } from '@/lib/systemBars';
 import { useRailLayout } from '@/lib/deviceRegions';
-import { useStageBarHidden, useStageFullScreen } from '@/lib/stageChrome';
+import { exitBrowserFullScreen, requestBrowserFullScreen, useBrowserFullScreenExit, useStageBarHidden, useStageFullScreen } from '@/lib/stageChrome';
 import '@/styles/stage.css';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
@@ -284,7 +284,12 @@ export const StageMode: React.FC<StageModeProps> = ({
   }, []);
 
   // Android Back and Escape leave Stage mode first, not the gig beneath.
-  useSystemBack(true, onClose);
+  // An Escape that just left the browser's full screen leaves only that.
+  const fsLeftAt = useRef(0);
+  useSystemBack(true, () => {
+    if (Date.now() - fsLeftAt.current < 600) return true;
+    onClose();
+  });
   // …and the rehearsal summary on top of it first.
   useSystemBack(summaryOpen, closeSummary);
 
@@ -310,21 +315,40 @@ export const StageMode: React.FC<StageModeProps> = ({
   useEffect(() => setStatusBarTone('dark'), []);
   useRailTone('dark');
 
-  // Full screen: hide the side bar (the iPhone Duo rail, or the list pane on
-  // two-pane layouts). Offered only where there is such a bar; elsewhere
-  // Stage mode already has the whole screen.
-  const { rail, twoPane } = useRailLayout();
-  const hasBar = rail || twoPane;
-  const [barHidden, setBarHidden] = useStageBarHidden();
-  const full = hasBar && barHidden;
+  // Full screen (src/lib/stageChrome.ts), on every device: the app's chrome
+  // (the iPhone Duo rail, the list pane on two-pane layouts, the nav) and the
+  // system bars go, the header shrinks to one line, the screen stays on.
+  // Remembered per device; system Back or the button leaves it.
+  const { twoPane } = useRailLayout();
+  const [full, setFull] = useStageBarHidden();
   useStageFullScreen(full);
   // Full screen moves the list into another column: bring the current song back into view.
   useEffect(() => setLayoutTick((n) => n + 1), [full]);
-  const toggleBar = () => {
-    haptic.tap();
-    setBarHidden(!barHidden);
+  const exitFull = () => {
+    setFull(false);
+    void exitBrowserFullScreen();
   };
-  const barLabel = full ? t('Show sidebar') : t('Hide sidebar');
+  const toggleFull = () => {
+    haptic.tap();
+    if (full) {
+      exitFull();
+      return;
+    }
+    setFull(true);
+    // The browser's own full screen needs this tap (web build, iPad Safari).
+    void requestBrowserFullScreen();
+  };
+  // Escape or the browser's UI left the browser's full screen: follow it.
+  useBrowserFullScreenExit(full, () => {
+    fsLeftAt.current = Date.now();
+    setFull(false);
+  });
+  // System Back (Android Back, Escape, the web's Back) leaves full screen before Stage mode.
+  useSystemBack(full, exitFull);
+  // Closing Stage mode leaves the browser's full screen; the choice stays for next time.
+  useEffect(() => () => void exitBrowserFullScreen(), []);
+  const fullLabel = full ? t('Exit full screen') : t('Full screen');
+  const fullIcon = full ? <Minimize /> : <Maximize />;
   const exitLabel = rehearsal ? t('Exit live mode') : t('Exit stage mode');
 
   // Full screen across two panes: times and steps on the leading pane, the
@@ -364,7 +388,7 @@ export const StageMode: React.FC<StageModeProps> = ({
 
   // Reading a song in one pane (phone, or the Duo's Book posture beside the
   // app): a one-line header so the lyrics get the room.
-  const compactHead = showLyrics && !split;
+  const compactHead = (showLyrics || full) && !split;
   // Reading a song with room to the side (phone on its side, iPad, both Duo
   // panes): the setlist stays beside it, one tap to another song.
   // The layout's breakpoints read the window, but next to a list pane (iPad,
@@ -446,17 +470,15 @@ export const StageMode: React.FC<StageModeProps> = ({
           </div>
           <RailCover pane />
           {full ? (
-            // The rail is hidden: Exit and the toggle stay on screen here,
-            // stacked in the narrow column of the short-and-wide layout.
+            // The rail is hidden: Exit full screen and Exit stay on screen
+            // here, stacked in the narrow column of the short-and-wide layout.
             <span className="flex items-center gap-2 shrink-0 [@media(max-height:520px)_and_(min-width:600px)]:flex-col">
-              <IconButton label={barLabel} variant="sheet" icon={<PanelLeft />} onClick={toggleBar} className="border-white/40 text-white" />
+              <IconButton label={fullLabel} variant="sheet" icon={fullIcon} onClick={toggleFull} className="border-white/40 text-white" />
               <IconButton label={exitLabel} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
             </span>
           ) : (
             <span className="flex items-center gap-2 shrink-0">
-              {hasBar && (
-                <HeaderAction pane label={barLabel} variant="sheet" icon={<PanelLeft />} onClick={toggleBar} className="border-white/40 text-white" />
-              )}
+              <HeaderAction pane label={fullLabel} variant="sheet" icon={fullIcon} onClick={toggleFull} className="border-white/40 text-white" />
               <HeaderAction pane label={exitLabel} variant="sheet" icon={<X />} onClick={handleClose} className="border-white text-white" />
             </span>
           )}

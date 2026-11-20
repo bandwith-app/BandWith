@@ -3,7 +3,7 @@ import { useOptionalBand } from '@/lib/BandContext';
 import { useOptionalAuth } from '@/lib/AuthContext';
 import { useT } from '@/lib/i18n';
 import { transposeChord } from '@/lib/transpose';
-import { chordLabel } from '@/lib/ireal';
+import { ChordToken } from './MusicSymbol';
 import {
   availableViews,
   defaultSongView,
@@ -119,7 +119,7 @@ const LyricsStructure: React.FC<{ lyrics: string; size: number; muted: string; l
             <div className="grid grid-cols-4 gap-y-[0.5em]">
               {s.chords.map((c, j) => (
                 <span key={j} className={cn('border-l px-[0.4em] min-h-[1.6em] flex items-center font-semibold whitespace-nowrap', line)}>
-                  {chordLabel(transposeChord(c, semitones, flats))}
+                  <ChordToken token={transposeChord(c, semitones, flats)} />
                 </span>
               ))}
             </div>

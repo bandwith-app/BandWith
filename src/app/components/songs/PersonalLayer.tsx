@@ -8,6 +8,7 @@ import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { chordLabel } from '@/lib/ireal';
+import { ChordToken } from '@/app/components/ui/MusicSymbol';
 import { anchorLabel, lineChords, lineKey, lineWords, lyricsLineText, placeNotes, songLineRefs, type LineRef, type NoteAnchor, type PersonalNote } from '@/lib/personalNotes';
 import {
   addPersonalFile,
@@ -672,7 +673,7 @@ const Sheets: React.FC = () => {
               ))}
               {chords.map((c) => (
                 <Selector key={`c${c}`} selected={anchor.type === 'chord' && anchor.chord === c} onClick={() => setAnchor({ type: 'chord', ...base, chord: c })}>
-                  <span className="normal-case font-bold">{chordLabel(c)}</span>
+                  <span className="normal-case font-bold"><ChordToken token={c} /></span>
                 </Selector>
               ))}
             </div>

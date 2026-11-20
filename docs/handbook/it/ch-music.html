@@ -184,6 +184,36 @@
   <div class="devnote" data-devices="tablet,duoBook,duoLand">Il lettore si apre nel secondo pannello, accanto al Repertoire.</div>
   <figure class="shot" data-shot="music-reader" data-device="phone"><figcaption>Il lettore del brano con le schede Lyrics, Chords e Structure.</figcaption></figure>
 
+  <h3 id="art-chart-symbols" data-roles="admin,member">I simboli di una sigla accordi</h3>
+  <p>Le sigle importate da iReal Pro o da un file MusicXML mostrano la forma con gli stessi segni ovunque: lettore del brano, editor accordi, Stage mode e Live mode. Sotto ogni sigla, <b class="ui">What the symbols mean</b> apre questo elenco.</p>
+  <table class="grid symbols">
+    <thead><tr><th>Simbolo</th><th>Significato</th></tr></thead>
+    <tbody>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="section">A</span></td><td>Sezione: la lettera di una parte (A, B…). Intro e Strofa appaiono come parole.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="time-signature"><span>3</span><span>4</span></span></td><td>Tempo: da questa battuta in poi (qui 3 movimenti da un quarto).</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="0.7583333333333332em" height="1.4em" viewBox="0 0 13 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="repeat-start"><path d="M7.5 3V21M11 9.5h0M11 14.5h0" fill="none"></path><path d="M2.5 3V21" fill="none" stroke-width="3.8"></path></svg></td><td>Inizio ritornello: qui comincia la parte da ripetere.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="0.7583333333333332em" height="1.4em" viewBox="0 0 13 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="repeat-end"><path d="M5.5 3V21M2 9.5h0M2 14.5h0" fill="none"></path><path d="M10.5 3V21" fill="none" stroke-width="3.8"></path></svg></td><td>Fine ritornello: torna all’inizio del ritornello e suona di nuovo.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="ending">1.</span></td><td>Primo finale: suonalo la prima volta; la seconda salta al secondo finale.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="repeat-bar"><path d="M6 19L18 5M7 8.5h0M17 15.5h0" fill="none"></path></svg></td><td>Ripeti la battuta precedente.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.75em" height="1.4em" viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="repeat-two-bars"><path d="M5 19L13 5M17 19L25 5M5 9h0M25 15h0" fill="none"></path></svg></td><td>Ripeti le due battute precedenti.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="repeat-times">3×</span></td><td>Suona questa parte 3 volte.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="segno"><path d="M15.5 6.75A3.75 3.4 0 1 0 12 12A3.75 3.4 0 1 1 8.5 17.25M7 20L17 4M7.5 10.5h0M16.5 13.5h0" fill="none"></path></svg></td><td>Segno: dove ti rimanda il D.S.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="coda"><path d="M15.25 6.37h0M17.63 8.75h0M17.63 15.25h0M15.25 17.63h0M8.75 17.63h0M6.37 15.25h0M6.37 8.75h0M8.75 6.37h0M12 2V22M2 12H22" fill="none"></path></svg></td><td>Coda: al primo segno di coda salta al secondo, la parte finale.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="to-coda"></span></td><td>Al Coda: salta subito alla coda.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="dc-al-coda">D.C. al Coda</span></td><td>D.C. al Coda: torna all’inizio, poi salta alla coda.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="ds-al-coda">D.S. al Coda</span></td><td>D.S. al Coda: torna al segno, poi salta alla coda.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="dc-al-fine">D.C. al Fine</span></td><td>D.C. al Fine: torna all’inizio e fermati a Fine.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="fine">Fine</span></td><td>Fine: il brano finisce qui, dopo un D.C. o un D.S.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="fermata"><path d="M3.5 18A8.5 8.5 0 0 1 20.5 18M12 16h0" fill="none"></path></svg></td><td>Corona: tieni l’accordo.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="no-chord">N.C.</span></td><td>N.C.: nessun accordo, la band si ferma.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="slash"><path d="M9.5 18.5L14.5 5.5" fill="none" stroke-width="3.8"></path></svg></td><td>Stesso accordo sul tempo successivo.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="0.5249999999999999em" height="1.4em" viewBox="0 0 9 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="double-bar"><path d="M2 3V21M7 3V21" fill="none"></path></svg></td><td>Doppia stanghetta: finisce una parte.</td></tr>
+      <tr><td class="sym"><svg xmlns="http://www.w3.org/2000/svg" width="0.6416666666666666em" height="1.4em" viewBox="0 0 11 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-symbol="final-bar"><path d="M2 3V21" fill="none"></path><path d="M7.5 3V21" fill="none" stroke-width="3.8"></path></svg></td><td>Stanghetta finale: finisce il brano.</td></tr>
+      <tr><td class="sym"><span aria-hidden="true" data-symbol="end">End</span></td><td>End: dove il brano si ferma.</td></tr>
+    </tbody>
+  </table>
+  <p>I lettori di schermo dicono il nome di ogni segno nella lingua dell’app. Le parole scritte su una battuta che non sono un segno restano come sono. Anche le sigle importate prima di questo aggiornamento mostrano i segni; una corona, una barra o una ripetizione di due battute che mancava torna quando la sigla viene importata di nuovo.</p>
+
   <h3 id="art-transpose-and-tempo" data-roles="admin,member">Trasporre un brano e trovarne il tempo</h3>
   <p>La tonalità si può cambiare per tutta la band o solo sul proprio schermo; il BPM si ricava battendo il tempo o dalla registrazione.</p>
   <table class="grid">
@@ -633,6 +663,7 @@
   <ul>
     <li>Lo Stage mode è disponibile per i gig della band in programma e, come Live mode, per le prove della band in programma; non per preventivi, eventi passati o gig personali.</li>
     <li>Lo schermo resta acceso finché lo Stage mode è aperto.</li>
+    <li><b class="ui">Full screen</b> (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. <b class="ui">Exit full screen</b> o Indietro lo chiude; la scelta resta memorizzata sul dispositivo.</li>
     <li>Senza setlist compare <b class="ui">“No setlist attached to this gig.”</b></li>
     <li>Nelle app per telefono e tablet, aprendo il gig la setlist con testi e partiture viene conservata sul dispositivo, così lo Stage mode funziona senza internet. Con il logout la copia viene rimossa.</li>
     <li>Senza internet e senza copia sul dispositivo compare <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> con <b class="ui">Try again</b>.</li>
@@ -765,10 +796,10 @@
   <p>La disposizione dello Stage mode cambia secondo il dispositivo e la postura.</p>
   <div class="devnote" data-devices="phone">Una colonna: intestazione, programma della serata, setlist o brano, Prev / Next in basso.</div>
   <div class="devnote" data-devices="phoneLand,duoClosed">In orizzontale (basso e largo), orari e momenti della serata stanno a sinistra, setlist o brano a destra. Con un brano aperto, la colonna di sinistra mostra invece la setlist, per saltare a qualsiasi brano.</div>
-  <div class="devnote" data-devices="tablet,duoBook,duoLand">Lo Stage mode si apre accanto al pannello dell'elenco. <b class="ui">Hide sidebar</b> gli dà tutto lo schermo: orari e momenti nel primo pannello, setlist o brano nel secondo, divisi sul bordo dei pannelli in modo che nulla cada sulla piega. Con un brano aperto, la setlist sta in una colonna accanto (sul primo pannello quando il dispositivo è aperto su entrambi). <b class="ui">Show sidebar</b> riporta l'elenco. La scelta resta memorizzata sul dispositivo.</div>
-  <div class="devnote" data-devices="duoClosed"><b class="ui">Open stage mode</b> si trova nella barra laterale e il giorno del gig ne è l'azione principale. <b class="ui">Hide sidebar</b> nasconde la barra nello Stage mode.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Lo Stage mode si apre accanto al pannello dell'elenco. <b class="ui">Full screen</b> gli dà tutto lo schermo: orari e momenti nel primo pannello, setlist o brano nel secondo, divisi sul bordo dei pannelli in modo che nulla cada sulla piega. Con un brano aperto, la setlist sta in una colonna accanto (sul primo pannello quando il dispositivo è aperto su entrambi). <b class="ui">Exit full screen</b> riporta l'elenco. La scelta resta memorizzata sul dispositivo.</div>
+  <div class="devnote" data-devices="duoClosed"><b class="ui">Open stage mode</b> si trova nella barra laterale e il giorno del gig ne è l'azione principale. <b class="ui">Full screen</b> nasconde la barra nello Stage mode.</div>
   <div class="devnote" data-devices="duoLaptop">Spia da palco: il dispositivo si appoggia sul pavimento del palco come un monitor. La metà superiore mostra il contatore (<b class="ui">Song … of …</b>), titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo. La metà inferiore ha grandi pulsanti <b class="ui">Prev</b> e <b class="ui">Next</b> e l'avanzamento del set; i brani tolti per la serata vengono saltati e i loro segmenti di avanzamento attenuati. Anche frecce, Pagina su/giù e Spazio fanno avanzare, quindi funzionano le pedaliere Bluetooth voltapagina.</div>
-  <div class="devnote" data-devices="web">Funzionano la sincronizzazione via internet e il click; niente Bluetooth né copia offline della setlist.</div>
+  <div class="devnote" data-devices="web">Funzionano la sincronizzazione via internet e il click; niente Bluetooth né copia offline della setlist. Lo schermo intero nasconde anche le barre del browser, dove il browser lo permette.</div>
   <p>Il tasto Indietro di Android ed Esc chiudono prima lo Stage mode, non il gig sottostante.</p>
 
   <h2>Domande frequenti</h2>

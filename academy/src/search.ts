@@ -28,6 +28,8 @@ const blockText = (b: Block): string[] => {
       return [b.caption];
     case 'table':
       return [...b.head, ...b.rows.flat()];
+    case 'symbols':
+      return [b.title ?? '', ...b.rows.map((r) => r.text)];
   }
 };
 

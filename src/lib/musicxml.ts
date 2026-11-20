@@ -201,6 +201,7 @@ export function parseMusicXml(xml: string, fileName?: string): SongChart {
   const sections: ChartSection[] = [];
   let current: ChartSection = { label: null, bars: [] };
   let prevChords: string[] = [];
+  let lastTime: string | undefined;
 
   for (const m of Array.from(part.children).filter((c) => c.nodeName === 'measure')) {
     const bar: ChartBar = { chords: [] };
@@ -213,12 +214,20 @@ export function parseMusicXml(xml: string, fileName?: string): SongChart {
           if (tok) bar.chords.push(tok);
           break;
         }
-        case 'time':
-          if (!time) {
-            const beats = text(el, 'beats');
-            const type = text(el, 'beat-type');
-            if (beats && type) time = `${beats}/${type}`;
+        case 'time': {
+          const beats = text(el, 'beats');
+          const type = text(el, 'beat-type');
+          if (beats && type) {
+            const sig = `${beats}/${type}`;
+            // The first one is the chart's; a later change starts on its bar.
+            if (!time) time = sig;
+            else if (sig !== lastTime) bar.time = sig;
+            lastTime = sig;
           }
+          break;
+        }
+        case 'fermata':
+          bar.fermata = true;
           break;
         case 'key':
           if (!key) key = keyName(el);

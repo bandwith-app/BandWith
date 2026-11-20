@@ -47,6 +47,19 @@ describe('ireal', () => {
     expect(b.bars[3]).toMatchObject({ coda: true, final: true });
   });
 
+  it('keeps the symbols the chart used to drop (two-bar repeat, slash, fermata, end, time change, double bar)', () => {
+    const { sections, time } = parseMusic('[*AT44C^7 p p p |r|   |fD-7 G7 ]*B[T34Eb^7 |C7 U]');
+    expect(time).toBe('4/4');
+    const [a, b] = sections;
+    expect(a.bars[0].chords).toEqual(['C^7', '/', '/', '/']);
+    // "r" fills two bars: one cell, two bars wide, so the rows keep four bars.
+    expect(a.bars[1]).toMatchObject({ chords: ['%%'], span: 2 });
+    expect(a.bars[2]).toMatchObject({ chords: ['D-7', 'G7'], fermata: true, doubleEnd: true });
+    expect(a.bars).toHaveLength(3);
+    expect(b.bars[0]).toMatchObject({ chords: ['Eb^7'], time: '3/4' });
+    expect(b.bars[1]).toMatchObject({ chords: ['C7'], end: true, doubleEnd: true });
+  });
+
   it('parses a one-song link with its fields', () => {
     const { name, songs } = parseIrealLink(link(songField('My Tune', PLAIN, 'F#-', '96')));
     expect(name).toBeNull();
