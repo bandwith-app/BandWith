@@ -109,6 +109,8 @@ jobs:
             e2e/.report/
             e2e/.results/
           retention-days: 7
+          # Dot folders: upload-artifact@v4 skips hidden files unless asked.
+          include-hidden-files: true
 
   # Lifecycle model paths (e2e/models → specs/xstate-lifecycles.spec.ts),
   # beside the shards instead of inside them. Same setup as the shards.
@@ -178,3 +180,5 @@ jobs:
             e2e/.report/
             e2e/.results/
           retention-days: 7
+          # Dot folders: upload-artifact@v4 skips hidden files unless asked.
+          include-hidden-files: true
