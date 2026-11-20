@@ -96,6 +96,16 @@ const people: AreaModule = {
             'When they join, everyone in the band gets “{name} joined {band}”.',
           ],
         },
+        {
+          type: 'list',
+          title: 'See who hasn’t joined yet',
+          items: [
+            'Admins see open invites on **Band members** under **Invited**: the email, the role and **Not accepted yet**, **Expired** or **Declined**.',
+            'Tap the ⋯ next to an invite, then **Send again**: the invite gets 7 more days and goes out again. For an expired or declined invite the button is **Invite again**.',
+            '**Copy link** copies the invite link, so you can send it yourself to someone new to BandWith.',
+            '**Cancel invite**, then **Yes, cancel it**: the link and the code stop working.',
+          ],
+        },
         { type: 'note', tone: 'privacy', text: 'Search results show emails partly hidden (for example gi•••@…) unless you type the exact address. People already in the band don’t appear.' },
         { type: 'shot', id: 'people-invite', caption: 'The Invite member sheet with search, results and the role choice.' },
         { type: 'note', tone: 'tip', text: 'The invite is tied to the email address. The person must sign in with that address to join.' },
@@ -125,7 +135,7 @@ const people: AreaModule = {
           items: [
             'Open the invite link from the message or email. Or, on the welcome screen, tap **I have an invite code**, paste the code or link in **Invite code or link** and tap **Join**.',
             'Check the band card and tap **Accept & continue** (or **Decline invitation**).',
-            'Create your account or sign in with the email address the invite was sent to.',
+            'Create your account or sign in with the email address the invite was sent to. You are in the band as soon as the account is ready.',
           ],
         },
         {

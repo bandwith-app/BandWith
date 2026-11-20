@@ -73,7 +73,7 @@ export default function App() {
   const { isAuthenticated, loading: authLoading, userMode, profile, isPasswordRecovery, user, signOut } = useAuth();
   // The server writes some pushes (deputies) in the language of the app.
   useServerLocaleSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.preferred_language);
-  const { startOnboarding, goToStep, resetOnboarding, path: onboardingPath } = useOnboarding();
+  const { startOnboarding, goToStep, resetOnboarding, path: onboardingPath, joinedEarly } = useOnboarding();
   const deputyClaim = useDeputyClaim();
   const { bands, loading: bandsLoading, refreshBands, error: bandsError } = useBand();
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -243,9 +243,14 @@ export default function App() {
       return;
     }
 
+    // Joined from an invite right after making the account: the band is
+    // there already, but the profile and welcome screens come first. (On a
+    // cold start this is false, so someone who left halfway lands in the band.)
+    if (joinedEarly) return;
+
     // Default logic: show onboarding if no bands exist
     setShowOnboarding(bands.length === 0);
-  }, [isAuthenticated, authLoading, bandsLoading, bands.length, bandsError, userMode, profile?.user_mode]);
+  }, [isAuthenticated, authLoading, bandsLoading, bands.length, bandsError, userMode, profile?.user_mode, joinedEarly]);
 
   // Add an effect to warn if we bypass onboarding but have no bands
   useEffect(() => {

@@ -1049,6 +1049,36 @@ const rpc = (fn: string, args: Row = {}) => {
       data = demoCalendarToken;
       break;
     }
+    // Band members → Invited (166): the demo's own band_invitations rows.
+    case 'bw_band_invitations': {
+      const now = Date.now();
+      data = table('band_invitations')
+        .filter((r) => r.band_id === args.p_band_id && ['pending', 'expired', 'declined'].includes(String(r.status)))
+        .map((r) => ({
+          id: r.id,
+          email: r.email,
+          role: r.role === 'admin' ? 'admin' : 'member',
+          status: r.status === 'pending' && r.expires_at && Date.parse(String(r.expires_at)) <= now ? 'expired' : r.status,
+          created_at: r.created_at,
+          expires_at: r.expires_at ?? null,
+          email_sent_at: r.email_sent_at ?? null,
+          token: r.token,
+          inviter_name: null,
+          has_account: table('profiles').some((p) => String(p.email ?? '').toLowerCase() === String(r.email).toLowerCase()),
+        }));
+      break;
+    }
+    case 'bw_cancel_invitation': {
+      const rows = table('band_invitations');
+      const i = rows.findIndex((r) => r.id === args.p_invitation_id && r.status !== 'accepted');
+      if (i < 0) {
+        error = { message: 'invite_not_found', code: 'P0002' };
+        break;
+      }
+      rows.splice(i, 1);
+      persist();
+      break;
+    }
     // Feature flags (130): platform switches, and the band's own for its members.
     case 'bw_band_features': {
       const bools = (rows: Row[]) => Object.fromEntries(rows.filter((r) => typeof r.enabled === 'boolean').map((r) => [r.key, r.enabled]));

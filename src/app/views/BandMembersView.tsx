@@ -39,6 +39,7 @@ import { ScreenHeader, IconButton, Card, Tag, BwSheet } from '@/app/components/b
 import { PillButton } from '@/app/components/bw/Form';
 import { personName } from '@/lib/personName';
 import { DeputiesSection } from '@/app/components/band/DeputiesSection';
+import { PendingInvitesSection } from '@/app/components/band/PendingInvitesSection';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
 import { isValidEmail } from '@/lib/services/contracts';
@@ -154,6 +155,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
   const [codeCopied, setCodeCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
+  const [invitesReload, setInvitesReload] = useState(0);
 
   useEffect(() => {
     if (selectedBand?.id) {
@@ -327,6 +329,8 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
         role: inviteRole,
         inviterName: currentProfile?.full_name ?? undefined,
       });
+      // The new invite shows under Invited until they join.
+      setInvitesReload((n) => n + 1);
       if (result.kind === 'existing_user') {
         setInviteSuccess(t('Invite sent to {name}. They’ll see it next time they open BandWith.', { name: displayName }));
       } else {
@@ -563,6 +567,13 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
               })}
             </ul>
           </>
+        )}
+        {isAdmin && !loading && selectedBand?.id && (
+          <PendingInvitesSection
+            bandId={selectedBand.id}
+            inviterName={currentProfile?.full_name ?? undefined}
+            reloadKey={invitesReload}
+          />
         )}
         {isAdmin && !loading && selectedBand?.id && <DeputiesSection
             bandId={selectedBand.id}

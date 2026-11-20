@@ -4313,6 +4313,23 @@ const dict: Dictionary = {
   "Making…": "Creo…",
   "Couldn’t copy the link. Try again.": "Non sono riuscito a copiare il link. Riprova.",
   "Couldn’t make a new link. Check your connection and try again.": "Non sono riuscito a creare un nuovo link. Controlla la connessione e riprova.",
+  // Pending invites (166)
+  "Invited": "Invitati",
+  "Waiting to join. An invite lasts 7 days.": "Devono ancora entrare. Un invito vale 7 giorni.",
+  "Not accepted yet": "Non ancora accettato",
+  "Sees it in the app · until {date}": "Lo vede nell’app · fino al {date}",
+  "Until {date}": "Fino al {date}",
+  "Expired on {date}": "Scaduto il {date}",
+  "Actions for {email}": "Azioni per {email}",
+  "Cancel the invite to {email}? The link stops working.": "Annullare l’invito a {email}? Il link smette di funzionare.",
+  "Yes, cancel it": "Sì, annullalo",
+  "Send again": "Invia di nuovo",
+  "Invite again": "Invita di nuovo",
+  "Cancel invite": "Annulla invito",
+  "Invite sent again to {email}.": "Invito inviato di nuovo a {email}.",
+  "Couldn’t copy the invite link. Try again.": "Non è stato possibile copiare il link d’invito. Riprova.",
+  "Invite cancelled.": "Invito annullato.",
+  "We couldn’t cancel the invite. Try again.": "Non siamo riusciti ad annullare l’invito. Riprova.",
 };
 
 export default dict;

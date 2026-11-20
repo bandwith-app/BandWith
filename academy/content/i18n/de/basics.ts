@@ -305,6 +305,7 @@ const basics: AreaText = {
           ],
         },
         { type: "note", tone: "tip", text: "Nutze die Adresse, an die die Einladung ging. Eine Einladung für eine andere Adresse kannst du mit deinem Konto nicht annehmen." },
+        { type: "note", tone: "tip", text: "Du bist in der Band, sobald dein Konto bereit ist. Schließt du die App vor dem letzten Bildschirm, ist die Band beim nächsten Öffnen schon da." },
         { type: "p", text: "Klappt der Beitritt nicht (abgelaufene Einladung, andere E-Mail), bleibt die App auf dem letzten Bildschirm und sagt dir, warum. Der Button wird zu **Erneut versuchen**." },
         { type: "p", text: "Admins können statt einer E-Mail auch einen Einladungscode teilen: Bei **Bandmitglieder** zeigt die Einladung **Code kopieren** und **Teilen**. Die Person installiert BandWith, registriert sich und fügt den Code ein." },
       ],

@@ -305,6 +305,7 @@ const basics: AreaText = {
           ],
         },
         { type: "note", tone: "tip", text: "Use o endereço para o qual o convite foi enviado. Um convite para outro endereço não pode ser aceito pela sua conta." },
+        { type: "note", tone: "tip", text: "Você entra na banda assim que a conta estiver pronta. Se fechar o app antes da última tela, a banda já está lá quando abrir de novo." },
         { type: "p", text: "Se não der para entrar (convite expirado, outro e-mail), o app fica na última tela e explica o motivo. O botão vira **Tentar de novo**." },
         { type: "p", text: "Os admins podem compartilhar um código de convite em vez de um e-mail: em **Membros da banda**, o convite mostra **Copiar código** e **Compartilhar**. A pessoa instala o BandWith, se cadastra e cola o código." },
       ],
