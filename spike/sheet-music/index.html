@@ -1,0 +1,133 @@
+<!doctype html>
+<!--
+  THROWAWAY SPIKE (docs/plans/sheet-music.md §5). Not part of the app and not
+  built by Vite: open it with any static server, e.g.
+    npx serve spike/sheet-music   →   http://localhost:3000
+  It renders one made-up MusicXML lead sheet with OpenSheetMusicDisplay
+  (BSD-3-Clause), transposes it, re-flows it on resize, and times each step,
+  so the plan's numbers can be re-measured on a phone, an iPad and the Duo.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sheet music spike</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f4f3ef; --fg: #111; --muted: #666; --line: #d8d6cf; --accent: #c8f04a; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0b0b0b; --fg: #f4f3ef; --muted: #9a9a9a; --line: #2a2a2a; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
+    header { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: max(12px, env(safe-area-inset-top)) 16px 12px; background: var(--bg); border-bottom: 1px solid var(--line); }
+    h1 { font-size: 16px; margin: 0 auto 0 0; }
+    button { min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+    output { font-variant-numeric: tabular-nums; min-width: 3ch; text-align: center; }
+    #score { padding: 8px 8px 48px; }
+    #log { margin: 0 16px 24px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; font: 12px/1.5 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Harbor Lights · MusicXML</h1>
+    <button id="down" aria-label="Transpose down a semitone">−</button>
+    <output id="semi" aria-live="polite">0</output>
+    <button id="up" aria-label="Transpose up a semitone">+</button>
+    <button id="zoomOut" aria-label="Smaller">A−</button>
+    <button id="zoomIn" aria-label="Larger">A+</button>
+    <button id="x8" aria-pressed="false">×8 bars</button>
+  </header>
+  <div id="score" role="img" aria-label="Sheet music: Harbor Lights"></div>
+  <pre id="log" aria-label="Timings"></pre>
+
+  <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.3.1/build/opensheetmusicdisplay.min.js"></script>
+  <script>
+    const { OpenSheetMusicDisplay, TransposeCalculator } = opensheetmusicdisplay;
+    const $ = (id) => document.getElementById(id);
+    const log = (line) => { $('log').textContent += line + '\n'; };
+    const ms = (t) => `${Math.round(performance.now() - t)} ms`;
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const ink = dark ? '#f4f3ef' : '#111111';
+
+    const osmd = window.osmd = new OpenSheetMusicDisplay($('score'), {
+      backend: 'svg',
+      autoResize: true,
+      drawTitle: true,
+      drawComposer: false,
+      drawPartNames: false,
+      drawingParameters: 'compacttight',
+      defaultColorMusic: ink,
+      defaultColorLabel: ink,
+      defaultColorTitle: ink,
+      defaultColorChordSymbol: ink,
+    });
+    osmd.TransposeCalculator = new TransposeCalculator();
+
+    let source = '';
+    let semitones = 0;
+    let long = false;
+
+    /** The same 8 bars, 8 times over (64 bars): a long chart for the timing. */
+    function lengthen(xml) {
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      const part = doc.querySelector('part');
+      const bars = [...part.querySelectorAll('measure')];
+      let n = bars.length;
+      for (let i = 1; i < 8; i++) for (const m of bars) {
+        const c = m.cloneNode(true);
+        c.setAttribute('number', String(++n));
+        c.querySelectorAll('attributes, direction').forEach((e) => e.remove());
+        part.appendChild(c);
+      }
+      return new XMLSerializer().serializeToString(doc);
+    }
+
+    async function load() {
+      let t = performance.now();
+      await osmd.load(long ? lengthen(source) : source);
+      log(`load ${long ? 64 : 8} bars: ${ms(t)}`);
+      t = performance.now();
+      osmd.Sheet.Transpose = semitones;
+      if (semitones) osmd.updateGraphic();
+      osmd.render();
+      log(`render: ${ms(t)} · ${innerWidth}×${innerHeight} · ${$('score').querySelectorAll('svg').length} svg`);
+    }
+
+    function transpose(by) {
+      semitones = Math.max(-11, Math.min(11, semitones + by));
+      $('semi').value = String(semitones);
+      const t = performance.now();
+      osmd.Sheet.Transpose = semitones;
+      osmd.updateGraphic();
+      osmd.render();
+      log(`transpose ${semitones > 0 ? '+' : ''}${semitones}: ${ms(t)}`);
+    }
+
+    function zoom(by) {
+      osmd.Zoom = Math.max(0.5, Math.min(2, +(osmd.Zoom + by).toFixed(2)));
+      const t = performance.now();
+      osmd.render();
+      log(`zoom ${osmd.Zoom}: ${ms(t)}`);
+    }
+
+    $('up').onclick = () => transpose(1);
+    $('down').onclick = () => transpose(-1);
+    $('zoomIn').onclick = () => zoom(0.15);
+    $('zoomOut').onclick = () => zoom(-0.15);
+    $('x8').onclick = async (e) => {
+      long = !long;
+      e.currentTarget.classList.toggle('on', long);
+      e.currentTarget.setAttribute('aria-pressed', String(long));
+      await load();
+    };
+
+    (async () => {
+      log(`OSMD ${osmd.Version} · ${navigator.userAgent.match(/(iPhone|iPad|Android|Mac OS X|Windows)[^;)]*/)?.[0] || 'unknown'}`);
+      const t = performance.now();
+      source = await (await fetch('harbor-lights.musicxml')).text();
+      log(`fetch: ${ms(t)}`);
+      await load();
+      window.spikeReady = true;
+    })().catch((err) => { log(`error: ${err}`); window.spikeReady = 'error'; });
+  </script>
+</body>
+</html>
