@@ -28,7 +28,7 @@ const LAYERS: Layer[] = [
   {
     name: 'notifications',
     smoke: true,
-    open: (app) => app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')} \\(`) }).first().click(),
+    open: (app) => app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).first().click(),
     marker: (app) => app.page.getByRole('button', { name: app.t('Close notifications'), exact: true }).first(),
     under: (app) => app.page.getByText(SEED.gigToday, { exact: false }).first(),
     close: (app) => app.page.getByRole('button', { name: app.t('Close notifications'), exact: true }).first(),
@@ -121,7 +121,7 @@ test.describe('inbox opened as Home loads', () => {
   test('@smoke no gig opens behind the inbox, and Back (the Duo rail\'s too) closes the inbox', async ({ app }) => {
     const { page } = app;
     await page.goto('/');
-    const bellName = `${app.t('Notifications')} (`;
+    const bellName = `${app.t('Notifications')}, `;
     await expect(page.getByRole('button', { name: new RegExp(`^${escapeRe(bellName)}`) }).filter({ visible: true }).first()).toBeVisible({
       timeout: 30_000,
     });

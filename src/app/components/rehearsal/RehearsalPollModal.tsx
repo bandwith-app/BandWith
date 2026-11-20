@@ -742,7 +742,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
                       : 'bg-background text-foreground hover:bg-foreground/[0.06] cursor-pointer'
                 )}
               >
-                <span className="bw-label-xs opacity-70">{dayLabel(d, { weekday: 'short' })}</span>
+                <span className="bw-label-xs opacity-85">{dayLabel(d, { weekday: 'short' })}</span>
                 <span className="bw-h2 tabular-nums leading-none">{new Date(d + 'T12:00:00').getDate()}</span>
                 {c ? (
                   <>

@@ -141,7 +141,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
             ))}
           </span>
         ) : (
-          <span className="bw-label-xs opacity-70">{t('No team')}</span>
+          <span className="bw-label-xs opacity-85">{t('No team')}</span>
         )}
         {event.price && <span className="bw-num whitespace-nowrap">{sym()}{event.price}</span>}
       </motion.div>

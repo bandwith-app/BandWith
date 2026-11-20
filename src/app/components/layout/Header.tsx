@@ -17,6 +17,7 @@ import { HEADER_SPRING, durations } from '@/styles/motion';
 import { FIT, FitText } from '@/app/components/bw/FitText';
 import { primeKeyboard } from '@/lib/keyboardSafeTap';
 import { useT } from '@/lib/i18n';
+import { badgeText, unreadName, withVisibleText } from '@/lib/a11yNames';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 export { HEADER_SPRING };
@@ -57,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   const calendarTitle = t('Calendar');
   // The Calendar title is sized for the 8 letters of "Calendar"; a longer word shrinks to fit.
   const calendarDivisor = +(4.9 * Math.max(1, calendarTitle.length / 8)).toFixed(3);
-  const notificationsLabel = unreadCount > 0 ? t('Notifications ({count} unread)', { count: unreadCount }) : t('Notifications');
+  const notificationsLabel = unreadName(t, t('Notifications'), unreadCount);
   // iPhone Duo: search and the profile live in the side rail (Figma "Duo/Side Actions").
   const railOwnsChrome = useRailOwnsChrome();
   
@@ -377,7 +378,7 @@ export const Header: React.FC<HeaderProps> = ({
                     exit={{ scale: 0 }}
                     className="absolute -top-0.5 left-[26px] min-w-[20px] h-5 px-1 rounded-full bg-destructive-solid text-white text-[11px] font-bold leading-none flex items-center justify-center border-2 border-background z-30"
                   >
-                    {unreadCount > 99 ? '99+' : unreadCount}
+                    {badgeText(unreadCount)}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -391,7 +392,9 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onOpenIdentity}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
-              aria-label={t('Open Identity and Account Hub')}
+              // The initials show on its face (a second on Home, and on hover): they
+              // are part of its name.
+              aria-label={withVisibleText(initials, t('Open Identity and Account Hub'))}
               className="relative shrink-0 w-11 h-11 rounded-full bg-white border-[1.5px] border-border text-black flex items-center justify-center bw-h3 transition-colors focus:outline-none overflow-hidden cursor-pointer"
             >
               {profile?.avatar_url ? (

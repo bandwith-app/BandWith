@@ -26,7 +26,7 @@ const shortEuro = (v: number) => (v >= 1000 ? `${sym()}${localDecimal((v / 1000)
 /** Event-detail "Time Tile" (Figma 22:674): label XS + numeric value on a 16-radius tile. */
 const TimeTile: React.FC<{ label: string; value: string; className?: string }> = ({ label, value, className }) => (
   <div className={cn('rounded-[16px] p-4 flex flex-col gap-1 min-w-0', className)}>
-    <span className="bw-label-xs opacity-70 truncate">{label}</span>
+    <span className="bw-label-xs opacity-85 truncate">{label}</span>
     <span className="bw-num truncate">{value}</span>
   </div>
 );
@@ -129,7 +129,7 @@ export const ConfirmedExpanded: React.FC<ConfirmedExpandedProps> = ({
               </div>
               <div className="flex flex-col gap-1 min-w-0">
                 <span className="bw-label-md truncate">{nextGig.venue}</span>
-                {nextGig.address && <span className="bw-label-xs opacity-70 truncate">{nextGig.address}</span>}
+                {nextGig.address && <span className="bw-label-xs opacity-85 truncate">{nextGig.address}</span>}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <TimeTile label={t('Load in')} value={nextGig.timeline.loadIn} className="bg-card text-card-foreground" />

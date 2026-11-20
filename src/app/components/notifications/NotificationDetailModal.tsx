@@ -395,10 +395,10 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                           fullWidth={false}
                           icon={<Check className="w-4 h-4" />}
                           onClick={onMarkAllAsRead}
-                          aria-label={t('Mark all as read')}
                           className="px-0"
                         >
-                          {t('Mark read')}
+                          {/* Its words are its name (WCAG 2.5.3): no shorter label on the face. */}
+                          {t('Mark all read')}
                         </PillButton>
                       )}
                       {onClearAll && (
@@ -566,7 +566,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                             </Tag>
                           )}
                           <span className="flex-1" />
-                          <span className="bw-label-xs opacity-70">{formatTime(detailNotif.created_at)}</span>
+                          <span className="bw-label-xs opacity-85">{formatTime(detailNotif.created_at)}</span>
                         </div>
                         <h2 className="bw-display-lg [overflow-wrap:anywhere]">{cleanNotificationTitle(detailNotif.title)}</h2>
                         {detailNotif.body && <p className="bw-body-md">{detailNotif.body}</p>}
@@ -783,7 +783,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           {/* ═══ HEADER ═══ */}
           {isListView ? renderListHeader() : renderDetailHeader()}
           {/* ═══ SCROLLABLE BODY ═══ */}
-          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+          {/* A tab stop: a detail with no buttons still scrolls by keyboard. */}
+          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6" tabIndex={0}>
             <div className="max-w-xl mx-auto w-full flex flex-col gap-4">
               {isListView ? renderList() : renderDetail()}
             </div>
@@ -819,7 +820,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           {/* ═══ HEADER ═══ */}
           {renderListHeader()}
           {/* ═══ SCROLLABLE BODY ═══ */}
-          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+          {/* A tab stop: a detail with no buttons still scrolls by keyboard. */}
+          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6" tabIndex={0}>
             <div className="max-w-xl mx-auto w-full flex flex-col gap-4">
               {renderList()}
             </div>
@@ -839,7 +841,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           {/* ═══ HEADER ═══ */}
           {renderDetailHeader()}
           {/* ═══ SCROLLABLE BODY ═══ */}
-          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+          {/* A tab stop: a detail with no buttons still scrolls by keyboard. */}
+          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6" tabIndex={0}>
             <div className="max-w-xl mx-auto w-full flex flex-col gap-4">
               {renderDetail()}
             </div>

@@ -73,7 +73,7 @@ export const StepPad: React.FC<StepPadProps> = ({ day, date, time, votes = [], s
         // through a container query instead of overflowing the pad.
         const [start, end] = time.split('–');
         return (
-          <span className="bw-label-xs opacity-70 whitespace-nowrap" aria-label={time}>
+          <span className="bw-label-xs opacity-85 whitespace-nowrap" aria-label={time}>
             {start}
             {end && <span className="@max-[70px]:hidden">–{end}</span>}
           </span>

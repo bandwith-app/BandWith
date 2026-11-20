@@ -11,9 +11,9 @@ tags: [ios, android]
 - runFlow:
     file: ../subflows/tap-until.yaml
     env:
-      TARGET: "Notifications \\([1-9]\\d* unread\\)"
-      EXPECT: "Mark all as read|MARK READ"
-- tapOn: "Mark all as read|MARK READ"
+      TARGET: "Notifications, [1-9]\\d* unread"
+      EXPECT: "Mark all read|MARK ALL READ"
+- tapOn: "Mark all read|MARK ALL READ"
 - assertNotVisible: "(?i)unread\\s*[1-9].*"
 - takeScreenshot: mark-all-read-admin
 - runFlow:
@@ -24,8 +24,8 @@ tags: [ios, android]
 - runFlow:
     file: ../subflows/tap-until.yaml
     env:
-      TARGET: "Notifications \\([1-9]\\d* unread\\)"
-      EXPECT: "Mark all as read|MARK READ"
-- tapOn: "Mark all as read|MARK READ"
+      TARGET: "Notifications, [1-9]\\d* unread"
+      EXPECT: "Mark all read|MARK ALL READ"
+- tapOn: "Mark all read|MARK ALL READ"
 - assertNotVisible: "(?i)unread\\s*[1-9].*"
 - takeScreenshot: mark-all-read-member

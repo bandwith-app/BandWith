@@ -532,7 +532,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                 <span className="flex items-start gap-3">
                   <span className="flex-1 min-w-0 flex flex-col gap-1">
                     {quote.clientName && (
-                      <span className={'bw-label-sm truncate ' + (accepted ? 'opacity-70' : 'text-muted-foreground')}>{quote.clientName}</span>
+                      <span className={'bw-label-sm truncate ' + (accepted ? 'opacity-85' : 'text-muted-foreground')}>{quote.clientName}</span>
                     )}
                     <span className="bw-h3 [overflow-wrap:anywhere]">{quote.eventTitle || t('Untitled quote')}</span>
                   </span>
@@ -541,7 +541,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                   </Tag>
                 </span>
                 <span className="flex items-end justify-between gap-3">
-                  <span className={'bw-label-xs ' + (accepted ? 'opacity-70' : 'text-muted-foreground')}>
+                  <span className={'bw-label-xs ' + (accepted ? 'opacity-85' : 'text-muted-foreground')}>
                     {[items > 0 ? (items === 1 ? t('{count} item', { count: items }) : t('{count} items', { count: items })) : null, created && !isNaN(created.getTime()) ? created.toLocaleDateString(intlLocale('en-US'), { month: 'short', day: 'numeric' }) : null]
                       .filter(Boolean)
                       .join(' · ')}

@@ -238,7 +238,7 @@ export const RehearsalExpanded: React.FC<RehearsalExpandedProps> = ({
                         {currentRehearsal.location}
                       </MapsLink>
                     )}
-                    {currentRehearsal.date && <span className="bw-label-xs opacity-70">{currentRehearsal.date}</span>}
+                    {currentRehearsal.date && <span className="bw-label-xs opacity-85">{currentRehearsal.date}</span>}
                   </span>
                   {currentRehearsal.members?.length > 0 && (
                     <span className="flex -space-x-2 shrink-0">

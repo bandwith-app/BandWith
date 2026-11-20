@@ -12,7 +12,7 @@ import { test, expect, type App } from '../fixtures';
  */
 
 const railProfile = (app: App): Locator =>
-  app.page.locator('.bw-duo-rail').getByRole('button', { name: app.t('Open profile'), exact: true });
+  app.page.locator('.bw-duo-rail').getByRole('button', { name: new RegExp(`(^|, )${app.t('Open profile')}$`) });
 
 const whoYouAre = (app: App): Locator =>
   app.page.getByRole('heading', { name: app.t('Who you are'), exact: true }).filter({ visible: true }).first();
@@ -37,7 +37,7 @@ async function openProfileFromRail(app: App) {
 
 async function openInbox(app: App) {
   await app.tab('Home');
-  await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')} \\(`) }).filter({ visible: true }).first().click();
+  await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).filter({ visible: true }).first().click();
   await expect(app.page.getByRole('heading', { name: app.t('Inbox'), exact: true })).toBeVisible();
   await app.settle();
 }

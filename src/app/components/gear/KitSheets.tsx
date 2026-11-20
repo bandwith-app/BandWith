@@ -133,7 +133,7 @@ export const KitEditorSheet: React.FC<{
                     </li>
                   );
                 })}
-                {shown.length === 0 && <li className="py-4 bw-body-sm opacity-70">{t('No items match.')}</li>}
+                {shown.length === 0 && <li className="py-4 bw-body-sm opacity-85">{t('No items match.')}</li>}
               </ul>
             </>
           )}

@@ -621,7 +621,7 @@ const basics: AreaText = {
             "Passe de **Tout** à **Non lues**. Les éléments non lus ont un point rouge.",
             "Touche un élément. Une invitation de concert ouvre d’abord sa page de détail ; la plupart des autres ouvrent directement leur écran (un chat, un événement, un sondage, un devis).",
             "Fais glisser un élément vers la gauche et touche **Supprimer** pour l’enlever.",
-            "Touche **Marquer lu** pour tout marquer comme lu : les points rouges et le compteur **Non lues** disparaissent aussitôt. Ou touche **Effacer**, puis **Tout effacer**, pour vider la liste.",
+            "Touche **Tout marquer lu** pour tout marquer comme lu : les points rouges et le compteur **Non lues** disparaissent aussitôt. Ou touche **Effacer**, puis **Tout effacer**, pour vider la liste.",
           ],
         },
         { type: "p", text: "La page de détail d’une invitation de concert montre les **Détails de l’événement** : date, **Horaires** (arrivée, balance, début), **Salle**, ton **Cachet attribué** et tout **Conflit d’agenda** avec ton calendrier. Touche **Accepter** ou **Refuser**, ou **Ajouter à Google Agenda**. Les sondages de répétition ont **Voter les dates**." },

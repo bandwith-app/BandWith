@@ -2001,7 +2001,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
                   on ? 'bg-surface-inverse text-surface-inverse-foreground' : 'bg-background text-foreground hover:bg-foreground/[0.06]',
                 )}
               >
-                <span className="bw-label-xs opacity-70">{dateLong(d, { weekday: 'short' })}</span>
+                <span className="bw-label-xs opacity-85">{dateLong(d, { weekday: 'short' })}</span>
                 <span className="bw-h2 tabular-nums leading-none">{dt.getDate()}</span>
                 {c ? (
                   <>

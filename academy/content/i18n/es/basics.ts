@@ -618,7 +618,7 @@ const basics: AreaText = {
             "Cambia entre **Todo** y **No leídas**. Las no leídas tienen un punto rojo.",
             "Toca una notificación. Una invitación a un concierto abre primero su página de detalle; la mayoría de las demás abren directamente su pantalla (un chat, un evento, un sondeo, un presupuesto).",
             "Desliza una notificación hacia la izquierda y toca **Eliminar** para quitarla.",
-            "Toca **Marcar leídas** para marcarlo todo como leído: los puntos rojos y el contador de **No leídas** desaparecen al momento. O toca **Borrar** y luego **Borrar todo** para vaciar la lista.",
+            "Toca **Marcar todas leídas** para marcarlo todo como leído: los puntos rojos y el contador de **No leídas** desaparecen al momento. O toca **Borrar** y luego **Borrar todo** para vaciar la lista.",
           ],
         },
         { type: "p", text: "La página de detalle de una invitación a un concierto muestra **Detalles del evento**: la fecha, los **Horarios** (montaje, prueba de sonido, inicio), la **Sala**, tu **Caché asignado** y cualquier **Conflicto de agenda** con tu calendario. Toca **Aceptar evento** o **Rechazar**, o **Añadir a Google Calendar**. Los sondeos de ensayo tienen **Vota las fechas**." },

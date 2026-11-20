@@ -15,8 +15,9 @@ export async function openHub(app: App) {
   if (await settings.count()) await app.tab('Settings');
   else
     await app.page
-      .getByRole('button', { name: app.t('Open Identity and Account Hub'), exact: true })
-      .or(app.page.getByRole('button', { name: app.t('Open profile'), exact: true }))
+      // Their names start with the initials on their face ("LM, Open profile").
+      .getByRole('button', { name: new RegExp(`(^|, )${escapeRe(app.t('Open Identity and Account Hub'))}$`) })
+      .or(app.page.getByRole('button', { name: new RegExp(`(^|, )${escapeRe(app.t('Open profile'))}$`) }))
       .filter({ visible: true })
       .first()
       .click();
