@@ -490,6 +490,13 @@
   background: var(--color-background);
   pointer-events: auto;
 }
+/* A row brought into view (focus, Tab, scrollIntoView) rests below that
+   sticky header and above the Deck bar, never under them: Settings grew a
+   row (Calendar sync) and Privacy & account landed under the header. */
+:root[data-bw-posture="tabletop"] .bw-pane-hub {
+  scroll-padding-top: var(--bw-deck-top);
+  scroll-padding-bottom: var(--content-bottom-clearance);
+}
 /* The hub's summary (`.bw-hub-fold`: member counts, repertoire card,
    documents overview, headline numbers, profile card) joins the header on
    the Display, resting just above the fold; lists and actions start on the
