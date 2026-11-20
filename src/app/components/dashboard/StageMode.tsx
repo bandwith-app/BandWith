@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, StickyNote, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, ScrollText, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
@@ -13,7 +13,9 @@ import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover, useRailTone } from '@/lib/railActions';
 import { setStatusBarTone } from '@/lib/systemBars';
 import { useRailLayout } from '@/lib/deviceRegions';
-import { exitBrowserFullScreen, requestBrowserFullScreen, useBrowserFullScreenExit, useStageBarHidden, useStageFullScreen } from '@/lib/stageChrome';
+import { exitBrowserFullScreen, requestBrowserFullScreen, setStageSongOnly, useBrowserFullScreenExit, useStageBarHidden, useStageFullScreen, useStageSongOnly } from '@/lib/stageChrome';
+import { useLaptopPose } from '@/app/components/duo/FoldSplit';
+import { StageSongOnly } from './StageSongOnly';
 import '@/styles/stage.css';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
@@ -323,7 +325,14 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Remembered per device; system Back or the button leaves it.
   const { twoPane } = useRailLayout();
   const [full, setFull] = useStageBarHidden();
-  useStageFullScreen(full);
+  // Song only: the song clean and full screen (StageSongOnly; the Laptop
+  // pose shows it on the floor wedge). Full screen while it is on.
+  const [songOnlyOn, setSongOnly] = useStageSongOnly();
+  const laptop = useLaptopPose();
+  const songOnly = songOnlyOn && showLyrics && !!lyricsSong;
+  useStageFullScreen(full || songOnly);
+  // Leaving Stage mode leaves Song only: it always opens with everything shown.
+  useEffect(() => () => setStageSongOnly(false), []);
   // Full screen moves the list into another column: bring the current song back into view.
   useEffect(() => setLayoutTick((n) => n + 1), [full]);
   const exitFull = () => {
@@ -340,13 +349,26 @@ export const StageMode: React.FC<StageModeProps> = ({
     // The browser's own full screen needs this tap (web build, iPad Safari).
     void requestBrowserFullScreen();
   };
-  // Escape or the browser's UI left the browser's full screen: follow it.
-  useBrowserFullScreenExit(full, () => {
+  // Escape or the browser's UI left the browser's full screen: follow it (Song only too).
+  useBrowserFullScreenExit(full || songOnlyOn, () => {
     fsLeftAt.current = Date.now();
     setFull(false);
+    setSongOnly(false);
   });
   // System Back (Android Back, Escape, the web's Back) leaves full screen before Stage mode.
   useSystemBack(full, exitFull);
+  const openSongOnly = () => {
+    haptic.tap();
+    setSongOnly(true);
+    // The browser's own full screen needs this tap (web build, iPad Safari).
+    void requestBrowserFullScreen();
+  };
+  const showAll = () => {
+    setSongOnly(false);
+    if (!full) void exitBrowserFullScreen();
+  };
+  // …and Song only before full screen.
+  useSystemBack(songOnlyOn, showAll);
   // Closing Stage mode leaves the browser's full screen; the choice stays for next time.
   useEffect(() => () => void exitBrowserFullScreen(), []);
   const fullLabel = full ? t('Exit full screen') : t('Full screen');
@@ -443,8 +465,11 @@ export const StageMode: React.FC<StageModeProps> = ({
           the left, the setlist on the right. */}
       <div
         ref={contentRef}
+        aria-hidden={songOnly && !laptop ? true : undefined}
         className={cn(
           'flex flex-col flex-1 min-h-0 w-full max-w-[640px] mx-auto px-4',
+          // Song only covers it: nothing of it to read or tab to underneath.
+          songOnly && !laptop && 'invisible',
           compactHead ? 'gap-3' : 'gap-6',
           '[@media(max-height:520px)_and_(min-width:600px)]:grid [@media(max-height:520px)_and_(min-width:600px)]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] [@media(max-height:520px)_and_(min-width:600px)]:grid-rows-[auto_auto_1fr] [@media(max-height:520px)_and_(min-width:600px)]:max-w-[1100px] [@media(max-height:520px)_and_(min-width:600px)]:gap-x-6 [@media(max-height:520px)_and_(min-width:600px)]:gap-y-3',
           // Full screen on two panes: the whole width, one column per pane.
@@ -722,6 +747,15 @@ export const StageMode: React.FC<StageModeProps> = ({
                 </span>
                 <button
                   type="button"
+                  onClick={openSongOnly}
+                  aria-label={t('Song only')}
+                  title={t('Song only')}
+                  className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 [&_svg]:w-5 [&_svg]:h-5"
+                >
+                  <ScrollText aria-hidden />
+                </button>
+                <button
+                  type="button"
                   disabled={lyricsSize.min}
                   onClick={() => lyricsSize.step(-1)}
                   aria-label={t('Smaller text')}
@@ -972,8 +1006,42 @@ export const StageMode: React.FC<StageModeProps> = ({
           </div>
         )}
       </div>
-      {showClick && clickState && click && (
+      {showClick && clickState && click && !(songOnly && !laptop) && (
         <StageClickFrame state={clickState} offset={click.offset} accent={accentColor} onDone={clickUi.onDone} />
+      )}
+      {songOnly && !laptop && lyricsSong && (
+        <StageSongOnly
+          title={lyricsSong.title}
+          index={Math.max(0, current)}
+          count={songs.length}
+          song={lyricsContent}
+          view={songView}
+          size={lyricsSize.size}
+          semitones={semitones}
+          songKey={lyricsKey}
+          canPrev={!!live && current > 0}
+          canNext={!!live && current < songs.length - 1}
+          onStep={(d) => live?.go(d)}
+          accent={accentColor}
+          onShowAll={showAll}
+          click={
+            click ? (
+              <StageClickButton
+                bpm={currentSong?.bpm}
+                running={clickRunning}
+                following={clickRunning && !click.mine}
+                hidden={clickHidden}
+                onPress={pressClick}
+                accent={accentColor}
+              />
+            ) : undefined
+          }
+          clickFrame={
+            showClick && clickState && click ? (
+              <StageClickFrame state={clickState} offset={click.offset} accent={accentColor} onDone={clickUi.onDone} />
+            ) : undefined
+          }
+        />
       )}
       <AnimatePresence>
         {summary && session && (

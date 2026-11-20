@@ -8,7 +8,7 @@
  *   node academy/scripts/capture.mjs --explore "<step>;<step>" --devices phone   # prints the buttons on screen, saves out/explore.png
  *
  * Each capture starts from empty site data: demo session on, role tours seen,
- * song view on Chords, then the late urgent alert is dismissed. The steps for a
+ * song view on Lyrics & chords, then the late urgent alert is dismissed. The steps for a
  * shot live in RECIPES below (click by visible text or aria-label, scroll, wait).
  * Output: academy/public/shots/<id>@<device>.webp at the Academy widths
  * (phone 780, tablet 1600, web 1800). Then run `node academy/scripts/shot-files.mjs`.
@@ -37,12 +37,35 @@ const DEVICES = {
  * Steps: 'click:<text>' (button/link/role=button whose aria-label or text starts
  * with it, case-insensitive), 'clickin:<css>|<text>' (same inside a selector),
  * 'scroll:<text>' (bring the element with that text to the top third),
- * 'wait:<ms>', 'js:<expression>', 'member' (demo user becomes a member, see demo seed).
+ * 'wait:<ms>', 'js:<expression>', 'member' (demo user becomes a member, see demo seed),
+ * 'seed:<name>' (changes the demo data with SEEDS[name], then reloads; first in a recipe).
  */
+const SEEDS = {
+  // As e2e/support/live.ts: Weekly rehearsal gets Paper Boats, Harbor Lights and Superstition as focus songs.
+  focus: `(() => {
+    const k = 'bw-demo-db-v6';
+    const db = JSON.parse(localStorage.getItem(k) || '{}');
+    const reh = db.events.find((e) => e.title === 'Weekly rehearsal');
+    const list = '20000000-0000-4000-8000-000000000990';
+    if (!db.setlists.some((l) => l.id === list)) {
+      db.setlists.push({ id: list, band_id: reh.band_id, name: 'Weekly focus', description: null, is_template: false, song_count: 3,
+        total_duration_seconds: 660, created_by: reh.created_by, created_at: reh.created_at, updated_at: reh.created_at });
+      ['Paper Boats', 'Harbor Lights', 'Superstition'].forEach((title, i) => db.setlist_songs.push({
+        id: '20000000-0000-4000-8000-00000000099' + (i + 1), setlist_id: list, song_id: db.songs.find((s) => s.title === title).id,
+        position: i + 1, set_number: 1, notes: null, created_at: reh.created_at }));
+    }
+    reh.setlist_id = list;
+    localStorage.setItem(k, JSON.stringify(db));
+    return !!reh;
+  })()`,
+};
 const RECIPES = {
   'gig-workspace-admin': ['click:Calendar', 'click:Client A — Wedding', 'wait:1200'],
   'gig-workspace-member': ['member', 'click:Calendar', 'click:Client A — Wedding', 'wait:1200', 'scroll:Your fee'],
-  'music-reader': ['click:Repertoire', 'click:Actions for Harbor Lights', 'wait:500', 'click:Chords', 'wait:1200', 'click:Chords', 'wait:800'],
+  'music-reader': ['click:Repertoire', 'click:Actions for Harbor Lights', 'wait:500', 'click:Chord chart', 'wait:1200', 'click:Lyrics & chords', 'wait:800'],
+  // Weekly rehearsal (tomorrow) with focus songs, in Live mode on the current song.
+  'music-rehearsal-live': ['seed:focus', 'click:Calendar', 'wait:800', "js:(() => { const cells = [...document.querySelectorAll('[aria-label]')].filter((e) => /^\\w+day, /.test(e.getAttribute('aria-label'))); const i = cells.findIndex((e) => /today/.test(e.getAttribute('aria-label'))); cells[i + 1].click(); return true; })()", 'wait:1500', 'click:Open live mode', 'wait:1500', 'click:Lyrics & chords', 'wait:1000'],
+  'music-song-only': ['seed:focus', 'click:Calendar', 'wait:800', "js:(() => { const cells = [...document.querySelectorAll('[aria-label]')].filter((e) => /^\\w+day, /.test(e.getAttribute('aria-label'))); const i = cells.findIndex((e) => /today/.test(e.getAttribute('aria-label'))); cells[i + 1].click(); return true; })()", 'wait:1500', 'click:Open live mode', 'wait:1500', 'click:Lyrics & chords', 'wait:1000', 'click:Song only', 'wait:1200'],
   'music-stage': ['click:Go live', 'wait:1500'],
   // Tablet and web: Go live opens the gig beside the calendar; Stage mode is its play button.
   'music-stage@wide': ['click:Go live', 'wait:1500', 'click:Open stage mode', 'wait:1500'],
@@ -169,6 +192,12 @@ async function capture(send, device, shotId, steps) {
   })()`);
   await send('Page.reload', {});
   await sleep(3500);
+  const seed = steps.find((s) => s.startsWith('seed:'));
+  if (seed) {
+    if (!(await evaluate(send, SEEDS[seed.slice(5)]))) throw new Error(`seed failed: ${seed}`);
+    await send('Page.reload', {});
+    await sleep(3500);
+  }
   // The demo raises an urgent alert a moment after load: wait for it and close it.
   for (let i = 0; i < 16; i++) {
     const closed = await evaluate(send, `(() => { const b = document.querySelector('[aria-label="Dismiss alert"]'); if (b) { b.click(); return true; } return false; })()`);
@@ -176,7 +205,7 @@ async function capture(send, device, shotId, steps) {
     await sleep(500);
   }
   await sleep(600);
-  for (const s of steps) if (s !== 'member') await step(send, s);
+  for (const s of steps) if (s !== 'member' && !s.startsWith('seed:')) await step(send, s);
   await sleep(800);
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
   mkdirSync(OUT, { recursive: true });

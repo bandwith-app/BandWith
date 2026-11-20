@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { stepOver } from '@/lib/stageLive';
-import { ChevronLeft, ChevronRight, Minimize, Minus, Pause, Play, Plus, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, LayoutTemplate, Minimize, Minus, Pause, Play, Plus, ScrollText, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useKeepAwake } from '@/lib/posture';
@@ -14,7 +14,7 @@ import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/com
 import { normalizeLyrics, resolveView } from '@/lib/songFormat';
 import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
-import { exitBrowserFullScreen, useStageBarHidden } from '@/lib/stageChrome';
+import { exitBrowserFullScreen, requestBrowserFullScreen, useStageBarHidden, useStageSongOnly } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
@@ -190,6 +190,15 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
     onLyricsOnChange?.(on);
   };
   const showLyrics = lyricsOn && hasLyrics && !!song;
+  // Song only (src/lib/stageChrome.ts), shared with Stage mode: only the song
+  // on the Display, only Show everything, Prev, the click and Next on the Deck.
+  const [songOnlyOn, setSongOnly] = useStageSongOnly();
+  const songOnly = songOnlyOn && showLyrics;
+  const showAll = () => {
+    haptic.tap();
+    setSongOnly(false);
+    if (!barHidden) void exitBrowserFullScreen();
+  };
   const lyricsSize = useLyricsSize();
   const [songView, setSongView] = useSongViewPreference();
   const content = useMemo(() => ({ lyrics: normalizeLyrics(song?.lyrics), chart: song?.chart ?? undefined }), [song?.lyrics, song?.chart]);
@@ -204,7 +213,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   const lyricsRef = React.useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     lyricsRef.current?.scrollTo?.({ top: 0 });
-  }, [index, showLyrics, shownView]);
+  }, [index, showLyrics, shownView, songOnly]);
   const next = index + 1 < count ? songs[index + 1] : null;
   const clickUi = useStageClickUi(click, song);
   const start = startedAt !== undefined ? new Date(startedAt).getTime() : mountedAt;
@@ -222,14 +231,35 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 
   const display = (
     <div className={cn('bw-fold-pad flex flex-col gap-3 pt-3 pb-4 bg-black text-white select-none', showLyrics ? 'h-full' : 'min-h-full')}>
-      <div className="flex items-baseline justify-between gap-4 bw-label-md uppercase text-white/60">
+      <div className={cn('flex items-baseline justify-between gap-4 bw-label-md uppercase text-white/60', songOnly && 'hidden')}>
         <span className="truncate">{[setLabel, title].filter(Boolean).join(' · ') || t('Stage')}</span>
         <span className="shrink-0 tabular-nums" aria-label={session ? t('Rehearsed {time}', { time: elapsed }) : t('Elapsed {time}', { time: elapsed })}>
           {session?.status === 'paused' ? `${t('Paused')} · ` : ''}
           {elapsed}
         </span>
       </div>
-      {!song ? (
+      {songOnly && song ? (
+        <div
+          ref={lyricsRef}
+          data-song-only-body
+          className="bw-fold-clear flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          aria-label={t('Song only: {title}', { title: song.title })}
+        >
+          <span className="sr-only" aria-live="polite">
+            {t('Song {index} of {count}', { index: index + 1, count })} · {song.title}
+          </span>
+          <SongBody
+            song={content}
+            view={songView}
+            size={lyricsSize.size}
+            muted="text-white/60"
+            line="border-white/25"
+            className="w-full flex flex-col gap-6 pb-4 text-white"
+            chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
+            showLegend={false}
+          />
+        </div>
+      ) : !song ? (
         <p className="bw-display-lg text-white/70">{songsLoading ? t('Loading setlist…') : t('No setlist')}</p>
       ) : showLyrics ? (
         <>
@@ -301,7 +331,51 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
     </div>
   );
 
-  const deck = (
+  const deck = songOnly ? (
+    <div className="min-h-full flex flex-col px-4 pt-3 pb-3 text-white">
+      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
+        <button
+          type="button"
+          onClick={showAll}
+          aria-label={t('Show everything')}
+          title={t('Show everything')}
+          className="w-16 h-full flex items-center justify-center rounded-[20px] border border-white/40 text-white [&_svg]:w-7 [&_svg]:h-7"
+        >
+          <LayoutTemplate aria-hidden />
+        </button>
+        <DeckButton
+          size="pad"
+          tone="muted"
+          className="h-full bg-white/10 text-white"
+          disabled={index === 0}
+          onClick={() => go(-1)}
+          aria-label={t('Previous song')}
+        >
+          <ChevronLeft className="w-7 h-7" /> {t('Prev')}
+        </DeckButton>
+        {click && (
+          <StageClickButton
+            bpm={song?.bpm ?? undefined}
+            running={clickUi.running}
+            following={clickUi.following}
+            hidden={clickUi.hidden}
+            onPress={clickUi.press}
+            accent="var(--accent)"
+          />
+        )}
+        <DeckButton
+          size="pad"
+          tone="accent"
+          className="h-full"
+          disabled={index >= count - 1}
+          onClick={() => go(1)}
+          aria-label={t('Next song')}
+        >
+          {t('Next')} <ChevronRight className="w-7 h-7" />
+        </DeckButton>
+      </div>
+    </div>
+  ) : (
     <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3 text-white">
       {(follow || hasLyrics || ownChrome || sessionToggle) && (
         <div className="flex items-center justify-between gap-3 min-h-11 shrink-0">
@@ -418,6 +492,19 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             <span className="flex items-center gap-2 ml-auto shrink-0">
               <button
                 type="button"
+                onClick={() => {
+                  haptic.tap();
+                  setSongOnly(true);
+                  void requestBrowserFullScreen();
+                }}
+                aria-label={t('Song only')}
+                title={t('Song only')}
+                className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 [&_svg]:w-5 [&_svg]:h-5"
+              >
+                <ScrollText aria-hidden />
+              </button>
+              <button
+                type="button"
                 disabled={lyricsSize.min}
                 onClick={() => lyricsSize.step(-1)}
                 aria-label={t('Smaller text')}
@@ -505,7 +592,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   return (
     <>
       {/* Both halves read the song's transpose and My notes (as in Stage mode). */}
-      <PersonalLayerScope song={showLyrics ? mine : null} stage>
+      <PersonalLayerScope song={showLyrics && !songOnly ? mine : null} stage>
         <TransposeProvider semitones={semitones} songKey={songKey}>
           <FoldSplit zIndex={zIndex} variant="stage" displayLabel={t('Now playing')} deckLabel={t('Song controls')} display={display} deck={deck} />
         </TransposeProvider>

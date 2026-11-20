@@ -20,6 +20,7 @@ export const SHOT_FILES: Record<string, ShotDevice[]> = {
   'music-rehearsal-live': ['phone', 'tablet', 'web'],
   'music-repertoire': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'music-setlist-editor': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
+  'music-song-only': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'music-stage': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'music-suggestions': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'people-band-members': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],

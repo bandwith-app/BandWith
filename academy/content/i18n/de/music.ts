@@ -186,7 +186,7 @@ const music: AreaText = {
           rows: [
             ["**Abspielen**", "Spielt die Aufnahme im Mini-Player ab oder öffnet den Spotify- oder YouTube-Link.", "Alle, wenn der Song eine Aufnahme oder einen Link hat"],
             ["**Songtext**", "Öffnet den Song-Reader beim Songtext.", "Alle, wenn der Song einen Songtext hat"],
-            ["**Akkorde**", "Öffnet den Song-Reader beim Akkordchart.", "Alle, wenn der Song ein iReal-Chart hat"],
+            ["**Akkordchart**", "Öffnet den Song-Reader beim Akkordchart.", "Alle, wenn der Song ein iReal-Chart hat"],
             ["**Chart öffnen**", "Öffnet das hochgeladene Chart oder den Noten-Link.", "Alle, wenn der Song eins hat"],
             ["**In Ultimate Guitar öffnen**", "Öffnet eine Suche nach dem Song auf Ultimate Guitar, außerhalb der App.", "Alle"],
             ["**Akkorde bearbeiten**", "Öffnet den Akkord-Editor.", "Admins, wenn der Song einen Songtext hat"],
@@ -305,14 +305,14 @@ const music: AreaText = {
       summary: "Öffne einen Song im Vollbild-Reader, wechsle die Ansicht, ändere die Schriftgröße und transponiere für dich.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["Songtext", "Akkorde", "Struktur", "Reader", "Schriftgröße", "Songansicht", "Chart"],
+      keywords: ["Songtext", "Akkorde", "Struktur", "Reader", "Schriftgröße", "Songansicht", "Chart", "Text & Akkorde", "Akkordchart"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "Tippe im Repertoire auf die Songzeile und dann auf **Songtext** oder **Akkorde**. Im Mini-Player tippst du auf **Songtext**.",
-            "Wechsle mit den Tabs unter dem Titel zwischen **Songtext**, **Akkorde** und **Struktur**. Es erscheinen nur die Ansichten, die der Song hat.",
+            "Tippe im Repertoire auf die Songzeile und dann auf **Songtext** oder **Akkordchart**. Im Mini-Player tippst du auf **Songtext**.",
+            "Wechsle mit den Tabs unter dem Titel zwischen **Songtext**, **Text & Akkorde** und **Akkordchart**. Es erscheinen nur die Ansichten, die der Song hat.",
             "Tippe oben auf die Buttons − und + (**Kleinere Schrift**, **Größere Schrift**), um die Schriftgröße zu ändern.",
             "Um in einer anderen Tonart zu lesen, nutze − und + neben der Tonart unter den Tabs. Tippe auf die Tonart, um zum Original zurückzukehren.",
             "Tippe auf X (**Songtext schließen**), um den Reader zu schließen.",
@@ -323,15 +323,15 @@ const music: AreaText = {
           head: ["Ansicht", "Was sie zeigt"],
           rows: [
             ["**Songtext**", "Nur die Wörter, Akkorde ausgeblendet."],
-            ["**Akkorde**", "Die Wörter mit ihren Akkorden darüber oder das iReal-Chart, wenn der Songtext keine Akkorde hat."],
-            ["**Struktur**", "Das iReal-Chart Takt für Takt oder die Akkordfolge jedes Teils in Kästchen."],
+            ["**Text & Akkorde**", "Die Wörter mit ihren Akkorden darüber oder das iReal-Chart, wenn der Songtext keine Akkorde hat."],
+            ["**Akkordchart**", "Nur die Akkorde: das iReal-Chart Takt für Takt oder die Akkordfolge jedes Teils in Kästchen."],
           ],
         },
         {
           type: "list",
           title: "Deine Ansicht wird gemerkt",
           items: [
-            "Beim ersten Mal öffnet der Reader die Ansicht für dein Instrument in der Band: Gesang bei Songtext; Gitarre, Keys und Bass bei Akkorde; Schlagzeug, Percussion und Bläser bei Struktur.",
+            "Beim ersten Mal öffnet der Reader die Ansicht für dein Instrument in der Band: Gesang bei Songtext; Gitarre, Keys und Bass bei Text & Akkorde; Schlagzeug, Percussion und Bläser bei Akkordchart.",
             "Danach öffnet er die Ansicht, die du zuletzt auf diesem Gerät gewählt hast. Dieselbe Wahl gilt im Bühnenmodus.",
             "Die Schriftgröße bleibt auf diesem Gerät gespeichert und gilt auch im Bühnenmodus.",
           ],
@@ -347,7 +347,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Der Reader öffnet sich im zweiten Bereich, neben dem Repertoire." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "Der Song-Reader mit den Tabs Songtext, Akkorde und Struktur." },
+        { type: "shot", id: "music-reader", caption: "Der Song-Reader mit den Tabs Songtext, Text & Akkorde und Akkordchart." },
       ],
     },
     {
@@ -575,7 +575,7 @@ const music: AreaText = {
           items: [
             "Die Akkorde und die Form (Teile, Takte, Wiederholungen), dazu Tonart, Stil, Tempo und Taktart. Keine Melodie, kein Songtext.",
             "Titel, Komponist (als Künstler), Tonart und BPM füllen die leeren Felder des Formulars.",
-            "Das Chart erscheint in den Ansichten **Akkorde** und **Struktur** des Song-Readers, und der Akkord-Editor kann damit Akkorde setzen.",
+            "Das Chart erscheint in den Ansichten **Text & Akkorde** und **Akkordchart** des Song-Readers, und der Akkord-Editor kann damit Text & Akkorde setzen.",
           ],
         },
         {
@@ -722,7 +722,7 @@ const music: AreaText = {
           type: "steps",
           title: "Eine Notiz hinzufügen",
           items: [
-            "Öffne den Song im Reader (**Songtext** oder **Akkorde**) oder im Bühnenmodus.",
+            "Öffne den Song im Reader (**Songtext** oder **Akkordchart**) oder im Bühnenmodus.",
             "Tippe auf **Notiz hinzufügen** (im Bühnenmodus **Notiz**). **Meine Notizen** schalten sich von selbst ein; beim ersten Mal erklärt ein Fenster, was das ist: Tippe auf **Verstanden**.",
             "Eine Leiste unten am Bildschirm sagt **Tippe auf die Zeile für deine Notiz**: Tippe auf die gewünschte Zeile oder auf **Ganzer Song** für eine Notiz zum ganzen Song. **Abbrechen** beendet das.",
             "Schneller: Halte eine Zeile eine halbe Sekunde gedrückt. **Notiz zu dieser Zeile** öffnet sich: Tippe auf **Notiz für mich**.",
@@ -1187,7 +1187,7 @@ const music: AreaText = {
       summary: "Ein schwarzer Live-Bildschirm, auf einen Blick lesbar, mit Setlist und Songtext oder Akkorden jedes Songs: am Gig-Tag mit dem Ablauf, bei einer Probe als Live-Modus.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus", "Probe", "Live-Modus", "Probe live"],
+      keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus", "Probe", "Live-Modus", "Probe live", "nur der Song", "nur Songtext", "aufgeräumte Ansicht"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1207,7 +1207,7 @@ const music: AreaText = {
             "**Bühnenmodus · <date>**, Titel, Location und Stadt des Gigs.",
             "Der Ablauf: Load-in, Soundcheck, Show und Ende im 24-Stunden-Format. Der nächste Punkt ist als **Als Nächstes · …** hervorgehoben; vergangene verblassen.",
             "Die **Setlist** mit Nummern, Titeln, Tonart und Dauer. Der aktuelle Song ist hervorgehoben. Für heute gestrichene Songs sind durchgestrichen, und die Zahl über der Liste sagt, wie viele (**· 2 gestrichen**).",
-            "Ein zweiter Tab, benannt nach deiner Songansicht (**Songtext**, **Akkorde** oder **Struktur**), zeigt den aktuellen Song. Er wechselt mit, wenn sich der Song ändert.",
+            "Ein zweiter Tab, benannt nach deiner Songansicht (**Songtext**, **Text & Akkorde** oder **Akkordchart**), zeigt den aktuellen Song. Er wechselt mit, wenn sich der Song ändert.",
             "**Zurück** und **Weiter** unten, mit dem Klick-Button dazwischen.",
           ],
         },
@@ -1215,8 +1215,10 @@ const music: AreaText = {
           type: "list",
           title: "Im Song-Tab",
           items: [
-            "Wechsle zwischen **Songtext**, **Akkorde** und **Struktur**. Die Wahl gilt auch im Song-Reader.",
+            "Wechsle zwischen **Songtext**, **Text & Akkorde** und **Akkordchart**. Die Wahl gilt auch im Song-Reader.",
             "Ändere die Schriftgröße mit − und +.",
+            "Tippe auf den Seiten-Button neben − und + (**Nur der Song**), um nur den Song zu lesen, im Vollbild: kein Titel, keine Tabs, Zeiten oder Status. Unten bleiben nur **Alles anzeigen**, **Zurück**, der Klick und **Weiter**; auch die Pfeiltasten und Bild auf/ab wechseln den Song, für Blätterpedale.",
+            "**Alles anzeigen** oder Zurück holt den ganzen Live-Bildschirm zurück. Wer den Bühnenmodus verlässt, schaltet Nur der Song aus.",
             "Transponiere für dich mit − Tonart +. Nur dein Bildschirm ändert sich.",
             "**Meine Notizen** zeigt deine privaten Notizen über der Version der Band.",
             "Der Ablauf wird ausgeblendet, damit der Song mehr Platz hat.",
@@ -1234,6 +1236,7 @@ const music: AreaText = {
             "Kein Ablauf (keine Zeiten für Aufbau, Soundcheck, Show oder Ende) und kein Streichen von Songs für heute.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Nur der Song: der Song mit seinen Akkorden im Vollbild, mit Alles anzeigen, Zurück, dem Klick und Weiter." },
         { type: "shot", id: "music-rehearsal-live", caption: "Der Live-Modus bei einer Probe: die Fokus-Songs, die Akkorde des aktuellen Songs und Zurück / Weiter, ohne Ablauf." },
         {
           type: "list",
@@ -1251,7 +1254,7 @@ const music: AreaText = {
           title: "Probennotizen",
           items: [
             "Tippe im Live-Modus auf **Markieren**, wenn etwas Arbeit braucht: Der laufende Song und die Minute werden gemerkt, und ihr spielt weiter.",
-            "In der Pause (oder in der Übersicht) tippe auf **Zu schreiben** und bei jeder Markierung auf **Schreiben**: Wähle, woran ihr arbeitet (**Tempo**, **Tonart**, **Schluss**, **Solo**, **Durchgehen**, **Sitzt**, oder **Einen Teil wiederholen**, wenn der Song eine Struktur hat), schreib ein paar Worte dazu und wähle **Für wen**.",
+            "In der Pause (oder in der Übersicht) tippe auf **Zu schreiben** und bei jeder Markierung auf **Schreiben**: Wähle, woran ihr arbeitet (**Tempo**, **Tonart**, **Schluss**, **Solo**, **Durchgehen**, **Sitzt**, oder **Einen Teil wiederholen**, wenn der Song eine Akkordchart hat), schreib ein paar Worte dazu und wähle **Für wen**.",
             "Jede Notiz zu einem Song kann **Wo im Song** angeben: einen Teil und, wenn du willst, eine seiner Zeilen (**Zeile (optional)**).",
             "Im Live-Modus kannst du auch eine Zeile des Songtexts gedrückt halten und auf **Notiz für die Band** tippen: Die Notiz öffnet sich direkt mit diesem Song, Teil und dieser Zeile.",
             "Admins schreiben für die ganze Band oder für jedes Mitglied; Mitglieder für die Band oder für sich selbst. Die ganze Band liest alle Notizen.",
@@ -1529,6 +1532,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Der Bühnenmodus öffnet sich neben dem Listenbereich. **Vollbild** gibt ihm den ganzen Bildschirm: Dann stehen Zeiten und Schritte im ersten Bereich und die Setlist oder der Song im zweiten, geteilt an der Kante der Bereiche, damit nichts auf dem Falz liegt. Bei geöffnetem Song steht die Setlist in einer Spalte daneben (im ersten Bereich, wenn das Gerät über beide geöffnet ist). **Vollbild beenden** holt die Liste zurück. Die Wahl bleibt auf dem Gerät gespeichert." },
             { devices: ["duoClosed"], text: "**Bühnenmodus öffnen** sitzt in der Leiste; am Gig-Tag ist es die Hauptaktion der Leiste. **Vollbild** blendet die Leiste im Bühnenmodus aus." },
             { devices: ["duoLaptop"], text: "Bodenmonitor: Stell das Gerät wie einen Monitor auf den Bühnenboden. Die obere Hälfte zeigt den Songzähler (**Song … von …**), Titel, Tonart, BPM, nächsten Song und die vergangene Zeit oder den Songtext. Die untere Hälfte hat große Felder **Zurück** und **Weiter** und den Fortschritt des Sets; für heute gestrichene Songs werden übersprungen und ihre Fortschrittsabschnitte abgedunkelt. Pfeiltasten, Bild auf/ab und Leertaste blättern ebenfalls, sodass Bluetooth-Pageturner-Pedale funktionieren." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Nur der Song**: Auf einem Gerät, das über beide Bildschirme geöffnet ist, nehmen der Song und seine vier Buttons den breiteren Bildschirm ein, damit nichts auf dem Falz liegt. Wie ein Laptop gefaltet füllt der Song die obere Hälfte, und die untere Hälfte hat nur **Alles anzeigen**, **Zurück**, den Klick und **Weiter**." },
             { devices: ["web"], text: "Live-Sync über das Internet und der Klick funktionieren. Kein Bluetooth und keine Offline-Kopie der Setlist. Das Vollbild blendet auch die Leisten des Browsers aus, wo der Browser es erlaubt." },
           ],
         },
@@ -1600,8 +1604,9 @@ const music: AreaText = {
     { term: "ChordPro", definition: "Ein Textformat für Songtexte mit Akkorden in Klammern. BandWith importiert .cho-, .chordpro- und .pro-Dateien.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "Ein Dateiformat für Partituren. BandWith liest daraus Akkordsymbole und Songtext.", see: "import-chords-and-lyrics" },
     { term: "iReal-Pro-Chart", definition: "Ein Akkordchart Takt für Takt mit Form, Tonart, Stil und Tempo, importiert über einen iReal-Pro-Link.", see: "import-from-ireal-pro" },
-    { term: "Songansicht", definition: "Wie ein Song angezeigt wird: Songtext, Akkorde oder Struktur. Wird pro Gerät gemerkt.", see: "read-a-song" },
-    { term: "Struktur", definition: "Die Teile des Songs mit ihren Akkorden in Kästchen oder das iReal-Chart Takt für Takt.", see: "read-a-song" },
+    { term: "Songansicht", definition: "Wie ein Song angezeigt wird: Songtext, Text & Akkorde oder Akkordchart. Wird pro Gerät gemerkt.", see: "read-a-song" },
+    { term: "Akkordchart", definition: "Nur die Akkorde: die Teile des Songs mit ihren Akkorden in Kästchen oder das iReal-Chart Takt für Takt.", see: "read-a-song" },
+    { term: "Nur der Song", definition: "Bühnen- und Live-Modus mit nur dem Song auf dem Bildschirm, im Vollbild, und Zurück, dem Klick und Weiter unten.", see: "stage-mode" },
     { term: "Für die Band transponieren", definition: "Tonart, Chart und Akkorde eines Songs für alle verschieben, über das Songformular.", see: "transpose-and-tempo" },
     { term: "Meine Notizen", definition: "Private Notizen und Dateien zu einem Song der Band, nur für dich sichtbar.", see: "my-notes-and-files" },
     { term: "Vorschlag", definition: "Der Vorschlag eines Mitglieds: ein neuer Song, eine Korrektur an Songtext oder Akkorden oder eine Notiz für die Band.", see: "review-song-suggestions" },

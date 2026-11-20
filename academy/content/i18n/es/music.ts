@@ -166,7 +166,7 @@ const music: AreaText = {
           rows: [
             ["**Reproducir**", "Reproduce la grabación en el minirreproductor, o abre el enlace de Spotify o YouTube.", "Todos, cuando la canción tiene grabación o enlace"],
             ["**Letra**", "Abre el lector de canciones en la letra.", "Todos, cuando la canción tiene letra"],
-            ["**Acordes**", "Abre el lector de canciones en el cifrado.", "Todos, cuando la canción tiene un cifrado de iReal"],
+            ["**Cuadro de acordes**", "Abre el lector de canciones en el cifrado.", "Todos, cuando la canción tiene un cifrado de iReal"],
             ["**Abrir partitura**", "Abre el cifrado subido o el enlace a la partitura.", "Todos, cuando la canción tiene uno"],
             ["**Abrir en Ultimate Guitar**", "Abre una búsqueda de la canción en Ultimate Guitar, fuera de la app.", "Todos"],
             ["**Editar acordes**", "Abre el editor de acordes.", "Admins, cuando la canción tiene letra"],
@@ -267,14 +267,14 @@ const music: AreaText = {
       summary: "Abre una canción en el lector a pantalla completa, cambia de vista, cambia el tamaño del texto y transpón solo para ti.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["letra", "acordes", "estructura", "lector", "tamaño del texto", "vista de la canción", "cifrado"],
+      keywords: ["letra", "acordes", "estructura", "lector", "tamaño del texto", "vista de la canción", "cifrado", "letra y acordes", "cuadro de acordes"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "En el Repertorio, toca la fila de la canción y toca **Letra** o **Acordes**. Desde el minirreproductor, toca **Letra**.",
-            "Cambia entre **Letra**, **Acordes** y **Estructura** con las pestañas debajo del título. Solo se muestran las vistas que tiene la canción.",
+            "En el Repertorio, toca la fila de la canción y toca **Letra** o **Cuadro de acordes**. Desde el minirreproductor, toca **Letra**.",
+            "Cambia entre **Letra**, **Letra y acordes** y **Cuadro de acordes** con las pestañas debajo del título. Solo se muestran las vistas que tiene la canción.",
             "Toca los botones − y + (**Texto más pequeño**, **Texto más grande**) de arriba para cambiar el tamaño del texto.",
             "Para leer en otro tono, usa − y + alrededor del tono, debajo de las pestañas. Toca el tono para volver al original.",
             "Toca la X (**Cerrar la letra**) para cerrar el lector.",
@@ -285,15 +285,15 @@ const music: AreaText = {
           head: ["Vista", "Qué muestra"],
           rows: [
             ["**Letra**", "Solo la letra, con los acordes ocultos."],
-            ["**Acordes**", "La letra con los acordes encima, o el cifrado de iReal si la letra no tiene acordes."],
-            ["**Estructura**", "El cifrado de iReal compás a compás, o la progresión de acordes de cada sección en casillas."],
+            ["**Letra y acordes**", "La letra con los acordes encima, o el cifrado de iReal si la letra no tiene acordes."],
+            ["**Cuadro de acordes**", "Solo los acordes: el cifrado de iReal compás a compás, o la progresión de acordes de cada sección en casillas."],
           ],
         },
         {
           type: "list",
           title: "Tu vista se recuerda",
           items: [
-            "La primera vez, el lector se abre en la vista de tu instrumento en la banda: los cantantes en Letra; guitarra, teclados y bajo en Acordes; batería, percusión y vientos en Estructura.",
+            "La primera vez, el lector se abre en la vista de tu instrumento en la banda: los cantantes en Letra; guitarra, teclados y bajo en Letra y acordes; batería, percusión y vientos en Cuadro de acordes.",
             "Después se abre en la última vista que elegiste en este dispositivo. La misma elección vale para el Modo escenario.",
             "El tamaño del texto se guarda en este dispositivo y se comparte con el Modo escenario.",
           ],
@@ -306,7 +306,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "El lector se abre en el segundo panel, junto al Repertorio." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "El lector de canciones con las pestañas Letra, Acordes y Estructura." },
+        { type: "shot", id: "music-reader", caption: "El lector de canciones con las pestañas Letra, Letra y acordes y Cuadro de acordes." },
       ],
     },
     {
@@ -516,7 +516,7 @@ const music: AreaText = {
           items: [
             "Los acordes y la forma (secciones, compases, repeticiones), además del tono, el estilo, el tempo y el compás. Sin melodía ni letra.",
             "El título, el compositor (como artista), el tono y los BPM rellenan los campos vacíos del formulario.",
-            "El cifrado aparece en las vistas **Acordes** y **Estructura** del lector de canciones, y el editor de acordes puede usarlo para colocar acordes.",
+            "El cifrado aparece en las vistas **Letra y acordes** y **Cuadro de acordes** del lector de canciones, y el editor de acordes puede usarlo para colocar acordes.",
           ],
         },
         { type: "note", tone: "tip", text: "Si tu navegador bloquea la ventana del foro, permite las ventanas emergentes para BandWith e inténtalo de nuevo." },
@@ -644,7 +644,7 @@ const music: AreaText = {
           type: "steps",
           title: "Añade una nota",
           items: [
-            "Abre la canción en el lector (**Letra** o **Acordes**) o en el Modo escenario.",
+            "Abre la canción en el lector (**Letra** o **Cuadro de acordes**) o en el Modo escenario.",
             "Toca **Añadir nota** (en el Modo escenario, **Nota**). **Mis notas** se activan solas; la primera vez, una hoja explica qué son: toca **Entendido**.",
             "Una barra abajo de la pantalla dice **Toca la línea donde quieres la nota**: toca la línea que quieras, o **Toda la canción** para una nota sobre toda la canción. **Cancelar** para salir.",
             "Más rápido: mantén pulsada una línea medio segundo. Se abre **Nota en esta línea**: toca **Nota para mí**.",
@@ -1058,7 +1058,7 @@ const music: AreaText = {
       summary: "Una pantalla en vivo negra, fácil de leer de un vistazo, con la setlist y la letra o los acordes de cada canción: el día del concierto con el horario, en un ensayo como Modo en vivo.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación", "ensayo", "modo en vivo", "ensayo en vivo"],
+      keywords: ["escenario", "día del concierto", "en directo", "horario", "go live", "modo actuación", "ensayo", "modo en vivo", "ensayo en vivo", "solo la canción", "solo letra", "vista limpia"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1078,7 +1078,7 @@ const music: AreaText = {
             "**Modo escenario · <date>**, el título del concierto, la sala y la ciudad.",
             "El horario: Montaje, Prueba de sonido, Show y Fin en formato de 24 horas. El siguiente aparece resaltado como **Siguiente · …**; los pasados se atenúan.",
             "La **Setlist** con números, títulos, tono y duración. La canción actual aparece resaltada. Las canciones quitadas para esta noche aparecen tachadas, y el número encima de la lista dice cuántas son (**· 2 quitados**).",
-            "Una segunda pestaña con el nombre de tu vista de canción (**Letra**, **Acordes** o **Estructura**) muestra la canción actual. Sigue a la canción cuando cambia.",
+            "Una segunda pestaña con el nombre de tu vista de canción (**Letra**, **Letra y acordes** o **Cuadro de acordes**) muestra la canción actual. Sigue a la canción cuando cambia.",
             "**Anterior** y **Siguiente** abajo, con el botón del clic entre los dos.",
           ],
         },
@@ -1086,8 +1086,10 @@ const music: AreaText = {
           type: "list",
           title: "En la pestaña de la canción",
           items: [
-            "Cambia entre **Letra**, **Acordes** y **Estructura**. La elección se comparte con el lector de canciones.",
+            "Cambia entre **Letra**, **Letra y acordes** y **Cuadro de acordes**. La elección se comparte con el lector de canciones.",
             "Cambia el tamaño del texto con − y +.",
+            "Toca el botón de página junto a − y + (**Solo la canción**) para leer solo la canción, a pantalla completa: sin título, pestañas, horarios ni estado. Abajo quedan solo **Mostrar todo**, **Anterior**, el clic y **Siguiente**; las flechas y Re Pág/Av Pág también cambian de canción, para los pedales pasapáginas.",
+            "**Mostrar todo** o Atrás devuelve toda la pantalla en vivo. Al salir del Modo escenario, Solo la canción se apaga.",
             "Transpón para ti con − tono +. Solo cambia tu pantalla.",
             "**Mis notas** muestra tus notas privadas sobre la versión de la banda.",
             "El horario se oculta para dejar más sitio a la canción.",
@@ -1105,6 +1107,7 @@ const music: AreaText = {
             "Sin horario (sin horas de carga, prueba de sonido, show o fin) y sin quitar canciones para esta noche.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Solo la canción: la canción con sus acordes, a pantalla completa, con Mostrar todo, Anterior, el clic y Siguiente." },
         { type: "shot", id: "music-rehearsal-live", caption: "El Modo en vivo en un ensayo: las canciones a ensayar, los acordes de la canción actual y Anterior / Siguiente, sin horario." },
         {
           type: "list",
@@ -1389,6 +1392,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "El Modo escenario se abre junto al panel de la lista. **Pantalla completa** le da toda la pantalla: entonces los horarios y los pasos quedan en el primer panel y la setlist o la canción en el segundo, divididos en el borde de los paneles para que nada quede sobre la bisagra. Con una canción abierta, la setlist queda en una columna a su lado (en el primer panel cuando el dispositivo está abierto sobre los dos). **Salir de pantalla completa** vuelve a mostrar la lista. La elección se guarda en el dispositivo." },
             { devices: ["duoClosed"], text: "**Abrir modo escenario** está en la barra lateral; el día del concierto es la acción principal de la barra. **Pantalla completa** oculta la barra en el Modo escenario." },
             { devices: ["duoLaptop"], text: "Monitor de suelo: pon el dispositivo de pie en el suelo del escenario como un monitor. La mitad de arriba muestra el contador de canciones (**Canción … de …**), el título, el tono, los BPM, la siguiente canción y el tiempo transcurrido, o la letra. La mitad de abajo tiene grandes botones **Anterior** y **Siguiente** y el progreso del set; las canciones quitadas para esta noche se saltan y sus segmentos de progreso se atenúan. Las flechas, Re Pág/Av Pág y la barra espaciadora también avanzan, así que funcionan los pedales pasapáginas Bluetooth." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Solo la canción**: en un dispositivo abierto sobre las dos pantallas, la canción y sus cuatro botones ocupan la pantalla más ancha, así nada queda en el pliegue. Doblado como un portátil, la canción llena la mitad de arriba y la mitad de abajo tiene solo **Mostrar todo**, **Anterior**, el clic y **Siguiente**." },
             { devices: ["web"], text: "Funcionan la sincronización en directo por internet y el clic. Sin Bluetooth y sin copia sin conexión de la setlist. La pantalla completa también oculta las barras del navegador, donde el navegador lo permite." },
           ],
         },
@@ -1460,8 +1464,9 @@ const music: AreaText = {
     { term: "ChordPro", definition: "Un formato de texto para letras con acordes entre corchetes. BandWith importa archivos .cho, .chordpro y .pro.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "Un formato de archivo para partituras. BandWith lee sus símbolos de acordes y su letra.", see: "import-chords-and-lyrics" },
     { term: "Cifrado de iReal Pro", definition: "Un cifrado compás a compás con forma, tono, estilo y tempo, importado desde un enlace de iReal Pro.", see: "import-from-ireal-pro" },
-    { term: "Vista de la canción", definition: "Cómo se muestra una canción: Letra, Acordes o Estructura. Se recuerda en cada dispositivo.", see: "read-a-song" },
-    { term: "Estructura", definition: "Las secciones de la canción con sus acordes en casillas, o el cifrado de iReal compás a compás.", see: "read-a-song" },
+    { term: "Vista de la canción", definition: "Cómo se muestra una canción: Letra, Letra y acordes o Cuadro de acordes. Se recuerda en cada dispositivo.", see: "read-a-song" },
+    { term: "Cuadro de acordes", definition: "Solo los acordes: las secciones de la canción con sus acordes en casillas, o el cifrado de iReal compás a compás.", see: "read-a-song" },
+    { term: "Solo la canción", definition: "El Modo escenario y el Modo en vivo con solo la canción en pantalla, a pantalla completa, y Anterior, el clic y Siguiente abajo.", see: "stage-mode" },
     { term: "Transponer para la banda", definition: "Cambiar el tono, el cifrado y los acordes de una canción para todos, desde el formulario de la canción.", see: "transpose-and-tempo" },
     { term: "Mis notas", definition: "Notas y archivos privados en una canción de la banda, que solo ves tú.", see: "my-notes-and-files" },
     { term: "Sugerencia", definition: "La propuesta de un miembro: una canción nueva, una corrección de letra o de acordes, o una nota para la banda.", see: "review-song-suggestions" },

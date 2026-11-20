@@ -154,3 +154,30 @@ export function useBrowserFullScreenExit(on: boolean, onExit: () => void): void 
     };
   }, [on]);
 }
+
+/**
+ * "Song only" (11-20): the current song clean and full screen, with only
+ * Show everything, Prev, the click and Next at the bottom. Shared by Stage
+ * mode and its Laptop pose (FloorWedgeMode), so folding keeps it; not
+ * remembered: Stage mode always opens with everything shown, and leaving
+ * Stage mode turns it off. While on, Stage mode applies full screen
+ * (useStageFullScreen) whatever the remembered Full screen choice.
+ */
+const SONG_ONLY = 'bw:stage-song-only';
+let songOnly = false;
+
+export function setStageSongOnly(on: boolean): void {
+  if (songOnly === on) return;
+  songOnly = on;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SONG_ONLY));
+}
+
+const subscribeSongOnly = (cb: () => void) => {
+  window.addEventListener(SONG_ONLY, cb);
+  return () => window.removeEventListener(SONG_ONLY, cb);
+};
+
+export function useStageSongOnly(): [boolean, (on: boolean) => void] {
+  const on = useSyncExternalStore(subscribeSongOnly, () => songOnly, () => false);
+  return [on, setStageSongOnly];
+}
