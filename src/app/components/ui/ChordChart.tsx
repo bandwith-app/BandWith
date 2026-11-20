@@ -2,6 +2,7 @@ import React from 'react';
 import { chordLabel, keyLabel, type ChartBar, type SongChart } from '@/lib/ireal';
 import { chordTokenSymbol, textSymbols } from '@/lib/musicSymbols';
 import { MusicSymbol, SymbolLegend } from './MusicSymbol';
+import { ChevronDown } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { transposeChart } from '@/lib/transpose';
@@ -142,8 +143,11 @@ export const ChordChartView: React.FC<{
       ))}
       <p className={cn('bw-body-sm', muted)}>{chartSource(chart, tr)}</p>
       {showLegend && (
-        <details className={cn('bw-body-sm', muted)}>
-          <summary className="cursor-pointer min-h-11 flex items-center bw-label-sm normal-case">{tr('What the symbols mean')}</summary>
+        <details className={cn('group bw-body-sm', muted)}>
+          <summary className="cursor-pointer min-h-11 inline-flex items-center gap-1.5 bw-label-sm normal-case list-none [&::-webkit-details-marker]:hidden">
+            {tr('What the symbols mean')}
+            <ChevronDown aria-hidden size={16} className="transition-transform group-open:rotate-180" />
+          </summary>
           <SymbolLegend className="pt-2 text-[16px]" muted={muted} />
         </details>
       )}

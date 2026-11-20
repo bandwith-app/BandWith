@@ -141,10 +141,10 @@ export const SymbolLegend: React.FC<{ className?: string; muted?: string }> = ({
     'repeat-times': { n: 3 },
   };
   return (
-    <dl className={cn('grid grid-cols-[2.5em_minmax(0,1fr)] gap-x-3 gap-y-2 items-center', className)} aria-label={t('Symbols')}>
+    <dl className={cn('grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-2 items-center', className)} aria-label={t('Symbols')}>
       {LEGEND_SYMBOLS.map((id) => (
         <React.Fragment key={id}>
-          <dt className="flex justify-center text-[1.1em]">
+          <dt className="flex justify-center min-w-[2.5em] text-[1.1em]">
             <MusicSymbol id={id} {...sample[id]} size={1.3} decorative />
           </dt>
           <dd className={cn('bw-body-sm', muted)}>{nameOf(id, sample[id])}</dd>

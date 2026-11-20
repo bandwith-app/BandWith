@@ -132,6 +132,9 @@ test.describe('Stage and Live mode full screen', () => {
     await app.settle();
     const chart = app.page.locator('[data-chart-grid]').filter({ visible: true }).first();
     await expect(chart).toBeVisible();
+    // On a short screen (a phone sideways) the chart still gets room: scroll to it and it is on screen.
+    await chart.scrollIntoViewIfNeeded();
+    await expect(chart).toBeInViewport();
     const sheet = chart.locator('xpath=ancestor::div[.//h3][1]/..');
     for (const name of ['Repeat start', 'Repeat end', 'Segno', 'Coda', 'Repeat the previous bar', 'Repeat the previous two bars', 'No chord', 'Fermata: hold', 'Final bar line']) {
       await expect(sheet.getByRole('img', { name: app.t(name), exact: true }).first()).toBeAttached();
@@ -140,6 +143,25 @@ test.describe('Stage and Live mode full screen', () => {
     const text = (await sheet.innerText()).replace(/\s+/g, ' ');
     expect(text).not.toMatch(/%|[{}<>]|\bN[12]\b|\bSegno\b/);
     await app.check('rehearsal Live mode, full screen chart');
+
+    // The legend: every symbol sits beside its meaning, never on top of it
+    // ("D.C. al Coda" is wider than an icon). The Laptop pose's floor wedge is
+    // read at a glance and has none (showLegend={false}).
+    if (!isLaptop()) {
+      await sheet.getByText(app.t('What the symbols mean'), { exact: true }).first().click();
+      await expect(sheet.getByRole('definition').first()).toBeVisible();
+      const overlaps = await sheet.locator('dl').first().evaluate((dl) => {
+        const bad: string[] = [];
+        dl.querySelectorAll('dt').forEach((dt) => {
+          const dd = dt.nextElementSibling as HTMLElement;
+          const a = (dt.firstElementChild || dt).getBoundingClientRect();
+          if (!dd || a.width === 0) bad.push(`${dd?.textContent}: nothing drawn`);
+          else if (a.right > dd.getBoundingClientRect().left + 1) bad.push(`${dd.textContent}: overlaps`);
+        });
+        return bad;
+      });
+      expect(overlaps).toEqual([]);
+    }
 
     await systemBack(app);
     await app.settle();

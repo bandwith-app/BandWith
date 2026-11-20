@@ -178,7 +178,7 @@ dl.glossary dd { break-before: avoid; margin-bottom: 1.6mm; }
 .cover-title .l { display: block; }
 
 /* Chord chart symbols (ch-music, art-chart-symbols): the app's icons, drawn inline. */
-table.symbols td.sym { width: 16mm; text-align: center; vertical-align: middle; font-size: 12pt; }
+table.symbols td.sym { width: 16mm; white-space: nowrap; text-align: center; vertical-align: middle; font-size: 12pt; }
 table.symbols td.sym svg { vertical-align: middle; }
 table.symbols td.sym [data-symbol="section"] { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5em; height: 1.5em; border: 2px solid currentColor; border-radius: 0.3em; font-weight: 700; }
 table.symbols td.sym [data-symbol="time-signature"] { display: inline-flex; flex-direction: column; font-weight: 700; line-height: 0.95; font-size: 0.8em; }

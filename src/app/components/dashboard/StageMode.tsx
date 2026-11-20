@@ -254,8 +254,10 @@ export const StageMode: React.FC<StageModeProps> = ({
   const clickUi = useStageClickUi(click, currentSong);
   const { state: clickState, running: clickRunning, hidden: clickHidden, show: showClick, press: pressClick } = clickUi;
   const lyricsRef = useRef<HTMLDivElement | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     lyricsRef.current?.scrollTo?.({ top: 0 });
+    sectionRef.current?.scrollTo?.({ top: 0 });
   }, [lyricsSong?.id, lyricsSong?.title, showLyrics, shownView]);
 
   // Keep the current song in view when it changes (also when the leader
@@ -579,7 +581,10 @@ export const StageMode: React.FC<StageModeProps> = ({
         )}
 
         {/* Setlist */}
-        <section className={cn('flex flex-col flex-1 min-h-0 gap-1 [@media(max-height:520px)_and_(min-width:600px)]:col-start-2 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-span-3', split && 'col-start-2 row-start-1 row-span-3', split && showSide && 'row-span-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-2')} aria-label={t('Setlist')}>
+        <section ref={sectionRef} className={cn('flex flex-col flex-1 min-h-0 gap-1 [@media(max-height:520px)_and_(min-width:600px)]:col-start-2 [@media(max-height:520px)_and_(min-width:600px)]:row-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-span-3', split && 'col-start-2 row-start-1 row-span-3', split && showSide && 'row-span-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-2',
+          // A phone sideways: the bars above a song's chart or lyrics leave it no
+          // height, so the whole column scrolls and the chart gets its full length.
+          showLyrics && !split && '[@media(max-height:520px)_and_(min-width:600px)]:overflow-y-auto [@media(max-height:520px)_and_(min-width:600px)]:overscroll-contain [@media(max-height:520px)_and_(min-width:600px)]:-mx-2 [@media(max-height:520px)_and_(min-width:600px)]:px-2')} aria-label={t('Setlist')}>
           {session && (
             <RehearsalSessionBar session={session} accentColor={accentColor} onShowSummary={() => setSummaryAsked(true)} className="pb-2" />
           )}
@@ -707,7 +712,7 @@ export const StageMode: React.FC<StageModeProps> = ({
             </p>
           )}
           {showLyrics && lyricsSong ? (
-            <div className="flex flex-col flex-1 min-h-0" role="tabpanel" aria-label={showChords ? t('Chords · {title}', { title: lyricsSong.title }) : t('Lyrics · {title}', { title: lyricsSong.title })}>
+            <div className={cn('flex flex-col flex-1 min-h-0', !split && '[@media(max-height:520px)_and_(min-width:600px)]:flex-none')} role="tabpanel" aria-label={showChords ? t('Chords · {title}', { title: lyricsSong.title }) : t('Lyrics · {title}', { title: lyricsSong.title })}>
               <div className="flex items-center gap-3 shrink-0 pb-2">
                 <span className="bw-num text-[16px] font-medium shrink-0" style={{ ...MONO, color: accentColor }}>
                   {String(Math.max(0, current) + 1).padStart(2, '0')}
@@ -759,7 +764,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               >
               {mine && <MyNotesBar className="shrink-0 pb-2" />}
               <TransposeProvider semitones={semitones} songKey={lyricsKey}>
-              <div ref={lyricsRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6">
+              <div ref={lyricsRef} className={cn('flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6', !split && '[@media(max-height:520px)_and_(min-width:600px)]:flex-none [@media(max-height:520px)_and_(min-width:600px)]:overflow-visible')}>
                 <SongBody
                   song={lyricsContent}
                   view={songView}

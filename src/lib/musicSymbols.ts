@@ -88,7 +88,7 @@ const DEFS: MusicSymbolDef[] = [
   { id: 'ds-al-coda', name: 'Dal segno al coda: back to the segno, then jump to the coda', render: 'text', text: 'D.S. al Coda' },
   { id: 'ds-al-fine', name: 'Dal segno al fine: back to the segno, play to Fine', render: 'text', text: 'D.S. al Fine' },
   { id: 'ds-al-ending', name: 'Dal segno to ending {n}: back to the segno, play to ending {n}', render: 'text', text: 'D.S. al {n}.' },
-  { id: 'to-coda', name: 'To coda: jump to the coda', render: 'icon' },
+  { id: 'to-coda', name: 'To coda: jump to the coda', render: 'text', text: 'To Coda' },
   { id: 'fine', name: 'Fine: the song ends here', render: 'text', text: 'Fine' },
   { id: 'end', name: 'End', render: 'text', text: 'End' },
   { id: 'on-cue', name: 'On cue', render: 'text', text: 'on cue' },

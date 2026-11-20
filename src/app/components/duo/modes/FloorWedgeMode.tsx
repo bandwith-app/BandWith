@@ -255,6 +255,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               line="border-white/25"
               className="w-full flex flex-col gap-6 pb-4 text-white"
               chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
+              showLegend={false}
             />
           </div>
         </>

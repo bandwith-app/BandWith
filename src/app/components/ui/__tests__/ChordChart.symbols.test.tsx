@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { ChordChartView } from '../ChordChart';
 import { SongBody } from '../SongViews';
-import { SymbolLegend } from '../MusicSymbol';
+import { MusicSymbol, SymbolLegend } from '../MusicSymbol';
 import { parseMusic, type SongChart } from '@/lib/ireal';
 import { LEGEND_SYMBOLS, MUSIC_SYMBOLS } from '@/lib/musicSymbols';
 import { setLocalePref as setLocale } from '@/lib/i18n';
@@ -72,6 +72,16 @@ describe('chord charts draw symbols, never raw markers', () => {
   it('draws inline chords from lyrics through the same symbols', () => {
     render(<SongBody song={{ lyrics: '# Verse\n[N.C.]Hello [Am]world', chart: undefined }} view="chords" size={18} />);
     expect(screen.getByRole('img', { name: 'No chord' })).toBeTruthy();
+  });
+
+  it('draws something visible for every symbol the registry shows', () => {
+    for (const def of Object.values(MUSIC_SYMBOLS)) {
+      if (def.render === 'hidden' || def.id === 'comment') continue;
+      const { container, unmount } = render(<MusicSymbol id={def.id} n={2} name="A" />);
+      const shown = container.querySelector('svg') || (container.textContent || '').trim();
+      expect(shown, def.id).toBeTruthy();
+      unmount();
+    }
   });
 
   it('lists every legend symbol with its meaning', () => {
