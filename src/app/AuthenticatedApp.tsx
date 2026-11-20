@@ -4776,6 +4776,9 @@ export default function AuthenticatedApp() {
                 eventReturnTabRef.current = null;
                 eventReturnChatRef.current = null;
                 closeSelectedEventRef.current();
+                // A gig opened from Calendar's "Search events" (z-70): close the
+                // search, or Contracts & docs (a hub page, z-60) opens under it.
+                window.dispatchEvent(new Event('bw:close-event-search'));
                 setContractPrefill(newForThisGig ? {
                   eventId: ev.eventId ?? null,
                   eventName: ev.title || '',
