@@ -90,6 +90,16 @@ const people: AreaText = {
             "Wenn die Person beitritt, bekommen alle in der Band „{name} ist jetzt bei {band}“.",
           ],
         },
+        {
+          type: "list",
+          title: "Sieh, wer noch nicht beigetreten ist",
+          items: [
+            "Admins sehen offene Einladungen in **Bandmitglieder** unter **Eingeladen**: die E-Mail, die Rolle und **Noch nicht angenommen**, **Abgelaufen** oder **Abgelehnt**.",
+            "Tippe neben einer Einladung auf ⋯ und dann auf **Erneut senden**: Die Einladung gilt 7 Tage länger und geht noch einmal raus. Bei einer abgelaufenen oder abgelehnten Einladung heißt der Button **Erneut einladen**.",
+            "**Link kopieren** kopiert den Einladungslink, damit du ihn selbst an jemanden schickst, der neu bei BandWith ist.",
+            "**Einladung zurückziehen** und dann **Ja, zurückziehen**: Link und Code funktionieren nicht mehr.",
+          ],
+        },
         { type: "note", tone: "privacy", text: "Suchergebnisse zeigen E-Mails teilweise verdeckt (zum Beispiel gi•••@…), außer du gibst die genaue Adresse ein. Wer schon in der Band ist, erscheint nicht." },
         { type: "shot", id: "people-invite", caption: "Das Fenster Mitglied einladen mit Suche, Ergebnissen und Rollenwahl." },
         { type: "note", tone: "tip", text: "Die Einladung ist an die E-Mail-Adresse gebunden. Die Person muss sich mit dieser Adresse anmelden, um beizutreten." },
@@ -119,7 +129,7 @@ const people: AreaText = {
           items: [
             "Öffne den Einladungslink aus der Nachricht oder E-Mail. Oder tippe auf dem Willkommensbildschirm auf **Ich habe einen Einladungscode**, füg Code oder Link in **Einladungscode oder -link** ein und tippe auf **Beitreten**.",
             "Prüfe die Karte der Band und tippe auf **Annehmen & weiter** (oder **Einladung ablehnen**).",
-            "Erstelle dein Konto oder melde dich mit der E-Mail-Adresse an, an die die Einladung ging.",
+            "Erstelle dein Konto oder melde dich mit der E-Mail-Adresse an, an die die Einladung ging. Du bist in der Band, sobald das Konto bereit ist.",
           ],
         },
         {

@@ -90,6 +90,16 @@ const people: AreaText = {
             "Quand la personne rejoint le groupe, tout le monde reçoit « {name} a rejoint {band} ».",
           ],
         },
+        {
+          type: "list",
+          title: "Voir qui n’a pas encore rejoint",
+          items: [
+            "Les admins voient les invitations ouvertes dans **Membres du groupe**, sous **Invités** : l’e-mail, le rôle et **En attente**, **Expiré** ou **Refusé**.",
+            "Touche ⋯ à côté d’une invitation, puis **Renvoyer** : l’invitation dure 7 jours de plus et repart. Pour une invitation expirée ou refusée, le bouton est **Inviter à nouveau**.",
+            "**Copier le lien** copie le lien d’invitation pour que tu l’envoies toi-même à quelqu’un de nouveau sur BandWith.",
+            "**Annuler l’invitation**, puis **Oui, l’annuler** : le lien et le code ne marchent plus.",
+          ],
+        },
         { type: "note", tone: "privacy", text: "Les résultats de recherche masquent en partie les e-mails (par exemple gi•••@…), sauf si tu saisis l’adresse exacte. Les personnes déjà dans le groupe n’apparaissent pas." },
         { type: "shot", id: "people-invite", caption: "La feuille Inviter un membre avec la recherche, les résultats et le choix du rôle." },
         { type: "note", tone: "tip", text: "L’invitation est liée à l’adresse e-mail. La personne doit se connecter avec cette adresse pour rejoindre le groupe." },
@@ -119,7 +129,7 @@ const people: AreaText = {
           items: [
             "Ouvre le lien d’invitation reçu par message ou par e-mail. Ou, sur l’écran d’accueil, touche **J’ai un code d’invitation**, colle le code ou le lien dans **Code ou lien d’invitation** et touche **Rejoindre**.",
             "Vérifie la carte du groupe et touche **Accepter et continuer** (ou **Refuser l’invitation**).",
-            "Crée ton compte ou connecte-toi avec l’adresse e-mail à laquelle l’invitation a été envoyée.",
+            "Crée ton compte ou connecte-toi avec l’adresse e-mail à laquelle l’invitation a été envoyée. Tu es dans le groupe dès que le compte est prêt.",
           ],
         },
         {

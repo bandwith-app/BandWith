@@ -4291,6 +4291,23 @@ const dict: Dictionary = {
   "Pro offered by BandWith ends on {date}": "El Pro ofrecido por BandWith termina el {date}",
   "Then the band is on Free: nothing is deleted.": "Después la banda pasa a Free: no se borra nada.",
   "Dismiss plan reminder": "Cerrar el recordatorio del plan",
+  // Pending invites (166)
+  "Invited": "Invitados",
+  "Waiting to join. An invite lasts 7 days.": "Aún no se han unido. Una invitación dura 7 días.",
+  "Not accepted yet": "Sin aceptar",
+  "Sees it in the app · until {date}": "La ve en la app · hasta el {date}",
+  "Until {date}": "Hasta el {date}",
+  "Expired on {date}": "Caducó el {date}",
+  "Actions for {email}": "Acciones para {email}",
+  "Cancel the invite to {email}? The link stops working.": "¿Cancelar la invitación a {email}? El enlace deja de funcionar.",
+  "Yes, cancel it": "Sí, cancélala",
+  "Send again": "Enviar de nuevo",
+  "Invite again": "Invitar de nuevo",
+  "Cancel invite": "Cancelar invitación",
+  "Invite sent again to {email}.": "Invitación enviada de nuevo a {email}.",
+  "Couldn’t copy the invite link. Try again.": "No se pudo copiar el enlace de invitación. Inténtalo de nuevo.",
+  "Invite cancelled.": "Invitación cancelada.",
+  "We couldn’t cancel the invite. Try again.": "No pudimos cancelar la invitación. Inténtalo de nuevo.",
 };
 
 export default dict;

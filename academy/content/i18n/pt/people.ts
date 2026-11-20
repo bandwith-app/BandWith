@@ -90,6 +90,16 @@ const people: AreaText = {
             'Quando a pessoa entra, todos da banda recebem “{name} agora faz parte de {band}”.',
           ],
         },
+        {
+          type: 'list',
+          title: 'Veja quem ainda não entrou',
+          items: [
+            'Os admins veem os convites abertos em **Membros da banda**, em **Convidados**: o e-mail, a função e **Ainda não aceito**, **Expirado** ou **Recusado**.',
+            'Toque em ⋯ ao lado de um convite e depois em **Enviar de novo**: o convite vale mais 7 dias e é enviado de novo. Para um convite expirado ou recusado, o botão é **Convidar de novo**.',
+            '**Copiar link** copia o link do convite para você mesmo enviar a alguém novo no BandWith.',
+            '**Cancelar convite** e depois **Sim, cancelar**: o link e o código deixam de funcionar.',
+          ],
+        },
         { type: 'note', tone: 'privacy', text: 'Os resultados da busca mostram os e-mails parcialmente ocultos (por exemplo gi•••@…), a não ser que você digite o endereço exato. Quem já está na banda não aparece.' },
         { type: 'shot', id: 'people-invite', caption: 'A janela Convidar membro com a busca, os resultados e a escolha da função.' },
         { type: 'note', tone: 'tip', text: 'O convite fica ligado ao endereço de e-mail. A pessoa precisa entrar com esse endereço para participar.' },
@@ -119,7 +129,7 @@ const people: AreaText = {
           items: [
             'Abra o link do convite na mensagem ou no e-mail. Ou, na tela de boas-vindas, toque em **Tenho um código de convite**, cole o código ou o link em **Código ou link de convite** e toque em **Entrar**.',
             'Confira o cartão da banda e toque em **Aceitar e continuar** (ou **Recusar convite**).',
-            'Crie a sua conta ou entre com o endereço de e-mail para o qual o convite foi enviado.',
+            'Crie a sua conta ou entre com o endereço de e-mail para o qual o convite foi enviado. Você entra na banda assim que a conta estiver pronta.',
           ],
         },
         {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { useOnboarding, OnboardingPath } from '@/lib/OnboardingContext';
+import { useOnboarding, OnboardingPath, shouldJoinEarly } from '@/lib/OnboardingContext';
 import { useAuth } from '@/lib/AuthContext';
 
 import WelcomeScreen from './WelcomeScreen';
@@ -53,10 +53,23 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     loadInviteData,
     inviteData,
     inviteToken: linkToken,
+    pendingInvitationId,
+    joinEarly,
     resetOnboarding,
   } = useOnboarding();
 
   const { isAuthenticated, user, authError } = useAuth();
+
+  // From an invite: join the band as soon as the account exists. The profile
+  // and welcome screens still follow, but closing the app before them no
+  // longer leaves the person outside the band (and the admin without the
+  // "joined" notice). The last screen accepts again (harmless) and says why
+  // if it can't.
+  useEffect(() => {
+    if (shouldJoinEarly({ path, isAuthenticated, currentStep, inviteToken: linkToken, pendingInvitationId })) {
+      void joinEarly();
+    }
+  }, [path, isAuthenticated, currentStep, linkToken, pendingInvitationId, joinEarly]);
 
   // Screen mode state. From a dead auth link (/auth/callback error screen):
   // straight to "Reset password" or the sign-in screen.

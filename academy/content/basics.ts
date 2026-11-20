@@ -312,6 +312,7 @@ const basics: AreaModule = {
           ],
         },
         { type: "note", tone: "tip", text: "Use the address the invite was sent to. An invite for another address can't be accepted from your account." },
+        { type: "note", tone: "tip", text: "You are in the band as soon as your account is ready. If you close the app before the last screen, the band is already there when you open it again." },
         { type: "p", text: "If joining fails (an expired invite, a different email), the app stays on the last screen and says why. The button becomes **Try again**." },
         { type: "p", text: "Admins can share an invite code instead of an email: on **Band members**, the invite shows **Copy code** and **Share invite**. The person installs BandWith, signs up and pastes the code." },
       ],

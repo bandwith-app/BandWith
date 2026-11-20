@@ -47,6 +47,20 @@ export const JOINER_STEPS = [
   'welcome-band',
 ] as const;
 
+/**
+ * Joiner: the moment to accept the invite = the account exists (signed in,
+ * past the invite screen) and there is an invite to accept (OnboardingFlow).
+ */
+export function shouldJoinEarly(s: {
+  path: OnboardingPath | null;
+  isAuthenticated: boolean;
+  currentStep: number;
+  inviteToken: string | null;
+  pendingInvitationId: string | null;
+}): boolean {
+  return s.path === 'joiner' && s.isAuthenticated && s.currentStep >= 1 && !!(s.inviteToken || s.pendingInvitationId);
+}
+
 export type CreatorStep = (typeof CREATOR_STEPS)[number];
 export type JoinerStep = (typeof JOINER_STEPS)[number];
 export type OnboardingStep = CreatorStep | JoinerStep;
@@ -101,6 +115,8 @@ interface OnboardingState {
   inviteData: InviteData | null;
   /** Invitation picked from the email lookup (accepted by id + email match). */
   pendingInvitationId: string | null;
+  /** The invite was accepted right after the account was made (joinEarly). */
+  joinedEarly: boolean;
 
   // Collected data
   accountData: {
@@ -137,6 +153,13 @@ interface OnboardingContextType extends OnboardingState {
   goToStep: (step: number) => void;
   resetOnboarding: () => void;
   completeOnboarding: () => Promise<void>;
+  /**
+   * Joiner: accepts the invite as soon as the account exists, so closing the
+   * app before the last screen doesn't leave the person outside the band.
+   * Never throws; false when it didn't work (the last screen tries again and
+   * says why).
+   */
+  joinEarly: () => Promise<boolean>;
 
   // Data setters
   setAccountData: (data: OnboardingState['accountData']) => void;
@@ -192,6 +215,7 @@ const initialState: OnboardingState = {
   inviteToken: null,
   inviteData: null,
   pendingInvitationId: null,
+  joinedEarly: false,
   accountData: null,
   bandData: null,
   profileData: null,
@@ -272,6 +296,29 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({
   const resetOnboarding = useCallback(() => {
     setState(initialState);
   }, []);
+
+  // Joiner: accept as soon as the account exists (see the type). Accepting
+  // twice is harmless on the server, so completeOnboarding still calls it.
+  const joiningRef = React.useRef<Promise<boolean> | null>(null);
+  const joinEarly = useCallback(async (): Promise<boolean> => {
+    if (!user || state.path !== 'joiner' || !(state.inviteToken || state.pendingInvitationId)) return false;
+    if (state.joinedEarly) return true;
+    if (joiningRef.current) return joiningRef.current;
+    const ref = state.inviteToken ? { token: state.inviteToken } : { invitationId: state.pendingInvitationId! };
+    const run = (async () => {
+      try {
+        await acceptInvitation(ref);
+        setState((prev) => ({ ...prev, joinedEarly: true }));
+        return true;
+      } catch {
+        return false;
+      } finally {
+        joiningRef.current = null;
+      }
+    })();
+    joiningRef.current = run;
+    return run;
+  }, [user, state.path, state.inviteToken, state.pendingInvitationId, state.joinedEarly]);
 
   // Complete onboarding
   const completeOnboarding = useCallback(async () => {
@@ -631,6 +678,7 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({
     goToStep,
     resetOnboarding,
     completeOnboarding,
+    joinEarly,
     setAccountData,
     setBandData,
     setProfileData,

@@ -305,6 +305,7 @@ const basics: AreaText = {
           ],
         },
         { type: "note", tone: "tip", text: "Utilise l’adresse à laquelle l’invitation a été envoyée. Une invitation destinée à une autre adresse ne peut pas être acceptée depuis ton compte." },
+        { type: "note", tone: "tip", text: "Tu es dans le groupe dès que ton compte est prêt. Si tu fermes l’app avant le dernier écran, le groupe est déjà là quand tu la rouvres." },
         { type: "p", text: "Si l’adhésion échoue (invitation expirée, autre e-mail), l’app reste sur le dernier écran et explique pourquoi. Le bouton devient **Réessayer**." },
         { type: "p", text: "Les admins peuvent partager un code d’invitation au lieu d’un e-mail : sur **Membres du groupe**, l’invitation affiche **Copier le code** et **Partager**. La personne installe BandWith, s’inscrit et colle le code." },
       ],

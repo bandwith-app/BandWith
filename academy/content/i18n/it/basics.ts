@@ -305,6 +305,7 @@ const basics: AreaText = {
           ],
         },
         { type: "note", tone: "tip", text: "Usa l’indirizzo a cui è stato inviato l’invito. Un invito per un altro indirizzo non si può accettare dal tuo account." },
+        { type: "note", tone: "tip", text: "Sei nella band appena l’account è pronto. Se chiudi l’app prima dell’ultima schermata, quando la riapri la band è già lì." },
         { type: "p", text: "Se l’ingresso non riesce (invito scaduto, email diversa), l’app resta sull’ultima schermata e spiega il motivo. Il pulsante diventa **Riprova**." },
         { type: "p", text: "Gli admin possono condividere un codice invito al posto dell’email: in **Membri della band**, l’invito mostra **Copia codice** e **Condividi**. La persona installa BandWith, si registra e incolla il codice." },
       ],

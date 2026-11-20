@@ -2,6 +2,7 @@ import { supabase } from '../supabase';
 import { sendOnboardingInviteEmail } from './email';
 import type { InviteData } from '@/app/components/onboarding/JoinerInviteLanding';
 import { t } from '@/lib/i18n';
+import { APP_URL } from '@/lib/appUrl';
 
 /**
  * Band invitations (table `band_invitations`, migration 044).
@@ -195,6 +196,62 @@ export async function getMyPendingInvitations(): Promise<PendingInvitation[]> {
     inviterName: row.inviter_name ?? undefined,
     expiresAt: row.expires_at ?? null,
   }));
+}
+
+/** An invite the band sent that hasn't turned into a member (migration 166). */
+export interface BandInvitation {
+  id: string;
+  email: string;
+  role: 'admin' | 'member';
+  /** waiting = can still be accepted; expired = past its date; declined = said no. */
+  status: 'waiting' | 'expired' | 'declined';
+  sentAt: string;
+  expiresAt: string | null;
+  emailSent: boolean;
+  token: string;
+  inviterName: string | null;
+  /** They already have a BandWith account: the invite shows in their app. */
+  hasAccount: boolean;
+}
+
+/** The invite link someone opens to join (same as the email's). */
+export const inviteLink = (token: string) => `${APP_URL}/?invite=${token}`;
+
+const missingFunction = (error: { code?: string; message?: string }) =>
+  error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message ?? '');
+
+/**
+ * Band members → Invited (admins only): the band's invites that are waiting,
+ * expired or declined. `unavailable` until migration 166 is on the server.
+ */
+export async function listBandInvitations(bandId: string): Promise<{ invites: BandInvitation[]; unavailable: boolean }> {
+  const { data, error } = await supabase.rpc('bw_band_invitations', { p_band_id: bandId });
+  if (error) {
+    if (missingFunction(error)) return { invites: [], unavailable: true };
+    throw error;
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return {
+    unavailable: false,
+    invites: rows.map((row: any): BandInvitation => ({
+      id: row.id,
+      email: row.email,
+      role: row.role === 'admin' ? 'admin' : 'member',
+      status: row.status === 'declined' ? 'declined' : row.status === 'expired' ? 'expired' : 'waiting',
+      sentAt: row.created_at,
+      expiresAt: row.expires_at ?? null,
+      emailSent: !!row.email_sent_at,
+      token: row.token,
+      inviterName: row.inviter_name ?? null,
+      hasAccount: !!row.has_account,
+    })),
+  };
+}
+
+/** Cancels an invite that hasn't been accepted (admins only). */
+export async function cancelInvitation(invitationId: string): Promise<void> {
+  const { error } = await supabase.rpc('bw_cancel_invitation', { p_invitation_id: invitationId });
+  if (error) throw error;
 }
 
 export type InviteToBandResult =

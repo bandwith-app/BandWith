@@ -89,6 +89,16 @@ const people: AreaText = {
             "Cuando se une, todos los de la banda reciben «… se ha unido a …».",
           ],
         },
+        {
+          type: "list",
+          title: "Mira quién no se ha unido todavía",
+          items: [
+            "Los admins ven las invitaciones abiertas en **Miembros de la banda**, bajo **Invitados**: el email, el rol y **Sin aceptar**, **Caducado** o **Rechazado**.",
+            "Toca ⋯ junto a una invitación y luego **Enviar de nuevo**: la invitación dura 7 días más y se vuelve a enviar. Si caducó o fue rechazada, el botón es **Invitar de nuevo**.",
+            "**Copiar enlace** copia el enlace de invitación para que lo mandes tú a alguien nuevo en BandWith.",
+            "**Cancelar invitación** y luego **Sí, cancélala**: el enlace y el código dejan de funcionar.",
+          ],
+        },
         { type: "note", tone: "privacy", text: "Los resultados de búsqueda muestran los emails parcialmente ocultos (por ejemplo gi•••@…) salvo que escribas la dirección exacta. Las personas que ya están en la banda no aparecen." },
         { type: "shot", id: "people-invite", caption: "La hoja Invitar miembro con la búsqueda, los resultados y la elección de rol." },
         { type: "note", tone: "tip", text: "La invitación va ligada a la dirección de email. La persona tiene que iniciar sesión con esa dirección para unirse." },
@@ -118,7 +128,7 @@ const people: AreaText = {
           items: [
             "Abre el enlace de invitación del mensaje o del email. O, en la pantalla de bienvenida, toca **Tengo un código de invitación**, pega el código o el enlace en **Código o enlace de invitación** y toca **Unirme**.",
             "Revisa la tarjeta de la banda y toca **Aceptar y continuar** (o **Rechazar invitación**).",
-            "Crea tu cuenta o inicia sesión con la dirección de email a la que se envió la invitación.",
+            "Crea tu cuenta o inicia sesión con la dirección de email a la que se envió la invitación. Estás en la banda en cuanto la cuenta está lista.",
           ],
         },
         {

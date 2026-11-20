@@ -90,6 +90,16 @@ const people: AreaText = {
             "Quando entra, tutti nella band ricevono “{name} ora è in {band}”.",
           ],
         },
+        {
+          type: "list",
+          title: "Vedi chi non è ancora entrato",
+          items: [
+            "Gli admin vedono gli inviti aperti in **Membri della band**, sotto **Invitati**: l’email, il ruolo e **Non ancora accettato**, **Scaduto** o **Rifiutato**.",
+            "Tocca ⋯ accanto a un invito, poi **Invia di nuovo**: l’invito vale altri 7 giorni e riparte. Per un invito scaduto o rifiutato il pulsante è **Invita di nuovo**.",
+            "**Copia link** copia il link d’invito, così puoi mandarlo tu a chi è nuovo su BandWith.",
+            "**Annulla invito**, poi **Sì, annullalo**: il link e il codice smettono di funzionare.",
+          ],
+        },
         { type: "note", tone: "privacy", text: "I risultati della ricerca mostrano le email in parte nascoste (per esempio gi•••@…), a meno che tu non scriva l’indirizzo esatto. Chi è già nella band non compare." },
         { type: "shot", id: "people-invite", caption: "Il foglio Invita membro con ricerca, risultati e scelta del ruolo." },
         { type: "note", tone: "tip", text: "L’invito è legato all’indirizzo email. Per entrare, la persona deve accedere con quell’indirizzo." },
@@ -119,7 +129,7 @@ const people: AreaText = {
           items: [
             "Apri il link d’invito dal messaggio o dall’email. Oppure, nella schermata di benvenuto, tocca **Ho un codice invito**, incolla il codice o il link in **Codice o link d’invito** e tocca **Entra**.",
             "Controlla la scheda della band e tocca **Accetta e continua** (oppure **Rifiuta invito**).",
-            "Crea il tuo account o accedi con l’indirizzo email a cui è arrivato l’invito.",
+            "Crea il tuo account o accedi con l’indirizzo email a cui è arrivato l’invito. Sei nella band appena l’account è pronto.",
           ],
         },
         {

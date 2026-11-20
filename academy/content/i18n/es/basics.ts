@@ -304,6 +304,7 @@ const basics: AreaText = {
           ],
         },
         { type: "note", tone: "tip", text: "Usa la dirección a la que se envió la invitación. Una invitación para otra dirección no se puede aceptar desde tu cuenta." },
+        { type: "note", tone: "tip", text: "Estás en la banda en cuanto tu cuenta está lista. Si cierras la app antes de la última pantalla, la banda ya está ahí cuando vuelves a abrirla." },
         { type: "p", text: "Si no puedes unirte (una invitación caducada, otro email), la app se queda en la última pantalla y te dice por qué. El botón pasa a **Reintentar**." },
         { type: "p", text: "Los admins pueden compartir un código de invitación en lugar de un email: en **Miembros de la banda**, la invitación muestra **Copiar código** y **Compartir**. La persona instala BandWith, se registra y pega el código." },
       ],
