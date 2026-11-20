@@ -29,7 +29,9 @@ import {
   BookOpen,
   RotateCcw,
   Crown,
+  Calendar,
 } from '@/app/components/icons';
+import { CalendarSyncSection } from '@/app/components/settings/CalendarSyncSection';
 import { PlanSection } from '@/app/components/plans/PlanSection';
 import { useOptionalBand } from '@/lib/BandContext';
 import { usePlan } from '@/lib/usePlan';
@@ -54,7 +56,7 @@ import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
 
-type SettingsSection = 'notifications' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
+type SettingsSection = 'notifications' | 'calendar' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
 interface SettingsViewProps {
   onClose: () => void;
@@ -143,6 +145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
+    { id: 'calendar', label: t('Calendar sync'), hint: t('Your events in Apple or Google Calendar'), icon: Calendar },
     ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
@@ -334,6 +337,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const getSectionTitle = (section: SettingsSection | null = activeSection): string => {
     switch (section) {
       case 'notifications': return t('Notifications');
+      case 'calendar': return t('Calendar sync');
       case 'plan': return t('Plan');
       case 'appearance': return t('Appearance');
       case 'units': return t('Units');
@@ -737,6 +741,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <>
       {section === null && renderMenu()}
       {section === 'notifications' && renderNotificationsSection()}
+      {section === 'calendar' && <CalendarSyncSection />}
       {section === 'plan' && <PlanSection />}
       {section === 'appearance' && renderAppearanceSection()}
       {section === 'units' && renderUnitsSection()}

@@ -717,7 +717,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["ajustes", "configurações", "preferências", "opções", "configurações do app"],
-      related: ["notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Abra o menu (a última aba) e toque em **Ajustes e conta**. **Configurações** lista as seções:" },
         {
@@ -725,6 +725,7 @@ const basics: AreaText = {
           head: ["Seção", "O que tem", "Vale para"],
           rows: [
             ["**Notificações**", "**Notificações push**, **Notificações por e-mail**, **Novidades do produto**", "Sua conta (todos os dispositivos)"],
+            ["**Sincronizar calendário**", "Um link privado para os seus eventos para **Calendário Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Sua conta (todos os dispositivos)"],
             ["**Aparência**", "Tema: **Claro**, **Escuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Quilômetros** ou **Milhas**", "Este dispositivo"],
             ["**Privacidade e conta**", "**Bloqueio do app**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
@@ -765,6 +766,57 @@ const basics: AreaText = {
         { type: "p", text: "A linha no alto resume tudo, por exemplo **alertas push e por e-mail ativados** ou **Todos os alertas pausados**. O botão **Notificações** do próprio menu ativa ou desativa push e e-mail juntos." },
         { type: "p", text: "Essas escolhas ficam salvas na sua conta, então valem em todos os seus dispositivos. Se não der para salvar, o botão volta à posição anterior e o app explica o motivo." },
         { type: "note", tone: "tip", text: "Convites e enquetes urgentes sempre mostram um alerta, mesmo com o push desativado. A caixa de avisos guarda tudo." },
+      ],
+    },
+    {
+      id: "calendar-sync",
+      title: "Sincronize seus eventos com o seu calendário",
+      summary: "Seus shows e ensaios no calendário Apple, Google ou Outlook, atualizados sozinhos.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["calendário", "sincronizar", "assinar", "calendário apple", "google agenda", "outlook", "ics", "webcal", "adicionar ao calendário"],
+      related: ["settings-overview", "notification-settings", "privacy-and-account-settings"],
+      body: [
+        { type: "p", text: "**Sincronizar calendário** dá a você um link privado para os seus eventos do BandWith. Adicione-o uma vez ao calendário do celular ou do computador: shows novos, horários alterados e cancelamentos chegam sozinhos." },
+        {
+          type: "steps",
+          title: "Calendário Apple (iPhone, iPad, Mac)",
+          items: [
+            "Abra o menu, toque em **Ajustes e conta** e depois em **Sincronizar calendário**.",
+            "Toque em **Calendário Apple**.",
+            "Confirme a assinatura no app Calendário.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Google Agenda (Android e web)",
+          items: [
+            "Em **Sincronizar calendário**, toque em **Google Agenda**.",
+            "O Google Agenda abre com o link já preenchido: confirme para adicionar. Depois ele aparece em todos os aparelhos com essa conta Google.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Outlook ou outro calendário",
+          items: [
+            "Em **Sincronizar calendário**, toque em **Copiar o link**.",
+            "No seu calendário, adicione um calendário por URL (assinatura) e cole o link.",
+          ],
+        },
+        { type: "p", text: "Só um evento: abra o show ou o ensaio e toque em **Adicionar ao calendário** abaixo dos horários (Calendário Apple, Outlook) ou em **Google Agenda**. Isso adiciona uma cópia: use **Sincronizar calendário** se quiser que as mudanças cheguem sozinhas." },
+        {
+          type: "list",
+          title: "O que o calendário mostra",
+          items: [
+            "Os shows e ensaios dos quais você participa e que não recusou. Os admins veem todos os eventos da banda, menos os que recusaram.",
+            "Seus shows pessoais.",
+            "Ensaios que se repetem, como evento recorrente.",
+            "Horários de montagem, passagem de som e show, o local e sua função.",
+            "Nunca orçamentos, rascunhos ou eventos recusados. Um evento cancelado some do calendário.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "O calendário nunca mostra cachês, dados do cliente ou notas. Quem tiver o link pode ver seus eventos, então não compartilhe. Se compartilhou, toque em **Criar um novo link**: o antigo para de funcionar e você adiciona o novo de novo." },
+        { type: "note", tone: "tip", text: "Os calendários verificam o link a cada poucas horas; o Google pode levar até um dia. No app, uma mudança é imediata." },
       ],
     },
     {

@@ -717,7 +717,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["réglages", "préférences", "options", "paramètres", "réglages de l’app"],
-      related: ["notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Ouvre le menu (le dernier onglet), puis touche **Réglages et compte**. **Réglages** liste les sections :" },
         {
@@ -725,6 +725,7 @@ const basics: AreaText = {
           head: ["Section", "Contenu", "S’applique à"],
           rows: [
             ["**Notifications**", "**Notifications push**, **Notifications par e-mail**, **Nouveautés**", "Ton compte (tous les appareils)"],
+            ["**Synchroniser le calendrier**", "Un lien privé vers tes événements pour **Calendrier Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Ton compte (tous les appareils)"],
             ["**Apparence**", "Thème : **Clair**, **Sombre**, **Système**", "Cet appareil"],
             ["**Unités**", "**Kilomètres** ou **Miles**", "Cet appareil"],
             ["**Confidentialité et compte**", "**Verrouillage de l’app**, masquer les détails des concerts perso, **Exporter mes données**, conditions, politique de confidentialité, **Supprimer le compte**", "Variable (voir [[privacy-and-account-settings]])"],
@@ -765,6 +766,57 @@ const basics: AreaText = {
         { type: "p", text: "La ligne du haut résume le tout, par exemple **alertes push et e-mail activées** ou **Toutes les alertes en pause**. L’interrupteur **Notifications** du menu active ou coupe le push et l’e-mail ensemble." },
         { type: "p", text: "Ces choix sont enregistrés sur ton compte : ils valent sur tous tes appareils. Si l’enregistrement échoue, l’interrupteur revient en arrière et l’app explique pourquoi." },
         { type: "note", tone: "tip", text: "Les invitations et sondages urgents affichent toujours une alerte, même quand le push est désactivé. Les alertes gardent tout." },
+      ],
+    },
+    {
+      id: "calendar-sync",
+      title: "Synchronise tes événements avec ton calendrier",
+      summary: "Tes concerts et répétitions dans le calendrier Apple, Google ou Outlook, mis à jour tout seuls.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["calendrier", "synchroniser", "s’abonner", "calendrier apple", "google agenda", "outlook", "ics", "webcal", "ajouter au calendrier"],
+      related: ["settings-overview", "notification-settings", "privacy-and-account-settings"],
+      body: [
+        { type: "p", text: "**Synchroniser le calendrier** te donne un lien privé vers tes événements BandWith. Ajoute-le une fois au calendrier de ton téléphone ou de ton ordinateur : les nouveaux concerts, les horaires modifiés et les annulations suivent tout seuls." },
+        {
+          type: "steps",
+          title: "Calendrier Apple (iPhone, iPad, Mac)",
+          items: [
+            "Ouvre le menu, touche **Réglages et compte**, puis **Synchroniser le calendrier**.",
+            "Touche **Calendrier Apple**.",
+            "Confirme l’abonnement dans l’app Calendrier.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Google Agenda (Android et le web)",
+          items: [
+            "Dans **Synchroniser le calendrier**, touche **Google Agenda**.",
+            "Google Agenda s’ouvre avec le lien déjà rempli : confirme pour l’ajouter. Il apparaît ensuite sur tous les appareils connectés à ce compte Google.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Outlook ou un autre calendrier",
+          items: [
+            "Dans **Synchroniser le calendrier**, touche **Copier le lien**.",
+            "Dans ton calendrier, ajoute un calendrier depuis une URL (abonnement) et colle le lien.",
+          ],
+        },
+        { type: "p", text: "Un seul événement : ouvre le concert ou la répétition et touche **Ajouter au calendrier** sous les horaires (Calendrier Apple, Outlook) ou **Google Agenda**. Tu ajoutes ainsi une copie : utilise **Synchroniser le calendrier** si tu veux que les changements suivent." },
+        {
+          type: "list",
+          title: "Ce que montre le calendrier",
+          items: [
+            "Les concerts et répétitions où tu es et que tu n’as pas refusés. Les admins voient tous les événements du groupe, sauf ceux qu’ils ont refusés.",
+            "Tes concerts personnels.",
+            "Les répétitions qui se répètent, comme événement récurrent.",
+            "Les horaires d’installation, de balances et du concert, le lieu et ton rôle.",
+            "Jamais de devis, de brouillons ni d’événements refusés. Un événement annulé disparaît du calendrier.",
+          ],
+        },
+        { type: "note", tone: "privacy", text: "Le calendrier ne montre jamais de cachets, de données client ni de notes. Toute personne ayant le lien peut voir tes événements, alors ne le partage pas. Si tu l’as fait, touche **Créer un nouveau lien** : l’ancien cesse de fonctionner et tu ajoutes le nouveau." },
+        { type: "note", tone: "tip", text: "Les calendriers vérifient le lien toutes les quelques heures ; Google peut prendre jusqu’à un jour. Dans l’app, un changement est immédiat." },
       ],
     },
     {
