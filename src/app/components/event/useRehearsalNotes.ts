@@ -164,6 +164,7 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
             songTitle: null,
             preset: null,
             section: null,
+            line: null,
             body: null,
             scope: 'band',
             status: 'open',

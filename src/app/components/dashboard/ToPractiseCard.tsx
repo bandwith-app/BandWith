@@ -33,7 +33,7 @@ export const PractiseNoteRow: React.FC<{
       <span className="flex flex-col min-w-0 flex-1">
         <span className="bw-body-md min-w-0 break-words">{headline}</span>
         <span className="bw-body-sm text-muted-foreground">
-          {[note.body && note.body !== headline ? note.body : null, author, shortDay(note.date)].filter(Boolean).join(' · ')}
+          {[note.body && note.preset ? note.body : null, author, shortDay(note.date)].filter(Boolean).join(' · ')}
         </span>
       </span>
       {mine && onPractised && (

@@ -8,9 +8,9 @@ import { fromNoteRow, toNoteRow, type RehearsalNote } from '@/lib/rehearsalNotes
 import { openLyrics } from '@/lib/lyrics';
 import { asSongChart } from '@/lib/ireal';
 
-/** Must match the SELECT grants in 132 (rehearsalNotesMigration.test.ts). */
+/** Must match the SELECT grants in 132 + 167 (rehearsalNotesMigration.test.ts). */
 export const NOTE_COLUMNS =
-  'id, band_id, event_id, occurrence_date, session_id, song_id, song_title, preset, section, body, scope, status, marked_at_s, created_by, ok_by, ok_at, created_at, updated_at';
+  'id, band_id, event_id, occurrence_date, session_id, song_id, song_title, preset, section, line, body, scope, status, marked_at_s, created_by, ok_by, ok_at, created_at, updated_at';
 export const ASSIGNEE_COLUMNS = 'note_id, user_id, practised_at';
 
 const SELECT = `${NOTE_COLUMNS}, rehearsal_note_assignees(${ASSIGNEE_COLUMNS})`;

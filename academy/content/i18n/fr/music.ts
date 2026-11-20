@@ -672,10 +672,12 @@ const music: AreaText = {
           title: "Ajouter une note",
           items: [
             "Ouvre le morceau dans le lecteur (**Paroles** ou **Accords**) ou en mode scène.",
-            "Active **Mes notes** sous les onglets du morceau. La première fois, une feuille explique à quoi elles servent ; touche **Compris**.",
-            "Touche **Ajouter une note**, puis la ligne voulue. Ou touche **Note sur tout le morceau**.",
+            "Touche **Ajouter une note** (en mode scène, **Note**). **Mes notes** s’activent toutes seules ; la première fois, une feuille explique à quoi elles servent : touche **Compris**.",
+            "Une barre en bas de l’écran indique **Touche la ligne où tu veux la note** : touche la ligne voulue, ou **Tout le morceau** pour une note sur tout le morceau. **Annuler** pour sortir.",
+            "Plus rapide : garde le doigt sur une ligne une demi-seconde. **Note sur cette ligne** s’ouvre : touche **Note pour moi**.",
             "Pour une ligne, choisis sur quoi porte la note : **Toute la ligne**, un de ses mots ou un de ses accords.",
             "Écris dans **Ma note** et touche **Enregistrer la note**.",
+            "**Note enregistrée sur « … »** te dit où elle est allée.",
           ],
         },
         {
@@ -701,7 +703,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "En mode scène, la barre n’utilise que des boutons icônes, pour tenir sur une seule ligne au-dessus des paroles." }],
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "En mode scène, la barre affiche **Note** et une icône pour **Ajouter un fichier**, pour tenir sur une ligne au-dessus des paroles." }],
         },
       ],
     },
@@ -1199,6 +1201,8 @@ const music: AreaText = {
           items: [
             "En mode live, touchez **Marquer** quand quelque chose est à retravailler : le morceau en cours et la minute sont gardés, et vous continuez à jouer.",
             "À la pause (ou dans le résumé), touchez **À écrire** puis **Écrire** sur chaque marque : choisissez sur quoi travailler (**Tempo**, **Tonalité**, **Fin**, **Solo**, **À revoir**, **Parfait**, ou **Répéter une section** si le morceau a une structure), ajoutez quelques mots et indiquez **Pour qui**.",
+            "Toute note sur un morceau peut dire **Où dans le morceau** : une section et, si tu veux, une de ses lignes (**Ligne (facultatif)**).",
+            "En mode live, tu peux aussi garder le doigt sur une ligne des paroles et toucher **Note pour le groupe** : la note s’ouvre déjà sur ce morceau, cette section et cette ligne.",
             "Les admins écrivent pour tout le groupe ou pour n’importe quel membre ; les membres, pour le groupe ou pour eux-mêmes. Tout le groupe lit toutes les notes.",
             "La personne visée touche **Travaillé** après avoir bossé la note ; un admin touche **OK** quand le groupe l’a en place (l’auteur aussi, pour une note aux membres).",
             "La page de la répétition liste les notes sous **NOTES DE RÉPÉTITION**, par morceau. Les notes arrivent tout de suite sur les autres téléphones en mode live ; sans internet elles attendent sur le téléphone et partent au retour du réseau. Sur le Duo plié comme un portable, l’écran au sol a un bloc-notes : **Marquer**, un preset en un geste, ou **Écrire…**.",

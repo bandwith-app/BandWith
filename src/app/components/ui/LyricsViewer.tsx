@@ -151,7 +151,7 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
               line.trim() ? (
                 refs?.get(`${i}:${j}`) ? (
                   <React.Fragment key={j}>
-                    <PickableLine refLine={refs.get(`${i}:${j}`)!}>
+                    <PickableLine refLine={refs.get(`${i}:${j}`)!} sectionName={s.name}>
                       <LyricsLine line={line} hideChords={hideChords} />
                     </PickableLine>
                     <LineNotes id={`${i}:${j}`} line={line} />

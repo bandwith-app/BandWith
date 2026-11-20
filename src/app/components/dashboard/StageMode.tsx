@@ -692,7 +692,15 @@ export const StageMode: React.FC<StageModeProps> = ({
                 />
                 {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
               </div>
-              <PersonalLayerScope song={mine} stage>
+              <PersonalLayerScope
+                song={mine}
+                stage
+                onBandNote={
+                  notes?.controls && lyricsSong?.songId
+                    ? ({ section, line }) => noteSheets.newNote({ songId: lyricsSong.songId!, songTitle: lyricsSong.title, section, line })
+                    : undefined
+                }
+              >
               {mine && <MyNotesBar className="shrink-0 pb-2" />}
               <TransposeProvider semitones={semitones} songKey={lyricsKey}>
               <div ref={lyricsRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6">

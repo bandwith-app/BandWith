@@ -682,10 +682,12 @@ const music: AreaModule = {
           title: "Add a note",
           items: [
             "Open the song in the reader (**Lyrics** or **Chords**) or in Stage mode.",
-            "Turn on **My notes** under the song's tabs. The first time, a sheet explains what they are; tap **Got it**.",
-            "Tap **Add note**, then tap the line you want. Or tap **Note on the whole song**.",
+            "Tap **Add note** (on Stage, **Note**). **My notes** turn on by themselves; the first time a sheet explains what they are: tap **Got it**.",
+            "A bar at the bottom of the screen says **Tap the line for your note**: tap the line you want, or **Whole song** for a note on the whole song. **Cancel** stops.",
+            "Quicker: hold a line for half a second. **Note on this line** opens: tap **Note for me**.",
             "For a line, choose what the note is on: **Whole line**, one of its words, or one of its chords.",
             "Type in **My note** and tap **Save note**.",
+            "**Note saved on “…”** tells you where it went.",
           ],
         },
         {
@@ -711,7 +713,7 @@ const music: AreaModule = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "In Stage mode the bar uses icon buttons only, so it stays on one row above the lyrics." }],
+          rows: [{ devices: ["phone", "phoneLand", "duoClosed"], text: "In Stage mode the bar shows **Note** and an icon for **Add file**, so it stays on one row above the lyrics." }],
         },
       ],
     },
@@ -1209,6 +1211,8 @@ const music: AreaModule = {
           items: [
             "In Live mode tap **Mark** when something needs work: it keeps the song playing and the minute, and you go on playing.",
             "At the pause (or in the summary) tap **To write** and **Write** each mark: pick what to work on (**Tempo**, **Key**, **Ending**, **Solo**, **Review**, **Nailed it**, or **Repeat a section** when the song has a structure), add a few words, and say **Who it’s for**.",
+            "Any note on a song can say **Where in the song**: a section and, if you want, one of its lines (**Line (optional)**).",
+            "In Live mode you can also hold a line of the lyrics and tap **Note for the band**: the note opens already on that song, section and line.",
             "Admins write for the whole band or for any member; members write for the band or for themselves. The whole band reads every note.",
             "Whoever a note is for taps **Practised** after working on it; an admin taps **OK** when the band has it (the author can too, on a note to members).",
             "The rehearsal's page lists the notes under **REHEARSAL NOTES**, by song. Notes reach the other phones in Live mode at once; without internet they wait on the phone and go when back online. On the Duo folded like a laptop, the floor screen has a notes pad: **Mark**, a preset in one tap, or **Write…**.",

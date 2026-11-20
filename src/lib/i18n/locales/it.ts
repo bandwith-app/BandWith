@@ -4291,6 +4291,18 @@ const dict: Dictionary = {
   "Pro offered by BandWith ends on {date}": "Il Pro offerto da BandWith finisce il {date}",
   "Then the band is on Free: nothing is deleted.": "Poi la band passa a Free: non si cancella nulla.",
   "Dismiss plan reminder": "Chiudi il promemoria del piano",
+  "Where in the song": "Dove nel brano",
+  "Section to repeat": "Sezione da ripetere",
+  "Whole song": "Tutto il brano",
+  "Line (optional)": "Riga (facoltativa)",
+  "Note on this line": "Nota su questa riga",
+  "Note for me": "Nota per me",
+  "Only you see it, on this line.": "La vedi solo tu, su questa riga.",
+  "A rehearsal note on this point: the whole band sees it.": "Una nota della prova su questo punto: la vede tutta la band.",
+  "Adding a note": "Aggiunta di una nota",
+  "Tap the line for your note": "Tocca la riga dove vuoi la nota",
+  "Note saved on “{line}”": "Nota salvata su «{line}»",
+  "Note saved on the whole song": "Nota salvata su tutto il brano",
 };
 
 export default dict;

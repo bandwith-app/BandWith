@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import sql132 from '../../../../supabase/migrations/132_rehearsal_notes.sql?raw';
+import sql167 from '../../../../supabase/migrations/167_rehearsal_note_line.sql?raw';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import { NOTE_COLUMNS, ASSIGNEE_COLUMNS } from '../rehearsalNotes';
 
@@ -11,6 +12,15 @@ const grantList = (kind: string, table: string) => {
   return m[1].split(',').map((c) => c.trim()).sort();
 };
 const cols = (list: string) => list.split(',').map((c) => c.trim()).sort();
+
+describe('167 a note on one line', () => {
+  const s = sql167.replace(/--.*$/gm, '');
+  it('a short optional column, nothing for anon', () => {
+    expect(s).toMatch(/ADD COLUMN IF NOT EXISTS line text/);
+    expect(s).toMatch(/char_length\(line\) <= 200/);
+    expect(s).not.toMatch(/TO anon/);
+  });
+});
 
 describe('132 rehearsal notes', () => {
   it('RLS on both tables; nothing for anon', () => {
@@ -40,7 +50,9 @@ describe('132 rehearsal notes', () => {
   });
 
   it('the app reads only granted columns', () => {
-    expect(grantList('SELECT', 'rehearsal_notes')).toEqual(cols(NOTE_COLUMNS));
+    const line = sql167.replace(/--.*$/gm, '').match(/GRANT SELECT \(([^)]+)\), INSERT \(\1\), UPDATE \(\1\) ON public\.rehearsal_notes TO authenticated/);
+    expect(line?.[1]).toBe('line');
+    expect([...grantList('SELECT', 'rehearsal_notes'), 'line'].sort()).toEqual(cols(NOTE_COLUMNS));
     expect(grantList('SELECT', 'rehearsal_note_assignees')).toEqual(cols(ASSIGNEE_COLUMNS));
   });
 });

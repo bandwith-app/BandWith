@@ -5,6 +5,7 @@ import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/app/components/ui/utils';
 import { formatClock } from '@/lib/rehearsalSession';
+import { sectionLabel } from '@/lib/songFormat';
 import {
   MAX_BODY,
   assigneesAllowed,
@@ -15,6 +16,7 @@ import {
   isForMe,
   myNoteState,
   presetsFor,
+  sectionLines,
   songSections,
   validateNote,
   type NotePreset,
@@ -49,12 +51,18 @@ export const presetLabel = (p: NotePreset, t: T) =>
     nailed: t('Nailed it'),
   })[p];
 
-/** "Tempo · Verse 3", "Bridge too fast", "Marked at 12:34". */
+/** Where in the song: "Chorus · “Lanterns in the rain”" (empty for the whole song). */
+export function noteWhere(n: Pick<RehearsalNote, 'section' | 'line'>, t: T): string {
+  return [n.section ? sectionLabel(n.section, t) : '', n.line ? `“${n.line}”` : ''].filter(Boolean).join(' · ');
+}
+
+/** "Tempo · Verse 3", "Chorus · “Hold on”: too fast", "Bridge too fast", "Marked at 12:34". */
 export function noteHeadline(n: RehearsalNote, t: T): string {
   if (n.status === 'marked') return n.markedAtS != null ? t('Marked at {time}', { time: formatClock(n.markedAtS) }) : t('Marked');
-  const head = n.preset ? presetLabel(n.preset, t) : '';
-  const withSection = head && n.section ? `${head} · ${n.section}` : head;
-  return withSection || n.body || '';
+  const where = noteWhere(n, t);
+  if (n.preset) return [presetLabel(n.preset, t), where].filter(Boolean).join(' · ');
+  if (where) return n.body ? `${where}: ${n.body}` : where;
+  return n.body || '';
 }
 
 const forLabel = (n: RehearsalNote, members: NoteMember[], t: T) => {
@@ -107,7 +115,13 @@ export const NoteEditorSheet: React.FC<{
   if (!draft) return <BwSheet open={false} onClose={onClose} title="" />;
   const lyrics = songs.find((s) => s.songId === draft.songId)?.lyrics ?? null;
   const presets = draft.songId ? presetsFor(lyrics) : presetsFor(null).filter((p) => p !== 'nailed');
+  // Where in the song (any note on a song with structure) and, optionally, one line of it.
   const sections = songSections(lyrics);
+  if (draft.section && !sections.includes(draft.section)) sections.push(draft.section);
+  const lines = sectionLines(lyrics, draft.section);
+  if (draft.line && !lines.includes(draft.line)) lines.push(draft.line);
+  const hadLine = !!note?.line;
+  const setWhere = (section: string | null, line: string | null) => set({ section, line: line ?? (hadLine ? '' : null) });
   const writing = { ...draft, status: draft.status === 'marked' ? ('open' as const) : draft.status };
   const problem = validateNote(writing);
   const me = controls.userId;
@@ -174,12 +188,20 @@ export const NoteEditorSheet: React.FC<{
                 key={s.songId}
                 size="md"
                 selected={draft.songId === s.songId}
-                onClick={() => set({ songId: s.songId, songTitle: s.title, section: null, preset: draft.preset === 'repeat_section' ? null : draft.preset })}
+                onClick={() =>
+                  set({ songId: s.songId, songTitle: s.title, section: null, line: hadLine ? '' : null, preset: draft.preset === 'repeat_section' ? null : draft.preset })
+                }
               >
                 {s.title}
               </Selector>
             ))}
-            <Selector size="md" selected={!draft.songId} onClick={() => set({ songId: null, songTitle: null, section: null, preset: draft.preset === 'nailed' || draft.preset === 'repeat_section' ? null : draft.preset })}>
+            <Selector
+              size="md"
+              selected={!draft.songId}
+              onClick={() =>
+                set({ songId: null, songTitle: null, section: null, line: hadLine ? '' : null, preset: draft.preset === 'nailed' || draft.preset === 'repeat_section' ? null : draft.preset })
+              }
+            >
               {t('General')}
             </Selector>
           </div>
@@ -189,22 +211,54 @@ export const NoteEditorSheet: React.FC<{
           <span className="bw-label-sm text-muted-foreground">{t('What to work on')}</span>
           <div className="flex flex-wrap gap-2" role="group" aria-label={t('What to work on')}>
             {presets.map((p) => (
-              <Selector key={p} size="md" selected={draft.preset === p} onClick={() => set({ preset: draft.preset === p ? null : p, section: p === 'repeat_section' ? draft.section : null })}>
+              <Selector key={p} size="md" selected={draft.preset === p} onClick={() => set({ preset: draft.preset === p ? null : p })}>
                 {presetLabel(p, t)}
               </Selector>
             ))}
           </div>
         </div>
 
-        {draft.preset === 'repeat_section' && sections.length > 0 && (
+        {!!draft.songId && sections.length > 0 && (
           <div className="flex flex-col gap-2">
-            <span className="bw-label-sm text-muted-foreground">{t('Section')}</span>
-            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Section')}>
+            <span className="bw-label-sm text-muted-foreground">
+              {draft.preset === 'repeat_section' ? t('Section to repeat') : t('Where in the song')}
+            </span>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('Where in the song')}>
+              {draft.preset !== 'repeat_section' && (
+                <Selector size="md" selected={!draft.section} onClick={() => setWhere(null, null)}>
+                  {t('Whole song')}
+                </Selector>
+              )}
               {sections.map((s) => (
-                <Selector key={s} size="md" selected={draft.section === s} onClick={() => set({ section: s })}>
-                  {s}
+                <Selector key={s} size="md" selected={draft.section === s} onClick={() => setWhere(s, null)}>
+                  {sectionLabel(s, t)}
                 </Selector>
               ))}
+            </div>
+          </div>
+        )}
+
+        {!!draft.songId && lines.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="bw-label-sm text-muted-foreground">{t('Line (optional)')}</span>
+            <div className="flex flex-col gap-1" role="group" aria-label={t('Line (optional)')}>
+              {lines.map((l) => {
+                const on = draft.line === l;
+                return (
+                  <button
+                    key={l}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setWhere(draft.section, on ? null : l)}
+                    className={cn(
+                      'text-left min-h-11 px-4 py-2 rounded-2xl border bw-body-md transition-colors',
+                      on ? 'bg-foreground text-background border-foreground' : 'border-border text-foreground hover:bg-foreground/5',
+                    )}
+                  >
+                    {l}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -278,7 +332,7 @@ export const NoteItem: React.FC<{
         <span className="bw-label-md min-w-0">{headline}</span>
         <span className={cn('bw-label-xs shrink-0', dark ? 'text-white/70' : 'text-muted-foreground')}>{stateLabel(note, me, t)}</span>
       </span>
-      {note.body && note.status !== 'marked' && headline !== note.body && (
+      {note.body && note.status !== 'marked' && !!note.preset && (
         <span className={cn('bw-body-sm whitespace-pre-wrap', dark ? 'text-white/85' : 'text-foreground')}>{note.body}</span>
       )}
       <span className={cn('bw-body-sm', dark ? 'text-white/60' : 'text-muted-foreground')}>{forLabel(note, members, t)}</span>
