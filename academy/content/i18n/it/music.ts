@@ -186,7 +186,7 @@ const music: AreaText = {
           rows: [
             ["**Riproduci**", "Fa partire la registrazione nel mini player, oppure apre il link Spotify o YouTube.", "Tutti, se il brano ha una registrazione o un link"],
             ["**Testo**", "Apre il lettore del brano sul testo.", "Tutti, se il brano ha un testo"],
-            ["**Accordi**", "Apre il lettore del brano sulla griglia accordi.", "Tutti, se il brano ha una chart iReal"],
+            ["**Griglia accordi**", "Apre il lettore del brano sulla griglia accordi.", "Tutti, se il brano ha una chart iReal"],
             ["**Apri spartito**", "Apre lo spartito caricato o il link allo spartito.", "Tutti, se il brano ne ha uno"],
             ["**Apri in Ultimate Guitar**", "Apre una ricerca del brano su Ultimate Guitar, fuori dall’app.", "Tutti"],
             ["**Modifica accordi**", "Apre l’editor degli accordi.", "Admin, se il brano ha un testo"],
@@ -305,14 +305,14 @@ const music: AreaText = {
       summary: "Apri un brano nel lettore a tutto schermo, cambia vista, regola la dimensione del testo e trasponi solo per te.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["testo", "accordi", "struttura", "lettore", "dimensione testo", "vista brano", "spartito"],
+      keywords: ["testo", "accordi", "struttura", "lettore", "dimensione testo", "vista brano", "spartito", "testo e accordi", "griglia accordi"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "Nel Repertorio, tocca la riga del brano e poi **Testo** o **Accordi**. Dal mini player, tocca **Testo**.",
-            "Passa tra **Testo**, **Accordi** e **Struttura** con le schede sotto il titolo. Compaiono solo le viste che il brano ha.",
+            "Nel Repertorio, tocca la riga del brano e poi **Testo** o **Griglia accordi**. Dal mini player, tocca **Testo**.",
+            "Passa tra **Testo**, **Testo e accordi** e **Griglia accordi** con le schede sotto il titolo. Compaiono solo le viste che il brano ha.",
             "Tocca i pulsanti − e + (**Testo più piccolo**, **Testo più grande**) in alto per cambiare la dimensione del testo.",
             "Per leggere in un’altra tonalità, usa − e + attorno alla tonalità sotto le schede. Tocca la tonalità per tornare all’originale.",
             "Tocca la X (**Chiudi il testo**) per chiudere il lettore.",
@@ -323,15 +323,15 @@ const music: AreaText = {
           head: ["Vista", "Cosa mostra"],
           rows: [
             ["**Testo**", "Solo le parole, senza accordi."],
-            ["**Accordi**", "Le parole con gli accordi sopra, oppure la chart iReal se il testo non ha accordi."],
-            ["**Struttura**", "La chart iReal battuta per battuta, oppure il giro di accordi di ogni sezione in caselle."],
+            ["**Testo e accordi**", "Le parole con gli accordi sopra, oppure la chart iReal se il testo non ha accordi."],
+            ["**Griglia accordi**", "Solo gli accordi: la chart iReal battuta per battuta, oppure il giro di accordi di ogni sezione in caselle."],
           ],
         },
         {
           type: "list",
           title: "La tua vista viene ricordata",
           items: [
-            "La prima volta il lettore si apre sulla vista adatta al tuo strumento nella band: chi canta su Testo; chitarra, tastiere e basso su Accordi; batteria, percussioni e fiati su Struttura.",
+            "La prima volta il lettore si apre sulla vista adatta al tuo strumento nella band: chi canta su Testo; chitarra, tastiere e basso su Testo e accordi; batteria, percussioni e fiati su Griglia accordi.",
             "Poi si apre sull’ultima vista che hai scelto su questo dispositivo. La stessa scelta vale in Modalità palco.",
             "La dimensione del testo resta salvata su questo dispositivo ed è la stessa della Modalità palco.",
           ],
@@ -347,7 +347,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Il lettore si apre nel secondo pannello, accanto al Repertorio." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "Il lettore del brano con le schede Testo, Accordi e Struttura." },
+        { type: "shot", id: "music-reader", caption: "Il lettore del brano con le schede Testo, Testo e accordi e Griglia accordi." },
       ],
     },
     {
@@ -575,7 +575,7 @@ const music: AreaText = {
           items: [
             "Gli accordi e la forma (sezioni, battute, ritornelli), più tonalità, stile, tempo e tempo in chiave. Niente melodia e niente testo.",
             "Titolo, compositore (come artista), tonalità e BPM compilano i campi vuoti del modulo.",
-            "La chart compare nelle viste **Accordi** e **Struttura** del lettore, e l’editor degli accordi può usarla per posizionare gli accordi.",
+            "La chart compare nelle viste **Testo e accordi** e **Griglia accordi** del lettore, e l’editor degli accordi può usarla per posizionare gli accordi.",
           ],
         },
         {
@@ -722,7 +722,7 @@ const music: AreaText = {
           type: "steps",
           title: "Aggiungere una nota",
           items: [
-            "Apri il brano nel lettore (**Testo** o **Accordi**) o in Modalità palco.",
+            "Apri il brano nel lettore (**Testo** o **Griglia accordi**) o in Modalità palco.",
             "Tocca **Aggiungi nota** (in Modalità palco, **Nota**). **Le mie note** si attivano da sole; la prima volta un foglio spiega cosa sono: tocca **Ho capito**.",
             "Una barra in fondo allo schermo dice **Tocca la riga dove vuoi la nota**: tocca la riga che vuoi, oppure **Tutto il brano** per una nota su tutto il brano. **Annulla** per uscire.",
             "Più veloce: tieni premuta una riga per mezzo secondo. Si apre **Nota su questa riga**: tocca **Nota per me**.",
@@ -1187,7 +1187,7 @@ const music: AreaText = {
       summary: "Una schermata live nera, leggibile a colpo d’occhio, con la scaletta e il testo o gli accordi di ogni brano: il giorno del gig con il programma, a una prova come Modalità live.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto", "prova", "modalità live", "prova live"],
+      keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto", "prova", "modalità live", "prova live", "solo il brano", "solo testo", "vista pulita"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1207,7 +1207,7 @@ const music: AreaText = {
             "**Modalità palco · <data>**, il titolo del gig, il locale e la città.",
             "Il programma della serata: Carico, Soundcheck, Show e Fine, in formato 24 ore. Il prossimo è evidenziato come **A seguire · …**; quelli passati sbiadiscono.",
             "La **Scaletta** con numeri, titoli, tonalità e durata. Il brano corrente è evidenziato. I brani tolti per stasera sono barrati, e il conteggio sopra l’elenco dice quanti sono (**· 2 tolti**).",
-            "Una seconda scheda con il nome della tua vista del brano (**Testo**, **Accordi** o **Struttura**) mostra il brano corrente. Segue il brano quando cambia.",
+            "Una seconda scheda con il nome della tua vista del brano (**Testo**, **Testo e accordi** o **Griglia accordi**) mostra il brano corrente. Segue il brano quando cambia.",
             "**Indietro** e **Avanti** in basso, con il pulsante del click in mezzo.",
           ],
         },
@@ -1215,8 +1215,10 @@ const music: AreaText = {
           type: "list",
           title: "Nella scheda del brano",
           items: [
-            "Passa tra **Testo**, **Accordi** e **Struttura**. La scelta è la stessa del lettore del brano.",
+            "Passa tra **Testo**, **Testo e accordi** e **Griglia accordi**. La scelta è la stessa del lettore del brano.",
             "Cambia la dimensione del testo con − e +.",
+            "Tocca il pulsante a pagina accanto a − e + (**Solo il brano**) per leggere solo il brano, a schermo intero: niente titolo, schede, orari o stato. In basso restano solo **Mostra tutto**, **Indietro**, il click e **Avanti**; anche le frecce e Pagina su/giù cambiano brano, per le pedaliere voltapagina.",
+            "**Mostra tutto** o Indietro riporta l’intera schermata live. Uscendo dalla Modalità palco, Solo il brano si spegne.",
             "Trasponi solo per te con − tonalità +. Cambia solo il tuo schermo.",
             "**Le mie note** mostra le tue note private sopra la versione della band.",
             "Il programma della serata si nasconde per lasciare più spazio al brano.",
@@ -1234,6 +1236,7 @@ const music: AreaText = {
             "Niente programma della serata (nessun orario di carico, soundcheck, show o fine) e niente brani da togliere per stasera.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Solo il brano: il brano con i suoi accordi, a schermo intero, con Mostra tutto, Indietro, il click e Avanti." },
         { type: "shot", id: "music-rehearsal-live", caption: "La Modalità live a una prova: i brani da provare, gli accordi del brano corrente e Indietro / Avanti, senza programma della serata." },
         {
           type: "list",
@@ -1529,6 +1532,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "La Modalità palco si apre accanto al pannello dell’elenco. **Schermo intero** le dà tutto lo schermo: allora orari e passaggi stanno nel primo pannello e la scaletta o il brano nel secondo, divisi al bordo dei pannelli così che niente finisca sulla piega. Con un brano aperto, la scaletta sta in una colonna accanto (nel primo pannello quando il dispositivo è aperto su entrambi). **Esci da schermo intero** riporta l’elenco. La scelta resta salvata sul dispositivo." },
             { devices: ["duoClosed"], text: "**Apri modalità palco** si trova nella barra laterale; il giorno del gig è la sua azione principale. **Schermo intero** nasconde la barra in Modalità palco." },
             { devices: ["duoLaptop"], text: "Spia da palco: appoggia il dispositivo sul pavimento del palco come un monitor. La metà superiore mostra il contatore dei brani (**Brano … di …**), titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo. La metà inferiore ha grandi tasti **Indietro** e **Avanti** e l’avanzamento del set; i brani tolti per stasera vengono saltati e i loro segmenti di avanzamento sono attenuati. Anche frecce, Pagina su/giù e Spazio fanno avanzare, quindi funzionano i pedali voltapagine Bluetooth." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Solo il brano**: su un dispositivo aperto su due schermi, il brano e i suoi quattro pulsanti occupano lo schermo più largo, così niente cade sulla piega. Piegato come un portatile, il brano riempie la metà alta e la metà bassa ha solo **Mostra tutto**, **Indietro**, il click e **Avanti**." },
             { devices: ["web"], text: "Funzionano la sincronizzazione live via internet e il click. Niente Bluetooth e niente copia offline della scaletta. Lo schermo intero nasconde anche le barre del browser, dove il browser lo permette." },
           ],
         },
@@ -1600,8 +1604,9 @@ const music: AreaText = {
     { term: "ChordPro", definition: "Un formato di testo per i testi con gli accordi tra parentesi. BandWith importa i file .cho, .chordpro e .pro.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "Un formato di file per le partiture. BandWith ne legge le sigle degli accordi e il testo.", see: "import-chords-and-lyrics" },
     { term: "Chart di iReal Pro", definition: "Una griglia accordi battuta per battuta con forma, tonalità, stile e tempo, importata da un link di iReal Pro.", see: "import-from-ireal-pro" },
-    { term: "Vista del brano", definition: "Come viene mostrato un brano: Testo, Accordi o Struttura. Viene ricordata per dispositivo.", see: "read-a-song" },
-    { term: "Struttura", definition: "Le sezioni del brano con i loro accordi in caselle, oppure la chart iReal battuta per battuta.", see: "read-a-song" },
+    { term: "Vista del brano", definition: "Come viene mostrato un brano: Testo, Testo e accordi o Griglia accordi. Viene ricordata per dispositivo.", see: "read-a-song" },
+    { term: "Griglia accordi", definition: "Solo gli accordi: le sezioni del brano con i loro accordi in caselle, oppure la chart iReal battuta per battuta.", see: "read-a-song" },
+    { term: "Solo il brano", definition: "La Modalità palco e la Modalità live con solo il brano sullo schermo, a schermo intero, e Indietro, il click e Avanti in basso.", see: "stage-mode" },
     { term: "Trasponi per la band", definition: "Spostare tonalità, chart e accordi di un brano per tutti, dal modulo del brano.", see: "transpose-and-tempo" },
     { term: "Le mie note", definition: "Note e file privati su un brano della band, visibili solo a te.", see: "my-notes-and-files" },
     { term: "Suggerimento", definition: "La proposta di un membro: un nuovo brano, una correzione al testo o agli accordi, oppure una nota per la band.", see: "review-song-suggestions" },

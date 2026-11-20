@@ -186,7 +186,7 @@ const music: AreaText = {
           rows: [
             ["**Tocar**", "Toca a gravação no mini player ou abre o link do Spotify ou do YouTube.", "Todos, quando a música tem gravação ou link"],
             ["**Letra**", "Abre o leitor da música na letra.", "Todos, quando a música tem letra"],
-            ["**Acordes**", "Abre o leitor da música na grade de acordes.", "Todos, quando a música tem uma grade do iReal"],
+            ["**Grade de acordes**", "Abre o leitor da música na grade de acordes.", "Todos, quando a música tem uma grade do iReal"],
             ["**Abrir cifra**", "Abre a cifra enviada ou o link da partitura.", "Todos, quando a música tem uma"],
             ["**Abrir no Ultimate Guitar**", "Abre uma busca da música no Ultimate Guitar, fora do app.", "Todos"],
             ["**Editar acordes**", "Abre o editor de acordes.", "Admins, quando a música tem letra"],
@@ -305,14 +305,14 @@ const music: AreaText = {
       summary: "Abra uma música no leitor em tela cheia, troque de visualização, mude o tamanho do texto e transponha só para você.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["letra", "acordes", "estrutura", "leitor", "tamanho do texto", "visualização", "cifra"],
+      keywords: ["letra", "acordes", "estrutura", "leitor", "tamanho do texto", "visualização", "cifra", "letra e acordes", "grade de acordes"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "No Repertório, toque na linha da música e em **Letra** ou **Acordes**. No mini player, toque em **Letra**.",
-            "Alterne entre **Letra**, **Acordes** e **Estrutura** com as abas embaixo do título. Só aparecem as visualizações que a música tem.",
+            "No Repertório, toque na linha da música e em **Letra** ou **Grade de acordes**. No mini player, toque em **Letra**.",
+            "Alterne entre **Letra**, **Letra e acordes** e **Grade de acordes** com as abas embaixo do título. Só aparecem as visualizações que a música tem.",
             "Toque nos botões − e + (**Texto menor**, **Texto maior**) no alto para mudar o tamanho do texto.",
             "Para ler em outro tom, use − e + ao redor do tom, embaixo das abas. Toque no tom para voltar ao original.",
             "Toque no X (**Fechar letra**) para fechar o leitor.",
@@ -323,15 +323,15 @@ const music: AreaText = {
           head: ["Visualização", "O que mostra"],
           rows: [
             ["**Letra**", "Só as palavras, sem acordes."],
-            ["**Acordes**", "As palavras com os acordes em cima, ou a grade do iReal se a letra não tiver acordes."],
-            ["**Estrutura**", "A grade do iReal compasso por compasso, ou a progressão de acordes de cada seção em caixas."],
+            ["**Letra e acordes**", "As palavras com os acordes em cima, ou a grade do iReal se a letra não tiver acordes."],
+            ["**Grade de acordes**", "Só os acordes: a grade do iReal compasso por compasso, ou a progressão de acordes de cada seção em caixas."],
           ],
         },
         {
           type: "list",
           title: "A sua visualização é lembrada",
           items: [
-            "Na primeira vez, o leitor abre na visualização do seu instrumento na banda: quem canta em Letra; guitarra, teclado e baixo em Acordes; bateria, percussão e sopros em Estrutura.",
+            "Na primeira vez, o leitor abre na visualização do seu instrumento na banda: quem canta em Letra; guitarra, teclado e baixo em Letra e acordes; bateria, percussão e sopros em Grade de acordes.",
             "Depois disso, ele abre na última visualização que você escolheu neste dispositivo. A mesma escolha vale no Modo palco.",
             "O tamanho do texto fica guardado neste dispositivo e é compartilhado com o Modo palco.",
           ],
@@ -347,7 +347,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "O leitor abre no segundo painel, ao lado do Repertório." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "O leitor da música com as abas Letra, Acordes e Estrutura." },
+        { type: "shot", id: "music-reader", caption: "O leitor da música com as abas Letra, Letra e acordes e Grade de acordes." },
       ],
     },
     {
@@ -575,7 +575,7 @@ const music: AreaText = {
           items: [
             "Os acordes e a forma (seções, compassos, repetições), mais tom, estilo, andamento e fórmula de compasso. Sem melodia, sem letra.",
             "O título, o compositor (como artista), o tom e o BPM preenchem os campos vazios do formulário.",
-            "A grade aparece nas visualizações **Acordes** e **Estrutura** do leitor, e o editor de acordes pode usá-la para posicionar os acordes.",
+            "A grade aparece nas visualizações **Letra e acordes** e **Grade de acordes** do leitor, e o editor de acordes pode usá-la para posicionar os acordes.",
           ],
         },
         {
@@ -722,7 +722,7 @@ const music: AreaText = {
           type: "steps",
           title: "Adicionar uma nota",
           items: [
-            "Abra a música no leitor (**Letra** ou **Acordes**) ou no Modo palco.",
+            "Abra a música no leitor (**Letra** ou **Grade de acordes**) ou no Modo palco.",
             "Toque em **Adicionar nota** (no Modo palco, **Nota**). **Minhas notas** ligam sozinhas; na primeira vez, uma janela explica o que são: toque em **Entendi**.",
             "Uma barra embaixo da tela diz **Toque na linha onde você quer a nota**: toque na linha que você quer, ou em **Música inteira** para uma nota na música toda. **Cancelar** sai.",
             "Mais rápido: segure uma linha por meio segundo. Abre **Nota nesta linha**: toque em **Nota para mim**.",
@@ -1187,7 +1187,7 @@ const music: AreaText = {
       summary: "Uma tela ao vivo preta, fácil de ler de relance, com a setlist e a letra ou os acordes de cada música: no dia do show com o roteiro, num ensaio como Modo ao vivo.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação", "ensaio", "modo ao vivo", "ensaio ao vivo"],
+      keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação", "ensaio", "modo ao vivo", "ensaio ao vivo", "só a música", "só a letra", "vista limpa"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1207,7 +1207,7 @@ const music: AreaText = {
             "**Modo palco · <date>**, o título do show, o local e a cidade.",
             "O roteiro: Montagem, Passagem de som, Show e Fim, no formato 24 horas. O próximo fica destacado como **A seguir · …**; os que já passaram ficam apagados.",
             "A **Setlist** com números, títulos, tom e duração. A música atual fica destacada. As músicas tiradas hoje aparecem riscadas, e o número acima da lista diz quantas são (**· 2 tirados**).",
-            "Uma segunda aba com o nome da sua visualização (**Letra**, **Acordes** ou **Estrutura**) mostra a música atual. Ela acompanha a música quando muda.",
+            "Uma segunda aba com o nome da sua visualização (**Letra**, **Letra e acordes** ou **Grade de acordes**) mostra a música atual. Ela acompanha a música quando muda.",
             "**Anterior** e **Próximo** embaixo, com o botão do clique entre eles.",
           ],
         },
@@ -1215,8 +1215,10 @@ const music: AreaText = {
           type: "list",
           title: "Na aba da música",
           items: [
-            "Alterne entre **Letra**, **Acordes** e **Estrutura**. A escolha é compartilhada com o leitor da música.",
+            "Alterne entre **Letra**, **Letra e acordes** e **Grade de acordes**. A escolha é compartilhada com o leitor da música.",
             "Mude o tamanho do texto com − e +.",
+            "Toque no botão de página ao lado de − e + (**Só a música**) para ler só a música, em tela cheia: sem título, abas, horários ou status. Embaixo ficam só **Mostrar tudo**, **Anterior**, o clique e **Próximo**; as setas e Page Up/Down também trocam de música, para pedais de virar página.",
+            "**Mostrar tudo** ou Voltar traz de volta a tela ao vivo inteira. Ao sair do Modo palco, Só a música se desliga.",
             "Transponha só para você com − tom +. Só a sua tela muda.",
             "**Minhas notas** mostra as suas notas privadas sobre a versão da banda.",
             "O roteiro se esconde para dar mais espaço à música.",
@@ -1234,6 +1236,7 @@ const music: AreaText = {
             "Sem roteiro (sem horários de montagem, passagem de som, show ou fim) e sem tirar músicas por hoje.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Só a música: a música com os acordes, em tela cheia, com Mostrar tudo, Anterior, o clique e Próximo." },
         { type: "shot", id: "music-rehearsal-live", caption: "O Modo ao vivo num ensaio: as músicas em foco, os acordes da música atual e Anterior / Próxima, sem roteiro." },
         {
           type: "list",
@@ -1529,6 +1532,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "O Modo palco abre ao lado do painel da lista. **Tela cheia** dá a tela inteira a ele: aí os horários e as etapas ficam no primeiro painel e a setlist ou a música no segundo, divididos na borda dos painéis para nada ficar na dobra. Com uma música aberta, a setlist fica numa coluna ao lado (no primeiro painel quando o dispositivo está aberto sobre os dois). **Sair da tela cheia** traz a lista de volta. A escolha fica guardada no dispositivo." },
             { devices: ["duoClosed"], text: "**Abrir modo palco** fica na barra lateral; no dia do show, é a ação principal dela. **Tela cheia** esconde a barra no Modo palco." },
             { devices: ["duoLaptop"], text: "Retorno de chão: apoie o dispositivo no chão do palco como um monitor. A metade de cima mostra o contador de músicas (**Música … de …**), o título, o tom, o BPM, a próxima música e o tempo decorrido, ou a letra. A metade de baixo tem botões grandes **Anterior** e **Próximo** e o progresso do set; as músicas tiradas hoje são puladas e os segmentos delas ficam apagados. As setas, Page Up/Down e a barra de espaço também avançam, então pedais Bluetooth de virar página funcionam." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Só a música**: num dispositivo aberto sobre as duas telas, a música e os seus quatro botões ficam na tela mais larga, para nada cair na dobra. Dobrado como um notebook, a música preenche a metade de cima e a metade de baixo tem só **Mostrar tudo**, **Anterior**, o clique e **Próximo**." },
             { devices: ["web"], text: "A sincronização ao vivo pela internet e o clique funcionam. Sem Bluetooth e sem cópia offline da setlist. A tela cheia também esconde as barras do navegador, onde o navegador permite." },
           ],
         },
@@ -1600,8 +1604,9 @@ const music: AreaText = {
     { term: "ChordPro", definition: "Um formato de texto para letras com acordes entre colchetes. O BandWith importa arquivos .cho, .chordpro e .pro.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "Um formato de arquivo para partituras. O BandWith lê as cifras e a letra dele.", see: "import-chords-and-lyrics" },
     { term: "Grade do iReal Pro", definition: "Uma grade de acordes compasso por compasso, com forma, tom, estilo e andamento, importada de um link do iReal Pro.", see: "import-from-ireal-pro" },
-    { term: "Visualização da música", definition: "Como uma música é mostrada: Letra, Acordes ou Estrutura. Lembrada por dispositivo.", see: "read-a-song" },
-    { term: "Estrutura", definition: "As seções da música com os acordes em caixas, ou a grade do iReal compasso por compasso.", see: "read-a-song" },
+    { term: "Visualização da música", definition: "Como uma música é mostrada: Letra, Letra e acordes ou Grade de acordes. Lembrada por dispositivo.", see: "read-a-song" },
+    { term: "Grade de acordes", definition: "Só os acordes: as seções da música com os acordes em caixas, ou a grade do iReal compasso por compasso.", see: "read-a-song" },
+    { term: "Só a música", definition: "O Modo palco e o Modo ao vivo com só a música na tela, em tela cheia, e Anterior, o clique e Próximo embaixo.", see: "stage-mode" },
     { term: "Transpor para a banda", definition: "Mudar o tom, a grade e os acordes de uma música para todos, pelo formulário da música.", see: "transpose-and-tempo" },
     { term: "Minhas notas", definition: "Notas e arquivos privados numa música da banda, visíveis só para você.", see: "my-notes-and-files" },
     { term: "Sugestão", definition: "A proposta de um membro: uma música nova, uma correção de letra ou de acordes, ou uma nota para a banda.", see: "review-song-suggestions" },

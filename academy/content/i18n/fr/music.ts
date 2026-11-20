@@ -186,7 +186,7 @@ const music: AreaText = {
           rows: [
             ["**Lecture**", "Lit l’enregistrement dans le mini-lecteur, ou ouvre le lien Spotify ou YouTube.", "Tout le monde, quand le morceau a un enregistrement ou un lien"],
             ["**Paroles**", "Ouvre le lecteur de morceau sur les paroles.", "Tout le monde, quand le morceau a des paroles"],
-            ["**Accords**", "Ouvre le lecteur de morceau sur la grille d’accords.", "Tout le monde, quand le morceau a une grille iReal"],
+            ["**Grille d’accords**", "Ouvre le lecteur de morceau sur la grille d’accords.", "Tout le monde, quand le morceau a une grille iReal"],
             ["**Ouvrir la grille**", "Ouvre la grille envoyée ou le lien de partition.", "Tout le monde, quand le morceau en a une"],
             ["**Ouvrir dans Ultimate Guitar**", "Lance une recherche du morceau sur Ultimate Guitar, hors de l’app.", "Tout le monde"],
             ["**Modifier les accords**", "Ouvre l’éditeur d’accords.", "Admins, quand le morceau a des paroles"],
@@ -305,14 +305,14 @@ const music: AreaText = {
       summary: "Ouvre un morceau dans le lecteur plein écran, change de vue, règle la taille du texte et transpose pour toi.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["paroles", "accords", "structure", "lecteur", "taille du texte", "vue du morceau", "grille"],
+      keywords: ["paroles", "accords", "structure", "lecteur", "taille du texte", "vue du morceau", "grille", "paroles et accords", "grille d’accords"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "Dans le Répertoire, touche la ligne du morceau puis **Paroles** ou **Accords**. Depuis le mini-lecteur, touche **Paroles**.",
-            "Passe de **Paroles** à **Accords** ou **Structure** avec les onglets sous le titre. Seules les vues dont le morceau dispose s’affichent.",
+            "Dans le Répertoire, touche la ligne du morceau puis **Paroles** ou **Grille d’accords**. Depuis le mini-lecteur, touche **Paroles**.",
+            "Passe de **Paroles** à **Paroles et accords** ou **Grille d’accords** avec les onglets sous le titre. Seules les vues dont le morceau dispose s’affichent.",
             "Touche les boutons − et + (**Texte plus petit**, **Texte plus grand**) en haut pour changer la taille du texte.",
             "Pour lire dans une autre tonalité, utilise − et + autour de la tonalité sous les onglets. Touche la tonalité pour revenir à l’originale.",
             "Touche X (**Fermer les paroles**) pour fermer le lecteur.",
@@ -323,15 +323,15 @@ const music: AreaText = {
           head: ["Vue", "Ce qu’elle affiche"],
           rows: [
             ["**Paroles**", "Les paroles seules, sans les accords."],
-            ["**Accords**", "Les paroles avec leurs accords au-dessus, ou la grille iReal si les paroles n’ont pas d’accords."],
-            ["**Structure**", "La grille iReal mesure par mesure, ou la suite d’accords de chaque section dans des cases."],
+            ["**Paroles et accords**", "Les paroles avec leurs accords au-dessus, ou la grille iReal si les paroles n’ont pas d’accords."],
+            ["**Grille d’accords**", "Les accords seuls : la grille iReal mesure par mesure, ou la suite d’accords de chaque section dans des cases."],
           ],
         },
         {
           type: "list",
           title: "Ta vue est mémorisée",
           items: [
-            "La première fois, le lecteur s’ouvre sur la vue de ton instrument dans le groupe : Paroles pour les chanteurs ; Accords pour guitare, claviers et basse ; Structure pour batterie, percussions et cuivres.",
+            "La première fois, le lecteur s’ouvre sur la vue de ton instrument dans le groupe : Paroles pour les chanteurs ; Paroles et accords pour guitare, claviers et basse ; Grille d’accords pour batterie, percussions et cuivres.",
             "Ensuite, il s’ouvre sur la dernière vue choisie sur cet appareil. Le même choix s’applique en mode scène.",
             "La taille du texte est gardée sur cet appareil et partagée avec le mode scène.",
           ],
@@ -347,7 +347,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Le lecteur s’ouvre dans le second volet, à côté du Répertoire." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "Le lecteur de morceau avec les onglets Paroles, Accords et Structure." },
+        { type: "shot", id: "music-reader", caption: "Le lecteur de morceau avec les onglets Paroles, Paroles et accords et Grille d’accords." },
       ],
     },
     {
@@ -575,7 +575,7 @@ const music: AreaText = {
           items: [
             "Les accords et la forme (sections, mesures, reprises), plus la tonalité, le style, le tempo et la mesure. Pas de mélodie, pas de paroles.",
             "Le titre, le compositeur (comme artiste), la tonalité et le BPM remplissent les champs vides du formulaire.",
-            "La grille s’affiche dans les vues **Accords** et **Structure** du lecteur, et l’éditeur d’accords peut s’en servir pour placer les accords.",
+            "La grille s’affiche dans les vues **Paroles et accords** et **Grille d’accords** du lecteur, et l’éditeur d’accords peut s’en servir pour placer les accords.",
           ],
         },
         {
@@ -722,7 +722,7 @@ const music: AreaText = {
           type: "steps",
           title: "Ajouter une note",
           items: [
-            "Ouvre le morceau dans le lecteur (**Paroles** ou **Accords**) ou en mode scène.",
+            "Ouvre le morceau dans le lecteur (**Paroles** ou **Grille d’accords**) ou en mode scène.",
             "Touche **Ajouter une note** (en mode scène, **Note**). **Mes notes** s’activent toutes seules ; la première fois, une feuille explique à quoi elles servent : touche **Compris**.",
             "Une barre en bas de l’écran indique **Touche la ligne où tu veux la note** : touche la ligne voulue, ou **Tout le morceau** pour une note sur tout le morceau. **Annuler** pour sortir.",
             "Plus rapide : garde le doigt sur une ligne une demi-seconde. **Note sur cette ligne** s’ouvre : touche **Note pour moi**.",
@@ -1187,7 +1187,7 @@ const music: AreaText = {
       summary: "Un écran live noir, lisible d’un coup d’œil, avec la setlist et les paroles ou accords de chaque morceau : le jour du concert avec le déroulé, à une répétition en mode live.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["scène", "jour du concert", "live", "déroulé", "go live", "mode concert", "répétition", "mode live", "répétition live"],
+      keywords: ["scène", "jour du concert", "live", "déroulé", "go live", "mode concert", "répétition", "mode live", "répétition live", "morceau seul", "paroles seules", "vue épurée"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1207,7 +1207,7 @@ const music: AreaText = {
             "**Mode scène · …**, le titre du concert, la salle et la ville.",
             "Le déroulé : Arrivée, Balance, Concert et Fin, en heures sur 24 h. Le prochain moment est mis en avant avec **Ensuite · …** ; les moments passés s’estompent.",
             "La **Setlist** avec les numéros, titres, tonalités et durées. Le morceau en cours est mis en avant. Les morceaux retirés pour ce soir sont barrés, et le compteur au-dessus de la liste indique combien (**· 2 retirés**).",
-            "Un deuxième onglet, au nom de ta vue de morceau (**Paroles**, **Accords** ou **Structure**), affiche le morceau en cours. Il suit le morceau quand il change.",
+            "Un deuxième onglet, au nom de ta vue de morceau (**Paroles**, **Paroles et accords** ou **Grille d’accords**), affiche le morceau en cours. Il suit le morceau quand il change.",
             "**Précédent** et **Suivant** en bas, avec le bouton du clic entre les deux.",
           ],
         },
@@ -1215,8 +1215,10 @@ const music: AreaText = {
           type: "list",
           title: "Dans l’onglet du morceau",
           items: [
-            "Passe de **Paroles** à **Accords** ou **Structure**. Le choix est partagé avec le lecteur de morceau.",
+            "Passe de **Paroles** à **Paroles et accords** ou **Grille d’accords**. Le choix est partagé avec le lecteur de morceau.",
             "Change la taille du texte avec − et +.",
+            "Touche le bouton page à côté de − et + (**Morceau seul**) pour lire le morceau seul, en plein écran : ni titre, ni onglets, ni horaires, ni statut. En bas, il ne reste que **Tout afficher**, **Précédent**, le clic et **Suivant** ; les flèches et Page préc./suiv. changent aussi de morceau, pour les pédales tourne-pages.",
+            "**Tout afficher** ou Retour ramène tout l’écran live. Quitter le mode scène désactive Morceau seul.",
             "Transpose pour toi avec − tonalité +. Seul ton écran change.",
             "**Mes notes** affiche tes notes privées par-dessus la version du groupe.",
             "Le déroulé se masque pour laisser plus de place au morceau.",
@@ -1234,6 +1236,7 @@ const music: AreaText = {
             "Pas de déroulé (pas d’heures d’installation, de balance, de show ou de fin) et pas de morceaux à retirer pour ce soir.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Morceau seul : le morceau avec ses accords, en plein écran, avec Tout afficher, Précédent, le clic et Suivant." },
         { type: "shot", id: "music-rehearsal-live", caption: "Le mode live à une répétition : les morceaux à travailler, les accords du morceau en cours et Précédent / Suivant, sans déroulé." },
         {
           type: "list",
@@ -1529,6 +1532,7 @@ const music: AreaText = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Le mode scène s’ouvre à côté du volet de liste. **Plein écran** lui donne tout l’écran : les horaires et les étapes sont alors sur le premier volet et la setlist ou le morceau sur le second, séparés au bord des volets pour que rien ne tombe sur la charnière. Avec un morceau ouvert, la setlist est dans une colonne à côté (sur le premier volet quand l’appareil est ouvert sur les deux). **Quitter le plein écran** fait revenir la liste. Ce choix est gardé sur l’appareil." },
             { devices: ["duoClosed"], text: "**Ouvrir le mode scène** est dans le rail ; le jour du concert, c’est l’action principale du rail. **Plein écran** masque le rail en mode scène." },
             { devices: ["duoLaptop"], text: "Retour de scène : pose l’appareil au sol sur scène comme un retour. La moitié haute affiche le compteur de morceaux (**Morceau … sur …**), le titre, la tonalité, le BPM, le morceau suivant et le temps écoulé, ou les paroles. La moitié basse a de grandes touches **Précédent** et **Suivant** et la progression du set ; les morceaux retirés pour ce soir sont sautés et leurs segments de progression atténués. Les flèches, Page préc./suiv. et Espace font aussi avancer : les pédales tourne-page Bluetooth fonctionnent." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Morceau seul** : sur un appareil ouvert sur les deux écrans, le morceau et ses quatre boutons prennent l’écran le plus large, pour que rien ne tombe sur la pliure. Plié comme un ordinateur portable, le morceau remplit la moitié du haut et la moitié du bas n’a que **Tout afficher**, **Précédent**, le clic et **Suivant**." },
             { devices: ["web"], text: "La synchro en direct par internet et le clic fonctionnent. Pas de Bluetooth, et pas de copie hors ligne de la setlist. Le plein écran masque aussi les barres du navigateur, là où le navigateur le permet." },
           ],
         },
@@ -1600,8 +1604,9 @@ const music: AreaText = {
     { term: "ChordPro", definition: "Un format texte pour les paroles avec les accords entre crochets. BandWith importe les fichiers .cho, .chordpro et .pro.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "Un format de fichier pour les partitions. BandWith lit ses symboles d’accords et ses paroles.", see: "import-chords-and-lyrics" },
     { term: "Grille iReal Pro", definition: "Une grille d’accords mesure par mesure, avec forme, tonalité, style et tempo, importée depuis un lien iReal Pro.", see: "import-from-ireal-pro" },
-    { term: "Vue du morceau", definition: "La façon d’afficher un morceau : Paroles, Accords ou Structure. Mémorisée par appareil.", see: "read-a-song" },
-    { term: "Structure", definition: "Les sections du morceau avec leurs accords dans des cases, ou la grille iReal mesure par mesure.", see: "read-a-song" },
+    { term: "Vue du morceau", definition: "La façon d’afficher un morceau : Paroles, Paroles et accords ou Grille d’accords. Mémorisée par appareil.", see: "read-a-song" },
+    { term: "Grille d’accords", definition: "Les accords seuls : les sections du morceau avec leurs accords dans des cases, ou la grille iReal mesure par mesure.", see: "read-a-song" },
+    { term: "Morceau seul", definition: "Le mode scène et le mode live avec seulement le morceau à l’écran, en plein écran, et Précédent, le clic et Suivant en bas.", see: "stage-mode" },
     { term: "Transposer pour le groupe", definition: "Changer la tonalité, la grille et les accords d’un morceau pour tout le monde, depuis le formulaire du morceau.", see: "transpose-and-tempo" },
     { term: "Mes notes", definition: "Des notes et fichiers privés sur un morceau du groupe, visibles par toi seul.", see: "my-notes-and-files" },
     { term: "Suggestion", definition: "La proposition d’un membre : un nouveau morceau, une correction de paroles ou d’accords, ou une note pour le groupe.", see: "review-song-suggestions" },

@@ -196,7 +196,7 @@ const music: AreaModule = {
           rows: [
             ["**Play**", "Plays the recording in the mini player, or opens the Spotify or YouTube link.", "Everyone, when the song has a recording or link"],
             ["**Lyrics**", "Opens the song reader on the lyrics.", "Everyone, when the song has lyrics"],
-            ["**Chords**", "Opens the song reader on the chord chart.", "Everyone, when the song has an iReal chart"],
+            ["**Chord chart**", "Opens the song reader on the chord chart.", "Everyone, when the song has an iReal chart"],
             ["**Open chart**", "Opens the uploaded chart or the sheet music link.", "Everyone, when the song has one"],
             ["**Open in Ultimate Guitar**", "Opens a search for the song on Ultimate Guitar, outside the app.", "Everyone"],
             ["**Edit chords**", "Opens the chord editor.", "Admins, when the song has lyrics"],
@@ -315,14 +315,14 @@ const music: AreaModule = {
       summary: "Open a song in the full-screen reader, switch views, change the text size and transpose for yourself.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["lyrics", "chords", "structure", "reader", "text size", "song view", "chart"],
+      keywords: ["lyrics", "chords", "lyrics and chords", "chord chart", "structure", "reader", "text size", "song view", "chart"],
       related: ["lyrics-and-chords-format", "transpose-and-tempo", "my-notes-and-files", "stage-mode"],
       body: [
         {
           type: "steps",
           items: [
-            "In the Repertoire, tap the song row and tap **Lyrics** or **Chords**. From the mini player, tap **Lyrics**.",
-            "Switch between **Lyrics**, **Chords** and **Structure** with the tabs under the title. Only the views the song has are shown.",
+            "In the Repertoire, tap the song row and tap **Lyrics** or **Chord chart**. From the mini player, tap **Lyrics**.",
+            "Switch between **Lyrics**, **Lyrics & chords** and **Chord chart** with the tabs under the title. Only the views the song has are shown.",
             "Tap the − and + buttons (**Smaller text**, **Bigger text**) at the top to change the text size.",
             "To read in another key, use − and + around the key under the tabs. Tap the key to go back to the original.",
             "Tap X (**Close lyrics**) to close the reader.",
@@ -333,15 +333,15 @@ const music: AreaModule = {
           head: ["View", "What it shows"],
           rows: [
             ["**Lyrics**", "The words only, chords hidden."],
-            ["**Chords**", "The words with their chords above them, or the iReal chart if the lyrics have no chords."],
-            ["**Structure**", "The iReal chart bar by bar, or each section's chord progression in boxes."],
+            ["**Lyrics & chords**", "The words with their chords above them, or the iReal chart if the lyrics have no chords."],
+            ["**Chord chart**", "The chords only: the iReal chart bar by bar, or each section's chord progression in boxes."],
           ],
         },
         {
           type: "list",
           title: "Your view is remembered",
           items: [
-            "The first time, the reader opens on the view for your instrument in the band: singers on Lyrics; guitar, keys and bass on Chords; drums, percussion and horns on Structure.",
+            "The first time, the reader opens on the view for your instrument in the band: singers on Lyrics; guitar, keys and bass on Lyrics & chords; drums, percussion and horns on Chord chart.",
             "After that it opens on the view you last picked on this device. The same choice applies in Stage mode.",
             "The text size is kept on this device and shared with Stage mode.",
           ],
@@ -357,7 +357,7 @@ const music: AreaModule = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "The reader opens in the second pane, beside the Repertoire." },
           ],
         },
-        { type: "shot", id: "music-reader", caption: "The song reader with the Lyrics, Chords and Structure tabs." },
+        { type: "shot", id: "music-reader", caption: "The song reader with the Lyrics, Lyrics & chords and Chord chart tabs." },
       ],
     },
     {
@@ -585,7 +585,7 @@ const music: AreaModule = {
           items: [
             "The chords and the form (sections, bars, repeats), plus key, style, tempo and time signature. No melody, no lyrics.",
             "The title, composer (as artist), key and BPM fill the form's empty fields.",
-            "The chart shows in the song reader's **Chords** and **Structure** views, and the chord editor can use it to place chords.",
+            "The chart shows in the song reader's **Lyrics & chords** and **Chord chart** views, and the chord editor can use it to place chords.",
           ],
         },
         {
@@ -732,7 +732,7 @@ const music: AreaModule = {
           type: "steps",
           title: "Add a note",
           items: [
-            "Open the song in the reader (**Lyrics** or **Chords**) or in Stage mode.",
+            "Open the song in the reader (**Lyrics** or **Chord chart**) or in Stage mode.",
             "Tap **Add note** (on Stage, **Note**). **My notes** turn on by themselves; the first time a sheet explains what they are: tap **Got it**.",
             "A bar at the bottom of the screen says **Tap the line for your note**: tap the line you want, or **Whole song** for a note on the whole song. **Cancel** stops.",
             "Quicker: hold a line for half a second. **Note on this line** opens: tap **Note for me**.",
@@ -1197,7 +1197,7 @@ const music: AreaModule = {
       summary: "A black, glanceable live screen with the setlist and each song's lyrics or chords: on gig day with the run of show, at a rehearsal as Live mode.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode", "rehearsal", "live mode", "rehearsal live"],
+      keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode", "rehearsal", "live mode", "rehearsal live", "song only", "lyrics only", "clean view"],
       related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
       body: [
         {
@@ -1217,7 +1217,7 @@ const music: AreaModule = {
             "**Stage mode · <date>**, the gig title, venue and city.",
             "The run of show: Load in, Soundcheck, Show and End in 24-hour time. The next one is highlighted as **Next · …**; past ones fade.",
             "The **Setlist** with numbers, titles, key and duration. The current song is highlighted. Songs struck off for tonight are crossed out, and the count above the list says how many (**· 2 struck off**).",
-            "A second tab named after your song view (**Lyrics**, **Chords** or **Structure**) shows the current song. It follows the song as it changes.",
+            "A second tab named after your song view (**Lyrics**, **Lyrics & chords** or **Chord chart**) shows the current song. It follows the song as it changes.",
             "**Prev** and **Next** at the bottom, with the click button between them.",
           ],
         },
@@ -1225,8 +1225,10 @@ const music: AreaModule = {
           type: "list",
           title: "In the song tab",
           items: [
-            "Switch **Lyrics**, **Chords** and **Structure**. The choice is shared with the song reader.",
+            "Switch **Lyrics**, **Lyrics & chords** and **Chord chart**. The choice is shared with the song reader.",
             "Change the text size with − and +.",
+            "Tap the page button beside − and + (**Song only**) to read the song alone, full screen: no title, tabs, times or status. At the bottom there are only **Show everything**, **Prev**, the click and **Next**; arrow keys and Page Up/Down also step, for page-turner pedals.",
+            "**Show everything** or Back brings the whole live screen back. Leaving Stage mode turns Song only off.",
             "Transpose for yourself with − key +. Only your screen changes.",
             "**My notes** shows your private notes over the band's version.",
             "The run of show hides to give the song more room.",
@@ -1244,6 +1246,7 @@ const music: AreaModule = {
             "No run of show (no load in, soundcheck, show or end times) and no striking songs off for tonight.",
           ],
         },
+        { type: "shot", id: "music-song-only", caption: "Song only: the song with its chords, full screen, and Show everything, Prev, the click and Next." },
         { type: "shot", id: "music-rehearsal-live", caption: "Live mode at a rehearsal: the focus songs, the current song's chords and Prev / Next, with no run of show." },
         {
           type: "list",
@@ -1539,6 +1542,7 @@ const music: AreaModule = {
             { devices: ["tablet", "duoBook", "duoLand"], text: "Stage mode opens beside the list pane. **Full screen** gives it the whole screen: then the times and steps sit on the first pane and the setlist or song on the second, split at the panes' edge so nothing sits on the fold. With a song open, the setlist sits in a column beside it (on the first pane when the device is open over both). **Exit full screen** brings the list back. The choice is kept on the device." },
             { devices: ["duoClosed"], text: "**Open stage mode** is in the rail; on gig day it is the rail's main action. **Full screen** hides the rail in Stage mode." },
             { devices: ["duoLaptop"], text: "Floor wedge: stand the device on the stage floor like a monitor. The top half shows the song counter (**Song … of …**), title, key, BPM, next song and elapsed time, or the lyrics. The bottom half has big **Prev** and **Next** pads and the set's progress; songs struck off for tonight are skipped and their progress segments dimmed. Arrow keys, Page Up/Down and Space also step, so Bluetooth page-turner pedals work." },
+            { devices: ["duoBook", "duoLaptop"], text: "**Song only**: on a device open over both panes the song and its four buttons take the wider pane, so nothing sits on the fold. Folded like a laptop, the song fills the top half and the bottom half has only **Show everything**, **Prev**, the click and **Next**." },
             { devices: ["web"], text: "Live sync over the internet and the click work. No Bluetooth, and no offline copy of the setlist. Full screen also hides the browser's own bars where the browser allows it." },
           ],
         },
@@ -1610,8 +1614,9 @@ const music: AreaModule = {
     { term: "ChordPro", definition: "A text format for lyrics with chords in brackets. BandWith imports .cho, .chordpro and .pro files.", see: "import-chords-and-lyrics" },
     { term: "MusicXML", definition: "A file format for scores. BandWith reads its chord symbols and lyrics.", see: "import-chords-and-lyrics" },
     { term: "iReal Pro chart", definition: "A bar-by-bar chord chart with form, key, style and tempo, imported from an iReal Pro link.", see: "import-from-ireal-pro" },
-    { term: "Song view", definition: "How a song is shown: Lyrics, Chords or Structure. Remembered per device.", see: "read-a-song" },
-    { term: "Structure", definition: "The song's sections with their chords in boxes, or the iReal chart bar by bar.", see: "read-a-song" },
+    { term: "Song view", definition: "How a song is shown: Lyrics, Lyrics & chords or Chord chart. Remembered per device.", see: "read-a-song" },
+    { term: "Chord chart", definition: "The chords only: the song's sections with their chords in boxes, or the iReal chart bar by bar.", see: "read-a-song" },
+    { term: "Song only", definition: "Stage and Live mode with just the song on screen, full screen, and Prev, the click and Next at the bottom.", see: "stage-mode" },
     { term: "Transpose for the band", definition: "Moving a song's key, chart and chords for everyone, from the song form.", see: "transpose-and-tempo" },
     { term: "My notes", definition: "Private notes and files on a band song, visible only to you.", see: "my-notes-and-files" },
     { term: "Suggestion", definition: "A member's proposal: a new song, a lyrics or chords correction, or a note for the band.", see: "review-song-suggestions" },
@@ -1632,7 +1637,7 @@ const music: AreaModule = {
     },
     {
       id: "music-reader",
-      how: "Home › Quick Actions › Repertoire. Tap the Harbor Lights row, then tap Chords. Switch to the Chords tab if it opens on another view.",
+      how: "Home › Quick Actions › Repertoire. Tap the Harbor Lights row, then tap Chord chart. Switch to the Lyrics & chords tab.",
       role: "admin",
       viewport: "phone",
     },
@@ -1656,7 +1661,13 @@ const music: AreaModule = {
     },
     {
       id: "music-rehearsal-live",
-      how: "Give Weekly rehearsal focus songs (Paper Boats, Harbor Lights, Superstition, I Wish), open it from the Calendar, tap Open live mode, then the Chords tab.",
+      how: "Give Weekly rehearsal focus songs (Paper Boats, Harbor Lights, Superstition, I Wish), open it from the Calendar, tap Open live mode, then the Lyrics & chords tab.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "music-song-only",
+      how: "As for music-rehearsal-live, then tap Song only (the page button beside − and +) on Paper Boats.",
       role: "admin",
       viewport: "phone",
     },
