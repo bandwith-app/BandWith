@@ -151,6 +151,7 @@
     <li>In <b class="ui">You’re joining</b> toccare <b class="ui">Join</b> seguito dal nome della band: l'app si apre sulla band.</li>
   </ol>
   <aside class="note tip">Va usato l'indirizzo a cui è stato inviato l'invito: un invito destinato a un altro indirizzo non può essere accettato da questo account.</aside>
+  <aside class="note tip">Si è nella band appena l'account è pronto. Se si chiude l'app prima dell'ultima schermata, alla riapertura la band è già lì.</aside>
   <p>Se l'adesione non riesce (invito scaduto, email diversa), l'app resta sull'ultima schermata, ne spiega il motivo e il pulsante diventa <b class="ui">Try again</b>.</p>
   <p>In alternativa all'email, l'admin può condividere un codice: in <b class="ui">Band members</b> l'invito offre <b class="ui">Copy code</b> e <b class="ui">Share invite</b>. La persona installa BandWith, si registra e incolla il codice.</p>
 
@@ -264,7 +265,7 @@
   </ul>
   <aside class="note privacy">In Home i membri non vedono mai i compensi altrui, i totali dei preventivi né gli incassi della band: le loro schede economiche contano solo i propri compensi.</aside>
   <p>Se non c'è nulla in programma, <b class="ui">Upcoming</b> indica <b class="ui">No upcoming gigs or rehearsals scheduled</b>; agli admin compare anche <b class="ui">Tap + to schedule a gig or rehearsal</b>.</p>
-  <div class="devnote" data-devices="duoLaptop">La Home diventa il Band desk: nella metà superiore il prossimo gig come locandina (o la prossima prova se non ci sono gig confermati), in quella inferiore le cose da fare e i pulsanti di creazione.</div>
+  <div class="devnote" data-devices="duoLaptop">La Home diventa il Band desk: nella metà superiore il prossimo gig come locandina (o la prossima prova se non ci sono gig confermati), in quella inferiore le cose da fare e i pulsanti di creazione. Gli admin vi trovano anche <b class="ui">View Analytics</b>.</div>
   <div class="devnote" data-devices="duoBook,duoLand,tablet">La seconda pagina mostra il prossimo gig accanto alla Home, oppure <b class="ui">Pick an event</b> finché non se ne apre uno.</div>
 
   <h3 id="art-account-menu" data-roles="admin,member,deputy">Il menu: profilo, band e impostazioni</h3>
@@ -372,6 +373,7 @@
     <thead><tr><th>Sezione</th><th>Contenuto</th><th>Ambito</th></tr></thead>
     <tbody>
       <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Account (tutti i dispositivi)</td></tr>
+      <tr><td><b class="ui">Calendar sync</b></td><td>Un link privato ai propri eventi per <b class="ui">Apple Calendar</b>, <b class="ui">Google Calendar</b> o Outlook (<a data-ref="calendar-sync">Sincronizzare gli eventi con il calendario</a>)</td><td>Account (tutti i dispositivi)</td></tr>
       <tr><td><b class="ui">Appearance</b></td><td>Tema: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>Questo dispositivo</td></tr>
       <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> o <b class="ui">Miles</b></td><td>Questo dispositivo</td></tr>
       <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, riservatezza dei gig personali, <b class="ui">Export my data</b>, Termini, Privacy Policy, <b class="ui">Delete account</b></td><td>Misto (vedi <a data-ref="privacy-and-account-settings">Privacy e account</a>)</td></tr>
@@ -395,6 +397,36 @@
   <p>La riga in alto riassume lo stato, ad es. <b class="ui">push &amp; email alerts enabled</b> o <b class="ui">All alerts paused</b>. L'interruttore <b class="ui">Notifications</b> del menu attiva o disattiva push ed email insieme.</p>
   <p>Le scelte sono salvate sull'account e valgono quindi su tutti i dispositivi. Se il salvataggio non riesce, l'interruttore torna com'era e l'app spiega il motivo.</p>
   <aside class="note tip">Inviti e sondaggi urgenti mostrano sempre un pop-up, anche con le push disattivate; l'inbox conserva tutto.</aside>
+
+  <h3 id="art-calendar-sync" data-roles="admin,member">Sincronizzare gli eventi con il calendario</h3>
+  <p><b class="ui">Calendar sync</b> dà un link privato ai propri eventi BandWith. Si aggiunge una volta al calendario del telefono o del computer: nuovi gig, orari cambiati e annullamenti arrivano da soli.</p>
+  <p class="steps-title">Calendario Apple (iPhone, iPad, Mac)</p>
+  <ol class="steps">
+    <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Calendar sync</b>.</li>
+    <li>Toccare <b class="ui">Apple Calendar</b>.</li>
+    <li>Confermare l'abbonamento nell'app Calendario.</li>
+  </ol>
+  <p class="steps-title">Google Calendar (Android e web)</p>
+  <ol class="steps">
+    <li>In <b class="ui">Calendar sync</b> toccare <b class="ui">Google Calendar</b>.</li>
+    <li>Si apre Google Calendar con il link già inserito: confermare per aggiungerlo. Da lì compare su ogni dispositivo collegato a quell'account Google.</li>
+  </ol>
+  <p class="steps-title">Outlook o un altro calendario</p>
+  <ol class="steps">
+    <li>In <b class="ui">Calendar sync</b> toccare <b class="ui">Copy the link</b>.</li>
+    <li>Nel calendario aggiungere un calendario da URL (abbonamento) e incollare il link.</li>
+  </ol>
+  <p>Un solo evento: si apre il gig o la prova e si tocca <b class="ui">Add to calendar</b> sotto gli orari (Calendario Apple, Outlook) oppure <b class="ui">Google Calendar</b>. Così si aggiunge una copia: per ricevere i cambiamenti serve <b class="ui">Calendar sync</b>. I pulsanti compaiono sugli eventi salvati e in arrivo a cui si partecipa, non su preventivi, eventi passati o rifiutati.</p>
+  <p class="steps-title">Cosa mostra il calendario</p>
+  <ul>
+    <li>I gig e le prove in cui si è presenti e che non si sono rifiutati. Gli admin vedono tutti gli eventi della band, tranne quelli che hanno rifiutato.</li>
+    <li>I propri gig personali.</li>
+    <li>Le prove ricorrenti, come evento ricorrente.</li>
+    <li>Orari di carico, soundcheck e show, il luogo e il proprio ruolo.</li>
+    <li>Mai preventivi, bozze o eventi rifiutati. Un evento annullato sparisce dal calendario.</li>
+  </ul>
+  <aside class="note privacy">Il calendario non mostra mai compensi, dati del cliente o note. Chi ha il link vede i propri eventi, quindi non va condiviso. Se è successo, si tocca <b class="ui">Make a new link</b>: il vecchio link smette di funzionare e si aggiunge di nuovo quello nuovo.</aside>
+  <aside class="note tip">I calendari controllano il link ogni poche ore; Google può metterci fino a un giorno. Nell'app un cambiamento è immediato.</aside>
 
   <h3 id="art-appearance-and-units" data-roles="admin,member,deputy">Tema e unità di distanza</h3>
   <p class="steps-title">Tema</p>

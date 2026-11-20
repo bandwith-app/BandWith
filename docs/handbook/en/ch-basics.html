@@ -151,6 +151,7 @@
     <li>On <b class="ui">You’re joining</b>, tap <b class="ui">Join</b> followed by the band’s name. The app opens on the band.</li>
   </ol>
   <aside class="note tip">Use the address the invite was sent to. An invite for another address can’t be accepted from your account.</aside>
+  <aside class="note tip">You are in the band as soon as your account is ready. If you close the app before the last screen, the band is already there when you open it again.</aside>
   <p>If joining fails (an expired invite, a different email), the app stays on the last screen, says why, and the button becomes <b class="ui">Try again</b>.</p>
   <p>Instead of an email, an admin can share a code: on <b class="ui">Band members</b>, the invite offers <b class="ui">Copy code</b> and <b class="ui">Share invite</b>. The person installs BandWith, signs up and pastes the code.</p>
 
@@ -264,7 +265,7 @@
   </ul>
   <aside class="note privacy">Members never see other people’s fees, quote totals or the band’s revenue on Home: their money cards count only their own fees.</aside>
   <p>Nothing planned yet? <b class="ui">Upcoming</b> says <b class="ui">No upcoming gigs or rehearsals scheduled</b>; admins are also told <b class="ui">Tap + to schedule a gig or rehearsal</b>.</p>
-  <div class="devnote" data-devices="duoLaptop">Home becomes the Band desk: the next gig as a poster on the upper half (or the next rehearsal when no gig is confirmed), and what needs doing plus the create buttons on the lower half.</div>
+  <div class="devnote" data-devices="duoLaptop">Home becomes the Band desk: the next gig as a poster on the upper half (or the next rehearsal when no gig is confirmed), and what needs doing plus the create buttons on the lower half. Admins also find <b class="ui">View Analytics</b> there.</div>
   <div class="devnote" data-devices="duoBook,duoLand,tablet">The second page shows the next gig beside Home, or <b class="ui">Pick an event</b> until you open one.</div>
 
   <h3 id="art-account-menu" data-roles="admin,member,deputy">The menu: profile, bands and app settings</h3>
@@ -372,6 +373,7 @@
     <thead><tr><th>Section</th><th>What’s in it</th><th>Applies to</th></tr></thead>
     <tbody>
       <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Your account (all devices)</td></tr>
+      <tr><td><b class="ui">Calendar sync</b></td><td>A private link to your events for <b class="ui">Apple Calendar</b>, <b class="ui">Google Calendar</b> or Outlook (<a data-ref="calendar-sync">Sync your events with your calendar</a>)</td><td>Your account (all devices)</td></tr>
       <tr><td><b class="ui">Appearance</b></td><td>Theme: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>This device</td></tr>
       <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> or <b class="ui">Miles</b></td><td>This device</td></tr>
       <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, personal gig privacy, <b class="ui">Export my data</b>, Terms, Privacy Policy, <b class="ui">Delete account</b></td><td>Mixed (see <a data-ref="privacy-and-account-settings">Privacy &amp; account</a>)</td></tr>
@@ -395,6 +397,36 @@
   <p>The line at the top sums it up, for example <b class="ui">push &amp; email alerts enabled</b> or <b class="ui">All alerts paused</b>. The menu’s own <b class="ui">Notifications</b> switch turns push and email on or off together.</p>
   <p>These choices are saved on your account, so they apply on all your devices. If saving fails, the switch goes back and the app says why.</p>
   <aside class="note tip">Urgent invites and polls always show a pop-up, even when push is off; the inbox keeps everything.</aside>
+
+  <h3 id="art-calendar-sync" data-roles="admin,member">Sync your events with your calendar</h3>
+  <p><b class="ui">Calendar sync</b> gives you a private link to your BandWith events. Add it once to the calendar on your phone or computer: new gigs, changed times and cancellations follow by themselves.</p>
+  <p class="steps-title">Apple Calendar (iPhone, iPad, Mac)</p>
+  <ol class="steps">
+    <li>Open the menu, tap <b class="ui">Settings &amp; account</b>, then <b class="ui">Calendar sync</b>.</li>
+    <li>Tap <b class="ui">Apple Calendar</b>.</li>
+    <li>Confirm the subscription in the Calendar app.</li>
+  </ol>
+  <p class="steps-title">Google Calendar (Android and the web)</p>
+  <ol class="steps">
+    <li>In <b class="ui">Calendar sync</b>, tap <b class="ui">Google Calendar</b>.</li>
+    <li>Google Calendar opens with the link filled in: confirm to add it. It then shows on every device signed in to that Google account.</li>
+  </ol>
+  <p class="steps-title">Outlook or another calendar</p>
+  <ol class="steps">
+    <li>In <b class="ui">Calendar sync</b>, tap <b class="ui">Copy the link</b>.</li>
+    <li>In your calendar, add a calendar from a URL (subscribe) and paste the link.</li>
+  </ol>
+  <p>Just one event: open the gig or rehearsal and tap <b class="ui">Add to calendar</b> under the times (Apple Calendar, Outlook) or <b class="ui">Google Calendar</b>. This adds a copy: use <b class="ui">Calendar sync</b> if you want changes to follow. The buttons appear on saved upcoming events you are part of, not on quotes, past or declined events.</p>
+  <p class="steps-title">What the calendar shows</p>
+  <ul>
+    <li>The gigs and rehearsals you are on and haven't declined. Admins get every event of the band, except the ones they declined.</li>
+    <li>Your personal gigs.</li>
+    <li>Repeating rehearsals, as a repeating event.</li>
+    <li>Load-in, soundcheck and show times, the venue and your role.</li>
+    <li>Never quotes, drafts or declined events. A cancelled event disappears from the calendar.</li>
+  </ul>
+  <aside class="note privacy">The calendar never shows fees, client details or notes. Anyone with the link can see your events, so don't share it. If you did, tap <b class="ui">Make a new link</b>: the old link stops working and you add the new one again.</aside>
+  <aside class="note tip">Calendars check the link every few hours; Google can take up to a day. A change in BandWith is immediate in the app.</aside>
 
   <h3 id="art-appearance-and-units" data-roles="admin,member,deputy">Theme and distance units</h3>
   <p class="steps-title">Theme</p>

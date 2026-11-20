@@ -47,6 +47,13 @@
     <li>Invitare di nuovo lo stesso indirizzo rinnova l'invito per altri 7 giorni.</li>
     <li>Quando la persona entra, tutta la band riceve <b class="ui">{name} joined {band}</b>.</li>
   </ul>
+  <p class="steps-title">Chi non è ancora entrato</p>
+  <ul>
+    <li>Gli admin vedono gli inviti aperti in <b class="ui">Band members</b>, sotto <b class="ui">Invited</b>: l'email, il ruolo e <b class="ui">Not accepted yet</b>, <b class="ui">Expired</b> o <b class="ui">Declined</b>.</li>
+    <li>Con ⋯ accanto a un invito, poi <b class="ui">Send again</b>, l'invito vale altri 7 giorni e riparte. Per un invito scaduto o rifiutato il pulsante è <b class="ui">Invite again</b>.</li>
+    <li><b class="ui">Copy link</b> copia il link d'invito, così l'admin può mandarlo di persona a chi è nuovo su BandWith.</li>
+    <li><b class="ui">Cancel invite</b>, poi <b class="ui">Yes, cancel it</b>: il link e il codice smettono di funzionare.</li>
+  </ul>
   <aside class="note privacy">Nei risultati di ricerca le email sono parzialmente nascoste (per esempio gi•••@…), a meno che non si digiti l'indirizzo esatto. Chi è già nella band non compare.</aside>
   <figure class="shot" data-shot="people-invite" data-device="phone"><figcaption>Il pannello Invite member con ricerca, risultati e scelta del ruolo.</figcaption></figure>
   <aside class="note tip">L'invito è legato all'indirizzo email: per entrare, la persona deve accedere con quell'indirizzo.</aside>
@@ -62,7 +69,7 @@
   <ol class="steps">
     <li>Apre il link d'invito ricevuto via messaggio o email; oppure, nella schermata di benvenuto, tocca <b class="ui">I have an invite code</b>, incolla codice o link in <b class="ui">Invite code or link</b> e tocca <b class="ui">Join</b>.</li>
     <li>Controlla la scheda della band e tocca <b class="ui">Accept &amp; continue</b> (o <b class="ui">Decline invitation</b>).</li>
-    <li>Crea l'account o accede con l'indirizzo email a cui è stato inviato l'invito.</li>
+    <li>Crea l'account o accede con l'indirizzo email a cui è stato inviato l'invito. È nella band appena l'account è pronto.</li>
   </ol>
   <p class="steps-title">Se non funziona</p>
   <ul>
@@ -124,7 +131,7 @@
   <h3 id="art-member-detail" data-roles="admin,member">La pagina di un membro</h3>
   <p>Si apre toccando una persona in <b class="ui">Band members</b>.</p>
   <ul>
-    <li>In alto: foto, nome, strumento e ruolo.</li>
+    <li>In alto: foto, nome, strumento e ruolo. Sotto, la <b class="ui">Bio</b> che la persona ha scritto nel profilo, se c'è: la vede tutta la band.</li>
     <li><b class="ui">Gigs this year</b>: gig suonati più gig in programma, con un indicatore a punti. <b class="ui">Paid · {year}</b>: quanto è stato pagato e quanto è ancora dovuto.</li>
     <li><b class="ui">Next for {name}</b>: i prossimi eventi della persona in questa band, ciascuno con la sua risposta (confermato, in attesa, rifiutato).</li>
     <li><b class="ui">Contacts</b>: email e telefono, ciascuno con un pulsante per copiarlo; toccandoli si scrive o si chiama.</li>
@@ -132,7 +139,7 @@
   </ul>
   <div class="roles">
     <div data-role="admin">Vede i contatori di gig e pagamenti di tutti e tutte le azioni, tranne sulla propria pagina.</div>
-    <div data-role="member">Vede i contatori di gig e pagamenti solo sulla propria pagina. Sulla pagina di un altro vede nome, strumento, prossimi eventi e contatti. <b class="ui">Message</b> compare solo sulla pagina di un admin, perché i member possono avviare chat dirette solo con gli admin.</div>
+    <div data-role="member">Vede i contatori di gig e pagamenti solo sulla propria pagina. Sulla pagina di un altro vede nome, strumento, bio, prossimi eventi e contatti. <b class="ui">Message</b> compare solo sulla pagina di un admin, perché i member possono avviare chat dirette solo con gli admin.</div>
   </div>
   <aside class="note privacy">Un member non vede mai quanto viene pagato un altro member. I contatori arrivano dal server, che restituisce i dati di tutti agli admin e solo la propria riga al member.</aside>
   <div class="devnote" data-devices="phone,duoClosed">Si apre a schermo intero.</div>
@@ -197,7 +204,7 @@
     <li>Si modificano i campi e si tocca <b class="ui">Save</b>.</li>
     <li>Per eliminarlo: <b class="ui">Delete deputy</b>, poi <b class="ui">Delete</b> nel pannello <b class="ui">Delete deputy?</b>.</li>
   </ol>
-  <p><b class="ui">Who covers what</b> elenca ogni strumento suonato nella band, i membri che lo suonano e i relativi deputy. La riga in alto dice <b class="ui">Every instrument in the band has a deputy.</b> oppure quanti strumenti ne sono privi.</p>
+  <p><b class="ui">Who covers what</b> elenca ogni strumento suonato nella band, i membri che lo suonano e i relativi deputy. La riga in alto dice <b class="ui">Every instrument in the band has a deputy.</b> oppure quanti strumenti ne sono privi. Gli strumenti con gli stessi musicisti e gli stessi deputy stanno su una sola riga (per esempio <i>keys · vocals</i>), così ogni musicista compare una volta; il conteggio degli strumenti senza deputy conta comunque ogni strumento.</p>
   <p>Un deputy con account BandWith ha il tag <b class="ui">On BandWith</b> e la sua scheda indica che risponde nell'app.</p>
   <aside class="note warning">Eliminare un deputy lo toglie dall'elenco della band. Le richieste passate conservano il suo nome e la sua risposta. Può essere aggiunto di nuovo in seguito.</aside>
   <aside class="note privacy">Solo gli admin vedono questo elenco (<b class="ui">Only admins see this list.</b>).</aside>
