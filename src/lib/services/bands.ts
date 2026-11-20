@@ -65,6 +65,8 @@ export interface BandMember {
     sub_tier?: string | null;
     /** The person's own instrument (profile), shown when the band has none set. */
     instrument?: string | null;
+    /** Their own words about themselves (profile), shown on their member page. */
+    bio?: string | null;
   } | null;
 }
 
@@ -363,6 +365,7 @@ export const getBandMembers = async (bandId: string): Promise<{ data: BandMember
           avatar_url,
           phone,
           instrument,
+          bio,
           sub_tier
         )
       `)

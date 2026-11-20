@@ -7,6 +7,7 @@ import { goBack, hubRow, openHub, openHubPage } from '../support/hub';
  * Deputy gigs, Contracts & docs. Members see only what is theirs.
  */
 
+const MARTA_BIO = 'Drummer for 12 years, funk and soul. Also plays percussion.';
 const PRICING_TABS = ['LINEUP & RATES', 'SETS & ADD-ONS', 'TRAVEL & SOUND', 'RULES & TAX', 'BRANDING & PAYMENT'];
 const pricingTab = (app: App, label: string) =>
   app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t(label))}(\\s+\\d+)?$`, 'i') }).first();
@@ -32,6 +33,8 @@ test.describe('Account hub as admin', () => {
     await app.page.getByRole('button', { name: 'Open Marta C.' }).click();
     await app.settle();
     await expect(app.page.getByText('Marta C.').first()).toBeVisible();
+    // Her bio, as she wrote it in her profile.
+    await expect(app.page.getByText(MARTA_BIO)).toBeVisible();
     await app.check('member detail');
   });
 
@@ -101,5 +104,11 @@ test.describe('Account hub as member', () => {
     await expect(app.page.getByRole('button', { name: app.t('Invite member') })).toHaveCount(0);
     await expect(app.page.getByRole('button', { name: app.t('Add deputy') })).toHaveCount(0);
     await app.check('Members (member)');
+
+    // A member reads a bandmate's bio too.
+    await app.page.getByRole('button', { name: 'Open Marta C.' }).click();
+    await app.settle();
+    await expect(app.page.getByText(MARTA_BIO)).toBeVisible();
+    await app.check('member detail (member)');
   });
 });

@@ -4374,6 +4374,8 @@ const dict: Dictionary = {
   "USB": "USB",
   "Cable": "Cable",
   "HDMI": "HDMI",
+  // Member page
+  "Bio": "Biografía",
 };
 
 export default dict;

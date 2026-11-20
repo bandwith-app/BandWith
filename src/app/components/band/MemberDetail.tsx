@@ -59,6 +59,7 @@ export const MemberDetail: React.FC<{
   const firstName = member.stage_name || personFirstName(member.profile, t('Member'));
   const roleLabel = member.role === 'admin' ? t('Admin') : t('Member');
   const email = member.profile?.email || null;
+  const bio = member.profile?.bio?.trim() || null;
   const phone = ((member.profile as { phone?: string | null } | null)?.phone || '').trim() || null;
   const instrument = memberInstrument(member);
 
@@ -183,6 +184,14 @@ export const MemberDetail: React.FC<{
             </span>
           </div>
         </div>
+
+        {/* Bio: their own words, for everyone in the band */}
+        {bio && (
+          <section className="flex flex-col gap-1" aria-label={t('Bio')}>
+            <h2 className="bw-label-sm uppercase text-muted-foreground">{t('Bio')}</h2>
+            <p className="bw-body-md whitespace-pre-line [overflow-wrap:anywhere]">{bio}</p>
+          </section>
+        )}
 
         {/* This year: admins for everyone, a member only for themselves */}
         {canSeeMoney && stats !== undefined && (

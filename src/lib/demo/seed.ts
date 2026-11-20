@@ -46,7 +46,7 @@ export const buildSeed = (): DemoDB => {
 
   const profiles: Row[] = [
     { id: IDS.me, email: 'demo@example.com', full_name: 'Leo M.', avatar_url: null, role: 'admin', instrument: 'Vocals', phone: '+39 333 000 0001', bio: 'Lead vocals and band leader.', location: 'Milano', timezone: 'Europe/Rome', preferred_language: 'en', sub_tier: 'unlimited', user_mode: 'band', notification_preferences: {} },
-    { id: IDS.marta, email: 'marta@example.com', full_name: 'Marta C.', avatar_url: null, role: 'member', instrument: 'Drums', phone: null, sub_tier: 'free_member', user_mode: 'member' },
+    { id: IDS.marta, email: 'marta@example.com', full_name: 'Marta C.', avatar_url: null, role: 'member', instrument: 'Drums', phone: null, bio: 'Drummer for 12 years, funk and soul. Also plays percussion.', sub_tier: 'free_member', user_mode: 'member' },
     { id: IDS.jonah, email: 'jonah@example.com', full_name: 'Jonah R.', avatar_url: null, role: 'member', instrument: 'Bass', phone: null, sub_tier: 'free_member', user_mode: 'member' },
     { id: IDS.lena, email: 'lena@example.com', full_name: 'Lena P.', avatar_url: null, role: 'member', instrument: 'Keys', phone: null, sub_tier: 'free_member', user_mode: 'member' },
     { id: IDS.sam, email: 'sam@example.com', full_name: 'Sam O.', avatar_url: null, role: 'member', instrument: 'Guitar', phone: null, sub_tier: 'free_member', user_mode: 'member' },
