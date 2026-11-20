@@ -1,9 +1,13 @@
 /**
  * Location & Venue Autocomplete Service
- * Hybrid implementation:
- * - Uses Google Places API (New) when VITE_GOOGLE_PLACES_API_KEY is configured
- * - Automatically falls back to OpenStreetMap / Photon geocoder (fast, free, no API key needed)
+ * - Google Places (New) and the Google Routes API through the `places` edge
+ *   function (the Google key is a server secret, never in the app).
+ * - Falls back to OpenStreetMap / Photon (free, no key) when the function
+ *   has no key, fails, the user is signed out, or in demo mode.
  */
+import { isDemoMode, supabase } from '@/lib/supabase';
+import { getLocale } from '@/lib/i18n';
+import { defaultRegion, type LatLng, type PlaceResult, type RouteResult, type Waypoint } from '@/lib/places';
 
 export interface VenuePlace {
   name: string;
@@ -19,119 +23,129 @@ export interface VenuePlace {
   provider: 'google' | 'photon';
 }
 
-const GOOGLE_API_KEY = (import.meta.env.VITE_GOOGLE_PLACES_API_KEY || '').trim();
+// The function answered "no key": stop asking until the app restarts.
+let googleUnconfigured = false;
+
+const LAST_PICK_KEY = 'bw.places.lastPick';
+
+/** For tests. */
+export function _resetPlacesState() {
+  googleUnconfigured = false;
+}
+
+/** Remembers where the last picked venue is, so the next search ranks nearby places first. */
+export function rememberPickedPlace(place: VenuePlace) {
+  if (typeof place.latitude !== 'number' || typeof place.longitude !== 'number') return;
+  try {
+    localStorage.setItem(LAST_PICK_KEY, JSON.stringify({ lat: place.latitude, lng: place.longitude }));
+  } catch {
+    /* storage blocked */
+  }
+}
+
+function lastPick(): LatLng | undefined {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_PICK_KEY) ?? 'null');
+    if (v && Number.isFinite(v.lat) && Number.isFinite(v.lng)) return { lat: v.lat, lng: v.lng };
+  } catch {
+    /* storage blocked or bad value */
+  }
+  return undefined;
+}
+
+function deviceTag(): string | undefined {
+  try {
+    return navigator.language;
+  } catch {
+    return undefined;
+  }
+}
+
+type PlacesReply = { configured?: boolean; places?: PlaceResult[]; place?: Partial<PlaceResult>; route?: RouteResult | null };
 
 /**
- * Searches venues and locations using Google Places API (if key available) or Photon fallback.
+ * Calls the places function. null = use OpenStreetMap instead (no key, error,
+ * signed out, demo). Aborts are rethrown so callers can ignore them.
  */
-export async function searchVenues(query: string, signal?: AbortSignal): Promise<VenuePlace[]> {
+async function callPlaces(body: Record<string, unknown>, signal?: AbortSignal): Promise<PlacesReply | null> {
+  if (isDemoMode || googleUnconfigured) return null;
+  const base = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+  if (!base || !apikey) return null;
+  let token: string | undefined;
+  try {
+    const { data } = await supabase.auth.getSession();
+    token = data.session?.access_token;
+  } catch {
+    return null;
+  }
+  if (!token) return null;
+  try {
+    const res = await fetch(`${base}/functions/v1/places`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as PlacesReply;
+    if (data?.configured === false) {
+      googleUnconfigured = true;
+      return null;
+    }
+    return data;
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') throw err;
+    return null;
+  }
+}
+
+/**
+ * Searches venues and addresses: Google Places when available, else OpenStreetMap.
+ * `sessionToken` (a UUID kept from the first keystroke until a pick) groups the
+ * searches and the details call into one Google session.
+ */
+export async function searchVenues(
+  query: string,
+  signal?: AbortSignal,
+  opts: { sessionToken?: string } = {},
+): Promise<VenuePlace[]> {
   const trimmed = query.trim();
   if (!trimmed || trimmed.length < 2) return [];
 
-  if (GOOGLE_API_KEY) {
-    try {
-      const googleResults = await searchGooglePlaces(trimmed, signal);
-      if (googleResults.length > 0) return googleResults;
-    } catch (err) {
-      console.warn('[LocationService] Google Places search failed, falling back to Photon:', err);
-    }
-  }
+  const language = getLocale();
+  const regionCode = defaultRegion(deviceTag(), language);
+  const bias = lastPick();
+  const reply = await callPlaces(
+    {
+      op: 'autocomplete',
+      input: trimmed.slice(0, 200),
+      ...(opts.sessionToken ? { sessionToken: opts.sessionToken } : {}),
+      languageCode: language,
+      ...(regionCode ? { regionCode } : {}),
+      ...(bias ? { bias } : {}),
+    },
+    signal,
+  );
+  if (reply?.places && reply.places.length > 0) return reply.places;
 
   return searchPhotonPlaces(trimmed, signal);
 }
 
-/**
- * Google Places API (New) Autocomplete
- */
-async function searchGooglePlaces(query: string, signal?: AbortSignal): Promise<VenuePlace[]> {
-  const url = 'https://places.googleapis.com/v1/places:autocomplete';
-  const response = await fetch(url, {
-    method: 'POST',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_API_KEY,
-    },
-    body: JSON.stringify({
-      input: query,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Google Places HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  const suggestions = data.suggestions || [];
-
-  return suggestions.map((item: any): VenuePlace => {
-    const pred = item.placePrediction;
-    const name = pred.structuredFormat?.mainText?.text || pred.text?.text || query;
-    const secondary = pred.structuredFormat?.secondaryText?.text || '';
-    const parts = secondary.split(',').map((p: string) => p.trim());
-
-    // Guess address & city from secondary text (e.g. "Largo Luchino Visconti 4, Cernobbio, Italy")
-    const address = parts[0] || undefined;
-    const city = parts[1] || undefined;
-    const country = parts[parts.length - 1] || undefined;
-
-    return {
-      name,
-      address,
-      city,
-      country,
-      fullAddress: pred.text?.text || [name, secondary].filter(Boolean).join(', '),
-      placeId: pred.placeId,
-      provider: 'google',
-    };
-  });
-}
-
-/**
- * Fetch detailed address components from Google Places API if placeId is available
- */
-export async function getGooglePlaceDetails(placeId: string, signal?: AbortSignal): Promise<Partial<VenuePlace> | null> {
-  if (!GOOGLE_API_KEY || !placeId) return null;
-
+/** The full address and coordinates of a Google place (ends the Google session). */
+export async function getGooglePlaceDetails(
+  placeId: string,
+  signal?: AbortSignal,
+  sessionToken?: string,
+): Promise<Partial<VenuePlace> | null> {
+  if (!placeId) return null;
   try {
-    const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?fields=displayName,formattedAddress,addressComponents,location&key=${GOOGLE_API_KEY}`;
-    const res = await fetch(url, { signal });
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    let streetNumber = '';
-    let route = '';
-    let city = '';
-    let state = '';
-    let country = '';
-    let postcode = '';
-
-    (data.addressComponents || []).forEach((c: any) => {
-      const types = c.types || [];
-      if (types.includes('street_number')) streetNumber = c.longText || c.shortText;
-      if (types.includes('route')) route = c.longText || c.shortText;
-      if (types.includes('locality') || types.includes('postal_town')) city = c.longText || c.shortText;
-      if (types.includes('administrative_area_level_1')) state = c.longText || c.shortText;
-      if (types.includes('country')) country = c.longText || c.shortText;
-      if (types.includes('postal_code')) postcode = c.longText || c.shortText;
-    });
-
-    const streetAddress = [route, streetNumber].filter(Boolean).join(' ') || undefined;
-
-    return {
-      name: data.displayName?.text,
-      address: streetAddress,
-      city: city || undefined,
-      state: state || undefined,
-      country: country || undefined,
-      postcode: postcode || undefined,
-      fullAddress: data.formattedAddress,
-      latitude: data.location?.latitude,
-      longitude: data.location?.longitude,
-      provider: 'google',
-    };
-  } catch (err) {
-    console.warn('[LocationService] getGooglePlaceDetails failed:', err);
+    const reply = await callPlaces(
+      { op: 'details', placeId, ...(sessionToken ? { sessionToken } : {}), languageCode: getLocale() },
+      signal,
+    );
+    return reply?.place ? { ...reply.place, provider: 'google' } : null;
+  } catch {
     return null;
   }
 }
@@ -194,114 +208,64 @@ export interface DistanceCalculationResult {
   provider: 'google' | 'haversine';
 }
 
-/**
- * Calculates driving distance in KM between the active band's home base and the venue.
- * Uses Google Distance Matrix API when available, falling back to spherical Haversine
- * formula adjusted by a realistic road routing factor (1.28x).
- */
-export async function calculateTravelDistance(
-  origin: { latitude?: number; longitude?: number; address?: string },
-  destination: { latitude?: number; longitude?: number; address?: string }
-): Promise<DistanceCalculationResult | null> {
-  // 1. Resolve origin coordinates
-  let origLat = origin.latitude;
-  let origLng = origin.longitude;
-  if ((origLat === undefined || origLng === undefined) && origin.address) {
-    try {
-      const places = await searchVenues(origin.address);
-      if (places[0]?.latitude !== undefined && places[0]?.longitude !== undefined) {
-        origLat = places[0].latitude;
-        origLng = places[0].longitude;
-      }
-    } catch (_) {}
-  }
+type Point = { latitude?: number; longitude?: number; address?: string };
 
-  // 2. Resolve destination coordinates
-  let destLat = destination.latitude;
-  let destLng = destination.longitude;
-  if ((destLat === undefined || destLng === undefined) && destination.address) {
-    try {
-      const places = await searchVenues(destination.address);
-      if (places[0]?.latitude !== undefined && places[0]?.longitude !== undefined) {
-        destLat = places[0].latitude;
-        destLng = places[0].longitude;
-      }
-    } catch (_) {}
-  }
+const hasCoords = (p: Point) => typeof p.latitude === 'number' && typeof p.longitude === 'number';
 
-  if (origLat === undefined || origLng === undefined || destLat === undefined || destLng === undefined) {
-    return null;
-  }
+function toWaypoint(p: Point): Waypoint | null {
+  if (hasCoords(p)) return { lat: p.latitude as number, lng: p.longitude as number };
+  const address = p.address?.trim();
+  return address && address.length >= 2 ? { address: address.slice(0, 300) } : null;
+}
 
-  // 3. Try Google Distance Matrix API if key is present
-  if (GOOGLE_API_KEY) {
-    try {
-      if (typeof window !== 'undefined' && (window as any).google?.maps?.DistanceMatrixService) {
-        const service = new (window as any).google.maps.DistanceMatrixService();
-        const response: any = await new Promise((resolve, reject) => {
-          service.getDistanceMatrix(
-            {
-              origins: [{ lat: origLat, lng: origLng }],
-              destinations: [{ lat: destLat, lng: destLng }],
-              travelMode: (window as any).google.maps.TravelMode.DRIVING,
-            },
-            (res: any, status: any) => {
-              if (status === 'OK') resolve(res);
-              else reject(new Error(`DistanceMatrixStatus: ${status}`));
-            }
-          );
-        });
-
-        const element = response.rows?.[0]?.elements?.[0];
-        if (element && element.status === 'OK') {
-          const meters = element.distance.value;
-          const seconds = element.duration.value;
-          return {
-            distanceKm: Math.round((meters / 1000) * 10) / 10,
-            durationMinutes: Math.round(seconds / 60),
-            provider: 'google',
-          };
-        }
-      }
-
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origLat},${origLng}&destinations=${destLat},${destLng}&key=${GOOGLE_API_KEY}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const element = data.rows?.[0]?.elements?.[0];
-        if (element && element.status === 'OK') {
-          const meters = element.distance.value;
-          const seconds = element.duration.value;
-          return {
-            distanceKm: Math.round((meters / 1000) * 10) / 10,
-            durationMinutes: Math.round(seconds / 60),
-            provider: 'google',
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('[LocationService] Distance Matrix API call failed, falling back to road-routing:', err);
+/** Coordinates for a point: its own, else the first OpenStreetMap match for its address. */
+async function resolveCoords(p: Point): Promise<LatLng | null> {
+  if (hasCoords(p)) return { lat: p.latitude as number, lng: p.longitude as number };
+  if (!p.address?.trim()) return null;
+  try {
+    const [first] = await searchPhotonPlaces(p.address.trim());
+    if (typeof first?.latitude === 'number' && typeof first?.longitude === 'number') {
+      return { lat: first.latitude, lng: first.longitude };
     }
+  } catch {
+    /* no match */
+  }
+  return null;
+}
+
+/**
+ * Driving distance in km between the band's home base and the venue: the
+ * Google Routes API through the places function when available, else a
+ * straight-line distance times a road factor of 1.28.
+ */
+export async function calculateTravelDistance(origin: Point, destination: Point): Promise<DistanceCalculationResult | null> {
+  const from = toWaypoint(origin);
+  const to = toWaypoint(destination);
+  if (!from || !to) return null;
+
+  try {
+    const reply = await callPlaces({ op: 'route', origin: from, destination: to });
+    if (reply?.route) {
+      return { distanceKm: reply.route.distanceKm, durationMinutes: reply.route.durationMinutes, provider: 'google' };
+    }
+  } catch {
+    /* fall back below */
   }
 
-  // 4. Haversine Formula with standard road-winding factor (1.28x)
+  const [a, b] = await Promise.all([resolveCoords(origin), resolveCoords(destination)]);
+  if (!a || !b) return null;
+
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371; // Earth radius in km
-  const dLat = toRad(destLat - origLat);
-  const dLng = toRad(destLng - origLng);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(origLat)) * Math.cos(toRad(destLat)) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const straightLineKm = R * c;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  const straightLineKm = R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 
   const estimatedDrivingKm = Math.round(straightLineKm * 1.28 * 10) / 10;
-  const estimatedDurationMinutes = Math.round((estimatedDrivingKm / 75) * 60);
-
   return {
     distanceKm: estimatedDrivingKm,
-    durationMinutes: estimatedDurationMinutes,
+    durationMinutes: Math.round((estimatedDrivingKm / 75) * 60),
     provider: 'haversine',
   };
 }

@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
 import { MapPin, Loader2 } from '@/app/components/icons';
 import { cn } from './utils';
-import { searchVenues, getGooglePlaceDetails, venueFields, type VenuePlace } from '@/lib/services/location';
+import { searchVenues, getGooglePlaceDetails, rememberPickedPlace, venueFields, type VenuePlace } from '@/lib/services/location';
 import { useT } from '@/lib/i18n';
+
+const newSessionToken = (): string | undefined => {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return undefined;
+  }
+};
 
 export interface VenueAutocompleteProps {
   value: string;
@@ -42,6 +50,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // One Google session from the first keystroke to the pick (billed as one search).
+  const sessionTokenRef = useRef<string | undefined>(undefined);
   const listboxId = useId();
   // Where a touch on a suggestion started: a tap picks it, a scroll doesn't.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -81,13 +91,15 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
       return;
     }
 
+    sessionTokenRef.current ??= newSessionToken();
+    const sessionToken = sessionTokenRef.current;
     setIsLoading(true);
     debounceTimerRef.current = setTimeout(async () => {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
       try {
-        const results = await searchVenues(query, controller.signal);
+        const results = await searchVenues(query, controller.signal, { sessionToken });
         setSuggestions(results);
         setIsOpen(results.length > 0);
       } catch (err: any) {
@@ -105,7 +117,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     let selectedPlace = place;
     if (place.provider === 'google' && place.placeId && (!place.latitude || !place.city || !place.address)) {
       try {
-        const details = await getGooglePlaceDetails(place.placeId);
+        const details = await getGooglePlaceDetails(place.placeId, undefined, sessionTokenRef.current);
         if (details) {
           selectedPlace = {
             ...place,
@@ -118,6 +130,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         console.warn('[VenueAutocomplete] Could not fetch place details:', err);
       }
     }
+    sessionTokenRef.current = undefined;
+    rememberPickedPlace(selectedPlace);
     onChange(venueFields(selectedPlace).location);
     onSelect(selectedPlace);
     setIsOpen(false);
@@ -202,7 +216,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
           <div className="px-3 pt-2 pb-2 flex items-center justify-between gap-3">
             <span className="bw-label-sm text-sheet-foreground/85">{heading ?? t('Suggested venues')}</span>
             <span className="bw-label-xs text-sheet-foreground/60">
-              {suggestions[0]?.provider === 'google' ? 'Google Places' : 'OpenStreetMap'}
+              {suggestions[0]?.provider === 'google' ? 'Google Maps' : 'OpenStreetMap'}
             </span>
           </div>
           <div className="flex flex-col gap-1">

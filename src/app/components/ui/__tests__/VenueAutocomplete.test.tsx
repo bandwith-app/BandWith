@@ -4,11 +4,14 @@ import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/re
 
 const mocks = vi.hoisted(() => ({
   searchVenues: vi.fn(),
+  getGooglePlaceDetails: vi.fn(),
+  rememberPickedPlace: vi.fn(),
 }));
 vi.mock('@/lib/services/location', async (orig) => ({
   ...(await orig<typeof import('@/lib/services/location')>()),
   searchVenues: mocks.searchVenues,
-  getGooglePlaceDetails: vi.fn(),
+  getGooglePlaceDetails: mocks.getGooglePlaceDetails,
+  rememberPickedPlace: mocks.rememberPickedPlace,
 }));
 
 import { VenueAutocomplete } from '../VenueAutocomplete';
@@ -68,5 +71,33 @@ describe('Venue suggestions on a touch screen', () => {
   it('the venue field does not autocorrect names', () => {
     render(<Harness onSelect={vi.fn()} />);
     expect(screen.getByRole('combobox').getAttribute('autocorrect')).toBe('off');
+  });
+});
+
+const lastSearch = () => mocks.searchVenues.mock.calls[mocks.searchVenues.mock.calls.length - 1];
+
+describe('Google sessions', () => {
+  it('keeps one session token from typing to the pick, then starts a new one', async () => {
+    const onSelect = vi.fn();
+    const google = { name: 'Blue Note', fullAddress: 'Blue Note, Via Borsieri 37, Milano', placeId: 'ChIJ1', provider: 'google' };
+    mocks.searchVenues.mockResolvedValue([google]);
+    mocks.getGooglePlaceDetails.mockResolvedValue({ city: 'Milano', address: 'Via Borsieri 37', latitude: 45.48, longitude: 9.18 });
+    render(<Harness onSelect={onSelect} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'Blue' } });
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    const option = await screen.findByRole('option');
+    expect(screen.getByText('Google Maps')).toBeTruthy();
+    fireEvent.click(option);
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+
+    const token = lastSearch()?.[2]?.sessionToken;
+    expect(typeof token === 'string' && token.length > 0).toBe(true);
+    expect(mocks.getGooglePlaceDetails).toHaveBeenCalledWith('ChIJ1', undefined, token);
+    expect(mocks.rememberPickedPlace).toHaveBeenCalledWith(expect.objectContaining({ latitude: 45.48 }));
+
+    fireEvent.change(input, { target: { value: 'Alcatraz' } });
+    await waitFor(() => expect(lastSearch()?.[0]).toBe('Alcatraz'));
+    expect(lastSearch()?.[2]?.sessionToken).not.toBe(token);
   });
 });
