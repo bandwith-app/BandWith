@@ -125,8 +125,9 @@ export const buildSeed = (): DemoDB => {
   const HARBOR_CHART = {
     v: 1, source: 'ireal', title: 'Harbor Lights', composer: 'The Demo Band', style: 'Soul Ballad', key: 'G', bpm: 88, time: '4/4',
     sections: [
-      { label: 'A', bars: [{ chords: ['G'] }, { chords: ['D'] }, { chords: ['E-'] }, { chords: ['C'] }] },
-      { label: 'B', bars: [{ chords: ['C'] }, { chords: ['D'] }, { chords: ['G'] }, { chords: ['%'] }] },
+      // Repeats, segno / coda and a D.S.: the chart's symbols (src/lib/musicSymbols.ts) in the demo.
+      { label: 'A', bars: [{ chords: ['G'], repeatStart: true, segno: true }, { chords: ['D'] }, { chords: ['E-'] }, { chords: ['C'], repeatEnd: true, text: '2x' }] },
+      { label: 'B', bars: [{ chords: ['C'] }, { chords: ['D'], fermata: true }, { chords: ['G'], text: 'D.S. al Coda' }, { chords: ['%'], coda: true, final: true }] },
     ],
   };
   const PAPER_BOATS = [

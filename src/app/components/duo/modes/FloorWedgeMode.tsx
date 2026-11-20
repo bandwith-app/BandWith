@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { stepOver } from '@/lib/stageLive';
-import { ChevronLeft, ChevronRight, Minus, PanelLeft, Pause, Play, Plus, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Minimize, Minus, Pause, Play, Plus, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { useKeepAwake } from '@/lib/posture';
@@ -14,8 +14,7 @@ import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/com
 import { normalizeLyrics, resolveView } from '@/lib/songFormat';
 import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
-import { useRailLayout } from '@/lib/deviceRegions';
-import { useStageBarHidden } from '@/lib/stageChrome';
+import { exitBrowserFullScreen, useStageBarHidden } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
@@ -127,11 +126,10 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 }) => {
   const t = useT();
   const exitLabel = exitLabelProp ?? t('Exit stage mode');
-  // Stage mode full screen hides the rail, which holds Exit and the toggle:
-  // the Deck shows them instead.
-  const { rail, twoPane } = useRailLayout();
+  // Stage mode full screen hides the rail, which holds Exit and Full screen:
+  // the Deck shows Exit full screen and Exit instead.
   const [barHidden, setBarHidden] = useStageBarHidden();
-  const ownChrome = !!onClose && barHidden && (rail || twoPane);
+  const ownChrome = !!onClose && barHidden;
   useKeepAwake(true);
   const count = songs.length;
   const [ownIndex, setIndex] = useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, count - 1)));
@@ -257,6 +255,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               line="border-white/25"
               className="w-full flex flex-col gap-6 pb-4 text-white"
               chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
+              showLegend={false}
             />
           </div>
         </>
@@ -375,15 +374,16 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             <span className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                aria-label={t('Show sidebar')}
-                title={t('Show sidebar')}
+                aria-label={t('Exit full screen')}
+                title={t('Exit full screen')}
                 onClick={() => {
                   haptic.tap();
                   setBarHidden(false);
+                  void exitBrowserFullScreen();
                 }}
                 className="w-11 h-11 flex items-center justify-center rounded-full border border-white/40 text-white [&_svg]:w-5 [&_svg]:h-5"
               >
-                <PanelLeft />
+                <Minimize />
               </button>
               <button
                 type="button"

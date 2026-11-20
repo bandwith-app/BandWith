@@ -4,6 +4,7 @@
  * ("Bb", "F#m", "C maj"). Spelling follows the target key: flats in F, Bb,
  * Eb… (and their minors), sharps elsewhere.
  */
+import { chordTokenSymbol } from './musicSymbols';
 import type { SongChart } from './ireal';
 import { isChordToken } from './lyrics';
 
@@ -59,7 +60,7 @@ const moveNote = (note: string, semitones: number, flats: boolean) => {
  * Works for iReal tokens ("Eb^7", "Bh7/F", "W/C") and plain chords ("F#m7b5", "Bb/D").
  */
 export function transposeChord(chord: string, semitones: number, flats = true): string {
-  if (!semitones || chord === '%' || chord === 'N.C.' || chord === 'x' || chord === 'n') return chord;
+  if (!semitones || chordTokenSymbol(chord)) return chord;
   const m = chord.match(/^([A-G][b#♭♯]?|W)(.*?)(?:\/([A-G][b#♭♯]?))?$/);
   if (!m) return chord;
   const [, root, quality, bass] = m;

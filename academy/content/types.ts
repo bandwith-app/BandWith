@@ -68,7 +68,12 @@ export type Block =
    */
   | { type: 'shot'; id: string; caption: string; device?: ShotDevice }
   /** A small two-column table. */
-  | { type: 'table'; head: string[]; rows: string[][] };
+  | { type: 'table'; head: string[]; rows: string[][] }
+  /**
+   * The chord chart legend: each music symbol drawn with the app's own icon
+   * (src/lib/musicSymbols.ts ids, `n` / `name` for the sample) and what it means.
+   */
+  | { type: 'symbols'; title?: string; rows: { symbol: string; n?: number; name?: string; text: string }[] };
 
 export interface Article {
   /** Unique across all areas, kebab-case: 'create-a-gig'. */

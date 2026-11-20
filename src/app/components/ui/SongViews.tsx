@@ -3,7 +3,7 @@ import { useOptionalBand } from '@/lib/BandContext';
 import { useOptionalAuth } from '@/lib/AuthContext';
 import { useT } from '@/lib/i18n';
 import { transposeChord } from '@/lib/transpose';
-import { chordLabel } from '@/lib/ireal';
+import { ChordToken } from './MusicSymbol';
 import {
   availableViews,
   defaultSongView,
@@ -119,7 +119,7 @@ const LyricsStructure: React.FC<{ lyrics: string; size: number; muted: string; l
             <div className="grid grid-cols-4 gap-y-[0.5em]">
               {s.chords.map((c, j) => (
                 <span key={j} className={cn('border-l px-[0.4em] min-h-[1.6em] flex items-center font-semibold whitespace-nowrap', line)}>
-                  {chordLabel(transposeChord(c, semitones, flats))}
+                  <ChordToken token={transposeChord(c, semitones, flats)} />
                 </span>
               ))}
             </div>
@@ -141,20 +141,22 @@ export const SongBody: React.FC<{
   line?: string;
   className?: string;
   chartClassName?: string;
-}> = ({ song, view, size, muted = 'text-muted-foreground', line = 'border-border', className, chartClassName }) => {
+  /** The chart's "What the symbols mean" legend (off on the floor wedge, read at a glance). */
+  showLegend?: boolean;
+}> = ({ song, view, size, muted = 'text-muted-foreground', line = 'border-border', className, chartClassName, showLegend = true }) => {
   const t = useT();
   const shown = resolveView(view, song);
   if (!shown) return <p className={cn('bw-body-lg', muted)}>{t('No lyrics for this song yet.')}</p>;
   if (shown === 'structure') {
     return song.chart ? (
-      <ChordChartView chart={song.chart} size={size} muted={muted} line={line} className={chartClassName} />
+      <ChordChartView chart={song.chart} size={size} muted={muted} line={line} className={chartClassName} showLegend={showLegend} />
     ) : (
       <LyricsStructure lyrics={song.lyrics || ''} size={size} muted={muted} line={line} className={className} />
     );
   }
   if (shown === 'chords' && !/\[[A-G]/.test(song.lyrics || '') && song.chart) {
     // No chords in the lyrics: the chart is what there is to play.
-    return <ChordChartView chart={song.chart} size={size} muted={muted} line={line} className={chartClassName} />;
+    return <ChordChartView chart={song.chart} size={size} muted={muted} line={line} className={chartClassName} showLegend={showLegend} />;
   }
   return <LyricsText lyrics={song.lyrics} size={size} muted={muted} className={className} hideChords={shown === 'lyrics'} />;
 };

@@ -6,6 +6,7 @@
 export * from './IconBase';
 export * from './brand-icons';
 export * from './custom-icons';
+export * from './music-symbols';
 
 // Aliases matching Lucide exports used across shadcn / radix wrappers
 import {

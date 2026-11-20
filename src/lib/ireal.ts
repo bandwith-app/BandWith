@@ -12,7 +12,11 @@
  */
 
 export interface ChartBar {
-  /** Chord tokens in iReal spelling (C^7, A-7, Bh7, D7b9/F#), '%' = repeat the previous bar, 'N.C.' = no chord. */
+  /**
+   * Chord tokens in iReal spelling (C^7, A-7, Bh7, D7b9/F#) and symbol tokens
+   * (src/lib/musicSymbols.ts): '%' = repeat the previous bar, '%%' = repeat
+   * the previous two bars, 'N.C.' = no chord, '/' = same chord, next beat.
+   */
   chords: string[];
   /** "{": a repeat starts here. */
   repeatStart?: boolean;
@@ -27,6 +31,16 @@ export interface ChartBar {
   text?: string;
   /** Final bar line. */
   final?: boolean;
+  /** Double bar line at the end of this bar (iReal "]"). */
+  doubleEnd?: boolean;
+  /** Fermata: hold (iReal "f"). */
+  fermata?: boolean;
+  /** "End" sign (iReal "U"). */
+  end?: boolean;
+  /** Time signature change that starts on this bar ("3/4"); the first one is the chart's `time`. */
+  time?: string;
+  /** Bars this cell covers: 2 for the two-bar repeat. */
+  span?: number;
 }
 
 export interface ChartSection {
@@ -52,6 +66,8 @@ export interface SongChart {
   /** The song's own irealb:// link, kept to re-import or open it in iReal Pro. */
   link?: string;
 }
+
+import { chordTokenSymbol, irealMarker, irealTime, reportUnknownMarker } from './musicSymbols';
 
 const MUSIC_PREFIX = '1r34LbKcu7';
 
@@ -102,9 +118,11 @@ export function parseMusic(music: string): { sections: ChartSection[]; time?: st
   let section: ChartSection = { label: null, bars: [] };
   let bar: ChartBar = { chords: [] };
   let time: string | undefined;
+  let lastTime: string | undefined;
+  let fermata = false;
 
   const hasContent = (b: ChartBar) =>
-    b.chords.length > 0 || !!(b.ending || b.segno || b.coda || b.text || b.repeatEnd);
+    b.chords.length > 0 || !!(b.ending || b.segno || b.coda || b.text || b.repeatEnd || b.fermata || b.end);
   const closeBar = () => {
     if (hasContent(bar)) {
       section.bars.push(bar);
@@ -143,9 +161,14 @@ export function parseMusic(music: string): { sections: ChartSection[]; time?: st
       i += 2;
       continue;
     }
-    const ts = rest.match(/^T(\d)(\d)/);
+    const ts = rest.match(/^T(\d\d)/);
     if (ts) {
-      if (!time) time = ts[1] === '1' && ts[2] === '2' ? '12/8' : `${ts[1]}/${ts[2]}`;
+      const sig = irealTime(ts[1]);
+      if (sig) {
+        if (!time) time = sig;
+        else if (sig !== lastTime) bar.time = sig;
+        lastTime = sig;
+      }
       i += 3;
       continue;
     }
@@ -161,7 +184,14 @@ export function parseMusic(music: string): { sections: ChartSection[]; time?: st
       i++;
       continue;
     }
-    if (c === '|' || c === '[' || c === ']') {
+    if (c === ']') {
+      if (hasContent(bar)) bar.doubleEnd = true;
+      else if (section.bars.length) section.bars[section.bars.length - 1].doubleEnd = true;
+      closeBar();
+      i++;
+      continue;
+    }
+    if (c === '|' || c === '[') {
       closeBar();
       i++;
       continue;
@@ -190,13 +220,36 @@ export function parseMusic(music: string): { sections: ChartSection[]; time?: st
       i++;
       continue;
     }
-    if (c === 'x' || c === 'r') {
+    if (c === 'x') {
       bar.chords.push('%');
+      i++;
+      continue;
+    }
+    if (c === 'r') {
+      // Repeat the previous two bars: written over two bars, the second one empty.
+      bar.chords.push('%%');
+      bar.span = 2;
       i++;
       continue;
     }
     if (c === 'n') {
       bar.chords.push('N.C.');
+      i++;
+      continue;
+    }
+    if (c === 'p') {
+      bar.chords.push('/');
+      i++;
+      continue;
+    }
+    if (c === 'f') {
+      // Fermata on the chord that follows.
+      fermata = true;
+      i++;
+      continue;
+    }
+    if (c === 'U') {
+      bar.end = true;
       i++;
       continue;
     }
@@ -209,10 +262,14 @@ export function parseMusic(music: string): { sections: ChartSection[]; time?: st
     const chord = rest.match(CHORD_RE);
     if (chord && chord[0] !== 'W') {
       bar.chords.push(chord[0]);
+      if (fermata) bar.fermata = true;
+      fermata = false;
       i += chord[0].length;
       continue;
     }
-    // Spaces, commas, "p" (slash), "s"/"l" (size), "f" (fermata), "Y" (spacer), "U" (end), "W" alone…
+    // Spaces, commas, "s"/"l" (chord size), "Y" (spacer), "W" alone: layout only.
+    // Anything else is a marker the registry doesn't know yet: reported, never drawn.
+    if (!irealMarker(c) && c !== 'W' && c.trim()) reportUnknownMarker(c);
     i++;
   }
   closeBar();
@@ -322,7 +379,8 @@ const acc = (s: string) => s.replace(/b/g, FLAT).replace(/#/g, SHARP);
 
 /** iReal chord token → readable label: "C^7" → "Cmaj7", "A-7" → "Am7", "Bh7" → "Bm7♭5", "Bb7/D" → "B♭7/D". */
 export function chordLabel(token: string): string {
-  if (token === '%' || token === 'N.C.') return token;
+  // Repeats, no chord and slashes are symbols (src/lib/musicSymbols.ts), drawn by ChordToken.
+  if (chordTokenSymbol(token)) return token;
   const m = token.match(/^([A-G][b#]?|W)(.*?)(?:\/([A-G][b#]?))?$/);
   if (!m) return token;
   const [, root, q0, bass] = m;

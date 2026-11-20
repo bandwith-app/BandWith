@@ -425,3 +425,12 @@ tbody td:first-child { font-weight: 600; }
   font-family: var(--font-mono); font-size: 0.82em; font-weight: 500; text-transform: lowercase;
   padding: 0 5px; margin: 0 1px; border-radius: 5px; border: 1px dashed var(--fg-2); color: var(--fg-2);
 }
+
+/* Chord chart legend (block type 'symbols'): the app's music symbols and their meaning. */
+.symbols { background: var(--card); border-radius: var(--radius-md); padding: 16px; }
+.symbols h3 { margin: 0 0 12px; }
+.symbols__list { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 10px 12px; margin: 0; }
+/* One column for every symbol, as wide as the widest ("D.C. al Coda"). */
+.symbols__row { display: contents; }
+.symbols__row dt { display: flex; justify-content: center; min-width: 2.75em; font-size: 1.1em; white-space: nowrap; }
+.symbols__row dd { margin: 0; }

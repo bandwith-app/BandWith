@@ -110,6 +110,18 @@ describe('musicxml', () => {
     expect(JSON.stringify(chart)).not.toContain('secret');
   });
 
+  it('keeps fermatas and time changes as symbols', () => {
+    const score = SCORE.replace(
+      '<measure number="2">',
+      '<measure number="2"><attributes><time><beats>3</beats><beat-type>4</beat-type></time></attributes><note><notations><fermata/></notations></note>',
+    );
+    const chart = parseMusicXml(score, 'test.musicxml');
+    expect(chart.time).toBe('4/4');
+    const bars = chart.sections.flatMap((s) => s.bars);
+    expect(bars[1]).toMatchObject({ time: '3/4', fermata: true });
+    expect(bars[0].time).toBeUndefined();
+  });
+
   it('labels the chords like iReal ones', () => {
     const doc = new DOMParser().parseFromString(
       `<x>${harmony('Ab', 'major-minor')}${harmony('C', 'diminished-seventh')}</x>`,
