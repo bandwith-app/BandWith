@@ -55,7 +55,7 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
 
   // Who covers what: each instrument the band plays, with its deputies.
   const coverage = React.useMemo(() => deputyCoverage(members, deputies), [members, deputies]);
-  const gaps = coverage.rows.filter((r) => r.deputies.length === 0).length;
+  const gaps = coverage.rows.reduce((n, r) => n + (r.deputies.length === 0 ? r.instruments : 0), 0);
 
   const open = (d: Deputy | 'new', instrument = '') => {
     setEditing(d);

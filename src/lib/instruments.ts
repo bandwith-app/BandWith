@@ -90,13 +90,17 @@ export interface InstrumentCoverage<D extends CoverageDeputy = CoverageDeputy> {
   label: string;
   members: string[];
   deputies: D[];
+  /** How many instruments the row stands for (keys · vocals = 2). */
+  instruments: number;
 }
 
 /**
  * Who covers what: for each instrument the band plays, its members and the
- * deputies who can stand in. Instruments without a deputy come first (they
- * are the gaps), then by name. Deputies for instruments nobody in the band
- * plays are returned apart.
+ * deputies who can stand in. Instruments played by the same members and
+ * covered by the same deputies share one row ("keys · vocals"), so a player
+ * with two instruments isn't listed twice. Rows without a deputy come first
+ * (they are the gaps), then by name. Deputies for instruments nobody in the
+ * band plays are returned apart.
  */
 export function deputyCoverage<D extends CoverageDeputy>(
   members: CoverageMember[],
@@ -106,7 +110,7 @@ export function deputyCoverage<D extends CoverageDeputy>(
   for (const m of members) {
     const raw = (m.instrument || '').split(/[·,/;&+|]/);
     instrumentKeys(m.instrument).forEach((key, i) => {
-      if (!rows.has(key)) rows.set(key, { key, label: (raw[i] || raw[0] || key).trim() || key, members: [], deputies: [] });
+      if (!rows.has(key)) rows.set(key, { key, label: (raw[i] || raw[0] || key).trim() || key, members: [], deputies: [], instruments: 1 });
       const row = rows.get(key)!;
       if (!row.members.includes(m.name)) row.members.push(m.name);
     });
@@ -123,7 +127,17 @@ export function deputyCoverage<D extends CoverageDeputy>(
     }
     if (!placed) others.push(d);
   }
-  const list = [...rows.values()].sort(
+  const merged = new Map<string, InstrumentCoverage<D>>();
+  for (const row of rows.values()) {
+    const sig = `${[...row.members].sort().join('\u0000')}\u0001${row.deputies.map((d) => d.id).sort().join('\u0000')}`;
+    const same = merged.get(sig);
+    if (same) {
+      same.key += `+${row.key}`;
+      same.label += ` · ${row.label}`;
+      same.instruments += 1;
+    } else merged.set(sig, { ...row, members: [...row.members], deputies: [...row.deputies] });
+  }
+  const list = [...merged.values()].sort(
     (a, b) => Number(a.deputies.length > 0) - Number(b.deputies.length > 0) || a.label.localeCompare(b.label),
   );
   return { rows: list, others };

@@ -57,6 +57,28 @@ describe('deputyCoverage', () => {
     expect(others.map((d) => d.id)).toEqual(['db', 'h', 'n']);
   });
 
+  it('shows one row for a member who plays two instruments with the same cover (keys, vocals)', () => {
+    const { rows } = deputyCoverage(
+      [
+        { name: 'Antonio', instrument: 'Guitar' },
+        { name: 'Simon', instrument: 'keys, vocals' },
+      ],
+      [],
+    );
+    expect(rows.map((r) => [r.label, r.members, r.instruments])).toEqual([
+      ['Guitar', ['Antonio'], 1],
+      ['keys · vocals', ['Simon'], 2],
+    ]);
+  });
+
+  it('keeps instruments apart when their cover differs', () => {
+    const { rows } = deputyCoverage([{ name: 'Simon', instrument: 'Keys, Vocals' }], [dep('k', 'Keys')]);
+    expect(rows.map((r) => [r.key, r.deputies.map((d) => d.id)])).toEqual([
+      ['vocals', []],
+      ['keys', ['k']],
+    ]);
+  });
+
   it('returns nothing when no member has an instrument', () => {
     expect(deputyCoverage([{ name: 'A' }], [dep('x', 'Bass')])).toEqual({ rows: [], others: [dep('x', 'Bass')] });
   });
