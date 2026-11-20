@@ -13,6 +13,7 @@ import {
   DEFAULT_VAT_RATE,
 } from '@/lib/services/quoteMath';
 import { ONLINE_DEPOSITS_ENABLED } from './pricing';
+import { safePaymentUrl } from '@/lib/quoteBalance';
 import { intlLocale, translate, type Locale, type TranslateVars } from '@/lib/i18n';
 
 export interface QuotePdfGenerationResult {
@@ -608,10 +609,13 @@ const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
     ctx.fillStyle = '#111111';
     const depText = tr('Initial Payment: {percent}% = {amount} (to be paid in advance.)', { percent: depositPct, amount: formatMoney(depositAmount, sym) });
     ctx.fillText(depText, rightMargin, y);
-    // Online deposit links (Stripe / PayPal): off for the whole alpha.
-    const payLinks = ONLINE_DEPOSITS_ENABLED
-      ? [settings.stripe_payment_link && tr('Card: {link}', { link: settings.stripe_payment_link }), settings.paypal_link && `PayPal: ${settings.paypal_link}`].filter(Boolean)
-      : [];
+    // 168: the band's own payment link (made in its Stripe account) when set;
+    // PayPal stays off with the in-app online deposits.
+    const cardLink = safePaymentUrl(settings.stripe_payment_link);
+    const payLinks = [
+      cardLink && tr('Card: {link}', { link: cardLink.replace(/^https:\/\//, '') }),
+      ONLINE_DEPOSITS_ENABLED && settings.paypal_link && `PayPal: ${settings.paypal_link}`,
+    ].filter(Boolean);
     if (payLinks.length) {
       y += 34;
       ctx.font = '400 19px "Inter", "Helvetica Neue", Arial, sans-serif';

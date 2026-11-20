@@ -119,7 +119,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Los totales se calculan igual en la pantalla, en el PDF, en la página del cliente y en la base de datos: subtotal, menos el descuento, más el IVA, y luego el anticipo como parte del total." },
-        { type: "note", tone: "tip", text: "Los enlaces de pago del anticipo en línea (**Tarjeta · Stripe**, **PayPal**) se muestran pero están desactivados: «Los enlaces de pago para clientes se activan después de la alfa. Por ahora, usa los datos de transferencia.»" },
+        { type: "note", tone: "tip", text: "Cuando el cliente acepta, su página muestra cómo pagar el anticipo: tus datos bancarios con botones para copiarlos, un concepto como Q-2026-0014 · Anticipo y tu propio enlace de pago de Stripe, si lo has configurado (el PDF también lo imprime). Cuando llega el dinero, toca **Anticipo recibido** en el presupuesto aceptado y elige cómo llegó: el concierto queda confirmado. **PayPal** sigue desactivado." },
       ],
     },
     {
@@ -448,6 +448,39 @@ const business: AreaText = {
             { role: "member", text: "El concierto aparece en su calendario con una notificación y solo su propio caché; consulta [[what-members-see-of-money]]." },
           ],
         },
+      ],
+    },
+    {
+      id: "final-balance",
+      title: "Pide al cliente el saldo final",
+      summary: "Después del sí, vuelve a enviar la misma página del presupuesto con lo que queda por pagar y cómo pagarlo: transferencia, tu enlace de Stripe o efectivo.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["saldo", "saldo final", "pago final", "importe pendiente", "iban", "stripe", "enlace de pago", "pagado", "recordatorio"],
+      related: ["quote-to-gig", "client-quote-page", "branding-and-payment", "what-members-see-of-money"],
+      body: [
+        { type: "steps", title: "Envía el saldo", items: [
+          "Abre el gig creado desde el presupuesto aceptado y toca **SALDO FINAL** en la tarjeta del caché (o **Saldo final** en el presupuesto aceptado).",
+          "Revisa el importe: el total aceptado, menos el anticipo recibido, menos **Otros pagos recibidos**. Si el caché del gig no coincide con el presupuesto, toca **Usar el caché del concierto** o **Usar el total del presupuesto**.",
+          "Elige la fecha límite: **El día del concierto**, **7 días después**, **14 días después** o **Elegir una fecha**.",
+          "Elige las formas de pago: **Transferencia**, **Tarjeta · enlace de Stripe** y **Efectivo**, con una nota opcional.",
+          "Toca **Enviar por email**, o envíalo por **WhatsApp** o con **Copiar enlace**. **Vista previa** abre la página del cliente.",
+        ] },
+        { type: "p", text: "El cliente recibe la misma página del presupuesto, en el idioma del presupuesto, con el saldo arriba: el importe y la fecha límite, tus datos bancarios con botones para copiarlos y el concepto, un botón **Pagar con tarjeta** para tu enlace de Stripe y la nota sobre el efectivo. Debajo sigue el presupuesto, con lo que ya se ha recibido." },
+        { type: "list", title: "Lo que revisa primero la hoja", items: [
+          "Anticipo sin registrar: se pide el total hasta que toques **Marcar anticipo recibido** y elijas cómo llegó (transferencia, efectivo, otro).",
+          "Sin datos bancarios ni enlace de Stripe: solo se ofrece efectivo, y **Configurar pagos** abre la hoja de precios.",
+          "Ya solicitado: sin cambios, enviarlo otra vez es un recordatorio (**Enviar un recordatorio**); con cambios, pasa a **Enviar la actualización**.",
+          "Nada por pagar: ninguna solicitud, solo **Marcar como pagado**.",
+          "Gig cancelado: no hay botón **SALDO FINAL**. Sin email del cliente: comparte el enlace.",
+          "Un enlace de Stripe con precio fijo, un gig en otra moneda o una fecha límite ya pasada: te lo dice antes de enviar.",
+        ] },
+        { type: "p", text: "Cuando llegue el dinero, toca **Marcar como pagado**: el gig figura como pagado (pagos a músicos, preparación del show y estadísticas se actualizan) y la página del cliente da las gracias. **Deshacer** lo vuelve a abrir." },
+        { type: "note", tone: "tip", text: "Añade tu **Enlace de pago de Stripe** en la hoja de precios, en **Marca y pago**. BandWith nunca cobra pagos: el dinero va directo del cliente a la banda." },
+        { type: "roles", rows: [
+          { role: "admin", text: "Envía el saldo y lo marca como pagado." },
+          { role: "member", text: "No ve nada de esto: solo su propio caché, ver [[what-members-see-of-money]]." },
+        ] },
       ],
     },
     {
@@ -1024,7 +1057,7 @@ const business: AreaText = {
     { q: "¿Cómo pago a un sustituto o a un miembro?", a: "Págales fuera de la app y luego márcalos como pagados en la hoja Caché y pagos del concierto o con MARCAR TODO COMO PAGADO.", roles: ["admin"] },
     { q: "¿Un miembro puede cambiar su propio caché?", a: "No. Solo los admins cambian los cachés y los pagos.", roles: ["member"] },
     { q: "¿Por qué no puedo volver a convertir un ensayo en presupuesto?", a: "Los ensayos y los conciertos personales nunca fueron presupuestos, así que no tienen VOLVER A PRESUPUESTO.", roles: ["admin"] },
-    { q: "¿Los clientes pueden pagar el anticipo en línea?", a: "Todavía no. Los botones de Stripe y PayPal están desactivados durante la alfa; usa los datos de transferencia del PDF.", roles: ["admin"] },
+    { q: "¿Los clientes pueden pagar el anticipo en línea?", a: "Con tu propio enlace de pago de Stripe, que se configura en la hoja de precios, en Marca y pago: la página del cliente y el PDF lo muestran y el dinero te llega directamente. Cuando llegue, toca Anticipo recibido en el presupuesto aceptado.", roles: ["admin"] },
     { q: "Los miembros no ven Contratos. ¿Pasa algo?", a: "No. Los contratos contienen el cliente y el precio del concierto, así que solo los admins pueden abrirlos.", roles: ["admin", "member"] },
   ],
 

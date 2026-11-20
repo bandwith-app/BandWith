@@ -667,17 +667,12 @@ export const gigFromAcceptedQuote = (quoteId: string): Promise<{ data: QuoteGigR
   if (running) return running;
   const run = (async (): Promise<{ data: QuoteGigResult | null; error: Error | null }> => {
     try {
-      const { data: q, error } = await supabase.from('quotes').select('converted_to_event_id').eq('id', quoteId).single();
+      // 168: the shared step (also behind "Deposit received"): the quote's
+      // gig, tentative → confirmed. No gig yet: made here with its lineup.
+      const { data: confirmed, error } = await supabase.rpc('bw_quote_confirm_gig', { p_quote_id: quoteId });
       if (error) throw error;
-      if (q?.converted_to_event_id) {
-        const { error: evErr } = await supabase
-          .from('events')
-          .update({ status: 'confirmed' })
-          .eq('id', q.converted_to_event_id)
-          .eq('status', 'tentative');
-        if (evErr) throw evErr;
-        return { data: { eventId: q.converted_to_event_id, created: false }, error: null };
-      }
+      const eventId = (confirmed as { event_id?: string | null } | null)?.event_id;
+      if (eventId) return { data: { eventId, created: false }, error: null };
       const made = await convertQuoteToEvent(quoteId);
       if (made.error || !made.data) throw made.error || new Error('The gig was not created');
       return { data: made.data, error: null };
@@ -688,6 +683,65 @@ export const gigFromAcceptedQuote = (quoteId: string): Promise<{ data: QuoteGigR
   gigRuns.set(quoteId, run);
   void run.finally(() => gigRuns.delete(quoteId));
   return run;
+};
+
+export type DepositMethod = 'transfer' | 'cash' | 'other';
+
+export interface QuoteDepositResult {
+  eventId: string | null;
+  received: boolean;
+  /** The gig is confirmed now (it was tentative, or just made). */
+  confirmed: boolean;
+  /** The gig was made from the quote on the way. */
+  created: boolean;
+  lineupError?: boolean;
+}
+
+/**
+ * The deposit of an accepted quote was received (or not, after all): the
+ * gig records it (deposit_paid, amount, payment_status 'partial') and is
+ * confirmed through the shared step (migration 168). A quote with no gig
+ * yet gets one first, with its lineup, as "Create gig from quote".
+ */
+export const recordQuoteDeposit = async (
+  quoteId: string,
+  opts: { method: DepositMethod; amount?: number | null; received?: boolean },
+): Promise<{ data: QuoteDepositResult | null; error: Error | null }> => {
+  const call = () =>
+    supabase.rpc('bw_quote_deposit_received', {
+      p_quote_id: quoteId,
+      p_method: opts.method,
+      p_amount: opts.amount != null && opts.amount > 0 ? opts.amount : null,
+      p_received: opts.received !== false,
+    });
+  type Row = { event_id?: string | null; received?: boolean; confirmed?: boolean; needs_gig?: boolean };
+  try {
+    let { data, error } = await call();
+    if (error) throw error;
+    let created = false;
+    let lineupError = false;
+    if ((data as Row | null)?.needs_gig) {
+      const made = await gigFromAcceptedQuote(quoteId);
+      if (made.error || !made.data) throw made.error || new Error('The gig was not created');
+      created = made.data.created;
+      lineupError = !!made.data.lineupError;
+      ({ data, error } = await call());
+      if (error) throw error;
+    }
+    const row = (data || {}) as Row;
+    return {
+      data: {
+        eventId: row.event_id ?? null,
+        received: !!row.received,
+        confirmed: !!row.confirmed,
+        created,
+        ...(lineupError ? { lineupError } : {}),
+      },
+      error: null,
+    };
+  } catch (error: any) {
+    return { data: null, error };
+  }
 };
 
 // ============================================

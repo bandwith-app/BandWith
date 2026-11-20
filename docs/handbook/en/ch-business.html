@@ -70,7 +70,7 @@
     <li>Write anything the client should read under <b class="ui">Client message / notes</b>.</li>
   </ol>
   <p>The totals are worked out the same way on screen, in the PDF, on the client page and in the database: subtotal, minus the discount, plus VAT, then the deposit as a share of the total.</p>
-  <aside class="note tip">Online deposit links (<b class="ui">Card · Stripe</b>, <b class="ui">PayPal</b>) are shown but switched off; the on-screen message points to the bank transfer details.</aside>
+  <aside class="note tip">Once the client accepts, the client page shows how to pay the deposit: your bank details with copy buttons, a reference such as <b class="ui">Q-2026-0014 · Deposit</b>, and your own Stripe payment link if you set one (the PDF prints it too). Before accepting, the page already names the deposit to be paid. When the money arrives, tap <b class="ui">Deposit received</b> on the accepted quote and pick how it came (bank transfer, cash, other): the gig is confirmed (or created from the quote, with its lineup) and the client page says the deposit was received. <b class="ui">PayPal</b> stays switched off.</aside>
 
   <h3 id="art-ask-lineup-availability" data-roles="admin,member">Ask the lineup before the client says yes</h3>
   <ol class="steps">
@@ -253,6 +253,32 @@
   <div class="roles">
     <div data-role="admin">Confirms the quote and sees the band fee.</div>
     <div data-role="member">The gig appears on their calendar with a notification and their own fee only (see <a data-ref="what-members-see-of-money">What members see of money</a>).</div>
+  </div>
+
+  <h3 id="art-final-balance" data-roles="admin,member">Ask the client for the final balance</h3>
+  <p>After the yes, the same quote page goes back to the client with what is still due and how to pay it: bank transfer, the band's own Stripe payment link or cash. BandWith never takes the money.</p>
+  <p class="steps-title">Send the balance</p>
+  <ol class="steps">
+    <li>Open the gig made from the accepted quote and tap <b class="ui">FINAL BALANCE</b> on the fee card (or <b class="ui">Final balance</b> on the accepted quote).</li>
+    <li>Check the amount: the accepted total, minus the deposit received, minus <b class="ui">Other payments received</b>. When the gig fee differs from the quote, <b class="ui">Use the gig fee</b> or <b class="ui">Use the quote total</b> picks the base.</li>
+    <li>Pick the due date: <b class="ui">On the gig day</b>, <b class="ui">7 days after</b>, <b class="ui">14 days after</b> or <b class="ui">Pick a date</b>.</li>
+    <li>Choose the ways to pay: <b class="ui">Bank transfer</b>, <b class="ui">Card · Stripe link</b> and <b class="ui">Cash</b>, with an optional note.</li>
+    <li>Tap <b class="ui">Send by email</b>, or send it on <b class="ui">WhatsApp</b> or with <b class="ui">Copy link</b>. <b class="ui">Preview</b> opens the client page.</li>
+  </ol>
+  <p>The client page, in the quote's language, shows the balance on top: the amount and due date, the bank details with copy buttons and the payment reference (for example <b class="ui">Q-2026-0014 · Saldo</b> in Italian), a <b class="ui">Pay by card</b> button for the Stripe link, and the cash note. The quote stays below, with the deposit and other payments received. Once paid it says <b class="ui">Paid in full. Thank you!</b> and stops asking.</p>
+  <p class="steps-title">What the sheet checks first</p>
+  <ul>
+    <li>Deposit not recorded: the whole total is asked until <b class="ui">Mark deposit received</b> (it asks how it arrived: bank transfer, cash or other).</li>
+    <li>No bank details and no Stripe link: only cash, with <b class="ui">Set up payments</b> to the pricing sheet.</li>
+    <li>Already asked: unchanged, sending again is <b class="ui">Send a reminder</b>; changed, it is <b class="ui">Send the update</b> and the page follows.</li>
+    <li>Nothing left to pay: no request, only <b class="ui">Mark as paid</b>. Cancelled gig: no button at all.</li>
+    <li>No client email: WhatsApp or the link. A Stripe link with a fixed price, a gig in another currency or a due date in the past: said before sending.</li>
+  </ul>
+  <p><b class="ui">Mark as paid</b> marks the gig paid (payment status <i>paid</i>, the deposit counted as received), so payouts, show readiness and analytics agree. <b class="ui">Undo</b> brings it back to partial or pending. The quote history records every request, reminder, update and payment.</p>
+  <aside class="note tip">The Stripe link is set in the pricing sheet, <b class="ui">Branding &amp; payment</b>, field <b class="ui">Stripe payment link</b>. A plain link made in the band's own Stripe account: no card data passes through BandWith.</aside>
+  <div class="roles">
+    <div data-role="admin">Sends the balance and marks it paid.</div>
+    <div data-role="member">Sees none of it: only their own fee (see <a data-ref="what-members-see-of-money">What members see of money</a>).</div>
   </div>
 
   <h3 id="art-revert-gig-to-quote" data-roles="admin">Turn a gig back into a quote</h3>
@@ -585,7 +611,7 @@
     <dt>Why can't I revert a rehearsal to a quote?</dt>
     <dd>Rehearsals and personal gigs never were quotes, so they have no <b class="ui">REVERT TO QUOTE</b>.</dd>
     <dt>Can clients pay the deposit online?</dt>
-    <dd>No: the Stripe and PayPal buttons are switched off; use the bank transfer details on the PDF.</dd>
+    <dd>Through your own Stripe payment link, set in the pricing sheet on <b class="ui">Branding &amp; payment</b>: the client page and the PDF show it, and the money goes straight to you. When it arrives, tap <b class="ui">Deposit received</b> on the accepted quote.</dd>
     <dt>Members don't see Contracts. Is something wrong?</dt>
     <dd>No. Contracts hold the client and the gig price, so only admins can open them.</dd>
   </dl>

@@ -120,7 +120,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Os totais são calculados do mesmo jeito na tela, no PDF, na página do cliente e no banco de dados: subtotal, menos o desconto, mais o IVA, e depois o sinal como parte do total." },
-        { type: "note", tone: "tip", text: "Os links de pagamento do sinal online (**Cartão · Stripe**, **PayPal**) aparecem, mas desativados: “Os links de pagamento para clientes chegam depois do alfa. Por enquanto, use os dados de transferência.”" },
+        { type: "note", tone: "tip", text: "Quando o cliente aceita, a página dele mostra como pagar o sinal: seus dados bancários com botões para copiar, uma referência como Q-2026-0014 · Sinal e o seu próprio link de pagamento do Stripe, se você configurou (o PDF também imprime). Quando o dinheiro chegar, toque em **Sinal recebido** no orçamento aceito e escolha como chegou: o show fica confirmado. **PayPal** continua desativado." },
       ],
     },
     {
@@ -449,6 +449,39 @@ const business: AreaText = {
             { role: "member", text: "O show aparece no calendário dele com uma notificação e só o próprio cachê; veja [[what-members-see-of-money]]." },
           ],
         },
+      ],
+    },
+    {
+      id: "final-balance",
+      title: "Peça ao cliente o saldo final",
+      summary: "Depois do sim, envie de novo a mesma página do orçamento com o que falta pagar e como pagar: transferência, seu link do Stripe ou dinheiro.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["saldo", "saldo final", "pagamento final", "valor restante", "iban", "stripe", "link de pagamento", "pago", "lembrete"],
+      related: ["quote-to-gig", "client-quote-page", "branding-and-payment", "what-members-see-of-money"],
+      body: [
+        { type: "steps", title: "Envie o saldo", items: [
+          "Abra o show criado a partir do orçamento aceito e toque em **SALDO FINAL** no cartão do cachê (ou em **Saldo final** no orçamento aceito).",
+          "Confira o valor: o total aceito, menos o sinal recebido, menos **Outros pagamentos recebidos**. Se o cachê do show for diferente do orçamento, toque em **Usar o cachê do show** ou **Usar o total do orçamento**.",
+          "Escolha a data limite: **No dia do show**, **7 dias depois**, **14 dias depois** ou **Escolher uma data**.",
+          "Escolha as formas de pagamento: **Transferência**, **Cartão · link do Stripe** e **Dinheiro**, com uma nota opcional.",
+          "Toque em **Enviar por e-mail**, ou envie pelo **WhatsApp** ou com **Copiar link**. **Prévia** abre a página do cliente.",
+        ] },
+        { type: "p", text: "O cliente recebe a mesma página do orçamento, no idioma do orçamento, com o saldo no topo: o valor e a data limite, seus dados bancários com botões para copiar e a referência, um botão **Pagar com cartão** para o seu link do Stripe e a nota sobre dinheiro. O orçamento continua embaixo, com o que já foi recebido." },
+        { type: "list", title: "O que a folha confere antes", items: [
+          "Sinal não registrado: o total inteiro é pedido até você tocar em **Marcar sinal recebido** e escolher como chegou (transferência, dinheiro, outro).",
+          "Sem dados bancários nem link do Stripe: só dinheiro é oferecido, e **Configurar pagamentos** abre a tabela de preços.",
+          "Já solicitado: sem mudanças, enviar de novo é um lembrete (**Enviar um lembrete**); com mudanças, vira **Enviar a atualização**.",
+          "Nada a pagar: nenhum pedido, só **Marcar como pago**.",
+          "Show cancelado: sem botão **SALDO FINAL**. Sem e-mail do cliente: compartilhe o link.",
+          "Um link do Stripe com preço fixo, um show em outra moeda ou uma data limite já passada: isso é avisado antes de enviar.",
+        ] },
+        { type: "p", text: "Quando o dinheiro chegar, toque em **Marcar como pago**: o show fica marcado como pago (pagamentos aos músicos, prontidão do show e estatísticas acompanham) e a página do cliente agradece. **Desfazer** abre de novo." },
+        { type: "note", tone: "tip", text: "Adicione seu **Link de pagamento Stripe** na tabela de preços, em **Marca e pagamento**. O BandWith nunca recebe pagamentos: o dinheiro vai direto do cliente para a banda." },
+        { type: "roles", rows: [
+          { role: "admin", text: "Envia o saldo e marca como pago." },
+          { role: "member", text: "Não vê nada disso: só o próprio cachê, veja [[what-members-see-of-money]]." },
+        ] },
       ],
     },
     {
@@ -1033,7 +1066,7 @@ const business: AreaText = {
     { q: "Como eu pago um substituto ou um membro?", a: "Pague fora do app e depois marque como pago no painel Cachê e pagamentos do show ou com MARCAR TODOS COMO PAGOS.", roles: ["admin"] },
     { q: "Um membro pode mudar o próprio cachê?", a: "Não. Só os admins mudam cachês e pagamentos.", roles: ["member"] },
     { q: "Por que não consigo voltar um ensaio para orçamento?", a: "Ensaios e shows pessoais nunca foram orçamentos, então não têm VOLTAR A ORÇAMENTO.", roles: ["admin"] },
-    { q: "Os clientes podem pagar o sinal online?", a: "Ainda não. Os botões do Stripe e do PayPal ficam desativados durante o alfa; use os dados de transferência do PDF.", roles: ["admin"] },
+    { q: "Os clientes podem pagar o sinal online?", a: "Pelo seu próprio link de pagamento do Stripe, configurado na tabela de preços, em Marca e pagamento: a página do cliente e o PDF mostram o link, e o dinheiro vai direto para você. Quando chegar, toque em Sinal recebido no orçamento aceito.", roles: ["admin"] },
     { q: "Os membros não veem Contratos. Tem algo errado?", a: "Não. Os contratos têm o cliente e o preço do show, então só os admins podem abri-los.", roles: ["admin", "member"] },
   ],
 

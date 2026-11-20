@@ -63,6 +63,11 @@ export const buildSeed = (): DemoDB => {
       travel_rate_per_km: 0.45, home_base_address: 'Via Tortona 27, Milano', home_base_latitude: 45.4518, home_base_longitude: 9.1661,
       pricing_currency: 'EUR', pricing_rules: {}, extra_services: [], contact_email: 'booking@velvetstatic.example',
       signer_name: 'Leo M.', signer_role: 'Band leader', default_payment_terms: '30% deposit, balance on the day',
+      // Pricing → Payment (admins only, 077): the final balance offers these (168).
+      pricing_settings: {
+        bank_region: 'eu', bank_account_holder: 'Velvet Static APS', bank_iban: 'IT60X0542811101000000123456',
+        bank_bic_swift: 'BPMOIT22XXX', bank_name: 'Banca Demo', stripe_payment_link: 'https://buy.stripe.com/test_velvetstatic',
+      },
     },
   ];
 
@@ -439,6 +444,7 @@ export const buildSeed = (): DemoDB => {
       snapshot: { v: 1, ref: 'Q-2026-0013', title: 'Year-end gala' }, pdf_url: null, pdf_version: null, status: 'discussing',
       sent_at: ago(60 * 24 * 3), first_viewed_at: ago(60 * 24 * 2), responded_at: null, accepted_name: null, accepted_version: null,
       decline_reason: null, revoked_at: null, created_at: ago(60 * 24 * 3), updated_at: ago(60 * 5),
+      balance: null, balance_version: 0, balance_at: null, balance_sent_at: null, balance_paid_at: null,
     },
     // The wedding quote was accepted on the page.
     {
@@ -446,6 +452,7 @@ export const buildSeed = (): DemoDB => {
       snapshot: { v: 1, ref: 'Q-2026-0014', title: 'Client A — Wedding' }, pdf_url: null, pdf_version: null, status: 'accepted',
       sent_at: ago(60 * 24 * 40), first_viewed_at: ago(60 * 24 * 39), responded_at: ago(60 * 24 * 35), accepted_name: 'Client A', accepted_version: 1,
       decline_reason: null, revoked_at: null, created_at: ago(60 * 24 * 40), updated_at: ago(60 * 24 * 35),
+      balance: null, balance_version: 0, balance_at: null, balance_sent_at: null, balance_paid_at: null,
     },
   ];
   const quote_activity: Row[] = [

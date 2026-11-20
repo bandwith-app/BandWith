@@ -60,6 +60,37 @@ describe('client quote snapshot', () => {
   });
 });
 
+describe('how to pay the deposit (168)', () => {
+  const bank = {
+    bank_region: 'eu' as const,
+    bank_account_holder: 'Velvet Static APS',
+    bank_iban: 'IT60X0542811101000000123456',
+    bank_bic_swift: 'BPMOIT22XXX',
+    stripe_payment_link: 'https://buy.stripe.com/test_velvet',
+  };
+
+  it('carries the bank details, the band link and a reference in the client language', () => {
+    const snap = buildClientQuoteSnapshot({ ...quote, depositRequired: true, depositPercentage: 30, depositDueDate: '2026-12-10' }, 'it', bank);
+    expect(snap.deposit).toEqual({ percent: 30, amount: expect.any(Number), dueDate: '2026-12-10' });
+    expect(snap.pay?.bank?.map((r) => r.value)).toContain('IT60X0542811101000000123456');
+    expect(snap.pay?.stripeUrl).toBe('https://buy.stripe.com/test_velvet');
+    expect(snap.pay?.reference).toBe('Q-2026-0013 · Acconto');
+  });
+
+  it('hides the bank details the quote hides on the PDF, and refuses a link that is not https', () => {
+    const snap = buildClientQuoteSnapshot({ ...quote, showBankDetailsOnPdf: false }, 'en', { ...bank, stripe_payment_link: 'javascript:alert(1)' });
+    expect(snap.pay).toBeUndefined();
+    const onlyLink = buildClientQuoteSnapshot({ ...quote, showBankDetailsOnPdf: false }, 'en', bank);
+    expect(onlyLink.pay).toEqual({ bank: null, stripeUrl: 'https://buy.stripe.com/test_velvet', reference: 'Q-2026-0013 · Deposit' });
+  });
+
+  it('nothing to pay without a deposit; a due date only when it is a date', () => {
+    expect(buildClientQuoteSnapshot({ ...quote, depositRequired: false }, 'en', bank).pay).toBeUndefined();
+    const snap = buildClientQuoteSnapshot({ ...quote, depositDueDate: 'on_acceptance' }, 'en', bank);
+    expect(snap.deposit && 'dueDate' in snap.deposit).toBe(false);
+  });
+});
+
 describe('client message', () => {
   it('carries the page link and the total', () => {
     const url = quoteLinkUrl('a'.repeat(64));

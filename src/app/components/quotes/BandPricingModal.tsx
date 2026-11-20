@@ -48,6 +48,7 @@ import {
   type BandMarkupType,
 } from '@/lib/services/pricing';
 import { ONLINE_DEPOSITS_ENABLED } from '@/lib/services/pricing';
+import { safePaymentUrl } from '@/lib/quoteBalance';
 import { t, useT, intlLocale } from '@/lib/i18n';
 import { builtinText } from '@/lib/i18n/builtins';
 
@@ -1941,28 +1942,39 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
                   value={settings.default_payment_terms || ''}
                   onChange={(e) => setSettings({ ...settings, default_payment_terms: e.target.value })}
                 />
-                {/* Online deposits: in place, switched off for the alpha */}
+                {/* Card payments: the band's own Stripe payment link, offered on the final balance (168).
+                    BandWith never takes the money. PayPal and deposits from the quote stay off for the alpha. */}
                 <div className="flex flex-col gap-3 pt-2">
-                  <div className="flex items-center justify-between gap-3">
+                  <span className="bw-label-sm text-muted-foreground">{t('Card payments')}</span>
+                  <PillField
+                    label={t('Stripe payment link')}
+                    placeholder="https://buy.stripe.com/…"
+                    inputMode="url"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={settings.stripe_payment_link || ''}
+                    onChange={(e) => setSettings({ ...settings, stripe_payment_link: e.target.value.trim() })}
+                    error={
+                      settings.stripe_payment_link && !safePaymentUrl(settings.stripe_payment_link)
+                        ? t('Paste a link that starts with https://')
+                        : undefined
+                    }
+                  />
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('Made in your Stripe account. The final balance shows it to the client as “Pay by card”; the money goes straight to you.')}
+                  </p>
+                  <div className="flex items-center justify-between gap-3 pt-2">
                     <span className="bw-label-sm text-muted-foreground">{t('Online deposit links')}</span>
                     {!ONLINE_DEPOSITS_ENABLED && <Tag variant="subtle">{t('Coming soon')}</Tag>}
                   </div>
-                  <div className="grid grid-cols-1 @min-[520px]:grid-cols-2 gap-4">
-                    <PillField
-                      label={t('Stripe payment link')}
-                      placeholder="https://buy.stripe.com/…"
-                      disabled={!ONLINE_DEPOSITS_ENABLED}
-                      value={settings.stripe_payment_link || ''}
-                      onChange={(e) => setSettings({ ...settings, stripe_payment_link: e.target.value })}
-                    />
-                    <PillField
-                      label={t('PayPal link')}
-                      placeholder="https://paypal.me/…"
-                      disabled={!ONLINE_DEPOSITS_ENABLED}
-                      value={settings.paypal_link || ''}
-                      onChange={(e) => setSettings({ ...settings, paypal_link: e.target.value })}
-                    />
-                  </div>
+                  <PillField
+                    label={t('PayPal link')}
+                    placeholder="https://paypal.me/…"
+                    disabled={!ONLINE_DEPOSITS_ENABLED}
+                    value={settings.paypal_link || ''}
+                    onChange={(e) => setSettings({ ...settings, paypal_link: e.target.value })}
+                  />
                   {!ONLINE_DEPOSITS_ENABLED && (
                     <p className="bw-body-sm text-muted-foreground">
                       {t('Clients will pay the deposit by card or PayPal from the quote and its PDF. This turns on after the alpha.')}

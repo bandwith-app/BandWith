@@ -120,7 +120,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "I totali si calcolano allo stesso modo sullo schermo, nel PDF, nella pagina del cliente e nel database: subtotale, meno lo sconto, più l’IVA, poi l’acconto come quota del totale." },
-        { type: "note", tone: "tip", text: "I link per l’acconto online (**Carta · Stripe**, **PayPal**) sono visibili ma disattivati: “I link di pagamento per i clienti si attivano dopo l’alpha. Per ora usa i dati del bonifico.”" },
+        { type: "note", tone: "tip", text: "Quando il cliente accetta, la sua pagina mostra come pagare l’acconto: le tue coordinate bancarie con i pulsanti per copiarle, una causale come Q-2026-0014 · Acconto e il tuo link di pagamento Stripe, se l’hai impostato (lo stampa anche il PDF). Quando arrivano i soldi, tocca **Acconto ricevuto** sul preventivo accettato e scegli come sono arrivati: il concerto viene confermato. **PayPal** resta disattivato." },
       ],
     },
     {
@@ -449,6 +449,39 @@ const business: AreaText = {
             { role: "member", text: "Il gig compare nel suo calendario con una notifica e solo il proprio compenso, vedi [[what-members-see-of-money]]." },
           ],
         },
+      ],
+    },
+    {
+      id: "final-balance",
+      title: "Chiedi al cliente il saldo finale",
+      summary: "Dopo il sì, rimanda la stessa pagina del preventivo con quanto resta da pagare e come pagarlo: bonifico, il tuo link Stripe o contanti.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["saldo", "saldo finale", "pagamento finale", "importo residuo", "iban", "stripe", "link di pagamento", "pagato", "promemoria"],
+      related: ["quote-to-gig", "client-quote-page", "branding-and-payment", "what-members-see-of-money"],
+      body: [
+        { type: "steps", title: "Invia il saldo", items: [
+          "Apri il gig nato dal preventivo accettato e tocca **SALDO FINALE** nella scheda del compenso (oppure **Saldo finale** sul preventivo accettato).",
+          "Controlla l’importo: il totale accettato, meno l’acconto ricevuto, meno **Altri pagamenti ricevuti**. Se il compenso del gig è diverso dal preventivo, tocca **Usa il compenso del concerto** o **Usa il totale del preventivo**.",
+          "Scegli la scadenza: **Il giorno del concerto**, **7 giorni dopo**, **14 giorni dopo** o **Scegli una data**.",
+          "Scegli i modi di pagamento: **Bonifico**, **Carta · link Stripe** e **Contanti**, con una nota facoltativa.",
+          "Tocca **Invia per email**, oppure mandalo su **WhatsApp** o con **Copia link**. **Anteprima** apre la pagina del cliente.",
+        ] },
+        { type: "p", text: "Il cliente riceve la stessa pagina del preventivo, nella lingua del preventivo, con il saldo in alto: l’importo e la scadenza, le tue coordinate bancarie con i pulsanti per copiarle e la causale, un pulsante **Paga con carta** per il tuo link Stripe e la nota sui contanti. Sotto resta il preventivo, con quanto è già stato ricevuto." },
+        { type: "list", title: "Cosa controlla prima il foglio", items: [
+          "Acconto non registrato: si chiede l’intero totale finché non tocchi **Segna acconto ricevuto** e scegli come è arrivato (bonifico, contanti, altro).",
+          "Nessuna coordinata bancaria né link Stripe: si offrono solo i contanti, e **Imposta i pagamenti** apre il listino.",
+          "Già richiesto: se non cambia nulla, rinviarlo è un promemoria (**Invia un promemoria**); se cambia, diventa **Invia l’aggiornamento**.",
+          "Nulla da pagare: nessuna richiesta, solo **Segna come pagato**.",
+          "Gig annullato: nessun pulsante **SALDO FINALE**. Nessuna email del cliente: condividi il link.",
+          "Un link Stripe a prezzo fisso, un gig in un’altra valuta o una scadenza già passata: te lo dice prima dell’invio.",
+        ] },
+        { type: "p", text: "Quando arrivano i soldi, tocca **Segna come pagato**: il gig risulta pagato (compensi, prontezza dello show e statistiche si aggiornano) e la pagina del cliente ringrazia. **Annulla** lo riapre." },
+        { type: "note", tone: "tip", text: "Aggiungi il tuo **Link di pagamento Stripe** nel listino, in **Branding e pagamento**. BandWith non riceve mai pagamenti: i soldi vanno direttamente dal cliente alla band." },
+        { type: "roles", rows: [
+          { role: "admin", text: "Invia il saldo e lo segna come pagato." },
+          { role: "member", text: "Non ne vede nulla: solo il proprio compenso, vedi [[what-members-see-of-money]]." },
+        ] },
       ],
     },
     {
@@ -1033,7 +1066,7 @@ const business: AreaText = {
     { q: "Come pago un sostituto o un membro?", a: "Pagalo fuori dall’app, poi segnalo come pagato nel foglio Compensi e pagamenti del gig o con SEGNA TUTTI COME PAGATI.", roles: ["admin"] },
     { q: "Un membro può cambiare il proprio compenso?", a: "No. Solo gli admin cambiano compensi e pagamenti.", roles: ["member"] },
     { q: "Perché non posso riportare una prova a preventivo?", a: "Prove e gig personali non sono mai stati preventivi, quindi non hanno TORNA A PREVENTIVO.", roles: ["admin"] },
-    { q: "I clienti possono pagare l’acconto online?", a: "Non ancora. I pulsanti Stripe e PayPal sono disattivati durante l’alpha; usa i dati del bonifico nel PDF.", roles: ["admin"] },
+    { q: "I clienti possono pagare l’acconto online?", a: "Con il tuo link di pagamento Stripe, da impostare nel listino, in Branding e pagamento: la pagina del cliente e il PDF lo mostrano e i soldi arrivano direttamente a te. Quando arrivano, tocca Acconto ricevuto sul preventivo accettato.", roles: ["admin"] },
     { q: "I membri non vedono i Contratti. C’è qualcosa che non va?", a: "No. I contratti contengono il cliente e il prezzo del gig, quindi solo gli admin possono aprirli.", roles: ["admin", "member"] },
   ],
 

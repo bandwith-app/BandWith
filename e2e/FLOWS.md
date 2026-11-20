@@ -39,6 +39,9 @@ check (`app.check`) on each screen it reaches.
 | … its Back (the screen's, the Duo rail's, system Back) leaves the form, then returns to the gig | `event-edit` | all |
 | … the new contract form fills the pane, its action at the bottom, no tab bar over it (iPad) | `event-edit` | full |
 | A gig scrolled to the end keeps Back (pinned top bar, or the Duo rail) on screen | `rider-stage` | all |
+| Final balance (168): sheet fits, amount, gig fee vs quote, other payments, email send + reminder, deposit not recorded, no payment setup, Mark as paid + Undo, cancelled gig, member sees nothing | `quote-balance` | full (sheet + member `@smoke`: all) |
+| Client page with a balance: amount, bank rows + Copy, Pay by card (https, noopener), paid state, client language | `quote-balance` | all |
+| Deposit (168): Deposit received sheet (amount, method, gig confirmed, timeline), client page names the deposit before Accept, how to pay it after (bank + Copy, reference, card link), deposit received state | `quote-balance` | full (client page `@smoke`: all) |
 
 ## Members, privacy, RSVP
 

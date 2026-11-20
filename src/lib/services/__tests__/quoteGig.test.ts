@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 vi.mock('../notifications', () => ({ notifyEventMembersCreated: (...a: unknown[]) => notify(...a) }));
 
-import { convertQuoteToEvent, gigFromAcceptedQuote, lineupFromQuoteMusicians } from '../quotes';
+import { convertQuoteToEvent, gigFromAcceptedQuote, lineupFromQuoteMusicians, recordQuoteDeposit } from '../quotes';
 
 const ME = '10000001-0000-4000-8000-000000000001';
 const U2 = '10000002-0000-4000-8000-000000000002';
@@ -75,7 +75,17 @@ const setup = (o: Setup = {}) => {
     if (table === 'profiles') return query(() => ({ data: { full_name: 'Leo M.' }, error: null }), log.profiles);
     return query(() => ({ data: null, error: null }), []);
   });
-  rpc.mockImplementation(async (fn: string) => (fn === 'bw_save_event_lineup' ? { error: o.lineupError ?? null } : { data: null, error: null }));
+  rpc.mockImplementation(async (fn: string, args: Record<string, unknown>) => {
+    if (fn === 'bw_save_event_lineup') return { error: o.lineupError ?? null };
+    // 168: the shared confirm step finds the quote's gig, as bw_quote_gig_id.
+    const gig = (quote.converted_to_event_id as string | null) || existing;
+    if (fn === 'bw_quote_confirm_gig') return { data: { event_id: gig, confirmed: !!gig }, error: null };
+    if (fn === 'bw_quote_deposit_received') {
+      if (!gig) return { data: { event_id: null, received: false, confirmed: false, needs_gig: args.p_received !== false }, error: null };
+      return { data: { event_id: gig, received: args.p_received !== false, confirmed: true, needs_gig: false }, error: null };
+    }
+    return { data: null, error: null };
+  });
   notify.mockResolvedValue({ error: null });
 };
 
@@ -188,10 +198,39 @@ describe('gigFromAcceptedQuote', () => {
     expect(inserted).toBe(1);
   });
 
-  it('confirms the tentative gig made with the quote', async () => {
+  it('confirms the tentative gig made with the quote, through the shared step', async () => {
     setup({ quote: { converted_to_event_id: 'e-tentative' } });
     const { data } = await gigFromAcceptedQuote('q1');
     expect(data).toEqual({ eventId: 'e-tentative', created: false });
     expect(inserted).toBe(0);
+    expect(rpc).toHaveBeenCalledWith('bw_quote_confirm_gig', { p_quote_id: 'q1' });
+    // The app no longer flips the status itself (168 does it, admin-checked).
+    expect(log.events.some((c) => did(c, 'update'))).toBe(false);
+  });
+});
+
+describe('recordQuoteDeposit (168)', () => {
+  it('records the deposit on the gig made with the quote, with its method', async () => {
+    setup({ quote: { converted_to_event_id: 'e-tentative' } });
+    const { data, error } = await recordQuoteDeposit('q1', { method: 'cash', amount: 960 });
+    expect(error).toBeNull();
+    expect(data).toEqual({ eventId: 'e-tentative', received: true, confirmed: true, created: false });
+    expect(rpc).toHaveBeenCalledWith('bw_quote_deposit_received', { p_quote_id: 'q1', p_method: 'cash', p_amount: 960, p_received: true });
+    expect(inserted).toBe(0);
+  });
+
+  it('no gig yet: makes it from the quote first, then records the deposit', async () => {
+    setup();
+    const { data } = await recordQuoteDeposit('q1', { method: 'transfer' });
+    expect(inserted).toBe(1);
+    expect(data).toEqual({ eventId: 'e-new-1', received: true, confirmed: true, created: true });
+    expect(rpc.mock.calls.filter((c) => c[0] === 'bw_quote_deposit_received')).toHaveLength(2);
+  });
+
+  it('undo never makes a gig', async () => {
+    setup();
+    const { data } = await recordQuoteDeposit('q1', { method: 'other', received: false });
+    expect(inserted).toBe(0);
+    expect(data?.received).toBe(false);
   });
 });

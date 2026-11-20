@@ -628,6 +628,10 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                   onQuotesChanged?.();
                 }}
                 onCreateGig={handleCreateGig}
+                onDepositChanged={(q, eventId) => {
+                  if (eventId) setQuotes(prev => prev.map(x => (x.id === q.id ? { ...x, convertedToEventId: eventId, eventId } : x)));
+                  onQuotesChanged?.();
+                }}
                 creatingGig={creatingGig}
                 onPrepareContract={onPrepareContract ? handlePrepareContract : undefined}
                 notify={(text, tone) => notify(text, tone === 'error' ? 'error' : 'success')}

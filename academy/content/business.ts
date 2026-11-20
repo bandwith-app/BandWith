@@ -128,7 +128,7 @@ const business: AreaModule = {
           ],
         },
         { type: 'p', text: 'The totals are worked out the same way on screen, in the PDF, on the client page and in the database: subtotal, minus the discount, plus VAT, then the deposit as a share of the total.' },
-        { type: 'note', tone: 'tip', text: "Online deposit links (**Card · Stripe**, **PayPal**) are shown but switched off: \"Payment links for clients turn on after the alpha. For now, use the bank transfer details.\"" },
+        { type: 'note', tone: 'tip', text: "Once the client accepts, the client page shows how to pay the deposit: your bank details with copy buttons, a reference such as Q-2026-0014 · Deposit, and your own Stripe payment link if you set one (the PDF prints it too). When the money arrives, tap **Deposit received** on the accepted quote and pick how it came: the gig is confirmed. **PayPal** stays switched off." },
       ],
     },
     {
@@ -457,6 +457,39 @@ const business: AreaModule = {
             { role: 'member', text: 'The gig appears on their calendar with a notification and their own fee only, see [[what-members-see-of-money]].' },
           ],
         },
+      ],
+    },
+    {
+      id: 'final-balance',
+      title: 'Ask the client for the final balance',
+      summary: 'After the yes, send the same quote page again with what is still due and how to pay it: bank transfer, your Stripe link or cash.',
+      roles: ['admin', 'member'],
+      kind: 'task',
+      keywords: ['balance', 'saldo', 'final payment', 'remaining amount', 'iban', 'stripe', 'payment link', 'paid', 'reminder'],
+      related: ['quote-to-gig', 'client-quote-page', 'branding-and-payment', 'what-members-see-of-money'],
+      body: [
+        { type: 'steps', title: 'Send the balance', items: [
+          'Open the gig made from the accepted quote and tap **FINAL BALANCE** on the fee card (or **Final balance** on the accepted quote).',
+          'Check the amount: the accepted total, minus the deposit received, minus **Other payments received**. If the gig fee differs from the quote, tap **Use the gig fee** or **Use the quote total**.',
+          'Pick the due date: **On the gig day**, **7 days after**, **14 days after** or **Pick a date**.',
+          'Choose the ways to pay: **Bank transfer**, **Card · Stripe link** and **Cash**, with an optional note.',
+          'Tap **Send by email**, or send it on **WhatsApp** or with **Copy link**. **Preview** opens the client page.',
+        ] },
+        { type: 'p', text: 'The client gets the same quote page, in the quote\'s language, with the balance on top: the amount and the due date, your bank details with copy buttons and the payment reference, a **Pay by card** button for your Stripe link, and the cash note. The quote stays below it, with what was already received.' },
+        { type: 'list', title: 'What the sheet checks first', items: [
+          'Deposit not recorded: the whole total is asked until you tap **Mark deposit received** and pick how it arrived (bank transfer, cash, other).',
+          'No bank details or Stripe link: only cash is offered, and **Set up payments** opens the pricing sheet.',
+          'Already asked: unchanged, sending again is a reminder (**Send a reminder**); changed, it becomes **Send the update**.',
+          'Nothing left to pay: no request, just **Mark as paid**.',
+          'Cancelled gig: no **FINAL BALANCE** button. No client email: share the link instead.',
+          'A Stripe link with a fixed price, a gig in another currency or a due date in the past: said before you send.',
+        ] },
+        { type: 'p', text: 'When the money arrives, tap **Mark as paid**: the gig is marked paid (payouts, show readiness and analytics follow) and the client page says thank you. **Undo** opens it again.' },
+        { type: 'note', tone: 'tip', text: 'Add your **Stripe payment link** in the pricing sheet, on **Branding & payment**. BandWith never takes payments: the money goes straight from the client to the band.' },
+        { type: 'roles', rows: [
+          { role: 'admin', text: 'Sends the balance and marks it paid.' },
+          { role: 'member', text: 'Sees none of it: only their own fee, see [[what-members-see-of-money]].' },
+        ] },
       ],
     },
     {
@@ -1041,7 +1074,7 @@ const business: AreaModule = {
     { q: 'How do I pay a deputy or a member?', a: 'Pay them outside the app, then mark them paid on the gig\'s Fee & payouts sheet or with MARK ALL AS PAID.', roles: ['admin'] },
     { q: 'Can a member change their own fee?', a: 'No. Only admins change fees and payouts.', roles: ['member'] },
     { q: 'Why can\'t I revert a rehearsal to a quote?', a: 'Rehearsals and personal gigs never were quotes, so they have no REVERT TO QUOTE.', roles: ['admin'] },
-    { q: 'Can clients pay the deposit online?', a: 'Not yet. The Stripe and PayPal buttons are switched off during the alpha; use the bank transfer details on the PDF.', roles: ['admin'] },
+    { q: 'Can clients pay the deposit online?', a: "Through your own Stripe payment link, set in the pricing sheet on Branding & payment: the client page and the PDF show it, and the money goes straight to you. When it arrives, tap Deposit received on the accepted quote.", roles: ['admin'] },
     { q: 'Members don\'t see Contracts. Is something wrong?', a: 'No. Contracts hold the client and the gig price, so only admins can open them.', roles: ['admin', 'member'] },
   ],
 
