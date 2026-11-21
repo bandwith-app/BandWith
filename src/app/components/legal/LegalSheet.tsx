@@ -10,8 +10,15 @@ export type LegalDoc = 'terms' | 'privacy' | 'help';
 
 /** Bundled with the app (public/legal) and served on the web domains too. */
 // Help is translated in the page itself and opens in the app's language;
-// the legal texts are English only.
-export const legalUrl = (doc: LegalDoc) => (doc === 'help' ? `/legal/help.html?lang=${getLocale()}` : `/legal/${doc}.html`);
+// the Privacy Policy has Italian and Spanish pages (privacy-it/-es.html);
+// the Terms and the other languages use the English page.
+const PRIVACY_LANGS = new Set(['it', 'es']);
+export const legalUrl = (doc: LegalDoc) => {
+  const l = getLocale();
+  if (doc === 'help') return `/legal/help.html?lang=${l}`;
+  if (doc === 'privacy' && PRIVACY_LANGS.has(l)) return `/legal/privacy-${l}.html`;
+  return `/legal/${doc}.html`;
+};
 
 /**
  * Terms / Privacy viewer. The documents are static pages shipped in the app
@@ -22,7 +29,6 @@ export const LegalSheet: React.FC<{ doc: LegalDoc | null; onClose: () => void }>
   const tr = useT();
   useCloseOnBack(!!doc, onClose);
   if (!doc || typeof document === 'undefined') return null;
-  // The documents themselves are English-only pages (public/legal).
   const title = doc === 'terms' ? tr('Terms of Service') : doc === 'help' ? tr('Help & support') : tr('Privacy Policy');
   return createPortal(
     <div
