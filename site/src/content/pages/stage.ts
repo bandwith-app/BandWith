@@ -55,8 +55,8 @@ export const page: ChannelPage = {
       { icon: 'music', title: 'Your key, your screen', body: 'Transpose for yourself with − key +. Nobody else’s chart changes.' },
       { icon: 'timer', title: 'A click for the eyes', body: 'Right for a count-in and a tempo reference, not for in-ears. It runs from the song’s BPM, and needs the internet: it isn’t sent over Bluetooth.', wide: true },
       { icon: 'play', title: 'The stage manager plays the songs', body: 'One admin’s laptop or tablet, cabled to the mixer, taps Stage manager: play audio here. It downloads the night’s audio and counts Audio ready, then plays with no internet. Play a song and every screen jumps to it with Now playing. Members’ phones never make a sound.', wide: true },
-      { icon: 'monitor', title: 'Full screen', body: 'Full screen hides the app’s bars and the phone’s status bar, and keeps the screen on. The leader, the click and the stage manager keep working.' },
-      { icon: 'book-open', title: 'Song only', body: 'The song alone: words, chords or the chart, with Prev, the click and Next. Arrow keys and Page Up/Down step too, so a page-turner pedal works.' },
+      { icon: 'monitor', title: 'Full screen is the song', body: 'Full screen opens Song only: one small line with the song’s number and title, then the words, chords or chart. No times, no tabs. Show everything brings it all back.' },
+      { icon: 'book-open', title: 'Hands on the instrument', body: 'At the bottom, only Prev, the click and Next. Arrow keys and Page Up/Down step too, so a page-turner pedal works. The leader and the stage manager keep working.' },
     ],
   },
   learn: [

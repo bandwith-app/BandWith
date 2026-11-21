@@ -24,6 +24,7 @@ const FEATURES: [string, string, RegExp[]][] = [
   ['stage manager (#223, #243)', 'stage', [/Stage manager: play audio here/, /Audio ready/, /Now playing/]],
   ['full screen (#228)', 'stage', [/Full screen/]],
   ['Song only and pedals (#236)', 'stage', [/Song only/, /page-turner pedal/i]],
+  ['Full screen is Song only, one way in (#245)', 'stage', [/Full screen opens Song only/, /number and title/]],
   ['calendar sync for everyone (#220)', 'calendar-gigs', [/Calendar sync/, /Apple/, /Google/, /Outlook/, /Add to calendar/]],
   ['venue search finds venues by name (#222)', 'calendar-gigs', [/by name/]],
   ['pending invites (#224)', 'people', [/Invited/, /Send again/, /Cancel invite/]],
