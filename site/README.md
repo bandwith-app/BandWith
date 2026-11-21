@@ -1,7 +1,9 @@
 # BandWith — product site (`site/`)
 
 Static multi-page site (Vite + TypeScript, no React), separate from the app.
-English only; the Academy (multilingual guide) stays in the app at `/academy/`.
+English (default, at `/`), Italian (`/it/`) and Spanish (`/es/`); the Academy
+(the guide, six languages) stays in the app at `/academy/` and opens in the
+page's language.
 
 ```bash
 pnpm dev:site      # http://127.0.0.1:5180
@@ -35,6 +37,41 @@ rack and the footer are generated from that list.
   reduced motion; everything works and reads without JavaScript animation.
 - Photos (`public/photos`): Unsplash, toned Ink → Lime; credits in the footer.
 
+## Languages
+
+- English is the source. Every page also exists at `/it/<path>` and
+  `/es/<path>`: `site/it/**` and `site/es/**` are generated stubs (gitignored,
+  written by `vite.config.ts`) and `tools/i18n.ts` turns the English HTML into
+  the translated page: `<html lang>`, canonical, `hreflang` alternates,
+  `og:locale`, site links under the prefix, Academy links with `?lang=`.
+- Translations: `src/i18n/dict/it.json`, `es.json` (English text → translation,
+  units and placeholders explained in `src/i18n/translate.ts`), plus
+  `dict/live.ts` for the capacity counter and the waitlist. On `/it/` and
+  `/es/`, `src/i18n/runtime.ts` translates what the scripts write (demos,
+  counters) with the same dictionary.
+- New or changed English text: `pnpm build:site` lists what has no
+  translation in `site/.i18n-missing.json`; `site/test/i18n.test.ts` fails on
+  any English left in the built pages, `e2e/site/i18n-runtime.spec.ts` on any
+  the scripts write.
+- EN · IT · ES switcher in the footer and the menu sheet
+  (`<!--@lang-switch-->`).
+- Language suggestion (`src/ui/langSuggest.ts`, rules in
+  `src/i18n/suggest.ts`): the country comes from `api/geo.js`, a Vercel edge
+  function reading Vercel's own `x-vercel-ip-country` (no third-party
+  lookup). Spanish-speaking countries → Spanish, Italy/San Marino/Vatican/
+  Ticino → Italian, English-speaking countries → English, only when that
+  differs from the page; anywhere else nothing. A yes, a no or the switcher is
+  remembered (`localStorage` `bw-site-lang`). `?geo=MX` or `?geo=CH-TI`
+  previews it; locally `BW_GEO=ES pnpm dev:site`.
+- Legal pages (the app's `/legal/privacy.html`, `/legal/terms.html`) are
+  English only.
+
+## Deploy
+
+`scripts/deploy-site.sh` builds a clean checkout and deploys `site/dist` to
+the Vercel project `bandwith-site`: a preview by default, `--prod` for
+https://bandwith.fun (manual release only).
+
 ## Beta capacity and forms
 
 - `src/core/capacity.ts` reads totals from the RPC `bw_capacity_status`
@@ -48,4 +85,6 @@ rack and the footer are generated from that list.
 ## Tests
 
 `site/test/*.test.ts` run with the app's vitest (`pnpm test:run`): channel
-list, Academy links and captures exist, and the Stage demo rules.
+list, Academy links and captures exist, the Stage demo rules and the
+languages. `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
+`e2e/site/`: the language suggestion and the translated scripts.

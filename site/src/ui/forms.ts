@@ -8,6 +8,8 @@
  * can be seen; in production it stays closed and sends nothing.
  */
 
+import { LANG } from '../i18n/runtime';
+
 type Reply = { ok: boolean; position?: number; already?: boolean; error?: string };
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -24,7 +26,7 @@ async function join(email: string): Promise<Reply> {
     const res = await fetch(`${URL_}/rest/v1/rpc/bw_join_waitlist`, {
       method: 'POST',
       headers: { apikey: KEY!, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_email: email, p_platform: '', p_locale: navigator.language ?? '', p_source: 'site' }),
+      body: JSON.stringify({ p_email: email, p_platform: '', p_locale: LANG !== 'en' ? LANG : (navigator.language ?? ''), p_source: 'site' }),
     });
     if (!res.ok) return { ok: false, error: res.status === 429 ? 'busy' : 'default' };
     return (await res.json()) as Reply;

@@ -10,46 +10,56 @@
  *   screens: served at /shots/ in dev, copied into dist/shots on build.
  */
 import { defineConfig, type Plugin } from 'vite';
-import { readFileSync, readdirSync, mkdirSync, copyFileSync, existsSync, createReadStream } from 'fs';
+import { readFileSync, readdirSync, mkdirSync, copyFileSync, existsSync, createReadStream, writeFileSync } from 'fs';
 import path from 'path';
-import { GENERATED } from './src/content/render';
+import { PAGES, fillPartials } from './tools/pages';
+import { STUB, finalizePage, pageOf, translatorFor, writeMirrors, type Misses } from './tools/i18n';
 
 const root = __dirname;
 const SHOTS = path.resolve(root, '../academy/public/shots');
 
-const PAGES: Record<string, string> = {
-  home: 'index.html',
-  calendarGigs: 'features/calendar-gigs/index.html',
-  quotesContracts: 'features/quotes-contracts/index.html',
-  money: 'features/money/index.html',
-  rehearsalsPolls: 'features/rehearsals-polls/index.html',
-  chat: 'features/chat/index.html',
-  songs: 'features/songs/index.html',
-  stage: 'features/stage/index.html',
-  stagePlotRider: 'features/stage-plot-rider/index.html',
-  people: 'features/people/index.html',
-  privacy: 'features/privacy/index.html',
-  devices: 'features/devices/index.html',
-  get: 'get/index.html',
-};
+// Pages and their shared HTML: tools/pages.ts.
+
+// Italian and Spanish copies of every page (/it/…, /es/…): stubs whose HTML is
+// the English page, translated by tools/i18n.ts.
+const MIRRORS = writeMirrors(root, Object.values(PAGES));
 
 function partials(): Plugin {
-  const read = (name: string) => readFileSync(path.resolve(root, 'partials', `${name}.html`), 'utf8');
-  // <!--#name--> = a file in site/partials; <!--@name--> = generated from the channel list;
-  // <!--@page:slug--> / <!--@page-head:slug--> = a channel page from content/pages/<slug>.ts.
-  const fill = (html: string) =>
-    html
-      .replace(/<!--#([a-z-]+)-->/g, (_, name: string) => read(name))
-      .replace(/<!--@([a-z-]+)(?::([a-z-]+))?-->/g, (m, name: string, arg?: string) => GENERATED[name]?.(arg) ?? m);
+  const misses: Misses = new Map();
+  let building = false;
   return {
     name: 'bw-partials',
-    transformIndexHtml: { order: 'pre', handler: (html) => fill(fill(html)) },
+    configResolved(c) { building = c.command === 'build'; },
+    configureServer(server) {
+      // A stub's page is its English file: reload when any page or partial changes.
+      server.watcher.on('change', (f) => { if (f.endsWith('.html')) server.ws.send({ type: 'full-reload' }); });
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html, ctx) => {
+        const { lang, enRel } = pageOf(path.relative(root, ctx.filename));
+        const source = html.includes(STUB) ? readFileSync(path.resolve(root, enRel), 'utf8') : html;
+        return finalizePage(fillPartials(source), enRel, lang, misses);
+      },
+    },
+    closeBundle() {
+      if (!building) return;
+      // For translators: every unit still in English on /it/ and /es/ (site/.i18n-missing.json).
+      const list = [...misses].map(([text, pages]) => ({ text, pages: [...pages].sort() }));
+      writeFileSync(path.resolve(root, '.i18n-missing.json'), JSON.stringify(list, null, 2) + '\n');
+      // Keys the built pages used (with e2e/site/i18n-runtime.spec.ts BW_I18N_DUMP: keys no page needs).
+      const hits = { it: [...translatorFor('it').hits], es: [...translatorFor('es').hits] };
+      writeFileSync(path.resolve(root, '.i18n-hits.json'), JSON.stringify(hits) + '\n');
+      if (list.length) this.warn(`${list.length} text units without a translation (site/.i18n-missing.json)`);
+    },
   };
 }
 
 function academyShots(): Plugin {
+  let outDir = path.resolve(root, 'dist');
   return {
     name: 'bw-academy-shots',
+    configResolved(c) { outDir = path.resolve(c.root, c.build.outDir); },
     configureServer(server) {
       server.middlewares.use('/shots', (req, res, next) => {
         const file = path.join(SHOTS, decodeURIComponent((req.url ?? '').split('?')[0]));
@@ -59,9 +69,35 @@ function academyShots(): Plugin {
       });
     },
     closeBundle() {
-      const out = path.resolve(root, 'dist/shots');
+      const out = path.join(outDir, 'shots');
       mkdirSync(out, { recursive: true });
       for (const f of readdirSync(SHOTS)) if (f.endsWith('.webp')) copyFileSync(path.join(SHOTS, f), path.join(out, f));
+    },
+  };
+}
+
+/**
+ * /api/geo: on Vercel, the edge function site/api/geo.js (copied into the
+ * build) answers the visitor's country from Vercel's own headers. Locally
+ * there is no country (BW_GEO=ES or BW_GEO=CH-TI pretends one; ?geo=ES on
+ * any page previews the popup without it).
+ */
+function geoApi(): Plugin {
+  let outDir = path.resolve(root, 'dist');
+  const answer = (_req: unknown, res: import('http').ServerResponse) => {
+    const [country = null, region = ''] = (process.env.BW_GEO ?? '').toUpperCase().split('-').filter(Boolean);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify({ country, region }));
+  };
+  return {
+    name: 'bw-geo',
+    configResolved(c) { outDir = path.resolve(c.root, c.build.outDir); },
+    configureServer(server) { server.middlewares.use('/api/geo', answer); },
+    configurePreviewServer(server) { server.middlewares.use('/api/geo', answer); },
+    closeBundle() {
+      mkdirSync(path.join(outDir, 'api'), { recursive: true });
+      copyFileSync(path.resolve(root, 'api/geo.js'), path.join(outDir, 'api/geo.js'));
     },
   };
 }
@@ -72,7 +108,7 @@ export default defineConfig({
   // The app's .env files (repo root): the site reads only VITE_SUPABASE_URL and
   // VITE_SUPABASE_PUBLISHABLE_KEY (public) for the beta counter and the waitlist.
   envDir: path.resolve(root, '..'),
-  plugins: [partials(), academyShots()],
+  plugins: [partials(), academyShots(), geoApi()],
   server: { port: 5180, host: '127.0.0.1' },
   preview: { port: 5181, host: '127.0.0.1' },
   build: {
@@ -81,7 +117,10 @@ export default defineConfig({
     target: 'es2022',
     assetsInlineLimit: 0,
     rollupOptions: {
-      input: Object.fromEntries(Object.entries(PAGES).map(([k, v]) => [k, path.resolve(root, v)])),
+      input: Object.fromEntries([
+        ...Object.entries(PAGES).map(([k, v]) => [k, path.resolve(root, v)]),
+        ...MIRRORS.map((rel) => [rel.replace(/\/?index\.html$/, '').replace(/\//g, '-'), path.resolve(root, rel)]),
+      ]),
     },
   },
 });

@@ -54,6 +54,7 @@ dist-android/
 
 # End-to-end suite (Playwright): demo build, results, report
 e2e/.app/
+e2e/.site/
 e2e/.results*/
 e2e/.report/
 e2e/RESUME.md
