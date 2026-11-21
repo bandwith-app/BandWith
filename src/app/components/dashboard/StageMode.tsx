@@ -544,9 +544,10 @@ export const StageMode: React.FC<StageModeProps> = ({
             split && 'col-start-1 row-start-2',
             // Split across two panes the times keep their own column.
             showLyrics && !split && 'hidden',
-            // The Regia's player needs the room on a short screen (the Duo closed or as a book):
-            // the stage manager runs the songs, the setlist must stay in view under the player.
-            regia?.on && !split && '[@media(max-height:760px)_and_(min-height:521px)]:hidden',
+            // The Regia's player needs the room on a short screen (the Duo closed or as a book) and on
+            // any phone held upright: the stage manager runs the songs, the setlist must stay in view
+            // under the player (a 412×815 Android phone had one row left, 11-20).
+            regia?.on && !split && '[@media(max-height:760px)_and_(min-height:521px)]:hidden [@media(max-width:599px)_and_(min-height:521px)]:hidden',
           )}
         >
         <ol

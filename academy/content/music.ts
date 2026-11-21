@@ -1426,7 +1426,7 @@ const music: AreaModule = {
       summary: "An admin's laptop or tablet, cabled to the mixer, plays each song's recording, and the band's screens move to the song that's playing.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["stage manager", "backing track", "audio", "mixer", "playback", "cable", "usb-c", "headphone jack", "adapter", "pa"],
+      keywords: ["stage manager", "backing track", "audio", "mixer", "playback", "cable", "usb-c", "headphone jack", "adapter", "pa", "offline", "no internet", "download"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1439,6 +1439,7 @@ const music: AreaModule = {
           items: [
             "Give each song a **Recording** (an audio file) in the song form. Songs without one still move the band, but nothing plays.",
             "Plug the device into the mixer (see the cable tips below) and turn on Do Not Disturb, so notifications don't come out of the PA.",
+            "Days before, with internet, open the gig: under the setlist, **Audio on this device** counts the songs already on this device (for example 3/10). Tap **Download audio** to get the rest. In the phone app it starts by itself when you open the app with internet in the 3 days before a confirmed gig. The files stay on the device and aren't in the phone's backup.",
             "Open the gig while online, open Stage mode and tap **Stage manager: play audio here**. The device downloads tonight's audio: a bar shows how far it is, and the ring around each song's ▶ fills up as it comes down.",
             "Wait until **Audio ready** counts every song (for example 10/10): from then on it plays with no internet. If a song can't be downloaded, the stage manager says so (see below).",
           ],
