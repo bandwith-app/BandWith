@@ -1217,8 +1217,8 @@ const music: AreaText = {
           items: [
             "Passa tra **Testo**, **Testo e accordi** e **Griglia accordi**. La scelta è la stessa del lettore del brano.",
             "Cambia la dimensione del testo con − e +.",
-            "Tocca il pulsante a pagina accanto a − e + (**Solo il brano**) per leggere solo il brano, a schermo intero: niente titolo, schede, orari o stato. In basso restano solo **Mostra tutto**, **Indietro**, il click e **Avanti**; anche le frecce e Pagina su/giù cambiano brano, per le pedaliere voltapagina.",
-            "**Mostra tutto** o Indietro riporta l’intera schermata live. Uscendo dalla Modalità palco, Solo il brano si spegne.",
+            "**Schermo intero** (il pulsante con i quattro angoli in alto) mostra solo il brano (**Solo il brano**), da qui o dalla scaletta: una riga piccola con numero e titolo, poi il brano; niente schede, orari o stato. In basso restano solo **Mostra tutto**, **Indietro**, il click e **Avanti**; anche le frecce e Pagina su/giù cambiano brano, per le pedaliere voltapagina.",
+            "**Mostra tutto** o Indietro riporta l’intera schermata live, sulla scheda dove eri. Uscendo dalla Modalità palco, Solo il brano si spegne.",
             "Trasponi solo per te con − tonalità +. Cambia solo il tuo schermo.",
             "**Le mie note** mostra le tue note private sopra la versione della band.",
             "Il programma della serata si nasconde per lasciare più spazio al brano.",
@@ -1279,7 +1279,7 @@ const music: AreaText = {
           items: [
             "La Modalità palco è disponibile per i gig della band in programma e, come Modalità live, per le prove della band in programma; non per preventivi, eventi passati o gig personali.",
             "Lo schermo resta acceso finché la Modalità palco è aperta.",
-            "**Schermo intero** (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. **Esci da schermo intero** o Indietro lo chiude; la scelta resta salvata sul dispositivo.",
+            "**Schermo intero** (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. Con testi o griglie in scaletta mostra solo il brano (**Solo il brano**); senza, la scaletta prende tutto lo schermo e **Esci da schermo intero** o Indietro lo chiude.",
             "Senza scaletta, dice “Nessuna scaletta collegata a questo gig.”",
             "Nelle app per telefono e tablet, la scaletta con testi e spartiti resta salvata sul dispositivo quando apri il gig, così la Modalità palco funziona senza internet. Uscendo dall’account viene cancellata.",
             "Senza internet e senza una copia sul dispositivo, dice “Offline: non è stato possibile caricare la scaletta.” con **Riprova**.",
@@ -1544,7 +1544,7 @@ const music: AreaText = {
           rows: [
             { devices: ["phone"], text: "Una colonna: intestazione, programma della serata, scaletta o brano, Indietro / Avanti in basso." },
             { devices: ["phoneLand", "duoClosed"], text: "In orizzontale (basso e largo), orari e passaggi stanno a sinistra e la scaletta o il brano a destra. Con un brano aperto, la colonna di sinistra mostra invece la scaletta, così puoi saltare a qualsiasi brano." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "La Modalità palco si apre accanto al pannello dell’elenco. **Schermo intero** le dà tutto lo schermo: allora orari e passaggi stanno nel primo pannello e la scaletta o il brano nel secondo, divisi al bordo dei pannelli così che niente finisca sulla piega. Con un brano aperto, la scaletta sta in una colonna accanto (nel primo pannello quando il dispositivo è aperto su entrambi). **Esci da schermo intero** riporta l’elenco. La scelta resta salvata sul dispositivo." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "La Modalità palco si apre accanto al pannello dell’elenco. **Schermo intero** mostra solo il brano su tutto lo schermo (**Solo il brano**). Una scaletta senza testi né griglie prende invece tutto lo schermo: orari e passaggi nel primo pannello e la scaletta nel secondo, divisi al bordo dei pannelli così che niente finisca sulla piega; **Esci da schermo intero** riporta l’elenco. Con un brano aperto, la scaletta sta in una colonna accanto (nel primo pannello quando il dispositivo è aperto su entrambi)." },
             { devices: ["duoClosed"], text: "**Apri modalità palco** si trova nella barra laterale; il giorno del gig è la sua azione principale. **Schermo intero** nasconde la barra in Modalità palco." },
             { devices: ["duoLaptop"], text: "Spia da palco: appoggia il dispositivo sul pavimento del palco come un monitor. La metà superiore mostra il contatore dei brani (**Brano … di …**), titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo. La metà inferiore ha grandi tasti **Indietro** e **Avanti** e l’avanzamento del set; i brani tolti per stasera vengono saltati e i loro segmenti di avanzamento sono attenuati. Anche frecce, Pagina su/giù e Spazio fanno avanzare, quindi funzionano i pedali voltapagine Bluetooth." },
             { devices: ["duoBook", "duoLaptop"], text: "**Solo il brano**: su un dispositivo aperto su due schermi, il brano e i suoi quattro pulsanti occupano lo schermo più largo, così niente cade sulla piega. Piegato come un portatile, il brano riempie la metà alta e la metà bassa ha solo **Mostra tutto**, **Indietro**, il click e **Avanti**." },
@@ -1621,7 +1621,7 @@ const music: AreaText = {
     { term: "Chart di iReal Pro", definition: "Una griglia accordi battuta per battuta con forma, tonalità, stile e tempo, importata da un link di iReal Pro.", see: "import-from-ireal-pro" },
     { term: "Vista del brano", definition: "Come viene mostrato un brano: Testo, Testo e accordi o Griglia accordi. Viene ricordata per dispositivo.", see: "read-a-song" },
     { term: "Griglia accordi", definition: "Solo gli accordi: le sezioni del brano con i loro accordi in caselle, oppure la chart iReal battuta per battuta.", see: "read-a-song" },
-    { term: "Solo il brano", definition: "La Modalità palco e la Modalità live con solo il brano sullo schermo, a schermo intero, e Indietro, il click e Avanti in basso.", see: "stage-mode" },
+    { term: "Solo il brano", definition: "Lo schermo intero della Modalità palco e della Modalità live: solo il brano, una riga piccola che lo nomina, e Mostra tutto, Indietro, il click e Avanti in basso.", see: "stage-mode" },
     { term: "Trasponi per la band", definition: "Spostare tonalità, chart e accordi di un brano per tutti, dal modulo del brano.", see: "transpose-and-tempo" },
     { term: "Le mie note", definition: "Note e file privati su un brano della band, visibili solo a te.", see: "my-notes-and-files" },
     { term: "Suggerimento", definition: "La proposta di un membro: un nuovo brano, una correzione al testo o agli accordi, oppure una nota per la band.", see: "review-song-suggestions" },

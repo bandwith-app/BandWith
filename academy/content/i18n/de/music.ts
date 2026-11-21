@@ -1217,8 +1217,8 @@ const music: AreaText = {
           items: [
             "Wechsle zwischen **Songtext**, **Text & Akkorde** und **Akkordchart**. Die Wahl gilt auch im Song-Reader.",
             "Ändere die Schriftgröße mit − und +.",
-            "Tippe auf den Seiten-Button neben − und + (**Nur der Song**), um nur den Song zu lesen, im Vollbild: kein Titel, keine Tabs, Zeiten oder Status. Unten bleiben nur **Alles anzeigen**, **Zurück**, der Klick und **Weiter**; auch die Pfeiltasten und Bild auf/ab wechseln den Song, für Blätterpedale.",
-            "**Alles anzeigen** oder Zurück holt den ganzen Live-Bildschirm zurück. Wer den Bühnenmodus verlässt, schaltet Nur der Song aus.",
+            "**Vollbild** (der Knopf mit den vier Ecken oben) zeigt nur den Song (**Nur der Song**), von hier oder aus der Setlist: eine kleine Zeile mit Nummer und Titel, dann der Song; keine Tabs, Zeiten oder Status. Unten bleiben nur **Alles anzeigen**, **Zurück**, der Klick und **Weiter**; auch die Pfeiltasten und Bild auf/ab wechseln den Song, für Blätterpedale.",
+            "**Alles anzeigen** oder Zurück holt den ganzen Live-Bildschirm zurück, auf dem Tab, auf dem du warst. Wer den Bühnenmodus verlässt, schaltet Nur der Song aus.",
             "Transponiere für dich mit − Tonart +. Nur dein Bildschirm ändert sich.",
             "**Meine Notizen** zeigt deine privaten Notizen über der Version der Band.",
             "Der Ablauf wird ausgeblendet, damit der Song mehr Platz hat.",
@@ -1279,7 +1279,7 @@ const music: AreaText = {
           items: [
             "Der Bühnenmodus gibt es für kommende Gigs der Band und, als Live-Modus, für kommende Proben der Band; nicht für Angebote, vergangene Termine oder persönliche Gigs.",
             "Der Bildschirm bleibt an, solange der Bühnenmodus offen ist.",
-            "**Vollbild** (der Knopf mit den vier Ecken oben, auf einem Dual-Screen-Gerät in der Seitenleiste) blendet die Leisten der App, die Seitenleiste und die Statusleiste des Telefons aus und hält den Bildschirm an. **Vollbild beenden** oder Zurück verlässt es; die Wahl bleibt auf dem Gerät gespeichert.",
+            "**Vollbild** (der Knopf mit den vier Ecken oben, auf einem Dual-Screen-Gerät in der Seitenleiste) blendet die Leisten der App, die Seitenleiste und die Statusleiste des Telefons aus und hält den Bildschirm an. Mit Texten oder Charts in der Setlist zeigt es nur den Song (**Nur der Song**); ohne bekommt die Setlist den ganzen Bildschirm, und **Vollbild beenden** oder Zurück verlässt es.",
             "Ohne Setlist steht dort „Diesem Gig ist keine Setlist zugeordnet.“",
             "In den Apps für Handy und Tablet wird die Setlist mit Songtexten und Charts beim Öffnen des Gigs auf dem Gerät gespeichert, sodass der Bühnenmodus ohne Internet funktioniert. Beim Abmelden wird sie entfernt.",
             "Ohne Internet und ohne Kopie auf dem Gerät steht dort „Offline: Die Setlist konnte nicht geladen werden.“ mit **Erneut versuchen**.",
@@ -1544,7 +1544,7 @@ const music: AreaText = {
           rows: [
             { devices: ["phone"], text: "Eine Spalte: Kopfzeile, Ablauf, Setlist oder Song, Zurück / Weiter unten." },
             { devices: ["phoneLand", "duoClosed"], text: "Quer (kurz und breit) stehen Zeiten und Schritte links und die Setlist oder der Song rechts. Bei geöffnetem Song zeigt die linke Spalte stattdessen die Setlist, damit du zu jedem Song springen kannst." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "Der Bühnenmodus öffnet sich neben dem Listenbereich. **Vollbild** gibt ihm den ganzen Bildschirm: Dann stehen Zeiten und Schritte im ersten Bereich und die Setlist oder der Song im zweiten, geteilt an der Kante der Bereiche, damit nichts auf dem Falz liegt. Bei geöffnetem Song steht die Setlist in einer Spalte daneben (im ersten Bereich, wenn das Gerät über beide geöffnet ist). **Vollbild beenden** holt die Liste zurück. Die Wahl bleibt auf dem Gerät gespeichert." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "Der Bühnenmodus öffnet sich neben dem Listenbereich. **Vollbild** zeigt nur den Song auf dem ganzen Bildschirm (**Nur der Song**). Eine Setlist ohne Texte oder Charts bekommt stattdessen den ganzen Bildschirm: Zeiten und Schritte im ersten Bereich und die Setlist im zweiten, geteilt an der Kante der Bereiche, damit nichts auf dem Falz liegt; **Vollbild beenden** holt die Liste zurück. Bei geöffnetem Song steht die Setlist in einer Spalte daneben (im ersten Bereich, wenn das Gerät über beide geöffnet ist)." },
             { devices: ["duoClosed"], text: "**Bühnenmodus öffnen** sitzt in der Leiste; am Gig-Tag ist es die Hauptaktion der Leiste. **Vollbild** blendet die Leiste im Bühnenmodus aus." },
             { devices: ["duoLaptop"], text: "Bodenmonitor: Stell das Gerät wie einen Monitor auf den Bühnenboden. Die obere Hälfte zeigt den Songzähler (**Song … von …**), Titel, Tonart, BPM, nächsten Song und die vergangene Zeit oder den Songtext. Die untere Hälfte hat große Felder **Zurück** und **Weiter** und den Fortschritt des Sets; für heute gestrichene Songs werden übersprungen und ihre Fortschrittsabschnitte abgedunkelt. Pfeiltasten, Bild auf/ab und Leertaste blättern ebenfalls, sodass Bluetooth-Pageturner-Pedale funktionieren." },
             { devices: ["duoBook", "duoLaptop"], text: "**Nur der Song**: Auf einem Gerät, das über beide Bildschirme geöffnet ist, nehmen der Song und seine vier Buttons den breiteren Bildschirm ein, damit nichts auf dem Falz liegt. Wie ein Laptop gefaltet füllt der Song die obere Hälfte, und die untere Hälfte hat nur **Alles anzeigen**, **Zurück**, den Klick und **Weiter**." },
@@ -1621,7 +1621,7 @@ const music: AreaText = {
     { term: "iReal-Pro-Chart", definition: "Ein Akkordchart Takt für Takt mit Form, Tonart, Stil und Tempo, importiert über einen iReal-Pro-Link.", see: "import-from-ireal-pro" },
     { term: "Songansicht", definition: "Wie ein Song angezeigt wird: Songtext, Text & Akkorde oder Akkordchart. Wird pro Gerät gemerkt.", see: "read-a-song" },
     { term: "Akkordchart", definition: "Nur die Akkorde: die Teile des Songs mit ihren Akkorden in Kästchen oder das iReal-Chart Takt für Takt.", see: "read-a-song" },
-    { term: "Nur der Song", definition: "Bühnen- und Live-Modus mit nur dem Song auf dem Bildschirm, im Vollbild, und Zurück, dem Klick und Weiter unten.", see: "stage-mode" },
+    { term: "Nur der Song", definition: "Das Vollbild von Bühnen- und Live-Modus: nur der Song, eine kleine Zeile mit seinem Namen, und Alles anzeigen, Zurück, der Klick und Weiter unten.", see: "stage-mode" },
     { term: "Für die Band transponieren", definition: "Tonart, Chart und Akkorde eines Songs für alle verschieben, über das Songformular.", see: "transpose-and-tempo" },
     { term: "Meine Notizen", definition: "Private Notizen und Dateien zu einem Song der Band, nur für dich sichtbar.", see: "my-notes-and-files" },
     { term: "Vorschlag", definition: "Der Vorschlag eines Mitglieds: ein neuer Song, eine Korrektur an Songtext oder Akkorden oder eine Notiz für die Band.", see: "review-song-suggestions" },

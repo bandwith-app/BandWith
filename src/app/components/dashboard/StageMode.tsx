@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, ScrollText, StickyNote, X } from '@/app/components/icons';
+import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from '@/app/components/ui/SongViews';
@@ -342,12 +342,23 @@ export const StageMode: React.FC<StageModeProps> = ({
     setFull(false);
     void exitBrowserFullScreen();
   };
+  // Full screen with songs to read is Song only (11-20, the band's ask): only
+  // the song, nothing above it. The chrome-less setlist stays for setlists
+  // with no lyrics or charts; an older choice of it gives way to Song only.
+  useEffect(() => {
+    if (full && hasSong) setFull(false);
+  }, [full, hasSong, setFull]);
   const toggleFull = () => {
-    haptic.tap();
     if (full) {
+      haptic.tap();
       exitFull();
       return;
     }
+    if (hasSong) {
+      openSongOnly();
+      return;
+    }
+    haptic.tap();
     setFull(true);
     // The browser's own full screen needs this tap (web build, iPad Safari).
     void requestBrowserFullScreen();
@@ -356,18 +367,27 @@ export const StageMode: React.FC<StageModeProps> = ({
   useBrowserFullScreenExit(full || songOnlyOn, () => {
     fsLeftAt.current = Date.now();
     setFull(false);
-    setSongOnly(false);
+    leaveSongOnly();
   });
   // System Back (Android Back, Escape, the web's Back) leaves full screen before Stage mode.
   useSystemBack(full, exitFull);
+  // Song only opened from the setlist goes back to the setlist.
+  const songOnlyFrom = useRef<StageView | null>(null);
+  const leaveSongOnly = () => {
+    setSongOnly(false);
+    if (songOnlyFrom.current && songOnlyFrom.current !== view) setView(songOnlyFrom.current);
+    songOnlyFrom.current = null;
+  };
   const openSongOnly = () => {
     haptic.tap();
+    songOnlyFrom.current = view;
+    if (view !== 'song') setView('song');
     setSongOnly(true);
     // The browser's own full screen needs this tap (web build, iPad Safari).
     void requestBrowserFullScreen();
   };
   const showAll = () => {
-    setSongOnly(false);
+    leaveSongOnly();
     if (!full) void exitBrowserFullScreen();
   };
   // …and Song only before full screen.
@@ -748,15 +768,6 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span className="flex-1 min-w-0 bw-h2 normal-case leading-[1.15] truncate" style={{ color: accentColor }} aria-live="polite">
                   {lyricsSong.title}
                 </span>
-                <button
-                  type="button"
-                  onClick={openSongOnly}
-                  aria-label={t('Song only')}
-                  title={t('Song only')}
-                  className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0 [&_svg]:w-5 [&_svg]:h-5"
-                >
-                  <ScrollText aria-hidden />
-                </button>
                 <button
                   type="button"
                   disabled={lyricsSize.min}

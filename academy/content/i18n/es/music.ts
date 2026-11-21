@@ -1088,8 +1088,8 @@ const music: AreaText = {
           items: [
             "Cambia entre **Letra**, **Letra y acordes** y **Cuadro de acordes**. La elección se comparte con el lector de canciones.",
             "Cambia el tamaño del texto con − y +.",
-            "Toca el botón de página junto a − y + (**Solo la canción**) para leer solo la canción, a pantalla completa: sin título, pestañas, horarios ni estado. Abajo quedan solo **Mostrar todo**, **Anterior**, el clic y **Siguiente**; las flechas y Re Pág/Av Pág también cambian de canción, para los pedales pasapáginas.",
-            "**Mostrar todo** o Atrás devuelve toda la pantalla en vivo. Al salir del Modo escenario, Solo la canción se apaga.",
+            "**Pantalla completa** (el botón de las cuatro esquinas arriba) muestra solo la canción (**Solo la canción**), desde aquí o desde la setlist: una línea pequeña con su número y título, y luego la canción; sin pestañas, horarios ni estado. Abajo quedan solo **Mostrar todo**, **Anterior**, el clic y **Siguiente**; las flechas y Re Pág/Av Pág también cambian de canción, para los pedales pasapáginas.",
+            "**Mostrar todo** o Atrás devuelve toda la pantalla en vivo, en la pestaña donde estabas. Al salir del Modo escenario, Solo la canción se apaga.",
             "Transpón para ti con − tono +. Solo cambia tu pantalla.",
             "**Mis notas** muestra tus notas privadas sobre la versión de la banda.",
             "El horario se oculta para dejar más sitio a la canción.",
@@ -1150,7 +1150,7 @@ const music: AreaText = {
           items: [
             "El Modo escenario está disponible en los próximos conciertos de la banda y, como Modo en vivo, en los próximos ensayos de la banda; no en presupuestos, eventos pasados ni conciertos personales.",
             "La pantalla no se apaga mientras el Modo escenario está abierto.",
-            "**Pantalla completa** (el botón de las cuatro esquinas arriba, en la barra lateral en un dispositivo de doble pantalla) oculta las barras de la app, la barra lateral y la barra de estado del teléfono, y mantiene la pantalla encendida. **Salir de pantalla completa** o Atrás la cierra; la elección se guarda en el dispositivo.",
+            "**Pantalla completa** (el botón de las cuatro esquinas arriba, en la barra lateral en un dispositivo de doble pantalla) oculta las barras de la app, la barra lateral y la barra de estado del teléfono, y mantiene la pantalla encendida. Con letras o cuadros en la setlist muestra solo la canción (**Solo la canción**); sin ellos, la setlist ocupa toda la pantalla y **Salir de pantalla completa** o Atrás la cierra.",
             "Sin setlist, dice «Este concierto no tiene setlist.»",
             "En las apps de móvil y tablet, la setlist con letras y cifrados se guarda en el dispositivo cuando abres el concierto, así que el Modo escenario funciona sin internet. Al cerrar sesión se borra.",
             "Sin internet y sin copia en el dispositivo, dice «Sin conexión: no se pudo cargar la setlist.» con **Reintentar**.",
@@ -1404,7 +1404,7 @@ const music: AreaText = {
           rows: [
             { devices: ["phone"], text: "Una columna: cabecera, horario, setlist o canción, y Anterior / Siguiente abajo." },
             { devices: ["phoneLand", "duoClosed"], text: "En horizontal (bajo y ancho), los horarios y los pasos quedan a la izquierda y la setlist o la canción a la derecha. Con una canción abierta, la columna izquierda muestra en su lugar la setlist, para que puedas saltar a cualquier canción." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "El Modo escenario se abre junto al panel de la lista. **Pantalla completa** le da toda la pantalla: entonces los horarios y los pasos quedan en el primer panel y la setlist o la canción en el segundo, divididos en el borde de los paneles para que nada quede sobre la bisagra. Con una canción abierta, la setlist queda en una columna a su lado (en el primer panel cuando el dispositivo está abierto sobre los dos). **Salir de pantalla completa** vuelve a mostrar la lista. La elección se guarda en el dispositivo." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "El Modo escenario se abre junto al panel de la lista. **Pantalla completa** muestra solo la canción en toda la pantalla (**Solo la canción**). Una setlist sin letras ni cuadros ocupa en cambio toda la pantalla: los horarios y los pasos en el primer panel y la setlist en el segundo, divididos en el borde de los paneles para que nada quede sobre la bisagra; **Salir de pantalla completa** vuelve a mostrar la lista. Con una canción abierta, la setlist queda en una columna a su lado (en el primer panel cuando el dispositivo está abierto sobre los dos)." },
             { devices: ["duoClosed"], text: "**Abrir modo escenario** está en la barra lateral; el día del concierto es la acción principal de la barra. **Pantalla completa** oculta la barra en el Modo escenario." },
             { devices: ["duoLaptop"], text: "Monitor de suelo: pon el dispositivo de pie en el suelo del escenario como un monitor. La mitad de arriba muestra el contador de canciones (**Canción … de …**), el título, el tono, los BPM, la siguiente canción y el tiempo transcurrido, o la letra. La mitad de abajo tiene grandes botones **Anterior** y **Siguiente** y el progreso del set; las canciones quitadas para esta noche se saltan y sus segmentos de progreso se atenúan. Las flechas, Re Pág/Av Pág y la barra espaciadora también avanzan, así que funcionan los pedales pasapáginas Bluetooth." },
             { devices: ["duoBook", "duoLaptop"], text: "**Solo la canción**: en un dispositivo abierto sobre las dos pantallas, la canción y sus cuatro botones ocupan la pantalla más ancha, así nada queda en el pliegue. Doblado como un portátil, la canción llena la mitad de arriba y la mitad de abajo tiene solo **Mostrar todo**, **Anterior**, el clic y **Siguiente**." },
@@ -1481,7 +1481,7 @@ const music: AreaText = {
     { term: "Cifrado de iReal Pro", definition: "Un cifrado compás a compás con forma, tono, estilo y tempo, importado desde un enlace de iReal Pro.", see: "import-from-ireal-pro" },
     { term: "Vista de la canción", definition: "Cómo se muestra una canción: Letra, Letra y acordes o Cuadro de acordes. Se recuerda en cada dispositivo.", see: "read-a-song" },
     { term: "Cuadro de acordes", definition: "Solo los acordes: las secciones de la canción con sus acordes en casillas, o el cifrado de iReal compás a compás.", see: "read-a-song" },
-    { term: "Solo la canción", definition: "El Modo escenario y el Modo en vivo con solo la canción en pantalla, a pantalla completa, y Anterior, el clic y Siguiente abajo.", see: "stage-mode" },
+    { term: "Solo la canción", definition: "La pantalla completa del Modo escenario y del Modo en vivo: solo la canción, una línea pequeña que la nombra, y Mostrar todo, Anterior, el clic y Siguiente abajo.", see: "stage-mode" },
     { term: "Transponer para la banda", definition: "Cambiar el tono, el cifrado y los acordes de una canción para todos, desde el formulario de la canción.", see: "transpose-and-tempo" },
     { term: "Mis notas", definition: "Notas y archivos privados en una canción de la banda, que solo ves tú.", see: "my-notes-and-files" },
     { term: "Sugerencia", definition: "La propuesta de un miembro: una canción nueva, una corrección de letra o de acordes, o una nota para la banda.", see: "review-song-suggestions" },

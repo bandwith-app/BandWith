@@ -11,7 +11,7 @@ import { cn } from '@/app/components/ui/utils';
 
 /**
  * Song only (11-20): the current song, clean and full screen, with no other
- * information: the words, the words with their chords, or the chord chart
+ * information but one small line naming it: the words, the words with their chords, or the chord chart
  * (the player's song view). At the bottom only Show everything, Prev, the
  * click and Next. Stage mode puts it over itself (a layer of its own,
  * portalled to <body>); the Laptop pose has its own (FloorWedgeMode).
@@ -112,10 +112,17 @@ export const StageSongOnly: React.FC<{
         className={cn('flex flex-col flex-1 min-h-0 gap-3', !pane && 'w-full max-w-[900px] mx-auto')}
         style={pane ? { marginLeft: pane.left, width: pane.width } : undefined}
       >
-        <div ref={bodyRef} data-song-only-body className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4">
-          <span className="sr-only" aria-live="polite">
-            {t('Song {index} of {count}', { index: index + 1, count })} · {title}
+        {/* Which song this is, in one small line: the song itself takes the rest. */}
+        <p className="flex items-baseline gap-2 shrink-0 px-4 min-w-0" aria-live="polite">
+          <span className="sr-only">{t('Song {index} of {count}', { index: index + 1, count })} · </span>
+          <span aria-hidden className="bw-num text-[13px] font-medium shrink-0 text-white/50">
+            {String(index + 1).padStart(2, '0')}/{String(count).padStart(2, '0')}
           </span>
+          <span className="bw-label-md normal-case truncate min-w-0" style={{ color: accent }}>
+            {title}
+          </span>
+        </p>
+        <div ref={bodyRef} data-song-only-body className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4">
           <TransposeProvider semitones={semitones} songKey={songKey}>
             <SongBody
               song={song}

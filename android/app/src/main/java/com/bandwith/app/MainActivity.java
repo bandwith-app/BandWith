@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NotificationSettingsPlugin.class);
         registerPlugin(ApkUpdatePlugin.class);
         registerPlugin(AudioOutputPlugin.class);
+        registerPlugin(BackdropPlugin.class);
         super.onCreate(savedInstanceState);
         PrivacyPlugin.apply(this);
     }

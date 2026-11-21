@@ -1227,8 +1227,8 @@ const music: AreaModule = {
           items: [
             "Switch **Lyrics**, **Lyrics & chords** and **Chord chart**. The choice is shared with the song reader.",
             "Change the text size with − and +.",
-            "Tap the page button beside − and + (**Song only**) to read the song alone, full screen: no title, tabs, times or status. At the bottom there are only **Show everything**, **Prev**, the click and **Next**; arrow keys and Page Up/Down also step, for page-turner pedals.",
-            "**Show everything** or Back brings the whole live screen back. Leaving Stage mode turns Song only off.",
+            "**Full screen** (the four-corners button at the top) shows the song alone (**Song only**), from here or from the setlist: one small line with its number and title, then the song; no tabs, times or status. At the bottom there are only **Show everything**, **Prev**, the click and **Next**; arrow keys and Page Up/Down also step, for page-turner pedals.",
+            "**Show everything** or Back brings the whole live screen back, on the tab you were on. Leaving Stage mode turns Song only off.",
             "Transpose for yourself with − key +. Only your screen changes.",
             "**My notes** shows your private notes over the band's version.",
             "The run of show hides to give the song more room.",
@@ -1289,7 +1289,7 @@ const music: AreaModule = {
           items: [
             "Stage mode is offered for upcoming band gigs and, as Live mode, for upcoming band rehearsals; not for quotes, past events or personal gigs.",
             "The screen stays awake while Stage mode is open.",
-            "**Full screen** (the four-corners button at the top, in the rail on a dual-screen device) hides the app's bars, the side rail and the phone's status bar, and keeps the screen on. **Exit full screen** or Back leaves it; the choice is kept on the device.",
+            "**Full screen** (the four-corners button at the top, in the rail on a dual-screen device) hides the app's bars, the side rail and the phone's status bar, and keeps the screen on. With lyrics or charts in the setlist it shows the song alone (**Song only**); with none, the setlist gets the whole screen and **Exit full screen** or Back leaves it.",
             "With no setlist, it says “No setlist attached to this gig.”",
             "In the phone and tablet apps, the setlist with lyrics and charts is kept on the device when you open the gig, so Stage mode works without internet. Signing out removes it.",
             "Without internet and no copy on the device, it says “Offline: the setlist couldn’t be loaded.” with **Try again**.",
@@ -1554,7 +1554,7 @@ const music: AreaModule = {
           rows: [
             { devices: ["phone"], text: "One column: header, run of show, setlist or song, Prev / Next at the bottom." },
             { devices: ["phoneLand", "duoClosed"], text: "On its side (short and wide), the times and steps sit on the left and the setlist or song on the right. With a song open, the left column shows the setlist instead, so you can jump to any song." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "Stage mode opens beside the list pane. **Full screen** gives it the whole screen: then the times and steps sit on the first pane and the setlist or song on the second, split at the panes' edge so nothing sits on the fold. With a song open, the setlist sits in a column beside it (on the first pane when the device is open over both). **Exit full screen** brings the list back. The choice is kept on the device." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "Stage mode opens beside the list pane. **Full screen** shows the song alone on the whole screen (**Song only**). A setlist with no lyrics or charts gets the whole screen instead: the times and steps on the first pane and the setlist on the second, split at the panes' edge so nothing sits on the fold; **Exit full screen** brings the list back. With a song open, the setlist sits in a column beside it (on the first pane when the device is open over both)." },
             { devices: ["duoClosed"], text: "**Open stage mode** is in the rail; on gig day it is the rail's main action. **Full screen** hides the rail in Stage mode." },
             { devices: ["duoLaptop"], text: "Floor wedge: stand the device on the stage floor like a monitor. The top half shows the song counter (**Song … of …**), title, key, BPM, next song and elapsed time, or the lyrics. The bottom half has big **Prev** and **Next** pads and the set's progress; songs struck off for tonight are skipped and their progress segments dimmed. Arrow keys, Page Up/Down and Space also step, so Bluetooth page-turner pedals work." },
             { devices: ["duoBook", "duoLaptop"], text: "**Song only**: on a device open over both panes the song and its four buttons take the wider pane, so nothing sits on the fold. Folded like a laptop, the song fills the top half and the bottom half has only **Show everything**, **Prev**, the click and **Next**." },
@@ -1631,7 +1631,7 @@ const music: AreaModule = {
     { term: "iReal Pro chart", definition: "A bar-by-bar chord chart with form, key, style and tempo, imported from an iReal Pro link.", see: "import-from-ireal-pro" },
     { term: "Song view", definition: "How a song is shown: Lyrics, Lyrics & chords or Chord chart. Remembered per device.", see: "read-a-song" },
     { term: "Chord chart", definition: "The chords only: the song's sections with their chords in boxes, or the iReal chart bar by bar.", see: "read-a-song" },
-    { term: "Song only", definition: "Stage and Live mode with just the song on screen, full screen, and Prev, the click and Next at the bottom.", see: "stage-mode" },
+    { term: "Song only", definition: "Stage and Live mode's full screen: just the song, one small line naming it, and Show everything, Prev, the click and Next at the bottom.", see: "stage-mode" },
     { term: "Transpose for the band", definition: "Moving a song's key, chart and chords for everyone, from the song form.", see: "transpose-and-tempo" },
     { term: "My notes", definition: "Private notes and files on a band song, visible only to you.", see: "my-notes-and-files" },
     { term: "Suggestion", definition: "A member's proposal: a new song, a lyrics or chords correction, or a note for the band.", see: "review-song-suggestions" },
@@ -1682,7 +1682,7 @@ const music: AreaModule = {
     },
     {
       id: "music-song-only",
-      how: "As for music-rehearsal-live, then tap Song only (the page button beside − and +) on Paper Boats.",
+      how: "As for music-rehearsal-live, then tap Full screen (the four-corners button at the top) on Paper Boats.",
       role: "admin",
       viewport: "phone",
     },

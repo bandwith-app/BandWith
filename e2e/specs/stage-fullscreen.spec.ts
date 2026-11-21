@@ -5,9 +5,10 @@ import { openWith } from '../support/rehearsal';
 /**
  * Real full screen for gig Stage mode and rehearsal Live mode
  * (src/lib/stageChrome.ts), asked by the band after rehearsals: one tap hides
- * the app's chrome (Duo rail, list pane, nav) and the system bars, the
- * setlist, chords and notes keep working, and Exit full screen or system
- * Back leaves it. Every chart draws its markers as named symbols
+ * the app's chrome (Duo rail, list pane, nav) and the system bars, and Exit
+ * full screen or system Back leaves it. With lyrics or charts in the setlist
+ * Full screen is the song alone (Song only, stage-song-only.spec.ts); the
+ * chrome-less setlist below is for setlists with none. Every chart draws its markers as named symbols
  * (src/lib/musicSymbols.ts), never raw "%", "{" or "N1".
  */
 
@@ -91,7 +92,7 @@ test.describe('Stage and Live mode full screen', () => {
     await app.check('gig Stage mode, full screen left');
   });
 
-  test('@smoke rehearsal Live mode full screen: the chart draws named symbols, no raw markers', async ({ app }) => {
+  test('@smoke rehearsal Live mode, in the song view and full screen: the chart draws named symbols, no raw markers', async ({ app }) => {
     test.slow();
     await openWith(app, (db, ids) => {
       const reh = ids.byTitle('Weekly rehearsal');
@@ -120,10 +121,8 @@ test.describe('Stage and Live mode full screen', () => {
     await app.page.evaluate(() => localStorage.setItem('bw-song-view', 'structure'));
     await openEvent(app, SEED.rehearsalTomorrow);
     await openLive(app, 'rehearsal', SEED.rehearsalTomorrow);
-    await app.button('Full screen', { exact: true }).first().click();
-    await app.settle();
-    await expectFullScreen(app, 'rehearsal', SEED.rehearsalTomorrow);
 
+    // The chart in the song view (with its legend)…
     if (isLaptop()) {
       await app.page.getByRole('region', { name: app.t('Song controls') }).getByRole('button', { name: app.t('Lyrics'), exact: true }).click();
     } else {
@@ -142,7 +141,7 @@ test.describe('Stage and Live mode full screen', () => {
     await expect(sheet.getByRole('img', { name: app.t('Ending {n}', { n: 2 }), exact: true }).first()).toBeAttached();
     const text = (await sheet.innerText()).replace(/\s+/g, ' ');
     expect(text).not.toMatch(/%|[{}<>]|\bN[12]\b|\bSegno\b/);
-    await app.check('rehearsal Live mode, full screen chart');
+    await app.check('rehearsal Live mode, chart');
 
     // The legend: every symbol sits beside its meaning, never on top of it
     // ("D.C. al Coda" is wider than an icon). The Laptop pose's floor wedge is
@@ -162,6 +161,21 @@ test.describe('Stage and Live mode full screen', () => {
       });
       expect(overlaps).toEqual([]);
     }
+
+    // …and full screen, where the song is all there is (Song only): the same named symbols.
+    await app.button('Full screen', { exact: true }).first().click();
+    await app.settle();
+    await expect.poll(() => isFull(app)).toBe(true);
+    const full = isLaptop()
+      ? app.page.getByRole('region', { name: app.t('Now playing') })
+      : app.page.getByRole('dialog', { name: app.t('Song only: {title}', { title: 'Harbor Lights' }) });
+    const fullChart = full.locator('[data-chart-grid]').first();
+    await expect(fullChart).toBeVisible();
+    for (const name of ['Repeat start', 'Segno', 'Coda', 'No chord']) {
+      await expect(full.getByRole('img', { name: app.t(name), exact: true }).first()).toBeAttached();
+    }
+    expect((await full.innerText()).replace(/\s+/g, ' ')).not.toMatch(/%|[{}<>]|\bN[12]\b|\bSegno\b/);
+    await app.check('rehearsal Live mode, full screen chart');
 
     await systemBack(app);
     await app.settle();

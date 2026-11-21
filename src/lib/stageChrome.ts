@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Capacitor, SystemBars } from '@capacitor/core';
+import { syncAndroidBackdrop } from './androidBackdrop';
 
 const KEY = 'bw-stage-bar-hidden-v1';
 const CHANGED = 'bw:stage-bar';
@@ -70,9 +71,11 @@ export function useStageFullScreen(on: boolean): void {
     root.setAttribute(STAGE_FULL_ATTR, '');
     const native = Capacitor.isNativePlatform();
     if (native) void SystemBars.hide().catch(() => {});
+    syncAndroidBackdrop();
     return () => {
       root.removeAttribute(STAGE_FULL_ATTR);
       if (native) void SystemBars.show().catch(() => {});
+      syncAndroidBackdrop();
     };
   }, [on]);
 }
