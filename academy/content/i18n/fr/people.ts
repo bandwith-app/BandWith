@@ -302,7 +302,7 @@ const people: AreaText = {
         },
         { type: "p", text: "Un membre qui ouvre sa propre ligne voit « Ton cachet habituel dans ce groupe : {fee} » s’il en a un." },
         { type: "p", text: "Ton instrument principal se trouve dans ton profil : touche ton avatar, puis **Modifier** sur ta carte de profil, et choisis-le sous **Instrument / rôle principal**. Il s’affiche sur la carte de ton espace compte." },
-        { type: "p", text: "L’instrument à côté de chaque nom sur **Membres du groupe** est celui enregistré pour cette personne dans ce groupe. La carte **Qui remplace qui** des remplaçants regroupe le groupe selon ces instruments." },
+        { type: "p", text: "L’instrument à côté de chaque nom sur **Membres du groupe** est celui enregistré pour cette personne dans ce groupe. La carte **Qui remplace qui** des remplaçants regroupe le groupe selon ces instruments. Une petite icône montre chaque instrument (guitare, basse, batterie, chant, claviers, sax, trompette, violon, violoncelle, percussions et une note pour tout le reste) sur les lignes des membres, la page de chaque membre, les listes de remplaçants et **Trouver un remplaçant**." },
         { type: "note", tone: "privacy", text: "Les cachets habituels suivent la règle de l’argent : les admins voient ceux de tout le monde, un membre ne voit que le sien." },
       ],
     },

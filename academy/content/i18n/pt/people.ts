@@ -302,7 +302,7 @@ const people: AreaText = {
         },
         { type: 'p', text: 'Um membro que abre a própria linha vê “Seu cachê padrão nesta banda: {fee}” quando tem um.' },
         { type: 'p', text: 'O seu instrumento principal fica no seu perfil: toque no seu avatar, depois em **Editar** no cartão do perfil, e escolha-o em **Instrumento / função principal**. Ele aparece no cartão do seu perfil e conta.' },
-        { type: 'p', text: 'O instrumento ao lado de cada nome em **Membros da banda** é o que está guardado para aquela pessoa nesta banda. O cartão **Quem cobre o quê** dos substitutos agrupa a banda por esses instrumentos.' },
+        { type: 'p', text: 'O instrumento ao lado de cada nome em **Membros da banda** é o que está guardado para aquela pessoa nesta banda. O cartão **Quem cobre o quê** dos substitutos agrupa a banda por esses instrumentos. Um pequeno ícone mostra cada instrumento (guitarra, baixo, bateria, voz, teclados, sax, trompete, violino, violoncelo, percussão e uma nota para todo o resto) nas linhas dos membros, na página de cada membro, nas listas de substitutos e em **Achar substituto**.' },
         { type: 'note', tone: 'privacy', text: 'Os cachês padrão seguem a regra do dinheiro: os admins veem os de todos, um membro vê só o próprio.' },
       ],
     },
