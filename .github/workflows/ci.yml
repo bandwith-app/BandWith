@@ -100,6 +100,9 @@ jobs:
       - run: pnpm e2e --shard=${{ matrix.shard }}/3
         env:
           E2E_SKIP_LIFECYCLES: 1
+      # Product site (site/): languages, the language suggestion, translated scripts.
+      - run: pnpm e2e:site
+        if: matrix.shard == 1
       - name: Upload report and traces
         if: failure()
         uses: actions/upload-artifact@v4
@@ -108,6 +111,7 @@ jobs:
           path: |
             e2e/.report/
             e2e/.results/
+            e2e/.results-site/
           retention-days: 7
           # Dot folders: upload-artifact@v4 skips hidden files unless asked.
           include-hidden-files: true

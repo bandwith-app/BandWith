@@ -1,4 +1,8 @@
+import { t } from '../i18n/runtime';
 import { FIELDS, ROLES, WHO, hiddenWhy, type Role } from '../content/roles';
+
+/** Read out on a redacted row (whole sentences, so the page's dictionary has them). */
+const NOT_SENT: Record<Role, string> = { admin: 'Not sent to admins', member: 'Not sent to members', deputy: 'Not sent to deputies' };
 
 /**
  * "Same gig, three views": one gig card, a switch for Admin / Member /
@@ -49,11 +53,11 @@ export function initRoles(root: HTMLElement | null, reduce: boolean) {
       const state = !val ? 'off' : wait ? 'later' : 'on';
       const text = wait || val || '';
       const before = el.dataset.state;
-      const changed = before !== state || (text && v.textContent !== text);
+      const changed = before !== state || (text && v.textContent !== t(text));
       el.dataset.state = state;
       if (state === 'on') n++;
       x.textContent = hiddenWhy(f, role);
-      sr.textContent = state === 'off' ? `Not sent to ${WHO[role].name.toLowerCase()}s` : '';
+      sr.textContent = state === 'off' ? NOT_SENT[role] : '';
       if (text) v.textContent = text;
       if (changed && !first && !reduce) {
         el.classList.remove('is-flash');

@@ -119,6 +119,9 @@ export const VIEWS: { id: View; label: string }[] = [{ id: 'lyrics', label: 'Lyr
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
+/** The song is English on every page: its lines keep their words (section names are translated). */
+const LINE = ' lang="en" data-i18n-skip';
+
 /** The reader's body for a view, chords moved by `semitones`. Plain strings: also used at build time. */
 export function songBody(view: View, semitones: number): string {
   const flats = prefersFlats(SONG.key, semitones);
@@ -129,8 +132,8 @@ export function songBody(view: View, semitones: number): string {
       return `<section>${head}<div class="sgr__bars">${progression(s).map((c) => `<span>${ch(c)}</span>`).join('')}</div></section>`;
     }
     const lines = s.lines.map((l) => view === 'lyrics'
-      ? `<p class="sgr__line">${esc(l.map((x) => x.words).join(''))}</p>`
-      : `<p class="sgr__line sgr__line--ch">${l.map((x) => `<span class="sgs">${x.chord ? ch(x.chord) : '<b class="sgc sgc--none"></b>'}<span>${esc(x.words) || '&nbsp;'}</span></span>`).join('')}</p>`);
+      ? `<p class="sgr__line"${LINE}>${esc(l.map((x) => x.words).join(''))}</p>`
+      : `<p class="sgr__line sgr__line--ch"${LINE}>${l.map((x) => `<span class="sgs">${x.chord ? ch(x.chord) : '<b class="sgc sgc--none"></b>'}<span>${esc(x.words) || '&nbsp;'}</span></span>`).join('')}</p>`);
     return `<section>${head}${lines.join('')}</section>`;
   }).join('');
 }

@@ -1,6 +1,9 @@
+// The page's language first: on /it/ and /es/ it loads the dictionary before anything writes text.
+import '../i18n/runtime';
 import 'lenis/dist/lenis.css';
 import '../styles/base.css';
 import '../styles/parts.css';
+import '../styles/lang.css';
 import Lenis from 'lenis';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -11,6 +14,8 @@ import { initNav } from '../ui/nav';
 import { initFootEq } from '../ui/footEq';
 import { renderCapacity } from './capacity';
 import { initCrops } from '../ui/crop';
+import { initLangSuggest } from '../ui/langSuggest';
+import { initConsent } from '../ui/consent';
 
 /**
  * Shared start for every page. `boot()` runs first (plugins, smooth scroll,
@@ -158,5 +163,7 @@ export function finish(ctx: Ctx) {
   if (nav) initNav({ nav, reduce, time: () => clock.time(), lock: (on) => { if (on) lenis?.stop(); else lenis?.start(); } });
 
   void renderCapacity().then(() => ScrollTrigger.refresh());
+  // One question at a time: the language first, then analytics cookies.
+  initConsent(initLangSuggest());
   document.fonts?.ready.then(() => ScrollTrigger.refresh());
 }
