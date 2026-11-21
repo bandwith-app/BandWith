@@ -5,7 +5,7 @@
  * 090, and newer app-written kinds use this instead.
  */
 import { supabase } from '@/lib/supabase';
-import { LANGUAGES, type Locale } from '@/lib/i18n';
+import { LANGUAGES, loadLocale, type Locale } from '@/lib/i18n';
 
 /** The app language for a stored preferred_language ("it", "pt-BR"…), English otherwise. */
 export function localeOf(preferred: string | null | undefined): Locale {
@@ -23,7 +23,7 @@ export function groupByLocale(userIds: string[], langs: Map<string, Locale>): Ma
   return out;
 }
 
-/** Each recipient's language (English when the profile can't be read). */
+/** Each recipient's language (English when the profile can't be read), its dictionary loaded. */
 export async function recipientLocales(userIds: string[]): Promise<Map<string, Locale>> {
   const ids = [...new Set(userIds.filter(Boolean))];
   const map = new Map<string, Locale>();
@@ -32,5 +32,6 @@ export async function recipientLocales(userIds: string[]): Promise<Map<string, L
   for (const p of (data || []) as { id: string; preferred_language?: string | null }[]) {
     map.set(p.id, localeOf(p.preferred_language));
   }
+  await Promise.all([...new Set(map.values())].map(loadLocale));
   return map;
 }

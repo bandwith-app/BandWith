@@ -2,7 +2,7 @@ import { supabase, getSafeUser } from '../supabase';
 import { sendPushToUsers } from './notifications';
 import { personName } from '@/lib/personName';
 import { isDirectChatBetween, type DirectChatFacts } from '@/lib/directChat';
-import { t, translate } from '@/lib/i18n';
+import { t, loadLocale, translate } from '@/lib/i18n';
 import { mentionedUserIds } from '@/lib/chatMentions';
 import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
@@ -1003,6 +1003,8 @@ export const sendMessage = async (
           if (mentioned.length > 0) {
             const langs = new Map(mentioned.map((id) => [id, localeOf(byId.get(id)?.preferred_language)]));
             for (const [lang, ids] of groupByLocale(mentioned, langs)) {
+              // The mentioned person's language, maybe not the app's.
+              await loadLocale(lang);
               await sendPushToUsers(ids, 'chat_mention', {
                 ...common,
                 title: translate(lang, '{name} mentioned you', { name: senderName }),
