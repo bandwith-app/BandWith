@@ -1,8 +1,8 @@
 node_modules/
 dist/
 .env
-it/
-es/
+/it/
+/es/
 .i18n-missing.json
 .i18n-work/
 .i18n-hits.json
