@@ -62,3 +62,28 @@ describe('site privacy: no third-party font hosts', () => {
     expect(readFileSync(path.join(SITE, 'public/fonts/OFL.txt'), 'utf8')).toContain('SIL OPEN FONT LICENSE');
   });
 });
+
+describe('Privacy Policy covers the website', () => {
+  const policy = readFileSync(path.resolve(SITE, '../public/legal/privacy.html'), 'utf8');
+  // Every third-party host a site page loads must be named in the policy.
+  const PROVIDERS: Record<string, string> = { 'use.typekit.net': 'Adobe Fonts' };
+
+  it('names the provider of every external host the site pages load', () => {
+    for (const page of pages) {
+      const html = expand(expand(readFileSync(page, 'utf8')));
+      for (const [, host] of html.matchAll(/<(?:link|script)[^>]+(?:href|src)="https:\/\/([^/"]+)/g)) {
+        expect(PROVIDERS[host], `${path.relative(SITE, page)} loads ${host}: add it to PROVIDERS and the policy`).toBeDefined();
+        expect(policy).toContain(PROVIDERS[host]);
+      }
+    }
+  });
+
+  it('covers bandwith.fun, the waitlist, logs, country and language, run by an individual', () => {
+    expect(policy).toContain('id="website"');
+    expect(policy).toContain('https://bandwith.fun');
+    for (const s of ['Waitlist', '12 months', 'Vercel', 'not stored', 'local storage', 'an individual']) expect(policy, s).toContain(s);
+    expect(policy).not.toContain('Aria,');
+    expect(policy).toContain('mailto:ciao@bandwith.fun');
+    expect(policy).not.toContain('gianlucaboccia.me');
+  });
+});
