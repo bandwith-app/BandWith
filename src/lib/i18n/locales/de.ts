@@ -4538,6 +4538,22 @@ const dict: Dictionary = {
   "No thanks": "Nein danke",
   "Anonymous usage statistics": "Anonyme Nutzungsstatistiken",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Welche Bildschirme wie oft genutzt werden, um BandWith zu verbessern. Nie deine Songs, Gigs, Nachrichten oder Kontakte und nichts für Werbung.",
+  // Scores (sheet music, Phase 1)
+  "Score": "Noten",
+  "Score: {title}": "Noten: {title}",
+  "Score: {title}.": "Noten: {title}.",
+  "{bars} bars, key of {key}.": "{bars} Takte, Tonart {key}.",
+  "{bars} bars.": "{bars} Takte.",
+  "Chords: {chords}.": "Akkorde: {chords}.",
+  "Choose a MusicXML score (.musicxml, .mxl or .xml).": "Wähle Noten im MusicXML-Format (.musicxml, .mxl oder .xml).",
+  "File too large: max {mb} MB for scores.": "Datei zu groß: höchstens {mb} MB für Noten.",
+  "No internet: this score isn’t on this device yet. Open it once online to keep it for the stage.": "Kein Internet: Diese Noten sind noch nicht auf dem Gerät. Öffne sie einmal online, damit sie auf der Bühne da sind.",
+  "This score couldn’t be shown. Check that the file is MusicXML (.musicxml or .mxl).": "Die Noten konnten nicht angezeigt werden. Prüfe, ob die Datei MusicXML ist (.musicxml oder .mxl).",
+  "Loading score…": "Noten werden geladen…",
+  "MusicXML (.musicxml or .mxl) · max 20 MB": "MusicXML (.musicxml oder .mxl) · max. 20 MB",
+  "Score uploaded": "Noten hochgeladen",
+  "Replace score": "Noten ersetzen",
+  "Add score": "Noten hinzufügen",
 };
 
 export default dict;

@@ -29,6 +29,8 @@ export interface SongFormValues {
   durationSeconds: number;
   /** Only when the chart was changed in this form. */
   chordChart?: { value: SongChart | null };
+  /** The stored score (MusicXML, `sb://song-files/<band>/score/…`); null / missing = none. */
+  scoreUrl?: string | null;
 }
 
 /** Every field as the form saves it (null = empty). */
@@ -47,6 +49,7 @@ export function songFields(f: SongFormValues): SongChanges {
     bpm: bpm > 0 ? bpm : null,
     key: f.key.trim() || null,
     duration_seconds: f.durationSeconds > 0 ? f.durationSeconds : null,
+    score_path: f.scoreUrl || null,
     ...(f.chordChart ? { chord_chart: f.chordChart.value } : {}),
   };
 }
@@ -78,10 +81,11 @@ export function songUpdatePayload(opened: SongFormValues, current: SongFormValue
 }
 
 /** Stored files the saved song no longer uses (removed from storage after the save). */
-export const replacedFiles = (opened: Pick<SongFormValues, 'audioUrl' | 'chartUrl'>, saved: SongChanges): string[] =>
+export const replacedFiles = (opened: Pick<SongFormValues, 'audioUrl' | 'chartUrl' | 'scoreUrl'>, saved: SongChanges): string[] =>
   [
     'audio_url' in saved && opened.audioUrl && saved.audio_url !== opened.audioUrl ? opened.audioUrl : null,
     'chart_url' in saved && opened.chartUrl && saved.chart_url !== opened.chartUrl ? opened.chartUrl : null,
+    'score_path' in saved && opened.scoreUrl && saved.score_path !== opened.scoreUrl ? opened.scoreUrl : null,
   ].filter((r): r is string => !!r);
 
 /** "Superstition" / "Stevie Wonder" → a key to spot the same song already in the library. */

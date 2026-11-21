@@ -48,6 +48,8 @@ export interface WedgeSong {
   lyrics?: string | null;
   /** songs.chord_chart (also the time signature for the click's accent). */
   chart?: SongChart | null;
+  /** songs.score_path: the Score view (MusicXML). */
+  score?: string | null;
 }
 
 export interface FloorWedgeModeProps {
@@ -182,7 +184,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   // Song view as in Stage mode (Lyrics / Chords / Structure, transpose, My
   // notes): the same per-device preference and per-song transpose, so folding
   // from Book keeps what the player picked there.
-  const hasLyrics = songs.some((s) => !!s.lyrics?.trim() || !!s.chart);
+  const hasLyrics = songs.some((s) => !!s.lyrics?.trim() || !!s.chart || !!s.score);
   const [ownLyricsOn, setOwnLyricsOn] = useState(false);
   const lyricsOn = lyricsOnProp ?? ownLyricsOn;
   const setLyricsOn = (on: boolean) => {
@@ -201,11 +203,15 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   };
   const lyricsSize = useLyricsSize();
   const [songView, setSongView] = useSongViewPreference();
-  const content = useMemo(() => ({ lyrics: normalizeLyrics(song?.lyrics), chart: song?.chart ?? undefined }), [song?.lyrics, song?.chart]);
+  const content = useMemo(
+    () => ({ lyrics: normalizeLyrics(song?.lyrics), chart: song?.chart ?? undefined, score: song?.score ?? undefined, title: song?.title }),
+    [song?.lyrics, song?.chart, song?.score, song?.title],
+  );
   const shownView = resolveView(songView, content);
   const [semitones, setSemitones] = useSongTranspose(song?.songId);
   const songKey = song?.key || keyLabel(song?.chart?.key) || null;
-  const hasChords = showLyrics && shownView !== 'lyrics' && (!!song?.chart || /\[[A-G][^\]\s]{0,15}\]/.test(song?.lyrics || ''));
+  const hasChords =
+    showLyrics && shownView !== 'lyrics' && (shownView === 'score' || !!song?.chart || /\[[A-G][^\]\s]{0,15}\]/.test(song?.lyrics || ''));
   const mine = useMemo(
     () => (song?.songId && bandId ? { id: song.songId, band_id: bandId, title: song.title, lyrics: content.lyrics } : null),
     [song?.songId, song?.title, bandId, content.lyrics],

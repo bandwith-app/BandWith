@@ -17,6 +17,7 @@ import {
 import { ChordChartView } from './ChordChart';
 import { LyricsText } from './LyricsViewer';
 import { useTranspose } from './Transpose';
+import { ScoreView } from './ScoreView';
 import { cn } from './utils';
 
 const VIEW_KEY = 'bw-song-view';
@@ -70,9 +71,9 @@ export function useSongViewPreference(): [SongView, (v: SongView) => void] {
  * (`chords`, `structure`) stay, so everyone's pick carries over.
  */
 export const songViewLabel = (v: SongView, t: (k: string) => string) =>
-  v === 'lyrics' ? t('Lyrics') : v === 'chords' ? t('Lyrics & chords') : t('Chord chart');
+  v === 'lyrics' ? t('Lyrics') : v === 'chords' ? t('Lyrics & chords') : v === 'score' ? t('Score') : t('Chord chart');
 
-/** Lyrics · Lyrics & chords · Chord chart: one tap switches (only the views this song has). */
+/** Lyrics · Lyrics & chords · Chord chart · Score: one tap switches (only the views this song has). */
 export const SongViewTabs: React.FC<{
   song: SongContent;
   view: SongView;
@@ -154,6 +155,10 @@ export const SongBody: React.FC<{
   const t = useT();
   const shown = resolveView(view, song);
   if (!shown) return <p className={cn('bw-body-lg', muted)}>{t('No lyrics for this song yet.')}</p>;
+  if (shown === 'score' && song.score) {
+    // The notes (MusicXML, sheet music plan §4): OSMD loads as its own chunk, only now.
+    return <ScoreView scoreRef={song.score} title={song.title || ''} size={size} muted={muted} className={cn('pt-2', chartClassName)} />;
+  }
   if (shown === 'structure') {
     return song.chart ? (
       <ChordChartView chart={song.chart} size={size} muted={muted} line={line} className={chartClassName} showLegend={showLegend} />

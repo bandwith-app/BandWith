@@ -4538,6 +4538,22 @@ const dict: Dictionary = {
   "No thanks": "No, grazie",
   "Anonymous usage statistics": "Statistiche d’uso anonime",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Quali schermate si usano e quanto spesso, per migliorare BandWith. Mai i tuoi brani, gig, messaggi o contatti, e niente per la pubblicità.",
+  // Scores (sheet music, Phase 1)
+  "Score": "Spartito",
+  "Score: {title}": "Spartito: {title}",
+  "Score: {title}.": "Spartito: {title}.",
+  "{bars} bars, key of {key}.": "{bars} battute, tonalità {key}.",
+  "{bars} bars.": "{bars} battute.",
+  "Chords: {chords}.": "Accordi: {chords}.",
+  "Choose a MusicXML score (.musicxml, .mxl or .xml).": "Scegli uno spartito MusicXML (.musicxml, .mxl o .xml).",
+  "File too large: max {mb} MB for scores.": "File troppo grande: massimo {mb} MB per gli spartiti.",
+  "No internet: this score isn’t on this device yet. Open it once online to keep it for the stage.": "Nessuna connessione: questo spartito non è ancora sul dispositivo. Aprilo una volta online per averlo sul palco.",
+  "This score couldn’t be shown. Check that the file is MusicXML (.musicxml or .mxl).": "Impossibile mostrare lo spartito. Controlla che il file sia MusicXML (.musicxml o .mxl).",
+  "Loading score…": "Caricamento spartito…",
+  "MusicXML (.musicxml or .mxl) · max 20 MB": "MusicXML (.musicxml o .mxl) · max 20 MB",
+  "Score uploaded": "Spartito caricato",
+  "Replace score": "Sostituisci spartito",
+  "Add score": "Aggiungi spartito",
 };
 
 export default dict;

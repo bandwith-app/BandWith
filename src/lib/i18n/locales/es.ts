@@ -4538,6 +4538,22 @@ const dict: Dictionary = {
   "No thanks": "No, gracias",
   "Anonymous usage statistics": "Estadísticas de uso anónimas",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Qué pantallas se usan y con qué frecuencia, para mejorar BandWith. Nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad.",
+  // Scores (sheet music, Phase 1)
+  "Score": "Partitura",
+  "Score: {title}": "Partitura: {title}",
+  "Score: {title}.": "Partitura: {title}.",
+  "{bars} bars, key of {key}.": "{bars} compases, tonalidad {key}.",
+  "{bars} bars.": "{bars} compases.",
+  "Chords: {chords}.": "Acordes: {chords}.",
+  "Choose a MusicXML score (.musicxml, .mxl or .xml).": "Elige una partitura MusicXML (.musicxml, .mxl o .xml).",
+  "File too large: max {mb} MB for scores.": "Archivo demasiado grande: máximo {mb} MB para partituras.",
+  "No internet: this score isn’t on this device yet. Open it once online to keep it for the stage.": "Sin internet: esta partitura aún no está en este dispositivo. Ábrela una vez con conexión para tenerla en el escenario.",
+  "This score couldn’t be shown. Check that the file is MusicXML (.musicxml or .mxl).": "No se pudo mostrar la partitura. Comprueba que el archivo sea MusicXML (.musicxml o .mxl).",
+  "Loading score…": "Cargando partitura…",
+  "MusicXML (.musicxml or .mxl) · max 20 MB": "MusicXML (.musicxml o .mxl) · máx. 20 MB",
+  "Score uploaded": "Partitura subida",
+  "Replace score": "Reemplazar partitura",
+  "Add score": "Añadir partitura",
 };
 
 export default dict;

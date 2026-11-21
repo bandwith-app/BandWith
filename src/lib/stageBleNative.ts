@@ -78,6 +78,8 @@ export interface CachedSetlistSong {
   lyrics?: string;
   /** songs.chord_chart (iReal Pro import). */
   chart?: SongChart;
+  /** songs.score_path: the score itself is kept by src/lib/scoreCache.ts. */
+  score?: string;
 }
 
 export function readCachedSetlist(setlistId: string): CachedSetlistSong[] | null {

@@ -144,7 +144,9 @@ export interface LyricsDoc {
   /** songs.chord_chart: the reader can switch between lyrics and chords. */
   chart?: SongChart | null;
   /** Which view to open on (default: the person's own, see useSongViewPreference). */
-  view?: 'lyrics' | 'chords' | 'structure';
+  view?: 'lyrics' | 'chords' | 'structure' | 'score';
+  /** songs.score_path: the reader gets a Score tab. */
+  score?: string | null;
   /** songs.key: the reader's Transpose control shows the moved key. */
   songKey?: string | null;
   /** songs.notes: the band's notes on the song (accepted "Note for the band" suggestions), read-only. */

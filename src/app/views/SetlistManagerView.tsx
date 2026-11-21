@@ -7,6 +7,7 @@ import {
   Plus,
   X,
   Music2,
+  FileMusic,
   Trash2,
   Edit3,
   Loader2,
@@ -1001,10 +1002,14 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                               items={[
                                 ...(canPlay ? [{ label: t('Play'), icon: <Play className="w-4 h-4" />, run: () => handlePlaySong(song) }] : []),
                                 ...(song.lyrics?.trim()
-                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'lyrics', notes: song.notes }); } }]
+                                  ? [{ label: t('Lyrics'), icon: <BookOpen className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), score: song.score_path, view: 'lyrics', notes: song.notes }); } }]
                                   : []),
                                 ...(asSongChart(song.chord_chart)
-                                  ? [{ label: t('Chord chart'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), view: 'structure', notes: song.notes }); } }]
+                                  ? [{ label: t('Chord chart'), icon: <Music2 className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), score: song.score_path, view: 'structure', notes: song.notes }); } }]
+                                  : []),
+                                // The score, note by note (MusicXML, sheet music plan §4).
+                                ...(song.score_path
+                                  ? [{ label: t('Score'), icon: <FileMusic className="w-4 h-4" />, run: () => { setActionMenuId(null); openLyrics({ songId: song.id, title: song.title, artist: song.artist, songKey: song.key, lyrics: song.lyrics || '', chart: asSongChart(song.chord_chart), score: song.score_path, view: 'score', notes: song.notes }); } }]
                                   : []),
                                 ...(hasChart ? [{ label: t('Open chart'), icon: <FileText className="w-4 h-4" />, run: () => handleOpenChart(song) }] : []),
                                 // The band's notes (songs.notes), e.g. an accepted "Note for the band" (108): read-only for members.

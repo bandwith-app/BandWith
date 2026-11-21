@@ -103,6 +103,7 @@ import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { OverviewEditSheets } from '@/app/components/event/edit/OverviewEditSheets';
 import { useOverviewEdit, type OverviewToast } from '@/app/components/event/edit/useOverviewEdit';
 import type { EditCard, EditKind } from '@/lib/eventOverviewEdit';
+import { prefetchScores } from '@/lib/scoreCache';
 
 interface EventDetailProps {
   event: EventData;
@@ -541,7 +542,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           .from('setlist_songs')
           // songs has duration_seconds, not duration: asking for a missing
           // column makes PostgREST fail the whole query.
-          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart, audio_url)')
+          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart, audio_url, score_path)')
           .eq('setlist_id', event.setlistId)
           .order('set_number', { ascending: true })
           .order('position', { ascending: true });
@@ -577,9 +578,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               chart: asSongChart(s.song?.chord_chart) || undefined,
               // The Regia (stage manager mode) plays it; nobody else loads it.
               audio: typeof s.song?.audio_url === 'string' && s.song.audio_url ? s.song.audio_url : undefined,
+              score: typeof s.song?.score_path === 'string' && s.song.score_path ? s.song.score_path : undefined,
             }));
           setSetlistSongs(songs);
           writeCachedSetlist(setlistId, songs);
+          // The setlist's scores on this device now, while there is a network: Stage mode reads them offline.
+          void prefetchScores(songs.map((s: { score?: string }) => s.score));
         }
       } catch {
         if (cancelled) return;

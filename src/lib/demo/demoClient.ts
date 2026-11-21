@@ -797,16 +797,24 @@ const makeChannel = (name: string) => {
   return ch;
 };
 
+/** Files uploaded in this demo session (a new score, a chart): readable back until a reload. */
+const demoFiles = new Map<string, Blob>();
 const storage = {
   from: (bucket: string) => ({
-    upload: async (path: string) => ({ data: { path, id: uuid(), fullPath: `${bucket}/${path}` }, error: null }),
+    upload: async (path: string, file?: Blob) => {
+      if (file instanceof Blob) demoFiles.set(`${bucket}/${path}`, file);
+      return { data: { path, id: uuid(), fullPath: `${bucket}/${path}` }, error: null };
+    },
     move: async () => ({ data: { message: 'Successfully moved' }, error: null }),
     update: async (path: string) => ({ data: { path }, error: null }),
     remove: async () => ({ data: [], error: null }),
     list: async () => ({ data: [], error: null }),
     download: async () => ({ data: null, error: { message: 'Not available in demo mode' } }),
     getPublicUrl: () => ({ data: { publicUrl: '' } }),
-    createSignedUrl: async () => ({ data: { signedUrl: '' }, error: null }),
+    createSignedUrl: async (path: string) => {
+      const blob = demoFiles.get(`${bucket}/${path}`);
+      return { data: { signedUrl: blob ? URL.createObjectURL(blob) : '' }, error: null };
+    },
   }),
 };
 

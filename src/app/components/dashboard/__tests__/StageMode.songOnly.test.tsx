@@ -2,6 +2,8 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, within, act } from '@testing-library/react';
 
+// The score itself (OSMD) is ScoreView's own test.
+vi.mock('@/app/components/ui/ScoreView', () => ({ ScoreView: () => null }));
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
 }));
@@ -214,5 +216,13 @@ describe('Song view names', () => {
     expect(screen.getByRole('tab', { name: 'Chord chart' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Chords' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Structure' })).toBeNull();
+  });
+
+  it('the song tab names the view on screen: a song with only a score says Score, whatever the reader picked', () => {
+    localStorage.setItem('bw-song-view', 'lyrics');
+    const scoreOnly: StageSong[] = [{ id: 'r9', songId: 's9', title: 'Night Ferry', key: 'F', bpm: 120, score: 'demo://scores/night-ferry.musicxml' }];
+    render(<StageMode kind="gig" title="Rooftop Session" dateLabel="Sat 21 Nov" date="2026-11-21" steps={[]} songs={scoreOnly} live={live()} onClose={vi.fn()} />);
+    const tabs = within(screen.getByRole('tablist', { name: 'Setlist' })).getAllByRole('tab');
+    expect(tabs[1]).toHaveTextContent('Score');
   });
 });

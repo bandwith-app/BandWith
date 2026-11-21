@@ -33,6 +33,8 @@ export interface Song {
   lyrics?: string;
   /** Chords and form imported from iReal Pro (no melody, no lyrics). */
   chord_chart?: SongChart | null;
+  /** The song's score (MusicXML / .mxl in song-files, `sb://song-files/<band>/score/…`): the Score view (migration 170). */
+  score_path?: string | null;
   notes?: string;
   
   spotify_id?: string;

@@ -4538,6 +4538,22 @@ const dict: Dictionary = {
   "No thanks": "Non merci",
   "Anonymous usage statistics": "Statistiques d’utilisation anonymes",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Quels écrans sont utilisés et à quelle fréquence, pour améliorer BandWith. Jamais tes morceaux, concerts, messages ou contacts, et rien pour la publicité.",
+  // Scores (sheet music, Phase 1)
+  "Score": "Partition",
+  "Score: {title}": "Partition : {title}",
+  "Score: {title}.": "Partition : {title}.",
+  "{bars} bars, key of {key}.": "{bars} mesures, tonalité {key}.",
+  "{bars} bars.": "{bars} mesures.",
+  "Chords: {chords}.": "Accords : {chords}.",
+  "Choose a MusicXML score (.musicxml, .mxl or .xml).": "Choisis une partition MusicXML (.musicxml, .mxl ou .xml).",
+  "File too large: max {mb} MB for scores.": "Fichier trop volumineux : {mb} Mo maximum pour les partitions.",
+  "No internet: this score isn’t on this device yet. Open it once online to keep it for the stage.": "Pas d’internet : cette partition n’est pas encore sur cet appareil. Ouvre-la une fois en ligne pour l’avoir sur scène.",
+  "This score couldn’t be shown. Check that the file is MusicXML (.musicxml or .mxl).": "Impossible d’afficher la partition. Vérifie que le fichier est en MusicXML (.musicxml ou .mxl).",
+  "Loading score…": "Chargement de la partition…",
+  "MusicXML (.musicxml or .mxl) · max 20 MB": "MusicXML (.musicxml ou .mxl) · 20 Mo max.",
+  "Score uploaded": "Partition importée",
+  "Replace score": "Remplacer la partition",
+  "Add score": "Ajouter une partition",
 };
 
 export default dict;

@@ -75,3 +75,25 @@ describe('songPayload', () => {
     expect(songIdentity('Superstition', 'Stevie Wonder')).not.toBe(songIdentity('Superstition', 'Beck'));
   });
 });
+
+describe('songPayload: the score (sheet music, Phase 1)', () => {
+  const SCORE = 'sb://song-files/band/score/s-tune.mxl';
+  it('saves a new score on a new song, and sends no score_path for a song without one', () => {
+    expect(songCreatePayload({ ...opened, scoreUrl: SCORE }).score_path).toBe(SCORE);
+    expect('score_path' in songCreatePayload(opened)).toBe(false);
+  });
+
+  it('edits send score_path only when the score changed (added, replaced or removed)', () => {
+    expect('score_path' in songUpdatePayload(opened, { ...opened, bpm: '100' })).toBe(false);
+    expect(songUpdatePayload(opened, { ...opened, scoreUrl: SCORE })).toEqual({ score_path: SCORE });
+    const withScore = { ...opened, scoreUrl: SCORE };
+    expect(songUpdatePayload(withScore, { ...withScore, scoreUrl: null })).toEqual({ score_path: null });
+  });
+
+  it('a replaced or removed score is removed from storage after the save', () => {
+    const withScore = { ...opened, scoreUrl: SCORE };
+    const changes = songUpdatePayload(withScore, { ...withScore, scoreUrl: 'sb://song-files/band/score/new.mxl' });
+    expect(replacedFiles(withScore, changes)).toEqual([SCORE]);
+  });
+});
+

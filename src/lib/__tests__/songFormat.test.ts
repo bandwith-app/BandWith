@@ -152,3 +152,20 @@ describe('views', () => {
     expect(resolveView('lyrics', { chart: CHART })).toBe('chords');
   });
 });
+
+describe('the score view (sheet music, Phase 1)', () => {
+  const SCORE = 'sb://song-files/band/score/tune.mxl';
+  it('is there only for a song with a score, after the others', () => {
+    expect(availableViews({ lyrics: '[C]words', chart: CHART, score: SCORE })).toEqual(['lyrics', 'chords', 'structure', 'score']);
+    expect(availableViews({ lyrics: 'Just words' })).not.toContain('score');
+    expect(availableViews({ score: SCORE })).toEqual(['score']);
+  });
+
+  it('falls back both ways: a score-only song opens on the score, a song without one on its chart', () => {
+    expect(resolveView('lyrics', { score: SCORE })).toBe('score');
+    expect(resolveView('structure', { score: SCORE })).toBe('score');
+    expect(resolveView('score', { lyrics: '[C]words', chart: CHART })).toBe('structure');
+    expect(resolveView('score', { lyrics: 'Just words' })).toBe('lyrics');
+    expect(resolveView('score', { lyrics: 'Just words', score: SCORE })).toBe('score');
+  });
+});

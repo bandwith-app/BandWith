@@ -64,6 +64,8 @@ export interface StageSong {
   chart?: SongChart;
   /** songs.audio_url: what the Regia plays (stage manager mode). */
   audio?: string;
+  /** songs.score_path: the Score view (MusicXML), kept on the device before the gig. */
+  score?: string;
 }
 
 /**
@@ -224,7 +226,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Lyrics view: the current song's lyrics, following it (also when the leader moves).
   // Chords view: the same for its chord chart.
   // Song view: lyrics, chords or structure, from the player's instrument or last pick (one tap switches).
-  const hasSong = songs.some((s) => !!s.lyrics?.trim() || !!s.chart);
+  const hasSong = songs.some((s) => !!s.lyrics?.trim() || !!s.chart || !!s.score);
   type StageView = 'setlist' | 'song';
   const views: StageView[] = ['setlist', ...(hasSong ? (['song'] as const) : [])];
   const [ownView, setOwnView] = useState<StageView>('setlist');
@@ -236,7 +238,10 @@ export const StageMode: React.FC<StageModeProps> = ({
   const [songView, setSongView] = useSongViewPreference();
   const showLyrics = view === 'song' && hasSong;
   const lyricsSong = songs[Math.max(0, current)];
-  const lyricsContent = useMemo(() => ({ lyrics: normalizeLyrics(lyricsSong?.lyrics), chart: lyricsSong?.chart }), [lyricsSong?.lyrics, lyricsSong?.chart]);
+  const lyricsContent = useMemo(
+    () => ({ lyrics: normalizeLyrics(lyricsSong?.lyrics), chart: lyricsSong?.chart, score: lyricsSong?.score, title: lyricsSong?.title }),
+    [lyricsSong?.lyrics, lyricsSong?.chart, lyricsSong?.score, lyricsSong?.title],
+  );
   const shownView = resolveView(songView, lyricsContent);
   const showChords = showLyrics && shownView !== 'lyrics';
   const lyricsSize = useLyricsSize();
@@ -251,7 +256,9 @@ export const StageMode: React.FC<StageModeProps> = ({
         : null,
     [lyricsSong?.songId, lyricsSong?.title, bandId, lyricsContent.lyrics],
   );
-  const lyricsHasChords = !!lyricsSong && showChords && (!!lyricsSong.chart || /\[[A-G][^\]\s]{0,15}\]/.test(lyricsSong.lyrics || ''));
+  // The score transposes too (the same semitones as the chords).
+  const lyricsHasChords =
+    !!lyricsSong && showChords && (shownView === 'score' || !!lyricsSong.chart || /\[[A-G][^\]\s]{0,15}\]/.test(lyricsSong.lyrics || ''));
 
   // Visual metronome: shows while a click runs on the current song.
   const click = live?.click;
@@ -690,7 +697,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                       view === v ? 'text-white border-white' : 'text-white/50 border-transparent',
                     )}
                   >
-                    {v === 'setlist' ? t('Setlist') : songViewLabel(songView, t)}
+                    {v === 'setlist' ? t('Setlist') : songViewLabel(shownView ?? songView, t)}
                     {/* With tabs there is no room for the "· 1 struck off" line: a short count on the tab. */}
                     {v === 'setlist' && !songsLoading && struckCount > 0 && (
                       <>

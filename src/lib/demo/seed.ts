@@ -146,12 +146,21 @@ export const buildSeed = (): DemoDB => {
       id: id(350), band_id: IDS.band, title: 'Paper Boats', artist: 'The Demo Band', duration_seconds: 214, bpm: 96, key: 'C',
       genre: 'Soul / Funk', category: 'repertoire', status: 'ready', priority: 'normal', times_played: 3, added_by: IDS.me,
       lyrics: PAPER_BOATS, notes: 'Capo 2 on acoustic.', created_at: created, updated_at: created,
+      // Made-up scores (src/lib/demo/scores): the Score view in the demo, no storage needed.
+      score_path: 'demo://scores/paper-boats.musicxml',
     },
     {
       // Made-up song with an iReal-style chart, lyrics pasted as "chords over words" in the wrong key (chord editor checks).
       id: id(352), band_id: IDS.band, title: 'Harbor Lights', artist: 'The Demo Band', duration_seconds: 201, bpm: 88, key: 'G',
       genre: 'Soul / Funk', category: 'repertoire', status: 'learning', priority: 'normal', times_played: 0, added_by: IDS.me,
       lyrics: HARBOR_LIGHTS, chord_chart: HARBOR_CHART, created_at: created, updated_at: created,
+      score_path: 'demo://scores/harbor-lights.musicxml',
+    },
+    {
+      // Made-up tune with only a score (32 bars, segno / coda): the Score view on its own.
+      id: id(353), band_id: IDS.band, title: 'Night Ferry', artist: 'The Demo Band', duration_seconds: 236, bpm: 120, key: 'F',
+      genre: 'Soul / Funk', category: 'repertoire', status: 'ready', priority: 'normal', times_played: 1, added_by: IDS.me,
+      score_path: 'demo://scores/night-ferry.musicxml', created_at: created, updated_at: created,
     },
     {
       id: id(351), band_id: IDS.band, title: 'Lantern Street', artist: 'The Demo Band', duration_seconds: 188, bpm: 104, key: 'G',
@@ -178,11 +187,13 @@ export const buildSeed = (): DemoDB => {
   ];
 
   const setlists: Row[] = [
-    { id: id(400), band_id: IDS.band, name: 'Rooftop set', description: 'Two sets, dance-heavy second half', is_template: false, song_count: 10, total_duration_seconds: 2150, created_by: IDS.me, created_at: created, updated_at: created },
+    { id: id(400), band_id: IDS.band, name: 'Rooftop set', description: 'Two sets, dance-heavy second half', is_template: false, song_count: 13, total_duration_seconds: 2801, created_by: IDS.me, created_at: created, updated_at: created },
     { id: id(401), band_id: IDS.band, name: 'Wedding — dinner + party', description: null, is_template: true, song_count: 8, total_duration_seconds: 1700, created_by: IDS.me, created_at: created, updated_at: created },
   ];
   const setlist_songs: Row[] = [
     ...songs.slice(0, 10).map((s, i) => ({ id: id(500 + i), setlist_id: id(400), song_id: s.id, position: i + 1, set_number: i < 5 ? 1 : 2, notes: null, created_at: created })),
+    // The made-up songs with a score close tonight's set: the Score view in Stage mode.
+    ...[id(353), id(352), id(350)].map((songId, i) => ({ id: id(510 + i), setlist_id: id(400), song_id: songId, position: 11 + i, set_number: 2, notes: null, created_at: created })),
     ...songs.slice(4, 12).map((s, i) => ({ id: id(520 + i), setlist_id: id(401), song_id: s.id, position: i + 1, set_number: 1, notes: null, created_at: created })),
   ];
 

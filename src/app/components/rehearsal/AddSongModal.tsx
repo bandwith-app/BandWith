@@ -31,8 +31,11 @@ import {
   removeSongFiles,
   safeHttpsUrl,
   uploadSongFile,
+  uploadSongScore,
   validateSongFile,
 } from '@/lib/services/songFiles';
+import { SCORE_FILE_ACCEPT, validateScoreFile } from '@/lib/score';
+import { readMusicXml } from '@/lib/musicxml';
 import { supabase } from '@/lib/supabase';
 import { useBand } from '@/lib/BandContext';
 import { useAuth } from '@/lib/AuthContext';
@@ -96,6 +99,9 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [chartFile, setChartFile] = useState<File | null>(null);
   const [existingAudio, setExistingAudio] = useState<string | undefined>();
   const [existingChart, setExistingChart] = useState<string | undefined>();
+  // The score (MusicXML / .mxl, songs.score_path): the song's Score view.
+  const [scoreFile, setScoreFile] = useState<File | null>(null);
+  const [existingScore, setExistingScore] = useState<string | undefined>();
   
   // Extra fields
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -151,6 +157,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setGenres(parseGenres(song.genre));
     setExistingAudio(song.audio_url || undefined);
     setExistingChart(song.chart_url || undefined);
+    setExistingScore(song.score_path || undefined);
     setChartUrl(song.chart_url && !isStoredSongFile(song.chart_url) ? song.chart_url : '');
     openedRef.current = {
       title: song.title || '',
@@ -158,6 +165,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       genres: parseGenres(song.genre),
       audioUrl: song.audio_url || null,
       chartUrl: song.chart_url || null,
+      scoreUrl: song.score_path || null,
       youtubeUrl: song.youtube_url || null,
       notes: song.notes || '',
       lyrics: song.lyrics || '',
@@ -173,7 +181,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   // Unsaved changes: the form as it opened (empty, or the song's values)
   // against now. Closing with something typed asks first, like every wizard.
   const formSig = JSON.stringify([
-    title, artist, genres, audioFile?.name, chartFile?.name, existingAudio, existingChart,
+    title, artist, genres, audioFile?.name, chartFile?.name, existingAudio, existingChart, scoreFile?.name, existingScore,
     youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec,
   ]);
   const baselineRef = useRef<string | null>(null);
@@ -228,6 +236,38 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       else setChartFile(f);
       if (!title) setTitle(f.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim());
     }
+  };
+
+  /**
+   * "Add score": a MusicXML file for the Score view. Its chord symbols fill
+   * the chord chart when the song has none yet (as the chart import does).
+   */
+  const handleScoreChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    const problem = validateScoreFile(f, t);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    let chart: SongChart | null = null;
+    try {
+      chart = await readMusicXml(new Uint8Array(await f.arrayBuffer()), f.name);
+    } catch (err) {
+      // No chord symbols is fine for a score; not MusicXML at all is not.
+      if ((err as Error).message === 'not-musicxml') {
+        setError(t('This file is not MusicXML.'));
+        return;
+      }
+    }
+    setError(null);
+    setScoreFile(f);
+    if (chart && !chordChart) {
+      setChordChart(chart);
+      setChordChartTouched(true);
+    }
+    if (!title && chart?.title) setTitle(chart.title);
   };
 
   /** A song with the same title and artist already in the band's library, if any. */
@@ -295,6 +335,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         uploaded.push(up.ref);
         chartRef = up.ref;
       }
+      let scoreRef: string | null = existingScore ?? null;
+      if (scoreFile) {
+        const up = await uploadSongScore(bandId, scoreFile, uploadOpts);
+        if (up.error) throw up.error;
+        uploaded.push(up.ref);
+        scoreRef = up.ref;
+      }
 
       const noteText = [notes.trim(), chords && !notes.includes(chords) ? `${t('Chords')}: ${chords}` : '']
         .filter(Boolean)
@@ -309,6 +356,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         genres,
         audioUrl: audioRef,
         chartUrl: chartRef,
+        scoreUrl: scoreRef,
         youtubeUrl: youtube ?? null,
         notes: noteText,
         // One format for the band: section names and chords tidied on save.
@@ -383,6 +431,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setChartFile(null);
     setExistingAudio(undefined);
     setExistingChart(undefined);
+    setScoreFile(null);
+    setExistingScore(undefined);
     setGenres([]);
     setNewGenre('');
     setShowNewGenre(false);
@@ -703,6 +753,30 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 <input type="file" multiple accept={SONG_FILE_ACCEPT} onChange={handleFileChange} className="hidden" />
                 <Plus className="w-[18px] h-[18px]" />
                 {t('Choose files')}
+              </label>
+
+              {/* Score: the notes themselves (MusicXML from MuseScore, Sibelius,
+                  Dorico, Finale or iReal Pro), read in the Score view. */}
+              <FileSlot
+                label={t('Score')}
+                hint={t('MusicXML (.musicxml or .mxl) · max 20 MB')}
+                file={scoreFile}
+                existing={existingScore ? t('Score uploaded') : undefined}
+                onClear={() => {
+                  setScoreFile(null);
+                  setExistingScore(undefined);
+                }}
+              />
+              <label className="self-start inline-flex items-center justify-center gap-2 h-11 px-5 rounded-full border border-border bw-button-md cursor-pointer active:scale-[0.97] transition-transform focus-within:ring-2 focus-within:ring-foreground">
+                <input
+                  type="file"
+                  accept={SCORE_FILE_ACCEPT}
+                  onChange={handleScoreChange}
+                  className="sr-only"
+                  aria-label={scoreFile || existingScore ? t('Replace score') : t('Add score')}
+                />
+                <FileMusic className="w-[18px] h-[18px]" aria-hidden />
+                {scoreFile || existingScore ? t('Replace score') : t('Add score')}
               </label>
 
               <div className="flex items-start gap-3 p-4 rounded-[16px] bg-card">

@@ -206,18 +206,19 @@ export const LyricsViewer: React.FC = () => {
   React.useEffect(() => {
     setOpened(doc?.view ?? null);
   }, [doc]);
-  const song = React.useMemo(() => ({ lyrics: normalizeLyrics(doc?.lyrics), chart: doc?.chart }), [doc]);
+  const song = React.useMemo(() => ({ lyrics: normalizeLyrics(doc?.lyrics), chart: doc?.chart, score: doc?.score, title: doc?.title }), [doc]);
   const view = resolveView(opened ?? preferred, song) ?? 'lyrics';
   const pick = (v: SongView) => {
     setOpened(null);
     setPreferred(v);
   };
-  const showChords = view !== 'lyrics' && (hasChart || hasInlineChords(doc?.lyrics));
+  const showChords = view === 'score' || (view !== 'lyrics' && (hasChart || hasInlineChords(doc?.lyrics)));
   const kind = songViewLabel(view, tr);
   // Transpose on this device: only when there are chords to move.
   const [semitones, setSemitones] = useSongTranspose(doc?.songId);
   const songKey = doc?.songKey || keyLabel(doc?.chart?.key) || null;
-  const hasChords = hasChart || /\[[A-G][^\]\s]{0,15}\]/.test(doc?.lyrics || '');
+  // A score transposes with the same control (sheet music plan §4.3).
+  const hasChords = hasChart || !!doc?.score || /\[[A-G][^\]\s]{0,15}\]/.test(doc?.lyrics || '');
   // My notes and files on this band song (109), only for its band's members.
   const bandId = doc?.bandId ?? band?.selectedBand?.id ?? null;
   const mine = React.useMemo(

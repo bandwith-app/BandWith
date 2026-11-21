@@ -647,9 +647,9 @@ export function proposeChordsFromChart(lyrics: string, section: TextSection, cha
 
 // ── Views ──────────────────────────────────────────────────────────────────
 
-/** Lyrics only · lyrics with chords · score / structure. */
-export type SongView = 'lyrics' | 'chords' | 'structure';
-export const SONG_VIEWS: SongView[] = ['lyrics', 'chords', 'structure'];
+/** Lyrics only · lyrics with chords · chord chart / structure · the score (MusicXML, note by note). */
+export type SongView = 'lyrics' | 'chords' | 'structure' | 'score';
+export const SONG_VIEWS: SongView[] = ['lyrics', 'chords', 'structure', 'score'];
 
 /**
  * The view a member starts on, from their instrument: singers read the
@@ -666,6 +666,10 @@ export function defaultSongView(instrument: string | null | undefined): SongView
 export interface SongContent {
   lyrics?: string | null;
   chart?: SongChart | null;
+  /** songs.score_path: the song's MusicXML score (src/lib/score.ts), if it has one. */
+  score?: string | null;
+  /** The song's title: the score's name for screen readers. */
+  title?: string | null;
 }
 
 /** Which views a song can show. */
@@ -677,6 +681,7 @@ export function availableViews(song: SongContent): SongView[] {
     ...(words ? (['lyrics'] as const) : []),
     ...(inline || song.chart ? (['chords'] as const) : []),
     ...(song.chart || sectionsWithChords ? (['structure'] as const) : []),
+    ...(song.score ? (['score'] as const) : []),
   ];
 }
 
@@ -685,9 +690,11 @@ export function resolveView(want: SongView, song: SongContent): SongView | null 
   const views = availableViews(song);
   if (views.includes(want)) return want;
   const order: Record<SongView, SongView[]> = {
-    lyrics: ['chords', 'structure'],
-    chords: ['structure', 'lyrics'],
-    structure: ['chords', 'lyrics'],
+    lyrics: ['chords', 'structure', 'score'],
+    chords: ['structure', 'lyrics', 'score'],
+    structure: ['chords', 'lyrics', 'score'],
+    // No score: the chart is the nearest thing to it.
+    score: ['structure', 'chords', 'lyrics'],
   };
   return order[want].find((v) => views.includes(v)) ?? null;
 }

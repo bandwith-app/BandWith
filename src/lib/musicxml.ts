@@ -22,7 +22,7 @@ const MAX_TEXT = 40;
 const u16 = (b: Uint8Array, o: number) => b[o] | (b[o + 1] << 8);
 const u32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
 
-const isZip = (b: Uint8Array) => b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+export const isZip = (b: Uint8Array) => b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
 
 /**
  * Inflates one entry, stopping as soon as it passes `limit` bytes: a small
@@ -92,7 +92,8 @@ export async function unzip(buf: Uint8Array): Promise<Map<string, Uint8Array>> {
 }
 
 /** The score inside an .mxl: META-INF/container.xml names it, else the first .xml/.musicxml. */
-async function mxlScore(buf: Uint8Array): Promise<string> {
+/** The score inside an .mxl (through its container, else the first .musicxml / .xml). */
+export async function mxlScore(buf: Uint8Array): Promise<string> {
   const files = await unzip(buf);
   const dec = new TextDecoder();
   const container = files.get('META-INF/container.xml');
@@ -110,7 +111,8 @@ async function mxlScore(buf: Uint8Array): Promise<string> {
 
 // ── Chords ──
 
-const KIND: Record<string, string> = {
+/** MusicXML <kind> → the iReal quality of the chord token (also the score view's chord names). */
+export const KIND: Record<string, string> = {
   major: '',
   minor: '-',
   augmented: '+',

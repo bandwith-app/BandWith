@@ -11,6 +11,7 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { UserError } from '../userError';
+import { SCORE_MIME_MXL, SCORE_MIME_XML, scoreContentType, validateScoreFile } from '../score';
 
 export const SONG_FILES_BUCKET = 'song-files';
 const REF_PREFIX = `sb://${SONG_FILES_BUCKET}/`;
@@ -38,6 +39,8 @@ export const SONG_FILE_MIME_TYPES: readonly string[] = [
   'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/wav', 'audio/x-wav',
   'audio/wave', 'audio/aiff', 'audio/x-aiff', 'audio/ogg', 'audio/flac', 'audio/x-flac',
   'application/pdf', 'image/png', 'image/jpeg', 'image/heic', 'image/webp',
+  // Scores (MusicXML, .mxl): migration 170.
+  SCORE_MIME_XML, SCORE_MIME_MXL,
 ];
 
 /** Extension → MIME type, for when the browser/OS gives no (or an odd) type. */
@@ -143,6 +146,27 @@ export const uploadSongFile = async (
   return { ref: `${REF_PREFIX}${path}`, kind, error: null };
 };
 
+/**
+ * Upload a song's score (MusicXML / .mxl) for a band: `<band>/score/<id>-<name>`
+ * (a member's for a song they suggest: `<band>/suggestions/<them>/score/`),
+ * always typed as MusicXML. Returns the reference for `songs.score_path`.
+ */
+export const uploadSongScore = async (
+  bandId: string,
+  file: File,
+  opts?: { suggestedBy?: string | null },
+): Promise<{ ref: string; error: null } | { ref: null; error: Error }> => {
+  const problem = validateScoreFile(file, t);
+  const contentType = scoreContentType(file.name);
+  if (problem || !contentType) return { ref: null, error: new UserError(problem || t('Choose a MusicXML score (.musicxml, .mxl or .xml).')) };
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`;
+  const folder = opts?.suggestedBy ? `${bandId}/suggestions/${opts.suggestedBy}/score` : `${bandId}/score`;
+  const path = `${folder}/${id}-${safeName(file.name)}`;
+  const { error } = await supabase.storage.from(SONG_FILES_BUCKET).upload(path, file, { contentType, upsert: false, cacheControl: '3600' });
+  if (error) return { ref: null, error: Object.assign(new Error(error.message || 'Upload failed'), { statusCode: (error as { statusCode?: unknown }).statusCode }) };
+  return { ref: `${REF_PREFIX}${path}`, error: null };
+};
+
 /** Playable/openable URL for a stored file or an https link; null otherwise. */
 export const resolveSongFileUrl = async (ref?: string | null): Promise<string | null> => {
   if (!ref) return null;
@@ -165,10 +189,10 @@ export const isSuggestionFile = (ref?: string | null): ref is string =>
  * the new references (the old ones when a move fails).
  */
 export const adoptSuggestionFiles = async (
-  refs: { audio_url?: string | null; chart_url?: string | null },
-): Promise<{ audio_url?: string; chart_url?: string }> => {
-  const out: { audio_url?: string; chart_url?: string } = {};
-  for (const key of ['audio_url', 'chart_url'] as const) {
+  refs: { audio_url?: string | null; chart_url?: string | null; score_path?: string | null },
+): Promise<{ audio_url?: string; chart_url?: string; score_path?: string }> => {
+  const out: { audio_url?: string; chart_url?: string; score_path?: string } = {};
+  for (const key of ['audio_url', 'chart_url', 'score_path'] as const) {
     const ref = refs[key];
     if (!isSuggestionFile(ref)) continue;
     const from = ref.slice(REF_PREFIX.length);
