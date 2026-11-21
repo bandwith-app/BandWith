@@ -5,11 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>BandWith Academy</title>
     <meta name="description" content="Everything you can do in BandWith, for admins, members and deputies, on every device." />
+    <!-- The interactive guide. Search engines read the static pages instead: /academy/<lang>/ (academy/seo). -->
+    <meta name="robots" content="noindex, follow" />
     <link rel="icon" href="./favicon.svg" />
     <link rel="stylesheet" href="https://use.typekit.net/mzr4hzv.css" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p>BandWith Academy, the user guide:
+        <a href="/academy/en/">English</a> · <a href="/academy/it/">Italiano</a> · <a href="/academy/es/">Español</a> ·
+        <a href="/academy/fr/">Français</a> · <a href="/academy/de/">Deutsch</a> · <a href="/academy/pt/">Português</a>
+      </p>
+    </noscript>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

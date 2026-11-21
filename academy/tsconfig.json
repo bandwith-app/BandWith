@@ -2,7 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "baseUrl": "..",
-    "types": ["vite/client"]
+    "types": ["vite/client", "node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "content/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "content/**/*.ts", "seo/**/*.ts"]
 }
