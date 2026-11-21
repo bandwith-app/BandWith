@@ -4538,6 +4538,12 @@ const dict: Dictionary = {
   "No thanks": "Não, obrigado",
   "Anonymous usage statistics": "Estatísticas de uso anônimas",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Quais telas são usadas e com que frequência, para melhorar o BandWith. Nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade.",
+  "Audio for the stage manager": "Áudio para a cabine",
+  "Audio on this device {ready}/{total}": "Áudio neste dispositivo {ready}/{total}",
+  "Ready: the stage manager plays it without internet.": "Pronto: a cabine toca sem internet.",
+  "Download it now: at the gig the stage manager plays it without internet.": "Baixe agora: no show a cabine toca sem internet.",
+  "Download audio": "Baixar o áudio",
+  "Download progress": "Progresso do download",
 };
 
 export default dict;

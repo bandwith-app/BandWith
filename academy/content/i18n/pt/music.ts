@@ -1416,7 +1416,7 @@ const music: AreaText = {
       summary: "O notebook ou o tablet de um admin, ligado na mesa de som, toca a gravação de cada música, e as telas da banda passam para a música que está tocando.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["cabine", "playback", "backing track", "áudio", "mesa de som", "reprodução", "cabo", "usb-c", "entrada de fone", "adaptador", "pa"],
+      keywords: ["cabine", "playback", "backing track", "áudio", "mesa de som", "reprodução", "cabo", "usb-c", "entrada de fone", "adaptador", "pa", "offline", "sem internet", "baixar"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1429,6 +1429,7 @@ const music: AreaText = {
           items: [
             "Dê a cada música uma **Gravação** (um arquivo de áudio) na ficha da música. Músicas sem gravação movem a banda do mesmo jeito, mas nada toca.",
             "Ligue o aparelho na mesa (veja as dicas de cabo abaixo) e ative o Não perturbe, para as notificações não saírem no PA.",
+            "Nos dias antes, com internet, abra o show: embaixo do setlist, **Áudio neste dispositivo** conta as músicas que já estão aqui (por exemplo 3/10). Toque em **Baixar o áudio** para baixar o resto. No app do celular começa sozinho quando você abre o app com internet nos 3 dias antes de um show confirmado. Os arquivos ficam no aparelho e não vão para o backup do celular.",
             "Abra o show com internet, abra o Modo palco e toque em **Cabine: áudio daqui**. O aparelho baixa o áudio da noite: uma barra mostra o andamento, e o anel em volta do ▶ de cada música se enche enquanto baixa.",
             "Espere até **Áudio pronto** contar todas as músicas (por exemplo 10/10): a partir daí ele toca sem internet. Se uma música não baixar, a cabine avisa (veja abaixo).",
           ],

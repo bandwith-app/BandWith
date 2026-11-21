@@ -4,9 +4,13 @@
  * mixer. Only the Regia device ever uses this module (useStageRegia creates
  * the player when the Regia turns on); no other phone loads any audio.
  *
- * - Native apps: the file is downloaded once into the app's private library
- *   (no iCloud backup) and played from there, so on stage it needs no
- *   network.
+ * - Native apps: the file is downloaded once (@capacitor/file-transfer) into
+ *   the app's private library with no cloud backup (iOS Library/NoCloud,
+ *   excluded from iCloud by AppDelegate; Android's files folder, app backup
+ *   off) and played from there, so on stage it needs no network. It stays
+ *   there for the next gigs (one file per song link).
+ * - Any screen may ask for a song (Stage, the download before the gig): the
+ *   same song asked twice at once is downloaded once.
  * - Web (a laptop at the mixer): kept in IndexedDB as a Blob. A link the
  *   browser can't fetch (a Google Drive share, CORS) plays streamed instead,
  *   and is not counted as ready.
@@ -57,14 +61,14 @@ const idb = async <R>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => 
 const fs = () => import('@capacitor/filesystem');
 
 /**
- * Where the files live: the app's Library folder. It must be one the native
- * downloadFile knows (iOS and Android only map Documents / Data / Library /
- * Cache): with LibraryNoCloud, iOS wrote the file into Documents and Android
- * failed, so no song was ever "ready" (field bug 11-20).
+ * Where the files live: the library with no cloud backup. The download and
+ * the check must use the same folder: the deprecated Filesystem.downloadFile
+ * didn't know this one (iOS wrote into Documents, Android failed), so no song
+ * was ever "ready" (field bug 11-20). file-transfer takes the full path.
  */
 const nativeLoc = async (key: string) => {
   const { Directory } = await fs();
-  return { path: `${DIR}/${key}`, directory: Directory.Library };
+  return { path: `${DIR}/${key}`, directory: Directory.LibraryNoCloud };
 };
 
 const nativeUri = async (key: string): Promise<string | null> => {
@@ -77,16 +81,18 @@ const nativeUri = async (key: string): Promise<string | null> => {
   }
 };
 
-/** Builds up to 11-20 saved into Documents on iOS (never used): cleared once. */
+/**
+ * Copies in the old places, never used again: Documents (iOS builds up to
+ * 11-20) and Library (test builds of the first fix). Cleared once.
+ */
 let leftoversCleared = false;
 const clearLeftovers = async () => {
+  // Android: Library and LibraryNoCloud are the same folder (nothing old to clear).
   if (leftoversCleared || Capacitor.getPlatform?.() !== 'ios') return;
   leftoversCleared = true;
-  try {
-    const { Filesystem, Directory } = await fs();
-    await Filesystem.rmdir({ path: DIR, directory: Directory.Documents, recursive: true });
-  } catch {
-    /* nothing there */
+  const { Filesystem, Directory } = await fs();
+  for (const directory of [Directory.Documents, Directory.Library]) {
+    await Filesystem.rmdir({ path: DIR, directory, recursive: true }).catch(() => undefined);
   }
 };
 
@@ -152,7 +158,25 @@ export async function cachedAudio(refs: string[]): Promise<Set<string>> {
  * when the size is unknown). A link that gives a web page instead of audio
  * (a private Drive file) is not kept.
  */
-export async function downloadAudio(ref: string, onProgress?: (fraction: number | null) => void): Promise<DownloadResult> {
+export function downloadAudio(ref: string, onProgress?: (fraction: number | null) => void): Promise<DownloadResult> {
+  let run = inflight.get(ref);
+  if (!run) {
+    const listeners = new Set<(fraction: number | null) => void>();
+    const promise = downloadOnce(ref, (p) => listeners.forEach((l) => l(p))).finally(() => inflight.delete(ref));
+    run = { promise, listeners };
+    inflight.set(ref, run);
+  }
+  if (onProgress) run.listeners.add(onProgress);
+  const listeners = run.listeners;
+  return run.promise.finally(() => {
+    if (onProgress) listeners.delete(onProgress);
+  });
+}
+
+/** Downloads running now, by song file reference (one per song, whoever asked). */
+const inflight = new Map<string, { promise: Promise<DownloadResult>; listeners: Set<(fraction: number | null) => void> }>();
+
+async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {
   let url: string | null = null;
   try {
     url = await remoteUrl(ref);
@@ -165,23 +189,23 @@ export async function downloadAudio(ref: string, onProgress?: (fraction: number 
     if (Capacitor.isNativePlatform()) {
       void clearLeftovers();
       const { Filesystem } = await fs();
+      const { FileTransfer } = await import('@capacitor/file-transfer');
       const loc = await nativeLoc(key);
-      const listener = onProgress
-        ? await Filesystem.addListener('progress', (p) => {
-            if (p.url === url) onProgress(p.contentLength > 0 ? Math.min(1, p.bytes / p.contentLength) : null);
-          })
-        : null;
-      // Android's download doesn't make the folder (`recursive` is iOS only): make it first.
-      // It fails when it's already there, which is fine.
+      const listener = await FileTransfer.addListener('progress', (p) => {
+        if (p.url === url) onProgress(p.lengthComputable && p.contentLength > 0 ? Math.min(1, p.bytes / p.contentLength) : null);
+      });
+      // Make the folder first (Android's download may not): it fails when it's already there, which is fine.
       await Filesystem.mkdir({ path: DIR, directory: loc.directory, recursive: true }).catch(() => undefined);
       try {
         // Native download: no CORS, straight to disk (a 50 MB file never sits in memory).
-        await Filesystem.downloadFile({ url, ...loc, recursive: true, progress: !!onProgress });
-      } catch {
-        // The plugin rejects any HTTP error (Drive answers 404 for a private or deleted file).
-        return { ok: false, reason: isOnline() ? 'link' : 'offline' };
+        const { uri } = await Filesystem.getUri(loc);
+        await FileTransfer.downloadFile({ url, path: uri, progress: true });
+      } catch (e) {
+        // An HTTP error is the link (Drive answers 404 for a private or deleted file).
+        const status = (e as { httpStatus?: number } | null)?.httpStatus;
+        return { ok: false, reason: status || isOnline() ? 'link' : 'offline' };
       } finally {
-        void listener?.remove();
+        void listener.remove();
       }
       const st = await Filesystem.stat(loc);
       const head = st.size > 0 ? fromBase64(String((await Filesystem.readFile({ ...loc, offset: 0, length: 16 })).data)) : new Uint8Array();

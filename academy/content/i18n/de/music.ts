@@ -1416,7 +1416,7 @@ const music: AreaText = {
       summary: "Der Laptop oder das Tablet eines Admins, per Kabel am Mischpult, spielt die Aufnahme jedes Songs ab, und die Bildschirme der Band springen zum laufenden Song.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["regie", "playback", "backing track", "audio", "mischpult", "wiedergabe", "kabel", "usb-c", "kopfhörerbuchse", "adapter", "pa"],
+      keywords: ["regie", "playback", "backing track", "audio", "mischpult", "wiedergabe", "kabel", "usb-c", "kopfhörerbuchse", "adapter", "pa", "offline", "ohne internet", "herunterladen"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1429,6 +1429,7 @@ const music: AreaText = {
           items: [
             "Gib jedem Song eine **Aufnahme** (eine Audiodatei) im Songformular. Songs ohne Aufnahme bewegen die Band trotzdem, aber es läuft nichts.",
             "Schließe das Gerät ans Mischpult an (siehe die Kabeltipps unten) und schalte Nicht stören ein, damit keine Mitteilungen über die PA kommen.",
+            "In den Tagen davor, mit Internet, öffne den Gig: Unter der Setlist zählt **Audio auf diesem Gerät** die Songs, die schon da sind (zum Beispiel 3/10). Tippe auf **Audio laden**, um den Rest zu holen. In der App auf dem Handy startet es von selbst, wenn du die App in den 3 Tagen vor einem bestätigten Gig mit Internet öffnest. Die Dateien bleiben auf dem Gerät und landen nicht im Backup des Handys.",
             "Öffne den Gig online, öffne den Bühnenmodus und tippe auf **Regie: Audio von hier**. Das Gerät lädt das Audio des Abends herunter: Ein Balken zeigt den Stand, und der Ring um das ▶ jedes Songs füllt sich beim Laden.",
             "Warte, bis **Audio bereit** alle Songs zählt (zum Beispiel 10/10): ab dann spielt es ohne Internet. Lässt sich ein Song nicht laden, sagt dir die Regie das (siehe unten).",
           ],

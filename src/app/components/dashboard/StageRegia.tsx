@@ -7,6 +7,7 @@ import { formatClock, playPosition } from '@/lib/stageRegia';
 import { getSongs } from '@/lib/services/songs';
 import { useSystemBack } from '@/lib/backStack';
 import type { PlayFailure, SongAudio, StageRegia } from '@/app/components/event/useStageRegia';
+import { audioReasonText } from '@/app/components/event/audioReason';
 
 /**
  * Stage manager mode ("Regia") in Stage mode. The Regia's bar (an admin's
@@ -39,17 +40,6 @@ const Progress: React.FC<{ positionMs: number; durationMs: number | null; accent
 };
 
 /** Why a song's audio can't come down or play, and what to do about it. */
-const reasonText = (reason: PlayFailure, t: ReturnType<typeof useT>) =>
-  reason === 'pending'
-    ? t('It’s still downloading: wait a moment, then press Play again.')
-    : reason === 'link'
-    ? t('The link doesn’t give an audio file. On Google Drive, share it as “Anyone with the link”, or upload the file to the song.')
-    : reason === 'offline'
-      ? t('No internet, and it isn’t on this device yet. It downloads once you’re back online.')
-      : reason === 'format'
-        ? t('This device can’t play this file. Use MP3, M4A or WAV.')
-        : t('The download stopped. Try again.');
-
 /** A button that acts only once held down for HOLD_MS. */
 const HoldButton: React.FC<{ label: string; hint: string; onHold: () => void; disabled?: boolean; children: React.ReactNode; className?: string }> = ({
   label,
@@ -224,11 +214,11 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
     regia.error?.kind === 'insert'
       ? t('The song couldn’t be added to the setlist.')
       : regia.error?.kind === 'load'
-        ? `${t('“{title}” can’t be played.', { title: regia.error.title })} ${reasonText(regia.error.reason, t)}`
+        ? `${t('“{title}” can’t be played.', { title: regia.error.title })} ${audioReasonText(regia.error.reason, t)}`
         : regia.error?.kind === 'no-audio' || (cantPlay && !shown?.audio && !nextOk)
           ? t('“{title}” has no audio: the band plays it live.', { title: regia.error?.kind === 'no-audio' ? regia.error.title : shown!.title })
           : cantPlay && shownFailed
-            ? `${t('“{title}” can’t be played.', { title: shown!.title })} ${reasonText(shownFailed, t)}`
+            ? `${t('“{title}” can’t be played.', { title: shown!.title })} ${audioReasonText(shownFailed, t)}`
             : null;
   const listOpen = showFailed && !downloading && failed.length > 0;
   const playNext = !playing && ((ended && next && regia.nextIndex != null) || (cantPlay && nextOk && regia.nextPlayable != null));
@@ -558,7 +548,7 @@ const FailedSheet: React.FC<{ failed: { title: string; reason: PlayFailure }[]; 
           {failed.map((f) => (
             <li key={f.title} className="flex flex-col gap-1 py-3 border-b border-white/15 last:border-b-0 min-w-0">
               <span className="bw-label-md normal-case text-white truncate">{f.title}</span>
-              <span className="bw-body-sm text-white/70">{reasonText(f.reason, t)}</span>
+              <span className="bw-body-sm text-white/70">{audioReasonText(f.reason, t)}</span>
             </li>
           ))}
         </ul>

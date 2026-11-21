@@ -1416,7 +1416,7 @@ const music: AreaText = {
       summary: "Il portatile o il tablet di un admin, collegato al mixer, suona la registrazione di ogni brano, e gli schermi della band passano al brano in play.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["regia", "basi", "base", "audio", "mixer", "riproduzione", "cavo", "usb-c", "jack cuffie", "adattatore", "impianto"],
+      keywords: ["regia", "basi", "base", "audio", "mixer", "riproduzione", "cavo", "usb-c", "jack cuffie", "adattatore", "impianto", "offline", "senza internet", "scaricare"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1429,6 +1429,7 @@ const music: AreaText = {
           items: [
             "Dai a ogni brano una **Registrazione** (un file audio) nella scheda del brano. I brani senza muovono comunque la band, ma non suona niente.",
             "Collega il dispositivo al mixer (vedi i consigli sul cavo più sotto) e attiva Non disturbare, così le notifiche non escono dall’impianto.",
+            "Nei giorni prima, con internet, apri il gig: sotto la scaletta, **Audio su questo dispositivo** conta i brani già qui (per esempio 3/10). Tocca **Scarica l’audio** per scaricare gli altri. Nell’app sul telefono parte da solo quando apri l’app con internet nei 3 giorni prima di un gig confermato. I file restano sul dispositivo e non finiscono nel backup del telefono.",
             "Apri il gig mentre sei online, apri la Modalità palco e tocca **Regia: audio da qui**. Il dispositivo scarica l’audio della serata: una barra mostra a che punto è, e l’anello attorno al ▶ di ogni brano si riempie mentre scarica.",
             "Aspetta che **Audio pronto** conti tutti i brani (per esempio 10/10): da lì suona anche senza internet. Se un brano non si scarica, la regia te lo dice (vedi sotto).",
           ],

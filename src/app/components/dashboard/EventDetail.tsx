@@ -53,6 +53,9 @@ import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh'
 import { useStageLive, SETLIST_ORDER_SAVED, type StageRegiaBridge, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
 import { useStageRegia } from '@/app/components/event/useStageRegia';
+import { Capacitor } from '@capacitor/core';
+import { OfflineAudioCard } from '@/app/components/event/OfflineAudioCard';
+import { inPrefetchWindow, localToday } from '@/lib/audioPrefetch';
 import { RehearsalSessionCard } from './RehearsalSession';
 import { NoteSheetsHost, RehearsalNotesSection, useNoteSheets, type LiveNotes } from './RehearsalNotes';
 import { useRehearsalNotes } from '@/app/components/event/useRehearsalNotes';
@@ -744,6 +747,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     jumpTo: stageLive.jumpTo,
   });
   const liveSong = stageLive.songs[stageLive.index];
+  // Audio on this device (admins: whoever can be the stage manager): the
+  // setlist's song files ahead of time, so Stage mode plays them with no
+  // internet; on its own in the days before a confirmed gig (the phone app).
+  const offlineAudio =
+    isAdmin && !isPersonalGig && !isQuote && !isPast && !setlistLoading && setlistSongs.some((s) => !!s.audio) ? (
+      <OfflineAudioCard
+        songs={setlistSongs}
+        auto={Capacitor.isNativePlatform() && !isRehearsal && event.status === 'CONFIRMED' && inPrefetchWindow(event.date, localToday())}
+      />
+    ) : null;
   const rehearsalSession = useRehearsalSession({
     enabled: sessionsOn && isRehearsal && !isPersonalGig && !!event.band_id,
     bandId: event.band_id,
@@ -1706,6 +1719,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   ) : (
                     <p className="bw-body-md text-muted-foreground">{t('No setlist yet')}</p>
                   )}
+                  {offlineAudio}
                 </section>
               )}
 
@@ -2097,6 +2111,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     )}
                   </button>
                   )}
+                  {offlineAudio}
                 </section>
               )}
 
@@ -2136,6 +2151,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       {t('No songs picked for this rehearsal yet.')}
                     </button>
                   )}
+                  {offlineAudio}
                 </section>
               )}
 
