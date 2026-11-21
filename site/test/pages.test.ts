@@ -45,7 +45,12 @@ describe('channel pages', () => {
         expect(p.flow.steps.length).toBeGreaterThanOrEqual(3);
         expect(p.flow.steps.length).toBeLessThanOrEqual(4);
         expect(p.roles.rows.length).toBeGreaterThanOrEqual(4);
-        expect(p.details.items).toHaveLength(6);
+        // Two or three full rows of the four-column bento: a wide tile takes two columns.
+        expect([6, 9]).toContain(p.details.items.length);
+        const rows: number[] = [];
+        let used = 0;
+        for (const x of p.details.items) { used += x.wide ? 2 : 1; if (used >= 4) { rows.push(used); used = 0; } }
+        expect({ rows, left: used }, 'every row of the bento is full').toEqual({ rows: rows.map(() => 4), left: 0 });
         if (p.demo) expect(DEMOS[p.demo.kind]?.() ?? '', `demo ${p.demo.kind}`).not.toBe('');
       });
 

@@ -43,6 +43,7 @@ export const page: ChannelPage = {
       { what: 'Sees fees', admin: 'Everyone’s', member: 'Own only', deputy: 'Fee offered' },
       { what: 'Accepts or declines the gig', admin: 'When invited', member: true, deputy: true },
       { what: 'Sees show readiness', admin: 'Every check', member: 'No contract or deposit', deputy: false },
+      { what: 'Syncs events to their own calendar', admin: 'Every band event', member: 'Their own events', deputy: 'Their gigs, by feed' },
     ],
   },
   details: {
@@ -52,8 +53,8 @@ export const page: ChannelPage = {
       { icon: 'clock', title: 'Shows past midnight', body: '21:00 to 02:00 is one gig. It stays upcoming until the show really ends.' },
       { icon: 'file-text', title: 'Drafts only you see', body: 'Close the wizard and save a draft. It follows you to your other devices. Nobody is told until you create the gig.' },
       { icon: 'bell', title: 'One notice per change', body: 'A new date, time, call time or venue sends the lineup one Gig updated. A changed fee reaches only that musician.' },
-      { icon: 'map-pin', title: 'Venue and forecast', body: 'Pick the venue from search and its street and city fill in. For a gig in the next seven days, the wizard shows the forecast and the sunset time.' },
-      { icon: 'wifi-off', title: 'No signal at the venue', body: 'Create or edit a gig offline: it’s saved on the device and shows Sync until it reaches the server. While a gig is open, a change to its lineup, tasks or setlist shows up at once.', wide: true },
+      { icon: 'map-pin', title: 'Venue and forecast', body: 'Search the venue by name, clubs and studios included, and its street and city fill in. For a gig in the next seven days, the wizard shows the forecast and the sunset time.' },
+      { icon: 'calendar', title: 'In your own calendar', body: 'Settings & account, then Calendar sync: a private link for Apple Calendar, Google Calendar or Outlook. The gigs and rehearsals you’re on follow by themselves, with the times, the venue and your role, never fees or clients. Add to calendar on an event saves just that one.', wide: true },
     ],
   },
   learn: [
@@ -62,6 +63,6 @@ export const page: ChannelPage = {
     { id: 'free-slots-and-conflicts', title: 'Who’s free', line: 'Availability counts and schedule conflicts.' },
     { id: 'gig-workspace', title: 'The gig workspace', line: 'Everything on a gig’s page, top to bottom.' },
     { id: 'show-readiness', title: 'Show readiness', line: 'What’s settled for a gig, and what’s still to do.' },
-    { id: 'gig-notifications', title: 'Who is told what', line: 'The notifications a gig sends, and to whom.' },
+    { id: 'calendar-sync', title: 'Calendar sync', line: 'Your events in Apple, Google or Outlook.' },
   ],
 };

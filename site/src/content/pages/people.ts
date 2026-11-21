@@ -48,7 +48,7 @@ export const page: ChannelPage = {
   details: {
     heading: { lines: ['Made for', 'last-minute calls.'] },
     items: [
-      { icon: 'mail', title: 'Invites that wait, then expire', body: 'An invite is valid for 7 days. With 2 days left, the invited address gets one reminder. Invite the same address again to renew it. The person signs in with that address to join.', wide: true },
+      { icon: 'mail', title: 'Invites that wait, then expire', body: 'An invite is valid for 7 days, with one reminder when 2 are left. Admins see the open ones under Invited: Not accepted yet, Expired or Declined, with Send again, Copy link or Cancel invite. The person joins as soon as their account is made.', wide: true },
       { icon: 'wallet', title: 'A default fee per person', body: 'Set it on their page under In the band. New gigs and quotes fill it in; you can still change it on each gig.' },
       { icon: 'users', title: 'Who covers what', body: 'The deputies list groups the band by instrument and tells you which ones still have no deputy.' },
       { icon: 'refresh', title: 'The gig changed?', body: 'Move the date, times or venue after a deputy answered and the request is flagged. Send update shows them what changed and asks Still OK.' },

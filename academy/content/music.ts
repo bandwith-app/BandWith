@@ -1682,6 +1682,18 @@ const music: AreaModule = {
       viewport: "phone",
     },
     {
+      id: "stage-manager",
+      how: "Give every song an audio file (the e2e serves a silent WAV), open Rooftop Session in Stage mode, tap Stage manager: play audio here, wait for Audio ready 10/10, then tap ▶ on September.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "home-to-practise",
+      how: "Seed open rehearsal notes from Weekly rehearsal two days back (Paper Boats: Ending; Harbor Lights: Tempo 96, for you), then scroll Home to To practise.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
       id: "music-song-only",
       how: "As for music-rehearsal-live, then tap Full screen (the four-corners button at the top) on Paper Boats.",
       role: "admin",
