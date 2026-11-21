@@ -301,7 +301,7 @@ const people: AreaText = {
         },
         { type: "p", text: "Un miembro que abre su propia fila ve «Tu caché habitual en esta banda: …» cuando tiene uno." },
         { type: "p", text: "Tu propio instrumento principal está en tu perfil: toca tu avatar, luego **Editar** en la tarjeta de tu perfil, y elígelo en **Instrumento / rol principal**. Aparece en la tarjeta de tu perfil y cuenta." },
-        { type: "p", text: "El instrumento junto a cada nombre en **Miembros de la banda** es el que está guardado para esa persona en esta banda. La tarjeta **Quién cubre qué** de los sustitutos agrupa a la banda según estos instrumentos." },
+        { type: "p", text: "El instrumento junto a cada nombre en **Miembros de la banda** es el que está guardado para esa persona en esta banda. La tarjeta **Quién cubre qué** de los sustitutos agrupa a la banda según estos instrumentos. Un pequeño icono muestra cada instrumento (guitarra, bajo, batería, voz, teclados, saxo, trompeta, violín, violonchelo, percusión y una nota para todo lo demás) en las filas de miembros, en la página de cada miembro, en las listas de sustitutos y en **Buscar sustituto**." },
         { type: "note", tone: "privacy", text: "Los cachés habituales siguen la regla del dinero: los admins ven los de todos, un miembro solo ve el suyo." },
       ],
     },

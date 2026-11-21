@@ -308,7 +308,7 @@ const people: AreaModule = {
         },
         { type: 'p', text: 'A member who opens their own row sees “Your default fee in this band: {fee}” when they have one.' },
         { type: 'p', text: 'Your own primary instrument is on your profile: tap your avatar, then **Edit** on your profile card, and pick it under **Primary instrument / role**. It shows on your Account Hub card.' },
-        { type: 'p', text: 'The instrument next to each name on **Band members** is the one stored for that person in this band. The deputies’ **Who covers what** card groups the band by these instruments.' },
+        { type: 'p', text: 'The instrument next to each name on **Band members** is the one stored for that person in this band. The deputies’ **Who covers what** card groups the band by these instruments. A small icon shows each instrument (guitar, bass, drums, vocals, keys, sax, trumpet, violin, cello, percussion, and a note for anything else) on member rows, member pages, the deputy lists and **Find a deputy**.' },
         { type: 'note', tone: 'privacy', text: 'Default fees follow the money rule: admins see everyone’s, a member sees only their own.' },
       ],
     },
