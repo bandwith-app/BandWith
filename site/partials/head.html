@@ -13,8 +13,11 @@
   function gtag() { dataLayer.push(arguments); }
   gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
   gtag('set', 'ads_data_redaction', true);
+  /* Configured and loaded only after a yes, so the first page_view is already consented. */
   window.bwLoadGa = function () {
     if (document.getElementById('bw-gtag')) return;
+    gtag('js', new Date());
+    gtag('config', 'G-GCWSEQRZ2E', { allow_google_signals: false, allow_ad_personalization_signals: false, debug_mode: /[?&]ga_debug=1/.test(location.search) || undefined });
     var s = document.createElement('script');
     s.id = 'bw-gtag'; s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=G-GCWSEQRZ2E';
     document.head.appendChild(s);
@@ -24,8 +27,6 @@
     document.documentElement.setAttribute('data-consent', c === 'granted' || c === 'denied' ? c : 'pending');
     if (c === 'granted') { gtag('consent', 'update', { analytics_storage: 'granted' }); window.bwLoadGa(); }
   })();
-  gtag('js', new Date());
-  gtag('config', 'G-GCWSEQRZ2E', { allow_google_signals: false, allow_ad_personalization_signals: false, debug_mode: /[?&]ga_debug=1/.test(location.search) || undefined });
 </script>
 <script>
   (function () {

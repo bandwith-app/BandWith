@@ -38,17 +38,14 @@ const dataLayer = (page: Page) =>
 const gaCookies = async (page: Page) => (await page.context().cookies()).filter((c) => /^_ga/.test(c.name));
 
 test.describe('analytics consent', () => {
-  test('before any choice: consent denied, GA configured, no GA cookie, the banner asks', async ({ page }) => {
+  test('before any choice: consent denied, GA not configured, no GA cookie, the banner asks', async ({ page }) => {
     await visit(page, '/');
     await expect(page.locator(BANNER)).toBeVisible();
     const dl = await dataLayer(page);
     const def = dl.find((c) => c[0] === 'consent' && c[1] === 'default');
     expect(def?.[2]).toMatchObject({ analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
-    const cfg = dl.find((c) => c[0] === 'config');
-    expect(cfg?.[1]).toBe('G-GCWSEQRZ2E');
-    expect(cfg?.[2]).toMatchObject({ allow_google_signals: false, allow_ad_personalization_signals: false });
-    // The default comes before the config.
-    expect(dl.indexOf(def!)).toBeLessThan(dl.indexOf(cfg!));
+    // Basic mode: GA is configured only once there is a yes.
+    expect(dl.find((c) => c[0] === 'config')).toBeUndefined();
     await page.waitForTimeout(1500);
     expect(await gaCookies(page)).toEqual([]);
     // Basic mode: Google's script is not even loaded before a yes.
@@ -66,7 +63,14 @@ test.describe('analytics consent', () => {
     await expect(b).toBeHidden();
     const upd = (await dataLayer(page)).filter((c) => c[0] === 'consent' && c[1] === 'update');
     expect(upd.at(-1)?.[2]).toEqual({ analytics_storage: 'granted' });
-    // The yes loads GA, once.
+    // The yes configures GA after granting (so the first page_view counts as consented) and loads it, once.
+    const after = await dataLayer(page);
+    const grant = after.findIndex((c) => c[0] === 'consent' && c[1] === 'update' && (c[2] as Record<string, string>).analytics_storage === 'granted');
+    const cfg = after.findIndex((c) => c[0] === 'config');
+    expect(grant).toBeGreaterThan(-1);
+    expect(cfg).toBeGreaterThan(grant);
+    expect(after[cfg][1]).toBe('G-GCWSEQRZ2E');
+    expect(after[cfg][2]).toMatchObject({ allow_google_signals: false, allow_ad_personalization_signals: false });
     await expect.poll(() => loads(page).length).toBe(1);
     expect(loads(page)[0]).toContain('id=G-GCWSEQRZ2E');
     gtagLoads.set(page, []);
@@ -80,6 +84,7 @@ test.describe('analytics consent', () => {
     const i = dl.findIndex((c) => c[0] === 'consent' && c[1] === 'update' && (c[2] as Record<string, string>).analytics_storage === 'granted');
     expect(i).toBeGreaterThan(-1);
     expect(i).toBeLessThan(dl.findIndex((c) => c[0] === 'config'));
+    expect(dl.filter((c) => c[0] === 'config')).toHaveLength(1);
   });
 
   test('Reject: nothing granted, remembered, no GA cookie', async ({ page }) => {
