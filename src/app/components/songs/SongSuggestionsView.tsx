@@ -134,12 +134,14 @@ export const SongSuggestionsView: React.FC = () => {
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'tween', duration: 0.3, ease: 'easeOut' }}
-          className="bw-pane-detail fixed inset-0 z-[74] bg-background text-foreground flex flex-col overflow-y-auto overflow-x-hidden"
+          // Laptop pose: a form that scrolls as one (`.bw-fold-form`): its
+          // header (the first child) holds the Display and the review
+          // scrolls on the Deck, so nothing rests across the fold.
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[74] bg-background text-foreground flex flex-col overflow-y-auto overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}
           role="dialog"
           aria-label={t('Suggestions')}
         >
-          <span ref={raiseAboveOpenPanes} hidden aria-hidden />
           {selected ? (
             <SuggestionDetail
               key={selected.id}
@@ -195,6 +197,7 @@ export const SongSuggestionsView: React.FC = () => {
               </div>
             </>
           )}
+          <span ref={raiseAboveOpenPanes} hidden aria-hidden />
         </motion.div>
       )}
     </AnimatePresence>,

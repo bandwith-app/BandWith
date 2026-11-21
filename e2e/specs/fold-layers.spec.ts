@@ -139,6 +139,27 @@ test.describe('Duo Laptop pose: screens off the fold', () => {
     await app.check('Stage mode');
   });
 
+  /**
+   * A song suggestion (here a lyrics correction, opened from its
+   * notification) scrolled as one page, so its diff ran across the fold and,
+   * scrolled, so did the Reason field and Accept / Reject. Like the other
+   * full-screen forms its header holds the Display and the review lies on
+   * the Deck.
+   */
+  test('@laptop a song suggestion keeps its review on the Deck', async ({ app, duo }) => {
+    const fold = duo!.foldBand!;
+    await app.page.getByRole('button', { name: /^Notifications/ }).filter({ visible: true }).first().click();
+    await app.page.getByRole('button', { name: /Lyrics correction/ }).first().click();
+    const view = app.page.getByRole('dialog', { name: app.t('Suggestions') });
+    const tabs = view.getByRole('group', { name: app.t('Before and after') });
+    await expect(tabs).toBeVisible();
+    const top = (await tabs.boundingBox())!.y;
+    expect(top, `the review starts on the Deck (fold ${fold.top}–${fold.bottom})`).toBeGreaterThanOrEqual(fold.bottom);
+    await app.check('song suggestion');
+    await view.getByRole('button', { name: app.t('Reject'), exact: true }).scrollIntoViewIfNeeded();
+    await app.check('song suggestion, scrolled');
+  });
+
   test('@laptop Deputy gigs: the reply field is off the fold', async ({ app }) => {
     await leaveBand(app, true);
     await expect(app.page.getByRole('textbox').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
