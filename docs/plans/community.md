@@ -61,6 +61,7 @@ Contents
 | 9 | Direct deputy invite | "l'invito diretto ad un deputy rimane lo stesso, vero?" | **Yes, unchanged** (§4.4). |
 | 10 | Bands looking for a new member | "se volessi (come band) cercare in questa community anche un nuovo membro … pure dovrebbe esserci" | **Yes**: ads and search cover **permanent / deputy / both** (§4.2, §4.5). |
 | 11 | Branded sharing | "possiamo creare un design branded di bandwith customizzato (tipo social thumbnail picture per i link dei siti web) cosi da spingere il brand e renderlo riconoscibile?" | **Yes**: dynamic BandWith share cards for showcases and ads, link previews + Story/square images (§8). |
+| 12 | Card font (2026-11-21) | "ok usa Geist per le card dinamiche" | Geist + Geist Mono for all community cards (§8.5). |
 
 ## 3. What exists today (the plan builds on it)
 
@@ -292,7 +293,7 @@ Every shared link is an ad for BandWith. The card is what people see in WhatsApp
 
 ### 8.1 Mockups
 
-These use fake demo data: the site's persona Leo M. and the demo band Velvet Static. They are rendered with the #248 share-card style.
+These use fake demo data: the site's persona Leo M. and the demo band Velvet Static. They are rendered with the #248 share-card style, in Geist as decided (§8.5).
 
 | Musician showcase, link preview 1200×630 | Band ad, link preview 1200×630 |
 |---|---|
@@ -367,15 +368,12 @@ Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](co
   - The card follows the page language: `/m/leo-m`, `/it/m/leo-m`, `/es/m/leo-m`.
   - When shared from the app, it follows the app language, mapped to EN/IT/ES for the site. Other app languages fall back to EN until the site has them.
   - Instruments and genres come from the same dictionaries as the app and the site (`instruments.ts` labels, the site's `dict/*.json`).
-- **Fonts:**
-  - The #248 cards render the display face (`neue-haas-grotesk-display`) through Adobe Fonts in a browser at build time.
-  - **An on-demand server renderer needs the font files themselves**, and the Adobe Fonts licence does not let us put those files on a server.
-  - So the dynamic cards use **open-licensed fonts**:
-    - Geist Mono (OFL, already self-hosted on the site) for the mono labels;
-    - a close OFL grotesk for the big uppercase lines, for example Geist Sans Bold or Inter Tight Bold.
+- **Fonts (decided by the owner on 2026-11-21: Geist):**
+  - The #248 cards render the display face (`neue-haas-grotesk-display`) through Adobe Fonts in a browser at build time. An on-demand server renderer needs the font files themselves, and the Adobe Fonts licence does not let us put those files on a server.
+  - So the community cards use **Geist** (OFL, by Vercel): Geist Bold / SemiBold for the big uppercase lines and chips, and **Geist Mono** for the labels, the pill and the URL. Geist Mono is already self-hosted on the site.
+  - The font files (`.ttf` / `.woff`, since Satori does not read `.woff2`) are bundled with the function.
+  - The community's static fallbacks use Geist too, so every community card looks the same. The site's page cards from #248 stay as they are.
   - The logo is an SVG, so it is unaffected.
-  - The static fallbacks can keep the exact display face.
-  - To confirm when building: whether the difference is visible at card size (see §16).
 - **Images:**
   - Satori takes PNG/JPEG/SVG, not WebP, so the photo is fetched as JPEG.
   - The lime duotone is applied once, when the photo is chosen for the showcase (a small image stored next to the avatar), not by a CSS filter at render time. Satori has no filters.
@@ -594,7 +592,6 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
 - The inactivity period before a showcase hides, the request expiry, the cooling-off period after a decline, and the daily limits. These are product values, to set in the database at build time.
 - Whether the fee is shown in a community deputy request, or only after the musician accepts.
 - Which of the existing languages the public site pages need beyond EN/IT/ES.
-- The share card's display font: an open grotesk for on-demand rendering instead of the Adobe Fonts face. Check it side by side with the #248 cards at card size (§8.5).
 - Whether "Download image" adds a small QR code to the Story and square images, for people who see them without a tappable link.
 
 ## 17. Competitors checked
