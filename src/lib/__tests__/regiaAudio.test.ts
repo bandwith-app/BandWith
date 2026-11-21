@@ -28,27 +28,38 @@ const dirs = new Set<string>();
 /** Android's native download ignores `recursive`: the folder has to exist already. */
 const android = { on: false };
 const key = (o: { path: string; directory?: string }) => `${o.directory}:${o.path}`;
-const listeners: ((p: { url: string; bytes: number; contentLength: number }) => void)[] = [];
+const listeners: ((p: { type?: string; url: string; bytes: number; contentLength: number; lengthComputable?: boolean }) => void)[] = [];
 /** What the download "fetches" for a URL. */
 let served: (url: string) => Uint8Array | Error = () => new Uint8Array(4 << 20);
 
-const downloadFile = vi.fn(async (o: { url: string; path: string; directory: string; progress?: boolean }) => {
-  // The deprecated native downloadFile only knows these (LegacyFilesystemImplementation, iOS + Android).
-  if (!['DOCUMENTS', 'DATA', 'LIBRARY', 'CACHE'].includes(o.directory)) throw new Error(`Couldn't find directory ${o.directory}`);
-  const parent = o.path.split('/').slice(0, -1).join('/');
-  if (android.on && parent && !dirs.has(key({ path: parent, directory: o.directory }))) {
-    throw new Error(`Error downloading file: /data/user/0/app/files/${o.path}: open failed: ENOENT (No such file or directory)`);
+/** A file URI of the fake device: file:///<DIRECTORY>/<path>. */
+const uriOf = (o: { path: string; directory: string }) => `file:///${o.directory}/${o.path}`;
+const fromUri = (uri: string) => {
+  const [, directory, ...rest] = uri.replace('file://', '').split('/');
+  return { directory, path: rest.join('/') };
+};
+/** The deprecated Filesystem.downloadFile: must not be used any more. */
+const legacyDownload = vi.fn(async () => {
+  throw new Error('deprecated downloadFile used');
+});
+/** @capacitor/file-transfer: downloads to a full file path (from Filesystem.getUri). */
+const transfer = vi.fn(async (o: { url: string; path: string; progress?: boolean }) => {
+  const loc = fromUri(o.path);
+  const parent = loc.path.split('/').slice(0, -1).join('/');
+  if (android.on && parent && !dirs.has(key({ path: parent, directory: loc.directory }))) {
+    throw Object.assign(new Error('ENOENT'), { code: 'OS-PLUG-FLTR-0010' });
   }
   const body = served(o.url);
   if (body instanceof Error) throw body;
-  if (o.progress) listeners.forEach((l) => l({ url: o.url, bytes: body.length / 2, contentLength: body.length }));
-  files.set(key(o), body);
-  return { path: `file:///lib/${o.path}` };
+  await new Promise((r) => setTimeout(r, 5));
+  if (o.progress) listeners.forEach((l) => l({ type: 'download', url: o.url, bytes: body.length / 2, contentLength: body.length, lengthComputable: true }));
+  files.set(key(loc), body);
+  return { path: o.path };
 });
 const stat = vi.fn(async (o: { path: string; directory: string }) => {
   const f = files.get(key(o));
   if (!f) throw new Error('File does not exist');
-  return { size: f.length, uri: `file:///lib/${o.path}` };
+  return { size: f.length, uri: uriOf(o) };
 });
 const readFile = vi.fn(async (o: { path: string; directory: string; offset?: number; length?: number }) => {
   const f = files.get(key(o))!;
@@ -67,12 +78,19 @@ const mkdir = vi.fn(async (o: { path: string; directory: string }) => {
 vi.mock('@capacitor/filesystem', () => ({
   Directory: { Library: 'LIBRARY', LibraryNoCloud: 'LIBRARY_NO_CLOUD', Documents: 'DOCUMENTS', Data: 'DATA', Cache: 'CACHE' },
   Filesystem: {
-    downloadFile: (o: never) => downloadFile(o),
+    downloadFile: () => legacyDownload(),
+    getUri: async (o: { path: string; directory: string }) => ({ uri: uriOf(o) }),
     stat: (o: never) => stat(o),
     readFile: (o: never) => readFile(o),
     deleteFile: (o: never) => deleteFile(o),
     rmdir: (o: never) => rmdir(o),
     mkdir: (o: never) => mkdir(o),
+  },
+}));
+
+vi.mock('@capacitor/file-transfer', () => ({
+  FileTransfer: {
+    downloadFile: (o: never) => transfer(o),
     addListener: async (_e: string, fn: (typeof listeners)[number]) => {
       listeners.push(fn);
       return {
@@ -112,9 +130,26 @@ beforeEach(() => {
 describe('Regia audio on a phone (native)', () => {
   it('a downloaded song counts as ready: it is saved where the check looks for it', async () => {
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
-    expect(downloadFile.mock.calls[0][0].directory).toBe(stat.mock.calls[stat.mock.calls.length - 1][0].directory);
+    expect(fromUri(transfer.mock.calls[0][0].path).directory).toBe(stat.mock.calls[stat.mock.calls.length - 1][0].directory);
     expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
     expect((await playableUrl(DRIVE))?.local).toBe(true);
+  });
+
+  it('saved in the library with no cloud backup, by the file-transfer plugin (not the deprecated download)', async () => {
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    expect(fromUri(transfer.mock.calls[0][0].path).directory).toBe('LIBRARY_NO_CLOUD');
+    expect(legacyDownload).not.toHaveBeenCalled();
+  });
+
+  it('the same song asked twice at once (Stage and the download before the gig): one download, both told', async () => {
+    const a: (number | null)[] = [];
+    const b: (number | null)[] = [];
+    const [ra, rb] = await Promise.all([downloadAudio(DRIVE, (p) => a.push(p)), downloadAudio(DRIVE, (p) => b.push(p))]);
+    expect(ra).toEqual({ ok: true });
+    expect(rb).toEqual({ ok: true });
+    expect(transfer).toHaveBeenCalledTimes(1);
+    expect(a).toContain(0.5);
+    expect(b).toContain(0.5);
   });
 
   it('Android: the folder is made first (its download does not make it), every song, not just the first', async () => {
@@ -136,7 +171,7 @@ describe('Regia audio on a phone (native)', () => {
   });
 
   it('a link that refuses (404 from Drive) says the link is the problem', async () => {
-    served = () => new Error('Error downloading file: https://drive…');
+    served = () => Object.assign(new Error('HTTP error: 404'), { code: 'OS-PLUG-FLTR-0011', httpStatus: 404 });
     expect(await downloadAudio(DRIVE)).toEqual({ ok: false, reason: 'link' });
   });
 
@@ -148,7 +183,7 @@ describe('Regia audio on a phone (native)', () => {
 
   it('a song file that is not a link or a band file: nothing to download', async () => {
     expect(await downloadAudio('ftp://x')).toEqual({ ok: false, reason: 'link' });
-    expect(downloadFile).not.toHaveBeenCalled();
+    expect(transfer).not.toHaveBeenCalled();
   });
 });
 

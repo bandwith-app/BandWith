@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
@@ -16,7 +16,22 @@ globalThis.ResizeObserver = class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-afterEach(cleanup);
+// The clock is fixed for each test: the timer reads Date.now() when it renders,
+// so a busy machine (the whole suite at once) could otherwise turn 47:23 into
+// 47:24. Only Date is faked; timeouts stay real for waitFor and the fades.
+const NOW = new Date('2026-11-19T20:00:00Z').getTime();
+let T0 = NOW - 47 * 60_000 - 23_000;
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  T0 = Date.now() - 47 * 60_000 - 23_000;
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const songs: StageSong[] = [
   { id: 'r1', songId: 's1', title: 'Paper Boats' },
@@ -43,7 +58,6 @@ const session = (state: SessionState | null, over: Partial<RehearsalSessionContr
 const renderLive = (s: RehearsalSessionControls, kind: 'rehearsal' | 'gig' = 'rehearsal') =>
   render(<StageMode kind={kind} title="Weekly rehearsal" dateLabel="Thu 19 Nov" steps={[]} songs={songs} session={s} onClose={vi.fn()} />);
 
-const T0 = Date.now() - 47 * 60_000 - 23_000;
 
 describe('Live mode on a rehearsal: the session timer (A1b)', () => {
   it('the admin starts the rehearsal', () => {

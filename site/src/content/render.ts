@@ -8,6 +8,7 @@ import { academyArticle, shot } from './site';
 import { rolesCard } from './rolesCard';
 import { picksHtml } from '../ui/heroScreen';
 import { pageHead, pageMain } from './pageRender';
+import { homeAnswers, faqPage } from './answersRender';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const meter = (n = 10) => `<span class="strip__meter" aria-hidden="true">${'<i></i>'.repeat(n)}</span>`;
@@ -97,4 +98,6 @@ export const GENERATED: Record<string, (arg?: string) => string> = {
   'hero-picks': picksHtml,
   'menu-rows': menuRows,
   'foot-features': footFeatures,
+  'home-answers': homeAnswers,
+  'faq-page': faqPage,
 };
