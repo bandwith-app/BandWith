@@ -36,6 +36,7 @@ import { EarlierNotesSheet } from './FromLastTime';
 import { openCountBySong } from '@/lib/toPractise';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
 import { NowPlayingStrip, RegiaBar, RegiaExtraSheet, RegiaRowPlay } from './StageRegia';
+import { enterScreen } from '@/lib/appAnalytics';
 
 export interface StageStep {
   label: string;
@@ -208,6 +209,8 @@ export const StageMode: React.FC<StageModeProps> = ({
     [songs],
   );
   const listRef = useRef<HTMLDivElement | null>(null);
+  // Usage analytics: Stage (gigs) or Live mode (rehearsals) while open.
+  useEffect(() => enterScreen(rehearsal ? 'Live mode' : 'Stage'), [rehearsal]);
   // The leader's save status shows while saving, on an error, and briefly once saved.
   const saveState = live?.saveState ?? 'idle';
   const [showSaved, setShowSaved] = useState(false);

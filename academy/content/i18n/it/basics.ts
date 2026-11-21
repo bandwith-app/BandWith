@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Sincronizza calendario**", "Un link privato ai tuoi eventi per **Calendario Apple**, **Google Calendar** o Outlook ([[calendar-sync]])", "Il tuo account (tutti i dispositivi)"],
             ["**Aspetto**", "Tema: **Chiaro**, **Scuro**, **Sistema**", "Questo dispositivo"],
             ["**Unità di misura**", "**Chilometri** o **Miglia**", "Questo dispositivo"],
-            ["**Privacy e account**", "**Blocco app**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
+            ["**Privacy e account**", "**Blocco app**, **Statistiche d’uso anonime**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Posizione laptop**. Solo sui telefoni a doppio schermo", "Questo dispositivo"],
             ["**Lingua**", "**Automatica** o una delle sei lingue", "Questo dispositivo, più le tue push ed email"],
             ["**Aiuto e assistenza**", "Risposte e cosa puoi fare nell’app", "-"],
@@ -872,10 +872,10 @@ const basics: AreaText = {
     {
       id: "privacy-and-account-settings",
       title: "Privacy e account",
-      summary: "Blocco app, dettagli dei gig personali nascosti alle band, esportazione dei dati, documenti legali ed eliminazione dell’account.",
+      summary: "Blocco app, statistiche d’uso anonime, dettagli dei gig personali nascosti alle band, esportazione dei dati, documenti legali ed eliminazione dell’account.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["privacy", "occupato", "gig personali", "nascondere dettagli", "termini", "informativa sulla privacy"],
+      keywords: ["privacy", "occupato", "gig personali", "nascondere dettagli", "termini", "informativa sulla privacy", "statistiche", "analytics", "tracciamento"],
       related: ["app-lock", "export-your-data", "delete-your-account", "personal-gigs", "who-sees-what"],
       body: [
         { type: "p", text: "Apri il menu, tocca **Impostazioni e account**, poi **Privacy e account**." },
@@ -883,6 +883,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Blocco app** (solo telefoni e tablet): chiede Face ID, l’impronta o il codice del dispositivo quando BandWith riparte dopo essere stata chiusa. Vale per dispositivo ([[app-lock]]).",
+            "**Statistiche d’uso anonime** (solo app Android e iOS): spente finché non dici di sì. BandWith lo chiede una volta, dopo il primo tour; puoi cambiare la risposta qui quando vuoi. Condivide solo quali schermate si usano e quanto spesso, mai i tuoi brani, gig, messaggi o contatti, e niente per la pubblicità. Se le spegni, quanto raccolto su questo dispositivo viene cancellato. Vale per dispositivo.",
             "**I gig personali restano privati**: una riga informativa, non un interruttore. Solo tu vedi titolo e locale dei tuoi gig personali; le band vedono solo che sei occupato ([[personal-gigs]]).",
             "**Esporta i miei dati**: una copia in JSON di ciò che ti appartiene ([[export-your-data]]).",
             "**Termini di servizio** e **Informativa sulla privacy**: aprono i documenti dentro l’app.",

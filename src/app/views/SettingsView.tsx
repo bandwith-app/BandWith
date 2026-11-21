@@ -30,6 +30,7 @@ import {
   RotateCcw,
   Crown,
   Calendar,
+  BarChart3,
 } from '@/app/components/icons';
 import { CalendarSyncSection } from '@/app/components/settings/CalendarSyncSection';
 import { PlanSection } from '@/app/components/plans/PlanSection';
@@ -55,6 +56,7 @@ import { usePosture, useLaptopPoseEnabled, setLaptopPoseEnabled } from '@/lib/po
 import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
+import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent } from '@/lib/appAnalytics';
 
 type SettingsSection = 'notifications' | 'calendar' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
@@ -123,6 +125,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const laptopPoseEnabled = useLaptopPoseEnabled();
   const distanceUnit = useDistanceUnit();
   const appLockAvailable = appLockSupported();
+  const analyticsConsent = useAnalyticsConsent();
   const appLockOn = useAppLockEnabled();
   const [appLockBusy, setAppLockBusy] = useState(false);
   // Turning the lock off asks for the same check as unlocking.
@@ -523,6 +526,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onCheckedChange={(on: boolean) => void handleToggleAppLock(on)}
             disabled={appLockBusy}
             aria-label={t('App lock')}
+          />
+        </div>
+      )}
+      {analyticsAvailable() && (
+        <div className={cn(CARD, ROW)}>
+          <IconTile>
+            <BarChart3 />
+          </IconTile>
+          <RowText
+            title={t('Anonymous usage statistics')}
+            hint={t('Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+          />
+          <Toggle
+            checked={analyticsConsent === 'granted'}
+            onCheckedChange={(on: boolean) => void setAnalyticsConsent(on ? 'granted' : 'denied')}
+            aria-label={t('Anonymous usage statistics')}
           />
         </div>
       )}

@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Sincronizar calendário**", "Um link privado para os seus eventos para **Calendário Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Sua conta (todos os dispositivos)"],
             ["**Aparência**", "Tema: **Claro**, **Escuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Quilômetros** ou **Milhas**", "Este dispositivo"],
-            ["**Privacidade e conta**", "**Bloqueio do app**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
+            ["**Privacidade e conta**", "**Bloqueio do app**, **Estatísticas de uso anônimas**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Posição notebook**. Só em celulares de duas telas", "Este dispositivo"],
             ["**Idioma**", "**Automático** ou um de seis idiomas", "Este dispositivo, além das suas notificações push e e-mails"],
             ["**Ajuda e suporte**", "Respostas e o que dá para fazer no app", "-"],
@@ -872,10 +872,10 @@ const basics: AreaText = {
     {
       id: "privacy-and-account-settings",
       title: "Privacidade e conta",
-      summary: "Bloqueio do app, ocultar das bandas os detalhes dos shows pessoais, exportação de dados, documentos legais e exclusão da conta.",
+      summary: "Bloqueio do app, estatísticas de uso anônimas, ocultar das bandas os detalhes dos shows pessoais, exportação de dados, documentos legais e exclusão da conta.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["privacidade", "ocupado", "shows pessoais", "ocultar detalhes", "termos", "política de privacidade"],
+      keywords: ["privacidade", "ocupado", "shows pessoais", "ocultar detalhes", "termos", "política de privacidade", "estatísticas", "analytics", "rastreamento"],
       related: ["app-lock", "export-your-data", "delete-your-account", "personal-gigs", "who-sees-what"],
       body: [
         { type: "p", text: "Abra o menu, toque em **Ajustes e conta** e depois em **Privacidade e conta**." },
@@ -883,6 +883,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Bloqueio do app** (só celulares e tablets): pede Face ID, impressão digital ou o código do dispositivo quando o BandWith abre de novo depois de ser fechado. Vale por dispositivo ([[app-lock]]).",
+            "**Estatísticas de uso anônimas** (só apps Android e iOS): desligadas até você dizer sim. O BandWith pergunta uma vez, depois do primeiro tour; você pode mudar a resposta aqui quando quiser. Só compartilha quais telas são usadas e com que frequência, nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade. Ao desligar, o que foi coletado neste dispositivo é apagado. Vale por dispositivo.",
             "**Shows pessoais ficam privados**: uma linha informativa, não um botão. Só você vê o título e o local dos seus shows pessoais; as bandas só veem que você está ocupado ([[personal-gigs]]).",
             "**Exportar meus dados**: uma cópia em JSON do que é seu ([[export-your-data]]).",
             "**Termos de Serviço** e **Política de Privacidade**: abrem os documentos dentro do app.",

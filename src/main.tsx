@@ -11,6 +11,7 @@ import { UpdateRequired } from "./app/components/layout/UpdateRequired";
 import { enableEdgeToEdge } from "./lib/systemBars";
 import { installDuoLayout } from "./lib/deviceRegions";
 import { installKeyboardInsets } from "./lib/keyboardInsets";
+import { initAppAnalytics } from "./lib/appAnalytics";
 
 // Detect native platform and set safe margin attributes
 if (Capacitor.isNativePlatform()) {
@@ -20,6 +21,8 @@ if (Capacitor.isNativePlatform()) {
     document.documentElement.setAttribute("data-platform", "android");
   }
   void enableEdgeToEdge();
+  // Usage analytics stay off until the user says yes (src/lib/appAnalytics.ts).
+  void initAppAnalytics();
 }
 // The keyboard's window events (Keyboard plugin, iOS and Android); idle in a browser.
 installKeyboardInsets();
