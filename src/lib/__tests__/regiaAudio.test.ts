@@ -1,0 +1,159 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// jsdom has no crypto.subtle (the file key is a SHA-256 of the link): Node's WebCrypto.
+const nodeCrypto = 'node:crypto';
+if (!globalThis.crypto?.subtle) {
+  const { webcrypto } = (await import(/* @vite-ignore */ nodeCrypto)) as { webcrypto: Crypto };
+  Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
+}
+
+/**
+ * The Regia's audio on the device. Field bug (11-20, Mirage Music on a real
+ * phone): "Audio ready 0/…" forever, Play did nothing, then "can't be
+ * played". The native download went to a folder the download call doesn't
+ * know (LIBRARY_NO_CLOUD: iOS wrote it into Documents, Android failed), so
+ * the check afterwards never found it.
+ */
+
+const native = { on: true };
+vi.mock('@capacitor/core', () => ({
+  Capacitor: {
+    isNativePlatform: () => native.on,
+    convertFileSrc: (u: string) => `capacitor://localhost/_capacitor_file_${u.replace('file://', '')}`,
+  },
+}));
+
+const files = new Map<string, Uint8Array>();
+const key = (o: { path: string; directory?: string }) => `${o.directory}:${o.path}`;
+const listeners: ((p: { url: string; bytes: number; contentLength: number }) => void)[] = [];
+/** What the download "fetches" for a URL. */
+let served: (url: string) => Uint8Array | Error = () => new Uint8Array(4 << 20);
+
+const downloadFile = vi.fn(async (o: { url: string; path: string; directory: string; progress?: boolean }) => {
+  // The deprecated native downloadFile only knows these (LegacyFilesystemImplementation, iOS + Android).
+  if (!['DOCUMENTS', 'DATA', 'LIBRARY', 'CACHE'].includes(o.directory)) throw new Error(`Couldn't find directory ${o.directory}`);
+  const body = served(o.url);
+  if (body instanceof Error) throw body;
+  if (o.progress) listeners.forEach((l) => l({ url: o.url, bytes: body.length / 2, contentLength: body.length }));
+  files.set(key(o), body);
+  return { path: `file:///lib/${o.path}` };
+});
+const stat = vi.fn(async (o: { path: string; directory: string }) => {
+  const f = files.get(key(o));
+  if (!f) throw new Error('File does not exist');
+  return { size: f.length, uri: `file:///lib/${o.path}` };
+});
+const readFile = vi.fn(async (o: { path: string; directory: string; offset?: number; length?: number }) => {
+  const f = files.get(key(o))!;
+  const part = f.slice(o.offset ?? 0, (o.offset ?? 0) + (o.length ?? f.length));
+  return { data: btoa(String.fromCharCode(...part)) };
+});
+const deleteFile = vi.fn(async (o: { path: string; directory: string }) => {
+  files.delete(key(o));
+});
+const rmdir = vi.fn(async (_o: { path: string; directory: string }) => {});
+
+vi.mock('@capacitor/filesystem', () => ({
+  Directory: { Library: 'LIBRARY', LibraryNoCloud: 'LIBRARY_NO_CLOUD', Documents: 'DOCUMENTS', Data: 'DATA', Cache: 'CACHE' },
+  Filesystem: {
+    downloadFile: (o: never) => downloadFile(o),
+    stat: (o: never) => stat(o),
+    readFile: (o: never) => readFile(o),
+    deleteFile: (o: never) => deleteFile(o),
+    rmdir: (o: never) => rmdir(o),
+    addListener: async (_e: string, fn: (typeof listeners)[number]) => {
+      listeners.push(fn);
+      return {
+        remove: async () => {
+          listeners.splice(listeners.indexOf(fn), 1);
+        },
+      };
+    },
+  },
+}));
+
+vi.mock('../services/songFiles', () => ({
+  resolveSongFileUrl: async (ref: string) => (ref.startsWith('https://') ? ref : null),
+  playableAudioUrl: (u: string) => u.replace('/view', '/direct'),
+}));
+
+import { audioFailureFor, cachedAudio, downloadAudio, looksLikeAudio, playableUrl } from '../regiaAudio';
+
+const DRIVE = 'https://drive.google.com/file/d/abc123456789/view';
+const mp3 = () => {
+  const b = new Uint8Array(4 << 20);
+  b.set([0x49, 0x44, 0x33]); // "ID3"
+  return b;
+};
+
+beforeEach(() => {
+  native.on = true;
+  files.clear();
+  listeners.length = 0;
+  vi.clearAllMocks();
+  served = () => mp3();
+  Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+});
+
+describe('Regia audio on a phone (native)', () => {
+  it('a downloaded song counts as ready: it is saved where the check looks for it', async () => {
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    expect(downloadFile.mock.calls[0][0].directory).toBe(stat.mock.calls[stat.mock.calls.length - 1][0].directory);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect((await playableUrl(DRIVE))?.local).toBe(true);
+  });
+
+  it('reports the download progress of the song', async () => {
+    const seen: (number | null)[] = [];
+    await downloadAudio(DRIVE, (p) => seen.push(p));
+    expect(seen).toContain(0.5);
+  });
+
+  it('a link that gives a web page (a private Drive file) is not counted as ready, and says why', async () => {
+    served = () => new TextEncoder().encode('<!DOCTYPE html><html><body>Sign in</body></html>');
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: false, reason: 'link' });
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+
+  it('a link that refuses (404 from Drive) says the link is the problem', async () => {
+    served = () => new Error('Error downloading file: https://drive…');
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: false, reason: 'link' });
+  });
+
+  it('no internet: says so (it downloads once back online)', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    served = () => new Error('The Internet connection appears to be offline.');
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: false, reason: 'offline' });
+  });
+
+  it('a song file that is not a link or a band file: nothing to download', async () => {
+    expect(await downloadAudio('ftp://x')).toEqual({ ok: false, reason: 'link' });
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('looksLikeAudio', () => {
+  const b = (...x: number[]) => new Uint8Array(x);
+  it.each([
+    ['MP3 with ID3', b(0x49, 0x44, 0x33, 4)],
+    ['MP3 frame', b(0xff, 0xfb, 0x90, 0)],
+    ['WAV', new TextEncoder().encode('RIFF....WAVE')],
+    ['M4A', new TextEncoder().encode('....ftypM4A ')],
+    ['FLAC', new TextEncoder().encode('fLaC')],
+    ['OGG', new TextEncoder().encode('OggS')],
+  ])('%s is audio', (_n, bytes) => expect(looksLikeAudio(bytes)).toBe(true));
+  it.each([
+    ['HTML', new TextEncoder().encode('<!DOCTYPE html>')],
+    ['HTML with spaces', new TextEncoder().encode('\n  <html>')],
+    ['JSON error', new TextEncoder().encode('{"error":')],
+  ])('%s is not', (_n, bytes) => expect(looksLikeAudio(bytes)).toBe(false));
+});
+
+describe('audioFailureFor', () => {
+  it('offline wins; else what the download found; else the link', () => {
+    expect(audioFailureFor({ online: false, downloadReason: 'link', local: false })).toBe('offline');
+    expect(audioFailureFor({ online: true, downloadReason: 'link', local: false })).toBe('link');
+    expect(audioFailureFor({ online: true, local: false })).toBe('link');
+    expect(audioFailureFor({ online: true, local: true })).toBe('format');
+  });
+});

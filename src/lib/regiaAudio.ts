@@ -56,13 +56,37 @@ const idb = async <R>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => 
 
 const fs = () => import('@capacitor/filesystem');
 
+/**
+ * Where the files live: the app's Library folder. It must be one the native
+ * downloadFile knows (iOS and Android only map Documents / Data / Library /
+ * Cache): with LibraryNoCloud, iOS wrote the file into Documents and Android
+ * failed, so no song was ever "ready" (field bug 11-20).
+ */
+const nativeLoc = async (key: string) => {
+  const { Directory } = await fs();
+  return { path: `${DIR}/${key}`, directory: Directory.Library };
+};
+
 const nativeUri = async (key: string): Promise<string | null> => {
-  const { Filesystem, Directory } = await fs();
+  const { Filesystem } = await fs();
   try {
-    const st = await Filesystem.stat({ path: `${DIR}/${key}`, directory: Directory.LibraryNoCloud });
+    const st = await Filesystem.stat(await nativeLoc(key));
     return st.size > 0 ? st.uri : null;
   } catch {
     return null;
+  }
+};
+
+/** Builds up to 11-20 saved into Documents on iOS (never used): cleared once. */
+let leftoversCleared = false;
+const clearLeftovers = async () => {
+  if (leftoversCleared || Capacitor.getPlatform?.() !== 'ios') return;
+  leftoversCleared = true;
+  try {
+    const { Filesystem, Directory } = await fs();
+    await Filesystem.rmdir({ path: DIR, directory: Directory.Documents, recursive: true });
+  } catch {
+    /* nothing there */
   }
 };
 
@@ -71,6 +95,39 @@ const remoteUrl = async (ref: string): Promise<string | null> => {
   const resolved = await resolveSongFileUrl(ref);
   return resolved ? playableAudioUrl(resolved) : null;
 };
+
+// ── Why a song can't be ready ─────────────────────────────────────────────
+
+/**
+ * - link: the link gives no audio file (a private Drive file, a folder, a web page, a link that refuses).
+ * - offline: no internet now (it downloads once back online).
+ * - format: the file is there but this device can't play it.
+ * - failed: anything else (storage full, the download broke off).
+ */
+export type AudioFailure = 'link' | 'offline' | 'format' | 'failed';
+
+export type DownloadResult = { ok: true } | { ok: false; reason: AudioFailure };
+
+const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+
+/** The first bytes of an audio file (MP3, WAV, M4A/AAC, FLAC, OGG), not a web page or an error. */
+export function looksLikeAudio(head: Uint8Array): boolean {
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.slice(from, to));
+  if (ascii(0, 3) === 'ID3') return true;
+  if (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) return true; // MPEG / ADTS frame
+  if (ascii(0, 4) === 'RIFF' || ascii(0, 4) === 'fLaC' || ascii(0, 4) === 'OggS' || ascii(0, 4) === 'FORM') return true;
+  if (ascii(4, 8) === 'ftyp') return true; // M4A, MP4
+  return false;
+}
+
+/** Why the player couldn't load a song (what Play tells the stage manager). */
+export function audioFailureFor({ online, downloadReason, local }: { online: boolean; downloadReason?: AudioFailure; local: boolean }): AudioFailure {
+  if (local) return 'format';
+  if (!online) return 'offline';
+  return downloadReason ?? 'link';
+}
+
+const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** Which of `refs` are already on this device. */
 export async function cachedAudio(refs: string[]): Promise<Set<string>> {
@@ -90,29 +147,87 @@ export async function cachedAudio(refs: string[]): Promise<Set<string>> {
   return out;
 }
 
-/** Download one song file onto the device. True when it is there afterwards. */
-export async function downloadAudio(ref: string): Promise<boolean> {
+/**
+ * Download one song file onto the device, reporting progress (0–1, or null
+ * when the size is unknown). A link that gives a web page instead of audio
+ * (a private Drive file) is not kept.
+ */
+export async function downloadAudio(ref: string, onProgress?: (fraction: number | null) => void): Promise<DownloadResult> {
+  let url: string | null = null;
+  try {
+    url = await remoteUrl(ref);
+  } catch {
+    return { ok: false, reason: isOnline() ? 'failed' : 'offline' };
+  }
+  if (!url) return { ok: false, reason: isOnline() || !ref.startsWith('sb://') ? 'link' : 'offline' };
   try {
     const key = await audioKey(ref);
-    const url = await remoteUrl(ref);
-    if (!url) return false;
     if (Capacitor.isNativePlatform()) {
-      const { Filesystem, Directory } = await fs();
-      // Native download: no CORS, straight to disk (a 50 MB file never sits in memory).
-      await Filesystem.downloadFile({ url, path: `${DIR}/${key}`, directory: Directory.LibraryNoCloud, recursive: true });
-      return !!(await nativeUri(key));
+      void clearLeftovers();
+      const { Filesystem } = await fs();
+      const loc = await nativeLoc(key);
+      const listener = onProgress
+        ? await Filesystem.addListener('progress', (p) => {
+            if (p.url === url) onProgress(p.contentLength > 0 ? Math.min(1, p.bytes / p.contentLength) : null);
+          })
+        : null;
+      try {
+        // Native download: no CORS, straight to disk (a 50 MB file never sits in memory).
+        await Filesystem.downloadFile({ url, ...loc, recursive: true, progress: !!onProgress });
+      } catch {
+        // The plugin rejects any HTTP error (Drive answers 404 for a private or deleted file).
+        return { ok: false, reason: isOnline() ? 'link' : 'offline' };
+      } finally {
+        void listener?.remove();
+      }
+      const st = await Filesystem.stat(loc);
+      const head = st.size > 0 ? fromBase64(String((await Filesystem.readFile({ ...loc, offset: 0, length: 16 })).data)) : new Uint8Array();
+      if (!looksLikeAudio(head)) {
+        await Filesystem.deleteFile(loc).catch(() => undefined);
+        return { ok: false, reason: 'link' };
+      }
+      return { ok: true };
     }
-    const res = await fetch(url);
-    if (!res.ok) return false;
-    // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
-    const data = await res.arrayBuffer();
-    if (!data.byteLength) return false;
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch {
+      // Offline, or a site that doesn't let the browser fetch it (it may still stream).
+      return { ok: false, reason: isOnline() ? 'link' : 'offline' };
+    }
+    if (!res.ok || /text\/html|json/.test(res.headers.get('content-type') ?? '')) return { ok: false, reason: 'link' };
+    const data = await readBody(res, onProgress);
+    if (!data.byteLength || !looksLikeAudio(new Uint8Array(data, 0, Math.min(16, data.byteLength)))) return { ok: false, reason: 'link' };
     const type = res.headers.get('content-type') || 'audio/mpeg';
+    // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
     await idb('readwrite', (s) => s.put({ type, data } satisfies StoredAudio, key));
-    return true;
+    return { ok: true };
   } catch {
-    return false;
+    return { ok: false, reason: isOnline() ? 'failed' : 'offline' };
   }
+}
+
+/** A response body as bytes, reporting progress while it arrives. */
+async function readBody(res: Response, onProgress?: (fraction: number | null) => void): Promise<ArrayBuffer> {
+  const total = Number(res.headers.get('content-length')) || 0;
+  if (!onProgress || !res.body) return res.arrayBuffer();
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    got += value.length;
+    onProgress(total ? Math.min(1, got / total) : null);
+  }
+  const out = new Uint8Array(got);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out.buffer;
 }
 
 /** A URL the player can use: the copy on the device, or else streamed from the network. */

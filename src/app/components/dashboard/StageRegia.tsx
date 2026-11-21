@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play, Plus, Search, Square, Volume2, X } from '@/app/components/icons';
+import { AlertTriangle, ChevronDown, Loader2, Pause, Play, Plus, RotateCw, Search, Square, Volume2, X } from '@/app/components/icons';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { formatClock, playPosition } from '@/lib/stageRegia';
 import { getSongs } from '@/lib/services/songs';
 import { useSystemBack } from '@/lib/backStack';
-import type { StageRegia } from '@/app/components/event/useStageRegia';
+import type { SongAudio, StageRegia } from '@/app/components/event/useStageRegia';
+import type { AudioFailure } from '@/lib/regiaAudio';
 
 /**
  * Stage manager mode ("Regia") in Stage mode. The Regia's bar (an admin's
@@ -37,6 +38,16 @@ const Progress: React.FC<{ positionMs: number; durationMs: number | null; accent
     </span>
   );
 };
+
+/** Why a song's audio can't come down or play, and what to do about it. */
+const reasonText = (reason: AudioFailure, t: ReturnType<typeof useT>) =>
+  reason === 'link'
+    ? t('The link doesn’t give an audio file. On Google Drive, share it as “Anyone with the link”, or upload the file to the song.')
+    : reason === 'offline'
+      ? t('No internet, and it isn’t on this device yet. It downloads once you’re back online.')
+      : reason === 'format'
+        ? t('This device can’t play this file. Use MP3, M4A or WAV.')
+        : t('The download stopped. Try again.');
 
 /** A button that acts only once held down for HOLD_MS. */
 const HoldButton: React.FC<{ label: string; hint: string; onHold: () => void; disabled?: boolean; children: React.ReactNode; className?: string }> = ({
@@ -95,8 +106,8 @@ const HoldButton: React.FC<{ label: string; hint: string; onHold: () => void; di
 
 interface BarProps {
   regia: StageRegia;
-  /** The setlist in its live order (titles for the "next" button). */
-  songs: { id?: string; title: string }[];
+  /** The setlist in its live order (titles for the "next" button, which songs have audio). */
+  songs: { id?: string; title: string; audio?: string | null }[];
   currentIndex: number;
   /** A setlist the song off it can be added to. */
   canAddSongs: boolean;
@@ -109,6 +120,7 @@ interface BarProps {
 export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAddSongs, onAddSong, accent, className }) => {
   const t = useT();
   const [asking, setAsking] = useState(false);
+  const [showFailed, setShowFailed] = useState(false);
   const playing = regia.status === 'playing';
 
   if (!regia.available) return null;
@@ -187,14 +199,35 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
   const shown = songs[shownIndex];
   const next = regia.nextIndex != null ? songs[regia.nextIndex] : null;
   const ended = regia.status === 'ended';
-  const { readiness, downloading } = regia;
+  const loading = regia.status === 'loading';
+  const { readiness, downloading, failed } = regia;
+  const pct = downloading ? Math.round(downloading.progress * 100) : 0;
   const statusText = downloading
-    ? t('Downloading audio {done}/{total}…', { done: downloading.done, total: downloading.total })
+    ? t('Downloading audio {done}/{total} · {pct}%', { done: Math.min(downloading.total, downloading.done + 1), total: downloading.total, pct })
     : readiness.withAudio === 0
       ? t('No song in this setlist has audio')
-      : readiness.missing > 0
+      : readiness.missing > 0 && failed.length === 0
         ? t('Audio ready {ready}/{total} · {missing} need internet', { ready: readiness.ready, total: readiness.withAudio, missing: readiness.missing })
         : t('Audio ready {ready}/{total}', { ready: readiness.ready, total: readiness.withAudio });
+
+  // The song shown can't play here: no audio, or its link already failed (and it isn't on the device).
+  const shownAudio = shown?.audio ? regia.audio[shown.audio] : undefined;
+  const shownFailed = !!shown?.audio && shownAudio?.state === 'failed' && !regia.cached.has(shown.audio) ? shownAudio.reason : null;
+  const loadFailed = regia.error?.kind === 'load' && regia.loadedId === shown?.id;
+  const cantPlay = !!shown && !playing && (!shown.audio || !!shownFailed || loadFailed);
+  const nextOk = regia.nextPlayable != null ? songs[regia.nextPlayable] : null;
+  // What the card says about the song shown (after Play, or before it when it is already known).
+  const notice =
+    regia.error?.kind === 'insert'
+      ? t('The song couldn’t be added to the setlist.')
+      : regia.error?.kind === 'load'
+        ? `${t('“{title}” can’t be played.', { title: regia.error.title })} ${reasonText(regia.error.reason, t)}`
+        : regia.error?.kind === 'no-audio' || (cantPlay && !shown?.audio)
+          ? t('“{title}” has no audio: the band plays it live.', { title: regia.error?.kind === 'no-audio' ? regia.error.title : shown!.title })
+          : cantPlay && shownFailed
+            ? `${t('“{title}” can’t be played.', { title: shown!.title })} ${reasonText(shownFailed, t)}`
+            : null;
+  const playNext = !playing && ((ended && next && regia.nextIndex != null) || (cantPlay && nextOk && regia.nextPlayable != null));
 
   return (
     <section
@@ -205,10 +238,7 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
       <div className="flex items-center justify-between gap-3 min-w-0">
         <span className="flex items-center gap-2 min-w-0">
           <Volume2 className="w-4 h-4 shrink-0" style={{ color: accent }} aria-hidden />
-          <span className="bw-label-xs text-white shrink-0">{t('Stage manager')}</span>
-          <span className="bw-body-sm text-white/60 truncate" role="status">
-            {statusText}
-          </span>
+          <span className="bw-label-xs text-white truncate">{t('Stage manager')}</span>
         </span>
         <button
           type="button"
@@ -220,6 +250,66 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
         >
           {t('Turn off')}
         </button>
+      </div>
+      <div className="flex flex-col gap-1.5 min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
+          {downloading && <Loader2 className="w-4 h-4 shrink-0 animate-spin text-white/70" aria-hidden />}
+          <span className="bw-body-sm text-white/70 min-w-0" role="status">
+            {statusText}
+          </span>
+          {!downloading && failed.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.tap();
+                setShowFailed((v) => !v);
+              }}
+              aria-expanded={showFailed}
+              className="flex items-center gap-1 min-h-11 -my-2 px-2 rounded-full text-white bw-body-sm underline underline-offset-2 min-w-0"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: accent }} aria-hidden />
+              <span className="truncate">
+                {failed.length === 1 ? t('1 song can’t be downloaded') : t('{n} songs can’t be downloaded', { n: failed.length })}
+              </span>
+              <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', showFailed && 'rotate-180')} aria-hidden />
+            </button>
+          )}
+        </span>
+        {downloading && (
+          <span
+            role="progressbar"
+            aria-label={t('Downloading audio')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            className="block h-1 w-full rounded-full bg-white/15 overflow-hidden"
+          >
+            <span className="block h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, backgroundColor: accent }} />
+          </span>
+        )}
+        {showFailed && !downloading && failed.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-[12px] bg-white/10 px-3 py-2">
+            <ul className="flex flex-col gap-2 max-h-48 overflow-y-auto overscroll-contain">
+              {failed.map((f) => (
+                <li key={f.title} className="flex flex-col min-w-0">
+                  <span className="bw-label-sm normal-case text-white truncate">{f.title}</span>
+                  <span className="bw-body-sm text-white/70">{reasonText(f.reason, t)}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                haptic.tap();
+                void regia.retry();
+              }}
+              className="self-start flex items-center gap-2 min-h-11 px-4 rounded-full border border-white/40 text-white bw-label-xs"
+            >
+              <RotateCw className="w-4 h-4" aria-hidden />
+              {t('Try again')}
+            </button>
+          </div>
+        )}
       </div>
       {regia.outputWarning ? (
         <p className="bw-body-sm text-black rounded-[12px] px-3 py-2" role="alert" style={{ backgroundColor: accent }}>
@@ -241,9 +331,9 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
         </span>
       </div>
       <Progress positionMs={regia.positionMs} durationMs={regia.durationMs} accent={accent} />
-      {regia.error && (
+      {notice && (
         <p className="bw-body-sm text-white" role="alert">
-          {regia.error === 'load' ? t('This song’s audio can’t be played on this device.') : t('The song couldn’t be added to the setlist.')}
+          {notice}
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -251,14 +341,34 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
           type="button"
           onClick={() => {
             haptic.medium();
-            if (ended && next && regia.nextIndex != null) void regia.play(regia.nextIndex);
-            else void regia.toggle();
+            if (loading) return;
+            if (playNext) {
+              const i = ended && next && regia.nextIndex != null ? regia.nextIndex : regia.nextPlayable!;
+              void regia.play(i);
+            } else void regia.toggle();
           }}
+          aria-busy={loading || undefined}
           className="flex-1 min-w-0 flex items-center justify-center gap-2 min-h-14 rounded-[20px] text-black bw-button-sm"
           style={{ backgroundColor: accent }}
         >
-          {playing ? <Pause className="w-6 h-6 shrink-0" /> : <Play className="w-6 h-6 shrink-0" />}
-          <span className="truncate">{playing ? t('Pause') : ended && next ? t('Next: {title}', { title: next.title }) : t('Play')}</span>
+          {loading ? (
+            <Loader2 className="w-6 h-6 shrink-0 animate-spin" aria-hidden />
+          ) : playing ? (
+            <Pause className="w-6 h-6 shrink-0" />
+          ) : (
+            <Play className="w-6 h-6 shrink-0" />
+          )}
+          <span className="truncate">
+            {loading
+              ? t('Loading…')
+              : playing
+                ? t('Pause')
+                : ended && next
+                  ? t('Next: {title}', { title: next.title })
+                  : playNext && nextOk
+                    ? t('Play next: {title}', { title: nextOk.title })
+                    : t('Play')}
+          </span>
         </button>
         <HoldButton
           label={t('Stop')}
@@ -291,9 +401,34 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
 const outputKindLabel = (kind: string, t: ReturnType<typeof useT>) =>
   kind === 'usb' ? t('USB') : kind === 'wired' ? t('Cable') : kind === 'hdmi' ? t('HDMI') : kind === 'speaker' ? t('Speaker') : t('Other');
 
-/** The Regia's ▶ on a setlist row (songs with audio only). */
-export const RegiaRowPlay: React.FC<{ title: string; playing: boolean; onPlay: () => void; accent: string }> = ({ title, playing, onPlay, accent }) => {
+/**
+ * The Regia's ▶ on a setlist row (songs with audio only). Its ring shows the
+ * song's download: dimmed while waiting, filling up while it comes down, a
+ * warning when it can't.
+ */
+export const RegiaRowPlay: React.FC<{ title: string; playing: boolean; audio?: SongAudio; onPlay: () => void; accent: string }> = ({
+  title,
+  playing,
+  audio,
+  onPlay,
+  accent,
+}) => {
   const t = useT();
+  const state = playing ? 'playing' : audio?.state ?? 'ready';
+  const progress = audio?.state === 'downloading' ? audio.progress : null;
+  const label = playing
+    ? t('Playing: {title}', { title })
+    : state === 'downloading'
+      ? progress != null
+        ? t('Play {title} · downloading {pct}%', { title, pct: Math.round(progress * 100) })
+        : t('Play {title} · downloading', { title })
+      : state === 'queued'
+        ? t('Play {title} · waiting to download', { title })
+        : state === 'failed'
+          ? t('Play {title} · can’t be downloaded', { title })
+          : t('Play {title}', { title });
+  // Ring: r=20.5 in a 44 box (stroke 2) → circumference ≈ 128.8.
+  const C = 2 * Math.PI * 20.5;
   return (
     <button
       type="button"
@@ -302,12 +437,44 @@ export const RegiaRowPlay: React.FC<{ title: string; playing: boolean; onPlay: (
         haptic.medium();
         onPlay();
       }}
-      aria-label={playing ? t('Playing: {title}', { title }) : t('Play {title}', { title })}
+      aria-label={label}
       aria-pressed={playing}
-      className={cn('w-11 h-11 flex items-center justify-center rounded-full border', playing ? 'border-transparent text-black' : 'border-white/40 text-white')}
+      className={cn(
+        'relative w-11 h-11 flex items-center justify-center rounded-full border',
+        playing
+          ? 'border-transparent text-black'
+          : state === 'downloading'
+            ? 'border-white/15 text-white'
+            : state === 'queued'
+              ? 'border-dashed border-white/30 text-white/50'
+              : state === 'failed'
+                ? 'border-white/25 text-white/60'
+                : 'border-white/40 text-white',
+      )}
       style={playing ? { backgroundColor: accent } : undefined}
     >
+      {state === 'downloading' && (
+        <svg aria-hidden viewBox="0 0 44 44" className={cn('absolute -inset-px w-[calc(100%+2px)] h-[calc(100%+2px)] -rotate-90', progress == null && 'animate-spin')}>
+          <circle
+            cx="22"
+            cy="22"
+            r="20.5"
+            fill="none"
+            stroke={accent}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={C}
+            strokeDashoffset={progress == null ? C * 0.75 : C * (1 - Math.max(0.04, progress))}
+            style={{ transition: 'stroke-dashoffset 300ms linear' }}
+          />
+        </svg>
+      )}
       <Play className="w-5 h-5" />
+      {state === 'failed' && (
+        <span aria-hidden className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black flex items-center justify-center">
+          <AlertTriangle className="w-4 h-4" style={{ color: accent }} />
+        </span>
+      )}
     </button>
   );
 };

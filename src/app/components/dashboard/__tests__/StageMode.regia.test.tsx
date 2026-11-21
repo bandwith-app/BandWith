@@ -53,7 +53,15 @@ const regia = (over: Partial<StageRegia> = {}): StageRegia =>
     readiness: { withAudio: 2, ready: 2, missing: 0, noAudio: 1 },
     downloading: null,
     cached: new Set(),
+    audio: {
+      'sb://song-files/b/audio/1.mp3': { state: 'ready' },
+      'sb://song-files/b/audio/2.mp3': { state: 'ready' },
+    },
+    failed: [],
+    retry: vi.fn(),
+    nextPlayable: 1,
     error: null,
+    dismissError: vi.fn(),
     output: null,
     outputWarning: null,
     status: 'ready',
@@ -117,6 +125,61 @@ describe('Stage mode: the Regia (stage manager mode)', () => {
     renderStage(regia({ on: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Play a song not in the setlist' }));
     expect(screen.getByRole('dialog', { name: 'Play a song not in the setlist' })).toBeTruthy();
+  });
+
+  it('while the audio downloads: how far, overall and on each song', () => {
+    renderStage(
+      regia({
+        on: true,
+        readiness: { withAudio: 2, ready: 0, missing: 2, noAudio: 1 },
+        downloading: { done: 0, total: 2, progress: 0.2 },
+        audio: {
+          'sb://song-files/b/audio/1.mp3': { state: 'downloading', progress: 0.4 },
+          'sb://song-files/b/audio/2.mp3': { state: 'queued' },
+        },
+      }),
+    );
+    const card = screen.getByRole('region', { name: 'Stage manager' });
+    expect(card).toHaveTextContent('Downloading audio 1/2 · 20%');
+    expect(screen.getByRole('progressbar', { name: 'Downloading audio' })).toHaveAttribute('aria-valuenow', '20');
+    expect(screen.getByRole('button', { name: 'Play Volare · downloading 40%' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play Azzurro · waiting to download' })).toBeTruthy();
+  });
+
+  it('songs that can’t be downloaded: which, why, what to do, and Try again', () => {
+    const r = regia({
+      on: true,
+      readiness: { withAudio: 2, ready: 1, missing: 1, noAudio: 1 },
+      audio: { 'sb://song-files/b/audio/1.mp3': { state: 'ready' }, 'sb://song-files/b/audio/2.mp3': { state: 'failed', reason: 'link' } },
+      failed: [{ title: 'Azzurro', reason: 'link' }],
+    });
+    renderStage(r);
+    const card = screen.getByRole('region', { name: 'Stage manager' });
+    expect(card).toHaveTextContent('Audio ready 1/2');
+    fireEvent.click(screen.getByRole('button', { name: '1 song can’t be downloaded' }));
+    expect(card).toHaveTextContent('Azzurro');
+    expect(card).toHaveTextContent('The link doesn’t give an audio file');
+    expect(card).toHaveTextContent('Anyone with the link');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(r.retry).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Play Azzurro · can’t be downloaded' })).toBeTruthy();
+  });
+
+  it('the current song has no audio: says so, and Play offers the next song with audio', () => {
+    const r = regia({ on: true, nextPlayable: 0 });
+    renderStage(r, live({ index: 2 }));
+    const card = screen.getByRole('region', { name: 'Stage manager' });
+    expect(card).toHaveTextContent('“Senza audio” has no audio: the band plays it live.');
+    fireEvent.click(screen.getByRole('button', { name: 'Play next: Volare' }));
+    expect(r.play).toHaveBeenCalledWith(0);
+    expect(r.toggle).not.toHaveBeenCalled();
+  });
+
+  it('Play failed: names the song, the reason and the fix', () => {
+    renderStage(regia({ on: true, loadedId: 'r2', status: 'error', nextPlayable: null, error: { kind: 'load', title: 'Azzurro', reason: 'offline' } }));
+    expect(screen.getByRole('region', { name: 'Stage manager' })).toHaveTextContent(
+      '“Azzurro” can’t be played. No internet, and it isn’t on this device yet. It downloads once you’re back online.',
+    );
   });
 
   it('a member sees no Regia controls, only what is playing', () => {

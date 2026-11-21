@@ -855,6 +855,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                               <RegiaRowPlay
                                 title={row.song.title}
                                 playing={regia!.status === 'playing' && regia!.loadedId === row.song.id}
+                                audio={row.song.audio ? regia!.audio[row.song.audio] : undefined}
                                 onPlay={() => void regia!.play(i)}
                                 accent={accentColor}
                               />
