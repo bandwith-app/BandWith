@@ -302,6 +302,13 @@ test.describe('Stage manager mode (Regia): the admin plays, the band follows', (
     const rowPlays = stage.getByRole('button', { name: /^Play (?!a song not in)/ });
     await expect(rowPlays.nth(0)).toBeInViewport({ ratio: 1 });
     await expect(rowPlays.nth(1)).toBeInViewport({ ratio: 1 });
+    // A phone held upright (any height): the run of show gives its room to the setlist
+    // under the player (field report 11-20: one row left on a 412×815 Android phone).
+    const vp = app.page.viewportSize()!;
+    if (vp.width < 600 && vp.height > 520) {
+      await expect(stage.getByRole('list', { name: app.t('Run of show') })).toBeHidden();
+      await expect(rowPlays.nth(2)).toBeInViewport({ ratio: 1 });
+    }
   });
 
   test('the admin plays a song out of order on the Regia: a member jumps to it, sees it playing, and loads no audio', async ({ app }) => {

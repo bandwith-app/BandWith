@@ -6,16 +6,9 @@
  *   the app's language setting when the app ran in this browser, else the
  *   browser's language, else English.
  */
-export type Lang = 'en' | 'it' | 'es' | 'fr' | 'de' | 'pt';
+import { LANGS, type Lang } from './langs';
 
-export const LANGS: { id: Lang; name: string }[] = [
-  { id: 'en', name: 'English' },
-  { id: 'it', name: 'Italiano' },
-  { id: 'es', name: 'Español' },
-  { id: 'fr', name: 'Français' },
-  { id: 'de', name: 'Deutsch' },
-  { id: 'pt', name: 'Português' },
-];
+export { LANGS, type Lang };
 
 const PICK_KEY = 'bw-academy-lang';
 /** The app's language setting (src/lib/i18n): a language, or 'system'. */

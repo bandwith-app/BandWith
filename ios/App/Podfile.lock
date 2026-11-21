@@ -4,18 +4,21 @@ PODS:
   - AparajitaCapacitorSecureStorage (8.0.1):
     - Capacitor
     - KeychainSwift (~> 21.0)
-  - Capacitor (8.1.0):
+  - Capacitor (8.4.0):
     - CapacitorCordova
-  - CapacitorApp (8.0.1):
+  - CapacitorApp (8.1.0):
     - Capacitor
-  - CapacitorBrowser (8.0.1):
+  - CapacitorBrowser (8.0.3):
     - Capacitor
   - CapacitorCommunityBluetoothLe (8.3.0):
     - Capacitor
-  - CapacitorCordova (8.1.0)
+  - CapacitorCordova (8.4.0)
   - CapacitorFilesystem (8.1.5):
     - Capacitor
     - IONFilesystemLib (= 2.0.1)
+  - CapacitorFileTransfer (2.0.6):
+    - Capacitor
+    - IONFileTransferLib (~> 2.0.0)
   - CapacitorFirebaseAnalytics (8.6.0):
     - Capacitor
     - CapacitorFirebaseAnalytics/Lite (= 8.6.0)
@@ -26,17 +29,17 @@ PODS:
     - Capacitor
   - CapacitorHaptics (8.0.2):
     - Capacitor
-  - CapacitorKeyboard (8.0.0):
+  - CapacitorKeyboard (8.0.3):
     - Capacitor
-  - CapacitorLocalNotifications (8.0.1):
+  - CapacitorLocalNotifications (8.2.0):
     - Capacitor
-  - CapacitorPushNotifications (8.0.1):
+  - CapacitorPushNotifications (8.1.1):
     - Capacitor
   - CapacitorShare (8.0.3):
     - Capacitor
   - CapacitorSplashScreen (8.0.1):
     - Capacitor
-  - CapacitorStatusBar (8.0.1):
+  - CapacitorStatusBar (8.0.2):
     - Capacitor
   - FirebaseAnalytics/Core (12.19.0):
     - FirebaseCore (~> 12.19.0)
@@ -92,6 +95,7 @@ PODS:
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
   - IONFilesystemLib (2.0.1)
+  - IONFileTransferLib (2.0.0)
   - KeychainSwift (21.0.0)
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
@@ -109,6 +113,7 @@ DEPENDENCIES:
   - "CapacitorCommunityBluetoothLe (from `../../node_modules/@capacitor-community/bluetooth-le`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorFileTransfer (from `../../node_modules/@capacitor/file-transfer`)"
   - "CapacitorFirebaseAnalytics (from `../../node_modules/@capacitor-firebase/analytics`)"
   - "CapacitorFirebaseAnalytics/AnalyticsWithoutAdIdSupport (from `../../node_modules/@capacitor-firebase/analytics`)"
   - "CapacitorHaptics (from `../../node_modules/@capacitor/haptics`)"
@@ -128,6 +133,7 @@ SPEC REPOS:
     - GoogleAppMeasurement
     - GoogleUtilities
     - IONFilesystemLib
+    - IONFileTransferLib
     - KeychainSwift
     - nanopb
     - PromisesObjC
@@ -149,6 +155,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
+  CapacitorFileTransfer:
+    :path: "../../node_modules/@capacitor/file-transfer"
   CapacitorFirebaseAnalytics:
     :path: "../../node_modules/@capacitor-firebase/analytics"
   CapacitorHaptics:
@@ -169,20 +177,21 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   AparajitaCapacitorBiometricAuth: c7edb43d80486150b81224d3ff7e950b37a3c2f1
   AparajitaCapacitorSecureStorage: 64fcd783a62dce106dd73d54caa2d7232589eabe
-  Capacitor: 47b825120c6b8b6d6f9f053e9350a8960d436710
-  CapacitorApp: 942306cd1acf7774a00e89a3986af3a67c8cad7a
-  CapacitorBrowser: e72e572d5dbdbb854fda5950586a2451e981f2d6
+  Capacitor: 75bd117ba037a51bb0f19ded32c67f4b3bc16600
+  CapacitorApp: 449ffe26375e96f8aaaee625ac6e01e5c57c8650
+  CapacitorBrowser: c987c73d09d8bd3b5ec13f06338b1e14d5d2be69
   CapacitorCommunityBluetoothLe: f9c76baa5338d206b7418c48d945d93d47800af3
-  CapacitorCordova: e8b76fd95fc1e157775abc484c59cc0de464095d
+  CapacitorCordova: 71d81f350e6c30bf2a846593b5c480fbd68e9bac
   CapacitorFilesystem: e3bc7123acb1554df1b7b099fa5847064b9e1bd4
+  CapacitorFileTransfer: 76063113f2a281f99c4a1fda7da9083f62bf88a5
   CapacitorFirebaseAnalytics: b225a78a51b6bcfb3e997cf37be7d92650aa0fef
   CapacitorHaptics: 296f771ecd89c7a1bd92a7b6826a7d268e2e70f5
-  CapacitorKeyboard: d7868c079a4d5277a3deca27a10a488fcbbb8b69
-  CapacitorLocalNotifications: bc5325611c92ac302732413bc69244575cd4eaaf
-  CapacitorPushNotifications: 99644101c6a82036e459929b6d897ee1cb27d97f
+  CapacitorKeyboard: 31c8285d92c9d1410071d52449f16d2c6673b6f4
+  CapacitorLocalNotifications: 2615aa008f608b95d3921a778ee1988abf1e6148
+  CapacitorPushNotifications: ec08d589c226a2c0db7c032ec1bf5b044ec85f8e
   CapacitorShare: 5b5e53347556bee89ae6163ed20b5b3c25fe75f1
   CapacitorSplashScreen: 4b46c72298db552b3c57ce021ef028b6dc7f1fa7
-  CapacitorStatusBar: 32206abd53b14f339763da26f71286deaa891e16
+  CapacitorStatusBar: 01d5763b4ed720de5ce2edbc938de6a98f4c8f32
   FirebaseAnalytics: e9f8c369447e453da23f0455a06e4910bad10de0
   FirebaseCore: ab948de5d99e69aeed3cd6f5ace263ce795b2559
   FirebaseCoreInternal: 656b1c2fd5a1c5976183dc54b73deda78fb26ee3
@@ -190,10 +199,11 @@ SPEC CHECKSUMS:
   GoogleAppMeasurement: f2f676480e4c97936df934aa181bc29caea46975
   GoogleUtilities: 7dc09b3fa9ecb5c2298b952313d14628b61b9da3
   IONFilesystemLib: 306469e4c563f61de82d7bca2bbfed9e64d1b2d2
+  IONFileTransferLib: b18e8448f765accf4e5dc5905f05ce845bf7bb87
   KeychainSwift: 4a71a45c802fd9e73906457c2dcbdbdc06c9419d
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
 
-PODFILE CHECKSUM: 4bfd8907ba1658e9839f504b3e317c3071329b00
+PODFILE CHECKSUM: 14593df20e09cf200abdfecebde0cc4bb99e0327
 
 COCOAPODS: 1.16.2

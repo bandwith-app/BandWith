@@ -1283,7 +1283,7 @@ const music: AreaText = {
       summary: "El portátil o la tableta de un admin, conectado a la mesa, reproduce la grabación de cada canción, y las pantallas de la banda pasan a la canción que suena.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["cabina", "pistas", "backing track", "audio", "mesa de mezclas", "reproducción", "cable", "usb-c", "jack de auriculares", "adaptador", "pa"],
+      keywords: ["cabina", "pistas", "backing track", "audio", "mesa de mezclas", "reproducción", "cable", "usb-c", "jack de auriculares", "adaptador", "pa", "sin conexión", "sin internet", "descargar"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1296,6 +1296,7 @@ const music: AreaText = {
           items: [
             "Da a cada canción una **Grabación** (un archivo de audio) en la ficha de la canción. Las canciones sin ella mueven igualmente a la banda, pero no suena nada.",
             "Conecta el dispositivo a la mesa (mira los consejos sobre el cable más abajo) y activa No molestar, para que las notificaciones no salgan por el equipo de sonido.",
+            "Los días antes, con internet, abre el concierto: bajo el setlist, **Audio en este dispositivo** cuenta las canciones que ya están aquí (por ejemplo 3/10). Toca **Descargar el audio** para bajar las demás. En la app del teléfono empieza sola cuando abres la app con internet en los 3 días antes de un concierto confirmado. Los archivos se quedan en el dispositivo y no van a la copia de seguridad del teléfono.",
             "Abre el concierto con conexión, abre el Modo escenario y toca **Cabina: audio desde aquí**. El dispositivo descarga el audio de la noche: una barra muestra cuánto falta, y el anillo alrededor del ▶ de cada canción se llena mientras se descarga.",
             "Espera a que **Audio listo** cuente todas las canciones (por ejemplo 10/10): desde ahí suena sin internet. Si una canción no se puede descargar, la cabina te lo dice (mira abajo).",
           ],

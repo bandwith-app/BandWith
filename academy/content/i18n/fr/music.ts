@@ -1416,7 +1416,7 @@ const music: AreaText = {
       summary: "L’ordinateur portable ou la tablette d’un admin, branché à la console, lit l’enregistrement de chaque morceau, et les écrans du groupe passent au morceau en cours.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["régie", "bandes", "backing track", "audio", "console", "lecture", "câble", "usb-c", "prise casque", "adaptateur", "sono"],
+      keywords: ["régie", "bandes", "backing track", "audio", "console", "lecture", "câble", "usb-c", "prise casque", "adaptateur", "sono", "hors ligne", "sans internet", "télécharger"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "play-a-song-recording"],
       body: [
         {
@@ -1429,6 +1429,7 @@ const music: AreaText = {
           items: [
             "Donnez à chaque morceau un **Enregistrement** (un fichier audio) dans la fiche du morceau. Les morceaux sans enregistrement font quand même avancer le groupe, mais rien ne joue.",
             "Branchez l’appareil à la console (voir les conseils sur le câble plus bas) et activez Ne pas déranger, pour que les notifications ne sortent pas dans la sono.",
+            "Les jours d’avant, avec internet, ouvrez le concert : sous la setlist, **Audio sur cet appareil** compte les morceaux déjà là (par exemple 3/10). Touchez **Télécharger l’audio** pour récupérer les autres. Dans l’app sur le téléphone, ça démarre tout seul quand vous ouvrez l’app avec internet dans les 3 jours avant un concert confirmé. Les fichiers restent sur l’appareil et ne vont pas dans la sauvegarde du téléphone.",
             "Ouvrez le concert en ligne, ouvrez le mode scène et touchez **Régie : audio d’ici**. L’appareil télécharge l’audio de la soirée : une barre montre où il en est, et l’anneau autour du ▶ de chaque morceau se remplit pendant le téléchargement.",
             "Attendez que **Audio prêt** compte tous les morceaux (par exemple 10/10) : dès lors il joue sans internet. Si un morceau ne peut pas être téléchargé, la régie vous le dit (voir plus bas).",
           ],
