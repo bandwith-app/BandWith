@@ -302,7 +302,7 @@ const people: AreaText = {
         },
         { type: "p", text: "Un membro che apre la propria riga vede “Il tuo compenso abituale in questa band: {fee}” quando ne ha uno." },
         { type: "p", text: "Il tuo strumento principale è nel tuo profilo: tocca il tuo avatar, poi **Modifica** sulla scheda del profilo, e sceglilo sotto **Strumento / ruolo principale**. Compare sulla tua scheda nel menu Profilo e account." },
-        { type: "p", text: "Lo strumento accanto a ogni nome in **Membri della band** è quello salvato per quella persona in questa band. La scheda **Chi copre cosa** dei sostituti raggruppa la band secondo questi strumenti." },
+        { type: "p", text: "Lo strumento accanto a ogni nome in **Membri della band** è quello salvato per quella persona in questa band. La scheda **Chi copre cosa** dei sostituti raggruppa la band secondo questi strumenti. Una piccola icona mostra ogni strumento (chitarra, basso, batteria, voce, tastiere, sax, tromba, violino, violoncello, percussioni e una nota per tutto il resto) nelle righe dei membri, nella pagina di ogni membro, negli elenchi dei sostituti e in **Trova un sostituto**." },
         { type: "note", tone: "privacy", text: "I compensi abituali seguono la regola dei soldi: gli admin vedono quelli di tutti, un membro vede solo il proprio." },
       ],
     },

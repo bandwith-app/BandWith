@@ -302,7 +302,7 @@ const people: AreaText = {
         },
         { type: "p", text: "Ein Mitglied, das die eigene Zeile öffnet, sieht „Deine Standardgage in dieser Band: {fee}“, wenn es eine gibt." },
         { type: "p", text: "Dein eigenes Hauptinstrument steht in deinem Profil: Tippe auf deinen Avatar, dann in deiner Profilkarte auf **Ändern**, und wähle es unter **Hauptinstrument / Rolle**. Es erscheint auf deiner Karte in Profil und Konto." },
-        { type: "p", text: "Das Instrument neben jedem Namen bei **Bandmitglieder** ist das, das für diese Person in dieser Band gespeichert ist. Die Karte **Wer vertritt wen** bei den Vertretungen gruppiert die Band nach diesen Instrumenten." },
+        { type: "p", text: "Das Instrument neben jedem Namen bei **Bandmitglieder** ist das, das für diese Person in dieser Band gespeichert ist. Die Karte **Wer vertritt wen** bei den Vertretungen gruppiert die Band nach diesen Instrumenten. Ein kleines Symbol zeigt jedes Instrument (Gitarre, Bass, Schlagzeug, Gesang, Keys, Sax, Trompete, Geige, Cello, Percussion und eine Note für alles andere) in den Mitgliederzeilen, auf der Seite jedes Mitglieds, in den Vertretungslisten und bei **Vertretung finden**." },
         { type: "note", tone: "privacy", text: "Standardgagen folgen der Geld-Regel: Admins sehen die aller, ein Mitglied nur die eigene." },
       ],
     },
