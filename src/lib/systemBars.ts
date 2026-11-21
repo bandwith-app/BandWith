@@ -1,4 +1,5 @@
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { syncAndroidBackdrop } from './androidBackdrop';
 
 /**
  * The app runs edge-to-edge: the status bar and the navigation bar are
@@ -28,6 +29,8 @@ async function apply(tone: BarTone): Promise<void> {
       ?.setAttribute('content', tone === 'light' ? '#E5E3E0' : '#313131');
   }
   if (!Capacitor.isNativePlatform()) return;
+  // Android with an older WebView: the band above the page takes its colour.
+  syncAndroidBackdrop();
   const style = tone === 'light' ? SystemBarsStyle.Light : SystemBarsStyle.Dark;
   try {
     await SystemBars.setStyle({ style });
