@@ -20,7 +20,11 @@ import {
   getStatusLabel,
 } from '@/app/data/quotes';
 import type { Quote } from '@/app/data/quotes';
-import { QuoteCreationWizard } from '@/app/components/quotes/QuoteCreationWizard';
+import { lazyLayer } from '@/app/components/ui/lazyLayer';
+// The wizard is the biggest screen: its own chunk, not part of the signed-in
+// app that every user loads. Warmed up while this list is open (below).
+const loadQuoteWizard = () => import('@/app/components/quotes/QuoteCreationWizard').then((m) => ({ default: m.QuoteCreationWizard }));
+const QuoteCreationWizard = lazyLayer(loadQuoteWizard);
 import { QuoteDetailModal } from '@/app/components/quotes/QuoteDetailModal';
 import { QuoteShareModal } from '@/app/components/quotes/QuoteShareModal';
 import type { Quote as RealQuote } from '@/lib/services/quotes';
@@ -92,6 +96,10 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const t = useT();
   useCurrency(); // re-render money labels when the band currency changes
   const { selectedBand } = useBand();
+  // "New quote" and "Edit" open the wizard: fetch its code now, so it opens at once.
+  useEffect(() => {
+    void loadQuoteWizard().catch(() => undefined);
+  }, []);
   // Real band id: BandContext first, then the prop (only if it is a real UUID, never a mock id)
   const currentBandId: string | null =
     (selectedBand?.id && isUuid(selectedBand.id) ? selectedBand.id : null) ||

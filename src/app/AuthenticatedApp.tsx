@@ -105,21 +105,7 @@ import { todayLocal } from '../lib/dates';
 import { effectiveStatus, type Contract } from '@/lib/services/contracts';
 import { addDaysLocal, countDueTasks, EMPTY_ASSET_STATUS, type AssetStatusCounts } from '@/lib/assetStatus';
 
-/**
- * A lazy screen that waits for its own code, not the whole layer list: when
- * one page opens for the first time while another closes, a shared Suspense
- * hid the list mid-change and the closing page's exit never finished, so it
- * stayed on screen (the Duo hub showed two pages, Back lost).
- */
-function lazyLayer<T extends React.ComponentType<any>>(load: () => Promise<{ default: T }>): React.FC<React.ComponentProps<T>> {
-  const Lazy = React.lazy(load);
-  const Layer: React.FC<React.ComponentProps<T>> = (props) => (
-    <React.Suspense fallback={null}>
-      <Lazy {...props} />
-    </React.Suspense>
-  );
-  return Layer;
-}
+import { lazyLayer } from '@/app/components/ui/lazyLayer';
 const BandMembersView = lazyLayer(() => import("@/app/views/BandMembersView").then(m => ({ default: m.BandMembersView })));
 const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerView").then(m => ({ default: m.SetlistManagerView })));
 const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
