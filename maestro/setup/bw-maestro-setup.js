@@ -117,6 +117,9 @@
       localStorage.setItem('bw-role-tour-seen:admin', '1');
       localStorage.setItem('bw-role-tour-seen:member', '1');
       localStorage.setItem('bw-locale-v1', 'en');
+      // The one-time analytics question (src/lib/appAnalytics.ts) would
+      // cover the screen mid-flow; answer it up front, like the tours.
+      localStorage.setItem('bw.analytics.consent', 'denied');
     }
   } catch (e) {
     /* storage blocked */
