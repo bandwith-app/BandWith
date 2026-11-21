@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "android:apk": "bash scripts/build-android-apk.sh",
-    "build": "vite build && vite build --config academy/vite.config.ts && node academy/scripts/prerender.mjs",
+    "build": "vite build && vite build --config academy/vite.config.ts",
+    "build:web": "vite build && vite build --config academy/vite.config.ts && node academy/scripts/prerender.mjs",
+    "capacitor:copy:after": "node scripts/native-web-strip.mjs",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p academy && tsc --noEmit -p site",
     "lint": "eslint src",
     "dev": "vite",

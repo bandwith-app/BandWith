@@ -32,7 +32,9 @@ jobs:
       # Lifecycle model docs (docs/lifecycles) match the models in e2e/models.
       - run: pnpm e2e:models:docs --check
       - run: pnpm test:run
-      - run: pnpm build
+      # The web build: the app, the Academy and its static pages (academy/seo).
+      - run: pnpm build:web
+      - run: test -f dist/academy/en/a/create-a-gig/index.html && test -f dist/robots.txt && test -f dist/academy/sitemap.xml
       # Product site (site/): its own static build.
       - run: pnpm build:site
 

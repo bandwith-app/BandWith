@@ -13,7 +13,8 @@
  *
  * with title, description, canonical, hreflang, Open Graph and JSON-LD; plus
  * robots.txt, the Academy sitemap and llms.txt files (./crawl.ts).
- * academy/scripts/prerender.mjs writes it all into dist/ after `vite build`.
+ * academy/scripts/prerender.mjs writes it all into dist/ in the web build
+ * (`build:web`, Vercel and CI). Native builds leave it out: scripts/native-web-strip.mjs.
  * Tests: ./seo.test.ts.
  */
 import type { AreaModule, AreaText, Article, Faq, GlossaryTerm } from '../content/types';
@@ -192,7 +193,16 @@ export function updatedLastmod(old: LastmodManifest, today: string): LastmodMani
 
 /* ── JSON-LD ── */
 
-const ORG_NODE = { '@type': 'Organization', '@id': SHARED_IDS.organization, name: 'BandWith', url: `${SITE_ORIGIN}/` };
+// The full nodes live on bandwith.fun; here each reference carries @type and name too, so a page stands on its own.
+const ORG_NODE = {
+  '@type': 'Organization',
+  '@id': SHARED_IDS.organization,
+  name: 'BandWith',
+  url: `${SITE_ORIGIN}/`,
+  logo: `${SITE_ORIGIN}/brand/app-icon.png`,
+};
+const APP_REF = { '@type': 'SoftwareApplication', '@id': SHARED_IDS.app, name: 'BandWith', url: `${SITE_ORIGIN}/` };
+const SITE_REF = { '@type': 'WebSite', '@id': SHARED_IDS.website, name: 'BandWith', url: `${SITE_ORIGIN}/` };
 const ACADEMY_NODE = {
   '@type': 'WebSite',
   '@id': SHARED_IDS.academy,
@@ -200,8 +210,8 @@ const ACADEMY_NODE = {
   url: abs('/academy/en/'),
   inLanguage: LANG_IDS,
   publisher: { '@id': SHARED_IDS.organization },
-  isPartOf: { '@id': SHARED_IDS.website },
-  about: { '@id': SHARED_IDS.app },
+  isPartOf: SITE_REF,
+  about: APP_REF,
 };
 
 const jsonLd = (graph: object[]) =>
@@ -391,7 +401,7 @@ function articlePage(c: LangContent, id: string, base: Omit<Shell, 'title' | 'de
     author: { '@id': SHARED_IDS.organization },
     publisher: { '@id': SHARED_IDS.organization },
     isPartOf: { '@id': SHARED_IDS.academy },
-    about: { '@id': SHARED_IDS.app },
+    about: APP_REF,
     articleSection: m.area.title,
     keywords: (a.keywords ?? []).join(', ') || undefined,
     audience: { '@type': 'Audience', audienceType: a.roles.map((r) => t(c, r === 'admin' ? 'Admin' : r === 'member' ? 'Member' : 'Deputy')).join(', ') },
@@ -459,7 +469,7 @@ function areaPage(c: LangContent, areaId: string, base: Omit<Shell, 'title' | 'd
         inLanguage: c.lang,
         dateModified: base.lastmod.d,
         isPartOf: { '@id': SHARED_IDS.academy },
-        about: { '@id': SHARED_IDS.app },
+        about: APP_REF,
         breadcrumb: { '@id': `${url}#breadcrumb` },
         mainEntity: {
           '@type': 'ItemList',
@@ -497,7 +507,7 @@ function faqPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'im
         inLanguage: c.lang,
         dateModified: base.lastmod.d,
         isPartOf: { '@id': SHARED_IDS.academy },
-        about: { '@id': SHARED_IDS.app },
+        about: APP_REF,
         breadcrumb: { '@id': `${url}#breadcrumb` },
         mainEntity: c.faq.map((f) => ({
           '@type': 'Question',
@@ -593,7 +603,7 @@ function indexPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | '
         description,
         inLanguage: c.lang,
         isPartOf: { '@id': SHARED_IDS.academy },
-        about: { '@id': SHARED_IDS.app },
+        about: APP_REF,
         breadcrumb: { '@id': `${url}#breadcrumb` },
         mainEntity: {
           '@type': 'ItemList',

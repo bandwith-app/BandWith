@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Writes the Academy's static pages (academy/seo/build.ts) into dist/, after
- * `vite build --config academy/vite.config.ts` (the last step of `pnpm build`):
+ * `vite build --config academy/vite.config.ts`: the last step of `build:web`,
+ * the web build (Vercel, CI). Plain `pnpm build` (native apps) skips it, and
+ * scripts/native-web-strip.mjs keeps it out of `cap copy` / `cap sync`:
  *
  *   dist/academy/<lang>/…/index.html   every article, area, FAQ, glossary × 6 languages
  *   dist/academy/sitemap.xml, llms.txt, llms-full.txt
