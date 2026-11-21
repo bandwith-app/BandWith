@@ -3,12 +3,14 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 
 /**
- * The product site has no cookie banner, so it must not send visitors' IP
- * addresses to third parties it doesn't name in the Privacy Policy. Fonts are
- * self-hosted (site/public/fonts); Google Fonts hosts must never come back.
+ * The product site must not send visitors' IP addresses to third parties it
+ * doesn't name in the Privacy Policy (Google Analytics loads only after the
+ * visitor accepts: e2e/site/consent.spec.ts). Fonts are self-hosted
+ * (site/public/fonts); Google Fonts hosts must never come back.
  */
 const SITE = path.resolve(__dirname, '..');
-const SKIP = new Set(['node_modules', 'dist', 'public', 'test']);
+// it/ and es/ are generated copies of the English pages (site/tools/i18n.ts), checked through them.
+const SKIP = new Set(['node_modules', 'dist', 'public', 'test', 'it', 'es']);
 const BANNED = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 function walk(dir: string, out: string[] = []): string[] {
