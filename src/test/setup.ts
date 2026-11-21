@@ -69,3 +69,11 @@ if (hasDom) Object.defineProperty(window, 'localStorage', { value: localStorageM
 // Uncomment if tests are too noisy
 // vi.spyOn(console, 'error').mockImplementation(() => {});
 // vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+// The app loads only the language in use (src/lib/i18n). Tests switch
+// language synchronously, so every dictionary is in from the start
+// (lazyLocales.test.ts checks the loading on a fresh module).
+if (hasDom) {
+  const { loadLocale } = await import('@/lib/i18n');
+  await Promise.all((['it', 'es', 'fr', 'de', 'pt'] as const).map(loadLocale));
+}

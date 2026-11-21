@@ -13,7 +13,7 @@ import { APP_URL } from '@/lib/appUrl';
 import { parseLocalDate } from '@/lib/dates';
 import { builtinText } from '@/lib/i18n/builtins';
 import { planRefusal } from '@/lib/userError';
-import { intlLocale, translate, LANGUAGES, type Locale, type TranslateVars } from '@/lib/i18n';
+import { intlLocale, translate, LANGUAGES, loadLocale, type Locale, type TranslateVars } from '@/lib/i18n';
 import { formatDistance } from '@/lib/units';
 import {
   calculateDepositAmount,
@@ -549,6 +549,8 @@ export async function republishClientQuote(quote: Quote, bandId: string, bandNam
       import('@/lib/services/quotePdf'),
     ]);
     const settings = await getBandPricing(bandId);
+    // The client's language (the snapshot below), maybe not the app's.
+    await loadLocale(link.lang);
     let pdfUrl: string | null = null;
     try {
       const plan = await fetchBandPlan(bandId).catch(() => null);

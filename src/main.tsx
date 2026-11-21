@@ -12,6 +12,7 @@ import { enableEdgeToEdge } from "./lib/systemBars";
 import { installDuoLayout } from "./lib/deviceRegions";
 import { installKeyboardInsets } from "./lib/keyboardInsets";
 import { initAppAnalytics } from "./lib/appAnalytics";
+import { localeReady } from "./lib/i18n";
 
 // Detect native platform and set safe margin attributes
 if (Capacitor.isNativePlatform()) {
@@ -40,7 +41,9 @@ import "./styles/index.css";
 import "./styles/duo-panes.css";
 import "./styles/tablet.css";
 
-createRoot(document.getElementById("root")!).render(
+// The first screen renders once the app language's dictionary is in (only that
+// one is loaded; English needs none). The launch splash covers the wait.
+void localeReady().then(() => createRoot(document.getElementById("root")!).render(
   <MotionConfig reducedMotion="user">
     <ThemeProvider>
       <AuthProvider>
@@ -56,7 +59,7 @@ createRoot(document.getElementById("root")!).render(
       </AuthProvider>
     </ThemeProvider>
   </MotionConfig>
-);
+));
 
 // The launch splash (#bw-splash in index.html) plays and removes itself; it does
 // not wait for React, so the app keeps booting underneath it.

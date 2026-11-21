@@ -4,7 +4,7 @@ import { BwSheet, Tag } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector } from '@/app/components/bw/Form';
 import { Toggle } from '@/app/components/bw/Toggle';
 import { cn } from '@/app/components/ui/utils';
-import { useT, intlLocale, LANGUAGES, type Locale } from '@/lib/i18n';
+import { useT, intlLocale, LANGUAGES, loadLocale, useLocaleReady, type Locale } from '@/lib/i18n';
 import { docLanguageFor } from '@/lib/i18n/docLanguage';
 import { openExternal } from '@/lib/nativeFiles';
 import { todayLocal, parseLocalDate } from '@/lib/dates';
@@ -132,6 +132,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
     // phone): make it now, so WhatsApp and Copy can run inside the tap.
     if (!row) {
       const lang = docLanguageFor(quote.clientName);
+      await loadLocale(lang);
       const made = await publishQuoteLink(quoteId, buildClientQuoteSnapshot(quote, lang, s ?? {}), lang);
       if (made.data) {
         const again = await getQuoteLinkState(quoteId);
@@ -174,7 +175,13 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
 
   // ── The facts and the plan.
   const lang: Locale = link?.lang ?? docLanguageFor(quote.clientName);
-  const snapshot = useMemo(() => buildClientQuoteSnapshot(quote, lang, settings ?? {}), [quote, lang, settings]);
+  // The client's language may not be the app's: the snapshot re-renders once it's in.
+  const langReady = useLocaleReady(lang);
+  const snapshot = useMemo(
+    () => buildClientQuoteSnapshot(quote, lang, settings ?? {}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [quote, lang, settings, langReady],
+  );
   const currency = snapshot.currency;
   const sym = currencySymbol(currency);
   const money = (v: number) => formatQuoteMoney(v, sym, intlLocale('en-US'));

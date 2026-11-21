@@ -54,7 +54,7 @@ import {
 import { DotText } from '@/app/components/bw';
 import { ScreenHeader, IconButton, SearchField, Card, BwSheet } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
-import { useT, intlLocale, translate, getLocale, type Locale } from '@/lib/i18n';
+import { useT, intlLocale, translate, getLocale, loadLocale, useLocaleReady, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
@@ -196,6 +196,8 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
   const [sendStep, setSendStep] = useState<'compose' | 'confirm'>('compose');
   // Language of the PDF and message the client receives (remembered per client on this device).
   const [sendLang, setSendLang] = useState<Locale>('en');
+  // The client's language may not be the app's: load it for the message preview.
+  useLocaleReady(sendLang);
   /** How the PDF left the app (drives the confirm copy). */
   const [sendVia, setSendVia] = useState<'share' | 'mail'>('share');
   const [sendBusy, setSendBusy] = useState(false);
@@ -466,7 +468,9 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
     try {
       const stage = await stageFor(contract);
       const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));
-      const blob = buildContractPdf(contract, { bandName, lang: docLanguageFor(contract.client_email || contract.client_name), stage, bandWith });
+      const lang = docLanguageFor(contract.client_email || contract.client_name);
+      await loadLocale(lang);
+      const blob = buildContractPdf(contract, { bandName, lang, stage, bandWith });
       const { result, location } = await saveFile(blob, contractFileName(contract));
       if (result === 'saved') setNotice(t('PDF saved to {location}', { location: String(location) }));
       else if (result === 'downloaded') setNotice(t('PDF downloaded'));
@@ -531,6 +535,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
     try {
       const contract = { ...sendingContract, client_email: email };
       rememberDocLanguage(email, sendLang);
+      await loadLocale(sendLang);
       const { subject, body } = buildSendMessage(contract, bandName, sendLang);
       const stage = await stageFor(contract);
       const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));

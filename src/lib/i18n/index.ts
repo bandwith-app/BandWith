@@ -12,14 +12,16 @@
  * The choice is per device (like the theme and the distance unit). Until it
  * is set, the app follows the device language when it is one of the six, and
  * English otherwise.
+ *
+ * Only the language in use is loaded: each dictionary is its own chunk,
+ * fetched with a dynamic import (about 85 KB gzip each, instead of all five
+ * at startup). English needs none, the code's text is the English. main.tsx
+ * waits for the current language before the first render; a switch applies
+ * once the new dictionary is in; a text in another language (a client's
+ * document, a bandmate's notification) loads that language first, see
+ * `loadLocale` and `useLocaleReady`.
  */
-import { useCallback, useSyncExternalStore } from 'react';
-import it from './locales/it';
-import es from './locales/es';
-import fr from './locales/fr';
-import de from './locales/de';
-import pt from './locales/pt';
-import { ACADEMY_STRINGS } from './locales/academy';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 export type Locale = 'en' | 'it' | 'es' | 'fr' | 'de' | 'pt';
 export type LocalePref = Locale | 'system';
@@ -36,17 +38,66 @@ export const LANGUAGES: { id: Locale; name: string }[] = [
   { id: 'pt', name: 'Português' },
 ];
 
-// The Academy entry points keep their strings in their own file (locales/academy.ts).
-export const DICTIONARIES: Record<Exclude<Locale, 'en'>, Dictionary> = {
-  it: { ...ACADEMY_STRINGS.it, ...it },
-  es: { ...ACADEMY_STRINGS.es, ...es },
-  fr: { ...ACADEMY_STRINGS.fr, ...fr },
-  de: { ...ACADEMY_STRINGS.de, ...de },
-  pt: { ...ACADEMY_STRINGS.pt, ...pt },
+type Translated = Exclude<Locale, 'en'>;
+type DictModule = { default: Dictionary };
+
+// One chunk per language. Literal paths, so the bundler splits them.
+const LOADERS: Record<Translated, () => Promise<DictModule>> = {
+  it: () => import('./locales/it'),
+  es: () => import('./locales/es'),
+  fr: () => import('./locales/fr'),
+  de: () => import('./locales/de'),
+  pt: () => import('./locales/pt'),
 };
 
 const KEY = 'bw-locale-v1';
 const CHANGED = 'bw:locale';
+
+const loaded: Partial<Record<Translated, Dictionary>> = {};
+const pending: Partial<Record<Translated, Promise<void>>> = {};
+const failedAt: Partial<Record<Translated, number>> = {};
+// Bumped when a dictionary arrives, so screens using it render again.
+let version = 0;
+
+const notify = () => {
+  try {
+    window.dispatchEvent(new Event(CHANGED));
+  } catch {
+    /* no window */
+  }
+};
+
+/** True when `l`'s texts can be shown now (English always). */
+export const isLocaleLoaded = (l: Locale): boolean => l === 'en' || !!loaded[l];
+
+/**
+ * Loads the dictionary of `l` (once; English has none). Never rejects: if the
+ * chunk can't be fetched (offline web), texts stay in English and a later
+ * call tries again.
+ */
+export const loadLocale = (l: Locale): Promise<void> => {
+  if (l === 'en' || loaded[l] || !(l in LOADERS)) return Promise.resolve();
+  return (pending[l] ??= Promise.all([LOADERS[l](), import('./locales/academy')])
+    .then(([dict, academy]) => {
+      // The Academy entry points keep their strings in their own file (locales/academy.ts).
+      loaded[l] = { ...academy.ACADEMY_STRINGS[l], ...dict.default };
+      version++;
+      notify();
+    })
+    .catch((err) => {
+      failedAt[l] = Date.now();
+      console.warn('[i18n] could not load', l, err);
+    })
+    .finally(() => {
+      delete pending[l];
+    }));
+};
+
+/** The dictionary of `l` (loads it if needed). For tests and tools. */
+export const loadDictionary = async (l: Translated): Promise<Dictionary> => {
+  await loadLocale(l);
+  return loaded[l] ?? {};
+};
 
 const isLocale = (v: unknown): v is Locale => LANGUAGES.some((l) => l.id === v);
 const isPref = (v: unknown): v is LocalePref => v === 'system' || isLocale(v);
@@ -94,20 +145,35 @@ const applyDocumentLang = (l: Locale) => {
   }
 };
 
-export const setLocalePref = (next: LocalePref) => {
+let switchSeq = 0;
+
+/**
+ * Saves the choice and switches once the new language's dictionary is in
+ * (at once when it already is), so a screen is never half in English. Of two
+ * quick switches the last one wins.
+ */
+export const setLocalePref = (next: LocalePref): Promise<void> => {
   pref = next;
-  locale = next === 'system' ? deviceLocale() : next;
   try {
     localStorage.setItem(KEY, next);
   } catch {
     /* best effort */
   }
-  applyDocumentLang(locale);
-  try {
-    window.dispatchEvent(new Event(CHANGED));
-  } catch {
-    /* no window */
+  const target = next === 'system' ? deviceLocale() : next;
+  const seq = ++switchSeq;
+  const apply = () => {
+    if (seq !== switchSeq) return;
+    locale = target;
+    applyDocumentLang(target);
+    notify();
+  };
+  if (isLocaleLoaded(target)) {
+    apply();
+    return Promise.resolve();
   }
+  // The choice itself shows at once (Settings' radio follows `pref`).
+  notify();
+  return loadLocale(target).then(apply);
 };
 
 const interpolate = (text: string, vars?: TranslateVars) =>
@@ -125,7 +191,14 @@ export const t = (source: string, vars?: TranslateVars): string => translate(get
  */
 export const translate = (l: Locale, source: string, vars?: TranslateVars): string => {
   if (l === 'en') return interpolate(source, vars);
-  const dict = DICTIONARIES[l];
+  const dict = loaded[l];
+  if (!dict) {
+    // Not loaded yet: English now, the language as soon as it's in (screens
+    // render again). Callers that send or save text await loadLocale first.
+    const failed = failedAt[l];
+    if (!failed || Date.now() - failed > 30_000) void loadLocale(l);
+    return interpolate(source, vars);
+  }
   const ctx = vars?.context;
   const text = (ctx !== undefined ? dict[`${source}|${ctx}`] : undefined) ?? dict[source] ?? source;
   return interpolate(text, vars);
@@ -187,18 +260,51 @@ const subscribe = (cb: () => void) => {
   return () => window.removeEventListener(CHANGED, cb);
 };
 
-export const useLocale = (): Locale => useSyncExternalStore(subscribe, getLocale, () => 'en' as Locale);
+const getVersion = () => version;
+const useDictionaryVersion = (): number => useSyncExternalStore(subscribe, getVersion, () => 0);
+
+/** The app language; the component also renders again when a dictionary arrives. */
+export const useLocale = (): Locale => {
+  useDictionaryVersion();
+  return useSyncExternalStore(subscribe, getLocale, () => 'en' as Locale);
+};
 export const useLocalePref = (): LocalePref => useSyncExternalStore(subscribe, getLocalePref, () => 'system' as LocalePref);
 
 /** `const t = useT();` — same as `t()`, and re-renders the component when the language changes. */
 export const useT = () => {
   const l = useLocale();
+  const v = useDictionaryVersion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useCallback((source: string, vars?: TranslateVars) => t(source, vars), [l]);
+  return useCallback((source: string, vars?: TranslateVars) => t(source, vars), [l, v]);
 };
 
-// The page's lang attribute (screen readers, hyphenation) follows the choice from the start.
-if (typeof document !== 'undefined') applyDocumentLang(getLocale());
+/**
+ * For a screen that writes in another language than the app's (a quote or
+ * contract in the client's language): loads it, renders again when it's in,
+ * and says whether it is.
+ */
+export const useLocaleReady = (l: Locale): boolean => {
+  useDictionaryVersion();
+  useEffect(() => {
+    void loadLocale(l);
+  }, [l]);
+  return isLocaleLoaded(l);
+};
+
+/**
+ * Before the first render: the app language's dictionary, so the first screen
+ * is already translated (a local file in the iOS and Android apps). Waits at
+ * most `capMs` on a slow connection; the texts switch when it arrives.
+ */
+export const localeReady = (capMs = 3000): Promise<void> =>
+  Promise.race([loadLocale(getLocale()), new Promise<void>((r) => setTimeout(r, capMs))]);
+
+// The page's lang attribute (screen readers, hyphenation) follows the choice
+// from the start, and the language's dictionary starts loading at once.
+if (typeof document !== 'undefined') {
+  applyDocumentLang(getLocale());
+  void loadLocale(getLocale());
+}
 
 /**
  * Short weekday name in the app language ('Mon' / 'lun'). `day` is either

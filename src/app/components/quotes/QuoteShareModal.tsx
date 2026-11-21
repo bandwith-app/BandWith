@@ -41,7 +41,7 @@ import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
 import { PillButton, Selector } from '@/app/components/bw/Form';
 import { OnlineDepositLinks } from '@/app/components/quotes/OnlineDeposit';
-import { useT, translate, intlLocale, type Locale } from '@/lib/i18n';
+import { useT, translate, intlLocale, loadLocale, useLocaleReady, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { fetchBandPlan } from '@/lib/usePlan';
@@ -113,6 +113,8 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   // Language of the PDF and of the message the client receives.
   const clientKey = quote.clientEmail || quote.clientName;
   const [docLang, setDocLang] = useState<Locale>(() => docLanguageFor(clientKey));
+  // The client's language may not be the app's: load it (the sheet renders again once it's in).
+  useLocaleReady(docLang);
   const tr = (source: string, vars?: Record<string, string | number>) => translate(docLang, source, vars);
 
   const sym = currencySymbol(quote.currency || 'EUR');
@@ -207,6 +209,8 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         return;
       }
       const lang = docLanguageFor(clientKey);
+      await loadLocale(lang);
+      if (cancelled) return;
       const created = await publishQuoteLink(String(quote.id), buildClientQuoteSnapshot(quoteRef.current, lang, DEFAULT_BAND_PRICING), lang);
       if (cancelled) return;
       if (created.data) setLink({ token: created.data.token, status: created.data.status, revoked: created.data.revoked });

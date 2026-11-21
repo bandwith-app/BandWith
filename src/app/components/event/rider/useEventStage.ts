@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getLocale, useT } from '@/lib/i18n';
+import { getLocale, loadLocale, useT } from '@/lib/i18n';
 import { starterStage, isStageEmpty, type LineupPlayer, type StageData } from '@/lib/stagePlot';
 import { getEventRider, getEventStage, riderShareLink, saveEventStage, type EventRider } from '@/lib/services/eventStage';
 import { buildContractPdf, contractFileName, createContract, fetchBandName, standardTerms, updateContract, type Contract } from '@/lib/services/contracts';
@@ -180,7 +180,9 @@ export function useEventStage({ eventId, bandId, eventTitle, eventDate, venueNam
       const bandName = await fetchBandName(bandId);
       // The rider made here is filed under the venue (createRider), so its language is remembered there.
       const bandWith = bandWithFooter(bandId ? await fetchBandPlan(bandId).catch(() => null) : null);
-      const blob = buildContractPdf(doc, { bandName, lang: docLanguageFor(venueName || eventTitle), stage: shown, bandWith });
+      const lang = docLanguageFor(venueName || eventTitle);
+      await loadLocale(lang);
+      const blob = buildContractPdf(doc, { bandName, lang, stage: shown, bandWith });
       const res = await shareFile(blob, contractFileName(doc), { title: doc.title, dialogTitle: t('Share rider PDF') });
       if (res === 'shared' && isAdmin) await markSent();
     } catch (e: any) {
