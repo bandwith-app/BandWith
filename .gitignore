@@ -16,6 +16,11 @@ build/
 *.p8
 *.pem
 *.p12
+# Android signing: keystores and the files that hold their passwords
+*.jks
+*.keystore
+keystore.properties
+key.properties
 
 # IDE
 .idea/
