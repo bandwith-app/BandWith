@@ -12,7 +12,7 @@ import { appendFileSync } from 'fs';
 const PAGES = [
   '', 'get/', 'features/calendar-gigs/', 'features/quotes-contracts/', 'features/money/', 'features/rehearsals-polls/',
   'features/chat/', 'features/songs/', 'features/stage/', 'features/stage-plot-rider/', 'features/people/',
-  'features/privacy/', 'features/devices/',
+  'features/privacy/', 'features/devices/', 'faq/',
 ];
 
 async function stubNetwork(page: Page, state: 'open' | 'invites' | 'full') {

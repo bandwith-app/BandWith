@@ -18,6 +18,8 @@ pnpm preview:site  # serve the build on :5181
 | Home | `index.html` | `src/pages/home.ts` |
 | Stage mode (CH 07) | `features/stage/index.html` | `src/pages/stage.ts` |
 | Get the beta | `get/index.html` | `src/pages/get.ts` |
+| Questions & answers | `faq/index.html` | `src/pages/faq.ts` |
+| Not found | `404.html` | `src/pages/faq.ts` |
 
 New pages go in `PAGES` in `vite.config.ts`. A feature page goes live by
 setting `live: true` on its channel in `src/content/features.ts`: menus, the
@@ -66,6 +68,32 @@ rack and the footer are generated from that list.
 - Legal pages (the app's `/legal/privacy.html`, `/legal/terms.html`) are
   English only.
 
+## Search engines and AI assistants (SEO, GEO, AEO)
+
+Everything comes from `tools/seo.ts` at build time, so it can't drift from the pages:
+
+- **Head of every page** (`applySeo`, run by `tools/i18n.ts` after translation):
+  canonical and hreflang (en, it, es, x-default), a 1200×630 share card
+  (`og:image`, Twitter `summary_large_image`) and one Schema.org JSON-LD graph:
+  Organization, WebSite, SoftwareApplication (iOS, iPadOS, Android, Web, free
+  in beta, no ratings), the WebPage, a BreadcrumbList on channel, Get and FAQ
+  pages, and FAQPage built from the Q&A the page shows.
+- **Q&A** (`src/content/answers.ts`, rendered by `answersRender.ts`): the
+  "What is BandWith?" definition and FAQ on the home page, 3–4 questions at the
+  end of each channel page, and `/faq/` with all of them. Plain text, the
+  question as people ask it, an answer that stands alone. Every string needs
+  its IT and ES key, like the rest of the copy.
+- **Files next to the pages** (written into `dist` by `vite.config.ts`):
+  `robots.txt` (everyone in, AI crawlers named, `/api/` out), `sitemap.xml`
+  (every page × language, hreflang alternates, lastmod from git), `llms.txt`
+  and `llms-full.txt` (the English pages as text, demos left out) and
+  `vercel.json` (no-slash and `index.html` URLs redirect to the slash; long
+  cache for `/assets`).
+- **Share cards**: `public/og/<page>-<lang>.jpg`, committed. After changing a
+  title or a hero screen: `pnpm build:site && node site/tools/og-cards.mjs`.
+- **404**: `404.html`, noindex, no language copies, never in the sitemap.
+- `test/seo.test.ts` checks all of it on the built pages.
+
 ## Deploy
 
 `scripts/deploy-site.sh` builds a clean checkout and deploys `site/dist` to
@@ -85,6 +113,7 @@ https://bandwith.fun (manual release only).
 ## Tests
 
 `site/test/*.test.ts` run with the app's vitest (`pnpm test:run`): channel
-list, Academy links and captures exist, the Stage demo rules and the
-languages. `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
+list, Academy links and captures exist, the Stage demo rules, the
+languages, and search (`seo.test.ts`: JSON-LD, hreflang, sitemap, robots,
+llms.txt, share cards, 404). `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
 `e2e/site/`: the language suggestion and the translated scripts.

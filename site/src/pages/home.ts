@@ -3,6 +3,7 @@ import { boot, finish } from '../core/boot';
 import '../styles/hero.css';
 import '../styles/home.css';
 import '../styles/roles.css';
+import '../styles/answers.css';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { clock } from '../motion/clock';

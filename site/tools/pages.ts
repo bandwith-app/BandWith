@@ -22,6 +22,7 @@ export const PAGES: Record<string, string> = {
   privacy: 'features/privacy/index.html',
   devices: 'features/devices/index.html',
   get: 'get/index.html',
+  faq: 'faq/index.html',
 };
 
 const read = (name: string) => readFileSync(path.resolve(SITE_ROOT, 'partials', `${name}.html`), 'utf8');
