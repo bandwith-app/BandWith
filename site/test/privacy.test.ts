@@ -87,3 +87,12 @@ describe('Privacy Policy covers the website', () => {
     expect(policy).not.toContain('gianlucaboccia.me');
   });
 });
+
+describe('Terms of Service', () => {
+  const terms = readFileSync(path.resolve(SITE, '../public/legal/terms.html'), 'utf8');
+  it('names the same operator as the Privacy Policy: an individual, not "Aria"', () => {
+    expect(terms).not.toContain('Aria,');
+    expect(terms).toContain('Gianluca Boccia, an individual based in New Jersey, United States');
+    expect(terms).toContain('mailto:ciao@bandwith.fun');
+  });
+});
