@@ -62,6 +62,8 @@ Contents
 | 10 | Bands looking for a new member | "se volessi (come band) cercare in questa community anche un nuovo membro … pure dovrebbe esserci" | **Yes**: ads and search cover **permanent / deputy / both** (§4.2, §4.5). |
 | 11 | Branded sharing | "possiamo creare un design branded di bandwith customizzato (tipo social thumbnail picture per i link dei siti web) cosi da spingere il brand e renderlo riconoscibile?" | **Yes**: dynamic BandWith share cards for showcases and ads, link previews + Story/square images (§8). |
 | 12 | Card font (2026-11-21) | "ok usa Geist per le card dinamiche" | Geist + Geist Mono for all community cards (§8.5). |
+| 13 | Examples (2026-11-21) | "io vivo nella zona di new york e tu continui a usare riferimenti italiani" | Examples, demo data and units start from the New York area and English (miles in the US); other markets are translations, not the default. |
+| 14 | Card visuals (2026-11-21) | "non usiamo foto di background: usa colore e illustrazioni cool, a tema, branded" | No photos on cards; colour + an illustration system built from the BandWith mark (§8.6). |
 
 ## 3. What exists today (the plan builds on it)
 
@@ -94,7 +96,7 @@ Off by default. The musician turns it on from their profile or from the "Find mu
 | Field | Notes |
 |---|---|
 | Display name | First name and last initial by default ("Leo M."), editable. |
-| Photo | Optional; the existing avatar. |
+| Photo | Optional; the existing avatar, shown inside the app only. **Never on share cards** (§8.3). |
 | Instruments | Several, canonical keys from `instruments.ts`, one main. Free text allowed for instruments not in the list. |
 | Genres | A closed list (translated) + one free tag. |
 | Level | Hobby / semi-pro / pro. |
@@ -117,7 +119,7 @@ Off by default. The musician turns it on from their profile or from the "Find mu
   - a short text;
   - optionally the band's public links.
 - **Status:** open / filled / closed. An ad closes by itself once the band fills it, or after a period of no activity. Stale ads are what people complain about in Facebook groups and classifieds.
-- **Share card:** every ad has a ready-made image and text to share ("Velvet Static is looking for a bassist, near Milan"). It links to a public page where the only action is "Reply in BandWith". The cards are designed in §8.
+- **Share card:** every ad has a ready-made image and text to share ("Velvet Static is looking for a bassist, Jersey City, NJ"). It links to a public page where the only action is "Reply in BandWith". The cards are designed in §8.
 
 ### 4.3 Search
 
@@ -125,7 +127,7 @@ Off by default. The musician turns it on from their profile or from the "Find mu
 - **Band searching for musicians:** by instrument, **permanent / deputy / both**, distance, genre, level, and for deputies **free on a date**.
 - Results are a list ordered by distance, then by real recent activity. Distances are rounded (§6.1). There is no map in the first version.
 - **Honest empty state:**
-  - "No drummer within 25 km yet. The nearest is about 60 km away."
+  - "No drummer within 15 mi yet. The nearest is about 40 mi away." (miles in the US and UK, km elsewhere, from the device locale)
   - Then: widen the radius / save this search and we'll tell you / share your ad (with ready-made text).
   - Never fake or padded numbers.
 - **Saved search with alert:** a push as soon as a match appears, and at most one email digest a week, which respects the Resend limits (§11).
@@ -210,10 +212,10 @@ Off by default. The musician turns it on from their profile or from the "Find mu
 
 - The person picks a town or postcode from a list, never a street address.
 - **What we store:**
-  - that town's centre, **snapped to a coarse grid** (about 3–5 km);
+  - that town's centre, **snapped to a coarse grid** (about 2–3 mi / 3–5 km);
   - the town's name for display.
 - **What we show:**
-  - distances in rounded bands: "< 5 km", "~10 km", "~25 km", "~50 km", "50+ km";
+  - distances in rounded bands, in the viewer's unit: "< 3 mi", "~5 mi", "~15 mi", "~30 mi", "30+ mi" (or "< 5 km" … "50+ km"). Stored in km, shown in miles for US/UK locales;
   - the town name.
 - The grid plus the rounding stops anyone working out a home position by searching from several places.
 - No GPS. If a "use my position" helper is added later, it only picks the nearest town on the device and never sends coordinates.
@@ -278,7 +280,7 @@ The owner's rule: no pilot zone. The community is a product, so it has to be con
 7. **Invites everywhere.** Invite your drummer, invite your band, and create the band from a group of matches.
 8. **Content and the site.**
    - A "Find musicians" page on bandwith.fun, in EN, IT and ES.
-   - Later, city × instrument pages ("cerco batterista Milano", "busco bajista Málaga"), but only where enough real, indexable showcases exist. Empty pages are thin content and hurt the brand.
+   - Later, city × instrument pages ("drummer wanted in Brooklyn", "bass player Jersey City", and the same in IT/ES for those markets), but only where enough real, indexable showcases exist. Empty pages are thin content and hurt the brand.
    - The social video series can carry a "find a deputy in two minutes" episode.
 9. **The beta waitlist and the Mirage network.**
    - One announcement to the waitlist, phrased as an opt-in ("turn on your showcase"), sent only after the Terms and Privacy update.
@@ -293,13 +295,13 @@ Every shared link is an ad for BandWith. The card is what people see in WhatsApp
 
 ### 8.1 Mockups
 
-These use fake demo data: the site's persona Leo M. and the demo band Velvet Static. They are rendered with the #248 share-card style, in Geist as decided (§8.5).
+These use fake demo data in English: the site's persona Leo M. (Brooklyn, NY) and the demo band Velvet Static (Jersey City, NJ). They are rendered with the #248 share-card style, in Geist (§8.5), with no photos: colour and branded illustrations only (§8.6).
 
 | Musician showcase, link preview 1200×630 | Band ad, link preview 1200×630 |
 |---|---|
-| ![Musician showcase card](community/01-vetrina-musicista-1200x630.jpg) | ![Band ad card](community/02-annuncio-band-1200x630.jpg) |
+| ![Musician showcase card](community/01-musician-showcase-1200x630.jpg) | ![Band ad card](community/02-band-ad-1200x630.jpg) |
 
-Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](community/03-vetrina-story-1080x1920.jpg).
+Showcase as a Story, 1080×1920: [`community/03-showcase-story-1080x1920.jpg`](community/03-showcase-story-1080x1920.jpg).
 
 ### 8.2 Which cards
 
@@ -324,10 +326,9 @@ Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](co
 | City | ✓ | ✓ | The town label only. **Never a distance, a postcode or a grid cell.** |
 | Status pill | "Available for deputy work" (if on) | "Permanent" / "Deputy" / "Permanent or deputy" | |
 | Band name and logo | — | ✓ (`bands.logo_url`, initials if none) | The ad is public by the admin's choice. |
-| Photo | only if the person uploaded one **and** turned on "show on my showcase" | — | Otherwise the card uses the instrument icon or the brand pattern, never a placeholder face. |
 | Short URL + BandWith logo | ✓ | ✓ | Logo always top left; URL always in the lime bar. |
 
-**Never on a card:** phone, email, exact or approximate position, distance, fees, dates or free/busy, the level (it can read as a judgement), and the bands someone plays in.
+**Never on a card:** photos (of the person or as a background; the owner decided on 2026-11-21 that cards are colour + branded illustrations only), phone, email, exact or approximate position, distance, fees, dates or free/busy, the level (it can read as a judgement), and the bands someone plays in.
 - **Why so strict:** once a card has been shared, the image stays in other people's chats and in WhatsApp's or Facebook's caches. Hiding the showcase later cannot take it back. Only fields the person already made public go on it.
 
 ### 8.4 Formats
@@ -356,7 +357,7 @@ Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](co
   - otherwise it returns nothing.
   - The public pages use the same RPC.
 - **Cache and refresh:**
-  - The image URL carries a version, the hash of the public fields + `updated_at` + language: `/api/card/m/leo-m.png?v=3f9a&lang=it`.
+  - The image URL carries a version, the hash of the public fields + `updated_at` + language: `/api/card/m/leo-m.png?v=3f9a&lang=en`.
   - The page's `og:image` always points at the current version, so editing the showcase produces a new image.
   - The CDN caches each version for a long time (`s-maxage` + `stale-while-revalidate`).
   - Platforms keep their own copy. Facebook's Sharing Debugger can refresh it for a test, but we can't force it for people.
@@ -374,9 +375,7 @@ Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](co
   - The font files (`.ttf` / `.woff`, since Satori does not read `.woff2`) are bundled with the function.
   - The community's static fallbacks use Geist too, so every community card looks the same. The site's page cards from #248 stay as they are.
   - The logo is an SVG, so it is unaffected.
-- **Images:**
-  - Satori takes PNG/JPEG/SVG, not WebP, so the photo is fetched as JPEG.
-  - The lime duotone is applied once, when the photo is chosen for the showcase (a small image stored next to the avatar), not by a CSS filter at render time. Satori has no filters.
+- **Illustrations instead of images:** the right side of every card is a vector illustration generated from the card's data (§8.6), so nothing is fetched, no photo is stored for cards, and Satori draws it as inline SVG.
 - **Size and speed:** under ~300 KB per PNG (WhatsApp is picky with large previews). Satori gives JPEG-like sizes with flat colours, so this is easy.
 
 ### 8.6 Brand rules (so every card is recognisable)
@@ -390,7 +389,15 @@ They match the #248 site cards and the Lime/Ink rule:
 - Instrument chips with the icons; genres as outline chips in mono.
 - One lime pill for the status.
 - **A lime bar along the bottom with the CTA on the left and the short URL on the right**, in the same place on every card. That bar is the recognisable signature.
-- The right side holds the photo (tilted 3°, like the phone on the site cards) or a large instrument icon in a ringed circle.
+- **No photos, ever.** Colour and branded illustrations only (owner, 2026-11-21).
+- **The illustration system** is built from the BandWith mark's own grammar, the rounded square (corner radius ≈ a third of its side), in Lime, Ink and white:
+  - **instrument tile:** a big lime rounded square with the main instrument's icon in ink, tilted a few degrees, with a soft lime glow;
+  - **block equalizer:** columns of rounded squares rising from the CTA bar like a VU meter, the top block of each column lit, plus one empty outline block above (the "room to grow");
+  - **sound rings:** concentric circles around the tile, two of them dotted lime;
+  - **dot matrix:** a fine dot texture fading out from the illustration's centre;
+  - **lineup grid** (band ads): the band as a 2×2 grid of tiles, the instruments it has in dark tiles with white icons, and the missing one lit lime with rings and a "YOUR SPOT" label. A 3-piece looking for its 4th, or a duo looking for two (two lit tiles), reads at a glance.
+  - A second instrument (if any) is a small dark tile with a lime icon, orbiting the main one.
+- The illustration is chosen from the data (main instrument, the band's current instruments, the wanted one), so every card is different but always recognisably BandWith. Instruments without an icon use the "other" glyph.
 - No other colours, no emoji, no user-chosen themes.
 
 ### 8.7 Growth and measurement
@@ -537,7 +544,7 @@ Every phase:
 - City × instrument pages on the site, only above a minimum of real, indexable showcases, in EN/IT/ES.
 - An approximate map view on the grid cells.
 - A "real, active band" badge from real activity.
-- One-off ads ("bassist for one wedding on 14 June").
+- One-off ads ("bassist for one wedding on June 14").
 - Recommendations ("3 new drummers near you").
 
 ## 13. Prerequisites before opening it to the public
@@ -555,7 +562,7 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
 - **Funnel:**
   1. showcases and ads published;
   2. searches;
-  3. searches with at least 3 results within 25 km (liquidity, per area);
+  3. searches with at least 3 results within 15 mi / 25 km (liquidity, per area);
   4. requests sent;
   5. % accepted;
   6. time to first answer;
@@ -587,7 +594,7 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
 
 ## 16. Open questions
 
-- The grid size (3 or 5 km) and the distance bands: to confirm on real towns in Italy, Spain and the US.
+- The grid size (2–3 mi / 3–5 km) and the distance bands: to confirm on real towns, starting with the New York area (dense boroughs vs. suburban NJ/Long Island), then Europe.
 - Whether a band admin writes as themself or as the band, and how replies to the band are shared among admins.
 - The inactivity period before a showcase hides, the request expiry, the cooling-off period after a decline, and the daily limits. These are product values, to set in the database at build time.
 - Whether the fee is shown in a community deputy request, or only after the musician accepts.
@@ -596,7 +603,7 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
 
 ## 17. Competitors checked
 
-Brief scan, 2026-11-20 (Trustpilot, App Store reviews, Italian guides). These are user reviews, not verified facts.
+Brief scan, 2026-11-20 (Trustpilot, App Store reviews, guides). These are user reviews, not verified facts.
 
 - **BandMix**:
   - messaging needs a paid plan, and often the person receiving cannot reply;
@@ -608,7 +615,8 @@ Brief scan, 2026-11-20 (Trustpilot, App Store reviews, Italian guides). These ar
   - messaging is rated poorly.
 - **Bandmates and similar apps**: private messages need a paid plan; some paying users report months without an answer.
 - **"Join My Band"**: not found as an active product.
-- **Facebook groups, Subito and Italian classifieds** (Musicofili, Mercatino Musicale, Villaggio Musicale):
+- **Craigslist "musicians" section** (the US default): plain text ads with no profiles, no samples to listen to and no verification; scammers and spam are common, and contact goes through an anonymous email relay with no accept/decline. (From general knowledge, not checked in this scan.)
+- **Local Facebook groups and classifieds** (also checked for Italy: Subito, Musicofili, Mercatino Musicale, Villaggio Musicale):
   - old ads that are never closed;
   - no filter by distance or instrument;
   - phone numbers in plain text;
