@@ -95,4 +95,42 @@ describe('Terms of Service', () => {
     expect(terms).toContain('Gianluca Boccia, an individual based in New Jersey, United States');
     expect(terms).toContain('mailto:ciao@bandwith.fun');
   });
+
+  it('is governed by New Jersey law and keeps consumers\' home-country protection', () => {
+    expect(terms).not.toContain('governed by Italian law');
+    expect(terms).toContain('governed by the laws of the State of New Jersey');
+    expect(terms).toContain('mandatory laws of the country where you live');
+  });
+});
+
+describe('Privacy Policy in Italian and Spanish', () => {
+  const LEGAL = path.resolve(SITE, '../public/legal');
+  const en = readFileSync(path.join(LEGAL, 'privacy.html'), 'utf8');
+  const ids = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  const rows = (html: string) => (html.match(/<tr>/g) ?? []).length;
+  const h2 = (html: string) => (html.match(/<h2/g) ?? []).length;
+
+  it('the English policy links both translations', () => {
+    expect(en).toContain('href="privacy-it.html"');
+    expect(en).toContain('href="privacy-es.html"');
+  });
+
+  for (const [lang, words] of [
+    ['it', ['Lista d’attesa', '12 mesi', 'persona fisica', 'Adobe Fonts', 'non viene salvato']],
+    ['es', ['Lista de espera', '12 meses', 'persona física', 'Adobe Fonts', 'no se guarda']],
+  ] as const) {
+    it(`privacy-${lang}.html mirrors the English policy`, () => {
+      const file = path.join(LEGAL, `privacy-${lang}.html`);
+      expect(existsSync(file), file).toBe(true);
+      const html = readFileSync(file, 'utf8');
+      expect(html).toContain(`<html lang="${lang}">`);
+      expect(html).toContain('href="privacy.html"');
+      expect(ids(html)).toEqual(ids(en));
+      expect(h2(html)).toBe(h2(en));
+      expect(rows(html)).toBe(rows(en));
+      expect(html).toContain('mailto:ciao@bandwith.fun');
+      expect(html).toContain(en.match(/Last updated: ([^<]+)/)?.[1].split(' ')[0] ?? 'x');
+      for (const w of words) expect(html, w).toContain(w);
+    });
+  }
 });
