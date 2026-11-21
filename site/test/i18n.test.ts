@@ -18,6 +18,7 @@ import { makeTranslator, translateTree } from '../src/i18n/translate';
 import { SAME } from '../src/i18n/same';
 import { basePath, langOfPath, localizeHref, pathIn } from '../src/i18n/langs';
 import { languageFor, suggestion, placeName } from '../src/i18n/suggest';
+import { SLOTS } from '../src/ui/demos/rehearsals-polls';
 
 const FILES = Object.values(PAGES);
 
@@ -69,6 +70,24 @@ describe('text written by scripts', () => {
       const t = makeTranslator(lang, dict, SAME);
       const missing = pieces.filter(([p]) => !t.skip(p) && t.text(p) == null).map(([p, f]) => `${f}: ${p}`);
       expect(missing).toEqual([]);
+    });
+  }
+
+  // The rehearsal poll writes sentences with any set of its dates: the top picks (in date order)
+  // and Sara's votes (in the order she tapped them). Every one of them has a translation.
+  const longs = SLOTS.map((x) => x.long);
+  const join = (a: string[]) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
+  const subsets = longs.flatMap((_, i) => longs.slice(i + 1).map((b) => [longs[i], b])).concat([[...longs]], longs.map((l) => [l]));
+  const orders = (a: string[]): string[][] => (a.length < 2 ? [a] : a.flatMap((x, i) => orders(a.filter((_, j) => j !== i)).map((r) => [x, ...r])));
+  const pollSentences = [
+    ...subsets.map((s) => `Top pick so far: ${join(s)}. Tap Done when you’re set, or change your dates.`),
+    ...subsets.filter((s) => s.length > 1).map((s) => `Now you hold Leo’s phone. Tap Lock in next to the Top pick (${join(s)} are tied: his call).`),
+    ...subsets.flatMap(orders).map((s) => `Sara is done · ${join(s)}`),
+  ];
+  for (const [lang, dict] of [['it', IT], ['es', ES]] as const) {
+    test(`${lang}: the rehearsal poll's sentences with every set of dates`, () => {
+      const t = makeTranslator(lang, dict, SAME);
+      expect(pollSentences.filter((p) => t.text(p) == null)).toEqual([]);
     });
   }
 });
