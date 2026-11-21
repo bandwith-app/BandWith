@@ -2323,7 +2323,7 @@
  "Repeats, endings, segno, coda and fermatas look the same in the reader and on stage. Under every chart, What the symbols mean explains each one.": "Ritornelli, finali, segno, coda e corone sono uguali nel lettore e sul palco. Sotto ogni griglia, Cosa vogliono dire i simboli li spiega uno per uno.",
  "Chart symbols": "I simboli della griglia",
  "What each sign in a chord chart means.": "Cosa vuol dire ogni segno in una griglia di accordi.",
- "Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even without internet over Bluetooth. A visual click keeps you in time, and a stage manager can play the songs’ audio from the mixer.": "La Modalità palco mette lo stesso brano su ogni telefono della band. Il leader si sposta, tutti seguono, anche senza internet via Bluetooth. Un click visivo vi tiene a tempo, e la regia può far partire l’audio dei brani dal mixer.",
+ "Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even offline over Bluetooth. A visual click keeps time, and a stage manager plays the songs’ audio.": "La Modalità palco mette lo stesso brano su ogni telefono della band. Il leader si sposta, tutti seguono, anche offline via Bluetooth. Un click visivo tiene il tempo e la regia fa partire l’audio dei brani.",
  "Plays the songs’ audio as stage manager": "Fa partire l’audio dei brani dalla regia",
  "One device": "Un solo dispositivo",
  "On an upcoming rehearsal it’s Live mode: the focus songs, chords, the click and the leader, plus the rehearsal timer and notes. No run of show.": "Su una prova in programma è la Modalità live: i brani su cui lavorare, gli accordi, il click e il leader, più il timer della prova e le note. Niente programma della serata.",

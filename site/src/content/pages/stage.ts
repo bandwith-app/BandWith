@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'stage',
   title: 'Stage mode',
-  description: 'Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even without internet over Bluetooth. A visual click keeps you in time, and a stage manager can play the songs’ audio from the mixer.',
+  description: 'Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even offline over Bluetooth. A visual click keeps time, and a stage manager plays the songs’ audio.',
   ogTitle: 'Stage mode · One song. Every phone.',
   hero: {
     heading: { lines: ['One song.', 'Every phone.'], em: 'phone.' },
