@@ -1429,8 +1429,8 @@ const music: AreaText = {
           items: [
             "Dai a ogni brano una **Registrazione** (un file audio) nella scheda del brano. I brani senza muovono comunque la band, ma non suona niente.",
             "Collega il dispositivo al mixer (vedi i consigli sul cavo più sotto) e attiva Non disturbare, così le notifiche non escono dall’impianto.",
-            "Apri il gig mentre sei online, apri la Modalità palco e tocca **Regia: audio da qui**. Il dispositivo scarica l’audio della serata.",
-            "Aspetta che **Audio pronto** conti tutti i brani (per esempio 10/10): da lì suona anche senza internet. Se manca ancora qualche brano, riapri il gig online.",
+            "Apri il gig mentre sei online, apri la Modalità palco e tocca **Regia: audio da qui**. Il dispositivo scarica l’audio della serata: una barra mostra a che punto è, e l’anello attorno al ▶ di ogni brano si riempie mentre scarica.",
+            "Aspetta che **Audio pronto** conti tutti i brani (per esempio 10/10): da lì suona anche senza internet. Se un brano non si scarica, la regia te lo dice (vedi sotto).",
           ],
         },
         {
@@ -1439,6 +1439,7 @@ const music: AreaText = {
           items: [
             "Tocca ▶ su un brano per suonarlo. Lo schermo di tutti passa a quel brano e mostra **In riproduzione** con il tempo.",
             "Il player in alto ha **Riproduci** / **Pausa**; a fine brano, lo stesso tasto suona il successivo. **Stop** va tenuto premuto, così un tocco per sbaglio non ferma la musica.",
+            "Un brano senza audio, o che qui non si può suonare, lo dice sul player, e **Riproduci** diventa **Riproduci il prossimo** con il primo brano che si può suonare. Intanto la band lo suona dal vivo.",
             "Per un brano che non è in scaletta, tocca + (**Suona un brano fuori scaletta**) e sceglilo dal repertorio. Entra in scaletta subito dopo il brano attuale, per tutti.",
             "Per passare la regia, l’altro admin tocca **Regia: audio da qui** sul suo dispositivo e poi **Prendila**: il tuo audio si ferma. **Disattiva** chiude la regia sul tuo dispositivo.",
           ],
@@ -1450,6 +1451,20 @@ const music: AreaText = {
             ["La regia (un admin)", "Il player, ▶ su ogni brano con l’audio, dove esce il suono (**Uscita**) e quanti brani sono pronti."],
             ["Gli altri admin e i membri", "Il brano in play, con **In riproduzione** o **In pausa** e il tempo. Se sei su un altro brano, **Vai** ti porta lì."],
             ["Tutti, quando la regia esce", "La striscia sparisce. La Modalità palco funziona come prima."],
+          ],
+        },
+        {
+          type: "p",
+          text: "Quando un brano non si scarica, tocca **1 non scaricato** sotto **Audio pronto**: una pagina elenca i brani e il motivo. Sistema, poi tocca **Riprova**.",
+        },
+        {
+          type: "table",
+          head: ["Cosa dice", "Cosa fare"],
+          rows: [
+            ["Il link non porta a un file audio", "La registrazione del brano è un link che apre una pagina, non il file. Su Google Drive condividi il file come “Chiunque abbia il link”, oppure carica il file nel brano."],
+            ["Niente internet", "Collegati: il brano si scarica da solo appena torni online."],
+            ["Questo dispositivo non riesce a riprodurre il file", "Usa un file MP3, M4A o WAV."],
+            ["Il download si è interrotto", "Tocca **Riprova**."],
           ],
         },
         {
@@ -1470,7 +1485,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "Su un portatile nel browser, l’audio lo tiene il browser: usa sempre lo stesso browser e non cancellarne i dati prima del gig. Alcuni link (per esempio Google Drive) si possono solo ascoltare in streaming, quindi serve internet." }],
+          rows: [{ devices: ["web"], text: "Su un portatile nel browser, l’audio lo tiene il browser: usa sempre lo stesso browser e non cancellarne i dati prima del gig. Anche i link di Google Drive si scaricano, se il file è condiviso come “Chiunque abbia il link”." }],
         },
       ],
     },

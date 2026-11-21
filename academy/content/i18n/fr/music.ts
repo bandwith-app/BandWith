@@ -1429,8 +1429,8 @@ const music: AreaText = {
           items: [
             "Donnez à chaque morceau un **Enregistrement** (un fichier audio) dans la fiche du morceau. Les morceaux sans enregistrement font quand même avancer le groupe, mais rien ne joue.",
             "Branchez l’appareil à la console (voir les conseils sur le câble plus bas) et activez Ne pas déranger, pour que les notifications ne sortent pas dans la sono.",
-            "Ouvrez le concert en ligne, ouvrez le mode scène et touchez **Régie : audio d’ici**. L’appareil télécharge l’audio de la soirée.",
-            "Attendez que **Audio prêt** compte tous les morceaux (par exemple 10/10) : dès lors il joue sans internet. S’il manque encore des morceaux, rouvrez le concert en ligne.",
+            "Ouvrez le concert en ligne, ouvrez le mode scène et touchez **Régie : audio d’ici**. L’appareil télécharge l’audio de la soirée : une barre montre où il en est, et l’anneau autour du ▶ de chaque morceau se remplit pendant le téléchargement.",
+            "Attendez que **Audio prêt** compte tous les morceaux (par exemple 10/10) : dès lors il joue sans internet. Si un morceau ne peut pas être téléchargé, la régie vous le dit (voir plus bas).",
           ],
         },
         {
@@ -1439,6 +1439,7 @@ const music: AreaText = {
           items: [
             "Touchez ▶ sur un morceau pour le lire. L’écran de chacun passe à ce morceau et affiche **En cours** avec le temps.",
             "Le lecteur en haut a **Lecture** / **Pause** ; à la fin d’un morceau, le même bouton lit le suivant. **Arrêter** demande un appui long, pour qu’un toucher par erreur ne coupe pas la musique.",
+            "Un morceau sans audio, ou qui ne peut pas être lu ici, l’indique sur le lecteur, et **Lecture** devient **Lire le suivant** avec le premier morceau qui peut être lu. Pendant ce temps, le groupe le joue en live.",
             "Pour un morceau qui n’est pas dans la setlist, touchez + (**Lire un morceau hors setlist**) et choisissez-le dans le répertoire. Il entre dans la setlist juste après le morceau en cours, pour tous.",
             "Pour passer la main, l’autre admin touche **Régie : audio d’ici** sur son appareil, puis **La prendre** : votre audio s’arrête. **Désactiver** met fin à la régie sur votre appareil.",
           ],
@@ -1450,6 +1451,20 @@ const music: AreaText = {
             ["La régie (un admin)", "Le lecteur, ▶ sur chaque morceau avec audio, où sort le son (**Sortie**) et combien de morceaux sont prêts."],
             ["Les autres admins et les membres", "Le morceau en cours, avec **En cours** ou **En pause** et le temps. Si vous êtes sur un autre morceau, **Aller** vous y amène."],
             ["Tout le monde, quand la régie part", "Le bandeau disparaît. Le mode scène fonctionne comme avant."],
+          ],
+        },
+        {
+          type: "p",
+          text: "Quand un morceau ne peut pas être téléchargé, touchez **1 non téléchargé** sous **Audio prêt** : une page donne les morceaux et la raison. Corrigez, puis touchez **Réessayer**.",
+        },
+        {
+          type: "table",
+          head: ["Ce qui s’affiche", "Que faire"],
+          rows: [
+            ["Le lien ne donne pas de fichier audio", "L’enregistrement du morceau est un lien qui ouvre une page, pas le fichier. Sur Google Drive, partagez le fichier avec « Tous les utilisateurs disposant du lien », ou importez le fichier dans le morceau."],
+            ["Pas d’internet", "Connectez-vous : le morceau se télécharge tout seul dès que vous êtes de nouveau en ligne."],
+            ["Cet appareil ne peut pas lire ce fichier", "Utilisez un fichier MP3, M4A ou WAV."],
+            ["Le téléchargement s’est interrompu", "Touchez **Réessayer**."],
           ],
         },
         {
@@ -1470,7 +1485,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "Sur un ordinateur portable dans le navigateur, c’est le navigateur qui garde l’audio : utilisez toujours le même et n’effacez pas ses données avant le concert. Certains liens (par exemple Google Drive) ne se lisent qu’en streaming, ils ont donc besoin d’internet." }],
+          rows: [{ devices: ["web"], text: "Sur un ordinateur portable dans le navigateur, c’est le navigateur qui garde l’audio : utilisez toujours le même et n’effacez pas ses données avant le concert. Les liens Google Drive se téléchargent aussi, si le fichier est partagé avec « Tous les utilisateurs disposant du lien »." }],
         },
       ],
     },

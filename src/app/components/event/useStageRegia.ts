@@ -10,8 +10,10 @@ import {
   type RegiaState,
 } from '@/lib/stageRegia';
 import {
+  audioFailureFor,
   cachedAudio,
   createRegiaPlayer,
+  type AudioFailure,
   downloadAudio,
   playableUrl,
   type RegiaPlayer,
@@ -86,6 +88,24 @@ interface Options {
   createPlayer?: () => RegiaPlayer;
 }
 
+/** A song file on the Regia device: waiting, coming down (0–1, null = size unknown), there, or not possible. */
+export type SongAudio =
+  | { state: 'queued' }
+  | { state: 'downloading'; progress: number | null }
+  | { state: 'ready' }
+  | { state: 'failed'; reason: AudioFailure };
+
+/** Why Play didn't work: a download reason, or the song is still coming down (no copy to play yet). */
+export type PlayFailure = AudioFailure | 'pending';
+
+/** What the Regia card says after Play (or adding a song) didn't work. */
+export type RegiaError =
+  | { kind: 'load'; title: string; reason: PlayFailure }
+  | { kind: 'no-audio'; title: string }
+  | { kind: 'insert' };
+
+const online = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
+
 const IDLE: RegiaPlayerSnapshot = { status: 'idle', positionMs: 0, durationMs: null };
 
 /**
@@ -132,10 +152,14 @@ export function useStageRegia({
   /** Row id of the song in the player. */
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
-  const [error, setError] = useState<'load' | 'insert' | null>(null);
+  const [error, setError] = useState<RegiaError | null>(null);
 
   const [cached, setCached] = useState<Set<string>>(new Set());
-  const [downloading, setDownloading] = useState<{ done: number; total: number } | null>(null);
+  const [downloading, setDownloading] = useState<{ done: number; total: number; progress: number } | null>(null);
+  /** Each song file's download on this device (by songs.audio_url). */
+  const [audio, setAudio] = useState<Record<string, SongAudio>>({});
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
 
   const ctx = useRef({ songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
   ctx.current = { songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
@@ -223,16 +247,32 @@ export function useStageRegia({
       const have = await cachedAudio(refs);
       setCached(have);
       const todo = [...new Set(refs)].filter((r) => !have.has(r));
+      const states: Record<string, SongAudio> = {};
+      for (const r of refs) states[r] = have.has(r) ? { state: 'ready' } : { state: 'queued' };
+      setAudio(states);
       if (!todo.length) return;
-      setDownloading({ done: 0, total: todo.length });
+      const total = todo.length;
+      setDownloading({ done: 0, total, progress: 0 });
       let done = 0;
       for (const ref of todo) {
-        if (await downloadAudio(ref)) {
+        const show = (p: number | null) => {
+          // A few updates per percent at most (the bar moves; React isn't flooded).
+          const progress = p == null ? null : Math.round(p * 100) / 100;
+          setAudio((a) => {
+            const cur = a[ref];
+            return cur?.state === 'downloading' && cur.progress === progress ? a : { ...a, [ref]: { state: 'downloading', progress } };
+          });
+          setDownloading({ done, total, progress: (done + (progress ?? 0)) / total });
+        };
+        show(0);
+        const result = await downloadAudio(ref, show);
+        if (result.ok) {
           have.add(ref);
           setCached(new Set(have));
         }
+        setAudio((a) => ({ ...a, [ref]: result.ok ? { state: 'ready' } : { state: 'failed', reason: result.reason } }));
         done += 1;
-        setDownloading({ done, total: todo.length });
+        setDownloading({ done, total, progress: done / total });
       }
       setDownloading(null);
     } finally {
@@ -260,6 +300,7 @@ export function useStageRegia({
   }, [available, createPlayer, eventId, publish]);
 
   const turnOff = useCallback(() => {
+    setAudio({});
     if (mineRef.current?.on) publish({ on: false, playing: false });
     mineRef.current = null;
     disposePlayer();
@@ -306,6 +347,16 @@ export function useStageRegia({
     if (on) void prepare();
   }, [on, prepare]);
 
+  // Back online: try the songs that failed for want of internet.
+  useEffect(() => {
+    if (!on || typeof window === 'undefined') return;
+    const back = () => {
+      if (Object.values(audioRef.current).some((a) => a.state === 'failed' && a.reason === 'offline')) void prepare();
+    };
+    window.addEventListener('online', back);
+    return () => window.removeEventListener('online', back);
+  }, [on, prepare]);
+
   // While playing: tell the band where the song is every few seconds.
   const playing = snap.status === 'playing';
   useEffect(() => {
@@ -330,21 +381,31 @@ export function useStageRegia({
       if (!player) return false;
       setError(null);
       if (loadedRef.current?.id !== song.id || ['idle', 'error'].includes(player.snapshot().status)) {
+        // The card shows this song from now on (also when it can't play: the message is about it).
+        loadedRef.current = { id: song.id, title: song.title };
+        setLoadedId(song.id);
         if (!song.audio) {
-          // No audio: the band still moves to it; nothing plays.
-          loadedRef.current = { id: song.id, title: song.title };
-          setLoadedId(song.id);
+          // No audio: the band still moves to it; nothing plays, and the card says so.
           await player.stop(0);
+          setError({ kind: 'no-audio', title: song.title });
           publish({ on: true, playing: false, positionMs: 0, durationMs: null });
           return false;
         }
         const src = await playableUrl(song.audio);
         if (!src || !(await player.load(src.url))) {
-          setError('load');
+          const known = audioRef.current[song.audio];
+          // Not on the device yet and the link can't stream (Drive on iOS): it's coming, wait.
+          const pending = !src?.local && online() && (known?.state === 'queued' || known?.state === 'downloading');
+          setError({
+            kind: 'load',
+            title: song.title,
+            reason: pending
+              ? 'pending'
+              : audioFailureFor({ online: online(), downloadReason: known?.state === 'failed' ? known.reason : undefined, local: !!src?.local }),
+          });
+          publish({ on: true, playing: false, positionMs: 0, durationMs: null });
           return false;
         }
-        loadedRef.current = { id: song.id, title: song.title };
-        setLoadedId(song.id);
       }
       return player.play();
     },
@@ -407,7 +468,7 @@ export function useStageRegia({
       const at = saved.findIndex((s) => s.id === cur);
       const { data, error: addError } = await addSongToSetlist(list, song.id, saved.length + 1, saved[at]?.setNumber ?? 1);
       if (addError || !data?.id) {
-        setError('insert');
+        setError({ kind: 'insert' });
         return false;
       }
       const order = saved.map((s) => s.id);
@@ -425,6 +486,35 @@ export function useStageRegia({
     [on, start],
   );
 
+  /**
+   * The next song after the one shown (loaded, or else the current one) that
+   * can play here: it has audio, isn't struck off, and its link didn't fail.
+   */
+  const nextPlayable = useMemo(() => {
+    const at = songs.findIndex((s) => s.id === (loadedId ?? currentId));
+    for (let i = Math.max(0, at) + (at < 0 ? 0 : 1); i < songs.length; i++) {
+      const s = songs[i];
+      if (!s.audio || !s.id || skipped?.has(s.id)) continue;
+      const a = audio[s.audio];
+      if (a?.state === 'failed' && !cached.has(s.audio)) continue;
+      return i;
+    }
+    return null;
+  }, [songs, loadedId, currentId, skipped, audio, cached]);
+
+  /** Songs whose audio couldn't come down, and why (in setlist order). */
+  const failed = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { title: string; reason: AudioFailure }[] = [];
+    for (const s of songs) {
+      const a = s.audio ? audio[s.audio] : undefined;
+      if (!s.audio || a?.state !== 'failed' || seen.has(s.audio)) continue;
+      seen.add(s.audio);
+      out.push({ title: s.title, reason: a.reason });
+    }
+    return out;
+  }, [songs, audio]);
+
   const readiness: RegiaReadiness = useMemo(() => regiaReadiness(songs, cached), [songs, cached]);
   const otherRegia = remote && remote.state.on ? remote : null;
 
@@ -440,9 +530,21 @@ export function useStageRegia({
     lostTo,
     dismissLost: () => setLostTo(null),
     readiness,
+    /** Downloads in progress: songs done, of how many, overall 0–1. */
     downloading,
     cached,
+    /** Each song file's state on this device (by songs.audio_url). */
+    audio,
+    /** Songs whose audio couldn't be downloaded, and why. */
+    failed,
+    /** Still finding out which songs are already on this device (just turned on). */
+    checking: on && refs.length > 0 && Object.keys(audio).length === 0,
+    /** Download again the songs that failed. */
+    retry: prepare,
+    /** Index of the next song that can play here (null: none). */
+    nextPlayable,
     error,
+    dismissError: () => setError(null),
     /** Where this device's sound comes out (native apps; null in a browser). */
     output,
     /** The output isn't fit for a gig: the device's speaker, or Bluetooth. */
