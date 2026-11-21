@@ -1,0 +1,48 @@
+/* ══════════════════════════════════════════════════════════════════
+   Questions & answers (content/answers.ts): the FAQ list on Get, the
+   "What is BandWith?" block on the home page, the questions at the end
+   of each channel page and the /faq/ page.
+   ══════════════════════════════════════════════════════════════════ */
+
+.faq { padding-bottom: calc(var(--section-y) + var(--radius)); }
+.faq__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 40px 64px; }
+.faq__list details { border-top: 1px solid var(--line); }
+.faq__list details:last-child { border-bottom: 1px solid var(--line); }
+.faq__list summary { position: relative; display: block; padding: 22px 48px 22px 0; cursor: pointer; list-style: none; font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1.15; text-transform: uppercase; letter-spacing: -0.01em; }
+.faq__list summary::-webkit-details-marker { display: none; }
+.faq__list summary::after { content: ""; position: absolute; right: 6px; top: 50%; width: 14px; height: 14px; margin-top: -7px; background: linear-gradient(var(--lime), var(--lime)) center / 14px 2px no-repeat, linear-gradient(var(--lime), var(--lime)) center / 2px 14px no-repeat; transition: transform .4s var(--ease); }
+.faq__list details[open] summary::after { transform: rotate(45deg); }
+.faq__list p { margin: 0 0 22px; max-width: 36em; font-size: 17px; line-height: 1.5; color: var(--fg-2); }
+.faq__list a { color: var(--lime); }
+@media (max-width: 900px) { .faq__grid { grid-template-columns: minmax(0, 1fr); } }
+.faq__list summary:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
+
+/* On bone (channel pages). */
+.sec--bone .faq__list details { border-color: rgba(0,0,0,.14); }
+.sec--bone .faq__list summary::after { background: linear-gradient(#000, #000) center / 14px 2px no-repeat, linear-gradient(#000, #000) center / 2px 14px no-repeat; }
+.sec--bone .faq__list p { color: var(--ink-copy); }
+.sec--bone .faq__list summary:focus-visible { outline-color: #000; }
+
+/* Home: the definition beside the questions. */
+.answers__def { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.answers__lead { margin: 24px 0 28px; max-width: 30em; }
+.answers__all { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: inherit; text-decoration: none; }
+.answers__all:hover { text-decoration: underline; text-underline-offset: 4px; }
+.answers__all .ico { width: 14px; height: 14px; }
+
+/* /faq/ */
+.faqp__head { padding: calc(var(--nav-h) + clamp(64px, 12vh, 120px)) 0 clamp(40px, 6vh, 64px); }
+.faqp__title { font-size: clamp(56px, 10vw, 168px); }
+.faqp__lead { margin: 32px 0 0; max-width: 34em; }
+.faqp__more { margin: 20px 0 0; color: var(--fg-2); }
+.faqp__more a { color: var(--lime); }
+.faqp { padding-top: 0; }
+.faqp__groups { display: grid; gap: clamp(56px, 8vh, 96px); }
+.faqp__group { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px 64px; scroll-margin-top: calc(var(--nav-h) + 24px); }
+.faqp__h { font-size: clamp(32px, 3.6vw, 56px); }
+@media (max-width: 900px) { .faqp__group { grid-template-columns: minmax(0, 1fr); } }
+
+/* Channel pages: the questions continue the bone sheet of "The small things" and "Learn it". */
+.learn.sec--bone:has(+ .answers.sec--bone) { padding-bottom: calc(var(--section-y) * .5); }
+.learn + .answers.sec--bone { margin-top: 0; padding-top: calc(var(--section-y) * .5); border-radius: 0; }
+.answers .answers__all { margin-top: 28px; }

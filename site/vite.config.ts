@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, mkdirSync, copyFileSync, existsSync, createR
 import path from 'path';
 import { PAGES, fillPartials } from './tools/pages';
 import { STUB, finalizePage, pageOf, translatorFor, writeMirrors, type Misses } from './tools/i18n';
+import { INDEXED, NOT_FOUND, seoFiles } from './tools/seo';
 
 const root = __dirname;
 const SHOTS = path.resolve(root, '../academy/public/shots');
@@ -44,6 +45,10 @@ function partials(): Plugin {
     },
     closeBundle() {
       if (!building) return;
+      // robots.txt, sitemap.xml, llms.txt, llms-full.txt and the hosting config (tools/seo.ts).
+      const dist = path.resolve(root, 'dist');
+      const english = INDEXED.map((rel) => ({ rel, html: readFileSync(path.join(dist, rel), 'utf8') }));
+      for (const [name, body] of Object.entries(seoFiles(english))) writeFileSync(path.join(dist, name), body);
       // For translators: every unit still in English on /it/ and /es/ (site/.i18n-missing.json).
       const list = [...misses].map(([text, pages]) => ({ text, pages: [...pages].sort() }));
       writeFileSync(path.resolve(root, '.i18n-missing.json'), JSON.stringify(list, null, 2) + '\n');
@@ -119,6 +124,8 @@ export default defineConfig({
     rollupOptions: {
       input: Object.fromEntries([
         ...Object.entries(PAGES).map(([k, v]) => [k, path.resolve(root, v)]),
+        // Served by Vercel for any missing path; no language copies, never indexed.
+        ['notFound', path.resolve(root, NOT_FOUND)],
         ...MIRRORS.map((rel) => [rel.replace(/\/?index\.html$/, '').replace(/\//g, '-'), path.resolve(root, rel)]),
       ]),
     },

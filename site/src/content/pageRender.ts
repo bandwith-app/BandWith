@@ -11,6 +11,7 @@ import { academyArticle, shot } from './site';
 import { DEMOS } from './demos/index';
 import { PAGES } from './pages';
 import type { Cell, ChannelPage, Heading, Icon } from './pages/types';
+import { pageAnswers } from './answersRender';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const ico = (id: Icon, cls = 'ico') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
@@ -175,6 +176,6 @@ export function pageMain(slug: string) {
   // Each section keeps the tone its styles are made for (as on Stage).
   return [
     hero(page, ch), flow(page), demo(page, true), roles(page, false),
-    details(page, true), learn(page, true), next(ch, false),
+    details(page, true), learn(page, true), pageAnswers(slug), next(ch, false),
   ].join('');
 }
