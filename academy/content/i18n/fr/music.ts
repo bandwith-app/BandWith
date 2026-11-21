@@ -1217,8 +1217,8 @@ const music: AreaText = {
           items: [
             "Passe de **Paroles** à **Paroles et accords** ou **Grille d’accords**. Le choix est partagé avec le lecteur de morceau.",
             "Change la taille du texte avec − et +.",
-            "Touche le bouton page à côté de − et + (**Morceau seul**) pour lire le morceau seul, en plein écran : ni titre, ni onglets, ni horaires, ni statut. En bas, il ne reste que **Tout afficher**, **Précédent**, le clic et **Suivant** ; les flèches et Page préc./suiv. changent aussi de morceau, pour les pédales tourne-pages.",
-            "**Tout afficher** ou Retour ramène tout l’écran live. Quitter le mode scène désactive Morceau seul.",
+            "**Plein écran** (le bouton aux quatre coins en haut) affiche le morceau seul (**Morceau seul**), d’ici ou depuis la setlist : une petite ligne avec son numéro et son titre, puis le morceau ; ni onglets, ni horaires, ni statut. En bas, il ne reste que **Tout afficher**, **Précédent**, le clic et **Suivant** ; les flèches et Page préc./suiv. changent aussi de morceau, pour les pédales tourne-pages.",
+            "**Tout afficher** ou Retour ramène tout l’écran live, sur l’onglet où tu étais. Quitter le mode scène désactive Morceau seul.",
             "Transpose pour toi avec − tonalité +. Seul ton écran change.",
             "**Mes notes** affiche tes notes privées par-dessus la version du groupe.",
             "Le déroulé se masque pour laisser plus de place au morceau.",
@@ -1279,7 +1279,7 @@ const music: AreaText = {
           items: [
             "Le mode scène est proposé pour les concerts du groupe à venir et, en mode live, pour les répétitions du groupe à venir ; pas pour les devis, les événements passés ni les concerts perso.",
             "L’écran reste allumé tant que le mode scène est ouvert.",
-            "**Plein écran** (le bouton aux quatre coins en haut, dans la barre latérale sur un appareil à double écran) masque les barres de l’app, la barre latérale et la barre d’état du téléphone, et garde l’écran allumé. **Quitter le plein écran** ou Retour le quitte ; le choix reste enregistré sur l’appareil.",
+            "**Plein écran** (le bouton aux quatre coins en haut, dans la barre latérale sur un appareil à double écran) masque les barres de l’app, la barre latérale et la barre d’état du téléphone, et garde l’écran allumé. Avec des paroles ou des grilles dans la setlist, il affiche le morceau seul (**Morceau seul**) ; sans, la setlist prend tout l’écran et **Quitter le plein écran** ou Retour le quitte.",
             "Sans setlist, il indique « Aucune setlist liée à ce concert. »",
             "Dans les apps téléphone et tablette, la setlist avec paroles et grilles est gardée sur l’appareil quand tu ouvres le concert : le mode scène marche sans internet. Te déconnecter la supprime.",
             "Sans internet et sans copie sur l’appareil, il indique « Hors ligne : la setlist n’a pas pu être chargée. » avec **Réessayer**.",
@@ -1544,7 +1544,7 @@ const music: AreaText = {
           rows: [
             { devices: ["phone"], text: "Une seule colonne : en-tête, déroulé, setlist ou morceau, Précédent / Suivant en bas." },
             { devices: ["phoneLand", "duoClosed"], text: "À l’horizontale (court et large), les horaires et les étapes sont à gauche et la setlist ou le morceau à droite. Avec un morceau ouvert, la colonne de gauche affiche plutôt la setlist, pour sauter à n’importe quel morceau." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "Le mode scène s’ouvre à côté du volet de liste. **Plein écran** lui donne tout l’écran : les horaires et les étapes sont alors sur le premier volet et la setlist ou le morceau sur le second, séparés au bord des volets pour que rien ne tombe sur la charnière. Avec un morceau ouvert, la setlist est dans une colonne à côté (sur le premier volet quand l’appareil est ouvert sur les deux). **Quitter le plein écran** fait revenir la liste. Ce choix est gardé sur l’appareil." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "Le mode scène s’ouvre à côté du volet de liste. **Plein écran** affiche le morceau seul sur tout l’écran (**Morceau seul**). Une setlist sans paroles ni grilles prend tout l’écran à la place : les horaires et les étapes sur le premier volet et la setlist sur le second, séparés au bord des volets pour que rien ne tombe sur la charnière ; **Quitter le plein écran** fait revenir la liste. Avec un morceau ouvert, la setlist est dans une colonne à côté (sur le premier volet quand l’appareil est ouvert sur les deux)." },
             { devices: ["duoClosed"], text: "**Ouvrir le mode scène** est dans le rail ; le jour du concert, c’est l’action principale du rail. **Plein écran** masque le rail en mode scène." },
             { devices: ["duoLaptop"], text: "Retour de scène : pose l’appareil au sol sur scène comme un retour. La moitié haute affiche le compteur de morceaux (**Morceau … sur …**), le titre, la tonalité, le BPM, le morceau suivant et le temps écoulé, ou les paroles. La moitié basse a de grandes touches **Précédent** et **Suivant** et la progression du set ; les morceaux retirés pour ce soir sont sautés et leurs segments de progression atténués. Les flèches, Page préc./suiv. et Espace font aussi avancer : les pédales tourne-page Bluetooth fonctionnent." },
             { devices: ["duoBook", "duoLaptop"], text: "**Morceau seul** : sur un appareil ouvert sur les deux écrans, le morceau et ses quatre boutons prennent l’écran le plus large, pour que rien ne tombe sur la pliure. Plié comme un ordinateur portable, le morceau remplit la moitié du haut et la moitié du bas n’a que **Tout afficher**, **Précédent**, le clic et **Suivant**." },
@@ -1621,7 +1621,7 @@ const music: AreaText = {
     { term: "Grille iReal Pro", definition: "Une grille d’accords mesure par mesure, avec forme, tonalité, style et tempo, importée depuis un lien iReal Pro.", see: "import-from-ireal-pro" },
     { term: "Vue du morceau", definition: "La façon d’afficher un morceau : Paroles, Paroles et accords ou Grille d’accords. Mémorisée par appareil.", see: "read-a-song" },
     { term: "Grille d’accords", definition: "Les accords seuls : les sections du morceau avec leurs accords dans des cases, ou la grille iReal mesure par mesure.", see: "read-a-song" },
-    { term: "Morceau seul", definition: "Le mode scène et le mode live avec seulement le morceau à l’écran, en plein écran, et Précédent, le clic et Suivant en bas.", see: "stage-mode" },
+    { term: "Morceau seul", definition: "Le plein écran du mode scène et du mode live : seulement le morceau, une petite ligne qui le nomme, et Tout afficher, Précédent, le clic et Suivant en bas.", see: "stage-mode" },
     { term: "Transposer pour le groupe", definition: "Changer la tonalité, la grille et les accords d’un morceau pour tout le monde, depuis le formulaire du morceau.", see: "transpose-and-tempo" },
     { term: "Mes notes", definition: "Des notes et fichiers privés sur un morceau du groupe, visibles par toi seul.", see: "my-notes-and-files" },
     { term: "Suggestion", definition: "La proposition d’un membre : un nouveau morceau, une correction de paroles ou d’accords, ou une note pour le groupe.", see: "review-song-suggestions" },

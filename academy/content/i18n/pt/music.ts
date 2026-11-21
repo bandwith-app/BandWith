@@ -1217,8 +1217,8 @@ const music: AreaText = {
           items: [
             "Alterne entre **Letra**, **Letra e acordes** e **Grade de acordes**. A escolha é compartilhada com o leitor da música.",
             "Mude o tamanho do texto com − e +.",
-            "Toque no botão de página ao lado de − e + (**Só a música**) para ler só a música, em tela cheia: sem título, abas, horários ou status. Embaixo ficam só **Mostrar tudo**, **Anterior**, o clique e **Próximo**; as setas e Page Up/Down também trocam de música, para pedais de virar página.",
-            "**Mostrar tudo** ou Voltar traz de volta a tela ao vivo inteira. Ao sair do Modo palco, Só a música se desliga.",
+            "**Tela cheia** (o botão de quatro cantos no alto) mostra só a música (**Só a música**), daqui ou da setlist: uma linha pequena com o número e o título, depois a música; sem abas, horários ou status. Embaixo ficam só **Mostrar tudo**, **Anterior**, o clique e **Próximo**; as setas e Page Up/Down também trocam de música, para pedais de virar página.",
+            "**Mostrar tudo** ou Voltar traz de volta a tela ao vivo inteira, na aba onde você estava. Ao sair do Modo palco, Só a música se desliga.",
             "Transponha só para você com − tom +. Só a sua tela muda.",
             "**Minhas notas** mostra as suas notas privadas sobre a versão da banda.",
             "O roteiro se esconde para dar mais espaço à música.",
@@ -1279,7 +1279,7 @@ const music: AreaText = {
           items: [
             "O Modo palco existe para os shows futuros da banda e, como Modo ao vivo, para os ensaios futuros da banda; não para orçamentos, eventos passados nem shows pessoais.",
             "A tela fica acesa enquanto o Modo palco está aberto.",
-            "**Tela cheia** (o botão de quatro cantos no alto, na barra lateral em um dispositivo de tela dupla) esconde as barras do app, a barra lateral e a barra de status do celular, e mantém a tela ligada. **Sair da tela cheia** ou Voltar sai dela; a escolha fica salva no dispositivo.",
+            "**Tela cheia** (o botão de quatro cantos no alto, na barra lateral em um dispositivo de tela dupla) esconde as barras do app, a barra lateral e a barra de status do celular, e mantém a tela ligada. Com letras ou grades na setlist, mostra só a música (**Só a música**); sem elas, a setlist ocupa a tela inteira e **Sair da tela cheia** ou Voltar sai dela.",
             "Sem setlist, ele diz “Nenhuma setlist vinculada a este show.”",
             "Nos apps de celular e tablet, a setlist com letras e cifras fica guardada no dispositivo quando você abre o show, então o Modo palco funciona sem internet. Sair da conta apaga essa cópia.",
             "Sem internet e sem cópia no dispositivo, ele diz “Offline: não foi possível carregar a setlist.” com **Tentar de novo**.",
@@ -1544,7 +1544,7 @@ const music: AreaText = {
           rows: [
             { devices: ["phone"], text: "Uma coluna: cabeçalho, roteiro, setlist ou música, Anterior / Próximo embaixo." },
             { devices: ["phoneLand", "duoClosed"], text: "Deitado (baixo e largo), os horários e as etapas ficam à esquerda e a setlist ou a música à direita. Com uma música aberta, a coluna da esquerda mostra a setlist, para você pular para qualquer música." },
-            { devices: ["tablet", "duoBook", "duoLand"], text: "O Modo palco abre ao lado do painel da lista. **Tela cheia** dá a tela inteira a ele: aí os horários e as etapas ficam no primeiro painel e a setlist ou a música no segundo, divididos na borda dos painéis para nada ficar na dobra. Com uma música aberta, a setlist fica numa coluna ao lado (no primeiro painel quando o dispositivo está aberto sobre os dois). **Sair da tela cheia** traz a lista de volta. A escolha fica guardada no dispositivo." },
+            { devices: ["tablet", "duoBook", "duoLand"], text: "O Modo palco abre ao lado do painel da lista. **Tela cheia** mostra só a música na tela inteira (**Só a música**). Uma setlist sem letras nem grades ocupa a tela inteira no lugar: os horários e as etapas no primeiro painel e a setlist no segundo, divididos na borda dos painéis para nada ficar na dobra; **Sair da tela cheia** traz a lista de volta. Com uma música aberta, a setlist fica numa coluna ao lado (no primeiro painel quando o dispositivo está aberto sobre os dois)." },
             { devices: ["duoClosed"], text: "**Abrir modo palco** fica na barra lateral; no dia do show, é a ação principal dela. **Tela cheia** esconde a barra no Modo palco." },
             { devices: ["duoLaptop"], text: "Retorno de chão: apoie o dispositivo no chão do palco como um monitor. A metade de cima mostra o contador de músicas (**Música … de …**), o título, o tom, o BPM, a próxima música e o tempo decorrido, ou a letra. A metade de baixo tem botões grandes **Anterior** e **Próximo** e o progresso do set; as músicas tiradas hoje são puladas e os segmentos delas ficam apagados. As setas, Page Up/Down e a barra de espaço também avançam, então pedais Bluetooth de virar página funcionam." },
             { devices: ["duoBook", "duoLaptop"], text: "**Só a música**: num dispositivo aberto sobre as duas telas, a música e os seus quatro botões ficam na tela mais larga, para nada cair na dobra. Dobrado como um notebook, a música preenche a metade de cima e a metade de baixo tem só **Mostrar tudo**, **Anterior**, o clique e **Próximo**." },
@@ -1621,7 +1621,7 @@ const music: AreaText = {
     { term: "Grade do iReal Pro", definition: "Uma grade de acordes compasso por compasso, com forma, tom, estilo e andamento, importada de um link do iReal Pro.", see: "import-from-ireal-pro" },
     { term: "Visualização da música", definition: "Como uma música é mostrada: Letra, Letra e acordes ou Grade de acordes. Lembrada por dispositivo.", see: "read-a-song" },
     { term: "Grade de acordes", definition: "Só os acordes: as seções da música com os acordes em caixas, ou a grade do iReal compasso por compasso.", see: "read-a-song" },
-    { term: "Só a música", definition: "O Modo palco e o Modo ao vivo com só a música na tela, em tela cheia, e Anterior, o clique e Próximo embaixo.", see: "stage-mode" },
+    { term: "Só a música", definition: "A tela cheia do Modo palco e do Modo ao vivo: só a música, uma linha pequena que a nomeia, e Mostrar tudo, Anterior, o clique e Próximo embaixo.", see: "stage-mode" },
     { term: "Transpor para a banda", definition: "Mudar o tom, a grade e os acordes de uma música para todos, pelo formulário da música.", see: "transpose-and-tempo" },
     { term: "Minhas notas", definition: "Notas e arquivos privados numa música da banda, visíveis só para você.", see: "my-notes-and-files" },
     { term: "Sugestão", definition: "A proposta de um membro: uma música nova, uma correção de letra ou de acordes, ou uma nota para a banda.", see: "review-song-suggestions" },

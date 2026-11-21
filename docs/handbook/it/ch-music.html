@@ -624,6 +624,8 @@
   <ul>
     <li>Si passa tra <b class="ui">Lyrics</b>, <b class="ui">Chords</b> e <b class="ui">Structure</b>; la scelta è condivisa con il lettore.</li>
     <li>Con − e + si cambia la dimensione del testo.</li>
+    <li><b class="ui">Full screen</b> (il pulsante con i quattro angoli in alto) mostra solo il brano (<b class="ui">Song only</b>), da qui o dalla setlist: una riga piccola con numero e titolo, poi il brano; niente schede, orari o stato. In basso restano solo <b class="ui">Show everything</b>, <b class="ui">Prev</b>, il click e <b class="ui">Next</b>; anche le frecce e Pagina su/giù cambiano brano, per le pedaliere voltapagina.</li>
+    <li><b class="ui">Show everything</b> o Indietro riporta l'intera schermata live, sulla scheda dove eri. Uscendo dallo Stage mode, Song only si spegne.</li>
     <li>Con − tonalità + si traspone per sé; cambia solo il proprio schermo.</li>
     <li><b class="ui">My notes</b> mostra le note private sopra la versione della band.</li>
     <li>Il programma della serata si nasconde per lasciare più spazio al brano.</li>
@@ -638,6 +640,7 @@
     <li>Niente programma della serata (nessun orario di load in, soundcheck, show o fine) e niente brani da togliere per la serata.</li>
   </ul>
   <figure class="shot" data-shot="music-rehearsal-live" data-device="phone"><figcaption>Il Live mode a una prova: i brani da provare, gli accordi del brano corrente e Prev / Next, senza programma della serata.</figcaption></figure>
+  <figure class="shot" data-shot="music-song-only" data-device="phone"><figcaption>Full screen: solo il brano, una riga piccola che lo nomina, e Show everything, Prev, il click e Next.</figcaption></figure>
   <p class="steps-title">Il timer della prova</p>
   <ul>
     <li>L'admin tocca <b class="ui">Start rehearsal</b> nel Live mode. Il tempo scorre per tutta la band: i membri lo vedono ma non lo controllano.</li>
@@ -667,7 +670,7 @@
   <ul>
     <li>Lo Stage mode è disponibile per i gig della band in programma e, come Live mode, per le prove della band in programma; non per preventivi, eventi passati o gig personali.</li>
     <li>Lo schermo resta acceso finché lo Stage mode è aperto.</li>
-    <li><b class="ui">Full screen</b> (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. <b class="ui">Exit full screen</b> o Indietro lo chiude; la scelta resta memorizzata sul dispositivo.</li>
+    <li><b class="ui">Full screen</b> (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. Con testi o griglie nella setlist mostra solo il brano (<b class="ui">Song only</b>); senza, la setlist prende tutto lo schermo e <b class="ui">Exit full screen</b> o Indietro lo chiude.</li>
     <li>Senza setlist compare <b class="ui">“No setlist attached to this gig.”</b></li>
     <li>Nelle app per telefono e tablet, aprendo il gig la setlist con testi e partiture viene conservata sul dispositivo, così lo Stage mode funziona senza internet. Con il logout la copia viene rimossa.</li>
     <li>Senza internet e senza copia sul dispositivo compare <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> con <b class="ui">Try again</b>.</li>
@@ -811,7 +814,7 @@
   <p>La disposizione dello Stage mode cambia secondo il dispositivo e la postura.</p>
   <div class="devnote" data-devices="phone">Una colonna: intestazione, programma della serata, setlist o brano, Prev / Next in basso.</div>
   <div class="devnote" data-devices="phoneLand,duoClosed">In orizzontale (basso e largo), orari e momenti della serata stanno a sinistra, setlist o brano a destra. Con un brano aperto, la colonna di sinistra mostra invece la setlist, per saltare a qualsiasi brano.</div>
-  <div class="devnote" data-devices="tablet,duoBook,duoLand">Lo Stage mode si apre accanto al pannello dell'elenco. <b class="ui">Full screen</b> gli dà tutto lo schermo: orari e momenti nel primo pannello, setlist o brano nel secondo, divisi sul bordo dei pannelli in modo che nulla cada sulla piega. Con un brano aperto, la setlist sta in una colonna accanto (sul primo pannello quando il dispositivo è aperto su entrambi). <b class="ui">Exit full screen</b> riporta l'elenco. La scelta resta memorizzata sul dispositivo.</div>
+  <div class="devnote" data-devices="tablet,duoBook,duoLand">Lo Stage mode si apre accanto al pannello dell'elenco. <b class="ui">Full screen</b> mostra solo il brano su tutto lo schermo (<b class="ui">Song only</b>). Una setlist senza testi né griglie prende invece tutto lo schermo: orari e momenti nel primo pannello e la setlist nel secondo, divisi sul bordo dei pannelli in modo che nulla cada sulla piega; <b class="ui">Exit full screen</b> riporta l'elenco. Con un brano aperto, la setlist sta in una colonna accanto (sul primo pannello quando il dispositivo è aperto su entrambi).</div>
   <div class="devnote" data-devices="duoClosed"><b class="ui">Open stage mode</b> si trova nella barra laterale e il giorno del gig ne è l'azione principale. <b class="ui">Full screen</b> nasconde la barra nello Stage mode.</div>
   <div class="devnote" data-devices="duoLaptop">Spia da palco: il dispositivo si appoggia sul pavimento del palco come un monitor. La metà superiore mostra il contatore (<b class="ui">Song … of …</b>), titolo, tonalità, BPM, brano successivo e tempo trascorso, oppure il testo. La metà inferiore ha grandi pulsanti <b class="ui">Prev</b> e <b class="ui">Next</b> e l'avanzamento del set; i brani tolti per la serata vengono saltati e i loro segmenti di avanzamento attenuati. Anche frecce, Pagina su/giù e Spazio fanno avanzare, quindi funzionano le pedaliere Bluetooth voltapagina.</div>
   <div class="devnote" data-devices="web">Funzionano la sincronizzazione via internet e il click; niente Bluetooth né copia offline della setlist. Lo schermo intero nasconde anche le barre del browser, dove il browser lo permette.</div>

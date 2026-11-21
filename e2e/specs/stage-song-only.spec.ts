@@ -9,7 +9,8 @@ import { openWithFocusSongs, WEEKLY } from '../support/live';
  * lyrics & chords, or the chord chart) clean and full screen, with no other
  * information, and only Show everything, Prev, the click and Next at the
  * bottom. Asked by the band (11-20): reading on stage without the run of
- * show, the tabs and the status lines in the way.
+ * show, the tabs and the status lines in the way. One way in (11-20, the
+ * band's follow-up): the header's Full screen, from the setlist or the song.
  */
 
 const isLaptop = () => test.info().project.name === 'duo-laptop';
@@ -82,11 +83,11 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
     [[0.5, 0.3], [0.2, 0.6], [0.8, 0.9]].every(([x, y]) => el.contains(document.elementFromPoint(innerWidth * x, innerHeight * y))),
   );
   expect(onTop, 'nothing of the live screen shows through').toBe(true);
-  // No title, no tabs, no status: only the song and the four controls.
-  // (The song's own section names, Verse / Chorus, are part of the song.)
+  // No title heading, no tabs, no status: the song, one small line naming it, and
+  // the four controls. (The song's own section names, Verse / Chorus, are part of the song.)
   await expect(view.getByRole('heading', { name: song })).toHaveCount(0);
   await expect(view.getByRole('tablist')).toHaveCount(0);
-  await expect(view.getByText(song, { exact: true }).filter({ visible: true })).toHaveCount(0);
+  await expect(view.getByText(song, { exact: true }).filter({ visible: true })).toHaveCount(1);
   const buttons = view.getByRole('button');
   const names = await buttons.evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
   expect(names.map((n) => (n?.startsWith(app.t('Start the click')) ? 'click' : n))).toEqual([
@@ -102,6 +103,9 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
   }
   await expectOffFolds(view.locator('[data-song-only-body]'), 'the song');
 }
+
+/** The one way in: the header's Full screen (in Laptop pose the rail's). */
+const fullScreen = (app: App) => app.button('Full screen', { exact: true }).first();
 
 const songControls = (app: App, song: string) =>
   isLaptop() ? app.page.getByRole('region', { name: app.t('Song controls') }) : songOnly(app, song);
@@ -129,9 +133,10 @@ for (const kind of ['gig', 'rehearsal'] as const) {
       await openEvent(app, title);
       await openLiveSong(app, kind, title);
 
-      await app.button('Song only', { exact: true }).last().click();
+      await fullScreen(app).click();
       await app.settle();
       await expectSongOnly(app, first, firstText);
+      await expect(app.button('Song only', { exact: true }).filter({ visible: true })).toHaveCount(0);
       await app.check(`${kind} live, song only`);
 
       // Next / Prev move through the setlist.
@@ -155,18 +160,53 @@ for (const kind of ['gig', 'rehearsal'] as const) {
       await app.settle();
       await expect(songOnly(app, first)).toHaveCount(0);
       await expect.poll(() => isFull(app)).toBe(false);
-      await expect(app.button('Song only', { exact: true }).last()).toBeVisible();
+      await expect(fullScreen(app)).toBeVisible();
 
       // System Back leaves Song only first, not the live screen.
-      await app.button('Song only', { exact: true }).last().click();
+      await fullScreen(app).click();
       await app.settle();
       await expectSongOnly(app, first, firstText);
       await systemBack(app);
       await app.settle();
       await expect(songOnly(app, first)).toHaveCount(0);
       await expect(liveDialog(app, kind, title)).toBeAttached();
-      await expect(app.button('Song only', { exact: true }).last()).toBeVisible();
+      await expect(fullScreen(app)).toBeVisible();
       await app.check(`${kind} live, after song only`);
+    });
+
+    test(`${kind}: Full screen from the setlist is the song alone (no times, no Stage Manager); Show everything goes back to the setlist`, async ({ app }) => {
+      test.skip(isLaptop(), 'the Laptop pose shows the song on the Display and the pads on the Deck: covered above');
+      const title = kind === 'gig' ? SEED.gigToday : WEEKLY;
+      const [first, firstText] = kind === 'gig' ? ['Superstition', /Very superstitious/i] : ['Paper Boats', /Paper boats on the/i];
+      if (kind === 'gig') {
+        await openWith(app, (db) => {
+          db.songs.find((s) => s.title === 'Superstition')!.lyrics = '[Verse]\n[Ebm]Very superstitious, [Ab7]writing on the wall';
+        });
+      } else {
+        await openWithFocusSongs(app);
+      }
+      await openEvent(app, title);
+      await app.button(kind === 'gig' ? 'Open stage mode' : 'Open live mode', { exact: true }).first().click();
+      await expect(liveDialog(app, kind, title)).toBeAttached();
+      await app.settle();
+      const tabs = liveDialog(app, kind, title).getByRole('tablist', { name: app.t('Setlist') }).getByRole('tab');
+      await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+
+      await fullScreen(app).click();
+      await app.settle();
+      await expectSongOnly(app, first, firstText);
+      const view = songOnly(app, first);
+      if (kind === 'gig') {
+        await expect(view).not.toContainText(title);
+        await expect(view).not.toContainText(/\b17:00\b|\b21:00\b/);
+        await expect(view).not.toContainText(new RegExp(app.t('Stage manager'), 'i'));
+      }
+      await app.check(`${kind} live, full screen from the setlist`);
+
+      await view.getByRole('button', { name: app.t('Show everything'), exact: true }).click();
+      await app.settle();
+      await expect(songOnly(app, first)).toHaveCount(0);
+      await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
     });
   });
 }
