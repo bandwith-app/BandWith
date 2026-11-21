@@ -15,6 +15,7 @@ export const SHOT_FILES: Record<string, ShotDevice[]> = {
   'gig-wizard-step1': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'gig-workspace-admin': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'gig-workspace-member': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
+  'home-to-practise': ['phone'],
   'ipad-gig-composer': ['tablet', 'web', 'duoBook'],
   'music-reader': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook'],
   'music-rehearsal-live': ['phone', 'tablet', 'web'],
@@ -36,4 +37,5 @@ export const SHOT_FILES: Record<string, ShotDevice[]> = {
   'shot-poll-builder': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'shot-poll-card': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
   'shot-rehearsal-wizard': ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'],
+  'stage-manager': ['phone'],
 };
