@@ -188,6 +188,8 @@ import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPr
 import { bandFilterOptions, bandToActivateForCreate, filterByBand, matchesBandFilter, normalizeBandFilter } from "@/lib/bandFilter";
 import { visibleEventsFor } from "@/lib/eventVisibility";
 import { installKeyboardDismissOnTouch } from "@/lib/keyboardDismiss";
+import { analyticsAskBlocked, screenNameFor, setAnalyticsConsent, shouldAskAnalyticsConsent, trackScreen, type ScreenOverlay } from "@/lib/appAnalytics";
+import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsentSheet";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -1560,6 +1562,41 @@ export default function AuthenticatedApp() {
   useEffect(() => {
     if (realBand?.id && !roleTourSeen(tourRole)) setShowAdminTour(true);
   }, [realBand?.id, tourRole]);
+
+  // Usage analytics (src/lib/appAnalytics.ts), Android and iOS only: asked
+  // once, after the first-run tour and the popups that need an answer, never
+  // over them (one layer at a time).
+  const [askAnalytics, setAskAnalytics] = useState(false);
+  const askBlocked = analyticsAskBlocked({ tour: showAdminTour, urgent: !!urgentNotification, rsvp: !!rsvpNotification, poll: !!pollNotification });
+  useEffect(() => {
+    if (askBlocked || !shouldAskAnalyticsConsent()) return;
+    const timer = window.setTimeout(() => setAskAnalytics(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [askBlocked]);
+
+  // The screen in view, by name only (no ids or names), for usage analytics.
+  const analyticsOverlay: ScreenOverlay | null = showSettings ? 'settings'
+    : showPricingModal ? 'pricing'
+    : showEditProfile ? 'profile'
+    : showCreateBand ? 'createBand'
+    : showAnalytics ? 'analytics'
+    : showInventory ? 'inventory'
+    : showContracts ? 'contracts'
+    : showSetlistManager ? 'setlists'
+    : showBandMembers ? 'members'
+    : showTaskTemplates ? 'taskTemplates'
+    : showPastEvents ? 'pastGigs'
+    : showDeputyGigs ? 'deputyGigs'
+    : null;
+  const analyticsScreen = screenNameFor({
+    tab: activeTab,
+    overlay: analyticsOverlay,
+    gigOpen: !!selectedEvent,
+    chatOpen: !!selectedChat,
+  });
+  useEffect(() => {
+    trackScreen(analyticsScreen);
+  }, [analyticsScreen]);
 
   // Creating a band: the server decides whether the account may run another
   // Free band (paid plans 161, bands_as_admin); the modal shows the refusal.
@@ -4269,6 +4306,15 @@ export default function AuthenticatedApp() {
               } : undefined}
             />
           )}
+          <AnalyticsConsentSheet
+            key="analytics-consent"
+            open={askAnalytics && !askBlocked}
+            onAnswer={(allow) => {
+              setAskAnalytics(false);
+              void setAnalyticsConsent(allow ? 'granted' : 'denied');
+            }}
+            onDismiss={() => setAskAnalytics(false)}
+          />
           {showCreateBand && <CreateBandModal key="create-band" isOpen={showCreateBand} onClose={() => setShowCreateBand(false)} onBandCreated={(id) => { selectBand(id); }} />}
           <PendingInvitesPrompt
             key="pending-invites"

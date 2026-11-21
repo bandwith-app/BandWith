@@ -62,6 +62,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Usage analytics (src/lib/appAnalytics.ts): off and every consent
+             denied until the user says yes in the app; never the advertising ID. -->
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="false" />
+        <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_analytics_storage" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_ad_storage" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_ad_user_data" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_ad_personalization_signals" android:value="false" />
     </application>
 
     <!-- Permissions -->
@@ -82,4 +91,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" tools:replace="android:maxSdkVersion" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Firebase Analytics would add advertising ID, ad attribution and install referrer permissions: none are used. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
+    <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" tools:node="remove" />
 </manifest>

@@ -4515,6 +4515,12 @@ const dict: Dictionary = {
   "Song only": "Solo la canción",
   "Song only: {title}": "Solo la canción: {title}",
   "Show everything": "Mostrar todo",
+  // Usage analytics consent (appAnalytics.ts)
+  "Help us improve BandWith?": "¿Nos ayudas a mejorar BandWith?",
+  "Share anonymous usage statistics: which screens are used and how often. Never your songs, gigs, messages or contacts, and nothing for ads. You can change this anytime in Settings › Privacy & account.": "Comparte estadísticas de uso anónimas: qué pantallas se usan y con qué frecuencia. Nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad. Puedes cambiarlo cuando quieras en Ajustes › Privacidad y cuenta.",
+  "No thanks": "No, gracias",
+  "Anonymous usage statistics": "Estadísticas de uso anónimas",
+  "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Qué pantallas se usan y con qué frecuencia, para mejorar BandWith. Nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad.",
 };
 
 export default dict;

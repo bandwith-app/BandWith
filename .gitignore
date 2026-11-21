@@ -39,6 +39,9 @@ android/.gradle/
 android/local.properties
 android/.idea/
 android/app/google-services.json
+# Firebase iOS config (local only, like the Android one): copied into the app
+# by the "Firebase config" build phase when present.
+ios/App/App/GoogleService-Info.plist
 *.apk
 *.aab
 
