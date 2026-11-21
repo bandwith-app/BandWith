@@ -19,6 +19,7 @@ import {
   Search,
   X,
   LogOut,
+  InstrumentIcon,
 } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useBand } from '@/lib/BandContext';
@@ -515,8 +516,11 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="bw-label-md truncate">{name}</span>
                         </div>
-                        <span className="bw-body-sm text-muted-foreground truncate">
-                          {[instrumentText(memberInstrument(member)), roleLabel].filter(Boolean).join(' · ')}
+                        <span className="flex items-center gap-1.5 min-w-0 bw-body-sm text-muted-foreground">
+                          {memberInstrument(member) && (
+                            <InstrumentIcon instrumentId={memberInstrument(member)} className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                          )}
+                          <span className="truncate">{[instrumentText(memberInstrument(member)), roleLabel].filter(Boolean).join(' · ')}</span>
                         </span>
                       </div>
                       </button>

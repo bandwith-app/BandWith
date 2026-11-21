@@ -30,9 +30,20 @@ test.describe('Account hub as admin', () => {
     await expect(app.page.getByRole('button', { name: 'Open Marta C.' })).toBeVisible();
     await expect(app.page.getByRole('button', { name: app.t('Invite member') }).first()).toBeVisible();
     await app.check('Members');
+    // Each member row shows the Dot Icon of their instrument.
+    for (const [who, key] of [['Marta C.', 'drums'], ['Jonah R.', 'bass'], ['Lena P.', 'keys'], ['Sam O.', 'guitar']]) {
+      await expect(app.page.getByRole('button', { name: `Open ${who}` }).locator(`svg[data-instrument="${key}"]`), who).toBeVisible();
+    }
+    // Who covers what: one instrument icon per row.
+    const coverage = app.page.getByRole('list', { name: app.t('Who covers what') });
+    await coverage.scrollIntoViewIfNeeded();
+    for (const key of ['drums', 'bass', 'keys']) {
+      await expect(coverage.locator(`svg[data-instrument="${key}"]`).first(), key).toBeVisible();
+    }
     await app.page.getByRole('button', { name: 'Open Marta C.' }).click();
     await app.settle();
     await expect(app.page.getByText('Marta C.').first()).toBeVisible();
+    await expect(app.page.locator('[role="dialog"] svg[data-instrument="drums"]').first()).toBeVisible();
     // Her bio, as she wrote it in her profile.
     await expect(app.page.getByText(MARTA_BIO)).toBeVisible();
     await app.check('member detail');

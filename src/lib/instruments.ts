@@ -24,6 +24,9 @@ const ALIASES: Record<string, string[]> = {
   dj: ['dj', 'deejay', 'disc jockey'],
 };
 
+/** Every canonical instrument key ('double-bass', 'bass', 'drums', …). */
+export const INSTRUMENT_KEYS: readonly string[] = Object.keys(ALIASES);
+
 const ORDERED = Object.entries(ALIASES)
   .flatMap(([key, words]) => words.map((w) => ({ key, w })))
   .sort((a, b) => b.w.length - a.w.length);

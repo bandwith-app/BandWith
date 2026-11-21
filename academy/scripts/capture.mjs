@@ -70,6 +70,10 @@ const RECIPES = {
   // Tablet and web: Go live opens the gig beside the calendar; Stage mode is its play button.
   'music-stage@wide': ['click:Go live', 'wait:1500', 'click:Open stage mode', 'wait:1500'],
   'people-band-members': ['click:Members', 'wait:1000'],
+  // Jazz Club Night: Lena P. declined, so the availability sheet offers Find a deputy.
+  'people-find-deputy': ['click:Calendar', 'wait:800', 'click:Jazz Club Night', 'wait:1500', 'click:Open availability details', 'wait:1200', 'click:Find a deputy', 'wait:1500'],
+  'people-invite': ['click:Members', 'wait:1000', 'click:Invite member', 'wait:800',
+    "js:(() => { const i = document.querySelector('[role=dialog] input'), set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, 'mar'), i.dispatchEvent(new Event('input', { bubbles: true })), i.focus() })()", 'wait:1200'],
 };
 
 const args = process.argv.slice(2);

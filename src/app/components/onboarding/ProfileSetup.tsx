@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowUpRight, Crown, User, X } from '@/app/components/icons';
+import { ArrowUpRight, Crown, InstrumentIcon, User, X } from '@/app/components/icons';
 import { useOnboarding, INSTRUMENTS } from '@/lib/OnboardingContext';
 import { useAuth } from '@/lib/AuthContext';
 import { AuthScreen, Kicker, PillButton, PillField } from '@/app/components/bw/Form';
@@ -132,6 +132,7 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({
               selected={selectedInstruments.includes(instrument.id)}
               onClick={() => toggleInstrument(instrument.id)}
             >
+              <InstrumentIcon instrumentId={instrument.id} className="w-3.5 h-3.5 shrink-0" aria-hidden />
               {instrument.id === 'other' ? t('Other…') : instrumentLabel[instrument.id] ?? instrument.label}
             </ChoicePill>
           ))}

@@ -116,6 +116,37 @@ export const head = (cx: number, cy: number, r: number, deg: number, dir: 1 | -1
   return `M${f(ax)} ${f(ay)}L${f(tx)} ${f(ty)}L${f(bx)} ${f(by)}`;
 };
 
+/** Full circle as one pill (an unbroken ring). */
+export const circle = (cx: number, cy: number, r: number) =>
+  `M${f(cx - r)} ${f(cy)}a${r} ${r} 0 1 0 ${f(2 * r)} 0a${r} ${r} 0 1 0 ${f(-2 * r)} 0`;
+
+/** Full ellipse as one pill (drum heads seen from the side). */
+export const ellipse = (cx: number, cy: number, rx: number, ry: number) =>
+  `M${f(cx - rx)} ${f(cy)}a${rx} ${ry} 0 1 0 ${f(2 * rx)} 0a${rx} ${ry} 0 1 0 ${f(-2 * rx)} 0`;
+
+/**
+ * Point helper along a rotated axis: `axis(cx, cy, deg)(u, v)` is the point
+ * `u` along the axis and `v` across it, from (cx, cy).
+ */
+export const axis = (cx: number, cy: number, deg: number) => (u: number, v = 0): Pt => [
+  f(cx + u * Math.cos(rad(deg)) - v * Math.sin(rad(deg))),
+  f(cy + u * Math.sin(rad(deg)) + v * Math.cos(rad(deg))),
+];
+
+/**
+ * Figure-eight body (guitar, violin, cello): two circles centred at u = c1 and
+ * u = c2 on an axis through (cx, cy) at `deg`, outlined by the outer arc of each.
+ */
+export const bouts = (cx: number, cy: number, deg: number, c1: number, r1: number, c2: number, r2: number) => {
+  const d = c2 - c1;
+  const a = (d * d + r1 * r1 - r2 * r2) / (2 * d);
+  const h = Math.sqrt(r1 * r1 - a * a);
+  const at = axis(cx, cy, deg);
+  const [ax, ay] = at(c1 + a, h);
+  const [bx, by] = at(c1 + a, -h);
+  return `M${ax} ${ay}A${r1} ${r1} 0 1 1 ${bx} ${by}A${r2} ${r2} 0 1 1 ${ax} ${ay}Z`;
+};
+
 /** Closed five-point star (rounded by the stroke join). */
 export const star = (cx: number, cy: number, R: number, r: number) => {
   let d = '';
