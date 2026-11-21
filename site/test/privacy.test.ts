@@ -66,7 +66,10 @@ describe('site privacy: no third-party font hosts', () => {
 describe('Privacy Policy covers the website', () => {
   const policy = readFileSync(path.resolve(SITE, '../public/legal/privacy.html'), 'utf8');
   // Every third-party host a site page loads must be named in the policy.
-  const PROVIDERS: Record<string, string> = { 'use.typekit.net': 'Adobe Fonts' };
+  const PROVIDERS: Record<string, string> = {
+    'use.typekit.net': 'Adobe Fonts',
+    'www.googletagmanager.com': 'Google (Google Analytics)',
+  };
 
   it('names the provider of every external host the site pages load', () => {
     for (const page of pages) {
@@ -133,4 +136,31 @@ describe('Privacy Policy in Italian and Spanish', () => {
       for (const w of words) expect(html, w).toContain(w);
     });
   }
+});
+
+describe('Privacy Policy covers Google Analytics on the website (consent only)', () => {
+  const LEGAL = path.resolve(SITE, '../public/legal');
+  const GA_HOSTS = ['googletagmanager.com', 'google-analytics.com'];
+  const COPY = {
+    en: { file: 'privacy.html', banner: 'Cookie preferences', consent: 'only if you agree', retention: 'Website statistics' },
+    it: { file: 'privacy-it.html', banner: 'Preferenze cookie', consent: 'solo se accetti', retention: 'Statistiche del sito' },
+    es: { file: 'privacy-es.html', banner: 'Preferencias de cookies', consent: 'solo si aceptas', retention: 'Estadísticas del sitio web' },
+  } as const;
+
+  for (const [lang, c] of Object.entries(COPY)) {
+    it(`${c.file} names Google Analytics, its cookies, the consent and how to withdraw it`, () => {
+      const html = readFileSync(path.join(LEGAL, c.file), 'utf8');
+      expect(html, lang).toContain('<tr><td>Google (Google Analytics)</td>');
+      for (const s of ['_ga', '_ga_GCWSEQRZ2E', c.banner, c.consent, c.retention]) expect(html, `${lang}: ${s}`).toContain(s);
+      expect(html, `${lang}: no "no cookies" claim`).not.toMatch(/uses no cookies|non usa cookie|no usa cookies/);
+    });
+  }
+
+  it('any site code that talks to Google Analytics is covered by the policy', () => {
+    const en = readFileSync(path.join(LEGAL, 'privacy.html'), 'utf8');
+    for (const f of files.filter((x) => /\.(ts|html)$/.test(x))) {
+      const src = readFileSync(f, 'utf8');
+      if (GA_HOSTS.some((h) => src.includes(h))) expect(en, path.relative(SITE, f)).toContain('Google (Google Analytics)');
+    }
+  });
 });
