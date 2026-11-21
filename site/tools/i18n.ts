@@ -82,6 +82,13 @@ export function finalizePage(html: string, enRel: string, lang: Lang, misses?: M
     t.misses.clear();
     translateTree(doc, t);
     if (misses) for (const m of t.misses) (misses.get(m) ?? misses.set(m, new Set()).get(m)!).add(`/${lang}${enPath}`);
+    // The install guides exist in every site language: /videos/install/en/… → /videos/install/<lang>/…
+    doc.querySelectorAll('video[poster], source[src]').forEach((el) => {
+      for (const attr of ['poster', 'src']) {
+        const v = el.getAttribute(attr);
+        if (v?.startsWith('/videos/install/en/')) el.setAttribute(attr, v.replace('/videos/install/en/', `/videos/install/${lang}/`));
+      }
+    });
     doc.querySelectorAll('a[href]').forEach((a) => {
       if (a.closest('[data-lang-switch]')) return;
       const h = a.getAttribute('href')!;

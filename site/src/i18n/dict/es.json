@@ -2339,5 +2339,14 @@
  "Full screen is the song": "Pantalla completa es la canción",
  "Full screen opens Song only: one small line with the song’s number and title, then the words, chords or chart. No times, no tabs. Show everything brings it all back.": "Pantalla completa abre Solo la canción: una línea pequeña con el número y el título de la canción, y luego la letra, los acordes o el cifrado. Sin horarios ni pestañas. Mostrar todo lo devuelve todo.",
  "Hands on the instrument": "Manos en el instrumento",
- "At the bottom, only Prev, the click and Next. Arrow keys and Page Up/Down step too, so a page-turner pedal works. The leader and the stage manager keep working.": "Abajo, solo Anterior, el clic y Siguiente. Las flechas y Re Pág/Av Pág también avanzan, así que funciona un pedal de pasar página. El líder y la cabina siguen funcionando."
+ "At the bottom, only Prev, the click and Next. Arrow keys and Page Up/Down step too, so a page-turner pedal works. The leader and the stage manager keep working.": "Abajo, solo Anterior, el clic y Siguiente. Las flechas y Re Pág/Av Pág también avanzan, así que funciona un pedal de pasar página. El líder y la cabina siguen funcionando.",
+ "Watch how it goes": "Mira cómo se hace",
+ "Watch it first": "Míralo primero",
+ "Every tap,<br>on a real phone.": "Cada toque,<br>en un teléfono real.",
+ "Every tap,on a real phone.": "Cada toque,en un teléfono real.",
+ "Two short videos, recorded on the phones themselves: what you see, where to tap, and what Android or Apple asks along the way.": "Dos videos cortos, grabados en los propios teléfonos: lo que ves, dónde tocar y lo que Android o Apple te piden por el camino.",
+ "Video: how to install BandWith on Android": "Video: cómo instalar BandWith en Android",
+ "Video: how to install BandWith on iPhone and iPad": "Video: cómo instalar BandWith en iPhone y iPad",
+ "About a minute: the APK, the one-time permission, Play Protect.": "Un minuto, más o menos: el APK, el permiso de una sola vez, Play Protect.",
+ "Under a minute: TestFlight first, then BandWith.": "Menos de un minuto: primero TestFlight, luego BandWith."
 }
