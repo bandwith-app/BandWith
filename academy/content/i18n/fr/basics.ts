@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Synchroniser le calendrier**", "Un lien privé vers tes événements pour **Calendrier Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Ton compte (tous les appareils)"],
             ["**Apparence**", "Thème : **Clair**, **Sombre**, **Système**", "Cet appareil"],
             ["**Unités**", "**Kilomètres** ou **Miles**", "Cet appareil"],
-            ["**Confidentialité et compte**", "**Verrouillage de l’app**, masquer les détails des concerts perso, **Exporter mes données**, conditions, politique de confidentialité, **Supprimer le compte**", "Variable (voir [[privacy-and-account-settings]])"],
+            ["**Confidentialité et compte**", "**Verrouillage de l’app**, **Statistiques d’utilisation anonymes**, masquer les détails des concerts perso, **Exporter mes données**, conditions, politique de confidentialité, **Supprimer le compte**", "Variable (voir [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Position ordinateur**. Seulement sur les téléphones double écran", "Cet appareil"],
             ["**Langue**", "**Automatique** ou l’une des six langues", "Cet appareil, plus tes notifications push et tes e-mails"],
             ["**Aide et assistance**", "Réponses et ce que tu peux faire dans l’app", "-"],
@@ -872,10 +872,10 @@ const basics: AreaText = {
     {
       id: "privacy-and-account-settings",
       title: "Confidentialité et compte",
-      summary: "Verrouillage de l’app, masquage des détails des concerts perso, export des données, documents légaux et suppression du compte.",
+      summary: "Verrouillage de l’app, statistiques d’utilisation anonymes, masquage des détails des concerts perso, export des données, documents légaux et suppression du compte.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["confidentialité", "occupé", "concerts perso", "masquer les détails", "conditions", "politique de confidentialité"],
+      keywords: ["confidentialité", "occupé", "concerts perso", "masquer les détails", "conditions", "politique de confidentialité", "statistiques", "analytics", "suivi"],
       related: ["app-lock", "export-your-data", "delete-your-account", "personal-gigs", "who-sees-what"],
       body: [
         { type: "p", text: "Ouvre le menu, touche **Réglages et compte**, puis **Confidentialité et compte**." },
@@ -883,6 +883,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Verrouillage de l’app** (téléphones et tablettes uniquement) : demande Face ID, l’empreinte ou le code de l’appareil quand BandWith redémarre après avoir été fermée. Par appareil ([[app-lock]]).",
+            "**Statistiques d’utilisation anonymes** (apps Android et iOS uniquement) : désactivées tant que tu ne dis pas oui. BandWith le demande une fois, après la première visite guidée ; tu peux changer ta réponse ici à tout moment. Seuls les écrans utilisés et leur fréquence sont partagés, jamais tes morceaux, concerts, messages ou contacts, et rien pour la publicité. Les désactiver efface ce qui a été collecté sur cet appareil. Par appareil.",
             "**Les dates perso restent privées** : une ligne d’information, pas un interrupteur. Toi seul vois le titre et le lieu de tes concerts perso ; les groupes voient seulement que tu es occupé ([[personal-gigs]]).",
             "**Exporter mes données** : une copie JSON de ce qui t’appartient ([[export-your-data]]).",
             "**Conditions d’utilisation** et **Politique de confidentialité** : ouvrent les documents dans l’app.",

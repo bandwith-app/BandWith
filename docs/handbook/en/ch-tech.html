@@ -34,6 +34,9 @@
   <h2>Languages</h2>
   <p>A built-in translation module covers the whole interface in six languages (English, Italiano, Español, Français, Deutsch, Português), with localised dates, amounts and times. Client documents follow the client's language; server pushes and emails follow each recipient's preferred language, saved on their profile.</p>
 
+  <h2>Usage statistics</h2>
+  <p>The Android and iOS apps can send anonymous usage statistics to Google Analytics for Firebase (the same Google Analytics property as the bandwith.fun site), only after the user's yes on that device. Until then the native settings keep collection off and every consent type denied, so even the first launch sends nothing. Only screen names are logged (Home, Calendar, Chats, Gig, Stage, Settings…), never ids, names or content. Ad storage, ad user data and ad personalisation are always denied; the apps don't use the advertising ID (no IDFA on iOS; the Android app removes the advertising ID and ad attribution permissions). The web app sends no statistics.</p>
+
   <h2>Hosting and distribution</h2>
   <ul>
     <li><b>Web:</b> the app, the Academy guide (<b>/academy/</b>) and the public pages (quote, deputy reply, rider, unsubscribe) are published on <b>Vercel</b> at app.bandwith.fun.</li>

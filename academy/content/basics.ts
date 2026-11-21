@@ -736,7 +736,7 @@ const basics: AreaModule = {
             ["**Calendar sync**", "A private link to your events for **Apple Calendar**, **Google Calendar** or Outlook ([[calendar-sync]])", "Your account (all devices)"],
             ["**Appearance**", "Theme: **Light**, **Dark**, **System**", "This device"],
             ["**Units**", "**Kilometres** or **Miles**", "This device"],
-            ["**Privacy & account**", "**App lock**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
+            ["**Privacy & account**", "**App lock**, **Anonymous usage statistics**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Laptop pose**. Only on dual-screen phones", "This device"],
             ["**Language**", "**Automatic** or one of six languages", "This device, plus your pushes and emails"],
             ["**Help & support**", "Answers and what you can do in the app", "-"],
@@ -879,10 +879,10 @@ const basics: AreaModule = {
     {
       id: "privacy-and-account-settings",
       title: "Privacy & account",
-      summary: "App lock, hiding personal gig details from bands, data export, legal documents and account deletion.",
+      summary: "App lock, anonymous usage statistics, hiding personal gig details from bands, data export, legal documents and account deletion.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["privacy", "busy", "personal gigs", "hide details", "terms", "privacy policy"],
+      keywords: ["privacy", "busy", "personal gigs", "hide details", "terms", "privacy policy", "analytics", "usage statistics", "tracking"],
       related: ["app-lock", "export-your-data", "delete-your-account", "personal-gigs", "who-sees-what"],
       body: [
         { type: "p", text: "Open the menu, tap **Settings & account**, then **Privacy & account**." },
@@ -890,6 +890,7 @@ const basics: AreaModule = {
           type: "list",
           items: [
             "**App lock** (phones and tablets only): ask for Face ID, fingerprint or the device passcode when BandWith starts again after being closed. Per device ([[app-lock]]).",
+            "**Anonymous usage statistics** (Android and iOS apps only): off until you say yes. BandWith asks once, after the first tour; the answer can be changed here anytime. It shares only which screens are used and how often, never your songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on this device. Per device.",
             "**Personal gigs stay private**: an info row, not a switch. Only you see the title and venue of your personal gigs; bands only see that you are busy ([[personal-gigs]]).",
             "**Export my data**: a JSON copy of what you own ([[export-your-data]]).",
             "**Terms of Service** and **Privacy Policy**: open the documents inside the app.",

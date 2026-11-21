@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Kalender-Sync**", "Ein privater Link zu deinen Terminen für **Apple Kalender**, **Google Kalender** oder Outlook ([[calendar-sync]])", "Dein Konto (alle Geräte)"],
             ["**Darstellung**", "Design: **Hell**, **Dunkel**, **System**", "Dieses Gerät"],
             ["**Einheiten**", "**Kilometer** oder **Meilen**", "Dieses Gerät"],
-            ["**Datenschutz & Konto**", "**App-Sperre**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
+            ["**Datenschutz & Konto**", "**App-Sperre**, **Anonyme Nutzungsstatistiken**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Laptop-Haltung**. Nur auf Dual-Screen-Handys", "Dieses Gerät"],
             ["**Sprache**", "**Automatisch** oder eine von sechs Sprachen", "Dieses Gerät sowie deine Push-Mitteilungen und E-Mails"],
             ["**Hilfe & Support**", "Antworten und was du in der App tun kannst", "-"],
@@ -872,10 +872,10 @@ const basics: AreaText = {
     {
       id: "privacy-and-account-settings",
       title: "Datenschutz & Konto",
-      summary: "App-Sperre, Details privater Gigs vor Bands verbergen, Datenexport, rechtliche Dokumente und Konto löschen.",
+      summary: "App-Sperre, anonyme Nutzungsstatistiken, Details privater Gigs vor Bands verbergen, Datenexport, rechtliche Dokumente und Konto löschen.",
       roles: ["admin", "member", "deputy"],
       kind: "reference",
-      keywords: ["Datenschutz", "Privatsphäre", "beschäftigt", "private Gigs", "Details verbergen", "Nutzungsbedingungen", "Datenschutzerklärung"],
+      keywords: ["Datenschutz", "Privatsphäre", "beschäftigt", "private Gigs", "Details verbergen", "Nutzungsbedingungen", "Datenschutzerklärung", "Statistiken", "Analytics", "Tracking"],
       related: ["app-lock", "export-your-data", "delete-your-account", "personal-gigs", "who-sees-what"],
       body: [
         { type: "p", text: "Öffne das Menü, tippe auf **Einstellungen & Konto** und dann auf **Datenschutz & Konto**." },
@@ -883,6 +883,7 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**App-Sperre** (nur Handys und Tablets): fragt nach Face ID, Fingerabdruck oder Gerätecode, wenn BandWith nach dem Schließen neu startet. Gilt pro Gerät ([[app-lock]]).",
+            "**Anonyme Nutzungsstatistiken** (nur Android- und iOS-Apps): aus, bis du zustimmst. BandWith fragt einmal, nach der ersten Tour; die Antwort kannst du hier jederzeit ändern. Geteilt wird nur, welche Bildschirme wie oft genutzt werden, nie deine Songs, Gigs, Nachrichten oder Kontakte und nichts für Werbung. Ausschalten löscht, was auf diesem Gerät gesammelt wurde. Gilt pro Gerät.",
             "**Private Gigs bleiben privat**: eine Infozeile, kein Schalter. Titel und Ort deiner privaten Gigs siehst nur du; Bands sehen nur, dass du beschäftigt bist ([[personal-gigs]]).",
             "**Meine Daten exportieren**: eine JSON-Kopie von allem, was dir gehört ([[export-your-data]]).",
             "**Nutzungsbedingungen** und **Datenschutzerklärung**: öffnen die Dokumente direkt in der App.",
