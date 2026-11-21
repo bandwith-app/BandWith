@@ -28,9 +28,14 @@ const MIRRORS = writeMirrors(root, Object.values(PAGES));
 function partials(): Plugin {
   const misses: Misses = new Map();
   let building = false;
+  let outDir = path.resolve(root, 'dist');
   return {
     name: 'bw-partials',
-    configResolved(c) { building = c.command === 'build'; },
+    configResolved(c) {
+      building = c.command === 'build';
+      // pnpm e2e:site builds into e2e/.site: the generated files go next to that build's pages.
+      outDir = path.resolve(c.root, c.build.outDir);
+    },
     configureServer(server) {
       // A stub's page is its English file: reload when any page or partial changes.
       server.watcher.on('change', (f) => { if (f.endsWith('.html')) server.ws.send({ type: 'full-reload' }); });
@@ -46,9 +51,10 @@ function partials(): Plugin {
     closeBundle() {
       if (!building) return;
       // robots.txt, sitemap.xml, llms.txt, llms-full.txt and the hosting config (tools/seo.ts).
-      const dist = path.resolve(root, 'dist');
-      const english = INDEXED.map((rel) => ({ rel, html: readFileSync(path.join(dist, rel), 'utf8') }));
-      for (const [name, body] of Object.entries(seoFiles(english))) writeFileSync(path.join(dist, name), body);
+      const missing = INDEXED.filter((rel) => !existsSync(path.join(outDir, rel)));
+      if (missing.length) throw new Error(`bw-partials: built pages missing in ${outDir}: ${missing.join(', ')}`);
+      const english = INDEXED.map((rel) => ({ rel, html: readFileSync(path.join(outDir, rel), 'utf8') }));
+      for (const [name, body] of Object.entries(seoFiles(english))) writeFileSync(path.join(outDir, name), body);
       // For translators: every unit still in English on /it/ and /es/ (site/.i18n-missing.json).
       const list = [...misses].map(([text, pages]) => ({ text, pages: [...pages].sort() }));
       writeFileSync(path.resolve(root, '.i18n-missing.json'), JSON.stringify(list, null, 2) + '\n');
