@@ -89,15 +89,5 @@ html.is-full:not(.is-invites) .full__inv-shut { display: inline; }
 @media (max-width: 900px) { .why__grid { grid-template-columns: minmax(0, 1fr); } .why__copy p { font-size: 17px; } }
 
 /* ── FAQ ───────────────────────────────────────────────────────── */
-.faq { padding-bottom: calc(var(--section-y) + var(--radius)); }
-.faq__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 40px 64px; }
-.faq__list details { border-top: 1px solid var(--line); }
-.faq__list details:last-child { border-bottom: 1px solid var(--line); }
-.faq__list summary { position: relative; display: block; padding: 22px 48px 22px 0; cursor: pointer; list-style: none; font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1.15; text-transform: uppercase; letter-spacing: -0.01em; }
-.faq__list summary::-webkit-details-marker { display: none; }
-.faq__list summary::after { content: ""; position: absolute; right: 6px; top: 50%; width: 14px; height: 14px; margin-top: -7px; background: linear-gradient(var(--lime), var(--lime)) center / 14px 2px no-repeat, linear-gradient(var(--lime), var(--lime)) center / 2px 14px no-repeat; transition: transform .4s var(--ease); }
-.faq__list details[open] summary::after { transform: rotate(45deg); }
-.faq__list p { margin: 0 0 22px; max-width: 36em; font-size: 17px; line-height: 1.5; color: var(--fg-2); }
-.faq__list a { color: var(--lime); }
-@media (max-width: 900px) { .faq__grid { grid-template-columns: minmax(0, 1fr); } }
+/* The FAQ list: src/styles/answers.css (shared with the home, channel and FAQ pages). */
 

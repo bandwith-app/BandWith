@@ -7,8 +7,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        excludeRegiaAudioFromBackup()
         return true
+    }
+
+    /// The stage manager's song files (src/lib/regiaAudio.ts: Library/NoCloud/regia-audio):
+    /// copies of the band's own files, often hundreds of MB, that download again anytime.
+    /// Kept out of the iCloud backup; the flag on the folder covers every file in it.
+    private func excludeRegiaAudioFromBackup() {
+        guard let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return }
+        var folder = library.appendingPathComponent("NoCloud/regia-audio", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try folder.setResourceValues(values)
+        } catch {
+            NSLog("BandWith: could not exclude regia-audio from backup: \(error)")
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

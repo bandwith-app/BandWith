@@ -11,10 +11,8 @@ import {
 } from '@/lib/stageRegia';
 import {
   audioFailureFor,
-  cachedAudio,
   createRegiaPlayer,
   type AudioFailure,
-  downloadAudio,
   playableUrl,
   type RegiaPlayer,
   type RegiaPlayerSnapshot,
@@ -23,6 +21,9 @@ import { stopPlayer } from '@/lib/audioPlayer';
 import { currentAudioOutput, onAudioOutputChange, outputWarning, setPlaybackSession, type AudioOutput } from '@/lib/audioOutput';
 import { addSongToSetlist, saveSetlistOrder } from '@/lib/services/songs';
 import { SETLIST_ORDER_SAVED, type StageRegiaBridge } from './useStageLive';
+import { useAudioDownloads, type SongAudio } from './useAudioDownloads';
+
+export type { SongAudio };
 
 /** A setlist song as the Regia needs it (setlist_songs row id, song id, its audio file). */
 export interface RegiaSong {
@@ -88,13 +89,6 @@ interface Options {
   createPlayer?: () => RegiaPlayer;
 }
 
-/** A song file on the Regia device: waiting, coming down (0–1, null = size unknown), there, or not possible. */
-export type SongAudio =
-  | { state: 'queued' }
-  | { state: 'downloading'; progress: number | null }
-  | { state: 'ready' }
-  | { state: 'failed'; reason: AudioFailure };
-
 /** Why Play didn't work: a download reason, or the song is still coming down (no copy to play yet). */
 export type PlayFailure = AudioFailure | 'pending';
 
@@ -153,13 +147,6 @@ export function useStageRegia({
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
   const [error, setError] = useState<RegiaError | null>(null);
-
-  const [cached, setCached] = useState<Set<string>>(new Set());
-  const [downloading, setDownloading] = useState<{ done: number; total: number; progress: number } | null>(null);
-  /** Each song file's download on this device (by songs.audio_url). */
-  const [audio, setAudio] = useState<Record<string, SongAudio>>({});
-  const audioRef = useRef(audio);
-  audioRef.current = audio;
 
   const ctx = useRef({ songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
   ctx.current = { songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
@@ -232,57 +219,9 @@ export function useStageRegia({
 
   // ── Turning it on and off ────────────────────────────────────────────
   const refs = useMemo(() => songs.map((s) => s.audio).filter((a): a is string => !!a), [songs]);
-  const refsKey = refs.join('|');
 
-  const preparing = useRef(false);
-  const again = useRef<(() => Promise<void>) | null>(null);
-  const prepare = useCallback(async (): Promise<void> => {
-    // One pass at a time; songs added meanwhile get their own pass after it.
-    if (preparing.current) {
-      again.current = prepare;
-      return;
-    }
-    preparing.current = true;
-    try {
-      const have = await cachedAudio(refs);
-      setCached(have);
-      const todo = [...new Set(refs)].filter((r) => !have.has(r));
-      const states: Record<string, SongAudio> = {};
-      for (const r of refs) states[r] = have.has(r) ? { state: 'ready' } : { state: 'queued' };
-      setAudio(states);
-      if (!todo.length) return;
-      const total = todo.length;
-      setDownloading({ done: 0, total, progress: 0 });
-      let done = 0;
-      for (const ref of todo) {
-        const show = (p: number | null) => {
-          // A few updates per percent at most (the bar moves; React isn't flooded).
-          const progress = p == null ? null : Math.round(p * 100) / 100;
-          setAudio((a) => {
-            const cur = a[ref];
-            return cur?.state === 'downloading' && cur.progress === progress ? a : { ...a, [ref]: { state: 'downloading', progress } };
-          });
-          setDownloading({ done, total, progress: (done + (progress ?? 0)) / total });
-        };
-        show(0);
-        const result = await downloadAudio(ref, show);
-        if (result.ok) {
-          have.add(ref);
-          setCached(new Set(have));
-        }
-        setAudio((a) => ({ ...a, [ref]: result.ok ? { state: 'ready' } : { state: 'failed', reason: result.reason } }));
-        done += 1;
-        setDownloading({ done, total, progress: done / total });
-      }
-      setDownloading(null);
-    } finally {
-      preparing.current = false;
-      const next = again.current;
-      again.current = null;
-      if (next) void next();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refsKey]);
+  // Tonight's song files on this device (shared with the gig's "Audio on this device" card).
+  const { audio, audioRef, cached, downloading, prepare, clear: clearAudio } = useAudioDownloads(refs);
 
   const turnOn = useCallback(() => {
     if (!available) return;
@@ -300,13 +239,13 @@ export function useStageRegia({
   }, [available, createPlayer, eventId, publish]);
 
   const turnOff = useCallback(() => {
-    setAudio({});
+    clearAudio();
     if (mineRef.current?.on) publish({ on: false, playing: false });
     mineRef.current = null;
     disposePlayer();
     setOn(false);
     writeOn(eventId, false);
-  }, [publish, disposePlayer, eventId]);
+  }, [publish, disposePlayer, eventId, clearAudio]);
 
   // Back as Regia after a restart mid-gig (never playing).
   useEffect(() => {

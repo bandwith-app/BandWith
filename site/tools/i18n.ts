@@ -19,6 +19,7 @@ import { makeTranslator, translateTree, type Translator } from '../src/i18n/tran
 import { SAME } from '../src/i18n/same';
 import { it } from '../src/i18n/dict/it';
 import { es } from '../src/i18n/dict/es';
+import { applySeo, NOT_FOUND } from './seo';
 
 export const MIRROR_LANGS = LANGS.filter((l): l is Exclude<Lang, 'en'> => l !== 'en');
 export const STUB = '<!--bw:mirror-->';
@@ -67,14 +68,17 @@ export type Misses = Map<string, Set<string>>;
  * already filled). `misses` collects untranslated units per page.
  */
 export function finalizePage(html: string, enRel: string, lang: Lang, misses?: Misses): string {
-  const enPath = pagePath(enRel);
+  // The 404 page answers any path: its switcher offers the three home pages.
+  const enPath = enRel === NOT_FOUND ? '/' : pagePath(enRel);
   html = html.replace(/<!--@lang-switch-->/g, switcherHtml(enPath, lang));
   const dom = new JSDOM(html);
   const doc = dom.window.document;
   doc.documentElement.lang = lang;
 
+  let tr = (s: string) => s;
   if (lang !== 'en') {
     const t = translatorFor(lang);
+    tr = (s: string) => t.text(s) ?? s;
     t.misses.clear();
     translateTree(doc, t);
     if (misses) for (const m of t.misses) (misses.get(m) ?? misses.set(m, new Set()).get(m)!).add(`/${lang}${enPath}`);
@@ -101,5 +105,7 @@ export function finalizePage(html: string, enRel: string, lang: Lang, misses?: M
   add('meta', { property: 'og:locale', content: OG_LOCALE[lang] });
   for (const l of LANGS) if (l !== lang) add('meta', { property: 'og:locale:alternate', content: OG_LOCALE[l] });
 
+  // Share card and Schema.org JSON-LD, from the page as it now reads (tools/seo.ts).
+  applySeo(doc, enRel, lang, tr);
   return dom.serialize();
 }

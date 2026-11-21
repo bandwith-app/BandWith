@@ -176,6 +176,7 @@ import { visibleEventsFor } from "@/lib/eventVisibility";
 import { installKeyboardDismissOnTouch } from "@/lib/keyboardDismiss";
 import { analyticsAskBlocked, screenNameFor, setAnalyticsConsent, shouldAskAnalyticsConsent, trackScreen, type ScreenOverlay } from "@/lib/appAnalytics";
 import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsentSheet";
+import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -818,6 +819,10 @@ export default function AuthenticatedApp() {
     }
     return [];
   }, [masterEventsList, eventMembersMap, isAdminOfBand, user?.id, bandLookup, realBand?.name]);
+
+  // The days before a confirmed gig, with internet: an admin's phone fetches
+  // the setlist's song files for the stage manager (no signal at the venue).
+  useAudioPrefetch(events, isAdminOfBand);
 
   // Calendar band filter: offered from two bands on (plus Personal when there
   // are personal gigs). A choice that is no longer offered goes back to All,
