@@ -14,7 +14,7 @@ import {
 } from '@/lib/services/quoteMath';
 import { ONLINE_DEPOSITS_ENABLED } from './pricing';
 import { safePaymentUrl } from '@/lib/quoteBalance';
-import { intlLocale, translate, type Locale, type TranslateVars } from '@/lib/i18n';
+import { intlLocale, loadLocale, translate, type Locale, type TranslateVars } from '@/lib/i18n';
 
 export interface QuotePdfGenerationResult {
   pdfBlob: Blob;
@@ -1142,6 +1142,8 @@ export async function generateQuotePdf(
   /** Paid plans §4.3: the "Made with BandWith" mark (madeWithMark(plan)). */
   opts: { madeWith?: boolean } = {},
 ): Promise<QuotePdfGenerationResult> {
+  // Only the app language is loaded at startup; the client's may not be.
+  await loadLocale(lang);
   const mark = opts.madeWith ? translate(lang, 'Made with BandWith') : null;
   const [logoImg, signatureImg] = await Promise.all([
     loadImageSafe(settings.band_logo_url),

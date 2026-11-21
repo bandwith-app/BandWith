@@ -54,6 +54,9 @@ export const page: ChannelPage = {
       { icon: 'lock', title: 'My notes, mine only', body: 'Notes on a line, a word or a chord, and your own files. Nobody else sees them, admins included.' },
       { icon: 'timer', title: 'Find the tempo', body: 'Tap along, or work the BPM out from the recording. ÷2 and ×2 fix a half or double tempo.' },
       { icon: 'file-text', title: 'Setlists that travel', body: 'Split a setlist into sets and see the running time. Export it as a PDF with artist, key, BPM, duration and set. On a gig, admins reorder, add and remove songs right in the overview, and the lineup gets one push with what changed.', wide: true },
+      { icon: 'list-music', title: 'From rehearsals', body: 'The song’s page shows the band’s open notes from rehearsals above your own. A Tempo or Key note that names the value gets a button: admins Set on the song, members Suggest to the band.', wide: true },
+      { icon: 'message-circle', title: 'Hold a line', body: 'Hold a line of the lyrics and Note for me opens on it. In Live mode at a rehearsal, Note for the band opens a band note on that song, section and line.' },
+      { icon: 'music', title: 'Signs, not shorthand', body: 'Repeats, endings, segno, coda and fermatas look the same in the reader and on stage. Under every chart, What the symbols mean explains each one.' },
     ],
   },
   learn: [
@@ -62,6 +65,6 @@ export const page: ChannelPage = {
     { id: 'import-from-ireal-pro', title: 'Import from iReal Pro', line: 'Chords, form, key and tempo from the forum.' },
     { id: 'my-notes-and-files', title: 'My notes and files', line: 'Private notes on a line, a word or a chord.' },
     { id: 'build-a-setlist', title: 'Build a setlist', line: 'Add songs from the library, order them, save.' },
-    { id: 'edit-a-gig-setlist', title: 'Edit a gig’s setlist', line: 'Reorder, add and remove songs in the gig.' },
+    { id: 'chart-symbols', title: 'Chart symbols', line: 'What each sign in a chord chart means.' },
   ],
 };

@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'stage',
   title: 'Stage mode',
-  description: 'Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even without internet over Bluetooth. A visual click keeps you in time.',
+  description: 'Stage mode puts one song on every phone in the band. The leader moves, everyone follows, even offline over Bluetooth. A visual click keeps time, and a stage manager plays the songs’ audio.',
   ogTitle: 'Stage mode · One song. Every phone.',
   hero: {
     heading: { lines: ['One song.', 'Every phone.'], em: 'phone.' },
@@ -42,6 +42,7 @@ export const page: ChannelPage = {
       { what: 'Starts the click', admin: 'On every phone', member: 'On their own phone', deputy: false },
       { what: 'Steps through songs alone, then follows again', admin: { dash: 'Leads' }, member: true, deputy: false },
       { what: 'Transposes for their own screen', admin: true, member: true, deputy: false },
+      { what: 'Plays the songs’ audio as stage manager', admin: 'One device', member: false, deputy: false },
     ],
   },
   details: {
@@ -49,10 +50,13 @@ export const page: ChannelPage = {
     items: [
       { icon: 'eye', title: 'The screen stays awake', body: 'For as long as Stage mode is open. Keep the leader’s phone unlocked: a locked leader stops the band’s sync.', wide: true },
       { icon: 'minus', title: 'Strike a song tonight', body: 'Tap − at the end of a row. Prev and Next jump over it, on every phone. The gig’s setlist keeps it. Hold and drag a row to reorder.' },
-      { icon: 'calendar', title: 'Rehearsals too', body: 'On an upcoming rehearsal it’s Live mode: the focus songs, chords, the click and the leader. No run of show.' },
+      { icon: 'calendar', title: 'Rehearsals too', body: 'On an upcoming rehearsal it’s Live mode: the focus songs, chords, the click and the leader, plus the rehearsal timer and notes. No run of show.' },
       { icon: 'shield', title: 'A secret key per gig', body: 'Only the band’s active members get it. Only phones with the key find the leader over Bluetooth.' },
       { icon: 'music', title: 'Your key, your screen', body: 'Transpose for yourself with − key +. Nobody else’s chart changes.' },
       { icon: 'timer', title: 'A click for the eyes', body: 'Right for a count-in and a tempo reference, not for in-ears. It runs from the song’s BPM, and needs the internet: it isn’t sent over Bluetooth.', wide: true },
+      { icon: 'play', title: 'The stage manager plays the songs', body: 'One admin’s laptop or tablet, cabled to the mixer, taps Stage manager: play audio here, counts Audio ready and plays with no internet. Play a song and every screen jumps to it with Now playing. Members’ phones never make a sound. Get the audio days before: under the gig’s setlist, Audio on this device has Download audio, shows progress and why a song can’t come down, with Try again. The phone app downloads it by itself in the 3 days before a confirmed gig.', wide: true },
+      { icon: 'monitor', title: 'Full screen is the song', body: 'Full screen opens Song only: one small line with the song’s number and title, then the words, chords or chart. No times, no tabs. Show everything brings it all back.' },
+      { icon: 'book-open', title: 'Hands on the instrument', body: 'At the bottom, only Prev, the click and Next. Arrow keys and Page Up/Down step too, so a page-turner pedal works. The leader and the stage manager keep working.' },
     ],
   },
   learn: [
@@ -61,6 +65,6 @@ export const page: ChannelPage = {
     { id: 'follow-in-stage-mode', title: 'Follow the leader', line: 'Let the admin turn your songs, or step alone.' },
     { id: 'stage-click', title: 'Use the click', line: 'A visual metronome in time across the band.' },
     { id: 'stage-bluetooth-sync', title: 'Without internet', line: 'Bluetooth sync, and what to do before the gig.' },
-    { id: 'stage-mode-on-devices', title: 'On every device', line: 'Phones, tablets and each Duo posture.' },
+    { id: 'stage-manager', title: 'Stage manager', line: 'Play each song’s recording from the mixer.' },
   ],
 };

@@ -10,7 +10,9 @@ import { StageMode, type StageLiveControls, type StageSong } from '../StageMode'
 import { songViewLabel } from '@/app/components/ui/SongViews';
 import { STAGE_FULL_ATTR } from '@/lib/stageChrome';
 import { handleBackFromStack } from '@/lib/backStack';
-import { DICTIONARIES } from '@/lib/i18n';
+import { loadAllDictionaries } from '@/test/dictionaries';
+
+const DICTIONARIES = await loadAllDictionaries();
 
 globalThis.ResizeObserver = class {
   observe() {}

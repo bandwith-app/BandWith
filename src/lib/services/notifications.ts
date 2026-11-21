@@ -1,7 +1,7 @@
 import { supabase, getSafeUser } from '../supabase';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol } from '@/lib/currency';
-import { LANGUAGES, intlLocale, translate, type Locale } from '@/lib/i18n';
+import { LANGUAGES, intlLocale, loadLocale, translate, type Locale } from '@/lib/i18n';
 
 // Types
 export type NotificationType =
@@ -835,6 +835,8 @@ export const notifyEventMembersRemoved = async (
     const langOf = new Map<string, Locale>(
       ((profiles || []) as { id: string; preferred_language?: string | null }[]).map((p) => [p.id, asLocale(p.preferred_language)]),
     );
+    // Each recipient's language, maybe not the app's.
+    await Promise.all([...new Set(langOf.values())].map(loadLocale));
     const isRehearsal = eventType === 'rehearsal';
     const day = eventDate ? parseLocalDate(eventDate) : null;
     const rows = userIds.map((userId) => {

@@ -4,7 +4,8 @@
  * unchanged; English and anything the band wrote stay as they are.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { DICTIONARIES, setLocalePref } from '../index';
+import { setLocalePref } from '../index';
+import { loadAllDictionaries } from '@/test/dictionaries';
 import { BUILTIN_TEXTS, builtinText } from '../builtins';
 import { STARTER_TEMPLATES, normalizeTemplate } from '../../services/taskTemplates';
 import {
@@ -15,6 +16,8 @@ import {
   bankDetailParts,
 } from '../../services/pricing';
 import { rehearsalCadence } from '../../../app/components/event/format';
+
+const DICTIONARIES = await loadAllDictionaries();
 
 afterEach(() => setLocalePref('en'));
 

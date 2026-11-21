@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'rehearsals-polls',
   title: 'Rehearsals & polls',
-  description: 'Schedule a rehearsal directly, or send the band a few dates to vote on. Lock in the winning date and the rehearsal is created, with its room, cost, focus songs and prep tasks.',
+  description: 'Schedule a rehearsal directly, or send the band a few dates to vote on. Run it in Live mode with a shared timer and notes, and everyone leaves with their songs to practise.',
   ogTitle: 'Rehearsals & polls · Find the date in one round.',
   hero: {
     heading: { lines: ['Find the date', 'in one round.'], em: 'round.' },
@@ -43,6 +43,8 @@ export const page: ChannelPage = {
       { what: 'Answers GOING or CAN’T, drops out', admin: { dash: 'Marked going' }, member: true, deputy: false },
       { what: 'Chooses the focus songs', admin: true, member: false, deputy: false },
       { what: 'Sees the room cost', admin: 'The total', member: 'Their share, in a poll', deputy: false },
+      { what: 'Starts, pauses and ends the rehearsal timer', admin: true, member: 'Sees it', deputy: false },
+      { what: 'Writes rehearsal notes', admin: 'For anyone', member: 'For the band or themselves', deputy: false },
     ],
   },
   details: {
@@ -54,6 +56,9 @@ export const page: ChannelPage = {
       { icon: 'list-music', title: 'Songs and prep tasks', body: 'Pick focus songs from the repertoire or a saved setlist. Add tasks like Bring chord charts, ticked off on the rehearsal page.' },
       { icon: 'refresh', title: 'Weekly, biweekly, monthly', body: 'One rehearsal with a repeat rule, shown in the calendar about four months ahead. One roster and one answer for the series.' },
       { icon: 'clock', title: 'A vote-by time', body: 'Pick a day before the first date and a time. Then voting closes, the poll shows Voting closed, and an admin locks in a date.', wide: true },
+      { icon: 'timer', title: 'One clock for the band', body: 'In Live mode the admin taps Start rehearsal. Pause for the break, Resume, then End. The Rehearsal summary shows the time played without breaks and every song you went through, and the rehearsal page keeps it.', wide: true },
+      { icon: 'zap', title: 'Mark now, write later', body: 'Tap Mark when something needs work: the song and the minute are kept, and you keep playing. At the pause, To write lists the marks to finish.' },
+      { icon: 'list-music', title: 'Songs to practise', body: 'When it ends, each person gets one push with their songs. Home shows To practise, and the next rehearsal opens with FROM LAST TIME.' },
     ],
   },
   learn: [
@@ -61,7 +66,7 @@ export const page: ChannelPage = {
     { id: 'vote-in-a-rehearsal-poll', title: 'Vote', line: 'Tap the dates that work, or say none do.' },
     { id: 'lock-in-a-poll-date', title: 'Lock in a date', line: 'Pick the winner and create the rehearsal.' },
     { id: 'create-a-rehearsal', title: 'Create a rehearsal', line: 'Schedule it directly when you know the date.' },
-    { id: 'propose-a-rehearsal', title: 'Propose a rehearsal', line: 'Ask the admins for one, with the days that suit you.' },
+    { id: 'stage-mode', title: 'Live mode at a rehearsal', line: 'The timer, the marks, the notes and what to practise.' },
     { id: 'the-rehearsal-page', title: 'The rehearsal page', line: 'Attendance, focus songs, tasks and the room.' },
   ],
 };

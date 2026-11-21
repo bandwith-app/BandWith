@@ -73,7 +73,7 @@ import { formatDistance, fromUnit, ratePerUnit, toUnit, useDistanceUnit } from '
 import { QuoteDeskMode, quoteDeskLinesFromQuote, useLaptopPose, useLeadingCompanion, type QuoteDeskLine } from '@/app/components/duo';
 import { LiveQuotePreview } from '@/app/components/duo/previews/LiveQuotePreview';
 import { personName } from '@/lib/personName';
-import { t, useT, intlLocale, getLocale, translate, dateName, type Locale } from '@/lib/i18n';
+import { t, useT, intlLocale, getLocale, translate, dateName, useLocaleReady, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { BwSheet } from '@/app/components/bw/Screen';
@@ -3053,6 +3053,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   const docClientKey = clientEmail.trim() || clientName.trim();
   const [docLang, setDocLang] = useState<Locale>(() => docLanguageFor(docClientKey));
   const docLangPicked = useRef(false);
+  // The client's language may not be the app's: load it (the preview renders again once it's in).
+  useLocaleReady(docLang);
   useEffect(() => {
     // Follows the client typed in (their remembered language) until a language is picked here.
     if (!docLangPicked.current) setDocLang(docLanguageFor(docClientKey));

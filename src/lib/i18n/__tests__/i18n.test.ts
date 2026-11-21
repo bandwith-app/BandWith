@@ -3,7 +3,10 @@
  * translation in all five dictionaries, with the same {placeholders}.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DICTIONARIES, t, setLocalePref, getLocale, formatList, LANGUAGES } from '../index';
+import { t, setLocalePref, getLocale, formatList, LANGUAGES } from '../index';
+import { loadAllDictionaries } from '@/test/dictionaries';
+
+const DICTIONARIES = await loadAllDictionaries();
 
 // Every source file, as text (Vite's glob import; no Node APIs needed).
 const SOURCES = import.meta.glob(['/src/**/*.{ts,tsx}', '!/src/**/__tests__/**'], {
