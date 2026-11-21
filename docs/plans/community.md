@@ -42,7 +42,7 @@ Contents
   - honest empty states;
   - saved searches with alerts;
   - growth from deputy requests that bands already send.
-- **Branded share cards.** Every showcase and ad shared outside BandWith carries a recognisable BandWith card: a dynamic link preview, plus Story and square images to download. The cards show only public fields and always carry a "Create your showcase" or "Reply on BandWith" call to action (§8).
+- **Branded share cards.** Every showcase and ad shared outside BandWith carries a recognisable BandWith card: a dynamic link preview, plus Story and square images to download. The cards show only public fields and always carry a clear button: "View showcase" or "Reply on BandWith" (§8).
 - **The existing direct deputy invite does not change.** It is the claim link sent by WhatsApp, SMS or email to someone the band knows. The community is one more source of deputies. The only change to the invite is an optional one-line "create your showcase" hint.
 - Members are 18 or older. Locations are approximate, and nobody's contact details are ever shown. Profiles are private until the person turns visibility on.
 
@@ -63,7 +63,8 @@ Contents
 | 11 | Branded sharing | "possiamo creare un design branded di bandwith customizzato (tipo social thumbnail picture per i link dei siti web) cosi da spingere il brand e renderlo riconoscibile?" | **Yes**: dynamic BandWith share cards for showcases and ads, link previews + Story/square images (§8). |
 | 12 | Card font (2026-11-21) | "ok usa Geist per le card dinamiche" | Geist + Geist Mono for all community cards (§8.5). |
 | 13 | Examples (2026-11-21) | "io vivo nella zona di new york e tu continui a usare riferimenti italiani" | Examples, demo data and units start from the New York area and English (miles in the US); other markets are translations, not the default. |
-| 14 | Card visuals (2026-11-21) | "non usiamo foto di background: usa colore e illustrazioni cool, a tema, branded" | No photos on cards; colour + an illustration system built from the BandWith mark (§8.6). |
+| 14 | Card visuals (2026-11-21) | "non usiamo foto di background: usa colore e illustrazioni cool, a tema, branded" | No photos on cards; colour + the BandWith mark (§8.6). |
+| 15 | Card style (2026-11-21) | "le grafiche sono troppo incasinate e da principiante...deve essere figa, clean e moderna e far venire voglia di cliccare" | One focal point: the mark with its empty cell as "the spot", big type, a real button (§8.6). |
 
 ## 3. What exists today (the plan builds on it)
 
@@ -295,7 +296,7 @@ Every shared link is an ad for BandWith. The card is what people see in WhatsApp
 
 ### 8.1 Mockups
 
-These use fake demo data in English: the site's persona Leo M. (Brooklyn, NY) and the demo band Velvet Static (Jersey City, NJ). They are rendered with the #248 share-card style, in Geist (§8.5), with no photos: colour and branded illustrations only (§8.6).
+These use fake demo data in English: the site's persona Leo M. (Brooklyn, NY) and the demo band Velvet Static (Jersey City, NJ). Second version after the owner's feedback: clean, one focal point (the BandWith mark, its empty cell = "the spot"), Geist (§8.5), no photos (§8.6).
 
 | Musician showcase, link preview 1200×630 | Band ad, link preview 1200×630 |
 |---|---|
@@ -307,8 +308,8 @@ Showcase as a Story, 1080×1920: [`community/03-showcase-story-1080x1920.jpg`](c
 
 | Card | Shared from | Link | CTA on the card |
 |---|---|---|---|
-| **Musician showcase** | the showcase (app) and its public page | `bandwith.fun/m/<handle>` | "Create your showcase on BandWith" |
-| **Band ad** ("We're looking for X") | the ad (app), Find a deputy / members with no results, the public ad page | `bandwith.fun/b/<band-slug>` (the band's open ads; `?a=<code>` picks one) | "Reply on BandWith" |
+| **Musician showcase** | the showcase (app) and its public page | `bandwith.fun/m/<handle>` | "View showcase →" (the page then offers "Create your own showcase") |
+| **Band ad** ("We're looking for X") | the ad (app), Find a deputy / members with no results, the public ad page | `bandwith.fun/b/<band-slug>` (the band's open ads; `?a=<code>` picks one) | "Reply on BandWith →" |
 | **"Found my band"** (phase 2) | offered to both people after an accepted member invite | the band's public page or the BandWith home | "Find your band on BandWith" |
 
 - A deputy request for a specific gig is private and **never** gets a card.
@@ -320,13 +321,14 @@ Showcase as a Story, 1080×1920: [`community/03-showcase-story-1080x1920.jpg`](c
 
 | Data | Showcase | Band ad | Rule |
 |---|---|---|---|
-| Display or stage name | ✓ | — | As shown on the showcase ("Leo M." by default). Long names step the font size down; two lines at most. |
-| Instruments with the instrument icons | up to 2 + "+N" | the wanted instrument, as a large icon | Canonical keys from `instruments.ts`; the icons are the site's `public/icons/instrument-*.svg` set. |
-| Genres | up to 3 | up to 3 | From the closed list, translated. |
-| City | ✓ | ✓ | The town label only. **Never a distance, a postcode or a grid cell.** |
-| Status pill | "Available for deputy work" (if on) | "Permanent" / "Deputy" / "Permanent or deputy" | |
-| Band name and logo | — | ✓ (`bands.logo_url`, initials if none) | The ad is public by the admin's choice. |
-| Short URL + BandWith logo | ✓ | ✓ | Logo always top left; URL always in the lime bar. |
+| Display or stage name | ✓ (the headline) | — | As shown on the showcase ("Leo M." by default). Long names step the font size down; two lines at most. |
+| Headline | — | "<Instrument> wanted." (the second word in lime) | Built from the wanted instrument, translated. |
+| Instruments | up to 2, as text in the sub-line ("Bass & backing vocals") | the wanted one | Canonical keys from `instruments.ts`. The **main** instrument's icon sits in the mark's spot (§8.6); icons from the app's `public/icons/instrument-*.svg` (10 instruments + "other"). |
+| Genres | up to 2, in the sub-line, only if it fits | 1, in the sub-line | From the closed list, translated. Dropped first when space is short. |
+| City | ✓ (in the small label) | ✓ (in the small label) | The town label only. **Never a distance, a postcode or a grid cell.** |
+| Status | "● Available for deputy gigs" (if on) | "Permanent spot" / "Deputy spot" / "Permanent or deputy", in the sub-line | |
+| Band name | — | ✓ (in the small label, lime) | The ad is public by the admin's choice. No band logo: it would fight the mark. |
+| Button + short URL + BandWith logo | ✓ | ✓ | Logo top left; button and URL bottom left, always in the same place. |
 
 **Never on a card:** photos (of the person or as a background; the owner decided on 2026-11-21 that cards are colour + branded illustrations only), phone, email, exact or approximate position, distance, fees, dates or free/busy, the level (it can read as a judgement), and the bands someone plays in.
 - **Why so strict:** once a card has been shared, the image stays in other people's chats and in WhatsApp's or Facebook's caches. Hiding the showcase later cannot take it back. Only fields the person already made public go on it.
@@ -375,34 +377,31 @@ Showcase as a Story, 1080×1920: [`community/03-showcase-story-1080x1920.jpg`](c
   - The font files (`.ttf` / `.woff`, since Satori does not read `.woff2`) are bundled with the function.
   - The community's static fallbacks use Geist too, so every community card looks the same. The site's page cards from #248 stay as they are.
   - The logo is an SVG, so it is unaffected.
-- **Illustrations instead of images:** the right side of every card is a vector illustration generated from the card's data (§8.6), so nothing is fetched, no photo is stored for cards, and Satori draws it as inline SVG.
+- **The mark instead of images:** the right side of every card is the BandWith mark drawn as inline SVG, with the spot and the instrument icon chosen from the card's data (§8.6). Nothing is fetched and no photo is stored.
 - **Size and speed:** under ~300 KB per PNG (WhatsApp is picky with large previews). Satori gives JPEG-like sizes with flat colours, so this is easy.
 
 ### 8.6 Brand rules (so every card is recognisable)
 
-They match the #248 site cards and the Lime/Ink rule:
+Owner feedback on 2026-11-21: the first illustrated version was "troppo incasinata e da principiante". The cards must be **clean, modern and make people want to tap**. The rules that came out of that:
 
-- Ink background (`#050505`) with the soft lime glow in the top corner.
-- **BandWith logo top left, always the same size and position.**
-- A mono label in lime with the LED dot ("● MUSICIAN SHOWCASE", "● WE'RE LOOKING FOR").
-- One big uppercase line: the name, or "A DRUMMER". On ads, the wanted instrument is in lime.
-- Instrument chips with the icons; genres as outline chips in mono.
-- One lime pill for the status.
-- **A lime bar along the bottom with the CTA on the left and the short URL on the right**, in the same place on every card. That bar is the recognisable signature.
-- **No photos, ever.** Colour and branded illustrations only (owner, 2026-11-21).
-- **The illustration system** is built from the BandWith mark's own grammar, the rounded square (corner radius ≈ a third of its side), in Lime, Ink and white:
-  - **instrument tile:** a big lime rounded square with the main instrument's icon in ink, tilted a few degrees, with a soft lime glow;
-  - **block equalizer:** columns of rounded squares rising from the CTA bar like a VU meter, the top block of each column lit, plus one empty outline block above (the "room to grow");
-  - **sound rings:** concentric circles around the tile, two of them dotted lime;
-  - **dot matrix:** a fine dot texture fading out from the illustration's centre;
-  - **lineup grid** (band ads): the band as a 2×2 grid of tiles, the instruments it has in dark tiles with white icons, and the missing one lit lime with rings and a "YOUR SPOT" label. A 3-piece looking for its 4th, or a duo looking for two (two lit tiles), reads at a glance.
-  - A second instrument (if any) is a small dark tile with a lime icon, orbiting the main one.
-- The illustration is chosen from the data (main instrument, the band's current instruments, the wanted one), so every card is different but always recognisably BandWith. Instruments without an icon use the "other" glyph.
-- No other colours, no emoji, no user-chosen themes.
-
+- **One idea per card, one focal point.** Few words, lots of empty space, no decoration that doesn't carry meaning. Out: dot textures, rings, equalizers, chip rows, full-width bars.
+- **No photos, ever.** Colour and the brand's own shape only (owner, 2026-11-21).
+- **The hero is the BandWith mark itself**, drawn large on the right, tone-on-tone (dark blocks `#151515` on Ink `#0a0a0a`, hairline edge). Its **empty top-middle cell is "the spot"**, the only coloured thing on the card:
+  - **musician showcase:** the spot is **filled lime** with the main instrument in ink. The musician completes the band.
+  - **band ad:** the spot is a **dashed lime outline** with the wanted instrument in lime. That's the place waiting to be filled.
+  - A soft lime halo behind the spot; nothing else glows.
+  - It reads as BandWith at a glance, and it tells the story without words.
+- **Type does the rest** (Geist, §8.5):
+  - a small mono label: the role or band name in lime, then the city in grey;
+  - a huge headline in sentence case with tight tracking: "Leo M." or "Drummer **wanted.**" (second word in lime);
+  - one grey sub-line: instruments, genre or spot type;
+  - for showcases, one status line with a lime dot: "Available for deputy gigs".
+- **A real button, not a banner:** a lime pill with an ink circle arrow ("View showcase →", "Reply on BandWith →"), with the short URL next to it in grey mono. It looks tappable, which is what drives clicks.
+- **Fixed layout:** logo top left; text column left; mark right (vertically centred on link previews, above the text on Stories); button bottom left. The same positions on every card, in every language.
+- **Colours:** Ink, white and greys, plus Lime for exactly three things: the spot, the label's first word and the button (plus the ad's "wanted."). No other colours, no emoji, no user-chosen themes.
 ### 8.7 Growth and measurement
 
-- **Every card has a CTA:** "Create your showcase on BandWith" on showcases, "Reply on BandWith" on ads. The public page repeats it as its only action.
+- **Every card has a button:** "View showcase" on showcases, "Reply on BandWith" on ads. On the public page, the main action is "Contact in BandWith" (showcase) or "Reply" (ad); "Create your own showcase" comes second.
 - **Shared links carry UTM tags:** `utm_source=share`, `utm_medium=<whatsapp|instagram|copy|…>` when the share sheet tells us, and `utm_campaign=showcase|ad|found-band`. The page's canonical URL strips them.
 - **What we count:**
   - **shares** — a GA4 event in the app (opt-in) and on the site (consent mode, as on bandwith.fun today);
