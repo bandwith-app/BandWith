@@ -1,5 +1,8 @@
 @layer theme, base, components, utilities;
 
+/* Geist Mono, self-hosted (no Google Fonts request) */
+@import './geist-mono.css';
+
 /* Neue Haas Grotesk Display Pro - loaded via Adobe Typekit */
 /* Kit: https://use.typekit.net/mzr4hzv.css */
 
