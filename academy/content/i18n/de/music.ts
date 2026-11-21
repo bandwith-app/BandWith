@@ -1429,8 +1429,8 @@ const music: AreaText = {
           items: [
             "Gib jedem Song eine **Aufnahme** (eine Audiodatei) im Songformular. Songs ohne Aufnahme bewegen die Band trotzdem, aber es läuft nichts.",
             "Schließe das Gerät ans Mischpult an (siehe die Kabeltipps unten) und schalte Nicht stören ein, damit keine Mitteilungen über die PA kommen.",
-            "Öffne den Gig online, öffne den Bühnenmodus und tippe auf **Regie: Audio von hier**. Das Gerät lädt das Audio des Abends herunter.",
-            "Warte, bis **Audio bereit** alle Songs zählt (zum Beispiel 10/10): ab dann spielt es ohne Internet. Fehlen noch Songs, öffne den Gig noch einmal online.",
+            "Öffne den Gig online, öffne den Bühnenmodus und tippe auf **Regie: Audio von hier**. Das Gerät lädt das Audio des Abends herunter: Ein Balken zeigt den Stand, und der Ring um das ▶ jedes Songs füllt sich beim Laden.",
+            "Warte, bis **Audio bereit** alle Songs zählt (zum Beispiel 10/10): ab dann spielt es ohne Internet. Lässt sich ein Song nicht laden, sagt dir die Regie das (siehe unten).",
           ],
         },
         {
@@ -1439,6 +1439,7 @@ const music: AreaText = {
           items: [
             "Tippe bei einem Song auf ▶, um ihn abzuspielen. Der Bildschirm aller springt zu diesem Song und zeigt **Läuft gerade** mit der Zeit.",
             "Der Player oben hat **Abspielen** / **Pause**; am Ende eines Songs spielt dieselbe Taste den nächsten. **Stopp** muss gedrückt gehalten werden, damit ein versehentlicher Tipp die Musik nicht abbricht.",
+            "Ein Song ohne Audio, oder einer, der hier nicht abspielbar ist, zeigt das im Player, und aus **Abspielen** wird **Nächsten abspielen** mit dem ersten Song, der laufen kann. Die Band spielt ihn so lange live.",
             "Für einen Song, der nicht in der Setlist ist, tippe auf + (**Song außerhalb der Setlist spielen**) und wähle ihn im Repertoire. Er kommt direkt nach dem aktuellen Song in die Setlist, für alle.",
             "Zum Übergeben tippt der andere Admin auf seinem Gerät auf **Regie: Audio von hier** und dann auf **Übernehmen**: dein Audio stoppt. **Deaktivieren** beendet die Regie auf deinem Gerät.",
           ],
@@ -1450,6 +1451,20 @@ const music: AreaText = {
             ["Die Regie (ein Admin)", "Den Player, ▶ bei jedem Song mit Audio, wohin der Ton geht (**Ausgang**) und wie viele Songs bereit sind."],
             ["Die anderen Admins und die Mitglieder", "Den laufenden Song, mit **Läuft gerade** oder **Pausiert** und der Zeit. Bist du bei einem anderen Song, bringt dich **Los** dorthin."],
             ["Alle, wenn die Regie geht", "Der Streifen verschwindet. Der Bühnenmodus funktioniert wie vorher."],
+          ],
+        },
+        {
+          type: "p",
+          text: "Lässt sich ein Song nicht laden, tippe unter **Audio bereit** auf **1 nicht geladen**: Eine Seite zeigt die Songs und den Grund. Behebe es und tippe dann auf **Erneut versuchen**.",
+        },
+        {
+          type: "table",
+          head: ["Was dort steht", "Was tun"],
+          rows: [
+            ["Der Link führt zu keiner Audiodatei", "Die Aufnahme des Songs ist ein Link, der eine Seite öffnet, nicht die Datei. Teile die Datei in Google Drive mit „Jeder, der den Link hat“ oder lade sie beim Song hoch."],
+            ["Kein Internet", "Verbinde dich: Der Song lädt von selbst, sobald du wieder online bist."],
+            ["Dieses Gerät kann die Datei nicht abspielen", "Nimm eine MP3-, M4A- oder WAV-Datei."],
+            ["Der Download wurde abgebrochen", "Tippe auf **Erneut versuchen**."],
           ],
         },
         {
@@ -1470,7 +1485,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "Auf einem Laptop im Browser speichert der Browser das Audio: nutze immer denselben Browser und lösche seine Daten nicht vor dem Gig. Manche Links (zum Beispiel Google Drive) lassen sich nur streamen und brauchen daher Internet." }],
+          rows: [{ devices: ["web"], text: "Auf einem Laptop im Browser speichert der Browser das Audio: nutze immer denselben Browser und lösche seine Daten nicht vor dem Gig. Auch Google-Drive-Links werden geladen, wenn die Datei mit „Jeder, der den Link hat“ geteilt ist." }],
         },
       ],
     },

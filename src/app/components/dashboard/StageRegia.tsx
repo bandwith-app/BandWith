@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, Loader2, Pause, Play, Plus, RotateCw, Search, Square, Volume2, X } from '@/app/components/icons';
+import { AlertTriangle, ChevronRight, Loader2, Pause, Play, Plus, RotateCw, Search, Square, Volume2, X } from '@/app/components/icons';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { formatClock, playPosition } from '@/lib/stageRegia';
 import { getSongs } from '@/lib/services/songs';
 import { useSystemBack } from '@/lib/backStack';
-import type { SongAudio, StageRegia } from '@/app/components/event/useStageRegia';
-import type { AudioFailure } from '@/lib/regiaAudio';
+import type { PlayFailure, SongAudio, StageRegia } from '@/app/components/event/useStageRegia';
 
 /**
  * Stage manager mode ("Regia") in Stage mode. The Regia's bar (an admin's
@@ -33,15 +32,17 @@ const useTick = (on: boolean, ms = 500) => {
 const Progress: React.FC<{ positionMs: number; durationMs: number | null; accent: string }> = ({ positionMs, durationMs, accent }) => {
   const pct = durationMs ? Math.min(100, (positionMs / durationMs) * 100) : 0;
   return (
-    <span aria-hidden className="block h-1 w-full rounded-full bg-white/15 overflow-hidden">
+    <span aria-hidden className="block h-1 w-full shrink-0 rounded-full bg-white/15 overflow-hidden">
       <span className="block h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: accent }} />
     </span>
   );
 };
 
 /** Why a song's audio can't come down or play, and what to do about it. */
-const reasonText = (reason: AudioFailure, t: ReturnType<typeof useT>) =>
-  reason === 'link'
+const reasonText = (reason: PlayFailure, t: ReturnType<typeof useT>) =>
+  reason === 'pending'
+    ? t('It’s still downloading: wait a moment, then press Play again.')
+    : reason === 'link'
     ? t('The link doesn’t give an audio file. On Google Drive, share it as “Anyone with the link”, or upload the file to the song.')
     : reason === 'offline'
       ? t('No internet, and it isn’t on this device yet. It downloads once you’re back online.')
@@ -202,13 +203,15 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
   const loading = regia.status === 'loading';
   const { readiness, downloading, failed } = regia;
   const pct = downloading ? Math.round(downloading.progress * 100) : 0;
-  const statusText = downloading
-    ? t('Downloading audio {done}/{total} · {pct}%', { done: Math.min(downloading.total, downloading.done + 1), total: downloading.total, pct })
-    : readiness.withAudio === 0
-      ? t('No song in this setlist has audio')
-      : readiness.missing > 0 && failed.length === 0
-        ? t('Audio ready {ready}/{total} · {missing} need internet', { ready: readiness.ready, total: readiness.withAudio, missing: readiness.missing })
-        : t('Audio ready {ready}/{total}', { ready: readiness.ready, total: readiness.withAudio });
+  const statusText = regia.checking
+    ? t('Checking the audio…')
+    : downloading
+      ? t('Downloading {done}/{total} · {pct}%', { done: Math.min(downloading.total, downloading.done + 1), total: downloading.total, pct })
+      : readiness.withAudio === 0
+        ? t('No song in this setlist has audio')
+        : readiness.missing > 0 && failed.length === 0
+          ? t('Audio ready {ready}/{total} · {missing} need internet', { ready: readiness.ready, total: readiness.withAudio, missing: readiness.missing })
+          : t('Audio ready {ready}/{total}', { ready: readiness.ready, total: readiness.withAudio });
 
   // The song shown can't play here: no audio, or its link already failed (and it isn't on the device).
   const shownAudio = shown?.audio ? regia.audio[shown.audio] : undefined;
@@ -222,179 +225,180 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
       ? t('The song couldn’t be added to the setlist.')
       : regia.error?.kind === 'load'
         ? `${t('“{title}” can’t be played.', { title: regia.error.title })} ${reasonText(regia.error.reason, t)}`
-        : regia.error?.kind === 'no-audio' || (cantPlay && !shown?.audio)
+        : regia.error?.kind === 'no-audio' || (cantPlay && !shown?.audio && !nextOk)
           ? t('“{title}” has no audio: the band plays it live.', { title: regia.error?.kind === 'no-audio' ? regia.error.title : shown!.title })
           : cantPlay && shownFailed
             ? `${t('“{title}” can’t be played.', { title: shown!.title })} ${reasonText(shownFailed, t)}`
             : null;
+  const listOpen = showFailed && !downloading && failed.length > 0;
   const playNext = !playing && ((ended && next && regia.nextIndex != null) || (cantPlay && nextOk && regia.nextPlayable != null));
 
   return (
-    <section
-      aria-label={t('Stage manager')}
-      className={cn('flex flex-col gap-2 shrink-0 rounded-[16px] border px-4 py-3', className)}
-      style={{ borderColor: accent }}
-    >
-      <div className="flex items-center justify-between gap-3 min-w-0">
-        <span className="flex items-center gap-2 min-w-0">
+    <>
+      <section
+        aria-label={t('Stage manager')}
+        // Shrinks when the screen is short (a phone with the times grid above): only the output
+        // line scrolls, the status and the Play controls always stay in view.
+        className={cn('flex flex-col gap-2 min-h-0 overflow-hidden rounded-[16px] border px-4 py-3', className)}
+        style={{ borderColor: accent }}
+      >
+        {/* Label and status share the Turn off button's height (the setlist below keeps its room on short screens). */}
+        <div className="flex items-center gap-3 min-w-0 shrink-0">
           <Volume2 className="w-4 h-4 shrink-0" style={{ color: accent }} aria-hidden />
-          <span className="bw-label-xs text-white truncate">{t('Stage manager')}</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            haptic.tap();
-            regia.turnOff();
-          }}
-          className="min-h-11 px-3 rounded-full border border-white/30 text-white/80 bw-label-xs whitespace-nowrap shrink-0"
-        >
-          {t('Turn off')}
-        </button>
-      </div>
-      <div className="flex flex-col gap-1.5 min-w-0">
-        <span className="flex items-center gap-2 min-w-0">
-          {downloading && <Loader2 className="w-4 h-4 shrink-0 animate-spin text-white/70" aria-hidden />}
-          <span className="bw-body-sm text-white/70 min-w-0" role="status">
-            {statusText}
-          </span>
-          {!downloading && failed.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                haptic.tap();
-                setShowFailed((v) => !v);
-              }}
-              aria-expanded={showFailed}
-              className="flex items-center gap-1 min-h-11 -my-2 px-2 rounded-full text-white bw-body-sm underline underline-offset-2 min-w-0"
-            >
-              <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: accent }} aria-hidden />
-              <span className="truncate">
-                {failed.length === 1 ? t('1 song can’t be downloaded') : t('{n} songs can’t be downloaded', { n: failed.length })}
+          <span className="flex-1 min-w-0 flex flex-col">
+            <span className="bw-label-xs text-white truncate">{t('Stage manager')}</span>
+            <span className="flex items-center gap-1.5 min-w-0">
+              {downloading && <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-white/70" aria-hidden />}
+              <span className="bw-body-sm text-white/70 truncate" role="status">
+                {statusText}
               </span>
-              <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', showFailed && 'rotate-180')} aria-hidden />
-            </button>
-          )}
-        </span>
-        {downloading && (
-          <span
-            role="progressbar"
-            aria-label={t('Downloading audio')}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={pct}
-            className="block h-1 w-full rounded-full bg-white/15 overflow-hidden"
-          >
-            <span className="block h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, backgroundColor: accent }} />
+            </span>
+            {!downloading && failed.length > 0 && (
+              // Its own line (only when something failed): the status above never gets cut. The list opens in a sheet.
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.tap();
+                  setShowFailed((v) => !v);
+                }}
+                aria-haspopup="dialog"
+                aria-label={failed.length === 1 ? t('1 song can’t be downloaded') : t('{n} songs can’t be downloaded', { n: failed.length })}
+                className="self-start flex items-center gap-1 min-h-11 -my-2.5 text-white bw-body-sm max-w-full"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: accent }} aria-hidden />
+                <span className="underline underline-offset-2 truncate">{failed.length === 1 ? t('1 not downloaded') : t('{n} not downloaded', { n: failed.length })}</span>
+                <ChevronRight className="w-4 h-4 shrink-0" aria-hidden />
+              </button>
+            )}
+            {downloading && (
+              <span
+                role="progressbar"
+                aria-label={t('Downloading audio')}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct}
+                className="block h-1 w-full mt-1 rounded-full bg-white/15 overflow-hidden"
+              >
+                <span className="block h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, backgroundColor: accent }} />
+              </span>
+            )}
           </span>
-        )}
-        {showFailed && !downloading && failed.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-[12px] bg-white/10 px-3 py-2">
-            <ul className="flex flex-col gap-2 max-h-48 overflow-y-auto overscroll-contain">
-              {failed.map((f) => (
-                <li key={f.title} className="flex flex-col min-w-0">
-                  <span className="bw-label-sm normal-case text-white truncate">{f.title}</span>
-                  <span className="bw-body-sm text-white/70">{reasonText(f.reason, t)}</span>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={() => {
-                haptic.tap();
-                void regia.retry();
-              }}
-              className="self-start flex items-center gap-2 min-h-11 px-4 rounded-full border border-white/40 text-white bw-label-xs"
-            >
-              <RotateCw className="w-4 h-4" aria-hidden />
-              {t('Try again')}
-            </button>
-          </div>
-        )}
-      </div>
-      {regia.outputWarning ? (
-        <p className="bw-body-sm text-black rounded-[12px] px-3 py-2" role="alert" style={{ backgroundColor: accent }}>
-          {regia.outputWarning === 'speaker'
-            ? t('The sound is coming from this device’s speaker. Plug in the cable to the mixer.')
-            : t('The sound goes over Bluetooth: it arrives late and can drop out. Use a cable to the mixer.')}
-        </p>
-      ) : regia.output ? (
-        <p className="bw-body-sm text-white/60 truncate">
-          {t('Output: {name}', { name: regia.output.name || outputKindLabel(regia.output.kind, t) })}
-          {!playing ? ` · ${t('Turn on Do Not Disturb: notifications come out of the PA too.')}` : ''}
-        </p>
-      ) : null}
-      <div className="flex items-baseline gap-3 min-w-0">
-        <span className="flex-1 min-w-0 bw-label-md normal-case text-white truncate">{shown?.title ?? '—'}</span>
-        <span className="bw-num text-[14px] text-white/80 shrink-0" style={MONO}>
-          {formatClock(regia.positionMs)}
-          {regia.durationMs ? ` / ${formatClock(regia.durationMs)}` : ''}
-        </span>
-      </div>
-      <Progress positionMs={regia.positionMs} durationMs={regia.durationMs} accent={accent} />
-      {notice && (
-        <p className="bw-body-sm text-white" role="alert">
-          {notice}
-        </p>
-      )}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            haptic.medium();
-            if (loading) return;
-            if (playNext) {
-              const i = ended && next && regia.nextIndex != null ? regia.nextIndex : regia.nextPlayable!;
-              void regia.play(i);
-            } else void regia.toggle();
-          }}
-          aria-busy={loading || undefined}
-          className="flex-1 min-w-0 flex items-center justify-center gap-2 min-h-14 rounded-[20px] text-black bw-button-sm"
-          style={{ backgroundColor: accent }}
-        >
-          {loading ? (
-            <Loader2 className="w-6 h-6 shrink-0 animate-spin" aria-hidden />
-          ) : playing ? (
-            <Pause className="w-6 h-6 shrink-0" />
-          ) : (
-            <Play className="w-6 h-6 shrink-0" />
-          )}
-          <span className="truncate">
-            {loading
-              ? t('Loading…')
-              : playing
-                ? t('Pause')
-                : ended && next
-                  ? t('Next: {title}', { title: next.title })
-                  : playNext && nextOk
-                    ? t('Play next: {title}', { title: nextOk.title })
-                    : t('Play')}
-          </span>
-        </button>
-        <HoldButton
-          label={t('Stop')}
-          hint={t('Hold to stop')}
-          disabled={!['playing', 'paused', 'ended'].includes(regia.status)}
-          onHold={() => void regia.stop()}
-          className="min-h-14 px-4 rounded-[20px] bg-white/10 text-white bw-button-sm disabled:opacity-40"
-        >
-          <Square className="w-5 h-5 shrink-0" />
-          <span className="[@media(max-width:380px)]:sr-only">{t('Stop')}</span>
-        </HoldButton>
-        {canAddSongs && (
           <button
             type="button"
             onClick={() => {
               haptic.tap();
-              onAddSong();
+              regia.turnOff();
             }}
-            aria-label={t('Play a song not in the setlist')}
-            className="w-14 h-14 flex items-center justify-center rounded-[20px] bg-white/10 text-white shrink-0"
+            className="min-h-11 px-3 rounded-full border border-white/30 text-white/80 bw-label-xs whitespace-nowrap shrink-0"
           >
-            <Plus className="w-6 h-6" />
+            {t('Turn off')}
           </button>
+        </div>
+        {(regia.outputWarning || regia.output) && (
+          // Scrolls when the screen is too short for it: the status above and Play below stay in view.
+          <div className="flex flex-col min-h-0 overflow-y-auto overscroll-contain">
+            {regia.outputWarning ? (
+              <p className="bw-body-sm text-black shrink-0 rounded-[12px] px-3 py-2" role="alert" style={{ backgroundColor: accent }}>
+                {regia.outputWarning === 'speaker'
+                  ? t('The sound is coming from this device’s speaker. Plug in the cable to the mixer.')
+                  : t('The sound goes over Bluetooth: it arrives late and can drop out. Use a cable to the mixer.')}
+              </p>
+            ) : regia.output ? (
+              <p className="bw-body-sm text-white/60 truncate shrink-0">
+                {t('Output: {name}', { name: regia.output.name || outputKindLabel(regia.output.kind, t) })}
+                {!playing ? ` · ${t('Turn on Do Not Disturb: notifications come out of the PA too.')}` : ''}
+              </p>
+            ) : null}
+          </div>
         )}
-      </div>
-    </section>
+        <div className="flex items-baseline gap-3 min-w-0 shrink-0">
+          <span className="flex-1 min-w-0 bw-label-md normal-case text-white truncate">{shown?.title ?? '—'}</span>
+          {cantPlay && !shown?.audio ? (
+            // No audio: said here (the band plays it live), Play below offers the next song.
+            <span className="bw-label-xs text-white/60 shrink-0">{t('No audio')}</span>
+          ) : (
+            <span className="bw-num text-[14px] text-white/80 shrink-0" style={MONO}>
+              {formatClock(regia.positionMs)}
+              {regia.durationMs ? ` / ${formatClock(regia.durationMs)}` : ''}
+            </span>
+          )}
+        </div>
+        <Progress positionMs={regia.positionMs} durationMs={regia.durationMs} accent={accent} />
+        {notice && (
+          <p className="bw-body-sm text-white shrink-0" role="alert">
+            {notice}
+          </p>
+        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              haptic.medium();
+              if (loading) return;
+              if (playNext) {
+                const i = ended && next && regia.nextIndex != null ? regia.nextIndex : regia.nextPlayable!;
+                void regia.play(i);
+              } else void regia.toggle();
+            }}
+            aria-busy={loading || undefined}
+            className="flex-1 min-w-0 flex items-center justify-center gap-2 min-h-14 rounded-[20px] text-black bw-button-sm"
+            style={{ backgroundColor: accent }}
+          >
+            {loading ? (
+              <Loader2 className="w-6 h-6 shrink-0 animate-spin" aria-hidden />
+            ) : playing ? (
+              <Pause className="w-6 h-6 shrink-0" />
+            ) : (
+              <Play className="w-6 h-6 shrink-0" />
+            )}
+            <span className="truncate">
+              {loading
+                ? t('Loading…')
+                : playing
+                  ? t('Pause')
+                  : ended && next
+                    ? t('Next: {title}', { title: next.title })
+                    : playNext && nextOk
+                      ? t('Play next: {title}', { title: nextOk.title })
+                      : t('Play')}
+            </span>
+          </button>
+          <HoldButton
+            label={t('Stop')}
+            hint={t('Hold to stop')}
+            disabled={!['playing', 'paused', 'ended'].includes(regia.status)}
+            onHold={() => void regia.stop()}
+            className="min-h-14 px-4 rounded-[20px] bg-white/10 text-white bw-button-sm disabled:opacity-40"
+          >
+            <Square className="w-5 h-5 shrink-0" />
+            <span className="[@media(max-width:380px)]:sr-only">{t('Stop')}</span>
+          </HoldButton>
+          {canAddSongs && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.tap();
+                onAddSong();
+              }}
+              aria-label={t('Play a song not in the setlist')}
+              className="w-14 h-14 flex items-center justify-center rounded-[20px] bg-white/10 text-white shrink-0"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          )}
+        </div>
+      </section>
+      {listOpen && (
+        <FailedSheet
+          failed={failed}
+          onRetry={() => {
+            setShowFailed(false);
+            void regia.retry();
+          }}
+          onClose={() => setShowFailed(false)}
+        />
+      )}
+    </>
   );
 };
 
@@ -535,6 +539,45 @@ interface ExtraProps {
 }
 
 /** The repertoire, to play a song that isn't in tonight's setlist. */
+/** Songs whose audio didn't download: which, why, what to fix. A sheet over Stage (the card keeps its size). */
+const FailedSheet: React.FC<{ failed: { title: string; reason: PlayFailure }[]; onRetry: () => void; onClose: () => void }> = ({ failed, onRetry, onClose }) => {
+  const t = useT();
+  useSystemBack(true, onClose);
+  const title = failed.length === 1 ? t('1 song can’t be downloaded') : t('{n} songs can’t be downloaded', { n: failed.length });
+  // Like the extra-song sheet: it covers Stage (its own pane on the Duo and iPad), not the whole app.
+  return (
+    <div className="fixed inset-0 z-[130] flex flex-col bg-black text-white" role="dialog" aria-modal="true" aria-label={title} style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+      <div className="flex flex-col flex-1 min-h-0 w-full max-w-[640px] mx-auto px-4 gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="bw-h2 normal-case text-white">{title}</h2>
+          <button type="button" onClick={onClose} aria-label={t('Close')} className="w-11 h-11 flex items-center justify-center rounded-full border border-white shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4">
+          {failed.map((f) => (
+            <li key={f.title} className="flex flex-col gap-1 py-3 border-b border-white/15 last:border-b-0 min-w-0">
+              <span className="bw-label-md normal-case text-white truncate">{f.title}</span>
+              <span className="bw-body-sm text-white/70">{reasonText(f.reason, t)}</span>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={() => {
+            haptic.tap();
+            onRetry();
+          }}
+          className="flex items-center justify-center gap-2 min-h-14 rounded-[20px] border border-white/40 text-white bw-button-sm shrink-0"
+        >
+          <RotateCw className="w-5 h-5" aria-hidden />
+          {t('Try again')}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const RegiaExtraSheet: React.FC<ExtraProps> = ({ open, bandId, inSetlist, onPick, onClose, accent }) => {
   const t = useT();
   const [query, setQuery] = useState('');

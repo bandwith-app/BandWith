@@ -1296,8 +1296,8 @@ const music: AreaText = {
           items: [
             "Da a cada canción una **Grabación** (un archivo de audio) en la ficha de la canción. Las canciones sin ella mueven igualmente a la banda, pero no suena nada.",
             "Conecta el dispositivo a la mesa (mira los consejos sobre el cable más abajo) y activa No molestar, para que las notificaciones no salgan por el equipo de sonido.",
-            "Abre el concierto con conexión, abre el Modo escenario y toca **Cabina: audio desde aquí**. El dispositivo descarga el audio de la noche.",
-            "Espera a que **Audio listo** cuente todas las canciones (por ejemplo 10/10): desde ahí suena sin internet. Si aún falta alguna canción, vuelve a abrir el concierto con conexión.",
+            "Abre el concierto con conexión, abre el Modo escenario y toca **Cabina: audio desde aquí**. El dispositivo descarga el audio de la noche: una barra muestra cuánto falta, y el anillo alrededor del ▶ de cada canción se llena mientras se descarga.",
+            "Espera a que **Audio listo** cuente todas las canciones (por ejemplo 10/10): desde ahí suena sin internet. Si una canción no se puede descargar, la cabina te lo dice (mira abajo).",
           ],
         },
         {
@@ -1306,6 +1306,7 @@ const music: AreaText = {
           items: [
             "Toca ▶ en una canción para reproducirla. La pantalla de todos pasa a esa canción y muestra **Sonando ahora** con el tiempo.",
             "El reproductor de arriba tiene **Reproducir** / **Pausa**; al terminar una canción, el mismo botón reproduce la siguiente. **Detener** hay que mantenerlo pulsado, así un toque por error no corta la música.",
+            "Una canción sin audio, o que aquí no se puede reproducir, lo dice en el reproductor, y **Reproducir** pasa a **Reproducir la siguiente** con la primera canción que sí se puede. Mientras, la banda la toca en directo.",
             "Para una canción que no está en el setlist, toca + (**Reproducir una canción fuera del setlist**) y elígela del repertorio. Entra en el setlist justo después de la canción actual, para todos.",
             "Para pasar la cabina, el otro admin toca **Cabina: audio desde aquí** en su dispositivo y luego **Tomarla**: tu audio se detiene. **Desactivar** cierra la cabina en tu dispositivo.",
           ],
@@ -1317,6 +1318,20 @@ const music: AreaText = {
             ["La cabina (un admin)", "El reproductor, ▶ en cada canción con audio, por dónde sale el sonido (**Salida**) y cuántas canciones están listas."],
             ["Los demás admins y los miembros", "La canción que suena, con **Sonando ahora** o **En pausa** y el tiempo. Si estás en otra canción, **Ir** te lleva a ella."],
             ["Todos, cuando la cabina sale", "La franja desaparece. El Modo escenario funciona como antes."],
+          ],
+        },
+        {
+          type: "p",
+          text: "Cuando una canción no se puede descargar, toca **1 sin descargar** debajo de **Audio listo**: una página lista las canciones y el motivo. Arréglalo y toca **Reintentar**.",
+        },
+        {
+          type: "table",
+          head: ["Qué dice", "Qué hacer"],
+          rows: [
+            ["El enlace no lleva a un archivo de audio", "La grabación de la canción es un enlace que abre una página, no el archivo. En Google Drive comparte el archivo como “Cualquier persona con el enlace”, o sube el archivo a la canción."],
+            ["Sin internet", "Conéctate: la canción se descarga sola en cuanto vuelvas a estar en línea."],
+            ["Este dispositivo no puede reproducir este archivo", "Usa un archivo MP3, M4A o WAV."],
+            ["La descarga se ha interrumpido", "Toca **Reintentar**."],
           ],
         },
         {
@@ -1337,7 +1352,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "En un portátil con el navegador, el audio lo guarda el navegador: usa siempre el mismo navegador y no borres sus datos antes del concierto. Algunos enlaces (por ejemplo Google Drive) solo se pueden escuchar en streaming, así que necesitan internet." }],
+          rows: [{ devices: ["web"], text: "En un portátil con el navegador, el audio lo guarda el navegador: usa siempre el mismo navegador y no borres sus datos antes del concierto. Los enlaces de Google Drive también se descargan, si el archivo está compartido como “Cualquier persona con el enlace”." }],
         },
       ],
     },

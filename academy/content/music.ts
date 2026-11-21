@@ -1439,8 +1439,8 @@ const music: AreaModule = {
           items: [
             "Give each song a **Recording** (an audio file) in the song form. Songs without one still move the band, but nothing plays.",
             "Plug the device into the mixer (see the cable tips below) and turn on Do Not Disturb, so notifications don't come out of the PA.",
-            "Open the gig while online, open Stage mode and tap **Stage manager: play audio here**. The device downloads tonight's audio.",
-            "Wait until **Audio ready** counts every song (for example 10/10): from then on it plays with no internet. If some songs are still missing, open the gig online again.",
+            "Open the gig while online, open Stage mode and tap **Stage manager: play audio here**. The device downloads tonight's audio: a bar shows how far it is, and the ring around each song's ▶ fills up as it comes down.",
+            "Wait until **Audio ready** counts every song (for example 10/10): from then on it plays with no internet. If a song can't be downloaded, the stage manager says so (see below).",
           ],
         },
         {
@@ -1449,6 +1449,7 @@ const music: AreaModule = {
           items: [
             "Tap ▶ on a song to play it. Everyone's screen moves to that song and shows **Now playing** with the time.",
             "The player at the top has **Play** / **Pause**; when a song ends, the same button plays the next one. **Stop** needs a hold, so a tap by mistake can't cut the music.",
+            "A song with no audio, or one that can't play here, says so on the player, and **Play** becomes **Play next** with the next song that can play. The band plays the song live meanwhile.",
             "To play a song that isn't in the setlist, tap + (**Play a song not in the setlist**) and pick it from the repertoire. It goes in the setlist right after the current song, for everyone.",
             "To hand over, the other admin taps **Stage manager: play audio here** on their device, then **Take over**: your audio stops. **Turn off** ends it on your device.",
           ],
@@ -1460,6 +1461,20 @@ const music: AreaModule = {
             ["The stage manager (an admin)", "The player, ▶ on every song with audio, where the sound goes (**Output**) and how many songs are ready."],
             ["Other admins and members", "The song that's playing, with **Now playing** or **Paused** and the time. If you're on another song, **Go** takes you to it."],
             ["Everyone, when the stage manager leaves", "The strip goes away. Stage mode works as before."],
+          ],
+        },
+        {
+          type: "p",
+          text: "When a song can't be downloaded, tap **1 not downloaded** under **Audio ready**: a page lists the songs and why. Fix it, then tap **Try again**.",
+        },
+        {
+          type: "table",
+          head: ["It says", "What to do"],
+          rows: [
+            ["The link doesn't give an audio file", "The song's recording is a link that opens a page, not the file. On Google Drive, share the file as “Anyone with the link”, or upload the file to the song."],
+            ["No internet", "Connect: the song downloads by itself once you're back online."],
+            ["This device can't play this file", "Use an MP3, M4A or WAV file."],
+            ["The download stopped", "Tap **Try again**."],
           ],
         },
         {
@@ -1480,7 +1495,7 @@ const music: AreaModule = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Some links (for example Google Drive) can only stream, so they need the internet." }],
+          rows: [{ devices: ["web"], text: "On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Google Drive links download too, when the file is shared as “Anyone with the link”." }],
         },
       ],
     },

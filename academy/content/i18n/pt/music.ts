@@ -1429,8 +1429,8 @@ const music: AreaText = {
           items: [
             "Dê a cada música uma **Gravação** (um arquivo de áudio) na ficha da música. Músicas sem gravação movem a banda do mesmo jeito, mas nada toca.",
             "Ligue o aparelho na mesa (veja as dicas de cabo abaixo) e ative o Não perturbe, para as notificações não saírem no PA.",
-            "Abra o show com internet, abra o Modo palco e toque em **Cabine: áudio daqui**. O aparelho baixa o áudio da noite.",
-            "Espere até **Áudio pronto** contar todas as músicas (por exemplo 10/10): a partir daí ele toca sem internet. Se ainda faltar alguma música, abra o show de novo com internet.",
+            "Abra o show com internet, abra o Modo palco e toque em **Cabine: áudio daqui**. O aparelho baixa o áudio da noite: uma barra mostra o andamento, e o anel em volta do ▶ de cada música se enche enquanto baixa.",
+            "Espere até **Áudio pronto** contar todas as músicas (por exemplo 10/10): a partir daí ele toca sem internet. Se uma música não baixar, a cabine avisa (veja abaixo).",
           ],
         },
         {
@@ -1439,6 +1439,7 @@ const music: AreaText = {
           items: [
             "Toque em ▶ numa música para tocá-la. A tela de todos passa para essa música e mostra **Tocando agora** com o tempo.",
             "O player no alto tem **Tocar** / **Pausar**; quando uma música acaba, o mesmo botão toca a próxima. **Parar** precisa ser mantido pressionado, assim um toque sem querer não corta a música.",
+            "Uma música sem áudio, ou que não dá para tocar aqui, avisa no player, e **Tocar** vira **Tocar a próxima** com a primeira música que dá para tocar. Enquanto isso, a banda toca ao vivo.",
             "Para uma música que não está no setlist, toque em + (**Tocar uma música fora do setlist**) e escolha no repertório. Ela entra no setlist logo depois da música atual, para todos.",
             "Para passar a cabine, o outro admin toca em **Cabine: áudio daqui** no próprio aparelho e depois em **Assumir**: o seu áudio para. **Desativar** encerra a cabine no seu aparelho.",
           ],
@@ -1450,6 +1451,20 @@ const music: AreaText = {
             ["A cabine (um admin)", "O player, ▶ em cada música com áudio, por onde sai o som (**Saída**) e quantas músicas estão prontas."],
             ["Os outros admins e os membros", "A música que está tocando, com **Tocando agora** ou **Em pausa** e o tempo. Se você estiver em outra música, **Ir** leva você até ela."],
             ["Todos, quando a cabine sai", "A faixa some. O Modo palco funciona como antes."],
+          ],
+        },
+        {
+          type: "p",
+          text: "Quando uma música não baixa, toque em **1 sem baixar** embaixo de **Áudio pronto**: uma página mostra as músicas e o motivo. Resolva e toque em **Tentar de novo**.",
+        },
+        {
+          type: "table",
+          head: ["O que aparece", "O que fazer"],
+          rows: [
+            ["O link não leva a um arquivo de áudio", "A gravação da música é um link que abre uma página, não o arquivo. No Google Drive, compartilhe o arquivo como “Qualquer pessoa com o link”, ou envie o arquivo para a música."],
+            ["Sem internet", "Conecte-se: a música baixa sozinha assim que você voltar a ficar online."],
+            ["Este aparelho não consegue tocar este arquivo", "Use um arquivo MP3, M4A ou WAV."],
+            ["O download parou", "Toque em **Tentar de novo**."],
           ],
         },
         {
@@ -1470,7 +1485,7 @@ const music: AreaText = {
         },
         {
           type: "devices",
-          rows: [{ devices: ["web"], text: "Num notebook pelo navegador, quem guarda o áudio é o navegador: use sempre o mesmo e não apague os dados dele antes do show. Alguns links (por exemplo Google Drive) só tocam por streaming, então precisam de internet." }],
+          rows: [{ devices: ["web"], text: "Num notebook pelo navegador, quem guarda o áudio é o navegador: use sempre o mesmo e não apague os dados dele antes do show. Links do Google Drive também baixam, se o arquivo estiver compartilhado como “Qualquer pessoa com o link”." }],
         },
       ],
     },

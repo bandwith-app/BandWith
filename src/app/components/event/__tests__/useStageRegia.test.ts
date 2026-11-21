@@ -253,6 +253,31 @@ describe('useStageRegia (stage manager mode)', () => {
     expect(result.current.loadedId).toBe('r2');
   });
 
+  it('Play on a song still downloading (no copy yet, streaming refused): says to wait, not that the link is wrong', async () => {
+    let finish!: () => void;
+    downloadMock.mockImplementation(async () => {
+      await new Promise<void>((r) => (finish = r));
+      return { ok: true };
+    });
+    playableMock.mockImplementation(async (ref: string) => ({ url: `https://x/${ref}`, local: false }));
+    const { result, players } = setup();
+    act(() => result.current.turnOn());
+    await waitFor(() => expect(result.current.audio['sb://song-files/b/audio/1.mp3']?.state).toBe('downloading'));
+    players[0].load = vi.fn(async () => false);
+    await act(async () => {
+      await result.current.play(0);
+    });
+    expect(result.current.error).toEqual({ kind: 'load', title: 'Volare', reason: 'pending' });
+    await act(async () => finish());
+  });
+
+  it('before the first check of the device, the audio counts as being checked', () => {
+    cachedMock.mockImplementation(() => new Promise(() => {}));
+    const { result } = setup();
+    act(() => result.current.turnOn());
+    expect(result.current.checking).toBe(true);
+  });
+
   it('Play on a song with no audio says so (not a silent tap), and offers the next song with audio', async () => {
     const songs: RegiaSong[] = [{ id: 'r0', songId: 's0', title: '50’s Medley' }, ...SONGS];
     const { result } = setup({ songs, currentId: 'r0' });

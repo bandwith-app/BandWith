@@ -95,9 +95,12 @@ export type SongAudio =
   | { state: 'ready' }
   | { state: 'failed'; reason: AudioFailure };
 
+/** Why Play didn't work: a download reason, or the song is still coming down (no copy to play yet). */
+export type PlayFailure = AudioFailure | 'pending';
+
 /** What the Regia card says after Play (or adding a song) didn't work. */
 export type RegiaError =
-  | { kind: 'load'; title: string; reason: AudioFailure }
+  | { kind: 'load'; title: string; reason: PlayFailure }
   | { kind: 'no-audio'; title: string }
   | { kind: 'insert' };
 
@@ -297,6 +300,7 @@ export function useStageRegia({
   }, [available, createPlayer, eventId, publish]);
 
   const turnOff = useCallback(() => {
+    setAudio({});
     if (mineRef.current?.on) publish({ on: false, playing: false });
     mineRef.current = null;
     disposePlayer();
@@ -390,10 +394,14 @@ export function useStageRegia({
         const src = await playableUrl(song.audio);
         if (!src || !(await player.load(src.url))) {
           const known = audioRef.current[song.audio];
+          // Not on the device yet and the link can't stream (Drive on iOS): it's coming, wait.
+          const pending = !src?.local && online() && (known?.state === 'queued' || known?.state === 'downloading');
           setError({
             kind: 'load',
             title: song.title,
-            reason: audioFailureFor({ online: online(), downloadReason: known?.state === 'failed' ? known.reason : undefined, local: !!src?.local }),
+            reason: pending
+              ? 'pending'
+              : audioFailureFor({ online: online(), downloadReason: known?.state === 'failed' ? known.reason : undefined, local: !!src?.local }),
           });
           publish({ on: true, playing: false, positionMs: 0, durationMs: null });
           return false;
@@ -529,6 +537,8 @@ export function useStageRegia({
     audio,
     /** Songs whose audio couldn't be downloaded, and why. */
     failed,
+    /** Still finding out which songs are already on this device (just turned on). */
+    checking: on && refs.length > 0 && Object.keys(audio).length === 0,
     /** Download again the songs that failed. */
     retry: prepare,
     /** Index of the next song that can play here (null: none). */

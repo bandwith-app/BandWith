@@ -24,6 +24,9 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 const files = new Map<string, Uint8Array>();
+const dirs = new Set<string>();
+/** Android's native download ignores `recursive`: the folder has to exist already. */
+const android = { on: false };
 const key = (o: { path: string; directory?: string }) => `${o.directory}:${o.path}`;
 const listeners: ((p: { url: string; bytes: number; contentLength: number }) => void)[] = [];
 /** What the download "fetches" for a URL. */
@@ -32,6 +35,10 @@ let served: (url: string) => Uint8Array | Error = () => new Uint8Array(4 << 20);
 const downloadFile = vi.fn(async (o: { url: string; path: string; directory: string; progress?: boolean }) => {
   // The deprecated native downloadFile only knows these (LegacyFilesystemImplementation, iOS + Android).
   if (!['DOCUMENTS', 'DATA', 'LIBRARY', 'CACHE'].includes(o.directory)) throw new Error(`Couldn't find directory ${o.directory}`);
+  const parent = o.path.split('/').slice(0, -1).join('/');
+  if (android.on && parent && !dirs.has(key({ path: parent, directory: o.directory }))) {
+    throw new Error(`Error downloading file: /data/user/0/app/files/${o.path}: open failed: ENOENT (No such file or directory)`);
+  }
   const body = served(o.url);
   if (body instanceof Error) throw body;
   if (o.progress) listeners.forEach((l) => l({ url: o.url, bytes: body.length / 2, contentLength: body.length }));
@@ -52,6 +59,10 @@ const deleteFile = vi.fn(async (o: { path: string; directory: string }) => {
   files.delete(key(o));
 });
 const rmdir = vi.fn(async (_o: { path: string; directory: string }) => {});
+const mkdir = vi.fn(async (o: { path: string; directory: string }) => {
+  if (dirs.has(key(o))) throw new Error('Directory exists');
+  dirs.add(key(o));
+});
 
 vi.mock('@capacitor/filesystem', () => ({
   Directory: { Library: 'LIBRARY', LibraryNoCloud: 'LIBRARY_NO_CLOUD', Documents: 'DOCUMENTS', Data: 'DATA', Cache: 'CACHE' },
@@ -61,6 +72,7 @@ vi.mock('@capacitor/filesystem', () => ({
     readFile: (o: never) => readFile(o),
     deleteFile: (o: never) => deleteFile(o),
     rmdir: (o: never) => rmdir(o),
+    mkdir: (o: never) => mkdir(o),
     addListener: async (_e: string, fn: (typeof listeners)[number]) => {
       listeners.push(fn);
       return {
@@ -89,6 +101,8 @@ const mp3 = () => {
 beforeEach(() => {
   native.on = true;
   files.clear();
+  dirs.clear();
+  android.on = false;
   listeners.length = 0;
   vi.clearAllMocks();
   served = () => mp3();
@@ -101,6 +115,12 @@ describe('Regia audio on a phone (native)', () => {
     expect(downloadFile.mock.calls[0][0].directory).toBe(stat.mock.calls[stat.mock.calls.length - 1][0].directory);
     expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
     expect((await playableUrl(DRIVE))?.local).toBe(true);
+  });
+
+  it('Android: the folder is made first (its download does not make it), every song, not just the first', async () => {
+    android.on = true;
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    expect(await downloadAudio('https://drive.google.com/file/d/other12345678/view')).toEqual({ ok: true });
   });
 
   it('reports the download progress of the song', async () => {

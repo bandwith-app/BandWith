@@ -751,13 +751,14 @@
   <ol class="steps">
     <li>Each song needs a <b class="ui">Recording</b> (an audio file) in the song form. Songs without one still move the band, but nothing plays.</li>
     <li>Plug the device into the mixer (cable tips below) and turn on Do Not Disturb, so notifications don't come out of the PA.</li>
-    <li>Open the gig while online, open Stage mode and tap <b class="ui">Stage manager: play audio here</b>. The device downloads the night's audio.</li>
-    <li>Wait until <b class="ui">Audio ready</b> counts every song (for example 10/10): from then on it plays with no internet. If songs are still missing, open the gig online again.</li>
+    <li>Open the gig while online, open Stage mode and tap <b class="ui">Stage manager: play audio here</b>. The device downloads the night's audio: a bar shows how far it is, and the ring around each song's ▶ fills up as it comes down.</li>
+    <li>Wait until <b class="ui">Audio ready</b> counts every song (for example 10/10): from then on it plays with no internet. If a song can't be downloaded, the stage manager says so (see below).</li>
   </ol>
   <p class="steps-title">On stage</p>
   <ol class="steps">
     <li>Tap ▶ on a song to play it. Everyone's screen moves to that song and shows <b class="ui">Now playing</b> with the time.</li>
     <li>The player at the top has <b class="ui">Play</b> / <b class="ui">Pause</b>; when a song ends, the same button plays the next one. <b class="ui">Stop</b> needs a hold, so a tap by mistake can't cut the music.</li>
+    <li>A song with no audio, or one that can't play here, says so on the player, and <b class="ui">Play</b> becomes <b class="ui">Play next</b> with the next song that can play. The band plays the song live meanwhile.</li>
     <li>For a song that isn't in the setlist, tap + (<b class="ui">Play a song not in the setlist</b>) and pick it from the repertoire. It goes in the setlist right after the current song, for everyone.</li>
     <li>To hand over, the other admin taps <b class="ui">Stage manager: play audio here</b> on their device, then <b class="ui">Take over</b>: the first device's audio stops. <b class="ui">Turn off</b> ends it on a device.</li>
   </ol>
@@ -769,6 +770,16 @@
       <tr><td>Everyone, when the stage manager leaves</td><td>The strip goes away. Stage mode works as before.</td></tr>
     </tbody>
   </table>
+  <p>When a song can't be downloaded, tap <b class="ui">1 not downloaded</b> under <b class="ui">Audio ready</b>: a page lists the songs and why. Fix it, then tap <b class="ui">Try again</b>.</p>
+  <table class="grid">
+    <thead><tr><th>It says</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>The link doesn't give an audio file</td><td>The song's recording is a link that opens a page, not the file. On Google Drive, share the file as “Anyone with the link”, or upload the file to the song.</td></tr>
+      <tr><td>No internet</td><td>Connect: the song downloads by itself once back online.</td></tr>
+      <tr><td>This device can't play this file</td><td>Use an MP3, M4A or WAV file.</td></tr>
+      <tr><td>The download stopped</td><td>Tap <b class="ui">Try again</b>.</td></tr>
+    </tbody>
+  </table>
   <p class="steps-title">The cable to the mixer</p>
   <ul>
     <li>Laptops, iPads and phones with a headphone jack: a minijack (3.5 mm) cable into the mixer's input, for example 3.5 mm to two 6.3 mm jacks or to two RCA plugs.</li>
@@ -778,7 +789,7 @@
     <li>Device volume nearly at the top; set the level on the mixer.</li>
   </ul>
   <aside class="note warning">If the cable comes out, the sound can stop or move to the device's speaker. The app shows a warning at once: plug the cable back in.</aside>
-  <div class="devnote" data-devices="web">On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Some links (for example Google Drive) can only stream, so they need the internet.</div>
+  <div class="devnote" data-devices="web">On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Google Drive links download too, when the file is shared as “Anyone with the link”.</div>
 
   <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode without internet (Bluetooth)</h3>
   <p>In the iPhone, iPad and Android apps, the admin's phone also sends the current song and the order over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.</p>

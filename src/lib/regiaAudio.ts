@@ -171,6 +171,9 @@ export async function downloadAudio(ref: string, onProgress?: (fraction: number 
             if (p.url === url) onProgress(p.contentLength > 0 ? Math.min(1, p.bytes / p.contentLength) : null);
           })
         : null;
+      // Android's download doesn't make the folder (`recursive` is iOS only): make it first.
+      // It fails when it's already there, which is fine.
+      await Filesystem.mkdir({ path: DIR, directory: loc.directory, recursive: true }).catch(() => undefined);
       try {
         // Native download: no CORS, straight to disk (a 50 MB file never sits in memory).
         await Filesystem.downloadFile({ url, ...loc, recursive: true, progress: !!onProgress });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -60,6 +60,7 @@ const regia = (over: Partial<StageRegia> = {}): StageRegia =>
     failed: [],
     retry: vi.fn(),
     nextPlayable: 1,
+    checking: false,
     error: null,
     dismissError: vi.fn(),
     output: null,
@@ -140,7 +141,7 @@ describe('Stage mode: the Regia (stage manager mode)', () => {
       }),
     );
     const card = screen.getByRole('region', { name: 'Stage manager' });
-    expect(card).toHaveTextContent('Downloading audio 1/2 · 20%');
+    expect(card).toHaveTextContent('Downloading 1/2 · 20%');
     expect(screen.getByRole('progressbar', { name: 'Downloading audio' })).toHaveAttribute('aria-valuenow', '20');
     expect(screen.getByRole('button', { name: 'Play Volare · downloading 40%' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Play Azzurro · waiting to download' })).toBeTruthy();
@@ -156,12 +157,20 @@ describe('Stage mode: the Regia (stage manager mode)', () => {
     renderStage(r);
     const card = screen.getByRole('region', { name: 'Stage manager' });
     expect(card).toHaveTextContent('Audio ready 1/2');
+    // The list opens in its own sheet: the card keeps its size (short screens, every Duo posture).
     fireEvent.click(screen.getByRole('button', { name: '1 song can’t be downloaded' }));
-    expect(card).toHaveTextContent('Azzurro');
-    expect(card).toHaveTextContent('The link doesn’t give an audio file');
-    expect(card).toHaveTextContent('Anyone with the link');
+    const sheet = screen.getByRole('dialog', { name: '1 song can’t be downloaded' });
+    expect(sheet).toHaveTextContent('Azzurro');
+    expect(sheet).toHaveTextContent('The link doesn’t give an audio file');
+    expect(sheet).toHaveTextContent('Anyone with the link');
+    expect(card).not.toHaveTextContent('Anyone with the link');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: '1 song can’t be downloaded' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '1 song can’t be downloaded' }));
+    // Try again starts the downloads and closes the sheet: the card shows the progress.
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(r.retry).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: '1 song can’t be downloaded' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Play Azzurro · can’t be downloaded' })).toBeTruthy();
   });
 
@@ -169,10 +178,28 @@ describe('Stage mode: the Regia (stage manager mode)', () => {
     const r = regia({ on: true, nextPlayable: 0 });
     renderStage(r, live({ index: 2 }));
     const card = screen.getByRole('region', { name: 'Stage manager' });
-    expect(card).toHaveTextContent('“Senza audio” has no audio: the band plays it live.');
+    // Said where the time would be; Play offers the next song with audio.
+    expect(card).toHaveTextContent('Senza audioNo audio');
     fireEvent.click(screen.getByRole('button', { name: 'Play next: Volare' }));
     expect(r.play).toHaveBeenCalledWith(0);
     expect(r.toggle).not.toHaveBeenCalled();
+  });
+
+  it('while it checks what is on the device: says so (not “need internet”)', () => {
+    renderStage(regia({ on: true, checking: true, readiness: { withAudio: 2, ready: 0, missing: 2, noAudio: 1 } }));
+    const card = screen.getByRole('region', { name: 'Stage manager' });
+    expect(card).toHaveTextContent('Checking the audio…');
+    expect(card).not.toHaveTextContent('need internet');
+  });
+
+  it('Play on a song still downloading: says to wait', () => {
+    renderStage(regia({ on: true, loadedId: 'r1', status: 'error', error: { kind: 'load', title: 'Volare', reason: 'pending' } }));
+    expect(screen.getByRole('region', { name: 'Stage manager' })).toHaveTextContent('“Volare” can’t be played. It’s still downloading: wait a moment, then press Play again.');
+  });
+
+  it('no song after it can play: the card says the band plays it live', () => {
+    renderStage(regia({ on: true, nextPlayable: null }), live({ index: 2 }));
+    expect(screen.getByRole('region', { name: 'Stage manager' })).toHaveTextContent('“Senza audio” has no audio: the band plays it live.');
   });
 
   it('Play failed: names the song, the reason and the fix', () => {
