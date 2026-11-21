@@ -95,3 +95,26 @@ for (const w of WIZARDS) {
     });
   });
 }
+
+// The Quotes card opens the wizard too (its own chunk, loaded on demand).
+test.describe('quote wizard from the Quotes card', () => {
+  test('@smoke New quote opens the wizard; closing it goes back to the list', async ({ app }, testInfo) => {
+    // Laptop pose: Home has no Quotes card to tap (the fold layout).
+    test.skip(testInfo.project.name === 'duo-laptop', 'no Quotes card on the laptop-pose Home');
+    const w = WIZARDS.find((x) => x.kind === 'quote')!;
+    await app.page.getByRole('button', { name: new RegExp(app.t('ACTIVE QUOTES'), 'i') }).first().click();
+    await expect(app.page.getByRole('heading', { name: app.t('All quotes') })).toBeVisible();
+    await app.page.getByRole('button', { name: app.t('New quote'), exact: true }).filter({ visible: true }).first().click();
+    await expect(titleField(app, w)).toBeVisible();
+    await app.check('quote wizard from Quotes');
+    // ✕ on phones and tablets; the Duo's two-page composer has Cancel instead.
+    await app.page
+      .getByRole('button', { name: app.t(w.close), exact: true })
+      .or(app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Cancel'))}$`, 'i') }))
+      .filter({ visible: true })
+      .first()
+      .click();
+    await expect(titleField(app, w)).toHaveCount(0);
+    await expect(app.page.getByRole('heading', { name: app.t('All quotes') })).toBeVisible();
+  });
+});
