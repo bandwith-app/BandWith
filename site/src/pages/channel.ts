@@ -6,6 +6,7 @@
 // core/boot first: its base CSS must come before the page's own styles.
 import { boot, finish, type Ctx } from '../core/boot';
 import '../styles/feature.css';
+import '../styles/answers.css';
 import { gsap } from 'gsap';
 import { initFlow } from '../ui/flow';
 
