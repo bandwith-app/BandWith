@@ -245,9 +245,14 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           className="bw-fold-clear flex-1 min-h-0 overflow-y-auto overscroll-contain"
           aria-label={t('Song only: {title}', { title: song.title })}
         >
-          <span className="sr-only" aria-live="polite">
-            {t('Song {index} of {count}', { index: index + 1, count })} · {song.title}
-          </span>
+          {/* Which song this is, in one small line (as StageSongOnly): the song takes the rest. */}
+          <p className="flex items-baseline gap-2 min-w-0 pb-2" aria-live="polite">
+            <span className="sr-only">{t('Song {index} of {count}', { index: index + 1, count })} · </span>
+            <span aria-hidden className="bw-num text-[13px] font-medium shrink-0 text-white/50">
+              {String(index + 1).padStart(2, '0')}/{String(count).padStart(2, '0')}
+            </span>
+            <span className="bw-label-md normal-case truncate min-w-0 text-accent">{song.title}</span>
+          </p>
           <SongBody
             song={content}
             view={songView}

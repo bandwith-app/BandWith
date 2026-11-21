@@ -62,7 +62,8 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
     const deck = app.page.getByRole('region', { name: app.t('Song controls') });
     await expect(display).toContainText(text);
     await expect(display.getByRole('heading', { name: song })).toHaveCount(0);
-    await expect(display.getByText(song, { exact: true })).toHaveCount(0);
+    // One small line names the song, as on every other device.
+    await expect(display.getByText(song, { exact: true }).filter({ visible: true })).toHaveCount(1);
     await expect(deck.getByRole('tablist')).toHaveCount(0);
     const names = await deck.getByRole('button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim()));
     expect(names.map((n) => (n?.startsWith(app.t('Start the click')) ? 'click' : n))).toEqual([
