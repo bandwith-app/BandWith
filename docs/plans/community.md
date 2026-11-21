@@ -13,15 +13,16 @@ Contents
 5. Messaging: request → accept / decline / block / report
 6. Privacy, safety and legal
 7. Growing from zero users
-8. Where it lives: app and site
-9. Data model sketch
-10. Costs on the current plans
-11. MVP and later phases
-12. Prerequisites before opening it to the public
-13. How we measure it
-14. Risks
-15. Open questions
-16. Competitors checked
+8. Branded share cards
+9. Where it lives: app and site
+10. Data model sketch
+11. Costs on the current plans
+12. MVP and later phases
+13. Prerequisites before opening it to the public
+14. How we measure it
+15. Risks
+16. Open questions
+17. Competitors checked
 
 ---
 
@@ -41,6 +42,7 @@ Contents
   - honest empty states;
   - saved searches with alerts;
   - growth from deputy requests that bands already send.
+- **Branded share cards.** Every showcase and ad shared outside BandWith carries a recognisable BandWith card: a dynamic link preview, plus Story and square images to download. The cards show only public fields and always carry a "Create your showcase" or "Reply on BandWith" call to action (§8).
 - **The existing direct deputy invite does not change.** It is the claim link sent by WhatsApp, SMS or email to someone the band knows. The community is one more source of deputies. The only change to the invite is an optional one-line "create your showcase" hint.
 - Members are 18 or older. Locations are approximate, and nobody's contact details are ever shown. Profiles are private until the person turns visibility on.
 
@@ -48,7 +50,7 @@ Contents
 
 | # | Question | Owner's answer (2026-11-20) | What it means here |
 |---|---|---|---|
-| 1 | Where it lives | "app+pagina web ma in app si puo attivare come funzione: trova un sostituto e, se accetta, si conferma in app e riceve poi le comunicazioni se chiamato in causa" | All of it is in the app; the site has a public page plus showcase pages (§8). Find a deputy feeds into it (§4.4). |
+| 1 | Where it lives | "app+pagina web ma in app si puo attivare come funzione: trova un sostituto e, se accetta, si conferma in app e riceve poi le comunicazioni se chiamato in causa" | All of it is in the app; the site has a public page plus showcase pages (§9). Find a deputy feeds into it (§4.4). |
 | 2 | Minimum age | 18+ | Age gate at opt-in (§6.3). |
 | 3 | Who can write to whom | Everyone, through a request | Anyone can send a request; there are limits and a required message (§5). |
 | 4 | Pilot zone | "le community non devono essere un limite iniziale … trovare la soluzione anche con 0 utenti … per i singoli musicisti diventa anche una vetrina" | Open everywhere from day one; the cold start is solved by the product itself (§7). |
@@ -58,6 +60,7 @@ Contents
 | 8 | Name | OK to the recommendation | "Trova musicisti" / "Find musicians" / "Buscar músicos" (+ fr/de/pt in the app). |
 | 9 | Direct deputy invite | "l'invito diretto ad un deputy rimane lo stesso, vero?" | **Yes, unchanged** (§4.4). |
 | 10 | Bands looking for a new member | "se volessi (come band) cercare in questa community anche un nuovo membro … pure dovrebbe esserci" | **Yes**: ads and search cover **permanent / deputy / both** (§4.2, §4.5). |
+| 11 | Branded sharing | "possiamo creare un design branded di bandwith customizzato (tipo social thumbnail picture per i link dei siti web) cosi da spingere il brand e renderlo riconoscibile?" | **Yes**: dynamic BandWith share cards for showcases and ads, link previews + Story/square images (§8). |
 
 ## 3. What exists today (the plan builds on it)
 
@@ -113,7 +116,7 @@ Off by default. The musician turns it on from their profile or from the "Find mu
   - a short text;
   - optionally the band's public links.
 - **Status:** open / filled / closed. An ad closes by itself once the band fills it, or after a period of no activity. Stale ads are what people complain about in Facebook groups and classifieds.
-- **Share card:** every ad has a ready-made image and text to share ("Velvet Static is looking for a bassist, near Milan"). It links to a public page where the only action is "Reply in BandWith".
+- **Share card:** every ad has a ready-made image and text to share ("Velvet Static is looking for a bassist, near Milan"). It links to a public page where the only action is "Reply in BandWith". The cards are designed in §8.
 
 ### 4.3 Search
 
@@ -124,7 +127,7 @@ Off by default. The musician turns it on from their profile or from the "Find mu
   - "No drummer within 25 km yet. The nearest is about 60 km away."
   - Then: widen the radius / save this search and we'll tell you / share your ad (with ready-made text).
   - Never fake or padded numbers.
-- **Saved search with alert:** a push as soon as a match appears, and at most one email digest a week, which respects the Resend limits (§10).
+- **Saved search with alert:** a push as soon as a match appears, and at most one email digest a week, which respects the Resend limits (§11).
 
 ### 4.4 Deputies: the existing flow, plus the community
 
@@ -261,8 +264,8 @@ Off by default. The musician turns it on from their profile or from the "Find mu
 
 The owner's rule: no pilot zone. The community is a product, so it has to be convincing with nobody nearby. That works on two principles: **it is useful when you are alone**, and **every action creates a link that brings someone else in**.
 
-1. **A showcase that is useful alone.** It is a clean musician card with a link, for an Instagram bio, a WhatsApp status or a reply in a Facebook group. Its value doesn't depend on other users. Every share is an ad for BandWith.
-2. **Ad share cards.** A band's "looking for a bassist" goes where musicians already are (Facebook groups, Instagram, WhatsApp, classifieds), and the replies come back into BandWith. We use the existing groups to reach people, we don't compete with them, and we never scrape them.
+1. **A showcase that is useful alone.** It is a clean musician card with a link, for an Instagram bio, a WhatsApp status or a reply in a Facebook group. Its value doesn't depend on other users. Every share is an ad for BandWith, through the branded card in §8.
+2. **Ad share cards.** A band's "looking for a bassist" goes where musicians already are (Facebook groups, Instagram, WhatsApp, classifieds), and the replies come back into BandWith. We use the existing groups to reach people, we don't compete with them, and we never scrape them. The branded card (§8) makes every post recognisably BandWith.
 3. **Honest empty states.** Tell people the truth, offer the nearest result, a wider radius, a saved search and a share. A useful empty screen keeps the person. A fake count loses their trust, which is BandMix's most common complaint.
 4. **Saved searches with alerts.** They turn "nobody yet" into "we'll tell you", and every new showcase can wake someone up.
 5. **Growth from deputy requests that bands already send.**
@@ -281,15 +284,139 @@ The owner's rule: no pilot zone. The community is a product, so it has to be con
    - Mirage Music and its deputies are the first real showcases and the first real ads, with their consent.
 10. **Brand fit.** It stays a tool for working bands, not a social network: no feed, likes, followers or public comments. Showcases, ads, requests and then the band in BandWith.
 
-## 8. Where it lives: app and site
+## 8. Branded share cards
+
+The owner asked for this on 2026-11-20: whatever people share from the community should carry a custom BandWith design, like a social thumbnail for a link, so the brand gets pushed and becomes recognisable.
+
+Every shared link is an ad for BandWith. The card is what people see in WhatsApp, Facebook, X, LinkedIn and iMessage before they tap.
+
+### 8.1 Mockups
+
+These use fake demo data: the site's persona Leo M. and the demo band Velvet Static. They are rendered with the #248 share-card style.
+
+| Musician showcase, link preview 1200×630 | Band ad, link preview 1200×630 |
+|---|---|
+| ![Musician showcase card](community/01-vetrina-musicista-1200x630.jpg) | ![Band ad card](community/02-annuncio-band-1200x630.jpg) |
+
+Showcase as a Story, 1080×1920: [`community/03-vetrina-story-1080x1920.jpg`](community/03-vetrina-story-1080x1920.jpg).
+
+### 8.2 Which cards
+
+| Card | Shared from | Link | CTA on the card |
+|---|---|---|---|
+| **Musician showcase** | the showcase (app) and its public page | `bandwith.fun/m/<handle>` | "Create your showcase on BandWith" |
+| **Band ad** ("We're looking for X") | the ad (app), Find a deputy / members with no results, the public ad page | `bandwith.fun/b/<band-slug>` (the band's open ads; `?a=<code>` picks one) | "Reply on BandWith" |
+| **"Found my band"** (phase 2) | offered to both people after an accepted member invite | the band's public page or the BandWith home | "Find your band on BandWith" |
+
+- A deputy request for a specific gig is private and **never** gets a card.
+- The "found my band" card names both the person and the band, so it is made only if **both** say yes, each on their own device.
+
+### 8.3 Dynamic data: only public fields
+
+**What can appear on a card:**
+
+| Data | Showcase | Band ad | Rule |
+|---|---|---|---|
+| Display or stage name | ✓ | — | As shown on the showcase ("Leo M." by default). Long names step the font size down; two lines at most. |
+| Instruments with the instrument icons | up to 2 + "+N" | the wanted instrument, as a large icon | Canonical keys from `instruments.ts`; the icons are the site's `public/icons/instrument-*.svg` set. |
+| Genres | up to 3 | up to 3 | From the closed list, translated. |
+| City | ✓ | ✓ | The town label only. **Never a distance, a postcode or a grid cell.** |
+| Status pill | "Available for deputy work" (if on) | "Permanent" / "Deputy" / "Permanent or deputy" | |
+| Band name and logo | — | ✓ (`bands.logo_url`, initials if none) | The ad is public by the admin's choice. |
+| Photo | only if the person uploaded one **and** turned on "show on my showcase" | — | Otherwise the card uses the instrument icon or the brand pattern, never a placeholder face. |
+| Short URL + BandWith logo | ✓ | ✓ | Logo always top left; URL always in the lime bar. |
+
+**Never on a card:** phone, email, exact or approximate position, distance, fees, dates or free/busy, the level (it can read as a judgement), and the bands someone plays in.
+- **Why so strict:** once a card has been shared, the image stays in other people's chats and in WhatsApp's or Facebook's caches. Hiding the showcase later cannot take it back. Only fields the person already made public go on it.
+
+### 8.4 Formats
+
+| Format | Size | Used for | How it is delivered |
+|---|---|---|---|
+| Link preview (OG + Twitter `summary_large_image`) | 1200×630 | WhatsApp, Facebook, X, LinkedIn, iMessage, Telegram | `og:image` / `twitter:image` on the public page; the platforms fetch it themselves |
+| Story | 1080×1920 | Instagram and Facebook Stories, WhatsApp status | "Download image / Share" button |
+| Square | 1080×1080 | Instagram feed, groups | "Download image / Share" button |
+
+- **Instagram Stories don't show link previews.** That is why the Story and square images are offered as files to share. The person adds Instagram's own link sticker, and the card shows the short URL as text in case they don't.
+- **Story layout:** the top ~250 px and bottom ~340 px stay free of important content, because the Instagram and WhatsApp interface covers them.
+- **Sharing:**
+  - In the app, the native share sheet (`@capacitor/share`, already a dependency), with the image file and the link.
+  - On the web, the Web Share API with the file where the browser supports it, otherwise a plain download.
+- **Text:** "Download image" saves the card. "Share" sends the card and the link, with a short text in the person's language: "My musician showcase on BandWith: bandwith.fun/m/leo-m".
+
+### 8.5 How it is built
+
+- **Generated on the server, on demand, then cached.** It is not generated in the browser, so every platform's crawler gets the same image.
+  - **Recommended:** a Vercel function on the **site project** (`site/api/`, next to `geo.js`), using `@vercel/og` (Satori + resvg): JSX-like layout → PNG, about 1 s cold, cheap.
+  - **Alternative:** a Supabase edge function (also Satori). It would add egress on the plan we are trying to protect, so the site project is the better host.
+- **Data:** one `SECURITY DEFINER` RPC granted to `anon`, the same pattern as the quote-link RPCs (099):
+  - `bw_community_public_card(kind, key)` returns **only** the public fields in §8.3;
+  - only for showcases or ads that are visible and have their link enabled;
+  - otherwise it returns nothing.
+  - The public pages use the same RPC.
+- **Cache and refresh:**
+  - The image URL carries a version, the hash of the public fields + `updated_at` + language: `/api/card/m/leo-m.png?v=3f9a&lang=it`.
+  - The page's `og:image` always points at the current version, so editing the showcase produces a new image.
+  - The CDN caches each version for a long time (`s-maxage` + `stale-while-revalidate`).
+  - Platforms keep their own copy. Facebook's Sharing Debugger can refresh it for a test, but we can't force it for people.
+- **Fallback:**
+  - If the profile is hidden or deleted, or rendering fails, the endpoint returns a **static card** for that kind and language: "Find musicians near you · BandWith".
+  - The static cards are built once with the existing `site/tools/og-cards.mjs` pipeline (#248).
+  - The page never has a broken or empty preview.
+- **Languages:**
+  - The card follows the page language: `/m/leo-m`, `/it/m/leo-m`, `/es/m/leo-m`.
+  - When shared from the app, it follows the app language, mapped to EN/IT/ES for the site. Other app languages fall back to EN until the site has them.
+  - Instruments and genres come from the same dictionaries as the app and the site (`instruments.ts` labels, the site's `dict/*.json`).
+- **Fonts:**
+  - The #248 cards render the display face (`neue-haas-grotesk-display`) through Adobe Fonts in a browser at build time.
+  - **An on-demand server renderer needs the font files themselves**, and the Adobe Fonts licence does not let us put those files on a server.
+  - So the dynamic cards use **open-licensed fonts**:
+    - Geist Mono (OFL, already self-hosted on the site) for the mono labels;
+    - a close OFL grotesk for the big uppercase lines, for example Geist Sans Bold or Inter Tight Bold.
+  - The logo is an SVG, so it is unaffected.
+  - The static fallbacks can keep the exact display face.
+  - To confirm when building: whether the difference is visible at card size (see §16).
+- **Images:**
+  - Satori takes PNG/JPEG/SVG, not WebP, so the photo is fetched as JPEG.
+  - The lime duotone is applied once, when the photo is chosen for the showcase (a small image stored next to the avatar), not by a CSS filter at render time. Satori has no filters.
+- **Size and speed:** under ~300 KB per PNG (WhatsApp is picky with large previews). Satori gives JPEG-like sizes with flat colours, so this is easy.
+
+### 8.6 Brand rules (so every card is recognisable)
+
+They match the #248 site cards and the Lime/Ink rule:
+
+- Ink background (`#050505`) with the soft lime glow in the top corner.
+- **BandWith logo top left, always the same size and position.**
+- A mono label in lime with the LED dot ("● MUSICIAN SHOWCASE", "● WE'RE LOOKING FOR").
+- One big uppercase line: the name, or "A DRUMMER". On ads, the wanted instrument is in lime.
+- Instrument chips with the icons; genres as outline chips in mono.
+- One lime pill for the status.
+- **A lime bar along the bottom with the CTA on the left and the short URL on the right**, in the same place on every card. That bar is the recognisable signature.
+- The right side holds the photo (tilted 3°, like the phone on the site cards) or a large instrument icon in a ringed circle.
+- No other colours, no emoji, no user-chosen themes.
+
+### 8.7 Growth and measurement
+
+- **Every card has a CTA:** "Create your showcase on BandWith" on showcases, "Reply on BandWith" on ads. The public page repeats it as its only action.
+- **Shared links carry UTM tags:** `utm_source=share`, `utm_medium=<whatsapp|instagram|copy|…>` when the share sheet tells us, and `utm_campaign=showcase|ad|found-band`. The page's canonical URL strips them.
+- **What we count:**
+  - **shares** — a GA4 event in the app (opt-in) and on the site (consent mode, as on bandwith.fun today);
+  - **opens** — page views with those UTM tags;
+  - **sign-ups and showcases created after an open** — the same UTM, kept through sign-up;
+  - **replies to ads** that started from a shared link.
+- **What we don't count:** image fetches. They are crawlers, not people, so they never count as opens.
+- A share per person is never stored as a row. The counts are aggregated.
+
+## 9. Where it lives: app and site
 
 | | App (web, iOS, Android) | Site (bandwith.fun) |
 |---|---|---|
 | Showcase and ad editing | ✓ | — |
 | Search, requests, chat, block, report | ✓ | — |
 | Find a deputy / members / lineup entry points | ✓ | — |
-| Public showcase page `/m/<handle>` (opt-in link) | opens in the app if installed | ✓ (public fields only, "Contact in BandWith") |
-| Public ad page (share card target) | opens in the app if installed | ✓ ("Reply in BandWith") |
+| Public showcase page `/m/<handle>` (opt-in link) | opens in the app if installed | ✓ (public fields only, "Contact in BandWith", dynamic share card §8) |
+| Public ad page (share card target) | opens in the app if installed | ✓ ("Reply in BandWith", dynamic share card §8) |
+| Share card renderer (`site/api/`, `@vercel/og`) | uses it for "Download image / Share" | ✓ (§8.5) |
 | "Find musicians" landing (EN/IT/ES) | — | ✓ |
 | City × instrument pages | — | later (phase 3), only above a minimum of real profiles |
 
@@ -298,7 +425,7 @@ The owner's rule: no pilot zone. The community is a product, so it has to be con
 - The site does what it does best: public pages that can be shared and found, with one call to action.
 - Chat on the site would be a second messaging system to moderate.
 
-## 9. Data model sketch
+## 10. Data model sketch
 
 These are sketches, not final DDL. Use the next free migration block when work starts, and reserve it for this update; it is `170+` on `main` today, so check `supabase/migrations` and the open PRs first.
 - Everything is additive.
@@ -369,16 +496,16 @@ These are sketches, not final DDL. Use the next free migration block when work s
 - New request, accepted, a saved search matched, and a gig request.
 - Translated by the existing trigger pattern (088–090), and they respect the notification preferences.
 
-## 10. Costs on the current plans
+## 11. Costs on the current plans
 
 - **Search** is one small RPC returning only a few columns, with no Realtime on the directory. Its egress is low.
 - **Chats** use the existing Realtime-first sync (#206), so their cost grows with the messages sent, not with polling.
 - **Showcases** have no uploads (links and embeds only) and reuse avatars. Storage does not change.
 - **Email** for alerts is at most one digest a week per person; everything else goes by push. Sign-ups from community growth still cost 2 emails each, and Resend Free stops at 100 a day. The scaling plan (`docs/plans/scaling-and-costs.md`) already says to move to Resend Pro on days with a public push.
-- **Public pages** are site pages served from Vercel's CDN, plus one small function for showcase and ad data.
-- **The real growth risk is the Free plan itself**: no backups, the pause after inactivity, and the egress ceiling. That is why Supabase Pro is a prerequisite (§12).
+- **Public pages and share cards** are site pages and one image function on Vercel. They are cached per version on the CDN, so each card is rendered about once per change, not once per view. They read Supabase through one small RPC that returns a few public fields.
+- **The real growth risk is the Free plan itself**: no backups, the pause after inactivity, and the egress ceiling. That is why Supabase Pro is a prerequisite (§13).
 
-## 11. MVP and later phases
+## 12. MVP and later phases
 
 Every phase:
 - ships behind a `feature_flags` switch (130) with a kill switch;
@@ -387,7 +514,8 @@ Every phase:
 
 **Phase 1 — MVP**
 - Musician showcase (opt-in, 18+, approximate area, links), with a public link page on the site.
-- Band ad with **permanent / deputy / both**, a share card and its public page.
+- Band ad with **permanent / deputy / both**, and its public page.
+- **Branded share cards (§8):** dynamic 1200×630 link previews for showcases and ads, Story 1080×1920 and square 1080×1080 through "Download image / Share", static fallbacks, EN/IT/ES, UTM on shared links.
 - Search with the filters in §4.3, an honest empty state, and saved searches with push alerts.
 - Request → accept / decline / block / report, then a direct chat.
 - After a match: **Invite to the band**, **Add as a deputy**, **Ask for this gig** (the deputy flow in §4.4, steps 2–3).
@@ -402,6 +530,7 @@ Every phase:
 
 **Phase 2**
 - Free / busy dates from the calendar.
+- The "Found my band" share card (§8.2), only with both people's consent.
 - "Start a band with these people" from a group of matches.
 - The weekly email digest for saved searches.
 - Referral links with non-cash rewards. What the reward is gets decided then, with no numbers here.
@@ -413,14 +542,14 @@ Every phase:
 - One-off ads ("bassist for one wedding on 14 June").
 - Recommendations ("3 new drummers near you").
 
-## 12. Prerequisites before opening it to the public
+## 13. Prerequisites before opening it to the public
 
 1. **Supabase Pro**, with the spend cap on, before public growth. It brings backups, no pause, and much more egress (`docs/plans/scaling-and-costs.md` §5). The chat polling fix is **already done** (#206).
 2. **Terms and Privacy Policy updated** for user content, moderation, 18+, approximate location, US hosting and the operator (§6.5).
 3. **App Store 1.2 / Google Play UGC** requirements in place: filter, report, block and contact.
 4. **Resend Pro on announcement days**, as the scaling plan already says.
 
-## 13. How we measure it
+## 14. How we measure it
 
 The data is aggregated, from database queries and the existing opt-in GA4 events. Nothing is tracked per person outside the app's own data.
 
@@ -433,7 +562,7 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
   5. % accepted;
   6. time to first answer;
   7. % that turn into a member, deputy or band.
-- **Growth loops:**
+- **Growth loops** (see §8.7 for how shares are counted):
   - shares of showcases and ads;
   - visits to the public pages, and sign-ups that start from them;
   - deputies who accepted a claim link and then turned on a showcase;
@@ -445,7 +574,7 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
   - visible showcases active in the last 30 days;
   - auto-suspensions overturned in review.
 
-## 14. Risks
+## 15. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -458,15 +587,17 @@ The data is aggregated, from database queries and the existing opt-in GA4 events
 | Brand drift into a social network | No feed, likes or followers; every screen leads to a band, a gig or a deputy |
 | Legal | Terms and Privacy update + DSA notice and action before public launch |
 
-## 15. Open questions
+## 16. Open questions
 
 - The grid size (3 or 5 km) and the distance bands: to confirm on real towns in Italy, Spain and the US.
 - Whether a band admin writes as themself or as the band, and how replies to the band are shared among admins.
 - The inactivity period before a showcase hides, the request expiry, the cooling-off period after a decline, and the daily limits. These are product values, to set in the database at build time.
 - Whether the fee is shown in a community deputy request, or only after the musician accepts.
 - Which of the existing languages the public site pages need beyond EN/IT/ES.
+- The share card's display font: an open grotesk for on-demand rendering instead of the Adobe Fonts face. Check it side by side with the #248 cards at card size (§8.5).
+- Whether "Download image" adds a small QR code to the Story and square images, for people who see them without a tappable link.
 
-## 16. Competitors checked
+## 17. Competitors checked
 
 Brief scan, 2026-11-20 (Trustpilot, App Store reviews, Italian guides). These are user reviews, not verified facts.
 
