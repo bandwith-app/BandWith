@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Build checks (scripts/bundle-*.test.ts) run in Node, without a DOM.
+const hasDom = typeof window !== 'undefined';
+
 // Mock matchMedia for components that use media queries
-Object.defineProperty(window, 'matchMedia', {
+if (hasDom) Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query) => ({
     matches: false,
@@ -34,7 +37,7 @@ Object.defineProperty(window, 'matchMedia', {
 }));
 
 // Mock scrollTo
-window.scrollTo = vi.fn();
+if (hasDom) window.scrollTo = vi.fn();
 
 // Mock crypto for UUID generation
 Object.defineProperty(globalThis, 'crypto', {
@@ -60,7 +63,7 @@ const localStorageMock = {
   key: (i: number) => Array.from(storageMap.keys())[i] ?? null,
 };
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, configurable: true, writable: true });
-Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true, writable: true });
+if (hasDom) Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true, writable: true });
 
 // Suppress console errors during tests (optional)
 // Uncomment if tests are too noisy
