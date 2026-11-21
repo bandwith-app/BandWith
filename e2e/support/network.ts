@@ -26,6 +26,18 @@ export const FAKE_VENUES = (q: string) => [
   { name: `${q} Hall`, street: 'Via Tortona', housenumber: '27', city: 'Milano', country: 'Italy', lon: 9.16, lat: 45.45 },
 ];
 
+/** Hosts stubNetwork answers with canned data. */
+export const STUBBED_HOSTS = ['photon.komoot.io', 'geocoding-api.open-meteo.com', 'api.open-meteo.com'];
+
+/**
+ * WebKit's page error for a stubbed request cut short by a reload or
+ * navigation ("…/geocoding-api.open-meteo.com/v1/search?… due to access
+ * control checks."). The app catches the failed fetch; only WebKit reports it.
+ */
+export function isCutStubbedRequest(message: string): boolean {
+  return /due to access control checks\.?$/.test(message) && STUBBED_HOSTS.some((h) => message.includes(`/${h}/`) || message.includes(`//${h}/`));
+}
+
 export async function stubNetwork(context: BrowserContext) {
   await context.route(
     (url) => !/^(127\.0\.0\.1|localhost)$/.test(url.hostname) && /^https?:$/.test(url.protocol),

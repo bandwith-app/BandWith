@@ -2,7 +2,7 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { duoInitScript, type DuoProfile } from './support/devices';
 import { expectHealthy } from './support/health';
 import { settle } from './support/settle';
-import { stubNetwork } from './support/network';
+import { stubNetwork, isCutStubbedRequest } from './support/network';
 import { tr, type Locale } from './support/i18n';
 
 export { expect };
@@ -88,7 +88,14 @@ export const test = base.extend<Options & { app: App }>({
 
   app: async ({ page, role, lang: locale, duo, autoOpen }, use, testInfo) => {
     const errors: string[] = [];
-    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message.split('\n')[0]}`));
+    page.on('pageerror', (e) => {
+      const msg = e.message.split('\n')[0];
+      // WebKit reports a stubbed outside request that a reload or navigation
+      // cuts short as "… due to access control checks", although the app
+      // catches the failed fetch. Only for the hosts stubNetwork answers.
+      if (isCutStubbedRequest(msg)) return;
+      errors.push(`pageerror: ${msg}`);
+    });
 
     await stubNetwork(page.context());
     // Only Date moves to FIXED_NOW. Playwright's clock.install also fakes
