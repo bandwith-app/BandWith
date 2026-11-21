@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, Loader2, Mail, Pencil, Phone, Plus, Trash2, Users } from '@/app/components/icons';
+import { InstrumentIcon, Link, Loader2, Mail, Pencil, Phone, Plus, Trash2, Users } from '@/app/components/icons';
 import { planOr } from '@/lib/userError';
 import { BwSheet, Card, IconButton, Tag } from '@/app/components/bw/Screen';
 import { PillButton, PillField } from '@/app/components/bw/Form';
@@ -156,6 +156,9 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
           <ul className="flex flex-col divide-y divide-foreground/10" aria-label={t('Who covers what')}>
             {coverage.rows.map((row) => (
               <li key={row.key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="w-10 h-10 rounded-full bg-foreground/[0.08] flex items-center justify-center shrink-0" aria-hidden>
+                  <InstrumentIcon instrumentId={row.key.split('+')[0]} className="w-5 h-5" />
+                </span>
                 <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                   <span className="bw-label-sm uppercase truncate">{row.label}</span>
                   <span className="bw-body-sm text-muted-foreground truncate">{row.members.join(', ')}</span>
@@ -215,8 +218,11 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
                     <span className="bw-label-md truncate">{d.name}</span>
                     {d.user_id && <Tag variant="accent">{t('On BandWith')}</Tag>}
                   </span>
-                  <span className="bw-body-sm text-muted-foreground truncate">
-                    {[instrumentText(d.instrument), d.phone || d.email].filter(Boolean).join(' · ') || (d.user_id ? t('Asked in the app') : t('No contact yet'))}
+                  <span className="flex items-center gap-1.5 min-w-0 bw-body-sm text-muted-foreground">
+                    {d.instrument?.trim() && <InstrumentIcon instrumentId={d.instrument} className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+                    <span className="truncate">
+                      {[instrumentText(d.instrument), d.phone || d.email].filter(Boolean).join(' · ') || (d.user_id ? t('Asked in the app') : t('No contact yet'))}
+                    </span>
                   </span>
                 </span>
                 <Pencil className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden />

@@ -126,6 +126,20 @@
         "Category":  "Instrument"
     },
     {
+        "Name":  "InstrumentCello",
+        "File":  "instrument-cello.svg",
+        "ViewBox":  "0 0 24 24",
+        "StrokeWidth":  "2",
+        "Category":  "Instrument"
+    },
+    {
+        "Name":  "InstrumentPercussion",
+        "File":  "instrument-percussion.svg",
+        "ViewBox":  "0 0 24 24",
+        "StrokeWidth":  "2",
+        "Category":  "Instrument"
+    },
+    {
         "Name":  "InstrumentDJ",
         "File":  "instrument-dj.svg",
         "ViewBox":  "0 0 24 24",

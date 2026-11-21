@@ -1,6 +1,6 @@
 import React from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Bell, Loader2, Mail, MessageCircle, MessageSquare } from '@/app/components/icons';
+import { Bell, InstrumentIcon, Loader2, Mail, MessageCircle, MessageSquare } from '@/app/components/icons';
 import { BwSheet, Tag } from '@/app/components/bw/Screen';
 import { PillButton } from '@/app/components/bw/Form';
 import { openExternal } from '@/lib/nativeFiles';
@@ -309,8 +309,11 @@ export const AskDeputySheet: React.FC<{
                         <span className="bw-label-md truncate">{d.name}</span>
                         {d.user_id && !noLinks && <Tag variant="accent" className="shrink-0">{t('On BandWith')}</Tag>}
                       </span>
-                      <span className="bw-body-sm text-sheet-foreground/70 truncate">
-                        {[instrumentText(d.instrument), d.default_fee ? t('usual fee {fee}', { fee: formatFee(d.default_fee) }) : null, d.notes].filter(Boolean).join(' · ') || t('Deputy')}
+                      <span className="flex items-center gap-1.5 min-w-0 bw-body-sm text-sheet-foreground/70">
+                        {d.instrument?.trim() && <InstrumentIcon instrumentId={d.instrument} className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+                        <span className="truncate">
+                          {[instrumentText(d.instrument), d.default_fee ? t('usual fee {fee}', { fee: formatFee(d.default_fee) }) : null, d.notes].filter(Boolean).join(' · ') || t('Deputy')}
+                        </span>
                       </span>
                     </span>
                     {busy === d.id && <Loader2 className="w-4 h-4 animate-spin shrink-0 mt-1" />}

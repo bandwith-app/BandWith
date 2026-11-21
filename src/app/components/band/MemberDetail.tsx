@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { Copy, Check, Crown, LogOut, Mail, MessageCircle, Mic, Phone, Trash2, UserCog } from '@/app/components/icons';
+import { Copy, Check, Crown, InstrumentIcon, LogOut, Mail, MessageCircle, Phone, Trash2, UserCog } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { DotText, PillButton, PillField } from '@/app/components/bw';
 import { ScreenHeader } from '@/app/components/bw/Screen';
@@ -179,7 +179,7 @@ export const MemberDetail: React.FC<{
           <div className="flex flex-col gap-1 min-w-0">
             <h1 className="bw-display-lg uppercase [overflow-wrap:anywhere]">{name}</h1>
             <span className="flex items-center gap-2 min-w-0 bw-body-md text-muted-foreground">
-              {instrument && <Mic className="w-4 h-4 shrink-0" aria-hidden />}
+              {instrument && <InstrumentIcon instrumentId={instrument} className="w-4 h-4 shrink-0" aria-hidden />}
               <span className="truncate">{[instrumentText(instrument), roleLabel].filter(Boolean).join(' · ')}</span>
             </span>
           </div>

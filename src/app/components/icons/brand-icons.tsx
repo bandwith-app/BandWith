@@ -1,7 +1,8 @@
 import React from 'react';
 import { IconProps } from './IconBase';
-import { box, dot, dotIcon, ring } from './dots';
-import { CheckCheck, Drum, Guitar, Mic2, Music, Plus, MessageCircle, X, Calendar, Home } from './custom-icons';
+import { arc, axis, box, bouts, circle, dot, dotIcon, ellipse, seg } from './dots';
+import { mainInstrument } from '@/lib/instruments';
+import { CheckCheck, Music, Plus, MessageCircle, X, Calendar, Home } from './custom-icons';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BandWith Dot Icons — app chrome, status & instruments.
@@ -43,60 +44,155 @@ export const IconSettings = dotIcon('IconSettings', {
 
 export const IconMenu = dotIcon('IconMenu', { d: `M4 6H20M4 12H20M4 18H13${dot(17, 18)}` });
 
-/* ── Instruments ── */
+/* ── Instruments ──
+   One icon per canonical key of src/lib/instruments.ts. Trombone shares the
+   trumpet (brass), double bass shares the cello (upright strings). */
 
-export const InstrumentGuitar = Guitar;
-
-export const InstrumentBass = dotIcon('InstrumentBass', {
-  d: `${ring(8, 16, 4.5, 9, -25)}M13.3 10.7L19 5${dot(21.5, 2.5)}`,
-  solid: [[8, 16, 1]],
+const G = axis(8.6, 15.4, -45);
+/** Acoustic guitar: figure-eight body on a 45° axis, sound hole, neck, headstock. */
+export const InstrumentGuitar = dotIcon('InstrumentGuitar', {
+  d: bouts(8.6, 15.4, -45, -2.6, 4.6, 2.4, 3.4) + seg(...G(6.6), ...G(12.6)),
+  bold: seg(...G(14.2), ...G(16.2)),
+  boldScale: 1.6,
+  solid: [[...G(-1.6), 0.9]],
 });
 
-export const InstrumentDrums = Drum;
-export const InstrumentVocals = Mic2;
-
-export const InstrumentKeys = dotIcon('InstrumentKeys', {
-  d: box(2.5, 4.5, 19, 15) + dot(7.5, 16, 12, 16, 16.5, 16),
-  bold: 'M7.5 8.5V10.5M12 8.5V10.5M16.5 8.5V10.5',
+const B = axis(7.0, 17.0, -45);
+/** Electric bass: slimmer offset body, two pickups, long neck, headstock. */
+export const InstrumentBass = dotIcon('InstrumentBass', {
+  d:
+    bouts(7.0, 17.0, -45, -2.2, 4.3, 1.9, 3.0) +
+    seg(...B(5.2), ...B(16.4)) +
+    seg(...B(-3.2, -0.9), ...B(-3.2, 0.9)) +
+    seg(...B(-1.0, -0.9), ...B(-1.0, 0.9)),
+  bold: seg(...B(18.0), ...B(20.0)),
   boldScale: 1.6,
 });
 
+/** Drums: a snare with crossed sticks. */
+export const InstrumentDrums = dotIcon('InstrumentDrums', {
+  d:
+    ellipse(12, 11, 8, 3) +
+    'M4 11V16.5M20 11V16.5' +
+    arc(12, 16.5, 8, 0, 180).replace(/A8 8/, 'A8 3') +
+    seg(5, 2.6, 9.6, 5.6) +
+    seg(19, 2.6, 14.4, 5.6) +
+    dot(8, 15.6, 12, 16.4, 16, 15.6),
+});
+
+/** Vocals: handheld mic (ball head, handle) and one voice arc. */
+export const InstrumentVocals = dotIcon('InstrumentVocals', {
+  d: seg(11.6, 12.4, 5.4, 18.6) + dot(3.6, 20.4) + arc(15, 9, 6.6, -78, -12),
+  solid: [[15, 9, 2.7]],
+});
+
+/** Keys: open-corner keyboard, black keys (2 + 1), white-key dots. */
+export const InstrumentKeys = dotIcon('InstrumentKeys', {
+  d: box(2.5, 5, 19, 14) + dot(6.3, 16, 10.1, 16, 13.9, 16, 17.7, 16),
+  bold: 'M6.3 9.2V11.4M10.1 9.2V11.4M17.7 9.2V11.4',
+  boldScale: 1.4,
+});
+
+/** Sax: neck and mouthpiece, body with the U-turn, flared bell, key dots. */
 export const InstrumentSax = dotIcon('InstrumentSax', {
-  d: `M5.5 3L9 5V15A4 4 0 0 0 17 15V10.5M14.5 7H19.5${dot(5.5, 9.5, 5.5, 13)}`,
+  d: `M5 3.2L8.6 5.6M9.6 7.8V15.2A4.2 4.2 0 0 0 18 15.2V11.6M15.6 9.2H20.4${dot(12.6, 9.8, 12.6, 13.2)}`,
 });
 
+/** Trumpet (and the brass section): mouthpiece, lead pipe, three valves, bell. */
 export const InstrumentTrumpet = dotIcon('InstrumentTrumpet', {
-  d: `${dot(2.5, 13)}M6 13H14.5M17 9.5L21.5 7V19L17 16.5M7.5 8.5V10M10.5 8.5V10M13.5 8.5V10`,
+  d: `${dot(2.5, 13)}M5 13H15M17 11.2Q19.6 10.4 21.5 7.6V18.4Q19.6 15.6 17 14.8M7.4 8.4V10M10.4 8.4V10M13.4 8.4V10`,
 });
 
+/** Violin: hourglass body, f-hole dots, neck, and the bow beside it. */
 export const InstrumentViolin = dotIcon('InstrumentViolin', {
-  d: `M12 9.5C9 9.5 8 11 9 13S7 16 7 18A4 4 0 0 0 17 18C17 16 14 15 15 13S15 9.5 12 9.5ZM12 2.5V7${dot(10.5, 17, 13.5, 17)}`,
+  d: bouts(10.2, 14.6, 90, -3.2, 3.2, 2.6, 4.2) + seg(10.2, 7.8, 10.2, 2.6) + dot(8.6, 17.8, 11.8, 17.8) + seg(19.6, 3, 16.4, 21),
 });
 
+/** Cello and double bass: big upright body, neck, f-hole dots. */
+export const InstrumentCello = dotIcon('InstrumentCello', {
+  d: bouts(12, 12.6, 90, -3.2, 3.6, 3.2, 4.8) + seg(12, 5.4, 12, 2.4) + dot(10.3, 16.6, 13.7, 16.6),
+});
+
+/** Percussion: a pair of bongos. */
+export const InstrumentPercussion = dotIcon('InstrumentPercussion', {
+  d:
+    ellipse(7.5, 9, 4.5, 1.8) +
+    'M3 9V15.5A4.5 1.8 0 0 0 12 15.5V9' +
+    ellipse(17.6, 11, 3.6, 1.5) +
+    'M14 11V16.4A3.6 1.5 0 0 0 21.2 16.4V11' +
+    dot(13, 19.6),
+});
+
+/** DJ: open-corner deck, platter with centre disc, tone arm. */
 export const InstrumentDJ = dotIcon('InstrumentDJ', {
-  d: `${box(2.5, 4, 19, 16)}${ring(10, 12, 4.5, 8)}M17.5 8.5V15.5`,
-  solid: [[10, 12, 1]],
+  d: box(2.5, 4, 19, 16) + circle(10, 12, 4.6) + 'M17.6 7.2V13.6L15.6 15.6',
+  solid: [[10, 12, 0.9]],
 });
 
+/** Any other instrument: an eighth note. */
 export const InstrumentOther = dotIcon('InstrumentOther', {
-  d: ring(12, 12, 9.5, 16) + dot(8, 12, 12, 12, 16, 12),
+  d: 'M11.2 17V3.6C13.6 4.4 16.4 6 16.6 9.4',
+  solid: [[8.4, 17.4, 2.2]],
 });
 
-export const InstrumentIcon: React.FC<IconProps & { instrumentId: string }> = ({
+/** Icon key → icon. */
+export const INSTRUMENT_ICONS = {
+  guitar: InstrumentGuitar,
+  bass: InstrumentBass,
+  drums: InstrumentDrums,
+  vocals: InstrumentVocals,
+  keys: InstrumentKeys,
+  sax: InstrumentSax,
+  trumpet: InstrumentTrumpet,
+  violin: InstrumentViolin,
+  cello: InstrumentCello,
+  percussion: InstrumentPercussion,
+  dj: InstrumentDJ,
+  other: InstrumentOther,
+} as const;
+
+export type InstrumentIconKey = keyof typeof INSTRUMENT_ICONS;
+
+/** Canonical instrument (src/lib/instruments.ts) → the icon that draws it. */
+const ICON_FOR: Record<string, InstrumentIconKey> = {
+  guitar: 'guitar',
+  bass: 'bass',
+  'double-bass': 'cello',
+  drums: 'drums',
+  percussion: 'percussion',
+  vocals: 'vocals',
+  keys: 'keys',
+  sax: 'sax',
+  trumpet: 'trumpet',
+  trombone: 'trumpet',
+  violin: 'violin',
+  cello: 'cello',
+  dj: 'dj',
+  // Older generic ids.
+  brass: 'trumpet',
+  horns: 'trumpet',
+  strings: 'violin',
+  turntable: 'dj',
+  turntables: 'dj',
+};
+
+/**
+ * The icon for an instrument id or free-text field ("saxophone",
+ * "Bass · Band leader", "Contrabbasso"): its main instrument, or 'other'.
+ */
+export const instrumentIconKey = (text: string | null | undefined): InstrumentIconKey => {
+  const key = mainInstrument(text);
+  return (key && ICON_FOR[key]) || 'other';
+};
+
+/** The Dot Icon for an instrument id or free-text instrument field. */
+export const InstrumentIcon: React.FC<IconProps & { instrumentId: string | null | undefined }> = ({
   instrumentId,
   ...props
 }) => {
-  const key = (instrumentId || '').toLowerCase();
-  if (key === 'guitar') return <InstrumentGuitar {...props} />;
-  if (key === 'bass') return <InstrumentBass {...props} />;
-  if (key === 'drums') return <InstrumentDrums {...props} />;
-  if (key === 'vocals') return <InstrumentVocals {...props} />;
-  if (key === 'keys' || key === 'piano' || key === 'keyboard') return <InstrumentKeys {...props} />;
-  if (key === 'saxophone' || key === 'sax') return <InstrumentSax {...props} />;
-  if (key === 'trumpet' || key === 'brass' || key === 'horns') return <InstrumentTrumpet {...props} />;
-  if (key === 'violin' || key === 'strings' || key === 'cello') return <InstrumentViolin {...props} />;
-  if (key === 'dj' || key === 'turntable') return <InstrumentDJ {...props} />;
-  return <InstrumentOther {...props} />;
+  const key = instrumentIconKey(instrumentId);
+  const Icon = INSTRUMENT_ICONS[key];
+  return <Icon data-instrument={key} {...props} />;
 };
 
 /* ── Third-Party OAuth & Music Streaming Marks ── */

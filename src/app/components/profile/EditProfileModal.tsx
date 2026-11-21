@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Camera, Loader2, Check, ArrowLeft, Lock } from '@/app/components/icons';
+import { User, Camera, InstrumentIcon, Loader2, Check, ArrowLeft, Lock } from '@/app/components/icons';
 import { IconButton, NavBackButton } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import { useAuth } from '@/lib/AuthContext';
@@ -289,6 +289,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                       onClick={() => setInstrument(value)}
                       className={isSelected ? 'bg-accent text-accent-foreground' : undefined}
                     >
+                      <InstrumentIcon instrumentId={value} className="w-3.5 h-3.5 shrink-0" aria-hidden />
                       {instrumentLabel[value] ?? value}
                     </Selector>
                   );

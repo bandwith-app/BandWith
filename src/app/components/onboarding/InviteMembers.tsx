@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, X, Users, Plus, Send } from '@/app/components/icons';
+import { InstrumentIcon, Mail, X, Users, Plus, Send } from '@/app/components/icons';
 import { useOnboarding, MemberInvite, INSTRUMENTS } from '@/lib/OnboardingContext';
 import { AuthScreen, Kicker, PillButton, PillField } from '@/app/components/bw/Form';
 import { ChoicePill, DotMatrixRadio, OnboardingSheet, WizardTop, wizardStep } from './OnboardingChrome';
@@ -300,6 +300,7 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
                             }))
                           }
                         >
+                          <InstrumentIcon instrumentId={inst.id} className="w-3.5 h-3.5 shrink-0" aria-hidden />
                           {instrumentLabel[inst.id] ?? inst.label}
                         </ChoicePill>
                       ))}
