@@ -22,9 +22,15 @@
 --     and mute as they were, and no app can miss the chat and start a
 --     second one;
 --   * rows already stale today are kept the same way (archived once).
+--   * round 5: a lineup row moved to another gig or person (UPDATE of
+--     event_id / user_id) counts as leaving the old gig; and a gig with a
+--     chat or a lineup keeps its band (events.band_id): moving it to another
+--     band locked its lineup out of its chat, and 193's one-chat-per-gig
+--     index stopped a new one.
 -- Lineup statuses are compared with lower(btrim()) ('Declined', 'Dropped_Out ').
 --
--- Prerequisites and order: 175 -> 178 -> 193 -> 181 (tested in that order).
+-- Prerequisites and order: 175 -> 178 -> 180 -> 194 -> 192 -> 193 -> 181
+-- (tested in that order).
 -- 193 (#291: bw_open_group_chat, chats_select_joinable, one chat per gig) is
 -- REQUIRED: someone added to a gig's lineup for the first time has no
 -- participant row, and without 193 an old build's "does the gig chat
@@ -64,8 +70,14 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  IF TG_OP = 'UPDATE' AND NOT (lower(btrim(coalesce(NEW.status::text, ''))) IN ('declined', 'dropped_out', 'removed')
-                                AND lower(btrim(coalesce(OLD.status::text, ''))) NOT IN ('declined', 'dropped_out', 'removed')) THEN
+  -- An UPDATE that keeps the gig and the person and doesn't take them off
+  -- it changes nothing here. Round 5: a row moved to another gig or person
+  -- takes the old pair off the old gig.
+  IF TG_OP = 'UPDATE'
+     AND NEW.event_id IS NOT DISTINCT FROM OLD.event_id
+     AND NEW.user_id IS NOT DISTINCT FROM OLD.user_id
+     AND NOT (lower(btrim(coalesce(NEW.status::text, ''))) IN ('declined', 'dropped_out', 'removed')
+              AND lower(btrim(coalesce(OLD.status::text, ''))) NOT IN ('declined', 'dropped_out', 'removed')) THEN
     RETURN NEW;
   END IF;
   INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
@@ -86,8 +98,36 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_trg_event_member_left_chat() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS bw_event_member_left_chat ON public.event_members;
 CREATE TRIGGER bw_event_member_left_chat
-  AFTER UPDATE OF status OR DELETE ON public.event_members
+  AFTER UPDATE OF status, user_id, event_id OR DELETE ON public.event_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_member_left_chat();
+
+-- Round 5: a gig with a chat or a lineup keeps its band. events_update_policy
+-- (073) lets its admins update the row, band_id included, and an old build's
+-- gig edit sends the band of the screen it was made from. The change is
+-- refused by keeping the band as it was (no error: the rest of that edit
+-- still saves). The server (service role) may still move it.
+CREATE OR REPLACE FUNCTION public.bw_trg_event_band_fixed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.band_id IS DISTINCT FROM OLD.band_id
+     AND NOT (current_setting('role', true) = 'service_role'
+              OR coalesce(auth.jwt() ->> 'role', '') = 'service_role')
+     AND (EXISTS (SELECT 1 FROM chats c WHERE c.type::text = 'event' AND c.event_id = OLD.id)
+          OR EXISTS (SELECT 1 FROM event_members em WHERE em.event_id = OLD.id)) THEN
+    NEW.band_id := OLD.band_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_event_band_fixed() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_event_band_fixed ON public.events;
+CREATE TRIGGER bw_event_band_fixed
+  BEFORE UPDATE OF band_id ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_band_fixed();
 
 -- Stale gig chat rows today: archived once, kept (round 4; the rule
 -- refuses them).

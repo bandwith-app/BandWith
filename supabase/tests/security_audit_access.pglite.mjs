@@ -1019,5 +1019,43 @@ const total = predicted.reduce((t, x) => t + x.rows_to_archive, 0);
 ok(total > 0 && total === after - before && predicted.some((x) => x.reason.startsWith('not on the lineup')),
   `archive preview: ${JSON.stringify(predicted)} = ${after - before} archived`);
 
+// ── 13. #289 round 5 (Claude on 657b943d)
+// 181:89: a lineup row moved to another person or gig takes the old pair off the old gig.
+const trgDef = (await db.query(`SELECT pg_get_triggerdef(oid) AS d FROM pg_trigger WHERE tgname = 'bw_event_member_left_chat'`)).rows[0]?.d ?? '';
+ok(/AFTER DELETE OR UPDATE OF status, user_id, event_id ON/.test(trgDef), `181 archive trigger: AFTER UPDATE OF status, user_id, event_id OR DELETE (${trgDef.replace(/.*AFTER/, 'AFTER').slice(0, 70)})`);
+const R4 = id(74);
+const archOf = async (c, u) => (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${c}' AND user_id = '${u}'`)).rows[0].n;
+await db.exec(`INSERT INTO auth.users VALUES ('${R4}','r4@example.invalid'); INSERT INTO profiles (id, email) VALUES ('${R4}','r4@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${R4}','member');
+  INSERT INTO event_members VALUES ('${GIG3}','${R3}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R3}') ON CONFLICT DO NOTHING;`);
+r = await as(R3, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n > 0, `on the lineup: reads the gig chat (${r.error ?? r.rows[0]?.n})`);
+let a0 = await archOf(EVCHAT3, R3);
+await db.exec(`UPDATE event_members SET user_id = '${R4}' WHERE event_id = '${GIG3}' AND user_id = '${R3}'`);
+r = await as(R3, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n === 0 && (await archOf(EVCHAT3, R3)) === a0 + 1, `lineup row given to someone else: out of the gig chat, row archived (${r.rows[0]?.n}, archive ${a0} -> ${await archOf(EVCHAT3, R3)})`);
+a0 = await archOf(EVCHAT3, R4);
+await db.exec(`INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R4}') ON CONFLICT DO NOTHING;
+  UPDATE event_members SET event_id = '${GIG6}' WHERE event_id = '${GIG3}' AND user_id = '${R4}'`);
+r = await as(R4, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n === 0 && (await archOf(EVCHAT3, R4)) === a0 + 1, `lineup row moved to another gig: out of the old gig's chat, row archived (${r.rows[0]?.n}, archive ${a0} -> ${await archOf(EVCHAT3, R4)})`);
+// 181 (073:690): a gig with a chat or a lineup keeps its band.
+const bandOf = async (e) => (await db.query(`SELECT band_id, title FROM events WHERE id = '${e}'`)).rows[0];
+await db.exec(`UPDATE events SET band_id = '${OTHERBAND}', title = 'Harbor Lights (edited)' WHERE id = '${GIG3}'`);
+let b = await bandOf(GIG3);
+ok(b.band_id === BAND && b.title === 'Harbor Lights (edited)', `gig with a chat and a lineup: band_id stays, the rest of the edit saves (${JSON.stringify(b)})`);
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${id(75)}','${BAND}','Lineup only','confirmed','gig','${ADMIN}', current_date + 80);
+  INSERT INTO event_members VALUES ('${id(75)}','${NEWM}','confirmed');
+  UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(75)}';`);
+ok((await bandOf(id(75))).band_id === BAND, 'gig with a lineup and no chat: band_id stays');
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${id(76)}','${BAND}','Bare','confirmed','gig','${ADMIN}', current_date + 90);
+  UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(76)}';`);
+ok((await bandOf(id(76))).band_id === OTHERBAND, 'gig with no chat and no lineup: may move band');
+r = await asRole('service_role', `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(75)}'`);
+b = await bandOf(id(75));
+ok(!r.error && b.band_id === OTHERBAND, `the service role may still move it (${r.error ?? b.band_id === OTHERBAND})`);
+await asRole('service_role', `UPDATE events SET band_id = '${BAND}' WHERE id = '${id(75)}'`);
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
