@@ -73,6 +73,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   statusRef.current = status;
   /** Android: the permission was asked again once from the button; next time, open Settings. */
   const askedAgainRef = useRef(false);
+  /** The button sent the user to Settings: check again when they're back. */
+  const toSettingsRef = useRef(false);
   const burstRef = useRef<() => void>(() => {});
   /** Member: measure the leader's clock again now (a burst of pings). */
   const burst = useCallback(() => burstRef.current(), []);
@@ -365,12 +367,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     // A reloaded setlist doesn't drop the link: reads use savedRef.
   }, [active, isLeader, eventId, attempt]);
 
-  // Back from Settings (permission granted, Bluetooth turned on): start again by itself.
+  // Back from Settings (sent by the button): start again by itself. Not on any
+  // resume: closing the system permission dialog resumes the app too, and
+  // asking again then would show the dialog twice.
   useEffect(() => {
     if (!active) return;
     let handle: PluginListenerHandle | null = null;
     let gone = false;
     void App.addListener('resume', () => {
+      if (!toSettingsRef.current) return;
+      toSettingsRef.current = false;
       if (statusRef.current === 'denied' || statusRef.current === 'bt-off') setAttempt((n) => n + 1);
     })
       .then((h) => {
@@ -395,6 +401,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (android) await BleClient.requestEnable();
       } else if (statusRef.current === 'denied') {
         if (!android || askedAgainRef.current) {
+          toSettingsRef.current = true;
           await BleClient.openAppSettings();
           return;
         }
