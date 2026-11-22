@@ -24,11 +24,12 @@
 -- release migration on main defines a function another one defines too and
 -- it has no row here.
 --
--- Order these rows depend on (hard: the later migration raises without the
--- earlier one): 178 → 182 (bw_event_deputy_hidden), 175 → 193
--- (bw_chat_scope_ok_for, bw_chats_immutable_keys), 180 → 197
--- (bw_withdraw_song_suggestion starts from 180's body), 178 → 191 (191's DO
--- block adds 178's quote guard to the stage functions).
+-- Orders these rows depend on (docs/release-checklist.md, "Constraints").
+-- Hard (the later migration raises without the earlier one): 178 → 182,
+-- 175 → 193, 175 → 181, 193 → 181, 183 → 187, 185 → 187, 175 → 192.
+-- Soft (no raise; a wrong order leaves a wrong body, which a row here
+-- catches): 180 → 197 (bw_withdraw_song_suggestion starts from 180's body),
+-- 178 → 191 (without 178, 191's DO block does nothing).
 SELECT v.fn AS function,
        v.final AS final_migration,
        v.replaces,

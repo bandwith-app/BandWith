@@ -181,3 +181,15 @@ describe('one spelling for the tag (Codex, #278): android-version-code.sh --tag'
     expect(r.stdout).not.toMatch(/Built|gradle/i);
   });
 });
+
+describe('the header example fits the version scheme (Claude review of 8a83933e)', () => {
+  it('names no version the scheme refuses (below 1.0.14)', async () => {
+    const { readFileSync } = (await import(/* @vite-ignore */ 'node:fs')) as { readFileSync: (p: string, e: 'utf8') => string };
+    const proc = (globalThis as unknown as { process: { cwd(): string } }).process;
+    const head = readFileSync(`${proc.cwd()}/scripts/android-promote-check.sh`, 'utf8').split('\n').filter((l) => l.startsWith('#')).join('\n');
+    for (const [, v] of head.matchAll(/\b(\d+\.\d+\.\d+(?:\.\d+)?)\b/g)) {
+      const [a, b, c] = v.split('.').map(Number);
+      expect(a > 1 || b > 0 || c >= 14, v).toBe(true);
+    }
+  });
+});

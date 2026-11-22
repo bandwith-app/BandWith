@@ -2,9 +2,10 @@
 # Before promoting an Android prerelease to everyone (docs/release-checklist.md):
 # its APK must have its version's versionCode, above every release ever published.
 # Android won't install a lower code over a higher one, and the in-app updater
-# needs a strictly higher one. Example: a hotfix 1.0.13.1 published during
-# the 1.0.14 pilot was built later, so its code is higher; promoting the
-# 1.0.14 APK then fails on every phone that took the hotfix. Rebuild instead.
+# needs a strictly higher one. Example: 1.0.15 went out as a prerelease to
+# a few testers while 1.0.14 was still in its pilot; promoting the 1.0.14 APK
+# then fails on every phone that took 1.0.15 (lower code). Ship a 1.0.15.1
+# instead. An APK built with a code other than its version's is refused too.
 #
 #   scripts/android-promote-check.sh <version> [--code <versionCode>]
 #   → exit 0 and "OK …", or exit 1 and why

@@ -103,3 +103,22 @@ describe('CI runs it on main and on PRs', () => {
     expect(pkg.dependencies['@electric-sql/pglite']).toBe('0.5.15');
   });
 });
+
+// Claude review of 8a83933e (11-22): strict mode with frozen heads.
+describe('strict mode accepts reads pinned to an exact commit (PINNED)', () => {
+  const out = (s: string, code = 0) => ({ code, out: s });
+  it('PINNED numbers are not pending: a strict run with frozen heads can pass', () => {
+    expect(verdict(out('PINNED 175 184\nok  a\nALL OK'), { pending: ['175'], strict: true }).status).toBe('pass');
+    // A branch head (moving) still fails a strict run.
+    expect(verdict(out('PENDING 175\nPINNED 184\nok  a'), { pending: [], strict: true })).toMatchObject({ status: 'fail', why: expect.stringContaining('175') });
+    // A failure is a failure, pinned or not.
+    expect(verdict(out('PINNED 175\nFAIL a', 1), { pending: [], strict: true }).status).toBe('fail');
+  });
+  it('the release run prints PINNED for an exact SHA (BW_RELEASE_HEADS or BW_RELEASE_AT=verified), PENDING for a branch', async () => {
+    const proc = (globalThis as unknown as { process: { cwd(): string } }).process;
+    const { readFileSync } = (await import(/* @vite-ignore */ 'node:fs')) as { readFileSync: (p: string, e: 'utf8') => string };
+    const chain = readFileSync(`${proc.cwd()}/supabase/tests/integration-chain.pglite.mjs`, 'utf8');
+    expect(chain).toMatch(/console\.log\(`PINNED \$\{pinned\.join\(' '\)\}`\)/);
+    expect(chain).toMatch(/const isPin = /);
+  });
+});

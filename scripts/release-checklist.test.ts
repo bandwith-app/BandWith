@@ -524,11 +524,15 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
     .map((l) => [...l.replace(/\(.*?\)/g, '').matchAll(/\b(1\d\d)\b/g)].map((m) => m[1]))
     .filter((c) => c.length >= 2);
 
+  const HARD = ['178 → 182', '175 → 193', '175 → 181', '193 → 181', '183 → 187', '185 → 187', '175 → 192'];
   it('lists every order the release depends on, the hard ones marked as such', () => {
     expect(constraints).not.toBe('');
     for (const want of ['178 → 182', '175 → 193', '180 → 197', '194 → 192 → 193', '183 → 185 → 186 → 187', '175 → 178 → 193 → 181', '178 → 191'])
       expect(constraints, want).toContain(want);
-    for (const hard of ['178 → 182', '175 → 193']) expect(constraints).toMatch(new RegExp(`${hard}[^\\n]*\\*\\*hard\\*\\*`));
+    // Hard = the later migration raises without the earlier one (Claude review
+    // of 8a83933e: 178 → 191 and 180 → 197 don't raise, they are soft).
+    for (const hard of HARD) expect(constraints, hard).toMatch(new RegExp(`\\*\\*${hard}\\*\\*, \\*\\*hard\\*\\*`));
+    for (const soft of ['180 → 197', '178 → 191']) expect(constraints, soft).not.toMatch(new RegExp(`${soft}[^\\n]*hard`));
     expect(pairs).toBeDefined();
   });
 
@@ -539,7 +543,11 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
 
   it('the function checks state the hard constraints too', () => {
     const redef = read('supabase/checks/redefined_functions.sql');
-    for (const sql of [check, redef]) for (const c of ['178 → 182', '175 → 193', '180 → 197']) expect(sql, c).toContain(c);
+    for (const sql of [check, redef]) {
+      const hardLine = sql.match(/^-- Hard[^:]*:([\s\S]*?)(?=\n-- [A-Z]|\n[A-Z])/m)?.[1] ?? '';
+      for (const c of HARD) expect(hardLine, c).toContain(c);
+      for (const soft of ['180 → 197', '178 → 191']) expect(hardLine, soft).not.toContain(soft);
+    }
   });
 
   it('the deploy waits are in the constraints: calendars before 182, auth.ts users after 175, delete-account after 180', () => {
@@ -595,5 +603,28 @@ describe('old builds (383f15b): what the release notes and the Academy must say'
     expect(after).toMatch(/383f15b[\s\S]*Stage Bluetooth key[\s\S]*until[^\n]*(updates|update)[^\n]*sign(s)? out/);
     expect(after).toMatch(/without a PDF[^\n]*"Update BandWith"/);
     expect(after).toMatch(/release notes[\s\S]*Academy/);
+  });
+});
+
+describe('send-email waits for 187 (Claude review of 8a83933e)', () => {
+  const doc = read('docs/release-checklist.md');
+  it('is deployed right after 187, not with the 175 group, and the order is a constraint', () => {
+    const after175 = doc.split('\n').find((l) => /^\s+- right after 175: deploy/.test(l)) ?? '';
+    const deployed = after175.match(/deploy (.*?): every function/)?.[1] ?? '';
+    expect(deployed).toMatch(/`send-push`/);
+    expect(deployed).not.toMatch(/`send-email`/);
+    expect(after175).toMatch(/`send-email` \(after 187\)/);
+    expect(doc).toMatch(/^\s+- right after 187: deploy `send-email`[^\n]*recipient_email[^\n]*balance_version/m);
+    expect(doc).toMatch(/^- 187 → `send-email`/m);
+  });
+});
+
+describe('history check: versions told apart like the markers are (Claude review of 8a83933e, NIT 6)', () => {
+  it('dedups on the raw body (comments kept), skips a comment-only change unless it drops a comment marker', () => {
+    const chain = read('supabase/tests/integration-chain.pglite.mjs');
+    const fn = chain.slice(chain.indexOf('const earlierVersions = '), chain.indexOf('};', chain.indexOf('const earlierVersions = ')));
+    expect(fn).toMatch(/rawKey\(/);
+    expect(fn).not.toMatch(/const k = code\(/);
+    expect(fn).toMatch(/commentMarkers/);
   });
 });

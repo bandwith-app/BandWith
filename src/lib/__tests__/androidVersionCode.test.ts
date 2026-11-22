@@ -55,9 +55,13 @@ describe('Android versionCode', () => {
 
   it('release-android.sh refuses a non-canonical version before anything else', () => {
     const sh = execFileSync('cat', [`${process.cwd()}/scripts/release-android.sh`]).toString();
-    const versionCheck = sh.indexOf('scripts/android-version-code.sh "$VERSION" >/dev/null');
+    // Since 82d29c7d the tag comes from --tag (one android-v stripped, version validated).
+    const versionCheck = sh.indexOf('TAG="$(scripts/android-version-code.sh --tag "$VERSION")" || exit 1');
     expect(versionCheck).toBeGreaterThan(-1);
-    expect(versionCheck).toBeLessThan(sh.indexOf('TAG="android-v$VERSION"'));
+    expect(sh).not.toContain('TAG="android-v$VERSION"');
+    // Nothing reads the version or the tag before it is checked.
+    const firstUse = sh.search(/\$\{?(TAG|VERSION)\b(?![^\n]*--tag)/);
+    expect(firstUse === -1 || firstUse > versionCheck, `first use at ${firstUse}`).toBe(true);
     expect(sh).not.toMatch(/\[\[ "\$VERSION" =~ \^\[0-9\]\+\(\\\.\[0-9\]\+\)\{1,3\}\$ \]\]/);
   });
 

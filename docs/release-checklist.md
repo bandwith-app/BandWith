@@ -112,11 +112,12 @@ Do it in this order, so every build in use keeps working at every step:
         - 190 and 191 must be in before any new app build ships (stage 1).
         - All of them are additive.
      - **Functions that wait for their migration**: deploy each in the same session, right after its migration, before the next one. Each from a **clean worktree** on the release commit, with `--no-verify-jwt`, and each proven with `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` (today's update time).
-       - right after 175: deploy `send-push`, `send-email`, `invite-member`, `places` and `setup-invite-rls`: every function that imports `_shared/auth.ts`, except `delete-account` (after 180) and `quote-pdf` (after 176). Find them again on the release commit with `grep -l "_shared/auth" supabase/functions/*/index.ts`.
+       - right after 175: deploy `send-push`, `invite-member`, `places` and `setup-invite-rls`: every function that imports `_shared/auth.ts`, except `delete-account` (after 180), `quote-pdf` (after 176) and `send-email` (after 187). Find them again on the release commit with `grep -l "_shared/auth" supabase/functions/*/index.ts`.
          - Why right after: 175 keeps the `chat_participants` rows of people who left the band or the lineup. The deployed `auth.ts` reads that roster directly, so until the redeploy an ex-member still gets chat pushes. The release's `auth.ts` (#281) asks 175's `bw_chat_recipient_ids` and sends to nobody without it, so it can't go before 175 either.
          - The rule: `send-push` goes out **right after 175**, and only with **194 and 184 already in**: 175 (its recipients rule, above), 194 (the chat notice claim, so a deleted message's text never reaches a lock screen) and 184 (the stamped push tokens). It is deployed once, here.
-         - Proof: the rows of **194, 184 and 175** are all `true` before the deploy (`supabase/checks/release_migrations.sql`: 194 by `bw_write_chat_notices` and the markers of its final body, 184 by `push_tokens.uid_gated` and `bw_register_push_token_stamped`, 175 by its markers and `messages_delete_guard`), then the functions list shows all five with today's update time. With 194 and 184 in, `send-push` runs neither fallback. Those fallbacks (no 194, no 184) are an emergency net only, never the plan: on the no-194 path a deleted message's text could reach a lock screen.
+         - Proof: the rows of **194, 184 and 175** are all `true` before the deploy (`supabase/checks/release_migrations.sql`: 194 by `bw_write_chat_notices` and the markers of its final body, 184 by `push_tokens.uid_gated` and `bw_register_push_token_stamped`, 175 by its markers and `messages_delete_guard`), then the functions list shows all four with today's update time. With 194 and 184 in, `send-push` runs neither fallback. Those fallbacks (no 194, no 184) are an emergency net only, never the plan: on the no-194 path a deleted message's text could reach a lock screen.
          - Check: in a test band, someone who has left (`band_members.is_active = false`, or removed from the gig's lineup) and still has a device registered. Send a message in that band's chat (or that gig's chat). The push to the ex-member must not reach them: no alert on their device, `SELECT public.bw_chat_recipient_ids('<chat>', '<sender>')` doesn't list them, and they have no new `notifications` row for the message. The current members still get it.
+       - right after 187: deploy `send-email`. The release's `send-email` reads `quote_links.recipient_email` (183) and `balance_version` (185), so it can't go before 187 (the last of the quote link steps). Until then the deployed one keeps working: it doesn't read the chat roster, so 175 doesn't touch it. Proof: 187's row is `true` before the deploy, then the functions list shows `send-email` with today's update time.
        - right after 176: deploy `quote-pdf` (new). It reads the PDF path through 176's `bw_quote_link_pdf_path`. Proof: 176's row is `true` before the deploy; nothing calls it until the web app ships in stage 3.
        - right after 180: first check `SELECT jobname, schedule FROM cron.job WHERE jobname = 'bw-finish-account-deletions';` returns one row (`*/5 * * * *`). Then, from a clean worktree on the release commit, `npx supabase functions deploy delete-account --no-verify-jwt --project-ref elvlzpowkohjbhxjasvd`. Proof: 180's row is `true` before the deploy, and the functions list shows `delete-account` with today's update time. Before 180 it answers 503 (fails safe, but no one can delete their account), so don't deploy it earlier.
      - **Not 172**: already live (section 1).
@@ -140,15 +141,21 @@ The orders the release depends on. The apply step (step 2, item 4) keeps all of 
 
 - **178 → 182**, **hard** (182 uses 178's `bw_event_deputy_hidden`)
 - **175 → 193**, **hard** (193 uses 175's `bw_chat_scope_ok_for` and `bw_chats_immutable_keys`)
-- **180 → 197** (197's `bw_withdraw_song_suggestion` starts from 180's body; `redefined_functions.sql` checks 197's is live)
+- **175 → 181**, **hard** (181 raises without 175's final body, marker `bw:175-r4`)
+- **193 → 181**, **hard** (181 raises without 193's `bw_open_group_chat`)
+- **183 → 187**, **hard** (187 raises without 183's quote page fixes)
+- **185 → 187**, **hard** (187 raises without 185's quote money fixes)
+- **175 → 192**, **hard** (192 raises without 175's `bw_chat_scope_ok_for`)
+- **180 → 197**, soft (no raise: its `bw_withdraw_song_suggestion` starts from that body; `redefined_functions.sql` checks the final one is live)
 - **194 → 192 → 193** (192 writes chat notices through 194's `bw_write_chat_notices`)
 - **183 → 185 → 186 → 187** (one quote link, built up in steps)
 - **175 → 178 → 193 → 181** (178 keeps 175's `bw_chat_scope_ok`; 181 uses 193's one chat per gig)
-- **178 → 191** (191's DO block adds 178's quote guard to the stage functions)
+- **178 → 191**, soft (no raise: the DO block adds the quote guard to the stage functions, and does nothing before it)
 - **194 and 184 → 175** (not a SQL need: so `send-push`, deployed once after 175, has both)
 - `member-calendar` and `deputy-calendar` → 182 (step 1: 182 needs the new functions first)
 - 175 → `send-push` and the other `_shared/auth.ts` functions (right after; with 184 and 194 already in)
 - 176 → `quote-pdf`
+- 187 → `send-email` (it reads 183's `recipient_email` and 185's `balance_version`)
 - 180 → `delete-account` (`--no-verify-jwt`, clean worktree; `cron.job` has `bw-finish-account-deletions` first)
 
 Which functions more than one migration defines comes from `node scripts/fn-redefinitions.mjs --check`, over the branches in `supabase/checks/release-sources.txt` (same order as the apply step); it fails when one has no row in `redefined_functions.sql`.

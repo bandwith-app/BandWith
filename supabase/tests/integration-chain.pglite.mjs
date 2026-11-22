@@ -22,7 +22,8 @@
 //                                    the frozen heads before the merge)
 //      Each one read from a branch is named in a PENDING line (the runner
 //      treats a failure then as a warning until all of the release is on
-//      main). A head whose file differs from the verified SHA's prints a WARN.
+//      main); one read at an exact SHA (frozen heads) in a PINNED line, which
+//      a strict run (BW_PGLITE_STRICT=1) accepts. A head whose file differs from the verified SHA's prints a WARN.
 //   3. every row of release_migrations.sql true but 177 (false: not in the
 //      release) and every row of redefined_functions.sql ok. A false row
 //      prints its source PR and its proof.
@@ -224,6 +225,16 @@ const fileAt = (ref, n) => {
   }
 };
 const pending = [];
+const pinned = [];
+// An exact commit (a SHA that resolves to itself), not a branch that moves.
+const isPin = (ref) => {
+  if (!/^[0-9a-f]{7,40}$/.test(ref)) return false;
+  try {
+    return git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`).trim().startsWith(ref);
+  } catch {
+    return false;
+  }
+};
 const plan = [];
 for (const s of sources) {
   if (onCheckout.has(s.n)) {
@@ -237,7 +248,7 @@ for (const s of sources) {
     ok(false, `${s.n} (${s.pr}): no supabase/migrations/${s.n}_*.sql at ${ref}`);
     continue;
   }
-  pending.push(s.n);
+  (isPin(ref) ? pinned : pending).push(s.n);
   if (s.verified && ref !== s.verified) {
     const v = fileAt(s.verified, s.n);
     if (!v) console.log(`WARN ${s.n}: its verified SHA ${s.verified} is not reachable here; its proofs were checked on a file not compared`);
@@ -246,6 +257,7 @@ for (const s of sources) {
   plan.push({ ...s, from: ref, sql: got.sql });
 }
 if (pending.length) console.log(`PENDING ${pending.join(' ')}`);
+if (pinned.length) console.log(`PINNED ${pinned.join(' ')}`);
 if (plan.length !== sources.length) done();
 
 // Every earlier code version of a release migration (git log of its file on
@@ -256,10 +268,20 @@ if (plan.length !== sources.length) done();
 // BW_CHAIN_HISTORY=0 skips this.
 const HISTORY = process.env.BW_CHAIN_HISTORY !== '0';
 const code = (sql) => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+// Markers match the live body with its comments (pg_get_functiondef keeps
+// them), so versions are told apart the same way: the raw text, spacing aside.
+const rawKey = (sql) => sql.replace(/\s+/g, ' ').trim();
+// This migration's markers that sit only in comment lines of its file.
+const commentMarkers = (n, sql) =>
+  [...RELEASE.matchAll(/^\s*\('(\d{3})', '\w+', '((?:[^']|'')*)'\)/gm)]
+    .filter((m) => m[1] === n)
+    .map((m) => m[2].replace(/''/g, "'"))
+    .filter((t) => sql.includes(t) && !sql.split('\n').some((l) => l.replace(/--.*$/, '').includes(t)));
 const earlierVersions = (s) => {
   const ref = s.from === 'checkout' ? 'HEAD' : s.from;
-  const head = code(s.sql);
-  const seen = new Set([head]);
+  const headCode = code(s.sql);
+  const marks = commentMarkers(s.n, s.sql);
+  const seen = new Set([rawKey(s.sql)]);
   const out = [];
   let commits = [];
   try {
@@ -268,9 +290,12 @@ const earlierVersions = (s) => {
   for (const c of commits) {
     const got = fileAt(c, s.n);
     if (!got) continue;
-    const k = code(got.sql);
+    const k = rawKey(got.sql);
     if (seen.has(k)) continue;
     seen.add(k);
+    // Same code, other comments: the same live behaviour. Counted only when it
+    // lacks a marker the final version carries in a comment.
+    if (code(got.sql) === headCode && marks.every((t) => got.sql.includes(t))) continue;
     out.push({ commit: c.slice(0, 8), sql: got.sql });
   }
   return out;

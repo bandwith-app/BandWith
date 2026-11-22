@@ -37,11 +37,12 @@
 -- policy role (TO authenticated), 191 the quote guard its DO block adds to
 -- bw_stage_clock_topic_allowed once 178 is in.
 --
--- Apply order (docs/release-checklist.md, "Constraints"). Hard, the later
--- one raises without the earlier: 178 → 182 (bw_event_deputy_hidden),
--- 175 → 193 (bw_chat_scope_ok_for). Also 180 → 197, 194 → 192 → 193,
--- 183 → 185 → 186 → 187, 175 → 178 → 193 → 181, 178 → 191. A row can be
--- true out of order; redefined_functions.sql catches a wrong live body.
+-- Apply order (docs/release-checklist.md, "Constraints").
+-- Hard (the later one raises without the earlier): 178 → 182, 175 → 193,
+-- 175 → 181, 193 → 181, 183 → 187, 185 → 187, 175 → 192.
+-- Soft: 180 → 197, 194 → 192 → 193, 183 → 185 → 186 → 187,
+-- 175 → 178 → 193 → 181, 178 → 191. A row can be true out of order;
+-- redefined_functions.sql catches a wrong live body.
 -- The source column: the PR whose branch head the markers were taken from.
 --
 -- applied = true: in. false: not in. A migration half applied can't happen

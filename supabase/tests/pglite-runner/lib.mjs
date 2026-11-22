@@ -41,7 +41,10 @@ export function branchReads(src) {
 export function verdict({ code, out }, { pending, strict }) {
   // A suite that reads release migrations itself names them: "PENDING 175 184".
   const named = [...out.matchAll(/^PENDING ((?:\d{3}\s*)+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/));
-  pending = [...new Set([...pending, ...named])];
+  // Read at an exact commit (frozen heads: BW_RELEASE_HEADS=<pr>=<sha> or
+  // BW_RELEASE_AT=verified): "PINNED 175 184". Not moving, so not pending.
+  const pinned = new Set([...out.matchAll(/^PINNED ((?:\d{3}\s*)+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
+  pending = [...new Set([...pending, ...named])].filter((n) => !pinned.has(n));
   const failed = code !== 0 || /^\s*(FAIL|ERROR)\b/m.test(out);
   const skipped = /^\s*SKIP\b/m.test(out);
   if (failed) {
