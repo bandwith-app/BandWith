@@ -57,6 +57,8 @@ vi.mock('@/lib/supabase', () => {
 });
 vi.mock('@/lib/regiaAudio', async () => ({
   audioFailureFor: (await vi.importActual<typeof import('@/lib/regiaAudio')>('@/lib/regiaAudio')).audioFailureFor,
+  // #296: useAudioDownloads binds each pass to the sign-in it is asked under (as in useStageRegia.test.ts).
+  audioSession: () => () => true,
   cachedAudio: async () => new Set(),
   downloadAudio: async () => ({ ok: true }),
   playableUrl: async (ref: string) => ({ url: `local:${ref}`, local: true }),
@@ -76,6 +78,10 @@ const player = (): RegiaPlayer => {
     load: async () => ((snap = { ...snap, status: 'ready' }), true),
     play: async () => ((snap = { ...snap, status: 'playing' }), true),
     pause: () => {},
+    // #296: RegiaPlayer.unload (the take is let go when its song leaves).
+    unload: () => {
+      snap = { status: 'idle', positionMs: 0, durationMs: null } as typeof snap;
+    },
     stop: async () => {},
     snapshot: () => snap,
     subscribe: () => () => {},

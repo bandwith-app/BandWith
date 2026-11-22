@@ -151,7 +151,8 @@ const localSignOut = vi.fn(async (_o?: unknown) => {
   return { error: null };
 });
 vi.mock('../supabase', () => ({ supabase: { auth: { signOut: (o: unknown) => localSignOut(o) } } }));
-vi.mock('../appAnalytics', () => ({ ANALYTICS_CONSENT_KEY: 'bw.analytics.consent' }));
+// (The wipe keeps #277's privacy choices too: privacyChoices.ts reads the version key.)
+vi.mock('../appAnalytics', () => ({ ANALYTICS_CONSENT_KEY: 'bw.analytics.consent', ANALYTICS_CONSENT_VERSION_KEY: 'bw.analytics.consent_version' }));
 
 import authContext from '../AuthContext.tsx?raw';
 import { audioFailureFor, audioKey, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, legacyAudioSignedIn, looksLikeAudio, playableUrl } from '../regiaAudio';
