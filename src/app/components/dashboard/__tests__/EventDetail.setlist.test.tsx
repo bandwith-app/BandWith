@@ -24,7 +24,7 @@ vi.mock('@/lib/supabase', () => {
     });
     return b;
   };
-  return { supabase: new Proxy({}, { get: () => () => builder() }) };
+  return { isDemoMode: false, supabase: new Proxy({}, { get: () => () => builder() }) };
 });
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), success: vi.fn(), error: vi.fn() },

@@ -1,5 +1,16 @@
 import { Capacitor } from '@capacitor/core';
-import { supabase, isDemoMode } from './supabase';
+import * as client from './supabase';
+
+const { supabase } = client;
+
+/** Demo mode, read when needed; unknown (a partial test mock) counts as demo: skip. */
+const inDemo = (): boolean => {
+  try {
+    return client.isDemoMode !== false;
+  } catch {
+    return true;
+  }
+};
 
 /**
  * What the server knows about the live packs (migration 170):
@@ -30,7 +41,7 @@ export function deviceId(): string {
   }
 }
 
-const canReport = () => !isDemoMode && Capacitor.isNativePlatform();
+const canReport = () => !inDemo() && Capacitor.isNativePlatform();
 
 type Reported = Record<string, string>;
 const readReported = (): Reported => {
@@ -125,7 +136,7 @@ export async function remindPackDownload(eventId: string, userId: string): Promi
 
 /** The answer on the consent sheet, for every device of the account. */
 export async function saveProfileChoice(userId: string, patch: { auto?: boolean; askedAt?: string }): Promise<void> {
-  if (isDemoMode) return;
+  if (inDemo()) return;
   const row: Record<string, unknown> = {};
   if (patch.auto !== undefined) row.live_pack_auto = patch.auto;
   if (patch.askedAt !== undefined) row.live_pack_asked_at = patch.askedAt;
@@ -139,7 +150,7 @@ export async function saveProfileChoice(userId: string, patch: { auto?: boolean;
 
 /** "Keep it automatic" chosen on another device; null when unknown. */
 export async function readProfileAuto(userId: string): Promise<boolean | null> {
-  if (isDemoMode) return null;
+  if (inDemo()) return null;
   try {
     const { data, error } = await supabase.from('profiles').select('live_pack_auto').eq('id', userId).maybeSingle();
     if (error || !data) return null;

@@ -329,9 +329,10 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   }
 
   let key = prev?.stageKey ?? null;
-  if (!key && !isDemoMode) {
+  if (!key) {
     try {
-      if (stageBleAvailable()) key = await stageKey(event.id);
+      // Inside the try: a partial client mock (tests) has no isDemoMode.
+      if (!isDemoMode && stageBleAvailable()) key = await stageKey(event.id);
     } catch {
       /* no key: Bluetooth just needs internet the first time */
     }
