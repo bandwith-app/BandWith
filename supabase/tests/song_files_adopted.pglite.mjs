@@ -187,7 +187,10 @@ const rpc = (user, sql, params) => as(user, () => q(sql, params).then((r) => r.r
 const begin = (user, song, field = 'audio_url') => rpc(user, `SELECT public.bw_song_file_adopt_begin($1, $2) AS v`, [song, field]);
 const repoint = (user, song, from, to, field = 'audio_url') =>
   rpc(user, `SELECT public.bw_song_file_adopt_repoint($1, $2, $3, $4) AS v`, [song, field, from, to]);
-const sweep = (user) => rpc(user, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+// The band's orphan scan runs at most every 6 hours (round 11): the cases
+// below that expect a fresh scan clear that mark first.
+const unthrottle = () => db.query(`DELETE FROM public.song_file_band_scan`).catch(() => undefined);
+const sweep = async (user) => { await unthrottle(); return rpc(user, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]); };
 // Committed writes (not rolled back): the RPCs' effect persists between steps.
 async function asCommit(user, sql, params) {
   await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${user}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
@@ -807,6 +810,7 @@ await putObj(LU);
 await db.exec(`INSERT INTO songs VALUES ('${id(124)}','${BAND}','Uses LU','ready','${R(LU)}',NULL);
   INSERT INTO song_file_removals (path, band_id, claimed_by, claimed_at) VALUES ('${LU}','${BAND}',NULL, now() - interval '16 minutes')`);
 await sweep(ADMIN).catch(() => undefined);
+await unthrottle();
 await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
 ok((await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [LU])).rows.length === 0, 'a lapsed claim of a used file is cleared');
 
@@ -869,7 +873,7 @@ await db.exec(`DELETE FROM songs WHERE id = '${QS9}'; UPDATE song_file_copies SE
 ok((await sweep(ADMIN)).includes(QT9), 'B3: a copy made after the first registration is still swept when unused');
 
 // ---- Round 10: Claude and Codex reviews of 28cb3199
-const sweepC = (user) => asCommit(user, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+const sweepC = async (user) => { await unthrottle(); return asCommit(user, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]); };
 // The app's sweep: list, then claim, delete and close each one.
 const sweepRun = async (user) => {
   const l = await sweepC(user);
@@ -974,9 +978,100 @@ ok(n4 === false, `NIT 4: outside the band, the delete check says no (${n4})`);
 await removedDone(MEM2, [R(N4)]);
 
 // NIT 5: the orphan scan reads the band's prefix with the C collation, and songs' refs are indexed.
-const orphDef = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_orphans(uuid, text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+const orphDef = (await qs(`SELECT pg_get_functiondef((SELECT p.oid FROM pg_proc p WHERE p.proname = 'bw_song_file_orphans')) AS d`)).rows[0]?.d ?? '';
 const idx = (await q(`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'songs'`)).rows.map((r) => r.indexdef).join('\n');
 ok(/COLLATE "C"/.test(orphDef) && /\(audio_url\)/.test(idx) && /\(chart_url\)/.test(idx), 'NIT 5: prefix scan with COLLATE "C", indexes on songs(audio_url) and songs(chart_url)');
+
+// ---- Round 11: Claude review of a474bbfb
+// BLOCKER: the repair must never overwrite a song that changed after it
+// looked (another device re-uploaded its file), and one call never lists a
+// file that it just turned into a claim. A second connection is simulated:
+// the repair's own look-up of the copy runs a write at that moment (a test
+// wrapper around bw_song_file_being_removed).
+await db.exec(`CREATE TABLE r11_inject (dest text PRIMARY KEY, stmt text, done boolean DEFAULT false);
+  ALTER FUNCTION public.bw_song_file_being_removed(text) RENAME TO bw_song_file_being_removed_r11;
+  CREATE FUNCTION public.bw_song_file_being_removed(p_path text) RETURNS boolean
+  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $w$
+  DECLARE v text;
+  BEGIN
+    UPDATE public.r11_inject SET done = true WHERE dest = p_path AND NOT done RETURNING stmt INTO v;
+    IF v IS NOT NULL THEN EXECUTE v; END IF;
+    RETURN public.bw_song_file_being_removed_r11(p_path);
+  END $w$;`);
+const noTrig = (sql) => db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed; ${sql}; ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed`);
+const stillStored = async (p) => (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [p])).rows.length === 1;
+const claimRow = async (p) => (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [p])).rows.length === 1;
+const inject = (dest, stmt) => q(`INSERT INTO r11_inject (dest, stmt) VALUES ($1, $2)`, [dest, stmt]);
+// 1. Song X on a missing suggestion file; its moved copy D is there. While
+//    the repair looks, the song gets a fresh upload N.
+const RX = id(150), RXD = `${BAND}/audio/r11-race.mp3`, RXN = `${BAND}/audio/r11-reupload.mp3`;
+await putObj(RXD);
+await noTrig(`INSERT INTO songs VALUES ('${RX}','${BAND}','Re-uploaded meanwhile','ready','${R(sug(MEM, 'audio/r11-race.mp3'))}',NULL)`);
+await putObj(RXN);
+await inject(RXD, `UPDATE public.songs SET audio_url = '${R(RXN)}' WHERE id = '${RX}'`);
+const race = await sweepC(ADMIN);
+const rxRow = (await q(`SELECT audio_url FROM songs WHERE id = $1`, [RX])).rows[0];
+ok(Array.isArray(race) && rxRow.audio_url === R(RXN) && !race.includes(RXN) && !(await claimRow(RXN)) && (await stillStored(RXN)),
+  `BLOCKER: the repair skips a song re-uploaded meanwhile; the new file is neither claimed nor listed (${JSON.stringify(race).slice(0, 90)}, ${rxRow.audio_url})`);
+// 2. A file another song lets go of during this call (a lapsed claim made
+//    by it) is not listed by it; the next visit takes it.
+const RY = id(151), RYD = `${BAND}/audio/r11-incall-copy.mp3`, RYF = `${BAND}/audio/r11-incall.mp3`, RZ = id(152);
+await putObj(RYD);
+await noTrig(`INSERT INTO songs VALUES ('${RY}','${BAND}','Repaired','ready','${R(sug(MEM, 'audio/r11-incall-copy.mp3'))}',NULL)`);
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${RYF}','${ADMIN}', now() - interval '3 days');
+  INSERT INTO songs VALUES ('${RZ}','${BAND}','Lets go','ready','${R(RYF)}',NULL)`);
+await q(`DELETE FROM r11_inject`); // (a refused call above rolled its mark back)
+await inject(RYD, `UPDATE public.songs SET audio_url = NULL WHERE id = '${RZ}'`);
+const inCall = await sweepC(ADMIN);
+ok(Array.isArray(inCall) && (await claimRow(RYF)) && !inCall.includes(RYF)
+  && (await q(`SELECT audio_url FROM songs WHERE id = $1`, [RY])).rows[0].audio_url === R(RYD),
+  `BLOCKER: a claim made during the call is not in its own list (${JSON.stringify(inCall).slice(0, 90)})`);
+await q(`DELETE FROM r11_inject`);
+ok((await sweepC(ADMIN)).includes(RYF), 'BLOCKER: the next visit lists it');
+await db.exec(`DROP FUNCTION public.bw_song_file_being_removed(text);
+  ALTER FUNCTION public.bw_song_file_being_removed_r11(text) RENAME TO bw_song_file_being_removed; DROP TABLE r11_inject`);
+// NIT 5: the repair locks its songs in id order (as the claims do).
+const listDef11 = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_sweep_list(uuid)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+ok(/ORDER BY s\.id\s+FOR UPDATE/.test(listDef11), 'NIT 5: the repair locks the songs it changes in id order');
+
+// MINOR 3: a long pasted link saves (only stored refs are indexed), and the
+// in-use check states the index's condition.
+const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+let seed = 12345;
+const LONG = 'https://example.com/' + Array.from({ length: 3000 }, () => { seed = (seed * 1103515245 + 12345) % 2147483648; return ALNUM[seed % 62]; }).join('');
+const longSave = await commitSql(ADMIN, `INSERT INTO songs VALUES ('${id(153)}','${BAND}','Long link','ready','${LONG}','${LONG}')`);
+ok(longSave === 1, `MINOR 3: a 3 kB https link saves (${longSave})`);
+const idx11 = (await q(`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'songs'`)).rows.map((r) => r.indexdef);
+const inUseDef = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_used_by_song(text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+ok(['audio_url', 'chart_url'].every((c) => idx11.some((d) => d.includes(`(${c})`) && d.includes(`WHERE (${c} ~~ 'sb://song-files/%'::text)`)))
+  && ['audio_url', 'chart_url'].every((c) => !idx11.some((d) => d.includes(`(${c})`) && !d.includes('WHERE')))
+  && /audio_url LIKE 'sb:\/\/song-files\/%'/.test(inUseDef) && /chart_url LIKE 'sb:\/\/song-files\/%'/.test(inUseDef),
+  'MINOR 3: the URL indexes are partial (stored refs) and the in-use check uses the same condition');
+await db.exec(`SET enable_seqscan = off`);
+const plan11 = await q(`EXPLAIN SELECT 1 FROM songs s WHERE s.audio_url LIKE 'sb://song-files/%' AND s.audio_url = 'sb://song-files/x'`).then((r) => JSON.stringify(r.rows)).catch((e) => e.message);
+await db.exec(`RESET enable_seqscan`);
+ok(/songs_audio_ref_idx/.test(plan11), 'MINOR 3: that condition uses the partial index');
+
+// MINOR 4: the band's orphan scan runs once per call, reads the pending
+// suggestions once, and at most every 6 hours per band.
+const orphDef11 = (await qs(`SELECT pg_get_functiondef((SELECT p.oid FROM pg_proc p WHERE p.proname = 'bw_song_file_orphans')) AS d`)).rows[0]?.d ?? '';
+ok(!/bw_song_file_in_use\(o\.name\)|bw_song_file_in_suggestion\(o\.name\)/.test(orphDef11) && (listDef11.match(/bw_song_file_orphans\(/g) || []).length === 1,
+  'MINOR 4: one orphan scan per call, pending suggestions read once');
+const TH = sug(MEM, 'audio/r11-throttle.mp3');
+await sweepC(ADMIN); // a scan now
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${TH}','${MEM}', now() - interval '3 days')`);
+const th1 = await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+ok(Array.isArray(th1) && !th1.includes(TH), 'MINOR 4: within 6 hours of the last scan the band is not scanned again');
+await db.exec(`UPDATE song_file_band_scan SET last_scan_at = now() - interval '7 hours' WHERE band_id = '${BAND}'`).catch(() => undefined);
+const th2 = await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+ok(Array.isArray(th2) && th2.includes(TH), 'MINOR 4: after 6 hours it is');
+const scanT = (await qs(`SELECT c.relrowsecurity AS rls, has_table_privilege('authenticated', c.oid, 'SELECT') AS a, has_table_privilege('anon', c.oid, 'SELECT') AS n
+  FROM pg_class c WHERE c.oid = 'public.song_file_band_scan'::regclass`)).rows[0];
+ok(scanT?.rls === true && scanT.a === false && scanT.n === false, 'MINOR 4: the scan marks have RLS on and no grants');
+await unthrottle();
+
+// NIT 6: the withdraw note names 180 where it is now.
+ok(/837c53f6, line 969/.test(mig), 'NIT 6: the withdraw note points at 180 @ 837c53f6, line 969');
 
 // ---- Main (after the prod dry run of 220767ca): prod storage.objects has
 // archived_at / is_delete_marker; an archived object or a delete marker is not
@@ -1019,7 +1114,7 @@ if (!live180) {
 } else {
   await db.exec(live180);
   const pred = (await q(`SELECT public.bw_storage_live_filter() AS p`)).rows[0].p.trim();
-  const od = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_orphans(uuid, text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+  const od = (await qs(`SELECT pg_get_functiondef((SELECT p.oid FROM pg_proc p WHERE p.proname = 'bw_song_file_orphans')) AS d`)).rows[0]?.d ?? '';
   ok(pred.length > 0 && (await storedDef()).includes(pred) && od.includes(pred),
     `197's live-row check is 180's bw_storage_live_filter predicate (${pred})`);
 }

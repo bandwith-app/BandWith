@@ -400,7 +400,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     if (previous === 'suggested' && status !== 'suggested'
         && hasUnadoptedFiles({ status, audio_url: song.audio_url, chart_url: song.chart_url })
         && !(await songFilesFit(selectedBand?.id, [song.audio_url, song.chart_url]))) {
-      setNotice({ text: t('Band storage is full: free up space to add this recording.'), error: true });
+      setNotice({ text: t('Band storage is full: free up space to add this file.'), error: true });
       return;
     }
     // Files move only once the new status is saved (not on the optimistic one).

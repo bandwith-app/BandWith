@@ -92,7 +92,7 @@ describe('Approving a suggested song from its menu', () => {
     render(<SetlistManagerView onClose={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /actions for empire state of mind/i }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /approve · learning/i }));
-    expect(await screen.findByText('Band storage is full: free up space to add this recording.')).toBeTruthy();
+    expect(await screen.findByText('Band storage is full: free up space to add this file.')).toBeTruthy();
     expect(svc.updateSong).not.toHaveBeenCalled();
     expect(svc.adopt).not.toHaveBeenCalled();
   });
@@ -100,9 +100,9 @@ describe('Approving a suggested song from its menu', () => {
   it('a move refused for storage on a later visit is shown, not dropped (Codex review of 28cb3199)', async () => {
     svc.getSongs.mockResolvedValue({ data: [{ ...suggested, status: 'learning' }], error: null });
     const { UserError } = await import('@/lib/userError');
-    svc.adopt.mockResolvedValue({ refs: {}, error: new UserError('Band storage is full: free up space to add this recording.') });
+    svc.adopt.mockResolvedValue({ refs: {}, error: new UserError('Band storage is full: free up space to add this file.') });
     render(<SetlistManagerView onClose={() => {}} />);
-    expect(await screen.findByText('Band storage is full: free up space to add this recording.')).toBeTruthy();
+    expect(await screen.findByText('Band storage is full: free up space to add this file.')).toBeTruthy();
   });
 
   it('tidies also when the band has no songs left (Codex review of ed7ec29f)', async () => {

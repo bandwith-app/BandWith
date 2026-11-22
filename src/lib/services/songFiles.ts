@@ -272,8 +272,11 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
       created = true;
     } else if (!alreadyExists(copyError)) {
       // A band over its storage plan: 161's policy refuses the copy (Codex
-      // review of 28cb3199, M1). Said as such, not as a silent failure.
-      if (policyRefusal(copyError) && (await onStoragePlan(c.from.split('/')[0]))) return { error: storageFullError() };
+      // review of 28cb3199, M1). Said as such, not as a silent failure; only
+      // when the file really doesn't fit the plan (Claude review of
+      // a474bbfb: any other refusal, e.g. an expired session, is the plain
+      // copy error).
+      if (policyRefusal(copyError) && (await overStorage(bucket, c.from))) return { error: storageFullError() };
       return { error: asError(copyError, 'Could not copy the file') };
     } else if (await sameFile(bucket, c.from, candidate, reservation.reserved_at)) {
       to = candidate;
@@ -359,19 +362,34 @@ const policyRefusal = (e: unknown) => {
   return (code === '400' || code === '403') && /row-level security|policy|unauthori[sz]ed/i.test(String(x?.message ?? ''));
 };
 
-/** The band's plan limits its storage (so a policy refusal of a copy is that limit). */
-async function onStoragePlan(bandId: string): Promise<boolean> {
+type Plan = Awaited<ReturnType<typeof fetchBandPlan>>;
+type Bucket = ReturnType<AdoptClient['storage']['from']>;
+
+/** These megabytes fit in the band's plan storage (no limit: they fit). */
+const fitsPlan = (ent: Plan, mb: number) =>
+  limitFor(ent, 'storage_mb') === null || canUse(ent, 'storage_mb', ent?.usage.storage_mb ?? 0, mb);
+
+/** One file's size in megabytes (0 when it can't be read). */
+async function fileMb(bucket: Bucket, path: string): Promise<number> {
+  const { data } = await bucket.info(path);
+  return (Number((data as { size?: number } | null)?.size ?? 0) || 0) / 1048576;
+}
+
+/** This band file doesn't fit in its band's plan storage (the songFilesFit maths); unknown: false. */
+async function overStorage(bucket: Bucket, path: string): Promise<boolean> {
   try {
-    return limitFor(await fetchBandPlan(bandId, true), 'storage_mb') !== null;
+    const ent = await fetchBandPlan(path.split('/')[0], true);
+    if (limitFor(ent, 'storage_mb') === null) return false;
+    return !fitsPlan(ent, await fileMb(bucket, path));
   } catch {
     return false;
   }
 }
 
 /** Said when the band's plan has no room for a song's recording or chart. */
-export const storageFullError = () => new UserError(t('Band storage is full: free up space to add this recording.'));
+export const storageFullError = () => new UserError(t('Band storage is full: free up space to add this file.'));
 export const isStorageFullError = (e: unknown) =>
-  e instanceof UserError && e.message === t('Band storage is full: free up space to add this recording.');
+  e instanceof UserError && e.message === t('Band storage is full: free up space to add this file.');
 
 /**
  * Before accepting a suggested song: its suggestion files fit in the band's
@@ -389,14 +407,8 @@ export const songFilesFit = async (
     const ent = await fetchBandPlan(bandId, true);
     if (limitFor(ent, 'storage_mb') === null) return true;
     const bucket = (opts?.client ?? supabase).storage.from(SONG_FILES_BUCKET);
-    const sizes = await Promise.all(
-      files.map(async (r) => {
-        const { data } = await bucket.info(r.slice(REF_PREFIX.length));
-        return Number((data as { size?: number } | null)?.size ?? 0) || 0;
-      }),
-    );
-    const mb = sizes.reduce((a, b) => a + b, 0) / 1048576;
-    return canUse(ent, 'storage_mb', ent?.usage.storage_mb ?? 0, mb);
+    const sizes = await Promise.all(files.map((r) => fileMb(bucket, r.slice(REF_PREFIX.length))));
+    return fitsPlan(ent, sizes.reduce((a, b) => a + b, 0));
   } catch {
     return true;
   }
