@@ -25,6 +25,8 @@ import { t } from '@/lib/i18n';
  *   leader's signature yet (it wasn't online since the pair was made).
  * - leader-unverified: linked and following an admin on this app who has no
  *   key pair yet (offline since before one was made): it can't sign.
+ * - clock-off: linked, but the leader's band-key state is far ahead of this
+ *   phone's time, with no clock measured to explain it: not followed.
  */
 export type StageBleStatus =
   | 'off'
@@ -38,7 +40,8 @@ export type StageBleStatus =
   | 'denied'
   | 'bt-off'
   | 'unsupported'
-  | 'outdated';
+  | 'outdated'
+  | 'clock-off';
 
 /** A member's phone linked to the leader's (and following it). */
 export const bleLinked = (status: StageBleStatus | undefined) =>
@@ -99,6 +102,8 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
       return { tone: 'warn', text: t('Leader not verified yet: connect to the internet once to check it.') };
     case 'leader-unverified':
       return { tone: 'warn', text: t('Leader not verified yet: ask the leader to connect to the internet once.') };
+    case 'clock-off':
+      return { tone: 'warn', text: t("This phone's time and the leader's are far apart: set both to automatic date and time.") };
     case 'unsupported':
       return {
         tone: 'warn',

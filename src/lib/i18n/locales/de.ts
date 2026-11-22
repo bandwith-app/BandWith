@@ -3846,6 +3846,7 @@ const dict: Dictionary = {
   "The band changed who can lead: connect to the internet once to follow the leader.": "Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.",
   "Leader not verified yet: connect to the internet once to check it.": "Leader noch nicht bestätigt: geh einmal online, um ihn zu prüfen.",
   "Leader not verified yet: ask the leader to connect to the internet once.": "Leader noch nicht bestätigt: bitte den Leader, einmal online zu gehen.",
+  "This phone's time and the leader's are far apart: set both to automatic date and time.": "Die Uhrzeit dieses Handys und die des Leaders liegen weit auseinander: stell bei beiden Datum und Uhrzeit auf automatisch.",
   "This phone can't lead the band without internet.": "Dieses Handy kann die Band nicht ohne Internet leiten.",
   "This phone can't follow the leader without internet.": "Dieses Handy kann dem Leader nicht ohne Internet folgen.",
   "Open Settings": "Einstellungen öffnen",

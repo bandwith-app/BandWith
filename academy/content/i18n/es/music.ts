@@ -1386,6 +1386,7 @@ const music: AreaText = {
           items: [
             "«El Bluetooth está apagado o no tiene permiso. Actívalo en Ajustes para seguir sincronizado sin internet.»",
             "«Este teléfono tiene una setlist antigua. Conéctate a internet una vez para seguir por Bluetooth.» Aparece cuando se han añadido o quitado canciones después de que el teléfono cargara la setlist por última vez. Un simple cambio de orden no da problemas.",
+            "«La hora de este teléfono y la del líder son muy distintas. Pon fecha y hora automáticas en los dos.» Los mensajes del líder llevan su hora; si va muy por delante de la de este teléfono no se siguen, porque un teléfono podría falsearla.",
           ],
         },
         { type: "note", tone: "privacy", text: "Cada concierto tiene su propia clave secreta, que solo reciben los miembros activos de la banda. Solo los teléfonos con la clave encuentran al líder y aceptan sus mensajes." },

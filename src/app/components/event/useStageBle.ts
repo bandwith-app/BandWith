@@ -57,6 +57,8 @@ const RETRY_MS = 2000;
  */
 export const LEADER_CHECK_MS = 30_000;
 export const IDLE_LEADER_CHECK_MS = 4_000;
+/** Another address of the linked leader's phone is skipped this long, then probed again. */
+export const SAME_LEADER_FORGET_MS = 5 * 60_000;
 /** How long such a look scans. */
 const LEADER_SCAN_MS = 2_000;
 /** A look's short link to another phone: a phone out of range mustn't hold up the leader's reads. */
@@ -409,8 +411,20 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let reads = 0;
     /** A clock burst runs until then (a look doesn't probe meanwhile). */
     let burstUntil = 0;
-    /** Other addresses of the linked leader's phone (Android rotates them): not probed again. */
-    let sameLeader = new Set<string>();
+    /** Other addresses of the linked leader's phone (Android rotates them), when seen: not probed again for a while. */
+    let sameLeader = new Map<string, number>();
+    const knownSame = (id: string) => Date.now() - (sameLeader.get(id) ?? -Infinity) < SAME_LEADER_FORGET_MS;
+    /** The linked phone's last state was dropped for a seq ahead of this phone's clock: read again once its clock is measured. */
+    let clockDropped = false;
+    /**
+     * A seq that could come from the linked leader's clock: judged with the
+     * offset measured over the link (a leader's phone set an hour ahead is
+     * still followed), with none for any other phone.
+     */
+    const plausibleFrom = (seq: number, id: string | null) => {
+      const offset = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
+      return seqPlausible(seq, Date.now() + offset);
+    };
     const radioBusy = () => reads > 0 || nowMs() < burstUntil;
     /** The linked phone; leaderLinks follows it. */
     const setDevice = (id: string | null) => {
@@ -463,7 +477,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const t2 = nowMs();
       const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), verify.public);
       if (t1 === null || cancelled || deviceId !== id) return true;
-      if (book.add(t0, t1, t2)) emitClock();
+      if (book.add(t0, t1, t2)) {
+        emitClock();
+        // Its state may be plausible now that its clock is known.
+        if (clockDropped) {
+          clockDropped = false;
+          void readNow();
+        }
+      }
       return true;
     };
 
@@ -609,9 +630,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           setStatus(linkedStatus());
           return;
         }
-        // Far ahead of the clock: made up (anyone with the band key can), never followed.
-        if (result.ok && !seqPlausible(result.state.seq)) return;
-        if (!result.ok && result.reason === 'setlist' && !seqPlausible(result.seq)) return;
+        // Far ahead of the leader's clock: made up (anyone with the band key can), never followed.
+        // Not silently "connected": the clocks may just be far apart.
+        const seq = result.ok ? result.state.seq : result.reason === 'setlist' ? result.seq : null;
+        if (seq !== null && !plausibleFrom(seq, id)) {
+          clockDropped = true;
+          setStatus('clock-off');
+          return;
+        }
         if (deviceId === id && (result.ok || result.reason === 'setlist')) {
           const heard = result.ok ? result.state : result;
           if (isNewer(heard, linkHeard)) linkHeard = { seq: heard.seq, from: heard.from };
@@ -654,10 +680,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
         // Leading nothing (seq 0): not a leader to move to (its signature was still noted, readState).
-        if (result.ok) return seqPlausible(result.state.seq) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
+        if (result.ok) return plausibleFrom(result.state.seq, id) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
         if (result.reason === 'stale') void refreshVerify();
-        if (result.reason === 'setlist' && seqPlausible(result.seq) && !leadsNothing(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
+        if (result.reason === 'setlist' && plausibleFrom(result.seq, id) && !leadsNothing(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
         return null;
       } catch {
         return null;
@@ -691,7 +717,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         scanStarts.push(Date.now());
         await BleClient.requestLEScan({ services: [serviceUuid] }, (r) => {
           const id = r.device.deviceId;
-          if (id !== current && trusted(id) && !sameLeader.has(id) && !found.includes(id)) found.push(id);
+          if (id !== current && trusted(id) && !knownSame(id) && !found.includes(id)) found.push(id);
         });
         await wait(LEADER_SCAN_MS);
         // Ended in every case (unless the search for a lost leader took it over),
@@ -715,9 +741,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (cancelled || deviceId !== current) return;
         if (!theirs) continue;
         // The linked leader itself at another address (Android rotates it): the same leader id in its state.
+        // Newer there than over the link: read the link again first (a change
+        // on its way); still behind, the link is stuck and that phone is followed.
         if (linkHeard && theirs.heard.from === linkHeard.from) {
-          sameLeader.add(id);
-          continue;
+          if (isNewer(theirs.heard, linkHeard)) await readNow();
+          if (cancelled || deviceId !== current) return;
+          if (!linkHeard || !isNewer(theirs.heard, linkHeard)) {
+            sameLeader.set(id, Date.now());
+            continue;
+          }
         }
         candidates.push({ id, heard: theirs.heard, signed: theirs.signed });
       }
@@ -825,7 +857,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       linkState = null;
       linkHeard = null;
       idleChecks = 0;
-      sameLeader = new Set();
+      sameLeader = new Map();
+      clockDropped = false;
       if (bookDevice !== id) {
         // Another phone: the last one's clock isn't this one's (and an older app has none to replace it).
         book.clear();

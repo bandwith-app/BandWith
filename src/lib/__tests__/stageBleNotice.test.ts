@@ -98,8 +98,16 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(bleLinked('leader-unverified')).toBe(true);
   });
 
+  it("the leader's time far ahead of this phone's, offline: never \"connected\" (Codex on #280, rule B)", () => {
+    expect(stageBleNotice(member({ status: 'clock-off' }))).toEqual({
+      tone: 'warn',
+      text: "This phone's time and the leader's are far apart: set both to automatic date and time.",
+    });
+    expect(stageBleNotice(member({ status: 'clock-off', online: true }))).toBeNull();
+  });
+
   it('never uses technical words', () => {
-    const all = (['connected', 'old-leader', 'stale-key', 'unverified', 'leader-unverified', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
+    const all = (['connected', 'old-leader', 'stale-key', 'unverified', 'leader-unverified', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'clock-off', 'unsupported'] as const).flatMap((status) =>
       [false, true].flatMap((isLeader) =>
         (['ios', 'android'] as const).map((platform) => stageBleNotice({ status, online: false, isLeader, followers: 2, platform })?.text ?? ''),
       ),

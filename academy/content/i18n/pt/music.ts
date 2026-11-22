@@ -1522,6 +1522,7 @@ const music: AreaText = {
           items: [
             "“O Bluetooth está desligado ou sem permissão. Ative-o em Ajustes para continuar sincronizado sem internet.”",
             "“Este celular tem uma setlist antiga. Conecte-se à internet uma vez para seguir por Bluetooth.” Isso aparece quando foram adicionadas ou removidas músicas depois que o celular carregou a setlist pela última vez. Só uma nova ordem não é problema.",
+            "“O horário deste celular e o do líder estão muito diferentes. Ative data e hora automáticas nos dois.” As mensagens do líder levam o horário dele; se estiver muito à frente do deste celular, não são seguidas, porque um celular poderia falsificá-lo.",
           ],
         },
         {
