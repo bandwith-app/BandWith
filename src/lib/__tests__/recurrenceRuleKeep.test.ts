@@ -82,12 +82,25 @@ describe('saving a repeating rehearsal keeps its deleted dates', () => {
   });
 });
 
-describe('a queued edit never overrides fresher deleted dates (Codex #297 round 3 B1)', () => {
-  it('stale skip_dates in the payload are unioned with the stored ones', async () => {
+describe('a queued edit never overrides fresher deleted dates (Codex #297 round 3 B1, M3)', () => {
+  it("the server's current list wins: a stale payload list is not sent", async () => {
     db.stored = { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08', '2099-12-15'] };
     // Queued before the other admin deleted Dec 15; changes the cadence.
     await updateEvent('ev', { recurrence_rule: { frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-22'] } } as any);
-    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-15', '2099-12-22'] });
+    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-15'] });
+  });
+
+  it('M3: a date restored meanwhile stays restored after an offline cadence edit replays', async () => {
+    // Queued offline with Dec 8 still deleted; another admin restored it since.
+    db.stored = { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-15'] };
+    await updateEvent('ev', { recurrence_rule: { frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-15'] } } as any);
+    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 2, skip_dates: ['2099-12-15'] });
+  });
+
+  it('M3: a new repeat never carries deleted dates from the form', async () => {
+    db.stored = null;
+    await updateEvent('ev', { recurrence_rule: { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08'] } } as any);
+    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 1 });
   });
 
   it('same cadence: the rule is not written at all (a rename never races a delete)', async () => {
@@ -97,8 +110,8 @@ describe('a queued edit never overrides fresher deleted dates (Codex #297 round 
     expect(db.updates[0].title).toBe('Renamed');
   });
 
-  it('mergeRecurrenceRule unions skip_dates', () => {
+  it('mergeRecurrenceRule takes deleted dates from the stored rule only (M3)', () => {
     expect(mergeRecurrenceRule({ frequency: 'weekly', skip_dates: ['2099-12-15'] }, { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08'] }))
-      .toEqual({ frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08', '2099-12-15'] });
+      .toEqual({ frequency: 'weekly', interval: 1, skip_dates: ['2099-12-15'] });
   });
 });

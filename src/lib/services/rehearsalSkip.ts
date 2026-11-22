@@ -214,21 +214,41 @@ export async function moveRehearsalDateOnly(
     .eq('event_id', event.eventId);
   if (peopleErr) return { error: peopleErr as unknown as Error };
 
+  // A retry after a lost answer (Codex #297 B3): the one-off this request
+  // made is there already, so only the old date is left to take out.
+  const madeEarlier = async (): Promise<string | null> => {
+    if (!values.clientId) return null;
+    const { data: one } = await supabase.from('events').select('id, parent_event_id').eq('id', values.clientId).maybeSingle();
+    const hit = one as { id?: string; parent_event_id?: string | null } | null;
+    return hit?.id === values.clientId && hit.parent_event_id === event.eventId ? hit.id : null;
+  };
+  const finish = async (id: string | undefined) => {
+    const skipped = await skipRehearsalDate(event.eventId as string, from);
+    return skipped.error ? skipped : { error: null, eventId: id };
+  };
+  const earlier = await madeEarlier();
+  if (earlier) return finish(earlier);
+
   // Its own copy of the setlist: the wizard may edit it next (minor 1).
+  // Only a setlist of the series' own band is copied; any other leaves the
+  // one-off without one (Codex #297 B1, as 195 does).
   let setlistId: string | null = null;
   if (row.setlist_id) {
-    const [{ data: sl }, { data: songs, error: songsErr }] = await Promise.all([
-      supabase.from('setlists').select('name').eq('id', row.setlist_id).maybeSingle(),
+    const [{ data: sl, error: slErr }, { data: songs, error: songsErr }] = await Promise.all([
+      supabase.from('setlists').select('name, band_id').eq('id', row.setlist_id).maybeSingle(),
       supabase.from('setlist_songs').select('song_id, position, set_number, notes').eq('setlist_id', row.setlist_id),
     ]);
-    if (songsErr) return { error: songsErr as unknown as Error };
-    const { data: copy, error: copyErr } = await createSetlist(
-      { band_id: row.band_id, name: (sl as { name?: string } | null)?.name || t('Rehearsal setlist') },
-      ((songs || []) as { song_id: string; position: number; set_number?: number | null; notes?: string | null }[])
-        .map((x) => ({ song_id: x.song_id, position: x.position, set_number: x.set_number ?? 1, ...(x.notes ? { notes: x.notes } : {}) })),
-    );
-    if (copyErr || !copy?.id) return { error: copyErr || new Error(t('Save failed: {error}', { error: 'setlist' })) };
-    setlistId = copy.id;
+    if (slErr || songsErr) return { error: (slErr || songsErr) as unknown as Error };
+    const own = sl as { name?: string; band_id?: string } | null;
+    if (own && own.band_id === row.band_id) {
+      const { data: copy, error: copyErr } = await createSetlist(
+        { band_id: row.band_id, name: own.name || t('Rehearsal setlist') },
+        ((songs || []) as { song_id: string; position: number; set_number?: number | null; notes?: string | null }[])
+          .map((x) => ({ song_id: x.song_id, position: x.position, set_number: x.set_number ?? 1, ...(x.notes ? { notes: x.notes } : {}) })),
+      );
+      if (copyErr || !copy?.id) return { error: copyErr || new Error(t('Save failed: {error}', { error: 'setlist' })) };
+      setlistId = copy.id;
+    }
   }
 
   const { data: created, error: createErr } = await createEvent(
@@ -263,7 +283,17 @@ export async function moveRehearsalDateOnly(
       status: m.status ?? undefined,
     })),
   );
-  if (createErr) return { error: createErr };
-  const skipped = await skipRehearsalDate(event.eventId, from);
-  return skipped.error ? skipped : { error: null, eventId: (created as { id?: string } | null)?.id ?? values.clientId };
+  if (createErr) {
+    // The same request made it meanwhile (a retry racing a lost answer): use
+    // that one-off, drop the setlist copy made for this try, and go on.
+    if ((createErr as { code?: string }).code === '23505') {
+      const same = await madeEarlier();
+      if (same) {
+        if (setlistId) await supabase.from('setlists').delete().eq('id', setlistId);
+        return finish(same);
+      }
+    }
+    return { error: createErr };
+  }
+  return finish((created as { id?: string } | null)?.id ?? values.clientId);
 }

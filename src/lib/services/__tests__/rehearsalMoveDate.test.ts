@@ -10,27 +10,40 @@ const db = vi.hoisted(() => ({
   updates: [] as unknown[],
   created: [] as { ev: any; members: any }[],
   moveRpc: { data: { event_id: 'req-1', series_id: 'ev', skip_dates: ['2099-12-08'] }, error: null } as { data: any; error: any },
+  // Codex #297 B1 / B3 (before 195).
+  setlistBand: 'b1',
+  existing: null as null | { id: string; parent_event_id: string },
+  existingAfterCreate: null as null | { id: string; parent_event_id: string },
+  createError: null as null | { code: string; message: string },
+  deletes: [] as { table: string; id: unknown }[],
 }));
 
 vi.mock('@/lib/supabase', () => {
   const from = (table: string) => {
     let op = 'select';
+    const filters: Record<string, unknown> = {};
     const q: any = new Proxy({}, {
       get(_t, prop) {
         if (prop === 'then') {
           return (res: (v: unknown) => void) => {
+            if (op === 'delete') { db.deletes.push({ table, id: filters.id }); return res({ data: null, error: null }); }
             if (table === 'event_members') return res({ data: [{ user_id: 'u1', role: 'Bass', status: 'confirmed' }, { user_id: 'u2', role: null, status: 'pending' }], error: null });
             if (table === 'setlist_songs') return res({ data: [{ song_id: 's1', position: 0, set_number: 1, notes: null }, { song_id: 's2', position: 1, set_number: 1, notes: 'capo 2' }], error: null });
             return res({ data: [], error: null });
           };
         }
-        if (prop === 'maybeSingle' && table === 'setlists') return async () => ({ data: { name: 'Weekly setlist' }, error: null });
+        if (prop === 'maybeSingle' && table === 'setlists') return async () => ({ data: { name: 'Weekly setlist', band_id: db.setlistBand }, error: null });
+        if (prop === 'maybeSingle' && table === 'events' && filters.id && filters.id !== 'ev') {
+          return async () => ({ data: db.created.length ? db.existingAfterCreate : db.existing, error: null });
+        }
         if (prop === 'maybeSingle') return async () => ({
           data: { id: 'ev', band_id: 'b1', title: 'Weekly', event_type: 'rehearsal', status: 'confirmed', venue_name: 'Studio 4', venue_address: '12 Bond St', venue_city: 'Brooklyn', notes: 'Bring charts', setlist_id: 'sl-1', is_recurring: true, recurrence_rule: { frequency: 'weekly' } },
           error: null,
         });
-        return (arg?: unknown) => {
+        return (arg?: unknown, val?: unknown) => {
           if (prop === 'update') { op = 'update'; db.updates.push(arg); }
+          if (prop === 'delete') op = 'delete';
+          if (prop === 'eq') filters[String(arg)] = val;
           return q;
         };
       },
@@ -47,6 +60,7 @@ vi.mock('@/lib/supabase', () => {
 vi.mock('../events', () => ({
   createEvent: async (ev: any, members: any) => {
     db.created.push({ ev, members });
+    if (db.createError) return { data: null, error: db.createError };
     return { data: { id: 'new', ...ev }, error: null };
   },
 }));
@@ -66,6 +80,11 @@ beforeEach(() => {
   db.updates.length = 0;
   db.created.length = 0;
   setlists.created.length = 0;
+  db.setlistBand = 'b1';
+  db.existing = null;
+  db.existingAfterCreate = null;
+  db.createError = null;
+  db.deletes.length = 0;
   db.moveRpc = { data: { event_id: 'req-1', series_id: 'ev', skip_dates: ['2099-12-08'] }, error: null };
 });
 
@@ -171,5 +190,49 @@ describe('Only this date, Claude #297 r5', () => {
     const { error } = await moveRehearsalDateOnly(series, wizard);
     expect(error?.message).toMatch(text);
     expect(db.created).toEqual([]);
+  });
+});
+
+describe('Only this date before 195, Codex #297 r6', () => {
+  const series = { eventId: 'ev', band_id: 'b1', date: '2099-12-08', seriesDate: '2099-12-01' };
+  const values = { title: 'Weekly', date: '2099-12-10', startTime: '19:00', endTime: '22:00', clientId: 'req-9' };
+  const older = () => { db.moveRpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }; };
+
+  it('B1: a setlist of another band is not copied, and the one-off has none', async () => {
+    older();
+    db.setlistBand = 'other-band';
+    const { error } = await moveRehearsalDateOnly(series, values);
+    expect(error).toBeNull();
+    expect(setlists.created).toEqual([]);
+    expect(db.created[0].ev.setlist_id).toBeNull();
+  });
+
+  it('B3: a retry finds the one-off it made and only takes the old date out', async () => {
+    older();
+    db.existing = { id: 'req-9', parent_event_id: 'ev' };
+    const out = await moveRehearsalDateOnly(series, values);
+    expect(out).toEqual({ error: null, eventId: 'req-9' });
+    expect(db.created).toEqual([]);
+    expect(setlists.created).toEqual([]);
+    expect(db.rpc.map((r) => r.fn)).toEqual(['bw_move_rehearsal_date', 'bw_skip_rehearsal_date']);
+  });
+
+  it('B3: the same id already taken (23505) by this request: that one-off, the extra setlist copy dropped, the date taken out', async () => {
+    older();
+    db.createError = { code: '23505', message: 'duplicate key value violates unique constraint "events_pkey"' };
+    db.existingAfterCreate = { id: 'req-9', parent_event_id: 'ev' };
+    const out = await moveRehearsalDateOnly(series, values);
+    expect(out).toEqual({ error: null, eventId: 'req-9' });
+    expect(db.deletes).toEqual([{ table: 'setlists', id: 'sl-copy' }]);
+    expect(db.rpc.map((r) => r.fn)).toEqual(['bw_move_rehearsal_date', 'bw_skip_rehearsal_date']);
+  });
+
+  it('B3: an id taken by something else is still an error', async () => {
+    older();
+    db.createError = { code: '23505', message: 'duplicate' };
+    db.existingAfterCreate = { id: 'req-9', parent_event_id: 'another-series' };
+    const out = await moveRehearsalDateOnly(series, values);
+    expect(out.error).toBeTruthy();
+    expect(db.rpc.map((r) => r.fn)).toEqual(['bw_move_rehearsal_date']);
   });
 });

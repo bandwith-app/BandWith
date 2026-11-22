@@ -83,3 +83,29 @@ describe('every list that expands a series leaves skipped dates out', () => {
     expect(count(appSrc)).toBeGreaterThanOrEqual(4);
   });
 });
+
+/**
+ * Codex #297 B4: the calendar feeds (#285, supabase/functions/_shared/
+ * deputy-calendar.ts and 182) write one EXDATE per entry of
+ * recurrence_rule.skip_dates and match each entry as a 'YYYY-MM-DD' string.
+ * A date deleted here is stored in exactly that key and form: the local day
+ * of the occurrence, never a timestamp or a UTC day.
+ */
+const FEED = import.meta.glob(['/supabase/functions/_shared/deputy-calendar.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const feedSrc = FEED['/supabase/functions/_shared/deputy-calendar.ts'] ?? '';
+const FEED_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+describe('a deleted date is what the calendar feed reads (Codex #297 B4)', () => {
+  it('stored under recurrence_rule.skip_dates as the local YYYY-MM-DD of the occurrence', async () => {
+    const { withSkippedDate } = await import('../recurrenceSkips');
+    const rule = withSkippedDate({ frequency: 'weekly', interval: 1 }, '2099-12-08T23:30:00');
+    expect(rule.skip_dates).toEqual(['2099-12-08']);
+    expect(rule.skip_dates.every((d) => FEED_DAY.test(d))).toBe(true);
+  });
+
+  it.skipIf(!/skip_dates/.test(feedSrc))('the feed builder reads that key with that form (#285 merged)', () => {
+    expect(feedSrc).toMatch(/skip_dates/);
+    expect(feedSrc).toContain('/^\\d{4}-\\d{2}-\\d{2}$/');
+    expect(feedSrc).toMatch(/EXDATE/);
+  });
+});

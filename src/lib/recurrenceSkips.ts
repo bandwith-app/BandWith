@@ -103,19 +103,25 @@ export function occurrenceOn<T extends Repeating>(event: T, date?: string | null
  * stored one (Codex #297 B2): the cadence keys are replaced, every other key
  * (skip_dates, until, count, keys a newer build added) stays. null (the
  * repeat turned off) stays null.
+ *
+ * Deleted dates come only from `stored`, never from `next` (Codex #297 M3):
+ * a date is deleted or restored only through its own server step
+ * (bw_skip_rehearsal_date / bw_restore_rehearsal_date), so a cadence edit
+ * queued offline cannot bring back a stale list and cancel a date someone
+ * restored meanwhile. updateEvent passes the server's current rule as
+ * `stored`, so a replay carries the server's list.
  */
 export function mergeRecurrenceRule<T extends Record<string, unknown>>(
   stored: unknown,
   next: T | null | undefined,
 ): (T & Record<string, unknown>) | null {
   if (!next) return null;
-  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return next;
-  const { freq: _f, frequency: _fr, interval: _i, ...rest } = stored as Record<string, unknown>;
-  const merged: Record<string, unknown> = { ...rest, ...next };
-  // Deleted dates only add up: a stale copy (an edit queued offline) never
-  // brings back a date deleted since (Codex #297 round 3).
-  const all = new Set([...skippedDates(stored), ...skippedDates(next)]);
-  if (all.size > 0) merged.skip_dates = Array.from(all).sort();
+  const { skip_dates: _stale, ...cadence } = next as Record<string, unknown>;
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return cadence as T & Record<string, unknown>;
+  const { freq: _f, frequency: _fr, interval: _i, skip_dates: _s, ...rest } = stored as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...rest, ...cadence };
+  const kept = skippedDates(stored);
+  if (kept.size > 0) merged.skip_dates = Array.from(kept).sort();
   return merged as T & Record<string, unknown>;
 }
 

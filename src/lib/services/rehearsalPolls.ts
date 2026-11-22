@@ -508,6 +508,10 @@ async function resumePublish(
  * Bulk-inserts candidate time slots into `rehearsal_poll_options`.
  * Notifies ALL band members.
  */
+/** The poll is published but its notices could not be sent (Codex #297 B2). */
+const notifyFailedError = (): Error =>
+  Object.assign(new Error(t("The poll is published, but the band couldn't be notified. Try again.")), { code: 'poll_notify_failed' });
+
 export const createOrPublishAdminPoll = async ({
   pollId,
   bandId,
@@ -682,16 +686,22 @@ export const createOrPublishAdminPoll = async ({
     // Notify all active band members
     try {
       if (storedInvitees === null) {
-        // Before 195, or no answer: the list as stored now.
-        const { data: row } = await supabase.from('rehearsal_polls').select('invited_user_ids').eq('id', activePollId).maybeSingle();
-        const list = (row as { invited_user_ids?: unknown } | null)?.invited_user_ids;
+        // Before 195, or no answer: the list as stored now. A failed read is
+        // never "everyone": the poll may be invite-only, and its title would
+        // reach members who are not on it (Codex #297 B2). Only a read that
+        // works and finds no list (a poll from before 098) means the band.
+        const { data: row, error: readErr } = await supabase.from('rehearsal_polls').select('invited_user_ids').eq('id', activePollId).maybeSingle();
+        if (readErr || !row) throw notifyFailedError();
+        const list = (row as { invited_user_ids?: unknown }).invited_user_ids;
+        if (list != null && !Array.isArray(list)) throw notifyFailedError();
         storedInvitees = Array.isArray(list) ? list.filter((u): u is string => typeof u === 'string') : [];
       }
-      const { data: members } = await supabase
+      const { data: members, error: membersErr } = await supabase
         .from('band_members')
         .select('user_id')
         .eq('band_id', notifyBandId)
         .eq('is_active', true);
+      if (membersErr) throw notifyFailedError();
 
       if (members && members.length > 0) {
         // Only the invited members when the poll has a list (098), never the
@@ -718,6 +728,12 @@ export const createOrPublishAdminPoll = async ({
         if (notifPayload.length > 0) await createBulkNotifications(notifPayload, { sendPush: true });
       }
     } catch (notifErr) {
+      // Published, nobody told: say so and keep this device's marker, so
+      // Publish again finishes the job (it notifies, adds nothing).
+      if ((notifErr as { code?: string })?.code === 'poll_notify_failed') {
+        const { data: published } = await getRehearsalPoll(activePollId);
+        return { data: published, error: notifErr as Error };
+      }
       console.warn('Failed to send poll notifications:', notifErr);
     }
 

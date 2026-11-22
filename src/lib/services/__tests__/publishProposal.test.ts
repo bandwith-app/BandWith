@@ -15,6 +15,7 @@ const db = vi.hoisted(() => ({
   pollRow: null as null | { id: string; band_id: string; status: string; updated_at?: string },
   options: [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }] as Record<string, unknown>[],
   voteCount: 0,
+  pollReadError: null as null | { message: string },
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -33,7 +34,7 @@ vi.mock('@/lib/supabase', () => {
             return res({ data: [], error: null });
           };
         }
-        if (prop === 'single' || prop === 'maybeSingle') return async () => ({ data: table === 'rehearsal_polls' ? db.pollRow : null, error: null });
+        if (prop === 'single' || prop === 'maybeSingle') return async () => (table === 'rehearsal_polls' && db.pollReadError ? { data: null, error: db.pollReadError } : { data: table === 'rehearsal_polls' ? db.pollRow : null, error: null });
         return (...args: unknown[]) => {
           if (prop === 'update' || prop === 'delete' || prop === 'insert') op = String(prop);
           if (prop === 'eq') filters[String(args[0])] = args[1];
@@ -83,6 +84,7 @@ beforeEach(() => {
   db.pollRow = null;
   db.options = [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }];
   db.voteCount = 0;
+  db.pollReadError = null;
   notify.mockClear();
 });
 
@@ -260,6 +262,43 @@ describe('who is told: the invite list stored with the poll (Claude #297 r5 mino
     db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
     db.rpc = { data: { published: true, poll_id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: [] }, error: null };
     await createOrPublishAdminPoll(noInvitees as any);
+    const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
+    expect(sent.map((n) => n.user_id).sort()).toEqual(['b-member', 'b-other']);
+  });
+});
+
+describe('before 195: the invite list could not be read (Codex #297 B2)', () => {
+  const { invitedUserIds: _omit, ...noInvitees } = args;
+  const bandB = db.members['band-B'];
+  afterEach(() => { db.members['band-B'] = bandB; });
+  const older = () => { db.rpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }; };
+
+  it('a read error tells nobody and says so; the poll stays published', async () => {
+    older();
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.pollReadError = { message: 'network' };
+    const { data, error } = await createOrPublishAdminPoll(noInvitees as any);
+    expect(notify).not.toHaveBeenCalled();
+    expect((error as any)?.code).toBe('poll_notify_failed');
+    expect(String(error?.message)).toMatch(/published, but the band couldn't be notified/);
+    expect(db.calls).toContain('rehearsal_polls.update:id=p1,status=proposed');
+    expect(data).not.toBeUndefined();
+  });
+
+  it('no row read back: nobody told either', async () => {
+    older();
+    db.pollRow = null;
+    const { error } = await createOrPublishAdminPoll(noInvitees as any);
+    expect(notify).not.toHaveBeenCalled();
+    expect((error as any)?.code).toBe('poll_notify_failed');
+  });
+
+  it('a poll from before invite lists (no list stored): the band, as before', async () => {
+    older();
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: null } as any;
+    const { error } = await createOrPublishAdminPoll(noInvitees as any);
+    expect(error).toBeNull();
     const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
     expect(sent.map((n) => n.user_id).sort()).toEqual(['b-member', 'b-other']);
   });
