@@ -6,6 +6,7 @@ import { runLivePackPrefetch, type PrefetchEvent } from '@/lib/livePackStore';
 import { LIVE_PACK_CHOICE_EVENT, hasAnswered, readChoice, writeChoice } from '@/lib/livePackConsent';
 import { readProfileAuto } from '@/lib/livePackStatus';
 import { t } from '@/lib/i18n';
+import { useFlag } from '@/lib/appFlags';
 
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -42,12 +43,14 @@ export function useLivePackPrefetch(
         })),
     [events],
   );
-  const key = `${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
+  // Switched off (app_flags live_pack, docs/flags.md): no downloads ahead of time, silent pushes ignored.
+  const on = useFlag('live_pack');
+  const key = `${on ? 1 : 0}#${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
   const ref = useRef({ list, bandIds });
   ref.current = { list, bandIds };
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !on) return;
     const run = (force?: string[]) =>
       void runLivePackPrefetch({
         userId,
@@ -80,7 +83,7 @@ export function useLivePackPrefetch(
 
   // Answered "keep it automatic" on another device: this one follows.
   useEffect(() => {
-    if (!userId || hasAnswered(readChoice(userId))) return;
+    if (!userId || !on || hasAnswered(readChoice(userId))) return;
     let alive = true;
     void readProfileAuto(userId).then((auto) => {
       if (alive && auto && !hasAnswered(readChoice(userId))) writeChoice(userId, { ...readChoice(userId), auto: true });
@@ -88,5 +91,5 @@ export function useLivePackPrefetch(
     return () => {
       alive = false;
     };
-  }, [userId]);
+  }, [userId, on]);
 }

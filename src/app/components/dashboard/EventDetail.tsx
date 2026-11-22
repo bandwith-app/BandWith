@@ -63,6 +63,7 @@ import { useBandNotes } from '@/app/components/event/useBandNotes';
 import { FromLastTimeSection, type EarlierNotes } from './FromLastTime';
 import { fromLastTime } from '@/lib/toPractise';
 import { useBandFlag } from '@/lib/flags';
+import { isFlagOn } from '@/lib/appFlags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
 import { prefetchStageKey } from '@/lib/stageBleNative';
 import { packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
@@ -427,7 +428,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const [packSheetOpen, setPackSheetOpen] = useState(false);
   const [packPending, setPackPending] = useState<Promise<boolean> | null>(null);
   useEffect(() => {
-    if (!startOnLivePack) return;
+    // Live pack switched off (app_flags live_pack): the push just opens the event.
+    if (!startOnLivePack || !isFlagOn('live_pack')) return;
     // Already a yes (automatic, or this event): no sheet again, just bring it down.
     if (currentUserId && event.eventId && packAllowed(readChoice(currentUserId), event.eventId)) {
       setPackPending(
@@ -607,7 +609,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           } else {
             await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
             // My notes and files, band notes, the key: at most every few minutes.
-            if (fullPackDue(event.eventId)) {
+            if (isFlagOn('live_pack') && fullPackDue(event.eventId)) {
               const withFiles = packAllowed(readChoice(currentUserId), event.eventId);
               void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles }).catch(() => undefined);
             }

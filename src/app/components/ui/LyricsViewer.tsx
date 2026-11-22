@@ -22,6 +22,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { VoiceAssignmentScope } from '@/app/components/songs/WhoSingsWhat';
 import { isMyPart, lineVoice, songVoiceParts, stripVoiceMarkers, voiceRuns, type VoicePart } from '@/lib/voiceParts';
 import { useMyVoicePart, useVoiceHighlight, voiceClass, VoiceLegend } from './VoiceParts';
+import { useFlag } from '@/lib/appFlags';
 
 const SIZES = [18, 21, 24, 28, 33, 40];
 const SIZE_KEY = 'bw-lyrics-size';
@@ -115,11 +116,19 @@ const ChordedText: React.FC<{ text: string; hideChords?: boolean }> = ({ text, h
  * on their own. With "Highlight my part", the parts I don't sing dim a
  * little (`mine` null: nothing dims).
  */
-const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart[] | null }> = ({ line, hideChords, mine }) => {
+const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart[] | null; plain?: boolean }> = ({ line, hideChords, mine, plain }) => {
   const runs = React.useMemo(() => voiceRuns(line), [line]);
   const voice = React.useMemo(() => lineVoice(line), [line]);
   // Lyrics only: a chords-only line disappears.
   if (hideChords && !lyricWords(stripVoiceMarkers(line)).trim()) return null;
+  // Voice parts switched off (app_flags voice_parts): every line reads as lead, markers never shown.
+  if (plain) {
+    return (
+      <p className="font-medium break-words">
+        <ChordedText text={runs.map((r) => r.text).join('')} hideChords={hideChords} />
+      </p>
+    );
+  }
   const dim = (v: VoicePart) => (mine && !isMyPart(v, mine) ? true : undefined);
   if (voice !== 'mixed') {
     return (
@@ -175,7 +184,9 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
   // My notes (109): under their lines, and lines to tap while adding one.
   const refs = useLineRefs(lyrics);
   // Voice parts (§5): a legend when the song uses them; my part bright, the others dimmed.
-  const parts = React.useMemo(() => songVoiceParts(normalizeLyrics(lyrics)), [lyrics]);
+  // Off with the kill switch (docs/flags.md): plain lines, no legend.
+  const voicesOn = useFlag('voice_parts');
+  const parts = React.useMemo(() => (voicesOn ? songVoiceParts(normalizeLyrics(lyrics)) : []), [lyrics, voicesOn]);
   const myPart = useMyVoicePart();
   const [highlight, setHighlight] = useVoiceHighlight();
   const mine = parts.length > 0 && highlight ? myPart : null;
@@ -193,12 +204,12 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
                 refs?.get(`${i}:${j}`) ? (
                   <React.Fragment key={j}>
                     <PickableLine refLine={refs.get(`${i}:${j}`)!} sectionName={s.name}>
-                      <LyricsLine line={line} hideChords={hideChords} mine={mine} />
+                      <LyricsLine line={line} hideChords={hideChords} mine={mine} plain={!voicesOn} />
                     </PickableLine>
                     <LineNotes id={`${i}:${j}`} line={line} />
                   </React.Fragment>
                 ) : (
-                  <LyricsLine key={j} line={line} hideChords={hideChords} mine={mine} />
+                  <LyricsLine key={j} line={line} hideChords={hideChords} mine={mine} plain={!voicesOn} />
                 )
               ) : (
                 <span key={j} className="block h-[0.8em]" aria-hidden />

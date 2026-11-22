@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
@@ -43,7 +44,7 @@ export async function packsSpace(packs: LivePack[]): Promise<number> {
  * sheet, changeable anytime. Automatic follows the account (every device);
  * Wi-Fi only and what is kept are this device's.
  */
-export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) => {
+const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
   const t = useT();
   const [choice, setChoice] = useState<LivePackChoice>(() => readChoice(userId));
   const [kept, setKept] = useState<{ count: number; bytes: number } | null>(null);
@@ -145,3 +146,6 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
     </div>
   );
 };
+
+/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
+export const OfflineLiveSection: React.FC<{ userId?: string }> = (props) => (useFlag('live_pack') ? <OfflineLiveSectionInner {...props} /> : null);

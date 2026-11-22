@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { normalizeLyrics } from '@/lib/songFormat';
 import { ASSIGNABLE_PARTS, effectiveVocalParts, instrumentVoicePart, songVoiceParts, type VocalParts, type VoicePart } from '@/lib/voiceParts';
+import { useFlag } from '@/lib/appFlags';
 import { fetchSetlistVocalParts, fetchSongVocalParts, saveSetlistVocalParts, saveSongVocalParts } from '@/lib/services/vocalParts';
 import { useMemberNames, voiceLabelClass, voicePartLabel, VoiceAssignmentProvider } from '@/app/components/ui/VoiceParts';
 
@@ -77,7 +78,9 @@ export interface VoiceAssignmentScopeProps {
 export const VoiceAssignmentScope: React.FC<VoiceAssignmentScopeProps> = ({ songId, setlistSongId, songTitle, lyrics, children }) => {
   const band = useOptionalBand();
   const used = React.useMemo(() => songVoiceParts(normalizeLyrics(lyrics)), [lyrics]);
-  const enabled = used.length > 0 && !!songId;
+  // Off with the kill switch (docs/flags.md): nothing fetched, no sheet.
+  const voicesOn = useFlag('voice_parts');
+  const enabled = voicesOn && used.length > 0 && !!songId;
   const stored = useStoredParts(songId, setlistSongId, enabled);
   const [open, setOpen] = React.useState(false);
   const isAdmin = !!band?.isAdmin;
@@ -88,7 +91,7 @@ export const VoiceAssignmentScope: React.FC<VoiceAssignmentScopeProps> = ({ song
   return (
     <VoiceAssignmentProvider value={enabled ? value : null}>
       {children}
-      {open && songId && (
+      {open && enabled && songId && (
         <WhoSingsWhatSheet
           songTitle={songTitle}
           parts={used}

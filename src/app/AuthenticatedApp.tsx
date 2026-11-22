@@ -179,6 +179,7 @@ import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsen
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
+import { isFlagOn, startAppFlags } from "@/lib/appFlags";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
@@ -829,6 +830,8 @@ export default function AuthenticatedApp() {
   // Live packs (plan §3.2): tidied on open/resume, downloaded ahead once agreed.
   const myBandIds = useMemo(() => (bandsLoading ? null : (realBands ?? []).map((b) => b.id)), [bandsLoading, realBands]);
   useLivePackPrefetch(events, user?.id, myBandIds);
+  // Remote kill switches (app_flags, docs/flags.md): read at start, on resume and back online.
+  useEffect(() => startAppFlags(), []);
 
   // Calendar band filter: offered from two bands on (plus Personal when there
   // are personal gigs). A choice that is no longer offered goes back to All,
@@ -1344,7 +1347,7 @@ export default function AuthenticatedApp() {
           setSelectedChat(known ? { ...known, unread: 0 } : { id: Date.now(), uuid: d.chatId, type: "direct", name: t("Chat"), initials: "CH", lastMessage: "", time: "now", unread: 0, status: "received" });
         }, 100);
       } else if (d.screen === "event" && d.eventId) {
-        if (d.livePack) {
+        if (d.livePack && isFlagOn("live_pack")) {
           const id = String(d.eventId);
           setLivePackOnOpen(id);
           window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);

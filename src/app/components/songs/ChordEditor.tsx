@@ -35,6 +35,7 @@ import {
 } from '@/lib/songFormat';
 import { applyVoiceSuggestions, setLineVoice, suggestVoiceParts, VOICE_PARTS, wordVoices, type VoicePart } from '@/lib/voiceParts';
 import { voiceClass, voiceLabelClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
+import { useFlag } from '@/lib/appFlags';
 
 /**
  * The admin's chord editor for a band song (`songs.lyrics`): tap a word and
@@ -93,6 +94,8 @@ export const ChordEditor: React.FC = () => {
   const [copyTo, setCopyTo] = React.useState<number | null>(null);
   // Voice parts: the whole line of the selected word, or "just these words" (tap more words of that line).
   const [wordsMode, setWordsMode] = React.useState(false);
+  // Voice parts off with the kill switch (docs/flags.md): no Voice row, no hint, words drawn plain (the markers stay in the text).
+  const voicesOn = useFlag('voice_parts');
   const [rangeEnd, setRangeEnd] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -109,7 +112,7 @@ export const ChordEditor: React.FC = () => {
   const dropClick = React.useRef(false);
   const tapWord = (pos: Pos, isSel: boolean) => {
     if (dropClick.current) return;
-    if (wordsMode && selected && pos.word >= 0 && selected.word >= 0 && pos.line === selected.line && !isSel) {
+    if (voicesOn && wordsMode && selected && pos.word >= 0 && selected.word >= 0 && pos.line === selected.line && !isSel) {
       setRangeEnd(pos.word);
       return;
     }
@@ -197,7 +200,7 @@ export const ChordEditor: React.FC = () => {
   const tidy = React.useMemo(() => normalizeLyrics(text), [text]);
   const canTidy = !!text.trim() && tidy !== text.trim();
   // Lines in parentheses → backing, "All:" → all: proposed, applied only on a tap.
-  const voiceHints = React.useMemo(() => suggestVoiceParts(text), [text]);
+  const voiceHints = React.useMemo(() => (voicesOn ? suggestVoiceParts(text) : []), [text, voicesOn]);
 
   const putChord = (pos: Pos, chord: string | null) => {
     const next = [...lines];
@@ -273,7 +276,7 @@ export const ChordEditor: React.FC = () => {
   };
 
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
-  const range = selected && selected.word >= 0 ? (wordsMode ? { from: Math.min(selected.word, rangeEnd ?? selected.word), to: Math.max(selected.word, rangeEnd ?? selected.word) } : null) : null;
+  const range = selected && selected.word >= 0 ? (voicesOn && wordsMode ? { from: Math.min(selected.word, rangeEnd ?? selected.word), to: Math.max(selected.word, rangeEnd ?? selected.word) } : null) : null;
   const selVoices = selected && selected.word >= 0 ? wordVoices(lines[selected.line] || '') : [];
   const shownVoices = range ? selVoices.slice(range.from, range.to + 1) : selVoices;
   const selVoice: VoicePart | null = shownVoices.length && shownVoices.every((v) => v === shownVoices[0]) ? shownVoices[0] : null;
@@ -287,7 +290,7 @@ export const ChordEditor: React.FC = () => {
 
   const renderLine = (li: number) => {
     const model = parseLine(lines[li]);
-    const voices = wordVoices(lines[li]);
+    const voices = voicesOn ? wordVoices(lines[li]) : [];
     return (
       <div key={li} className="flex flex-wrap items-end gap-x-[0.3em] gap-y-1 font-mono text-[17px] leading-6">
         {model.words.map((w, wi) => {
@@ -336,9 +339,9 @@ export const ChordEditor: React.FC = () => {
                 <span className="h-5" aria-hidden />
               )}
               <span
-                className={voiceClass(voices[wi])}
-                data-voice={voices[wi] === 'lead' ? undefined : voices[wi]}
-                data-voice-cont={voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
+                className={voices[wi] ? voiceClass(voices[wi]) : undefined}
+                data-voice={!voices[wi] || voices[wi] === 'lead' ? undefined : voices[wi]}
+                data-voice-cont={voices[wi] && voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
               >
                 {w.text}
               </span>
@@ -516,7 +519,7 @@ export const ChordEditor: React.FC = () => {
             <div className="shrink-0 border-t border-border bg-background px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}>
               {selected ? (
                 <>
-                  {selected.word >= 0 && (
+                  {voicesOn && selected.word >= 0 && (
                     <div className="flex flex-col gap-2" role="group" aria-label={t('Voice')}>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="bw-label-sm text-muted-foreground">{t('Voice')}</span>

@@ -16,6 +16,7 @@ import {
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import type { StageLiveState } from '@/lib/stageLive';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
+import { useFlag } from '@/lib/appFlags';
 
 export type { StageBleStatus };
 
@@ -86,6 +87,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const keyRef = useRef<string | null>(null);
   const startedRef = useRef(false);
   const pendingRef = useRef<StageLiveState | null>(null);
+  /**
+   * Click / playhead clock over Bluetooth (app_flags ble_live, docs/flags.md).
+   * Off: the leader serves only the song (no clock or live characteristic),
+   * members read no clock (`clock` null, the click uses the Realtime clock).
+   */
+  const bleLive = useFlag('ble_live');
+  const bleLiveRef = useRef(bleLive);
+  bleLiveRef.current = bleLive;
+  /** Member: start / stop the clock reads on the current link (set by the member effect). */
+  const syncCtlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
 
   const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
 
@@ -149,17 +160,18 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           characteristicUuid: STAGE_BLE_CHARACTERISTIC,
           value: '',
           notify: '',
-          clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC,
-          liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC,
+          ...(bleLive ? { clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC, liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC } : {}),
           key,
         });
         if (cancelled) return;
         startedRef.current = true;
         setStatus(leaderStatus(state));
-        // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
-        await calibrate();
-        if (cancelled) return;
-        recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
+        if (bleLive) {
+          // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
+          await calibrate();
+          if (cancelled) return;
+          recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
+        }
         const pending = pendingRef.current;
         pendingRef.current = null;
         if (pending) void push(pending);
@@ -177,7 +189,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       void StageBle.stop().catch(() => {});
       setStatus('off');
     };
-  }, [active, isLeader, eventId, push, attempt]);
+  }, [active, isLeader, eventId, push, attempt, bleLive]);
 
   // Member: find the leader, subscribe, read on every change.
   useEffect(() => {
@@ -242,6 +254,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     burstRef.current = runBurst;
 
     const startSync = async (id: string) => {
+      // Clock over Bluetooth switched off: like a leader on an older app.
+      if (!bleLiveRef.current) return;
       if (bookDevice !== id) {
         book.clear();
         bookDevice = id;
@@ -334,6 +348,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
     };
 
+    syncCtlRef.current = {
+      start: () => {
+        if (deviceId && !syncOn) void startSync(deviceId);
+      },
+      stop: () => {
+        stopSync();
+        setClock(null);
+      },
+    };
+
     // Bluetooth off or the key not fetched yet: try again a little later.
     const boot = async () => {
       if (cancelled) return;
@@ -401,6 +425,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearInterval(resync);
       burstTimers.forEach(clearTimeout);
       burstRef.current = () => {};
+      syncCtlRef.current = null;
       setClock(null);
       if (watching) void BleClient.stopEnabledNotifications().catch(() => {});
       void BleClient.stopLEScan().catch(() => {});
@@ -409,6 +434,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     };
     // A reloaded setlist doesn't drop the link: reads use savedRef.
   }, [active, isLeader, eventId, attempt]);
+
+  // Member: the switch flipped while linked: stop (or start) the clock reads, the song link stays.
+  useEffect(() => {
+    if (isLeader) return;
+    if (bleLive) syncCtlRef.current?.start();
+    else syncCtlRef.current?.stop();
+  }, [bleLive, isLeader]);
 
   // Back from Settings (sent by the button): start again by itself. Not on any
   // resume: closing the system permission dialog resumes the app too, and

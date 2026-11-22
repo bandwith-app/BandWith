@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { CheckCircle2, Download } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { WaitingChangesTag } from './WaitingChangesTag';
@@ -31,7 +32,7 @@ export function packSavedLabel(savedAt: string, t: T, now: Date = new Date()): s
  * Download opens the consent sheet (onAsk); after that it is the person's yes
  * for this event (livePackConsent).
  */
-export const OfflineReadyRow: React.FC<{
+const OfflineReadyRowInner: React.FC<{
   pack: LivePack | null;
   userId?: string;
   event: Record<string, unknown>;
@@ -115,3 +116,17 @@ export const OfflineReadyRow: React.FC<{
     </div>
   );
 };
+
+/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
+export const OfflineReadyRow: React.FC<{
+  pack: LivePack | null;
+  userId?: string;
+  event: Record<string, unknown>;
+  occurrenceDate?: string;
+  online: boolean;
+  className?: string;
+  /** Not answered yet: open the consent sheet instead of downloading. */
+  onAsk?: () => void;
+  /** A download the sheet started: show it here. */
+  pending?: Promise<boolean> | null;
+}> = (props) => (useFlag('live_pack') ? <OfflineReadyRowInner {...props} /> : null);

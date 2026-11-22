@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { Download } from '@/app/components/icons';
 import { BwSheet } from '@/app/components/bw/Screen';
 import { PillButton } from '@/app/components/bw/Form';
@@ -27,7 +28,7 @@ export async function downloadPackNow(args: {
  * the person taps "Download for offline". The answer is kept on the device
  * and on the profile (the daily job stops asking).
  */
-export const LivePackConsentSheet: React.FC<{
+const LivePackConsentSheetInner: React.FC<{
   open: boolean;
   onClose: () => void;
   userId?: string;
@@ -107,3 +108,16 @@ export const LivePackConsentSheet: React.FC<{
     </BwSheet>
   );
 };
+
+/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
+export const LivePackConsentSheet: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  userId?: string;
+  event: Record<string, unknown>;
+  occurrenceDate?: string;
+  songs: LiveSong[];
+  rehearsal?: boolean;
+  /** After the answer (the download, if any, has started). */
+  onAnswered?: (answer: LivePackAnswer, download?: Promise<boolean>) => void;
+}> = (props) => (useFlag('live_pack') ? <LivePackConsentSheetInner {...props} /> : null);
