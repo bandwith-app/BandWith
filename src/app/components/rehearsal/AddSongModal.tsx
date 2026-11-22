@@ -511,7 +511,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-song-title"
-      className="bw-pane-detail fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
+      className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
     >
       <UnsavedChangesSheet
         open={leaveOpen}
