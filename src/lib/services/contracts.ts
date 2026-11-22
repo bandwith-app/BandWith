@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import { attachEventPrivate } from './eventPrivate';
 import { parseLocalDate, toLocalDateString, todayLocal } from '../dates';
-import { t, translate, intlLocale, LANGUAGES, type Locale } from '@/lib/i18n';
+import { t, translate, intlLocale, loadLocale, LANGUAGES, type Locale } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
 import { channelLabel, stageSize, type StageData } from '../stagePlot';
 
@@ -835,3 +835,19 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
 
 export const buildContractPdf = (c: Contract, opts: PdfOptions = {}): Blob =>
   new Blob([buildContractPdfBytes(c, opts) as BlobPart], { type: 'application/pdf' });
+
+/**
+ * #293 round 3: every language's dictionary, before a PDF is made. The
+ * standard terms are recognised in whichever language they were inserted
+ * (contentInLanguage), so that language must be loaded too, not only the
+ * export's: an Italian contract opened in a fresh English session and
+ * exported in French kept its Italian terms under French headings.
+ */
+export const loadContractLanguages = (): Promise<void> =>
+  Promise.all(LANGUAGES.map((l) => loadLocale(l.id))).then(() => undefined);
+
+/** buildContractPdf once the dictionaries are in (what the screens call). */
+export const buildContractPdfReady = async (c: Contract, opts: PdfOptions = {}): Promise<Blob> => {
+  await loadContractLanguages();
+  return buildContractPdf(c, opts);
+};

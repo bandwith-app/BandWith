@@ -601,6 +601,81 @@ export const lineupFromQuoteMusicians = (
   return rows;
 };
 
+/**
+ * #293 round 3: a quote edited from Quotes keeps the tentative event that
+ * holds its date in step (the event screen's own edit already did): date,
+ * times, place, client, fee and currency, and, when `musicians` is given
+ * (the saved quote_musicians rows), the lineup with each musician's fee.
+ * Without this, accepting the quote confirmed the event as first saved.
+ * Only while the event is tentative: a confirmed gig is the band's own and
+ * is never touched. People taken off the quote leave the event; the others
+ * keep their answer. `data`: the event synced, null when there is none.
+ */
+export const syncQuoteHoldEvent = async (
+  quoteId: string,
+  q: Partial<AppQuote>,
+  musicians?: Pick<QuoteMusician, 'user_id' | 'instrument' | 'fee'>[] | null,
+): Promise<{ data: string | null; error: Error | null }> => {
+  try {
+    const { data: link, error: linkErr } = await supabase
+      .from('quotes')
+      .select('converted_to_event_id')
+      .eq('id', quoteId)
+      .maybeSingle();
+    if (linkErr) throw linkErr;
+    const tentative = async (col: 'id' | 'quote_id', value: string) => {
+      const { data, error } = await supabase.from('events').select('id').eq(col, value).eq('status', 'tentative').limit(1);
+      if (error) throw error;
+      return Array.isArray(data) && data[0]?.id ? (data[0].id as string) : null;
+    };
+    const linked = (link as { converted_to_event_id?: string | null } | null)?.converted_to_event_id;
+    const eventId = (isUuid(linked) ? await tentative('id', linked as string) : null) || (await tentative('quote_id', quoteId));
+    if (!eventId) return { data: null, error: null };
+
+    const currency = String(q.currency || '');
+    const { error: upErr } = await supabase
+      .from('events')
+      .update({
+        title: q.eventName || q.clientName || t('Quote Event'),
+        ...(q.eventDate ? { event_date: q.eventDate } : {}),
+        start_time: q.eventTimeStart || '20:00',
+        end_time: q.eventTimeEnd || null,
+        venue_name: q.venueName || 'TBD',
+        venue: q.venueName || 'TBD',
+        venue_city: q.venueCity || null,
+        venue_address: q.venueAddress || null,
+        indoor_outdoor: q.indoorOutdoor || null,
+        fee: q.total || 0,
+        ...(/^[A-Za-z]{3}$/.test(currency) ? { currency: currency.toUpperCase() } : {}),
+        client_name: q.clientName || null,
+      })
+      .eq('id', eventId)
+      .eq('status', 'tentative');
+    if (upErr) throw upErr;
+
+    if (Array.isArray(musicians)) {
+      const { data: { user } } = await getSafeUser();
+      const wanted = lineupFromQuoteMusicians(musicians, user?.id);
+      const { data: current, error: readErr } = await supabase.from('event_members').select('user_id, status').eq('event_id', eventId);
+      if (readErr) throw readErr;
+      const answered = new Map(((current || []) as { user_id: string; status: string }[]).map((r) => [r.user_id, r.status]));
+      const keep = new Set(wanted.map((r) => r.user_id));
+      const gone = [...answered.keys()].filter((id) => !keep.has(id));
+      if (gone.length > 0) {
+        const { error: delErr } = await supabase.from('event_members').delete().eq('event_id', eventId).in('user_id', gone);
+        if (delErr) throw delErr;
+      }
+      // Everyone's fee as on the quote; who already answered keeps the answer.
+      const rows = wanted.map((r) => ({ ...r, status: answered.get(r.user_id) || r.status }));
+      const { error: lineupErr } = await saveEventLineup(eventId, rows);
+      if (lineupErr) throw lineupErr;
+    }
+    return { data: eventId, error: null };
+  } catch (error: any) {
+    return { data: null, error: error instanceof Error ? error : new Error(error?.message || String(error)) };
+  }
+};
+
 export interface QuoteGigResult {
   eventId: string;
   /** A new gig was made (not the quote's tentative one, nor one made before). */

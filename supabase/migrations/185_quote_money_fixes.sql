@@ -30,6 +30,17 @@
 --      who asked has the key (quote_links is read by admins only); the
 --      key is random and changes on every preview. Nothing is recorded.
 --
+-- 4. Round 3 (Codex review of #293):
+--    - bw_quote_balance_mark_sent takes the balance_version that was sent
+--      (p_balance_version, optional) and refuses a send recorded for a
+--      balance another admin replaced meanwhile (BW_BALANCE_CHANGED).
+--    - Undo after "Mark as paid" gives back the deposit as it was only
+--      while the deposit is as "Mark as paid" left it: one recorded or
+--      changed since (deposit received, its amount) stays.
+--    - One lock order: every function here that writes a link or a gig
+--      locks the quote first, then the link, then the gig (as a save of the
+--      quote does), so two of them at the same moment never deadlock.
+--
 -- No function here comes from an open PR (168 and 099 bodies). New anon
 -- grant: bw_quote_link_preview only (it needs the token and the key).
 -- Safe to run more than once.
@@ -94,6 +105,12 @@ GRANT EXECUTE ON FUNCTION public.bw_quote_save_musicians(uuid, jsonb) TO authent
 
 -- The gig's deposit_paid before "Mark as paid" (null: not marked paid here).
 ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS balance_paid_deposit_was boolean;
+-- What the deposit looked like when "Mark as paid" left it (the gig's
+-- amount, the amount recorded as received on the link): Undo gives back the
+-- deposit as it was only while these are unchanged (round 3).
+ALTER TABLE public.quote_links
+  ADD COLUMN IF NOT EXISTS balance_paid_deposit_amount numeric,
+  ADD COLUMN IF NOT EXISTS balance_paid_deposit_received numeric;
 
 CREATE OR REPLACE FUNCTION public.bw_quote_balance_mark_paid(p_quote_id uuid, p_paid boolean DEFAULT true)
 RETURNS jsonb
@@ -108,16 +125,25 @@ DECLARE
   v_link public.quote_links;
   v_deposit_was boolean;
   v_deposit_now boolean;
+  v_amount numeric;
 BEGIN
+  -- Round 3: one lock order everywhere, the quote, then the link, then the gig.
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
   IF v_gig IS NOT NULL THEN
-    SELECT coalesce(e.deposit_paid, false) INTO v_deposit_was
+    SELECT coalesce(e.deposit_paid, false), e.deposit_amount INTO v_deposit_was, v_amount
       FROM public.events e WHERE e.id = v_gig AND e.band_id = v_band FOR UPDATE;
     v_deposit_now := CASE
       WHEN v_paid THEN true
       -- 185: Undo gives back the deposit as it was before "Mark as paid"
       -- (marked paid before 185: nothing remembered, kept as it is).
+      -- Round 3: only while the deposit is as "Mark as paid" left it (still
+      -- received, same amount on the gig, same amount recorded on the
+      -- link): a deposit recorded or changed since then stays.
       WHEN v_link.balance_paid_at IS NOT NULL AND v_link.balance_paid_deposit_was IS NOT NULL
+           AND v_deposit_was
+           AND v_amount IS NOT DISTINCT FROM v_link.balance_paid_deposit_amount
+           AND v_link.deposit_received_amount IS NOT DISTINCT FROM v_link.balance_paid_deposit_received
         THEN v_link.balance_paid_deposit_was
       ELSE v_deposit_was END;
     UPDATE public.events e
@@ -130,6 +156,8 @@ BEGIN
     UPDATE public.quote_links l
        SET balance_paid_at = CASE WHEN v_paid THEN now() END,
            balance_paid_deposit_was = CASE WHEN v_paid THEN v_deposit_was END,
+           balance_paid_deposit_amount = CASE WHEN v_paid THEN v_amount END,
+           balance_paid_deposit_received = CASE WHEN v_paid THEN l.deposit_received_amount END,
            updated_at = now()
      WHERE l.id = v_link.id;
     INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
@@ -226,6 +254,8 @@ DECLARE
 BEGIN
   PERFORM public.bw_quote_balance_check(v_band, p_balance);
 
+  -- Round 3: the quote, then the link (then the gig), as every quote write.
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
   SELECT q.status, nullif(left(regexp_replace(btrim(coalesce(q.client_name, '')), '\s+', ' ', 'g'), 120), '')
     INTO v_quote_status, v_client
     FROM public.quotes q WHERE q.id = p_quote_id;
@@ -277,7 +307,20 @@ GRANT EXECUTE ON FUNCTION public.bw_quote_balance_publish(uuid, jsonb) TO authen
 -- 168's send record, which now also hands the client the balance: what was
 -- published becomes what was sent. A changed balance sent again is
 -- "balance_updated" on the timeline (168 wrote it at publish time).
-CREATE OR REPLACE FUNCTION public.bw_quote_balance_mark_sent(p_quote_id uuid, p_kind text DEFAULT 'sent', p_channel text DEFAULT NULL)
+-- Round 3: p_balance_version (new, optional) is the balance_version the
+-- caller published and sent. If another admin published a different
+-- balance in between, this send is not the one on the link: nothing is
+-- recorded and the call fails (P0001 BW_BALANCE_CHANGED), so the page never
+-- asks for an amount the client was not sent. Older builds don't pass it
+-- and record as before. Dropped and created again with the new parameter
+-- (a default: the three named arguments of older builds still find it).
+DROP FUNCTION IF EXISTS public.bw_quote_balance_mark_sent(uuid, text, text);
+CREATE OR REPLACE FUNCTION public.bw_quote_balance_mark_sent(
+  p_quote_id uuid,
+  p_kind text DEFAULT 'sent',
+  p_channel text DEFAULT NULL,
+  p_balance_version int DEFAULT NULL
+)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -289,9 +332,14 @@ DECLARE
   v_channel text := nullif(lower(btrim(coalesce(p_channel, ''))), '');
   v_kind text;
 BEGIN
+  -- Round 3: the quote, then the link (then the gig, through mark paid).
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
   IF v_link.id IS NULL OR v_link.balance IS NULL THEN
     RAISE EXCEPTION 'Publish the balance first' USING ERRCODE = 'P0002';
+  END IF;
+  IF p_balance_version IS NOT NULL AND p_balance_version IS DISTINCT FROM v_link.balance_version THEN
+    RAISE EXCEPTION 'BW_BALANCE_CHANGED: the balance was changed after this one was sent' USING ERRCODE = 'P0001';
   END IF;
   IF v_link.revoked_at IS NOT NULL THEN
     RAISE EXCEPTION 'The client link is turned off' USING ERRCODE = '22023';
@@ -316,8 +364,8 @@ BEGIN
   RETURN v_kind;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int) TO authenticated;
 
 -- The admin's preview: keeps the draft (nothing the client sees changes)
 -- and returns the key the preview page opens it with.
@@ -332,6 +380,7 @@ DECLARE
   v_key text := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
 BEGIN
   PERFORM public.bw_quote_balance_check(v_band, p_balance);
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE; -- round 3: the quote, then the link
   UPDATE public.quote_links l
      SET balance_preview = p_balance, balance_preview_key = v_key, balance_preview_at = now()
    WHERE l.quote_id = p_quote_id AND l.snapshot IS NOT NULL AND l.revoked_at IS NULL;
@@ -382,5 +431,8 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_preview(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_preview(text, text) TO anon, authenticated;
+
+-- bw_quote_balance_mark_sent has a new parameter: PostgREST reads it now.
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;

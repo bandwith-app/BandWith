@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   createQuote: vi.fn(),
   updateQuote: vi.fn(),
   saveQuoteMusicians: vi.fn(),
+  syncQuoteHoldEvent: vi.fn().mockResolvedValue({ data: null, error: null }),
   wizardPayload: null as any,
 }));
 vi.mock('@/lib/supabase', () => {
@@ -32,6 +33,7 @@ vi.mock('@/lib/services/quotes', async (orig) => ({
   createQuote: mocks.createQuote,
   updateQuote: mocks.updateQuote,
   saveQuoteMusicians: mocks.saveQuoteMusicians,
+  syncQuoteHoldEvent: mocks.syncQuoteHoldEvent,
 }));
 vi.mock('@/lib/services/quoteLinks', () => ({ republishClientQuote: vi.fn().mockResolvedValue({ error: null }) }));
 vi.mock('@/lib/BandContext', () => ({
@@ -90,6 +92,7 @@ const clickAndSettle = async (el: HTMLElement) => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mocks.syncQuoteHoldEvent.mockReset().mockResolvedValue({ data: null, error: null });
   mocks.wizardPayload = null;
 });
 
@@ -142,5 +145,48 @@ describe('QuotesExpanded: saving', () => {
     });
     await waitFor(() => expect(onShowToast).toHaveBeenCalledWith(expect.stringContaining('Quote saved, but the lineup was not'), 'error'));
     expect(screen.getByText('wizard save')).toBeTruthy();
+  });
+
+  // Codex round 3 (QuotesExpanded.tsx:247): the edit updated only the quote,
+  // so accepting it confirmed the tentative event as first saved.
+  it('editing a quote keeps its date on hold in step: date, fee and the saved lineup', async () => {
+    const saved = [{ id: 'm-2', quote_id: QUOTE, user_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Sam Ortiz', instrument: 'Bass', fee: 375, is_external: false, is_available: true }];
+    mocks.updateQuote.mockResolvedValue({ data: { ...row, event_date: '2027-06-19', total: 3100 }, error: null });
+    mocks.saveQuoteMusicians.mockResolvedValue({ data: saved, error: null });
+    mocks.syncQuoteHoldEvent.mockResolvedValue({ data: 'ev-1', error: null });
+    mocks.wizardPayload = { eventDate: '2027-06-19', total: 3100, musicians: [{ id: 'x', userId: saved[0].user_id, name: 'Sam Ortiz', instrument: 'Bass', fee: 375 }] };
+    const onShowToast = vi.fn();
+    render(
+      <QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[row]} onShowToast={onShowToast} focusQuoteId={QUOTE} onFocusConsumed={vi.fn()} />,
+    );
+    await clickAndSettle(await screen.findByText('detail edit'));
+    await act(async () => {
+      fireEvent.click(await screen.findByText('wizard save', undefined, { timeout: 10_000 }));
+    });
+    await waitFor(() => expect(mocks.syncQuoteHoldEvent).toHaveBeenCalledTimes(1));
+    const [id, quote, lineup] = mocks.syncQuoteHoldEvent.mock.calls[0];
+    expect(id).toBe(QUOTE);
+    expect(quote).toMatchObject({ eventDate: '2027-06-19', total: 3100 });
+    expect(lineup).toEqual(saved);
+    await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('Quote updated', 'success'));
+  });
+
+  it('a date on hold that did not update says so; the quote stays saved', async () => {
+    mocks.updateQuote.mockResolvedValue({ data: { ...row }, error: null });
+    mocks.saveQuoteMusicians.mockResolvedValue({ data: [], error: null });
+    mocks.syncQuoteHoldEvent.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    mocks.wizardPayload = { eventDate: '2027-06-19', musicians: [] };
+    const onShowToast = vi.fn();
+    render(
+      <QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[row]} onShowToast={onShowToast} focusQuoteId={QUOTE} onFocusConsumed={vi.fn()} />,
+    );
+    await clickAndSettle(await screen.findByText('detail edit'));
+    await act(async () => {
+      fireEvent.click(await screen.findByText('wizard save', undefined, { timeout: 10_000 }));
+    });
+    await waitFor(() =>
+      expect(onShowToast).toHaveBeenCalledWith('Quote updated, but its calendar event was not. Save the quote again to update it.', 'error'),
+    );
+    expect(mocks.updateQuote).toHaveBeenCalledTimes(1);
   });
 });

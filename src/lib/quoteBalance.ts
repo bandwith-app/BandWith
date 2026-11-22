@@ -264,6 +264,22 @@ export function buildClientBalance(
 }
 
 /**
+ * The balance the client has (#293 round 3): the one sent (185's
+ * balance_sent), never one only published (an older build's Preview) or a
+ * later version not sent yet. `balance_sent` null with a send on record
+ * (185's backfill could not tell which version went out) is no balance
+ * either. Before 185 (no balance_sent column, the key is missing) the
+ * published balance, once a send is recorded.
+ */
+export function balanceClientHas(
+  link: { balance?: ClientBalance | null; balance_sent?: ClientBalance | null; balance_sent_at?: string | null } | null | undefined,
+): ClientBalance | null {
+  if (!link) return null;
+  if (link.balance_sent !== undefined) return link.balance_sent ?? null;
+  return link.balance_sent_at ? link.balance ?? null : null;
+}
+
+/**
  * The other payments a balance already on the client's page counted (not
  * the deposit), to start the next request from. Balances from 185 on keep
  * them as `other`; older ones only have the "Already paid" line, in the

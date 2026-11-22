@@ -613,8 +613,33 @@ export async function publishQuoteBalance(
     : { data: null, error: new Error('No link') };
 }
 
-export async function markQuoteBalanceSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<string>> {
-  const { data, error } = await supabase.rpc('bw_quote_balance_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
+/**
+ * #293 round 3 (185): another admin published a different balance between
+ * this send and its record, so the server recorded nothing.
+ */
+export const isBalanceChangedError = (e: unknown): boolean =>
+  /BW_BALANCE_CHANGED/.test(String((e as { message?: string } | null)?.message ?? e ?? ''));
+
+/**
+ * Records a balance send. `balanceVersion`: the balance_version the caller
+ * published and sent (185): a balance replaced meanwhile is refused
+ * (isBalanceChangedError) instead of being recorded as sent. A database
+ * before 185 doesn't know the parameter: recorded without it, as before.
+ */
+export async function markQuoteBalanceSent(
+  quoteId: string,
+  kind: 'sent' | 'reminded',
+  channel: QuoteChannel,
+  balanceVersion?: number | null,
+): Promise<Result<string>> {
+  const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  let { data, error } = await supabase.rpc(
+    'bw_quote_balance_mark_sent',
+    balanceVersion != null ? { ...args, p_balance_version: balanceVersion } : args,
+  );
+  if (error && balanceVersion != null && (error.code === 'PGRST202' || /could not find the function/i.test(error.message || ''))) {
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', args));
+  }
   return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
 }
 

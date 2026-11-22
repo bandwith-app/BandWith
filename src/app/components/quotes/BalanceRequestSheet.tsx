@@ -23,6 +23,7 @@ import {
   defaultDueRule,
   planBalance,
   previousOtherReceived,
+  balanceClientHas,
   type BalanceDueRule,
   type BalanceIssue,
   type BalanceWay,
@@ -33,6 +34,7 @@ import {
   getQuoteLinkState,
   markQuoteBalancePaid,
   markQuoteBalanceSent,
+  isBalanceChangedError,
   previewQuoteBalance,
   publishQuoteBalance,
   publishQuoteLink,
@@ -199,8 +201,8 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
   const dueDate = balanceDueDate(rule, gigDate, today, customDate);
   const setup = balanceSetup(settings);
   const accepted = String(quote.status || '').toUpperCase() === 'ACCEPTED' || link?.status === 'accepted';
-  // What the client has: the balance sent (185), else the last one published.
-  const prev = (link?.balance_sent_at ? link?.balance_sent ?? link?.balance : link?.balance) ?? null;
+  // What the client has: the balance sent (185), never one only published.
+  const prev = balanceClientHas(link);
 
   const facts = {
     total,
@@ -274,9 +276,14 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
       say(t('The client page could not be updated. Try again.'), 'error');
       return false;
     }
-    const sent = await markQuoteBalanceSent(quoteId, plan.mode === 'remind' ? 'reminded' : 'sent', channel);
+    const sent = await markQuoteBalanceSent(quoteId, plan.mode === 'remind' ? 'reminded' : 'sent', channel, pub.data.balance_version);
     if (sent.error) {
-      say(t('The client page could not be updated. Try again.'), 'error');
+      say(
+        isBalanceChangedError(sent.error)
+          ? t('Someone changed the balance meanwhile, so this send was not recorded. Check the balance and send it again.')
+          : t('The client page could not be updated. Try again.'),
+        'error',
+      );
       return false;
     }
     const state = await getQuoteLinkState(quoteId);
@@ -327,12 +334,19 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
       // The send record is what puts this balance on the client's page (185):
       // the email has the new amount, so the page must not keep the old one.
       const kindSent = plan.mode === 'remind' ? 'reminded' : 'sent';
-      let recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email');
-      if (recorded.error) recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email');
+      let recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email', pub.data.balance_version);
+      if (recorded.error && !isBalanceChangedError(recorded.error)) {
+        recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email', pub.data.balance_version);
+      }
       const state = await getQuoteLinkState(quoteId);
       if (state.data?.link) setLink(state.data.link);
       if (recorded.error) {
-        say(t('The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.'), 'error');
+        say(
+          isBalanceChangedError(recorded.error)
+            ? t('The email went out, but someone changed the balance meanwhile, so the client’s page still shows the earlier one. Check the balance and send it again.')
+            : t('The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.'),
+          'error',
+        );
         return;
       }
       say(

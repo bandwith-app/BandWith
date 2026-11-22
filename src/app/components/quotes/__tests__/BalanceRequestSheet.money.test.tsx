@@ -126,4 +126,24 @@ describe('BalanceRequestSheet: other payments and preview', () => {
     expect(await screen.findByText(/still shows the earlier balance/)).toBeTruthy();
     expect(screen.queryByText(/Balance request sent to/)).toBeNull();
   });
+
+  // Codex round 3 (185:314): the send records the balance it published, not whatever is on the link by then.
+  it('Send by email: records the balance version it published; one replaced meanwhile says so and is not retried', async () => {
+    mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 3, changed: true }, error: null });
+    mocks.markSent.mockResolvedValue({ data: null, error: new Error('BW_BALANCE_CHANGED: the balance was changed after this one was sent') });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    await waitFor(() => expect(mocks.email).toHaveBeenCalled());
+    expect(
+      await screen.findByText('The email went out, but someone changed the balance meanwhile, so the client’s page still shows the earlier one. Check the balance and send it again.'),
+    ).toBeTruthy();
+    expect(mocks.markSent).toHaveBeenCalledTimes(1);
+    expect(mocks.markSent.mock.calls[0]).toEqual(['q-1', 'sent', 'email', 3]);
+  });
 });
