@@ -69,4 +69,26 @@ END $$;`;
   EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE ON public.quotes FOR EACH ROW EXECUTE FUNCTION public.bw_trg(%L)', 't', 'c');
 END $$;`)).toEqual([]);
   });
+
+  // Codex triage of #278 (11-23): 195 redefines bw_band_free_slots only when the
+  // live definition doesn't read skip_dates yet (after 178 it is left alone).
+  it('a definition inside IF … THEN EXECUTE … END IF can be skipped: conditional', () => {
+    const d = definedFunctions(`DO $do$
+DECLARE
+  v_fn regprocedure := to_regprocedure('public.bw_slots(uuid)');
+BEGIN
+  IF v_fn IS NULL OR position('skip_dates' IN pg_get_functiondef(v_fn)) = 0 THEN
+    EXECUTE $ddl$
+CREATE OR REPLACE FUNCTION public.bw_slots(p uuid) RETURNS int LANGUAGE sql AS $body$ SELECT 1 $body$;
+    $ddl$;
+  END IF;
+  EXECUTE $ddl$
+CREATE OR REPLACE FUNCTION public.bw_always(p uuid) RETURNS int LANGUAGE sql AS $body$ SELECT 1 $body$;
+  $ddl$;
+END
+$do$;`);
+    expect(d.get('bw_slots')).toEqual({ how: 'dynamic', conditional: true });
+    // After the END IF: always runs.
+    expect(d.get('bw_always')).toEqual({ how: 'dynamic', conditional: false });
+  });
 });

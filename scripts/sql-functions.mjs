@@ -7,7 +7,9 @@
 //   static    CREATE [OR REPLACE] FUNCTION at the top level;
 //   dynamic   the same text inside a DO block (EXECUTE '…', EXECUTE $sql$…$sql$,
 //             EXECUTE format(…)). conditional: the DO block can RETURN before
-//             it (a live body is kept, e.g. 178 keeps 175's bw_chat_scope_ok);
+//             it (a live body is kept, e.g. 178 keeps 175's bw_chat_scope_ok),
+//             or it sits inside an IF … THEN … END IF (195 redefines
+//             bw_band_free_slots only when the live body lacks skip_dates);
 //   patched   a DO block that reads a live body (pg_get_functiondef) and runs
 //             an expression (EXECUTE v_new, EXECUTE replace(def, …)), e.g. 191;
 //   declared  a "-- defines: a, b" line: needed when the SQL builds the name at
@@ -24,6 +26,11 @@ const READS_BODY = /pg_get_functiondef\(\s*(?:to_regprocedure\(\s*)?'(?:public\.
 // format(), not EXECUTE FUNCTION (triggers) nor GRANT EXECUTE ON.
 const EXECUTES_EXPRESSION = /\bEXECUTE\s+(?!format\s*\(|'|\$\w*\$|FUNCTION\b|PROCEDURE\b|ON\b)[a-z_(]/i;
 const RETURNS_EARLY = /\bRETURN\s*;/i;
+// Inside an IF that is still open at that point of the DO block (IF … THEN
+// without its END IF yet). "IF EXISTS" / "IF NOT EXISTS" of DDL have no THEN
+// before their ";" and don't count.
+const insideIf = (before) => (before.match(/\bIF\b[^;]*?\bTHEN\b/gi) ?? []).length > (before.match(/\bEND\s+IF\b/gi) ?? []).length;
+const canSkip = (before) => RETURNS_EARLY.test(before) || insideIf(before);
 
 const withoutComments = (sql) =>
   sql
@@ -45,7 +52,7 @@ export function definedFunctions(sql) {
     const block = blockAt(m.index);
     if (!block) out.set(m[1], { how: 'static', conditional: false });
     else if (!out.has(m[1]) || out.get(m[1]).how !== 'static')
-      out.set(m[1], { how: 'dynamic', conditional: RETURNS_EARLY.test(text.slice(block.from, m.index)) });
+      out.set(m[1], { how: 'dynamic', conditional: canSkip(text.slice(block.from, m.index)) });
   }
   for (const b of blocks) {
     const exec = b.body.search(EXECUTES_EXPRESSION);

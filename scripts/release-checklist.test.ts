@@ -277,7 +277,7 @@ describe('every proof takes a marker from the final body (Codex, review #278)', 
 });
 
 /** Re-declared unchanged by a later migration of the release (identical live bodies on the 11-22 heads). */
-const SAME_BODY = new Set(['bw_band_free_slots', 'bw_chat_preview', 'bw_js_left']);
+const SAME_BODY = new Set(['bw_chat_preview', 'bw_js_left']);
 const squash = (b: string | null) => (b ?? '').replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
 describe('functions redefined by more than one migration: post-apply check (main, 11-22)', () => {
   const redef = read('supabase/checks/redefined_functions.sql');
@@ -319,11 +319,17 @@ END $do$;`;
     expect(definedFns(sql).get('bw_x')?.conditional).toBe(true);
   });
 
-  it('the overlaps of the 11-22 evening heads have rows: 182 over 178, and three identical copies (fn-redefinitions --check)', () => {
+  it('the overlaps of the 11-22 evening heads have rows: 182 over 178, the free slots of 178 kept by 195, two identical copies (fn-redefinitions --check)', () => {
     const final = (fn: string) => rows.find((r) => r.fn === fn)?.final;
     expect(final('bw_deputy_feed')).toBe('182');
     expect(final('bw_deputy_request_view')).toBe('182');
-    expect(final('bw_band_free_slots')).toBe('195');
+    // 178's is the final one (its hold rule); 195 redefines it from 095 only when
+    // the live body doesn't read skip_dates yet, so after 178 it is skipped
+    // (Codex triage, 11-23: the two bodies are NOT the same).
+    expect(final('bw_band_free_slots')).toBe('178');
+    expect(rows.find((r) => r.fn === 'bw_band_free_slots')?.replaces).toEqual(['195']);
+    expect(rows.find((r) => r.fn === 'bw_band_free_slots')?.mark).toContain('bw_date_hold_live');
+    expect(SAME_BODY.has('bw_band_free_slots')).toBe(false);
     expect(final('bw_chat_preview')).toBe('192');
     expect(final('bw_js_left')).toBe('192');
   });
@@ -363,6 +369,16 @@ END $do$;`;
         }
         expect(markerBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
       }
+    }
+  });
+
+  it("no marker is in the body main has today (the last definition before the release)", () => {
+    const release = new Set(releaseOrder());
+    const before = fs.readdirSync(`${process.cwd()}/${MIGRATIONS}`).filter((f) => /^\d{3}_.*\.sql$/.test(f) && !release.has(f.slice(0, 3)) && f.slice(0, 3) !== '177').sort();
+    for (const r of rows) {
+      let body: string | null = null;
+      for (const f of before) body = markerBody(read(`${MIGRATIONS}/${f}`), r.fn) ?? body;
+      if (body) expect(body, `${r.fn}: the marker of ${r.final} is already in main's body`).not.toContain(r.mark);
     }
   });
 

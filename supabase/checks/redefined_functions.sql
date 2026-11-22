@@ -42,13 +42,19 @@ FROM (VALUES
   -- 192 rewrites 194's notice writer and push claim: it rechecks who may still read (194 → 192, hard).
   ('bw_claim_chat_push_only', '192', '194', 'AND coalesce(public.bw_chat_scope_ok_for((SELECT m3.chat_id FROM messages m3 WHERE m3.id = p_message_id), u), false)'),
   ('bw_write_chat_notices', '192', '194', 'AND coalesce(public.bw_chat_scope_ok_for(v_chat, r.user_id), false)'),
+  -- 178's free slots (the date-hold rule) is the final one. 195 redefines it
+  -- from 095 only when the live body doesn't read skip_dates yet, so after 178
+  -- it is skipped: 178 before 195, else 195's body (no holds) would be live.
+  ('bw_band_free_slots', '178', '195', 'AND public.bw_date_hold_live(e.id)'),
+  -- 187 rewrites 105's outcome (on main, live): the quote is locked before its
+  -- link, and the gig is found through bw_quote_gig_id.
+  ('bw_quote_link_set_outcome', '187', '105', 'WHERE e.id = public.bw_quote_gig_id(p_quote_id)'),
   -- 183 rewrites 099's link rotation (on main, live): the recipient guard.
   ('bw_quote_link_rotate', '183', '099', 'reassign_guard = CASE WHEN l.recipient_changed_at IS NOT NULL AND public.bw_quote_link_current(v_link)'),
   ('bw_deputy_feed', '182', '178', '(SELECT r.deputy_name FROM public.deputy_requests r WHERE r.calendar_token = p_token),'),
   ('bw_deputy_request_view', '182', '178', 'v := v || public.bw_deputy_frozen_gig(v_snap) || jsonb_build_object(''event_updated_at'', NULL);'),
   -- Re-declared unchanged by a later one (identical bodies on the 11-22 heads):
   -- either being live is right; the marker proves that body is.
-  ('bw_band_free_slots', '195', '178', 'AND public.bw_is_band_member(p_band_id, auth.uid())'),
   ('bw_chat_preview', '192', '194', '''New message'''),
   ('bw_js_left', '192', '194', 'v_units := v_units + CASE WHEN ascii(substr(p_text, v_i + 1, 1)) > 65535 THEN 2 ELSE 1 END;'),
   -- 170 is frozen on main; 198 (right after it) carries the kill switch.
