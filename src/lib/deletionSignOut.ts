@@ -72,19 +72,76 @@ export function deletionAwareFetch(base: typeof fetch, onDeleting: (userId: stri
 type Handler = (userId: string | null) => void | Promise<void>;
 let handler: Handler | null = null;
 let clearLocal: (() => Promise<void>) | null = null;
+let reloadApp: (() => void) | null = null;
 let holds = 0;
 let running = false;
 
 /** The app's sign-out for a refusal (App.tsx, through useDeletionSignOut). */
-export function onAccountBeingDeleted(fn: Handler, clearLocalSession?: () => Promise<void>): () => void {
+export function onAccountBeingDeleted(
+  fn: Handler,
+  clearLocalSession?: () => Promise<void>,
+  reload?: () => void,
+): () => void {
   handler = fn;
   clearLocal = clearLocalSession ?? null;
+  reloadApp = reload ?? null;
   return () => {
     if (handler === fn) {
       handler = null;
       clearLocal = null;
+      reloadApp = null;
     }
   };
+}
+
+/** What clearDeviceSession needs (useDeletionSignOut passes the app's own). */
+export interface DeviceClearDeps {
+  /** supabase.auth.signOut({ scope: 'local' }): tried, never relied on. */
+  signOutLocal(): Promise<unknown>;
+  /** The client's session storage and key, removed directly as a last resort. */
+  sessionStore?: { key: string; removeItem(key: string): unknown } | null;
+  clearOfflineCache(): Promise<void>;
+  clearStageCache(): void;
+}
+
+/**
+ * Round 11 (Claude r10 F2): the app's sign-out failed, so this device is
+ * cleared here: the local sign-out is tried, but it runs the same session
+ * removal that may just have failed, so the stored session is removed
+ * directly too; then the offline and Stage caches. Each step on its own;
+ * the reload that follows drops the in-memory user state.
+ */
+export async function clearDeviceSession(deps: DeviceClearDeps): Promise<void> {
+  try {
+    await Promise.race([deps.signOutLocal(), new Promise((r) => setTimeout(r, 3000))]);
+  } catch (e) {
+    console.warn('[account] local sign-out failed:', e);
+  }
+  const key = deps.sessionStore?.key;
+  if (key) {
+    for (const k of [key, `${key}-code-verifier`, `${key}-user`]) {
+      try {
+        await deps.sessionStore?.removeItem(k);
+      } catch {
+        /* storage blocked */
+      }
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(k);
+      } catch {
+        /* storage blocked */
+      }
+    }
+  }
+  try {
+    await deps.clearOfflineCache();
+  } catch (e) {
+    console.warn('[account] offline cache not cleared:', e);
+  }
+  try {
+    deps.clearStageCache();
+  } catch (e) {
+    console.warn('[account] Stage cache not cleared:', e);
+  }
 }
 
 /** This device's session only (round 10): when the app's sign-out failed. */
@@ -95,6 +152,16 @@ async function clearSessionHere(): Promise<void> {
     await supabase.auth.signOut({ scope: 'local' });
   } catch (e) {
     console.warn('[account] local sign-out failed:', e);
+  }
+}
+
+/** Round 11: the welcome screen, also after a failed sign-out. */
+function reloadHere(): void {
+  try {
+    if (reloadApp) return reloadApp();
+    if (typeof window !== 'undefined') window.location.href = '/';
+  } catch (e) {
+    console.warn('[account] reload failed:', e);
   }
 }
 
@@ -119,6 +186,8 @@ export async function signOutDeletingAccount(userId: string | null): Promise<voi
     // Round 10: never an unhandled rejection; the session still ends here.
     console.warn('[account] sign-out after a deletion refusal failed:', e);
     await clearSessionHere();
+    // Round 11 (Claude r10 F2): the catch path reloads too.
+    reloadHere();
   } finally {
     running = false;
   }

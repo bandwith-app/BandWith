@@ -168,8 +168,8 @@
 --      or no longer exists, is never written (trigger on notifications): a
 --      push in flight can't land after the last scrub.
 --    * Once committed, their other device deletes nothing either, on the
---      tables bw_deleting_account_writes guards (the author-column tables,
---      14 on prod, plus rehearsal_polls): not every table.
+--      tables bw_deleting_account_writes guards: the author-column tables
+--      (14 on prod, rehearsal_polls among them), not every table.
 --    * Archived objects and delete markers don't count as files left
 --      (as 197 reads storage.objects).
 --    * Clearing what would stop Auth: one statement per column first, row by
@@ -177,12 +177,19 @@
 --    * A poll keeps only invitees who still have an account, never NULL;
 --      one left with nobody stays with its creator, else the band's admins.
 -- 13. Round 10 (Claude review #282, d8f5861b):
---    * The listing for removal includes archived objects and delete markers
---      (old versions of their files go too); only the count of files left
---      skips them.
---    * A poll is never widened to the whole band: with no live creator and
---      no live admin it closes, its list kept. A creator whose deletion is
---      committed is never put back on one.
+--    * Archived objects and delete markers are removed too (round 11: by
+--      version); only the count of files left skips them.
+--    * A poll is never widened to the whole band. A creator whose deletion
+--      is committed is never put back on one.
+-- 14. Round 11 (Claude delta review r10, 837c53f6):
+--    * Storage: remove() by name deletes only the current row, so the
+--      files go by name (live rows only) and their archived versions and
+--      delete markers are purged by version (bw_account_storage_versions,
+--      { path, versionId }); a name with only archived rows is never
+--      removed by name.
+--    * A poll with nobody live to show it to (no other invitee, no live
+--      creator, no live admin) is deleted, never kept with a deleted id,
+--      never '{}' (the whole band, 098) or '{NULL}'.
 --
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
@@ -715,9 +722,9 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_messages(uuid) FROM PUBLIC, an
 -- Who sees a poll left with no invitee (round 9, Claude): an empty list
 -- would mean the whole band, so its creator, else the band's active admins
 -- (not p_except, nobody whose deletion is committed). Only accounts that
--- still exist. Round 10: NULL when there is nobody (the caller closes the
--- poll instead of widening it), and never a creator whose deletion is
--- committed (a co-admin's save would hit "Choose someone else").
+-- still exist. Round 10: NULL when there is nobody (round 11: the caller
+-- deletes the poll instead of widening it), and never a creator whose
+-- deletion is committed (a co-admin's save would hit "Choose someone else").
 CREATE OR REPLACE FUNCTION public.bw_poll_fallback_invitees(p_band uuid, p_creator uuid, p_except uuid)
 RETURNS uuid[]
 LANGUAGE sql
@@ -762,20 +769,27 @@ BEGIN
   END IF;
   DELETE FROM public.rehearsal_polls rp
    WHERE rp.invited_user_ids = ARRAY[p_uid] AND rp.created_by = p_uid;
+  -- Round 11: nobody live to show it to (no other invitee, no live creator,
+  -- no live admin): the poll goes. An empty list would be the whole band
+  -- (098), and keeping theirs would keep a deleted account's id.
+  DELETE FROM public.rehearsal_polls rp
+   WHERE p_uid = ANY (rp.invited_user_ids)
+     AND cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) = 0
+     AND public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid) IS NULL;
   -- Round 9 (Claude): never {NULL}. Nobody left: its creator, else
-  -- (creator gone too) the band's admins; round 10: with nobody live at
-  -- all, closed with its list as it was, never widened to the whole band.
+  -- (creator gone too) the band's admins, closed.
   UPDATE public.rehearsal_polls rp
      SET invited_user_ids = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) > 0
                                  THEN array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)
-                                 ELSE coalesce(public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid),
-                                               array_remove(rp.invited_user_ids, NULL)) END,
+                                 ELSE public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid) END,
          status = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) = 0
                             AND rp.status IN ('proposed', 'polling')
                        THEN 'cancelled' ELSE rp.status END,
          updated_at = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) = 0
                            THEN now() ELSE rp.updated_at END
-   WHERE p_uid = ANY (rp.invited_user_ids);
+   WHERE p_uid = ANY (rp.invited_user_ids)
+     AND (cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) > 0
+          OR public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid) IS NOT NULL);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_account_deletion_polls(uuid) FROM PUBLIC, anon, authenticated;
@@ -1892,7 +1906,8 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_release_refs(uuid) FROM PUBLIC
 --   * nobody else points a row at them (a task assigned, an invite, a poll
 --     they are invited to: rehearsal_polls.invited_user_ids, round 8).
 -- Round 9 (Codex): and their other device deletes nothing (a surviving
--- band's poll) on these tables only (14 on prod).
+-- band's poll) on these tables only: the author-column tables
+-- (14 on prod, rehearsal_polls among them).
 -- Only requests from the apps (WHEN auth.uid() IS NOT NULL): the server's
 -- own writes (prepare, Auth's SET NULL, push logs, the probes above) go
 -- through, and the last step clears what they left. AFTER the row is
@@ -2017,22 +2032,68 @@ BEGIN
   IF coalesce(p_bucket, '') = '' OR coalesce(trim(both '/' from p_prefix), '') = '' THEN
     RAISE EXCEPTION 'bucket and prefix are required' USING ERRCODE = '22004';
   END IF;
-  -- Round 10 (Claude): every row, archived objects and delete markers too
-  -- (old versions of their files go with them); only the count of files
-  -- left (bw_account_storage_release) skips those.
+  -- Round 11: the files themselves (not archived, not a delete marker),
+  -- removed by name. The Storage API's remove by name deletes only the
+  -- current row (storage-api deleteObjects: archived_at IS NULL), so their
+  -- archived versions and delete markers are listed apart, by version
+  -- (bw_account_storage_versions), and purged by version; a name that is
+  -- only archived rows is never removed by name.
   RETURN QUERY EXECUTE
     $q$SELECT DISTINCT o.name::text
          FROM storage.objects o
         WHERE o.bucket_id = $1
           AND o.name LIKE replace(replace(replace(trim(trailing '/' from $2), '\', '\\'), '%', '\%'), '_', '\_') || '/%'
-          AND ($3 IS NULL OR o.name > $3)
-        ORDER BY 1
+          AND ($3 IS NULL OR o.name > $3)$q$
+      || public.bw_storage_live_filter()
+      || $q$ ORDER BY 1
         LIMIT least(greatest(coalesce($4, 1000), 1), 1000)$q$
     USING p_bucket, p_prefix, p_after, p_limit;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_account_storage_names(text, text, text, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_account_storage_names(text, text, text, integer) TO service_role;
+
+-- Round 11 (privacy): the old versions under a folder, archived objects and
+-- delete markers, as (name, version), for delete-account to purge through
+-- the Storage API by version ({ path, versionId }): direct deletes on
+-- storage.objects are refused (storage.protect_delete). Keyset pages in
+-- (name, version) order. Nothing on a setup without versions (no
+-- archived_at / is_delete_marker / version columns: local, PGlite).
+CREATE OR REPLACE FUNCTION public.bw_account_storage_versions(
+  p_bucket text, p_prefix text, p_after_name text DEFAULT NULL, p_after_version text DEFAULT NULL,
+  p_limit integer DEFAULT 1000)
+RETURNS TABLE (name text, version text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_live text := public.bw_storage_live_filter();
+BEGIN
+  IF coalesce(p_bucket, '') = '' OR coalesce(trim(both '/' from p_prefix), '') = '' THEN
+    RAISE EXCEPTION 'bucket and prefix are required' USING ERRCODE = '22004';
+  END IF;
+  IF v_live = '' OR NOT EXISTS (SELECT 1 FROM pg_attribute
+                                 WHERE attrelid = to_regclass('storage.objects') AND attname = 'version'
+                                   AND attnum > 0 AND NOT attisdropped) THEN
+    RETURN;
+  END IF;
+  RETURN QUERY EXECUTE
+    $q$SELECT o.name::text, o.version::text
+         FROM storage.objects o
+        WHERE o.bucket_id = $1
+          AND o.name LIKE replace(replace(replace(trim(trailing '/' from $2), '\', '\\'), '%', '\%'), '_', '\_') || '/%'
+          AND o.version IS NOT NULL
+          AND ($3 IS NULL OR (o.name::text, o.version::text) > ($3, coalesce($4, '')))
+          AND NOT (true$q$ || v_live || $q$)
+        ORDER BY 1, 2
+        LIMIT least(greatest(coalesce($5, 1000), 1), 1000)$q$
+    USING p_bucket, p_prefix, p_after_name, p_after_version, p_limit;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_storage_versions(text, text, text, text, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_account_storage_versions(text, text, text, text, integer) TO service_role;
 
 -- Round 9 (Codex): a notification from someone whose deletion is committed,
 -- or who no longer exists, is never written. Chat senders (sender_id /
@@ -2078,7 +2139,8 @@ CREATE TRIGGER bw_notifications_deleting_actor
 -- Round 9 (Claude): a stale save (a co-admin's open form) can't write a
 -- deleted account back into a poll: only invitees who still have an
 -- account stay, never NULL. A list emptied this way goes to the creator,
--- else the band's admins (bw_poll_fallback_invitees), never the whole band.
+-- else the band's admins (bw_poll_fallback_invitees), never the whole band;
+-- with nobody at all, the poll is not kept (round 11).
 CREATE OR REPLACE FUNCTION public.bw_trg_rehearsal_polls_live_invitees()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -2104,18 +2166,13 @@ BEGIN
     v_live := public.bw_poll_fallback_invitees(NEW.band_id, NEW.created_by, NULL);
   END IF;
   IF v_live IS NULL THEN
-    -- Round 10: nobody live to show it to: closed, never widened to the
-    -- whole band ('{}'). The list stays as it was (an update), or as given
-    -- without NULLs (an insert).
+    -- Round 11: nobody live to show it to: never widened to the whole band
+    -- ('{}', 098) and never '{NULL}'. An insert is not stored; an update
+    -- deletes the poll (its votes and options go with it, ON DELETE CASCADE).
     IF TG_OP = 'UPDATE' THEN
-      NEW.invited_user_ids := OLD.invited_user_ids;
-    ELSIF cardinality(array_remove(NEW.invited_user_ids, NULL)) > 0 THEN
-      NEW.invited_user_ids := array_remove(NEW.invited_user_ids, NULL);
+      DELETE FROM public.rehearsal_polls WHERE id = OLD.id;
     END IF;
-    IF NEW.status IN ('proposed', 'polling') THEN
-      NEW.status := 'cancelled';
-    END IF;
-    RETURN NEW;
+    RETURN NULL;
   END IF;
   NEW.invited_user_ids := v_live;
   RETURN NEW;

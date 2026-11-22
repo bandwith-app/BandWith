@@ -84,9 +84,12 @@ export function bandFolders(bandId: string): { bucket: string; prefix: string }[
   ];
 }
 
+/** A name (its current file), or one version of it (Storage's { path, versionId }). */
+export type RemoveEntry = string | { path: string; versionId: string };
+
 /** The bit of the Storage API that removeObjects needs (a bucket). */
 export interface ObjectStore {
-  remove(paths: string[]): Promise<{ error: unknown }>;
+  remove(paths: RemoveEntry[]): Promise<{ error: unknown }>;
 }
 
 /** The server side removeObjects reads the names from, and removes them with. */
@@ -109,6 +112,16 @@ const REMOVE_CHUNK = 100;
  * listed was removed; a failed listing or removal is false (not ready yet).
  */
 export async function removeObjects(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
+  const files = await removeCurrentFiles(server, bucket, prefix);
+  // Round 11 (Claude r10 F6): Storage's remove by name deletes only the
+  // current row, never the archived versions or delete markers under it:
+  // those are purged by version. Both run; either failing is not ready.
+  const versions = await purgeOldVersions(server, bucket, prefix);
+  return files && versions;
+}
+
+/** The files themselves (live rows), removed by name. */
+async function removeCurrentFiles(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
   const store = server.store(bucket);
   let after: string | null = null;
   for (;;) {
@@ -128,6 +141,49 @@ export async function removeObjects(server: ObjectServer, bucket: string, prefix
     // cap (PostgREST max rows) gives short pages long before that.
     if (names.length === 0) return true;
     after = names[names.length - 1];
+  }
+}
+
+/**
+ * Archived versions and delete markers under `prefix/`, purged by version
+ * through the Storage API (direct deletes on storage.objects are refused,
+ * storage.protect_delete). Names and versions from
+ * bw_account_storage_versions (180 round 11). A 180 without it (an older
+ * deploy order) has nothing to purge: true. Other failures: false.
+ */
+async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
+  const store = server.store(bucket);
+  let after: { name: string; version: string } | null = null;
+  for (;;) {
+    const { data, error } = await server.rpc('bw_account_storage_versions', {
+      p_bucket: bucket,
+      p_prefix: prefix,
+      p_after_name: after?.name ?? null,
+      p_after_version: after?.version ?? null,
+      p_limit: NAMES_PAGE,
+    });
+    if (error) {
+      const code = (error as { code?: string } | null)?.code ?? '';
+      if (code === 'PGRST202' || code === '42883') return true;
+      console.warn('account-deletion: old versions not listed', bucket, error);
+      return false;
+    }
+    // No rows: PostgREST answers []; nothing at all is nothing to purge too.
+    if (data == null) return true;
+    if (!Array.isArray(data)) return false;
+    const rows = (data as { name?: unknown; version?: unknown }[])
+      .filter((r) => typeof r?.name === 'string' && typeof r?.version === 'string')
+      .map((r) => ({ name: r.name as string, version: r.version as string }));
+    for (let i = 0; i < rows.length; i += REMOVE_CHUNK) {
+      const chunk = rows.slice(i, i + REMOVE_CHUNK).map((r) => ({ path: r.name, versionId: r.version }));
+      const { error: removeError } = await store.remove(chunk);
+      if (removeError) {
+        console.warn('account-deletion: old versions not purged', bucket, removeError);
+        return false;
+      }
+    }
+    if (rows.length === 0) return true;
+    after = rows[rows.length - 1];
   }
 }
 

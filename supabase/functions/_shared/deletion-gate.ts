@@ -60,17 +60,7 @@ export async function callerDeletionRefusal(admin: PendingLookup, caller: Caller
  */
 export async function senderBeingDeleted(admin: PendingLookup, senderId: unknown): Promise<boolean> {
   if (typeof senderId !== "string" || !senderId) return false;
-  const pending = await admin
-    .from("account_deletions_pending")
-    .select("user_id")
-    .eq("user_id", senderId)
-    .not("committed_at", "is", null)
-    .maybeSingle();
-  if (pending.error) {
-    console.warn("deletion-gate: sender lookup failed, pushing", pending.error);
-    return false;
-  }
-  if (pending.data) return true;
+  if (await deletionCommitted(admin, senderId)) return true;
   const byId = admin.from("profiles").select("id").eq("id", senderId);
   if (!byId.maybeSingle) return false;
   const profile = await byId.maybeSingle();
@@ -79,4 +69,36 @@ export async function senderBeingDeleted(admin: PendingLookup, senderId: unknown
     return false;
   }
   return !profile.data;
+}
+
+/** A committed deletion for this id; a failed lookup is false (the push goes). */
+async function deletionCommitted(admin: PendingLookup, userId: string): Promise<boolean> {
+  const pending = await admin
+    .from("account_deletions_pending")
+    .select("user_id")
+    .eq("user_id", userId)
+    .not("committed_at", "is", null)
+    .maybeSingle();
+  if (pending.error) {
+    console.warn("deletion-gate: sender lookup failed, pushing", pending.error);
+    return false;
+  }
+  return !!pending.data;
+}
+
+/**
+ * Round 11 (Claude r10 F1): the push's actors, as 180's notifications
+ * trigger reads them. `sender` (a chat sender: committed, or gone) and `by`
+ * (108's suggestion author: committed only). send-push passes the caller
+ * as the sender for a user call (never the sender_id the app sent), and
+ * data.sender_id only for a service call.
+ */
+export async function pushActorBeingDeleted(
+  admin: PendingLookup,
+  actors: { sender?: unknown; by?: unknown },
+): Promise<boolean> {
+  if (await senderBeingDeleted(admin, actors.sender)) return true;
+  const by = actors.by;
+  if (typeof by !== "string" || !by || by === actors.sender) return false;
+  return deletionCommitted(admin, by);
 }

@@ -1152,19 +1152,38 @@ ok(refused(e6) && (await qq(`SELECT 1 FROM rehearsal_polls WHERE id = '${P3}'`))
 e6 = await errAs(BB2, `DELETE FROM rehearsal_polls WHERE id = '${P3}'`);
 ok(e6 === null, `round 9 (Codex B4): the band still can (${JSON.stringify(e6)})`);
 // Claude 1: archived objects and delete markers are not files left.
-d = await x(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS archived_at timestamptz, ADD COLUMN IF NOT EXISTS is_delete_marker boolean;
-  INSERT INTO storage.objects (bucket_id, name, owner, owner_id, archived_at, is_delete_marker) VALUES
-    ('personal-files', '${X1}/old.m4a', NULL, NULL, now(), false), ('avatars', '${X1}/me.png', NULL, NULL, NULL, true)`);
+d = await x(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS archived_at timestamptz, ADD COLUMN IF NOT EXISTS is_delete_marker boolean,
+    ADD COLUMN IF NOT EXISTS version text;
+  INSERT INTO storage.objects (bucket_id, name, owner, owner_id, archived_at, is_delete_marker, version) VALUES
+    ('personal-files', '${X1}/old.m4a', NULL, NULL, now(), false, 'v-old'), ('avatars', '${X1}/me.png', NULL, NULL, NULL, true, 'v-marker'),
+    ('personal-files', '${X1}/live.m4a', NULL, NULL, NULL, false, 'v-live-1'), ('personal-files', '${X1}/live.m4a', NULL, NULL, now(), false, 'v-live-0')`);
 const rel9 = (await q(`SELECT public.bw_account_storage_release('${X1}') AS r`)).rows?.[0]?.r;
 nm = await names8('personal-files', X1);
 const nmAv = await names8('avatars', X1);
-ok(!d.error && rel9?.personal_left === 0, `round 9 (Claude 1): archived rows and delete markers don't count (${d.error ?? JSON.stringify(rel9)})`);
-// Round 10 (Claude r9 2): skipped in the count only, never in removal.
-ok(!nm.error && nm.rows.map((r) => r.n).includes(`${X1}/old.m4a`) && !nmAv.error && nmAv.rows.map((r) => r.n).includes(`${X1}/me.png`),
-  `round 10 (Claude r9 2): their archived rows and delete markers are listed for removal too (${nm.error ?? nmAv.error ?? JSON.stringify({ nm: nm.rows, nmAv: nmAv.rows })})`);
+ok(!d.error && rel9?.personal_left === 1, `round 9 (Claude 1): archived rows and delete markers don't count (${d.error ?? JSON.stringify(rel9)})`);
+// Round 11 (Claude r10 F6): Storage's remove by name deletes only the
+// current row, so names are the files (live rows); every old version and
+// marker is listed by version, to purge by version. A name with only
+// archived rows is never removed by name.
+const vers = async (b, p, an = null, av = null, lim = 1000) =>
+  q(`SELECT name, version FROM public.bw_account_storage_versions('${b}', '${p}', ${an ? `'${an}'` : 'NULL'}, ${av ? `'${av}'` : 'NULL'}, ${lim})`);
+const vPf = await vers('personal-files', X1), vAv = await vers('avatars', X1);
+ok(!nm.error && JSON.stringify(nm.rows.map((r) => r.n)) === JSON.stringify([`${X1}/live.m4a`]) && !nmAv.error && nmAv.rows.length === 0,
+  `round 11 (Claude r10 F6): names to remove by name are the live files only (${nm.error ?? nmAv.error ?? JSON.stringify({ nm: nm.rows, nmAv: nmAv.rows })})`);
+ok(!vPf.error && !vAv.error
+   && JSON.stringify(vPf.rows.map((r) => [r.name, r.version])) === JSON.stringify([[`${X1}/live.m4a`, 'v-live-0'], [`${X1}/old.m4a`, 'v-old']])
+   && JSON.stringify(vAv.rows.map((r) => [r.name, r.version])) === JSON.stringify([[`${X1}/me.png`, 'v-marker']]),
+  `round 11 (Claude r10 F6): their archived versions and delete markers are listed by version for the purge (${vPf.error ?? vAv.error ?? JSON.stringify({ vPf: vPf.rows, vAv: vAv.rows })})`);
+const vPage = await vers('personal-files', X1, `${X1}/live.m4a`, 'v-live-0', 1);
+ok(!vPage.error && JSON.stringify(vPage.rows.map((r) => r.version)) === JSON.stringify(['v-old']), `round 11: keyset pages by (name, version) (${vPage.error ?? JSON.stringify(vPage.rows)})`);
+const vEmpty = await q(`SELECT * FROM public.bw_account_storage_versions('personal-files', '')`);
+ok(!!vEmpty.error, 'round 11: an empty prefix (the whole bucket) is refused');
+await x(`DELETE FROM storage.objects WHERE name = '${X1}/live.m4a'`);
 d = await q(`SELECT public.bw_account_deletion_finish('${X1}')`);
 ok(!d.error, `round 9 (Claude 1): so the last step isn't stuck on them (${d.error ?? 'ok'})`);
-await x(`DELETE FROM storage.objects WHERE name IN ('${X1}/old.m4a', '${X1}/me.png'); ALTER TABLE storage.objects DROP COLUMN archived_at, DROP COLUMN is_delete_marker`);
+await x(`DELETE FROM storage.objects WHERE name IN ('${X1}/old.m4a', '${X1}/me.png'); ALTER TABLE storage.objects DROP COLUMN archived_at, DROP COLUMN is_delete_marker, DROP COLUMN version`);
+const vNone = await q(`SELECT * FROM public.bw_account_storage_versions('personal-files', '${X1}')`);
+ok(!vNone.error && vNone.rows.length === 0, `round 11: no versions on a setup without them (${vNone.error ?? vNone.rows.length})`);
 // Claude 4: one statement per column first.
 d = await x(`CREATE TABLE public.test_bulk (id serial PRIMARY KEY, owner uuid REFERENCES public.profiles(id));
   CREATE TABLE public.test_bulk_statements (n int); INSERT INTO test_bulk_statements VALUES (0);
@@ -1217,20 +1236,40 @@ d = await x(`INSERT INTO auth.users VALUES ('${Y1}'); INSERT INTO profiles (id) 
   INSERT INTO bands VALUES ('${NB}', 'Hoboken Trio'); INSERT INTO band_members VALUES ('${NB}','${Y1}','admin',true), ('${NB}','${X1}','member',true);
   INSERT INTO account_deletions_pending (user_id, started_at, committed_at) VALUES ('${Y1}', now(), now())`);
 ok(!d.error, `round 10: set-up (${d.error ?? 'ok'})`);
-// Claude r9 3: no live creator, no live admin: closed, never '{}' (the
-// whole band), never a committed creator.
+// Claude r9 3, r10 F4: no live creator, no live admin: deleted, never '{}'
+// (the whole band, 098), never a committed creator, never kept with a
+// deleted id.
 d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
   ('${P7}', '${NB}', '${Y1}', 'Friday?', ARRAY['${X1}']::uuid[], 'polling'),
   ('${P7B}', '${NB}', NULL, 'Saturday?', ARRAY['${X1}']::uuid[], 'polling')`);
 d = d.error ? d : await q(`SELECT public.bw_account_deletion_polls('${X1}')`);
 const p7 = (await qq(`SELECT id::text AS id, invited_user_ids::text[] AS i, status FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}') ORDER BY id`)).rows;
-ok(!d.error && p7.length === 2 && p7.every((r) => Array.isArray(r.i) && r.i.length > 0 && !r.i.includes(Y1) && !r.i.includes(null) && r.status === 'cancelled'),
-  `round 10 (Claude r9 3): with nobody live, the poll closes and keeps its list, never '{}' or a committed creator (${d.error ?? JSON.stringify(p7)})`);
+ok(!d.error && p7.length === 0,
+  `round 11 (Claude r10 F4): with nobody live, the poll is deleted, never '{}', a committed creator or a deleted id (${d.error ?? JSON.stringify(p7)})`);
 d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
   ('${P8}', '${NB}', '${Y1}', 'Sunday?', ARRAY['${NOPROF}']::uuid[], 'polling')`);
 const p8 = (await qq(`SELECT invited_user_ids::text[] AS i, status FROM rehearsal_polls WHERE id = '${P8}'`)).rows[0];
-ok(!d.error && JSON.stringify(p8?.i) === JSON.stringify([NOPROF]) && p8.status === 'cancelled',
-  `round 10 (Claude r9 3): a write listing only gone accounts, nobody live: closed, list kept, never '{}' (${d.error ?? JSON.stringify(p8)})`);
+ok(!d.error && !p8, `round 11 (Claude r10 F4): an insert listing only gone accounts, nobody live: not stored, never '{}' (${d.error ?? JSON.stringify(p8)})`);
+// '{NULL}' is never stored: with someone live it goes to them, else not at all.
+const [P10, P11, P12, OP10] = [247, 248, 249, 250].map(id);
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+  ('${P11}', '${WB}', '${BB2}', 'Tuesday?', ARRAY[NULL]::uuid[], 'polling'),
+  ('${P12}', '${NB}', '${Y1}', 'Wednesday?', ARRAY[NULL]::uuid[], 'polling')`);
+const p1112 = (await qq(`SELECT id::text AS id, invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id IN ('${P11}', '${P12}') ORDER BY id`)).rows;
+ok(!d.error && JSON.stringify(p1112) === JSON.stringify([{ id: P11, i: [BB2] }]),
+  `round 11 (Claude r10 F4): '{NULL}' is never stored: its creator, else not kept (${d.error ?? JSON.stringify(p1112)})`);
+// An update leaving nobody live deletes the poll, votes and options with it.
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+    ('${P10}', '${NB}', '${Y1}', 'Thursday?', '{}', 'polling');
+  INSERT INTO rehearsal_poll_options (id, poll_id) VALUES ('${OP10}', '${P10}');
+  INSERT INTO rehearsal_poll_votes (poll_id, option_id, user_id) VALUES ('${P10}', '${OP10}', '${Y1}')`);
+const upd = d.error ? d : await x(`UPDATE rehearsal_polls SET invited_user_ids = ARRAY[NULL, '${NOPROF}']::uuid[] WHERE id = '${P10}'`);
+const p10 = (await qq(`SELECT (SELECT count(*)::int FROM rehearsal_polls WHERE id = '${P10}') AS polls,
+  (SELECT count(*)::int FROM rehearsal_poll_votes WHERE poll_id = '${P10}') AS votes`)).rows[0];
+ok(!d.error && !upd.error && p10?.polls === 0 && p10?.votes === 0,
+  `round 11 (Claude r10 F4): an update leaving nobody live deletes the poll and its votes, never '{NULL}' (${d.error ?? upd.error ?? JSON.stringify(p10)})`);
+const nulls = (await qq(`SELECT count(*)::int AS n FROM rehearsal_polls WHERE array_position(invited_user_ids, NULL) IS NOT NULL`)).rows[0]?.n;
+ok(nulls === 0, `round 11 (Claude r10 F4): no poll anywhere holds a NULL invitee (${nulls})`);
 // A co-admin's stale save on a poll whose creator is committed: no
 // "Choose someone else", the band's live admins get it.
 d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
@@ -1239,7 +1278,7 @@ e6 = d.error ? { message: d.error } : await errAs(BB2, `UPDATE rehearsal_polls S
 const p9 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P9}'`)).rows[0];
 ok(e6 === null && JSON.stringify(p9?.i) === JSON.stringify([BB2]),
   `round 10 (Claude r9 3): a co-admin's stale save never gets the committed creator back ("Choose someone else") (${JSON.stringify({ e6, p9 })})`);
-await x(`DELETE FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}', '${P8}', '${P9}'); DELETE FROM account_deletions_pending WHERE user_id = '${Y1}';
+await x(`DELETE FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}', '${P8}', '${P9}', '${P10}', '${P11}', '${P12}'); DELETE FROM account_deletions_pending WHERE user_id = '${Y1}';
   DELETE FROM band_members WHERE band_id = '${NB}'; DELETE FROM bands WHERE id = '${NB}'`);
 
 // Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
@@ -1271,10 +1310,23 @@ try {
 } catch { src197 = null; }
 // Helpers come and go between 197's rounds (json_needle → json_paths):
 // load the ones there, require the ones withdraw's path needs.
+// 197 round 10 builds some from the catalog (DO $do$ … EXECUTE format):
+// those load as their whole DO block.
+const fn197 = (src, name) => {
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (start < 0) return null;
+  const doAt = src.lastIndexOf('DO $do$', start);
+  if (doAt >= 0 && doAt > src.lastIndexOf('$do$;', start)) {
+    const end = src.indexOf('$do$;', start);
+    return end < 0 ? null : src.slice(doAt, end + '$do$;'.length);
+  }
+  return fnByName(src, name);
+};
 const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_json_paths', 'bw_song_file_in_suggestion',
+  'bw_song_file_stored', 'bw_song_file_copy_ours',
   'bw_song_file_in_use', 'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
 const need197 = ['bw_song_file_ref', 'bw_song_file_in_use', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
-const f197 = src197 && need197.every((n) => fnByName(src197, n)) ? names197.map((n) => fnByName(src197, n)).filter(Boolean) : null;
+const f197 = src197 && need197.every((n) => fn197(src197, n)) ? names197.map((n) => fn197(src197, n)).filter(Boolean) : null;
 if (!src197) {
   console.log(`SKIP 197 guard: ${P197} not in the repo and origin/fix/songs-audit not found`);
 } else {
@@ -1298,6 +1350,9 @@ if (f197) {
   ok(!d.error, `197 guard: 197's functions loaded (${d.error ?? 'ok'})`);
   d = await x(readFileSync(MIG, 'utf8'));
   ok(!d.error, `197 guard: then 180 (${d.error ?? 'ok'})`);
+  // 197 round 10 returns only files that are in Storage (bw_song_file_stored).
+  await x(`INSERT INTO storage.objects (bucket_id, name) VALUES
+    ('song-files', '${shared.slice('sb://song-files/'.length)}'), ('song-files', '${own('b').slice('sb://song-files/'.length)}')`);
   wd = await as(CC, `SELECT public.bw_withdraw_song_suggestion('${SG8}') AS r`);
   const files = wd.rows?.[0]?.r?.files;
   ok(Array.isArray(files) && !files.includes(shared) && files.includes(own('b')),
