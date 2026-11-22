@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 
 const REPO = process.argv[2];
 const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/175_security_audit_access.sql`;
+// 181 (05 #2) builds on 175: `node … <repo> <175> /dev/null` shows its checks failing first.
+const MIG181 = process.argv[4] ?? `${REPO}/supabase/migrations/181_event_chat_lineup.sql`;
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
 
@@ -252,7 +254,9 @@ if (process.env.NO_GUCI) {
   const pub = (await db.query(`SELECT has_function_privilege('public', 'public.get_user_chat_ids(uuid)', 'EXECUTE') AS p`)).rows[0].p;
   ok(pub === false, 'get_user_chat_ids: PUBLIC has no EXECUTE');
 }
-ok(true, 'migration runs twice');
+await db.exec(readFileSync(MIG181, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+ok(true, 'migrations run twice');
 
 // ── 1. Invitations
 let r = await as(INVITEE, `UPDATE band_invitations SET role = 'admin', band_id = '${OTHERBAND}' WHERE id = '${INV}'`);
@@ -338,6 +342,40 @@ r = await as(LINE, `SELECT id FROM quotes WHERE id = '${QUOTE}'`);
 ok(r.rows.length === 1, 'active admin reads the quote');
 r = await as(MEM2, `SELECT id FROM quotes WHERE id = '${QUOTE}'`);
 ok(r.rows.length === 0, `quote creator no longer an admin cannot read it (${r.rows.length})`);
+
+// ── 6. Taken off the gig (05 #2, migration 181)
+await db.exec(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${LINE}';
+  UPDATE band_members SET is_active = true WHERE band_id = '${BAND}' AND user_id = '${MEM2}';
+  INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}');
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT}','${ADMIN}','load-in at 6');`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'musician on the gig reads its chat');
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `taken off the gig: no more gig chat messages (${r.rows.length})`);
+const part = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows;
+ok(part.length === 0, 'taken off the gig: out of the gig chat');
+let rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+ok(!rcpt.includes(MEM2), `taken off the gig: no push of the next message (${rcpt.length})`);
+r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}')`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `re-adding themselves does not open it again (${r.rows.length})`);
+await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`);
+
+await db.exec(`UPDATE event_members SET status = 'declined' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
+r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `declined the gig: gig chat closed (${r.rows.length})`);
+rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+ok(!rcpt.includes(LINE), 'declined the gig: no push');
+await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
+r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}')`);
+r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'back on the gig: reads its chat again');
+r = await as(ADMIN, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'band admin, not on the lineup, still reads the gig chat');
+const archived = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}'`)).rows[0].n;
+ok(archived >= 2, `removed gig chat rows archived, not lost (${archived})`);
 
 // ── 7. Review fixes (Codex #281)
 // MEM left the band but is still on GIG's lineup (confirmed).
