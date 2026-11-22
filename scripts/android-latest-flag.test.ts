@@ -60,7 +60,7 @@ describe('Android "latest" flag', () => {
   it('release-android.sh looks it up again right before publishing, and prints a promote command that asks too (round 4)', () => {
     const sh = fs.readFileSync(`${process.cwd()}/scripts/release-android.sh`, 'utf8');
     const built = sh.indexOf('Built dist-android/BandWith.apk');
-    const create = sh.indexOf('gh release create');
+    const create = sh.indexOf('release create "$TAG"');
     const recheck = sh.indexOf('android-latest-flag.sh --lookup', built);
     expect(recheck).toBeGreaterThan(built);
     expect(recheck).toBeLessThan(create);

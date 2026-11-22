@@ -30,7 +30,12 @@ The web app and the database reach everyone at once. That is why they get the mo
   ```
   - The `--duo-ok` run is the sign-off after checking every Duo posture.
   - `deploy-web.sh` and `release-android.sh --publish` refuse a commit without it.
-- [ ] **170 is not applied anywhere yet**: `supabase_migrations.schema_migrations` has no `170` on prod, and no other database got it. 170 was edited in place on 11-22, so a copy applied before that is the old version.
+- [ ] **170 is not applied anywhere yet**. 170 was edited in place on 11-22, so a copy applied before that is the old version (no `live_pack_status.partial`). Check **every** database it will go to, prod and any dev, local or branch database too:
+  ```sql
+  SELECT version FROM supabase_migrations.schema_migrations WHERE version = '170';  -- no row
+  SELECT to_regclass('public.live_pack_status');                                   -- NULL
+  ```
+  A dev or local database that has it: reset it (`supabase db reset`) before testing this release there.
 - [ ] **172 is already live in prod** (applied before this release): `supabase_migrations.schema_migrations` has a `172` row, and a quick `SELECT` on what it added works. It is not applied again.
 - [ ] Each new migration was dry-run against prod and rolled back:
   - first strip the migration's own `BEGIN;` / `COMMIT;`, or it commits for real;
@@ -88,6 +93,12 @@ Do it in this order, so every build in use keeps working at every step:
      - **Not 177** (quotes bucket private): it goes in **stage 3, after the web deploy**. Before it, the new quote page and the quote functions must be live, or people who got a quote can't download its PDF.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
+   - **Record each one** in `supabase_migrations.schema_migrations`: applied by hand, it isn't there, and the next `supabase db push` would try it again. Match the format of the rows already there (look first), then add it and check:
+     ```sql
+     SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 5;
+     INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('170', 'live_pack') ON CONFLICT (version) DO NOTHING;
+     SELECT version, name FROM supabase_migrations.schema_migrations WHERE version = '170';  -- one row
+     ```
    - 174 schedules one pg_cron job, `bw-prune-client-errors` (hourly, minute 7). Check it shows in `cron.job`.
    - **live_pack stays off until stage 3**, when the new builds reach everyone (see there). While it is off, nobody gets invites or new packs. The trade-off for stages 1 and 2: `app_flags` is global, there is no per-band switch for it. To try the live pack on two phones, the owner turns it on for a short test window and off again after; every band with automatic packs gets invites during that window. A per-band switch would need a follow-up change.
 3. **Builds for stage 1**
@@ -122,13 +133,14 @@ Do it in this order, so every build in use keeps working at every step:
 ### Stage 3 · Everyone
 
 1. **Android**: promote the prerelease. From now on the in-app update offers it, and the latest link serves it.
-   - Mark it **Latest only if it is the highest version** released, so a hotfix of an older line never takes the latest link. `scripts/android-latest-flag.sh` picks `--latest` or `--latest=false`:
+   - **Only an APK whose versionCode is above every published release.** The code is minute-based, so a hotfix published during the pilot (say 1.0.13.1 while 1.0.14 is in stage 2) was built later and has a higher code: phones that took it refuse the 1.0.14 APK (Android won't go to a lower code, and the in-app updater needs a higher one). Then don't promote: rebuild 1.0.14 as a new version (1.0.15) and pilot that. `scripts/android-promote-check.sh` checks it (it fails closed: no answer from GitHub, no promotion).
+   - Mark it **Latest only if it is the highest version** released, so a hotfix of an older line never takes the latest link. `scripts/android-latest-flag.sh --lookup` picks `--latest` or `--latest=false`, and stops if it can't read the current latest (network, auth), instead of guessing "first release".
+   - Both in one command (`release-android.sh --publish --prerelease` prints it):
      ```sh
-     CURRENT=$(gh release view --repo bandwith-app/BandWith --json tagName -q .tagName)
-     gh release edit android-v1.0.14 --repo bandwith-app/BandWith --prerelease=false \
-       "$(scripts/android-latest-flag.sh 1.0.14 "$CURRENT")"
+     scripts/android-promote-check.sh 1.0.14 && gh release edit android-v1.0.14 --repo bandwith-app/BandWith --prerelease=false \
+       "$(scripts/android-latest-flag.sh --lookup 1.0.14)"
      ```
-   - `release-android.sh --publish` (without `--prerelease`) uses the same check.
+   - `release-android.sh --publish` (without `--prerelease`) uses the same latest check.
 2. **iOS**: add the build to **Amici**.
 3. **Web**:
    - from the `vercel-prod` worktree, on the release commit:
@@ -136,7 +148,8 @@ Do it in this order, so every build in use keeps working at every step:
      scripts/deploy-web.sh
      ```
    - Note the deployment URL it prints: you need it to roll back.
-4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, and check the same link again.
+4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, record it (step 2 above), and check the same link again.
+   - **Trade-off: admins on the previous native build.** Their app still shares the PDF's public storage URL, which stops opening once the bucket is private. The client gets a link that doesn't work. It lasts until they update (Android in up to 6 hours after the promote, iOS when TestFlight updates). Raise `min_version` first (section 4) to cut it short. Release notes line: "Update the app to share quote PDFs."
 5. **Product site** (only if `site/` changed):
    ```sh
    scripts/deploy-site.sh --prod
@@ -147,7 +160,7 @@ Do it in this order, so every build in use keeps working at every step:
    UPDATE public.app_flags SET enabled = true, updated_at = now() WHERE key = 'live_pack';
    ```
    - **Trade-off: stragglers get invites they can't use.** The switch is server-wide, and the server doesn't know which app version each member runs (no last-seen version is recorded; `min_app_version` only hides things inside the app). So members still on APK 1.0.13 or an older TestFlight build also get the "ready without signal" push for gigs in the next days; their app opens the inbox but has no live pack to download. To keep it small, wait a few days after the APK promote and the Amici build (the in-app update reaches Android in up to 6 hours), or raise `min_version` first (section 4) so old builds must update. A per-version filter in 170's invites would need the app to record its version (follow-up).
-7. **Tell the admins** what changed. This release, also: once 177 makes the quotes bucket private, quote PDF links shared before stop working. Line for admins: "Re-send the quote from the app to get a fresh link."
+7. **Tell the admins** what changed. This release, also: once 177 makes the quotes bucket private, quote PDF links shared before stop working, and the previous app version can't share new ones. Lines for admins: "Update the app to share quote PDFs." and "Re-send the quote from the app to get a fresh link."
 8. Watch the crash reports for the first hours, then the next morning.
 
 ## 4 · When something goes wrong
@@ -177,6 +190,7 @@ npx vercel@latest rollback <previous-production-url> --yes
 npx vercel@latest rollback status
 ```
 
+- **Not past 177.** A web build from before this release shares public PDF URLs, which don't open once 177 made the quotes bucket private: clients can't download their quote. After 177, roll the web back only to a deployment of this release or later. If you must go further back, roll 177 back too, as the database owner: `UPDATE storage.buckets SET public = true WHERE id = 'quotes';` (its header says so; no file was moved), and apply 177 again with the fix.
 - On the Hobby plan, rollback goes to the **previous** production deployment only.
 - To go further back, promote any earlier Ready deployment from the list:
   ```sh

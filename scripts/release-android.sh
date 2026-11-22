@@ -8,8 +8,9 @@
 #   scripts/release-android.sh 1.0.1 --publish --prerelease
 #       # a few testers first: a GitHub prerelease, which the in-app updater and
 #       # the latest link skip. Send its own link; when it holds, promote it
-#       # (--latest only if it is the highest version: scripts/android-latest-flag.sh):
-#       #   gh release edit android-v1.0.1 --prerelease=false --latest
+#       # only if its versionCode is above every published release
+#       # (scripts/android-promote-check.sh), --latest only if it is the highest
+#       # version (scripts/android-latest-flag.sh); the script prints the command.
 #       # (docs/release-checklist.md)
 #
 # --publish refuses a version whose android-v<version> release or tag exists,
@@ -56,13 +57,12 @@ fi
 # A prerelease is never "latest": the updater and releases/latest/download skip it.
 # A stable release is latest only above the current latest (a hotfix for an
 # older line must not take the fixed link back): scripts/android-latest-flag.sh.
-# The lookup fails closed (network, auth: no guess), here before the build and
-# again right before publishing (another release may have gone out meanwhile).
+# The lookup fails closed (network, auth: no guess), after the emulator gate
+# and before the build, and again right before publishing (another release may
+# have gone out meanwhile).
+GH="${GH:-gh}"
 if [ -n "$PRERELEASE" ]; then
   RELEASE_FLAGS=(--prerelease --latest=false)
-elif [ "$PUBLISH" = "--publish" ]; then
-  LATEST_FLAG="$(scripts/android-latest-flag.sh --lookup "$VERSION")"
-  RELEASE_FLAGS=("$LATEST_FLAG")
 fi
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
 TAG="android-v$VERSION"
@@ -80,13 +80,17 @@ if [ "$PUBLISH" = "--publish" ]; then
   else
     node scripts/emulator-gate.mjs >&2 || { echo "Not publishing $TAG." >&2; exit 1; }
   fi
+  if [ -z "$PRERELEASE" ]; then
+    LATEST_FLAG="$(GH="$GH" scripts/android-latest-flag.sh --lookup "$VERSION")"
+    RELEASE_FLAGS=("$LATEST_FLAG")
+  fi
 fi
 
 [ -f android/app/google-services.json ] || { echo "android/app/google-services.json is missing: push would be off." >&2; exit 1; }
 [ -f "$KEYSTORE" ] || { echo "Release keystore not found: $KEYSTORE" >&2; exit 1; }
 if [ "$PUBLISH" = "--publish" ]; then
   # Every release needs its own version: the app compares names to offer updates.
-  if gh release view "$TAG" --repo bandwith-app/BandWith >/dev/null 2>&1 \
+  if "$GH" release view "$TAG" --repo bandwith-app/BandWith >/dev/null 2>&1 \
     || [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
     echo "$TAG is already published: pick a new version." >&2
     exit 1
@@ -128,10 +132,14 @@ echo "Built dist-android/BandWith.apk: version $VERSION (code $BW_ANDROID_VERSIO
 
 if [ "$PUBLISH" = "--publish" ]; then
   if [ -z "$PRERELEASE" ]; then
-    LATEST_FLAG="$(scripts/android-latest-flag.sh --lookup "$VERSION")"
+    LATEST_FLAG="$(GH="$GH" scripts/android-latest-flag.sh --lookup "$VERSION")"
     RELEASE_FLAGS=("$LATEST_FLAG")
   fi
-  gh release create "$TAG" dist-android/BandWith.apk \
+  # The versionCode goes in the notes, hidden: scripts/android-promote-check.sh
+  # reads it before a prerelease is promoted.
+  { cat "$NOTES_FILE"; printf '\n\n<!-- versionCode: %s -->\n' "$BW_ANDROID_VERSION_CODE"; } > dist-android/release-notes.published.md
+  NOTES_FILE=dist-android/release-notes.published.md
+  "$GH" release create "$TAG" dist-android/BandWith.apk \
     --repo bandwith-app/BandWith \
     --target "$(git rev-parse HEAD)" \
     --title "BandWith for Android $VERSION" \
@@ -140,7 +148,7 @@ if [ "$PUBLISH" = "--publish" ]; then
   if [ -n "$PRERELEASE" ]; then
     echo "Prerelease $TAG: only testers with its link get it. Link:"
     echo "  https://github.com/bandwith-app/BandWith/releases/download/$TAG/BandWith.apk"
-    echo "Everyone (in-app update + latest link; latest only if it is the highest version):"
-    echo "  gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false \"\$(scripts/android-latest-flag.sh --lookup $VERSION)\""
+    echo "Everyone (in-app update + latest link; only with a versionCode above every published release, latest only if it is the highest version):"
+    echo "  scripts/android-promote-check.sh $VERSION && gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false \"\$(scripts/android-latest-flag.sh --lookup $VERSION)\""
   fi
 fi
