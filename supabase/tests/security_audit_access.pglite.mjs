@@ -376,6 +376,26 @@ r = await as(ADMIN, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND con
 ok(r.rows.length === 1, 'band admin, not on the lineup, still reads the gig chat');
 const archived = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}'`)).rows[0].n;
 ok(archived >= 2, `removed gig chat rows archived, not lost (${archived})`);
+// Round 2 (Claude #289): dropped out or removed counts as off the gig too,
+// as for the server's notices (046).
+for (const st of ['dropped_out', 'removed']) {
+  await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT DO NOTHING`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 1, `on the gig (before ${st}): reads its chat`);
+  await db.exec(`UPDATE event_members SET status = '${st}' WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 0, `${st}: gig chat closed (${r.rows.length})`);
+  const still = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows.length;
+  ok(still === 0, `${st}: out of the gig chat`);
+  rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+  ok(!rcpt.includes(MEM2), `${st}: no push`);
+  r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}')`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 0, `${st}: re-adding themselves does not open it again`);
+  await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}';
+    DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+}
 
 // ── 7. Review fixes (Codex #281)
 // MEM left the band but is still on GIG's lineup (confirmed).
@@ -446,6 +466,12 @@ await db.exec(readFileSync(MIG, 'utf8'));
 const def = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
 ok(def.includes('bw_is_event_participant') && def.includes('dropped_out'),
   're-running 175 puts the lineup rule back (and 178 keeps it: it calls bw_is_event_participant)');
+// With 181 loaded, in either order: 181 no longer redefines the rule (round 3).
+await db.exec(readFileSync(MIG181, 'utf8'));
+await db.exec(readFileSync(MIG, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+const def181 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+ok(def181 === def, "re-running 175 and 181 in any order keeps the one lineup rule (175's)");
 
 // ── 9. With 193 (#291: one chat per band / gig, bw_open_group_chat), when
 // M193=<path to 193_one_chat_per_gig.sql> is set. A member who left has no
@@ -489,6 +515,25 @@ if (process.env.M193) {
   r = await as(EXM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
   inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
   ok(!!r.error && !inChat.includes(EXM), `193: a former member on the lineup can't open the gig chat (${r.error ? 'refused' : 'opened'})`);
+  // 181: put back on the lineup, a musician finds the same gig chat.
+  await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
+  ok(!inChat.includes(NEWM), '181 + 193: off the lineup, out of the gig chat');
+  await db.exec(`INSERT INTO event_members VALUES ('${GIG3}','${NEWM}','confirmed')`);
+  r = await as(NEWM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG3}'`);
+  ok(r.rows.length === 1 && r.rows[0].id === EVCHAT3, `181 + 193: back on the lineup, an old build's lookup finds the gig chat (${r.rows.length})`);
+  r = await as(NEWM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  ok(!r.error && r.rows[0]?.j?.id === EVCHAT3, `181 + 193: bw_open_group_chat rejoins it (${r.error ?? r.rows[0]?.j?.id})`);
+  r = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+  ok(r.rows.length > 0, '181 + 193: and its history is there');
+  r = await as(NEWM, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Harbor Lights','${BAND}','${GIG3}','${NEWM}')`);
+  ok(!!r.error, '181 + 193: a second gig chat is refused');
+  // Dropped out: 193 still lets them see the chat row (bw_is_event_participant),
+  // but joining is skipped and the messages stay closed.
+  await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  r = await as(NEWM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  const rd = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+  ok(rd.rows.length === 0, `181 + 193: dropped out, opening the gig chat shows no messages (${r.error ? 'refused' : 'opened'}, ${rd.rows.length})`);
 }
 
 // ── 10. Stale participant rows (main's check): someone who left the band or
