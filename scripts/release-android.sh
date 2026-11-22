@@ -5,6 +5,11 @@
 #
 #   scripts/release-android.sh 1.0.1            # build dist-android/BandWith.apk
 #   scripts/release-android.sh 1.0.1 --publish  # build + GitHub release android-v1.0.1
+#   scripts/release-android.sh 1.0.1 --publish --prerelease
+#       # a few testers first: a GitHub prerelease, which the in-app updater and
+#       # the latest link skip. Send its own link; when it holds, promote it:
+#       #   gh release edit android-v1.0.1 --prerelease=false --latest
+#       # (docs/release-checklist.md)
 #
 # --publish refuses a version whose android-v<version> release or tag exists,
 # and a commit without a passing emulator check: scripts/emulator-check.sh
@@ -24,14 +29,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-USAGE='usage: scripts/release-android.sh <version, e.g. 1.0.1> [--publish] [--skip-emulator-check "<reason>"]'
+USAGE='usage: scripts/release-android.sh <version, e.g. 1.0.1> [--publish [--prerelease]] [--skip-emulator-check "<reason>"]'
 VERSION="${1:?$USAGE}"
 shift
 PUBLISH=""
+PRERELEASE=""
 SKIP_EMULATOR_REASON=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --publish) PUBLISH="--publish" ;;
+    --prerelease) PRERELEASE=1 ;;
     --skip-emulator-check)
       SKIP_EMULATOR_REASON="${2:-}"
       [ -n "$SKIP_EMULATOR_REASON" ] && [ "${SKIP_EMULATOR_REASON#--}" = "$SKIP_EMULATOR_REASON" ] \
@@ -41,6 +48,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+if [ -n "$PRERELEASE" ] && [ "$PUBLISH" != "--publish" ]; then
+  echo "--prerelease needs --publish." >&2
+  exit 1
+fi
+# A prerelease is never "latest": the updater and releases/latest/download skip it.
+RELEASE_FLAGS=(--latest)
+[ -n "$PRERELEASE" ] && RELEASE_FLAGS=(--prerelease --latest=false)
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
 TAG="android-v$VERSION"
 NOTES_FILE=scripts/android-release-notes.md
@@ -108,5 +122,11 @@ if [ "$PUBLISH" = "--publish" ]; then
     --repo bandwith-app/BandWith \
     --target "$(git rev-parse HEAD)" \
     --title "BandWith for Android $VERSION" \
-    --notes-file "$NOTES_FILE"
+    --notes-file "$NOTES_FILE" \
+    "${RELEASE_FLAGS[@]}"
+  if [ -n "$PRERELEASE" ]; then
+    echo "Prerelease $TAG: only testers with its link get it. Link:"
+    echo "  https://github.com/bandwith-app/BandWith/releases/download/$TAG/BandWith.apk"
+    echo "Everyone (in-app update + latest link): gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false --latest"
+  fi
 fi

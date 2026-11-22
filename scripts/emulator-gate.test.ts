@@ -185,6 +185,32 @@ describe('scripts/release-android.sh --publish', () => {
     rmSync(r.root, { recursive: true, force: true });
   });
 
+  // Staged rollout (docs/release-checklist.md): a prerelease reaches only the
+  // testers who get its link; the in-app updater and releases/latest skip it.
+  it('--prerelease without --publish is refused', () => {
+    const r = repo();
+    const out = r.run('release-android.sh', ['9.9.9', '--prerelease']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/--prerelease needs --publish/);
+    rmSync(r.root, { recursive: true, force: true });
+  });
+
+  it('--publish --prerelease goes through the same emulator gate', () => {
+    const r = repo();
+    const out = r.run('release-android.sh', ['9.9.9', '--publish', '--prerelease']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/emulator check/i);
+    expect(out.stderr).not.toMatch(/usage:/);
+    rmSync(r.root, { recursive: true, force: true });
+  });
+
+  it('marks the GitHub release as a prerelease, never as latest', () => {
+    const src = readFileSync(path.join(SCRIPTS, 'release-android.sh'), 'utf8');
+    const create = src.slice(src.indexOf('gh release create'));
+    expect(create).toMatch(/"\$\{RELEASE_FLAGS\[@\]\}"/);
+    expect(src).toMatch(/RELEASE_FLAGS=\(--prerelease --latest=false\)/);
+  });
+
   it('a build without --publish needs no emulator check', () => {
     const r = repo();
     const out = r.run('release-android.sh', ['9.9.9']);
