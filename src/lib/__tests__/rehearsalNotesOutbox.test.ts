@@ -514,3 +514,79 @@ describe.runIf(has292 && typeof counts292?.waitingChanges === 'function')('#296 
     expect(readRejected(ME).map((n) => n.body).sort()).toEqual(['Bridge: half time', 'Outro: four bars']);
   });
 });
+
+// ---------------------------------- #296 round 8 (from #292: one flush per account) --
+describe('#296 round 8: a flush per account (as #292’s live outbox)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    clearNoteBackoff();
+  });
+  const apiFor = (save: (n: RehearsalNote) => Promise<{ error: unknown }>) => ({
+    save: vi.fn(save),
+    remove: vi.fn(async () => ({ error: null })),
+    practised: vi.fn(async () => ({ error: null })),
+    ok: vi.fn(async () => ({ error: null })),
+  });
+
+  it('account switch: Alice’s flush still on its way; Bob’s flush sends Bob’s notes and reports Bob’s counts', async () => {
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    const alice = apiFor(async () => {
+      await slow;
+      return { error: null };
+    });
+    writeOutbox('alice', [{ kind: 'save', note: note('a1'), before: [] }]);
+    writeOutbox('bob', [
+      { kind: 'save', note: note('b1'), before: [] },
+      { kind: 'save', note: note('b2'), before: [] },
+    ]);
+    const a = flushOutbox('alice', alice);
+    const bob = apiFor(async () => ({ error: null }));
+    const b = await flushOutbox('bob', bob);
+    expect(bob.save.mock.calls.map((c) => c[0].id)).toEqual(['b1', 'b2']);
+    expect(b).toEqual({ sent: 2, dropped: 0, left: 0 });
+    expect(alice.save.mock.calls.map((c) => c[0].id)).toEqual(['a1']);
+    release();
+    expect(await a).toEqual({ sent: 1, dropped: 0, left: 0 });
+    // The same account twice still shares its one pass.
+    writeOutbox('bob', [{ kind: 'save', note: note('b3'), before: [] }]);
+    const p1 = flushOutbox('bob', bob);
+    const p2 = flushOutbox('bob', bob);
+    expect(p1).toBe(p2);
+    await p1;
+  });
+});
+
+// ------------------------- #296 round 8 (three-way sign-out with #287 and #282) --
+describe('#296 round 8: a deleted account’s refused notes go, even with the clear not awaited', () => {
+  beforeEach(() => localStorage.clear());
+  const A = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const B = 'bbbbbbbb-2222-4222-8222-222222222222';
+
+  it('normal sign-out keeps every account’s list; a deletion drops only its own, also one written during the clear', async () => {
+    const { keepingSignOutLists } = await import('../signOutWipe');
+    const list = (u: string) => `bw:rehearsal_notes_rejected:${u}`;
+    localStorage.setItem(list(A), '[{"id":"x"}]');
+    localStorage.setItem(list(B), '[{"id":"y"}]');
+    // Normal: a clear that drops every bw: key (before #292) — both come back.
+    const wipeAll = async () => {
+      for (const k of Object.keys(localStorage)) if (k.startsWith('bw:')) localStorage.removeItem(k);
+    };
+    await keepingSignOutLists(wipeAll);
+    expect(localStorage.getItem(list(A))).not.toBeNull();
+    expect(localStorage.getItem(list(B))).not.toBeNull();
+    // Deleted account A: #292's discardAccountWrites ran first; a refusal answered meanwhile writes A's
+    // list again inside the clear (which keeps the kept lists, as with #292); A's goes, B's stays.
+    localStorage.removeItem(list(A));
+    const keepsLists = async () => {
+      localStorage.setItem(list(A), '[{"id":"late"}]');
+    };
+    await keepingSignOutLists(keepsLists, { gone: A });
+    expect(localStorage.getItem(list(A))).toBeNull();
+    expect(localStorage.getItem(list(B))).toBe('[{"id":"y"}]');
+    // And a refused note still in A's outbox is not moved into a list for it.
+    writeOutbox(A, [{ kind: 'save', note: note('z'), before: [], refused: true } as NoteOp]);
+    await keepingSignOutLists(async () => {}, { gone: A.toUpperCase() });
+    expect(localStorage.getItem(list(A))).toBeNull();
+  });
+});

@@ -303,6 +303,27 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   ok(weird.ok && Array.isArray(w.summary.played) && w.summary.played.length > 0, `an older build's summary with odd songs keeps the saved ones (${JSON.stringify(w.summary.played)})`);
 }
 
+// Main (after the 2385ce12 dry run): the 2-minute match is for older builds only. This build's
+// Resume, tapped offline 30 s after an End it had read and saved 10 minutes later, reopens through
+// the function on the revision it read, whatever the delay.
+{
+  await reset();
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const startR = ago(50);
+  const endAt = Date.parse(ago(10));
+  const log = (...ev) => [['s', Date.parse(startR)], ...ev];
+  const body = (ev, spans) => JSON.stringify({ v: 1, durationS: 1, played: PLAYED, total: 3, pauses: spans, log: log(...ev) });
+  await as(ADMIN_A, () => db.query(
+    `INSERT INTO rehearsal_sessions (band_id, event_id, occurrence_date, started_at, paused_ms, ended_at, summary) VALUES ($1,$2,$3,$4,0,$5,$6::jsonb)`,
+    [BAND, EVENT, DAY, startR, new Date(endAt).toISOString(), body([['e', endAt]], [])]));
+  const rev = (await saved()).updated_at;
+  const late = await reopen(ADMIN_B, { started_at: startR, paused_ms: 30000, rev,
+    summary: body([['e', endAt], ['r', endAt + 30000]], [[endAt, endAt + 30000]]) });
+  const r = await saved();
+  ok(late !== null && !late?.error && r.ended_at === null && String(r.paused_ms) === '30000' && r.summary.log.length === 3,
+    `this build's Resume saved 10 minutes after the End (30 s paused, no 2-minute match) reopens through the function (${late?.error ?? 'ok'})`);
+}
+
 // Members still cannot write.
 const m = await upsert(MEMBER, { started_at: A_START });
 ok(!!m.error, 'a member cannot write');

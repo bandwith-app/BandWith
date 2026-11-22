@@ -524,3 +524,32 @@ describe('#296 round 6: End on the channel, older builds’ pauses', () => {
     expect(result.current.state?.pausedMs).toBe(12 * M);
   });
 });
+
+describe('main after the 2385ce12 dry run: the 2-minute match is for older builds only', () => {
+  it('this build resumes offline 30 s after an End it read, saved 10 minutes later: running, on the revision it read', async () => {
+    const M = 60_000;
+    const T = Date.now();
+    const endAt = T - 10 * M - 30_000;
+    const ended = endSession(startSession(T - 50 * M), endAt);
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    saveMock.mockResolvedValue({ error: { message: 'offline' } });
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    const now = vi.spyOn(Date, 'now').mockReturnValue(endAt + 30_000);
+    act(() => result.current.resume());
+    now.mockRestore();
+    expect(result.current.status).toBe('live');
+    await waitFor(() => expect(result.current.unsaved).toBe(true));
+    // Back online 10 minutes later; the server still has the End (r2).
+    saveMock.mockReset().mockResolvedValue({ error: null, rev: 'r3' });
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    const last = saveMock.mock.calls[saveMock.mock.calls.length - 1];
+    expect(last[1]).toBe('r2');
+    expect((last[0] as SessionRow).ended_at).toBeNull();
+    expect((last[0] as SessionRow).paused_ms).toBe(30_000);
+    expect(result.current.status).toBe('live');
+  });
+});

@@ -57,14 +57,31 @@ const restore = (entries: [string, string][]) => {
  * per account. Refused notes still in an outbox move to their list first.
  * Until #292 is on this build, clearOfflineCache drops every `bw:` key, so
  * they are read before and put back after; with #292 it keeps them itself.
+ *
+ * `gone`: a deleted account (#282, #287's discardPendingWrites). Its lists
+ * are not moved, not put back, and go after the clear, also one written
+ * meanwhile (a refusal answered during the sign-out), so a clear that isn't
+ * awaited can't bring them back after #292's discardAccountWrites. Other
+ * accounts' lists on the device stay.
  */
-export async function keepingSignOutLists(clear: () => Promise<void>): Promise<void> {
-  settleRefusedNotes();
-  const keep = snapshot((k) => keptOnSignOut().some((p) => k.startsWith(p)));
+export async function keepingSignOutLists(clear: () => Promise<void>, opts?: { gone?: string | null }): Promise<void> {
+  const gone = opts?.gone?.toLowerCase() || null;
+  const mine = (k: string) => !!gone && k.toLowerCase().endsWith(`:${gone}`);
+  settleRefusedNotes(undefined, gone);
+  const keep = snapshot((k) => keptOnSignOut().some((p) => k.startsWith(p)) && !mine(k));
   try {
     await clear();
   } finally {
     restore(keep);
+    if (gone) {
+      for (const [k] of snapshot((k) => keptOnSignOut().some((p) => k.startsWith(p)) && mine(k))) {
+        try {
+          localStorage.removeItem(k);
+        } catch {
+          /* storage blocked */
+        }
+      }
+    }
   }
 }
 

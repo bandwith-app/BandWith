@@ -215,7 +215,12 @@ const send = (api: OutboxApi, op: NoteOp): Res => {
   }
 };
 
-let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
+/**
+ * One pass at a time per account (#296 round 8, as #292's live outbox): an
+ * account switch while the last account's pass is on its way still sends the
+ * new account's notes and reports its own counts.
+ */
+const flushing = new Map<string, Promise<{ sent: number; dropped: number; left: number }>>();
 
 /**
  * A refused note goes to the refused list, `bw:rehearsal_notes_rejected:<uid>`,
@@ -262,7 +267,7 @@ function keepRefused(userId: string, op: Extract<NoteOp, { kind: 'save' }>): boo
  * sign-out), so the sign-out keeps them. `userId` missing: every account's
  * outbox on this device, each into its own list.
  */
-export function settleRefusedNotes(userId?: string | null): void {
+export function settleRefusedNotes(userId?: string | null, except?: string | null): void {
   const users: string[] = [];
   if (userId) users.push(userId);
   else {
@@ -275,7 +280,9 @@ export function settleRefusedNotes(userId?: string | null): void {
       /* storage blocked */
     }
   }
+  const gone = except?.toLowerCase() ?? null;
   for (const u of users) {
+    if (gone && u.toLowerCase() === gone) continue;
     for (const op of readAllOps(u)) if (op.kind === 'save' && op.refused) keepRefused(u, op);
   }
 }
@@ -306,8 +313,9 @@ export const clearNoteBackoff = () => backoff.clear();
  * meanwhile stay queued.
  */
 export function flushOutbox(userId: string, api: OutboxApi) {
-  if (flushing) return flushing;
-  flushing = (async () => {
+  const inFlight = flushing.get(userId);
+  if (inFlight) return inFlight;
+  const run = (async () => {
     let sent = 0;
     let dropped = 0;
     // Notes passed over in this pass (failing now, or waiting out a failure):
@@ -350,7 +358,8 @@ export function flushOutbox(userId: string, api: OutboxApi) {
     }
     return { sent, dropped, left: readOutbox(userId).length };
   })().finally(() => {
-    flushing = null;
+    if (flushing.get(userId) === run) flushing.delete(userId);
   });
-  return flushing;
+  flushing.set(userId, run);
+  return run;
 }
