@@ -161,5 +161,25 @@ describe('Settings › Offline & live: changes the band refused', () => {
       expect(live).toMatch(/copied/i);
     });
   });
+
+  // Round 6 (Codex B1): an undo belongs to the account that removed it.
+  it("an undo never crosses to another account: after a switch it is gone, and B's list is untouched", () => {
+    refuse([note]);
+    localStorage.setItem('bw:live_refused:u-2', JSON.stringify([noteB]));
+    const { rerender } = render(<OfflineLiveSection userId="u-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove change: Watch the drummer before the bridge' }));
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    rerender(<OfflineLiveSection userId="u-2" />);
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(readRefusedLiveOps('u-2').map((o) => (o as { id?: string }).id)).toEqual(['n2']);
+    expect(readRefusedLiveOps('u-1')).toEqual([]);
+  });
+
+  // Round 6 (Codex B4): a gig setlist edited offline that met a newer one.
+  it('a gig setlist kept after a conflict shows why and its songs', async () => {
+    refuse([{ kind: 'gigSetlist', eventId: 'e1', setlistId: 'sl1', songs: [{ song_id: 's2', set_number: 1 }, { song_id: 's1', set_number: 1 }], reason: 'changed' }]);
+    render(<OfflineLiveSection userId="u-1" />);
+    expect(await screen.findByText(/someone else changed it meanwhile[\s\S]*1\. Blue Bossa\s+2\. Autumn Leaves/i)).toBeTruthy();
+  });
 });
 

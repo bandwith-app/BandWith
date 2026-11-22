@@ -493,10 +493,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { discardAccountWrites } = await import('./accountWrites');
       await discardAccountWrites(user?.id);
     } else {
+      const asked = user?.id ?? null;
       const { askBeforeSignOut } = await import('./signOutGate');
-      if (!(await askBeforeSignOut(user?.id))) return { error: null, cancelled: true as const };
+      if (!(await askBeforeSignOut(asked))) return { error: null, cancelled: true as const };
+      // Answered for the account it was asked about only: another tab signed
+      // someone else in meanwhile → no sign-out, nothing cleared.
+      if (asked) {
+        let now: string | null = null;
+        try {
+          now = (await supabase.auth.getSession()).data.session?.user?.id ?? null;
+        } catch {
+          now = null;
+        }
+        if (now !== asked) return { error: null, cancelled: true as const };
+      }
     }
-    return (handleSignOut as (o?: typeof opts) => ReturnType<typeof handleSignOut>)(opts);
+    const gone = opts?.discardPendingWrites ? user?.id : null;
+    const res = await (handleSignOut as (o?: typeof opts) => ReturnType<typeof handleSignOut>)(opts);
+    // A send answered while signing out (a refusal, a queue write): it goes too.
+    if (gone && !res.error) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(gone);
+    }
+    return res;
   };
 
   const value: AuthContextType = {

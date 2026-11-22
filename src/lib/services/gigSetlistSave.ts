@@ -22,7 +22,10 @@ export async function saveExistingGigSetlist(
   songs: { song_id: string; set_number: number }[],
   loaded?: LoadedGigSetlist | null
 ) {
-  const expected = loaded && loaded.id === setlistId ? { songs: loaded.songs } : undefined;
+  // The gig now links another setlist than the one loaded: A is never
+  // written over B (Codex review #292 round 6). Nothing written.
+  if (loaded && loaded.id !== setlistId) throw new SetlistConflictError();
+  const expected = loaded ? { songs: loaded.songs } : undefined;
   const res = await replaceSetlistSongs(setlistId, songs, expected ? { expected } : undefined);
   if (res.error) throw res.error;
   if (res.conflict) throw new SetlistConflictError();

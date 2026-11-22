@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { saveSetlistOrder } from '@/lib/services/songs';
+import { saveStageOrder } from '@/lib/services/songs';
 import { keepOrderOffline } from '@/lib/services/liveOutboxApi';
 import { sessionUserId } from '@/lib/sessionUser';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
@@ -370,7 +370,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
       const rows = reorderRows(list, saved, inOrder);
       const owner = await sessionUserId(); // queued offline only for this account
-      const { error } = await saveSetlistOrder(rows);
+      const { error } = await saveStageOrder(list, rows, saved);
       // The gig open behind Stage mode reloads its setlist in the new order.
       if (!error) {
         // The same one summary push as a save in the gig overview (107), to

@@ -1040,7 +1040,7 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 
 let demoCalendarToken = '';
 
-const rpc = (fn: string, args: Row = {}) => {
+const rpcOnline = (fn: string, args: Row = {}) => {
   let data: any = null;
   let error: any = null;
   switch (fn) {
@@ -1794,13 +1794,23 @@ const rpc = (fn: string, args: Row = {}) => {
     }
   }
   const res = { data, error, count: null, status: error ? 400 : 200, statusText: error ? 'Bad Request' : 'OK' };
-  const p: any = Promise.resolve(res);
-  // rpc() is sometimes chained with .single()/.maybeSingle().
+  return chainable(Promise.resolve(res));
+};
+
+// rpc() is sometimes chained with .single()/.maybeSingle().
+const chainable = (p: any) => {
   p.single = () => p;
   p.maybeSingle = () => p;
   p.select = () => p;
   return p;
 };
+
+// Offline (dev builds, the e2e suite): an RPC fails like a real one with no
+// network and writes nothing, as table requests do (DemoQuery.then).
+const rpc = (fn: string, args: Row = {}) =>
+  demoNetworkDown()
+    ? chainable(new Promise((r) => setTimeout(() => r({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' }, count: null, status: 0, statusText: '' }), 40)))
+    : rpcOnline(fn, args);
 
 // ------------------------------------------------------------------ client --
 

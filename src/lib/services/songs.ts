@@ -876,6 +876,31 @@ export const saveSetlistOrder = async (
 };
 
 /**
+ * Stage: the leader's new order (`rows`, from reorderRows), in one save (188)
+ * and only over the order it was made on (`saved`, in play order). Another
+ * admin removed or added a song meanwhile: nothing is written, no removed row
+ * comes back (BW_SETLIST_CONFLICT). Each entry names its row, so the same
+ * song twice keeps each row's notes and singers. Never a plain upsert.
+ */
+export const saveStageOrder = async (
+  setlistId: string,
+  rows: { id: string; song_id: string; set_number: number }[],
+  saved: { songId: string; setNumber?: number }[]
+): Promise<{ error: Error | null }> => {
+  const res = await replaceSetlistSongs(
+    setlistId,
+    rows.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number })),
+    { expected: { songs: saved.map((s) => ({ song_id: s.songId, set_number: s.setNumber ?? 1 })) } }
+  );
+  if (res.error) return { error: res.error };
+  if (!res.conflict) return { error: null };
+  // Changed meanwhile into exactly this order (sent before, its answer lost): saved.
+  const key = (x: { song_id: string; set_number?: number | null }) => `${x.song_id}:${x.set_number ?? 1}`;
+  if (res.conflict.songs.map(key).join(',') === rows.map(key).join(',')) return { error: null };
+  return { error: Object.assign(new Error('The setlist changed meanwhile.'), { code: 'BW_SETLIST_CONFLICT' }) };
+};
+
+/**
  * Save a song's lyrics only while they are still `expected` (what the editor
  * loaded), so one admin's chord edit never erases another's new verse
  * (audit 09 #6). One request, checked on the server (bw_save_song_lyrics,

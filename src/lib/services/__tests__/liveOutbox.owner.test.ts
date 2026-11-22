@@ -221,4 +221,20 @@ describe('round 4: nothing counts as sent unless the server wrote it', () => {
     expect(kept).toBe(false);
     expect(readLiveOutbox('u-a')).toEqual([]);
   });
+
+  // Round 6 (Codex B7): the server's limits checked here first, with a message.
+  it('lyrics over 100,000 characters: said at once, nothing sent or queued', async () => {
+    net.writeError = new TypeError('Failed to fetch');
+    const res = await suggestSongChange({ bandId: 'b1', songId: 's1', kind: 'lyrics', lyrics: 'x'.repeat(100_001) });
+    expect(res.error?.message).toMatch(/too long/i);
+    expect(writes()).toEqual([]);
+    expect(readLiveOutbox('u-a')).toEqual([]);
+  });
+
+  it('a note suggestion over 2,000 characters: said at once', async () => {
+    const res = await suggestSongChange({ bandId: 'b1', songId: 's1', kind: 'note', note: 'y'.repeat(2001) });
+    expect(res.error?.message).toMatch(/too long/i);
+    expect(writes()).toEqual([]);
+  });
 });
+

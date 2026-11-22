@@ -189,7 +189,7 @@ describe('definite refusals, retries and one tab at a time', () => {
     };
   };
 
-  for (const code of ['42501', 'PGRST116', '22023', '23503', 'BW_SETLIST_CONFLICT']) {
+  for (const code of ['42501', 'PGRST116', '22023', '23503', 'BW_SETLIST_CONFLICT', '22001', '22P02', '23514', '23502']) {
     it(`${code} is a definite refusal: kept in the refused list`, async () => {
       queueLiveOp('u-2', n('a'));
       const r = await flushLiveOutbox('u-2', failing({ code, message: 'refused' }).api, { force: true });
@@ -221,10 +221,45 @@ describe('definite refusals, retries and one tab at a time', () => {
     queueLiveOp('u-4', n('a'));
     const ok = { note: async () => ({ error: null }), noteDelete: async () => ({ error: null }), suggestion: async () => ({ error: null }), order: async () => ({ error: null }) };
     localStorage.setItem('bw:live_outbox_flushing:u-4', `other-tab|${Date.now() + 30_000}`);
-    expect(await flushLiveOutbox('u-4', ok, { force: true })).toMatchObject({ sent: 0, left: 1 });
+    // Round 6 (Claude r5 nit): said as "another tab is sending", not "no connection".
+    expect(await flushLiveOutbox('u-4', ok, { force: true })).toMatchObject({ sent: 0, left: 1, busy: true });
     localStorage.setItem('bw:live_outbox_flushing:u-4', `other-tab|${Date.now() - 1}`);
-    expect(await flushLiveOutbox('u-4', ok, { force: true })).toMatchObject({ sent: 1, left: 0 });
+    const sent = await flushLiveOutbox('u-4', ok, { force: true });
+    expect(sent).toMatchObject({ sent: 1, left: 0 });
+    expect(sent.busy).toBeFalsy();
     expect(localStorage.getItem('bw:live_outbox_flushing:u-4')).toBeNull();
+  });
+});
+
+// Round 6 (Codex B7): a data error (22xxx, 23xxx but 23505) never blocks the
+// queue: a 100,001-character suggestion from an older build is refused and
+// kept, and the change behind it goes.
+describe('data errors', () => {
+  it('a suggestion of 100,001 characters refused with 22001: kept apart, the next change is sent', async () => {
+    const long = 'la '.repeat(33_334).slice(0, 100_001);
+    queueLiveOp('u-5', { kind: 'suggestion', id: 'g-long', row: { band_id: 'b1', song_id: 's1', kind: 'lyrics', proposed: { lyrics: long } } });
+    queueLiveOp('u-5', { kind: 'note', id: 'n-next', songId: 's1', anchor: { type: 'song' }, body: 'Count in at 120' });
+    const sent: string[] = [];
+    const api: LiveOutboxApi = {
+      note: async (op) => (sent.push(op.id), { error: null }),
+      noteDelete: async () => ({ error: null }),
+      suggestion: async (op) => ({ error: (op.row.proposed as { lyrics?: string }).lyrics!.length > 100_000 ? { code: '22001', message: 'lyrics too long' } : null }),
+      order: async () => ({ error: null }),
+    };
+    const r = await flushLiveOutbox('u-5', api, { force: true });
+    expect(r).toMatchObject({ sent: 1, dropped: 1, left: 0 });
+    expect(sent).toEqual(['n-next']);
+    expect(readRefusedLiveOps('u-5').map((o) => (o as { id?: string }).id)).toEqual(['g-long']);
+  });
+
+  it('23505 (already there) is not a refusal for the list', async () => {
+    queueLiveOp('u-6', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'x' });
+    const api: LiveOutboxApi = {
+      note: async () => ({ error: { code: '23505', message: 'duplicate key' } }),
+      noteDelete: async () => ({ error: null }), suggestion: async () => ({ error: null }), order: async () => ({ error: null }),
+    };
+    await flushLiveOutbox('u-6', api, { force: true });
+    expect(readRefusedLiveOps('u-6')).toEqual([]);
   });
 });
 

@@ -52,6 +52,7 @@ import type { EventMember, Event } from "@/lib/services/events";
 import { respondToOwnInvite, InviteResponseError, getOwnInviteStatus, inviteSettled } from "@/lib/services/inviteResponse";
 import { createSetlist, deleteSetlist } from "@/lib/services/songs";
 import { saveExistingGigSetlist, SetlistConflictError } from "@/lib/services/gigSetlistSave";
+import { LIVE_REFUSED_EVENT } from "@/lib/liveOutbox";
 import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
 import { notifySetlistSaved } from "@/lib/services/setlistNotify";
 import { receiptFor, deleteChat as deleteChatService, createChat as createChatService, chatErrorMessage } from "@/lib/services/chats";
@@ -432,6 +433,18 @@ export default function AuthenticatedApp() {
     };
     duration?: number;
   } | null>(null);
+  // A gig setlist edited offline met someone else's newer one when sent: not
+  // written over it, kept in Settings › Offline & live, and said here.
+  useEffect(() => {
+    const onRefused = (e: globalThis.Event) => {
+      const d = (e as CustomEvent<{ userId?: string; kind?: string }>).detail;
+      if (d?.kind !== 'gigSetlist' || d.userId !== user?.id) return;
+      const place = `${t('Settings & account')} › ${t('Offline & live')}`;
+      setSaveToast({ message: t('Someone else changed a gig setlist meanwhile, so your offline changes were not saved. They’re kept in {place}.', { place }), type: 'error' });
+    };
+    window.addEventListener(LIVE_REFUSED_EVENT, onRefused);
+    return () => window.removeEventListener(LIVE_REFUSED_EVENT, onRefused);
+  }, [user?.id, t]);
   useEffect(() => {
     if (!saveToast) return;
     if (saveToast.type === 'success') {

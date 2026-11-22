@@ -21,7 +21,7 @@ function chartText(raw: unknown): string | null {
 }
 
 /** What the person wrote or did, in words they can copy. `titles`: song id → title, for an order. */
-export function refusedText(op: LiveOp, t: T, titles: Record<string, string> = {}): string {
+export function refusedText(op: LiveOp | RefusedLiveOp, t: T, titles: Record<string, string> = {}): string {
   switch (op.kind) {
     case 'note':
       return op.body;
@@ -33,6 +33,12 @@ export function refusedText(op: LiveOp, t: T, titles: Record<string, string> = {
         (x): x is string => typeof x === 'string' && !!x.trim(),
       );
       return parts.length ? parts.join('\n\n') : t('A suggestion to the band');
+    }
+    case 'gigSetlist': {
+      const named = op.songs.map((r) => titles[r.song_id]);
+      const head = t('Setlist changes for a gig, not saved: someone else changed it meanwhile.');
+      if (!op.songs.length || named.some((x) => !x)) return head;
+      return [head, ...named.map((title, i) => `${i + 1}. ${title}`)].join('\n');
     }
     case 'order': {
       const rows = [...op.rows].sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
@@ -55,8 +61,10 @@ export const RefusedLiveChanges: React.FC<{ userId?: string | null }> = ({ userI
   const [copied, setCopied] = useState<string | null>(null);
   /** The clipboard refused (none in this browser, or blocked): said, the text stays selectable. */
   const [copyFailed, setCopyFailed] = useState<string | null>(null);
-  /** The change just removed, and where it was: Undo puts it back. */
-  const [removed, setRemoved] = useState<{ op: RefusedLiveOp; index: number } | null>(null);
+  /** The change just removed, where it was, and whose: Undo puts it back, for that account only. */
+  const [removed, setRemoved] = useState<{ uid: string; op: RefusedLiveOp; index: number } | null>(null);
+  const uidRef = useRef(userId);
+  uidRef.current = userId;
   const [titles, setTitles] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLUListElement>(null);
   const undoRef = useRef<HTMLButtonElement>(null);
@@ -65,6 +73,10 @@ export const RefusedLiveChanges: React.FC<{ userId?: string | null }> = ({ userI
   useEffect(() => {
     const sync = () => setOps(readRefusedLiveOps(userId));
     sync();
+    // Another account now: nothing of the last one's (an undo, "Copied") carries over.
+    setRemoved(null);
+    setCopied(null);
+    setCopyFailed(null);
     // Another tab changed the list (it removed one, or one more was refused).
     const fromOtherTab = (e: StorageEvent) => {
       if (!userId || e.key === null || e.key === refusedKey(userId)) sync();
@@ -78,7 +90,9 @@ export const RefusedLiveChanges: React.FC<{ userId?: string | null }> = ({ userI
   }, [userId]);
 
   // An order names its songs (best effort: without a connection it says "A new setlist order").
-  const orderSongs = ops.flatMap((op) => (op.kind === 'order' ? op.rows.map((r) => r.song_id) : [])).filter((id) => !titles[id]);
+  const orderSongs = ops
+    .flatMap((op) => (op.kind === 'order' ? op.rows.map((r) => r.song_id) : op.kind === 'gigSetlist' ? op.songs.map((r) => r.song_id) : []))
+    .filter((id) => !titles[id]);
   const orderKey = [...new Set(orderSongs)].sort().join(',');
   useEffect(() => {
     if (!orderKey) return;
@@ -118,14 +132,18 @@ export const RefusedLiveChanges: React.FC<{ userId?: string | null }> = ({ userI
     const next = ops[index + 1] ?? ops[index - 1];
     setCopied(null);
     setCopyFailed(null);
-    setRemoved({ op, index });
+    setRemoved({ uid: userId, op, index });
     focusAfter.current = next ? refusedId(next) : 'undo';
     removeRefusedLiveOp(userId, rid);
     setOps((prev) => prev.filter((o) => refusedId(o) !== rid));
   };
   const undo = () => {
-    if (!removed) return;
-    restoreRefusedLiveOp(userId, removed.op, removed.index);
+    // Only into the list of the account that removed it, and only while it is the one shown.
+    if (!removed || removed.uid !== userId || uidRef.current !== removed.uid) {
+      setRemoved(null);
+      return;
+    }
+    restoreRefusedLiveOp(removed.uid, removed.op, removed.index);
     focusAfter.current = refusedId(removed.op);
     setRemoved(null);
     setOps(readRefusedLiveOps(userId));

@@ -3,6 +3,8 @@ import { isOfflineError } from '../offline/networkErrors';
 import { queueLiveOp } from '../liveOutbox';
 import { newLocalId, sessionUserId } from '../sessionUser';
 import { supabase } from '../supabase';
+import { UserError } from '../userError';
+import { t } from '@/lib/i18n';
 import { adoptSuggestionFiles, removeSongFiles } from './songFiles';
 import type { SongChart } from '../ireal';
 import type { SongSuggestion, SuggestionKind, SuggestionStatus } from '../songSuggestions';
@@ -35,6 +37,27 @@ export async function listSongSuggestions(
 }
 
 /** A correction to a band song, or a note for the band. */
+/** Lyrics, a note and a message over the server's limits (108): the message to show, else null. */
+export const SUGGESTION_LIMITS = { lyrics: 100_000, note: 2000, message: 1000 } as const;
+function suggestionTooLong(input: { kind: string; lyrics?: string; note?: string; message?: string }): string | null {
+  const over = (text: string | undefined, max: number) => (text ?? '').length > max;
+  if (input.kind !== 'note' && over(input.lyrics, SUGGESTION_LIMITS.lyrics)) {
+    return t('The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.', {
+      count: (input.lyrics ?? '').length,
+      max: SUGGESTION_LIMITS.lyrics,
+    });
+  }
+  const note = input.kind === 'note' ? (input.note ?? '').trim() : '';
+  if (over(note, SUGGESTION_LIMITS.note)) {
+    return t('This suggestion is too long to send: {count} characters, the limit is {max}.', { count: note.length, max: SUGGESTION_LIMITS.note });
+  }
+  const message = input.message?.trim() ?? '';
+  if (over(message, SUGGESTION_LIMITS.message)) {
+    return t('This suggestion is too long to send: {count} characters, the limit is {max}.', { count: message.length, max: SUGGESTION_LIMITS.message });
+  }
+  return null;
+}
+
 export async function suggestSongChange(input: {
   bandId: string;
   songId: string;
@@ -44,6 +67,10 @@ export async function suggestSongChange(input: {
   note?: string;
   message?: string;
 }): Promise<{ data: SongSuggestion | null; error: Error | null; queued?: true }> {
+  // The server's limits (108), said here first: a change it would refuse is
+  // never sent, nor queued to block the others (Codex review #292 round 6).
+  const tooLong = suggestionTooLong(input);
+  if (tooLong) return { data: null, error: new UserError(tooLong) };
   let row: Record<string, unknown> | null = null;
   // Whose change it is, read before the request: queued only for that account.
   const owner = await sessionUserId();

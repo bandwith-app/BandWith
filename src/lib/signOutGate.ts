@@ -6,11 +6,12 @@
  * lose them without a word. The sheet that asks registers itself here
  * (UnsentChangesSignOut); AuthContext asks before every sign-out.
  */
-import { waitingChanges } from './liveOutbox';
-import { readChatOutboxCount } from './offline/storage';
+import { refusedChanges, waitingChanges } from './liveOutbox';
+import { readChatOutboxCount, signOutKeeps } from './offline/storage';
 
 export type SignOutChoice = 'signout' | 'cancel';
-type Gate = (userId: string) => Promise<SignOutChoice>;
+/** `messages`: chat messages not sent (readChatOutboxCount), counted by the caller. */
+type Gate = (userId: string, messages: number) => Promise<SignOutChoice>;
 
 let gate: Gate | null = null;
 
@@ -22,12 +23,39 @@ export function setSignOutGate(next: Gate): () => void {
   };
 }
 
-/** true: go on signing out (nothing waits, or the person chose to). */
+/**
+ * true: go on signing out (nothing waits or was refused, or the person chose
+ * to). Refused changes alone ask too: they stay on this phone for the
+ * account, or "Erase them and sign out".
+ */
 export async function askBeforeSignOut(userId: string | null | undefined): Promise<boolean> {
-  if (!userId || !gate || waitingChanges(userId) + readChatOutboxCount(userId) === 0) return true;
-  return (await gate(userId)) === 'signout';
+  if (!userId || !gate) return true;
+  const messages = await readChatOutboxCount(userId);
+  if (!gate || waitingChanges(userId) + messages + refusedChanges(userId) === 0) return true;
+  return (await gate(userId, messages)) === 'signout';
 }
 
 /** A sign-out the person called off in that sheet: still signed in. */
 export const signOutCancelled = (res: unknown): boolean =>
   !!res && typeof res === 'object' && (res as { cancelled?: unknown }).cancelled === true;
+
+/** What "Sign out anyway" does to the queued changes, as the sheet says it. */
+export const QUEUED_DELETED =
+  'Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. Send them before you sign out: “Sign out anyway” deletes them from this phone.';
+export const QUEUED_KEPT =
+  'Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. “Sign out anyway” keeps them on this phone, and they’re sent when you sign in again.';
+
+/**
+ * The sheet's sentences, from what sign-out really keeps (signOutKeeps asks
+ * clearOfflineCache): never a promise the wipe doesn't keep. `clear`: tests.
+ */
+export function signOutCopy(userId: string, clear?: Parameters<typeof signOutKeeps>[1]) {
+  const keeps = (key: string) => signOutKeeps(key, clear);
+  const queuedKept = keeps(`bw:live_outbox:${userId}`) && keeps(`bw:rehearsal_notes_outbox:${userId}`);
+  return {
+    queued: queuedKept ? QUEUED_KEPT : QUEUED_DELETED,
+    chatKept: keeps(`bw:chat_outbox:${userId}`),
+    refusedKept: keeps(`bw:live_refused:${userId}`) && keeps(`bw:rehearsal_notes_rejected:${userId}`),
+  };
+}
+

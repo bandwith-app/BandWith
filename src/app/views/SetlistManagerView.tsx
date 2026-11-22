@@ -122,6 +122,8 @@ const RowMenu: React.FC<{ items: { label: string; icon: React.ReactNode; run: ()
 interface EditorItem {
   key: string;
   songId: string;
+  /** The stored row this performance is (188 keeps it: notes, singers); none for a song just added. */
+  rowId?: string;
 }
 
 let editorKeySeq = 0;
@@ -584,7 +586,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setEditingSetlistName(data.name);
     const ordered = [...data.songs]
       .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)));
-    setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id })));
+    setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id, ...(s.id ? { rowId: s.id } : {}) })));
     setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
     setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
     setEditorLoadFailed(false);
@@ -664,7 +666,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     try {
       // Name, songs and count in one transaction (188): a failure or a lost
       // signal half-way leaves the setlist as it was, never empty.
-      const rows = editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 }));
+      // Each performance names its row: the same song twice keeps each one's notes and singers.
+      const rows = editorItems.map((it, i) => ({ ...(it.rowId ? { id: it.rowId } : {}), song_id: it.songId, set_number: sets[i] ?? 1 }));
       // Only over the setlist as loaded: another admin's songs are never dropped unseen.
       const expected = over ?? editorLoadedStateRef.current ?? undefined;
       const { error: songsError, previous, conflict } = await replaceSetlistSongs(editingSetlistId, rows, { name, ...(expected ? { expected } : {}) });
@@ -677,7 +680,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         return 'conflict';
       }
       setEditorConflict(null);
-      editorLoadedStateRef.current = { name, songs: rows };
+      editorLoadedStateRef.current = { name, songs: rows.map(({ song_id, set_number }) => ({ song_id, set_number })) };
       const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
       setSetlists(prev => prev.map(sl =>
         sl.id === editingSetlistId ? { ...sl, name, song_count: editorItems.length } : sl

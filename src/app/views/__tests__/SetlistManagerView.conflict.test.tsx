@@ -145,4 +145,32 @@ describe('SetlistManagerView: saved only over the setlist as loaded', () => {
       expect.objectContaining({ song_id: 'song-a', set_number: 2 }),
     ]);
   });
+
+  // Round 6 (Codex B5): each performance is its own row. The same song twice,
+  // the first one removed: the reprise keeps its row (its notes and singers, 188).
+  it('a reprise: removing the first keeps the reprise\'s own row', async () => {
+    svc.getSetlist.mockResolvedValueOnce({
+      data: { id: 'sl-a', band_id: 'band-1', name: 'Rooftop Session', song_count: 3, songs: [
+        { id: 'row-1', setlist_id: 'sl-a', song_id: 'song-a', position: 1, set_number: 1, notes: 'Open soft' },
+        { id: 'row-2', setlist_id: 'sl-a', song_id: 'song-b', position: 2, set_number: 1 },
+        { id: 'row-3', setlist_id: 'sl-a', song_id: 'song-a', position: 3, set_number: 1, notes: 'Reprise: everyone sings' },
+      ] },
+      error: null,
+    } as any);
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, previous: [] });
+    render(<SetlistManagerView onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^setlists/i }));
+    fireEvent.click(await screen.findByText('Rooftop Session'));
+    await screen.findByDisplayValue('Rooftop Session');
+    const removes = await screen.findAllByRole('button', { name: 'Remove Empire State of Mind' });
+    expect(removes).toHaveLength(2);
+    fireEvent.click(removes[0]);
+    fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1));
+    expect(svc.replaceSetlistSongs.mock.calls[0][1]).toEqual([
+      { id: 'row-2', song_id: 'song-b', set_number: 1 },
+      { id: 'row-3', song_id: 'song-a', set_number: 1 },
+    ]);
+  });
 });
+

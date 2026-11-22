@@ -104,8 +104,19 @@ export const REFUSED_LIMIT = 100;
 export const LIVE_REFUSED_EVENT = 'bw:live-refused';
 export const refusedKey = (userId: string) => `${REFUSED_PREFIX}${userId}`;
 
+/**
+ * A gig setlist edited offline (the gig wizard) that met someone else's newer
+ * setlist when sent: never written over it, kept here with its songs.
+ */
+export type RefusedGigSetlist = {
+  kind: 'gigSetlist';
+  eventId: string;
+  setlistId: string;
+  songs: { song_id: string; set_number: number }[];
+  reason: 'changed';
+};
 /** A refused change, with its own id in the list (`rid`). */
-export type RefusedLiveOp = LiveOp & { rid?: string };
+export type RefusedLiveOp = (LiveOp | RefusedGigSetlist) & { rid?: string };
 /** The id a refused change is removed by (never its position: another tab may have changed the list). */
 export const refusedId = (op: RefusedLiveOp): string => op.rid ?? JSON.stringify(op);
 
@@ -124,19 +135,42 @@ export const refusedListFull = (userId: string | null | undefined) => readRefuse
  * Stage (above) and rehearsal notes (`bw:rehearsal_notes_rejected:`, #296).
  */
 export function refusedChanges(userId: string | null | undefined): number {
+  return readRefusedLiveOps(userId).length + refusedRehearsalNotes(userId);
+}
+
+/**
+ * Of those, the rehearsal notes not saved: bw:rehearsal_notes_rejected:<uid>
+ * (#296: an array of RehearsalNote, one per refused version, listed in
+ * Settings with #296). Read defensively: only entries with a note id count.
+ */
+export function refusedRehearsalNotes(userId: string | null | undefined): number {
   if (!userId) return 0;
-  let rehearsal = 0;
   try {
-    const raw = JSON.parse(localStorage.getItem(`bw:rehearsal_notes_rejected:${userId}`) || '[]');
-    if (Array.isArray(raw)) rehearsal = raw.length;
+    const raw: unknown = JSON.parse(localStorage.getItem(`bw:rehearsal_notes_rejected:${userId}`) || '[]');
+    return Array.isArray(raw) ? raw.filter((n) => !!n && typeof n === 'object' && typeof (n as { id?: unknown }).id === 'string').length : 0;
   } catch {
-    /* unreadable: none */
+    return 0; // unreadable: none
   }
-  return readRefusedLiveOps(userId).length + rehearsal;
+}
+
+/** "Erase them" at sign-out: this account's refused changes go (Stage and rehearsal). */
+export function discardRefusedChanges(userId: string | null | undefined): void {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(`bw:live_refused:${userId}`);
+    localStorage.removeItem(`bw:rehearsal_notes_rejected:${userId}`);
+  } catch {
+    /* storage blocked */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId } }));
+  } catch {
+    /* no window */
+  }
 }
 
 /** true: written (the caller may let go of its own copy). */
-function writeRefused(userId: string, ops: RefusedLiveOp[]): boolean {
+function writeRefused(userId: string, ops: RefusedLiveOp[], kind?: RefusedLiveOp['kind']): boolean {
   let ok = true;
   try {
     if (ops.length) localStorage.setItem(refusedKey(userId), JSON.stringify(ops));
@@ -144,14 +178,15 @@ function writeRefused(userId: string, ops: RefusedLiveOp[]): boolean {
   } catch {
     ok = false; /* storage full or blocked */
   }
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId } }));
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId, ...(kind ? { kind } : {}) } }));
   return ok;
 }
 const newRid = () => `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-function keepRefused(userId: string, op: LiveOp): boolean {
+/** Kept in the refused list; true only when really written (full list or storage: false). */
+export function keepRefused(userId: string, op: LiveOp | RefusedGigSetlist): boolean {
   const list = readRefusedLiveOps(userId);
   if (list.length >= REFUSED_LIMIT) return false;
-  return writeRefused(userId, [...list, { ...op, rid: newRid() }]) && readRefusedLiveOps(userId).length === list.length + 1;
+  return writeRefused(userId, [...list, { ...op, rid: newRid() }], op.kind) && readRefusedLiveOps(userId).length === list.length + 1;
 }
 /** The person copied what they needed: this one goes (by its id). */
 export function removeRefusedLiveOp(userId: string, rid: string) {
@@ -204,18 +239,24 @@ const send = (api: LiveOutboxApi, op: LiveOp, userId: string): Res => {
   }
 };
 
-type FlushResult = { sent: number; dropped: number; left: number };
+/** `busy`: another tab is sending this account's changes right now; nothing sent from here. */
+type FlushResult = { sent: number; dropped: number; left: number; busy?: boolean };
 let flushing: Promise<FlushResult> | null = null;
 
 /**
  * Refused for good, never better on a retry: not allowed (42501), matched no
- * row (PGRST116), a value the server rejects (22023), the song or setlist is
- * gone (23503), the setlist changed meanwhile (BW_SETLIST_CONFLICT).
+ * row (PGRST116), data the server rejects (22xxx: too long, bad value), a
+ * constraint (23xxx: the song or setlist gone, a check), the setlist changed
+ * meanwhile (BW_SETLIST_CONFLICT).
  * Anything else (a server error, a timeout) stays queued and is tried again.
  */
-const DEFINITE_REFUSALS = new Set(['42501', 'PGRST116', '22023', '23503', 'BW_SETLIST_CONFLICT']);
-export const isDefiniteRefusal = (error: unknown): boolean =>
-  DEFINITE_REFUSALS.has(String((error as { code?: unknown } | null)?.code ?? ''));
+const DEFINITE_REFUSALS = new Set(['42501', 'PGRST116', 'BW_SETLIST_CONFLICT']);
+export const isDefiniteRefusal = (error: unknown): boolean => {
+  const code = String((error as { code?: unknown } | null)?.code ?? '');
+  // Data the server will never take (22xxx: too long, bad value; 23xxx: a
+  // check, a missing song). 23505 (already there) is handled where it occurs.
+  return DEFINITE_REFUSALS.has(code) || /^22[0-9A-Z]{3}$/.test(code) || (/^23[0-9A-Z]{3}$/.test(code) && code !== '23505');
+};
 
 // After a server error: the next tries wait 5 s, 10 s, 20 s … up to 5 min
 // (this tab). "Send now" goes at once.
@@ -301,7 +342,7 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi, opts?: { for
       }
       return { sent, dropped, left: readLiveOutbox(userId).length };
     },
-    idle,
+    () => ({ ...idle(), busy: true }),
   ).finally(() => {
     flushing = null;
   });

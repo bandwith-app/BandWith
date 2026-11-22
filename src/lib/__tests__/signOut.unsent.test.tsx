@@ -7,12 +7,13 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 // asks first: "Send now" or "Sign out anyway"; closed, still signed in.
 // Made-up note (New York).
 
-const auth = vi.hoisted(() => ({ signOut: vi.fn(async () => ({ error: null })), left: 0, refused: 0 }));
+const auth = vi.hoisted(() => ({ signOut: vi.fn(async () => ({ error: null })), left: 0, refused: 0, notes: 0, busy: false, session: 'u-a' as string | null, locked: false }));
+vi.mock('../appLock', () => ({ isAppLockedNow: () => auth.locked }));
 vi.mock('../supabase', () => ({
   supabase: {
     auth: {
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-      getSession: async () => ({ data: { session: { user: { id: 'u-a' } } } }),
+      getSession: async () => ({ data: { session: auth.session ? { user: { id: auth.session } } : null } }),
     },
     from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }), maybeSingle: async () => ({ data: null, error: null }) }) }) }),
   },
@@ -32,11 +33,18 @@ vi.mock('../offline/syncQueue', async () => {
     processSyncQueue: vi.fn(async () => {}),
     getPendingMutations: vi.fn(async () => ((await st.getOfflineItem<unknown[]>('bw:offline_queue:u-a')) ?? [])),
     getOfflineQueueKey: (u: string) => `bw:offline_queue:${u}`,
+    clearOfflineQueue: vi.fn(async (u: string) => st.removeOfflineItem(`bw:offline_queue:${u}`)),
   };
 });
 const packs = vi.hoisted(() => ({ deleteAllPacks: vi.fn(async () => {}) }));
 vi.mock('../livePackStore', () => ({ deleteAllPacks: packs.deleteAllPacks, LIVE_PACK_CHANGED: 'bw:live-pack-changed' }));
-vi.mock('@/app/hooks/useLiveOutbox', () => ({ sendWaitingNow: vi.fn(async () => ({ left: auth.left, refused: auth.refused })) }));
+// The chats the person is in now (null: the list can't be had, e.g. no signal).
+const chats = vi.hoisted(() => ({ ids: ['c1'] as string[] | null }));
+vi.mock('../services/chats', () => ({
+  getChats: async () => (chats.ids ? { data: chats.ids.map((id) => ({ id })), error: null } : { data: null, error: new Error('Failed to fetch') }),
+}));
+const sendWaitingNowMock = vi.hoisted(() => vi.fn(async () => ({ left: auth.left, refused: auth.refused, refusedNotes: auth.notes, busy: auth.busy })));
+vi.mock('@/app/hooks/useLiveOutbox', () => ({ sendWaitingNow: sendWaitingNowMock }));
 
 import { AuthProvider, useAuth } from '../AuthContext';
 import { queueLiveOp, readRefusedLiveOps, writeLiveOutbox } from '../liveOutbox';
@@ -67,6 +75,12 @@ beforeEach(() => {
   auth.signOut.mockClear();
   auth.left = 0;
   auth.refused = 0;
+  auth.notes = 0;
+  auth.busy = false;
+  chats.ids = ['c1'];
+  auth.session = 'u-a';
+  auth.locked = false;
+  sendWaitingNowMock.mockClear();
   result = undefined;
 });
 afterEach(cleanup);
@@ -170,19 +184,182 @@ describe('signing out with changes not sent yet', () => {
     expect(localStorage.getItem('bw:live_refused:u-other')).toBeTruthy();
   });
 
+  // Round 6 (Claude r5 M2): a send already on its way when the account is
+  // deleted is answered while signing out (refused: kept in the refused
+  // list). It goes too: nothing of the deleted account stays.
+  it('account deleted: a refusal answered during the sign-out leaves no refused list', async () => {
+    auth.signOut.mockImplementationOnce(async () => {
+      localStorage.setItem('bw:live_refused:u-a', JSON.stringify([note('late')]));
+      return { error: null };
+    });
+    let res: unknown;
+    const Delete = () => {
+      const { signOut, user } = useAuth();
+      return (
+        <button type="button" disabled={!user} onClick={async () => (res = await signOut({ discardPendingWrites: true }))}>
+          delete me
+        </button>
+      );
+    };
+    render(
+      <AuthProvider>
+        <Delete />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect((screen.getByText('delete me') as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByText('delete me'));
+    await waitFor(() => expect(res).toBeTruthy());
+    expect(auth.signOut).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('bw:live_refused:u-a')).toBeNull();
+  });
+
   // Round 5 (Claude BLOCKER): changes the band refused stay on the phone
-  // through sign-out and the next sign-in; nothing waiting, so no question.
-  it('0 waiting + 3 refused: signs out without asking, and all 3 are still there after signing in again', async () => {
+  // through sign-out and the next sign-in. Round 6 (Claude r5 M6): asked
+  // first, they stay, or "Erase them and sign out".
+  it('0 waiting + 3 refused: asks, says they stay for my account; "Sign out" keeps all 3 for the next sign-in', async () => {
     localStorage.setItem('bw:live_refused:u-a', JSON.stringify([note('r1'), note('r2'), note('r3')]));
     await renderApp();
     fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('Some changes were refused')).toBeTruthy();
+    expect(screen.getByText('3 changes not sent stay on this phone for your account.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /send now/i })).toBeNull();
+    expect(auth.signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /^sign out$/i }));
     await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(result).toBeTruthy());
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByText(/unsent change/i)).toBeNull();
     cleanup();
     await renderApp();
     expect(readRefusedLiveOps('u-a').map((o) => (o as { id?: string }).id)).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  it('0 waiting + refused: "Erase them and sign out" erases this account’s only, then signs out', async () => {
+    localStorage.setItem('bw:live_refused:u-a', JSON.stringify([note('r1')]));
+    localStorage.setItem('bw:rehearsal_notes_rejected:u-a', JSON.stringify([{ id: 'rn1', body: 'Tighter ending' }]));
+    localStorage.setItem('bw:live_refused:u-other', JSON.stringify([note('x')]));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('1 change not sent stays on this phone for your account.')).toBeTruthy();
+    expect(screen.getByText('1 note not saved stays on this phone for your account.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /erase them and sign out/i }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem('bw:live_refused:u-a')).toBeNull();
+    expect(localStorage.getItem('bw:rehearsal_notes_rejected:u-a')).toBeNull();
+    expect(localStorage.getItem('bw:live_refused:u-other')).toBeTruthy();
+  });
+
+  it('refused only, from the lock screen: "Sign out" keeps them, no Erase', async () => {
+    localStorage.setItem('bw:live_refused:u-a', JSON.stringify([note('r1')]));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('1 change not sent stays on this phone for your account.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /erase/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^sign out$/i }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem('bw:live_refused:u-a')).toBeTruthy();
+  });
+
+  // Round 6 (#296 review M6): rehearsal notes not saved (#296's list, an
+  // array of notes, one entry per refused version: entries count, not note
+  // ids) are counted, read defensively, and can be erased.
+  it('0 waiting + 2 rehearsal notes not saved: asks, "2 notes not saved stay…"; junk entries don’t count', async () => {
+    const rn = (id: string) => ({ id, eventId: 'e1', body: 'Tighter ending on Superstition', createdBy: 'u-a' });
+    localStorage.setItem('bw:rehearsal_notes_rejected:u-a', JSON.stringify([rn('rn1'), { ...rn('rn1'), body: 'Tighter ending, count it in' }, 1, 'x', null, { body: 'no id' }]));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('2 notes not saved stay on this phone for your account.')).toBeTruthy();
+    expect(screen.queryByText(/changes? not sent stay/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /erase them and sign out/i }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem('bw:rehearsal_notes_rejected:u-a')).toBeNull();
+  });
+
+  it('rehearsal notes list with junk only (or bad JSON): nothing to ask, signs out', async () => {
+    localStorage.setItem('bw:rehearsal_notes_rejected:u-a', JSON.stringify([1, 'x', null]));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    cleanup();
+    auth.signOut.mockClear();
+    localStorage.setItem('bw:rehearsal_notes_rejected:u-a', '{oops');
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+  });
+
+  // Round 6 (#291 review 4): a refused chat message whose chat is gone can't
+  // be seen in any chat: listed here with Delete. Waiting ones and refused
+  // ones in a chat still there aren't (the chat shows them).
+  it('a refused message in a chat that is gone: listed with Delete; Delete removes only it', async () => {
+    localStorage.setItem(
+      'bw:chat_outbox:u-a',
+      JSON.stringify([
+        chatMsg(1),
+        { ...chatMsg(2), refused: '' },
+        { ...chatMsg(3), chatId: 'c-gone', body: 'Parking is on 5th Ave', refused: 'Not allowed' },
+      ]),
+    );
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('You have 3 unsent messages')).toBeTruthy();
+    expect(await screen.findByText('Not sent: this chat is no longer available.')).toBeTruthy();
+    expect(screen.getByText('Parking is on 5th Ave')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /delete message not sent/i })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete message not sent: Parking is on 5th Ave' }));
+    expect(await screen.findByText('You have 2 unsent messages')).toBeTruthy();
+    expect(screen.queryByText('Parking is on 5th Ave')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('bw:chat_outbox:u-a') || '[]').map((m: { clientId: string }) => m.clientId)).toEqual(['m1', 'm2']);
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('chat list not available: every refused message is listed as not sent, with Delete; the last one deleted signs out', async () => {
+    chats.ids = null;
+    localStorage.setItem('bw:chat_outbox:u-a', JSON.stringify([{ ...chatMsg(1), refused: '' }]));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('Message not sent')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /delete message not sent: load-in at 6 in brooklyn/i }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem('bw:chat_outbox:u-a')).toBeNull();
+  });
+
+  it('from the lock screen: refused messages are listed, but not deleted from there', async () => {
+    chats.ids = null;
+    auth.locked = true;
+    localStorage.setItem('bw:chat_outbox:u-a', JSON.stringify([{ ...chatMsg(1), refused: '' }]));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('Message not sent')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /delete message not sent/i })).toBeNull();
+  });
+
+  // Round 6 (Claude r5 M4): refused rehearsal notes aren't listed in Settings
+  // before #296, so the sheet doesn't send the person there.
+  it('"Send now", a rehearsal note refused: says it stays on this phone, no Settings place', async () => {
+    queueLiveOp('u-a', note('n1'));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    auth.left = 0;
+    auth.refused = 1;
+    auth.notes = 1;
+    fireEvent.click(await screen.findByRole('button', { name: /send now/i }));
+    expect(await screen.findByText('1 change was refused. It stays on this phone for your account.')).toBeTruthy();
+    expect(screen.queryByText(/settings & account/i)).toBeNull();
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
+  // Round 6 (Claude r5 nit): another tab holds the send lock: not "No connection".
+  it('"Send now" while another tab is sending: says so, not "No connection"', async () => {
+    queueLiveOp('u-a', note('n1'));
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    auth.left = 1;
+    auth.busy = true;
+    fireEvent.click(await screen.findByRole('button', { name: /send now/i }));
+    expect(await screen.findByText('Another tab is sending your changes. Try again in a moment.')).toBeTruthy();
+    expect(screen.queryByText(/no connection/i)).toBeNull();
+    expect(auth.signOut).not.toHaveBeenCalled();
   });
 
   it('the sheet says "Sign out anyway" deletes them from this phone', async () => {
@@ -251,6 +428,41 @@ describe('signing out with changes not sent yet', () => {
     await renderApp();
     fireEvent.click(screen.getByText('sign me out'));
     await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+  });
+
+  // Round 6 (Codex B2): the sheet was opened for A; another tab signed B in.
+  // "Sign out anyway" then does nothing: no sign-out, nothing cleared.
+  it('confirmed after another tab switched account: not signed out, nothing cleared', async () => {
+    queueLiveOp('u-a', note('n1'));
+    localStorage.setItem('bw:u-a:global:songs', '[]');
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('You have 1 unsent change')).toBeTruthy();
+    auth.session = 'u-b';
+    fireEvent.click(screen.getByRole('button', { name: /sign out anyway/i }));
+    await waitFor(() => expect(result).toMatchObject({ cancelled: true }));
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(screen.queryByText(/unsent change/i)).toBeNull();
+    expect(localStorage.getItem('bw:live_outbox:u-a')).toContain('n1');
+    expect(localStorage.getItem('bw:u-a:global:songs')).toBe('[]');
+  });
+
+  // Round 6 (Codex B8): from the lock screen nothing is sent: unlock first.
+  it('locked: no Send now; "Unlock to send" sends nothing and keeps me signed in; "Sign out" signs out', async () => {
+    queueLiveOp('u-a', note('n1'));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    expect(await screen.findByText('You have 1 unsent change')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^send now$/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /unlock to send/i }));
+    await waitFor(() => expect(result).toMatchObject({ cancelled: true }));
+    expect(sendWaitingNowMock).not.toHaveBeenCalled();
+    expect(auth.signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('sign me out'));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+    expect(sendWaitingNowMock).not.toHaveBeenCalled();
   });
 });
 

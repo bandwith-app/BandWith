@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   saveEventLineup: vi.fn(),
   persistComposerStage: vi.fn(),
   eventSetlistId: null as string | null,
+  session: 'u-1' as string | null,
   existingMembers: [] as { user_id: string; status: string }[],
   writes: [] as string[],
 }));
@@ -38,11 +39,13 @@ vi.mock('@/lib/services/songs', () => ({
   replaceSetlistSongs: mocks.replaceSetlistSongs,
   updateSetlist: mocks.updateSetlist,
 }));
+vi.mock('@/lib/sessionUser', () => ({ sessionUserId: async () => mocks.session, newLocalId: () => 'id-1' }));
 vi.mock('@/lib/services/eventTasks', () => ({ syncEventTasks: mocks.syncEventTasks }));
 vi.mock('@/lib/services/eventMemberMoney', () => ({ saveEventLineup: mocks.saveEventLineup }));
 vi.mock('@/lib/services/composerStage', () => ({ persistComposerStage: mocks.persistComposerStage }));
 
 import { extrasOf, lineupDiff, mergeExtras, replayEventExtras } from '../eventExtras';
+import { readRefusedLiveOps } from '@/lib/liveOutbox';
 
 const setlist = { bandId: 'b1', name: 'Gig setlist', songs: [{ song_id: 's1', position: 0, set_number: 1 }] };
 
@@ -55,6 +58,8 @@ beforeEach(() => {
   mocks.saveEventLineup.mockResolvedValue({ error: null });
   mocks.persistComposerStage.mockResolvedValue(null);
   mocks.eventSetlistId = null;
+  mocks.session = 'u-1';
+  localStorage.clear();
   mocks.existingMembers = [];
   mocks.writes.length = 0;
 });
@@ -102,10 +107,30 @@ describe('offline event extras', () => {
     expect(failed).toContain('setlist');
   });
 
-  it('what was loaded from another setlist is not used as expected', async () => {
+  // Round 6 (Codex B3): the gig now points at another setlist (B) than the
+  // one the edit loaded (A): A's songs are never written over B.
+  it('the gig now links another setlist: nothing written, a conflict', async () => {
     mocks.eventSetlistId = 'sl-new';
-    await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [] } } });
-    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-new', [{ song_id: 's1', set_number: 1 }], undefined);
+    const failed = await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [] } } });
+    expect(mocks.replaceSetlistSongs).not.toHaveBeenCalled();
+    expect(failed).toContain('setlist');
+  });
+
+  // Round 6 (Codex B4): an offline edit that meets a conflict is never thrown
+  // away: kept in the refused list with its reason, and the app is told.
+  it('a conflict on an offline edit: kept in the refused list with its songs and reason', async () => {
+    mocks.eventSetlistId = 'sl-old';
+    mocks.session = 'u-1';
+    mocks.replaceSetlistSongs.mockResolvedValue({ error: null, conflict: { name: 'Other', songs: [] } });
+    const told: unknown[] = [];
+    const listen = (e: Event) => told.push((e as CustomEvent).detail);
+    window.addEventListener('bw:live-refused', listen);
+    await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [{ song_id: 's9', set_number: 1 }] } } });
+    window.removeEventListener('bw:live-refused', listen);
+    const kept = readRefusedLiveOps('u-1');
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ kind: 'gigSetlist', eventId: 'e1', setlistId: 'sl-old', songs: [{ song_id: 's1', set_number: 1 }], reason: 'changed' });
+    expect(told).toContainEqual(expect.objectContaining({ userId: 'u-1', kind: 'gigSetlist' }));
   });
 
   it('saves to-dos, the lineup and the stage, and reports what failed', async () => {

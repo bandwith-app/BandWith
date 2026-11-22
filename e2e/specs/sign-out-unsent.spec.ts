@@ -107,6 +107,46 @@ test('@smoke refused changes show in Offline & live, with Copy and Remove', asyn
 });
 
 /**
+ * Round 6 (Claude r5 M6): nothing waiting, only changes the band refused:
+ * sign-out still asks. They stay on this phone for the account ("Sign out"),
+ * or "Erase them and sign out". The sheet fits every screen.
+ */
+test('@smoke refused changes only: sign-out asks, and "Erase them and sign out" erases them', async ({ app }) => {
+  await openHub(app);
+  await app.page.evaluate((id) => {
+    localStorage.setItem(
+      `bw:live_refused:${id}`,
+      JSON.stringify([{ kind: 'note', id: 'e2e-n9', songId: 'e2e-song', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge' }]),
+    );
+  }, DEMO_USER_ID);
+  const signOutRow = app.page
+    .getByRole('button', {
+      name: new RegExp(`^(${escapeRe(app.t('Sign out'))}$|${escapeRe(app.t('Sign out ({email})', { email: '§' }).split('§')[0])})`),
+    })
+    .filter({ visible: true })
+    .first();
+  await signOutRow.scrollIntoViewIfNeeded();
+  await signOutRow.click();
+  const sheet = app.page.getByRole('dialog', { name: app.t('Some changes were refused') });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText(app.t('1 change not sent stays on this phone for your account.'))).toBeVisible();
+  await app.settle();
+  const viewport = app.page.viewportSize()!;
+  for (const name of ['Sign out', 'Erase them and sign out']) {
+    const button = sheet.getByRole('button', { name: app.t(name), exact: true });
+    await expect(button).toBeVisible();
+    const box = (await button.boundingBox())!;
+    expect(box.x, name).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, name).toBeLessThanOrEqual(viewport.width + 1);
+    expect(box.y + box.height, name).toBeLessThanOrEqual(viewport.height + 1);
+  }
+  await app.check('refused changes only before sign-out');
+  await sheet.getByRole('button', { name: app.t('Erase them and sign out'), exact: true }).click();
+  await expect(sheet).toBeHidden();
+  await expect.poll(() => app.page.evaluate((id) => localStorage.getItem(`bw:live_refused:${id}`), DEMO_USER_ID)).toBeNull();
+});
+
+/**
  * Round 5 (Codex MINOR): "Update BandWith" (z 1000) has its own Sign out;
  * the unsent-changes sheet opens above it and takes taps (touch included).
  */

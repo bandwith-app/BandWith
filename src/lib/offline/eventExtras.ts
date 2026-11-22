@@ -10,7 +10,9 @@
  */
 import { supabase } from '@/lib/supabase';
 import { createSetlist } from '@/lib/services/songs';
-import { saveExistingGigSetlist, type LoadedGigSetlist } from '@/lib/services/gigSetlistSave';
+import { saveExistingGigSetlist, SetlistConflictError, type LoadedGigSetlist } from '@/lib/services/gigSetlistSave';
+import { keepRefused } from '@/lib/liveOutbox';
+import { sessionUserId } from '@/lib/sessionUser';
 import { syncEventTasks, type EventTaskDraft } from '@/lib/services/eventTasks';
 import { saveEventLineup, type LineupRow } from '@/lib/services/eventMemberMoney';
 import { persistComposerStage, type ComposerStagePayload } from '@/lib/services/composerStage';
@@ -63,11 +65,19 @@ const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<voi
   if (existingId) {
     if (setlist.songs.length === 0 && !setlist.cleared) return;
     // Songs and count in one transaction (188); the setlist keeps its name.
-    await saveExistingGigSetlist(
-      existingId,
-      setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
-      setlist.loaded,
-    );
+    const songs = setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number }));
+    try {
+      await saveExistingGigSetlist(existingId, songs, setlist.loaded);
+    } catch (err) {
+      // Someone else's setlist meanwhile: not written over it, and never
+      // thrown away: kept in the refused list (Settings › Offline & live),
+      // and the app says so (LIVE_REFUSED_EVENT).
+      if (err instanceof SetlistConflictError) {
+        const me = await sessionUserId();
+        if (me) keepRefused(me, { kind: 'gigSetlist', eventId, setlistId: setlist.loaded?.id ?? existingId, songs, reason: 'changed' });
+      }
+      throw err;
+    }
     return;
   }
   if (setlist.songs.length === 0) return;
