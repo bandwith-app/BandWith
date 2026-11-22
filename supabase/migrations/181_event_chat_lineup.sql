@@ -4,65 +4,46 @@
 -- Taking a musician off a gig (Event Detail / Edit) deleted their
 -- event_members row but kept their chat_participants row in the gig's chat.
 -- Message reads and push recipients trust that row, so they kept getting
--- the gig chat's messages and previews. 175 already closes band and gig
--- chats to people who left the band; this adds the lineup itself:
+-- the gig chat's messages and previews.
 --
---   * bw_chat_scope_ok (175), event branch: also requires
---     bw_is_event_participant(event, user) (073: event creator, band admin,
---     or on the lineup and not declined; 178 adds the quote-event rule to
---     it), and a lineup row that is not dropped_out or removed either: the
---     statuses the server's notices already treat as off the gig (046).
---     It drives bw_my_chat_ids (messages and chats read policies) and
---     bw_chat_recipient_ids (send-push).
---   * Taken off the lineup, or declined / dropped out / removed: they leave
---     the gig chat (row archived in chat_participants_removed_175). Back on
---     the lineup, the app adds them again when they open it, as for anyone
---     added later.
---   * Rows already stale today are archived and removed.
+-- Who uses a gig chat is 175's rule (bw_chat_scope_ok, one definition since
+-- round 3; this file no longer redefines it): an active member of the band
+-- who is the gig's creator, a band admin, or on the lineup and not declined,
+-- dropped out or removed (the statuses the server's notices treat as off the
+-- gig, 046). A gig with no lineup: only its admins and its creator use the
+-- gig chat (as 071). The "whole band" fallback applies only to the gig's
+-- logistics notifications (bw_event_recipient_ids), never to its chat.
+-- This file adds what 175 can't see happen:
+--   * taken off the lineup (row deleted), or declined / dropped out /
+--     removed: out of that gig's chat (row archived in
+--     chat_participants_removed_175). Back on the lineup, the app adds them
+--     again when they open it, and 175 restores their cleared_at, read times
+--     and mute from the archive (round 3: history they had cleared stays
+--     cleared);
+--   * rows already stale today are archived and removed.
 --
--- Duplicate gig chats: someone put back on the lineup has no participant
--- row, so on a database without 193 an old build's "does the gig chat
--- exist?" lookup can miss it and start a second one. 193 (#291:
--- chats_select_joinable, bw_open_group_chat, one chat per gig) closes that;
--- 181 is compatible with it (checked with 175 + 181 + 193 loaded).
+-- Prerequisites and order: 175 -> 178 -> 193 -> 181 (tested in that order).
+-- 193 (#291: bw_open_group_chat, chats_select_joinable, one chat per gig) is
+-- REQUIRED: someone put back on the lineup has no participant row, and
+-- without 193 an old build's "does the gig chat exist?" lookup misses it and
+-- starts a second chat. #281 and #289 must not ship without #291. 178 comes
+-- before 193 because 193's bw_chat_joinable builds on 178's
+-- bw_is_event_participant (dropped out / removed are off the gig there too).
 --
--- Older app builds: nothing they call changes. Idempotent. Apply after 175.
--- 178 keeps this definition when re-run (it checks for
--- bw_is_event_participant), and so does 175.
+-- Older app builds: nothing they call changes. Idempotent; re-running 175 or
+-- 181 in any order keeps the same rule.
 -- ============================================================================
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT CASE
-    -- 'group' with a band: legacy, same rule as the band chat (175).
-    WHEN p_type IN ('band', 'group') THEN
-      p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
-    WHEN p_type = 'event' THEN
-      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
-      AND coalesce((
-        SELECT (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
-               AND public.bw_is_event_participant(e.id, p_user_id)
-               -- Dropped out or removed: off the gig, like declined
-               -- (unless they run it: its creator or a band admin).
-               AND (e.created_by = p_user_id
-                    OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, p_user_id))
-                    OR NOT EXISTS (
-                      SELECT 1 FROM event_members em
-                       WHERE em.event_id = e.id AND em.user_id = p_user_id
-                         AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed')))
-          FROM events e WHERE e.id = p_event_id
-      ), true)
-    ELSE true
-  END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
+-- 175 (round 3) first: it holds the lineup rule this file relies on.
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NULL
+     OR pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)')) NOT LIKE '%dropped_out%' THEN
+    RAISE EXCEPTION '181: apply 175 (with the lineup rule) first';
+  END IF;
+END $$;
 
 -- Off the lineup (row deleted), declined, dropped out or removed: out of
 -- that gig's chat.
@@ -84,7 +65,7 @@ BEGIN
      WHERE c.type::text = 'event'
        AND c.event_id = OLD.event_id
        AND cp.user_id = OLD.user_id
-       AND NOT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
+       AND NOT coalesce(public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id), false)
        -- An account being deleted takes its chat rows with it: nothing to
        -- archive (the archive's FK to profiles would refuse the deletion).
        AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id)
@@ -112,7 +93,7 @@ WITH stale AS (
     FROM chat_participants cp
     JOIN chats c ON c.id = cp.chat_id
    WHERE c.type::text = 'event'
-     AND NOT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
+     AND NOT coalesce(public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id), false)
      AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id)
 ), saved AS (
   INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)

@@ -374,8 +374,8 @@ r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND cont
 ok(r.rows.length === 1, 'back on the gig: reads its chat again');
 r = await as(ADMIN, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
 ok(r.rows.length === 1, 'band admin, not on the lineup, still reads the gig chat');
-const archived = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}'`)).rows[0].n;
-ok(archived >= 2, `removed gig chat rows archived, not lost (${archived})`);
+const archivedGig = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}'`)).rows[0].n;
+ok(archivedGig >= 2, `removed gig chat rows archived, not lost (${archivedGig})`);
 // Round 2 (Claude #289): dropped out or removed counts as off the gig too,
 // as for the server's notices (046).
 for (const st of ['dropped_out', 'removed']) {
@@ -528,12 +528,16 @@ if (process.env.M193) {
   ok(r.rows.length > 0, '181 + 193: and its history is there');
   r = await as(NEWM, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Harbor Lights','${BAND}','${GIG3}','${NEWM}')`);
   ok(!!r.error, '181 + 193: a second gig chat is refused');
-  // Dropped out: 193 still lets them see the chat row (bw_is_event_participant),
-  // but joining is skipped and the messages stay closed.
+  // Dropped out: with 178 first (bw_is_event_participant), 193 refuses to
+  // open it; either way the messages stay closed.
   await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
   r = await as(NEWM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  if (process.env.M178) ok(!!r.error, `175 -> 178 -> 193 -> 181: dropped out, bw_open_group_chat refuses (${r.error ? 'refused' : 'opened'})`);
   const rd = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
-  ok(rd.rows.length === 0, `181 + 193: dropped out, opening the gig chat shows no messages (${r.error ? 'refused' : 'opened'}, ${rd.rows.length})`);
+ok(rd.rows.length === 0, `181 + 193: dropped out, opening the gig chat shows no messages (${r.error ? 'refused' : 'opened'}, ${rd.rows.length})`);
+  // Back on the gig for the checks below.
+  await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  await as(NEWM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${NEWM}')`);
 }
 
 // ── 10. Stale participant rows (main's check): someone who left the band or
@@ -939,6 +943,44 @@ ok(!r.error, `chat keys: the service role may change them, no DISABLE TRIGGER ($
 // Marker for later migrations that keep a live definition (178, 181).
 const defR4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
 ok(defR4.includes('-- bw:175-r4'), 'bw_chat_scope_ok carries the marker bw:175-r4');
+
+// ── 12. #289 round 3
+// MINOR (181:96): off the lineup and back: cleared history stays cleared.
+const [R2, R3] = [70, 71].map(id);
+const [GIG6, EVCHAT6] = [id(72), id(73)];
+await db.exec(`INSERT INTO auth.users VALUES ('${R2}','r2@example.invalid'), ('${R3}','r3@example.invalid');
+  INSERT INTO profiles (id, email) VALUES ('${R2}','r2@example.invalid'), ('${R3}','r3@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${R2}','member'), ('${BAND}','${R3}','member');
+  INSERT INTO event_members VALUES ('${GIG3}','${R2}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id, cleared_at, last_read_at) VALUES ('${EVCHAT3}','${R2}','2026-11-03T09:00:00Z','2026-11-03T09:30:00Z');`);
+await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
+ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows.length === 0, 'dropped out: out of the gig chat');
+await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
+r = await as(R2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R2}')`);
+const r2row = (await db.query(`SELECT cleared_at, last_read_at FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows[0];
+ok(!r.error && r2row?.cleared_at?.toISOString() === '2026-11-03T09:00:00.000Z' && r2row?.last_read_at?.toISOString() === '2026-11-03T09:30:00.000Z',
+  `back on the lineup: cleared_at and last read come back (${r.error ?? JSON.stringify(r2row)})`);
+// Main's decision: a gig with no lineup is for its admins and creator only.
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, venue_name)
+    VALUES ('${GIG6}','${BAND}','Open Mic','confirmed','gig','${R2}', current_date + 50, 'Astoria');
+  INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHAT6}','event','Open Mic','${BAND}','${GIG6}','${R2}');
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT6}','${ADMIN}','sign-up at 7');`);
+for (const [u, label, want] of [[R2, 'its creator (a member)', 1], [ADMIN, 'a band admin', 1], [R3, 'a member not on it', 0]]) {
+  await as(u, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT6}','${u}')`);
+  r = await as(u, `SELECT id FROM messages WHERE chat_id = '${EVCHAT6}'`);
+  ok(r.rows.length === want, `gig without lineup: ${label} ${want ? 'uses' : 'does not use'} its chat (${r.rows.length})`);
+}
+// The read-only preview for prod (PR body) counts exactly what the cleanups archive.
+await staleRow(EVCHAT6, R3);
+const preview = readFileSync(`${REPO}/supabase/tests/181_archive_preview.sql`, 'utf8');
+const predicted = (await db.query(preview)).rows;
+const before = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175`)).rows[0].n;
+await db.exec(readFileSync(MIG, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+const after = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175`)).rows[0].n;
+const total = predicted.reduce((t, x) => t + x.rows_to_archive, 0);
+ok(total > 0 && total === after - before && predicted.some((x) => x.reason.startsWith('not on the lineup')),
+  `archive preview: ${JSON.stringify(predicted)} = ${after - before} archived`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
