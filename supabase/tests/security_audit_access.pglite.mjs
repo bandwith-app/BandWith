@@ -218,8 +218,40 @@ INSERT INTO messages (chat_id, sender_id, content) VALUES ('${GROUPB}','${ADMIN}
 `);
 // (OUT: left the band earlier, still has a band chat row. MEM2 created a quote while admin.)
 
+// get_user_chat_ids as it is on prod (no migration made it): SECURITY DEFINER,
+// EXECUTE for PUBLIC, anon and authenticated. NO_GUCI=1: a database without it.
+if (!process.env.NO_GUCI) {
+  await db.exec(`CREATE FUNCTION public.get_user_chat_ids(user_uuid uuid) RETURNS SETOF uuid
+    LANGUAGE sql SECURITY DEFINER AS $f$ SELECT chat_id FROM chat_participants WHERE user_id = user_uuid $f$;
+    GRANT EXECUTE ON FUNCTION public.get_user_chat_ids(uuid) TO PUBLIC, anon, authenticated, service_role;`);
+}
 await db.exec(readFileSync(MIG, 'utf8'));
 await db.exec(readFileSync(MIG, 'utf8')); // idempotent
+// ── 6. get_user_chat_ids (prod only): revoked from PUBLIC, anon, authenticated.
+async function asRole(role, sql) {
+  try {
+    await db.exec(`BEGIN; SET LOCAL ROLE ${role};`);
+    const r = await db.query(sql);
+    await db.exec('COMMIT');
+    return { rows: r.rows };
+  } catch (e) {
+    await db.exec('ROLLBACK');
+    return { error: e.message, code: e.code, rows: [] };
+  }
+}
+if (process.env.NO_GUCI) {
+  ok(!(await db.query(`SELECT to_regprocedure('public.get_user_chat_ids(uuid)') AS f`)).rows[0].f, 'without get_user_chat_ids, 175 applies cleanly (and twice)');
+} else {
+  const guci = `SELECT count(*)::int AS n FROM public.get_user_chat_ids('${id(4)}')`;
+  for (const role of ['anon', 'authenticated']) {
+    const g = await asRole(role, guci);
+    ok(g.code === '42501', `get_user_chat_ids: ${role} gets 42501 (${g.code ?? 'ran'} ${g.error ?? ''})`);
+  }
+  const g = await asRole('service_role', guci);
+  ok(!g.error, `get_user_chat_ids: service_role still runs it (${g.error ?? 'ok'})`);
+  const pub = (await db.query(`SELECT has_function_privilege('public', 'public.get_user_chat_ids(uuid)', 'EXECUTE') AS p`)).rows[0].p;
+  ok(pub === false, 'get_user_chat_ids: PUBLIC has no EXECUTE');
+}
 ok(true, 'migration runs twice');
 
 // ── 1. Invitations

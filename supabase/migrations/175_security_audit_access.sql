@@ -59,6 +59,12 @@
 --    being demoted or removed. Now: current active admins only (a quote with
 --    no band, if any exists, stays readable by its creator).
 --
+-- 6. get_user_chat_ids(uuid) (prod only, no migration made it): SECURITY
+--    DEFINER, returns any user's chat ids, EXECUTE for PUBLIC, anon and
+--    authenticated. Nothing calls it (no policy, function, view, app build
+--    or edge function). Revoked from those three, kept for service_role;
+--    not dropped. Skipped where the function doesn't exist.
+--
 -- Older app builds: nothing they call changes shape. Chat rename keeps
 -- working (name, updated_at), invitations already use the RPCs. Their
 -- batch inserts of a gig's lineup into its chat keep working: a former
@@ -621,6 +627,17 @@ CREATE POLICY chat_participants_scope_guard ON public.chat_participants
 -- (user_id = auth.uid()) and stay.
 DROP POLICY IF EXISTS cp_update ON public.chat_participants;
 DROP POLICY IF EXISTS cp_delete ON public.chat_participants;
+
+-- 6. get_user_chat_ids (prod only): anyone, anon included, could list any
+-- user's chat ids. Unused; revoked, not dropped (service_role keeps it).
+DO $do$
+BEGIN
+  IF to_regprocedure('public.get_user_chat_ids(uuid)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.get_user_chat_ids(uuid) FROM PUBLIC, anon, authenticated';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_user_chat_ids(uuid) TO service_role';
+  END IF;
+END
+$do$;
 
 -- "Shares a chat" (042: profiles read policy, chat notices): a band or gig
 -- chat counts only while both may still use it (a former member's kept row
