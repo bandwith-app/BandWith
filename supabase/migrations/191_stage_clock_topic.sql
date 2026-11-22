@@ -67,8 +67,11 @@ CREATE POLICY bw_stage_clock_write ON realtime.messages
 -- checked against the live server: dropping it could only take something
 -- away from members on older builds, keeping it gives nobody anything new.
 
--- 085's stage topic helper, the same apart from that strict pattern (its
--- policies are unchanged and pick it up).
+-- 085's stage topic helper, with that strict pattern, and only for who may
+-- see the gig (bw_can_view_event, 111): on a tentative quote, members off its
+-- lineup are refused, as they are from the gig itself. Its policies are
+-- unchanged and pick it up. Admins and the gig's lineup are unaffected, so
+-- released apps work as before; deputies were never band members here.
 CREATE OR REPLACE FUNCTION public.bw_stage_topic_allowed(p_topic text, p_lead boolean DEFAULT false)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -91,10 +94,49 @@ BEGIN
     RETURN false;
   END IF;
   IF p_lead THEN
-    RETURN public.bw_is_band_admin(band);
+    RETURN public.bw_is_band_admin(band) AND public.bw_can_view_event(ev::uuid);
   END IF;
-  RETURN public.bw_is_band_member(band);
+  RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid);
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.bw_stage_topic_allowed(text, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_stage_topic_allowed(text, boolean) TO authenticated;
+
+-- 087's band key, likewise only for who may see the gig (same signature:
+-- released apps call it as before).
+CREATE OR REPLACE FUNCTION public.bw_stage_key(p_event_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+VOLATILE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  band uuid;
+  k text;
+BEGIN
+  IF auth.uid() IS NULL OR p_event_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+  SELECT e.band_id INTO band FROM public.events e WHERE e.id = p_event_id;
+  IF band IS NULL OR NOT public.bw_is_band_member(band) OR NOT public.bw_can_view_event(p_event_id) THEN
+    RETURN NULL;
+  END IF;
+  SELECT s.key INTO k FROM public.stage_keys s WHERE s.event_id = p_event_id;
+  IF k IS NULL THEN
+    -- Two v4 UUIDs: 244 random bits, no extension needed.
+    INSERT INTO public.stage_keys (event_id, key)
+    VALUES (
+      p_event_id,
+      encode(
+        decode(replace(gen_random_uuid()::text, '-', ''), 'hex') || decode(replace(gen_random_uuid()::text, '-', ''), 'hex'),
+        'base64'
+      )
+    )
+    ON CONFLICT (event_id) DO NOTHING;
+    SELECT s.key INTO k FROM public.stage_keys s WHERE s.event_id = p_event_id;
+  END IF;
+  RETURN k;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_key(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_stage_key(uuid) TO authenticated;

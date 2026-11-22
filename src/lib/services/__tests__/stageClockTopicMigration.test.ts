@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import sql191 from '../../../../supabase/migrations/191_stage_clock_topic.sql?raw';
 import sql085 from '../../../../supabase/migrations/085_stage_live_channel.sql?raw';
+import sql087 from '../../../../supabase/migrations/087_stage_keys.sql?raw';
 import { stageClockTopic, stageTopic } from '@/lib/stageLive';
 
 /** Static guards on 191 (audit #9); the dry run checks the behaviour. */
@@ -40,11 +41,27 @@ describe('191 the stage clock topic', () => {
     expect(sql).not.toMatch(/\[0-9a-fA-F-\]\{36\}/);
     const stage = fn(sql191, 'bw_stage_topic_allowed');
     expect(stage).toContain(`'^stage:event:(${STRICT_UUID})$'`);
-    // 085's helper, the same in every other way: same signature, same admin/member rule.
-    expect(stage.replace(STRICT_UUID, '[0-9a-fA-F-]{36}')).toBe(fn(sql085, 'bw_stage_topic_allowed'));
+    // 085's helper, the same in every other way (see the next test for who may see the gig).
+    expect(stage.replace(STRICT_UUID, '[0-9a-fA-F-]{36}').replace(/ AND public\.bw_can_view_event\(ev::uuid\)/g, '')).toBe(
+      fn(sql085, 'bw_stage_topic_allowed'),
+    );
     // Its grants come again with it.
     expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_topic_allowed\(text, boolean\) FROM PUBLIC, anon;/);
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_topic_allowed\(text, boolean\) TO authenticated;/);
+  });
+
+  it("the stage topic (085) and the band key (087) only for who may see the gig: a quote's hidden lineup and ex-members are refused (main session on #283)", () => {
+    // Both admins and members go through bw_can_view_event (111): active
+    // member, and for a tentative quote only admins, its creator and its lineup.
+    const stage = fn(sql191, 'bw_stage_topic_allowed');
+    expect(stage).toMatch(/RETURN public\.bw_is_band_admin\(band\) AND public\.bw_can_view_event\(ev::uuid\);/);
+    expect(stage).toMatch(/RETURN public\.bw_is_band_member\(band\) AND public\.bw_can_view_event\(ev::uuid\);/);
+    const key = fn(sql191, 'bw_stage_key');
+    expect(key).toMatch(/IF band IS NULL OR NOT public\.bw_is_band_member\(band\) OR NOT public\.bw_can_view_event\(p_event_id\) THEN\s+RETURN NULL;/);
+    // 087's function otherwise, same signature (released apps call it as before).
+    expect(key.replace(' OR NOT public.bw_can_view_event(p_event_id)', '')).toBe(fn(sql087, 'bw_stage_key'));
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_key\(uuid\) FROM PUBLIC, anon;/);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_key\(uuid\) TO authenticated;/);
   });
 
   it('the strict pattern takes UUIDs and nothing else', () => {
