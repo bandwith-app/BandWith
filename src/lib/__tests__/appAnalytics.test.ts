@@ -255,3 +255,81 @@ describe('round 5 (review #277)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('a "No" with full storage: the same fallback chain as crash reports (review #277, Claude 8)', () => {
+  /** localStorage that still reads what it had but takes nothing new (full). */
+  const fullDisk = (entries: Array<[string, string]>) => {
+    const disk = new Map<string, string>(entries);
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => disk.get(k) ?? null,
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+      removeItem: (k: string) => disk.delete(k),
+      clear: () => disk.clear(),
+    });
+    return disk;
+  };
+  const OLD_YES: Array<[string, string]> = [[ANALYTICS_CONSENT_KEY, 'granted'], [ANALYTICS_CONSENT_VERSION_KEY, '2']];
+
+  it('localStorage full: the no goes to IndexedDB and still holds after a restart', async () => {
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    const fake = fakeIndexedDB();
+    vi.stubGlobal('indexedDB', fake.indexedDB);
+    try {
+      fullDisk(OLD_YES);
+      await setAnalyticsConsent('denied');
+      expect(fake.state.data.get(ANALYTICS_CONSENT_KEY)).toBe('denied');
+      resetAppAnalyticsForTests(); // the app restarts: memory gone, the disk still says yes
+      fa.setEnabled.mockClear();
+      await initAppAnalytics();
+      expect(readAnalyticsConsent()).toBe('denied');
+      expect(readCrashlyticsConsent()).toBe(false);
+      expect(fa.setEnabled).toHaveBeenLastCalledWith({ enabled: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('until the choice can be read everywhere, Crashlytics and analytics stay off', async () => {
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    vi.stubGlobal('indexedDB', fakeIndexedDB({ failOpen: true }).indexedDB);
+    try {
+      fullDisk(OLD_YES);
+      expect(readCrashlyticsConsent()).toBe(false);
+      await initAppAnalytics();
+      expect(readCrashlyticsConsent()).toBe(false);
+      expect(fa.setEnabled).toHaveBeenLastCalledWith({ enabled: false });
+      trackScreen('Home');
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+      expect(fa.setCurrentScreen).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('nothing can save it: the no holds, the other tabs hear it, and Settings says so', async () => {
+    const mod = await import('../appAnalytics');
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    vi.stubGlobal('indexedDB', fakeIndexedDB({ abortWrites: true }).indexedDB);
+    const posted: unknown[] = [];
+    class FakeChannel {
+      onmessage: ((e: { data: unknown }) => void) | null = null;
+      postMessage(d: unknown) {
+        posted.push(d);
+      }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    try {
+      fullDisk(OLD_YES);
+      await setAnalyticsConsent('denied');
+      expect(readAnalyticsConsent()).toBe('denied');
+      expect(readCrashlyticsConsent()).toBe(false);
+      expect(posted).toContainEqual({ consent: 'denied' });
+      expect((mod as { readAnalyticsConsentSaveFailed?: () => boolean }).readAnalyticsConsentSaveFailed?.()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

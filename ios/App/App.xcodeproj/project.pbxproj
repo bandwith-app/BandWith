@@ -260,17 +260,17 @@
 			buildActionMask = 2147483647;
 			files = (
 			);
+			inputFileListPaths = (
+				"$(SRCROOT)/App/CrashlyticsDSYM-$(CONFIGURATION)-input-files.xcfilelist",
+			);
 			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
-				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
 			);
 			name = "Crash reports dSYM upload";
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Crash reports (src/lib/crashReports.ts): readable native crash reports need the dSYMs in Crashlytics.\n# Release builds with the local Firebase config only (GoogleService-Info.plist is gitignored); else skipped.\n# Inputs: the dSYM, so this runs after dsymutil (never on a half-written dSYM). The plist is NOT an input:\n# a build without it must still pass.\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nif [ ! -f \"${SRCROOT}/App/GoogleService-Info.plist\" ] || [ ! -x \"${PODS_ROOT}/FirebaseCrashlytics/run\" ]; then\n  echo \"note: no GoogleService-Info.plist, no dSYM upload for crash reports\"\n  exit 0\nfi\n# Belt and braces: wait (at most 60 s) until the dSYM is newer than the binary.\nDWARF=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}\"\ni=0\nwhile [ $i -lt 60 ] && { [ ! -f \"$DWARF\" ] || [ \"$DWARF\" -ot \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" ]; }; do\n  sleep 1\n  i=$((i + 1))\ndone\n\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n";
+			shellScript = "# Crash reports (src/lib/crashReports.ts): readable native crash reports need the dSYMs in Crashlytics.\n# Release builds with the local Firebase config only (GoogleService-Info.plist is gitignored); else skipped.\n# Inputs: a file list per configuration (App/CrashlyticsDSYM-<config>-input-files.xcfilelist). Release names the dSYM,\n# so this runs after dsymutil (never on a half-written dSYM); Debug has no dSYM, so its list is empty and a clean\n# Debug build never fails for a missing input. The plist is NOT an input: a build without it must still pass.\nif [ \"$CONFIGURATION\" != \"Release\" ]; then\n  exit 0\nfi\nif [ ! -f \"${SRCROOT}/App/GoogleService-Info.plist\" ] || [ ! -x \"${PODS_ROOT}/FirebaseCrashlytics/run\" ]; then\n  echo \"note: no GoogleService-Info.plist, no dSYM upload for crash reports\"\n  exit 0\nfi\n# Belt and braces: wait (at most 60 s) until the dSYM is newer than the binary.\nDWARF=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}\"\ni=0\nwhile [ $i -lt 60 ] && { [ ! -f \"$DWARF\" ] || [ \"$DWARF\" -ot \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" ]; }; do\n  sleep 1\n  i=$((i + 1))\ndone\n\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

@@ -3,9 +3,14 @@
 -- Crashlytics instead. Settings > Privacy & account > "Send crash reports".
 --
 -- No personal data: no user id, no names, no content. The app sends only
--- the error message and stack (scrubbed on the device: no emails, ids,
--- numbers, quoted text or URLs with queries), the app version, the platform
--- and the screen name ("Stage", "Gig"). The function cuts them again here.
+-- the error message and stack (scrubbed on the device first: emails, ids,
+-- tokens, long numbers, quoted text, link paths and queries), the app
+-- version, the platform and the screen name ("Stage", "Gig"). The insert
+-- path scrubs again, as defense in depth against an old or modified app
+-- (bw_client_error_scrub: emails, JWTs, sb_/sk_/pk_/rk_/whsec_ keys,
+-- Bearer tokens, uuids, URL query strings), before it cuts each field to
+-- size. It is a minimal net, not the device's full scrub: quoted text and
+-- link paths are only removed on the device.
 --
 -- Written only through bw_report_client_error (signed-in users; the user id
 -- is only checked, never stored or used for anything else):
@@ -88,6 +93,35 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_client_error_bump(text) FROM PUBLIC, anon, authenticated;
 
+-- Defense in depth (review #277): the device scrubs first (src/lib/crashReports.ts);
+-- this catches what an old or modified app might still send. Same markers as the app.
+CREATE OR REPLACE FUNCTION public.bw_client_error_scrub(p text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  SELECT regexp_replace(
+         regexp_replace(
+         regexp_replace(
+         regexp_replace(
+         regexp_replace(
+         regexp_replace(p,
+           -- URL query strings (full and relative links)
+           '\?[^[:space:]''"`()<>]+', '', 'g'),
+           -- Bearer tokens
+           'Bearer[[:space:]]+[^[:space:]''"`]+', 'Bearer <token>', 'gi'),
+           -- JWTs, or just their first part
+           'eyJ[[:alnum:]_-]{6,}(\.[[:alnum:]_-]*)*', '<token>', 'g'),
+           -- keys with a known prefix (sb_secret_…, sk_live_…)
+           '(^|[^[:alnum:]_])(sb|sk|pk|rk|whsec)_[[:alnum:]_]{6,}', '\1<token>', 'g'),
+           -- emails, URL-encoded ones too
+           '[[:alnum:]_.+-]+(@|%40)[[:alnum:]_-]+(\.[[:alnum:]_-]+)+', '<email>', 'gi'),
+           -- uuids
+           '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '<id>', 'gi');
+$$;
+REVOKE ALL ON FUNCTION public.bw_client_error_scrub(text) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_report_client_error(
   p_kind text,
   p_message text,
@@ -122,11 +156,13 @@ BEGIN
   VALUES (
     date_trunc('minute', now()),
     CASE WHEN p_kind IN ('error', 'rejection', 'render') THEN p_kind ELSE 'error' END,
-    left(p_message, 300),
-    left(p_stack, 4000),
-    left(p_app_version, 40),
+    -- Scrubbed before the cut (a value cut in half would slip through), on a
+    -- bounded input (the regexes never run over megabytes).
+    left(public.bw_client_error_scrub(left(p_message, 2000)), 300),
+    left(public.bw_client_error_scrub(left(p_stack, 16000)), 4000),
+    left(public.bw_client_error_scrub(left(p_app_version, 200)), 40),
     CASE WHEN p_platform IN ('ios', 'android', 'web') THEN p_platform END,
-    left(p_route, 60)
+    left(public.bw_client_error_scrub(left(p_route, 300)), 60)
   );
   RETURN true;
 END;

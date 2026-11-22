@@ -34,6 +34,15 @@ describe('174 client errors', () => {
     expect(report).not.toMatch(/sha256|v_uid/);
   });
 
+  it('the insert path scrubs again before it cuts, and nobody can call the scrub directly (review #277, Claude 9)', () => {
+    const report = fnBody('bw_report_client_error');
+    for (const field of ['p_message', 'p_stack', 'p_route']) {
+      expect(report, field).toMatch(new RegExp(`left\\(public\\.bw_client_error_scrub\\(left\\(${field}, \\d+\\)\\), \\d+\\)`));
+    }
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.bw_client_error_scrub\(text\) FROM PUBLIC, anon, authenticated;/);
+    expect(raw174.slice(0, raw174.indexOf('\nBEGIN;'))).toMatch(/scrubs again, as defense in depth/);
+  });
+
   it('one cron job, the hourly prune', () => {
     expect([...sql.matchAll(/cron\.schedule\('([\w-]+)'/g)].map((m) => m[1])).toEqual(['bw-prune-client-errors']);
   });

@@ -58,7 +58,7 @@ import { usePosture, useLaptopPoseEnabled, setLaptopPoseEnabled } from '@/lib/po
 import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
-import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent } from '@/lib/appAnalytics';
+import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent, useAnalyticsConsentSaveFailed } from '@/lib/appAnalytics';
 import { CARD, IconTile, ROW, RowText } from '@/app/components/settings/rows';
 import { CrashReportsRow } from '@/app/components/settings/CrashReportsRow';
 
@@ -102,6 +102,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const distanceUnit = useDistanceUnit();
   const appLockAvailable = appLockSupported();
   const analyticsConsent = useAnalyticsConsent();
+  // Storage full: the answer holds for this run only (a no stays a no), and the row says so.
+  const analyticsSaveFailed = useAnalyticsConsentSaveFailed();
   const appLockOn = useAppLockEnabled();
   const [appLockBusy, setAppLockBusy] = useState(false);
   // Turning the lock off asks for the same check as unlocking.
@@ -514,7 +516,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </IconTile>
           <RowText
             title={t('Anonymous usage statistics')}
-            hint={t('Which screens are used and how often, and the crash details if the app crashes, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+            hint={
+              <>
+                {t('Which screens are used and how often, and the crash details if the app crashes, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+                {analyticsSaveFailed && (
+                  <span role="alert" className="block mt-1 text-destructive">
+                    {t("Couldn't save the choice, free up some space")}
+                  </span>
+                )}
+              </>
+            }
           />
           <Toggle
             checked={analyticsConsent === 'granted'}

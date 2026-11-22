@@ -80,3 +80,22 @@ describe('a screen that fails to draw', () => {
     expect(h.rpc.find((a) => a.p_kind === 'render')?.p_message).toBe('Error: bad lyrics');
   });
 });
+
+describe('IndexedDB transaction aborts after the put (review #277, Codex B5)', () => {
+  it('the row shows the error, not a saved choice', async () => {
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    vi.stubGlobal('indexedDB', fakeIndexedDB({ abortWrites: true }).indexedDB);
+    const real = localStorage;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => real.getItem(k),
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+      removeItem: (k: string) => real.removeItem(k),
+    });
+    render(<CrashReportsRow />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Send crash reports' }));
+    expect(await screen.findByText("Couldn't save the choice, free up some space")).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Send crash reports' })).toHaveAttribute('aria-checked', 'false');
+  });
+});

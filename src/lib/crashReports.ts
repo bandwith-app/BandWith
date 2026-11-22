@@ -13,7 +13,8 @@
  *
  * No personal data and no user content: only the message and stack, scrubbed
  * here line by line (no emails, ids, long numbers, tokens, quoted text of any
- * kind, link paths other than the app's own files, or query strings),
+ * kind, links on other domains or of other schemes, link paths other than
+ * the app's own files, or query strings; the server scrubs again, 174),
  * the app version, the platform and the screen name ("Stage", "Gig").
  * At most 10 per session, each error once; the server caps it again.
  * Reporting never throws and never reports itself.
@@ -23,6 +24,7 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/lib/supabase';
 import { currentPlatform, installedVersion } from '@/lib/minVersion';
 import { currentScreenName, onAnalyticsConsentChange, readCrashlyticsConsent } from '@/lib/appAnalytics';
+import { __setPrivacyStoreForTest, privacyStore, type ChoiceStore } from '@/lib/privacyStore';
 
 export type ClientErrorKind = 'error' | 'rejection' | 'render';
 
@@ -50,46 +52,11 @@ let saveFailed = false;
 
 /**
  * Where the choice goes when localStorage is full: IndexedDB (review #277,
- * Codex). Replaced in tests. No IndexedDB at all (some private modes): nothing
- * can have been saved there, so it reads as empty.
+ * Codex), shared with the usage statistics answer (src/lib/privacyStore.ts).
+ * A write counts only once its transaction completes. Replaced in tests.
  */
-export type ChoiceStore = { get(key: string): Promise<string | null>; set(key: string, value: string): Promise<void> };
-const IDB_NAME = 'bw-privacy';
-const IDB_STORE = 'choices';
-const IDB_TIMEOUT_MS = 3000;
-const idbRequest = <T,>(run: (store: IDBObjectStore) => IDBRequest<T>, mode: IDBTransactionMode): Promise<T | null> =>
-  new Promise<T | null>((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      if (mode === 'readonly') resolve(null);
-      else reject(new Error('no IndexedDB'));
-      return;
-    }
-    const timer = setTimeout(() => reject(new Error('IndexedDB timeout')), IDB_TIMEOUT_MS);
-    const done = (fn: () => void) => {
-      clearTimeout(timer);
-      fn();
-    };
-    const open = indexedDB.open(IDB_NAME, 1);
-    open.onupgradeneeded = () => open.result.createObjectStore(IDB_STORE);
-    open.onerror = () => done(() => reject(open.error));
-    open.onsuccess = () => {
-      const db = open.result;
-      try {
-        const req = run(db.transaction(IDB_STORE, mode).objectStore(IDB_STORE));
-        req.onsuccess = () => done(() => resolve((req.result as T) ?? null));
-        req.onerror = () => done(() => reject(req.error));
-      } catch (e) {
-        done(() => reject(e));
-      } finally {
-        db.close();
-      }
-    };
-  });
-const idbStore: ChoiceStore = {
-  get: (key) => idbRequest<string>((st) => st.get(key) as IDBRequest<string>, 'readonly'),
-  set: (key, value) => idbRequest((st) => st.put(value, key), 'readwrite').then(() => undefined),
-};
-let choiceStore: ChoiceStore = idbStore;
+export type { ChoiceStore };
+const choiceStore: ChoiceStore = privacyStore;
 /** What the second store holds: 'off' there wins over anything in localStorage. */
 let storedElsewhere: string | null = null;
 /** 'unread' until it is read; 'failed' when it can't be (no reports until it can). */
@@ -173,13 +140,25 @@ const loadPlugin = () => (pluginPromise ??= import('@capacitor-firebase/crashlyt
  */
 const nativeAllowed = () => readCrashReportsEnabled() && readCrashlyticsConsent();
 
-/** Native only; no Firebase config in a build → nothing happens. */
-async function applyNative() {
-  if (!Capacitor.isNativePlatform()) return;
-  await ensureChoiceRead();
-  const on = elsewhereState === 'read' && nativeAllowed();
+/**
+ * Native only; no Firebase config in a build → nothing happens. After every
+ * change the native setting is set from the state wanted at that moment,
+ * read after every wait (review #277, Codex): never skipped because a value
+ * seen earlier already matches. One call at a time, in order, so the last
+ * change is the one that holds.
+ */
+let nativeChain: Promise<void> = Promise.resolve();
+function applyNative(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return Promise.resolve();
+  nativeChain = nativeChain.then(applyNativeNow, applyNativeNow);
+  return nativeChain;
+}
+
+async function applyNativeNow() {
   try {
+    await ensureChoiceRead();
     const { FirebaseCrashlytics } = await loadPlugin();
+    const on = elsewhereState === 'read' && nativeAllowed();
     await FirebaseCrashlytics.setEnabled({ enabled: on });
     // Off: crashes recorded but not uploaded yet never leave either.
     if (!on) await FirebaseCrashlytics.deleteUnsentReports();
@@ -236,11 +215,11 @@ export async function setCrashReportsEnabled(on: boolean): Promise<boolean> {
   }
   // Saved = a reload reads this choice back: off in either store, on only where nothing says off.
   const saved = on ? local && storedElsewhere !== 'off' : local || elsewhere;
-  const before = readCrashReportsEnabled();
   saveFailed = !saved;
   blockedOptOut = !on && !saved;
-  if (readCrashReportsEnabled() !== before) changed();
-  else listeners.forEach((l) => l()); // the "couldn't save" line
+  // Always: the final state goes to every listener and to Crashlytics, even
+  // when it reads the same as before (the store may have changed meanwhile).
+  changed();
   return saved;
 }
 
@@ -338,7 +317,7 @@ const LINK = new RegExp(
 );
 const APP_FILE = /^\/(?:assets\/[^\s/]+(?:\/[^\s/]+)*|[\w.-]+\.(?:html|js))$/;
 /** Our own origins: only there is /assets/… the app's bundle (any host can have an /assets/ folder). */
-const OWN_ORIGIN = /^(?:https:\/\/(?:app\.)?bandwith\.fun|capacitor:\/\/localhost|https?:\/\/localhost(?::\d+)?)$/i;
+const OWN_ORIGIN = /^(?:https?:\/\/(?:app\.)?bandwith\.fun|capacitor:\/\/localhost|https?:\/\/localhost(?::\d+)?)$/i;
 const ownOrigin = (origin: string | undefined) => {
   if (!origin) return true; // a relative path is the page's own
   if (OWN_ORIGIN.test(origin)) return true;
@@ -466,6 +445,106 @@ function scrubFileLinks(s: string): string {
 }
 
 /**
+ * Links of any scheme (review #277, Codex). Userinfo (user:secret@) always
+ * goes, on our own domains too. Only http(s) and file links are read further
+ * (and the app's own capacitor://localhost); a link of any other scheme goes
+ * whole, as <url>: irealb:// carries a whole song, spaces and apostrophes
+ * included. It ends at the end of the line, or at the quote closing the one
+ * just before it; a frame's closing bracket stays.
+ */
+const USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#'"`<>]*@/gi;
+const SCHEME = /\b([a-z][a-z0-9+.-]*):(\/\/)?/gi;
+const READ_FURTHER = new Set(['http', 'https', 'file']);
+/** Schemes without "//" that are links too (data: can hold a whole file). */
+const OPAQUE = new Set(['data', 'blob', 'javascript', 'mailto', 'tel', 'sms', 'intent', 'irealb', 'irealbook']);
+
+function linkEnd(line: string, start: number): number {
+  const closer = QUOTE_CLOSERS.get(line[start - 1] ?? '');
+  if (closer) {
+    const last = line.lastIndexOf(closer);
+    if (last >= start) return last;
+  }
+  const frameClose = /\)\s*$/.exec(line);
+  if (frameClose && frameClose.index > start && line.lastIndexOf('(', start) !== -1) return frameClose.index;
+  return line.length;
+}
+
+function scrubSchemesLine(line: string): string {
+  line = line.replace(USERINFO, '$1');
+  let out = '';
+  let last = 0;
+  SCHEME.lastIndex = 0;
+  for (let m = SCHEME.exec(line); m; m = SCHEME.exec(line)) {
+    const scheme = m[1].toLowerCase();
+    const after = line[m.index + m[0].length];
+    if (m[2]) {
+      if (READ_FURTHER.has(scheme)) continue;
+      if (scheme === 'capacitor' && /^capacitor:\/\/localhost(?![\w.-])/i.test(line.slice(m.index)) && ownOrigin('capacitor://localhost')) continue;
+    } else if (!OPAQUE.has(scheme) || after === undefined || /\s/.test(after)) {
+      continue;
+    }
+    const end = linkEnd(line, m.index);
+    out += `${line.slice(last, m.index)}<url>`;
+    last = end;
+    SCHEME.lastIndex = Math.max(end, m.index + 1);
+  }
+  return out + line.slice(last);
+}
+
+function scrubSchemes(s: string): string {
+  return s.split('\n').map(scrubSchemesLine).join('\n');
+}
+
+/**
+ * What the link rules left of a link on another domain (https://host/…, a
+ * bare https://host) goes as <url> too; our own origins keep theirs, and so
+ * does a file of the app's own bundle (file://…/index-B4xK9q1a.js).
+ */
+const LEFT_OVER_LINK = /\b(?:https?:\/\/[^\s/'"`()<>]+(?:\/…)?|file:\/\/…(?!\/))/gi;
+
+function scrubForeignOrigins(s: string): string {
+  return s.replace(LEFT_OVER_LINK, (m) => {
+    if (/^file:/i.test(m)) return '<url>';
+    return ownOrigin(m.replace(/\/…$/, '')) ? m : '<url>';
+  });
+}
+
+/**
+ * Relative paths without a leading slash (review #277, Claude): after a
+ * space, ":", "=" or "(", a word/word with 2+ segments is a path
+ * (audio/Mirage/Mary Smith - Yesterday.mp3) and goes whole, like any path:
+ * to the last file extension on the line, or to the end of the line.
+ * Never inside a link (http://localhost:5173/assets/…).
+ */
+const RELATIVE = new RegExp(`(^|[\\s:=(])([^\\s/'"\`<>()]+(?:\\/${SEGMENT})+\\/?)`, 'g');
+const LINK_SPAN = /[a-z][a-z0-9+.-]*:\/\/\S*/gi;
+
+function scrubRelativeLine(line: string): string {
+  const spans: Array<[number, number]> = [];
+  for (const m of line.matchAll(LINK_SPAN)) spans.push([m.index, m.index + m[0].length]);
+  const inLink = (i: number) => spans.some(([a, b]) => i >= a && i < b);
+  let out = '';
+  let last = 0;
+  RELATIVE.lastIndex = 0;
+  for (let m = RELATIVE.exec(line); m; m = RELATIVE.exec(line)) {
+    const from = m.index + m[1].length;
+    if (inLink(from) || m[2].includes('…')) {
+      RELATIVE.lastIndex = from + 1;
+      continue;
+    }
+    const end = pathEnd(line, from, from + m[2].length, ENDS_WITH_EXTENSION.test(m[2]));
+    out += `${line.slice(last, from)}…`;
+    last = end;
+    RELATIVE.lastIndex = end;
+  }
+  return out + line.slice(last);
+}
+
+function scrubRelativePaths(s: string): string {
+  return s.split('\n').map(scrubRelativeLine).join('\n');
+}
+
+/**
  * All quoted text: it can be anything the user typed, even one word (a song
  * called "Yesterday"). Each opening quote with its own closing one; double
  * quotes first, so an apostrophe inside them ("Don't Stop Me Now") is just
@@ -477,8 +556,10 @@ const SINGLE_PAIRS: Array<[string, string]> = [["'", "'"], ['‘', '’'], ['‚
 const esc = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pairRe = ([o, c]: [string, string], apostrophes: boolean) => {
   const [O, C] = [esc(o), esc(c)];
-  // Single quotes: not opened by the apostrophe of a word (can't), not closed by one (Don't).
-  const body = apostrophes ? `(?:[^${C}\\n]|${C}(?=[\\p{L}\\p{N}]))*` : `[^${C}\\n]*`;
+  // To the LAST matching quote on the line (review #277, Codex): inner apostrophes and
+  // quotes are part of the text ('Knockin' on Heaven's Door'). Single quotes: not opened
+  // by the apostrophe of a word (can't), not closed by one (Don't).
+  const body = '[^\\n]*';
   // No lookbehind (Safari before 16.4 throws at load): the character before is captured and put back.
   const lead = apostrophes ? '(^|[^\\p{L}\\p{N}])' : '()';
   const trail = apostrophes ? '(?![\\p{L}\\p{N}])' : '';
@@ -491,6 +572,8 @@ const pairRe = ([o, c]: [string, string], apostrophes: boolean) => {
   };
 };
 const QUOTE_RES = [...DOUBLE_PAIRS.map((p) => pairRe(p, false)), ...SINGLE_PAIRS.map((p) => pairRe(p, true))];
+/** The closing quote of each opening one (a link right after an opening quote ends at its closing one). */
+const QUOTE_CLOSERS = new Map<string, string>([...DOUBLE_PAIRS, ...SINGLE_PAIRS]);
 
 function scrubQuotes(s: string): string {
   // Closed pairs become markers first, so their quote marks can't open or close another pair.
@@ -524,7 +607,8 @@ function scrubEchoes(line: string): string {
 
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  const out = scrubFileLinks(scrubLinks(scrubSpacedPaths(scrubKeyDetails(scrubEchoes(s))).replace(QUERY, '').replace(FRAGMENT, '$1')))
+  const links = scrubFileLinks(scrubLinks(scrubSpacedPaths(scrubKeyDetails(scrubEchoes(scrubSchemes(s)))).replace(QUERY, '').replace(FRAGMENT, '$1')));
+  const out = scrubForeignOrigins(scrubRelativePaths(links))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
     .replace(JWT, '<token>')
@@ -552,26 +636,43 @@ export function scrubMessage(raw: string): string {
     .slice(0, MESSAGE_MAX);
 }
 
-/** A stack frame: "    at f (…:1:2)" (Chrome, Android), "f@…:1:2" (Safari), "[native code]". */
-const FRAME = /^\s*at\s|:\d+:\d+\)?$|\[native code\]$/;
+/**
+ * A stack frame, strictly (review #277, Codex): Chrome/Android "at fn (file:line:col)"
+ * (also "(<anonymous>)", "(native)", "(index 0)") or "at file:line:col"; Safari and
+ * Firefox "fn@file:line:col" (also "global code@…", "fn@[native code]"). Any other
+ * line, a lyric starting "at last …" too, is text and is scrubbed like the message.
+ */
+const FRAME_RES = [
+  /^\s*at (?:(?:async |new )?[^\s()]+(?: \[as [^\]\s]+\])? \((?:.+:\d+:\d+|<anonymous>|native|unknown location|index \d+)\)|[^\s()]+:\d+:\d+)\s*$/,
+  /^\s*(?:[^\s@()]*|(?:global|eval|module) code)@(?:\S+:\d+:\d+|\[native code\])\s*$/,
+  /^\s*\[native code\]\s*$/,
+];
+const isFrame = (line: string) => FRAME_RES.some((re) => re.test(line));
 
 export function scrubStack(raw: string | undefined | null): string | null {
   if (!raw) return null;
-  const all = noControl(String(raw)).split('\n');
-  // The lines before the first frame repeat the message (Chrome): one line, scrubbed like it.
-  let first = all.findIndex((l) => FRAME.test(l));
-  if (first === -1) first = all.length;
-  const head = all.slice(0, first).join(' ').trim();
-  const frames = all
-    .slice(first)
-    .slice(0, STACK_LINES - (head ? 1 : 0))
-    .map((l) => {
-      // The position's numbers are not a phone number: scrub the rest, keep it.
-      const pos = POSITION.exec(l)?.[0] ?? '';
-      return (scrubText(pos ? l.slice(0, -pos.length) : l) + pos).trimEnd();
-    });
-  const lines = head ? [scrubMessage(head), ...frames] : frames;
-  return lines.join('\n').slice(0, STACK_MAX) || null;
+  const out: string[] = [];
+  // Text lines next to each other are one message (a quote across a line break is one quote).
+  let text: string[] = [];
+  const flushText = () => {
+    const m = text.length ? scrubMessage(text.join(' ')) : '';
+    if (m) out.push(m);
+    text = [];
+  };
+  for (const raw0 of noControl(String(raw)).split('\n')) {
+    if (out.length >= STACK_LINES) break;
+    const l = raw0.trimEnd();
+    if (!isFrame(l)) {
+      text.push(l);
+      continue;
+    }
+    flushText();
+    // The position's numbers are not a phone number: scrub the rest, keep it.
+    const pos = POSITION.exec(l)?.[0] ?? '';
+    out.push((scrubText(pos ? l.slice(0, -pos.length) : l) + pos).trimEnd());
+  }
+  if (out.length < STACK_LINES) flushText();
+  return out.slice(0, STACK_LINES).join('\n').slice(0, STACK_MAX) || null;
 }
 
 /** Browser noise with nothing to learn from. */
@@ -758,7 +859,7 @@ export function installCrashReports(): () => void {
 
 /** Tests: the second store (null: the real IndexedDB, empty in jsdom). Kept across a reset, like a reload. */
 export function __setChoiceStoreForTest(store: ChoiceStore | null) {
-  choiceStore = store ?? idbStore;
+  __setPrivacyStoreForTest(store);
   storedElsewhere = null;
   elsewhereState = 'unread';
   elsewhereRead = null;
@@ -780,5 +881,6 @@ export function __resetCrashReportsForTest() {
   lastKnown = null;
   inFlight.clear();
   flushing = null;
+  nativeChain = Promise.resolve();
   installed = false;
 }

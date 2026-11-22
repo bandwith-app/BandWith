@@ -198,7 +198,7 @@ describe('scrubbing: quotes and links (review #277)', () => {
       'Failed to fetch https://xyz.supabase.co/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3 and /storage/v1/object/public/abcDEF123ghiJKL456/x.pdf',
     );
     expect(m).not.toMatch(/storage|Mirage|Mary|Smith|Yesterday|abcDEF123|x\.pdf/);
-    expect(m).toContain('https://xyz.supabase.co/…');
+    expect(m).toContain('<url>'); // another domain goes whole (round 6)
     const s = scrubStack(
       '    at a (https://app.bandwith.fun/assets/EventDetailWorkspace-B4xK9q1aZ2.js:1:2)\n    at b (capacitor://localhost/assets/index-Q1w2e3r4.js:3:4)',
     )!;
@@ -383,8 +383,11 @@ describe('native: Crashlytics only with the usage statistics consent', () => {
     setCrashReportsEnabled(false);
     await flush();
     await flush();
-    expect(h.setEnabled).toEqual([true, false]);
-    expect(h.deleted).toBe(1);
+    // Set again from the final state after every change (round 6): never back on.
+    expect(h.setEnabled[0]).toBe(true);
+    expect(h.setEnabled.slice(1).length).toBeGreaterThan(0);
+    expect(h.setEnabled.slice(1).every((on) => on === false)).toBe(true);
+    expect(h.deleted).toBeGreaterThanOrEqual(1);
     stop();
   });
 });
@@ -405,7 +408,7 @@ describe('scrubbing, round 2 (review #277)', () => {
   it('/assets/ is kept only on our own origins', () => {
     const m = scrubMessage('Error: failed https://files.test/assets/Mary-Smith/Yesterday.mp3 and https://cdn.evil.test/assets/Mirage.js');
     expect(m).not.toMatch(/Mary|Smith|Yesterday|Mirage/);
-    expect(m).toContain('https://files.test/…');
+    expect(m).toContain('<url>'); // another domain goes whole (round 6)
     for (const own of [
       'https://app.bandwith.fun/assets/index-B4xK9q1a.js',
       'https://bandwith.fun/assets/site-Q1w2e3r4.js',
@@ -420,7 +423,7 @@ describe('scrubbing, round 2 (review #277)', () => {
   it('file:// paths: only an app bundle file keeps its name', () => {
     const m = scrubMessage('Error: cannot read file:///var/mobile/Containers/Data/Application/ABC/Documents/Mary Smith - Yesterday.mp3 now');
     expect(m).not.toMatch(/var|mobile|Documents|Mary|Smith|Yesterday/);
-    expect(m).toContain('file://…');
+    expect(m).toContain('<url>'); // a file outside the bundle goes whole (round 6)
     expect(scrubMessage('Error: at file:///private/var/containers/Bundle/Application/X1/App.app/public/assets/index-B4xK9q1a.js')).toContain(
       'file://…/index-B4xK9q1a.js',
     );
@@ -498,7 +501,7 @@ describe('round 4 (review #277)', () => {
     ]) {
       const m = scrubMessage(raw);
       expect(m, raw).not.toMatch(/Private|Gig|Mary|Documents|pdf|%2|%20/);
-      expect(m, raw).toBe('Error: cannot open file://… now');
+      expect(m, raw).toBe('Error: cannot open <url> now');
     }
     // A stack frame's own closing bracket stays.
     expect(scrubStack('Error: x\n    at f (file:///android_asset/public/assets/index-B4xK9q1a.js:1:2)')).toContain(
@@ -638,13 +641,13 @@ describe('links with spaces inside brackets (review #277, Claude r5)', () => {
       const m = scrubMessage(raw);
       expect(m, raw).not.toMatch(/Mirage|Mary|Smith|Yesterday|x\.pdf/);
     }
-    expect(scrubMessage(cases[0])).toBe('Failed to fetch https://x.supabase.co/…');
-    expect(scrubMessage(cases[2])).toBe('Could not open file://…');
+    expect(scrubMessage(cases[0])).toBe('Failed to fetch <url>');
+    expect(scrubMessage(cases[2])).toBe('Could not open <url>');
   });
 
   it('an encoded segment goes whole too', () => {
     const m = scrubMessage('Failed to fetch https://x.supabase.co/storage/v1/object/sign/audio/%5BMirage%5D%20Mary%20Smith/x.pdf');
-    expect(m).toBe('Failed to fetch https://x.supabase.co/…');
+    expect(m).toBe('Failed to fetch <url>');
   });
 
   it('links without spaces, and the app’s own frames, are as before', () => {
@@ -652,7 +655,7 @@ describe('links with spaces inside brackets (review #277, Claude r5)', () => {
       'at f (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
     );
     expect(scrubMessage('Failed to load /deputy.html and then a / b')).toBe('Failed to load /deputy.html and then a / b');
-    expect(scrubMessage('at https://cdn.example.com/lib/x.js:1:2')).toBe('at https://cdn.example.com/…');
+    expect(scrubMessage('at https://cdn.example.com/lib/x.js:1:2')).toBe('at <url>');
   });
 });
 
@@ -668,8 +671,8 @@ describe('a path goes whole, apostrophes, brackets and spaces included (Codex B1
       "Could not open file:///var/mobile/Documents/Guns N' Roses.pdf",
     ];
     for (const raw of cases) expect(scrubMessage(raw), raw).not.toMatch(NAME);
-    expect(scrubMessage(cases[3])).toBe('Failed to fetch https://x.supabase.co/…');
-    expect(scrubMessage(cases[4])).toBe('Could not open file://…');
+    expect(scrubMessage(cases[3])).toBe('Failed to fetch <url>');
+    expect(scrubMessage(cases[4])).toBe('Could not open <url>');
   });
 
   it('brackets and spaces in the name, and a name with no extension, go up to the end of the line', () => {
@@ -848,5 +851,162 @@ describe('an error is "seen" only once it is queued (Codex minor)', () => {
     await reportClientError('error', new Error('twice'));
     await flush();
     expect(h.rpc.map((c) => c.args.p_message)).toEqual(['Error: twice']);
+  });
+});
+
+// ── Review round 6 (Codex + Claude, review #277) ────────────────────────────
+describe('URLs: only http(s) on our own domains keep anything (Codex B2)', () => {
+  it('a URL of another scheme goes whole (irealb:// carries a whole song)', () => {
+    expect(scrubMessage('Error: cannot import irealb://Knockin%20On%20Heavens%20Door%3DDylan%20Bob%3D%3DRock')).toBe('Error: cannot import <url>');
+    // Spaces inside it too: the rest of the line goes.
+    const m = scrubMessage("Error: cannot import irealb://Knockin' On Heaven's Door=Dylan Bob==Rock=n=T44 now");
+    expect(m).not.toMatch(/Knockin|Heaven|Dylan|Bob|Rock/);
+    expect(m).toContain('<url>');
+    for (const raw of ['Error: open intent://scan/#Intent;scheme=zxing;end', 'Error: ws://xyz.supabase.co/realtime/v1 closed', 'Error: bad data:text/plain;base64,TWFyeSBTbWl0aA==']) {
+      expect(scrubMessage(raw), raw).toMatch(/<url>/);
+      expect(scrubMessage(raw), raw).not.toMatch(/scan|zxing|supabase|realtime|TWFy/);
+    }
+    // In a stack frame the position stays.
+    expect(scrubStack('Error: x\n    at f (irealb://Mary Smith=Song:1:2)')).not.toMatch(/Mary|Smith|Song/);
+  });
+
+  it('http(s) on another domain goes whole; our own domains keep the origin and the app files', () => {
+    expect(scrubMessage('Failed to fetch https://xyz.supabase.co/storage/v1/object/sign/audio/x.mp3')).toBe('Failed to fetch <url>');
+    expect(scrubMessage('Failed to fetch https://xyz.supabase.co')).toBe('Failed to fetch <url>');
+    expect(scrubMessage('Error: at https://app.bandwith.fun/assets/index-B4xK9q1a.js')).toBe('Error: at https://app.bandwith.fun/assets/index-B4xK9q1a.js');
+    expect(scrubMessage('Error: at https://bandwith.fun/x/y')).toBe('Error: at https://bandwith.fun/…');
+    expect(scrubStack('Error: x\n    at b (capacitor://localhost/assets/index-Q1w2e3r4.js:3:4)')).toContain('capacitor://localhost/assets/index-Q1w2e3r4.js:3:4');
+  });
+
+  it('userinfo (user:secret@) is always stripped, on our own domains too', () => {
+    const own = scrubMessage('Error: at https://user:secret@app.bandwith.fun/assets/index-B4xK9q1a.js');
+    expect(own).not.toMatch(/user|secret/);
+    expect(own).toBe('Error: at https://app.bandwith.fun/assets/index-B4xK9q1a.js');
+    const other = scrubMessage('Error: GET https://mary:hunter2@xyz.supabase.co/rest/v1/songs 401');
+    expect(other).not.toMatch(/mary|hunter2|supabase/);
+    expect(other).toContain('<url>');
+  });
+});
+
+describe('quotes: to the last matching quote on the line (Codex B3)', () => {
+  it("'Knockin' on Heaven's Door' leaves nothing of the title", () => {
+    expect(scrubMessage("Error: no song 'Knockin' on Heaven's Door' in set")).toBe("Error: no song '…' in set");
+    expect(scrubMessage('Error: no song "Knockin" on Heaven"s Door" in set')).toBe('Error: no song "…" in set');
+    const s = scrubStack("Error: no song 'Knockin' on Heaven's Door'\n    at f (https://app.bandwith.fun/assets/a.js:1:2)")!;
+    expect(s).not.toMatch(/Knockin|Heaven|Door/);
+  });
+});
+
+describe('stack: only real frames are kept as frames (Codex B4)', () => {
+  it('a lyric line starting "at last ..." is scrubbed like the message', () => {
+    const s = scrubStack(
+      [
+        'Error: bad lyric "Hudson',
+        'at last my love has come along',
+        'my lonely days are over" here',
+        '    at parse (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+        'at last the "Mary Smith',
+        'song" ends',
+      ].join('\n'),
+    )!;
+    expect(s).not.toMatch(/Hudson|last my love|lonely|Mary|Smith/);
+    expect(s).toContain('    at parse (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)');
+  });
+
+  it('Chrome, Safari and Firefox frames still keep their position', () => {
+    const s = scrubStack(
+      [
+        'TypeError: x',
+        '    at Object.parse (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+        '    at https://app.bandwith.fun/assets/index-B4xK9q1a.js:3:4',
+        'parse@capacitor://localhost/assets/index-Q1w2e3r4.js:5:6',
+        'global code@capacitor://localhost/assets/index-Q1w2e3r4.js:7:8',
+        'promiseReactionJob@[native code]',
+      ].join('\n'),
+    )!;
+    expect(s.split('\n')).toEqual([
+      'TypeError: x',
+      '    at Object.parse (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+      '    at https://app.bandwith.fun/assets/index-B4xK9q1a.js:3:4',
+      'parse@capacitor://localhost/assets/index-Q1w2e3r4.js:5:6',
+      'global code@capacitor://localhost/assets/index-Q1w2e3r4.js:7:8',
+      'promiseReactionJob@[native code]',
+    ]);
+  });
+});
+
+describe('relative paths without a leading slash (Claude 7)', () => {
+  it('audio/Mirage/Mary Smith - Yesterday.mp3 goes whole', () => {
+    for (const lead of [' ', ':', '=', '(']) {
+      const m = scrubMessage(`Error: failed${lead}audio/Mirage/Mary Smith - Yesterday.mp3 now`);
+      expect(m, lead).not.toMatch(/audio|Mirage|Mary|Smith|Yesterday|mp3/);
+    }
+    expect(scrubMessage('Error: failed audio/Mirage/Mary Smith - Yesterday.mp3 now')).toBe('Error: failed … now');
+    expect(scrubMessage('Error: failed Mirage/Mary.pdf')).toBe('Error: failed …');
+    // Not a path: a lone slash between words, our own link, a local dev server.
+    expect(scrubMessage('Failed to load /deputy.html and then a / b')).toBe('Failed to load /deputy.html and then a / b');
+    expect(scrubMessage('Error: at http://localhost:5173/assets/index-Q1w2e3r4.js')).toBe('Error: at http://localhost:5173/assets/index-Q1w2e3r4.js');
+  });
+});
+
+describe('IndexedDB: saved only once the transaction completes (Codex B5)', () => {
+  const fullLocalStorage = () => {
+    const real = localStorage;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => real.getItem(k),
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+      removeItem: (k: string) => real.removeItem(k),
+      clear: () => real.clear(),
+    });
+  };
+
+  it('the put succeeds but the transaction aborts: not saved, and Settings says so', async () => {
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    const fake = fakeIndexedDB({ abortWrites: true });
+    vi.stubGlobal('indexedDB', fake.indexedDB);
+    fullLocalStorage();
+    expect(await setCrashReportsEnabled(false)).toBe(false);
+    expect(readCrashReportsSaveFailed()).toBe(true);
+    expect(readCrashReportsEnabled()).toBe(false);
+  });
+
+  it('a transaction that completes is saved', async () => {
+    const { fakeIndexedDB } = await import('@/test/fakeIndexedDB');
+    const fake = fakeIndexedDB();
+    vi.stubGlobal('indexedDB', fake.indexedDB);
+    fullLocalStorage();
+    expect(await setCrashReportsEnabled(false)).toBe(true);
+    expect(fake.state.data.get(CRASH_REPORTS_KEY)).toBe('off');
+    expect(readCrashReportsSaveFailed()).toBe(false);
+  });
+});
+
+describe('Crashlytics follows the final state after every change (Codex minor 6)', () => {
+  it('turned on while IndexedDB still said off: Crashlytics ends on', async () => {
+    h.native = true;
+    h.consent = 'granted';
+    const g = gate();
+    const data = new Map<string, string>([[CRASH_REPORTS_KEY, 'off']]);
+    __setChoiceStoreForTest({
+      get: async (k) => data.get(k) ?? null,
+      set: async (k, v) => {
+        await g.p;
+        data.set(k, v);
+      },
+    });
+    const stop = installCrashReports();
+    for (let i = 0; i < 5; i++) await flush();
+    expect(readCrashReportsEnabled()).toBe(false);
+    expect(h.setEnabled[h.setEnabled.length - 1]).toBe(false);
+    const saved = setCrashReportsEnabled(true);
+    for (let i = 0; i < 5; i++) await flush();
+    g.open();
+    expect(await saved).toBe(true);
+    for (let i = 0; i < 5; i++) await flush();
+    expect(readCrashReportsEnabled()).toBe(true);
+    expect(h.setEnabled[h.setEnabled.length - 1]).toBe(true);
+    stop();
   });
 });
