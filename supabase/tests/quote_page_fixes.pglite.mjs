@@ -716,13 +716,19 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   ok(stale && stale.code === '40001', `edit made on a screen read before the new client: refused (${stale && stale.message})`);
   const qs = (await q(`SELECT client_phone, client_email FROM quotes WHERE id = $1`, [Q])).rows[0];
   ok(qs.client_phone === null && qs.client_email === 'jordan@brooklynevents.example', 'nothing of the stale edit was written');
-  // The same screen changing only the fee: no contact touched, it goes through.
-  const fee = await editClient(Q, `base_fee = 4300, edit_base_at = '${readAt}'`).then(() => 'ok', (e) => e.message);
+  // Codex 11-22: the same screen changing only the fee is refused too (it was let through before).
+  const fee = await editClient(Q, `base_fee = 4300, edit_base_at = '${readAt}'`).then(() => 'ok', (e) => e);
+  const kept0 = (await qq(`SELECT base_fee FROM quotes WHERE id = $1`, [Q])).rows[0] || {};
+  ok(fee?.code === '40001' && Number(kept0.base_fee) === 0,
+    `CX 1: a stale screen's fee-only edit is refused, the fee stays (${fee?.message || fee}, ${kept0.base_fee})`);
+  // A screen read after the change: its fee-only edit goes through, and edit_base_at is never stored.
+  // (updated_at as the API returns it, to the microsecond: a JS Date would cut it to the millisecond.)
+  const fresh = (await q(`SELECT updated_at::text t FROM quotes WHERE id = $1`, [Q])).rows[0].t;
+  const fee2 = await editClient(Q, `base_fee = 4300, edit_base_at = '${fresh}'`).then(() => 'ok', (e) => e.message);
   const after = (await qq(`SELECT base_fee, edit_base_at, client_email FROM quotes WHERE id = $1`, [Q])).rows[0] || {};
-  ok(fee === 'ok' && Number(after.base_fee) === 4300 && after.edit_base_at === null && after.client_email === 'jordan@brooklynevents.example',
-    `a stale screen's fee-only edit goes through and edit_base_at is never stored (${fee})`);
-  // A screen read after the change: its contact edit goes through.
-  const fresh = (await q(`SELECT updated_at FROM quotes WHERE id = $1`, [Q])).rows[0].updated_at.toISOString();
+  ok(fee2 === 'ok' && Number(after.base_fee) === 4300 && after.edit_base_at === null && after.client_email === 'jordan@brooklynevents.example',
+    `a fresh screen's fee-only edit goes through and edit_base_at is never stored (${fee2})`);
+  // The same screen again (its read time is still not older than the change): its contact edit goes through.
   const ok2 = await editClient(Q, `client_phone = '+1 646 555 0199', edit_base_at = '${fresh}'`).then(() => 'ok', (e) => e.message);
   ok(ok2 === 'ok', `a screen read after the new client: its contact edit goes through (${ok2})`);
   // A newer build writing name, fee and items (all changed) clears nothing it left out.
@@ -984,6 +990,75 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   await db.exec(`UPDATE events SET deposit_paid = false, payment_status = 'pending' WHERE id = '${G3}'`);
   const free = await editClient(Q3, `currency = 'EUR'`).then(() => 'ok', (e) => e.message);
   ok(free === 'ok', `R6 6: with no deposit recorded the currency can change (${free})`);
+}
+
+// ---------------------------------------------------------------- 1h. Codex round 11-22
+{
+  // A save of the notes alone, made on a screen opened for Emma, after the
+  // quote went to Jordan and Jordan's page was published and sent: refused,
+  // so the app's republish never puts Emma's notes on Jordan's page.
+  const page = (row) => JSON.stringify({ ...JSON.parse(snap(4200)), notes: row.client_notes ?? undefined,
+    client: { name: row.client_name, email: row.client_email } });
+  const row = (Q) => q(`SELECT client_name, client_email, client_notes FROM quotes WHERE id = $1`, [Q]).then((r) => r.rows[0]);
+  // What the app does after a saved edit of a sent quote (republishClientQuote):
+  // the stored row, on the link and version it just read.
+  const republish = async (Q) => {
+    const L = await link(Q);
+    const summary = page(await row(Q));
+    return asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q, summary, L.token, L.version]))
+      .then(() => 'published', (e) => e);
+  };
+  const Q = await sentQuote({ email: 'emma.carter@example.com' });
+  await editClient(Q, `client_notes = 'Emma: ceremony on the roof at 4, first dance at 7'`);
+  // Admin A opens the edit screen (Emma's quote).
+  const readAt = (await q(`SELECT updated_at::text t FROM quotes WHERE id = $1`, [Q])).rows[0].t;
+  await new Promise((r) => setTimeout(r, 5));
+  // Admin B gives the quote to Jordan with Jordan's notes, publishes and sends it.
+  await editClient(Q, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example', client_notes = 'Jordan: load-in from the 34th St dock'`);
+  const first = await republish(Q);
+  const LB = await link(Q);
+  await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent($1, 'sent', 'email', $2, $3)`, [Q, LB.token, LB.version]));
+  const sentB = await link(Q);
+  ok(first === 'published' && sentB.status === 'sent' && (await view(sentB.token))?.quote?.notes === 'Jordan: load-in from the 34th St dock',
+    `CX 1 setup: Jordan's page is published and sent with Jordan's notes (${first?.message || first}, ${sentB.status})`);
+  // Admin A saves the notes typed for Emma (nothing else changed on that screen).
+  const stale = await editClient(Q, `client_notes = 'Emma: ceremony on the roof at 4, first dance at 8', edit_base_at = '${readAt}'`).then(() => 'saved', (e) => e);
+  ok(stale?.code === '40001' && /Someone else changed/.test(stale.message),
+    `CX 1: a notes-only save from a screen read before the new client: refused, 40001 (${stale?.message || stale})`);
+  // The app republishes only what was saved.
+  if (stale === 'saved') await republish(Q);
+  const pageB = await view(sentB.token);
+  const rowB = await row(Q);
+  ok(rowB.client_notes === 'Jordan: load-in from the 34th St dock' && pageB?.quote?.notes === 'Jordan: load-in from the 34th St dock'
+     && (await link(Q)).version === sentB.version,
+    `CX 1: Jordan's page keeps Jordan's notes and its version (${rowB.client_notes} / ${pageB?.quote?.notes})`);
+  // A screen read after the change (the row as the API returns it, to the
+  // microsecond): its notes-only save goes through and is republished.
+  const fresh = (await q(`SELECT updated_at::text t FROM quotes WHERE id = $1`, [Q])).rows[0].t;
+  const good = await editClient(Q, `client_notes = 'Jordan: load-in from the 33rd St dock', edit_base_at = '${fresh}'`).then(() => 'saved', (e) => e);
+  const again = good === 'saved' ? await republish(Q) : 'not saved';
+  const stored = (await qq(`SELECT edit_base_at FROM quotes WHERE id = $1`, [Q])).rows[0] || {};
+  ok(good === 'saved' && again === 'published' && stored.edit_base_at === null
+     && (await view(sentB.token))?.quote?.notes === 'Jordan: load-in from the 33rd St dock',
+    `CX 1: a fresh screen's notes-only save still works and reaches the page (${good?.message || good}, ${again?.message || again})`);
+  // An older build (383f15b) sends no edit_base_at: its notes-only update is accepted as before...
+  const oldNotes = await editClient(Q, `client_notes = 'Jordan: park on W 33rd St'`).then(() => 'saved', (e) => e);
+  ok(oldNotes === 'saved' && (await row(Q)).client_notes === 'Jordan: park on W 33rd St',
+    `CX 1: an older build's notes-only save (no edit_base_at) is accepted (${oldNotes?.message || oldNotes})`);
+  // ...and so is its full save (name, fee, items and what its form holds), also right after another change of client.
+  const Q2 = await sentQuote({ email: 'emma.carter@example.com' });
+  await new Promise((r) => setTimeout(r, 5));
+  await editClient(Q2, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`);
+  const oldFull = await editClient(Q2, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example', base_fee = 4200, custom_items = '[]', client_notes = 'Stage on the east side'`)
+    .then(() => 'saved', (e) => e);
+  const r2 = await row(Q2);
+  ok(oldFull === 'saved' && r2.client_notes === 'Stage on the east side' && r2.client_email === 'jordan@brooklynevents.example',
+    `CX 1: an older build's full save (no edit_base_at) after a change of client is accepted (${oldFull?.message || oldFull})`);
+  // The refusal reads edit_base_at only: nothing in the function ties it to the columns a save lists.
+  const src = (await q(`SELECT prosrc FROM pg_proc WHERE proname = 'bw_trg_quote_recipient_changed'`)).rows[0].prosrc;
+  const guard = src.slice(0, src.indexOf('bw_quote_stale_message'));
+  ok(/IF v_base IS NOT NULL THEN\s+SELECT l\.recipient_changed_at/.test(guard) && !/v_base IS NOT NULL AND v_listed/.test(src),
+    'CX 1: the stale-screen refusal applies to any save that carries edit_base_at, and to none without it');
 }
 
 // ---------------------------------------------------------------- grants

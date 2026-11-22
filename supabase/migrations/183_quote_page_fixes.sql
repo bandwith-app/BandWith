@@ -58,10 +58,11 @@
 --    the change). Newer builds never write the status in an edit.
 --    Round 4: newer builds write only the fields that changed, and say when
 --    their screen read the quote (quotes.edit_base_at, cleared by the
---    trigger, never stored). An edit of the client's name, email or phone
---    made on a screen read before the quote went to a new client is
---    refused (40001), whatever else it sends; the full-save clearing above
---    is for older builds only.
+--    trigger, never stored). Any edit made on a screen read before the
+--    quote went to a new client is refused (40001), whatever it sends
+--    (Codex 11-22: also notes, fees or a date alone, which a republish
+--    would put on the new client's page); the full-save clearing above is
+--    for older builds only, and so is every save without edit_base_at.
 -- 2. bw_quote_link_publish (105's body): the key named in its ON CONFLICT
 --    (the draft branch failed with 42702, audit #10), and the new
 --    recipient's first publish is always a new version, even with the same
@@ -503,10 +504,14 @@ BEGIN
   -- write only the fields that changed, and what they leave out stays.
   v_full := v_base IS NULL AND v_listed @> ARRAY['client_name', 'base_fee', 'custom_items'];
 
-  -- Round 4: an edit of the client's contact made on a screen that read the
-  -- quote before it went to a new client: refused, whatever else the save
-  -- sends (newer builds send no status; the guard below needs one).
-  IF v_base IS NOT NULL AND v_listed && ARRAY['client_name', 'client_email', 'client_phone'] THEN
+  -- Round 4: an edit made on a screen that read the quote before it went
+  -- to a new client: refused, whatever the save sends (newer builds send no
+  -- status; the guard below needs one). Codex 11-22: not only an edit of
+  -- the contact. Notes typed for the previous client would be saved and
+  -- then published on the new client's page. Only a save that says when
+  -- its screen read the quote (edit_base_at): older builds send none and
+  -- are never refused here.
+  IF v_base IS NOT NULL THEN
     SELECT l.recipient_changed_at INTO v_changed_at FROM public.quote_links l WHERE l.quote_id = NEW.id;
     IF v_changed_at > v_base THEN
       RAISE EXCEPTION '%', public.bw_quote_stale_message() USING ERRCODE = '40001';
