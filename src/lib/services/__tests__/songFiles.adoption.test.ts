@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // which supabase/tests/song_files_adopted.pglite.mjs checks on Postgres).
 
 type Song = { id: string; band_id: string; status: string; audio_url: string | null; chart_url: string | null };
-type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'cleaned'; by: string | null };
-type Step = 'begin' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'remove' | 'sweep_done' | 'reread';
+type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'deleting' | 'cleaned'; by: string | null; deletingAt?: number };
+type Step = 'begin' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread';
 
 const fake = vi.hoisted(() => {
   const REF = 'sb://song-files/';
@@ -16,6 +16,9 @@ const fake = vi.hoisted(() => {
   const songs = new Map<string, Song>();
   let adoptions: Adoption[] = [];
   let failRemove = 0;
+  const clock = { now: 0 };
+  const LAPSE = 10 * 60_000;
+  const lapsed = (r: Adoption) => r.state === 'deleting' && clock.now - (r.deletingAt ?? 0) > LAPSE;
   const admins = new Set<string>();
   const inUse = (path: string) => [...songs.values()].some((s) => s.audio_url === REF + path || s.chart_url === REF + path);
   const etag = (body: string) => `"${[...body].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16)}"`;
@@ -55,13 +58,27 @@ const fake = vi.hoisted(() => {
     },
     bw_song_file_sweep_list: (uid: string, a: { p_band_id: string }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
-      const paths = adoptions.filter((r) => r.state === 'repointed' && r.from.startsWith(`${a.p_band_id}/suggestions/`) && !inUse(r.from)).map((r) => r.from);
+      const paths = adoptions
+        .filter((r) => (r.state === 'repointed' || lapsed(r)) && r.from.startsWith(`${a.p_band_id}/suggestions/`) && !inUse(r.from))
+        .map((r) => r.from);
       return { data: [...new Set(paths)] };
+    },
+    bw_song_file_sweep_claim: (uid: string, a: { p_band_id: string; p_path: string }) => {
+      if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
+      const r = adoptions.find((x) => x.from === a.p_path && (x.state === 'repointed' || x.state === 'deleting'));
+      if (!r) return { data: { ok: false, reason: 'gone' } };
+      if (r.state === 'deleting' && !lapsed(r)) return { data: { ok: false, reason: 'busy' } };
+      if (inUse(a.p_path)) {
+        r.state = 'repointed';
+        return { data: { ok: false, reason: 'referenced' } };
+      }
+      Object.assign(r, { state: 'deleting', deletingAt: clock.now });
+      return { data: { ok: true } };
     },
     bw_song_file_sweep_done: (uid: string, a: { p_band_id: string; p_paths: string[] }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
       let n = 0;
-      for (const r of adoptions) if (r.state === 'repointed' && a.p_paths.includes(r.from)) (r.state = 'cleaned'), n++;
+      for (const r of adoptions) if (r.state === 'deleting' && a.p_paths.includes(r.from)) (r.state = 'cleaned'), n++;
       return { data: n };
     },
   } as Record<string, (uid: string, a: any) => { data?: unknown; error?: unknown }>;
@@ -84,7 +101,7 @@ const fake = vi.hoisted(() => {
       return h;
     };
     const STEP: Record<string, Step> = {
-      bw_song_file_adopt_begin: 'begin', bw_song_file_adopt_repoint: 'repoint', bw_song_file_sweep_list: 'sweep_list', bw_song_file_sweep_done: 'sweep_done',
+      bw_song_file_adopt_begin: 'begin', bw_song_file_adopt_repoint: 'repoint', bw_song_file_sweep_list: 'sweep_list', bw_song_file_sweep_claim: 'sweep_claim', bw_song_file_sweep_done: 'sweep_done',
     };
     const client = {
       rpc: async (fn: string, args: unknown) => {
@@ -154,10 +171,13 @@ const fake = vi.hoisted(() => {
     songs.clear();
     adoptions = [];
     failRemove = 0;
+    clock.now = 0;
     admins.clear();
   };
   return {
-    REF, store, songs, admins, etag, actor, reset,
+    REF, store, songs, admins, etag, actor, reset, clock,
+    /** Past the claim's 10 minutes. */
+    lapse: () => void (clock.now += LAPSE + 1),
     adoptions: () => adoptions,
     failNextRemove: () => void failRemove++,
     put: (path: string, body: string) => store.set(path, { body, etag: etag(body) }),
@@ -199,7 +219,7 @@ const finished = (body = 'take one') => {
   expect(song().audio_url).toBe(ref(DEST));
   expect(fake.store.get(DEST)?.body).toBe(body);
   expect(fake.store.has(ORIG)).toBe(false);
-  expect(fake.adoptions().filter((r) => r.state === 'repointed')).toEqual([]);
+  expect(fake.adoptions().filter((r) => r.state === 'repointed' || r.state === 'deleting')).toEqual([]);
   noDanglingSong();
 };
 
@@ -312,13 +332,15 @@ describe('a lost response', () => {
 });
 
 describe('a run stopped at each step, then run again', () => {
-  for (const step of ['begin', 'copy', 'info', 'repoint', 'sweep_list', 'remove', 'sweep_done'] as Step[]) {
+  for (const step of ['begin', 'copy', 'info', 'repoint', 'sweep_list', 'sweep_claim', 'remove', 'sweep_done'] as Step[]) {
     it(`stopped at ${step}`, async () => {
       if (step === 'info') fake.put(DEST, 'take one'); // a copy from an earlier try, checked with info()
       A.crashAt(step);
       void adopt(A);
       await settle();
       noDanglingSong();
+      // Stopped while deleting: the claim lapses, then the original is pending again.
+      if (step === 'remove' || step === 'sweep_done') fake.lapse();
       const again = fake.actor('admin-1');
       await adopt(again, song());
       finished();
@@ -378,9 +400,28 @@ describe('what is left behind', () => {
     const out = await adopt(A);
     expect(out.refs).toEqual({ audio_url: ref(DEST) });
     expect(fake.store.has(ORIG)).toBe(true);
-    expect(fake.adoptions().filter((r) => r.state === 'repointed').map((r) => r.from)).toEqual([ORIG]);
+    expect(fake.adoptions().filter((r) => r.state === 'deleting').map((r) => r.from)).toEqual([ORIG]);
+    // Claimed and not done: left alone until the claim lapses (10 minutes)…
+    await sweepAdoptedFiles(BAND, { client: fake.actor('admin-1').client as never });
+    expect(fake.store.has(ORIG)).toBe(true);
+    // …then pending again, and the next sweep deletes it.
+    fake.lapse();
     await sweepAdoptedFiles(BAND, { client: fake.actor('admin-1').client as never });
     finished();
+  });
+
+  it('a song links the original between the sweep’s list and its delete: not deleted', async () => {
+    const claim = A.pause('sweep_claim');
+    const pa = adopt(A);
+    await claim.reached;
+    // A member suggests a new song with that same file meanwhile.
+    fake.songs.set('song-9', { id: 'song-9', band_id: BAND, status: 'suggested', audio_url: ref(ORIG), chart_url: null });
+    claim.release();
+    await pa;
+    expect(fake.store.has(ORIG)).toBe(true);
+    expect(A.log.filter((l) => l.startsWith('remove'))).toEqual([]);
+    expect(song().audio_url).toBe(ref(DEST));
+    noDanglingSong();
   });
 
   it('the song changed meanwhile: only this run’s unused copy goes', async () => {

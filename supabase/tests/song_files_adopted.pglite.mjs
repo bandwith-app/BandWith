@@ -38,7 +38,9 @@ GRANT EXECUTE ON FUNCTION storage.foldername(text) TO authenticated;
 CREATE TABLE public.band_members (band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true);
 CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text, status text, audio_url text, chart_url text);
 ALTER TABLE public.songs ENABLE ROW LEVEL SECURITY;
-GRANT SELECT ON public.songs TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.songs TO authenticated;
+CREATE POLICY songs_write_any ON public.songs FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY songs_update_any ON public.songs FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY songs_read ON public.songs FOR SELECT TO authenticated
   USING (band_id::text = ANY (ARRAY(SELECT band_id::text FROM public.band_members WHERE user_id = auth.uid())));
 GRANT SELECT ON public.band_members TO authenticated;
@@ -166,10 +168,41 @@ const list = await sweep(ADMIN);
 ok(Array.isArray(list) && list.includes(P.learning), 'sweep lists the moved original');
 ok(!list.includes(P.readyChart), 'sweep skips a path another song still uses');
 ok(String(await sweep(MEM)).startsWith('error'), 'members cannot sweep');
-// A failed delete: not marked done, so the next sweep lists it again.
-ok((await sweep(ADMIN)).includes(P.learning), 'until marked done it stays listed (a failed delete is retried)');
-const done = await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_done($1, $2) AS v`, [BAND, [P.learning, P.readyChart]]);
-ok(done === 2 && !(await sweep(ADMIN)).includes(P.learning), 'marked done: no longer listed');
+// ---- Round 3: each delete is claimed right before it, under a lock.
+const claim = (user, path) => asCommit(user, `SELECT public.bw_song_file_sweep_claim($1, $2) AS v`, [BAND, path]);
+const doneSweep = (user, paths) => asCommit(user, `SELECT public.bw_song_file_sweep_done($1, $2) AS v`, [BAND, paths]);
+const state = async (path) => (await q(`SELECT state FROM song_file_adoptions WHERE from_path = $1`, [path])).rows[0]?.state;
+
+// A song links the original between the list and the claim: no delete.
+const LATE = id(15);
+await db.exec(`INSERT INTO songs VALUES ('${LATE}','${BAND}','Late link','suggested','sb://song-files/${P.learning}',NULL)`);
+const c0 = await claim(ADMIN, P.learning);
+ok(c0 && c0.ok === false && c0.reason === 'referenced', `claim refused: a song links it now (${JSON.stringify(c0)})`);
+ok((await state(P.learning)) === 'repointed', 'still pending, not deleting');
+await db.exec(`DELETE FROM songs WHERE id = '${LATE}'`);
+
+ok(String(await claim(MEM, P.learning)).startsWith('error'), 'members cannot claim a delete');
+const c1 = await claim(ADMIN, P.learning);
+ok(c1 && c1.ok === true, 'claim granted once no song links it');
+ok((await state(P.learning)) === 'deleting', 'row marked deleting');
+ok((await claim(ADMIN2, P.learning)).reason === 'busy', 'a second claim meanwhile: busy');
+ok(!(await sweep(ADMIN)).includes(P.learning), 'while deleting it is not listed again');
+
+// While deleting, no song may link it (insert or update).
+const linkIns = await asCommit(MEM, `INSERT INTO songs VALUES ('${id(16)}','${BAND}','Relink','suggested','sb://song-files/${P.learning}',NULL) RETURNING 1 AS v`);
+ok(String(linkIns).includes('BW_FILE_REMOVED'), `linking it on a new song is refused (${linkIns})`);
+const linkUpd = await asCommit(ADMIN, `UPDATE songs SET chart_url = 'sb://song-files/${P.learning}' WHERE id = '${id(14)}' RETURNING 1 AS v`);
+ok(String(linkUpd).includes('BW_FILE_REMOVED'), 'linking it on an existing song is refused');
+ok((await asCommit(ADMIN, `UPDATE songs SET title = 'Coney Island' WHERE id = '${id(14)}' RETURNING 1 AS v`)) === 1, 'other song edits are unaffected');
+
+// A failed delete (no done): after 10 minutes the claim lapses and it is pending again.
+await db.exec(`UPDATE song_file_adoptions SET deleting_at = now() - interval '11 minutes' WHERE from_path = '${P.learning}'`);
+ok((await sweep(ADMIN)).includes(P.learning), 'lapsed claim: listed for the sweep again');
+const c2 = await claim(ADMIN2, P.learning);
+ok(c2 && c2.ok === true, 'and can be claimed again');
+ok((await doneSweep(ADMIN, [P.readyChart])) === 0, 'done only marks claimed deletes');
+const done = await doneSweep(ADMIN, [P.learning]);
+ok(done === 1 && (await state(P.learning)) === 'cleaned' && !(await sweep(ADMIN)).includes(P.learning), 'marked done: no longer listed');
 
 // The record is not readable or writable by app users.
 ok((await as(ADMIN, () => q(`SELECT 1 FROM song_file_adoptions`).then(() => 'read', () => 'denied'))) === 'denied', 'adoption records: no direct access');

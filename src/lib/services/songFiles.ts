@@ -182,8 +182,8 @@ const asError = (e: unknown, fallback: string): Error =>
  *  3. bw_song_file_adopt_repoint: the song row locked on the server, the
  *     reference changed only if it is still the original. The original is
  *     recorded for the sweep in the same transaction.
- *  4. The sweep deletes recorded originals no song uses (checked on the
- *     server); a failed delete stays recorded for the next sweep.
+ *  4. The sweep deletes recorded originals no song uses, each claimed on
+ *     the server right before its delete (see sweepAdoptedFiles).
  * Deleted by a run: only a copy it made itself, when the server (song row
  * locked) says no song uses it. A lost response is re-read, never undone.
  * Returns the new references written to the song.
@@ -296,19 +296,36 @@ async function currentRef(client: AdoptClient, songId: string, field: Field): Pr
 
 /**
  * Originals of moved files no song uses any more (the server checks every
- * song): deleted, then marked done. One that fails stays for the next sweep.
+ * song). Each one is claimed right before its delete: the server re-checks,
+ * under a lock, that no song links it (a song that links it meanwhile keeps
+ * it), and refuses new links while it is being deleted. Then the Storage
+ * delete, then done. A delete that fails leaves the claim, which lapses after
+ * 10 minutes: the next sweep retries it.
  */
 export const sweepAdoptedFiles = async (bandId: string, opts?: { client?: AdoptClient }): Promise<{ error: Error | null }> => {
   const client = opts?.client ?? supabase;
+  let first: Error | null = null;
   try {
     const { data, error } = await client.rpc('bw_song_file_sweep_list', { p_band_id: bandId });
     if (error) return { error: asError(error, 'Could not tidy the song files') };
     const paths = ((data as string[] | null) || []).filter((p) => typeof p === 'string' && p.startsWith(`${bandId}/suggestions/`));
-    if (!paths.length) return { error: null };
-    const { error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove(paths);
-    if (removeError) return { error: asError(removeError, 'Could not tidy the song files') };
-    const { error: doneError } = await client.rpc('bw_song_file_sweep_done', { p_band_id: bandId, p_paths: paths });
-    return { error: doneError ? asError(doneError, 'Could not tidy the song files') : null };
+    for (const path of paths) {
+      const { data: claim, error: claimError } = await client.rpc('bw_song_file_sweep_claim', { p_band_id: bandId, p_path: path });
+      if (claimError) {
+        first ??= asError(claimError, 'Could not tidy the song files');
+        continue;
+      }
+      // Linked again, being deleted by someone else, or already gone: skip it.
+      if (!(claim as { ok?: boolean } | null)?.ok) continue;
+      const { error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove([path]);
+      if (removeError) {
+        first ??= asError(removeError, 'Could not tidy the song files');
+        continue;
+      }
+      const { error: doneError } = await client.rpc('bw_song_file_sweep_done', { p_band_id: bandId, p_paths: [path] });
+      if (doneError) first ??= asError(doneError, 'Could not tidy the song files');
+    }
+    return { error: first };
   } catch (e) {
     return { error: asError(e, 'Could not tidy the song files') };
   }
