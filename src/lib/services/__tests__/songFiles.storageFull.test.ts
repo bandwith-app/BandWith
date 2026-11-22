@@ -48,6 +48,7 @@ vi.mock('@/lib/usePlan', () => ({
   knownPlan: () => null,
 }));
 
+import frSource from '../../i18n/locales/fr.ts?raw';
 import { adoptSuggestionFiles } from '../songFiles';
 import { reviewSongSuggestion } from '../songSuggestions';
 
@@ -103,13 +104,27 @@ describe('band storage full', () => {
 
 describe('band storage full, the words', () => {
   const KEY = 'Band storage is full: free up space to add this file.';
-  it('is in all 5 languages, as a file, and French says vous like its neighbours', async () => {
+  it('is in all 5 languages, as a file', async () => {
     const dicts = await Promise.all(
       (['de', 'es', 'fr', 'it', 'pt'] as const).map(async (l) => [l, (await import(`../../i18n/locales/${l}.ts`)).default] as const),
     );
     for (const [l, d] of dicts) expect(d[KEY], l).toBeTruthy();
     const fr = dicts.find(([l]) => l === 'fr')![1][KEY] as string;
-    expect(fr).toMatch(/libérez/);
-    expect(fr).not.toMatch(/libère |enregistrement/);
+    expect(fr).toMatch(/libère/);
+    expect(fr).not.toMatch(/enregistrement/);
+  });
+
+  it('its French block (iReal Pro forum, MusicXML files) is consistent: tu throughout, no vous forms', async () => {
+    const src = frSource.split('\n');
+    const start = src.findIndex((l) => l.trim() === '// iReal Pro forum, MusicXML files, Ultimate Guitar');
+    const end = src.findIndex((l, i) => i > start && l.trim().startsWith('//'));
+    expect(start).toBeGreaterThan(-1);
+    const values = src
+      .slice(start + 1, end)
+      .map((l) => /^\s*"(?:[^"\\]|\\.)*":\s*"((?:[^"\\]|\\.)*)",?\s*$/.exec(l)?.[1])
+      .filter((v): v is string => !!v);
+    expect(values.length).toBeGreaterThan(10);
+    const vous = /\b(?!(?:chez|assez|nez)\b)[a-zàâçéèêëîïôûùüÿœ]+ez\b|\b(?:vous|votre|vos)\b/i;
+    expect(values.filter((v) => vous.test(v))).toEqual([]);
   });
 });
