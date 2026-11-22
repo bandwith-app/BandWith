@@ -13,6 +13,10 @@ describe('191 the stage clock topic', () => {
     expect(sql).toMatch(/RETURN public\.bw_is_band_member\(band\)/);
   });
 
+  it("only members who may see the gig: a tentative quote's hidden lineup stays hidden (111)", () => {
+    expect(sql).toMatch(/RETURN public\.bw_is_band_member\(band\) AND public\.bw_can_view_event\(ev::uuid\)/);
+  });
+
   it("no policy depends on the event: Realtime's write probe has none", () => {
     expect(sql).not.toMatch(/messages\.event/);
     // 103's policy stays: older builds keep whatever it gives them (nothing, by Realtime's source).

@@ -292,16 +292,23 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     /** Pongs sent per phone lately, and in all: a flood of pings gets a few answers, not one each. */
     const answered = new Map<string, number[]>();
     let allAnswered: number[] = [];
+    /** Pings answered lately, by name and t0: an admin's copy on the other topic isn't answered twice. */
+    const seen = new Map<string, number>();
     /**
      * A bandmate measuring our clock: answer straight away with our time, on
      * the stage topic (admins only), so nobody else can pose as the leader's clock.
      */
-    const answerPing = (raw: unknown) => {
+    const answerPing = (raw: unknown, fromAdmin: boolean) => {
       const p = raw as { from?: unknown; to?: unknown; t0?: unknown } | undefined;
       if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
       const now = nowMs();
+      const ping = `${p.from}|${p.t0}`;
+      if (seen.has(ping)) return;
+      if (seen.size > 4 * ALL_PONGS_PER_WINDOW) for (const [k, t] of seen) if (now - t >= PONG_WINDOW_MS) seen.delete(k);
       allAnswered = allAnswered.filter((t) => now - t < PONG_WINDOW_MS);
-      if (allAnswered.length >= ALL_PONGS_PER_WINDOW) return;
+      // The overall cap is for the clock topic, which any member may write; the
+      // stage topic is admins only (their pings still count per name).
+      if (!fromAdmin && allAnswered.length >= ALL_PONGS_PER_WINDOW) return;
       // Names nobody answered lately are forgotten (at most ALL_PONGS_PER_WINDOW stay).
       if (answered.size > ALL_PONGS_PER_WINDOW)
         for (const [name, times] of answered) if (!times.some((t) => now - t < PONG_WINDOW_MS)) answered.delete(name);
@@ -309,13 +316,25 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (recent.length >= PONGS_PER_WINDOW) return;
       recent.push(now);
       answered.set(p.from, recent);
-      allAnswered.push(now);
+      seen.set(ping, now);
+      if (!fromAdmin) allAnswered.push(now);
       void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
     };
     // Members' pings (migration 191): everyone in the band may write this topic.
     const clock = supabase.channel(stageClockTopic(eventId), { config: { private: true, broadcast: { self: false } } });
     clockRef.current = clock;
-    clock.on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload)).subscribe(() => {});
+    clock
+      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, false))
+      .subscribe((status: string) => {
+        // Joined (or back after a reconnect) with a leader's click running and no
+        // measure yet: the pings sent meanwhile went nowhere, measure again.
+        const running = clickRef.current;
+        if (status !== 'SUBSCRIBED' || !running?.on || running.from === clientId) return;
+        const book = samplesRef.current;
+        if (book.peer === running.from && book.samples.length) return;
+        samplesRef.current = { peer: '', at: 0, samples: [], sent: [] };
+        syncWith(running.from);
+      });
     channel
       .on('broadcast', { event: 'state' }, (msg: { payload?: unknown }) => {
         const state = parseStageState(msg?.payload);
@@ -332,7 +351,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (state) receiveClick(state);
       })
       // An admin's ping (an older app pings here; admins may broadcast on this topic).
-      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload))
+      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, true))
       .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } }) => {
         const p = msg?.payload;
         if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
@@ -394,7 +413,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       void supabase.removeChannel(channel);
       void supabase.removeChannel(clock);
     };
-  }, [live, eventId, clientId, isLeader, receive, receiveClick]);
+  }, [live, eventId, clientId, isLeader, receive, receiveClick, syncWith]);
 
   /**
    * Save the pending order now. `closing`: Stage mode is closing, so only the

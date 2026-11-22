@@ -34,7 +34,8 @@ BEGIN
   IF band IS NULL THEN
     RETURN false;
   END IF;
-  RETURN public.bw_is_band_member(band);
+  -- And may see this gig: a tentative quote is hidden from members off its lineup (111).
+  RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid);
 END;
 $$;
 

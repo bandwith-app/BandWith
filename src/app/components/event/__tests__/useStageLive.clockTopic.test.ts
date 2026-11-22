@@ -8,16 +8,26 @@ import { renderHook, act, waitFor } from '@testing-library/react';
  * member may (191). A broadcast nobody may send is dropped.
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
-type Phone = { topic: string; key: string; handlers: Handler[] };
-const net = vi.hoisted(() => ({ admins: new Set<string>(), log: [] as Array<{ topic: string; event: string; from: string; payload: unknown }> }));
+type Phone = { topic: string; key: string; handlers: Handler[]; joined: boolean };
+const net = vi.hoisted(() => ({
+  admins: new Set<string>(),
+  log: [] as Array<{ topic: string; event: string; from: string; payload: unknown }>,
+  /** Clock channels wait to join (Realtime reconnecting) until `joinClocks()`. */
+  holdClock: false,
+  pending: [] as Array<() => void>,
+}));
 const phones: Phone[] = [];
+const joinClocks = () => {
+  net.holdClock = false;
+  net.pending.splice(0).forEach((f) => f());
+};
 const mayBroadcast = (topic: string, key: string) =>
   topic.startsWith('stage-clock:event:') ? true : topic.startsWith('stage:event:') ? net.admins.has(key) : false;
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     channel: (topic: string, opts: { config: { presence?: { key: string } } }) => {
-      const phone: Phone = { topic, key: opts.config.presence?.key ?? `anon-${phones.length}`, handlers: [] };
+      const phone: Phone = { topic, key: opts.config.presence?.key ?? `anon-${phones.length}`, handlers: [], joined: false };
       phones.push(phone);
       const ch = {
         on(type: string, filter: { event: string }, cb: (msg: unknown) => void) {
@@ -25,7 +35,12 @@ vi.mock('@/lib/supabase', () => ({
           return ch;
         },
         subscribe(cb: (s: string) => void) {
-          cb('SUBSCRIBED');
+          const join = () => {
+            phone.joined = true;
+            cb('SUBSCRIBED');
+          };
+          if (net.holdClock && topic.startsWith('stage-clock:')) net.pending.push(join);
+          else join();
           return ch;
         },
         track: async (meta: { lead?: boolean }) => {
@@ -33,7 +48,7 @@ vi.mock('@/lib/supabase', () => ({
         },
         send: async (m: { event: string; payload: { from?: string } }) => {
           const from = m.payload?.from ?? phone.key;
-          if (!mayBroadcast(topic, from)) return 'error';
+          if (!phone.joined || !mayBroadcast(topic, from)) return 'error';
           net.log.push({ topic, event: m.event, from, payload: m.payload });
           for (const p of phones)
             if (p !== phone && p.topic === topic) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload: m.payload }));
@@ -65,6 +80,8 @@ beforeEach(() => {
   phones.length = 0;
   net.admins.clear();
   net.log = [];
+  net.holdClock = false;
+  net.pending = [];
 });
 
 describe("useStageLive: an ordinary member measures the leader's clock (audit #9)", () => {
@@ -163,5 +180,37 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
         clock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from: `name-${i}`, to: boss, t0: i } }));
     });
     expect(net.log.filter((m) => m.event === PONG_EVENT).length).toBeLessThanOrEqual(40);
+  });
+
+  it("five admins following on both topics don't use up the leader's answers: a musician joining next still gets the clock", async () => {
+    const leader = phone(true);
+    for (let i = 0; i < 5; i++) phone(true);
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await new Promise((r) => setTimeout(r, 700));
+    const late = phone(false);
+    const me = late.result.current.clientId;
+    // The running click reaches the late phone (the leader resends it on presence join).
+    const click = net.log.find((m) => m.event === 'click' && m.topic === 'stage:event:gig-1')!.payload;
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
+    act(() => stage.handlers.filter((h) => h.event === 'click').forEach((h) => h.cb({ payload: click })));
+    await waitFor(() => expect(late.result.current.click.state?.on).toBe(true));
+    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+      timeout: 3000,
+    });
+  });
+
+  it('the clock channel joining late (Realtime reconnecting): the member measures again once it is in', async () => {
+    net.holdClock = true;
+    const leader = phone(true);
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    // The burst goes nowhere meanwhile.
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(net.log.some((m) => m.event === PING_EVENT && m.from === me)).toBe(false);
+    act(() => joinClocks());
+    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+      timeout: 3000,
+    });
   });
 });
