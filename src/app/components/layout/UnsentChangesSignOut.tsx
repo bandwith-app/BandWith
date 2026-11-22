@@ -75,7 +75,8 @@ export const UnsentChangesSignOut: React.FC = () => {
             setRefusedOnly(waitingChanges(userId) + chatMessages === 0);
             refusedAtAsk.current = refusedChanges(userId);
             notesAtAsk.current = refusedRehearsalNotes(userId);
-            setError(again?.cantKeep ? cantKeepRef.current : null);
+            // Unlocked since: "Send now" is back, no unlock to ask for.
+            setError(again?.cantKeep && isAppLockedNow() ? cantKeepRef.current : null);
             setAsk({ userId });
           }),
       ),

@@ -351,6 +351,27 @@ describe('signing out with changes not sent yet', () => {
     expect(auth.signOut).not.toHaveBeenCalled();
   });
 
+  // Round 10 (Claude r9 nit): unlocked between the two asks, the sheet
+  // offers "Send now" again: no "Unlock to send" error under it.
+  it('unlocked before the sheet opens again: Send now, no unlock error', async () => {
+    const refused = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ ...note(`r${i}`), rid: `rid-${i}` })));
+    localStorage.setItem('bw:live_refused:u-a', refused(99));
+    queueLiveOp('u-a', note('n1'));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    auth.beforeSession = () => {
+      auth.beforeSession = null;
+      auth.locked = false;
+      localStorage.setItem('bw:live_refused:u-a', refused(100));
+    };
+    fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    expect(await screen.findByRole('button', { name: /^send now$/i })).toBeTruthy();
+    expect(screen.queryByText(/Unlock to send them before you sign out/)).toBeNull();
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }]);
+  });
+
   it('refused only, from the lock screen: "Sign out" keeps them, no Erase', async () => {
     localStorage.setItem('bw:live_refused:u-a', JSON.stringify([note('r1')]));
     auth.locked = true;

@@ -773,6 +773,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     savedSongs: stageLive.savedSongs,
     pendingOrder: stageLive.pendingOrder,
     clearPendingOrder: stageLive.dropPendingOrder,
+    rebasePendingOrder: stageLive.rebasePendingOrder,
     currentId: stageLive.currentId,
     skipped: stageLive.skipped,
     select: stageLive.select,

@@ -522,6 +522,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // the list since the sheet's check); not all kept: asked again, the
           // sheet says unlock to send. The wipe never deletes what waits.
           if (queuedNotKeptOnSignOut(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
+          // Storage full partway: each change is either kept as refused or stays queued; nothing is lost.
           keepQueuedAsRefused(asked);
           if (waitingChanges(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
         }
