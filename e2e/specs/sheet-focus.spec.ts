@@ -140,3 +140,49 @@ test('@smoke inbox: one dialog over both pages, Tab moves between the list and t
   await cycle(app, inbox, 'Shift+Tab', 3);
   await cycle(app, inbox, 'Tab', 6);
 });
+
+test('@smoke inbox on one page: Tab and Shift+Tab stay in it', async ({ app }) => {
+  await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).first().click();
+  const inbox = app.page.getByRole('dialog', { name: app.t('Notifications'), exact: true });
+  await expect(inbox).toBeVisible();
+  test.skip(!!(await app.page.locator('html[data-bw-two-pane]').count()), 'two pages: covered by the test above');
+  await expect.poll(() => focusInside(inbox), 'focus moves into the inbox').toBe(true);
+  const stops = Math.min(await tabStops(inbox), 30);
+  await cycle(app, inbox, 'Shift+Tab', stops + 2);
+  await cycle(app, inbox, 'Tab', stops + 2);
+});
+
+test('@smoke folding the Duo from book to closed: focus moves into the one-page inbox, never to the bell', async ({ app }) => {
+  const duo = await app.page.evaluate(() => typeof (window as unknown as { __bwApplyRegions?: unknown }).__bwApplyRegions === 'function');
+  test.skip(!duo || !(await app.page.locator('html[data-bw-two-pane]').count()), 'needs the Duo open on two pages');
+  await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).first().click();
+  const inbox = app.page.getByRole('dialog', { name: app.t('Notifications'), exact: true });
+  await expect(inbox).toBeVisible();
+  await expect.poll(() => focusInside(inbox), 'focus moves into the inbox').toBe(true);
+  // Every element that takes focus from here on, outside the inbox.
+  await app.page.evaluate(() => {
+    const w = window as unknown as { __bwOutside: string[] };
+    w.__bwOutside = [];
+    document.addEventListener('focusin', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[role="dialog"][aria-label]') || t.closest('[data-bw-trap-include]') || t.matches('[data-bw-focus-guard]')) return;
+      w.__bwOutside.push(t.getAttribute('aria-label') || t.textContent?.trim().slice(0, 40) || t.tagName);
+    });
+  });
+  // The Duo closes to one screen (the regions the simulator reports closed, portrait).
+  await app.page.setViewportSize({ width: 466, height: 678 });
+  await app.page.evaluate(() =>
+    (window as unknown as { __bwApplyRegions: (r: unknown) => void }).__bwApplyRegions({
+      status: { x: 382, y: 0, w: 84, h: 82, edge: 'right' },
+      division: null,
+      hinge: { status: 'closed', angle: 0 },
+      viewport: { w: 466, h: 678 },
+    }),
+  );
+  await expect(app.page.locator('html[data-bw-two-pane]')).toHaveCount(0);
+  const one = app.page.locator('[role="dialog"][aria-modal="true"].bw-pane-detail');
+  await expect(one).toBeVisible();
+  await expect.poll(() => focusInside(one), 'focus moves into the one-page inbox').toBe(true);
+  expect(await app.page.evaluate(() => (window as unknown as { __bwOutside: string[] }).__bwOutside)).toEqual([]);
+  await cycle(app, one, 'Tab', 4);
+});
