@@ -79,6 +79,8 @@ const air = vi.hoisted(() => ({
   forgotten: [] as string[],
   /** The band key the server hands out now (stageKey). */
   bandKey: '' as string,
+  /** fetchStageKey's answer instead (null: the band key above, from the server). */
+  keyAnswer: null as null | { key: string | null; denied: boolean },
   /** The key a change replaced, kept for the gig day (previousStageKey, #283). */
   prevKey: null as string | null,
   /** The service a phone advertises, when the test sets one (else any scan finds it). */
@@ -166,7 +168,8 @@ vi.mock('@/lib/stageBleNative', () => ({
     stop: vi.fn(async () => {}),
   },
   stageBleAvailable: () => true,
-  stageKey: async () => air.bandKey || KEY,
+  stageKey: async () => (air.keyAnswer ? air.keyAnswer.key : air.bandKey || KEY),
+  fetchStageKey: async () => air.keyAnswer ?? { key: air.bandKey || KEY, denied: false },
   stageVerifyKey: async () => {
     air.verifyCalls++;
     return air.verify;
@@ -234,6 +237,7 @@ beforeEach(async () => {
   air.noPair = false;
   air.forgotten = [];
   air.bandKey = '';
+  air.keyAnswer = null;
   (stageBleHook as { forgetSignedLeaders?: () => void }).forgetSignedLeaders?.();
   stageBleHook.forgetScanStarts();
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -797,6 +801,30 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     hook.unmount();
   }, 20_000);
 
+  it("no band key answer and none kept (offline, storage full): the member keeps following, nothing is forgotten (Claude round 7 on #288)", async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    const links = air.connects.length;
+    air.keyAnswer = { key: null, denied: false };
+    online();
+    await vi.advanceTimersByTimeAsync(3000);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(air.forgotten).toEqual([]);
+    expect(air.connects.length).toBe(links);
+    hook.unmount();
+  }, 20_000);
+
+  it("the server's no on the band key while linked: it stops and the gig's keys go (Claude round 7 on #288)", async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    air.keyAnswer = { key: null, denied: true };
+    online();
+    await waitFor(() => expect(air.forgotten).toContain('gig'), { timeout: 5000 });
+    hook.unmount();
+  }, 20_000);
+
   it('a band key changed on the server: the leader starts again with the new one (Claude on #288)', async () => {
     air.signer = { ...admins, version: 1 };
     const l = leader();
@@ -805,6 +833,10 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     air.bandKey = 'bmV3LWJhbmQta2V5LTMyLWJ5dGVzLWxvbmctZm9yLXRlc3Q=';
     online();
     await waitFor(() => expect(air.started.length).toBeGreaterThan(starts), { timeout: 5000 });
+    // It advertises under the new key's service (signed), not the old one's (Claude round 7 on #288).
+    const newService = await stageServiceUuid(air.bandKey);
+    await waitFor(() => expect(air.started[air.started.length - 1]).toEqual(expect.objectContaining({ serviceUuid: newService })));
+    expect(newService).not.toBe(await stageServiceUuid(KEY));
     l.unmount();
   }, 20_000);
 

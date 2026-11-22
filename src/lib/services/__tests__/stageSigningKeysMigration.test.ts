@@ -61,7 +61,10 @@ describe('190 the stage signing keys', () => {
     // The gig's own row, locked and its band re-checked under the lock (Codex on #288): a move
     // waiting on this call, or committed just before, can't leave a pair on the new band's gig.
     // Before the band's row: a move holds the gig's row and then wants the band's (no cycle).
-    const still = f.search(/PERFORM 1 FROM public\.events e WHERE e\.id = p_event_id AND e\.band_id = band FOR UPDATE;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
+    // FOR SHARE (Claude round 7 on #288): it still conflicts with a move (an UPDATE of the gig row),
+    // and no longer with the foreign-key checks of rows that point at the gig (bw_stage_key's insert).
+    const still = f.search(/PERFORM 1 FROM public\.events e WHERE e\.id = p_event_id AND e\.band_id = band FOR SHARE;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
+    expect(f).not.toMatch(/FROM public\.events e[^;]*FOR UPDATE;/);
     expect(admin).toBeGreaterThan(-1);
     expect(still).toBeGreaterThan(admin);
     expect(band).toBeGreaterThan(still);
@@ -91,7 +94,7 @@ describe('190 the stage signing keys', () => {
     const at = (re: RegExp) => f.search(re);
     const keyShare = at(/FROM public\.bands b WHERE b\.id = band FOR KEY SHARE;/);
     const admin = at(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
-    const gig = at(/e\.band_id = band FOR UPDATE;/);
+    const gig = at(/e\.band_id = band FOR SHARE;/);
     const bandShare = at(/FROM public\.bands b WHERE b\.id = band FOR SHARE;/);
     expect(keyShare).toBeGreaterThan(0);
     expect(keyShare).toBeLessThan(admin);

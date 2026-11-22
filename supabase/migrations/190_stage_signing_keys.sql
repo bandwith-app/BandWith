@@ -181,7 +181,11 @@ BEGIN
   -- Then the gig's own row, and it must still be that band's: a move to
   -- another band in progress makes this wait, and the re-check under the
   -- lock then finds the new band and stores nothing (Codex on #288).
-  PERFORM 1 FROM public.events e WHERE e.id = p_event_id AND e.band_id = band FOR UPDATE;
+  -- FOR SHARE is enough for that (a move updates the row, which conflicts),
+  -- and it doesn't block the foreign-key checks of rows pointing at the gig
+  -- (bw_stage_key's insert below). Two admins storing at once both get it;
+  -- the stage_keys update then lets only the first pair in (Claude round 7).
+  PERFORM 1 FROM public.events e WHERE e.id = p_event_id AND e.band_id = band FOR SHARE;
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;

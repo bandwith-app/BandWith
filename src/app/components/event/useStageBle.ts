@@ -5,6 +5,7 @@ import { App } from '@capacitor/app';
 import {
   STAGE_KEY_EVENT,
   StageBle,
+  fetchStageKey,
   fetchVerifyKey,
   forgetStageKeys,
   keptVerifyKey,
@@ -1296,11 +1297,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       await refreshVerify(true);
       if (cancelled || !key) return;
       // Another band key (someone may no longer see the gig, 191): another service, start again (Claude on #288).
-      const nowKey = await stageKey(gig);
+      // Only the server's no stops it: no answer and nothing kept (offline, storage full) keeps
+      // following with the key in use (Claude round 7 on #288).
+      const { key: nowKey, denied } = await fetchStageKey(gig);
       if (cancelled) return;
-      if (nowKey !== key) {
-        if (nowKey) setAttempt((n) => n + 1);
-        else lose();
+      if (denied) {
+        lose();
+        return;
+      }
+      if (nowKey && nowKey !== key) {
+        setAttempt((n) => n + 1);
         return;
       }
       const id = deviceId;
