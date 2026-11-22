@@ -53,8 +53,8 @@ export async function myCalendarToken(rotate = false): Promise<string | null> {
     cached = { userId, token: data };
     listeners.forEach((l) => l(data));
     if (rotate) {
-      // A new account link starts unmarked (182): nothing left to ask.
-      setReview(userId, false);
+      // A new account link starts unmarked (182): ask the server again.
+      settleReview();
       // It ends the one-event links too (182: they hang off it).
       endEventTokens();
     }
@@ -195,29 +195,39 @@ export function memberEventCalendarUrl(eventToken: string, lang?: string): strin
 // "Add to calendar" links made before 182 carry the account token; the app
 // asks once to make a new link (bw_my_calendar_link_review).
 
-let review: { userId: string; value: Promise<boolean> } | null = null;
+// Never remembered between opens (Codex review #285 round 4): the flag is
+// set and cleared from elsewhere too (an old link used, "Keep my link" on
+// another device), so every open asks the server and the question shows only
+// on that answer. `review` only shares one request in flight; `reviewGen`
+// turns an answer asked for before a keep or a new link into a "no".
+let review: { userId: string; gen: number; value: Promise<boolean> } | null = null;
+let reviewGen = 0;
 const reviewListeners = new Set<(v: boolean) => void>();
-const setReview = (userId: string, v: boolean) => {
-  // Only a "yes" is kept: the flag can be set from elsewhere (an old link
-  // used on another device), so a "no" is asked again (review of #285, round 3).
-  review = v ? { userId, value: Promise.resolve(v) } : null;
-  reviewListeners.forEach((l) => l(v));
+const settleReview = () => {
+  reviewGen += 1;
+  review = null;
+  reviewListeners.forEach((l) => l(false));
+  // Read the server again (it keeps review_kept), never the earlier answer.
+  if (reviewListeners.size) void myCalendarLinkReview().then((v) => reviewListeners.forEach((l) => l(v)), () => undefined);
 };
 
 /** Whether to ask the signed-in user to replace their calendar link. */
 export async function myCalendarLinkReview(): Promise<boolean> {
   const userId = await currentUserId();
   if (!userId) return false;
-  if (review?.userId === userId) return review.value;
+  if (review?.userId === userId && review.gen === reviewGen) return review.value;
+  const gen = reviewGen;
   let value!: Promise<boolean>;
   value = (async () => {
-    const { data, error } = await supabase.rpc('bw_my_calendar_link_review');
-    // Not reached (offline), or "no": not kept, the next check asks again.
-    const yes = !error && data === true;
-    if (!yes && review?.value === value) review = null;
-    return yes;
+    try {
+      const { data, error } = await supabase.rpc('bw_my_calendar_link_review');
+      // Offline or "no": nothing to ask. Asked before a keep or a new link: stale.
+      return !error && data === true && gen === reviewGen;
+    } finally {
+      if (review?.value === value) review = null;
+    }
   })();
-  review = { userId, value };
+  review = { userId, gen, value };
   return value;
 }
 
@@ -227,15 +237,13 @@ export async function keepMyCalendarLink(): Promise<boolean> {
   if (!userId) return false;
   const { error } = await supabase.rpc('bw_my_calendar_link_keep');
   if (error) return false;
-  setReview(userId, false);
+  settleReview();
   return true;
 }
 
 /** A new account link: the old one (and every link made with it) stops. */
 export async function replaceMyCalendarLink(): Promise<boolean> {
   const next = await myCalendarToken(true);
-  const userId = await currentUserId();
-  if (next && userId) setReview(userId, false);
   return !!next;
 }
 
@@ -273,6 +281,8 @@ function forgetAccount() {
   cached = null;
   pending = null;
   review = null;
+  reviewGen += 1;
+  reviewListeners.forEach((l) => l(false));
   listeners.forEach((l) => l(null));
   endEventTokens();
 }

@@ -49,7 +49,7 @@ describe('Settings → Calendar sync', () => {
     expect(rpc.mock.calls.filter(([fn]) => fn === 'bw_my_calendar_token')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Make a new link' }));
     await screen.findByText('New link ready');
-    expect(rpc).toHaveBeenLastCalledWith('bw_my_calendar_token', { p_rotate: true });
+    expect(rpc).toHaveBeenCalledWith('bw_my_calendar_token', { p_rotate: true });
     fireEvent.click(screen.getByRole('button', { name: /Apple Calendar/ }));
     expect(openExternal).toHaveBeenLastCalledWith(expect.stringContaining(`t=${B}`));
   });
@@ -59,7 +59,8 @@ describe('Settings → Calendar sync', () => {
     const C = 'c'.repeat(64);
     let current = A;
     rpc.mockImplementation(async (fn: string, args?: { p_rotate?: boolean }) => {
-      if (fn === 'bw_my_calendar_link_review') return { data: true, error: null };
+      // As 182: a new account link is not marked (the app asks the server again).
+      if (fn === 'bw_my_calendar_link_review') return { data: current === A, error: null };
       if (fn === 'bw_my_calendar_token') {
         if (args?.p_rotate) current = current === A ? B : C;
         return { data: current, error: null };

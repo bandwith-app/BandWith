@@ -10,7 +10,8 @@
 //
 // With /dev/null as the migration, the checks show what was wrong before.
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const [REPO, MIG] = process.argv.slice(2);
 const db = new PGlite();
@@ -36,7 +37,7 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
 
-CREATE TABLE public.profiles (id uuid PRIMARY KEY, preferred_language varchar);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY, preferred_language varchar, full_name text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
 CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, user_id uuid, role text,
   is_active boolean DEFAULT true, left_at timestamptz);
@@ -76,9 +77,14 @@ const fn = (src, name) => {
 };
 const m084 = readFileSync(`${REPO}/supabase/migrations/084_deputy_requests.sql`, 'utf8');
 const m087 = readFileSync(`${REPO}/supabase/migrations/087_deputy_unlink.sql`, 'utf8');
+const m086 = readFileSync(`${REPO}/supabase/migrations/086_deputy_in_app.sql`, 'utf8');
 await db.exec(readFileSync(`${REPO}/supabase/migrations/165_member_calendar.sql`, 'utf8'));
 for (const name of ['bw_deputy_event_snapshot', 'bw_deputy_request_view', 'bw_deputy_request_reply', 'bw_deputy_feed']) await db.exec(fn(m084, name));
 await db.exec(fn(m087, 'bw_deputy_unlink'));
+await db.exec(`CREATE FUNCTION public.bw_notify(p_users uuid[], p_band uuid, p_type text, p_title text, p_body text, p_data jsonb, p_ref uuid, p_ref_type text)
+  RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$;`);
+await db.exec(fn(m086, 'bw_deputy_claim'));
+await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_claim(text) TO authenticated;`);
 await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_request_view(text), public.bw_deputy_request_reply(text, text, text),
   public.bw_deputy_feed(text) TO anon, authenticated; GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;`);
 
@@ -217,7 +223,9 @@ await check('Claude #1: unlink of a deputy with no account still rotates every k
   const r = (await one(`SELECT public.bw_deputy_unlink($1) AS r`, [DEPUTY2])).r;
   await db.exec('RESET ROLE');
   const after = [await tok(RD), await col(RD, 'calendar_token'), await col(RD, 'gig_calendar_token')];
-  return r === 'not_linked' && before.every((t, i) => t !== after[i]);
+  // 'revoked' (round 4): the app can tell it from a server before 182,
+  // which answers 'not_linked' without rotating anything.
+  return r === 'revoked' && before.every((t, i) => t !== after[i]);
 });
 
 console.log('-- review round 2 (PR #285)');
@@ -450,6 +458,137 @@ await check('the account feed is unchanged: every event the member sees', async 
   const f = (await one(`SELECT public.bw_member_calendar_feed($1) AS f`, [t])).f;
   return f.events.map((e) => e.id).sort().join() === [EV, EV2, EV_REH].sort().join();
 });
+
+console.log('-- review round 4 (PR #285)');
+const [EV_R4, EV_R4OLD, DEPUTY3, R41, R42] = [40, 41, 42, 43, 44].map(id);
+const NEWBIE = id(45);
+await q(`INSERT INTO auth.users VALUES ($1)`, [NEWBIE]);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, recurrence_rule, created_by, fee) VALUES
+  ($1, $3, 'US spelling', 'gig', 'confirmed', current_date + 12, '20:00', 'Spelling Hall', 'Queens', '4 Spelling St', false, NULL, $4, 1),
+  ($2, $3, 'Old weekly', 'rehearsal', 'confirmed', current_date - 70, '19:00', 'Studio C', 'Queens', NULL, true, '{"frequency":"weekly","interval":1}', $4, 0)`,
+  [EV_R4, EV_R4OLD, BAND, ADMIN]);
+await q(`INSERT INTO event_members (event_id, user_id, status) VALUES ($1, $2, 'confirmed')`, [EV_R4OLD, MEM]);
+await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Max', NULL)`, [DEPUTY3, BAND]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status, answer_snapshot) VALUES
+  ($1, $3, $4, $5, 'Max', 'Drums', 'available', '{}'), ($2, $3, $6, $5, 'Max', 'Drums', 'available', '{}')`, [R41, R42, BAND, EV_R4, DEPUTY3, EV]);
+
+await check("B3: 'canceled' (US spelling) hides the address like 'cancelled', in the page, the feed and the file", async () => {
+  await q(`UPDATE events SET status = 'Canceled' WHERE id = $1`, [EV_R4]);
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(R41)])).v;
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(R41, 'calendar_token')])).f;
+  const g = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(R41, 'gig_calendar_token')])).g;
+  const fg = f?.gigs?.find((x) => x.id === R41);
+  const gg = g?.gigs?.[0] ?? g?.gig ?? g;
+  return v.venue_address == null && v.event_cancelled === true && v.closed === true
+    && fg && fg.venue_address == null && fg.cancelled === true
+    && gg && gg.venue_address == null && gg.cancelled === true;
+});
+await check('B3: one helper decides it, on lower(status::text)', async () => {
+  const r = await one(`SELECT public.bw_event_status_cancelled('cancelled') AS a, public.bw_event_status_cancelled('CANCELED') AS b,
+    public.bw_event_status_cancelled('confirmed') AS c, public.bw_event_status_cancelled(NULL) AS d`);
+  return r.a === true && r.b === true && r.c === false && r.d === false;
+});
+await check('B1: a claim locks the deputy before it checks the token', async () => {
+  const src = (await one(`SELECT pg_get_functiondef('public.bw_deputy_claim(text)'::regprocedure) AS s`)).s;
+  const lock = src.search(/FROM public\.band_deputies[^;]*FOR UPDATE/);
+  const recheck = src.slice(lock).search(/FROM public\.deputy_requests[^;]*token = p_token/);
+  return lock > 0 && recheck > 0;
+});
+await check('B1: a token rotated by "Revoke sent links" can no longer link an account', async () => {
+  const old = await tok(R42);
+  await as(ADMIN);
+  await q(`SELECT public.bw_deputy_unlink($1)`, [DEPUTY3]);
+  await as(NEWBIE);
+  const r1 = (await one(`SELECT public.bw_deputy_claim($1) AS r`, [old])).r;
+  await db.exec('RESET ROLE');
+  const linked1 = (await one(`SELECT user_id FROM band_deputies WHERE id = $1`, [DEPUTY3])).user_id;
+  await as(NEWBIE);
+  const r2 = (await one(`SELECT public.bw_deputy_claim($1) AS r`, [await tok(R42)])).r;
+  await db.exec('RESET ROLE');
+  const linked2 = (await one(`SELECT user_id FROM band_deputies WHERE id = $1`, [DEPUTY3])).user_id;
+  await q(`UPDATE band_deputies SET user_id = NULL WHERE id = $1`, [DEPUTY3]);
+  return r1.status === 'not_found' && linked1 === null && r2.status === 'linked' && linked2 === NEWBIE;
+});
+await check('Claude: deleting a deputy ends its reply, calendar and gig-file links first', async () => {
+  const before = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];
+  await q(`DELETE FROM band_deputies WHERE id = $1`, [DEPUTY3]);
+  const after = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];
+  const page = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [before[0]])).v;
+  const feed = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [before[1]])).f;
+  return before.every((t, i) => t !== after[i]) && page === null && (feed === null || (feed.gigs ?? []).length === 0);
+});
+await check('Claude 182:483: a series opened without a date (first date 70 days ago) gets its next date', async () => {
+  const t1 = await evTok(MEM, EV_R4OLD, null);
+  const first = (await one(`SELECT (current_date - 70)::text AS d`)).d;
+  const t2 = await evTok(MEM, EV_R4OLD, first);
+  const l1 = t1 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t1])).l;
+  const l2 = t2 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t2])).l;
+  const today = (await one(`SELECT current_date::text AS d`)).d;
+  const next = l1?.event?.event_date;
+  return /^[0-9a-f]{64}$/.test(t1 ?? '') && next >= today && next < (await one(`SELECT (current_date + 7)::text AS d`)).d
+    && l2?.event?.event_date === next;
+});
+await check('next date skips a deleted one (skip_dates)', async () => {
+  const nxt = (await one(`SELECT public.bw_calendar_next_occurrence('{"frequency":"weekly"}'::jsonb, current_date - 70, current_date)::text AS d`)).d;
+  const skip = JSON.stringify({ frequency: 'weekly', skip_dates: [nxt] });
+  const after = (await one(`SELECT public.bw_calendar_next_occurrence($1::jsonb, current_date - 70, current_date)::text AS d`, [skip])).d;
+  const ended = (await one(`SELECT public.bw_calendar_next_occurrence('{"frequency":"weekly","until":"2000-01-01"}'::jsonb, current_date - 70, current_date) AS d`)).d;
+  return after > nxt && ended === null;
+});
+
+console.log('-- #294: a gig reverted to a private quote (178)');
+const [EV_Q, DEPUTY4, RQ] = [50, 51, 52].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
+  ($1, $2, 'Wedding at the Pier', 'gig', 'confirmed', current_date + 15, '18:00', 'Pier House', 'Hoboken', '1 Pier Rd', false, $3, 5000)`, [EV_Q, BAND, ADMIN]);
+await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Rita', NULL)`, [DEPUTY4, BAND]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status, answer_snapshot) VALUES
+  ($1, $2, $3, $4, 'Rita', 'Sax', 'available', '{}')`, [RQ, BAND, EV_Q, DEPUTY4]);
+await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_Q]); // back to a quote
+const quoteViews = async () => ({
+  view: (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RQ)])).v,
+  feed: (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RQ, 'calendar_token')])).f,
+  file: (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(RQ, 'gig_calendar_token')])).g,
+  old: (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await col(RQ, 'calendar_token')])).f,
+});
+await check('without 178 (not applied yet): today\'s behaviour, the gig is still shown', async () => {
+  const r = await quoteViews();
+  return r.view?.event_title === 'Wedding at the Pier' && r.feed.gigs.some((g) => g.id === RQ)
+    && r.file.gigs.length === 1 && r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
+});
+// 178's helpers, from #294's branch head (or the repo once merged).
+let m178 = null;
+try {
+  m178 = execSync('git show origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql', { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+} catch {
+  const local = `${REPO}/supabase/migrations/178_date_on_hold.sql`;
+  m178 = existsSync(local) ? readFileSync(local, 'utf8') : null;
+}
+const m111 = readFileSync(`${REPO}/supabase/migrations/111_quote_events_private.sql`, 'utf8');
+if (!m178) {
+  fails++;
+  console.log('FAIL 178 not found (origin/feat/date-on-hold or the repo)');
+} else {
+  await db.exec(`CREATE TABLE IF NOT EXISTS public.event_date_holds (event_id uuid PRIMARY KEY, band_id uuid, release_reason text, confirmed_once_at timestamptz);
+    CREATE TABLE IF NOT EXISTS public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), converted_to_event_id uuid, status text);`);
+  await db.exec(fn(m111, 'bw_event_is_quote'));
+  for (const name of ['bw_event_quote_private', 'bw_event_deputy_hidden']) await db.exec(fn(m178, name));
+  await check('with 178: a gig reverted to a quote is hidden from an existing deputy in all four', async () => {
+    const r = await quoteViews();
+    return r.view && r.view.closed === true && r.view.event_title === null && r.view.venue_address === null && r.view.event_date === null
+      && !r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 0
+      && !r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
+  });
+  await check('with 178: confirmed again, it is back', async () => {
+    await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);
+    const r = await quoteViews();
+    return r.view?.event_title === 'Wedding at the Pier' && r.view.closed === false && r.view.venue_address === '1 Pier Rd'
+      && r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 1;
+  });
+  await check('with 178: rehearsals and other gigs are untouched', async () => {
+    const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
+    return f.gigs.some((g) => g.id === RA);
+  });
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

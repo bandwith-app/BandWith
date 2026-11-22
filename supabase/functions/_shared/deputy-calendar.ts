@@ -177,8 +177,12 @@ export function gigEvent(
  * Mar 30), where a plain FREQ=MONTHLY skips that month. BYMONTHDAY=28..day
  * with BYSETPOS=-1 is the latest of those days the month has: the day itself,
  * else the month's last day.
+ *
+ * UNTIL takes DTSTART's value type (RFC 5545 3.3.10; Claude review of #285,
+ * round 4): a date for an all-day series, else a local date-time (these
+ * files are floating, no TZID) at the end of the last day.
  */
-export function recurrenceRule(rule: unknown, start?: string | null): string | null {
+export function recurrenceRule(rule: unknown, start?: string | null, opts: { timed?: boolean } = {}): string | null {
   if (!rule || typeof rule !== 'object') return null;
   const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
   const freq = String(r.freq ?? r.frequency ?? '').toLowerCase();
@@ -196,7 +200,7 @@ export function recurrenceRule(rule: unknown, start?: string | null): string | n
   }
   const until = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof r.until === 'string' ? r.until : '');
   const count = Number(r.count);
-  if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}`);
+  if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}${opts.timed ? 'T235959' : ''}`);
   else if (Number.isInteger(count) && count >= 1 && count <= 1000) parts.push(`COUNT=${count + 1}`);
   return parts.join(';');
 }
@@ -388,7 +392,8 @@ export function memberFeedCalendar(
   if (one && chosen.length === 0) return null;
   const events: string[][] = [];
   for (const e of chosen) {
-    const rrule = recurrenceRule(e.recurrence, e.event_date);
+    const timed = !gigWindow({ title: '', bandName: '', date: e.event_date as string, loadIn: e.load_in_time, soundcheck: e.soundcheck_time, start: e.start_time, end: e.end_time }).allDay;
+    const rrule = recurrenceRule(e.recurrence, e.event_date, { timed });
     let occ = one && opts.occurrence ? opts.occurrence : null;
     if (occ && rrule) {
       if (!isOccurrence(e.recurrence, e.event_date as string, occ)) return null;

@@ -33,7 +33,18 @@
 --     rules, also takes the calendar token, and returns no token at all, so
 --     the old function writes no credential either.
 --   - bw_deputy_unlink (087) rotates all three keys, also for a deputy with
---     no account (it used to stop at 'not_linked' before rotating).
+--     no account ("Revoke sent links"), then answers 'revoked' (087 answered
+--     'not_linked' without rotating; older builds only call it for linked
+--     deputies, which still get 'unlinked').
+--   - bw_deputy_claim (086) locks the deputy before it trusts the token, so a
+--     claim waiting on an unlink or a revoke can't link with the old token.
+--   - Deleting a deputy rotates their requests' keys first (trigger; older
+--     builds delete the row directly).
+--   - A cancelled event in either spelling ('cancelled', 'canceled', any
+--     case): bw_event_status_cancelled, used by every check here.
+--   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden,
+--     looked up at run time: 182 also works without 178): out of both
+--     calendars and the old feed, and the reply page closed, without detail.
 --   Replies on a withdrawn (cancelled) request were already refused (084:
 --   'closed'); unchanged.
 --
@@ -47,7 +58,9 @@
 --     date must be a real date of the series, from 60 days back to two
 --     years ahead; at most 500 links per account (the oldest go).
 --   - bw_my_event_calendar_token(event, date): the signed-in user's token for
---     one event their calendar shows (same rule as the feed), else NULL.
+--     one event their calendar shows (same rule as the feed), else NULL. A
+--     series asked without a date, or at its first date once that is past,
+--     gets its next date from today (bw_calendar_next_occurrence).
 --   - bw_member_event_calendar(token): that one event as a single date, never
 --     the series rule or start; NULL once the user no longer sees it or the
 --     date is no longer in the series.
@@ -128,6 +141,40 @@ DROP TRIGGER IF EXISTS bw_deputy_request_was_available ON public.deputy_requests
 CREATE TRIGGER bw_deputy_request_was_available BEFORE INSERT OR UPDATE OF status ON public.deputy_requests
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_deputy_request_was_available();
 
+-- A cancelled event, in either spelling and any case (Codex review #285
+-- round 4): every check below goes through this one.
+CREATE OR REPLACE FUNCTION public.bw_event_status_cancelled(p_status text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT coalesce(lower(btrim(p_status)) IN ('cancelled', 'canceled'), false);
+$$;
+GRANT EXECUTE ON FUNCTION public.bw_event_status_cancelled(text) TO anon, authenticated;
+
+-- A gig reverted to a private quote shows a deputy nothing (#294's 178,
+-- bw_event_deputy_hidden). 182 also runs without 178: then nothing is hidden,
+-- as before. Looked up at run time, so the order of the two doesn't matter.
+CREATE OR REPLACE FUNCTION public.bw_deputy_gig_hidden(p_event_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v boolean;
+BEGIN
+  IF p_event_id IS NULL OR to_regprocedure('public.bw_event_deputy_hidden(uuid)') IS NULL THEN
+    RETURN false;
+  END IF;
+  EXECUTE 'SELECT public.bw_event_deputy_hidden($1)' INTO v USING p_event_id;
+  RETURN coalesce(v, false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_gig_hidden(uuid) FROM PUBLIC, anon, authenticated;
+
 -- -------------------------------------------- the reply page (084 + keys) --
 
 CREATE OR REPLACE FUNCTION public.bw_deputy_request_view(p_token text)
@@ -145,12 +192,13 @@ DECLARE
   v_changes jsonb := '[]'::jsonb;
   v_before jsonb := '{}'::jsonb;
   v_cancelled boolean;
+  v_hidden boolean;
   k text;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
-         coalesce(e.status, '') = 'cancelled'
-    INTO v_snap, v_status, v_now, v_cancelled
+         public.bw_event_status_cancelled(e.status::text), public.bw_deputy_gig_hidden(r.event_id)
+    INTO v_snap, v_status, v_now, v_cancelled, v_hidden
     FROM public.deputy_requests r
     JOIN public.events e ON e.id = r.event_id
    WHERE r.token = p_token;
@@ -158,7 +206,7 @@ BEGIN
   -- yes (before that they never saw it), and never once the gig is
   -- cancelled (review of #285, round 3: neither the old nor the new one).
   -- An address the band cleared shows as changed, without the old one.
-  IF v_snap IS NOT NULL AND v_status IN ('available', 'maybe') THEN
+  IF v_snap IS NOT NULL AND v_status IN ('available', 'maybe') AND NOT coalesce(v_hidden, false) THEN
     FOREACH k IN ARRAY ARRAY['date', 'load_in', 'soundcheck', 'start', 'end', 'venue', 'city', 'address'] LOOP
       CONTINUE WHEN k = 'address' AND (v_status <> 'available' OR v_cancelled);
       IF (v_snap->>k) IS DISTINCT FROM (v_now->>k) THEN
@@ -189,8 +237,8 @@ BEGIN
            'venue_city', e.venue_city,
            -- The street address only after they said yes, and while the
            -- gig is on (review of #285, round 2).
-           'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
-           'event_cancelled', coalesce(e.status, '') = 'cancelled',
+           'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
+           'event_cancelled', public.bw_event_status_cancelled(e.status::text),
            'event_updated_at', e.updated_at,
            'changes', v_changes,
            'before', v_before,
@@ -199,7 +247,7 @@ BEGIN
            'calendar_token', r.calendar_token,
            'gig_calendar_token', r.gig_calendar_token,
            -- A day of slack for time zones.
-           'closed', r.status = 'cancelled' OR coalesce(e.status, '') = 'cancelled'
+           'closed', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text)
                      OR coalesce(e.event_date, e.date) < current_date - 1
          )
     INTO v
@@ -207,6 +255,14 @@ BEGIN
     JOIN public.events e ON e.id = r.event_id
     JOIN public.bands b ON b.id = r.band_id
    WHERE r.token = p_token;
+  -- Reverted to a private quote (178): closed, and no detail of the gig.
+  IF v IS NOT NULL AND coalesce(v_hidden, false) THEN
+    v := v || jsonb_build_object(
+      'event_title', NULL, 'event_type', NULL, 'event_date', NULL, 'start_time', NULL, 'end_time', NULL,
+      'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
+      'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
+      'closed', true);
+  END IF;
   RETURN v;
 END;
 $$;
@@ -241,7 +297,7 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object(
                'id', r.id,
                'mine', r.id = v_req.id,
-               'cancelled', r.status = 'cancelled' OR coalesce(e.status, '') = 'cancelled',
+               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text),
                'role', r.role,
                'event_title', e.title,
                'event_date', coalesce(e.event_date, e.date),
@@ -254,7 +310,7 @@ BEGIN
                -- The street address only while they are on it and the gig is
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
-               'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
+               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
                'updated_at', greatest(e.updated_at, r.updated_at)
              ) ORDER BY coalesce(e.event_date, e.date))
         FROM public.deputy_requests r
@@ -263,6 +319,7 @@ BEGIN
          AND (r.id = v_req.id OR (v_req.deputy_id IS NOT NULL AND r.deputy_id = v_req.deputy_id))
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
          AND coalesce(e.event_date, e.date) >= current_date - 60
+         AND NOT public.bw_deputy_gig_hidden(e.id)
     ), '[]'::jsonb)
   );
 END;
@@ -290,7 +347,7 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object(
                'id', r.id,
                'mine', r.id = v_req.id,
-               'cancelled', r.status = 'cancelled' OR coalesce(e.status, '') = 'cancelled',
+               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text),
                'role', r.role,
                'event_title', e.title,
                'event_date', coalesce(e.event_date, e.date),
@@ -303,7 +360,7 @@ BEGIN
                -- The street address only while they are on it and the gig is
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
-               'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
+               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
                'updated_at', greatest(e.updated_at, r.updated_at)
              ))
         FROM public.deputy_requests r
@@ -311,6 +368,7 @@ BEGIN
        WHERE r.id = v_req.id
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
          AND coalesce(e.event_date, e.date) >= current_date - 60
+         AND NOT public.bw_deputy_gig_hidden(e.id)
     ), '[]'::jsonb)
   );
 END;
@@ -367,8 +425,10 @@ BEGIN
          gig_calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
    WHERE r.deputy_id = v_dep.id;
 
+  -- No account: the links are new now. 'revoked', not 087's 'not_linked'
+  -- (which rotated nothing), so the app can tell (review of #285, round 4).
   IF v_dep.user_id IS NULL THEN
-    RETURN 'not_linked';
+    RETURN 'revoked';
   END IF;
   UPDATE public.band_deputies SET user_id = NULL, updated_at = now() WHERE id = v_dep.id;
   RETURN 'unlinked';
@@ -376,6 +436,101 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_deputy_unlink(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;
+
+-- 086's claim, with the lock taken before the token is trusted.
+CREATE OR REPLACE FUNCTION public.bw_deputy_claim(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_req public.deputy_requests;
+  v_dep public.band_deputies;
+  v_band text;
+  v_title text;
+  v_who text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
+  END IF;
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  SELECT * INTO v_req FROM public.deputy_requests WHERE token = p_token;
+  IF v_req.id IS NULL OR v_req.deputy_id IS NULL THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  -- The deputy first, then the token again (review of #285, round 4): a
+  -- "Revoke sent links" or an unlink holding this lock rotates the tokens,
+  -- and a claim that waited for it must not link with the old one.
+  SELECT * INTO v_dep FROM public.band_deputies WHERE id = v_req.deputy_id FOR UPDATE;
+  IF v_dep.id IS NULL THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  SELECT * INTO v_req FROM public.deputy_requests WHERE token = p_token AND deputy_id = v_dep.id;
+  IF v_req.id IS NULL THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  SELECT b.name INTO v_band FROM public.bands b WHERE b.id = v_dep.band_id;
+
+  IF v_dep.user_id = v_uid THEN
+    RETURN jsonb_build_object('status', 'already', 'band_name', v_band, 'deputy_name', v_dep.name);
+  END IF;
+  IF v_dep.user_id IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'taken', 'band_name', v_band);
+  END IF;
+  -- A band member opening the link (an admin trying it) is not the deputy.
+  IF EXISTS (SELECT 1 FROM public.band_members bm
+              WHERE bm.band_id = v_dep.band_id AND bm.user_id = v_uid AND coalesce(bm.is_active, true)) THEN
+    RETURN jsonb_build_object('status', 'member', 'band_name', v_band);
+  END IF;
+
+  UPDATE public.band_deputies SET user_id = v_uid, updated_at = now() WHERE id = v_dep.id;
+
+  SELECT nullif(btrim(p.full_name), '') INTO v_who FROM public.profiles p WHERE p.id = v_uid;
+  SELECT e.title INTO v_title FROM public.events e WHERE e.id = v_req.event_id;
+  PERFORM public.bw_notify(
+    ARRAY(SELECT bm.user_id FROM public.band_members bm
+           WHERE bm.band_id = v_dep.band_id AND bm.role = 'admin' AND coalesce(bm.is_active, true)),
+    v_dep.band_id, 'deputy_joined',
+    v_dep.name || ' is on BandWith',
+    'From now on you can ask them in the app.' || coalesce(' Account: ' || v_who || '.', ''),
+    jsonb_build_object('deputy_id', v_dep.id, 'deputy_name', v_dep.name, 'account_name', v_who,
+                       'event_id', v_req.event_id, 'eventTitle', v_title),
+    v_dep.id, 'band_deputy'
+  );
+
+  RETURN jsonb_build_object('status', 'linked', 'band_name', v_band, 'deputy_name', v_dep.name);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_claim(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_claim(text) TO authenticated;
+
+-- Deleting a deputy ends their links first (Claude review of #285, round 4):
+-- the requests stay (deputy_id becomes NULL), and their reply, calendar and
+-- gig-file keys would keep showing the gig and its address. Also for older
+-- builds, which delete the row directly.
+CREATE OR REPLACE FUNCTION public.bw_trg_band_deputy_delete_rotate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.deputy_requests r
+     SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+         calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+         gig_calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
+   WHERE r.deputy_id = OLD.id;
+  RETURN OLD;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_band_deputy_delete_rotate() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_band_deputy_delete_rotate ON public.band_deputies;
+CREATE TRIGGER bw_band_deputy_delete_rotate BEFORE DELETE ON public.band_deputies
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_deputy_delete_rotate();
 
 -- ------------------------------------------------ one event, for members --
 
@@ -385,8 +540,13 @@ GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;
 --   - a date the band deleted (recurrence_rule.skip_dates, #297) is none;
 --   - monthly repeats count from the first date and fall on the last day of
 --     a shorter month (Jan 31 -> Feb 28 -> Mar 31, #298), never run over.
-CREATE OR REPLACE FUNCTION public.bw_calendar_is_occurrence(p_rule jsonb, p_start date, p_date date)
-RETURNS boolean
+-- The first date of a series on or after p_from (the app's rule, as
+-- src/lib/recurrence.ts: weekly / biweekly / monthly by interval, counted
+-- from the first date; a monthly date the month doesn't have is its last
+-- day; deleted dates (skip_dates) skipped; until and count kept). NULL when
+-- the series has none left.
+CREATE OR REPLACE FUNCTION public.bw_calendar_next_occurrence(p_rule jsonb, p_start date, p_from date)
+RETURNS date
 LANGUAGE plpgsql
 IMMUTABLE
 SET search_path = public
@@ -396,36 +556,42 @@ DECLARE
   v_every int := 1;
   v_count int := 1000;
   v_until text;
-  v_cur date := p_start;
+  v_skip jsonb;
+  v_cur date;
   v_day int := extract(day FROM p_start)::int;
   v_month date;
-  v_d text;
-  v_target text := to_char(p_date, 'YYYY-MM-DD');
 BEGIN
-  IF p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' OR p_start IS NULL OR p_date IS NULL THEN RETURN false; END IF;
+  IF p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' OR p_start IS NULL OR p_from IS NULL THEN RETURN NULL; END IF;
   v_freq := lower(coalesce(p_rule->>'freq', p_rule->>'frequency', ''));
-  IF v_freq NOT IN ('weekly', 'biweekly', 'monthly') THEN RETURN false; END IF;
-  IF jsonb_typeof(p_rule->'skip_dates') = 'array' AND (p_rule->'skip_dates') ? v_target THEN RETURN false; END IF;
-  IF p_date = p_start THEN RETURN true; END IF;
+  IF v_freq NOT IN ('weekly', 'biweekly', 'monthly') THEN RETURN NULL; END IF;
+  v_skip := CASE WHEN jsonb_typeof(p_rule->'skip_dates') = 'array' THEN p_rule->'skip_dates' ELSE '[]'::jsonb END;
   IF (p_rule->>'interval') ~ '^\d{1,2}$' AND (p_rule->>'interval')::int BETWEEN 1 AND 52 THEN v_every := (p_rule->>'interval')::int; END IF;
   IF (p_rule->>'count') ~ '^\d{1,4}$' AND (p_rule->>'count')::int BETWEEN 1 AND 1000 THEN v_count := (p_rule->>'count')::int; END IF;
   v_until := substring(coalesce(p_rule->>'until', '') FROM '^(\d{4}-\d{2}-\d{2})');
-  FOR i IN 1..v_count LOOP
-    IF v_freq = 'weekly' THEN v_cur := v_cur + 7 * v_every;
-    ELSIF v_freq = 'biweekly' THEN v_cur := v_cur + 14;
+  FOR i IN 0..v_count LOOP
+    IF i = 0 THEN v_cur := p_start;
+    ELSIF v_freq = 'weekly' THEN v_cur := p_start + 7 * v_every * i;
+    ELSIF v_freq = 'biweekly' THEN v_cur := p_start + 14 * i;
     ELSE
-      -- The first date's day number, `every * i` months on; a month without
-      -- it gets its last day.
       v_month := (date_trunc('month', p_start) + make_interval(months => v_every * i))::date;
       v_cur := v_month + (least(v_day, extract(day FROM (v_month + interval '1 month - 1 day'))::int) - 1);
     END IF;
-    v_d := to_char(v_cur, 'YYYY-MM-DD');
-    IF v_until IS NOT NULL AND v_d > v_until THEN RETURN false; END IF;
-    IF v_d = v_target THEN RETURN true; END IF;
-    IF v_d > v_target THEN RETURN false; END IF;
+    IF i > 0 AND v_until IS NOT NULL AND to_char(v_cur, 'YYYY-MM-DD') > v_until THEN RETURN NULL; END IF;
+    IF v_cur >= p_from AND NOT (v_skip ? to_char(v_cur, 'YYYY-MM-DD')) THEN RETURN v_cur; END IF;
   END LOOP;
-  RETURN false;
+  RETURN NULL;
 END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_calendar_next_occurrence(jsonb, date, date) FROM PUBLIC, anon, authenticated;
+
+-- One of the series' real dates: the first one on or after it is itself.
+CREATE OR REPLACE FUNCTION public.bw_calendar_is_occurrence(p_rule jsonb, p_start date, p_date date)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT p_date IS NOT NULL AND public.bw_calendar_next_occurrence(p_rule, p_start, p_date) IS NOT DISTINCT FROM p_date;
 $$;
 REVOKE ALL ON FUNCTION public.bw_calendar_is_occurrence(jsonb, date, date) FROM PUBLIC, anon, authenticated;
 
@@ -462,6 +628,7 @@ DECLARE
   v_feed text;
   v_event jsonb;
   v_occ date;
+  v_start date;
   v_token text;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
@@ -480,7 +647,14 @@ BEGIN
   -- The date matters only for a repeating event: one of its real dates,
   -- from 60 days back to two years ahead.
   IF jsonb_typeof(v_event->'recurrence') = 'object' THEN
-    v_occ := coalesce(p_date, (v_event->>'event_date')::date);
+    v_start := (v_event->>'event_date')::date;
+    v_occ := p_date;
+    -- Opened without a date (a notification, a link), which shows the
+    -- series at its first date: the next date from today instead, also when
+    -- that first date is long past (Claude review of #285, round 4).
+    IF v_occ IS NULL OR (v_occ = v_start AND v_start < current_date) THEN
+      v_occ := coalesce(public.bw_calendar_next_occurrence(v_event->'recurrence', v_start, current_date), v_start);
+    END IF;
     IF v_occ < current_date - 60 OR v_occ > current_date + 730
        OR NOT public.bw_calendar_is_occurrence(v_event->'recurrence', (v_event->>'event_date')::date, v_occ) THEN
       RETURN NULL;

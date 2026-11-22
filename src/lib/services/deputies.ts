@@ -250,7 +250,9 @@ export async function pingDeputyRequest(requestId: string) {
  */
 export async function unlinkDeputy(deputyId: string) {
   const { data, error } = await supabase.rpc('bw_deputy_unlink', { p_deputy_id: deputyId });
-  return { data: (data as 'unlinked' | 'not_linked' | null) ?? null, error };
+  // 'revoked' (182): no account, the links were rotated; 'not_linked': a
+  // server before 182, nothing changed.
+  return { data: (data as 'unlinked' | 'revoked' | 'not_linked' | null) ?? null, error };
 }
 
 export type DeputyClaimStatus = 'linked' | 'already' | 'taken' | 'member' | 'not_found';

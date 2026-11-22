@@ -134,14 +134,20 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
   const revoke = async () => {
     if (!editing || editing === 'new') return;
     setSaving(true);
-    const { error: e } = await unlinkDeputy(editing.id);
+    const { data, error: e } = await unlinkDeputy(editing.id);
     setSaving(false);
-    if (e) {
+    // Only 182 rotates the links of a deputy without an account, and says
+    // 'revoked'; a server before it answers 'not_linked' and changes nothing
+    // (Codex review #285 round 4). 'unlinked': they had just joined, and the
+    // same call also ended their links.
+    if (e || (data !== 'revoked' && data !== 'unlinked')) {
       setError(t('Could not revoke the links. Try again.'));
       return;
     }
+    if (data === 'unlinked') setEditing({ ...editing, user_id: null });
     setConfirm(null);
     setNotice(t('Links revoked. The next request you send carries a new one.'));
+    if (data === 'unlinked') void load();
   };
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));

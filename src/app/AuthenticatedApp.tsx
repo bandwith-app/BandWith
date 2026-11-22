@@ -1,5 +1,4 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
-import { atOccurrence } from '@/lib/eventOccurrence';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -1155,7 +1154,7 @@ export default function AuthenticatedApp() {
     item.band_name = row.band_id ? bands[row.band_id] : t('Personal');
     handleEventCardClickRef.current(item);
   }, []);
-  const navigateToEvent = useCallback(async (eventDbId: string, occurrence?: string) => {
+  const navigateToEvent = useCallback(async (eventDbId: string) => {
     // One pane: closing the gig goes back to the tab it was opened from
     // (Home's "Review payouts", a notification) instead of the calendar.
     const from = activeTabRef.current;
@@ -1166,8 +1165,7 @@ export default function AuthenticatedApp() {
     setTimeout(async () => {
       const ev = eventsRef.current.find(e => e.eventId === eventDbId);
       if (ev) {
-        // A later date of a series (Home's Upcoming): that date, not the first.
-        handleEventCardClickRef.current(atOccurrence(ev, occurrence));
+        handleEventCardClickRef.current(ev);
       } else {
         // No signal ("Go live" at a venue): open the event from its live
         // pack instead of fetching the list (plan §3.4).
@@ -1190,7 +1188,7 @@ export default function AuthenticatedApp() {
         }
         setTimeout(() => {
           const evRetry = eventsRef.current.find(e => e.eventId === eventDbId);
-          if (evRetry) handleEventCardClickRef.current(atOccurrence(evRetry, occurrence));
+          if (evRetry) handleEventCardClickRef.current(evRetry);
           else
             void explainMissingEvent(eventDbId).catch((err: any) =>
               setEventLoadError({ id: eventDbId, kind: 'error', message: err?.message }),

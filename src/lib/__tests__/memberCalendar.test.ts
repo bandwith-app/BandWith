@@ -23,6 +23,7 @@ import {
   googleSubscribeUrl,
   memberCalendarUrl,
   memberEventCalendarUrl,
+  keepMyCalendarLink,
   myCalendarLinkReview,
   myCalendarToken,
   useCalendarLinkReview,
@@ -188,8 +189,38 @@ describe('member calendar: links stay current in a session', () => {
     expect(await myCalendarLinkReview()).toBe(false);
     rpc.mockResolvedValueOnce({ data: true, error: null });
     expect(await myCalendarLinkReview()).toBe(true);
-    expect(await myCalendarLinkReview()).toBe(true);
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  // Codex review #285 round 4: "Keep my link" on another device. A "yes"
+  // remembered here must not keep asking: every open asks the server, and
+  // the question shows only once this open's answer is in.
+  it('a yes from an earlier open is never shown again without asking the server', async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
+    const first = renderHook(() => useCalendarLinkReview());
+    await waitFor(() => expect(first.result.current).toBe(true));
+    first.unmount();
+    let answer!: (v: unknown) => void;
+    rpc.mockImplementation(() => new Promise((r) => (answer = r)));
+    const again = renderHook(() => useCalendarLinkReview());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(again.result.current).toBe(false); // nothing shown on the old answer
+    await act(async () => answer({ data: false, error: null }));
+    expect(again.result.current).toBe(false);
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('after Keep my link the server is asked again, and an answer from before is ignored', async () => {
+    let early!: (v: unknown) => void;
+    rpc.mockImplementation((fn: string) =>
+      fn === 'bw_my_calendar_link_review' && !early ? new Promise((r) => (early = r)) : Promise.resolve({ data: fn === 'bw_my_calendar_link_keep' ? null : false, error: null }),
+    );
+    const hook = renderHook(() => useCalendarLinkReview());
+    await waitFor(() => expect(early).toBeTypeOf('function'));
+    expect(await keepMyCalendarLink()).toBe(true);
+    await act(async () => early({ data: true, error: null })); // asked before the keep
+    expect(hook.result.current).toBe(false);
+    expect(rpc.mock.calls.filter((c) => c[0] === 'bw_my_calendar_link_review').length).toBeGreaterThanOrEqual(2);
   });
 });
 

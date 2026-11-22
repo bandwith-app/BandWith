@@ -1449,7 +1449,7 @@ const rpc = (fn: string, args: Row = {}) => {
       break;
     case 'bw_deputy_unlink': {
       const d = table('band_deputies').find((x) => x.id === args.p_deputy_id);
-      data = d?.user_id ? 'unlinked' : 'not_linked';
+      data = d?.user_id ? 'unlinked' : 'revoked';
       if (d) d.user_id = null;
       persist();
       break;

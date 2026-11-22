@@ -206,3 +206,34 @@ describe('series dates the app shows, in external calendars', () => {
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')).toBe(true);
   });
 });
+
+// Claude review of #285, round 4. RFC 5545 3.3.10: UNTIL has DTSTART's value
+// type, and with a floating DTSTART (a date with local time, no TZID, as
+// these files are) it is a local date-time too. A DATE UNTIL after a
+// DATE-TIME DTSTART is invalid, and calendars read it differently.
+describe('UNTIL has the value type of DTSTART', () => {
+  const until = (ics: string) => /RRULE:[^\r\n]*UNTIL=([0-9TZ]+)/.exec(ics)?.[1];
+  const dtstart = (ics: string) => /DTSTART(;VALUE=DATE)?:([0-9TZ]+)/.exec(ics);
+  const ending = { ...weekly, recurrence: { frequency: 'weekly', interval: 1, until: '2027-01-26' } };
+
+  it('a rehearsal with a time: a local date-time at the end of the last day', () => {
+    const ics = memberFeedCalendar([ending], { lang: 'en', site: SITE, now: NOW }) as string;
+    expect(dtstart(ics)?.[0]).toBe('DTSTART:20261124T190000');
+    expect(until(ics)).toBe('20270126T235959');
+  });
+
+  it('an all-day rehearsal: a date, like DTSTART', () => {
+    const ics = memberFeedCalendar([{ ...ending, start_time: null, end_time: null }], { lang: 'en', site: SITE, now: NOW }) as string;
+    expect(dtstart(ics)?.[1]).toBe(';VALUE=DATE');
+    expect(until(ics)).toBe('20270126');
+  });
+
+  it('the rule builder takes the value type', () => {
+    expect(recurrenceRule({ frequency: 'monthly', until: '2027-06-30' }, '2026-11-30', { timed: true })).toBe(
+      'FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30;BYSETPOS=-1;UNTIL=20270630T235959',
+    );
+    expect(recurrenceRule({ frequency: 'monthly', until: '2027-06-30' }, '2026-11-30')).toBe(
+      'FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30;BYSETPOS=-1;UNTIL=20270630',
+    );
+  });
+});
