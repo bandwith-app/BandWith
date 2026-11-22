@@ -30,9 +30,9 @@ import {
   sectionLabel,
   serializeLine,
   setWordChord,
+  setWordChordAt,
   songChords,
   textSections,
-  wordChord,
   type TextSection,
 } from '@/lib/songFormat';
 import { applyVoiceSuggestions, setLineVoice, suggestVoiceParts, VOICE_PARTS, wordVoices, type VoicePart } from '@/lib/voiceParts';
@@ -128,7 +128,9 @@ export const ChordEditor: React.FC = () => {
     setLeaveOpen(false);
     pendingLeave.current = null;
   }, [id]);
-  const [drag, setDrag] = React.useState<{ from: Pos; chord: string; x: number; y: number; moved: boolean } | null>(null);
+  const [drag, setDrag] = React.useState<{ from: Pos; idx: number; chord: string; x: number; y: number; moved: boolean } | null>(null);
+  // Which chord of the selected word an edit changes (a word can hold several: "[C][D]Hello").
+  const [selIdx, setSelIdx] = React.useState(0);
   // The click that ends a drag lands on whatever word is under it: ignore it.
   const dropClick = React.useRef(false);
   const tapWord = (pos: Pos, isSel: boolean) => {
@@ -138,6 +140,7 @@ export const ChordEditor: React.FC = () => {
       return;
     }
     setRangeEnd(null);
+    setSelIdx(0);
     setSelected(isSel ? null : pos);
   };
 
@@ -221,22 +224,26 @@ export const ChordEditor: React.FC = () => {
   // Lines in parentheses → backing, "All:" → all: proposed, applied only on a tap.
   const voiceHints = React.useMemo(() => (voicesOn ? suggestVoiceParts(text) : []), [text, voicesOn]);
 
+  // Only the chord picked changes; the word's other chords stay.
   const putChord = (pos: Pos, chord: string | null) => {
     const next = [...lines];
-    next[pos.line] = setWordChord(next[pos.line], pos.word, chord);
+    next[pos.line] = pos.word < 0 ? setWordChord(next[pos.line], pos.word, chord) : setWordChordAt(next[pos.line], pos.word, selIdx, chord);
     edit(next.join('\n'));
+    if (!chord) setSelIdx(0);
   };
-  const moveChord = (from: Pos, to: Pos) => {
+  const moveChord = (from: Pos, idx: number, to: Pos) => {
     if (samePos(from, to)) return;
     const next = [...lines];
     const src = parseLine(next[from.line]);
-    const chord = from.word < 0 ? src.tail[0] : wordChord(src.words[from.word]);
+    const chord = from.word < 0 ? src.tail[0] : src.words[from.word]?.chords[idx]?.chord;
     if (!chord) return;
     if (from.word < 0) src.tail = src.tail.slice(1);
-    else src.words[from.word].chords = src.words[from.word].chords.slice(1);
+    else src.words[from.word].chords = src.words[from.word].chords.filter((_, k) => k !== idx);
     next[from.line] = serializeLine(src);
-    next[to.line] = setWordChord(next[to.line], to.word, chord);
+    // On the target word it takes the place of its first chord (the others stay).
+    next[to.line] = setWordChordAt(next[to.line], to.word, 0, chord);
     edit(next.join('\n'));
+    setSelIdx(0);
     setSelected(to);
   };
 
@@ -248,10 +255,10 @@ export const ChordEditor: React.FC = () => {
   };
 
   // Drag a chord chip onto another word (pointer events: touch, pen and mouse alike).
-  const onChipDown = (e: React.PointerEvent, from: Pos, chord: string) => {
+  const onChipDown = (e: React.PointerEvent, from: Pos, idx: number, chord: string) => {
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    setDrag({ from, chord, x: e.clientX, y: e.clientY, moved: false });
+    setDrag({ from, idx, chord, x: e.clientX, y: e.clientY, moved: false });
   };
   const onChipMove = (e: React.PointerEvent) => {
     setDrag((d) => (d ? { ...d, x: e.clientX, y: e.clientY, moved: d.moved || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 } : d));
@@ -261,6 +268,7 @@ export const ChordEditor: React.FC = () => {
     setDrag(null);
     if (!d) return;
     if (!d.moved) {
+      setSelIdx(d.idx);
       setSelected(d.from);
       return;
     }
@@ -268,7 +276,7 @@ export const ChordEditor: React.FC = () => {
     setTimeout(() => (dropClick.current = false), 0);
     const target = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-word]');
     if (!target) return;
-    moveChord(d.from, { line: Number(target.dataset.line), word: Number(target.dataset.word) });
+    moveChord(d.from, d.idx, { line: Number(target.dataset.line), word: Number(target.dataset.word) });
   };
 
   const save = async (over: string | null = song?.stored ?? null) => {
@@ -343,7 +351,7 @@ export const ChordEditor: React.FC = () => {
     next[selected.line] = setLineVoice(next[selected.line], v, range ?? undefined);
     edit(next.join('\n'));
   };
-  const selChord = selected ? (selected.word < 0 ? parseLine(lines[selected.line] || '').tail[0] ?? null : selWord ? wordChord(selWord) : null) : null;
+  const selChord = selected ? (selected.word < 0 ? parseLine(lines[selected.line] || '').tail[0] ?? null : selWord?.chords[selIdx]?.chord ?? null) : null;
 
   const renderLine = (li: number) => {
     const model = parseLine(lines[li]);
@@ -352,7 +360,7 @@ export const ChordEditor: React.FC = () => {
       <div key={li} className="flex flex-wrap items-end gap-x-[0.3em] gap-y-1 font-mono text-[17px] leading-6">
         {model.words.map((w, wi) => {
           const pos = { line: li, word: wi };
-          const chord = wordChord(w);
+          const chords = w.chords.map((c) => c.chord);
           const isSel = samePos(selected, pos);
           const inRange = !isSel && !!range && selected?.line === li && wi >= range.from && wi <= range.to;
           return (
@@ -363,11 +371,19 @@ export const ChordEditor: React.FC = () => {
               data-word={wi}
               data-line={li}
               aria-pressed={isSel}
-              aria-label={chord ? t('{word}, chord {chord}', { word: w.text, chord }) : w.text}
+              aria-label={
+                chords.length > 1
+                  ? t('{word}, chords {chords}', { word: w.text, chords: chords.join(', ') })
+                  : chords.length
+                    ? t('{word}, chord {chord}', { word: w.text, chord: chords[0] })
+                    : w.text
+              }
               onClick={() => tapWord(pos, isSel)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
+                  // A newly picked word starts from its first chord, as a tap does.
+                  setSelIdx(0);
                   setSelected(isSel ? null : pos);
                 }
               }}
@@ -377,20 +393,25 @@ export const ChordEditor: React.FC = () => {
                 drag?.moved && 'outline-dashed outline-1 outline-foreground/20',
               )}
             >
-              {chord ? (
-                <span
-                  onPointerDown={(e) => onChipDown(e, pos, chord)}
-                  onPointerMove={onChipMove}
-                  onPointerUp={onChipUp}
-                  onPointerCancel={() => setDrag(null)}
-                  onClick={(e) => e.stopPropagation()}
-                  className={cn(
-                    'px-1.5 rounded-md bw-label-sm normal-case font-bold leading-5 touch-none',
-                    isSel ? 'bg-background/30' : 'bg-foreground text-background',
-                    drag && samePos(drag.from, pos) && drag.moved && 'opacity-30',
-                  )}
-                >
-                  <ChordToken token={chord} />
+              {chords.length ? (
+                <span className="inline-flex gap-0.5">
+                  {chords.map((chord, k) => (
+                    <span
+                      key={k}
+                      onPointerDown={(e) => onChipDown(e, pos, k, chord)}
+                      onPointerMove={onChipMove}
+                      onPointerUp={onChipUp}
+                      onPointerCancel={() => setDrag(null)}
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        'px-1.5 rounded-md bw-label-sm normal-case font-bold leading-5 touch-none',
+                        isSel ? (k === selIdx && chords.length > 1 ? 'bg-background text-foreground' : 'bg-background/30') : 'bg-foreground text-background',
+                        drag && samePos(drag.from, pos) && drag.idx === k && drag.moved && 'opacity-30',
+                      )}
+                    >
+                      <ChordToken token={chord} />
+                    </span>
+                  ))}
                 </span>
               ) : (
                 <span className="h-5" aria-hidden />
@@ -617,6 +638,25 @@ export const ChordEditor: React.FC = () => {
                   <p className="bw-label-sm text-muted-foreground">
                     {selWord ? t('Chord on “{word}”', { word: selWord.text }) : t('Chords at the end of the line')}
                   </p>
+                  {selWord && selWord.chords.length > 1 && (
+                    // Several chords on this word: which one the next tap changes.
+                    <div className="flex flex-wrap gap-2" role="group" aria-label={t('Chords on “{word}”', { word: selWord.text })}>
+                      {selWord.chords.map((c, k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setSelIdx(k)}
+                          aria-pressed={k === selIdx}
+                          className={cn(
+                            'h-11 min-w-11 px-3 rounded-full bw-label-md normal-case shrink-0 border-[1.5px] border-foreground',
+                            k === selIdx ? 'bg-foreground text-background' : '',
+                          )}
+                        >
+                          <ChordToken token={c.chord} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4" role="group" aria-label={t('Chords of the song')}>
                     {palette.map((c) => (
                       <button

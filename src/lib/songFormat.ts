@@ -589,6 +589,27 @@ export function setWordChord(line: string, wordIndex: number, chord: string | nu
   return serializeLine(model);
 }
 
+/**
+ * One chord of a word (several can share one: "[C][D]Hello"): chord
+ * `chordIndex` replaced, or added after the others when the word has fewer;
+ * null removes just that one. The others stay as they are.
+ */
+export function setWordChordAt(line: string, wordIndex: number, chordIndex: number, chord: string | null): string {
+  if (wordIndex < 0) return setWordChord(line, wordIndex, chord);
+  const model = parseLine(line);
+  const w = model.words[wordIndex];
+  if (!w) return line;
+  const chords = [...w.chords];
+  if (chordIndex >= 0 && chordIndex < chords.length) {
+    if (chord) chords[chordIndex] = { ...chords[chordIndex], chord };
+    else chords.splice(chordIndex, 1);
+  } else if (chord) {
+    chords.push({ at: chords.length ? chords[chords.length - 1].at : 0, chord });
+  }
+  w.chords = chords;
+  return serializeLine(model);
+}
+
 /** The chord a word starts with (the first one on it). */
 export const wordChord = (w: LineWord): string | null => w.chords[0]?.chord ?? null;
 
@@ -664,7 +685,8 @@ export function matchChartSection(chart: SongChart | null | undefined, sectionNa
 
 /**
  * A section's chords proposed from the chart: its bars spread over the
- * section's lines, each bar's chords on evenly spaced words.
+ * section's lines, each bar's chords on evenly spaced words (several on one
+ * word when the line has fewer words than chords, in order).
  */
 export function proposeChordsFromChart(lyrics: string, section: TextSection, chartSection: ChartSection): string {
   const bars = chartSectionChords(chartSection).filter((b) => b.length);
@@ -682,11 +704,11 @@ export function proposeChordsFromChart(lyrics: string, section: TextSection, cha
     if (!count) {
       model.tail = chords;
     } else {
+      // Chords that share a word stay on it, in the chart's order
+      // ("[C][D]Hello [E][F]again"), never pushed to the end of the line.
       chords.forEach((c, j) => {
         const wi = Math.min(count - 1, Math.floor((j * count) / chords.length));
-        const w = model.words[wi];
-        if (w.chords.length) model.tail.push(c);
-        else w.chords = [{ at: 0, chord: c }];
+        model.words[wi].chords.push({ at: 0, chord: c });
       });
     }
     lines[li] = serializeLine(model);

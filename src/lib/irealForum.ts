@@ -13,6 +13,7 @@
  * taps is passed back.
  */
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { findIrealLink, findIrealLinkInHtml } from './ireal';
 
 /** The forum's song and playlist boards. */
 export const IREAL_FORUM_URL = 'https://forums.irealpro.com/';
@@ -80,10 +81,10 @@ export function closeForumWindow(): void {
 /** An iReal Pro link in a drop or a paste: a link list, a plain URL, or HTML with an <a href>. */
 export function irealLinkFrom(data: { getData(type: string): string } | null | undefined): string | null {
   if (!data) return null;
-  const candidates = [data.getData('text/uri-list'), data.getData('text/plain'), data.getData('text/html')];
-  for (const raw of candidates) {
-    const hit = raw?.match(/irealb(?:ook)?:\/\/[^\s"'<>]+/i);
-    if (hit) return hit[0];
-  }
-  return null;
+  // Apostrophes stay in the link (a title like "Don't Stop"); HTML is read from its href.
+  return (
+    findIrealLink(data.getData('text/uri-list') || '') ||
+    findIrealLink(data.getData('text/plain') || '') ||
+    findIrealLinkInHtml(data.getData('text/html') || '')
+  );
 }

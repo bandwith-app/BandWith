@@ -11,6 +11,8 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { UserError } from '../userError';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { canUse, limitFor } from '@/lib/plans';
 
 export const SONG_FILES_BUCKET = 'song-files';
 const REF_PREFIX = `sb://${SONG_FILES_BUCKET}/`;
@@ -159,34 +161,368 @@ export const resolveSongFileUrl = async (ref?: string | null): Promise<string | 
 export const isSuggestionFile = (ref?: string | null): ref is string =>
   isStoredSongFile(ref) && ref.slice(REF_PREFIX.length).split('/')[1] === 'suggestions';
 
+/** The parts of the Supabase client file adoption uses (a test passes its own). */
+type AdoptClient = Pick<typeof supabase, 'rpc' | 'from' | 'storage'>;
+type Field = 'audio_url' | 'chart_url';
+type AdoptRefs = { audio_url?: string; chart_url?: string };
+const asError = (e: unknown, fallback: string): Error =>
+  e instanceof Error ? e : new Error(String((e as { message?: unknown })?.message || fallback));
+
 /**
  * An accepted suggested song: its files move into the band's own folders, so
- * the member who suggested it can no longer replace or delete them. Returns
- * the new references (the old ones when a move fails).
+ * the member who suggested it can no longer replace or delete them (197 also
+ * stops them on the server) and the copy belongs to the band, not to the
+ * member's account.
+ *
+ * Nothing here can leave a song on a missing file (audit 09 #5 / #9, PR #295
+ * review), whatever runs at once (two admins, one admin on phone + iPad) or
+ * stops half-way:
+ *  1. bw_song_file_adopt_begin: the server says whether to go and names the
+ *     destination, unique per song (`<band>/<kind>/<song id>-<name>`).
+ *  2. Copy. A copy already there (an earlier or parallel run) is used only
+ *     if it is the same file (size + hash); else a new name is picked.
+ *  3. bw_song_file_adopt_repoint: the song row locked on the server, the
+ *     reference changed only if it is still the original. The original is
+ *     recorded for the sweep in the same transaction.
+ *  4. The sweep deletes recorded originals no song uses, each claimed on
+ *     the server right before its delete (see sweepAdoptedFiles).
+ * Deleted by a run: only a copy it made itself, when the server (song row
+ * locked) says no song uses it. A lost response is re-read, never undone.
+ * Returns the new references written to the song.
  */
 export const adoptSuggestionFiles = async (
-  refs: { audio_url?: string | null; chart_url?: string | null },
-): Promise<{ audio_url?: string; chart_url?: string }> => {
-  const out: { audio_url?: string; chart_url?: string } = {};
-  for (const key of ['audio_url', 'chart_url'] as const) {
-    const ref = refs[key];
-    if (!isSuggestionFile(ref)) continue;
-    const from = ref.slice(REF_PREFIX.length);
-    const parts = from.split('/');
-    // <band>/suggestions/<user>/<kind>/<name> → <band>/<kind>/<name>
-    const to = [parts[0], ...parts.slice(3)].join('/');
-    const { error } = await supabase.storage.from(SONG_FILES_BUCKET).move(from, to);
-    if (!error) out[key] = `${REF_PREFIX}${to}`;
+  song: { id: string; band_id?: string | null; audio_url?: string | null; chart_url?: string | null },
+  opts?: { client?: AdoptClient; busyWait?: BusyWait },
+): Promise<{ refs: AdoptRefs; error: Error | null }> => {
+  const client = opts?.client ?? supabase;
+  const busyWait = opts?.busyWait ?? { tries: 6, ms: 1500 };
+  const refs: AdoptRefs = {};
+  let error: Error | null = null;
+  let bandId = song.band_id ?? null;
+  try {
+    for (const field of ['audio_url', 'chart_url'] as const) {
+      const ref = song[field];
+      if (!isSuggestionFile(ref)) continue;
+      bandId ??= ref.slice(REF_PREFIX.length).split('/')[0];
+      const one = await adoptOne(client, song.id, field, busyWait);
+      if (one.ref) refs[field] = one.ref;
+      if (one.error) error ??= one.error;
+    }
+  } catch (e) {
+    error ??= asError(e, 'Could not move the files');
   }
-  return out;
+  if (bandId) {
+    const swept = await sweepAdoptedFiles(bandId, { client });
+    if (swept.error && !error && Object.keys(refs).length === 0) error = swept.error;
+  }
+  return { refs, error };
 };
 
-/** Delete stored files (ignores links). Best effort. */
-export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => {
-  const paths = refs.filter(isStoredSongFile).map((r) => r.slice(REF_PREFIX.length));
-  if (paths.length === 0) return;
-  await supabase.storage.from(SONG_FILES_BUCKET).remove(paths).catch(() => undefined);
+/** How long a run waits for another admin's run on the same file (then the retry on the next visit). */
+type BusyWait = { tries: number; ms: number };
+
+/** The song's own copy (`<band>/<kind>/<song id>-…`), not the suggestion original. */
+const isOwnCopy = (ref: string | null | undefined, songId: string): ref is string => {
+  if (!isStoredSongFile(ref)) return false;
+  const parts = ref.slice(REF_PREFIX.length).split('/');
+  return parts.length === 3 && parts[1] !== 'suggestions' && parts[2].startsWith(`${songId}-`);
 };
+
+async function adoptOne(client: AdoptClient, songId: string, field: Field, busyWait: BusyWait): Promise<{ ref?: string; error?: Error }> {
+  const bucket = client.storage.from(SONG_FILES_BUCKET);
+  const { data: claim, error: claimError } = await client.rpc('bw_song_file_adopt_begin', { p_song_id: songId, p_field: field });
+  if (claimError) return { error: asError(claimError, 'Could not move the files') };
+  const c = (claim || {}) as { won?: boolean; from?: string; to?: string; reason?: string; ref?: string | null };
+  // Another admin is moving it right now: wait for their repoint and report
+  // the copy the song then uses (not the original this screen still shows).
+  if (c.reason === 'busy') {
+    for (let n = 0; n < busyWait.tries; n++) {
+      await new Promise((r) => setTimeout(r, busyWait.ms));
+      const now = await currentRef(client, songId, field);
+      if (isOwnCopy(now, songId)) return { ref: now };
+      if (now !== undefined && !isSuggestionFile(now)) return {};
+    }
+    return {};
+  }
+  // Nothing to move: maybe another device already finished. Then the song
+  // links its own copy (the server's current reference): report that one.
+  if (c.reason === 'nothing' && isOwnCopy(c.ref, songId)) return { ref: c.ref };
+  // Waiting for review or nothing to move.
+  if (!c.won || !c.from || !c.to) return {};
+
+  // 2. The copy: ours, or the same file already there.
+  let to: string | null = null;
+  let created = false;
+  for (let attempt = 0; attempt < 3 && !to; attempt++) {
+    const candidate = attempt === 0 ? c.to : withTag(c.to, songId);
+    // Registered before it exists: if this run stops (or the song goes)
+    // before the repoint, the sweep deletes the copy no song uses (never an
+    // object that was there before the registration: 197 checks).
+    const { data: reserved, error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
+      p_song_id: songId,
+      p_field: field,
+      p_from: c.from,
+      p_to: candidate,
+    });
+    if (reserveError) return { error: asError(reserveError, 'Could not move the files') };
+    const reservation = (reserved || {}) as { registered?: boolean; reserved_at?: string };
+    const { error: copyError } = await bucket.copy(c.from, candidate);
+    if (!copyError) {
+      to = candidate;
+      created = true;
+    } else if (!alreadyExists(copyError)) {
+      // A band over its storage plan: 161's policy refuses the copy (Codex
+      // review of 28cb3199, M1). Said as such, not as a silent failure; only
+      // when the file really doesn't fit the plan (Claude review of
+      // a474bbfb: any other refusal, e.g. an expired session, is the plain
+      // copy error).
+      if (policyRefusal(copyError) && (await overStorage(bucket, c.from))) return { error: storageFullError() };
+      return { error: asError(copyError, 'Could not copy the file') };
+    } else if (await sameFile(bucket, c.from, candidate, reservation.reserved_at)) {
+      to = candidate;
+    } else if (reservation.registered === true) {
+      // Another file is there: not this move's copy. Only the name finally
+      // chosen stays registered (Codex review of ed7ec29f); a failure here
+      // is harmless, the sweep never deletes an object older than its
+      // registration.
+      await client.rpc('bw_song_file_copy_release', { p_song_id: songId, p_to: candidate }).then(
+        () => undefined,
+        () => undefined,
+      );
+    }
+  }
+  if (!to) return { error: new Error('Could not find a free name for the file') };
+
+  // 3. Repoint, on the server, only if the song still links to the original.
+  const { data, error: repointError } = await client.rpc('bw_song_file_adopt_repoint', {
+    p_song_id: songId,
+    p_field: field,
+    p_from: c.from,
+    p_to: to,
+  });
+  const res = data as { won?: boolean; ref?: string | null; to_referenced?: boolean } | null;
+  if (repointError || !res) {
+    // Lost response: it may have been saved. Re-read: the song on the copy is
+    // done; otherwise this run's copy goes, through a claim (refused while
+    // any song links it). If that fails too, the sweep finds it registered.
+    const now = await currentRef(client, songId, field);
+    if (now === `${REF_PREFIX}${to}`) return { ref: now };
+    if (created) await removeClaimed(client, [`${REF_PREFIX}${to}`]);
+    return { error: asError(repointError, 'Could not move the files') };
+  }
+  if (res.won) return { ref: `${REF_PREFIX}${to}` };
+  // Another run finished first: the song already links to a copy.
+  if (res.ref && res.ref === `${REF_PREFIX}${to}`) return { ref: res.ref };
+  if (isStoredSongFile(res.ref) && res.ref.startsWith(`${REF_PREFIX}${to.split('/').slice(0, 2).join('/')}/${songId}-`)) return { ref: res.ref };
+  // The song changed meanwhile: only a copy this run made, and no song uses,
+  // through a claim like any delete (Storage refuses one without it).
+  if (created && res.to_referenced === false) await removeClaimed(client, [`${REF_PREFIX}${to}`]);
+  return { error: new Error('The song changed while its files were being moved.') };
+}
+
+/** A sibling name for a destination taken by another file: `<song id>-<tag>-<name>`. */
+const withTag = (path: string, songId: string) => {
+  const cut = path.lastIndexOf('/');
+  const name = path.slice(cut + 1);
+  const rest = name.startsWith(`${songId}-`) ? name.slice(songId.length + 1) : name;
+  const tag =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+  return `${path.slice(0, cut + 1)}${songId}-${tag}-${rest}`;
+};
+
+/**
+ * The copy already at `b` is this move's (an earlier or parallel run's):
+ * same size, and either the same single-part hash (etag) or made after
+ * this destination was first registered (`reservedAt`, from the server)
+ * with the same content type. A multipart upload's etag ("…-3") never
+ * matches its copy's. Unknown counts as different.
+ */
+async function sameFile(bucket: ReturnType<AdoptClient['storage']['from']>, a: string, b: string, reservedAt?: string): Promise<boolean> {
+  try {
+    const [x, y] = await Promise.all([bucket.info(a), bucket.info(b)]);
+    type Info = { size?: number; etag?: string; contentType?: string; content_type?: string; createdAt?: string; created_at?: string };
+    const fx = x.data as Info | null;
+    const fy = y.data as Info | null;
+    if (!fx || !fy || fx.size == null || fx.size !== fy.size) return false;
+    const multipart = (e?: string) => !e || /-\d+"?$/.test(e);
+    if (!multipart(fx.etag) && !multipart(fy.etag)) return fx.etag === fy.etag;
+    const madeAt = Date.parse(fy.createdAt ?? fy.created_at ?? '');
+    const since = Date.parse(reservedAt ?? '');
+    const type = (f: Info) => f.contentType ?? f.content_type ?? null;
+    return Number.isFinite(madeAt) && Number.isFinite(since) && madeAt >= since && type(fx) === type(fy);
+  } catch {
+    return false;
+  }
+}
+
+/** A Storage refusal by a policy (161's storage limit refuses this way). */
+const policyRefusal = (e: unknown) => {
+  const x = e as { statusCode?: unknown; status?: unknown; message?: unknown };
+  const code = String(x?.statusCode ?? x?.status ?? '');
+  return (code === '400' || code === '403') && /row-level security|policy|unauthori[sz]ed/i.test(String(x?.message ?? ''));
+};
+
+type Plan = Awaited<ReturnType<typeof fetchBandPlan>>;
+type Bucket = ReturnType<AdoptClient['storage']['from']>;
+
+/** These megabytes fit in the band's plan storage (no limit: they fit). */
+const fitsPlan = (ent: Plan, mb: number) =>
+  limitFor(ent, 'storage_mb') === null || canUse(ent, 'storage_mb', ent?.usage.storage_mb ?? 0, mb);
+
+/** One file's size in megabytes (0 when it can't be read). */
+async function fileMb(bucket: Bucket, path: string): Promise<number> {
+  const { data } = await bucket.info(path);
+  return (Number((data as { size?: number } | null)?.size ?? 0) || 0) / 1048576;
+}
+
+/** This band file doesn't fit in its band's plan storage (the songFilesFit maths); unknown: false. */
+async function overStorage(bucket: Bucket, path: string): Promise<boolean> {
+  try {
+    const ent = await fetchBandPlan(path.split('/')[0], true);
+    if (limitFor(ent, 'storage_mb') === null) return false;
+    return !fitsPlan(ent, await fileMb(bucket, path));
+  } catch {
+    return false;
+  }
+}
+
+/** Said when the band's plan has no room for a song's recording or chart. */
+export const storageFullError = () => new UserError(t('Band storage is full: free up space to add this file.'));
+export const isStorageFullError = (e: unknown) =>
+  e instanceof UserError && e.message === t('Band storage is full: free up space to add this file.');
+
+/**
+ * Before accepting a suggested song: its suggestion files fit in the band's
+ * storage (the move copies them first). Unknown (no plan, plans off, sizes
+ * not readable) counts as fitting: the server decides.
+ */
+export const songFilesFit = async (
+  bandId: string | null | undefined,
+  refs: Array<string | null | undefined>,
+  opts?: { client?: AdoptClient },
+): Promise<boolean> => {
+  const files = refs.filter(isSuggestionFile);
+  if (!bandId || files.length === 0) return true;
+  try {
+    const ent = await fetchBandPlan(bandId, true);
+    if (limitFor(ent, 'storage_mb') === null) return true;
+    const bucket = (opts?.client ?? supabase).storage.from(SONG_FILES_BUCKET);
+    const sizes = await Promise.all(files.map((r) => fileMb(bucket, r.slice(REF_PREFIX.length))));
+    return fitsPlan(ent, sizes.reduce((a, b) => a + b, 0));
+  } catch {
+    return true;
+  }
+};
+
+async function currentRef(client: AdoptClient, songId: string, field: Field): Promise<string | null | undefined> {
+  try {
+    const { data } = await client.from('songs').select('audio_url, chart_url').eq('id', songId).maybeSingle();
+    return data ? ((data as Record<Field, string | null>)[field] ?? null) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Originals of moved files no song uses any more (the server checks every
+ * song). Each one is claimed right before its delete: the server re-checks,
+ * under a lock, that no song links it (a song that links it meanwhile keeps
+ * it), and refuses new links while it is being deleted. Then the Storage
+ * delete, then done. A delete that fails leaves the claim, which lapses after
+ * 10 minutes: the next sweep retries it.
+ */
+export const sweepAdoptedFiles = async (bandId: string, opts?: { client?: AdoptClient }): Promise<{ error: Error | null }> => {
+  const client = opts?.client ?? supabase;
+  let first: Error | null = null;
+  try {
+    const { data, error } = await client.rpc('bw_song_file_sweep_list', { p_band_id: bandId });
+    if (error) return { error: asError(error, 'Could not tidy the song files') };
+    // Everything the server lists for this band (originals, lapsed delete
+    // claims, unused copies: it checked each one), in any of its folders.
+    const paths = ((data as string[] | null) || []).filter((p) => typeof p === 'string' && p.startsWith(`${bandId}/`));
+    for (const path of paths) {
+      const { data: claim, error: claimError } = await client.rpc('bw_song_file_sweep_claim', { p_band_id: bandId, p_path: path });
+      if (claimError) {
+        first ??= asError(claimError, 'Could not tidy the song files');
+        continue;
+      }
+      // Linked again, being deleted by someone else, or already gone: skip it.
+      if (!(claim as { ok?: boolean } | null)?.ok) continue;
+      const { data: gone, error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove([path]);
+      if (removeError) {
+        first ??= asError(removeError, 'Could not tidy the song files');
+        continue;
+      }
+      // Storage refused it (the claim lapsed, or the file is linked again):
+      // not done; the claim lapses and the next sweep decides again. Already
+      // gone (an earlier run deleted it, then stopped): done.
+      if (!deletedNames(gone).has(path) && (await stillStored(client, path))) continue;
+      const { error: doneError } = await client.rpc('bw_song_file_sweep_done', { p_band_id: bandId, p_paths: [path] });
+      if (doneError) first ??= asError(doneError, 'Could not tidy the song files');
+    }
+    return { error: first };
+  } catch (e) {
+    return { error: asError(e, 'Could not tidy the song files') };
+  }
+};
+
+const alreadyExists = (e: unknown) => {
+  const x = e as { statusCode?: unknown; status?: unknown; message?: unknown };
+  return String(x?.statusCode ?? x?.status ?? '') === '409' || /already exists|duplicate/i.test(String(x?.message ?? ''));
+};
+
+/** A song past review that still links to files in a member's suggestions folder (an adoption to finish). */
+export const hasUnadoptedFiles = (song: { status?: string | null; audio_url?: string | null; chart_url?: string | null }) =>
+  song.status !== 'suggested' && (isSuggestionFile(song.audio_url) || isSuggestionFile(song.chart_url));
+
+/** Delete stored files nothing else uses (ignores links). Best effort: unsure means kept. */
+export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => removeClaimed(supabase, refs);
+
+/** The file is still in Storage (or we can't tell: then it counts as there). */
+async function stillStored(client: AdoptClient, path: string): Promise<boolean> {
+  try {
+    const { data, error } = await client.storage.from(SONG_FILES_BUCKET).info(path);
+    if (data) return true;
+    const e = error as { statusCode?: unknown; status?: unknown; message?: unknown } | null;
+    return !(e && (String(e.statusCode ?? e.status ?? '') === '404' || /not found/i.test(String(e.message ?? ''))));
+  } catch {
+    return true;
+  }
+}
+
+/** The names a Storage remove() really deleted (its delete policy can refuse some). */
+const deletedNames = (data: unknown) =>
+  new Set(Array.isArray(data) ? (data as Array<{ name?: unknown }>).map((o) => (typeof o?.name === 'string' ? o.name : '')) : []);
+
+async function removeClaimed(client: AdoptClient, refs: Array<string | null | undefined>): Promise<void> {
+  const supabase = client;
+  const stored = [...new Set(refs.filter(isStoredSongFile))];
+  if (stored.length === 0) return;
+  try {
+    // Only through a claim (197): the server returns the files nothing uses
+    // and, until we close the claim (or 10 minutes pass), refuses any new
+    // link to them, so nothing can link a file between the check and the
+    // delete. If it can't claim, keep them all: a leftover file costs space,
+    // a missing one loses a band's recording.
+    const { data, error } = await supabase.rpc('bw_song_files_claim_delete', { p_refs: stored });
+    if (error || !Array.isArray(data)) return;
+    const claimed = stored.filter((r) => (data as string[]).includes(r));
+    if (claimed.length === 0) return;
+    const { data: gone, error: removeError } = await supabase.storage
+      .from(SONG_FILES_BUCKET)
+      .remove(claimed.map((r) => r.slice(REF_PREFIX.length)));
+    // A failed delete keeps the claim: it lapses, and the files stay.
+    if (removeError) return;
+    // Storage deletes only files with this user's live claim that nothing
+    // links (197's delete policy): close the claims of those it deleted.
+    const names = deletedNames(gone);
+    const done: string[] = [];
+    for (const r of claimed) if (names.has(r.slice(REF_PREFIX.length)) || !(await stillStored(supabase, r.slice(REF_PREFIX.length)))) done.push(r);
+    if (done.length) await supabase.rpc('bw_song_files_removed', { p_refs: done });
+  } catch {
+    /* kept */
+  }
+}
 
 /**
  * Open a stored file or https link outside the app.
