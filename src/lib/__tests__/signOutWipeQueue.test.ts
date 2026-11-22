@@ -46,7 +46,7 @@ vi.mock('../offline/storage', () => ({
 vi.mock('../regiaAudio', () => ({ clearDownloadedAudio: vi.fn(async () => {}) }));
 
 import { wipeAfterFailedSignOut } from '../signOutWipe';
-import { processSyncQueue, setOfflineQueueUser } from '../offline/syncQueue';
+import { processSyncQueue, setOfflineQueueUser, withOfflineQueuesHeld } from '../offline/syncQueue';
 
 const A = '6f1c2a4e-1111-4a5b-9c3d-aaaaaaaaaaaa';
 const edit = (id: string, type = 'update_event') => [{ id, type, timestamp: 1, payload: { eventId: 'ev1', updates: { title: 'Late set' } }, retryCount: 0 }];
@@ -119,5 +119,30 @@ describe('#296 round 10: the failed-sign-out wipe and the offline queue', () => 
     await pass;
     expect(events.updated).toEqual(['ev1']);
     expect(((idb.get(`bw:offline_queue:${A}`) as { id: string }[] | undefined) ?? []).map((m) => m.id)).toEqual([]);
+  });
+
+  it('round 12: a pass that outlives both waits reconciles on the queue written back: what it sent goes', async () => {
+    const key = `bw:offline_queue:${A}`;
+    const ids = () => ((idb.get(key) as { id: string }[] | undefined) ?? []).map((m) => m.id);
+    setOfflineQueueUser(A);
+    idb.set(key, edit('m1'));
+    // The update takes longer than the 50 ms the hold waits, before and after.
+    events.updateMs = 400;
+    const pass = processSyncQueue();
+    await wait(20);
+    // As the wipe: read, clear, write back.
+    await withOfflineQueuesHeld(async () => {
+      const read = idb.get(key);
+      idb.delete(key);
+      await wait(10);
+      idb.set(key, read);
+    }, 50);
+    // The hold is over, the pass is not: m1 is still being sent and is back in the queue.
+    expect(events.updated).toEqual([]);
+    expect(ids()).toEqual(['m1']);
+    const result = await pass;
+    expect(events.updated).toEqual(['ev1']);
+    expect(result.synced).toBe(1);
+    expect(ids()).toEqual([]);
   });
 });

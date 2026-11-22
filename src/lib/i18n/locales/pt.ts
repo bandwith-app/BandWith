@@ -3932,6 +3932,7 @@ const dict: Dictionary = {
   // Sign-in, onboarding and account (audit A)
   "Couldn’t link your account to the band. Check your connection.": "Não foi possível vincular sua conta à banda. Confira sua conexão.",
   "Couldn’t sign out. Try again.": "Não foi possível sair. Tente de novo.",
+  "Signing out…": "Saindo…",
   "Answers and what you can do in the app": "Respostas e o que você pode fazer no app",
   "All data encrypted": "Todos os dados criptografados",
   "This invite is for {email}": "Este convite é para {email}",

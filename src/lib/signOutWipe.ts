@@ -19,10 +19,14 @@
  *   Stage outboxes), per account, sent at its next sign-in; the offline
  *   queue where it is stored (IndexedDB first), and never the anonymous or
  *   legacy queue, which the next account would adopt.
+ * From its start to the reload the app shows only "Signing out…"
+ * (signOutWipeState, round 12): no sign-in while a sync pass for the account
+ * that left may still be running.
  */
 import * as storage from './offline/storage';
 import { ANALYTICS_CONSENT_KEY } from './appAnalytics';
 import { settleRefusedNotes } from './rehearsalNotesOutbox';
+import { markSignOutWipe } from './signOutWipeState';
 import { supabase } from './supabase';
 
 const KEEP_COPY_292 = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', 'bw:chat_outbox:'] as const;
@@ -171,6 +175,10 @@ const readAccountQueues = async (): Promise<[string, unknown][]> => {
 };
 
 export async function wipeAfterFailedSignOut(): Promise<void> {
+  // From here to the reload the app shows only "Signing out…" (round 12): the session ends next,
+  // and nobody may sign in while a sync pass for this account can still be running (the hold
+  // below waits for it 6 s, twice; a longer pass would go on under the next person's session).
+  markSignOutWipe();
   // This device's session first (Codex r8 B3): the cleanup below must see this account signed out.
   await step(() => supabase.auth.signOut({ scope: 'local' }));
   await step(() => settleRefusedNotes());
