@@ -69,6 +69,7 @@ TAG="android-v$VERSION"
 NOTES_FILE=scripts/android-release-notes.md
 
 [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "Version must look like 1.0.3: $VERSION" >&2; exit 1; }
+scripts/android-version-code.sh "$VERSION" >/dev/null || exit 1
 if [ "$PUBLISH" = "--publish" ]; then
   # Nothing ships before a passing emulator run on this exact commit
   # (scripts/emulator-check.sh, maestro/README.md).
@@ -104,9 +105,10 @@ fi
 BW_ANDROID_KEYSTORE_PASSWORD="$(security find-generic-password -s 'BandWith Android release key' -w)"
 export BW_ANDROID_KEYSTORE="$KEYSTORE" BW_ANDROID_KEYSTORE_PASSWORD
 export BW_ANDROID_VERSION_NAME="$VERSION"
-# Minute-based (scripts/android-version-code.sh): every later release has a
-# higher code, also two in the same hour. BW_ANDROID_VERSION_CODE overrides it.
-export BW_ANDROID_VERSION_CODE="${BW_ANDROID_VERSION_CODE:-$(scripts/android-version-code.sh)}"
+# The code encodes the version (scripts/android-version-code.sh), so it follows
+# the version order: a hotfix 1.0.13.1 stays below 1.0.14 whenever it is built.
+# No override: a code that doesn't match the version breaks that order.
+export BW_ANDROID_VERSION_CODE="$(scripts/android-version-code.sh "$VERSION")"
 case "$BW_ANDROID_VERSION_CODE" in '' | *[!0-9]*) echo "BW_ANDROID_VERSION_CODE must be a number." >&2; exit 1 ;; esac
 [ "$BW_ANDROID_VERSION_CODE" -lt 2100000000 ] || { echo "BW_ANDROID_VERSION_CODE must be below 2100000000." >&2; exit 1; }
 export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}"
@@ -145,10 +147,17 @@ if [ "$PUBLISH" = "--publish" ]; then
     --title "BandWith for Android $VERSION" \
     --notes-file "$NOTES_FILE" \
     "${RELEASE_FLAGS[@]}"
+  # Two publishers at once: both may have read the same "latest" before either
+  # published. Re-check now that this one is out: the highest stable version
+  # keeps "latest" (docs/release-checklist.md: one publisher at a time).
+  if [ -z "$PRERELEASE" ]; then
+    GH="$GH" scripts/android-latest-flag.sh --fix-latest \
+      || echo "WARNING: could not re-check the latest release. Run: scripts/android-latest-flag.sh --fix-latest" >&2
+  fi
   if [ -n "$PRERELEASE" ]; then
     echo "Prerelease $TAG: only testers with its link get it. Link:"
     echo "  https://github.com/bandwith-app/BandWith/releases/download/$TAG/BandWith.apk"
     echo "Everyone (in-app update + latest link; only with a versionCode above every published release, latest only if it is the highest version):"
-    echo "  scripts/android-promote-check.sh $VERSION && gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false \"\$(scripts/android-latest-flag.sh --lookup $VERSION)\""
+    echo "  scripts/android-promote-check.sh $VERSION && gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false \"\$(scripts/android-latest-flag.sh --lookup $VERSION)\" && scripts/android-latest-flag.sh --fix-latest"
   fi
 fi

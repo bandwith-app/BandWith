@@ -36,3 +36,35 @@ describe('release migrations: checked by their objects', () => {
     expect(mentions.every((l) => /Never/.test(l))).toBe(true);
   });
 });
+
+describe('release checklist, round 6 (review #278)', () => {
+  it('never rolls 177 back: the web is not rolled back past 177, the fix goes forward', () => {
+    expect(checklist).not.toMatch(/public = true/);
+    expect(checklist).not.toMatch(/roll 177 back/);
+    expect(checklist).toMatch(/Never roll the web back past 177/);
+    expect(checklist).toMatch(/fix forward/);
+  });
+
+  it('supabase db reset only on the local database, never as a prod step', () => {
+    const lines = checklist.split('\n').filter((l) => /db reset/.test(l));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) expect(l).toMatch(/Local only/);
+    expect(checklist).toMatch(/never reset or drop anything on prod/);
+  });
+
+  it('one Android publisher at a time, and latest is re-checked after publishing', () => {
+    expect(checklist).toMatch(/One publisher at a time/);
+    expect(checklist).toMatch(/android-latest-flag\.sh --fix-latest/);
+  });
+
+  it('the Android code encodes the version (no minute-based codes for new releases)', () => {
+    expect(checklist).toMatch(/1\.0\.14 → 41001400, 1\.0\.13\.1 → 41001301/);
+    expect(checklist).not.toMatch(/The code is minute-based/);
+  });
+
+  it('170 is "in" only in the current version: partial column and the newer-only status guard', () => {
+    const row = checkSql.split('\n').filter((l, i, all) => /\('170'/.test(l) || /\('170'/.test(all[i - 1] ?? '') || /\('170'/.test(all[i - 2] ?? '')).join(' ');
+    expect(row).toMatch(/c = 'partial'/);
+    expect(row).toMatch(/bw_live_pack_status_newer_only/);
+  });
+});

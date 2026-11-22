@@ -90,3 +90,17 @@ describe('promote check', () => {
     expect(sh).toMatch(/scripts\/android-promote-check\.sh \$VERSION && gh release edit/);
   });
 });
+
+describe('promote check, round 6 (review #278)', () => {
+  it('--code must match the code recorded for the prerelease (a newer local rebuild is not that APK)', () => {
+    const r = check([pilot, stable13], ['1.0.14', '--code', '30470999']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/recorded/);
+    expect(check([pilot, stable13], ['1.0.14', '--code', '30470040']).status).toBe(0);
+  });
+
+  it('an old release without a recorded code counts with its minute-based code', () => {
+    const sh = fs.readFileSync(`${process.cwd()}/scripts/android-promote-check.sh`, 'utf8');
+    expect(sh).toMatch(/android-version-code\.sh" --minute-based "\$published"/);
+  });
+});

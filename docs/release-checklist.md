@@ -40,7 +40,9 @@ The web app and the database reach everyone at once. That is why they get the mo
   ```sql
   SELECT to_regclass('public.live_pack_status');  -- NULL: no copy of any version
   ```
-  A dev or local database that has it: reset it (`supabase db reset`, local only) before testing this release there.
+  - Prod: it must be `NULL`. If it isn't, stop and ask: never reset or drop anything on prod.
+  - A dev or branch database: `NULL`, or its 170 row in `supabase/checks/release_migrations.sql` is already `true` (the current version). Otherwise drop that copy there by hand before testing this release.
+  - Your local database: `supabase db reset` rebuilds it from the files, so it gets the current 170. Local only: on a database with the old 170 it replays 170 and stops on these checks, and on prod it would wipe the data.
 - [ ] **172 is already live in prod** (applied before this release): its row is `true` (`songs.vocal_parts` and `setlist_songs.vocal_parts`). It is not applied again.
 - [ ] Each new migration was dry-run against prod and rolled back:
   - first strip the migration's own `BEGIN;` / `COMMIT;`, or it commits for real;
@@ -133,12 +135,13 @@ Do it in this order, so every build in use keeps working at every step:
 ### Stage 3 · Everyone
 
 1. **Android**: promote the prerelease. From now on the in-app update offers it, and the latest link serves it.
-   - **Only an APK whose versionCode is above every published release.** The code is minute-based, so a hotfix published during the pilot (say 1.0.13.1 while 1.0.14 is in stage 2) was built later and has a higher code: phones that took it refuse the 1.0.14 APK (Android won't go to a lower code, and the in-app updater needs a higher one). Then don't promote: rebuild 1.0.14 as a new version (1.0.15) and pilot that. `scripts/android-promote-check.sh` checks it (it fails closed: no answer from GitHub, no promotion).
+   - **Only an APK whose versionCode is above every published release** (Android won't go to a lower code, and the in-app updater needs a higher one). The code encodes the version (`scripts/android-version-code.sh`: 1.0.14 → 41001400, 1.0.13.1 → 41001301), so a hotfix of an older line published during the pilot stays below 1.0.14 and doesn't block it. Releases from before (up to 1.0.13) had minute-based codes, all below 40000000. `scripts/android-promote-check.sh` checks it against the code recorded in each release's notes (it fails closed: no answer from GitHub, no promotion). If it ever fails, don't promote: release a new version and pilot that.
    - Mark it **Latest only if it is the highest version** released, so a hotfix of an older line never takes the latest link. `scripts/android-latest-flag.sh --lookup` picks `--latest` or `--latest=false`, and stops if it can't read the current latest (network, auth), instead of guessing "first release".
-   - Both in one command (`release-android.sh --publish --prerelease` prints it):
+   - **One publisher at a time.** Two people publishing or promoting Android releases at once can both read the same "latest" and leave it on the lower version. Agree who publishes; after any stable release or promotion, `scripts/android-latest-flag.sh --fix-latest` puts "latest" back on the highest stable version (`release-android.sh --publish` runs it by itself).
+   - All in one command (`release-android.sh --publish --prerelease` prints it):
      ```sh
      scripts/android-promote-check.sh 1.0.14 && gh release edit android-v1.0.14 --repo bandwith-app/BandWith --prerelease=false \
-       "$(scripts/android-latest-flag.sh --lookup 1.0.14)"
+       "$(scripts/android-latest-flag.sh --lookup 1.0.14)" && scripts/android-latest-flag.sh --fix-latest
      ```
    - `release-android.sh --publish` (without `--prerelease`) uses the same latest check.
 2. **iOS**: add the build to **Amici**.
@@ -190,7 +193,7 @@ npx vercel@latest rollback <previous-production-url> --yes
 npx vercel@latest rollback status
 ```
 
-- **Not past 177.** A web build from before this release shares public PDF URLs, which don't open once 177 made the quotes bucket private: clients can't download their quote. After 177, roll the web back only to a deployment of this release or later. If you must go further back, roll 177 back too, as the database owner: `UPDATE storage.buckets SET public = true WHERE id = 'quotes';` (its header says so; no file was moved), and apply 177 again with the fix.
+- **Never roll the web back past 177.** A web build from before this release shares public PDF URLs, which don't open once 177 made the quotes bucket private: clients can't download their quote. After 177, roll the web back only to a deployment of this release or later. If that isn't enough, fix forward: deploy a fix on top of this release. The bucket stays private: don't make it public again.
 - On the Hobby plan, rollback goes to the **previous** production deployment only.
 - To go further back, promote any earlier Ready deployment from the list:
   ```sh

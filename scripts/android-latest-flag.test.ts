@@ -74,3 +74,40 @@ describe('Android "latest" flag', () => {
     expect(sh).toMatch(/scripts\/android-latest-flag\.sh --lookup "\$VERSION"/);
   });
 });
+
+describe('the highest stable release keeps "latest" (review #278 round 6)', () => {
+  /** gh stand-in: `release list` prints the tags, `release view` the current latest, `release edit` is recorded. */
+  const fix = (tags: string[], latest: string) => {
+    const dir = fs.mkdtempSync(`${os.tmpdir()}/fake-gh-`);
+    const gh = `${dir}/gh`;
+    fs.writeFileSync(
+      gh,
+      `#!/usr/bin/env bash\ncase "$2" in\n  list) printf '%s\\n' ${tags.map((t) => JSON.stringify(t)).join(' ')} ;;\n  view) echo ${JSON.stringify(latest)} ;;\n  edit) echo "$@" >> "${dir}/edits" ;;\nesac\n`,
+      { mode: 0o755 },
+    );
+    const out = execFileSync('bash', [SCRIPT, '--fix-latest'], { env: { ...env, GH: gh }, stdio: 'pipe' }).toString().trim();
+    let edits = '';
+    try {
+      edits = fs.readFileSync(`${dir}/edits`, 'utf8').trim();
+    } catch {
+      /* none */
+    }
+    return { out, edits };
+  };
+
+  it('two publishers raced and 1.0.14 took latest after 1.0.15: latest goes back to 1.0.15', () => {
+    const r = fix(['android-v1.0.15', 'android-v1.0.14', 'android-v1.0.13'], 'android-v1.0.14');
+    expect(r.edits).toMatch(/release edit android-v1\.0\.15 .*--latest/);
+    expect(r.out).toMatch(/android-v1\.0\.15/);
+  });
+
+  it('already right: nothing changes', () => {
+    expect(fix(['android-v1.0.15', 'android-v1.0.14'], 'android-v1.0.15').edits).toBe('');
+  });
+
+  it('release-android.sh runs it right after publishing a stable release', () => {
+    const sh = fs.readFileSync(`${process.cwd()}/scripts/release-android.sh`, 'utf8');
+    const create = sh.indexOf('release create "$TAG"');
+    expect(sh.indexOf('android-latest-flag.sh --fix-latest', create)).toBeGreaterThan(create);
+  });
+});

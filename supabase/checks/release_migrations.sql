@@ -19,8 +19,9 @@ fn(n) AS (
 )
 SELECT m AS migration, coalesce(applied, false) AS applied, proof
 FROM (VALUES
-  ('170', EXISTS (SELECT 1 FROM col WHERE t = 'live_pack_status' AND c = 'partial'),
-          'live_pack_status.partial (the 11-22 version)'),
+  ('170', EXISTS (SELECT 1 FROM col WHERE t = 'live_pack_status' AND c = 'partial')
+          AND EXISTS (SELECT 1 FROM fn WHERE n = 'bw_live_pack_status_newer_only'),
+          'live_pack_status.partial, function bw_live_pack_status_newer_only (the 11-22 version)'),
   ('171', EXISTS (SELECT 1 FROM col WHERE t = 'songs' AND c = 'time_signature')
           AND EXISTS (SELECT 1 FROM col WHERE t = 'bands' AND c = 'count_in_style'),
           'songs.time_signature, bands.count_in_style'),

@@ -11,10 +11,15 @@
 #
 # Codes come from the "<!-- versionCode: N -->" line release-android.sh puts in
 # the release notes. A published release without it (before that line existed)
-# counts with the code it would have had when it was published: that is never
-# below its real code (the APK was built before), so the check stays on the
-# safe side. The candidate itself needs its real code: from its notes, or
-# --code (aapt dump badging BandWith.apk | grep versionCode).
+# counts with the minute-based code it would have had when it was published
+# (the scheme before version-encoded codes): never below its real code (the APK
+# was built before), so the check stays on the safe side.
+# The candidate needs its real code: from its notes, or, when its notes have
+# none, --code (aapt dump badging BandWith.apk | grep versionCode). --code never
+# overrides a recorded code: a different one is refused.
+# Since codes encode the version (scripts/android-version-code.sh), a release
+# built with them always passes against an older line; the check still guards
+# the releases from before.
 # Fails closed: no answer from GitHub (network, auth) means no promotion.
 set -euo pipefail
 VERSION="${1:?usage: scripts/android-promote-check.sh <version> [--code <versionCode>]}"
@@ -51,7 +56,7 @@ while IFS=$'\t' read -r tag pre draft published code; do
     continue
   fi
   [ "$pre" = "false" ] && [ "$draft" = "false" ] || continue
-  [ -n "$code" ] || code="$("$HERE/android-version-code.sh" "$published")"
+  [ -n "$code" ] || code="$("$HERE/android-version-code.sh" --minute-based "$published")"
   if [ "$code" -gt "$TOP_CODE" ]; then
     TOP_CODE="$code"
     TOP_TAG="$tag"
@@ -59,7 +64,15 @@ while IFS=$'\t' read -r tag pre draft published code; do
 done <<<"$LINES"
 
 [ -n "$FOUND" ] || { echo "$TAG not found among the releases." >&2; exit 1; }
-[ -z "$CODE_ARG" ] || CAND_CODE="$CODE_ARG"
+if [ -n "$CODE_ARG" ]; then
+  # --code is for a prerelease without a recorded code. With one, it must be that
+  # code: a different number is another build, not the APK on the release.
+  if [ -n "$CAND_CODE" ] && [ "$CAND_CODE" != "$CODE_ARG" ]; then
+    echo "--code $CODE_ARG differs from the code recorded for $TAG ($CAND_CODE): not that APK. Not promoting." >&2
+    exit 1
+  fi
+  CAND_CODE="$CODE_ARG"
+fi
 [ -n "$CAND_CODE" ] || {
   echo "$TAG has no recorded versionCode: pass --code <n> (aapt dump badging BandWith.apk | grep versionCode)." >&2
   exit 1
