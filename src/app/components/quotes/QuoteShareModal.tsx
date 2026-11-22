@@ -53,7 +53,9 @@ import {
   getQuoteLinkState,
   isLinkChangedError,
   isVersionChangedError,
+  sameQuoteContact,
   sameQuoteTerms,
+  type QuoteContact,
   markQuoteLinkSent,
   publishQuoteLink,
   quoteLinkUrl,
@@ -142,6 +144,11 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   // client changed meanwhile, another admin, another device): nothing is
   // shared from it, the sheet asks to open the quote again.
   const [stale, setStale] = useState(false);
+  // Round 5: the client saved now, read again before WhatsApp, SMS or
+  // email. Another one than this sheet shows: "this quote now goes to X",
+  // and the send waits for a second tap (`confirmedContact`).
+  const [recipientNow, setRecipientNow] = useState<{ contact: QuoteContact; channel: 'whatsapp' | 'sms' | 'email' } | null>(null);
+  const confirmedRef = useRef<QuoteContact | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -266,6 +273,8 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   const autoSentRef = useRef(false);
   useEffect(() => {
     if (isOpen) return;
+    setRecipientNow(null);
+    confirmedRef.current = null;
     autoSentRef.current = false;
     setUploadTried(false);
     autoPendingRef.current = false;
@@ -308,7 +317,9 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
       docLang,
       uploadedUrl,
       link?.token ?? null,
-      typeof link?.version === 'number' ? link.version : null,
+      // Round 5: the version this sheet read; 0 = it read no link (one made
+      // since, by another admin or device: refused, 40001).
+      link ? (typeof link.version === 'number' ? link.version : null) : 0,
     );
     if (!pub.data) {
       if (isLinkChangedError(pub.error) || isVersionChangedError(pub.error)) {
@@ -320,6 +331,34 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     const linkId = link?.token === pub.data.token ? link.id : undefined;
     setLink({ id: linkId, token: pub.data.token, status: pub.data.status, revoked: pub.data.revoked, version: pub.data.version });
     return { token: pub.data.token, version: pub.data.version, linkId };
+  };
+
+  /** The quote with the client it goes to: as opened, or as confirmed after a change (round 5). */
+  const current = (): typeof quoteRef.current => {
+    const c = confirmedRef.current;
+    if (!c) return quoteRef.current;
+    return {
+      ...quoteRef.current,
+      clientName: c.client_name === 'Client' && !quoteRef.current.clientName ? quoteRef.current.clientName : c.client_name || '',
+      clientEmail: c.client_email || '',
+      clientPhone: c.client_phone || undefined,
+    };
+  };
+
+  /**
+   * Round 5: right before WhatsApp, SMS or email, the client saved now. The
+   * same as this sheet shows: go. Another one: nothing goes out, the sheet
+   * says who the quote goes to now and waits for a second tap.
+   */
+  const recipientStill = async (channel: 'whatsapp' | 'sms' | 'email'): Promise<boolean> => {
+    const saved = await getQuoteContact(String(quote.id));
+    if (saved.error || !saved.data) {
+      flash(t('The client page could not be updated. Try again.'), 'error');
+      return false;
+    }
+    if (sameQuoteContact(saved.data, current())) return true;
+    setRecipientNow({ contact: saved.data, channel });
+    return false;
   };
 
   /** Record the send of the version just published, on its link (183). */
@@ -341,7 +380,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   const linkMessage = (token: string) => {
     const snapshot = buildClientQuoteSnapshot(quoteRef.current, docLang, settings);
-    return clientLinkMessage(quoteRef.current, {
+    return clientLinkMessage(current(), {
       bandName,
       url: quoteLinkUrl(token),
       lang: docLang,
@@ -351,15 +390,19 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     });
   };
 
-  const cleanPhone = () => (quote.clientPhone || '').replace(/[^0-9+]/g, '');
+  const cleanPhone = () => (current().clientPhone || '').replace(/[^0-9+]/g, '');
 
   const sendLinkVia = (channel: 'whatsapp' | 'sms' | 'copy') => {
     if (!canShareLink) return;
     setSending(channel);
+    setRecipientNow(null);
     // Started inside the tap: the publish runs first, and the channel gets
     // the link only once it worked (iOS keeps the clipboard write and the
-    // window open for the tap that started them).
-    const job = publishForSend();
+    // window open for the tap that started them). WhatsApp and SMS: the
+    // client saved now is checked first (round 5).
+    const job = channel === 'copy'
+      ? publishForSend()
+      : recipientStill(channel).then((same) => (same ? publishForSend() : null));
     if (channel === 'copy') {
       const text = job.then((p) => {
         if (!p) throw new Error('not published');
@@ -419,14 +462,20 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   const emailLink = async () => {
     if (!canShareLink || emailing) return;
-    if (!quote.clientEmail) {
+    if (!current().clientEmail) {
       flash(t('Add the client’s email to the quote first.'), 'error');
       return;
     }
     setEmailing(true);
     setSending('email');
+    setRecipientNow(null);
     try {
       const id = String(quote.id);
+      if (!(await recipientStill('email'))) return;
+      if (!current().clientEmail) {
+        flash(t('Add the client’s email to the quote first.'), 'error');
+        return;
+      }
       const p = await publishForSend();
       if (!p) return;
       const res = await sendQuoteEmail(id, kind, p.linkId);
@@ -443,10 +492,10 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         // The server could not send it (no mail server yet, or offline): hand
         // the same message to the mail app instead.
         const subject = tr('{band} — Quote {ref}', { band: bandName, ref: quote.quoteNumber || '' }).trim();
-        void openExternal(`mailto:${encodeURIComponent(quote.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(linkMessage(p.token))}`);
+        void openExternal(`mailto:${encodeURIComponent(current().clientEmail || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(linkMessage(p.token))}`);
       }
       if (await publishAndRecord('email', p)) {
-        flash(res.ok ? t('Email sent to {email}', { email: quote.clientEmail }) : t('Your mail app opened with the message and the link.'));
+        flash(res.ok ? t('Email sent to {email}', { email: current().clientEmail || '' }) : t('Your mail app opened with the message and the link.'));
       }
     } finally {
       setEmailing(false);
@@ -715,10 +764,10 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     {
       key: 'link-email',
       title: t('Email'),
-      subtitle: quote.clientEmail ? t('To {email}, with the PDF', { email: quote.clientEmail }) : t('Add the client’s email to the quote first.'),
+      subtitle: current().clientEmail ? t('To {email}, with the PDF', { email: current().clientEmail || '' }) : t('Add the client’s email to the quote first.'),
       icon: emailing ? <Loader2 className="animate-spin" /> : <Mail />,
       onClick: () => void emailLink(),
-      disabled: !linkReady || emailing || !quote.clientEmail,
+      disabled: !linkReady || emailing || !current().clientEmail,
     },
     {
       key: 'link-copy',
@@ -954,7 +1003,33 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
                 ) : linkError ? (
                   <p role="alert" className="bw-body-sm text-destructive">{t('The client link could not be prepared. Check your connection and reopen this screen.')}</p>
                 ) : (
-                  <>{linkChannels.map(renderChannel)}</>
+                  <>
+                    {recipientNow && (
+                      <div role="alert" data-testid="quote-recipient-changed" className="flex flex-col gap-3 p-4 rounded-[16px] bg-card">
+                        <p className="bw-body-sm">
+                          {t('This quote now goes to {name}. Nothing was sent: check the contact and send again.', {
+                            name: [recipientNow.contact.client_name, recipientNow.contact.client_email || recipientNow.contact.client_phone].filter(Boolean).join(' · '),
+                          })}
+                        </p>
+                        <PillButton
+                          variant="outline"
+                          size="sm"
+                          fullWidth={false}
+                          onClick={() => {
+                            const next = recipientNow;
+                            confirmedRef.current = next.contact;
+                            setRecipientNow(null);
+                            // The second tap: the channel the first one asked for.
+                            if (next.channel === 'email') void emailLink();
+                            else sendLinkVia(next.channel);
+                          }}
+                        >
+                          {t('Send to {name}', { name: recipientNow.contact.client_name || t('Client') })}
+                        </PillButton>
+                      </div>
+                    )}
+                    {linkChannels.map(renderChannel)}
+                  </>
                 )}
               </section>
               <section className="flex flex-col gap-2">

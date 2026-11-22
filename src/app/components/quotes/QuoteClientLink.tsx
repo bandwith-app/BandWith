@@ -83,6 +83,10 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
   // that link only: if the quote goes to another client meanwhile, the
   // draft is never sent to them.
   const [draftLink, setDraftLink] = useState<{ id?: string; token: string } | null>(null);
+  // Round 5: who the draft was written to (the loaded conversation's
+  // client). The same link written to someone else since (a corrected
+  // name or email): a banner, and no send until the admin confirms.
+  const [draftTo, setDraftTo] = useState<string | null>(null);
   const [replying, setReplying] = useState(false);
   const [confirm, setConfirm] = useState<'rotate' | 'revoke' | null>(null);
   const [copied, setCopied] = useState(false);
@@ -197,17 +201,30 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     }
   };
 
+  // Round 5: the client of the loaded conversation (the link's recipient
+  // as published), else the quote's contact (before 183's first publish).
+  const recipientName = (link?.recipient_name ?? '').trim() || quote.clientName || t('Client');
+  const recipientEmail = link && link.recipient_email !== undefined ? link.recipient_email || '' : quote.clientEmail || '';
+  const recipientKey = `${recipientName.toLowerCase()}|${recipientEmail.toLowerCase()}`;
   const editReply = (value: string) => {
     setReply(value);
-    if (!value.trim()) setDraftLink(null);
-    else if (!draftLink && link) setDraftLink({ id: link.id, token: link.token });
+    if (!value.trim()) {
+      setDraftLink(null);
+      setDraftTo(null);
+    } else {
+      if (!draftLink && link) setDraftLink({ id: link.id, token: link.token });
+      if (draftTo === null) setDraftTo(recipientKey);
+    }
   };
   // Round 4: the quote went to another client since this draft was started.
   const draftOrphaned =
     !!reply.trim() && !!draftLink && (!link || (draftLink.id && link.id ? draftLink.id !== link.id : draftLink.token !== link.token));
+  // Round 5: same link, another recipient than when the draft started.
+  const draftReaddressed = !!reply.trim() && !draftOrphaned && draftTo !== null && draftTo !== recipientKey;
   const discardDraft = () => {
     setReply('');
     setDraftLink(null);
+    setDraftTo(null);
   };
   const copyDraft = () => {
     try {
@@ -236,9 +253,18 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     </div>
   ) : null;
 
+  const readdressNotice = draftReaddressed ? (
+    <div role="alert" data-testid="quote-reply-readdressed" className="flex flex-col gap-2 rounded-[20px] border border-border p-4">
+      <p className="bw-body-sm">{t('This conversation is now with {name}. Check your reply before you send it.', { name: [recipientName, recipientEmail].filter(Boolean).join(' · ') })}</p>
+      <PillButton size="md" variant="outline" onClick={() => setDraftTo(recipientKey)}>
+        {t('Write to {name}', { name: recipientName })}
+      </PillButton>
+    </div>
+  ) : null;
+
   const sendReply = async () => {
     const body = reply.trim();
-    if (!body || replying || draftOrphaned) return;
+    if (!body || replying || draftOrphaned || draftReaddressed) return;
     const on = draftLink ?? (link ? { id: link.id, token: link.token } : null);
     setReplying(true);
     // 183: on the link the draft was written on; if the quote went to
@@ -254,9 +280,10 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     }
     setReply('');
     setDraftLink(null);
+    setDraftTo(null);
     let emailed = false;
     // Round 4: the email of that same link (the server sends nothing if it was replaced).
-    if (quote.clientEmail) emailed = (await sendQuoteEmail(quote.id, 'reply', on?.id)).ok;
+    if (recipientEmail) emailed = (await sendQuoteEmail(quote.id, 'reply', on?.id)).ok;
     setReplying(false);
     notify?.(emailed ? t('Reply sent. The client also got it by email.') : t('Reply sent. It shows on the client’s page.'));
     void load();
@@ -482,7 +509,7 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
               {i > 0 && fromPrevious(messages[i - 1]) && !fromPrevious(m) && (
                 <li role="separator" className="self-stretch flex items-center gap-2 bw-label-xs text-muted-foreground">
                   <span className="h-px flex-1 bg-border" />
-                  {t('From here: {name}', { name: quote.clientName || t('Client') })}
+                  {t('From here: {name}', { name: recipientName })}
                   <span className="h-px flex-1 bg-border" />
                 </li>
               )}
@@ -498,7 +525,7 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
                     ? t('You')
                     : fromPrevious(m)
                       ? t('Previous client')
-                      : quote.clientName || t('Client')) +
+                      : recipientName) +
                     ' · ' +
                     when(m.created_at)}
                 </span>
@@ -522,15 +549,16 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
               className="w-full rounded-[20px] bg-field border border-border p-4 bw-body-md text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground resize-none"
             />
             {orphanNotice}
-            <PillButton size="md" loading={replying} disabled={!reply.trim() || draftOrphaned} icon={<Send className="w-4 h-4" />} onClick={() => void sendReply()}>
+            {readdressNotice}
+            <PillButton size="md" loading={replying} disabled={!reply.trim() || draftOrphaned || draftReaddressed} icon={<Send className="w-4 h-4" />} onClick={() => void sendReply()}>
               {t('Send reply')}
             </PillButton>
             {hadPrevious && !draftOrphaned && (
-              <p className="bw-body-sm">{t('You’re writing to {name}', { name: quote.clientName || t('Client') })}</p>
+              <p className="bw-body-sm">{t('You’re writing to {name}', { name: recipientName })}</p>
             )}
             <p className="bw-body-sm text-muted-foreground">
-              {quote.clientEmail
-                ? t('Your reply shows on the client’s page, and {email} gets it by email.', { email: quote.clientEmail })
+              {recipientEmail
+                ? t('Your reply shows on the client’s page, and {email} gets it by email.', { email: recipientEmail })
                 : t('Your reply shows on the client’s page.')}
             </p>
           </div>

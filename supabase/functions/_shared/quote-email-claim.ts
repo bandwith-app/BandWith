@@ -50,3 +50,22 @@ export async function claimQuoteEmailSlot(
  */
 export const staleBalanceVersion = (asked: unknown, current: unknown): boolean =>
   typeof asked === "number" && Number.isInteger(asked) && Number(current ?? 0) !== asked;
+
+/**
+ * Round 5: an error from the mail service that the service raised before it
+ * took the email (a 4xx: the request was refused, validation, rate limit):
+ * nothing went out, the slot can be given back. Anything else (a timeout,
+ * the connection lost, a 5xx, a 409 for a key already used) may have been
+ * sent: the slot stays taken, so a second tap doesn't send it twice.
+ */
+export class MailServiceError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+export const sentNothing = (e: unknown): boolean =>
+  e instanceof MailServiceError && e.status >= 400 && e.status < 500 && e.status !== 409;
+
+/** Round 5: one key per claimed slot, so a retry of the same send is one email. */
+export const quoteEmailIdempotencyKey = (linkId: string, slotAt: string): string => `quote-email/${linkId}/${slotAt}`;

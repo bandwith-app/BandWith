@@ -19,7 +19,7 @@ const KEYS = [
   'You’re writing to {name}',
   'This quote has been accepted: to send it to someone else, duplicate it.',
   'This quote has payments recorded in {currency}, so its currency can’t be changed.',
-  'This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way), but to send it to someone else, duplicate it.',
+  'This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.',
 ];
 
 describe('accepted quote: the client stays', () => {

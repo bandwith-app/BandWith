@@ -389,7 +389,7 @@ const business: AreaText = {
         },
         { type: "p", text: "Los admins reciben una push y una notificación en la app cuando el cliente abre el presupuesto por primera vez, lo acepta, lo rechaza o escribe." },
         { type: "note", tone: "warning", text: "**Enlace nuevo** y **Desactivar enlace** preguntan antes, porque el enlace actual del cliente deja de funcionar al momento." },
-        { type: "p", text: "Un presupuesto que nunca se ha enviado muestra aquí **Enviar al cliente**. También uno enviado que pasas a otro cliente (email o teléfono cambiados o quitados, o un nombre nuevo con un contacto nuevo): el enlace anterior deja de funcionar y, cuando lo envías, el nuevo cliente solo ve su propia conversación. Un presupuesto **aceptado** se queda con su cliente, porque la aceptación, el anticipo y el saldo son suyos: puedes corregir sus datos (una errata en el nombre, el teléfono escrito con el prefijo internacional, el email en mayúsculas), pero para enviarlo a otra persona usa **Duplicar**." },
+        { type: "p", text: "Un presupuesto que nunca se ha enviado muestra aquí **Enviar al cliente**. También uno enviado que pasas a otro cliente (email o teléfono cambiados o quitados, o un nombre nuevo con un contacto nuevo): el enlace anterior deja de funcionar y, cuando lo envías, el nuevo cliente solo ve su propia conversación. Un presupuesto **aceptado** se queda con su cliente, porque la aceptación, el anticipo y el saldo son suyos: puedes corregir sus datos (una errata en el nombre, el teléfono escrito con el prefijo internacional, una errata en el email hasta que pidas el saldo), pero para enviarlo a otra persona usa **Duplicar**." },
       ],
     },
     {

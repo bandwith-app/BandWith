@@ -58,7 +58,12 @@ CREATE TABLE public.quotes (id uuid PRIMARY KEY, band_id uuid, client_name text,
   status varchar(50) DEFAULT 'draft', sent_at timestamptz, viewed_at timestamptz, responded_at timestamptz, accepted_at timestamptz,
   response_type varchar(20), rejection_reason text, converted_to_event_id uuid, currency varchar(3) DEFAULT 'EUR', updated_at timestamptz DEFAULT now(),
   client_company text, billing_address text, vat_number text, fiscal_code text, client_notes text,
-  base_fee numeric DEFAULT 0, custom_items jsonb DEFAULT '[]', total numeric DEFAULT 0, deposit_amount numeric DEFAULT 0);
+  base_fee numeric DEFAULT 0, custom_items jsonb DEFAULT '[]', total numeric DEFAULT 0, deposit_amount numeric DEFAULT 0,
+  -- the money columns of 002 the totals trigger (round 5) reads and writes
+  travel_fee numeric DEFAULT 0, sound_fee numeric DEFAULT 0, presentation jsonb, subtotal numeric DEFAULT 0,
+  discount_type varchar(20) DEFAULT 'none', discount_value numeric DEFAULT 0, discount_amount numeric DEFAULT 0,
+  net_amount numeric DEFAULT 0, vat_rate numeric DEFAULT 0, vat_amount numeric DEFAULT 0, vat_exempt boolean DEFAULT false,
+  reverse_charge boolean DEFAULT false, deposit_required boolean DEFAULT true, deposit_percentage integer);
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, quote_id uuid, status varchar, payment_status varchar,
   deposit_paid boolean DEFAULT false, deposit_amount numeric, currency varchar(3), created_at timestamptz DEFAULT now());
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
@@ -518,6 +523,8 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   ok(L.snapshot === null && L.pdf_url === null && L.status === 'draft' && L.sent_at === null && L.accepted_name === null,
     'R3 flow: the new link has nothing on it (no summary, PDF, status, send, signature)');
   ok((await view(T2)) === null, 'R3 flow: unpublished, the new link shows nothing');
+  const oldEarly = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'Hello!')`, [Q])).then(() => 'written', (e) => e.message);
+  ok(/Update BandWith/.test(oldEarly), `R5 B1: an older build's reply before the new client's version is published: refused, asks to update (${oldEarly})`);
   const early = await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent($1, 'sent', 'copy', $2)`, [Q, T2])).then(() => 'recorded', (e) => e.message);
   ok(/Publish the quote first/.test(early) && (await link(Q)).status === 'draft', `R3 flow: no send is recorded before the new link is published (${early})`);
   const pub = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3)`, [Q, snap(4500), T2]).then((r) => r.rows[0])).catch(() => ({}));
@@ -530,13 +537,14 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   const stale = await asAdmin(() => q(`SELECT public.bw_quote_reply($1, 'Emma, see you Saturday!', $2)`, [Q, T1])).then(() => 'written', (e) => e.message);
   ok(/BW_LINK_CHANGED/.test(stale) && (await view(T2))?.messages?.length === 0,
     `R3 flow: a reply written in the old client's conversation fails and never reaches the new client (${stale})`);
-  const oldBuild = await asAdmin(() => q(`SELECT public.bw_quote_reply($1, 'Hello!')`, [Q])).then(() => 'written', (e) => e.message);
-  ok(/BW_LINK_CHANGED/.test(oldBuild), `R3 flow: an older build's reply (no token) on a new recipient's link is refused (${oldBuild})`);
+  // Round 5 (B1): published for the client the quote has now, an older build (383f15b: 2 named args) replies on it.
+  const oldBuild = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'Hello!')`, [Q])).then(() => 'written', (e) => e.message);
+  ok(oldBuild === 'written', `R5 B1: an older build's reply on the new client's published link is written (${oldBuild})`);
   await asAdmin(() => q(`SELECT public.bw_quote_reply($1, 'Hi Jordan!', $2)`, [Q, T2])).catch(() => null);
   const v = await view(T2);
-  ok(v?.messages?.length === 1 && v.messages[0].body === 'Hi Jordan!', 'R3 flow: a reply on the current link reaches the new client');
+  ok(v?.messages?.length === 2 && v.messages[1].body === 'Hi Jordan!', 'R3 flow: a reply on the current link reaches the new client');
   const rows = (await qq(`SELECT kind, body, link_id FROM quote_activity WHERE quote_id = $1 AND kind IN ('client_message', 'band_reply') ORDER BY created_at`, [Q])).rows;
-  ok(rows.length === 2 && rows[0]?.link_id === L1 && rows[1].link_id === L.id, `R3 flow: every line names its link (${JSON.stringify(rows.map((r) => r.link_id === L1 ? 'A' : 'B'))})`);
+  ok(rows.length === 3 && rows[0]?.link_id === L1 && rows[1].link_id === L.id && rows[2].link_id === L.id, `R3 flow: every line names its link (${JSON.stringify(rows.map((r) => r.link_id === L1 ? 'A' : 'B'))})`);
 }
 {
   // R3-2 older builds publish without a token: fine on a quote never given to another client, refused on a new recipient's link.
@@ -544,11 +552,22 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   const ok1 = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL)`, [Q, snap(4300)])).then(() => 'published', (e) => e.message);
   ok(ok1 === 'published', `old build: publishes as before on a quote with its first link (${ok1})`);
   await editClient(Q, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`);
-  const pdfA = `https://abcd.supabase.co/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-0042_A.pdf`;
-  const late = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', $3)`, [Q, snap(4200), pdfA])).then(() => 'published', (e) => e.message);
-  ok(/BW_LINK_CHANGED/.test(late) && (await link(Q)).snapshot === null, `old build: its late publish (A's summary and PDF) never lands on the new client's link (${late})`);
-  const ms = await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent($1, 'sent', 'email')`, [Q])).then(() => 'recorded', (e) => e.message);
-  ok(!/recorded/.test(ms), `old build: no send recorded on the new client's link (${ms})`);
+  // 383f15b's PDF name ends with the client's name: this one is Emma's.
+  const pdfA = `https://abcd.supabase.co/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-0042_ab12_Quote_The_Night_Shift_Emma_Carter.pdf`;
+  const late = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish(p_quote_id => $1, p_snapshot => $2::jsonb, p_lang => 'en', p_pdf_url => $3)`, [Q, snap(4200), pdfA])).then(() => 'published', (e) => e);
+  ok(late?.code === '40001' && /Update BandWith/.test(late.message) && (await link(Q)).snapshot === null, `old build: its late publish (A's summary and PDF) never lands on the new client's link, the text asks to update (${late?.message})`);
+  const ms = await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent(p_quote_id => $1, p_kind => 'sent', p_channel => 'email')`, [Q])).then(() => 'recorded', (e) => e.message);
+  ok(!/recorded/.test(ms), `old build: no send recorded on the new client's link before it is published (${ms})`);
+  // Round 5 (B1): 383f15b's own Share for the client the quote has now (4 named args): published, then sent, no error.
+  const pdfB = `https://abcd.supabase.co/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-0042_cd34_Quote_The_Night_Shift_Jordan_Lee.pdf`;
+  const now = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish(p_quote_id => $1, p_snapshot => $2::jsonb, p_lang => 'en', p_pdf_url => $3)`, [Q, snap(4200), pdfB])).then(() => 'published', (e) => e.message);
+  ok(now === 'published' && (await link(Q)).recipient_name === 'Jordan Lee', `R5 B1: an older build's publish for the current client lands (${now})`);
+  const ms2 = await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent(p_quote_id => $1, p_kind => 'sent', p_channel => 'whatsapp') s`, [Q])).then((r) => r.rows[0].s, (e) => e.message);
+  ok(ms2 === 'sent', `R5 B1: an older build's send on it is recorded (${ms2})`);
+  // The previous client's notes in an older build's summary: that summary is Emma's, refused.
+  await editClient(Q, `client_name = 'Taylor Brooks', client_email = 'taylor@example.com', client_notes = 'Gate code 4417'`);
+  const notes = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish(p_quote_id => $1, p_snapshot => $2::jsonb, p_lang => 'en', p_pdf_url => NULL)`, [Q, JSON.stringify({ ...JSON.parse(snap(4200)), notes: 'Ceremony at 4' })])).then(() => 'published', (e) => e.message);
+  ok(/Update BandWith/.test(notes), `R5 B1: an older build's summary with another client's notes: refused (${notes})`);
 }
 {
   // R3-3 mark sent records the version that went out.
@@ -623,7 +642,8 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   const Q2 = await sentQuote({ email: null, phone: null });
   const T2 = await tokenOf(Q2);
   await editClient(Q2, `client_name = 'Jordan Lee'`);
-  ok((await tokenOf(Q2)) !== T2, 'sent, not accepted, no contact: a rename is a new client (rule c)');
+  const q2 = (await q(`SELECT status FROM quotes WHERE id = $1`, [Q2])).rows[0];
+  ok((await tokenOf(Q2)) === T2 && q2.status === 'sent', `R5 m2: sent, no contact on file: a name edit alone keeps the link and the status (${q2.status})`);
 }
 
 // ---------------------------------------------------------------- 2. accept needs the version
@@ -762,6 +782,110 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   await db.exec(`UPDATE quote_links SET deposit_received_currency = NULL WHERE quote_id = '${Q}'`);
   await db.exec(m);
   ok((await link(Q)).deposit_received_currency === 'USD', 'a deposit recorded earlier gets the quote’s currency (migration run again)');
+}
+
+// ---------------------------------------------------------------- 1f. round 5 of #286 (Codex + Claude reviews of 8f5922d7)
+{
+  // m7 phones written with brackets and dashes.
+  const same = async (a, b) => (await qq(`SELECT public.bw_same_phone($1, $2) v`, [a, b])).rows[0]?.v;
+  ok((await same('(+1) 917 555 0101', '917-555-0101')) === true, 'R5 m7: "(+1) 917 555 0101" = "917-555-0101"');
+  ok((await same('(+1) 917 555 0101', '(+44) 917 555 0101')) === false, 'R5 m7: other country codes stay different');
+}
+{
+  // Codex 7: accepted by phone, never shared (no link): another client is refused too.
+  const Q = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, client_email, status) VALUES ('${Q}', '${BAND}', 'Emma Carter', 'emma.carter@example.com', 'accepted')`);
+  const r = await editClient(Q, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`).then(() => null, (e) => e);
+  ok(r?.hint === 'BW_QUOTE_ACCEPTED', `R5 C7: an accepted quote with no link keeps its client (${r?.message})`);
+  ok((await editClient(Q, `client_name = 'Emma Carter-Ross'`).then(() => 'ok', (e) => e.message)) === 'ok', 'R5 C7: its name can still be fixed');
+}
+{
+  // m1 an email typo on an accepted quote, before the balance was asked: fixed, the link and the acceptance stay.
+  const Q = await sentQuote({ email: 'emma.cartr@example.com' });
+  const T = await tokenOf(Q);
+  await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1)`, [T]));
+  const fix = await editClient(Q, `client_email = 'emma.carter@example.com'`).then(() => 'ok', (e) => e.message);
+  const l = await link(Q);
+  ok(fix === 'ok' && l.token === T && l.status === 'accepted' && l.recipient_email === 'emma.carter@example.com',
+    `R5 m1: accepted, email typo fixed: same link, still accepted, emails go to the fixed address (${fix}, ${l.recipient_email})`);
+  await db.exec(`UPDATE quote_links SET balance_sent_at = now() WHERE quote_id = '${Q}'`);
+  const late = await editClient(Q, `client_email = 'emma@carter.example'`).then(() => null, (e) => e);
+  ok(late?.hint === 'BW_QUOTE_ACCEPTED', `R5 m1: after the balance was asked, another email is refused (${late?.message})`);
+  const renamed = await editClient(Q, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`).then(() => null, (e) => e);
+  ok(renamed?.hint === 'BW_QUOTE_ACCEPTED', 'R5 m1: another name and email stay refused');
+}
+{
+  // m4 an older build's full save of an accepted quote echoes "sent": the quote stays accepted.
+  // m5 the billing address (older builds have no field for it) is not cleared.
+  // m6 the reassign guard keeps only the guarded columns.
+  const Q = await sentQuote();
+  await db.exec(`UPDATE quotes SET billing_address = '350 5th Ave, New York, NY', client_notes = 'Gate code 4417' WHERE id = '${Q}'`);
+  await db.exec(`UPDATE quotes SET status = 'accepted' WHERE id = '${Q}'`);
+  await editClient(Q, `client_name = 'Emma Carter', client_email = 'emma.carter@example.com', client_notes = 'Gate code 4417', base_fee = 4200, custom_items = '[]', status = 'sent'`).catch(() => null);
+  const row = (await q(`SELECT status, billing_address FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(row.status === 'accepted', `R5 m4: an older build's full save keeps "accepted" (${row.status})`);
+  ok(row.billing_address === '350 5th Ave, New York, NY', `R5 m5: an older build's full save keeps the billing address (${row.billing_address})`);
+  const Q2 = await sentQuote();
+  await db.exec(`UPDATE quotes SET client_notes = 'Gate code 4417', billing_address = '350 5th Ave' WHERE id = '${Q2}'`);
+  await editClient(Q2, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`);
+  const g = (await link(Q2)).reassign_guard;
+  ok(g && !('client_notes' in (g.before || {})) && !('billing_address' in (g.before || {})) && 'client_email' in (g.before || {}) && !('id' in (g.before || {})),
+    `R5 m6: the guard keeps only the guarded columns (${Object.keys(g?.before || {}).join(',')})`);
+}
+{
+  // Codex M (183:711): the first publish is version 1 with its history row.
+  const Q = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, client_email, status) VALUES ('${Q}', '${BAND}', 'Emma Carter', 'emma.carter@example.com', 'draft')`);
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, NULL, 0)`, [Q, JSON.stringify({ ...JSON.parse(snap(4200)), contentKey: 'k1' })])).catch(() => null);
+  const l = await link(Q);
+  const vers = (await q(`SELECT version FROM quote_link_versions WHERE quote_id = $1`, [Q])).rows;
+  ok(l?.version === 1 && l.version_at !== null && vers.length === 1, `R5 M: the first publish is version 1, dated, with its history row (${l?.version}, ${l?.version_at}, ${vers.length})`);
+  // Codex 2: the screen saw no link (p_version 0) and one exists now: refused, 40001.
+  const again = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, NULL, 0)`, [Q, snap(4300)])).then(() => 'published', (e) => e);
+  ok(again?.code === '40001' && /BW_LINK_CHANGED/.test(again.message), `R5 C2: a screen that saw no link, a link made since: 40001 (${again?.code})`);
+  const wrong = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, 'nope', 1)`, [Q, snap(4300)])).then(() => 'published', (e) => e);
+  ok(wrong?.code === '40001', `R5 C2: another token: 40001 (${wrong?.code})`);
+  const old = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, 7)`, [Q, snap(4300), l.token])).then(() => 'published', (e) => e);
+  ok(old?.code === '40001' && /BW_VERSION_CHANGED/.test(old.message), `R5 C2/C6: an older version than the link has: 40001 (${old?.code})`);
+}
+{
+  // Codex 5: two admins change different fees at the same time, each sending only its fee: both count.
+  const Q = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, status, base_fee, travel_fee, subtotal, discount_type, vat_rate, net_amount, vat_amount, total, deposit_percentage, deposit_amount)
+                 VALUES ('${Q}', '${BAND}', 'Emma Carter', 'draft', 4000, 200, 4200, 'none', 10, 4200, 420, 4620, 25, 1155)`);
+  await editClient(Q, `base_fee = 4500, edit_base_at = now()`);
+  await editClient(Q, `travel_fee = 300, edit_base_at = now()`);
+  const t = (await q(`SELECT subtotal, net_amount, vat_amount, total, deposit_amount FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(Number(t.subtotal) === 4800 && Number(t.vat_amount) === 480 && Number(t.total) === 5280 && Number(t.deposit_amount) === 1320,
+    `R5 C5: both fee edits count, totals from the server (${JSON.stringify(t)})`);
+  // An older build's full save with its own (stale) totals: the server's win.
+  await editClient(Q, `client_name = 'Emma Carter', base_fee = 4600, custom_items = '[]', subtotal = 4800, total = 5280`);
+  const t2 = (await q(`SELECT subtotal, total FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(Number(t2.subtotal) === 4900 && Number(t2.total) === 5390, `R5 C5: stale totals from a save are replaced (${JSON.stringify(t2)})`);
+  // A 10% discount and a custom item (2 x 125.255 = 250.51 per line, cents half up).
+  await editClient(Q, `discount_type = 'percentage', discount_value = 10, custom_items = '[{"amount": 125.255, "quantity": 2}]'`);
+  const t3 = (await q(`SELECT subtotal, discount_amount, total FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(Number(t3.subtotal) === 5150.51 && Number(t3.discount_amount) === 515.05 && Number(t3.total) === 5099.01,
+    `R5 C5: discount and items with the app's math (${JSON.stringify(t3)})`);
+  // A quote whose parts never added up (older wizards): moves by the change, keeps what it showed.
+  const Q2 = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, status, base_fee, subtotal, discount_type, vat_rate, total) VALUES ('${Q2}', '${BAND}', 'Emma Carter', 'draft', 1000, 1350, 'none', 0, 1350)`);
+  await editClient(Q2, `base_fee = 1100, edit_base_at = now()`);
+  ok(Number((await q(`SELECT total FROM quotes WHERE id = $1`, [Q2])).rows[0].total) === 1450, 'R5 C5: an older quote moves by the change');
+  // Nothing about money changed: the totals stay as they are.
+  await editClient(Q2, `client_name = 'Emma C.'`);
+  ok(Number((await q(`SELECT total FROM quotes WHERE id = $1`, [Q2])).rows[0].total) === 1450, 'R5 C5: a contact edit leaves the totals');
+}
+{
+  // Codex 8 (RPC side): a USD quote on a gig that defaulted to EUR: the receipt is in USD.
+  const Q = await sentQuote();
+  const T = await tokenOf(Q);
+  await db.exec(`UPDATE quotes SET currency = 'USD' WHERE id = '${Q}'`);
+  const G = id(n++);
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status, currency) VALUES ('${G}', '${BAND}', '${Q}', 'tentative', 'EUR')`);
+  await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1)`, [T]));
+  await asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 500)`, [Q])).catch(() => null);
+  ok((await link(Q)).deposit_received_currency === 'USD', 'R5 C8: a USD quote on a EUR gig records the deposit in USD');
 }
 
 // ---------------------------------------------------------------- grants

@@ -61,6 +61,9 @@ export interface QuoteLinkRow {
   balance_at?: string | null;
   balance_sent_at?: string | null;
   balance_paid_at?: string | null;
+  /** 183 round 5: who the link was published for (null before 183, or before the first publish). */
+  recipient_name?: string | null;
+  recipient_email?: string | null;
 }
 
 export type QuoteActivityKind =
@@ -441,6 +444,8 @@ const LINK_COLUMNS =
   'id, quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
 // 168: read separately, so the quote detail keeps working before 168 is applied.
 const BALANCE_COLUMNS = 'balance, balance_version, balance_at, balance_sent_at, balance_paid_at';
+// 183 round 5: who the link was published for (the conversation's client).
+const RECIPIENT_COLUMNS = 'recipient_name, recipient_email';
 
 export interface QuoteContact {
   client_name: string | null;
@@ -497,17 +502,22 @@ export const sameQuoteTerms = (
 export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link: QuoteLinkRow | null; activity: QuoteActivity[] }>> {
   const activityOf = (columns: string) =>
     supabase.from('quote_activity').select(columns).eq('quote_id', quoteId).order('created_at', { ascending: true });
-  const [first, firstActivity] = await Promise.all([
-    supabase.from('quote_links').select(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`).eq('quote_id', quoteId).maybeSingle(),
+  const linkOf = (columns: string) => supabase.from('quote_links').select(columns).eq('quote_id', quoteId).maybeSingle();
+  const [firstTry, firstActivity] = await Promise.all([
+    linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}, ${RECIPIENT_COLUMNS}`),
     activityOf('id, kind, body, channel, version, created_at, link_id'),
   ]);
+  // Before 183 the link has no recipient columns: read it without.
+  const first = firstTry.error && /recipient_/.test(firstTry.error.message || '')
+    ? await linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`)
+    : firstTry;
   // Before 183 the timeline has no link_id: read it without.
   const activity = firstActivity.error && /link_id/.test(firstActivity.error.message || '')
     ? await activityOf('id, kind, body, channel, version, created_at')
     : firstActivity;
   // Before 168 the balance columns don't exist: read the link without them.
   const link = first.error && /balance/.test(first.error.message || '')
-    ? await supabase.from('quote_links').select(LINK_COLUMNS).eq('quote_id', quoteId).maybeSingle()
+    ? await linkOf(LINK_COLUMNS)
     : first;
   if (link.error) return { data: null, error: asError(link.error) };
   if (activity.error) return { data: null, error: asError(activity.error) };
@@ -717,8 +727,10 @@ export async function republishClientQuote(
     } catch (e) {
       console.warn('[quoteLinks] PDF of the new version not created:', e);
     }
-    // The link read above: if it is replaced meanwhile (new client), nothing is published.
-    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl, link.token);
+    // The link and the version read above (round 5): replaced meanwhile (new
+    // client), or a newer version published while the PDF was made, nothing
+    // is published (a late PDF never overwrites newer terms).
+    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl, link.token, link.version);
     return pub.error ? { data: null, error: pub.error } : { data: pub.data?.version ?? null, error: null };
   } catch (e) {
     return { data: null, error: asError(e) };

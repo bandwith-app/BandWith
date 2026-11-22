@@ -491,7 +491,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   const acceptedNote =
     isEditing && String(initialData?.status || '').toUpperCase() === 'ACCEPTED' ? (
       <p className="bw-body-sm text-muted-foreground" data-testid="quote-accepted-client-note">
-        {t('This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way), but to send it to someone else, duplicate it.')}
+        {t('This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.')}
       </p>
     ) : null;
   // Ask the lineup for availability now (RSVP), before the client accepts.

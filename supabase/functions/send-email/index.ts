@@ -27,7 +27,14 @@ import {
   type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
-import { type ClaimClient, claimQuoteEmailSlot, staleBalanceVersion } from "../_shared/quote-email-claim.ts";
+import {
+  type ClaimClient,
+  claimQuoteEmailSlot,
+  MailServiceError,
+  quoteEmailIdempotencyKey,
+  sentNothing,
+  staleBalanceVersion,
+} from "../_shared/quote-email-claim.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain
@@ -133,12 +140,20 @@ interface DispatchData {
   userIds?: string[];
 }
 
-/** POST to Resend, waiting and retrying when rate limited (429). */
-async function resend(path: string, body: unknown) {
+/**
+ * POST to Resend, waiting and retrying when rate limited (429). Round 5:
+ * `idempotencyKey` makes a retry of the same send one email; a refusal
+ * carries its HTTP status (MailServiceError).
+ */
+async function resend(path: string, body: unknown, idempotencyKey?: string) {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`https://api.resend.com${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
       body: JSON.stringify(body),
     });
     if (res.status === 429 && attempt < 3) {
@@ -147,7 +162,7 @@ async function resend(path: string, body: unknown) {
     }
     if (!res.ok) {
       console.error("Resend error:", await res.text());
-      throw new Error("Failed to send email");
+      throw new MailServiceError("Failed to send email", res.status);
     }
     return await res.json();
   }
@@ -421,6 +436,14 @@ const QUOTE_LINK_COLUMNS =
  * holds when it sends one (`linkId`), else the quote's link. A link replaced
  * since (the quote went to another client) is not found: nothing is sent.
  */
+/** Round 5: the caller is an admin of the quote's band (before anything about its link is said). */
+async function requireQuoteBandAdmin(admin: SupabaseClient, userId: string, quoteId: string) {
+  const { data } = await admin.from("quotes").select("band_id").eq("id", quoteId).maybeSingle();
+  const bandId = (data as { band_id?: string } | null)?.band_id;
+  if (!bandId) throw new HttpError(404, "Quote not found");
+  await requireBandAdmin(admin, userId, bandId);
+}
+
 async function readQuoteLink<T>(admin: SupabaseClient, quoteId: string, linkId: string | null, extra = "") {
   const q = admin.from("quote_links").select(QUOTE_LINK_COLUMNS + extra).eq("quote_id", quoteId);
   const { data } = await (linkId ? q.eq("id", linkId) : q).maybeSingle();
@@ -466,6 +489,8 @@ async function sendQuoteClientEmail(
   const kind: QuoteEmailKind =
     type === "quote_reply" ? "reply" : data?.kind === "reminder" ? "reminder" : data?.kind === "updated" ? "updated" : "sent";
 
+  // Round 5: an admin of the quote's band first, then anything about its link.
+  await requireQuoteBandAdmin(admin, caller.id, quoteId);
   const link = await readQuoteLink<QuoteLinkRow>(admin, quoteId, linkId);
   if (!link && linkId) return jsonResponse({ success: false, code: "link_changed", error: "The quote went to another client" }, 410);
   if (!link) throw new HttpError(404, "This quote has no client link");
@@ -546,10 +571,11 @@ async function sendQuoteClientEmail(
       subject,
       html,
       ...(pdf ? { attachments: [{ path: pdf, filename }] } : {}),
-    });
+    }, quoteEmailIdempotencyKey(link.id, slot.at));
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
-    await slot.release();
+    // Round 5: given back only when Resend refused it (nothing went out).
+    if (sentNothing(e)) await slot.release();
     throw e;
   }
 }
@@ -571,6 +597,8 @@ async function sendQuoteBalanceEmail(
   const linkId = typeof data?.linkId === "string" && UUID_RE.test(data.linkId) ? data.linkId : null;
   const kind: QuoteBalanceKind = data?.kind === "reminder" ? "reminder" : data?.kind === "updated" ? "updated" : "sent";
 
+  // Round 5: an admin of the quote's band first, then anything about its link.
+  await requireQuoteBandAdmin(admin, caller.id, quoteId);
   const link = await readQuoteLink<
     QuoteLinkRow & {
       status: string; accepted_snapshot: Record<string, unknown> | null; balance: Record<string, unknown> | null;
@@ -634,10 +662,11 @@ async function sendQuoteBalanceEmail(
       to: [to],
       subject,
       html,
-    });
+    }, quoteEmailIdempotencyKey(link.id, slot.at));
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
-    await slot.release();
+    // Round 5: given back only when Resend refused it (nothing went out).
+    if (sentNothing(e)) await slot.release();
     throw e;
   }
 }
