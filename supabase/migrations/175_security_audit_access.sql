@@ -495,6 +495,11 @@ DROP POLICY IF EXISTS messages_insert_participant ON public.messages;
 CREATE POLICY messages_insert_participant ON public.messages
   AS PERMISSIVE FOR INSERT TO authenticated
   WITH CHECK (sender_id = auth.uid() AND chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
+DROP POLICY IF EXISTS messages_update_own ON public.messages;
+CREATE POLICY messages_update_own ON public.messages
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING (sender_id = auth.uid())
+  WITH CHECK (sender_id = auth.uid() AND chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 
 DROP POLICY IF EXISTS chats_select_creator ON public.chats;
 CREATE POLICY chats_select_creator ON public.chats

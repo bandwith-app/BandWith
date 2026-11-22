@@ -174,6 +174,7 @@ CREATE POLICY chats_upd ON public.chats FOR UPDATE TO authenticated USING (creat
 CREATE POLICY messages_insert_participant ON public.messages FOR INSERT TO authenticated WITH CHECK ((sender_id = auth.uid()) AND (chat_id = ANY (bw_my_chat_ids())));
 CREATE POLICY messages_select_participant ON public.messages FOR SELECT TO authenticated USING (chat_id = ANY (bw_my_chat_ids()));
 CREATE POLICY messages_delete_own ON public.messages FOR DELETE TO authenticated USING (sender_id = auth.uid());
+CREATE POLICY messages_update_own ON public.messages FOR UPDATE TO authenticated USING (sender_id = auth.uid()) WITH CHECK ((sender_id = auth.uid()) AND (chat_id = ANY (bw_my_chat_ids())));
 CREATE POLICY quotes_insert_admin ON public.quotes FOR INSERT TO authenticated WITH CHECK (bw_is_band_admin(band_id) AND (created_by = auth.uid()));
 CREATE POLICY quotes_select_admin ON public.quotes FOR SELECT TO authenticated USING (bw_is_band_admin(band_id) OR (created_by = auth.uid()));
 CREATE POLICY quotes_update_admin ON public.quotes FOR UPDATE TO authenticated USING (bw_is_band_admin(band_id)) WITH CHECK (bw_is_band_admin(band_id));
