@@ -6,6 +6,9 @@
  *  - createChat (no 193 yet) adds the creator on their own first, then the
  *    others still in the band: one former member on the lineup used to make
  *    the whole insert fail and leave a chat nobody was in.
+ *  - round 3: with 193, createChat opens band and gig chats through
+ *    bw_open_group_chat (one chat per band / gig, also for someone whose
+ *    participant row was removed); without it, the older path above.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -15,6 +18,11 @@ type Resolver = (table: string, calls: Call[]) => { data: unknown; error: unknow
 const h = vi.hoisted(() => ({
   resolve: (() => ({ data: null, error: null })) as Resolver,
   chains: [] as { table: string; calls: Call[] }[],
+  rpc: (async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } })) as (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }>,
+  rpcCalls: [] as [string, Record<string, unknown>][],
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -40,7 +48,10 @@ vi.mock('@/lib/supabase', () => {
   };
   const supabase = {
     from: (table: string) => chain(table),
-    rpc: async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      h.rpcCalls.push([fn, args]);
+      return h.rpc(fn, args);
+    },
     channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
     removeChannel: () => {},
   };
@@ -69,6 +80,8 @@ const ACTIVE = ['me', 'line-1', 'drop-1', 'gone-1', 'new-1'];
 let warn: { mock: { calls: unknown[][] } };
 beforeEach(() => {
   h.chains.length = 0;
+  h.rpcCalls.length = 0;
+  h.rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -136,5 +149,26 @@ describe('createChat without 193', () => {
     const { data, error } = await createChat({ type: 'event', band_id: 'band-1', event_id: 'gig-1', participant_ids: ['line-1'] });
     expect(data).toBeNull();
     expect(error).toBeTruthy();
+  });
+});
+
+describe('createChat with 193 (bw_open_group_chat)', () => {
+  it('finds or creates the gig chat on the server: no second chat, no client-side lookup', async () => {
+    h.resolve = resolver();
+    h.rpc = async () => ({ data: { id: 'ev-chat', type: 'event', event_id: 'gig-1', band_id: 'band-1', created: false }, error: null });
+    const { data, error } = await createChat({ type: 'event', name: 'Rooftop', band_id: 'band-1', event_id: 'gig-1', participant_ids: ['line-1'] });
+    expect(error).toBeNull();
+    expect(data?.id).toBe('ev-chat');
+    expect(h.rpcCalls.some(([fn, a]) => fn === 'bw_open_group_chat' && a.p_type === 'event' && a.p_event_id === 'gig-1')).toBe(true);
+    expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
+  });
+
+  it('a band chat too, and a refusal is a translated chat rule, not a new chat', async () => {
+    h.resolve = resolver();
+    h.rpc = async () => ({ data: null, error: { code: '42501', message: 'Not allowed to open this chat' } });
+    const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+    expect(data).toBeNull();
+    expect(error?.constructor.name).toBe('ChatRuleError');
+    expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
   });
 });

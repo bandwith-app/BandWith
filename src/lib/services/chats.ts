@@ -7,6 +7,10 @@ import { mentionedUserIds } from '@/lib/chatMentions';
 import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
 
+/** The database has no such function yet (migration not applied): use the older path. */
+const isMissingFunction = (error: { code?: string; message?: string } | null | undefined): boolean =>
+  !!error && (error.code === 'PGRST202' || error.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(error.message || ''));
+
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
 
@@ -635,6 +639,43 @@ export const createChat = async (
           ], { onConflict: 'chat_id,user_id' });
 
         return { data: existingChat, error: null };
+      }
+    }
+
+    // Band and gig chats: one per band / gig, found or created on the server
+    // in one step (193). The lookup below could not see a chat the caller had
+    // not joined yet, so a band admin outside a gig's lineup made a second
+    // gig chat (audit 07 #6). It stays only for a database without 193.
+    if ((data.type === 'band' && data.band_id) || (data.type === 'event' && data.event_id)) {
+      const { data: opened, error: openError } = await supabase.rpc('bw_open_group_chat', {
+        p_type: data.type,
+        p_band_id: data.band_id ?? null,
+        p_event_id: data.event_id ?? null,
+        p_name: data.name ?? null,
+      });
+      if (!openError && opened) {
+        const { created, ...chat } = opened as Chat & { created?: boolean };
+        const others = allParticipants.filter((id) => id !== user.id);
+        if (created && others.length > 0) {
+          const { error: partError } = await supabase
+            .from('chat_participants')
+            .upsert(others.map((userId) => ({ chat_id: chat.id, user_id: userId })), { onConflict: 'chat_id,user_id', ignoreDuplicates: true });
+          if (partError) console.warn('[createChat] Participant insert warning:', partError.message);
+        }
+        return { data: chat as Chat, error: null };
+      }
+      if (openError && !isMissingFunction(openError)) {
+        if ((openError as { code?: string }).code === '42501') {
+          return {
+            data: null,
+            error: new ChatRuleError(
+              data.type === 'band'
+                ? t('You can only message in bands you are an active member of.')
+                : t('You can only message in events you are participating in.'),
+            ),
+          };
+        }
+        throw openError;
       }
     }
 

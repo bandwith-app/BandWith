@@ -7,8 +7,8 @@
 // bw_quote_link_pdf_path says which file the key opens right now (none when
 // the link is turned off or the document changed), already decoded and
 // checked; the answer is a redirect to that file signed for five minutes.
-// The quotes bucket is private, so this is the only way a client reaches a
-// PDF. Messages follow the page language (l=), else Accept-Language.
+// Works with the quotes bucket public (this release) or private (177, a
+// later release: then this is the only way a client reaches a PDF). Messages follow the page language (l=), else Accept-Language.
 // Public by design: the 64-character key is the credential. Deploy with
 // --no-verify-jwt.
 

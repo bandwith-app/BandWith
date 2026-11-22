@@ -14,7 +14,8 @@
 --     sent (185's balance_sent when that column exists, else the published
 --     balance, as the page shows it before 187).
 -- A key is random and changes whenever its document changes (a new version,
--- a new PDF, acceptance, a new balance, a new link token), and is dropped
+-- a new PDF, acceptance, a new balance, a new link token; once accepted only
+-- the frozen accepted PDF counts, round 3), and is dropped
 -- while the link is turned off. So a PDF link passed on (to an accountant,
 -- say) opens that one document: not a later revision, not the balance PDF,
 -- not the client page, Accept/Decline or the messages. Lookups go through a
@@ -31,10 +32,11 @@
 -- Rollout (nothing is moved, copied or deleted; files stay where they are):
 --   1. apply this migration (adds columns and functions; nothing visible);
 --   2. deploy the functions quote-pdf (new, --no-verify-jwt) and send-email,
---      and the web app (quote.html builds the gated links);
---   3. apply 177, which makes the bucket private. Old direct storage URLs
---      stop working then; the quote page link in sent emails keeps working
---      and its PDF button goes through the gate.
+--      and the web app (quote.html builds the gated links).
+-- Everything here works with the quotes bucket still public (round 3: 177,
+-- the private bucket, is NOT part of this release: released apps still
+-- share public storage URLs). The gate signs URLs, which a public bucket
+-- serves as well.
 -- Older app builds keep uploading and publishing the same storage URL
 -- format: it is only used as a locator now. Works before and after 185
 -- (balance_sent is read at run time). Idempotent.
@@ -84,8 +86,13 @@ LANGUAGE sql
 STABLE
 SET search_path TO 'public'
 AS $$
+  -- Accepted: the frozen accepted PDF alone (round 3: editing the quote after
+  -- acceptance bumps its version, not the document the client sees, so the
+  -- key stays). Otherwise the current version and its PDF.
   SELECT CASE WHEN p_link.revoked_at IS NULL AND public.bw_quote_link_doc_pdf(p_link) IS NOT NULL THEN
-    md5(concat_ws('|', 'doc', p_link.token, p_link.version, p_link.status = 'accepted', public.bw_quote_link_doc_pdf(p_link))) END;
+    CASE WHEN p_link.status = 'accepted'
+         THEN md5(concat_ws('|', 'accepted', p_link.token, p_link.accepted_pdf_url))
+         ELSE md5(concat_ws('|', 'doc', p_link.token, p_link.version, p_link.pdf_url)) END END;
 $$;
 CREATE OR REPLACE FUNCTION public.bw_quote_link_balance_id(p_link public.quote_links)
 RETURNS text
@@ -200,7 +207,7 @@ SET search_path TO 'public'
 AS $$
   SELECT p_link.status = 'accepted'
      AND public.bw_quote_link_balance_doc(p_link) IS NOT NULL
-     AND coalesce((SELECT lower(e.status) FROM public.events e
+     AND coalesce((SELECT lower(e.status::text) FROM public.events e
                     WHERE e.id = public.bw_quote_gig_id(p_link.quote_id)), '') <> 'cancelled';
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_balance_shown(public.quote_links) FROM PUBLIC, anon, authenticated;

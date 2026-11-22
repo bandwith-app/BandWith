@@ -1,8 +1,8 @@
 /**
  * The link to a quote's PDF that a client may open (migrations 176/177).
  *
- * Quote PDFs live in the private "quotes" bucket. A client reaches one only
- * through the quote link: /functions/v1/quote-pdf?p=<key> checks that the
+ * Quote PDFs live in the "quotes" bucket (public until 177, a later release).
+ * A client reaches one only through the quote link: /functions/v1/quote-pdf?p=<key> checks that the
  * link still shows that PDF and redirects to a short-lived signed URL. Each
  * document has its own random key (176), so a PDF link passed on (to an
  * accountant, say) opens that one PDF and nothing else: not a later version,

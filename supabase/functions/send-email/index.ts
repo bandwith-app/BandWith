@@ -426,8 +426,9 @@ function quotePdfUrl(raw: string | null, bandId: string): string | null {
 }
 
 /**
- * 176/177: the quotes bucket is private. Resend fetches the attachment from
- * a URL signed for a few minutes, never from the public storage URL.
+ * 176: Resend fetches the attachment from a URL signed for a few minutes,
+ * never from the public storage URL (which stops working once 177 makes the
+ * bucket private, in a later release; a signed URL works either way).
  * `failed`: there is a PDF but it could not be signed (round 2: the email
  * must not go out without it while the app is told it was sent).
  */

@@ -7,16 +7,20 @@
 //   cp <repo>/supabase/tests/quote_pdf_gate.pglite.mjs . && node quote_pdf_gate.pglite.mjs <repo>
 //   node quote_pdf_gate.pglite.mjs <repo> /dev/null /dev/null   # before: FAILs expected
 //
-// It runs twice: on a database before 185 (no quote_links.balance_sent; the
-// column is added later, as 185 does) and on one where 185 came first.
+// It runs on a database before 185 (no quote_links.balance_sent; the column
+// is added later, as 185 does), on one where 185 came first, with
+// events.status as the event_status enum of 002 (and once as text).
+// Round 3: 177 (private bucket) is NOT in this release: by default it is not
+// applied and everything must work with the bucket still public. WITH177=1
+// adds it (the later step).
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const REPO = process.argv[2];
 const M176 = process.argv[3] ?? `${REPO}/supabase/migrations/176_quote_pdf_gate.sql`;
-const M177 = process.argv[4] ?? `${REPO}/supabase/migrations/177_quotes_bucket_private.sql`;
-const migs = [M176, M177].map((f) => readFileSync(f, 'utf8'));
+const M177 = process.argv[4] ?? (process.env.WITH177 ? `${REPO}/supabase/migrations/177_quotes_bucket_private.sql` : null);
+const migs = [M176, M177].filter(Boolean).map((f) => readFileSync(f, 'utf8'));
 
 process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
 let fails = 0;
@@ -29,7 +33,7 @@ const name = (n) => `Q-${n}_ab12_Quote_Hudson_Horns_Client.pdf`;
 const file = (band, n) => `${SB}/${band}/${name(n)}`;
 const bal = (n) => JSON.stringify({ v: 1, amount: 1200 + n, pdfUrl: file(BAND, n) });
 
-async function run(label, before185) {
+async function run(label, before185, statusType = 'event_status') {
   console.log(`\n── ${label}`);
   const db = new PGlite();
   await db.exec(`
@@ -38,7 +42,8 @@ CREATE SCHEMA storage;
 CREATE TABLE storage.buckets (id text PRIMARY KEY, name text, public boolean);
 INSERT INTO storage.buckets VALUES ('quotes', 'quotes', true), ('avatars', 'avatars', true), ('song-files', 'song-files', false);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY, band_id uuid, converted_to_event_id uuid);
-CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, quote_id uuid, status text, created_at timestamptz DEFAULT now());
+CREATE TYPE event_status AS ENUM ('draft', 'tentative', 'confirmed', 'cancelled', 'completed');
+CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, quote_id uuid, status ${statusType}, created_at timestamptz DEFAULT now());
 CREATE TABLE public.quote_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid, band_id uuid, token text UNIQUE,
   snapshot jsonb, version int, pdf_url text, pdf_version int, status text, accepted_pdf_url text, revoked_at timestamptz, balance jsonb,
   balance_sent_at timestamptz);
@@ -62,7 +67,7 @@ ${before185 ? '' : `UPDATE public.quote_links SET balance_sent = balance WHERE b
   ok(true, 'migrations run twice');
 
   const pub = (await db.query(`SELECT id, public FROM storage.buckets ORDER BY id`)).rows;
-  ok(pub.find((b) => b.id === 'quotes')?.public === false, 'quotes bucket is private');
+  ok(pub.find((b) => b.id === 'quotes')?.public === !M177, M177 ? 'quotes bucket is private (177)' : 'without 177: quotes bucket stays public');
   ok(pub.find((b) => b.id === 'avatars')?.public === true, 'other buckets untouched');
 
   // What the client page gets (anon, by token), and what a PDF key opens.
@@ -124,8 +129,13 @@ ${before185 ? '' : `UPDATE public.quote_links SET balance_sent = balance WHERE b
   ok((await keys(tok('a'))).balance == null, 'a balance never sent: no balance PDF');
   await db.exec(`UPDATE quote_links SET status = 'sent', balance = NULL WHERE token = '${tok('a')}'`);
 
-  await db.exec(`UPDATE events SET status = 'Cancelled' WHERE id = '${GIG}'`);
-  ok(await open(c3.balance, 'balance') === null, 'balance PDF hidden once the gig is cancelled (any case)');
+  // Round 3: an edit after acceptance bumps the version; the client still
+  // sees the frozen accepted PDF, and its forwarded link keeps working.
+  const cAcc = (await keys(tok('c'))).doc;
+  await db.exec(`UPDATE quote_links SET version = version + 1, pdf_url = '${file(BAND, 35)}', pdf_version = version + 1 WHERE token = '${tok('c')}'`);
+  ok(!!cAcc && (await keys(tok('c'))).doc === cAcc && await open(cAcc) === P(30), 'accepted, then edited: the accepted PDF keeps its key');
+  await db.exec(`UPDATE events SET status = '${statusType === 'text' ? 'Cancelled' : 'cancelled'}' WHERE id = '${GIG}'`);
+  ok(await open(c3.balance, 'balance') === null, `balance PDF hidden once the gig is cancelled (${statusType})`);
   ok((await keys(tok('c'))).balance == null, 'and its key is not handed out');
   ok(await open((await keys(tok('d'))).doc) === null, "a URL pointing at another band's folder is refused");
   ok(Object.keys(await keys(tok('f'))).length === 0, 'unknown token: nothing');
@@ -165,6 +175,7 @@ ${before185 ? '' : `UPDATE public.quote_links SET balance_sent = balance WHERE b
 
 await run('176 before 185 (no balance_sent yet)', true);
 await run('185 before 176 (balance_sent exists)', false);
+await run('events.status as text', false, 'text');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

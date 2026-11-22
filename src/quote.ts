@@ -15,7 +15,7 @@
 
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
-import { clientQuotePdfUrl, type QuotePdfKeys } from './lib/quotePdfLink';
+import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -286,10 +286,12 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   }
   if (q.notes) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.notes), h('p', { class: 'pre' }, q.notes));
   if (q.terms) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.terms), h('p', { class: 'pre mute', style: 'font-size:15px;line-height:21px' }, q.terms));
-  // 176/177: the PDF only through the link (checked by the server each time).
+  // 176: the PDF through the link (checked by the server each time).
   const storedPdf = b?.pdfUrl || v.pdf_url;
   const pdf =
     clientQuotePdfUrl(storedPdf, SUPABASE_URL, b?.pdfUrl ? pdfKeys.balance : pdfKeys.doc, b?.pdfUrl ? 'balance' : 'doc', lang) ??
+    // No gate yet (176 not applied): the stored PDF link, as before.
+    (pdfGateMissing && isQuoteStoragePdf(storedPdf) ? storedPdf : null) ??
     (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
@@ -647,13 +649,56 @@ function render() {
 // New band replies while the page stays open.
 let polling = false;
 /** The PDF keys of what the page shows now (none for the demo, or offline). */
-async function refreshPdfKeys() {
-  if (!/^[0-9a-f]{64}$/.test(token)) return;
+let pdfGateMissing = false;
+let keyRetry = 0;
+let keyRetryPending = false;
+let keyWatch = false;
+async function refreshPdfKeys(): Promise<boolean> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return false;
+  startKeyWatch();
   try {
-    pdfKeys = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
-  } catch {
-    /* keep the last keys: the gate checks them anyway */
+    const next = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
+    keyRetry = 0;
+    const moved = JSON.stringify([next.doc ?? null, next.balance ?? null]) !== JSON.stringify([pdfKeys.doc ?? null, pdfKeys.balance ?? null]);
+    pdfKeys = next;
+    return moved;
+  } catch (e) {
+    // Before 176 is applied there is no gate: the stored (public) PDF link,
+    // as before. Any other failure: keep the last keys and try again soon.
+    if (e instanceof RpcError && e.code === 'PGRST202') {
+      pdfGateMissing = true;
+      return false;
+    }
+    if (keyRetry < 4 && !keyRetryPending) {
+      keyRetryPending = true;
+      const wait = 2_000 * 3 ** keyRetry++;
+      window.setTimeout(() => {
+        keyRetryPending = false;
+        void refreshPdfKeys().then((moved) => moved && rerenderForKeys());
+      }, wait);
+    }
+    return false;
   }
+}
+function rerenderForKeys() {
+  if (busy || !view) return;
+  readFields();
+  render();
+}
+/**
+ * Keys change when the band republishes (a new PDF), so an open page asks
+ * again on every poll and whenever it comes back to the screen: its PDF
+ * button never keeps a key the gate no longer opens (round 3).
+ */
+function startKeyWatch() {
+  if (keyWatch || (import.meta.env.DEV && token === 'demo')) return;
+  keyWatch = true;
+  const check = async () => {
+    if (document.hidden || busy || !view) return;
+    if (await refreshPdfKeys()) rerenderForKeys();
+  };
+  window.setInterval(() => void check(), 30_000);
+  document.addEventListener('visibilitychange', () => void check());
 }
 
 function poll() {
@@ -664,7 +709,6 @@ function poll() {
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
         JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
       if (next && changed(next, view)) {
-        await refreshPdfKeys();
         readFields();
         applyView({ ...next, stale });
         render();
