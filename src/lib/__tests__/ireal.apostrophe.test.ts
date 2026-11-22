@@ -28,6 +28,13 @@ describe('iReal links with an apostrophe', () => {
     expect(irealLinkFrom(data({ 'text/html': `<a class="x" href="${LINK.replace(/'/g, '&apos;')}&amp;">x</a>` }))).toBe(`${LINK}&`);
   });
 
+  it('reads an unquoted href too (PR #295 review)', () => {
+    const plain = `irealb://${encodeURIComponent(part.replace("Don't", 'Do Not'))}`;
+    expect(irealLinkFrom(data({ 'text/html': `<a href=${plain}>Do Not Stop</a>` }))).toBe(plain);
+    expect(irealLinkFrom(data({ 'text/html': `<p><a class=x href=${plain} target=_blank>Do Not Stop</a></p>` }))).toBe(plain);
+    expect(parseIrealLink(irealLinkFrom(data({ 'text/html': `<a href=${plain}>x</a>` }))!).songs[0].title).toBe('Do Not Stop');
+  });
+
   it('drops a closing quote around a link written in single quotes', () => {
     expect(findIrealLink(`'${LINK}'`)).toBe(LINK);
   });

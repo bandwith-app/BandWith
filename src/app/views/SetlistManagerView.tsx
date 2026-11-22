@@ -53,7 +53,7 @@ import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet, ListRow } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
-import { adoptSuggestionFiles, hasUnadoptedFiles, isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
+import { adoptSuggestionFiles, hasUnadoptedFiles, isStoredSongFile, openSongResource, sweepAdoptedFiles } from '@/lib/services/songFiles';
 import { formatHoursMinutes, genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
 import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
@@ -368,10 +368,19 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     const { refs } = await adoptSuggestionFiles(song);
     if (Object.keys(refs).length) setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, ...refs } : s)));
   }, []);
+  // Originals left by a move that could not delete them (recorded on the
+  // server, 197): tidied once per visit. Several admins or devices at once
+  // are safe: the server decides who repoints and what may be deleted.
+  const swept = useRef<string | null>(null);
   useEffect(() => {
     if (!isAdmin) return;
     for (const song of songs) if (hasUnadoptedFiles(song) && !adoptTried.current.has(song.id)) void adoptFiles(song);
-  }, [songs, isAdmin, adoptFiles]);
+    const bandId = selectedBand?.id;
+    if (bandId && songs.length && swept.current !== bandId) {
+      swept.current = bandId;
+      void sweepAdoptedFiles(bandId);
+    }
+  }, [songs, isAdmin, adoptFiles, selectedBand?.id]);
 
   /** Admins move a suggested song to Learning / Ready (and back). */
   const handleSetSongStatus = async (song: Song, status: Song['status']) => {

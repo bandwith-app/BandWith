@@ -159,67 +159,159 @@ export const resolveSongFileUrl = async (ref?: string | null): Promise<string | 
 export const isSuggestionFile = (ref?: string | null): ref is string =>
   isStoredSongFile(ref) && ref.slice(REF_PREFIX.length).split('/')[1] === 'suggestions';
 
+/** The parts of the Supabase client file adoption uses (a test passes its own). */
+type AdoptClient = Pick<typeof supabase, 'rpc' | 'from' | 'storage'>;
+type Field = 'audio_url' | 'chart_url';
+type AdoptRefs = { audio_url?: string; chart_url?: string };
+const asError = (e: unknown, fallback: string): Error =>
+  e instanceof Error ? e : new Error(String((e as { message?: unknown })?.message || fallback));
+
 /**
- * An accepted suggested song: its files move into the band's own folders
- * (`<band>/suggestions/<user>/<kind>/<name>` → `<band>/<kind>/<name>`), so the
- * member who suggested it can no longer replace or delete them (197 also
- * stops them on the server) and the copy belongs to the admin, not to the
+ * An accepted suggested song: its files move into the band's own folders, so
+ * the member who suggested it can no longer replace or delete them (197 also
+ * stops them on the server) and the copy belongs to the band, not to the
  * member's account.
  *
- * Safe at every step (audit 09 #9): copy, point the song at the copy (only if
- * it still links to the original, and checked), then delete the original. A
- * failure leaves the song on a file that exists, and running it again
- * finishes the job (a copy left by an earlier try is reused). Returns the
- * new references written to the song.
+ * Nothing here can leave a song on a missing file (audit 09 #5 / #9, PR #295
+ * review), whatever runs at once (two admins, one admin on phone + iPad) or
+ * stops half-way:
+ *  1. bw_song_file_adopt_begin: the server says whether to go and names the
+ *     destination, unique per song (`<band>/<kind>/<song id>-<name>`).
+ *  2. Copy. A copy already there (an earlier or parallel run) is used only
+ *     if it is the same file (size + hash); else a new name is picked.
+ *  3. bw_song_file_adopt_repoint: the song row locked on the server, the
+ *     reference changed only if it is still the original. The original is
+ *     recorded for the sweep in the same transaction.
+ *  4. The sweep deletes recorded originals no song uses (checked on the
+ *     server); a failed delete stays recorded for the next sweep.
+ * Deleted by a run: only a copy it made itself, when the server (song row
+ * locked) says no song uses it. A lost response is re-read, never undone.
+ * Returns the new references written to the song.
  */
-export const adoptSuggestionFiles = async (song: {
-  id: string;
-  audio_url?: string | null;
-  chart_url?: string | null;
-}): Promise<{ refs: { audio_url?: string; chart_url?: string }; error: Error | null }> => {
+export const adoptSuggestionFiles = async (
+  song: { id: string; band_id?: string | null; audio_url?: string | null; chart_url?: string | null },
+  opts?: { client?: AdoptClient },
+): Promise<{ refs: AdoptRefs; error: Error | null }> => {
+  const client = opts?.client ?? supabase;
+  const refs: AdoptRefs = {};
+  let error: Error | null = null;
+  let bandId = song.band_id ?? null;
   try {
-    return await adoptFiles(song);
-  } catch (error: any) {
-    return { refs: {}, error };
+    for (const field of ['audio_url', 'chart_url'] as const) {
+      const ref = song[field];
+      if (!isSuggestionFile(ref)) continue;
+      bandId ??= ref.slice(REF_PREFIX.length).split('/')[0];
+      const one = await adoptOne(client, song.id, field);
+      if (one.ref) refs[field] = one.ref;
+      if (one.error) error ??= one.error;
+    }
+  } catch (e) {
+    error ??= asError(e, 'Could not move the files');
   }
+  if (bandId) {
+    const swept = await sweepAdoptedFiles(bandId, { client });
+    if (swept.error && !error && Object.keys(refs).length === 0) error = swept.error;
+  }
+  return { refs, error };
 };
 
-const adoptFiles = async (song: {
-  id: string;
-  audio_url?: string | null;
-  chart_url?: string | null;
-}): Promise<{ refs: { audio_url?: string; chart_url?: string }; error: Error | null }> => {
-  const bucket = supabase.storage.from(SONG_FILES_BUCKET);
-  const copied: Array<{ key: 'audio_url' | 'chart_url'; from: string; to: string }> = [];
-  let error: Error | null = null;
-  for (const key of ['audio_url', 'chart_url'] as const) {
-    const ref = song[key];
-    if (!isSuggestionFile(ref)) continue;
-    const from = ref.slice(REF_PREFIX.length);
-    const parts = from.split('/');
-    const to = [parts[0], ...parts.slice(3)].join('/');
-    const { error: copyError } = await bucket.copy(from, to).catch((e: Error) => ({ error: e }));
-    // Already there: an earlier try copied it and stopped before the end.
-    if (copyError && !alreadyExists(copyError)) {
-      error = copyError instanceof Error ? copyError : new Error(String((copyError as { message?: string })?.message || 'Copy failed'));
-      continue;
-    }
-    copied.push({ key, from, to });
-  }
-  if (!copied.length) return { refs: {}, error };
+async function adoptOne(client: AdoptClient, songId: string, field: Field): Promise<{ ref?: string; error?: Error }> {
+  const bucket = client.storage.from(SONG_FILES_BUCKET);
+  const { data: claim, error: claimError } = await client.rpc('bw_song_file_adopt_begin', { p_song_id: songId, p_field: field });
+  if (claimError) return { error: asError(claimError, 'Could not move the files') };
+  const c = (claim || {}) as { won?: boolean; from?: string; to?: string };
+  // Waiting for review, nothing to move, or another admin is on it right now.
+  if (!c.won || !c.from || !c.to) return {};
 
-  const refs: { audio_url?: string; chart_url?: string } = {};
-  for (const c of copied) refs[c.key] = `${REF_PREFIX}${c.to}`;
-  let q = supabase.from('songs').update(refs).eq('id', song.id);
-  for (const c of copied) q = q.eq(c.key, `${REF_PREFIX}${c.from}`);
-  const { data, error: updateError } = await Promise.resolve(q.select('id')).catch((e: Error) => ({ data: null, error: e }));
-  if (updateError || !Array.isArray(data) || data.length === 0) {
-    // The song still links to the originals (or was changed meanwhile): drop the unused copies.
-    await bucket.remove(copied.map((c) => c.to)).catch(() => undefined);
-    return { refs: {}, error: (updateError as Error) || new Error('The song changed: its files were left as they are.') };
+  // 2. The copy: ours, or the same file already there.
+  let to: string | null = null;
+  let created = false;
+  for (let attempt = 0; attempt < 3 && !to; attempt++) {
+    const candidate = attempt === 0 ? c.to : withTag(c.to, songId);
+    const { error: copyError } = await bucket.copy(c.from, candidate);
+    if (!copyError) {
+      to = candidate;
+      created = true;
+    } else if (!alreadyExists(copyError)) {
+      return { error: asError(copyError, 'Could not copy the file') };
+    } else if (await sameFile(bucket, c.from, candidate)) {
+      to = candidate;
+    }
   }
-  await bucket.remove(copied.map((c) => c.from)).catch(() => undefined);
-  return { refs, error };
+  if (!to) return { error: new Error('Could not find a free name for the file') };
+
+  // 3. Repoint, on the server, only if the song still links to the original.
+  const { data, error: repointError } = await client.rpc('bw_song_file_adopt_repoint', {
+    p_song_id: songId,
+    p_field: field,
+    p_from: c.from,
+    p_to: to,
+  });
+  const res = data as { won?: boolean; ref?: string | null; to_referenced?: boolean } | null;
+  if (repointError || !res) {
+    // Lost response: it may have been saved. Re-read; delete nothing either way
+    // (an unused copy is picked up again by the next run).
+    const now = await currentRef(client, songId, field);
+    return now === `${REF_PREFIX}${to}` ? { ref: now } : { error: asError(repointError, 'Could not move the files') };
+  }
+  if (res.won) return { ref: `${REF_PREFIX}${to}` };
+  // Another run finished first: the song already links to a copy.
+  if (res.ref && res.ref === `${REF_PREFIX}${to}`) return { ref: res.ref };
+  if (isStoredSongFile(res.ref) && res.ref.startsWith(`${REF_PREFIX}${to.split('/').slice(0, 2).join('/')}/${songId}-`)) return { ref: res.ref };
+  // The song changed meanwhile: only a copy this run made, and no song uses.
+  if (created && res.to_referenced === false) await bucket.remove([to]).catch(() => undefined);
+  return { error: new Error('The song changed while its files were being moved.') };
+}
+
+/** A sibling name for a destination taken by another file: `<song id>-<tag>-<name>`. */
+const withTag = (path: string, songId: string) => {
+  const cut = path.lastIndexOf('/');
+  const name = path.slice(cut + 1);
+  const rest = name.startsWith(`${songId}-`) ? name.slice(songId.length + 1) : name;
+  const tag =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+  return `${path.slice(0, cut + 1)}${songId}-${tag}-${rest}`;
+};
+
+/** Same file: same size and same hash (etag). Unknown counts as different. */
+async function sameFile(bucket: ReturnType<AdoptClient['storage']['from']>, a: string, b: string): Promise<boolean> {
+  try {
+    const [x, y] = await Promise.all([bucket.info(a), bucket.info(b)]);
+    const fx = x.data as { size?: number; etag?: string } | null;
+    const fy = y.data as { size?: number; etag?: string } | null;
+    return !!fx && !!fy && fx.size != null && fx.size === fy.size && !!fx.etag && fx.etag === fy.etag;
+  } catch {
+    return false;
+  }
+}
+
+async function currentRef(client: AdoptClient, songId: string, field: Field): Promise<string | null | undefined> {
+  try {
+    const { data } = await client.from('songs').select('audio_url, chart_url').eq('id', songId).maybeSingle();
+    return data ? ((data as Record<Field, string | null>)[field] ?? null) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Originals of moved files no song uses any more (the server checks every
+ * song): deleted, then marked done. One that fails stays for the next sweep.
+ */
+export const sweepAdoptedFiles = async (bandId: string, opts?: { client?: AdoptClient }): Promise<{ error: Error | null }> => {
+  const client = opts?.client ?? supabase;
+  try {
+    const { data, error } = await client.rpc('bw_song_file_sweep_list', { p_band_id: bandId });
+    if (error) return { error: asError(error, 'Could not tidy the song files') };
+    const paths = ((data as string[] | null) || []).filter((p) => typeof p === 'string' && p.startsWith(`${bandId}/suggestions/`));
+    if (!paths.length) return { error: null };
+    const { error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove(paths);
+    if (removeError) return { error: asError(removeError, 'Could not tidy the song files') };
+    const { error: doneError } = await client.rpc('bw_song_file_sweep_done', { p_band_id: bandId, p_paths: paths });
+    return { error: doneError ? asError(doneError, 'Could not tidy the song files') : null };
+  } catch (e) {
+    return { error: asError(e, 'Could not tidy the song files') };
+  }
 };
 
 const alreadyExists = (e: unknown) => {

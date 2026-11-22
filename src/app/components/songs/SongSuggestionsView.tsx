@@ -63,62 +63,117 @@ export const SongSuggestionsView: React.FC = () => {
   const bandId = selectedBand?.id;
   const open = !!screen && !!bandId;
 
-  const [tab, setTab] = React.useState<'pending' | 'reviewed'>('pending');
-  const [items, setItems] = React.useState<SongSuggestion[] | null>(null);
+  const [tab, setTab] = React.useState<Tab>('pending');
   const [songs, setSongs] = React.useState<Record<string, SongRow>>({});
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
-  // Each tab asks the server for its own status, a page at a time: an old
+  // Each tab asks the server for its own status, a page at a time (keyset:
+  // older than the last one shown, so no row cap hides the oldest): an old
   // correction still waiting never hides behind newer reviewed ones, and a
   // notification's suggestion is fetched by id (audit 09 #10).
-  const [limits, setLimits] = React.useState<Record<'pending' | 'reviewed', number>>({ pending: PAGE, reviewed: PAGE });
-  const [more, setMore] = React.useState<Record<'pending' | 'reviewed', boolean>>({ pending: false, reviewed: false });
+  const [pages, setPages] = React.useState<Record<Tab, SongSuggestion[]>>({ pending: [], reviewed: [] });
+  const [more, setMore] = React.useState<Record<Tab, boolean>>({ pending: false, reviewed: false });
+  const [extra, setExtra] = React.useState<SongSuggestion | null>(null);
   const [pendingCount, setPendingCount] = React.useState(0);
+  // The notification target the shown items were loaded for (until then, a
+  // target missing from the old items is not "gone": it is being fetched).
+  const [loadedFor, setLoadedFor] = React.useState<{ focus: string | undefined } | null>(null);
+  const pagesRef = React.useRef(pages);
+  pagesRef.current = pages;
   const focusId = screen?.suggestionId;
+  const mine = React.useMemo(() => (isAdmin || !user?.id ? {} : { createdBy: user.id }), [isAdmin, user?.id]);
+
+  const loadSongs = React.useCallback(async (list: SongSuggestion[]) => {
+    const ids = [...new Set(list.map((s) => s.song_id).filter((id): id is string => !!id))];
+    if (!ids.length) return;
+    const { data: rows } = await supabase
+      .from('songs')
+      .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
+      .in('id', ids);
+    setSongs((prev) => ({ ...prev, ...Object.fromEntries(((rows || []) as SongRow[]).map((r) => [r.id, r])) }));
+  }, []);
+
+  /** One tab from the newest, page by page, down to `through` (what was shown before a refresh). */
+  const fetchTab = React.useCallback(
+    async (tab: Tab, through?: SongSuggestion) => {
+      if (!bandId) return { data: null, more: false, error: null as Error | null };
+      const out: SongSuggestion[] = [];
+      let before: SongSuggestion | undefined;
+      for (let n = 0; n < 200; n++) {
+        const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[tab], limit: PAGE + 1, before });
+        if (error || !data) return { data: null, more: false, error };
+        const page = data.slice(0, PAGE);
+        out.push(...page);
+        const hasMore = data.length > PAGE;
+        const last = page[page.length - 1];
+        if (!hasMore || !last || !through || !olderThan(through, last)) return { data: out, more: hasMore, error: null };
+        before = last;
+      }
+      return { data: out, more: true, error: null };
+    },
+    [bandId, mine],
+  );
 
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
-    const mine = isAdmin ? {} : { createdBy: user.id };
+    const shown = pagesRef.current;
     const [p, r, count] = await Promise.all([
-      listSongSuggestions(bandId, { ...mine, status: 'pending', limit: limits.pending + 1 }),
-      listSongSuggestions(bandId, { ...mine, status: REVIEWED, limit: limits.reviewed + 1 }),
+      fetchTab('pending', shown.pending[shown.pending.length - 1]),
+      fetchTab('reviewed', shown.reviewed[shown.reviewed.length - 1]),
       countPendingSuggestions(bandId, isAdmin ? undefined : user.id),
     ]);
-    const error = p.error || r.error;
-    if (error || !p.data || !r.data) {
+    if (p.error || r.error || !p.data || !r.data) {
+      setLoadError(userMessage(p.error || r.error, t('Could not load the suggestions.')));
+      setLoadedFor({ focus: focusId });
+      return;
+    }
+    let one: SongSuggestion | null = null;
+    if (focusId && !p.data.some((s) => s.id === focusId) && !r.data.some((s) => s.id === focusId)) {
+      const { data } = await getSongSuggestion(focusId);
+      if (data && data.band_id === bandId && data.status !== 'withdrawn') one = data;
+    }
+    setLoadError(null);
+    setPages({ pending: p.data, reviewed: r.data });
+    setMore({ pending: p.more, reviewed: r.more });
+    setExtra(one);
+    setPendingCount(count);
+    setLoadedFor({ focus: focusId });
+    await loadSongs([...p.data, ...r.data, ...(one ? [one] : [])]);
+  }, [bandId, user?.id, isAdmin, t, focusId, fetchTab, loadSongs]);
+
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const showMore = async () => {
+    const last = pages[tab][pages[tab].length - 1];
+    if (!bandId || !last || loadingMore) return;
+    setLoadingMore(true);
+    const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[tab], limit: PAGE + 1, before: last });
+    setLoadingMore(false);
+    if (error || !data) {
       setLoadError(userMessage(error, t('Could not load the suggestions.')));
       return;
     }
-    const data = [...p.data.slice(0, limits.pending), ...r.data.slice(0, limits.reviewed)];
-    if (focusId && !data.some((s) => s.id === focusId)) {
-      const { data: one } = await getSongSuggestion(focusId);
-      if (one && one.band_id === bandId && one.status !== 'withdrawn') data.push(one);
-    }
-    setLoadError(null);
-    setMore({ pending: p.data.length > limits.pending, reviewed: r.data.length > limits.reviewed });
-    setPendingCount(count);
-    setItems(data);
-    const ids = [...new Set(data.map((s) => s.song_id).filter((id): id is string => !!id))];
-    if (ids.length) {
-      const { data: rows } = await supabase
-        .from('songs')
-        .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
-        .in('id', ids);
-      setSongs(Object.fromEntries(((rows || []) as SongRow[]).map((r) => [r.id, r])));
-    } else setSongs({});
-  }, [bandId, user?.id, isAdmin, t, limits, focusId]);
+    const page = data.slice(0, PAGE);
+    setPages((prev) => ({ ...prev, [tab]: [...prev[tab], ...page.filter((s) => !prev[tab].some((x) => x.id === s.id))] }));
+    setMore((prev) => ({ ...prev, [tab]: data.length > PAGE }));
+    void loadSongs(page);
+  };
+
+  const items = React.useMemo(() => {
+    if (!loadedFor) return null;
+    const all = [...pages.pending, ...pages.reviewed];
+    return extra && !all.some((s) => s.id === extra.id) ? [...all, extra] : all;
+  }, [pages, extra, loadedFor]);
 
   React.useEffect(() => {
     if (!open) return;
     setSelectedId(screen?.suggestionId ?? null);
     setTab('pending');
-    setLimits({ pending: PAGE, reviewed: PAGE });
   }, [open, screen]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Opening, a new page, another band: (re)load.
+  // Opening (also again, from a notification), another band: (re)load.
   React.useEffect(() => {
     if (open) void load();
-  }, [open, load]);
+  }, [open, screen, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A suggestion arrives or is reviewed elsewhere: refresh.
   React.useEffect(() => {
@@ -136,10 +191,12 @@ export const SongSuggestionsView: React.FC = () => {
   }, [open, bandId, load]);
 
   const selected = items?.find((s) => s.id === selectedId) ?? null;
-  // Opened from a notification on a suggestion that is no longer listed.
+  // Opened from a notification on a suggestion that is no longer listed (once
+  // the items were loaded for it: before that it is still being fetched).
   React.useEffect(() => {
-    if (items && selectedId && !items.some((s) => s.id === selectedId)) setSelectedId(null);
-  }, [items, selectedId]);
+    if (!items || !selectedId || loadedFor?.focus !== focusId) return;
+    if (!items.some((s) => s.id === selectedId)) setSelectedId(null);
+  }, [items, selectedId, loadedFor, focusId]);
 
   const back = () => {
     if (selected) setSelectedId(null);
@@ -153,7 +210,6 @@ export const SongSuggestionsView: React.FC = () => {
   const pending = (items || []).filter((s) => s.status === 'pending');
   const reviewed = (items || []).filter((s) => s.status !== 'pending');
   const shown = tab === 'pending' ? pending : reviewed;
-  const showMore = () => setLimits((l) => ({ ...l, [tab]: l[tab] + PAGE }));
 
   return createPortal(
     <AnimatePresence>
@@ -225,7 +281,7 @@ export const SongSuggestionsView: React.FC = () => {
                   />
                 ))}
                 {items && more[tab] && (
-                  <PillButton size="md" variant="outline" onClick={showMore}>
+                  <PillButton size="md" variant="outline" loading={loadingMore} onClick={() => void showMore()}>
                     {t('Load older suggestions')}
                   </PillButton>
                 )}
@@ -242,7 +298,14 @@ export const SongSuggestionsView: React.FC = () => {
 
 /** Suggestions per page, in each tab. */
 const PAGE = 100;
-const REVIEWED: SuggestionStatus[] = ['accepted', 'accepted_edited', 'rejected'];
+type Tab = 'pending' | 'reviewed';
+const STATUS: Record<Tab, SuggestionStatus | SuggestionStatus[]> = {
+  pending: 'pending',
+  reviewed: ['accepted', 'accepted_edited', 'rejected'],
+};
+/** `a` comes after `b` in the list (older, or as old with a smaller id). */
+const olderThan = (a: Pick<SongSuggestion, 'created_at' | 'id'>, b: Pick<SongSuggestion, 'created_at' | 'id'>) =>
+  a.created_at < b.created_at || (a.created_at === b.created_at && a.id < b.id);
 
 const kindLabel = (k: SuggestionKind, t: (s: string) => string) =>
   k === 'new_song' ? t('New song') : k === 'lyrics' ? t('Lyrics correction') : k === 'chords' ? t('Chords correction') : t('Note for the band');

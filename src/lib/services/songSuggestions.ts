@@ -18,13 +18,29 @@ const SELECT =
 
 export async function listSongSuggestions(
   bandId: string,
-  opts?: { status?: SuggestionStatus | SuggestionStatus[]; createdBy?: string; songId?: string; limit?: number },
+  opts?: {
+    status?: SuggestionStatus | SuggestionStatus[];
+    createdBy?: string;
+    songId?: string;
+    limit?: number;
+    /** Keyset page: only suggestions older than this one (newest first, ties by id). */
+    before?: Pick<SongSuggestion, 'created_at' | 'id'>;
+  },
 ): Promise<{ data: SongSuggestion[] | null; error: Error | null }> {
   try {
-    let q = supabase.from('song_suggestions').select(SELECT).eq('band_id', bandId).order('created_at', { ascending: false });
+    let q = supabase
+      .from('song_suggestions')
+      .select(SELECT)
+      .eq('band_id', bandId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
     if (opts?.status) q = Array.isArray(opts.status) ? q.in('status', opts.status) : q.eq('status', opts.status);
     if (opts?.createdBy) q = q.eq('created_by', opts.createdBy);
     if (opts?.songId) q = q.eq('song_id', opts.songId);
+    if (opts?.before) {
+      const at = JSON.stringify(opts.before.created_at);
+      q = q.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${JSON.stringify(opts.before.id)})`);
+    }
     q = q.limit(opts?.limit ?? 200);
     const { data, error } = await q;
     if (error) throw error;

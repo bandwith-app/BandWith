@@ -16,7 +16,7 @@ vi.mock('@/lib/haptics', () => ({
 
 const ORIG = 'sb://song-files/band-1/suggestions/member-1/audio/abc-take.mp3';
 const ADOPTED = 'sb://song-files/band-1/audio/abc-take.mp3';
-const svc = vi.hoisted(() => ({ getSongs: vi.fn(), updateSong: vi.fn(), adopt: vi.fn() }));
+const svc = vi.hoisted(() => ({ getSongs: vi.fn(), updateSong: vi.fn(), adopt: vi.fn(), sweep: vi.fn(async () => ({ error: null })) }));
 vi.mock('@/lib/services/songs', () => ({
   getSongs: svc.getSongs,
   getSetlists: vi.fn(async () => ({ data: [], error: null })),
@@ -29,6 +29,7 @@ vi.mock('@/lib/services/songs', () => ({
 vi.mock('@/lib/services/songFiles', async (orig) => ({
   ...(await orig<typeof import('@/lib/services/songFiles')>()),
   adoptSuggestionFiles: svc.adopt,
+  sweepAdoptedFiles: svc.sweep,
 }));
 
 globalThis.ResizeObserver = class {
@@ -72,5 +73,14 @@ describe('Approving a suggested song from its menu', () => {
     render(<SetlistManagerView onClose={() => {}} />);
     await screen.findByText('Empire State of Mind');
     await waitFor(() => expect(svc.adopt).toHaveBeenCalledWith(expect.objectContaining({ id: 'song-1', audio_url: ORIG })));
+  });
+
+  it('tidies originals a failed delete left behind, once per visit', async () => {
+    svc.getSongs.mockResolvedValue({ data: [{ ...suggested, status: 'ready', audio_url: ADOPTED }], error: null });
+    render(<SetlistManagerView onClose={() => {}} />);
+    await screen.findByText('Empire State of Mind');
+    await waitFor(() => expect(svc.sweep).toHaveBeenCalledWith('band-1'));
+    expect(svc.sweep).toHaveBeenCalledTimes(1);
+    expect(svc.adopt).not.toHaveBeenCalled();
   });
 });

@@ -309,14 +309,17 @@ const decodeHtmlEntities = (s: string) =>
     return HTML_ENTITIES[e.toLowerCase()] ?? all;
   });
 
-/** The first iReal Pro link in HTML: from an <a href> (quoted either way, entities decoded), else from the text. */
+/**
+ * The first iReal Pro link in HTML: from an <a href> (double, single or no
+ * quotes; entities decoded), else from the text, else anywhere in the markup.
+ */
 export const findIrealLinkInHtml = (html: string): string | null => {
   const s = html || '';
-  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
-    const href = decodeHtmlEntities((m[1] ?? m[2] ?? '').trim());
+  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>=`]+))/gi)) {
+    const href = decodeHtmlEntities((m[1] ?? m[2] ?? m[3] ?? '').trim());
     if (/^irealb(?:ook)?:\/\/./i.test(href) && !/\s/.test(href)) return href;
   }
-  return findIrealLink(decodeHtmlEntities(s.replace(/<[^>]*>/g, ' ')));
+  return findIrealLink(decodeHtmlEntities(s.replace(/<[^>]*>/g, ' '))) ?? findIrealLink(decodeHtmlEntities(s));
 };
 
 export interface IrealPlaylist {
