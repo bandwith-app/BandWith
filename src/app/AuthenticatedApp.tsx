@@ -2304,6 +2304,7 @@ export default function AuthenticatedApp() {
   const lastBackPressRef = useRef<number>(0);
   const backNavStateRef = useRef({
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
@@ -2346,6 +2347,7 @@ export default function AuthenticatedApp() {
   // Keep ref synchronized with latest state on every render
   backNavStateRef.current = {
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
@@ -2399,8 +2401,10 @@ export default function AuthenticatedApp() {
       if (handleBackFromStack()) return true;
 
       // 1. Transient Notifications & Popups
-      // The urgent popup only shows when no RSVP or poll sheet covers it.
-      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour) {
+      // The urgent popup only shows when no RSVP or poll sheet covers it, and
+      // waits while another sheet or Stage is open: Back then closes that
+      // layer (further down), and the waiting pop-up comes back after.
+      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.layerOpen) {
         setUrgentNotification(null);
         return true;
       }

@@ -1,5 +1,5 @@
 import { test, expect, type App } from '../fixtures';
-import { escapeRe, SEED } from '../support/flows';
+import { escapeRe, SEED, systemBack } from '../support/flows';
 
 /**
  * The urgent pop-up (an unanswered gig invitation) never draws over an open
@@ -35,6 +35,29 @@ test('@smoke the urgent pop-up steps aside for an open sheet and comes back when
   await sheet.getByRole('button', { name: app.t('Not now'), exact: true }).click();
   await expect(sheet).toBeHidden();
   await expect(urgent(app)).toBeVisible({ timeout: 10_000 });
+});
+
+test('@smoke system Back with the pop-up waiting closes the sheet, not the hidden pop-up', async ({ app }) => {
+  await app.page.removeLocatorHandler(app.page.getByRole('button', { name: app.t('Dismiss alert'), exact: true }));
+  await expect(urgent(app)).toBeVisible({ timeout: 15_000 });
+  // New chat has no back handler of its own: the app's back chain closes it.
+  // Opened while the pop-up waits (its scrim covers the tabs: a programmatic click).
+  const chatTab = app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Chat'))}(,|$)`) }).first();
+  await chatTab.evaluate((b) => (b as HTMLButtonElement).click());
+  await app.settle();
+  await app.page.evaluate(() => window.dispatchEvent(new CustomEvent('bw:new-chat')));
+  const sheet = app.page.getByRole('dialog', { name: app.t('New chat'), exact: true });
+  await expect(sheet).toBeVisible();
+  await expect(urgent(app)).toHaveCount(0);
+
+  await systemBack(app);
+  await expect(sheet).toBeHidden();
+  // The pop-up was only waiting: it is back once the sheet is gone.
+  await expect(urgent(app)).toBeVisible({ timeout: 10_000 });
+  await app.check('sheet closed by Back, urgent pop-up back');
+  // Shown on its own, Back closes it as before.
+  await systemBack(app);
+  await expect(urgent(app)).toHaveCount(0);
 });
 
 test('Stage mode keeps the stage: the urgent pop-up waits until Stage closes', async ({ app }) => {
