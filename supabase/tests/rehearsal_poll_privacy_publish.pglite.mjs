@@ -11,6 +11,7 @@
 //   node rehearsal_poll_privacy_publish.pglite.mjs <repo> /dev/null    # before: FAILs expected
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
 const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/195_rehearsal_poll_privacy_publish.sql`;
@@ -265,11 +266,35 @@ ok(anonSkip === false, 'anon cannot call the skip function');
 const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonCan === false, 'anon cannot call the publish function');
 
-// Codex #297 round 3: free-slot counts and a deleted date. Not changed in
-// 195: #294 (178) redefines bw_band_free_slots, so the skip guard lands on
-// 178's body once both are in (follow-up). Shown here, not checked.
+// Codex #297 round 3: free-slot counts and a deleted date. The skip_dates
+// line lands in 178 (#294, feat/date-on-hold), not in 195. This check loads
+// bw_band_free_slots as 178 defines it, from origin/feat/date-on-hold, and
+// SKIPs with a warning while that branch, or that line, is not there yet.
 const free = async (day) => (await as(ADMIN, () => db.query(`SELECT free_count, total_count FROM public.bw_band_free_slots($1, $2::date, $2::date)`, [BAND_A, day]))).rows[0];
-console.log(`info: free on the deleted first date ${JSON.stringify(await free('2099-11-24'))}, on the one-off ${JSON.stringify(await free('2099-11-25'))}`);
+let fn178 = null;
+try {
+  const src = execFileSync('git', ['-C', REPO, 'show', 'origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  fn178 = src.match(/CREATE OR REPLACE FUNCTION public\.bw_band_free_slots\([\s\S]*?\n\$\$;/)?.[0] ?? null;
+} catch { fn178 = null; }
+if (!fn178) {
+  console.log('SKIP availability: origin/feat/date-on-hold (178) not found; fetch it to run this check');
+} else if (!/skip_dates/.test(fn178)) {
+  console.log('SKIP availability: 178 on origin/feat/date-on-hold has no skip_dates line yet (#294)');
+} else {
+  // What 178's body needs beyond this file's tables: quote helpers (111, 178) as stubs.
+  await db.exec(`
+    ALTER TABLE public.events ADD COLUMN IF NOT EXISTS date date, ADD COLUMN IF NOT EXISTS event_type text, ADD COLUMN IF NOT EXISTS quote_id uuid;
+    CREATE OR REPLACE FUNCTION public.bw_event_is_quote(p_status text, p_event_type text, p_quote_id uuid) RETURNS boolean
+      LANGUAGE sql IMMUTABLE AS $f$ SELECT lower(coalesce(p_status, '')) IN ('quote', 'quoted') $f$;
+    CREATE OR REPLACE FUNCTION public.bw_date_hold_live(p_event_id uuid) RETURNS boolean
+      LANGUAGE sql STABLE AS $f$ SELECT false $f$;
+  `);
+  await db.exec(fn178);
+  const fSkipped = await free('2099-11-24');
+  const fOnce = await free('2099-11-25');
+  ok(fSkipped?.total_count === 4 && fSkipped?.free_count === 4, `availability (178): a deleted first date is not busy (${JSON.stringify(fSkipped)})`);
+  ok(fOnce?.free_count === 3, `availability (178): a real event still counts (${JSON.stringify(fOnce)})`);
+}
 
 // Claude #297 round 3: the votes policy is for signed-in users, as in 118.
 const voteRoles = (await db.query(`SELECT roles::text AS r FROM pg_policies WHERE tablename = 'rehearsal_poll_votes' AND policyname = 'band_members_can_select_votes'`)).rows[0]?.r;
