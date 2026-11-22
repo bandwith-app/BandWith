@@ -86,8 +86,12 @@ await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE t
 {
   ok(await revoke3(null, TOK, ALICE, REG) === true, 'switched off once');
   const after = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at;
-  ok(await revoke3(null, TOK, ALICE, REG) === false && new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at).getTime() === new Date(after).getTime(),
-    'replayed by stamp: the switch-off changed the stamp, false, nothing written');
+  // Claude r9 (round 10): the switch-off keeps the stamp (no updated_at bump,
+  // as send-push does), so the device's replay after a lost answer gets true.
+  ok(new Date(after).getTime() === new Date(REG).getTime(), 'the switch-off leaves the stamp as it was');
+  ok(await revoke3(null, TOK, ALICE, REG) === true && await active(TOK) === false && new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at).getTime() === new Date(after).getTime(),
+    'a replay by stamp after a lost answer: true, nothing written');
+  ok(await revoke3(null, TOK, BOB, REG) === false, 'the same stamp with a bandmate\'s id: still false');
 }
 await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
 ok(await revoke(ALICE, TOK, ALICE, null, null) === true && await active(TOK) === false, 'owner without a stamp switches the own token off');
@@ -187,6 +191,12 @@ ok(await revoke(null, 'short', ALICE, null, S1) === false, 'malformed token: not
   ok(await revoke(null, TR, ALICE, null, S1) === true && await hashOf(TR) !== null, 'switched off by the revocation: the secret stays');
   await as(ALICE, () => db.query(`SELECT public.bw_register_push_token($1, 'ios')`, [TR]));
   ok(await hashOf(TR) === null && await revoke(null, TR, ALICE, null, S1) === false && await active(TR) === true, 'back on through 046: the secret is gone, the old one refused');
+  // The stamp of the switched-off registration no longer matches the new one.
+  const offStamp = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TR])).rows[0].at;
+  await register(ALICE, TR, S2);
+  const reg2 = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TR])).rows[0].at;
+  ok(new Date(reg2).getTime() !== new Date(offStamp).getTime() && await revoke3(null, TR, ALICE, new Date(offStamp).toISOString()) === false && await active(TR) === true,
+    'after a re-save, a replay with the old stamp is refused and the new registration stays on');
 }
 ok(await active(TOK2) === true, "Bob's other token untouched throughout");
 

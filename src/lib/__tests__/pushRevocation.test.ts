@@ -63,7 +63,7 @@ describe('push revocation on sign-out', () => {
     const now = () => new Date('2026-11-22T10:00:00Z');
     expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: offline, unregisterDevice, now })).toBe('queued');
     expect(unregisterDevice).toHaveBeenCalledOnce();
-    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [], at: '2026-11-22T10:00:00.000Z', tries: 0, fails: 0, retryAt: null };
+    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [], at: '2026-11-22T10:00:00.000Z', tries: 0, fails: 0, retryAt: null, firstRefusedAt: null };
     expect(readPendingRevocations(store)).toEqual([entry]);
 
     expect(await flushPushRevocations(store, server('offline'))).toBe(0);
@@ -106,7 +106,7 @@ describe('push revocation on sign-out', () => {
   it('no secret known: a refusal keeps it, until the token is saved again or the owner path takes it', async () => {
     const store = mem();
     expect(await revokeOnSignOut(TOKEN, 'alice', null, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) })).toBe('queued');
-    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [], at: '1970-01-01T00:00:00.000Z', tries: 0, fails: 0, retryAt: null }]);
+    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [], at: '1970-01-01T00:00:00.000Z', tries: 0, fails: 0, retryAt: null, firstRefusedAt: null }]);
     const s = server(false);
     await flushPushRevocations(store, { ...s, now: () => 0 });
     expect(s.revoke).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }), null);
@@ -315,25 +315,39 @@ describe('push revocation on sign-out', () => {
   // Codex review #287 round 8 (B1): signed out, the server answers true only
   // for a matching credential, so a moot revocation is refused for good. It
   // goes after 30 days, or as soon as this device's token is another one.
-  it('a revocation is dropped after 30 days, or once the device token changed', async () => {
+  it('a revocation is dropped 30 days after its first refusal, or once the device token changed', async () => {
     const store = mem();
     const deps = { store, revokeOnServer: async () => false, unregisterDevice: async () => {} };
+    const DAY = 24 * 3600_000;
     await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { ...deps, now: () => new Date(0) });
     await revokeOnSignOut(`${TOKEN}-other`, 'bob', saved(REG, S2), { ...deps, now: () => new Date(0) });
     const refused = server(false);
-    // 29 days on: tried, kept.
-    await flushPushRevocations(store, { ...refused, now: () => 29 * 24 * 3600_000 });
-    expect(readPendingRevocations(store)).toHaveLength(2);
+    // First refusal on day 10: the 30 days start here, not at the queue time.
+    await flushPushRevocations(store, { ...refused, now: () => 10 * DAY });
+    expect(readPendingRevocations(store)).toEqual([expect.objectContaining({ firstRefusedAt: 10 * DAY }), expect.objectContaining({ firstRefusedAt: 10 * DAY })]);
     // The device has a new token: the other token's revocation is moot.
-    await flushPushRevocations(store, { ...refused, now: () => 29 * 24 * 3600_000 + REVOKE_RETRY_MAX_MS, currentToken: TOKEN });
+    await flushPushRevocations(store, { ...refused, now: () => 11 * DAY, currentToken: TOKEN });
     expect(readPendingRevocations(store).map((p) => p.token)).toEqual([TOKEN]);
-    // Past 30 days: dropped without another try.
+    // Day 39 (29 days refused): still tried, still kept.
+    await flushPushRevocations(store, { ...refused, now: () => 39 * DAY });
+    expect(readPendingRevocations(store)).toHaveLength(1);
+    // Past 30 days of refusals: dropped without another try.
     refused.revoke.mockClear();
-    await flushPushRevocations(store, { ...refused, now: () => PUSH_REVOKE_MAX_AGE_MS + 1 });
+    await flushPushRevocations(store, { ...refused, now: () => 10 * DAY + PUSH_REVOKE_MAX_AGE_MS + 1 });
     expect(refused.revoke).not.toHaveBeenCalled();
     expect(readPendingRevocations(store)).toEqual([]);
-    expect(PUSH_REVOKE_MAX_AGE_MS).toBe(30 * 24 * 3600_000);
+    expect(PUSH_REVOKE_MAX_AGE_MS).toBe(30 * DAY);
     expect(push).toMatch(/currentToken: cachedToken/);
+  });
+
+  // Claude review #287 r9: an airplane-mode sign-out, then the app isn't
+  // opened for 31 days. Never refused, so never dropped: it is sent.
+  it('an unsent revocation is never dropped for its age', async () => {
+    const store = mem();
+    await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
+    const s = server(true);
+    expect(await flushPushRevocations(store, { ...s, now: () => 31 * 24 * 3600_000 })).toBe(1);
+    expect(s.revoke).toHaveBeenCalled();
   });
 
   it('secrets are random, 256 bits', () => {

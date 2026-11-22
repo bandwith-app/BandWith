@@ -26,13 +26,16 @@
 --     or already off), never whether the account is on the device (round 8).
 --   * signed in as the row's owner: the own token, with the row's stamp
 --     (push_tokens.updated_at, returned by the save) or without one.
--- It can only switch a token off, never on, and returns whether it did.
+-- It can only switch a token off, never on. Signed in as the owner it
+-- returns whether it switched (or nothing of the owner's is on); signed out,
+-- whether the credential matched.
 --
--- No lookup by token (main's decision on #287 round 5). A refused revocation
--- is never dropped (round 6): the device keeps it and tries again with
--- backoff until the server takes it, or a confirmed save of the token on the
--- device makes it moot. bw_push_token_registered, from an earlier draft that
--- was never live, is dropped.
+-- No lookup by token (main's decision on #287 round 5). The device keeps a
+-- refused revocation and tries again with backoff until the server takes it,
+-- a confirmed save of the token on the device makes it moot, or 30 days have
+-- passed since its first refusal, or the device's token changed (rounds 8-10).
+-- bw_push_token_registered, from an earlier draft that was never live, is
+-- dropped.
 --
 -- push_tokens.uid_gated (Codex review #287 round 5): the token belongs to an
 -- Android build that shows a push only when it is for the account signed in
@@ -179,10 +182,11 @@ BEGIN
          AND revoke_secret_hash IS NOT NULL AND revoke_secret_hash = v_hash
     ) THEN
       -- The switch-off keeps the secret (the guard keeps it on a row that
-      -- goes off), so a replay still answers true; any new registration
-      -- replaces or clears it.
+      -- goes off) and the stamp (no updated_at bump, as send-push switches
+      -- off), so a replay after a lost answer still answers true (round 10);
+      -- any new registration changes the stamp and replaces or clears it.
       UPDATE public.push_tokens
-         SET is_active = false, updated_at = now()
+         SET is_active = false
        WHERE token = p_token AND user_id = p_user_id
          AND coalesce(is_active, true) AND revoke_secret_hash = v_hash;
       RETURN true;
@@ -192,13 +196,15 @@ BEGIN
   -- without 184 has none; a lost answer left the device unsure): exactly
   -- the registration the device saved, by token, account and the stamp the
   -- save returned (main's decision on #287 round 6). Any later save
-  -- changes the stamp, so a replay never undoes a newer registration.
+  -- changes the stamp, so a replay never undoes a newer registration. The
+  -- switch-off leaves the stamp as it is (round 10): a replay after a lost
+  -- answer finds the same registration, now off, and answers true.
   IF p_registered_at IS NOT NULL AND EXISTS (
     SELECT 1 FROM public.push_tokens
      WHERE token = p_token AND user_id = p_user_id AND updated_at = p_registered_at
   ) THEN
     UPDATE public.push_tokens
-       SET is_active = false, updated_at = now()
+       SET is_active = false
      WHERE token = p_token AND user_id = p_user_id
        AND coalesce(is_active, true) AND updated_at = p_registered_at;
     RETURN true;

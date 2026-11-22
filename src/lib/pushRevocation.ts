@@ -41,9 +41,10 @@ export const PUSH_REVOKE_MAX_QUEUED = 20;
 /**
  * Signed out, the server answers true only for a credential that matches
  * (Codex review #287 round 8, B1), so a revocation whose registration was
- * replaced or cleared is refused for good: it is dropped 30 days after it
- * was queued, or as soon as this device's token is another one (the old
- * token no longer delivers here).
+ * replaced or cleared is refused for good: it is dropped 30 days after its
+ * first refusal (never counted from the queue time: an unsent one always
+ * gets its tries, Claude review r9), or as soon as this device's token is
+ * another one (the old token no longer delivers here).
  */
 export const PUSH_REVOKE_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 /** The first retry of a refused revocation; each refusal doubles it. */
@@ -66,6 +67,8 @@ export interface PendingRevocation {
   tries: number;
   /** Network errors in a row (round 8, M1): they back off too, but are no refusal. */
   fails: number;
+  /** When the server first refused it (device clock, ms): the 30 days count from here. */
+  firstRefusedAt: number | null;
   /** Not tried again before this (device clock, ms); null: at the next flush. */
   retryAt: number | null;
 }
@@ -114,7 +117,8 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
             const tries = Number.isInteger(p.tries) && p.tries > 0 ? p.tries : 0;
             const fails = Number.isInteger(p.fails) && p.fails > 0 ? p.fails : 0;
             const retryAt = typeof p.retryAt === 'number' && Number.isFinite(p.retryAt) ? p.retryAt : null;
-            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at, tries, fails, retryAt };
+            const firstRefusedAt = typeof p.firstRefusedAt === 'number' && Number.isFinite(p.firstRefusedAt) ? p.firstRefusedAt : null;
+            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at, tries, fails, retryAt, firstRefusedAt };
           })
       : [];
   } catch {
@@ -292,7 +296,7 @@ export function queueRevocation(
   const confirmed = saved?.confirmed ?? same?.confirmed ?? null;
   const attempts = attemptList([...(saved?.attempts ?? []), ...(same?.attempts ?? [])], confirmed);
   // A new sign-out is a new chance: tried at the next flush.
-  const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at, tries: 0, fails: 0, retryAt: null };
+  const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at, tries: 0, fails: 0, retryAt: null, firstRefusedAt: null };
   writePending(store, [...list.filter((p) => p !== same), entry]);
 }
 
@@ -359,8 +363,8 @@ export function nextRevocationRetry(store: Store | null): number | null {
  * by token). Done when the server took it (its credential matched). Refused:
  * kept, and tried again after a backoff that doubles with every refusal
  * (main's decision, round 6), until a save of the token the server confirmed
- * clears it (forgetRevocation), or it is 30 days old, or this device's token
- * changed (round 8, B1). Offline or an error: kept, with
+ * clears it (forgetRevocation), or 30 days after its first refusal, or once
+ * this device's token changed (round 8, B1). Offline or an error: kept, with
  * the same backoff (not counted as a refusal); the 'online' event tries it
  * at once.
  */
@@ -382,8 +386,8 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
   };
   for (const p of list) {
     if (deps.alive && !deps.alive()) break;
-    const queuedAt = Date.parse(p.at);
-    if ((Number.isFinite(queuedAt) && now - queuedAt > PUSH_REVOKE_MAX_AGE_MS) || (deps.currentToken && p.token !== deps.currentToken)) {
+    const refusedFor = p.tries > 0 && p.firstRefusedAt !== null ? now - p.firstRefusedAt : 0;
+    if (refusedFor > PUSH_REVOKE_MAX_AGE_MS || (deps.currentToken && p.token !== deps.currentToken)) {
       done.add(keyOf(p));
       continue;
     }
@@ -415,7 +419,7 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
     current
       .filter((p) => !done.has(keyOf(p)))
       .map((p) => {
-        if (refused.has(keyOf(p))) return { ...p, tries: p.tries + 1, fails: 0, retryAt: now + revokeRetryDelay(p.tries + 1) };
+        if (refused.has(keyOf(p))) return { ...p, tries: p.tries + 1, fails: 0, retryAt: now + revokeRetryDelay(p.tries + 1), firstRefusedAt: p.firstRefusedAt ?? now };
         // Offline or an error (Codex review #287 round 8, M1): the same
         // backoff, so an overdue entry isn't retried every second, but no
         // refusal; the 'online' event still tries at once.
@@ -424,4 +428,58 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
       }),
   );
   return sent;
+}
+
+/**
+ * What this device keeps about push across any wipe (Claude review #287 r9):
+ * the queued revocations, the saved registration and the token deletion
+ * still pending. The same rule as #296's signOutWipe: the `bandwith.push-`
+ * prefix.
+ */
+export const PUSH_STATE_PREFIX = 'bandwith.push-';
+
+let heldPushState: [string, string][] | null = null;
+
+const pushStateNow = (): [string, string][] => {
+  const out: [string, string][] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PUSH_STATE_PREFIX)) out.push([k, localStorage.getItem(k) ?? '']);
+    }
+  } catch {
+    /* storage blocked */
+  }
+  return out;
+};
+
+/**
+ * A sign-out whose failure the caller answers by wiping the device
+ * (IdentityHub): the push state is read the moment it fails, after the
+ * sign-out queued its revocation, so restorePushStateAfterWipe can put it
+ * back once the wipe ran.
+ */
+export function holdPushStateOnFailure<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A) => {
+    try {
+      return await fn(...args);
+    } catch (e) {
+      heldPushState = pushStateNow();
+      throw e;
+    }
+  };
+}
+
+/** After that wipe: the push state read at the failure comes back (a newer value stays). */
+export function restorePushStateAfterWipe() {
+  const held = heldPushState;
+  heldPushState = null;
+  if (!held) return;
+  for (const [k, v] of held) {
+    try {
+      if (localStorage.getItem(k) === null) localStorage.setItem(k, v);
+    } catch {
+      /* storage blocked */
+    }
+  }
 }

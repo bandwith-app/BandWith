@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
+import { holdPushStateOnFailure, restorePushStateAfterWipe } from '@/lib/pushRevocation';
 import { cn } from '@/app/components/ui/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { HEADER_SPRING } from '@/styles/motion';
@@ -106,7 +107,10 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   onOpenDeputyGigs,
   onBandUpdated,
 }) => {
-  const { signOut, user, profile, userMode } = useAuth();
+  const { signOut: signOutOrThrow, user, profile, userMode } = useAuth();
+  // A sign-out that throws is answered by a wipe below: the push revocation
+  // it queued and a pending token deletion survive it (#287 round 10).
+  const signOut = holdPushStateOnFailure(signOutOrThrow);
   const t = useT();
   // Duo Laptop: the profile card sits on the Display, the rest on the Deck.
   const laptop = useLaptopPose();
@@ -298,6 +302,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       console.error('Logout failed:', e);
       localStorage.clear();
       window.location.href = '/';
+      restorePushStateAfterWipe();
     }
   };
 

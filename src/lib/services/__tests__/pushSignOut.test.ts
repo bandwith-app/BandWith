@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
   /** What happened, in order: native identity calls and server calls. */
   log: [] as string[],
   identityAvailable: false,
-  /** The account on the saved session (sessionUserId). */
+  /** The account on the saved session (getSessionOfflineSafe). */
   sessionUid: null as string | null,
   identity: {
     setUser: vi.fn(async (_o: { uid: string }) => {}),
@@ -51,8 +51,11 @@ vi.mock('@capacitor/push-notifications', () => ({
 vi.mock('@capacitor/local-notifications', () => ({
   LocalNotifications: { requestPermissions: async () => ({}), schedule: async () => {}, addListener: () => Promise.resolve({ remove: async () => undefined }) },
 }));
-vi.mock('../../supabase', () => ({ supabase: { rpc: h.rpc, from: h.from } }));
-vi.mock('@/lib/sessionUser', () => ({ sessionUserId: async () => h.sessionUid }));
+vi.mock('../../supabase', () => ({
+  supabase: { rpc: h.rpc, from: h.from },
+  // The saved session (offline-safe), as AuthContext reads it.
+  getSessionOfflineSafe: async () => ({ session: h.sessionUid ? { user: { id: h.sessionUid } } : null, offline: false }),
+}));
 
 const TOKEN = 'device-token-0123456789abcdef';
 const STAMP = '2026-11-22T09:59:58.123456+00:00';

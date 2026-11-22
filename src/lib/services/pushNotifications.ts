@@ -3,7 +3,7 @@
  * Based on the working implementation from BandOps Mobile App
  */
 
-import { supabase } from '../supabase';
+import { getSessionOfflineSafe, supabase } from '../supabase';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -11,7 +11,6 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
-import { sessionUserId } from '@/lib/sessionUser';
 import {
   beginPushSave,
   confirmPushSave,
@@ -263,7 +262,14 @@ const stopDevicePushOnce = async (gen: number): Promise<void> => {
 /** This push session is still the one asked for, and the saved session is still that account's. */
 const stillSignedIn = async (userId: string, session: number): Promise<boolean> => {
   if (session !== pushSession) return false;
-  const uid = await sessionUserId();
+  // The saved session, also offline (an expired access token with no signal
+  // is still this account's): the same read AuthContext starts from.
+  let uid: string | null = null;
+  try {
+    uid = (await getSessionOfflineSafe()).session?.user?.id ?? null;
+  } catch {
+    uid = null;
+  }
   return session === pushSession && uid === userId;
 };
 
