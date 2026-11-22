@@ -5,10 +5,12 @@ import { canMarkOk, type RehearsalNote } from '@/lib/rehearsalNotes';
 import { occurrenceNotesFromPack } from '@/lib/livePackStore';
 import {
   applyOps,
+  dismissRejected as dismissRejectedNote,
   flushOutbox,
   OUTBOX_EVENT,
   queueNoteOp,
   readOutbox,
+  readRejected,
   type NoteOp,
   type OutboxApi,
 } from '@/lib/rehearsalNotesOutbox';
@@ -49,6 +51,10 @@ export interface RehearsalNotesControls {
   loaded: boolean;
   /** Changes not sent yet (no signal). */
   waiting: number;
+  /** This rehearsal's notes the server refused for good, with their text (audit 06 #5). */
+  rejected?: RehearsalNote[];
+  /** The person has seen a refused note: it goes from the list. */
+  dismissRejected?: (id: string) => void;
   userId?: string;
   isAdmin: boolean;
   /** "Mark now, write later": one tap, the song and the minute. */
@@ -72,6 +78,7 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
   const [saved, setSaved] = useState<RehearsalNote[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [ops, setOps] = useState<NoteOp[]>(() => readOutbox(userId));
+  const [refused, setRefused] = useState<RehearsalNote[]>(() => readRejected(userId));
 
   const reload = useCallback(async () => {
     if (!on) return;
@@ -103,7 +110,10 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
   // The outbox changes (here or in another screen): show it, and retry while it waits.
   useEffect(() => {
     if (!on) return;
-    const sync = () => setOps(readOutbox(userId));
+    const sync = () => {
+      setOps(readOutbox(userId));
+      setRefused(readRejected(userId));
+    };
     sync();
     const onOnline = () => void flush();
     window.addEventListener(OUTBOX_EVENT, sync);
@@ -145,6 +155,11 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
     () => (on ? applyOps(saved, ops, userId).filter((n) => n.eventId === eventId && n.date === date) : []),
     [on, saved, ops, userId, eventId, date],
   );
+  const rejected = useMemo(
+    () => (on ? refused.filter((n) => n.eventId === eventId && n.date === date) : []),
+    [on, refused, eventId, date],
+  );
+  const dismissRejected = useCallback((id: string) => userId && dismissRejectedNote(userId, id), [userId]);
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
@@ -233,6 +248,8 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
     notes,
     loaded,
     waiting: on ? ops.length : 0,
+    rejected,
+    dismissRejected,
     userId,
     isAdmin,
     mark,

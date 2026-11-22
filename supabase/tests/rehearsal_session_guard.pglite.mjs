@@ -1,0 +1,128 @@
+// Local check of migration 196 (a saved rehearsal session is never started
+// over, audit 06 #3/#4) without Docker: PGlite with the 131 table, policies
+// and trigger. Failing first: with /dev/null as the migration a second
+// admin's stale Start (an old build's upsert) erases the ended session.
+//
+//   cd <dir with @electric-sql/pglite@0.5.15> && cp <repo>/supabase/tests/rehearsal_session_guard.pglite.mjs .
+//   node rehearsal_session_guard.pglite.mjs <repo>
+//   node rehearsal_session_guard.pglite.mjs <repo> /dev/null    # before: FAILs expected
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+
+const REPO = process.argv[2];
+const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/196_rehearsal_session_guard.sql`;
+const db = new PGlite();
+process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
+let fails = 0;
+const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
+const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
+const [BAND, ADMIN_A, ADMIN_B, MEMBER, EVENT] = [1, 2, 3, 4, 10].map(id);
+const DAY = '2026-11-19';
+
+await db.exec(`
+CREATE ROLE anon; CREATE ROLE authenticated;
+CREATE SCHEMA auth;
+GRANT USAGE ON SCHEMA public, auth TO authenticated, anon;
+CREATE TABLE auth.users (id uuid PRIMARY KEY);
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+  SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
+GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
+CREATE TABLE public.bands (id uuid PRIMARY KEY);
+CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid);
+CREATE TABLE public.band_members (band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true);
+CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND role = 'admin' AND COALESCE(is_active, true)); $f$;
+CREATE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND COALESCE(is_active, true)); $f$;
+CREATE FUNCTION public.bw_event_band_id(p_event_id uuid) RETURNS uuid
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$ SELECT band_id FROM events WHERE id = p_event_id $f$;
+INSERT INTO auth.users VALUES ('${ADMIN_A}'), ('${ADMIN_B}'), ('${MEMBER}');
+INSERT INTO bands VALUES ('${BAND}');
+INSERT INTO events VALUES ('${EVENT}', '${BAND}');
+INSERT INTO band_members VALUES ('${BAND}','${ADMIN_A}','admin',true), ('${BAND}','${ADMIN_B}','admin',true), ('${BAND}','${MEMBER}','member',true);
+`);
+await db.exec(readFileSync(`${REPO}/supabase/migrations/131_rehearsal_sessions.sql`, 'utf8'));
+
+async function as(user, fn) {
+  await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${user}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+  try { const r = await fn(); await db.exec('COMMIT'); return r; } catch (e) { await db.exec('ROLLBACK'); throw e; }
+}
+const summary = (played) => JSON.stringify({ v: 1, durationS: 1500, played, total: 3 });
+const PLAYED = [{ id: 's1', title: 'Paper Boats' }, { id: 's2', title: 'Superstition' }];
+/** The upsert every build up to 383f15b sends (saveRehearsalSession). */
+const upsert = (user, r) =>
+  as(user, () => db.query(
+    `INSERT INTO rehearsal_sessions (band_id, event_id, occurrence_date, started_at, paused_ms, paused_at, ended_at, summary)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+     ON CONFLICT (event_id, occurrence_date) DO UPDATE SET started_at = EXCLUDED.started_at, paused_ms = EXCLUDED.paused_ms,
+       paused_at = EXCLUDED.paused_at, ended_at = EXCLUDED.ended_at, summary = EXCLUDED.summary`,
+    [BAND, EVENT, DAY, r.started_at, r.paused_ms ?? 0, r.paused_at ?? null, r.ended_at ?? null, r.summary ?? summary([])],
+  )).then(() => ({ ok: true }), (e) => ({ error: e.message }));
+const saved = async () => (await db.query(`SELECT started_at, ended_at, paused_at, summary, updated_at FROM rehearsal_sessions WHERE event_id = $1`, [EVENT])).rows[0];
+const reset = () => db.exec(`DELETE FROM rehearsal_sessions`);
+
+const A_START = '2026-11-19T19:00:00.000Z';
+const A_END = '2026-11-19T19:25:00.000Z';
+const B_START = '2026-11-19T19:30:00.000Z';
+
+// ---- the problem, before the migration: B's stale Start erases A's rehearsal
+await upsert(ADMIN_A, { started_at: A_START });
+await upsert(ADMIN_A, { started_at: A_START, ended_at: A_END, summary: summary(PLAYED) });
+await upsert(ADMIN_B, { started_at: B_START });
+console.log(`info: before 196, B's Start leaves A's end in place: ${(await saved()).ended_at !== null}`);
+
+await db.exec(readFileSync(MIG, 'utf8'));
+await db.exec(readFileSync(MIG, 'utf8')); // idempotent
+ok(true, 'migration runs twice');
+
+// A runs the rehearsal: start, pause, resume, end, songs played. All fine.
+await reset();
+ok((await upsert(ADMIN_A, { started_at: A_START })).ok, 'A starts it');
+ok((await upsert(ADMIN_A, { started_at: A_START, paused_at: '2026-11-19T19:10:00.000Z' })).ok, 'A pauses');
+ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 60000 })).ok, 'A resumes');
+ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 60000, ended_at: A_END, summary: summary(PLAYED) })).ok, 'A ends it with the songs played');
+
+// B (missed the end, or a fresh device that tapped Start early) starts over it: refused, nothing changes.
+const before = await saved();
+const b = await upsert(ADMIN_B, { started_at: B_START });
+ok(/rehearsal_session_conflict/.test(b.error ?? ''), `B's new start over the saved session is refused (${b.error ?? 'written'})`);
+const after = await saved();
+ok(after.ended_at !== null && after.summary.played.length === 2, 'the ended rehearsal and its songs played are intact');
+ok(String(after.started_at) === String(before.started_at), 'its start time is intact');
+
+// The same through a plain UPDATE (what any client could send).
+const u = await as(ADMIN_B, () => db.query(`UPDATE rehearsal_sessions SET started_at = $1, ended_at = NULL WHERE event_id = $2`, [B_START, EVENT]))
+  .then(() => ({ ok: true }), (e) => ({ error: e.message }));
+ok(/rehearsal_session_conflict/.test(u.error ?? ''), 'a plain update of started_at is refused too');
+
+// Resuming after the end keeps the start: still allowed.
+ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 120000, ended_at: null, summary: summary(PLAYED) })).ok, 'resume after the end is still allowed');
+
+// The app's save on top of the revision it read: a stale revision updates nothing.
+const rev = (await saved()).updated_at;
+await upsert(ADMIN_A, { started_at: A_START, paused_ms: 120000, ended_at: '2026-11-19T19:50:00.000Z', summary: summary(PLAYED) });
+const stale = await as(ADMIN_B, () => db.query(
+  `UPDATE rehearsal_sessions SET paused_at = $1 WHERE event_id = $2 AND occurrence_date = $3 AND updated_at = $4 RETURNING updated_at`,
+  ['2026-11-19T19:40:00.000Z', EVENT, DAY, rev],
+));
+ok(stale.rows.length === 0 && (await saved()).paused_at === null, 'a save on a stale revision writes nothing');
+
+// A first save of a session that is already there: refused by the unique key.
+const dup = await as(ADMIN_B, () => db.query(
+  `INSERT INTO rehearsal_sessions (band_id, event_id, occurrence_date, started_at, summary) VALUES ($1, $2, $3, $4, '{}'::jsonb)`,
+  [BAND, EVENT, DAY, B_START],
+)).then(() => 'written', (e) => e.message);
+ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save over an existing one is refused (23505)');
+
+// Members still cannot write.
+const m = await upsert(MEMBER, { started_at: A_START });
+ok(!!m.error, 'a member cannot write');
+
+// Delete and start again: a new row, allowed.
+await as(ADMIN_A, () => db.query(`DELETE FROM rehearsal_sessions WHERE event_id = $1`, [EVENT]));
+ok((await upsert(ADMIN_B, { started_at: B_START })).ok, 'after a delete a new session can start');
+
+console.log(fails ? `\n${fails} FAILED` : '\nall ok');
+process.exit(fails ? 1 : 0);

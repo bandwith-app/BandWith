@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addOp, applyOps, flushOutbox, readOutbox, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
+import { addOp, applyOps, dismissRejected, flushOutbox, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
 import type { RehearsalNote } from '../rehearsalNotes';
 
 const ME = 'user-me';
@@ -115,5 +115,49 @@ describe('rehearsal notes outbox: replay', () => {
     writeOutbox(ME, [{ kind: 'save', note: note('mark'), before: [] }]);
     expect(await flushOutbox(ME, api)).toEqual({ sent: 2, dropped: 0, left: 0 });
     expect(sent).toEqual(['mark', 'preset']);
+  });
+});
+
+describe('audit 06 #5: a server error never throws a note away', () => {
+  beforeEach(() => localStorage.clear());
+  const apiWith = (save: (n: RehearsalNote) => Promise<{ error: unknown; status?: number }>) => ({
+    save: vi.fn(save),
+    remove: vi.fn(async () => ({ error: null })),
+    practised: vi.fn(async () => ({ error: null })),
+    ok: vi.fn(async () => ({ error: null })),
+  });
+
+  it('503 Service Unavailable: the note stays queued for the next try', async () => {
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'Bridge rushes' }), before: [] }]);
+    const api = apiWith(async () => ({ error: { message: 'Service Unavailable', code: '' }, status: 503 }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 0, dropped: 0, left: 1 });
+    expect(readOutbox(ME)).toHaveLength(1);
+    expect(readRejected(ME)).toEqual([]);
+  });
+
+  it('other passing problems (schema cache 503, an expired session, too many requests, a timeout) wait too', async () => {
+    for (const res of [
+      { error: { code: 'PGRST002', message: 'Could not query the database for the schema cache. Retrying.' }, status: 503 },
+      { error: { code: 'PGRST301', message: 'JWT expired' }, status: 401 },
+      { error: { message: 'Too Many Requests' }, status: 429 },
+      { error: { code: '57014', message: 'canceling statement due to statement timeout' }, status: 500 },
+      { error: { message: 'Bad Gateway', status: 502 } },
+    ]) {
+      localStorage.clear();
+      writeOutbox(ME, [{ kind: 'save', note: note('n1'), before: [] }]);
+      expect(await flushOutbox(ME, apiWith(async () => res))).toEqual({ sent: 0, dropped: 0, left: 1 });
+    }
+  });
+
+  it('refused for good (not allowed): its text is kept to show, the rest still goes', async () => {
+    writeOutbox(ME, [
+      { kind: 'save', note: note('bad', { body: 'Count the outro in four' }), before: [] },
+      { kind: 'save', note: note('n2'), before: [] },
+    ]);
+    const api = apiWith(async (n) => (n.id === 'bad' ? { error: { code: '42501', message: 'denied' }, status: 403 } : { error: null }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 1, dropped: 1, left: 0 });
+    expect(readRejected(ME).map((n) => [n.id, n.body])).toEqual([['bad', 'Count the outro in four']]);
+    dismissRejected(ME, 'bad');
+    expect(readRejected(ME)).toEqual([]);
   });
 });

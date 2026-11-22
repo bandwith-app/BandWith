@@ -48,18 +48,20 @@ export interface SessionMessage {
 }
 
 const storeKey = (eventId: string, date: string) => `bw-rehearsal-session:${eventId}|${date}`;
-const readLocal = (key: string): { state: SessionState; dirty: boolean } | null => {
+/** `rev`: the saved revision the device copy is based on (undefined: never read). */
+type Rev = string | null | undefined;
+const readLocal = (key: string): { state: SessionState; dirty: boolean; rev: Rev } | null => {
   try {
     const v = JSON.parse(localStorage.getItem(key) || 'null');
     const state = v ? fromRow(v.row) : null;
-    return state ? { state, dirty: !!v.dirty } : null;
+    return state ? { state, dirty: !!v.dirty, rev: typeof v.rev === 'string' || v.rev === null ? v.rev : undefined } : null;
   } catch {
     return null;
   }
 };
-const writeLocal = (key: string, row: SessionRow | null, dirty: boolean) => {
+const writeLocal = (key: string, row: SessionRow | null, dirty: boolean, rev?: Rev) => {
   try {
-    if (row) localStorage.setItem(key, JSON.stringify({ row, dirty }));
+    if (row) localStorage.setItem(key, JSON.stringify({ row, dirty, rev }));
     else localStorage.removeItem(key);
   } catch {
     /* storage blocked: memory only */
@@ -70,6 +72,8 @@ const writeLocal = (key: string, row: SessionRow | null, dirty: boolean) => {
 const SONG_SAVE_DELAY_MS = 1500;
 /** Try an unsaved session again this often while it is unsaved. */
 const RETRY_MS = 20_000;
+/** Another admin's change arrived: read its new revision once it is saved. */
+const REFRESH_AFTER_MS = 2500;
 
 /**
  * A rehearsal's session in Live mode (plan A1b, migration 131): the leader
@@ -88,6 +92,16 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const stateRef = useRef<SessionState | null>(null);
   /** Bumped on every change by the leader: a save clears "unsaved" only if nothing changed meanwhile. */
   const versionRef = useRef(0);
+  /**
+   * The saved row's revision this device's session is based on (audit 06
+   * #3/#4): undefined = not read yet, null = nothing saved. A save is
+   * written only on top of it; otherwise the saved session wins.
+   */
+  const revRef = useRef<Rev>(undefined);
+  const readyRef = useRef(false);
+  const flushing = useRef<Promise<void> | null>(null);
+  const flushAgain = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ctxRef = useRef({ bandId, eventId, date, total, send, isLeader, key });
   ctxRef.current = { bandId, eventId, date, total, send, isLeader, key };
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -120,24 +134,79 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     [rowOf],
   );
 
-  /** Save the newest state now (leader). The device copy stays "unsaved" until it is. */
-  const flush = useCallback(async () => {
-    clearTimeout(saveTimer.current);
-    saveTimer.current = undefined;
+  /**
+   * Someone else saved this rehearsal first (another admin, or a session
+   * already there when this device started one unread): theirs wins. Shown
+   * here and sent to the band; this device's change is dropped.
+   */
+  const adoptSaved = useCallback(
+    async (c: typeof ctxRef.current) => {
+      if (!c.key || !c.eventId || !c.date) return;
+      const saved = await fetchRehearsalSession(c.eventId, c.date);
+      if (ctxRef.current.key !== c.key) return;
+      if (saved === undefined) {
+        // Can't read it now: still unsaved, the next try asks again.
+        markUnsaved(true);
+        return;
+      }
+      versionRef.current += 1;
+      flushAgain.current = false;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+      revRef.current = saved?.rev ?? null;
+      const state = saved?.state ?? null;
+      setState(state);
+      writeLocal(c.key, rowOf(state), false, revRef.current);
+      markUnsaved(false);
+      const msg = message(state);
+      if (msg) c.send?.(msg);
+    },
+    [setState, rowOf, message, markUnsaved],
+  );
+
+  /** One save of the newest state, on top of the revision it is based on. */
+  const saveOnce = useCallback(async () => {
     const c = ctxRef.current;
     const row = rowOf(stateRef.current);
     if (!c.isLeader || !c.key || !row) return;
     const version = versionRef.current;
-    const { error } = await saveRehearsalSession(row);
-    if (error) {
+    const res = await saveRehearsalSession(row, revRef.current ?? null);
+    if (ctxRef.current.key !== c.key) return;
+    if (res.conflict) {
+      await adoptSaved(c);
+      return;
+    }
+    if (res.error) {
       markUnsaved(true);
       return;
     }
-    if (versionRef.current === version && ctxRef.current.key === c.key) {
-      writeLocal(c.key, row, false);
+    if (res.rev !== undefined) revRef.current = res.rev;
+    if (versionRef.current === version) {
+      writeLocal(c.key, row, false, revRef.current);
       markUnsaved(false);
+    } else writeLocal(c.key, rowOf(stateRef.current), true, revRef.current);
+  }, [rowOf, markUnsaved, adoptSaved]);
+
+  /** Save the newest state now (leader), one save at a time. The device copy stays "unsaved" until it is. */
+  const flush = useCallback(async () => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    if (flushing.current) {
+      // A save is on its way: the newest state goes right after it, on its new revision.
+      flushAgain.current = true;
+      return flushing.current;
     }
-  }, [rowOf, markUnsaved]);
+    const run = (async () => {
+      do {
+        flushAgain.current = false;
+        await saveOnce();
+      } while (flushAgain.current);
+    })().finally(() => {
+      flushing.current = null;
+    });
+    flushing.current = run;
+    return run;
+  }, [saveOnce]);
 
   /** The leader changed the session: show it, keep it on the device, send it, save it. */
   const commit = useCallback(
@@ -146,7 +215,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       if (!c.isLeader || !c.key) return;
       versionRef.current += 1;
       setState(next);
-      writeLocal(c.key, rowOf(next), true);
+      writeLocal(c.key, rowOf(next), true, revRef.current);
       markUnsaved(true);
       const msg = message(next);
       if (msg) c.send?.(msg);
@@ -162,24 +231,39 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     const c = ctxRef.current;
     if (!c.key || !c.eventId || !c.date) return;
     const local = c.isLeader ? readLocal(c.key) : null;
-    if (local && !stateRef.current) setState(local.state);
+    if (local && !stateRef.current) {
+      setState(local.state);
+      // Its unsaved change is checked against the revision it was made on.
+      if (local.dirty && revRef.current === undefined) revRef.current = local.rev;
+    }
     const saved = await fetchRehearsalSession(c.eventId, c.date);
     if (ctxRef.current.key !== c.key) return;
+    readyRef.current = true;
     setReady(true);
     if (saved === undefined) return; // offline: keep what we have
     // A change made here meanwhile is newer than what was just read.
-    const mine = c.isLeader && stateRef.current && unsavedRef.current ? { state: stateRef.current, dirty: true } : local;
+    const inMemory = c.isLeader && !!stateRef.current && unsavedRef.current;
+    const mine = inMemory ? { state: stateRef.current!, dirty: true } : local;
     const picked = pickSession(mine, saved?.state ?? null);
     setState(picked);
     if (mine?.dirty) void flush();
-    else if (c.isLeader) writeLocal(c.key, rowOf(picked), false);
+    else {
+      revRef.current = saved?.rev ?? null;
+      if (c.isLeader) writeLocal(c.key, rowOf(picked), false, revRef.current);
+    }
   }, [setState, flush, rowOf]);
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   // A different rehearsal (or the flag): start over.
   useEffect(() => {
     clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
+    clearTimeout(refreshTimer.current);
     stateRef.current = null;
+    revRef.current = undefined;
+    readyRef.current = false;
     setStateRaw(null);
     setReady(false);
     markUnsaved(false);
@@ -224,6 +308,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   // Leaving with a song change waiting for its save: save it now.
   useEffect(
     () => () => {
+      clearTimeout(refreshTimer.current);
       if (saveTimer.current) void flush();
     },
     [flush],
@@ -239,16 +324,34 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     if (next !== s) commit(next, SONG_SAVE_DELAY_MS);
   }, [isLeader, open, songId, songTitle, state, commit]);
 
-  // The live channel: members take the leader's session; the leader answers late arrivals.
+  // The live channel: everyone takes the running session, another admin's
+  // device too (audit 06 #3: no "Start rehearsal" over one already ended);
+  // the leader answers late arrivals.
   bridge.current.receive = (payload: unknown) => {
     const c = ctxRef.current;
     const msg = payload as Partial<SessionMessage> | null;
-    if (c.isLeader || !c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
-    setState(msg.row ? fromRow(msg.row) : null);
+    if (!c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
+    if (!c.isLeader) {
+      setState(msg.row ? fromRow(msg.row) : null);
+      return;
+    }
+    // A change of ours is on its way: its save decides (the saved one wins).
+    if (unsavedRef.current) return;
+    const next = msg.row ? fromRow(msg.row) : null;
+    setState(next);
+    writeLocal(c.key, msg.row ? rowOf(next) : null, false, revRef.current);
+    // The other admin saves it a moment later: then read its revision.
+    clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      if (!unsavedRef.current) void loadRef.current();
+    }, REFRESH_AFTER_MS);
   };
   bridge.current.latest = () => (ctxRef.current.isLeader && stateRef.current ? message(stateRef.current) : null);
 
   const start = useCallback(() => {
+    // Not before the saved session has been read (audit 06 #4): a fresh
+    // device must not start over one that is already there.
+    if (!readyRef.current) return;
     const s = stateRef.current;
     commit(s ? resumeSession(s, Date.now()) : startSession(Date.now()));
   }, [commit]);

@@ -72,7 +72,10 @@ export const RehearsalSessionBar: React.FC<{
         <button
           type="button"
           onClick={tap(session.start)}
-          className={cn(pill, 'w-full min-h-12 text-black')}
+          // Not before the saved session has been read: it may already exist (audit 06 #4).
+          disabled={!session.ready}
+          aria-busy={!session.ready}
+          className={cn(pill, 'w-full min-h-12 text-black disabled:opacity-60')}
           style={{ backgroundColor: accentColor }}
         >
           <Play className="w-5 h-5" aria-hidden /> {t('Start rehearsal')}

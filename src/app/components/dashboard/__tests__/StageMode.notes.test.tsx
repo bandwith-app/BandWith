@@ -194,6 +194,20 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     expect(sheet(/Notes · 1/)).toBeInTheDocument();
   });
 
+  it('audit 06 #5: a note the server refused says so, its words stay to copy, then it can be removed', () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const dismissRejected = vi.fn();
+    const c = controls([], { rejected: [refused], dismissRejected });
+    renderLive(c, session(startSession(T0)));
+    expect(screen.getByText("A note wasn't saved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).getByText("These notes weren't saved. Copy what you need, then remove them.")).toBeInTheDocument();
+    expect(within(list).getByText('Paper Boats · Tempo · Count the outro in four')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(dismissRejected).toHaveBeenCalledWith('n9');
+  });
+
   it('gigs have no notes', () => {
     const c = controls([]);
     const notes: LiveNotes = { controls: c, songs, members, elapsed: () => 0 };

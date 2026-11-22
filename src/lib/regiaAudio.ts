@@ -14,6 +14,9 @@
  * - Web (a laptop at the mixer): kept in IndexedDB as a Blob. A link the
  *   browser can't fetch (a Google Drive share, CORS) plays streamed instead,
  *   and is not counted as ready.
+ * - Sign-out removes them all, downloads still on their way included
+ *   (clearDownloadedAudio): a band's private recordings never stay on a
+ *   shared laptop for the next person (audit 06 #2).
  */
 import { Capacitor } from '@capacitor/core';
 import { playableAudioUrl, resolveSongFileUrl } from './services/songFiles';
@@ -162,7 +165,10 @@ export function downloadAudio(ref: string, onProgress?: (fraction: number | null
   let run = inflight.get(ref);
   if (!run) {
     const listeners = new Set<(fraction: number | null) => void>();
-    const promise = downloadOnce(ref, (p) => listeners.forEach((l) => l(p))).finally(() => inflight.delete(ref));
+    const promise = downloadOnce(ref, (p) => listeners.forEach((l) => l(p))).finally(() => {
+      // Only this run's entry (sign-out may have cleared it and a new one started).
+      if (inflight.get(ref)?.promise === promise) inflight.delete(ref);
+    });
     run = { promise, listeners };
     inflight.set(ref, run);
   }
@@ -176,7 +182,41 @@ export function downloadAudio(ref: string, onProgress?: (fraction: number | null
 /** Downloads running now, by song file reference (one per song, whoever asked). */
 const inflight = new Map<string, { promise: Promise<DownloadResult>; listeners: Set<(fraction: number | null) => void> }>();
 
+/** Bumped by sign-out: a download that started before it keeps nothing. */
+let generation = 0;
+/** Web downloads on their way (sign-out stops them). */
+const fetches = new Set<AbortController>();
+
+/**
+ * Sign-out: every song file this device downloaded goes (the band's private
+ * recordings), and downloads still on their way keep nothing.
+ */
+export async function clearDownloadedAudio(): Promise<void> {
+  generation += 1;
+  inflight.clear();
+  fetches.forEach((c) => c.abort());
+  fetches.clear();
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem } = await fs();
+    const { directory } = await nativeLoc('');
+    await Filesystem.rmdir({ path: DIR, directory, recursive: true }).catch(() => undefined);
+    return;
+  }
+  if (typeof indexedDB === 'undefined') return;
+  // The whole database (never opened here: a device that never was the Regia gets none).
+  await new Promise<void>((resolve) => {
+    try {
+      const req = indexedDB.deleteDatabase(DB);
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {
+  const started = generation;
+  const stale = () => generation !== started;
   let url: string | null = null;
   try {
     url = await remoteUrl(ref);
@@ -207,6 +247,11 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
       } finally {
         void listener.remove();
       }
+      if (stale()) {
+        // Signed out while it came down: not kept.
+        await Filesystem.deleteFile(loc).catch(() => undefined);
+        return { ok: false, reason: 'failed' };
+      }
       const st = await Filesystem.stat(loc);
       const head = st.size > 0 ? fromBase64(String((await Filesystem.readFile({ ...loc, offset: 0, length: 16 })).data)) : new Uint8Array();
       if (!looksLikeAudio(head)) {
@@ -215,15 +260,26 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
       }
       return { ok: true };
     }
+    if (stale()) return { ok: false, reason: 'failed' };
+    const abort = new AbortController();
+    fetches.add(abort);
     let res: Response;
+    let data: ArrayBuffer;
     try {
-      res = await fetch(url);
-    } catch {
-      // Offline, or a site that doesn't let the browser fetch it (it may still stream).
-      return { ok: false, reason: isOnline() ? 'link' : 'offline' };
+      try {
+        res = await fetch(url, { signal: abort.signal });
+      } catch {
+        if (stale()) return { ok: false, reason: 'failed' };
+        // Offline, or a site that doesn't let the browser fetch it (it may still stream).
+        return { ok: false, reason: isOnline() ? 'link' : 'offline' };
+      }
+      if (!res.ok || /text\/html|json/.test(res.headers.get('content-type') ?? '')) return { ok: false, reason: 'link' };
+      data = await readBody(res, onProgress);
+    } finally {
+      fetches.delete(abort);
     }
-    if (!res.ok || /text\/html|json/.test(res.headers.get('content-type') ?? '')) return { ok: false, reason: 'link' };
-    const data = await readBody(res, onProgress);
+    // Signed out while it came down: not kept.
+    if (stale()) return { ok: false, reason: 'failed' };
     if (!data.byteLength || !looksLikeAudio(new Uint8Array(data, 0, Math.min(16, data.byteLength)))) return { ok: false, reason: 'link' };
     const type = res.headers.get('content-type') || 'audio/mpeg';
     // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
@@ -293,6 +349,8 @@ export interface RegiaPlayer {
   pause(): void;
   /** Stop and rewind, fading out first where the device allows it. */
   stop(fadeMs?: number): Promise<void>;
+  /** Stop and drop the file: nothing is loaded any more (a song with no audio is up). */
+  unload(): void;
   snapshot(): RegiaPlayerSnapshot;
   /** Called on every change (status, a new position about 4× a second). */
   subscribe(fn: () => void): () => void;
@@ -347,9 +405,18 @@ export function createRegiaPlayer(): RegiaPlayer {
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = null;
   };
+  const empty = () => {
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    release();
+  };
+  /** Disposed (Stage closed): a load or play still on its way does nothing (audit 06 #7). */
+  let disposed = false;
 
   return {
     load(url) {
+      if (disposed) return Promise.resolve(false);
       release();
       if (url.startsWith('blob:')) objectUrl = url;
       setStatus('loading');
@@ -370,6 +437,7 @@ export function createRegiaPlayer(): RegiaPlayer {
       });
     },
     async play() {
+      if (disposed) return false;
       try {
         if (status === 'ended') audio.currentTime = 0;
         await audio.play();
@@ -395,6 +463,10 @@ export function createRegiaPlayer(): RegiaPlayer {
       audio.volume = 1;
       setStatus('ready');
     },
+    unload() {
+      empty();
+      setStatus('idle');
+    },
     snapshot() {
       const d = audio.duration;
       return {
@@ -408,10 +480,8 @@ export function createRegiaPlayer(): RegiaPlayer {
       return () => listeners.delete(fn);
     },
     dispose() {
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-      release();
+      disposed = true;
+      empty();
       listeners.clear();
       status = 'idle';
     },

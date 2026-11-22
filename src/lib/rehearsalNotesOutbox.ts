@@ -2,7 +2,7 @@
  * Rehearsal notes written with no signal (rehearsal rooms are often
  * basements): kept on this device, shown at once, sent when back online.
  * Every change is idempotent (the note's own id), so sending one twice is
- * harmless. Kept per user under `bw:`, which logout wipes.
+ * harmless. Kept per user under `bw:`.
  */
 import { isOfflineError } from './offline/networkErrors';
 import type { RehearsalNote } from './rehearsalNotes';
@@ -79,9 +79,58 @@ export function queueNoteOp(userId: string, op: NoteOp) {
   writeOutbox(userId, addOp(readOutbox(userId), op));
 }
 
+/**
+ * Notes the server refused for good (audit 06 #5): kept with their text so
+ * the screen can say so and the words aren't lost. The newest few only.
+ */
+const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
+const MAX_REJECTED = 20;
+
+export function readRejected(userId: string | null | undefined): RehearsalNote[] {
+  if (!userId) return [];
+  try {
+    const v = JSON.parse(localStorage.getItem(`${REJECTED_PREFIX}${userId}`) || '[]');
+    return Array.isArray(v) ? (v as RehearsalNote[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRejected(userId: string, notes: RehearsalNote[]) {
+  try {
+    if (notes.length) localStorage.setItem(`${REJECTED_PREFIX}${userId}`, JSON.stringify(notes.slice(-MAX_REJECTED)));
+    else localStorage.removeItem(`${REJECTED_PREFIX}${userId}`);
+  } catch {
+    /* storage blocked */
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(OUTBOX_EVENT, { detail: { userId } }));
+}
+
+export function dismissRejected(userId: string, id: string) {
+  writeRejected(userId, readRejected(userId).filter((n) => n.id !== id));
+}
+
+/**
+ * Worth sending again later, not a refusal (audit 06 #5): no signal, the
+ * server busy or down (5xx, 429, a timeout), an expired session (it is
+ * renewed). Anything else (not allowed, the note gone, invalid) is final.
+ */
+export function isRetryableWriteError(error: unknown, status?: number): boolean {
+  if (isOfflineError(error)) return true;
+  const e = (error && typeof error === 'object' ? error : {}) as { status?: unknown; code?: unknown; message?: unknown };
+  const http = Number(status ?? e.status);
+  if (http === 401 || http === 408 || http === 425 || http === 429 || http >= 500) return true;
+  const code = e.code == null ? '' : String(e.code);
+  // SQLSTATE: connection, rollback (serialization, deadlock), resources, operator intervention (timeouts).
+  if (code === 'PGRST301' || /^(08|40|53|57)[0-9A-Z]{3}$/.test(code)) return true;
+  const msg = String(e.message ?? '').toLowerCase();
+  return msg.includes('jwt expired') || msg.includes('timed out') || msg.includes('timeout');
+}
+
 // -------------------------------------------------------------- replay --
 
-type Res = Promise<{ error: unknown }>;
+/** `status`: the HTTP status of the failed call, when known (a 503 is not a refusal). */
+type Res = Promise<{ error: unknown; status?: number }>;
 export interface OutboxApi {
   save: (note: RehearsalNote, before: string[]) => Res;
   remove: (id: string) => Res;
@@ -105,9 +154,11 @@ const send = (api: OutboxApi, op: NoteOp): Res => {
 let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
 
 /**
- * Send the waiting changes in order. Offline: stop and keep the rest. Refused
- * by the server (no longer allowed, note gone): dropped, so one bad change
- * never blocks the others. Changes queued meanwhile stay queued.
+ * Send the waiting changes in order. Offline or a passing server problem:
+ * stop and keep the rest (tried again later). Refused for good (no longer
+ * allowed, note gone): dropped, so one bad change never blocks the others,
+ * and a refused note's text is kept to show (readRejected). Changes queued
+ * meanwhile stay queued.
  */
 export function flushOutbox(userId: string, api: OutboxApi) {
   if (flushing) return flushing;
@@ -117,10 +168,15 @@ export function flushOutbox(userId: string, api: OutboxApi) {
     // Changes queued while sending go in the same pass (a mark, then its preset).
     // (Bounded: storage that can't be written would hand back the same change.)
     for (let op = readOutbox(userId)[0], n = 0; op && n < 500; op = readOutbox(userId)[0], n++) {
-      const { error } = await send(api, op);
-      if (error && isOfflineError(error)) break;
-      if (error) dropped++;
-      else sent++;
+      const { error, status } = await send(api, op);
+      if (error && isRetryableWriteError(error, status)) break;
+      if (error) {
+        dropped++;
+        if (op.kind === 'save') writeRejected(userId, [...readRejected(userId).filter((n) => n.id !== op.note.id), op.note]);
+      } else {
+        sent++;
+        if (op.kind === 'save' && readRejected(userId).some((n) => n.id === op.note.id)) dismissRejected(userId, op.note.id);
+      }
       const same = JSON.stringify(op);
       writeOutbox(userId, readOutbox(userId).filter((o) => JSON.stringify(o) !== same));
     }

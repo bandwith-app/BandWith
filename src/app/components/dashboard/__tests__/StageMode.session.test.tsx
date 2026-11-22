@@ -68,6 +68,15 @@ describe('Live mode on a rehearsal: the session timer (A1b)', () => {
     expect(screen.queryByRole('timer')).toBeNull();
   });
 
+  it('audit 06 #4: Start waits until the saved session has been read', () => {
+    const s = session(null, { ready: false });
+    renderLive(s);
+    const start = screen.getByRole('button', { name: 'Start rehearsal' });
+    expect(start).toBeDisabled();
+    fireEvent.click(start);
+    expect(s.start).not.toHaveBeenCalled();
+  });
+
   it('a member sees nothing before it starts', () => {
     renderLive(session(null, { canControl: false }));
     expect(screen.queryByRole('region', { name: 'Rehearsal timer' })).toBeNull();

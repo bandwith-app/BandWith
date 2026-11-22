@@ -427,6 +427,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     const { error } = await signOut({ keepDeviceSession });
     if (!error) {
+      // The band's private recordings downloaded for Stage go too, downloads on their way included (audit 06 #2).
+      void import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {});
       setUser(null);
       setProfile(null);
       setSession(null);

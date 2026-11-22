@@ -69,7 +69,9 @@ const readFile = vi.fn(async (o: { path: string; directory: string; offset?: num
 const deleteFile = vi.fn(async (o: { path: string; directory: string }) => {
   files.delete(key(o));
 });
-const rmdir = vi.fn(async (_o: { path: string; directory: string }) => {});
+const rmdir = vi.fn(async (o: { path: string; directory: string; recursive?: boolean }) => {
+  for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
+});
 const mkdir = vi.fn(async (o: { path: string; directory: string }) => {
   if (dirs.has(key(o))) throw new Error('Directory exists');
   dirs.add(key(o));
@@ -107,7 +109,50 @@ vi.mock('../services/songFiles', () => ({
   playableAudioUrl: (u: string) => u.replace('/view', '/direct'),
 }));
 
-import { audioFailureFor, cachedAudio, downloadAudio, looksLikeAudio, playableUrl } from '../regiaAudio';
+import authContext from '../AuthContext.tsx?raw';
+import { audioFailureFor, cachedAudio, clearDownloadedAudio, downloadAudio, looksLikeAudio, playableUrl } from '../regiaAudio';
+
+/** A tiny in-memory IndexedDB (jsdom has none): one database, one store, the calls regiaAudio makes. */
+const idbData = new Map<string, Map<IDBValidKey, unknown>>();
+function fakeIndexedDb() {
+  const req = <R>(run: () => R) => {
+    const r = { result: undefined as R | undefined, error: null, onsuccess: null as null | (() => void), onerror: null };
+    setTimeout(() => {
+      r.result = run();
+      r.onsuccess?.();
+    }, 0);
+    return r;
+  };
+  return {
+    open: (name: string) => {
+      const r = {
+        result: undefined as unknown,
+        error: null,
+        onupgradeneeded: null as null | (() => void),
+        onsuccess: null as null | (() => void),
+        onerror: null,
+      };
+      setTimeout(() => {
+        const fresh = !idbData.has(name);
+        if (fresh) idbData.set(name, new Map());
+        const data = idbData.get(name)!;
+        const store = {
+          get: (k: IDBValidKey) => req(() => data.get(k)),
+          getKey: (k: IDBValidKey) => req(() => (data.has(k) ? k : undefined)),
+          put: (v: unknown, k: IDBValidKey) => req(() => (data.set(k, v), k)),
+          delete: (k: IDBValidKey) => req(() => void data.delete(k)),
+          clear: () => req(() => void data.clear()),
+        };
+        r.result = { createObjectStore: () => store, transaction: () => ({ objectStore: () => store }), close: () => {} };
+        if (fresh) r.onupgradeneeded?.();
+        r.onsuccess?.();
+      }, 0);
+      return r;
+    },
+    deleteDatabase: (name: string) => req(() => void idbData.delete(name)),
+  };
+}
+const storedSongs = () => [...idbData.values()].reduce((n, m) => n + m.size, 0);
 
 const DRIVE = 'https://drive.google.com/file/d/abc123456789/view';
 const mp3 = () => {
@@ -184,6 +229,75 @@ describe('Regia audio on a phone (native)', () => {
   it('a song file that is not a link or a band file: nothing to download', async () => {
     expect(await downloadAudio('ftp://x')).toEqual({ ok: false, reason: 'link' });
     expect(transfer).not.toHaveBeenCalled();
+  });
+});
+
+describe('audit 06 #2: sign-out leaves no private recording on this device', () => {
+  const audioResponse = () => ({
+    ok: true,
+    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'audio/mpeg' : null) },
+    body: null,
+    arrayBuffer: async () => mp3().buffer,
+  });
+  const web = () => {
+    native.on = false;
+    idbData.clear();
+    Object.defineProperty(globalThis, 'indexedDB', { value: fakeIndexedDb(), configurable: true, writable: true });
+  };
+
+  it('web (a shared laptop): the downloaded recordings are gone after sign-out', async () => {
+    web();
+    vi.stubGlobal('fetch', vi.fn(async () => audioResponse()));
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    await clearDownloadedAudio();
+    expect(storedSongs()).toBe(0);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+    vi.unstubAllGlobals();
+  });
+
+  it('web: a download still on its way when signing out is not kept', async () => {
+    web();
+    let arrive!: () => void;
+    const fetchMock = vi.fn(
+      (_u: string, init?: { signal?: AbortSignal }) =>
+        new Promise((resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          arrive = () => resolve(audioResponse());
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const run = downloadAudio(DRIVE);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await clearDownloadedAudio();
+    arrive?.();
+    expect((await run).ok).toBe(false);
+    expect(storedSongs()).toBe(0);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+    vi.unstubAllGlobals();
+  });
+
+  it('sign-out (once the session has ended) clears them', () => {
+    const signOut = authContext.slice(authContext.indexOf('const handleSignOut'), authContext.indexOf('const handleResetPassword'));
+    expect(signOut).toMatch(/if \(!error\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.clearDownloadedAudio\(\)\)/);
+  });
+
+  it('phone: the files in the app library go too, and one still downloading is deleted', async () => {
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    await clearDownloadedAudio();
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+    let land!: () => void;
+    transfer.mockImplementationOnce(async (o: { url: string; path: string }) => {
+      await new Promise<void>((r) => (land = r));
+      files.set(key(fromUri(o.path)), mp3());
+      return { path: o.path };
+    });
+    const run = downloadAudio(DRIVE);
+    await vi.waitFor(() => expect(transfer).toHaveBeenCalledTimes(2));
+    await clearDownloadedAudio();
+    land();
+    expect((await run).ok).toBe(false);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
   });
 });
 

@@ -10,7 +10,7 @@ vi.mock('@/lib/services/rehearsalSessions', () => ({
 
 import { useRehearsalSession } from '../useRehearsalSession';
 import type { StageSessionBridge } from '../useStageLive';
-import { startSession, toRow } from '@/lib/rehearsalSession';
+import { endSession, startSession, toRow } from '@/lib/rehearsalSession';
 
 const CTX = { bandId: 'band-1', eventId: 'event-1', date: '2026-11-19' };
 
@@ -110,5 +110,80 @@ describe('useRehearsalSession (A1b)', () => {
     expect(result.current.status).toBe('idle');
     expect(fetchMock).not.toHaveBeenCalled();
     expect(saveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
+  const T0 = Date.now() - 30 * 60_000;
+  const live = startSession(T0);
+  const ended = { ...endSession({ ...live, played: [{ id: 's1', title: 'Paper Boats' }, { id: 's2', title: 'Superstition' }] }, T0 + 25 * 60_000) };
+
+  it('#4: Start before the saved session has been read does nothing', async () => {
+    let answer!: (v: unknown) => void;
+    fetchMock.mockImplementation(() => new Promise((r) => (answer = r)));
+    const { result } = setup({ currentSong: null });
+    expect(result.current.ready).toBe(false);
+    act(() => result.current.start());
+    expect(result.current.status).toBe('idle');
+    expect(saveMock).not.toHaveBeenCalled();
+    await act(async () => answer({ state: ended, summary: null, rev: 'r2' }));
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('#4: never read (no signal) and a session is already saved: the first save only creates, and the saved one wins', async () => {
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValue({ error: null, conflict: true });
+    const { result, send } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => result.current.start());
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    // Create only: no revision to overwrite.
+    expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    expect(result.current.state?.played).toHaveLength(2);
+    expect(result.current.unsaved).toBe(false);
+    expect(saveMock).toHaveBeenCalledTimes(1);
+    // The band is told the saved session, not the one that lost.
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: expect.any(String) }) }));
+  });
+
+  it('#3: a second admin follows the first one on the channel (no Start rehearsal over an ended one)', async () => {
+    fetchMock.mockResolvedValue(null);
+    const { result, bridge } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => bridge.current.receive?.({ v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(live, CTX, 3, Date.now()) }));
+    expect(result.current.status).toBe('live');
+    act(() => bridge.current.receive?.({ v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(ended, CTX, 3, Date.now()) }));
+    expect(result.current.status).toBe('ended');
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('#3: a change from a device that missed the end is checked against the saved revision; the saved end wins', async () => {
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
+    saveMock.mockResolvedValue({ error: null, conflict: true });
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    // Meanwhile the other admin ended it (this device missed the message).
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => result.current.pause());
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    expect(saveMock.mock.calls[0][1]).toBe('r1');
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    expect(result.current.unsaved).toBe(false);
+    expect(saveMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('the revision moves on with each save: the next change is checked against it', async () => {
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
+    saveMock.mockResolvedValueOnce({ error: null, rev: 'r2' }).mockResolvedValue({ error: null, rev: 'r3' });
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    act(() => result.current.pause());
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    act(() => result.current.resume());
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
+    expect(saveMock.mock.calls.map((c) => c[1])).toEqual(['r1', 'r2']);
   });
 });

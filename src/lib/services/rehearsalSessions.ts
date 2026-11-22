@@ -12,12 +12,15 @@ export const SESSION_COLUMNS =
 export interface SavedSession {
   state: SessionState;
   summary: SessionSummary | null;
+  /** The row's revision (updated_at): a change is saved only on top of it (audit 06 #3). */
+  rev?: string | null;
 }
 
 const toSaved = (row: unknown): SavedSession | null => {
   const state = fromRow(row);
   if (!state) return null;
-  return { state, summary: parseSummary((row as { summary?: unknown }).summary) };
+  const rev = (row as { updated_at?: unknown }).updated_at;
+  return { state, summary: parseSummary((row as { summary?: unknown }).summary), rev: typeof rev === 'string' ? rev : null };
 };
 
 /** The saved session of one rehearsal occurrence; `undefined` when it couldn't be read (offline). */
@@ -32,8 +35,39 @@ export async function fetchRehearsalSession(eventId: string, date: string): Prom
   return data ? toSaved(data) : null;
 }
 
-/** Save the whole session (idempotent: the same row again changes nothing). */
-export async function saveRehearsalSession(row: SessionRow): Promise<{ error: unknown }> {
-  const { error } = await supabase.from('rehearsal_sessions').upsert(row, { onConflict: 'event_id,occurrence_date' });
-  return { error };
+export interface SaveSessionResult {
+  error: unknown;
+  /** Not written: someone saved this occurrence first (or it is already there). Read it again. */
+  conflict?: boolean;
+  /** The saved row's new revision. */
+  rev?: string | null;
+}
+
+/** Refused because the saved session moved on: 23505 (already there) or the 196 guard. */
+const isConflict = (e: unknown) => {
+  const err = (e ?? {}) as { code?: unknown; message?: unknown };
+  return err.code === '23505' || String(err.message ?? '').includes('rehearsal_session_conflict');
+};
+
+/**
+ * Save the whole session, never over a newer one (audit 06 #3/#4): with the
+ * revision it was read at, only if the row is still at that revision; with
+ * none (`null`: nothing saved, or never read), only as a new row. Otherwise
+ * `conflict`: the saved session wins and the caller reads it again.
+ */
+export async function saveRehearsalSession(row: SessionRow, rev?: string | null): Promise<SaveSessionResult> {
+  const res = rev
+    ? await supabase
+        .from('rehearsal_sessions')
+        .update(row)
+        .eq('event_id', row.event_id)
+        .eq('occurrence_date', row.occurrence_date)
+        .eq('updated_at', rev)
+        .select('updated_at')
+    : await supabase.from('rehearsal_sessions').insert(row).select('updated_at');
+  if (res.error) return isConflict(res.error) ? { error: null, conflict: true } : { error: res.error };
+  const saved = (res.data as { updated_at?: string }[] | null)?.[0];
+  // Updated nothing: the row is no longer at that revision (or is gone).
+  if (!saved) return { error: null, conflict: true };
+  return { error: null, rev: saved.updated_at ?? null };
 }

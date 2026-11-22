@@ -430,6 +430,65 @@ export const NoteGroups: React.FC<{
   );
 };
 
+/** The words of a note the band couldn't take, to copy. */
+const rejectedText = (n: RehearsalNote, t: T) =>
+  [n.songTitle, n.preset ? presetLabel(n.preset, t) : '', n.section ? sectionLabel(n.section, t) : '', n.body]
+    .filter(Boolean)
+    .join(' · ') || noteHeadline(n, t);
+
+/**
+ * Notes the server refused for good (no longer allowed, the rehearsal gone):
+ * they are not saved, but their words are still here to copy (audit 06 #5).
+ */
+export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: boolean }> = ({ controls, dark }) => {
+  const t = useT();
+  const list = controls.rejected ?? [];
+  const [copied, setCopied] = useState<string | null>(null);
+  if (!list.length) return null;
+  const pill = cn(
+    'flex items-center gap-1.5 min-h-11 px-3 rounded-full bw-label-sm whitespace-nowrap border',
+    dark ? 'border-white/40 text-white' : 'border-border text-foreground',
+  );
+  return (
+    <section
+      aria-label={t('Not saved')}
+      className={cn('flex flex-col gap-2 rounded-[12px] border p-3 min-w-0', dark ? 'border-white/30 text-white' : 'border-border')}
+    >
+      <span className="bw-label-sm" role="alert">
+        {t("These notes weren't saved. Copy what you need, then remove them.")}
+      </span>
+      <ul className="flex flex-col">
+        {list.map((n) => {
+          const text = rejectedText(n, t);
+          return (
+            <li key={n.id} className={cn('flex flex-col gap-2 py-2 border-b last:border-b-0 min-w-0', dark ? 'border-white/15' : 'border-border')}>
+              <span className="bw-body-sm whitespace-pre-wrap break-words select-text">{text}</span>
+              <span className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={pill}
+                  onClick={() => {
+                    haptic.tap();
+                    void navigator.clipboard
+                      ?.writeText(text)
+                      .then(() => setCopied(n.id))
+                      .catch(() => {});
+                  }}
+                >
+                  {copied === n.id ? t('Copied') : t('Copy')}
+                </button>
+                <button type="button" className={pill} onClick={() => controls.dismissRejected?.(n.id)}>
+                  {t('Remove')}
+                </button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
 /** All the rehearsal's notes, in a sheet (Live mode). */
 export const NotesListSheet: React.FC<{
   open: boolean;
@@ -455,7 +514,8 @@ export const NotesListSheet: React.FC<{
         </PillButton>
       }
     >
-      <div className="dark">
+      <div className="dark flex flex-col gap-3">
+        <RejectedNotes controls={controls} dark />
         {notes.length === 0 ? (
           <p className="bw-body-md text-muted-foreground">{t('No notes yet. Tap Mark while you play, write it at the pause.')}</p>
         ) : (
@@ -529,6 +589,10 @@ export const NoteSheetsHost: React.FC<{
 export const marksToWrite = (c: RehearsalNotesControls) =>
   c.notes.filter((n) => n.status === 'marked' && canEditNote(n, c.userId, c.isAdmin));
 
+/** The line under Mark: a refused note first (audit 06 #5), then changes waiting for a signal. */
+const notSavedStatus = (c: RehearsalNotesControls, t: T) =>
+  c.rejected?.length ? t("A note wasn't saved") : c.waiting > 0 ? t('Saved when back online') : '';
+
 /**
  * Live mode: Mark (one tap: this song, this minute) and the notes. At the
  * pause it says how many marks are waiting to be written.
@@ -576,7 +640,7 @@ export const RehearsalNotesBar: React.FC<{
         {toWrite > 0 ? t('To write: {count}', { count: toWrite }) : t('Notes · {count}', { count: controls.notes.length })}
       </button>
       <span className="bw-label-xs text-white/70 truncate min-w-0" role="status" aria-live="polite">
-        {flash ? t('Marked') : controls.waiting > 0 ? t('Saved when back online') : ''}
+        {flash ? t('Marked') : notSavedStatus(controls, t)}
       </span>
     </section>
   );
@@ -645,7 +709,7 @@ export const WedgeNotesPad: React.FC<{
         </button>
       </div>
       <span className="bw-label-xs text-white/70 min-h-4" role="status" aria-live="polite">
-        {flash ?? (controls.waiting > 0 ? t('Saved when back online') : '')}
+        {flash ?? notSavedStatus(controls, t)}
       </span>
     </section>
   );
@@ -677,6 +741,7 @@ export const RehearsalNotesSection: React.FC<{
           <Plus className="w-4 h-4" aria-hidden /> {t('New note')}
         </button>
       </span>
+      <RejectedNotes controls={controls} />
       {controls.notes.length > 0 && (
         <NoteGroups notes={controls.notes} songs={songs} controls={controls} members={members} onEdit={(n) => sheets.setEditing(n)} />
       )}
