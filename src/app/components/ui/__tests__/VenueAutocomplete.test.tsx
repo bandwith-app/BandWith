@@ -194,4 +194,57 @@ describe('the highlighted suggestion stays in view', () => {
     await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it('a venue whose details come late never overwrites an address typed after Tab', async () => {
+    // A Google pick without its street: the details are fetched after Tab.
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Form: React.FC = () => {
+      const [value, setValue] = useState('');
+      const [address, setAddress] = useState('');
+      return (
+        <>
+          <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+          <input aria-label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+        </>
+      );
+    };
+    render(<Form />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    const address = screen.getByRole('textbox', { name: 'Address' }) as HTMLInputElement;
+    address.focus();
+    fireEvent.change(address, { target: { value: '131 W 3rd St' } });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York', latitude: 40.73, longitude: -74 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(address.value).toBe('131 W 3rd St');
+    // The venue name is still the one picked.
+    expect((input as HTMLInputElement).value).toBe('Blue Note Jazz Club');
+  });
+
+  it('with nothing typed meanwhile, the late details still fill the pick', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });
+  });
 });

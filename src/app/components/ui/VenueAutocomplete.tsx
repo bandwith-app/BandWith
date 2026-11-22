@@ -134,9 +134,23 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     }, 280);
   };
 
+  // The latest pick: a slower, older one never lands over it.
+  const pickRef = useRef(0);
   const handleSelectPlace = async (place: VenuePlace) => {
+    const pick = ++pickRef.current;
     let selectedPlace = place;
+    // While the details load (after Tab focus has moved on), what the user
+    // types is theirs: in the venue field it replaces the pick, and in
+    // another field (Address) it is never overwritten by the late details.
+    let typedHere = false;
+    let typedElsewhere = false;
+    const onInput = (e: Event) => {
+      if (e.target === inputRef.current) typedHere = true;
+      else typedElsewhere = true;
+    };
     if (place.provider === 'google' && place.placeId && (!place.latitude || !place.city || !place.address)) {
+      document.addEventListener('input', onInput, true);
+      document.addEventListener('change', onInput, true);
       try {
         const details = await getGooglePlaceDetails(place.placeId, undefined, sessionTokenRef.current);
         if (details) {
@@ -149,13 +163,19 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         }
       } catch (err) {
         console.warn('[VenueAutocomplete] Could not fetch place details:', err);
+      } finally {
+        document.removeEventListener('input', onInput, true);
+        document.removeEventListener('change', onInput, true);
       }
     }
+    if (pick !== pickRef.current || typedHere) return;
     sessionTokenRef.current = undefined;
     rememberPickedPlace(selectedPlace);
     onChange(venueFields(selectedPlace).location);
     setAnnounce(t('Venue chosen: {name}', { name: venueFields(selectedPlace).location }));
-    onSelect(selectedPlace);
+    // The form fills its other fields from the pick (Address, city…): not
+    // once the user has started typing in them.
+    if (!typedElsewhere) onSelect(selectedPlace);
     setIsOpen(false);
     setSuggestions([]);
   };
