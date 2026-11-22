@@ -481,11 +481,14 @@ const contactKey = (name?: string | null, email?: string | null, phone?: string 
 
 /**
  * 183: the quote a screen holds is for the client saved now. The wizard
- * saves an empty name as "Client".
+ * saves an empty name as "Client": "Client", in any case and on either
+ * side, is no name (round 10: as the server's check in 183).
  */
+const noPlaceholderName = (name?: string | null) =>
+  (name || '').trim().replace(/\s+/g, ' ').toLowerCase() === 'client' ? '' : name;
 export const sameQuoteContact = (saved: QuoteContact, quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone'>>) =>
-  contactKey(saved.client_name === 'Client' && !quote.clientName ? '' : saved.client_name, saved.client_email, saved.client_phone) ===
-  contactKey(quote.clientName, quote.clientEmail, quote.clientPhone);
+  contactKey(noPlaceholderName(saved.client_name), saved.client_email, saved.client_phone) ===
+  contactKey(noPlaceholderName(quote.clientName), quote.clientEmail, quote.clientPhone);
 
 /**
  * Round 4: and its price as saved now (total and currency, when both sides

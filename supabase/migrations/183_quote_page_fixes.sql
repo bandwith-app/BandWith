@@ -148,8 +148,16 @@
 --    them;
 --  - a quote whose gig has a deposit recorded (accepted by phone, no link)
 --    keeps its currency too.
--- New functions take no grants beyond the definer's (REVOKE ALL); no RPC
--- older builds call changed shape.
+-- New functions take no grants beyond the definer's (REVOKE ALL). The
+-- redefined bw_quote_link_rotate keeps 099's GRANT EXECUTE to authenticated
+-- (its admin check is inside); no RPC older builds call changed shape.
+-- Known limit (accepted, release note): an older build (383f15b) with a
+-- reply typed for client A, while another device gives the quote to B,
+-- publishes, sends and renews the link ("New link"): its 20 s poll shows
+-- B's conversation but keeps the typed text, and Send then delivers it to
+-- B. The admin sees B's conversation when tapping Send; refusing every
+-- reply without a token after a client change would stop replies for all
+-- 383f15b users.
 --
 -- Deploy order: 183, 185, 186, 187, then redeploy send-email (it reads
 -- quote_links.recipient_email and balance_version and claims the email
@@ -856,7 +864,8 @@ BEGIN
   -- when the quote's client is not the one the link was last published for.
   IF jsonb_typeof(p_snapshot -> 'client') = 'object' THEN
     -- Round 6 (Claude r9): "Client", the name a quote saved without one
-    -- gets, is no name (as the app's sameQuoteContact).
+    -- gets, is no name, in any case and on either side (as the app's
+    -- sameQuoteContact since round 10).
     IF regexp_replace(lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g')), '^client$', '')
          IS DISTINCT FROM regexp_replace(lower(regexp_replace(coalesce(v_name, ''), '\s+', ' ', 'g')), '^client$', '')
        OR lower(btrim(coalesce(p_snapshot -> 'client' ->> 'email', ''))) IS DISTINCT FROM coalesce(v_email, '') THEN
