@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { saveSetlistOrder } from '@/lib/services/songs';
+import { keepOrderOffline } from '@/lib/services/liveOutboxApi';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { diffSetlist } from '@/lib/setlistChanges';
 import { useStageBle } from './useStageBle';
@@ -85,7 +86,8 @@ interface Options<T extends LiveSongRef> {
   isLeader: boolean;
 }
 
-export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error';
+/** `waiting`: no signal, the order is kept on this phone and saved when back online. */
+export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error' | 'waiting';
 
 /** Window event after Stage mode saved a new song order: detail `{ setlistId }`. */
 export const SETLIST_ORDER_SAVED = 'bw:setlist-order-saved';
@@ -385,6 +387,16 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
           /* no window */
         }
       }
+      if (error) {
+        const before = saved.map((s) => ({ songId: s.songId, setNumber: s.setNumber }));
+        const eventIdNow = saveCtx.current.eventId;
+        // No signal at the venue: the new order stands (on screen, over
+        // Bluetooth) and is saved when back online (plan §3.5).
+        if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before })) {
+          if (!closing) setSaveState('waiting');
+          return;
+        }
+      }
       if (closing) return;
       if (error) {
         // Back to the saved order, for everyone.
@@ -399,6 +411,18 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   );
   const flushRef = useRef(flushSave);
   flushRef.current = flushSave;
+
+  // An order kept on this phone (no signal) was sent once back online
+  // (liveOutboxApi): "Saved on this phone" becomes "Saved".
+  useEffect(() => {
+    if (!setlistId) return;
+    const onSaved = (e: Event) => {
+      if ((e as CustomEvent<{ setlistId?: string }>).detail?.setlistId !== setlistId) return;
+      setSaveState((s) => (s === 'waiting' ? 'saved' : s));
+    };
+    window.addEventListener(SETLIST_ORDER_SAVED, onSaved);
+    return () => window.removeEventListener(SETLIST_ORDER_SAVED, onSaved);
+  }, [setlistId]);
 
   // Closing Stage mode forgets the live state; the saved order stands
   // (a move still waiting for its save is saved now, not dropped).

@@ -1959,6 +1959,7 @@ const dict: Dictionary = {
   "You’re offline · showing cached info": "Offline · gespeicherte Daten",
   "Back online · {changes} to sync": "Wieder online · {changes} ausstehend",
   "Back online · synced": "Wieder online · synchronisiert",
+  "Back online · up to date": "Wieder online · alles aktuell",
   "Sync now": "Jetzt synchronisieren",
 
   // Onboarding
@@ -3867,6 +3868,13 @@ const dict: Dictionary = {
   "Download lyrics, chords and your notes to use live mode without signal.": "Lade Texte, Akkorde und deine Notizen herunter, um den Live-Modus ohne Netz zu nutzen.",
   "Downloading…": "Wird geladen…",
   "Download for offline": "Für offline laden",
+  // Live mode offline A3: changes kept on this phone until there is signal
+  "1 change waiting for signal": "1 Änderung wartet auf Empfang",
+  "{n} changes waiting for signal": "{n} Änderungen warten auf Empfang",
+  "Saved on this phone, sent when you’re back online.": "Auf diesem Handy gespeichert, wird gesendet, sobald du wieder online bist.",
+  "Saved on this phone": "Auf diesem Handy gespeichert",
+  "Saved on this phone. It goes to the admin when you’re back online.": "Auf diesem Handy gespeichert. Geht an den Admin, sobald du wieder online bist.",
+  "Note saved on this phone. It reaches your account when you’re back online.": "Notiz auf diesem Handy gespeichert. Sie kommt in dein Konto, sobald du wieder online bist.",
   // Live pack consent, readiness, Settings › Offline & live (plan §3.3–3.4)
   "Offline & live": "Offline & live",
   "Have the setlist with you, even without signal.": "Die Setlist dabei, auch ohne Empfang.",
