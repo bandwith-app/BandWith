@@ -89,7 +89,7 @@ CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
   soundcheck_time time, venue text, venue_name text, venue_address text, venue_city text, setlist_id uuid,
   fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now(),
-  "time" time, duration_hours numeric);
+  "time" time, duration_hours numeric, recurrence_rule jsonb);
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric, paid_at timestamptz, role text, notes text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
@@ -775,6 +775,25 @@ await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
   ok(fs?.free_count === fs?.total_count, `free slots: dropped out of a gig is free (${JSON.stringify(fs)})`);
 }
 
+// Main (#297): a repeating rehearsal's first date deleted on its own
+// (recurrence_rule.skip_dates, YYYY-MM-DD strings) doesn't make that day busy;
+// a series that skipped another date, and a one-off gig, still do.
+{
+  const [RS1, RS2, ONE] = [2301, 2302, 2303].map(id);
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, end_time, recurrence_rule) VALUES
+    ('${RS1}','${BAND}','Weekly rehearsal','confirmed','rehearsal','${ADMIN}', current_date + 50, '19:00', '21:00',
+      jsonb_build_object('frequency','weekly','interval',1,'skip_dates', jsonb_build_array(to_char(current_date + 50, 'YYYY-MM-DD')))),
+    ('${RS2}','${BAND}','Weekly sectional','confirmed','rehearsal','${ADMIN}', current_date + 51, '19:00', '21:00',
+      jsonb_build_object('frequency','weekly','interval',1,'skip_dates', jsonb_build_array(to_char(current_date + 58, 'YYYY-MM-DD')))),
+    ('${ONE}','${BAND}','Pier Gig','confirmed','gig','${ADMIN}', current_date + 52, '19:00', '21:00', NULL);
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${RS1}','${MEM}','confirmed'), ('${RS2}','${MEM}','confirmed'), ('${ONE}','${MEM}','confirmed')`);
+  const r = (await as(ADMIN, `SELECT day - current_date AS d, free_count, total_count FROM public.bw_band_free_slots('${BAND}', current_date + 50, current_date + 52) ORDER BY day`)).rows;
+  const at = (d) => r.find((x) => x.d === d) || {};
+  ok(at(50).free_count === at(50).total_count, `free slots: a repeating rehearsal's deleted first date is free (${JSON.stringify(at(50))})`);
+  ok(at(51).free_count === at(51).total_count - 1, `free slots: a series that skipped another date is still busy on its date (${JSON.stringify(at(51))})`);
+  ok(at(52).free_count === at(52).total_count - 1, `free slots: a one-off gig is still busy (${JSON.stringify(at(52))})`);
+}
+
 // Claude: deputies of a gig that went back to a quote.
 {
   await db.exec(`ALTER TABLE band_deputies ADD COLUMN IF NOT EXISTS user_id uuid;
@@ -836,6 +855,34 @@ ok(await scope(QCHAT, MEM) === false, 're-run after 181: the quote chat stays hi
   const noUser = (await db.query(`SELECT public.bw_chat_scope_ok('direct', NULL, NULL, NULL) ok`)).rows[0]?.ok;
   ok(def.includes('dropped_out') && def.includes('bw_is_event_participant') && gone === false && noUser === false,
     `re-run over a pre-round-3 bw_chat_scope_ok: 178 writes the round-3 shape (status rule ${def.includes('dropped_out')}, gone gig ${gone}, no user ${noUser})`);
+}
+// #281 round 4: 178 keeps only 175's final definition (marker bw:175-r4 in
+// its body). A round-3 shape (status rule, no marker) is replaced by 178's
+// own, which also checks the caller when asked about someone else.
+{
+  const r3 = `CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT p_user_id IS NOT NULL AND coalesce(CASE
+    WHEN p_type = 'band' THEN p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, p_user_id)
+    WHEN p_type = 'event' THEN EXISTS (SELECT 1 FROM events e WHERE e.id = p_event_id
+      AND public.bw_is_event_participant(e.id, p_user_id)
+      AND NOT EXISTS (SELECT 1 FROM event_members em WHERE em.event_id = e.id AND em.user_id = p_user_id
+        AND em.status IN ('declined', 'dropped_out', 'removed')))
+    ELSE true END, false);
+$f$;`;
+  const callerAsks = async () => (await as(OUT, `SELECT public.bw_chat_scope_ok('band', '${BAND}', NULL, '${MEM}') ok`)).rows[0]?.ok;
+  await db.exec(r3);
+  await db.exec(readFileSync(MIG, 'utf8'));
+  const after = await fnDef('bw_chat_scope_ok');
+  const outsider = await callerAsks();
+  ok(outsider === false && !after.includes('bw:175-r4'),
+    `re-run over a round-3 bw_chat_scope_ok (no marker): replaced, an outsider asking about a member gets false (${outsider})`);
+  const marked = r3.replace("SELECT p_user_id IS NOT NULL", "-- bw:175-r4\n  SELECT p_user_id IS NOT NULL");
+  await db.exec(marked);
+  await db.exec(readFileSync(MIG, 'utf8'));
+  ok((await fnDef('bw_chat_scope_ok')).includes('bw:175-r4'), "re-run over 175's final bw_chat_scope_ok (marker bw:175-r4): kept");
+  // Back to 178's own definition for the rest of the file (the guard off once).
+  await db.exec(readFileSync(MIG, 'utf8').replace(/LIKE '%bw:175-r4%'/, "LIKE '%no such marker%'"));
 }
 
 // Claude 3, order 175 → 178 → 181: 181's sweep runs on top; confirmed, the lineup is back.

@@ -85,9 +85,10 @@
 -- Works with or without 175 / 181, in either order (checked with the real
 -- 175 + 181 loaded: 175 -> 178 -> 181, 175 -> 181 -> 178 and main's
 -- 175 -> 178 -> 193 -> 181). bw_chat_scope_ok and get_user_chats start from
--- 175's round-3 bodies (lineup and status rule, roster filter) and add the
--- quote rule; a live round-3 bw_chat_scope_ok is kept (it carries the quote
--- rule via bw_is_event_participant), an older one is replaced.
+-- 175's bodies (lineup and status rule, caller check, roster filter) and add
+-- the quote rule; 175's final bw_chat_scope_ok (marker bw:175-r4) is kept
+-- (it carries the quote rule via bw_is_event_participant), any other one is
+-- replaced.
 -- bw_is_event_participant keeps 181's off-the-gig statuses (declined,
 -- dropped_out, removed). 175's BEFORE INSERT trigger already skips quote-chat
 -- rows through bw_chat_scope_ok; 178's own trigger makes the same call
@@ -882,25 +883,23 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_event_confirmed(uuid) FROM PUBLIC, anon, authenticated;
 
--- bw_chat_scope_ok: 175's round-3 body (one definition: 'group' = band, the
--- lineup rule through bw_is_event_participant, declined / dropped out /
--- removed off the gig unless they run it, never "yes" by default), plus the
--- quote rule: the event chat of a quote is for the band's admins only. Used
--- by bw_my_chat_ids, the chats read policies, get_user_chats (chats and
--- roster) and bw_chat_recipient_ids (send-push).
--- When 175's round-3 definition is already live, keep it: it calls
--- bw_is_event_participant, which carries the quote rule since this
--- migration (and 175 writes the quote rule in itself when it runs after
--- 178). Any older definition (no lineup or status rule) is replaced.
+-- bw_chat_scope_ok: 175's body (round 4: 'group' = band, the lineup rule
+-- through bw_is_event_participant, declined / dropped out / removed off the
+-- gig unless they run it, never "yes" by default, and asked about someone
+-- else it also checks the caller), plus the quote rule: the event chat of a
+-- quote is for the band's admins only. Used by bw_my_chat_ids, the chats
+-- read policies, get_user_chats (chats and roster) and bw_chat_recipient_ids
+-- (send-push).
+-- When 175's final definition is live (its body carries the marker
+-- bw:175-r4), keep it: it calls bw_is_event_participant, which carries the
+-- quote rule since this migration, and 175 writes the quote rule in itself
+-- when it runs after 178. Any other definition is replaced by this one,
+-- which does not carry the marker (only 175's does).
 DO $do$
-DECLARE
-  v_def text;
 BEGIN
-  IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NOT NULL THEN
-    v_def := pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)'));
-    IF v_def LIKE '%bw_is_event_participant%' AND v_def LIKE '%dropped_out%' AND v_def LIKE '%removed%' THEN
-      RETURN;
-    END IF;
+  IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NOT NULL
+     AND pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)')) LIKE '%bw:175-r4%' THEN
+    RETURN;
   END IF;
   EXECUTE $sql$
 CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
@@ -909,28 +908,35 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $f$
-  SELECT p_user_id IS NOT NULL AND coalesce(CASE
+  -- Everyone asked about must pass: p_user_id, and the caller as well when
+  -- the caller asks about someone else (175 round 4).
+  SELECT p_user_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+      FROM (VALUES (p_user_id),
+                   (CASE WHEN auth.uid() IS DISTINCT FROM p_user_id THEN auth.uid() END)) AS w(u)
+     WHERE w.u IS NOT NULL
+       AND NOT coalesce(CASE
     WHEN p_type = 'band' THEN
-      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, p_user_id)
+      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, w.u)
     -- 'group' with a band: legacy, same rule as the band chat.
     WHEN p_type = 'group' THEN
-      p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
+      p_band_id IS NULL OR public.bw_is_band_member(p_band_id, w.u)
     WHEN p_type = 'event' THEN
-      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
+      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, w.u))
       AND EXISTS (
         SELECT 1 FROM events e
          WHERE e.id = p_event_id
-           AND (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
-           AND public.bw_is_event_participant(e.id, p_user_id)
-           AND (coalesce(e.created_by = p_user_id, false)
-                OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, p_user_id))
+           AND (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, w.u))
+           AND public.bw_is_event_participant(e.id, w.u)
+           AND (coalesce(e.created_by = w.u, false)
+                OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, w.u))
                 OR NOT EXISTS (
                   SELECT 1 FROM event_members em
-                   WHERE em.event_id = e.id AND em.user_id = p_user_id
-                     AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed')))
-           AND NOT public.bw_event_quote_hidden(e.id, p_user_id))
+                   WHERE em.event_id = e.id AND em.user_id = w.u
+                     AND lower(coalesce(em.status::text, '')) IN ('declined', 'dropped_out', 'removed')))
+           AND NOT public.bw_event_quote_hidden(e.id, w.u))
     ELSE true
-  END, false);
+  END, false));
 $f$;
   $sql$;
 END
@@ -938,7 +944,7 @@ $do$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
 
--- The chat list: 175's round-3 body (chats from bw_my_chat_ids, the roster
+-- The chat list: 175's body (chats from bw_my_chat_ids, the roster
 -- filtered by bw_chat_scope_ok, so rows the rule refuses are left out), plus
 -- quote chats only for admins. Without 175, bw_my_chat_ids is 073's
 -- (participants) and bw_chat_scope_ok is the one defined above.
@@ -1226,6 +1232,7 @@ AS $$
         ON e.event_date BETWEEN p_from AND p_to
        AND (p_exclude_event IS NULL OR e.id <> p_exclude_event)
        AND lower(coalesce(e.status, '')) NOT IN ('cancelled', 'canceled', 'quote', 'quoted')
+       AND NOT (coalesce(e.recurrence_rule -> 'skip_dates', '[]'::jsonb) ? to_char(e.event_date, 'YYYY-MM-DD'))
        AND (e.band_id IS NULL OR NOT public.bw_event_is_quote(e.status, e.event_type, e.quote_id))
        AND (
          EXISTS (
@@ -1247,6 +1254,7 @@ AS $$
        AND coalesce(e.event_date, e.date) BETWEEN p_from AND p_to
        AND (p_exclude_event IS NULL OR e.id <> p_exclude_event)
        AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+       AND NOT (coalesce(e.recurrence_rule -> 'skip_dates', '[]'::jsonb) ? to_char(e.event_date, 'YYYY-MM-DD'))
        AND public.bw_date_hold_live(e.id)
   ),
   busy_events AS (
