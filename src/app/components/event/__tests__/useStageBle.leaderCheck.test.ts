@@ -153,6 +153,11 @@ vi.mock('@/lib/stageBleNative', () => ({
 
 const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, forgetScanStarts, SIGNED_TRUST_MS } = await import('../useStageBle');
 
+/** Moves app time on in small steps until the check holds (up to 30 s of app time). */
+const untilTrue = async (check: () => boolean) => {
+  for (let i = 0; i < 120 && !check(); i++) await vi.advanceTimersByTimeAsync(250);
+  expect(check()).toBe(true);
+};
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
 const member = (onState: (s: StageLiveState) => void = () => {}) =>
   renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }));
@@ -191,13 +196,14 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     air.devices.delete('admin-b');
     const onState = vi.fn();
     const second = member(onState);
-    await waitFor(() => expect(second.result.current.status).toBe('searching'));
+    // Steps of app time, not a wait on the wall clock (flaky on a busy Mac: Claude on #280).
+    await untilTrue(() => second.result.current.status === 'searching');
     // The old look's timer ends here: it must not stop the new search.
     await vi.advanceTimersByTimeAsync(3000);
     // Admin A opens Stage now.
     appear('admin-a', lead('a', 9, 'c3'));
     await vi.advanceTimersByTimeAsync(20_000);
-    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
+    await untilTrue(() => onState.mock.calls.some(([st]) => (st as StageLiveState).from === 'a'));
     second.unmount();
   });
 

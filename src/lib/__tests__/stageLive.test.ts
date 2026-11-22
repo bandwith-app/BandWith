@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, indexOf, isNewer, moveItem, nextSeq, parseStageState, reorderRows, sameOrder, stageTopic, stepOver } from '../stageLive';
+import { applyOrder, indexOf, isNewer, moveItem, nextSeq, parseStageState, reorderRows, sameOrder, seqPlausible, SEQ_AHEAD_MEASURED, stageTopic, stepOver } from '../stageLive';
 
 const songs = [
   { id: 'a', songId: 'sa', setNumber: 1, title: 'A' },
@@ -101,5 +101,17 @@ describe('songs struck off', () => {
   it('travel in the live state', () => {
     expect(parseStageState({ seq: 1, from: 'x', songId: 'a', order: null, skipped: ['b'] })?.skipped).toEqual(['b']);
     expect(parseStageState({ seq: 1, from: 'x', songId: 'a', order: null })?.skipped).toBeUndefined();
+  });
+});
+
+describe('seqPlausible (Claude on #280)', () => {
+  const t = Date.UTC(2026, 10, 22, 20);
+  it('at most 5 minutes ahead with no clock measured', () => {
+    expect(seqPlausible(nextSeq(null, t + 4 * 60_000), t)).toBe(true);
+    expect(seqPlausible(nextSeq(null, t + 6 * 60_000), t)).toBe(false);
+  });
+  it('about 30 s beyond a measured clock', () => {
+    expect(seqPlausible(nextSeq(null, t + 20_000), t, SEQ_AHEAD_MEASURED)).toBe(true);
+    expect(seqPlausible(nextSeq(null, t + 45_000), t, SEQ_AHEAD_MEASURED)).toBe(false);
   });
 });

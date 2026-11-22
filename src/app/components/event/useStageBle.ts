@@ -24,7 +24,7 @@ import {
   decodeClock,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
-import { isNewer, seqPlausible, usableOffset, type StageLiveState } from '@/lib/stageLive';
+import { isNewer, seqPlausible, SEQ_AHEAD_MEASURED, usableOffset, type StageLiveState } from '@/lib/stageLive';
 import { pairMatches, type StageSigner, type StageVerifyAnswer, type StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 import { forgetAllSignedMemory, noteSignedSeen, noteSignedTop, signedMemory } from '@/lib/stageSignedMemory';
@@ -58,6 +58,8 @@ const RETRY_MS = 2000;
  */
 export const LEADER_CHECK_MS = 30_000;
 export const IDLE_LEADER_CHECK_MS = 4_000;
+/** How long a leader's first state waits for its clock to be measured (then the 5-minute rule). */
+export const CLOCK_HOLD_MS = 3_000;
 /** Another address of the linked leader's phone is skipped this long, then probed again. */
 export const SAME_LEADER_FORGET_MS = 5 * 60_000;
 /** How long such a look scans. */
@@ -482,18 +484,47 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     /** Phones a probe let go of whose let-go timed out (maybe still connected). */
     const letGoPending = new Set<string>();
     const knownSame = (id: string) => Date.now() - (sameLeader.get(id) ?? -Infinity) < SAME_LEADER_FORGET_MS;
-    /** The linked phone's last state was dropped for a seq ahead of this phone's clock: read again once its clock is measured. */
+    /** The linked phone's last state was dropped or held for its clock: read again once its clock is measured. */
     let clockDropped = false;
+    /** Whether the linked leader serves a clock: asking (first reads), has (measured), none (an older app). */
+    let linkClock: 'asking' | 'has' | 'none' = 'asking';
+    /** Until then a state from a leader with a clock waits for that clock (then the 5-minute rule). */
+    let clockHoldUntil = 0;
+    let holdArmed = false;
     /**
      * A seq that could come from the linked leader's clock: judged with the
-     * offset measured over the link (a leader's phone set an hour ahead is
-     * still followed), with none for any other phone.
+     * offset measured over the link, and then only ~30 s beyond it (a leader's
+     * phone set a few minutes ahead is still followed); with none measured,
+     * at most 5 minutes ahead of this phone's clock.
      */
     const plausibleFrom = (seq: number, id: string | null) => {
-      const measured = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
+      const sample = id && bookDevice === id ? book.best(nowMs()) : null;
+      if (!sample) return seqPlausible(seq, Date.now());
       // A clock more than 5 minutes off never counts (MAX_CLOCK_OFFSET_MS).
-      const offset = usableOffset(measured);
-      return offset !== null && seqPlausible(seq, Date.now() + offset);
+      const offset = usableOffset(sample.offset);
+      return offset !== null && seqPlausible(seq, Date.now() + offset, SEQ_AHEAD_MEASURED);
+    };
+    /**
+     * The first state waits for the leader's clock (Codex on #280): judged
+     * before it, a clock minutes off would be followed. A leader on an older
+     * app (no clock) or a clock that can't be measured in CLOCK_HOLD_MS is
+     * judged by the 5-minute rule.
+     */
+    const clockPending = (id: string) =>
+      id === deviceId && linkClock === 'asking' && !(bookDevice === id && book.best(nowMs())) && nowMs() < clockHoldUntil;
+    const holdForClock = (id: string) => {
+      if (!clockPending(id)) return false;
+      clockDropped = true;
+      if (!holdArmed) {
+        holdArmed = true;
+        void wait(Math.max(0, clockHoldUntil - nowMs()) + 10).then(() => {
+          holdArmed = false;
+          if (cancelled || deviceId !== id || !clockDropped) return;
+          clockDropped = false;
+          void readNow();
+        });
+      }
+      return true;
     };
     const radioBusy = () => reads > 0 || nowMs() < burstUntil;
     /** The linked phone; leaderLinks follows it. */
@@ -547,7 +578,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         view = await BleClient.read(id, serviceUuid, STAGE_BLE_CLOCK_CHARACTERISTIC);
       } catch (e) {
         // A dropped link is handled by onDisconnect; a missing characteristic is an older leader.
-        return !/not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
+        const older = /not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
+        if (older && deviceId === id) {
+          linkClock = 'none';
+          // Its held state applies now (no clock to wait for).
+          if (clockDropped) {
+            clockDropped = false;
+            void readNow();
+          }
+        }
+        return !older;
       } finally {
         reads--;
       }
@@ -555,6 +595,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), verify.public);
       if (t1 === null || cancelled || deviceId !== id) return true;
       if (book.add(t0, t1, t2)) {
+        linkClock = 'has';
         emitClock();
         // Its state may be plausible now that its clock is known.
         if (clockDropped) {
@@ -621,7 +662,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (highest !== undefined && seq < highest) return { ok: false as const, reason: 'replay' as const };
         // Only a seq that counts is kept as the highest: one from a clock far off (dropped by the
         // caller) would make every later real state look like a recording.
-        if (plausibleFrom(seq, id)) noteSignedTop(gig, from, seq);
+        // Not while the linked leader's clock is still being measured (judged then, on the read after).
+        if (!clockPending(id) && plausibleFrom(seq, id)) noteSignedTop(gig, from, seq);
       }
       // The admins' signature checked (a setlist this phone lacks included): band-key states are refused for a while.
       noteSignedSeen(gig);
@@ -774,6 +816,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           const heard = result.ok ? result.state : result;
           if (isNewer(heard, linkHeard)) linkHeard = { seq: heard.seq, from: heard.from };
         }
+        // Known to the looks (what this link serves), but not applied before the leader's clock is.
+        if (seq !== null && deviceId === id && holdForClock(id)) return;
         if (result.ok) {
           authFails = [];
           staleKey = false;
@@ -1005,6 +1049,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       idleChecks = 0;
       sameLeader = new Map();
       clockDropped = false;
+      linkClock = bookDevice === id && book.best(nowMs()) ? 'has' : 'asking';
+      clockHoldUntil = nowMs() + CLOCK_HOLD_MS;
       if (bookDevice !== id) {
         // Another phone: the last one's clock isn't this one's (and an older app has none to replace it).
         book.clear();
@@ -1033,6 +1079,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           if (!served) throw new Error('services not listed');
           const signs = served.includes(STAGE_BLE_SIGNED_CHARACTERISTIC);
           signedLink = signs && !!verify;
+          // Only a signed leader's clock is read: a band-key link has none to wait for.
+          if (!signedLink) linkClock = 'none';
           // Characteristics listed, none signed: this app with no pair yet (it has the live one), or an older app.
           linkKind = signs
             ? verify
