@@ -7,16 +7,25 @@ import { renderHook, act } from '@testing-library/react';
  * announced.
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
-const phones: { key: string; handlers: Handler[] }[] = [];
+// One entry per channel: the stage topic and, since #283, the clock topic (members' pings) of the same phone
+// (the same stand-in as useStageLive.playhead.test.ts after Group 5).
+const phones: { key: string; topic: string; handlers: Handler[] }[] = [];
+/** The phone whose stage channel was made last: its clock channel (no presence key) comes right after. */
+let lastKey = '';
 const bus = {
-  send(from: string, event: string, payload: unknown) {
-    for (const p of phones) if (p.key !== from) p.handlers.filter((h) => h.type === 'broadcast' && h.event === event).forEach((h) => h.cb({ payload }));
+  send(from: string, topic: string, event: string, payload: unknown) {
+    for (const p of phones)
+      if (p.key !== from && p.topic === topic) p.handlers.filter((h) => h.type === 'broadcast' && h.event === event).forEach((h) => h.cb({ payload }));
   },
 };
+/** The stage topic of a phone (the count-in is sent there). */
+const stageTopic = (key: string) => phones.find((p) => p.key === key && p.handlers.some((h) => h.type === 'presence'))!.topic;
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    channel: (_topic: string, opts: { config: { presence: { key: string } } }) => {
-      const phone = { key: opts.config.presence.key, handlers: [] as Handler[] };
+    channel: (topic: string, opts: { config: { presence?: { key: string } } }) => {
+      const stage = !!opts.config.presence;
+      if (opts.config.presence) lastKey = opts.config.presence.key;
+      const phone = { key: lastKey, topic, handlers: [] as Handler[] };
       phones.push(phone);
       const ch = {
         on(type: string, filter: { event: string }, cb: (msg: unknown) => void) {
@@ -28,22 +37,25 @@ vi.mock('@/lib/supabase', () => ({
           return ch;
         },
         track: async () => {
+          if (!stage) return;
           for (const p of phones)
             if (p.key !== phone.key) p.handlers.filter((h) => h.type === 'presence' && h.event === 'join').forEach((h) => h.cb({ key: phone.key, newPresences: [{}] }));
         },
-        send: async (m: { event: string; payload: unknown }) => bus.send(phone.key, m.event, m.payload),
+        send: async (m: { event: string; payload: unknown }) => bus.send(phone.key, topic, m.event, m.payload),
         __phone: phone,
       };
       return ch;
     },
-    removeChannel: async (ch: { __phone: { key: string } }) => {
-      const i = phones.findIndex((p) => p.key === ch.__phone.key);
+    removeChannel: async (ch: { __phone: { key: string; topic: string } }) => {
+      const i = phones.findIndex((p) => p === ch.__phone);
       if (i >= 0) phones.splice(i, 1);
     },
   },
 }));
 const ble = vi.hoisted(() => ({ burst: vi.fn() }));
-vi.mock('../useStageBle', () => ({ useStageBle: () => ({ status: 'off', publish: () => {}, burst: ble.burst, clock: null }) }));
+// Stable functions, like the real hook's (publishLive: #274).
+const bleStub = vi.hoisted(() => ({ status: 'off', publish: () => {}, publishLive: () => {}, burst: (): void => {}, clock: null }));
+vi.mock('../useStageBle', () => ({ useStageBle: () => ({ ...bleStub, burst: ble.burst }) }));
 vi.mock('@/lib/services/songs', () => ({ saveSetlistOrder: async () => ({ error: null }) }));
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: async () => {} }));
 
@@ -81,13 +93,17 @@ describe('useStageLive: the count-in on every phone', () => {
     const leader = phone(true);
     const member = phone(false);
     const pings: unknown[] = [];
-    const lp = phones.find((p) => p.key === leader.result.current.clientId)!;
+    // Members ping on the clock topic (#283): listened to on the leader's clock channel.
+    const lp = phones.find((p) => p.key === leader.result.current.clientId && p.topic !== stageTopic(leader.result.current.clientId))!;
     lp.handlers.push({ type: 'broadcast', event: PING_EVENT, cb: (m) => pings.push(m) });
     act(() => leader.result.current.countIn.set({ ...count(), from: leader.result.current.clientId }));
     expect(member.result.current.countIn.state?.on).toBe(true);
-    // A burst of pings, ~110 ms apart (inside the 1.5 s before the first count).
-    await act(() => new Promise((r) => setTimeout(r, 500)));
-    expect(pings.length).toBeGreaterThanOrEqual(4);
+    // A burst of pings, ~110 ms apart, after #283's random start of up to
+    // 500 ms (phones don't all ping at once): 1050 ms at most, inside the
+    // 1.5 s before the first count. At the click's 200 ms gap only 4 would
+    // be out by now in the worst case.
+    await act(() => new Promise((r) => setTimeout(r, 1200)));
+    expect(pings.length).toBeGreaterThanOrEqual(6);
     // And over Bluetooth: the faster of the two clocks counts (pickClock).
     expect(ble.burst).toHaveBeenCalled();
   });
@@ -97,8 +113,8 @@ describe('useStageLive: the count-in on every phone', () => {
     const member = phone(false);
     const c = { ...count(), from: leader.result.current.clientId };
     act(() => leader.result.current.countIn.set(c));
-    act(() => bus.send(leader.result.current.clientId, COUNTIN_EVENT, { ...c, seq: c.seq + 3, time: '4/3' }));
-    act(() => bus.send(leader.result.current.clientId, COUNTIN_EVENT, { ...c, seq: c.seq - 1, bpm: 200 }));
+    act(() => bus.send(leader.result.current.clientId, stageTopic(leader.result.current.clientId), COUNTIN_EVENT, { ...c, seq: c.seq + 3, time: '4/3' }));
+    act(() => bus.send(leader.result.current.clientId, stageTopic(leader.result.current.clientId), COUNTIN_EVENT, { ...c, seq: c.seq - 1, bpm: 200 }));
     expect(member.result.current.countIn.state).toMatchObject({ seq: c.seq, bpm: 96 });
     const late = phone(false);
     expect(late.result.current.countIn.state).toMatchObject({ on: true, seq: c.seq });

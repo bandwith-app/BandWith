@@ -41,7 +41,8 @@ describe('privacy choices survive a storage clear', () => {
     const root = `${process.cwd()}/src`;
     const files = fs
       .readdirSync(root, { recursive: true })
-      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('__tests__') && !f.endsWith('privacyChoices.ts'));
+      // The app's own files: no test, whether in a __tests__ folder or next to its source (#290's countInPrefs.test.ts).
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.includes('__tests__') && !/\.test\.tsx?$/.test(f) && !f.endsWith('privacyChoices.ts'));
     const bare = files.filter((f) => /localStorage\.clear\(\)/.test(fs.readFileSync(`${root}/${f}`, 'utf8')));
     expect(bare).toEqual([]);
   });
