@@ -447,7 +447,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setSession(null);
       clearStageCache();
       // Refused notes stay for this account (#296 round 8): read before the clear, put back after.
-      import('./signOutWipe')
+      // Awaited, every step (main, three-way sign-out with #287/#292): nothing of it runs after this
+      // returns, so what follows (a deleted account's discardAccountWrites) always comes last.
+      await import('./signOutWipe')
         // Its chunk not there (offline, an old cache): the clear still runs.
         .then((m) => m.keepingSignOutLists(() => clearOfflineCache()), () => clearOfflineCache())
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))

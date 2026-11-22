@@ -570,7 +570,8 @@ describe('#296 round 8: a deleted account’s refused notes go, even with the cl
     localStorage.setItem(list(B), '[{"id":"y"}]');
     // Normal: a clear that drops every bw: key (before #292) — both come back.
     const wipeAll = async () => {
-      for (const k of Object.keys(localStorage)) if (k.startsWith('bw:')) localStorage.removeItem(k);
+      const all = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+      for (const k of all) if (k.startsWith('bw:')) localStorage.removeItem(k);
     };
     await keepingSignOutLists(wipeAll);
     expect(localStorage.getItem(list(A))).not.toBeNull();
