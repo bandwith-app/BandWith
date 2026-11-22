@@ -80,6 +80,7 @@ import { BwSheet } from '@/app/components/bw/Screen';
 import { ComposerCard, ComposerPreview, ComposerShell, useComposerLayout } from '@/app/components/composer/Composer';
 import { builtinText } from '@/lib/i18n/builtins';
 import { instrumentText } from '@/lib/instruments';
+import { currencySymbol as symbolOf } from '@/lib/currency';
 
 export interface QuoteBandMember {
   id: string;
@@ -454,12 +455,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   const distanceUnit = useDistanceUnit();
   // 08 #9: a saved quote keeps its own currency; the band's is for new quotes.
   const quoteCurrency = quoteCurrencyFor(initialData, pricingSettings.currency);
-  const currencySymbol = useMemo(() => {
-    if (quoteCurrency === 'USD') return '$';
-    if (quoteCurrency === 'GBP') return '£';
-    if (quoteCurrency === 'CHF') return 'CHF ';
-    return '€';
-  }, [quoteCurrency]);
+  const currencySymbol = useMemo(() => symbolOf(quoteCurrency), [quoteCurrency]);
 
   const availableMusicians = useMemo<QuoteMusician[]>(() => {
     if (bandMembers && bandMembers.length > 0) {

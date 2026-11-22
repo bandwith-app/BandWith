@@ -146,4 +146,22 @@ describe('BalanceRequestSheet: other payments and preview', () => {
     expect(mocks.markSent).toHaveBeenCalledTimes(1);
     expect(mocks.markSent.mock.calls[0]).toEqual(['q-1', 'sent', 'email', 3]);
   });
+
+  // Claude round 4 (#286 send-email): the email names the balance version it is for.
+  it('Send by email: the email is for the balance just published; another one meanwhile sends nothing', async () => {
+    mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 4, changed: true }, error: null });
+    mocks.email.mockResolvedValue({ ok: false, code: 'balance_changed' });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    await waitFor(() => expect(mocks.email).toHaveBeenCalled());
+    expect(mocks.email.mock.calls[0]).toEqual(['q-1', 'sent', 4]);
+    expect(await screen.findByText('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')).toBeTruthy();
+    expect(mocks.markSent).not.toHaveBeenCalled();
+  });
 });

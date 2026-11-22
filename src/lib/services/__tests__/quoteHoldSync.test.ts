@@ -10,6 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Row = Record<string, any>;
 const db: Record<string, Row[]> = { quotes: [], events: [], event_members: [] };
+// Round 4: another admin confirms the gig between the find and the update.
+const race = { confirmAfterFind: false };
 
 vi.mock('@/lib/supabase', () => {
   const from = (table: string) => {
@@ -17,8 +19,9 @@ vi.mock('@/lib/supabase', () => {
     let op: 'select' | 'update' | 'delete' = 'select';
     let patch: Row = {};
     let single = false;
+    let returning = false;
     const b: Record<string, any> = {};
-    b.select = () => b;
+    b.select = () => ((returning = op === 'update'), b);
     b.update = (p: Row) => ((op = 'update'), (patch = p), b);
     b.delete = () => ((op = 'delete'), b);
     b.eq = (c: string, v: unknown) => (filters.push((r) => r[c] === v), b);
@@ -29,7 +32,8 @@ vi.mock('@/lib/supabase', () => {
       const hit = (db[table] || []).filter((r) => filters.every((f) => f(r)));
       if (op === 'update') hit.forEach((r) => Object.assign(r, patch));
       if (op === 'delete') db[table] = db[table].filter((r) => !hit.includes(r));
-      const data = op === 'select' ? (single ? hit[0] ?? null : hit.map((r) => ({ ...r }))) : null;
+      if (table === 'events' && op === 'select' && race.confirmAfterFind) db.events.forEach((r) => (r.status = 'confirmed'));
+      const data = op === 'select' ? (single ? hit[0] ?? null : hit.map((r) => ({ ...r }))) : returning ? hit.map((r) => ({ ...r })) : null;
       return Promise.resolve({ data, error: null }).then(ok);
     };
     return b;
@@ -68,6 +72,7 @@ const edited = {
 };
 
 beforeEach(() => {
+  race.confirmAfterFind = false;
   db.quotes = [{ id: QUOTE, converted_to_event_id: EVENT }];
   db.events = [{ id: EVENT, status: 'tentative', event_date: '2027-06-12', venue_name: '230 Fifth', fee: 2400, currency: 'EUR' }];
   db.event_members = [
@@ -116,5 +121,13 @@ describe('syncQuoteHoldEvent', () => {
     const res = await quotes.syncQuoteHoldEvent(QUOTE, edited);
     expect(res.data).toBe(EVENT);
     expect(db.events[0].event_date).toBe('2027-06-19');
+  });
+
+  it('confirmed between the find and the update: stops, changes and deletes nothing, says so', async () => {
+    race.confirmAfterFind = true;
+    const res = await quotes.syncQuoteHoldEvent(QUOTE, edited, [{ user_id: LENA, instrument: 'Bass', fee: 375 }]);
+    expect(res).toEqual({ data: null, error: null, confirmed: true });
+    expect(db.events[0]).toMatchObject({ event_date: '2027-06-12', fee: 2400 });
+    expect(db.event_members.map((m) => m.user_id).sort()).toEqual([MAYA, SAM].sort());
   });
 });

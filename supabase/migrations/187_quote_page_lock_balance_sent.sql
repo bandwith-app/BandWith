@@ -22,8 +22,9 @@
 --    written, the page says the link no longer works.
 --
 -- Superset of 183: the three bodies below are 183's as of fix/quote-page
--- f733c588 (PR #286 round 3: link_id conversations, the quote's currency
--- on the deposit receipt, the quote locked first) plus the changes above.
+-- 8f5922d7 (PR #286 round 4: link_id conversations, the deposit receipt in
+-- the currency recorded with it, the quote locked first) plus the changes
+-- above.
 -- 183 must not be run again after this one (183 refuses: its guard sees
 -- balance_sent in the view). Same signatures and grants (anon keeps
 -- EXECUTE on the page RPCs it had). Apply after 183 and 185 (this
@@ -162,11 +163,12 @@ BEGIN
     'balance_paid_at', CASE WHEN v_show_balance THEN v_link.balance_paid_at END,
     -- 168: the band recorded the deposit as received.
     'deposit_paid', v_link.status = 'accepted' AND coalesce(v_gig_deposit, false),
-    -- 183: and how much it recorded, in the quote's currency (the receipt
-    -- says this, not the amount asked). Only while the gig still has the
+    -- 183: and how much it recorded, in the currency it was recorded in (the
+    -- quote's then; round 4: never the currency the quote has now). The
+    -- receipt says this, not the amount asked. Only while the gig still has the
     -- deposit paid at that amount (changed in the gig itself: no amount).
     'deposit_paid_amount', CASE WHEN v_show_deposit THEN v_link.deposit_received_amount END,
-    'deposit_paid_currency', CASE WHEN v_show_deposit THEN coalesce(v_currency, v_link.deposit_received_currency) END
+    'deposit_paid_currency', CASE WHEN v_show_deposit THEN coalesce(v_link.deposit_received_currency, v_currency) END
   );
 END;
 $$;

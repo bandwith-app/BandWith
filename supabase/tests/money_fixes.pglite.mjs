@@ -18,6 +18,9 @@
 //   6. round 3: a send recorded for a balance another admin replaced is
 //      refused (BW_BALANCE_CHANGED), and every balance function locks the
 //      quote before the link and the link before the gig (pageinspect);
+//   8. round 4: replacing a musician on a quote changes the tentative gig's
+//      lineup in the same transaction; a gig confirmed meanwhile is left as
+//      it is; members never read the lineup's fees through it;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -64,13 +67,16 @@ CREATE TABLE public.quote_musicians (id uuid PRIMARY KEY DEFAULT gen_random_uuid
   is_available boolean DEFAULT true, created_at timestamptz DEFAULT now());
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, quote_id uuid, status varchar, payment_status varchar,
   deposit_paid boolean DEFAULT false, deposit_amount numeric, currency varchar(3), created_at timestamptz DEFAULT now());
-CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text, fee numeric, paid_at timestamptz, PRIMARY KEY (event_id, user_id));
+CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text, fee numeric, paid_at timestamptz, role text, PRIMARY KEY (event_id, user_id));
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title varchar, body text, data jsonb, created_at timestamptz DEFAULT now());
 GRANT SELECT, UPDATE ON public.quotes TO authenticated;
 CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND role = 'admin' AND COALESCE(is_active, true)); $f$;
+CREATE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND COALESCE(is_active, true)); $f$;
 CREATE FUNCTION public.bw_can_manage_event(p_event_id uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event_id AND public.bw_is_band_admin(e.band_id)); $f$;
@@ -434,6 +440,45 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   await db.exec(`DROP TRIGGER test_lock_probe ON quote_links; DROP TRIGGER test_lock_probe ON events;`);
 }
 
+// ---------------------------------------------------------------- 8. the lineup of the date on hold (round 4)
+{
+  const { Q, E } = await quote();
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${E}'`);
+  // On hold with Maya (bass) and Sam (drums); Maya already said yes.
+  await db.exec(`INSERT INTO quote_musicians (quote_id, user_id, name, instrument, fee) VALUES ('${Q}', '${MEMBER}', 'Maya Brooks', 'Bass', 300), ('${Q}', '${SUB}', 'Sam Ortiz', 'Drums', 250)`);
+  await db.exec(`INSERT INTO event_members (event_id, user_id, status, fee, role) VALUES ('${E}', '${MEMBER}', 'confirmed', 300, 'Bass'), ('${E}', '${SUB}', 'pending', 250, 'Drums')`);
+  // The admin replaces Sam with an outside drummer and raises Maya's fee.
+  const rows = [
+    { user_id: MEMBER, name: 'Maya Brooks', instrument: 'Bass', fee: 350, is_external: false, is_available: true },
+    { user_id: null, name: 'Leo Park', instrument: 'Drums', fee: 275, is_external: true, is_available: true },
+  ];
+  const r = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [Q, JSON.stringify(rows)])));
+  const out = r.r && r.r.rows[0].r;
+  ok(!r.e && out && out.synced === true && out.event_id === E && out.musicians.length === 2,
+    `lineup + hold: saved together (${r.e || JSON.stringify(out && { s: out.synced, n: out.musicians.length })})`);
+  const em = (await q(`SELECT user_id, status, fee::float AS fee, role FROM event_members WHERE event_id = $1 ORDER BY user_id`, [E])).rows;
+  ok(em.length === 1 && em[0].user_id === MEMBER && em[0].status === 'confirmed' && em[0].fee === 350,
+    `lineup + hold: Sam is off the gig, Maya keeps her yes with the new fee (${JSON.stringify(em)})`);
+  // The quote is confirmed: the gig's lineup is the quote's.
+  await db.exec(`UPDATE events SET status = 'confirmed' WHERE id = '${E}'`);
+  ok(!(await q(`SELECT 1 FROM event_members WHERE event_id = $1 AND user_id = $2`, [E, SUB])).rows.length,
+    'lineup + hold: once the gig is confirmed, the replaced musician is not on it');
+  // Confirmed meanwhile: the quote's lineup is saved, the gig is left as it is.
+  const again = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [Q, JSON.stringify([rows[1]])])));
+  const em2 = (await q(`SELECT count(*)::int c FROM event_members WHERE event_id = $1`, [E])).rows[0].c;
+  const qm2 = (await q(`SELECT count(*)::int c FROM quote_musicians WHERE quote_id = $1`, [Q])).rows[0].c;
+  ok(!again.e && again.r.rows[0].r.confirmed === true && again.r.rows[0].r.synced === false && em2 === 1 && qm2 === 1,
+    `lineup + hold: a gig confirmed meanwhile is not touched (${again.e || JSON.stringify(again.r.rows[0].r.confirmed)}, ${em2} on the gig)`);
+  // One transaction: a bad row changes neither.
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${E}'`);
+  const bad = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, '[{"user_id":null,"name":"","fee":"1"}]'::jsonb)`, [Q])));
+  ok(!!bad.e && (await q(`SELECT count(*)::int c FROM event_members WHERE event_id = $1`, [E])).rows[0].c === 1,
+    'lineup + hold: a refused lineup changes neither the quote nor the gig');
+  const member = await tryIt(asMember(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb)`, [Q])));
+  const anon = await tryIt(asAnon(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb)`, [Q])));
+  ok(!!member.e && !!anon.e, 'lineup + hold: members and anon cannot call it (no fees through it)');
+}
+
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)
 {
   // 183's round 3 still holds with 187's bodies on top.
@@ -444,6 +489,12 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   const v = await view(T);
   ok(!rec.e && v?.deposit_paid_amount == 300 && v?.deposit_paid_currency === 'USD',
     `187 keeps 183: the deposit receipt is in the quote's currency (${rec.e || `${v?.deposit_paid_amount} ${v?.deposit_paid_currency}`})`);
+  // Round 4: the receipt keeps the currency recorded with the payment, even
+  // if the quote's changed some other way (183's trigger refuses it in the app).
+  await db.exec(`ALTER TABLE quotes DISABLE TRIGGER bw_quote_currency_locked; UPDATE quotes SET currency = 'GBP' WHERE id = '${Q}'; ALTER TABLE quotes ENABLE TRIGGER bw_quote_currency_locked;`);
+  const v4 = await view(T);
+  ok(v4?.deposit_paid_currency === 'USD', `187 keeps 183 round 4: the receipt is in the currency recorded with the payment (${v4?.deposit_paid_currency})`);
+  await db.exec(`ALTER TABLE quotes DISABLE TRIGGER bw_quote_currency_locked; UPDATE quotes SET currency = 'USD' WHERE id = '${Q}'; ALTER TABLE quotes ENABLE TRIGGER bw_quote_currency_locked;`);
 
   // b. deposit received: the quote, then the link, then the gig (pageinspect, as section 6).
   await db.exec(`

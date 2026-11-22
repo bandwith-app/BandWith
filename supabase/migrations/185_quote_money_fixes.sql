@@ -41,6 +41,10 @@
 --      locks the quote first, then the link, then the gig (as a save of the
 --      quote does), so two of them at the same moment never deadlock.
 --
+-- 5. Round 4 (Codex review of #293): bw_quote_save_lineup saves the
+--    quote's lineup and the lineup of the tentative gig holding its date in
+--    one transaction (a musician replaced on the quote leaves the gig).
+--
 -- No function here comes from an open PR (168 and 099 bodies). New anon
 -- grant: bw_quote_link_preview only (it needs the token and the key).
 -- Safe to run more than once.
@@ -98,6 +102,70 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_save_musicians(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_save_musicians(uuid, jsonb) TO authenticated;
+
+-- Round 4 (Codex review of #293): the quote's lineup and the lineup of the
+-- tentative gig that holds its date, in one transaction. A musician
+-- replaced on the quote leaves the gig, so confirming the quote never
+-- confirms the old lineup. Only while the gig is tentative: one confirmed
+-- meanwhile is the band's own and its lineup is not touched ("confirmed":
+-- true, the quote's lineup is still saved). People who stay keep their
+-- answer; who joins is pending (the admin saving: confirmed); everyone's
+-- fee and instrument as on the quote. Admins only (bw_quote_admin_band);
+-- it returns the quote's rows (quote_musicians: admins only) and never a
+-- member's fee to anyone else.
+CREATE OR REPLACE FUNCTION public.bw_quote_save_lineup(p_quote_id uuid, p_musicians jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_rows jsonb;
+  v_linked uuid;
+  v_event uuid;
+  v_status text;
+BEGIN
+  -- The quote first (bw_quote_save_musicians locks it), then the gig.
+  SELECT coalesce(jsonb_agg(to_jsonb(m)), '[]'::jsonb) INTO v_rows
+    FROM public.bw_quote_save_musicians(p_quote_id, p_musicians) m;
+
+  SELECT q.converted_to_event_id INTO v_linked FROM public.quotes q WHERE q.id = p_quote_id;
+  SELECT e.id, lower(coalesce(e.status, '')) INTO v_event, v_status
+    FROM public.events e
+   WHERE e.band_id = v_band AND (e.id = v_linked OR e.quote_id = p_quote_id)
+   ORDER BY (e.id IS NOT DISTINCT FROM v_linked) DESC, e.created_at
+   LIMIT 1
+   FOR UPDATE;
+  IF v_event IS NULL THEN
+    RETURN jsonb_build_object('musicians', v_rows, 'event_id', NULL, 'synced', false, 'confirmed', false);
+  END IF;
+  IF v_status <> 'tentative' THEN
+    RETURN jsonb_build_object('musicians', v_rows, 'event_id', v_event, 'synced', false, 'confirmed', true);
+  END IF;
+
+  DELETE FROM public.event_members em
+   WHERE em.event_id = v_event
+     AND em.user_id NOT IN (SELECT qm.user_id FROM public.quote_musicians qm
+                             WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL);
+  INSERT INTO public.event_members (event_id, user_id, role, fee, status)
+  SELECT v_event, w.user_id, w.role, w.fee,
+         CASE WHEN w.user_id = auth.uid() THEN 'confirmed' ELSE 'pending' END
+    FROM (SELECT DISTINCT ON (qm.user_id) qm.user_id,
+                 coalesce(nullif(btrim(qm.instrument), ''), 'Musician') AS role,
+                 round(coalesce(qm.fee, 0), 2) AS fee
+            FROM public.quote_musicians qm
+           WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL
+           ORDER BY qm.user_id, qm.created_at, qm.id) w
+   WHERE public.bw_is_band_member(v_band, w.user_id)
+  ON CONFLICT (event_id, user_id) DO UPDATE
+    SET role = EXCLUDED.role,
+        fee = EXCLUDED.fee;
+  RETURN jsonb_build_object('musicians', v_rows, 'event_id', v_event, 'synced', true, 'confirmed', false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb) TO authenticated;
 
 -- --------------------------------------------------------------------
 -- 2. Mark as paid remembers the deposit, Undo puts it back (168 + #7)

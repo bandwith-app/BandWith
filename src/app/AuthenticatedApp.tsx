@@ -142,7 +142,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteMusicians } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteLineup } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -2908,16 +2908,18 @@ export default function AuthenticatedApp() {
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
       }
-      // The lineup is saved with the quote (185): what is stored is what shows.
+      // The lineup is saved with the quote and the gig on hold, in one go (185).
       let roster = editing.quote.musicians;
+      let gigConfirmed = false;
       if (q.musicians) {
-        const lineup = await saveQuoteMusicians(editing.quote.id, appMusiciansToDb(q.musicians));
+        const lineup = await saveQuoteLineup(editing.quote.id, appMusiciansToDb(q.musicians));
         if (lineup.error || !lineup.data) {
           // The wizard stays open: saving again saves the lineup.
           setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineup.error?.message || t('unknown error') }), type: 'error' });
           return;
         }
-        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.data }).musicians;
+        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.data.musicians }).musicians;
+        gigConfirmed = lineup.data.confirmed;
       }
       // The event shows the quote's date, time, place, client and fee, as
       // saved (round 6: the row the database returns, with its own totals
@@ -2940,7 +2942,9 @@ export default function AuthenticatedApp() {
       setEditingLinkedQuote(null);
       setSaveToast(eventErr
         ? { message: t('Quote updated, but the event was not: {error}', { error: eventErr.message }), type: 'error' }
-        : { message: t('Quote updated'), type: 'success' });
+        : gigConfirmed
+          ? { message: t('The gig was confirmed meanwhile: the quote is saved, the gig’s lineup was not changed.'), type: 'success' }
+          : { message: t('Quote updated'), type: 'success' });
       if (opts?.share) setSharingQuote(saved);
       // Already sent with the client link: the page shows the new version.
       republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {

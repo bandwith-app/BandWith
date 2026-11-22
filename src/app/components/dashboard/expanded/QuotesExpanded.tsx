@@ -40,7 +40,7 @@ import {
   quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
-  saveQuoteMusicians,
+  saveQuoteLineup,
   syncQuoteHoldEvent,
   isUuid,
   gigFromAcceptedQuote,
@@ -249,28 +249,36 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
 
         // The lineup is saved with the quote (185): the screens show what is stored.
         let roster = existing.musicians;
-        let savedLineup: Awaited<ReturnType<typeof saveQuoteMusicians>>['data'] = null;
+        let savedLineup: NonNullable<Awaited<ReturnType<typeof saveQuoteLineup>>['data']>['musicians'] | null = null;
+        // Round 4: the gig on hold got the lineup with the quote (one transaction).
+        let lineupOnHold = false;
+        let gigConfirmed = false;
         if (quoteData.musicians) {
-          const lineup = await saveQuoteMusicians(existing.id, appMusiciansToDb(quoteData.musicians));
+          const lineup = await saveQuoteLineup(existing.id, appMusiciansToDb(quoteData.musicians));
           if (lineup.error || !lineup.data) {
             setQuotes(prev => prev.map(q => (q.id === existing.id ? ({ ...existing, ...dbQuoteToAppQuote(data), musicians: existing.musicians } as MockQuote) : q)));
             notify(errorText(lineup.error, t('Quote saved, but the lineup was not')), 'error');
             return; // keep the wizard open: saving again saves the lineup
           }
-          savedLineup = lineup.data;
-          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.data }).musicians;
+          savedLineup = lineup.data.musicians;
+          lineupOnHold = lineup.data.synced;
+          gigConfirmed = lineup.data.confirmed;
+          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.data.musicians }).musicians;
         }
         const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: roster } as MockQuote;
         // The date on hold follows the quote (date, place, fee, lineup), so
         // accepting it confirms the gig as quoted. The quote stays saved.
-        const hold = await syncQuoteHoldEvent(existing.id, saved, savedLineup);
+        const hold = gigConfirmed
+          ? { data: null, error: null, confirmed: true }
+          : await syncQuoteHoldEvent(existing.id, saved, lineupOnHold ? null : savedLineup);
         setQuotes(prev => prev.map(q => (q.id === existing.id ? saved : q)));
         setIsCreating(false);
         setEditingQuote(null);
         if (hold.error) {
           console.warn('[quotes] date on hold not updated:', hold.error);
           notify(t('Quote updated, but its calendar event was not. Save the quote again to update it.'), 'error');
-        } else notify(t('Quote updated'), 'success');
+        } else if (hold.confirmed) notify(t('The gig was confirmed meanwhile: the quote is saved, the gig’s lineup was not changed.'), 'success');
+        else notify(t('Quote updated'), 'success');
         onQuotesChanged?.();
         if (opts?.share) setSharingQuote(saved);
         // Already sent with the client link: the page shows the new version.

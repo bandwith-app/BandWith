@@ -317,10 +317,13 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
         say(t('The client page could not be updated. Try again.'), 'error');
         return;
       }
-      const res = await sendQuoteBalanceEmail(quoteId, sendKind);
+      // Round 4: the email is for this balance; another admin's newer one: nothing is sent.
+      const res = await sendQuoteBalanceEmail(quoteId, sendKind, pub.data.balance_version);
       if (!res.ok) {
         say(
-          res.code === 'email_not_configured'
+          res.code === 'balance_changed'
+            ? t('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')
+            : res.code === 'email_not_configured'
             ? t('Email is not set up on the server yet. Share the link instead.')
             : res.code === 'too_soon'
             ? t('An email was just sent. Wait a minute and try again.')

@@ -383,6 +383,50 @@ export const saveQuoteMusicians = async (
   return { data: (Array.isArray(data) ? data : []) as QuoteMusician[], error: null };
 };
 
+export interface QuoteLineupSaved {
+  musicians: QuoteMusician[];
+  /** The gig holding the quote's date, when there is one. */
+  eventId: string | null;
+  /** Its lineup was saved in the same transaction (it is tentative). */
+  synced: boolean;
+  /** It was confirmed meanwhile: its lineup was left as it is. */
+  confirmed: boolean;
+}
+
+/**
+ * #293 round 4: an edited quote's lineup and the lineup of the tentative
+ * gig that holds its date, in one transaction (bw_quote_save_lineup, 185):
+ * a musician replaced on the quote leaves the gig, so confirming the quote
+ * never confirms the old lineup. Before round 4's 185 the quote's lineup
+ * alone (synced false): the caller keeps the gig in step as before.
+ */
+export const saveQuoteLineup = async (
+  quoteId: string,
+  musicians: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[],
+): Promise<{ data: QuoteLineupSaved | null; error: Error | null }> => {
+  const payload = musicians.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const { data, error } = await supabase.rpc('bw_quote_save_lineup', { p_quote_id: quoteId, p_musicians: payload });
+  if (error && isMissingRpc(error)) {
+    const alone = await saveQuoteMusicians(quoteId, musicians);
+    return alone.data
+      ? { data: { musicians: alone.data, eventId: null, synced: false, confirmed: false }, error: null }
+      : { data: null, error: alone.error };
+  }
+  if (error) return { data: null, error: new Error(error.message) };
+  const r = (data || {}) as { musicians?: QuoteMusician[]; event_id?: string | null; synced?: boolean; confirmed?: boolean };
+  return {
+    data: { musicians: Array.isArray(r.musicians) ? r.musicians : [], eventId: r.event_id ?? null, synced: !!r.synced, confirmed: !!r.confirmed },
+    error: null,
+  };
+};
+
 /**
  * Deletes a quote and the tentative calendar event that holds its date (made
  * with the quote: converted_to_event_id, or events.quote_id). Only while that
@@ -615,7 +659,7 @@ export const syncQuoteHoldEvent = async (
   quoteId: string,
   q: Partial<AppQuote>,
   musicians?: Pick<QuoteMusician, 'user_id' | 'instrument' | 'fee'>[] | null,
-): Promise<{ data: string | null; error: Error | null }> => {
+): Promise<{ data: string | null; error: Error | null; confirmed?: boolean }> => {
   try {
     const { data: link, error: linkErr } = await supabase
       .from('quotes')
@@ -633,7 +677,7 @@ export const syncQuoteHoldEvent = async (
     if (!eventId) return { data: null, error: null };
 
     const currency = String(q.currency || '');
-    const { error: upErr } = await supabase
+    const { data: updated, error: upErr } = await supabase
       .from('events')
       .update({
         title: q.eventName || q.clientName || t('Quote Event'),
@@ -650,8 +694,12 @@ export const syncQuoteHoldEvent = async (
         client_name: q.clientName || null,
       })
       .eq('id', eventId)
-      .eq('status', 'tentative');
+      .eq('status', 'tentative')
+      .select('id');
     if (upErr) throw upErr;
+    // Round 4: confirmed by someone else since it was found: the gig is
+    // theirs now; nothing more is changed or deleted.
+    if (!Array.isArray(updated) || updated.length === 0) return { data: null, error: null, confirmed: true };
 
     if (Array.isArray(musicians)) {
       const { data: { user } } = await getSafeUser();
