@@ -338,7 +338,7 @@ const FN_ALLOW = {
   bw_chat_row_ok: U('175 r5: the guard row check; about someone else only for a caller with a row in that chat, still in its band'),
   get_user_chats: U('175: lists only chats in bw_my_chat_ids, roster filtered by bw_chat_scope_ok_for'),
   bw_open_group_chat: U("193: inserts only the caller's own row after 193's rule and 175's bw_chat_scope_ok_for; counts nobody"),
-  bw_quote_chat_cutoffs: U("178: cutoffs for the caller's own rows only; a kept row the rule refuses gets 'infinity' (hides everything, carries no date), and the history policy is strict (created_at > cutoff)"),
+  bw_quote_chat_cutoffs: U("178 (4a60181a): for the caller's own rows only, each chat's private periods as multirange text; a kept row the rule refuses gets '{(,)}' (all time: hides everything, carries no date), and the history policy hides created_at <@ periods"),
   bw_group_chat_exists: U('175: "is there a band / gig chat", for active members of its band only; reads no participant row', false),
   bw_hidden_quote_chat_ids: U("178: the caller's own rows only to HIDE more chats (a restrictive policy); a kept row can only hide more", false),
   bw_chat_recipient_ids: SRV('175: people bw_chat_scope_ok still lets in, nobody when the sender is out'),
