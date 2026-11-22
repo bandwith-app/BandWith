@@ -58,11 +58,12 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageKey: async () => KEY,
 }));
 
-const { useStageBle, LEADER_CHECK_MS } = await import('../useStageBle');
+const { useStageBle, LEADER_CHECK_MS, forgetScanStarts } = await import('../useStageBle');
 
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
 
 beforeEach(() => {
+  forgetScanStarts();
   air.devices.clear();
   air.connects = [];
   air.connected.clear();

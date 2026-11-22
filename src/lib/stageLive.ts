@@ -38,6 +38,16 @@ const SEQ_EPOCH_MS = Date.UTC(2024, 0, 1);
 export const nextSeq = (last: number | null | undefined, now: number = Date.now()) =>
   Math.min(0xffffffff, Math.max((last ?? 0) + 1, Math.floor((now - SEQ_EPOCH_MS) / 100)));
 
+/** How far a seq may run ahead of this phone's clock (a leader's clock set a bit ahead): 10 minutes. */
+export const SEQ_AHEAD_MAX = 6_000;
+
+/**
+ * A seq that could come from a leader's clock. One far ahead (say 0xFFFFFFFF)
+ * is made up: it would win over every real state for the rest of the gig.
+ * Bluetooth states can be made by anyone with the band key, so they're checked.
+ */
+export const seqPlausible = (seq: number, now: number = Date.now()) => seq <= Math.floor((now - SEQ_EPOCH_MS) / 100) + SEQ_AHEAD_MAX;
+
 /** True when `next` should replace `current` (it is newer). */
 export const isNewer = (next: Pick<StageLiveState, 'seq' | 'from'>, current: Pick<StageLiveState, 'seq' | 'from'> | null) =>
   !current || next.seq > current.seq || (next.seq === current.seq && next.from > current.from);
