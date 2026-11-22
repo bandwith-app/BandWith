@@ -16,6 +16,7 @@ import {
 } from "../_shared/auth.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EmailTemplateName, renderEmail } from "../_shared/email-templates.ts";
+import { signQuotePdf } from "../_shared/quote-pdf-path.ts";
 import {
   pickQuoteEmailLang,
   quoteEmailDate,
@@ -424,6 +425,24 @@ function quotePdfUrl(raw: string | null, bandId: string): string | null {
   }
 }
 
+/**
+ * 176: Resend fetches the attachment from a URL signed for a few minutes,
+ * never from the public storage URL (which stops working once 177 makes the
+ * bucket private, in a later release; a signed URL works either way).
+ * `failed`: there is a PDF but it could not be signed (round 2: the email
+ * must not go out without it while the app is told it was sent).
+ */
+async function signedQuotePdf(admin: SupabaseClient, raw: string | null, bandId: string): Promise<{ url: string | null; failed: boolean }> {
+  const checked = quotePdfUrl(raw, bandId);
+  // Decoded first, then checked (an encoded "/" or ".." can't leave the band's folder).
+  const out = await signQuotePdf(async (path) => {
+    const { data, error } = await admin.storage.from("quotes").createSignedUrl(path, 600);
+    return { url: data?.signedUrl ?? null, error: error?.message ?? null };
+  }, checked, bandId);
+  if (out.failed) console.warn("Quote PDF: could not sign the attachment URL");
+  return out;
+}
+
 /** The snapshot's deposit in the client's language ("" when the quote asks none). */
 function quoteDepositLabel(snap: Record<string, unknown>, lang: ReturnType<typeof pickQuoteEmailLang>): string {
   const dep = snap.deposit as { amount?: unknown } | null | undefined;
@@ -490,7 +509,13 @@ async function sendQuoteClientEmail(
   const lang = pickQuoteEmailLang(link.lang);
   const snap = link.snapshot ?? {};
   const ref = clean(snap.ref ?? quote.quote_number, "");
-  const pdf = kind === "reply" || link.pdf_version !== link.version ? null : quotePdfUrl(link.pdf_url, link.band_id);
+  const signed = kind === "reply" || link.pdf_version !== link.version
+    ? { url: null, failed: false }
+    : await signedQuotePdf(admin, link.pdf_url, link.band_id);
+  if (signed.failed) {
+    return jsonResponse({ success: false, code: "pdf_unavailable", error: "The quote PDF could not be attached. Try again." }, 503);
+  }
+  const pdf = signed.url;
   const vars = {
     ...quoteEmailVars({
       kind,

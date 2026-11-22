@@ -13,6 +13,7 @@
 // what was already received. When the band records it as received, the
 // page says thank you instead.
 
+import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
 
@@ -21,6 +22,9 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string 
 
 const params = new URL(window.location.href).searchParams;
 const token = (params.get('t') ?? '').toLowerCase();
+// 176: each PDF has its own key (bw_quote_link_pdf_keys), never the token:
+// a copied PDF link opens that one PDF only, not a later one or the page.
+let pdfKeys: QuotePdfKeys = {};
 const preview = params.get('preview') === '1';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
@@ -161,6 +165,8 @@ async function act(run: () => Promise<QuoteLinkView | null>, focus?: string) {
     } else {
       applyView(next);
       if (focus === 'sent') draft.message = '';
+      // Accepting changes the PDF shown (the accepted one): its own key.
+      await refreshPdfKeys();
     }
   } catch (e) {
     failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
@@ -280,7 +286,13 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   }
   if (q.notes) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.notes), h('p', { class: 'pre' }, q.notes));
   if (q.terms) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.terms), h('p', { class: 'pre mute', style: 'font-size:15px;line-height:21px' }, q.terms));
-  const pdf = b?.pdfUrl || v.pdf_url;
+  // 176: the PDF through the link (checked by the server each time).
+  const storedPdf = b?.pdfUrl || v.pdf_url;
+  const pdf =
+    clientQuotePdfUrl(storedPdf, SUPABASE_URL, b?.pdfUrl ? pdfKeys.balance : pdfKeys.doc, b?.pdfUrl ? 'balance' : 'doc', lang) ??
+    // No gate yet (176 not applied): the stored PDF link, as before.
+    (pdfGateMissing && isQuoteStoragePdf(storedPdf) ? storedPdf : null) ??
+    (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
     card.append(
@@ -636,6 +648,86 @@ function render() {
 
 // New band replies while the page stays open.
 let polling = false;
+/** The PDF keys of what the page shows now (none for the demo, or offline). */
+let pdfGateMissing = false;
+let keyRetry = 0;
+let keyRetryPending = false;
+let keyWatch = false;
+const keysMoved = (next: QuotePdfKeys) =>
+  JSON.stringify([next.doc ?? null, next.balance ?? null]) !== JSON.stringify([pdfKeys.doc ?? null, pdfKeys.balance ?? null]);
+/** The keys of the document the link shows now; null when there are none to use. */
+async function fetchPdfKeys(): Promise<QuotePdfKeys | null> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return null;
+  startKeyWatch();
+  try {
+    const next = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
+    keyRetry = 0;
+    return next;
+  } catch (e) {
+    // Before 176 is applied there is no gate: the stored (public) PDF link,
+    // as before. Any other failure: keep the last keys and try again soon.
+    if (e instanceof RpcError && e.code === 'PGRST202') {
+      pdfGateMissing = true;
+      return null;
+    }
+    if (keyRetry < 4 && !keyRetryPending) {
+      keyRetryPending = true;
+      const wait = 2_000 * 3 ** keyRetry++;
+      window.setTimeout(() => {
+        keyRetryPending = false;
+        void followPdfKeys();
+      }, wait);
+    }
+    return null;
+  }
+}
+/** With a view just fetched (loading, an answer sent): the keys that go with it. */
+async function refreshPdfKeys(): Promise<void> {
+  const next = await fetchPdfKeys();
+  if (next) pdfKeys = next;
+}
+/**
+ * Keys change when the band republishes: a new document, so maybe a new
+ * version and price. Round 4: the page then reloads the whole view and shows
+ * it with the new keys in one render, never a new PDF next to an old price;
+ * when the view can't be had, the old keys stay too.
+ */
+async function followPdfKeys(): Promise<void> {
+  if (busy || !view) return;
+  const next = await fetchPdfKeys();
+  if (!next || !keysMoved(next)) return;
+  let fresh: QuoteLinkView | null;
+  try {
+    fresh = await api.view();
+  } catch {
+    return;
+  }
+  if (busy) return;
+  readFields();
+  if (fresh) {
+    pdfKeys = next;
+    applyView({ ...fresh, stale });
+  } else {
+    // Turned off or replaced meanwhile.
+    view = null;
+  }
+  render();
+}
+/**
+ * An open page asks again on every poll and whenever it comes back to the
+ * screen: its PDF button never keeps a key the gate no longer opens (round 3).
+ */
+function startKeyWatch() {
+  if (keyWatch || (import.meta.env.DEV && token === 'demo')) return;
+  keyWatch = true;
+  const check = async () => {
+    if (document.hidden || busy || !view) return;
+    await followPdfKeys();
+  };
+  window.setInterval(() => void check(), 30_000);
+  document.addEventListener('visibilitychange', () => void check());
+}
+
 function poll() {
   window.setInterval(async () => {
     if (document.hidden || busy || !view) return;
@@ -670,6 +762,7 @@ async function load() {
     offline = true;
   }
   // NULL: an unknown, replaced or turned-off link.
+  if (next) await refreshPdfKeys();
   if (next) applyView(next);
   else view = null;
   const kicker = view && balanceOf(view) ? S.balanceKicker : S.kicker;

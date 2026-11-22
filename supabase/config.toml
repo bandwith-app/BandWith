@@ -24,3 +24,7 @@ verify_jwt = false
 
 [functions.places]
 verify_jwt = false
+
+# Public: a quote's PDF, only while its quote link is on (176/177).
+[functions.quote-pdf]
+verify_jwt = false
