@@ -52,7 +52,7 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 | Emails, URL-encoded ones too (`mary%40gmail.com`) | `<email>` |
 | UUIDs | `<id>` |
 | JWTs (even just their first part, `eyJ…`), `Bearer …`, keys with a known prefix (`sk_`, `pk_`, `rk_`, `sb_`, `whsec_`) and long tokens | `<token>` |
-| Postgres details: `Key (email)=(mary@x.com)` | `Key (email)=(…)` |
+| Postgres details, any shape: `Key (email)=(mary@x.com)`, expression keys (`Key (lower(name::text))=(mary smith)`), brackets in the value, every kind (already exists, is not present, is still referenced, conflicts with), a message cut short | `Key (email)=(…)`, `Key (lower(name::text))=(…)` |
 | `file://` paths, whole: brackets and percent-encoding in a name too (`chart%20(Private%20Gig).pdf`), and the words after them up to a file extension. Only a file of the app's own bundle (`…/App.app/public/…`, `file:///android_asset/public/…`) keeps its name, with a frame's line and column | `file://…`, `file://…/index-B4xK9q1a.js:1:2` |
 | NUL and other control characters | removed |
 | Numbers of 7+ digits (phone numbers, ids) | `<n>` |

@@ -559,3 +559,20 @@ describe('round 4 (review #277)', () => {
     }
   });
 });
+
+describe('Postgres key details, any shape (review #277, Claude r4)', () => {
+  it('expression keys, brackets in the value, every message kind, a message cut short', () => {
+    expect(scrubMessage('duplicate key value violates unique constraint "x". Key (lower(name::text))=(mary smith) already exists.')).toBe(
+      'duplicate key value violates unique constraint "…". Key (lower(name::text))=(…) already exists.',
+    );
+    expect(scrubMessage('Key (title)=(Yesterday (Live) Mary Smith) already exists.')).toBe('Key (title)=(…) already exists.');
+    expect(scrubMessage('insert violates foreign key. Key (band_id)=(Mirage Music) is not present in table "bands".')).toBe(
+      'insert violates foreign key. Key (band_id)=(…) is not present in table "…".',
+    );
+    expect(scrubMessage('Key (room)=(Mary) is still referenced from table "x".')).toBe('Key (room)=(…) is still referenced from table "…".');
+    const ex = scrubMessage('Key (room, during)=(Studio B, [2026-11-23 10:00, Mary)) conflicts with existing key (room, during)=(Studio B, [Jo Lee)).');
+    expect(ex).not.toMatch(/Studio|Mary|Jo|Lee/);
+    expect(ex).toBe('Key (room, during)=(…) conflicts with existing key (room, during)=(…).');
+    expect(scrubMessage('Key (email)=(mary smith')).toBe('Key (email)=(…)');
+  });
+});

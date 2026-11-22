@@ -120,8 +120,39 @@ export const useCrashReportsEnabled = (): boolean =>
 
 /** Also URL-encoded (mary%40gmail.com). */
 const EMAIL = /[\w.+-]+(?:@|%40)[\w-]+(\.[\w-]+)+/gi;
-/** Postgres detail: "Key (email)=(mary@x.com) already exists": the columns stay, the values go. */
-const KEY_DETAIL = /\bKey \(([^()]*)\)=\([^)]*\)/g;
+/**
+ * Postgres detail: "Key (email)=(mary@x.com) already exists": the key stays,
+ * the values go, whatever their shape. The key is read with its brackets
+ * balanced (an expression key: lower(name::text)); the value runs to the
+ * message's next words, or to the end of the line (a message cut short), so
+ * brackets inside it (a song "Yesterday (Live)", a time range) don't end it.
+ */
+const KEY_START = /\b([Kk])ey \(/g;
+const KEY_TAILS = [' already exists', ' is not present', ' is still referenced', ' conflicts with'];
+
+function scrubKeyDetails(line: string): string {
+  let out = '';
+  let from = 0;
+  KEY_START.lastIndex = 0;
+  for (let m = KEY_START.exec(line); m; m = KEY_START.exec(line)) {
+    const keyFrom = m.index + m[0].length;
+    let i = keyFrom;
+    for (let depth = 1; i < line.length && depth; i++) {
+      if (line[i] === '(') depth++;
+      else if (line[i] === ')') depth--;
+    }
+    if (!line.startsWith('=(', i)) continue;
+    const valueFrom = i + 2;
+    const tails = KEY_TAILS.map((t) => line.indexOf(t, valueFrom)).filter((x) => x !== -1);
+    const stop = tails.length ? Math.min(...tails) : line.length;
+    const close = line.lastIndexOf(')', stop - 1);
+    const end = close >= valueFrom ? close + 1 : stop;
+    out += `${line.slice(from, m.index)}${m[1]}ey (${line.slice(keyFrom, i - 1)})=(…)`;
+    from = end;
+    KEY_START.lastIndex = end;
+  }
+  return out + line.slice(from);
+}
 const BEARER = /\bBearer\s+[^\s'"`]+/gi;
 /** Keys with a known prefix (sk_live_…, pk_test_…, sb_publishable_…, whsec_…), even without a digit. */
 const PREFIXED_KEY = /\b(?:sk|pk|rk|sb|whsec)_[A-Za-z0-9_]{6,}/g;
@@ -229,7 +260,7 @@ function scrubQuotes(s: string): string {
 
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  const out = scrubFileLinks(scrubLinks(s.replace(KEY_DETAIL, 'Key ($1)=(…)').replace(QUERY, '').replace(FRAGMENT, '$1')))
+  const out = scrubFileLinks(scrubLinks(scrubKeyDetails(s).replace(QUERY, '').replace(FRAGMENT, '$1')))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
     .replace(JWT, '<token>')
