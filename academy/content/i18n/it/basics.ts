@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Sincronizza calendario**", "Un link privato ai tuoi eventi per **Calendario Apple**, **Google Calendar** o Outlook ([[calendar-sync]])", "Il tuo account (tutti i dispositivi)"],
             ["**Aspetto**", "Tema: **Chiaro**, **Scuro**, **Sistema**", "Questo dispositivo"],
             ["**Unità di misura**", "**Chilometri** o **Miglia**", "Questo dispositivo"],
-            ["**Privacy e account**", "**Blocco app**, **Statistiche d’uso anonime**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
+            ["**Privacy e account**", "**Blocco app**, **Statistiche d’uso anonime**, **Invia segnalazioni di errore**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Posizione laptop**. Solo sui telefoni a doppio schermo", "Questo dispositivo"],
             ["**Lingua**", "**Automatica** o una delle sei lingue", "Questo dispositivo, più le tue push ed email"],
             ["**Aiuto e assistenza**", "Risposte e cosa puoi fare nell’app", "-"],
@@ -883,7 +883,8 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Blocco app** (solo telefoni e tablet): chiede Face ID, l’impronta o il codice del dispositivo quando BandWith riparte dopo essere stata chiusa. Vale per dispositivo ([[app-lock]]).",
-            "**Statistiche d’uso anonime** (solo app Android e iOS): spente finché non dici di sì. BandWith lo chiede una volta, dopo il primo tour; puoi cambiare la risposta qui quando vuoi. Condivide solo quali schermate si usano e quanto spesso, mai i tuoi brani, gig, messaggi o contatti, e niente per la pubblicità. Se le spegni, quanto raccolto su questo dispositivo viene cancellato. Vale per dispositivo.",
+            "**Statistiche d’uso anonime** (solo app Android e iOS): spente finché non dici di sì. BandWith lo chiede una volta, dopo il primo tour; puoi cambiare la risposta qui quando vuoi. Condivide solo quali schermate si usano e quanto spesso, mai i tuoi brani, gig, messaggi o contatti, e niente per la pubblicità. Se le spegni, quanto raccolto su questo dispositivo viene cancellato. Vale per dispositivo. Con un sì, le app per telefono inviano anche i dettagli del crash se l’app si chiude per un errore.",
+            "**Invia segnalazioni di errore**: attiva finché non la spegni. Quando qualcosa va storto, BandWith invia l’errore, la schermata in cui è successo e la versione dell’app, per poterlo correggere. Mai i tuoi brani, gig, messaggi o contatti. Vale per dispositivo. Nelle app per telefono, i dettagli completi dei crash partono solo con **Statistiche d’uso anonime** attive.",
             "**I gig personali restano privati**: una riga informativa, non un interruttore. Solo tu vedi titolo e locale dei tuoi gig personali; le band vedono solo che sei occupato ([[personal-gigs]]).",
             "**Esporta i miei dati**: una copia in JSON di ciò che ti appartiene ([[export-your-data]]).",
             "**Termini di servizio** e **Informativa sulla privacy**: aprono i documenti dentro l’app.",

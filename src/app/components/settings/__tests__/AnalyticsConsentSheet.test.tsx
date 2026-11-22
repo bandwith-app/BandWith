@@ -14,6 +14,8 @@ describe('AnalyticsConsentSheet', () => {
     render(<AnalyticsConsentSheet open onAnswer={onAnswer} onDismiss={() => {}} />);
     const dialog = screen.getByRole('dialog', { name: 'Help us improve BandWith?' });
     expect(dialog.textContent).toMatch(/Never your songs, gigs, messages or contacts/);
+    // The same yes turns on Crashlytics (review #277): the question says so.
+    expect(dialog.textContent).toMatch(/crash details/);
     const no = screen.getByRole('button', { name: 'No thanks' });
     const yes = screen.getByRole('button', { name: 'Allow' });
     expect(no.className).toBe(yes.className);

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { clearStorageKeepingPrivacyChoices } from '@/lib/privacyChoices';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
@@ -296,7 +297,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       window.location.href = '/';
     } catch (e) {
       console.error('Logout failed:', e);
-      localStorage.clear();
+      // Everything goes but the device's privacy choices (a crash-report opt-out stays off).
+      clearStorageKeepingPrivacyChoices();
       window.location.href = '/';
     }
   };

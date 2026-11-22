@@ -71,6 +71,9 @@
         <meta-data android:name="google_analytics_default_allow_ad_storage" android:value="false" />
         <meta-data android:name="google_analytics_default_allow_ad_user_data" android:value="false" />
         <meta-data android:name="google_analytics_default_allow_ad_personalization_signals" android:value="false" />
+        <!-- Crashlytics (src/lib/crashReports.ts): off until the same yes, so no
+             crash upload and no installation ID before it; the app turns it on. -->
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="false" />
     </application>
 
     <!-- Permissions -->

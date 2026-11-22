@@ -27,6 +27,8 @@ describe('Android', () => {
       'google_analytics_default_allow_ad_storage',
       'google_analytics_default_allow_ad_user_data',
       'google_analytics_default_allow_ad_personalization_signals',
+      // Crashlytics too: only with the same consent (src/lib/crashReports.ts).
+      'firebase_crashlytics_collection_enabled',
     ]) {
       expect(metaFalse(name), name).toBe(true);
     }
@@ -52,6 +54,7 @@ describe('iOS', () => {
       'GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE',
       'GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_USER_DATA',
       'GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS',
+      'FirebaseCrashlyticsCollectionEnabled',
     ]) {
       expect(plistFalse(key), key).toBe(true);
     }

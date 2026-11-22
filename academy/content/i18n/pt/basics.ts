@@ -729,7 +729,7 @@ const basics: AreaText = {
             ["**Sincronizar calendário**", "Um link privado para os seus eventos para **Calendário Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Sua conta (todos os dispositivos)"],
             ["**Aparência**", "Tema: **Claro**, **Escuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Quilômetros** ou **Milhas**", "Este dispositivo"],
-            ["**Privacidade e conta**", "**Bloqueio do app**, **Estatísticas de uso anônimas**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
+            ["**Privacidade e conta**", "**Bloqueio do app**, **Estatísticas de uso anônimas**, **Enviar relatórios de erro**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Posição notebook**. Só em celulares de duas telas", "Este dispositivo"],
             ["**Idioma**", "**Automático** ou um de seis idiomas", "Este dispositivo, além das suas notificações push e e-mails"],
             ["**Ajuda e suporte**", "Respostas e o que dá para fazer no app", "-"],
@@ -883,7 +883,8 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Bloqueio do app** (só celulares e tablets): pede Face ID, impressão digital ou o código do dispositivo quando o BandWith abre de novo depois de ser fechado. Vale por dispositivo ([[app-lock]]).",
-            "**Estatísticas de uso anônimas** (só apps Android e iOS): desligadas até você dizer sim. O BandWith pergunta uma vez, depois do primeiro tour; você pode mudar a resposta aqui quando quiser. Só compartilha quais telas são usadas e com que frequência, nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade. Ao desligar, o que foi coletado neste dispositivo é apagado. Vale por dispositivo.",
+            "**Estatísticas de uso anônimas** (só apps Android e iOS): desligadas até você dizer sim. O BandWith pergunta uma vez, depois do primeiro tour; você pode mudar a resposta aqui quando quiser. Só compartilha quais telas são usadas e com que frequência, nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade. Ao desligar, o que foi coletado neste dispositivo é apagado. Vale por dispositivo. Com um sim, os apps de celular também enviam os detalhes da falha se o app travar.",
+            "**Enviar relatórios de erro**: ligado, a menos que você desligue. Quando algo dá errado, o BandWith envia o erro, a tela onde aconteceu e a versão do app, para poder corrigir. Nunca suas músicas, shows, mensagens ou contatos. Vale por dispositivo. Nos apps de celular, os detalhes completos das falhas só são enviados com **Estatísticas de uso anônimas** ativadas.",
             "**Shows pessoais ficam privados**: uma linha informativa, não um botão. Só você vê o título e o local dos seus shows pessoais; as bandas só veem que você está ocupado ([[personal-gigs]]).",
             "**Exportar meus dados**: uma cópia em JSON do que é seu ([[export-your-data]]).",
             "**Termos de Serviço** e **Política de Privacidade**: abrem os documentos dentro do app.",

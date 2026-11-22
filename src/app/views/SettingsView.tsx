@@ -58,7 +58,9 @@ import { usePosture, useLaptopPoseEnabled, setLaptopPoseEnabled } from '@/lib/po
 import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
-import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent } from '@/lib/appAnalytics';
+import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent, useAnalyticsConsentSaveFailed } from '@/lib/appAnalytics';
+import { CARD, IconTile, ROW, RowText } from '@/app/components/settings/rows';
+import { CrashReportsRow } from '@/app/components/settings/CrashReportsRow';
 
 type SettingsSection = 'notifications' | 'calendar' | 'offline' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
@@ -68,36 +70,8 @@ interface SettingsViewProps {
   isAdmin?: boolean;
 }
 
-/* ── Local building blocks (Figma: Card / Icon tile) ── */
+/* Card / Icon tile building blocks: ../components/settings/rows.tsx */
 
-const IconTile: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className,
-}) => (
-  <span
-    aria-hidden
-    className={cn(
-      'size-10 rounded-full bg-foreground/[0.08] flex items-center justify-center text-foreground shrink-0 [&>svg]:size-[18px]',
-      className
-    )}
-  >
-    {children}
-  </span>
-);
-
-const RowText: React.FC<{ title: React.ReactNode; hint?: React.ReactNode; titleClassName?: string }> = ({
-  title,
-  hint,
-  titleClassName,
-}) => (
-  <span className="flex flex-col gap-1 min-w-0 flex-1">
-    <span className={cn('bw-label-md text-foreground', titleClassName)}>{title}</span>
-    {hint && <span className="bw-body-sm text-muted-foreground">{hint}</span>}
-  </span>
-);
-
-const CARD = 'bg-card text-card-foreground rounded-[24px]';
-const ROW = 'p-4 flex items-center gap-3 w-full text-left';
 const PRESSABLE =
   'transition-colors hover:bg-foreground/[0.03] active:bg-foreground/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 
@@ -128,6 +102,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const distanceUnit = useDistanceUnit();
   const appLockAvailable = appLockSupported();
   const analyticsConsent = useAnalyticsConsent();
+  // Storage full: the answer holds for this run only (a no stays a no), and the row says so.
+  const analyticsSaveFailed = useAnalyticsConsentSaveFailed();
   const appLockOn = useAppLockEnabled();
   const [appLockBusy, setAppLockBusy] = useState(false);
   // Turning the lock off asks for the same check as unlocking.
@@ -541,7 +517,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </IconTile>
           <RowText
             title={t('Anonymous usage statistics')}
-            hint={t('Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+            hint={
+              <>
+                {t('Which screens are used and how often, and the crash details if the app crashes, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+                {analyticsSaveFailed && (
+                  <span role="alert" className="block mt-1 text-destructive">
+                    {t("Couldn't save the choice, free up some space")}
+                  </span>
+                )}
+              </>
+            }
           />
           <Toggle
             checked={analyticsConsent === 'granted'}
@@ -550,6 +535,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         </div>
       )}
+      <CrashReportsRow />
       {/* Personal gigs are private by design (only their creator can read them,
           migration 056): bands never see their title or venue. */}
       <div className={cn(CARD, 'p-4 flex items-center gap-3')}>
