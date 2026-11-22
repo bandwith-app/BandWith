@@ -39,8 +39,11 @@ describe('deleteMyAccount', () => {
   it('Settings signs out on a committed deletion, as on success', async () => {
     const settings = (await import('../../../app/views/SettingsView.tsx?raw')).default as string;
     const handler = settings.slice(settings.indexOf('const handleDeleteAccount'), settings.indexOf('const getSectionTitle'));
-    expect(handler).toMatch(/result\.ok \|\| result\.reason === 'committed'/);
-    expect(handler.indexOf('signOut(')).toBeGreaterThan(handler.indexOf("result.reason === 'committed'"));
+    expect(handler).toMatch(/const result = asFinishedDeletion\(await deleteMyAccount\(\)\);/);
+    expect(handler.indexOf('signOut(')).toBeGreaterThan(handler.indexOf('asFinishedDeletion('));
+    const { asFinishedDeletion } = await import('../account');
+    expect(asFinishedDeletion({ ok: false, reason: 'committed', message: 'x' })).toEqual({ ok: true });
+    expect(asFinishedDeletion({ ok: false, reason: 'error', message: 'x' })).toEqual({ ok: false, reason: 'error', message: 'x' });
   });
 
   it('still lists the bands that need another admin', async () => {

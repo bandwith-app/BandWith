@@ -45,7 +45,7 @@ import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
-import { deleteMyAccount } from '@/lib/services/account';
+import { asFinishedDeletion, deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -319,10 +319,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (deleteText.trim().toUpperCase() !== 'DELETE' || deleting) return;
     setDeleting(true);
     setDeleteError(null);
-    const result = await deleteMyAccount();
     // Committed (round 6, Claude): the server finishes it within minutes,
     // so this device signs out as after a deletion that finished.
-    if (result.ok || result.reason === 'committed') {
+    const result = asFinishedDeletion(await deleteMyAccount());
+    if (result.ok) {
       // Quick sign-in (Face ID) must not keep the deleted account's session.
       await import('@/lib/services/biometric')
         .then((m) => m.forgetQuickSignInFor(user?.id, user?.email))

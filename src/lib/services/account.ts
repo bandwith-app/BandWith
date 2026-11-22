@@ -17,6 +17,15 @@ export type DeleteAccountResult =
 // background writes refused by 180 sign nothing out mid-request; when the
 // deletion went through (or is committed), the hold stays a minute, while
 // the settings screen signs out itself.
+/**
+ * Committed is not a failure the user can fix (round 6, Claude): Settings
+ * signs out as after a deletion that finished (round 11: read as ok, so
+ * the screen's own success branch is the only sign-out path).
+ */
+export function asFinishedDeletion(result: DeleteAccountResult): DeleteAccountResult {
+  return !result.ok && result.reason === 'committed' ? { ok: true } : result;
+}
+
 export async function deleteMyAccount(): Promise<DeleteAccountResult> {
   const release = holdDeletionSignOut();
   let result: DeleteAccountResult | null = null;
