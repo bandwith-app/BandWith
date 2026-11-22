@@ -4544,6 +4544,14 @@ const dict: Dictionary = {
   "Download it now: at the gig the stage manager plays it without internet.": "Téléchargez-le maintenant : au concert, la régie le joue sans internet.",
   "Download audio": "Télécharger l’audio",
   "Download progress": "Progression du téléchargement",
+  "Lead|voice": "Voix principale",
+  "2nd voice": "Seconde voix",
+  "Backing|voice": "Chœurs",
+  "All|voice": "Tous",
+  "Spoken": "Parlé",
+  "Voice parts": "Parties vocales",
+  "Highlight my part": "Mettre ma partie en avant",
+  "Backing": "Chœurs",
 };
 
 export default dict;

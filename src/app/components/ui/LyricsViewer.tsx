@@ -19,6 +19,8 @@ import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from './
 import type { SongView } from '@/lib/songFormat';
 import { cn } from '@/app/components/ui/utils';
 import { ErrorBoundary } from './ErrorBoundary';
+import { isMyPart, lineVoice, songVoiceParts, stripVoiceMarkers, voiceRuns, type VoicePart } from '@/lib/voiceParts';
+import { useMyVoicePart, useVoiceHighlight, voiceClass, VoiceLegend } from './VoiceParts';
 
 const SIZES = [18, 21, 24, 28, 33, 40];
 const SIZE_KEY = 'bw-lyrics-size';
@@ -68,26 +70,23 @@ const Inline: React.FC<{ text: string }> = ({ text }) => (
   </>
 );
 
+/** Lyrics only: the words, chords dropped (two spaces where a chord was become one). */
+const lyricWords = (text: string): string => {
+  const segments = splitChords(text);
+  return segments ? segments.map((s) => s.text).join('').replace(/\s{2,}/g, ' ') : text;
+};
+
 /**
- * One line of lyrics. ChordPro-style chords (`[Am]words`) sit above the word
- * they start on; that word and its chord make one box (never overlapping the
- * next chord), the rest of the words wrap like text on narrow screens.
+ * Text with ChordPro-style chords (`[Am]words`): each chord sits above the
+ * word it starts on; that word and its chord make one box (never
+ * overlapping the next chord), the rest of the words wrap like text.
  */
-const LyricsLine: React.FC<{ line: string; hideChords?: boolean }> = ({ line, hideChords }) => {
-  const segments = React.useMemo(() => splitChords(line), [line]);
+const ChordedText: React.FC<{ text: string; hideChords?: boolean }> = ({ text, hideChords }) => {
+  const segments = React.useMemo(() => splitChords(text), [text]);
   const { semitones, flats } = useTranspose();
-  if (!segments || hideChords) {
-    // Lyrics only: the words, chords dropped (a chords-only line disappears).
-    const words = segments ? segments.map((s) => s.text).join('').replace(/\s{2,}/g, ' ') : line;
-    if (!words.trim()) return null;
-    return (
-      <p className="font-medium break-words">
-        <Inline text={words} />
-      </p>
-    );
-  }
+  if (!segments || hideChords) return <Inline text={hideChords ? lyricWords(text) : text} />;
   return (
-    <p className="font-medium break-words">
+    <>
       {segments.map((seg, k) => {
         if (!seg.chord) return <Inline key={k} text={seg.text} />;
         const [, head, tail] = seg.text.match(/^(\S*)([\s\S]*)$/) || ['', '', seg.text];
@@ -97,14 +96,48 @@ const LyricsLine: React.FC<{ line: string; hideChords?: boolean }> = ({ line, hi
             {/* Text first in the DOM: the box's baseline is the lyric's, the chord shows above it. */}
             {/* An inline-block's baseline is its last line: the word stays on the line, the chord sits above it. */}
             <span className="inline-block align-baseline">
-              <span className="block text-[0.62em] font-bold leading-[1.3] pr-[0.35em] whitespace-nowrap"><ChordToken token={chord} /></span>
-              <span className="block whitespace-pre">{head ? <Inline text={head} /> : '\u00a0'}</span>
+              <span className="bw-chord block text-[0.62em] font-bold leading-[1.3] pr-[0.35em] whitespace-nowrap"><ChordToken token={chord} /></span>
+              <span className="bw-chord-word block whitespace-pre">{head ? <Inline text={head} /> : '\u00a0'}</span>
             </span>
             {/* A chord on a space already holds one: no double gap. */}
             {(head ? tail : tail.replace(/^ /, '')) && <Inline text={head ? tail : tail.replace(/^ /, '')} />}
           </React.Fragment>
         );
       })}
+    </>
+  );
+};
+
+/**
+ * One line of lyrics, with its voice parts (§5): a line sung by one part
+ * carries that part's style; words of another part inside a line carry it
+ * on their own. With "Highlight my part", the parts I don't sing dim a
+ * little (`mine` null: nothing dims).
+ */
+const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart | null }> = ({ line, hideChords, mine }) => {
+  const runs = React.useMemo(() => voiceRuns(line), [line]);
+  const voice = React.useMemo(() => lineVoice(line), [line]);
+  // Lyrics only: a chords-only line disappears.
+  if (hideChords && !lyricWords(stripVoiceMarkers(line)).trim()) return null;
+  const dim = (v: VoicePart) => (mine && !isMyPart(v, mine) ? true : undefined);
+  if (voice !== 'mixed') {
+    return (
+      <p
+        className={cn('font-medium break-words', voiceClass(voice))}
+        data-voice={voice === 'lead' ? undefined : voice}
+        data-voice-dim={dim(voice)}
+      >
+        <ChordedText text={runs.map((r) => r.text).join('')} hideChords={hideChords} />
+      </p>
+    );
+  }
+  return (
+    <p className="font-medium break-words">
+      {runs.map((r, k) => (
+        <span key={k} className={voiceClass(r.voice)} data-voice={r.voice === 'lead' ? undefined : r.voice} data-voice-dim={dim(r.voice)}>
+          <ChordedText text={r.text} hideChords={hideChords} />
+        </span>
+      ))}
     </p>
   );
 };
@@ -140,8 +173,14 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
   const sections = React.useMemo(() => parseLyrics(normalizeLyrics(lyrics)), [lyrics]);
   // My notes (109): under their lines, and lines to tap while adding one.
   const refs = useLineRefs(lyrics);
+  // Voice parts (§5): a legend when the song uses them; my part bright, the others dimmed.
+  const parts = React.useMemo(() => songVoiceParts(normalizeLyrics(lyrics)), [lyrics]);
+  const myPart = useMyVoicePart();
+  const [highlight, setHighlight] = useVoiceHighlight();
+  const mine = parts.length > 0 && highlight ? myPart : null;
   return (
     <div className={className ?? 'max-w-3xl mx-auto w-full flex flex-col gap-8 pt-4'} style={{ fontSize: size, lineHeight: 1.45 }}>
+      {parts.length > 0 && <VoiceLegend parts={parts} mine={myPart} highlight={highlight} onHighlight={setHighlight} muted={muted} />}
       {sections.length === 0 ? (
         <p className={`bw-body-lg ${muted}`}>{tr('No lyrics for this song yet.')}</p>
       ) : (
@@ -153,12 +192,12 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
                 refs?.get(`${i}:${j}`) ? (
                   <React.Fragment key={j}>
                     <PickableLine refLine={refs.get(`${i}:${j}`)!} sectionName={s.name}>
-                      <LyricsLine line={line} hideChords={hideChords} />
+                      <LyricsLine line={line} hideChords={hideChords} mine={mine} />
                     </PickableLine>
                     <LineNotes id={`${i}:${j}`} line={line} />
                   </React.Fragment>
                 ) : (
-                  <LyricsLine key={j} line={line} hideChords={hideChords} />
+                  <LyricsLine key={j} line={line} hideChords={hideChords} mine={mine} />
                 )
               ) : (
                 <span key={j} className="block h-[0.8em]" aria-hidden />

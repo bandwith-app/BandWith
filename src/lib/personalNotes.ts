@@ -4,6 +4,7 @@
  */
 import { parseLyrics, splitChords } from './lyrics';
 import { normalizeLyrics, parseLine } from './songFormat';
+import { stripVoiceMarkers } from './voiceParts';
 
 export type NoteAnchor =
   | { type: 'song' }
@@ -21,10 +22,15 @@ export interface PersonalNote {
   updated_at?: string;
 }
 
-/** A line's words as written, chords removed. */
+/**
+ * A line's words as written, chords and voice parts removed. Every match by
+ * line text goes through here, so adding parts (`{bv}…{/bv}`) to a line
+ * never moves the notes pinned to it.
+ */
 export const lyricsLineText = (line: string): string => {
-  const segs = splitChords(line);
-  return (segs ? segs.map((s) => s.text).join('') : line).replace(/\s+/g, ' ').trim();
+  const plain = stripVoiceMarkers(line);
+  const segs = splitChords(plain);
+  return (segs ? segs.map((s) => s.text).join('') : plain).replace(/\s+/g, ' ').trim();
 };
 
 /** A line's words, chords removed, spaces and case folded: how notes find it. */
