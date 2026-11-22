@@ -189,6 +189,19 @@ describe('useStageLive: Bluetooth states never outrank the live channel (review 
     later(LIVE_LEAD_FRESH_MS);
     expect(chan.sent.filter((s) => s.event === LEAD_BEAT_EVENT).length).toBeGreaterThanOrEqual(2);
   });
+  it('off the channel (Realtime reconnecting), the leader sends no heartbeat: supabase-js would post it over HTTP (Claude on #280)', () => {
+    const l = phone(true);
+    act(() => l.result.current.go(1));
+    later(LIVE_LEAD_FRESH_MS);
+    act(() => chan.status?.('CHANNEL_ERROR'));
+    const before = chan.sent.filter((s) => s.event === LEAD_BEAT_EVENT).length;
+    later(LIVE_LEAD_FRESH_MS);
+    expect(chan.sent.filter((s) => s.event === LEAD_BEAT_EVENT)).toHaveLength(before);
+    act(() => chan.status?.('SUBSCRIBED'));
+    later(LIVE_LEAD_FRESH_MS);
+    expect(chan.sent.filter((s) => s.event === LEAD_BEAT_EVENT).length).toBeGreaterThan(before);
+  });
+
   it('a Bluetooth leader whose clock runs a few minutes ahead (measured) is followed (rule B)', () => {
     const ahead = 4 * 60_000;
     ble.api.clock = { from: 'lead', sample: { offset: ahead, rtt: 20 } };
