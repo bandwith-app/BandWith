@@ -1177,8 +1177,8 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
  * time: the wizard only echoes the status it was opened with, and writing
  * it back could restore the old client's status after the server moved the
  * quote on (183: new recipient). `edit_base_at`: when the screen read the
- * quote, so the server refuses a contact edit made on a copy older than a
- * change of client (183).
+ * quote, so the server refuses any edit made on a copy older than a change
+ * of client (183; Codex 11-22: notes or fees alone too, not only a contact).
  */
 export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original: Partial<AppQuote>): Partial<Quote> => {
   const strip = (r: Partial<Quote>) => {

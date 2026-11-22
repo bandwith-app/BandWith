@@ -121,6 +121,63 @@ describe('QuoteShareModal round 5: the version and the client it opened with', (
     expect(mocks.markSent).not.toHaveBeenCalled();
   });
 
+  // Codex 11-22: the price too, not only on open. A draft with no link has
+  // no version for the server to refuse, so a sheet opened at $1,000 could
+  // send $1,000 after another device saved $1,500.
+  describe('the terms saved now, read again right before a send (Codex 11-22)', () => {
+    const CHANGED = 'This quote changed meanwhile (another client, or another admin). Close this and open the quote again.';
+    const draft = { ...quote, status: 'DRAFT', total: 1000 };
+    const openDraft = () => {
+      mocks.state.mockResolvedValue({ data: { link: null, activity: [] }, error: null });
+      mocks.contact.mockResolvedValue({ data: { ...jordan, total: 1000 }, error: null });
+      return render(<QuoteShareModal isOpen quote={draft} bandId="00000000-0000-0000-0000-000000000001" bandName="The Night Shift" onClose={() => {}} />);
+    };
+
+    it('the total changed since the sheet opened: Copy publishes and copies nothing, and the sheet says the quote changed', async () => {
+      openDraft();
+      await ready();
+      mocks.contact.mockResolvedValue({ data: { ...jordan, total: 1500 }, error: null });
+      fireEvent.click(button('Copy message & link'));
+      expect((await screen.findByRole('alert')).textContent).toBe(CHANGED);
+      expect(mocks.publish).not.toHaveBeenCalled();
+      expect(mocks.markSent).not.toHaveBeenCalled();
+      expect(mocks.writeText).not.toHaveBeenCalled();
+      // The same client: this is not the "now goes to" notice.
+      expect(screen.queryByTestId('quote-recipient-changed')).toBeNull();
+    });
+
+    it('the total changed since the sheet opened: WhatsApp opens nothing', async () => {
+      openDraft();
+      await ready();
+      mocks.contact.mockResolvedValue({ data: { ...jordan, total: 1500 }, error: null });
+      fireEvent.click(button('WhatsApp'));
+      expect((await screen.findByRole('alert')).textContent).toBe(CHANGED);
+      expect(mocks.publish).not.toHaveBeenCalled();
+      expect(openExternal).not.toHaveBeenCalled();
+    });
+
+    it('the currency changed since the sheet opened: no email, nothing published', async () => {
+      openDraft();
+      await ready();
+      mocks.contact.mockResolvedValue({ data: { ...jordan, total: 1000, currency: 'EUR' }, error: null });
+      fireEvent.click(screen.getByText('Email').closest('button') as HTMLButtonElement);
+      expect((await screen.findByRole('alert')).textContent).toBe(CHANGED);
+      expect(mocks.publish).not.toHaveBeenCalled();
+      expect(mocks.email).not.toHaveBeenCalled();
+    });
+
+    it('unchanged terms still send: published once (no link read: version 0), recorded and copied', async () => {
+      openDraft();
+      await ready();
+      fireEvent.click(button('Copy message & link'));
+      await waitFor(() => expect(mocks.markSent).toHaveBeenCalledTimes(1));
+      expect(mocks.publish).toHaveBeenCalledTimes(1);
+      expect(mocks.publish.mock.calls[0][5]).toBe(0);
+      expect(mocks.writeText).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
+
   it('the summary names the client it was made for, for the server to check', async () => {
     open();
     await ready();

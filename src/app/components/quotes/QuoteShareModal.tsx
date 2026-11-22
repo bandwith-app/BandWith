@@ -361,6 +361,10 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
    * Round 5/6: the client saved now. The same as this sheet's summary: go.
    * Another one: nothing goes out, and the sheet says who the quote goes to
    * now and to open it again (a summary and PDF for them are made then).
+   * Codex 11-22: the price too (total and currency), as when the sheet
+   * opened. A draft with no link has no version for the server to refuse,
+   * so another device's new price would go out at this sheet's old one:
+   * nothing goes out, the sheet says the quote changed.
    */
   const recipientStill = async (): Promise<boolean> => {
     const saved = await getQuoteContact(String(quote.id));
@@ -368,8 +372,12 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
       flash(t('The client page could not be updated. Try again.'), 'error');
       return false;
     }
-    if (sameQuoteContact(saved.data, current())) return true;
-    setRecipientNow({ contact: saved.data });
+    if (sameQuoteTerms(saved.data, current())) return true;
+    if (sameQuoteContact(saved.data, current())) {
+      // The same client, another price: the notice a refused publish shows.
+      setStale(true);
+      flash(t('This quote changed meanwhile (another client, or another admin). Close this and open the quote again.'), 'error');
+    } else setRecipientNow({ contact: saved.data });
     return false;
   };
 
