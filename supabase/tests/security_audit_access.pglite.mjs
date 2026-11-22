@@ -372,15 +372,27 @@ ok(def.includes('bw_is_event_participant') && def.includes('dropped_out'),
 // M178=<path to 178_date_on_hold.sql> (needed with M193) loads 178's bw_is_event_participant
 // first (dropped out / removed are off the gig there too), as on apply day:
 // 175 -> 178 -> 193 -> 181. 193's bw_chat_joinable builds on it.
-const fileLines = (f, a, b) => readFileSync(f, 'utf8').split('\n').slice(a - 1, b).join('\n');
+// One definition out of a migration file (by name, so line moves don't matter).
+const fnDef = (f, name, kind = 'OR REPLACE FUNCTION public.', end = '$$;') => {
+  const src = readFileSync(f, 'utf8');
+  const a = src.indexOf(`CREATE ${kind}${name}`);
+  if (a < 0) throw new Error(`${name} not found in ${f}`);
+  return src.slice(a, src.indexOf(end, a) + end.length);
+};
 if (process.env.M193) {
   if (process.env.M178) {
     await db.exec(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS converted_to_event_id uuid, ADD COLUMN IF NOT EXISTS status text;`);
-    await db.exec(fileLines(process.env.M178, 115, 121) + ';');
-    await db.exec(fileLines(process.env.M178, 156, 179));
-    await db.exec(fileLines(process.env.M178, 339, 365));
+    await db.exec(fnDef(process.env.M178, 'event_date_holds', 'TABLE IF NOT EXISTS public.', ');'));
+    for (const f of ['bw_event_quote_private', 'bw_event_quote_hidden', 'bw_is_event_participant']) await db.exec(fnDef(process.env.M178, f));
   }
   await db.exec(readFileSync(process.env.M193, 'utf8'));
+  if (process.env.M178) {
+    // 175 re-run after 178: the quote rule is written into bw_chat_scope_ok
+    // too, so it doesn't depend on bw_is_event_participant carrying it.
+    await db.exec(readFileSync(MIG, 'utf8'));
+    const d178 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+    ok(d178.includes('bw_event_quote_hidden') && d178.includes('dropped_out'), '175 after 178: lineup rule and quote rule both in bw_chat_scope_ok');
+  }
   await db.exec(`UPDATE band_members SET is_active = true WHERE band_id = '${BAND}' AND user_id = '${MEM2}'`);
   r = await as(MEM2, `SELECT id FROM chats WHERE type = 'band' AND band_id = '${BAND}'`);
   ok(r.rows.length === 1 && r.rows[0].id === BANDCHAT, `193: back in the band, an old build's lookup finds the band chat (${r.rows.length})`);
@@ -496,6 +508,15 @@ r = await as(NEWM, `SELECT public.get_user_chats('${NEWM}') AS j`);
 const roster = ((r.rows[0]?.j ?? []).find((c) => c.id === EVCHAT3)?.participants ?? []).map((p) => p.user_id);
 ok(roster.includes(NEWM) && ![DEMOTED, DECL, DROP, REMOVED, staleUsers.LEFT, staleUsers.DEACT].some((u) => roster.includes(u)),
   `get_user_chats roster: only people who can read it (${roster.length})`);
+// Main / #282 (180): a message whose sender deleted their account
+// (sender_id NULL) is someone else's message: unread and undelivered.
+await as(NEWM, `SELECT public.bw_mark_chat_read('${EVCHAT3}')`);
+await as(NEWM, `SELECT public.bw_mark_chats_delivered()`);
+await db.exec(`INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${EVCHAT3}', NULL, 'from a deleted account', now() + interval '1 minute')`);
+r = await as(NEWM, `SELECT public.bw_mark_chats_delivered() AS n`);
+ok(!r.error && r.rows[0]?.n === 1, `NULL sender: delivered receipt moves (${r.error ?? r.rows[0]?.n})`);
+r = await as(NEWM, `SELECT public.bw_mark_chat_read('${EVCHAT3}') AS b`);
+ok(!r.error && r.rows[0]?.b === true, `NULL sender: counts as unread (${r.error ?? r.rows[0]?.b})`);
 // Claude r3 (175:535): a setlist save on a gig tells the lineup as every
 // other gig notice does (not declined, dropped out or removed).
 const SET3 = id(36);

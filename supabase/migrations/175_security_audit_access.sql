@@ -166,12 +166,23 @@ GRANT EXECUTE ON FUNCTION public.bw_delete_chat_history(uuid) TO authenticated;
 -- Round 3: this is the one definition (181 no longer redefines it), and an
 -- access check never falls back to "yes": no user, no event, an event with
 -- no creator, or a band chat with no band all give false.
+-- The quote rule (178: a member is not on a quote's chat) is carried by
+-- bw_is_event_participant once 178 is live; when 175 runs after 178 the rule
+-- is also written in here, so it never depends on which one ran last.
+DO $do$
+DECLARE
+  v_quote text := '';
+BEGIN
+  IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NOT NULL THEN
+    v_quote := 'AND NOT public.bw_event_quote_hidden(e.id, p_user_id)';
+  END IF;
+  EXECUTE format($sql$
 CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
-AS $$
+AS $f$
   SELECT p_user_id IS NOT NULL AND coalesce(CASE
     WHEN p_type = 'band' THEN
       p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, p_user_id)
@@ -190,10 +201,14 @@ AS $$
                 OR NOT EXISTS (
                   SELECT 1 FROM event_members em
                    WHERE em.event_id = e.id AND em.user_id = p_user_id
-                     AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed'))))
+                     AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed')))
+           %s)
     ELSE true
   END, false);
-$$;
+$f$;
+$sql$, v_quote);
+END
+$do$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 -- The chats read policy calls it (same exposure as bw_is_band_member).
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
@@ -230,7 +245,7 @@ AS $$
        AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
   )
   SELECT CASE WHEN EXISTS (SELECT 1 FROM ok WHERE user_id = p_sender)
-    THEN coalesce((SELECT array_agg(DISTINCT user_id) FROM ok WHERE user_id <> p_sender), '{}')
+    THEN coalesce((SELECT array_agg(DISTINCT user_id) FROM ok WHERE user_id IS DISTINCT FROM p_sender), '{}')
     ELSE '{}'::uuid[] END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_recipient_ids(uuid, uuid) FROM PUBLIC, anon, authenticated;
@@ -368,7 +383,9 @@ GRANT EXECUTE ON FUNCTION public.get_user_chats(uuid) TO authenticated;
 -- still read. A row the rule refuses (e.g. a demoted admin off the lineup,
 -- left before the cleanup) answered "true" to bw_mark_chat_read whenever
 -- someone had written since: that says new messages exist, and it moved
--- receipts the others see. Same bodies, plus the rule.
+-- receipts the others see. Same bodies, plus the rule, and (round 3) a
+-- message whose sender deleted their account (sender_id NULL, #282 / 180)
+-- counts as someone else's: IS DISTINCT FROM, not <>.
 CREATE OR REPLACE FUNCTION public.bw_mark_chats_delivered()
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER
@@ -385,7 +402,7 @@ BEGIN
      AND EXISTS (
        SELECT 1 FROM messages m
         WHERE m.chat_id = cp.chat_id
-          AND m.sender_id <> auth.uid()
+          AND m.sender_id IS DISTINCT FROM auth.uid()
           AND m.created_at > coalesce(cp.last_delivered_at, '-infinity'::timestamptz)
      );
   GET DIAGNOSTICS v_count = ROW_COUNT;
@@ -415,7 +432,7 @@ BEGIN
        OR EXISTS (
          SELECT 1 FROM messages m
           WHERE m.chat_id = cp.chat_id
-            AND m.sender_id <> auth.uid()
+            AND m.sender_id IS DISTINCT FROM auth.uid()
             AND m.created_at > cp.last_read_at
        )
      );
