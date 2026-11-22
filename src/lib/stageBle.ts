@@ -142,7 +142,9 @@ export async function encodeStageState(
 
 export type DecodeResult =
   | { ok: true; state: StageLiveState }
-  | { ok: false; reason: 'format' | 'auth' | 'setlist' };
+  | { ok: false; reason: 'format' | 'auth' }
+  /** A real state for a setlist this phone doesn't have: its seq and sender still tell which leader is newest. */
+  | { ok: false; reason: 'setlist'; seq: number; from: string };
 
 /** Checks and reads a state; `savedIds` is this phone's saved setlist (any order). */
 export async function decodeStageState(bytes: Uint8Array, savedIds: string[], keyB64: string): Promise<DecodeResult> {
@@ -172,7 +174,7 @@ export async function decodeStageState(bytes: Uint8Array, savedIds: string[], ke
   const m = tailAt < body.length ? body[tailAt] : 0;
   if (tailAt < body.length && tailAt + 1 + m !== body.length) return { ok: false, reason: 'format' };
   const mine = await setlistFingerprint(savedIds);
-  if (hex(fp) !== hex(mine)) return { ok: false, reason: 'setlist' };
+  if (hex(fp) !== hex(mine)) return { ok: false, reason: 'setlist', seq, from };
   const ids = sortedIds(savedIds);
   if (current !== NONE && current >= ids.length) return { ok: false, reason: 'format' };
   const order: string[] = [];

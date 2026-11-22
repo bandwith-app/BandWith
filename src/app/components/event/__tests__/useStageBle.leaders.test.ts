@@ -49,6 +49,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     startEnabledNotifications: vi.fn(async () => {}),
     stopEnabledNotifications: vi.fn(async () => {}),
   },
+  /** The plugin itself: probes let go through it with a short timeout. */
+  BluetoothLe: { disconnect: vi.fn(async ({ deviceId }: { deviceId: string }) => void air.connected.delete(deviceId)) },
   ConnectionPriority: { CONNECTION_PRIORITY_HIGH: 1 },
 }));
 

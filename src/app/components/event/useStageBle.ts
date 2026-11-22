@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BleClient, ConnectionPriority } from '@capacitor-community/bluetooth-le';
+import { BleClient, BluetoothLe, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { StageBle, stageBleAvailable, stageKey } from '@/lib/stageBleNative';
@@ -46,6 +46,10 @@ export const IDLE_LEADER_CHECK_MS = 4_000;
 const LEADER_SCAN_MS = 2_000;
 /** A look's short link to another phone: a phone out of range mustn't hold up the leader's reads. */
 export const PROBE_TIMEOUT_MS = 2_000;
+/** A probed phone is let go within this (a phone gone out of range would otherwise take the plugin's 5 s). */
+export const PROBE_LET_GO_MS = 1_000;
+/** What a leader's state says about how recent it is: enough to compare two leaders. */
+type Heard = Pick<StageLiveState, 'seq' | 'from'>;
 /** Searching with nothing found: start the scan again this often (the radio can end one by itself). */
 export const SEARCH_RESTART_MS = 10_000;
 /**
@@ -240,6 +244,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let link = 0;
     /** The newest valid state from the linked phone (null: it has served none). */
     let linkState: StageLiveState | null = null;
+    /** The newest state the linked phone served, this phone's setlist or not (null: none). */
+    let linkHeard: Heard | null = null;
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
     /** Looks in a row that found nothing while the linked phone served nothing: they slow down. */
     let idleChecks = 0;
@@ -352,6 +358,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (cancelled) return;
         // Far ahead of the clock: made up (anyone with the band key can), never followed.
         if (result.ok && !seqPlausible(result.state.seq)) return;
+        if (!result.ok && result.reason === 'setlist' && !seqPlausible(result.seq)) return;
+        if (deviceId === id && (result.ok || result.reason === 'setlist')) {
+          const heard = result.ok ? result.state : result;
+          if (isNewer(heard, linkHeard)) linkHeard = { seq: heard.seq, from: heard.from };
+        }
         if (result.ok) {
           if (deviceId === id && (!linkState || isNewer(result.state, linkState))) linkState = result.state;
           setStatus('connected');
@@ -370,10 +381,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     };
 
     /**
-     * Another phone advertising the gig, over a short link: its state, or
-     * `outdated` (it leads a setlist this phone doesn't have yet), or nothing valid.
+     * Another phone advertising the gig, over a short link: what it leads
+     * (seq and leader id), with its state when this phone has that setlist
+     * (none: it leads a setlist this phone doesn't have yet), or nothing valid.
      */
-    const probe = async (id: string): Promise<{ state: StageLiveState } | { outdated: true } | null> => {
+    const probe = async (id: string): Promise<{ heard: Heard; state: StageLiveState | null } | null> => {
       // A phone linked as the leader (this session's, or a reopened one's): connecting again would replace its goodbye.
       if (leaderLinks.has(id)) return null;
       try {
@@ -381,13 +393,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const view = await BleClient.read(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, { timeout: PROBE_TIMEOUT_MS });
         const result = await decodeStageState(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), savedRef.current, key);
-        if (result.ok) return seqPlausible(result.state.seq) ? { state: result.state } : null;
-        return result.reason === 'setlist' ? { outdated: true } : null;
+        if (result.ok) return seqPlausible(result.state.seq) ? { heard: result.state, state: result.state } : null;
+        if (result.reason === 'setlist' && seqPlausible(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null };
+        return null;
       } catch {
         return null;
       } finally {
         // Let go fully before anything links to it, unless something linked to it meanwhile (that link stays).
-        if (!leaderLinks.has(id)) await BleClient.disconnect(id).catch(() => {});
+        // Through the plugin itself, with a short timeout: its queue (the leader's reads) never waits on a phone gone out of range.
+        if (!leaderLinks.has(id)) await BluetoothLe.disconnect({ deviceId: id, timeout: PROBE_LET_GO_MS } as { deviceId: string }).catch(() => {});
       }
     };
 
@@ -395,7 +409,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearTimeout(checkTimer);
       // Sooner while the linked phone has served nothing, slowing down if that lasts.
       const idle = Math.min(IDLE_LEADER_CHECK_MS * 2 ** idleChecks, LEADER_CHECK_MS);
-      if (!cancelled && deviceId) checkTimer = setTimeout(() => void checkLeaders(), linkState ? LEADER_CHECK_MS : idle);
+      if (!cancelled && deviceId) checkTimer = setTimeout(() => void checkLeaders(), linkHeard ? LEADER_CHECK_MS : idle);
     };
 
     /** Two admins in Stage: follow the one that leads (the newer state), not the first one found. */
@@ -429,37 +443,38 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         /* Bluetooth off meanwhile: its own handler takes over */
       }
       // Every phone found, then the newest of them: not the first one newer than ours.
-      let best: { id: string; state: StageLiveState } | null = null;
-      let outdated: string | null = null;
+      let best: { id: string; heard: Heard } | null = null;
       for (const id of found) {
         // Never while the leader's song or clock reads wait (the radio does one thing at a time).
         while (radioBusy() && !cancelled && deviceId === current) await wait(100);
         if (cancelled || deviceId !== current) return;
         const theirs = await probe(id);
         if (cancelled || deviceId !== current) return;
+        if (!theirs) continue;
         // The linked leader itself at another address (Android rotates it): the same leader id in its state.
-        if (theirs && 'state' in theirs && linkState && theirs.state.from === linkState.from) {
+        if (linkHeard && theirs.heard.from === linkHeard.from) {
           sameLeader.add(id);
           continue;
         }
-        if (theirs && 'state' in theirs && (!best || isNewer(theirs.state, best.state))) best = { id, state: theirs.state };
-        else if (theirs && 'outdated' in theirs) outdated ??= id;
+        if (!best || isNewer(theirs.heard, best.heard)) best = { id, heard: theirs.heard };
       }
-      // An admin leading a setlist this phone lacks beats one who leads nothing:
-      // linked to it, the member is told to get the setlist.
-      const next = best && (!linkState || isNewer(best.state, linkState)) ? best.id : !best && !linkState ? outdated : null;
+      // The newest leader wins, whether or not this phone has its setlist
+      // (then the member is told to get it); only a strictly newer one takes
+      // the link, so two admins on a setlist this phone lacks don't take turns.
+      const next = best && isNewer(best.heard, linkHeard) ? best.id : null;
       if (next) {
         // Leave the old link quietly (its goodbye is ignored), then follow this one.
         link++;
         setDevice(null);
         linkState = null;
+        linkHeard = null;
         stopSync();
         await BleClient.disconnect(current).catch(() => {});
         if (cancelled) return;
         linkTo(next);
         return;
       }
-      if (!linkState) idleChecks++;
+      if (!linkHeard) idleChecks++;
       scheduleCheck();
     };
 
@@ -473,6 +488,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       link++;
       setDevice(null);
       linkState = null;
+      linkHeard = null;
       clearTimeout(checkTimer);
       stopSync();
       if (cancelled) return;
@@ -527,6 +543,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearTimeout(retry);
       setDevice(id);
       linkState = null;
+      linkHeard = null;
       idleChecks = 0;
       sameLeader = new Set();
       if (bookDevice !== id) {
@@ -597,6 +614,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               link++;
               setDevice(null);
               linkState = null;
+              linkHeard = null;
               clearTimeout(checkTimer);
               stopSync();
               if (id) void BleClient.disconnect(id).catch(() => {});
