@@ -42,13 +42,17 @@ const listeners = new Set<() => void>();
  * back on over an opt-out made in another one.
  */
 let blockedOptOut = false;
+/** The last answer read or written here: what holds when storage stops answering. */
+let lastKnown: boolean | null = null;
 
+/** Storage unreadable: the last answer this run saw, else off (fails closed). */
 export function readCrashReportsEnabled(): boolean {
   if (blockedOptOut) return false;
   try {
-    return localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
+    lastKnown = localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
+    return lastKnown;
   } catch {
-    return true;
+    return lastKnown ?? false;
   }
 }
 
@@ -90,6 +94,7 @@ function changed() {
 
 export function setCrashReportsEnabled(on: boolean) {
   blockedOptOut = false;
+  lastKnown = on;
   try {
     localStorage.setItem(CRASH_REPORTS_KEY, on ? 'on' : 'off');
   } catch {
@@ -172,9 +177,11 @@ function scrubLinks(s: string): string {
  * after it up to a file extension (…/Documents/Mary Smith - Yesterday.mp3).
  * Only a file of the app's own bundle keeps its name.
  */
-const FILE_LINK = /file:\/\/[^\s'"`()<>]*(?:(?:\s+[^\s/'"`()<>]+)*?\.[A-Za-z0-9]{2,5}\b)?/gi;
+// Brackets inside a name go with it (chart%20(Private%20Gig).pdf); a frame's own closing one stays.
+const FILE_LINK = /file:\/\/(?:[^\s'"`()<>]|\([^\s'"`()<>]*\)?)*(?:(?:\s+[^\s/'"`<>]+)*?\.[A-Za-z0-9]{2,5}\b\)?)?/gi;
 const BUNDLE_PATH = /^file:\/\/(?:\/[^\s]*\/App\.app\/public\/|\/android_asset\/public\/)/i;
-const BUNDLE_FILE = /\/([\w.-]+\.(?:js|mjs|css|html))$/;
+// The bundle file's name, with a frame's line and column (index-B4xK9q1a.js:1:2).
+const BUNDLE_FILE = /\/([\w.-]+\.(?:js|mjs|css|html)(?::\d+){0,2})$/;
 
 function scrubFileLinks(s: string): string {
   return s.replace(FILE_LINK, (all) => {
@@ -239,9 +246,13 @@ function insideAppFile(all: string, offset: number): boolean {
   return before !== -1 && !/[\s'"`()<>]/.test(all.slice(before, offset));
 }
 
+/** No NUL or other control characters (C0, except tab and line breaks): they can't forge a quote marker. */
+const CONTROL = new RegExp('[' + String.fromCharCode(0) + '-' + String.fromCharCode(8) + String.fromCharCode(11, 12) + String.fromCharCode(14) + '-' + String.fromCharCode(31) + String.fromCharCode(127) + ']', 'g');
+const noControl = (s: string) => s.replace(CONTROL, '');
+
 /** One line first: quoted text across a line break (a lyric) is still one quote. */
 export function scrubMessage(raw: string): string {
-  return scrubText(String(raw ?? '').replace(/\s+/g, ' '))
+  return scrubText(noControl(String(raw ?? '')).replace(/\s+/g, ' '))
     .trim()
     .slice(0, MESSAGE_MAX);
 }
@@ -251,7 +262,7 @@ const FRAME = /^\s*at\s|:\d+:\d+\)?$|\[native code\]$/;
 
 export function scrubStack(raw: string | undefined | null): string | null {
   if (!raw) return null;
-  const all = String(raw).split('\n');
+  const all = noControl(String(raw)).split('\n');
   // The lines before the first frame repeat the message (Chrome): one line, scrubbed like it.
   let first = all.findIndex((l) => FRAME.test(l));
   if (first === -1) first = all.length;
@@ -291,15 +302,20 @@ const pending: Array<Record<string, unknown>> = [];
 /** Requests out now: an opt-out aborts them, even one still waiting for a session refresh. */
 const inFlight = new Set<AbortController>();
 
-async function send(args: Record<string, unknown>): Promise<boolean> {
-  if (!readCrashReportsEnabled()) return false;
+/** A 4xx the same report would get again: dropped, so it can't hold up the queue. Not signed in, slow or busy: kept. */
+const KEEP_FOR_LATER = new Set([401, 403, 408, 429]);
+
+/** 'sent', 'later' (kept for the next go) or 'drop' (refused for good). */
+async function send(args: Record<string, unknown>): Promise<'sent' | 'later' | 'drop'> {
+  if (!readCrashReportsEnabled()) return 'later';
   const ctl = new AbortController();
   inFlight.add(ctl);
   try {
-    const { error } = await supabase.rpc('bw_report_client_error', args).abortSignal(ctl.signal);
-    return !error;
+    const { error, status } = await supabase.rpc('bw_report_client_error', args).abortSignal(ctl.signal);
+    if (!error) return 'sent';
+    return status >= 400 && status < 500 && !KEEP_FOR_LATER.has(status) ? 'drop' : 'later';
   } catch {
-    return false;
+    return 'later';
   } finally {
     inFlight.delete(ctl);
   }
@@ -317,13 +333,13 @@ function flushPending(): Promise<void> {
         return;
       }
       const next = pending[0];
-      const ok = await send(next);
+      const result = await send(next);
       // Switched off while the request was out: drop whatever is left.
       if (!readCrashReportsEnabled()) {
         pending.length = 0;
         return;
       }
-      if (!ok) return;
+      if (result === 'later') return;
       if (pending[0] === next) pending.shift();
     }
   })().finally(() => {
@@ -419,6 +435,7 @@ export function __resetCrashReportsForTest() {
   pending.length = 0;
   listeners.clear();
   blockedOptOut = false;
+  lastKnown = null;
   inFlight.clear();
   flushing = null;
   installed = false;

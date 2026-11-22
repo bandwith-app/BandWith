@@ -25,18 +25,16 @@ describe('174 client errors', () => {
     expect(count).toBeGreaterThan(lock);
   });
 
-  it('10 an hour per person, counted under a key that is not the user id', () => {
+  it('unlinkable: no per-person table, the user id is only checked (review #277 r4)', () => {
+    expect(sql).not.toMatch(/client_error_quota|client_error_keys/);
     const report = fnBody('bw_report_client_error');
-    expect(report).toMatch(/IF v_n > 10 THEN/);
-    expect(report).toMatch(/sha256\(convert_to\(v_uid::text, 'UTF8'\) \|\| v_secret\)/);
-    expect(sql).not.toMatch(/client_error_quota[^;]*user_id/);
+    expect(report).toMatch(/IF auth\.uid\(\) IS NULL/);
+    expect(report.match(/auth\.uid\(\)/g)).toHaveLength(1);
+    expect(report).not.toMatch(/sha256|v_uid/);
   });
 
-  it('no seal job: one hourly prune deletes the counters and the hour secrets', () => {
+  it('one cron job, the hourly prune', () => {
     expect([...sql.matchAll(/cron\.schedule\('([\w-]+)'/g)].map((m) => m[1])).toEqual(['bw-prune-client-errors']);
-    const prune = fnBody('bw_prune_client_errors');
-    expect(prune).toMatch(/DELETE FROM public\.client_error_quota WHERE window_start < date_trunc\('hour', now\(\)\)/);
-    expect(prune).toMatch(/DELETE FROM public\.client_error_keys WHERE hour < date_trunc\('hour', now\(\)\)/);
   });
 
   it('the hourly prune clears its own old cron run history (review #277)', () => {
@@ -49,9 +47,10 @@ describe('174 client errors', () => {
     expect(raw174.slice(0, raw174.indexOf('\nBEGIN;'))).toMatch(/no database has an earlier 174/);
   });
 
-  it('says plainly: linkable during the live hour, nothing stored links a report to a user once pruned', () => {
-    expect(raw174).not.toMatch(/unlinkable/i);
-    expect(raw174).toMatch(/During the live hour, the counter row can be linked to that hour's/);
-    expect(raw174).toMatch(/nothing\s*\n?--\s*stored links a report to a user/);
+  it('says plainly what is unlinkable and what is not (Supabase request logs)', () => {
+    const header = raw174.slice(0, raw174.indexOf('\nBEGIN;'));
+    expect(header).toMatch(/Unlinkable in the database/);
+    expect(header).toMatch(/no stored row, and no\s*\n?--\s*transaction id \(xmin\), ties a report to a person/);
+    expect(header).toMatch(/request logs/);
   });
 });

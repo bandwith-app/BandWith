@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // off with the Settings switch. Native crashes → Crashlytics, same switch.
 const h = vi.hoisted(() => ({
   rpc: [] as Array<{ fn: string; args: Record<string, unknown> }>,
-  rpcResult: { data: true as unknown, error: null as unknown },
+  rpcResult: { data: true as unknown, error: null as unknown, status: 200 as number | undefined } as { data: unknown; error: unknown; status?: number },
   native: false,
   setEnabled: [] as boolean[],
   deleted: 0,
@@ -96,7 +96,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
   h.rpc = [];
-  h.rpcResult = { data: true, error: null };
+  h.rpcResult = { data: true, error: null, status: 200 };
   h.native = false;
   h.setEnabled = [];
   h.deleted = 0;
@@ -476,5 +476,86 @@ describe('queued reports go out on reconnect and on return (review #277)', () =>
     await flush();
     expect(h.wire.map((a) => a.p_message)).toEqual(['Error: kept']);
     stop();
+  });
+});
+
+describe('round 4 (review #277)', () => {
+  it('a file link with brackets and encoded spaces goes whole', () => {
+    for (const raw of [
+      'Error: cannot open file:///var/mobile/Documents/chart%20(Private%20Gig).pdf now',
+      'Error: cannot open file:///var/mobile/Documents/chart (Private Gig).pdf now',
+      'Error: cannot open file:///var/mobile/Documents/Set%281%29%20Mary.pdf now',
+    ]) {
+      const m = scrubMessage(raw);
+      expect(m, raw).not.toMatch(/Private|Gig|Mary|Documents|pdf|%2|%20/);
+      expect(m, raw).toBe('Error: cannot open file://… now');
+    }
+    // A stack frame's own closing bracket stays.
+    expect(scrubStack('Error: x\n    at f (file:///android_asset/public/assets/index-B4xK9q1a.js:1:2)')).toContain(
+      'at f (file://…/index-B4xK9q1a.js:1:2)',
+    );
+  });
+
+  it('no NUL or control characters, and no marker can be forged', () => {
+    const m = scrubMessage('Error: a\u0000b \u00010\u0001 c\u0007d');
+    expect(m).not.toMatch(/[\u0000-\u0008]/);
+    expect(m).not.toMatch(/undefined/);
+    expect(scrubStack('Error: a\u0000b\n    at f (x.js:1:2)')).not.toMatch(/\u0000/);
+  });
+
+  it('opted out, then storage throws: still off (fails closed)', () => {
+    setCrashReportsEnabled(false);
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked, key: blocked, length: 0 });
+    expect(readCrashReportsEnabled()).toBe(false);
+  });
+
+  it('storage unreadable from the start: off (fails closed)', async () => {
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked, key: blocked, length: 0 });
+    expect(readCrashReportsEnabled()).toBe(false);
+    await reportClientError('error', new Error('nope'));
+    expect(h.rpc).toHaveLength(0);
+  });
+
+  it('turned on, then storage throws: the in-memory yes holds for this run', () => {
+    setCrashReportsEnabled(true);
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked, key: blocked, length: 0 });
+    expect(readCrashReportsEnabled()).toBe(true);
+  });
+
+  it('a report the server refuses for good (4xx) is dropped, the next ones still go', async () => {
+    const stop = installCrashReports();
+    h.rpcResult = { data: null, error: { message: 'bad request' }, status: 400 };
+    await reportClientError('error', new Error('refused'));
+    h.rpcResult = { data: true, error: null, status: 200 };
+    h.wire = [];
+    await reportClientError('error', new Error('after'));
+    await flush();
+    expect(h.wire.map((a) => a.p_message)).toEqual(['Error: after']);
+    stop();
+  });
+
+  it('401, 403, 408 and 429 are kept for later (signed out, slow, busy)', async () => {
+    for (const status of [401, 403, 408, 429]) {
+      __resetCrashReportsForTest();
+      const stop = installCrashReports();
+      h.rpcResult = { data: null, error: { message: 'later' }, status };
+      await reportClientError('error', new Error(`kept ${status}`));
+      h.rpcResult = { data: true, error: null, status: 200 };
+      h.wire = [];
+      window.dispatchEvent(new Event('online'));
+      await flush();
+      await flush();
+      expect(h.wire.map((a) => a.p_message), String(status)).toEqual([`Error: kept ${status}`]);
+      stop();
+    }
   });
 });

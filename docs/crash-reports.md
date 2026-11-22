@@ -31,7 +31,8 @@ Switching **Send crash reports** off:
 - Crashlytics collection is turned off (Crashlytics keeps that across launches), and its unsent reports are deleted;
 - reports waiting on the device are dropped, and requests already out are aborted, even one still waiting for a session refresh;
 - on the web the choice is shared by every tab: an opt-out in one tab wins over another tab that still had it on;
-- if the device's storage is blocked, an opt-out still holds until the app is closed (it can only turn reports off, never back on).
+- if the device's storage is blocked, an opt-out still holds until the app is closed (it can only turn reports off, never back on);
+- if storage stops answering, the last answer this run saw holds; with none (unreadable from the start), reports are off: it fails closed.
 
 ## What is sent (and what never is)
 
@@ -52,7 +53,8 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 | UUIDs | `<id>` |
 | JWTs (even just their first part, `eyJ…`), `Bearer …`, keys with a known prefix (`sk_`, `pk_`, `rk_`, `sb_`, `whsec_`) and long tokens | `<token>` |
 | Postgres details: `Key (email)=(mary@x.com)` | `Key (email)=(…)` |
-| `file://` paths, with the words after them up to a file extension. Only a file of the app's own bundle (`…/App.app/public/…`, `file:///android_asset/public/…`) keeps its name | `file://…`, `file://…/index-B4xK9q1a.js` |
+| `file://` paths, whole: brackets and percent-encoding in a name too (`chart%20(Private%20Gig).pdf`), and the words after them up to a file extension. Only a file of the app's own bundle (`…/App.app/public/…`, `file:///android_asset/public/…`) keeps its name, with a frame's line and column | `file://…`, `file://…/index-B4xK9q1a.js:1:2` |
+| NUL and other control characters | removed |
 | Numbers of 7+ digits (phone numbers, ids) | `<n>` |
 | Query strings on any link, relative ones too (`/deputy.html?deputy=…`, `/quote.html?t=…`), and fragments after a path | removed |
 | Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too | `https://xyz.supabase.co/…` |
@@ -65,15 +67,11 @@ The server cuts everything to size again.
 
 **Limits**
 - Device: each error once per session, at most 10 per session.
-- Server, per person: 10 per clock hour (the device sends at most 10 a session).
+- Server, per person: **no count** (review #277 round 4), so nothing per person is stored. The device sends at most 10 a session; one account sending more can only use up the global caps below (crash reports stop for everyone for that hour), nothing else.
 - Server, everyone together: 300 an hour, 1000 a day, and at most 15,000 reports kept. In the worst case that is about 65 MB, far below the Free plan's 500 MB. The counters are one row each, bumped atomically, so two reports at the limit can't both pass. The hourly prune locks the row counter before it counts, so a report committing meanwhile is never lost from the count.
-- The per-person counter never holds the user id: its key is `sha256(user id || this hour's random secret)`, and it holds only the clock hour. The counter and the secret are both deleted at the next hourly prune. Report times are kept to the minute only.
-- **What a reader with the service role can still link**, said plainly:
-  - **during the live hour**, the counter row can be linked to that hour's reports (they are written in one transaction, so they share a transaction id, `xmin`), and with the hour's secret to the user;
-  - **once the hourly prune has deleted the counter and the secret, nothing stored links a report to a user**;
-  - the Supabase API logs see who called the function, as for any request.
-  No one else can read any of these tables.
-- Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, the counters and secrets of past hours and days, and its own run history in `cron.job_run_details` older than a day.
+- **Unlinkable in the database**: the user id is only checked (signed in), never stored. A report's transaction writes only the report and the global counters, which everyone shares, so no stored row and no transaction id (`xmin`) ties a report to a person. Report times are kept to the minute only. Said plainly: Supabase's own API logs (outside our database, kept for a short time) see who called the function, as for any request. No one else can read any of these tables.
+- Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, the counters of past hours and days, and its own run history in `cron.job_run_details` older than a day.
+- A report the server refuses for good (a 4xx other than 401, 403, 408, 429) is dropped, so it can't hold up the others.
 - Not signed in, or no signal: up to 5 reports wait on the device and go out after sign-in, when the signal is back (`online`), when the user comes back to the app, or with the next error (a full queue is sent first, then the new one).
 
 ## Reading them

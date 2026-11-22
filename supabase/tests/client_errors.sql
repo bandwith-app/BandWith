@@ -7,13 +7,14 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.client_errors', 'INSERT') THEN
     RAISE EXCEPTION 'client_errors is reachable directly';
   END IF;
-  IF has_table_privilege('authenticated', 'public.client_error_quota', 'SELECT') THEN RAISE EXCEPTION 'quota readable'; END IF;
   IF has_function_privilege('anon', 'public.bw_report_client_error(text, text, text, text, text, text)', 'EXECUTE') THEN RAISE EXCEPTION 'anon can report'; END IF;
   IF NOT has_function_privilege('authenticated', 'public.bw_report_client_error(text, text, text, text, text, text)', 'EXECUTE') THEN RAISE EXCEPTION 'authenticated cannot report'; END IF;
   IF has_function_privilege('authenticated', 'public.bw_prune_client_errors()', 'EXECUTE') THEN RAISE EXCEPTION 'authenticated can prune'; END IF;
   IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-prune-client-errors' AND schedule = '7 * * * *') THEN RAISE EXCEPTION 'no hourly cron job'; END IF;
   IF has_table_privilege('authenticated', 'public.client_error_counters', 'SELECT') THEN RAISE EXCEPTION 'counters readable'; END IF;
-  IF has_table_privilege('authenticated', 'public.client_error_keys', 'SELECT') THEN RAISE EXCEPTION 'hour secrets readable'; END IF;
+  IF to_regclass('public.client_error_quota') IS NOT NULL OR to_regclass('public.client_error_keys') IS NOT NULL THEN
+    RAISE EXCEPTION 'a per-person table exists (reports must stay unlinkable)';
+  END IF;
 END;
 $$;
 
@@ -41,34 +42,22 @@ BEGIN
 END;
 $$;
 
--- 10 an hour per person (the app sends at most 10 a session), then refused.
+-- No per-person count on the server: more than 10 from one person still
+-- go in (the app sends at most 10 a session; the global caps below bound it).
+-- Report times to the minute. Unlinkable across real transactions: checked
+-- in client_errors.pglite.mjs (here everything is one transaction).
 DO $$
 DECLARE i int; ok int := 0;
 BEGIN
   FOR i IN 1..20 LOOP
     IF public.bw_report_client_error('rejection', 'boom ' || i, NULL, '1.0.14', 'android', 'Stage') THEN ok := ok + 1; END IF;
   END LOOP;
-  IF ok <> 9 THEN RAISE EXCEPTION 'rate limit: % accepted (expected 9 after the first)', ok; END IF;
-END;
-$$;
-
--- The per-person counter: no user id, a key made with this hour's secret,
--- the clock hour only; report times to the minute. Linkable during the live
--- hour, not after the prune: checked across real transactions in
--- client_errors.pglite.mjs (here everything is one transaction).
-DO $$
-DECLARE q record;
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'client_error_quota' AND column_name ~ 'user') THEN
-    RAISE EXCEPTION 'client_error_quota has a user column';
-  END IF;
-  SELECT * INTO q FROM public.client_error_quota
-   WHERE key = encode(sha256(convert_to('11111111-1111-4111-8111-111111111111', 'UTF8')
-                             || (SELECT secret FROM public.client_error_keys WHERE hour = date_trunc('hour', now()))), 'hex');
-  IF q.n <> 21 THEN RAISE EXCEPTION 'counter not found under the hour key (n = %)', q.n; END IF;
-  IF q.window_start <> date_trunc('hour', now()) THEN RAISE EXCEPTION 'window_start is not the hour: %', q.window_start; END IF;
+  IF ok <> 20 THEN RAISE EXCEPTION 'refused under the global caps: % accepted', ok; END IF;
   IF EXISTS (SELECT 1 FROM public.client_errors WHERE created_at <> date_trunc('minute', created_at)) THEN
     RAISE EXCEPTION 'a report time finer than the minute';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.client_error_counters WHERE bucket !~ '^(h:\d{4}-\d\d-\d\dT\d\d|d:\d{4}-\d\d-\d\d|rows)$') THEN
+    RAISE EXCEPTION 'a counter that is not a global bucket';
   END IF;
 END;
 $$;
@@ -91,17 +80,13 @@ END $$;
 
 -- Prune (hourly): reports older than 14 days, counters of past hours; the
 -- row count is set to the truth again.
-INSERT INTO public.client_error_quota (key, window_start, n)
-VALUES ('past-hour-key', date_trunc('hour', now()) - interval '1 hour', 3);
-INSERT INTO public.client_error_keys (hour, secret) VALUES (date_trunc('hour', now()) - interval '1 hour', '\x00');
+INSERT INTO public.client_error_counters (bucket, n) VALUES ('h:2000-01-01T00', 3);
 UPDATE public.client_errors SET created_at = now() - interval '15 days' WHERE message LIKE 'boom 1%';
 DO $$ BEGIN
   IF public.bw_prune_client_errors() < 1 THEN RAISE EXCEPTION 'nothing pruned'; END IF;
   IF EXISTS (SELECT 1 FROM public.client_errors WHERE created_at < now() - interval '14 days') THEN RAISE EXCEPTION 'old reports kept'; END IF;
-  IF EXISTS (SELECT 1 FROM public.client_error_quota WHERE window_start < date_trunc('hour', now())) THEN RAISE EXCEPTION 'past hour counter kept'; END IF;
-  IF EXISTS (SELECT 1 FROM public.client_error_keys WHERE hour < date_trunc('hour', now())) THEN RAISE EXCEPTION 'past hour secret kept'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.client_error_quota WHERE window_start = date_trunc('hour', now())) THEN RAISE EXCEPTION 'this hour counter dropped'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.client_error_keys WHERE hour = date_trunc('hour', now())) THEN RAISE EXCEPTION 'this hour secret dropped'; END IF;
+  IF EXISTS (SELECT 1 FROM public.client_error_counters WHERE bucket = 'h:2000-01-01T00') THEN RAISE EXCEPTION 'past hour counter kept'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.client_error_counters WHERE bucket LIKE 'h:%') THEN RAISE EXCEPTION 'this hour counter dropped'; END IF;
   IF (SELECT n FROM public.client_error_counters WHERE bucket = 'rows') <> (SELECT count(*) FROM public.client_errors) THEN RAISE EXCEPTION 'row count not reset'; END IF;
 END $$;
 
