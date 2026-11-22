@@ -129,13 +129,21 @@ ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS answers_carried_at 
 -- First time the quote became a gig: kept when it goes back to a quote (the
 -- 'confirmed' row is reset then), so a later cancel knows it was a gig.
 ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS confirmed_once_at timestamptz;
--- The chat history cut-off for members: messages from before it stay with
--- the admins. Set when the quote becomes a gig, moved forward when it is
--- confirmed again or cancelled after being a quote again; never cleared or
--- moved back by any later lineup or status change.
+-- The chat history cut-off for members: the end of the event's first
+-- private period (it was a quote from the start). Messages before it stay
+-- with the admins; new lineup rows get it as cleared_at. Set once, on the
+-- first way out of privacy; never cleared or moved back.
 ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS history_cutoff_at timestamptz;
 UPDATE public.event_date_holds SET history_cutoff_at = released_at
  WHERE history_cutoff_at IS NULL AND release_reason = 'confirmed' AND released_at IS NOT NULL;
+-- Every private (negotiation) period of the event, ends included: a message
+-- written inside one is hidden from everyone but the band's admins. Opened
+-- when bw_event_quote_private goes false -> true (a revert), closed when it
+-- goes true -> false, whatever the way out (confirmed, draft, rehearsal,
+-- cancelled once a gig). The first one starts at -infinity. Only grows.
+ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS private_periods tstzmultirange;
+UPDATE public.event_date_holds SET private_periods = tstzmultirange(tstzrange(NULL, history_cutoff_at, '(]'))
+ WHERE private_periods IS NULL AND history_cutoff_at IS NOT NULL;
 ALTER TABLE public.event_date_holds ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.event_date_holds FROM PUBLIC, anon, authenticated;
 
@@ -301,10 +309,10 @@ REVOKE ALL ON FUNCTION public.bw_setlist_quote_hidden(uuid, uuid) FROM PUBLIC, a
 GRANT EXECUTE ON FUNCTION public.bw_setlist_quote_hidden(uuid, uuid) TO authenticated;
 
 -- Chats of former quotes the caller (not an admin) has a row in (from the
--- caller's own chat rows):
--- { chat id: cut-off }. Older messages stay with the admins. A kept row the
--- rule refuses (dropped out, left; bw_chat_scope_ok, defined below or by
--- 175) gets 'infinity': it can only hide more, never a date, never less.
+-- caller's own chat rows): { chat id: its private periods (tstzmultirange
+-- text) }. Messages inside them stay with the admins. A kept row the rule
+-- refuses (dropped out, left; bw_chat_scope_ok, defined below or by 175)
+-- gets '{(,)}' (all time): it can only hide more, never less.
 -- plpgsql, so it can name bw_chat_scope_ok before this file creates it.
 CREATE OR REPLACE FUNCTION public.bw_quote_chat_cutoffs()
 RETURNS jsonb
@@ -316,11 +324,11 @@ BEGIN
   RETURN (
   SELECT coalesce(jsonb_object_agg(c.id::text,
            CASE WHEN public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, auth.uid())
-                THEN to_jsonb(h.history_cutoff_at) ELSE to_jsonb('infinity'::text) END), '{}'::jsonb)
+                THEN to_jsonb(h.private_periods::text) ELSE to_jsonb('{(,)}'::text) END), '{}'::jsonb)
     FROM chat_participants cp
     JOIN chats c ON c.id = cp.chat_id
     JOIN events e ON e.id = c.event_id
-    JOIN event_date_holds h ON h.event_id = e.id AND h.history_cutoff_at IS NOT NULL
+    JOIN event_date_holds h ON h.event_id = e.id AND h.private_periods IS NOT NULL AND NOT isempty(h.private_periods)
    WHERE auth.uid() IS NOT NULL
      AND cp.user_id = auth.uid()
      AND c.type::text = 'event'
@@ -870,7 +878,10 @@ BEGIN
       'event_title', NULL, 'event_type', NULL, 'event_date', NULL, 'start_time', NULL, 'end_time', NULL,
       'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
       'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
-      'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'closed', true);
+      'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'closed', true,
+      -- The neutral closed wording ("Request withdrawn"), not "Gig over" or
+      -- "Gig cancelled" (383f15b: status 'cancelled', event_cancelled false).
+      'status', 'cancelled', 'event_cancelled', false);
   END IF;
   RETURN v;
 END;
@@ -1011,14 +1022,17 @@ CREATE POLICY messages_quote_admins_only_insert ON public.messages
   AS RESTRICTIVE FOR INSERT TO authenticated
   WITH CHECK (chat_id NOT IN (SELECT unnest(public.bw_hidden_quote_chat_ids())));
 
--- Back in the chat once it's a gig: messages up to the cut-off stay with the
--- admins ('infinity' for a kept row the rule refuses: all of them).
+-- Back in the chat once it's a gig: messages written while it was a quote
+-- (any of its private periods) stay with the admins; the gig's own periods
+-- stay readable ('{(,)}' for a kept row the rule refuses: all of them).
+-- The periods are worked out once per statement (InitPlan), one containment
+-- check per row.
 DROP POLICY IF EXISTS messages_quote_history_admins_only ON public.messages;
 CREATE POLICY messages_quote_history_admins_only ON public.messages
   AS RESTRICTIVE FOR SELECT TO authenticated
-  USING (coalesce(
-    created_at > (((SELECT public.bw_quote_chat_cutoffs()) ->> chat_id::text)::timestamptz),
-    true));
+  USING (NOT coalesce(
+    created_at <@ (((SELECT public.bw_quote_chat_cutoffs()) ->> chat_id::text)::tstzmultirange),
+    false));
 
 DROP POLICY IF EXISTS chat_participants_quote_admins_only ON public.chat_participants;
 CREATE POLICY chat_participants_quote_admins_only ON public.chat_participants
@@ -1101,7 +1115,48 @@ REVOKE ALL ON FUNCTION public.bw_quote_chat_prune(uuid) FROM PUBLIC, anon, authe
 
 SELECT public.bw_quote_chat_prune(NULL);
 
--- The quote became a gig (first time or again): the cut-off moves to now (event_date_holds) and its
+-- In or out of privacy (bw_event_quote_private false -> true, or true ->
+-- false), from the event trigger, under the hold's lock. In: a new period
+-- from now, open; from a gig, confirmed_once_at too. Out: the open period
+-- ends now (the first one, from -infinity, also sets history_cutoff_at); an
+-- exit with no open period hides since the last one (only ever more).
+CREATE OR REPLACE FUNCTION public.bw_quote_private_period(p_event_id uuid, p_band_id uuid, p_enter boolean,
+  p_was_gig boolean DEFAULT false)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF p_event_id IS NULL OR p_band_id IS NULL THEN RETURN; END IF;
+  PERFORM pg_advisory_xact_lock(178, hashtext(p_event_id::text));
+  INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason)
+  VALUES (p_event_id, p_band_id, now(), now(), CASE WHEN p_enter THEN 'reverted' ELSE 'left_quote' END)
+  ON CONFLICT (event_id) DO NOTHING;
+  IF p_enter THEN
+    UPDATE event_date_holds
+       SET private_periods = coalesce(private_periods, '{}'::tstzmultirange)
+                             + tstzmultirange(tstzrange(now(), NULL, '[)')),
+           confirmed_once_at = CASE WHEN p_was_gig THEN coalesce(confirmed_once_at, now()) ELSE confirmed_once_at END
+     WHERE event_id = p_event_id;
+  ELSE
+    UPDATE event_date_holds
+       SET history_cutoff_at = CASE WHEN private_periods IS NULL OR isempty(private_periods)
+                                    THEN coalesce(history_cutoff_at, now()) ELSE history_cutoff_at END,
+           private_periods = CASE
+             WHEN private_periods IS NULL OR isempty(private_periods)
+               THEN tstzmultirange(tstzrange(NULL, now(), '(]'))
+             WHEN upper_inf(private_periods)
+               THEN private_periods - tstzmultirange(tstzrange(now(), NULL, '()'))
+             ELSE private_periods + tstzmultirange(tstzrange(upper(private_periods), now(), '[]'))
+           END
+     WHERE event_id = p_event_id;
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_private_period(uuid, uuid, boolean, boolean) FROM PUBLIC, anon, authenticated;
+
+-- The quote became a gig (first time or again; bw_quote_private_period closed the private period just before) and its
 -- lineup goes back in its chat, history cleared up to now (181 may have taken
 -- them out too; either order ends here).
 CREATE OR REPLACE FUNCTION public.bw_quote_event_confirmed(p_event_id uuid)
@@ -1116,22 +1171,21 @@ DECLARE
 BEGIN
   SELECT e.band_id INTO v_band FROM events e WHERE e.id = p_event_id;
   IF v_band IS NULL THEN RETURN; END IF;
-  INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason, confirmed_once_at, history_cutoff_at)
-  VALUES (p_event_id, v_band, now(), now(), 'confirmed', now(), now())
+  -- The private periods are kept by bw_quote_private_period (the event
+  -- trigger, before this): nothing here depends on release_reason.
+  INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason, confirmed_once_at)
+  VALUES (p_event_id, v_band, now(), now(), 'confirmed', now())
   ON CONFLICT (event_id) DO UPDATE
     SET released_at = CASE WHEN event_date_holds.release_reason = 'confirmed' AND event_date_holds.released_at IS NOT NULL
                            THEN event_date_holds.released_at ELSE now() END,
         release_reason = 'confirmed',
-        confirmed_once_at = coalesce(event_date_holds.confirmed_once_at, now()),
-        -- Every confirmation (only called when a quote becomes a gig) moves
-        -- the cut-off to now: what was said while it was a quote, also a
-        -- second time after a revert, stays with the admins. Worked out from
-        -- the cut-off alone, never from release_reason (the hold sync sets
-        -- that to 'confirmed' first). Only ever later, never earlier.
-        history_cutoff_at = greatest(coalesce(event_date_holds.history_cutoff_at, now()), now())
+        confirmed_once_at = coalesce(event_date_holds.confirmed_once_at, now())
   RETURNING history_cutoff_at INTO v_cut;
+  -- History before the first period's end is cleared for the lineup (the
+  -- gig's own periods after it stay readable; later quote periods are
+  -- hidden by messages_quote_history_admins_only).
   INSERT INTO chat_participants (chat_id, user_id, joined_at, cleared_at)
-  SELECT DISTINCT c.id, em.user_id, now(), now()
+  SELECT DISTINCT c.id, em.user_id, now(), v_cut
     FROM chats c
     JOIN event_members em ON em.event_id = c.event_id
    WHERE c.type::text = 'event' AND c.event_id = p_event_id
@@ -1142,6 +1196,7 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = em.user_id);
   -- Rows kept while it was a quote, of people in the final lineup (members
   -- only: admins were never out): their history is cleared up to the cut-off.
+  IF v_cut IS NOT NULL THEN
   UPDATE chat_participants cp
      SET cleared_at = greatest(coalesce(cp.cleared_at, v_cut), v_cut)
     FROM chats c
@@ -1150,6 +1205,7 @@ BEGIN
      AND EXISTS (SELECT 1 FROM event_members em
                   WHERE em.event_id = p_event_id AND em.user_id = cp.user_id
                     AND lower(btrim(coalesce(em.status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed'));
+  END IF;
   DELETE FROM chat_participants_quote_178 a
    USING chats c
    WHERE a.chat_id = c.id AND c.type::text = 'event' AND c.event_id = p_event_id;
@@ -1940,10 +1996,14 @@ DECLARE
   ev record;
 BEGIN
   IF TG_OP = 'DELETE' THEN ev := OLD; ELSE ev := NEW; END IF;
+  -- 178: the hold's lock before any write to event_date_holds, in the same
+  -- order as the quote triggers and the sweep (lock, then the row).
+  PERFORM pg_advisory_xact_lock(178, hashtext(ev.id::text));
   v_kind := CASE WHEN lower(coalesce(ev.event_type::text, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
   v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
   v_when := coalesce(to_char(ev.event_date, 'Dy DD Mon'), 'date TBD') ||
-            CASE WHEN ev.start_time IS NOT NULL THEN ' · ' || to_char(ev.start_time, 'HH24:MI') ELSE '' END;
+            CASE WHEN coalesce(ev.start_time, ev."time") IS NOT NULL
+                 THEN ' · ' || to_char(coalesce(ev.start_time, ev."time"), 'HH24:MI') ELSE '' END;
   ev.title := coalesce(ev.title, v_label);
   v_data := jsonb_build_object(
     'event_id', ev.id,
@@ -1967,7 +2027,8 @@ BEGIN
           OR EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = OLD.id AND h.confirmed_once_at IS NULL)) THEN
     INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason, confirmed_once_at)
     VALUES (OLD.id, OLD.band_id, now(), now(), 'pre178', now())
-    ON CONFLICT (event_id) DO UPDATE SET confirmed_once_at = coalesce(event_date_holds.confirmed_once_at, EXCLUDED.confirmed_once_at);
+    ON CONFLICT (event_id) DO UPDATE SET confirmed_once_at = EXCLUDED.confirmed_once_at
+      WHERE event_date_holds.confirmed_once_at IS NULL;
   END IF;
 
   IF TG_OP = 'DELETE' THEN
@@ -1995,12 +2056,16 @@ BEGIN
   -- confirmation is undone (a live hold starts again below; one that isn't
   -- live keeps no 'confirmed' row, so a new confirmation sets a new cut-off).
   IF v_is_quote AND NOT v_was_quote THEN
+    -- A private period starts now (the gig's own chat before it stays).
+    PERFORM public.bw_quote_private_period(NEW.id, NEW.band_id, true,
+      lower(coalesce(OLD.status::text, '')) IN ('confirmed', 'completed'));
     UPDATE event_date_holds SET release_reason = 'reverted'
      WHERE event_id = NEW.id AND release_reason = 'confirmed';
-    -- The cut-off is the time of this revert (only ever later).
-    UPDATE event_date_holds SET history_cutoff_at = greatest(history_cutoff_at, now())
-     WHERE event_id = NEW.id AND history_cutoff_at IS NOT NULL;
     PERFORM public.bw_quote_chat_prune(NEW.id);
+  ELSIF v_was_quote AND NOT v_is_quote THEN
+    -- Out of privacy, whatever the way (confirmed, draft or pending, made a
+    -- rehearsal, cancelled once a gig): the private period ends now.
+    PERFORM public.bw_quote_private_period(NEW.id, NEW.band_id, false);
   END IF;
 
   -- UPDATE
@@ -2010,13 +2075,10 @@ BEGIN
         v_label || ' cancelled', NEW.title || ' · ' || v_when || ' has been cancelled.',
         v_data, NEW.id, 'event');
       PERFORM public.bw_date_hold_sync(NEW.id, false);
-      IF EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = NEW.id
+      -- Once a gig, members see it cancelled; what was written while it was
+      -- a quote again is a private period (closed above).
+      IF NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = NEW.id
                    AND (h.release_reason = 'confirmed' OR h.confirmed_once_at IS NOT NULL)) THEN
-        -- Once a gig, so members see it cancelled: what was written while it
-        -- was a quote again stays with the admins (the cut-off moves to now).
-        UPDATE event_date_holds SET history_cutoff_at = greatest(coalesce(history_cutoff_at, now()), now())
-         WHERE event_id = NEW.id;
-      ELSE
         -- Never a gig: it stays a quote's, also with no hold announced yet
         -- (a standalone tentative event): a released hold row records that.
         INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason)
@@ -2051,7 +2113,8 @@ BEGIN
   END IF;
 
   IF NEW.event_date IS DISTINCT FROM OLD.event_date THEN v_changes := array_append(v_changes, 'date'::text); END IF;
-  IF NEW.start_time IS DISTINCT FROM OLD.start_time OR NEW.end_time IS DISTINCT FROM OLD.end_time THEN
+  IF coalesce(NEW.start_time, NEW."time") IS DISTINCT FROM coalesce(OLD.start_time, OLD."time")
+     OR NEW.end_time IS DISTINCT FROM OLD.end_time THEN
     v_changes := array_append(v_changes, 'time'::text);
   END IF;
   IF NEW.load_in_time IS DISTINCT FROM OLD.load_in_time OR NEW.soundcheck_time IS DISTINCT FROM OLD.soundcheck_time THEN
@@ -2098,7 +2161,10 @@ BEGIN
   END IF;
   RETURN NEW;
 EXCEPTION WHEN others THEN
-  -- Never block the calendar because of a notification.
+  -- A deadlock or a serialization failure fails the write (a revert lands
+  -- with its whole state or not at all); anything else never blocks the
+  -- calendar because of a notification.
+  IF SQLSTATE IN ('40P01', '40001') THEN RAISE; END IF;
   RAISE WARNING 'bw_trg_event_changed: %', SQLERRM;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
 END;
@@ -2371,7 +2437,7 @@ CREATE TRIGGER bw_notifications_00_quote_guard
   BEFORE INSERT ON public.notifications
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_notification_quote_guard();
 
--- The ones already in members' inboxes ("Availability check: <title>",
+-- The ones already in non-admins' inboxes ("Availability check: <title>",
 -- "Gig updated", fee, quote chat previews...): archived (admins only, for a
 -- rollback), removed.
 CREATE TABLE IF NOT EXISTS public.notifications_quote_178 (
@@ -2390,7 +2456,8 @@ WITH stale AS (
    WHERE n.type NOT IN ('date_hold', 'date_hold_changed', 'date_hold_released')
      AND e.band_id IS NOT NULL
      AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
-     AND public.bw_is_band_member(e.band_id, n.user_id)
+     -- As the guard: anyone but the band's admins (former members, people
+     -- outside the band on the quote's lineup).
      AND NOT public.bw_is_band_admin(e.band_id, n.user_id)
   UNION
   -- Setlist notices that carry only the setlist (046, 107): its name is
