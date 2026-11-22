@@ -6,6 +6,11 @@ import { t, loadLocale, translate } from '@/lib/i18n';
 import { mentionedUserIds } from '@/lib/chatMentions';
 import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
+import { attachReplies, replyTargetIds, type ReplyTarget } from '@/lib/chatMessages';
+
+/** The database has no such function yet (migration not applied): use the older path. */
+const isMissingFunction = (error: { code?: string; message?: string } | null | undefined): boolean =>
+  !!error && (error.code === 'PGRST202' || error.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(error.message || ''));
 
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
@@ -69,6 +74,8 @@ export interface Message {
   created_at: string;
   reply_to_id?: string;
   reply_to?: Message; // The quoted message
+  /** This device only: sending it failed; the bubble offers Try again. */
+  failed?: boolean;
   sender?: {
     id: string;
     full_name?: string;
@@ -604,6 +611,43 @@ export const createChat = async (
       }
     }
 
+    // Band and gig chats: one per band / gig, found or created on the server
+    // in one step (193). The lookup below could not see a chat the caller had
+    // not joined yet, so a band admin outside a gig's lineup made a second
+    // gig chat (audit 07 #6). It stays only for a database without 193.
+    if ((data.type === 'band' && data.band_id) || (data.type === 'event' && data.event_id)) {
+      const { data: opened, error: openError } = await supabase.rpc('bw_open_group_chat', {
+        p_type: data.type,
+        p_band_id: data.band_id ?? null,
+        p_event_id: data.event_id ?? null,
+        p_name: data.name ?? null,
+      });
+      if (!openError && opened) {
+        const { created, ...chat } = opened as Chat & { created?: boolean };
+        const others = allParticipants.filter((id) => id !== user.id);
+        if (created && others.length > 0) {
+          const { error: partError } = await supabase
+            .from('chat_participants')
+            .upsert(others.map((userId) => ({ chat_id: chat.id, user_id: userId })), { onConflict: 'chat_id,user_id', ignoreDuplicates: true });
+          if (partError) console.warn('[createChat] Participant insert warning:', partError.message);
+        }
+        return { data: chat as Chat, error: null };
+      }
+      if (openError && !isMissingFunction(openError)) {
+        if ((openError as { code?: string }).code === '42501') {
+          return {
+            data: null,
+            error: new ChatRuleError(
+              data.type === 'band'
+                ? t('You can only message in bands you are an active member of.')
+                : t('You can only message in events you are participating in.'),
+            ),
+          };
+        }
+        throw openError;
+      }
+    }
+
     // For band chats, check if one already exists for this band
     if (data.type === 'band' && data.band_id) {
       const { data: existingBandChat } = await supabase
@@ -689,9 +733,59 @@ export const createChat = async (
 // MESSAGES CRUD
 // ============================================
 
+/**
+ * Loads the quoted message (text and author) of every reply in `rows`
+ * (audit 07 #11). `clearedAt`: when the reader deleted this chat; left out,
+ * it is looked up (only when a row is a reply).
+ */
+const withReplies = async (chatId: string, rows: Message[], clearedAt?: string | null): Promise<Message[]> => {
+  const ids = replyTargetIds(rows);
+  if (ids.length === 0) return rows;
+  try {
+    let cut = clearedAt;
+    if (cut === undefined) {
+      const { data: { user } } = await getSafeUser();
+      cut = null;
+      if (user) {
+        const { data: mine } = await supabase
+          .from('chat_participants')
+          .select('cleared_at')
+          .eq('chat_id', chatId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        cut = (mine as { cleared_at?: string | null } | null)?.cleared_at ?? null;
+      }
+    }
+    const { data: quoted } = await supabase
+      .from('messages')
+      .select('id, content, sender_id, created_at')
+      .eq('chat_id', chatId)
+      .in('id', ids);
+    const targets = (quoted || []) as ReplyTarget[];
+    const authorIds = [...new Set(targets.map((q) => q.sender_id).filter(Boolean))];
+    if (authorIds.length > 0) {
+      const known = new Map(rows.filter((m) => m.sender).map((m) => [m.sender_id, m.sender]));
+      const missing = authorIds.filter((a) => !known.has(a));
+      if (missing.length > 0) {
+        const { data: people } = await supabase.from('profiles').select('id, full_name, email, avatar_url').in('id', missing);
+        for (const p of (people || []) as NonNullable<Message['sender']>[]) known.set(p.id, p);
+      }
+      for (const q of targets) q.sender = known.get(q.sender_id);
+    }
+    return attachReplies(rows, targets, cut);
+  } catch {
+    return rows;
+  }
+};
+
 export const getMessages = async (
   chatId: string,
-  options?: { limit?: number; before?: string }
+  options?: {
+    limit?: number;
+    before?: string;
+    /** Forward from this time (inclusive), oldest first: catching up after a gap (07 #7). */
+    after?: string;
+  }
 ): Promise<{ data: Message[] | null; error: Error | null }> => {
   try {
     console.log('[getMessages] Fetching messages for chat:', chatId);
@@ -715,7 +809,7 @@ export const getMessages = async (
       .from('messages')
       .select(`*`)
       .eq('chat_id', chatId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: !!options?.after });
 
     if (clearedAt) {
       query = query.gt('created_at', clearedAt);
@@ -727,6 +821,10 @@ export const getMessages = async (
 
     if (options?.before) {
       query = query.lt('created_at', options.before);
+    }
+
+    if (options?.after) {
+      query = query.gte('created_at', options.after);
     }
 
     const { data, error } = await query;
@@ -753,8 +851,11 @@ export const getMessages = async (
       }
     }
 
+    // Replies carry their quote (audit 07 #11).
+    const quoted = await withReplies(chatId, rows as Message[], clearedAt);
+
     // Return in ascending order for display
-    return { data: rows.reverse(), error: null };
+    return { data: options?.after ? quoted : quoted.reverse(), error: null };
   } catch (error: any) {
     console.error('[getMessages] Exception:', error);
     return { data: null, error };
@@ -1022,7 +1123,8 @@ export const sendMessage = async (
       console.warn('[sendMessage] Notification error (non-critical):', notifErr);
     }
 
-    return { data, error: null };
+    const [saved] = await withReplies(chatId, [data as Message]);
+    return { data: saved, error: null };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -1178,7 +1280,8 @@ export const subscribeToChat = (
 
         if (data) {
           console.log('[subscribeToChat] Delivering message to UI');
-          onMessage(data as Message);
+          const [message] = await withReplies(chatId, [data as Message]);
+          onMessage(message);
         }
       }
     )
@@ -1193,7 +1296,11 @@ export const subscribeToChat = (
 };
 
 export const subscribeToNewMessages = (
-  onMessage: (message: Message & { chat_id: string }) => void
+  onMessage: (message: Message & { chat_id: string }) => void,
+  options?: {
+    /** Every status the channel reports ('SUBSCRIBED' when joined, again after a drop). */
+    onStatus?: (status: string) => void;
+  }
 ) => {
   // Realtime postgres_changes respects RLS, so only messages from chats the
   // user participates in are delivered (requires RLS enabled on messages —
@@ -1221,7 +1328,7 @@ export const subscribeToNewMessages = (
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => options?.onStatus?.(status));
 
   return () => {
     supabase.removeChannel(channel);

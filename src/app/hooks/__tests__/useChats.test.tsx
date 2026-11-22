@@ -1,13 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 const getChats = vi.fn();
 const store = new Map<string, unknown>();
+const rt = vi.hoisted(() => ({ onStatus: null as null | ((s: string) => void) }));
 
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ isAuthenticated: true, user: { id: 'me' } }) }));
 vi.mock('@/lib/services/chats', () => ({
   getChats: (...a: unknown[]) => getChats(...a),
-  subscribeToNewMessages: () => () => {},
+  subscribeToNewMessages: (_cb: unknown, opts?: { onStatus?: (s: string) => void }) => {
+    rt.onStatus = opts?.onStatus ?? null;
+    return () => {};
+  },
   subscribeToReceipts: () => () => {},
 }));
 vi.mock('@/lib/offline/storage', () => ({
@@ -18,12 +22,14 @@ vi.mock('@/lib/offline/storage', () => ({
 }));
 
 import { useChats } from '../useData';
+import { CHAT_LIST_FALLBACK_POLL_MS } from '@/lib/chatSync';
 
 const chat = (id: string) => ({ id, type: 'direct', participants: [] }) as any;
 
 beforeEach(() => {
   store.clear();
   getChats.mockReset();
+  rt.onStatus = null;
 });
 
 describe('useChats', () => {
@@ -42,5 +48,42 @@ describe('useChats', () => {
     getChats.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
     const { result } = renderHook(() => useChats());
     await waitFor(() => expect(result.current.chats.map((c) => c.id)).toEqual(['c9']));
+  });
+
+  // Audit 07 #8: Realtime down while HTTP works, a DM arrives. The list and
+  // the unread badge used to stay stale until something else refetched.
+  describe('socket outage', () => {
+    const flush = async (ms = 0) => {
+      await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    };
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('polls slowly while the channel is down and picks up the missed message', async () => {
+      getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+      const { result } = renderHook(() => useChats());
+      await flush();
+      await act(async () => { rt.onStatus?.('SUBSCRIBED'); });
+      await act(async () => { rt.onStatus?.('CHANNEL_ERROR'); });
+      await flush();
+      getChats.mockResolvedValue({ data: [chat('dm-new'), chat('c1')], error: null });
+      await flush(CHAT_LIST_FALLBACK_POLL_MS + 100);
+      expect(result.current.chats.map((c) => c.id)).toEqual(['dm-new', 'c1']);
+    });
+
+    it('refetches once when the channel joins again, then stops polling', async () => {
+      getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+      const { result } = renderHook(() => useChats());
+      await flush();
+      await act(async () => { rt.onStatus?.('SUBSCRIBED'); });
+      await act(async () => { rt.onStatus?.('CLOSED'); });
+      getChats.mockResolvedValue({ data: [chat('dm-new'), chat('c1')], error: null });
+      await act(async () => { rt.onStatus?.('SUBSCRIBED'); });
+      await flush();
+      expect(result.current.chats.map((c) => c.id)).toEqual(['dm-new', 'c1']);
+      const calls = getChats.mock.calls.length;
+      await flush(CHAT_LIST_FALLBACK_POLL_MS * 4);
+      expect(getChats.mock.calls.length).toBe(calls);
+    });
   });
 });

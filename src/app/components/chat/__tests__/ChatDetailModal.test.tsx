@@ -271,4 +271,96 @@ describe('ChatDetailModal', () => {
       expect(svc.getMessages.mock.calls.length).toBe(before + 1);
     });
   });
+
+  // Audit 07 #5: message A fails while message B is being typed.
+  describe('a failed send never eats the next draft', () => {
+    const deferred = () => {
+      let resolve!: (v: unknown) => void;
+      const promise = new Promise((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+
+    it('keeps B in the composer and A as a "Not sent" bubble with Try again', async () => {
+      openComposer();
+      const first = deferred();
+      svc.sendMessage.mockReturnValueOnce(first.promise);
+      render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      const input = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+      fireEvent.change(input(), { target: { value: 'message A' } });
+      fireEvent.keyDown(input(), { key: 'Enter' });
+      await settle();
+      fireEvent.change(input(), { target: { value: 'message B, half typed' } });
+      await act(async () => { first.resolve({ data: null, error: new Error('Failed to fetch') }); });
+      await settle();
+      expect(input().value).toBe('message B, half typed');
+      expect(screen.getByText('message A')).toBeTruthy();
+      expect(screen.getByText('Not sent')).toBeTruthy();
+
+      const saved = { ...msg(200, 'me'), content: 'message A' };
+      svc.sendMessage.mockResolvedValueOnce({ data: saved, error: null });
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await settle();
+      expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined);
+      expect(screen.queryByText('Not sent')).toBeNull();
+      expect(screen.getByText('message A')).toBeTruthy();
+      expect(input().value).toBe('message B, half typed');
+    });
+
+    it('Delete removes the failed bubble', async () => {
+      openComposer();
+      const first = deferred();
+      svc.sendMessage.mockReturnValueOnce(first.promise);
+      render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      const input = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+      fireEvent.change(input(), { target: { value: 'message A' } });
+      fireEvent.keyDown(input(), { key: 'Enter' });
+      fireEvent.change(input(), { target: { value: 'B' } });
+      await act(async () => { first.resolve({ data: null, error: new Error('permission denied') }); });
+      await settle();
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(screen.queryByText('message A')).toBeNull();
+      expect(input().value).toBe('B');
+    });
+  });
+
+  // Audit 07 #7: 1–10 on screen, 60 more arrive while the app sleeps.
+  it('catching up after a long gap leaves no hole in the history', async () => {
+    const history = range(0, 70);
+    latest = range(0, 10);
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText('message 9')).toBeTruthy();
+    svc.getMessages.mockImplementation(async (_id: string, opts?: { before?: string; after?: string; limit?: number }) => {
+      if (opts?.after) return { data: history.filter((m) => m.created_at >= opts.after!).slice(0, opts.limit ?? 50), error: null };
+      if (opts?.before) return { data: history.filter((m) => m.created_at < opts.before!).slice(-50), error: null };
+      return { data: history.slice(-50), error: null };
+    });
+    // The channel joins again (reconnect): one catch-up.
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await settle();
+    for (const i of [9, 10, 15, 19, 20, 69]) expect(screen.getByText(`message ${i}`)).toBeTruthy();
+  });
+
+  // Audit 07 #11: the sender keeps the quote once the message is saved.
+  it('a sent reply keeps its quote after saving', async () => {
+    openComposer();
+    latest = range(0, 3);
+    svc.sendMessage.mockImplementation(async (_c: string, content: string, _t: string, replyTo?: string) => ({
+      data: { ...msg(300, 'me'), content, reply_to_id: replyTo },
+      error: null,
+    }));
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reply to message' })[0]);
+    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'yes, two of them' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    expect(screen.getByText('yes, two of them')).toBeTruthy();
+    // The quote box (black) inside the saved bubble.
+    const quotes = [...document.querySelectorAll('.bg-black')].map((el) => el.textContent);
+    expect(quotes.some((q) => q?.includes('message 0'))).toBe(true);
+  });
 });

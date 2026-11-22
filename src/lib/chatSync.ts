@@ -14,6 +14,9 @@
 
 export const CHAT_FALLBACK_POLL_MS = 10_000;
 
+/** The chat list (several queries per fetch) polls more slowly while the socket is down. */
+export const CHAT_LIST_FALLBACK_POLL_MS = 30_000;
+
 /** Channel states reported by supabase-js `subscribe(cb)`. */
 export type ChannelStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR' | (string & {});
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLatestPage, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX } from '../chatMessages';
+import { mergeLatestPage, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX, catchUpPage, markSendFailed, attachReplies, replyTargetIds } from '../chatMessages';
 import type { Message } from '@/lib/services/chats';
 
 const msg = (i: number, over: Partial<Message> = {}): Message => ({
@@ -110,3 +110,62 @@ describe('isReplySwipe', () => {
     expect(isReplySwipe(60, 90)).toBe(false);
   });
 });
+
+// Audit 07 #7: 10 on screen, 60 more arrive while away; the latest page is 20–69.
+describe('catchUpPage', () => {
+  const history = range(0, 70);
+  const after = async (t: string) => history.filter((m) => m.created_at >= t).slice(0, 50);
+
+  it('fetches forward from the newest message on screen until it meets the latest page', async () => {
+    const { page, complete } = await catchUpPage(range(0, 10), range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(range(0, 10), page))).toEqual(ids(history));
+  });
+
+  it('nothing to do when the latest page overlaps what is on screen', async () => {
+    let calls = 0;
+    const page = range(10, 60);
+    const res = await catchUpPage(range(0, 30), page, async () => { calls++; return []; });
+    expect(res).toEqual({ page, complete: true });
+    expect(calls).toBe(0);
+  });
+
+  it('too far behind: says so (the chat then shows the latest page only)', async () => {
+    const res = await catchUpPage(range(0, 10), range(20, 70), after, 0);
+    expect(res.complete).toBe(false);
+  });
+});
+
+// Audit 07 #5
+describe('failed sends', () => {
+  const temp = (over: Partial<Message> = {}) => msg(99, { id: 'temp-1', content: 'message A', ...over });
+
+  it('a failed bubble stays through the poll', () => {
+    const prev = markSendFailed([...range(0, 3), temp()], 'temp-1');
+    const next = mergeLatestPage(prev, range(0, 3));
+    expect(next.find((m) => m.id === 'temp-1')?.failed).toBe(true);
+  });
+
+  it('it gives way to its server copy if the message got through after all', () => {
+    const prev = markSendFailed([...range(0, 3), temp()], 'temp-1');
+    const server = msg(4, { content: 'message A' });
+    expect(ids(mergeLatestPage(prev, [...range(0, 3), server]))).toEqual(['m0', 'm1', 'm2', 'm4']);
+  });
+});
+
+// Audit 07 #11
+describe('reply quotes', () => {
+  const reply = msg(5, { reply_to_id: 'm1' });
+  const target = { id: 'm1', content: 'text 1', sender_id: 'u2', created_at: msg(1).created_at };
+
+  it('asks only for quotes not loaded yet', () => {
+    expect(replyTargetIds([reply, msg(6), msg(7, { reply_to_id: 'm1' })])).toEqual(['m1']);
+    expect(replyTargetIds([{ ...reply, reply_to: msg(1) }])).toEqual([]);
+  });
+
+  it('attaches the quote, but not one from before the reader cleared the chat', () => {
+    expect(attachReplies([reply], [target], null)[0].reply_to?.content).toBe('text 1');
+    expect(attachReplies([reply], [target], msg(3).created_at)[0].reply_to).toBeUndefined();
+  });
+});
+

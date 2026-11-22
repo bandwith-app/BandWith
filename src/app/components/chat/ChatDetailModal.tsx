@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { haptic } from '@/lib/haptics';
 
@@ -182,6 +182,13 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   const nearBottomRef = useRef(true);
   const lastIdRef = useRef<string | null>(null);
   const prependAnchorRef = useRef<{ height: number; top: number } | null>(null);
+  // Read by async handlers: what is on screen and in the composer right now.
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
+  const draftRef = useRef(newMessage);
+  draftRef.current = newMessage;
+  const replyingToRef = useRef<Message | null>(replyingTo);
+  replyingToRef.current = replyingTo;
 
   useEffect(() => {
     if (chat.name && chat.name !== 'New Chat') {
@@ -499,7 +506,19 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       if (!live()) return;
       if (data) {
         setLoadError(false);
-        setMessages(prev => mergeLatestPage(prev, data));
+        // More than a page arrived meanwhile: fetch forward from the newest
+        // message on screen so no block of history goes missing (07 #7).
+        const caught = await catchUpPage(messagesRef.current, data, async (after) =>
+          (await getMessages(id, { limit: CHAT_PAGE_SIZE, after })).data,
+        );
+        if (!live()) return;
+        if (caught.complete) {
+          setMessages(prev => mergeLatestPage(prev, caught.page));
+        } else {
+          // Too far behind: the latest page, and "Load earlier" from there.
+          setMessages(prev => mergeLatestPage(prev.filter(m => m.id.startsWith('temp-')), data));
+          setHasOlder(true);
+        }
       }
       loadParticipants();
     };
@@ -576,19 +595,53 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     setMessages(prev => prependOlder(prev, data));
   };
 
+  // Sends a bubble already on screen (new, or Try again on a failed one).
+  const deliver = async (pending: Message) => {
+    const sentFrom = pending.chat_id;
+    setSending(true);
+    setSendError('');
+    const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id);
+    // Another chat is on screen now: its composer is not this one.
+    if (chatIdRef.current !== sentFrom) {
+      setSending(false);
+      return;
+    }
+
+    if (error) {
+      const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
+      setSendError(offline ? t('Message not sent. Check your connection and try again.') : chatErrorMessage(error, t('Message not sent. Try again.')));
+      if (!draftRef.current.trim() && !replyingToRef.current) {
+        // Nothing new typed: the text goes back into the composer.
+        setMessages(prev => prev.filter(m => m.id !== pending.id));
+        setNewMessage(pending.content);
+        setReplyingTo(pending.reply_to ?? null);
+      } else {
+        // A new draft is in the composer: never overwrite it (07 #5). The
+        // message stays as a "Not sent" bubble with Try again.
+        setMessages(prev => markSendFailed(prev, pending.id));
+      }
+    } else if (data) {
+      // Keep the quote on screen if the saved row came back without it.
+      const saved = data.reply_to_id && !data.reply_to?.content && pending.reply_to ? { ...data, reply_to: pending.reply_to } : data;
+      setMessages(prev => prev.map(m => m.id === pending.id ? saved : m));
+    }
+
+    setSending(false);
+    inputRef.current?.focus();
+  };
+
   const handleSend = async () => {
     if (!canText) return;
     if (!newMessage.trim() || sending) return;
     if (!chat.id || chat.id === 'undefined' || chat.id === 'null') return;
-    
-    setSending(true);
-    setSendError('');
-    const sentFrom = chat.id;
+
     const messageText = newMessage.trim();
     const replyToMessage = replyingTo;
     setNewMessage('');
     setReplyingTo(null);
-    
+    draftRef.current = '';
+    replyingToRef.current = null;
+
     const optimisticMessage: Message = {
       id: `temp-${Date.now()}`,
       chat_id: chat.id,
@@ -603,26 +656,19 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       sender: { id: user?.id || '', full_name: t('You') }
     };
     setMessages(prev => [...prev, optimisticMessage]);
-    
-    const { data, error } = await sendMessage(chat.id, messageText, 'text', replyToMessage?.id);
-    // Another chat is on screen now: its composer is not this one.
-    if (chatIdRef.current !== sentFrom) {
-      setSending(false);
-      return;
-    }
-    
-    if (error) {
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
-      setNewMessage(messageText);
-      setReplyingTo(replyToMessage);
-      const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
-      setSendError(offline ? t('Message not sent. Check your connection and try again.') : chatErrorMessage(error, t('Message not sent. Try again.')));
-    } else if (data) {
-      setMessages(prev => prev.map(m => m.id === optimisticMessage.id ? data : m));
-    }
-    
-    setSending(false);
-    inputRef.current?.focus();
+    await deliver(optimisticMessage);
+  };
+
+  const retrySend = (message: Message) => {
+    if (sending || !canText) return;
+    const again = { ...message, failed: false };
+    setMessages(prev => prev.map(m => m.id === message.id ? again : m));
+    void deliver(again);
+  };
+
+  const discardFailed = (message: Message) => {
+    setMessages(prev => prev.filter(m => m.id !== message.id));
+    setSendError('');
   };
 
   const formatTime = (dateString: string) => {
@@ -949,10 +995,31 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                           </p>
                         </div>
 
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <span className="bw-label-xs">{formatTime(message.created_at)}</span>
-                          {isMe && <ReceiptTicks status={statusFor(message)} className="w-3.5 h-3.5" />}
-                        </div>
+                        {message.failed ? (
+                          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                            <span className="bw-label-xs text-destructive">{t('Not sent')}</span>
+                            <button
+                              type="button"
+                              onClick={() => retrySend(message)}
+                              disabled={sending}
+                              className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-foreground underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                            >
+                              {t('Try again')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => discardFailed(message)}
+                              className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-muted-foreground underline underline-offset-2 cursor-pointer"
+                            >
+                              {t('Delete')}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <span className="bw-label-xs">{formatTime(message.created_at)}</span>
+                            {isMe && <ReceiptTicks status={statusFor(message)} className="w-3.5 h-3.5" />}
+                          </div>
+                        )}
                       </div>
 
                       {/* Reply button for received messages */}

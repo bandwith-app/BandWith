@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
+import { createChatSync, CHAT_LIST_FALLBACK_POLL_MS } from '@/lib/chatSync';
 import { useAuth } from '@/lib/AuthContext';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
@@ -783,6 +784,8 @@ export const useNotifications = (options?: {
   limit?: number;
   /** Inbox only: chat rows stay out of the list (and of realtime inserts). */
   excludeChat?: boolean;
+  /** Inbox only: unread items older than `limit` come too (up to this many). */
+  withOlderUnread?: number;
   onNewEventInvite?: (notification: notificationsService.Notification) => void;
   onNewRehearsalPoll?: (notification: notificationsService.Notification) => void;
 }) => {
@@ -1512,10 +1515,15 @@ export const useChats = (bandId?: string) => {
   useEffect(() => {
     if (!isAuthenticated) { setLoading(false); return; }
 
+    // The list (last message, unread badge) follows Realtime. A message that
+    // arrived while the socket was down was never refetched (audit 07 #8):
+    // now the list is fetched again when the channel (re)joins and slowly
+    // while it is down (src/lib/chatSync.ts).
+    const sync = createChatSync(fetchChats, CHAT_LIST_FALLBACK_POLL_MS);
     const unsubscribe = chatsService.subscribeToNewMessages(() => {
       // Refetch chats to update last message and unread counts
       fetchChats();
-    });
+    }, { onStatus: (status) => sync.onStatus(status) });
 
     // Ticks in the list: refresh (debounced) when someone receives/reads.
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1529,6 +1537,7 @@ export const useChats = (bandId?: string) => {
     const offResume = onAppResume(() => { fetchChats(); });
 
     return () => {
+      sync.stop();
       unsubscribe();
       unsubscribeReceipts();
       clearTimeout(timer);

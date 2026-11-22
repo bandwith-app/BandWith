@@ -33,6 +33,8 @@ import {
 import {
   markAsRead as markNotificationAsRead,
   markAllAsRead as markAllNotificationsAsRead,
+  markIdsAsRead,
+  unreadInboxIds,
   notifyEventMembersCreated,
   notifyEventMembersRemoved,
   notifyEventPendingConfirmations,
@@ -532,6 +534,8 @@ export default function AuthenticatedApp() {
     // means 20 inbox items however busy the band chat is.
     limit: 20,
     excludeChat: true,
+    // Unread items older than those 20 come too: the bell shows and counts them.
+    withOlderUnread: 100,
     onNewEventInvite: (notif) => {
       if (notif.data?.creator_id === user?.id) return;
       // A re-sent invite for a gig already answered needs no pop-up.
@@ -1677,12 +1681,15 @@ export default function AuthenticatedApp() {
     setSelectedNotifications(nonChatNotifs);
     setInboxOpen(true);
     setSelectedNotification(null);
-    if (unreadCount > 0) {
-      markAllNotificationsAsRead().then(() => {
+    // Only what the bell shows is marked read (07 #10): older unread items
+    // come with the list (withOlderUnread), never marked unseen.
+    const shown = unreadInboxIds(realNotifications || []);
+    if (shown.length > 0) {
+      markIdsAsRead(shown).then(() => {
         refetchNotifications?.();
       });
     }
-  }, [realNotifications, unreadCount, refetchNotifications]);
+  }, [realNotifications, refetchNotifications]);
 
   // Computed values
   const notificationGroups = useMemo(() => {
@@ -4708,7 +4715,16 @@ export default function AuthenticatedApp() {
               setSelectedNotifications([]); // the inbox stays open, empty
               removeNotifications(ids);
             }}
-            onMarkAsRead={(id) => { const nid = id || selectedNotification?.id; if (nid) markNotificationAsRead(nid).then(() => refetchNotifications?.()); if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); } }}
+            onMarkAsRead={(id) => {
+              const nid = id || selectedNotification?.id;
+              if (nid) {
+                // The open item is a snapshot: mark it read there too (07 #9).
+                setSelectedNotification((n) => (n && n.id === nid && !n.read ? { ...n, read: true } : n));
+                setSelectedNotifications((list) => (list.some((n) => n.id === nid && !n.read) ? list.map((n) => (n.id === nid ? { ...n, read: true } : n)) : list));
+                markNotificationAsRead(nid).then(() => refetchNotifications?.());
+              }
+              if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
+            }}
             onMarkAllAsRead={() => {
               // The open list is a snapshot: clear its unread dots and count too.
               setSelectedNotifications((p) => p.map((n) => (n.read ? n : { ...n, read: true })));

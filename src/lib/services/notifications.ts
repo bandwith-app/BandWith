@@ -208,6 +208,12 @@ export const getNotifications = async (options?: {
   offset?: number;
   /** The inbox: leave chat rows out, so `limit` counts inbox items only. */
   excludeChat?: boolean;
+  /**
+   * The inbox: also unread items older than the latest `limit` (up to this
+   * many), so opening the bell shows every unread item it marks read and
+   * the bell counts them all (audit 07 #10).
+   */
+  withOlderUnread?: number;
 }): Promise<{ data: Notification[] | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();
@@ -235,9 +241,28 @@ export const getNotifications = async (options?: {
       query = query.range(options.offset, options.offset + (options.limit || 20) - 1);
     }
 
-    const { data, error } = await query;
+    const { data: page, error } = await query;
 
     if (error) throw error;
+
+    let data = page || [];
+    const oldest = data[data.length - 1]?.created_at;
+    if (options?.withOlderUnread && options.limit && !options.offset && !options.unreadOnly && data.length >= options.limit && oldest) {
+      let older = supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('read', false)
+        .lt('created_at', oldest)
+        .order('created_at', { ascending: false })
+        .limit(options.withOlderUnread);
+      if (options.excludeChat) older = older.not('type', 'in', CHAT_TYPES_FILTER);
+      const { data: unreadOlder } = await older;
+      if (unreadOlder?.length) {
+        const have = new Set(data.map((n: Notification) => n.id));
+        data = [...data, ...unreadOlder.filter((n: Notification) => !have.has(n.id))];
+      }
+    }
 
     // Deduplicate notifications (e.g. if push edge function and app both inserted an invite for the same event)
     const deduped: Notification[] = [];
@@ -299,6 +324,32 @@ export const markAsRead = async (notificationId: string): Promise<{ error: Error
     return { error: null };
   } catch (error: any) {
     console.error('[Notifications] Mark as read exception:', error);
+    return { error };
+  }
+};
+
+/** Unread inbox items (not chat rows) among those loaded: what opening the bell shows. */
+export const unreadInboxIds = (list: Array<{ id: string; type: string; read: boolean }>): string[] =>
+  [...new Set(list.filter((n) => !n.read && !isChatNotificationType(n.type)).map((n) => n.id))];
+
+/**
+ * Marks these notifications read (the ones the bell just showed). Opening
+ * the bell used to mark every unread row, also those it never showed
+ * (audit 07 #10).
+ */
+export const markIdsAsRead = async (ids: string[]): Promise<{ error: Error | null }> => {
+  try {
+    if (ids.length === 0) return { error: null };
+    const { data: { user } } = await getSafeUser();
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true, read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .in('id', ids);
+    if (error) throw error;
+    return { error: null };
+  } catch (error: any) {
     return { error };
   }
 };
