@@ -22,7 +22,9 @@ We learn about errors before users report them.
   - its folder `Library/Caches/com.crashlytics.data` and a report for the current run (`FIRCLSReportManager startWithProfiling`); the crash handler is installed, so a crash is written there;
   - no settings fetch and no upload: those wait for `isCrashlyticsCollectionEnabled`. Our start-up `deleteUnsentReports()` removes the written reports while it is off.
 - **Android** (from the SDK's documented behaviour, not read in source here): `FirebaseInitProvider` starts Firebase at process start, which push (FCM) needs anyway; Crashlytics is eager there too, keeps its files under the app's files folder and an installation id in its shared preferences. Same: no upload while off.
-- Keeping Crashlytics from starting at all before the yes is an open question for the main session: see the #277 report (options: patch the iOS plugins to configure Firebase only after the yes; on Android it can only be removed, not delayed, because push needs Firebase).
+- **Decision for this release (2026-11-22): accepted as it is, on both platforms.** Nothing leaves the device before the yes (no settings fetch, no upload), the kept reports are deleted while it is off, and the local installation ID and cache folder are stated here and in the Privacy Policy line below.
+- **Follow-up after the release, iOS only**: start Firebase only after the yes. Patch both Capacitor plugins (`@capacitor-firebase/analytics`, `@capacitor-firebase/crashlytics`) so they don't call `FirebaseApp.configure()` when they load, and configure it on the first yes. Crashes before the yes are then not recorded at all. **Only if it doesn't affect push**: check that APNs registration and any FCM init still work with Firebase configured late, on a simulator and a device, before it ships.
+- Android stays as it is: Firebase must start at launch for push (FCM), and Crashlytics can't be delayed there, only removed.
 
 Switching **Send crash reports** off:
 - no more rows in `client_errors`;
@@ -131,5 +133,5 @@ Readable iOS stacks need the dSYMs. The Xcode phase **Crash reports dSYM upload*
 - what is sent: the error, the screen, the app version and the device type;
 - what never is: no content, no account details;
 - BandWith's own server (Supabase) keeps JavaScript errors for 14 days; on by default, switched off in Settings › Privacy & account › Send crash reports;
-- on the phone apps, Google Firebase Crashlytics processes native crash reports **only if the user allows Anonymous usage statistics** (the same question as analytics); before that nothing is sent, though the Crashlytics library keeps a random installation ID and its crash files on the device (see "Before the yes"; wording to settle with the main session's answer);
+- on the phone apps, Google Firebase Crashlytics processes native crash reports **only if the user allows Anonymous usage statistics** (the same question as analytics); before that nothing is sent, though the Crashlytics library keeps a random installation ID and its crash files on the device (see "Before the yes");
 - both can be switched off at any time in Settings › Privacy & account.
