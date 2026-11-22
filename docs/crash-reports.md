@@ -32,6 +32,7 @@ Switching **Send crash reports** off:
 - reports waiting on the device are dropped, and requests already out are aborted, even one still waiting for a session refresh;
 - on the web the choice is shared by every tab: an opt-out in one tab wins over another tab that still had it on;
 - if the device's storage is blocked, an opt-out still holds until the app is closed (it can only turn reports off, never back on);
+- **storage full** (review #277, Codex): the choice goes to localStorage, else to IndexedDB (`bw-privacy`), and the other tabs hear it at once over a BroadcastChannel (`bw-crash-reports`: a failed write fires no storage event). If neither can save it, Settings says "Couldn't save the choice, free up some space" and reports stay off for the whole session. An off in either store wins. At start, nothing is reported until the choice could be read in both: IndexedDB unreadable means no reports, tried again with the next error;
 - the switch survives the storage clear a failed sign-out does (`src/lib/privacyChoices.ts` keeps it, and the analytics answer with its version): a missing key means on, which only a new install should get;
 - if storage stops answering, the last answer this run saw holds; with none (unreadable from the start), reports are off: it fails closed.
 
@@ -59,7 +60,7 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 | A JSON parse error or another `SyntaxError` that quotes or echoes what it read (`"[ "Lola", no ]" is not valid JSON`, `/Mary Smith(/`): everything from the first quote or the echoed `/…/`, whatever the nesting. The engine's own words at the end stay | `Unexpected token … is not valid JSON` |
 | Numbers of 7+ digits (phone numbers, ids) | `<n>` |
 | Query strings on any link, relative ones too (`/deputy.html?deputy=…`, `/quote.html?t=…`), and fragments after a path | removed |
-| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too, with brackets in the path or the query (`Chart(Private%20Gig).pdf`, `?t=ab(cd)`) | `https://xyz.supabase.co/…` |
+| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the rest goes greedily (review #277, Codex): up to the last file extension on the line, or to the end of the line when there is none, apostrophes, brackets and spaces included (`/Charts/Guns N' Roses.pdf`, `Chart(Private%20Gig).pdf`, `?t=ab(cd)`); `file://` paths the same. A frame's closing bracket stays | `https://xyz.supabase.co/…` |
 | Random-looking strings: 16+ characters with a digit, or 40+ of anything (the app's own bundle names under `/assets/` stay) | `<token>` |
 | **All** quoted text, even one word (a song called "Yesterday"). Each opening quote with its own closing one, typographic ones too (`“ ” ‘ ’ „ ‚ « » ‹ ›`); double quotes first, so an apostrophe inside ("Don't Stop Me Now") is just text; a quote left open hides the rest of the line. The message is made one line first, so a quote across a line break (a lyric) still goes, in the stack's first lines too | `"…"` (so `(reading 'map')` is sent as `(reading '…')`: the stack's file, line and column still point at the code) |
 | A link whose path goes on after a space with another `/` (`…/audio/[Mirage] Mary Smith/x.pdf`): the whole rest, up to the end of the line or a quote | `https://host/…`, `file://…`, `/…` |
@@ -83,6 +84,7 @@ The server cuts everything to size again.
   So the service role is trusted not to correlate: we read reports grouped by version and screen, never joined to people. No one else can read any of these tables. The App Store label stays "not linked" because we never associate reports with an identity.
 - Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, the counters of past hours and days, and its own run history in `cron.job_run_details` older than a day.
 - A report the server refuses for good (a 4xx other than 401, 403, 408, 429) is dropped, so it can't hold up the others.
+- **Nothing leaves without a session** (review #277, Codex): an error on the sign-in screen is kept on the device (never sent with the public key alone) and goes once, after sign-in. An error counts as seen (once per session) only after it is queued: one dropped on the way (switched off meanwhile, queue full) can be reported again.
 - Not signed in, or no signal: up to 5 reports wait on the device and go out after sign-in, when the signal is back (`online`), when the user comes back to the app, or with the next error (a full queue is sent first, then the new one).
 
 ## Reading them
@@ -138,9 +140,16 @@ Readable iOS stacks need the dSYMs. The Xcode phase **Crash reports dSYM upload*
 - **App info and performance › Crash logs** and **Diagnostics**: collected, not shared (Google processes them as our service provider), processed ephemerally: no.
 - Optional for the user: yes (the switches).
 
-**Privacy Policy** (bandwith.fun/privacy, en/it/es): add a "Crash reports" paragraph:
+**Privacy Policy**: not edited here (legal pages are the owner's). Where it is:
+- the bundled policy, the one the app opens (Settings › Privacy Policy, `src/app/components/legal/LegalSheet.tsx`): `public/legal/privacy.html` (English), `privacy-it.html`, `privacy-es.html`;
+- on the web it is the same file at `https://app.bandwith.fun/legal/privacy.html` (`-it`, `-es`): the bandwith.fun footer links there (`site/partials/foot.html`, the language versions through `site/src/i18n/langs.ts`). `site/features/privacy/` is the "Privacy & roles" feature page, not the policy;
+- **French, German and Portuguese have no policy page**: the app and the site open the English one. "In all app languages" needs `privacy-fr.html`, `privacy-de.html`, `privacy-pt.html` and a change to `PRIVACY_LANGS` in `LegalSheet.tsx` (and `langs.ts` if the site gets those languages).
+
+What it needs, a "Crash reports" paragraph:
 - what is sent: the error, the screen, the app version and the device type;
 - what never is: no content, no account details;
-- BandWith's own server (Supabase) keeps JavaScript errors for 14 days; on by default, switched off in Settings › Privacy & account › Send crash reports;
-- on the phone apps, Google Firebase Crashlytics processes native crash reports **only if the user allows Anonymous usage statistics** (the same question as analytics); before that nothing is sent, though the Crashlytics library keeps a random installation ID and its crash files on the device (see "Before the yes");
-- both can be switched off at any time in Settings › Privacy & account.
+- **JavaScript error reports go to BandWith's own server (Supabase, United States)**: on by default, switched off in Settings › Privacy & account › Send crash reports; kept 14 days;
+- **native crash reports go to Google (Firebase Crashlytics) only if the user allows Anonymous usage statistics** (the same question as analytics, opt-in); before that nothing is sent, though the Crashlytics library keeps a random installation ID and its crash files on the device (see "Before the yes");
+- both can be switched off at any time in Settings › Privacy & account;
+- the processors table: add "Google (Firebase Crashlytics): native crash reports in the Android and iOS apps, only with your consent", and "crash reports" to Supabase's purposes;
+- the retention list: "Crash reports: 14 days on our server; Crashlytics: 90 days" (Firebase's stated retention: check it when writing).

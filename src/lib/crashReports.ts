@@ -37,23 +37,131 @@ const STACK_MAX = 4000;
 
 const listeners = new Set<() => void>();
 /**
- * Off for this run because storage is blocked. Only ever OFF: where storage
- * works it is the truth (shared by every tab), so no tab can turn reports
- * back on over an opt-out made in another one.
+ * Off for this run: storage is blocked or full, or another tab said no over
+ * the BroadcastChannel. Only ever OFF: where storage works it is the truth
+ * (shared by every tab), so no tab can turn reports back on over an opt-out
+ * made in another one.
  */
 let blockedOptOut = false;
 /** The last answer read or written here: what holds when storage stops answering. */
 let lastKnown: boolean | null = null;
+/** The last choice could not be saved anywhere (Settings says so). */
+let saveFailed = false;
+
+/**
+ * Where the choice goes when localStorage is full: IndexedDB (review #277,
+ * Codex). Replaced in tests. No IndexedDB at all (some private modes): nothing
+ * can have been saved there, so it reads as empty.
+ */
+export type ChoiceStore = { get(key: string): Promise<string | null>; set(key: string, value: string): Promise<void> };
+const IDB_NAME = 'bw-privacy';
+const IDB_STORE = 'choices';
+const IDB_TIMEOUT_MS = 3000;
+const idbRequest = <T,>(run: (store: IDBObjectStore) => IDBRequest<T>, mode: IDBTransactionMode): Promise<T | null> =>
+  new Promise<T | null>((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      if (mode === 'readonly') resolve(null);
+      else reject(new Error('no IndexedDB'));
+      return;
+    }
+    const timer = setTimeout(() => reject(new Error('IndexedDB timeout')), IDB_TIMEOUT_MS);
+    const done = (fn: () => void) => {
+      clearTimeout(timer);
+      fn();
+    };
+    const open = indexedDB.open(IDB_NAME, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(IDB_STORE);
+    open.onerror = () => done(() => reject(open.error));
+    open.onsuccess = () => {
+      const db = open.result;
+      try {
+        const req = run(db.transaction(IDB_STORE, mode).objectStore(IDB_STORE));
+        req.onsuccess = () => done(() => resolve((req.result as T) ?? null));
+        req.onerror = () => done(() => reject(req.error));
+      } catch (e) {
+        done(() => reject(e));
+      } finally {
+        db.close();
+      }
+    };
+  });
+const idbStore: ChoiceStore = {
+  get: (key) => idbRequest<string>((st) => st.get(key) as IDBRequest<string>, 'readonly'),
+  set: (key, value) => idbRequest((st) => st.put(value, key), 'readwrite').then(() => undefined),
+};
+let choiceStore: ChoiceStore = idbStore;
+/** What the second store holds: 'off' there wins over anything in localStorage. */
+let storedElsewhere: string | null = null;
+/** 'unread' until it is read; 'failed' when it can't be (no reports until it can). */
+let elsewhereState: 'unread' | 'read' | 'failed' = 'unread';
+let elsewhereRead: Promise<void> | null = null;
+let writes = 0;
+
+/** Reads the second store once (again after a failure). Never throws. */
+function ensureChoiceRead(): Promise<void> {
+  if (elsewhereState === 'read') return Promise.resolve();
+  return (elsewhereRead ??= (async () => {
+    const before = writes;
+    try {
+      const v = await choiceStore.get(CRASH_REPORTS_KEY);
+      if (writes === before) storedElsewhere = v;
+      elsewhereState = 'read';
+    } catch {
+      elsewhereState = 'failed';
+    } finally {
+      elsewhereRead = null;
+    }
+    if (storedElsewhere === 'off') changed();
+  })());
+}
+
+/** What storage says, or null when it can't be read. */
+function readStored(): boolean | null {
+  if (storedElsewhere === 'off') return false;
+  try {
+    return localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
+  } catch {
+    return null;
+  }
+}
 
 /** Storage unreadable: the last answer this run saw, else off (fails closed). */
 export function readCrashReportsEnabled(): boolean {
   if (blockedOptOut) return false;
+  const stored = readStored();
+  if (stored === null) return lastKnown ?? false;
+  lastKnown = stored;
+  return stored;
+}
+
+/** Reporting: the switch, and only once the choice could be read everywhere it may be (never on a guess). */
+async function reportingAllowed(): Promise<boolean> {
+  if (!readCrashReportsEnabled()) return false;
+  await ensureChoiceRead();
+  return elsewhereState === 'read' && readCrashReportsEnabled();
+}
+
+/** The last choice could not be saved: Settings shows "Couldn't save the choice, free up some space". */
+export const readCrashReportsSaveFailed = () => saveFailed;
+
+/** Tells the other tabs at once (a failed write fires no storage event). */
+const CHANNEL_NAME = 'bw-crash-reports';
+let channel: BroadcastChannel | null = null;
+function openChannel(): BroadcastChannel | null {
+  if (channel || typeof BroadcastChannel === 'undefined') return channel;
   try {
-    lastKnown = localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
-    return lastKnown;
+    channel = new BroadcastChannel(CHANNEL_NAME);
+    channel.onmessage = (e: MessageEvent) => {
+      const on = (e.data as { on?: unknown } | null)?.on;
+      if (on === false) blockedOptOut = true;
+      else if (on === true) blockedOptOut = false;
+      else return;
+      changed();
+    };
   } catch {
-    return lastKnown ?? false;
+    channel = null;
   }
+  return channel;
 }
 
 let pluginPromise: Promise<typeof import('@capacitor-firebase/crashlytics')> | null = null;
@@ -68,7 +176,8 @@ const nativeAllowed = () => readCrashReportsEnabled() && readCrashlyticsConsent(
 /** Native only; no Firebase config in a build → nothing happens. */
 async function applyNative() {
   if (!Capacitor.isNativePlatform()) return;
-  const on = nativeAllowed();
+  await ensureChoiceRead();
+  const on = elsewhereState === 'read' && nativeAllowed();
   try {
     const { FirebaseCrashlytics } = await loadPlugin();
     await FirebaseCrashlytics.setEnabled({ enabled: on });
@@ -92,16 +201,47 @@ function changed() {
   void applyNative();
 }
 
-export function setCrashReportsEnabled(on: boolean) {
-  blockedOptOut = false;
+/**
+ * Saves the choice: localStorage, else IndexedDB (storage full). Takes effect
+ * at once for this run either way, and the other tabs hear it. Resolves true
+ * when the choice will read back after a reload; false: nothing could save it,
+ * Settings says so, and an off still holds for the whole session.
+ */
+export async function setCrashReportsEnabled(on: boolean): Promise<boolean> {
+  const value = on ? 'on' : 'off';
+  writes++;
+  blockedOptOut = !on; // until a save is confirmed, an off holds in memory
   lastKnown = on;
+  let local = false;
   try {
-    localStorage.setItem(CRASH_REPORTS_KEY, on ? 'on' : 'off');
+    localStorage.setItem(CRASH_REPORTS_KEY, value);
+    local = true;
   } catch {
-    /* storage blocked: an opt-out still holds for this run */
-    if (!on) blockedOptOut = true;
+    /* full or blocked: IndexedDB below */
   }
   changed();
+  try {
+    openChannel()?.postMessage({ on });
+  } catch {
+    /* no other tabs to tell */
+  }
+  let elsewhere = false;
+  try {
+    await choiceStore.set(CRASH_REPORTS_KEY, value);
+    storedElsewhere = value;
+    elsewhereState = 'read';
+    elsewhere = true;
+  } catch {
+    /* no IndexedDB, or full too */
+  }
+  // Saved = a reload reads this choice back: off in either store, on only where nothing says off.
+  const saved = on ? local && storedElsewhere !== 'off' : local || elsewhere;
+  const before = readCrashReportsEnabled();
+  saveFailed = !saved;
+  blockedOptOut = !on && !saved;
+  if (readCrashReportsEnabled() !== before) changed();
+  else listeners.forEach((l) => l()); // the "couldn't save" line
+  return saved;
 }
 
 export const useCrashReportsEnabled = (): boolean =>
@@ -114,6 +254,19 @@ export const useCrashReportsEnabled = (): boolean =>
     },
     readCrashReportsEnabled,
     () => true,
+  );
+
+/** Settings: the last choice could not be saved anywhere. */
+export const useCrashReportsSaveFailed = (): boolean =>
+  useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => {
+        listeners.delete(l);
+      };
+    },
+    readCrashReportsSaveFailed,
+    () => false,
   );
 
 // ------------------------------------------------------------- scrubbing --
@@ -196,13 +349,49 @@ const ownOrigin = (origin: string | undefined) => {
   }
 };
 
-function scrubLinks(s: string): string {
-  return s.replace(LINK, (all, origin: string | undefined, path: string, tail: string | undefined, offset: number) => {
+/**
+ * Where a redacted path ends (review #277, Codex): greedily, at the last file
+ * extension on the line, or at the end of the line when none follows and the
+ * path has none (a name can hold apostrophes, brackets and spaces:
+ * /Charts/Guns N' Roses.pdf). A frame's closing bracket at the end of the
+ * line stays when its opening one is before the path.
+ */
+const EXTENSION = /\.[A-Za-z0-9]{2,5}\b/g;
+function pathEnd(line: string, pathFrom: string | number, matchEnd: number, hasExtension: boolean): number {
+  const from = typeof pathFrom === 'number' ? pathFrom : line.indexOf(pathFrom);
+  let end = -1;
+  EXTENSION.lastIndex = matchEnd;
+  for (let m = EXTENSION.exec(line); m; m = EXTENSION.exec(line)) end = m.index + m[0].length;
+  if (end === -1) end = hasExtension ? matchEnd : line.length;
+  if (end === line.length && /\)\s*$/.test(line) && line.lastIndexOf('(', from) !== -1) end = line.lastIndexOf(')');
+  return Math.max(end, matchEnd);
+}
+const ENDS_WITH_EXTENSION = /\.[A-Za-z0-9]{2,5}\)?$/;
+
+function scrubLinksLine(line: string): string {
+  let out = '';
+  let last = 0;
+  LINK.lastIndex = 0;
+  for (let m = LINK.exec(line); m; m = LINK.exec(line)) {
+    const [all, origin, path, tail] = m as unknown as [string, string | undefined, string, string | undefined];
+    if (!all) {
+      LINK.lastIndex++;
+      continue;
+    }
+    const offset = m.index;
     // A relative path only after a space, a bracket, a quote or the start ("a/b" is not a link).
-    if (!origin && offset > 0 && !/[\s('"=,:[]/.test(s[offset - 1])) return all;
-    if (!tail && APP_FILE.test(path) && ownOrigin(origin)) return all;
-    return `${origin ?? ''}/…`;
-  });
+    if (!origin && offset > 0 && !/[\s('"=,:[]/.test(line[offset - 1])) continue;
+    if (!tail && APP_FILE.test(path) && ownOrigin(origin)) continue;
+    const end = pathEnd(line, offset, offset + all.length, ENDS_WITH_EXTENSION.test(all));
+    out += `${line.slice(last, offset)}${origin ?? ''}/…`;
+    last = end;
+    LINK.lastIndex = end;
+  }
+  return out + line.slice(last);
+}
+
+function scrubLinks(s: string): string {
+  return s.split('\n').map(scrubLinksLine).join('\n');
 }
 
 /**
@@ -256,11 +445,24 @@ const BUNDLE_PATH = /^file:\/\/(?:\/[^\s]*\/App\.app\/public\/|\/android_asset\/
 // The bundle file's name, with a frame's line and column (index-B4xK9q1a.js:1:2).
 const BUNDLE_FILE = /\/([\w.-]+\.(?:js|mjs|css|html)(?::\d+){0,2})$/;
 
-function scrubFileLinks(s: string): string {
-  return s.replace(FILE_LINK, (all) => {
+function scrubFileLinesLine(line: string): string {
+  let out = '';
+  let last = 0;
+  FILE_LINK.lastIndex = 0;
+  for (let m = FILE_LINK.exec(line); m; m = FILE_LINK.exec(line)) {
+    const all = m[0];
     const name = BUNDLE_PATH.test(all) && !all.includes('..') ? BUNDLE_FILE.exec(all)?.[1] : undefined;
-    return name ? `file://…/${name}` : 'file://…';
-  });
+    // The app's own bundle file keeps its name; any other path goes whole (greedy, as links do).
+    const end = name ? m.index + all.length : pathEnd(line, m.index, m.index + all.length, ENDS_WITH_EXTENSION.test(all));
+    out += line.slice(last, m.index) + (name ? `file://…/${name}` : 'file://…');
+    last = end;
+    FILE_LINK.lastIndex = Math.max(end, m.index + 1);
+  }
+  return out + line.slice(last);
+}
+
+function scrubFileLinks(s: string): string {
+  return s.split('\n').map(scrubFileLinesLine).join('\n');
 }
 
 /**
@@ -388,7 +590,10 @@ function describe(err: unknown): { message: string; stack: string | null } {
 // ------------------------------------------------------------- reporting --
 
 let sent = 0;
+/** Errors queued this session: each goes once. Marked only once queued (an error dropped on the way can come again). */
 const seen = new Set<string>();
+/** Being prepared now (the version lookup): a second copy meanwhile is the same error. */
+const preparing = new Set<string>();
 /** Waiting to go out, oldest first (not signed in yet, no signal), a few at most. */
 const pending: Array<Record<string, unknown>> = [];
 
@@ -398,8 +603,21 @@ const inFlight = new Set<AbortController>();
 /** A 4xx the same report would get again: dropped, so it can't hold up the queue. Not signed in, slow or busy: kept. */
 const KEEP_FOR_LATER = new Set([401, 403, 408, 429]);
 
+/** Signed in now. No auth, or no answer: no (nothing leaves unauthenticated). */
+async function hasSession(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!data?.session;
+  } catch {
+    return false;
+  }
+}
+
 /** 'sent', 'later' (kept for the next go) or 'drop' (refused for good). */
 async function send(args: Record<string, unknown>): Promise<'sent' | 'later' | 'drop'> {
+  if (!readCrashReportsEnabled()) return 'later';
+  // Signed out (the sign-in screen): kept on the device until sign-in, never sent without a session.
+  if (!(await hasSession())) return 'later';
   if (!readCrashReportsEnabled()) return 'later';
   const ctl = new AbortController();
   inFlight.add(ctl);
@@ -420,6 +638,10 @@ let flushing: Promise<void> | null = null;
 function flushPending(): Promise<void> {
   if (flushing) return flushing;
   flushing = (async () => {
+    if (pending.length && !(await reportingAllowed())) {
+      if (!readCrashReportsEnabled()) pending.length = 0;
+      return;
+    }
     while (pending.length) {
       if (!readCrashReportsEnabled()) {
         pending.length = 0;
@@ -444,31 +666,37 @@ function flushPending(): Promise<void> {
 /** Report one error. Never throws. */
 export async function reportClientError(kind: ClientErrorKind, err: unknown): Promise<void> {
   try {
-    if (!readCrashReportsEnabled()) return;
+    if (!(await reportingAllowed())) return;
     const raw = describe(err);
     if (IGNORED.some((re) => re.test(raw.message) || re.test(raw.stack ?? ''))) return;
     const message = scrubMessage(raw.message);
     const stack = scrubStack(raw.stack);
     const signature = `${kind}|${message}`;
-    if (!message || seen.has(signature) || sent >= MAX_PER_SESSION) return;
-    seen.add(signature);
-    sent++;
+    if (!message || seen.has(signature) || preparing.has(signature) || sent >= MAX_PER_SESSION) return;
     // The screen in view now, before any wait (navigating meanwhile would name the next one).
     const route = currentScreenName()?.slice(0, 60) ?? null;
-    const args = {
-      p_kind: kind,
-      p_message: message,
-      p_stack: stack,
-      p_app_version: await installedVersion().catch(() => null),
-      p_platform: currentPlatform(),
-      p_route: route,
-    };
-    // Switched off while the version was read: not sent, not kept.
-    if (!readCrashReportsEnabled()) return;
-    // Queue full (no signal for a while): try to send the kept ones first.
-    if (pending.length >= MAX_PENDING) await flushPending();
-    if (!readCrashReportsEnabled() || pending.length >= MAX_PENDING) return;
-    pending.push(args);
+    preparing.add(signature);
+    let args: Record<string, unknown>;
+    try {
+      args = {
+        p_kind: kind,
+        p_message: message,
+        p_stack: stack,
+        p_app_version: await installedVersion().catch(() => null),
+        p_platform: currentPlatform(),
+        p_route: route,
+      };
+      // Switched off while the version was read: not sent, not kept, not seen.
+      if (!readCrashReportsEnabled()) return;
+      // Queue full (no signal for a while): try to send the kept ones first.
+      if (pending.length >= MAX_PENDING) await flushPending();
+      if (!readCrashReportsEnabled() || pending.length >= MAX_PENDING || sent >= MAX_PER_SESSION) return;
+      pending.push(args);
+      seen.add(signature);
+      sent++;
+    } finally {
+      preparing.delete(signature);
+    }
     await flushPending();
     // The flush running before this one was pushed may have stopped early: one more go.
     if (pending.includes(args)) await flushPending();
@@ -483,6 +711,8 @@ let installed = false;
 export function installCrashReports(): () => void {
   if (installed || typeof window === 'undefined') return () => {};
   installed = true;
+  openChannel();
+  void ensureChoiceRead();
   void applyNative();
   // Another tab (web) changed the switch: storage is the truth.
   const onStorage = (e: StorageEvent) => {
@@ -521,12 +751,29 @@ export function installCrashReports(): () => void {
     window.removeEventListener('error', onError);
     window.removeEventListener('unhandledrejection', onRejection as EventListener);
     unsubscribe?.();
+    channel?.close();
+    channel = null;
   };
+}
+
+/** Tests: the second store (null: the real IndexedDB, empty in jsdom). Kept across a reset, like a reload. */
+export function __setChoiceStoreForTest(store: ChoiceStore | null) {
+  choiceStore = store ?? idbStore;
+  storedElsewhere = null;
+  elsewhereState = 'unread';
+  elsewhereRead = null;
 }
 
 export function __resetCrashReportsForTest() {
   sent = 0;
   seen.clear();
+  preparing.clear();
+  saveFailed = false;
+  storedElsewhere = null;
+  elsewhereState = 'unread';
+  elsewhereRead = null;
+  channel?.close();
+  channel = null;
   pending.length = 0;
   listeners.clear();
   blockedOptOut = false;

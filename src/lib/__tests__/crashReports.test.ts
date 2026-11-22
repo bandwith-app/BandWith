@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   consent: null as 'granted' | 'denied' | null,
   consentListeners: [] as Array<(c: 'granted' | 'denied' | null) => void>,
   screen: 'Stage' as string | null,
+  /** The signed-in session (null: signed out, nothing may be sent). */
+  session: { access_token: 'x' } as unknown,
 }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -46,6 +48,7 @@ vi.mock('@/lib/supabase', () => ({
       return builder;
     },
     auth: {
+      getSession: async () => ({ data: { session: h.session }, error: null }),
       onAuthStateChange: (cb: (event: string) => void) => {
         h.auth = cb;
         return { data: { subscription: { unsubscribe: () => {} } } };
@@ -89,6 +92,8 @@ import {
   scrubMessage,
   scrubStack,
   setCrashReportsEnabled,
+  readCrashReportsSaveFailed,
+  __setChoiceStoreForTest,
 } from '../crashReports';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -109,8 +114,10 @@ beforeEach(() => {
   h.consent = null;
   h.consentListeners = [];
   h.screen = 'Stage';
+  h.session = { access_token: 'x' };
   vi.unstubAllGlobals();
   __resetCrashReportsForTest();
+  __setChoiceStoreForTest(null);
 });
 
 const gate = () => {
@@ -646,5 +653,200 @@ describe('links with spaces inside brackets (review #277, Claude r5)', () => {
     );
     expect(scrubMessage('Failed to load /deputy.html and then a / b')).toBe('Failed to load /deputy.html and then a / b');
     expect(scrubMessage('at https://cdn.example.com/lib/x.js:1:2')).toBe('at https://cdn.example.com/…');
+  });
+});
+
+// ── Codex round (review #277) ───────────────────────────────────────────────
+describe('a path goes whole, apostrophes, brackets and spaces included (Codex B1)', () => {
+  const NAME = /Guns|Roses|Charts|Mary|Smith|Live|Yesterday|Mirage/;
+  it('an apostrophe in a file name does not end the path', () => {
+    const cases = [
+      "Error: can't open '/Charts/Guns N' Roses.pdf'",
+      "Error: can't open /Charts/Guns N' Roses.pdf",
+      'Load failed for "/Charts/Guns N\' Roses.pdf"',
+      "Failed to fetch https://x.supabase.co/storage/v1/object/sign/charts/Guns N' Roses.pdf",
+      "Could not open file:///var/mobile/Documents/Guns N' Roses.pdf",
+    ];
+    for (const raw of cases) expect(scrubMessage(raw), raw).not.toMatch(NAME);
+    expect(scrubMessage(cases[3])).toBe('Failed to fetch https://x.supabase.co/…');
+    expect(scrubMessage(cases[4])).toBe('Could not open file://…');
+  });
+
+  it('brackets and spaces in the name, and a name with no extension, go up to the end of the line', () => {
+    const cases = [
+      "GET /storage/v1/object/sign/audio/Guns N' Roses (Live) [2019]/Mary Smith - Yesterday.mp3 400",
+      'Failed to fetch https://x.supabase.co/storage/v1/object/sign/audio/Mary Smith (Live).mp3',
+      "Failed to load /Charts/Guns N' Roses",
+      'Failed to load /Charts/[Mirage] Mary Smith',
+    ];
+    for (const raw of cases) expect(scrubMessage(raw), raw).not.toMatch(NAME);
+    expect(scrubMessage(cases[2])).toBe('Failed to load /…');
+  });
+
+  it('the same in a stack, where the frame keeps its position', () => {
+    const s = scrubStack("Error: x\n    at load (https://x.supabase.co/storage/v1/object/sign/Guns N' Roses.js:1:2)")!;
+    expect(s).not.toMatch(NAME);
+    expect(s).toMatch(/:1:2\)$/);
+  });
+});
+
+describe('storage full: the opt-out fails closed (Codex B2)', () => {
+  /** An in-memory IndexedDB stand-in; `broken` makes it throw. */
+  const store = () => {
+    const data = new Map<string, string>();
+    const s = {
+      broken: false,
+      data,
+      get: async (k: string) => {
+        if (s.broken) throw new Error('IndexedDB unavailable');
+        return data.get(k) ?? null;
+      },
+      set: async (k: string, v: string) => {
+        if (s.broken) throw new Error('QuotaExceededError');
+        data.set(k, v);
+      },
+    };
+    return s;
+  };
+  /** localStorage that reads but can't take a new value (full). restore() puts the real one back. */
+  const fullLocalStorage = () => {
+    const real = localStorage;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => real.getItem(k),
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+      removeItem: (k: string) => real.removeItem(k),
+      clear: () => real.clear(),
+      key: (i: number) => real.key(i),
+      length: 0,
+    });
+    return { mockRestore: () => vi.stubGlobal('localStorage', real) };
+  };
+
+  it('localStorage full: the off goes to IndexedDB, and holds after a reload', async () => {
+    const idb = store();
+    __setChoiceStoreForTest(idb);
+    const spy = fullLocalStorage();
+    expect(await setCrashReportsEnabled(false)).toBe(true);
+    expect(idb.data.get(CRASH_REPORTS_KEY)).toBe('off');
+    expect(readCrashReportsSaveFailed()).toBe(false);
+    spy.mockRestore();
+    __resetCrashReportsForTest(); // a reload: memory gone, storage kept
+    await reportClientError('error', new Error('after reload'));
+    expect(h.rpc).toHaveLength(0);
+    expect(readCrashReportsEnabled()).toBe(false);
+  });
+
+  it('nothing can be saved: "Couldn\'t save the choice", and off for the whole session', async () => {
+    const idb = store();
+    idb.broken = true;
+    __setChoiceStoreForTest(idb);
+    fullLocalStorage();
+    expect(await setCrashReportsEnabled(false)).toBe(false);
+    expect(readCrashReportsSaveFailed()).toBe(true);
+    await reportClientError('error', new Error('still off'));
+    expect(h.rpc).toHaveLength(0);
+    expect(readCrashReportsEnabled()).toBe(false);
+  });
+
+  it('the other tabs hear the off at once (BroadcastChannel), even when no storage event fires', async () => {
+    const channels: Array<{ name: string; onmessage: ((e: { data: unknown }) => void) | null; posted: unknown[] }> = [];
+    class FakeChannel {
+      name: string;
+      onmessage: ((e: { data: unknown }) => void) | null = null;
+      posted: unknown[] = [];
+      constructor(name: string) {
+        this.name = name;
+        channels.push(this);
+      }
+      postMessage(d: unknown) {
+        this.posted.push(d);
+      }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    const stop = installCrashReports();
+    const full = fullLocalStorage();
+    await setCrashReportsEnabled(false);
+    expect(channels.some((c) => c.posted.some((d) => (d as { on?: boolean }).on === false))).toBe(true);
+    // This tab, told by another one: off at once.
+    full.mockRestore();
+    stop();
+    __resetCrashReportsForTest();
+    const stop2 = installCrashReports();
+    const mine = channels[channels.length - 1];
+    expect(readCrashReportsEnabled()).toBe(true);
+    mine.onmessage?.({ data: { on: false } });
+    expect(readCrashReportsEnabled()).toBe(false);
+    await reportClientError('error', new Error('other tab said no'));
+    expect(h.rpc).toHaveLength(0);
+    stop2();
+  });
+
+  it('on reload, a choice that can\'t be read means no report until it can', async () => {
+    const idb = store();
+    idb.broken = true;
+    __setChoiceStoreForTest(idb);
+    await reportClientError('error', new Error('unreadable'));
+    expect(h.rpc).toHaveLength(0);
+    idb.broken = false;
+    await reportClientError('error', new Error('readable now'));
+    await flush();
+    expect(h.rpc.map((c) => c.args.p_message)).toEqual(['Error: readable now']);
+  });
+
+  it('the Settings row shows the message', async () => {
+    // (CrashReportsRow.test.tsx renders it; here: the flag clears after a save that works.)
+    const idb = store();
+    idb.broken = true;
+    __setChoiceStoreForTest(idb);
+    const spy = fullLocalStorage();
+    await setCrashReportsEnabled(false);
+    expect(readCrashReportsSaveFailed()).toBe(true);
+    spy.mockRestore();
+    idb.broken = false;
+    expect(await setCrashReportsEnabled(false)).toBe(true);
+    expect(readCrashReportsSaveFailed()).toBe(false);
+  });
+});
+
+describe('never sent before sign-in (Codex minor)', () => {
+  it('an error on the sign-in screen stays on the device, and goes once after sign-in', async () => {
+    const stop = installCrashReports();
+    h.session = null;
+    await reportClientError('error', new Error('on the sign-in screen'));
+    await flush();
+    expect(h.rpc).toHaveLength(0);
+    h.session = { access_token: 'x' };
+    h.auth?.('SIGNED_IN');
+    await flush();
+    await flush();
+    expect(h.rpc.map((c) => c.args.p_message)).toEqual(['Error: on the sign-in screen']);
+    h.auth?.('TOKEN_REFRESHED');
+    await flush();
+    expect(h.rpc).toHaveLength(1);
+    stop();
+  });
+});
+
+describe('an error is "seen" only once it is queued (Codex minor)', () => {
+  it('switched off while the version was read: the same error later is still reported', async () => {
+    const g = gate();
+    h.version = async () => {
+      await g.p;
+      return '1.0.14';
+    };
+    const first = reportClientError('error', new Error('twice'));
+    await flush();
+    await setCrashReportsEnabled(false);
+    g.open();
+    await first;
+    expect(h.rpc).toHaveLength(0);
+    h.version = async () => '1.0.14';
+    await setCrashReportsEnabled(true);
+    await reportClientError('error', new Error('twice'));
+    await flush();
+    expect(h.rpc.map((c) => c.args.p_message)).toEqual(['Error: twice']);
   });
 });

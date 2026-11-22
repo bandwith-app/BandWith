@@ -9,20 +9,23 @@ vi.mock('@/lib/supabase', () => ({
       h.rpc.push(args);
       return { data: true, error: null };
     },
+    auth: { getSession: async () => ({ data: { session: { access_token: 'x' } }, error: null }) },
   },
 }));
 
 import { CrashReportsRow } from '../CrashReportsRow';
-import { readCrashReportsEnabled, __resetCrashReportsForTest } from '@/lib/crashReports';
+import { readCrashReportsEnabled, __resetCrashReportsForTest, __setChoiceStoreForTest } from '@/lib/crashReports';
 import { ErrorBoundary } from '@/app/components/ui/ErrorBoundary';
 
 beforeEach(() => {
   localStorage.clear();
   __resetCrashReportsForTest();
+  __setChoiceStoreForTest(null);
 });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('Send crash reports (Settings › Privacy & account)', () => {
@@ -33,6 +36,29 @@ describe('Send crash reports (Settings › Privacy & account)', () => {
     expect(screen.getByText(/Never your songs, gigs, messages or contacts/)).toBeInTheDocument();
     fireEvent.click(sw);
     expect(readCrashReportsEnabled()).toBe(false);
+    expect(screen.getByRole('switch', { name: 'Send crash reports' })).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+describe('storage full (review #277, Codex)', () => {
+  it('the choice that could not be saved says so, and stays off', async () => {
+    __setChoiceStoreForTest({
+      get: async () => null,
+      set: async () => {
+        throw new Error('QuotaExceededError');
+      },
+    });
+    const real = localStorage;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => real.getItem(k),
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError');
+      },
+      removeItem: (k: string) => real.removeItem(k),
+    });
+    render(<CrashReportsRow />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Send crash reports' }));
+    expect(await screen.findByText("Couldn't save the choice, free up some space")).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Send crash reports' })).toHaveAttribute('aria-checked', 'false');
   });
 });
