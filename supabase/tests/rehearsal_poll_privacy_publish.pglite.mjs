@@ -412,6 +412,21 @@ ok(flagAfter === '', `B4 the restore flag is off again after the RPC (${JSON.str
 const trg = (await db.query(`SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.events'::regclass AND NOT tgisinternal ORDER BY tgname`)).rows.map((r) => r.tgname);
 ok(trg[0] === 'bw_events_00_keep_skip_dates', `B4 the keep trigger fires first by name (${trg.join(', ')})`);
 
+// Claude #297 round 4: a monthly series moved keeps its deleted dates on the
+// same repeats, counted in months and clamped (#298 MONTHLY_VECTORS), not
+// shifted by days.
+const MONTHLY = id(35);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type) VALUES
+  ('${MONTHLY}','${BAND_A}','Monthly jam','2027-01-31', true, '{"frequency":"monthly","interval":1,"skip_dates":["2027-02-28","2027-04-30"]}', 'rehearsal')`);
+const monthlySkips = async () => (await db.query(`SELECT recurrence_rule -> 'skip_dates' AS s FROM events WHERE id = $1`, [MONTHLY])).rows[0].s;
+await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2027-01-29' WHERE id = $1`, [MONTHLY]));
+ok(JSON.stringify(await monthlySkips()) === '["2027-02-28","2027-04-29"]', `monthly: the series moved from the 31st to the 29th keeps Feb 28 and Apr 30 → Apr 29 (${JSON.stringify(await monthlySkips())})`);
+await db.exec(`DELETE FROM events WHERE id = '${MONTHLY}'`);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type) VALUES
+  ('${MONTHLY}','${BAND_A}','Monthly jam','2027-01-30', true, '{"frequency":"monthly","interval":1,"skip_dates":["2027-02-28","2027-03-30"]}', 'rehearsal')`);
+await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2027-01-27' WHERE id = $1`, [MONTHLY]));
+ok(JSON.stringify(await monthlySkips()) === '["2027-02-27","2027-03-27"]', `monthly: the series on the 30th moved to the 27th: Feb 28 → Feb 27, 2027 (${JSON.stringify(await monthlySkips())})`);
+
 // ---- Claude #297 round 3 #3: a deleted date is announced, in each member's language
 await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${INVITED}'; DELETE FROM notifications;`);
 const notes = async () => (await db.query(`SELECT user_id, type, title, body, data FROM notifications ORDER BY user_id`)).rows;

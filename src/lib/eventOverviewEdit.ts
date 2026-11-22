@@ -8,6 +8,7 @@
  */
 import { addressWithoutCity } from '@/lib/eventAddress';
 import { mergeRecurrenceRule } from '@/lib/recurrenceSkips';
+import { monthlyOccurrence } from '@/lib/recurrence';
 
 export type EditKind = 'gig' | 'rehearsal';
 
@@ -180,19 +181,37 @@ export function eventCardPatch(
 /**
  * The series start to save when one later date of it (`saved.seriesDate`)
  * was edited and it still repeats: null (not written: the date was left
- * alone, or moved for this date only), the start moved by the same days
- * (the whole series), or undefined (not such a date: save the date as is).
+ * alone, or moved for this date only), the new start (the whole series), or
+ * undefined (not such a date: save the date as is).
+ *
+ * The whole series: weekly moves by the same days; monthly takes its day of
+ * the month from the new date, as many months back as that date is from the
+ * start (#298's monthlyOccurrence), so a date shown clamped (Apr 30 of a
+ * series on the 31st) moved to the 29th makes a series on the 29th, not on
+ * the 30th (Claude #297 round 4).
  */
 export function occurrenceStart(
-  saved: { date?: string; seriesDate?: string } | null | undefined,
+  saved: { date?: string; seriesDate?: string; recurrence_rule?: unknown } | null | undefined,
   newDate: string,
   repeating: boolean,
   moveScope?: 'date' | 'series',
 ): string | null | undefined {
   if (!saved?.seriesDate || !saved.date || !repeating) return undefined;
-  if (newDate !== saved.date && moveScope === 'series') return shiftDay(saved.seriesDate, daysApart(saved.date, newDate));
+  if (newDate !== saved.date && moveScope === 'series') {
+    if (isMonthly(saved.recurrence_rule)) {
+      return monthlyOccurrence(newDate, -(monthIndex(saved.date) - monthIndex(saved.seriesDate))) ?? saved.seriesDate;
+    }
+    return shiftDay(saved.seriesDate, daysApart(saved.date, newDate));
+  }
   return null;
 }
+
+const isMonthly = (rule: unknown): boolean => {
+  const r = (rule && typeof rule === 'object' ? rule : {}) as { freq?: unknown; frequency?: unknown };
+  return String(r.freq || r.frequency || '').toLowerCase() === 'monthly';
+};
+/** Months since year 0 (YYYY-MM-DD). */
+export const monthIndex = (ymd: string): number => Number(ymd.slice(0, 4)) * 12 + Number(ymd.slice(5, 7)) - 1;
 
 const noonOf = (ymd: string) => {
   const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);

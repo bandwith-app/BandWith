@@ -78,7 +78,8 @@
 --     skip_dates back into any new recurrence_rule (union), so a cadence
 --     edit made at the same time, or an older build writing the whole rule,
 --     never brings a deleted date back. When the series start moves, the
---     stored dates move by the same number of days. Turning the repeat off (rule NULL)
+--     stored dates move with it: weekly by the same number of days, monthly
+--     to the same repeat counted in months (clamped, #298). Turning the repeat off (rule NULL)
 --     still clears it. Only bw_restore_rehearsal_date(event, date) takes a
 --     date out, through a transaction-local flag (bw.restore_skip). The
 --     only other BEFORE UPDATE trigger on events is update_events_updated_at
@@ -534,6 +535,7 @@ DECLARE
   v_old jsonb;
   v_new jsonb;
   v_shift integer := 0;
+  v_monthly boolean;
   v_all jsonb;
 BEGIN
   IF jsonb_typeof(NEW.recurrence_rule) IS DISTINCT FROM 'object' THEN
@@ -547,16 +549,26 @@ BEGIN
     RETURN NEW;
   END IF;
   v_new := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
-  -- The whole series moved: its deleted dates move with it, by the same
-  -- number of days (Claude #297 round 3), so none comes back on a shifted
-  -- day. Dates the write adds (not in the stored list) are kept as sent.
+  -- The whole series moved: its deleted dates move with it (Claude #297
+  -- round 3), so none comes back on a shifted day. Weekly: by the same
+  -- number of days. Monthly: the same repeat of the moved series, counted
+  -- in months from its new start and clamped to a shorter month, as the app
+  -- counts them (#298 monthlyOccurrence; round 4). Dates the write adds (not
+  -- in the stored list) are kept as sent.
   IF NEW.event_date IS NOT NULL AND OLD.event_date IS NOT NULL AND NEW.event_date <> OLD.event_date THEN
     v_shift := NEW.event_date - OLD.event_date;
   END IF;
+  v_monthly := lower(coalesce(NEW.recurrence_rule ->> 'frequency', NEW.recurrence_rule ->> 'freq', '')) = 'monthly';
   SELECT coalesce(jsonb_agg(d ORDER BY d), '[]'::jsonb)
     INTO v_all
     FROM (
-      SELECT DISTINCT to_char(x::date + v_shift, 'YYYY-MM-DD') AS d
+      SELECT DISTINCT to_char(
+               CASE WHEN v_shift <> 0 AND v_monthly
+                    THEN (NEW.event_date + make_interval(months =>
+                           ((extract(year FROM x::date) * 12 + extract(month FROM x::date))
+                          - (extract(year FROM OLD.event_date) * 12 + extract(month FROM OLD.event_date)))::int))::date
+                    ELSE x::date + v_shift END,
+               'YYYY-MM-DD') AS d
         FROM jsonb_array_elements_text(v_old) AS x
        WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
       UNION

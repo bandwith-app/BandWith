@@ -1,3 +1,5 @@
+import { monthlyOccurrence } from '@/lib/recurrence';
+
 /**
  * Keeps an open event detail in step with the events list.
  *
@@ -38,12 +40,22 @@ export function syncOpenEvent<T extends object>(
     const from = typeof o.seriesDate === 'string' ? o.seriesDate : typeof seenDate === 'string' ? seenDate : null;
     const to = typeof f.date === 'string' ? f.date : null;
     const shift = from && to ? daysBetween(from, to) : 0;
-    (next as { date?: unknown }).date = shift ? addDays(o.date, shift) : o.date;
+    // Monthly: the same repeat of the moved series (#298's rule), so a date
+    // shown on the 30th of a series moved from the 31st to the 29th lands on
+    // the 29th, not the 29th minus a day (Claude #297 round 4).
+    const rule = f.recurrence_rule as { freq?: unknown; frequency?: unknown };
+    const monthly = String(rule?.freq || rule?.frequency || '').toLowerCase() === 'monthly';
+    (next as { date?: unknown }).date = !shift
+      ? o.date
+      : monthly && from && to
+        ? monthlyOccurrence(to, monthIndex(o.date) - monthIndex(from)) ?? addDays(o.date, shift)
+        : addDays(o.date, shift);
     if (to) (next as { seriesDate?: unknown }).seriesDate = to.slice(0, 10);
   }
   return { next, seen: sig };
 }
 
+const monthIndex = (ymd: string) => Number(ymd.slice(0, 4)) * 12 + Number(ymd.slice(5, 7)) - 1;
 const DAY_MS = 86_400_000;
 const localNoon = (ymd: string) => {
   const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
