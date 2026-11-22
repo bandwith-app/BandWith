@@ -342,6 +342,26 @@ describe('push revocation on sign-out', () => {
     expect(push).toMatch(/currentToken: cachedToken/);
   });
 
+  // Claude delta review #287 r10: the device clock is set back after a
+  // refusal. The age never goes negative, and the 30 days restart from the
+  // clock's new time, so the entry is not kept for the clock's jump on top.
+  it('a clock set back after a refusal: the 30 days count from the new time', async () => {
+    const store = mem();
+    const DAY = 24 * 3600_000;
+    await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) });
+    const refused = server(false);
+    await flushPushRevocations(store, { ...refused, now: () => 100 * DAY });
+    expect(readPendingRevocations(store)[0].firstRefusedAt).toBe(100 * DAY);
+    // The clock jumps back 90 days: refused again, the start moves to the new time.
+    await flushPushRevocations(store, { ...refused, now: () => 10 * DAY });
+    expect(readPendingRevocations(store)[0].firstRefusedAt).toBe(10 * DAY);
+    // 30 days after that (by the new clock): dropped.
+    refused.revoke.mockClear();
+    await flushPushRevocations(store, { ...refused, now: () => 10 * DAY + PUSH_REVOKE_MAX_AGE_MS + 1 });
+    expect(refused.revoke).not.toHaveBeenCalled();
+    expect(readPendingRevocations(store)).toEqual([]);
+  });
+
   // Claude review #287 r9: an airplane-mode sign-out, then the app isn't
   // opened for 31 days. Never refused, so never dropped: it is sent.
   it('an unsent revocation is never dropped for its age', async () => {

@@ -95,6 +95,8 @@ await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE t
 }
 await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
 ok(await revoke(ALICE, TOK, ALICE, null, null) === true && await active(TOK) === false, 'owner without a stamp switches the own token off');
+// Claude delta review #287 r10: unlike the credential path, the owner path bumps the stamp.
+ok(new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at).getTime() > new Date(REG).getTime(), 'the owner path bumps updated_at');
 
 // The stamped save stores the device's secret (hashed) and returns the stamp.
 const TOK3 = 'c0ffee00'.repeat(8);
@@ -232,7 +234,9 @@ await registerGated(ALICE, TOKU, S1, 'ios', false);
 const unreg = (uid, tok) => as(uid, async () => (await db.query(`SELECT public.bw_unregister_push_token($1) AS r`, [tok])).rows[0].r);
 ok(await unreg(BOB, TOKU) === false && await active(TOKU) === true, "Bob signing out while the token is still Alice's: false, nothing switched off");
 ok(await unreg(ALICE, 'no-such-token-' + 'x'.repeat(30)) === false, 'an unknown token: false');
+await db.query(`UPDATE push_tokens SET updated_at = $2 WHERE token = $1`, [TOKU, REG]);
 ok(await unreg(ALICE, TOKU) === true && await active(TOKU) === false, 'the owner: true, switched off');
+ok(new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOKU])).rows[0].at).getTime() > new Date(REG).getTime(), 'the unregister bumps updated_at');
 ok(String(await unreg(null, TOKU)).startsWith('ERR'), 'still not open to anon');
 ok((await db.query(`SELECT pg_get_function_result('public.bw_unregister_push_token(text)'::regprocedure) AS r`)).rows[0].r === 'boolean', 'one argument as before, now returns boolean');
 ok(await priv('authenticated', 'public.bw_unregister_push_token(text)') === true && await priv('anon', 'public.bw_unregister_push_token(text)') === false, 'grants as in 046');

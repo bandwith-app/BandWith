@@ -292,7 +292,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   // Sending queued offline edits first can take a few seconds: one tap only.
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const handleLogout = async () => {
+  const logOutOrWipe = async () => {
     if (signingOut) return;
     setSigningOut(true);
     setSignOutError(null);
@@ -314,6 +314,14 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       restorePushStateAfterWipe();
     }
   };
+  // The wipe itself can fail (#296's async wipe, Claude delta review #287
+  // r10): the held push state still comes back, then the page reloads.
+  const handleLogout = () =>
+    logOutOrWipe().catch((e) => {
+      console.error('Logout wipe failed:', e);
+      restorePushStateAfterWipe();
+      window.location.href = '/';
+    });
 
   const notificationStatus =
     pushEnabled && emailEnabled

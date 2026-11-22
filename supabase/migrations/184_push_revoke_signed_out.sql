@@ -24,11 +24,13 @@
 --     so a replayed call never undoes a newer registration. Signed out, the
 --     answer says only whether the credential matched that registration (on
 --     or already off), never whether the account is on the device (round 8).
---   * signed in as the row's owner: the own token, with the row's stamp
---     (push_tokens.updated_at, returned by the save) or without one.
--- It can only switch a token off, never on. Signed in as the owner it
--- returns whether it switched (or nothing of the owner's is on); signed out,
--- whether the credential matched.
+--   * signed in as the row's owner and with no secret (p_secret NULL): the
+--     own token, with the row's stamp (push_tokens.updated_at, returned by
+--     the save) or without one. Signed in with a secret, the call takes the
+--     credential path above, as signed out does.
+-- It can only switch a token off, never on. On the owner path it returns
+-- whether it switched (or nothing of the owner's is on); on the credential
+-- path, whether the credential matched.
 --
 -- No lookup by token (main's decision on #287 round 5). The device keeps a
 -- refused revocation and tries again with backoff until the server takes it,

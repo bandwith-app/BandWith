@@ -16,6 +16,7 @@ vi.mock('@/lib/supabase', () => ({
         cb('INITIAL_SESSION', signedInNow.uid ? { user: { id: signedInNow.uid } } : null);
         return { data: { subscription: { unsubscribe() {} } } };
       },
+      signOut: async () => ({ error: null }),
     },
   },
 }));
@@ -114,5 +115,32 @@ describe('IdentityHub failed sign-out', () => {
     expect(localStorage.getItem('bandwith.push-revoke')).toBeNull();
     expect(localStorage.getItem('bandwith.push-delete-pending')).toBeNull();
     err.mockRestore();
+  });
+
+  // Claude delta review #287 r10: the wipe itself fails part-way (here the
+  // clear throws after clearing): the push state still comes back.
+  it('a wipe that fails still puts the push state back', async () => {
+    signedInNow.uid = null;
+    localStorage.clear();
+    localStorage.setItem('bandwith.push-delete-pending', '1');
+    failingSignOut.mockClear();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The test setup's localStorage is a plain object: spy on it directly.
+    const realClear = localStorage.clear.bind(localStorage);
+    const clear = vi.spyOn(localStorage, 'clear').mockImplementation(() => {
+      realClear();
+      throw new Error('wipe failed');
+    });
+    try {
+      renderHub('MEMBER');
+      fireEvent.click(screen.getByRole('button', { name: /^sign out/i }));
+      await waitFor(() => expect(failingSignOut).toHaveBeenCalled());
+      await waitFor(() => expect(localStorage.getItem('bandwith.push-revoke')).toContain('user-1'));
+      expect(localStorage.getItem('bandwith.push-delete-pending')).toBe('1');
+      expect(clear).toHaveBeenCalled();
+    } finally {
+      clear.mockRestore();
+      err.mockRestore();
+    }
   });
 });

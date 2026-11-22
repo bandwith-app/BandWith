@@ -386,12 +386,15 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
   };
   for (const p of list) {
     if (deps.alive && !deps.alive()) break;
-    const refusedFor = p.tries > 0 && p.firstRefusedAt !== null ? now - p.firstRefusedAt : 0;
+    // Device clock: set back after a refusal, the age never goes negative (Claude delta review #287 r10).
+    const refusedFor = p.tries > 0 && p.firstRefusedAt !== null ? Math.max(0, now - p.firstRefusedAt) : 0;
     if (refusedFor > PUSH_REVOKE_MAX_AGE_MS || (deps.currentToken && p.token !== deps.currentToken)) {
       done.add(keyOf(p));
       continue;
     }
-    if (p.retryAt !== null && p.retryAt > now && !(deps.online && p.fails > 0)) continue;
+    // A backoff further off than the longest one is from a clock set back: due now.
+    const waiting = p.retryAt !== null && p.retryAt > now && p.retryAt - now <= REVOKE_RETRY_MAX_MS;
+    if (waiting && !(deps.online && p.fails > 0)) continue;
     const secrets = candidateSecrets(p);
     let failed = false;
     let revoked = false;
@@ -419,7 +422,7 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
     current
       .filter((p) => !done.has(keyOf(p)))
       .map((p) => {
-        if (refused.has(keyOf(p))) return { ...p, tries: p.tries + 1, fails: 0, retryAt: now + revokeRetryDelay(p.tries + 1), firstRefusedAt: p.firstRefusedAt ?? now };
+        if (refused.has(keyOf(p))) return { ...p, tries: p.tries + 1, fails: 0, retryAt: now + revokeRetryDelay(p.tries + 1), firstRefusedAt: p.firstRefusedAt !== null && p.firstRefusedAt <= now ? p.firstRefusedAt : now };
         // Offline or an error (Codex review #287 round 8, M1): the same
         // backoff, so an overdue entry isn't retried every second, but no
         // refusal; the 'online' event still tries at once.

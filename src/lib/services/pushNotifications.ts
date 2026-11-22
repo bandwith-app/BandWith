@@ -20,6 +20,7 @@ import {
   newRevokeSecret,
   nextRevocationRetry,
   queueRevocation,
+  REVOKE_RETRY_MAX_MS,
   readPendingRevocations,
   reclaimRevocation,
   rememberPushToken,
@@ -850,7 +851,7 @@ const scheduleRevocationRetry = () => {
   retryTimer = setTimeout(() => {
     retryTimer = null;
     void flushQueuedPushRevocations().catch(() => 0);
-  }, Math.max(1000, due - Date.now()));
+  }, Math.min(REVOKE_RETRY_MAX_MS, Math.max(1000, due - Date.now())));
 };
 
 /**
