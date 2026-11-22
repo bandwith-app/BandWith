@@ -78,6 +78,25 @@ describe('chat outbox helpers (storage.ts)', () => {
     expect(st.readChatOutbox(UID).map((e) => e.clientId)).toEqual(['m3']);
   });
 
+  // Sign-out pipeline step 4 (deletion wins over the kept lists): the kept
+  // lists of the deleted account go in both stores; another account's stay.
+  it('deleting the account erases its refused rehearsal notes and chat outbox in both stores', async () => {
+    const kept = [`bw:rehearsal_notes_rejected:${UID}`, `bw:chat_outbox:${UID}`, `bw:live_refused:${UID}`];
+    for (const k of kept) {
+      idb.set(k, [{ id: 'n1', body: 'Tighter ending' }]);
+      localStorage.setItem(k, JSON.stringify([{ id: 'n1', body: 'Tighter ending' }]));
+    }
+    idb.set(`bw:rehearsal_notes_rejected:${OTHER}`, [{ id: 'n2' }]);
+    localStorage.setItem(`bw:rehearsal_notes_rejected:${OTHER}`, JSON.stringify([{ id: 'n2' }]));
+    await discardAccountWrites(UID);
+    for (const k of kept) {
+      expect(idb.has(k)).toBe(false);
+      expect(localStorage.getItem(k)).toBeNull();
+    }
+    expect(idb.has(`bw:rehearsal_notes_rejected:${OTHER}`)).toBe(true);
+    expect(localStorage.getItem(`bw:rehearsal_notes_rejected:${OTHER}`)).toBeTruthy();
+  });
+
   it('deleting the account erases its chat outbox in both stores; another account’s stays', async () => {
     idb.set(`bw:chat_outbox:${UID}`, [msg(1)]);
     idb.set(`bw:live_refused:${UID}`, [{ kind: 'note' }]);
