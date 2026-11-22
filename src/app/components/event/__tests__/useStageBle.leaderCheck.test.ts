@@ -145,6 +145,8 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
   stageVerifyKey: async () => ({ public: SIGNER.public, version: 1 }),
+  fetchVerifyKey: async () => ({ answer: { public: SIGNER.public, version: 1 }, server: true }),
+  forgetStageKeys: () => {},
   keptVerifyKey: () => ({ public: SIGNER.public, version: 1 }),
   stageSigner: async () => null,
 }));

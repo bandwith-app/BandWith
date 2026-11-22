@@ -58,11 +58,14 @@ describe('190 the stage signing keys', () => {
     const f = fn('bw_stage_set_signer');
     const admin = f.search(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
     const band = f.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = band FOR SHARE;/);
-    const still = f.search(/PERFORM 1 FROM public\.events e WHERE e\.id = p_event_id AND e\.band_id = band;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
+    // The gig's own row, locked and its band re-checked under the lock (Codex on #288): a move
+    // waiting on this call, or committed just before, can't leave a pair on the new band's gig.
+    // Before the band's row: a move holds the gig's row and then wants the band's (no cycle).
+    const still = f.search(/PERFORM 1 FROM public\.events e WHERE e\.id = p_event_id AND e\.band_id = band FOR UPDATE;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
     expect(admin).toBeGreaterThan(-1);
-    expect(band).toBeGreaterThan(admin);
-    expect(still).toBeGreaterThan(band);
-    expect(f.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(still);
+    expect(still).toBeGreaterThan(admin);
+    expect(band).toBeGreaterThan(still);
+    expect(f.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(band);
     const moved = fn('bw_stage_event_moved');
     const mLock = moved.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
     expect(mLock).toBeGreaterThan(-1);

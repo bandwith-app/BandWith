@@ -69,7 +69,7 @@ const native = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock('@/lib/stageBleNative', () => ({ StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY, stageVerifyKey: async () => null, keptVerifyKey: () => null, stageSigner: async () => null }));
+vi.mock('@/lib/stageBleNative', () => ({ StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY, stageVerifyKey: async () => null, fetchVerifyKey: async () => ({ answer: null, server: false }), forgetStageKeys: () => {}, keptVerifyKey: () => null, stageSigner: async () => null }));
 
 const { useStageBle, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BleClient, BluetoothLe, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { StageBle, keptVerifyKey, stageBleAvailable, stageKey, stageSigner, stageVerifyKey } from '@/lib/stageBleNative';
+import { StageBle, fetchVerifyKey, forgetStageKeys, keptVerifyKey, stageBleAvailable, stageKey, stageSigner } from '@/lib/stageBleNative';
 import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
@@ -338,10 +338,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
         // Still allowed to sign? Demoted, or a new pair: start again with what the server says.
         // Every few minutes, and as soon as the phone is back online (a rotation meanwhile).
+        // The band key too: it changes when someone may no longer see the gig (191).
         const recheckSigner = () => {
-          void stageSigner(eventId).then((fresh) => {
+          void Promise.all([stageSigner(eventId), stageKey(eventId)]).then(([fresh, nowKey]) => {
             if (cancelled) return;
-            if ((fresh?.public ?? null) !== (fetched?.public ?? null) || (fresh?.version ?? null) !== (fetched?.version ?? null)) setAttempt((n) => n + 1);
+            if (
+              (fresh?.public ?? null) !== (fetched?.public ?? null) ||
+              (fresh?.version ?? null) !== (fetched?.version ?? null) ||
+              nowKey !== key
+            )
+              setAttempt((n) => n + 1);
           });
         };
         recheck = setInterval(recheckSigner, SIGNER_RECHECK_MS);
@@ -401,7 +407,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (answer.public === null) {
         // Older than the key this phone checks with: nothing new.
         if (!verify || verify.version < answer.version) {
+          // No key to check the signed state with: the link isn't a signed one any more (Codex on #288).
           verify = null;
+          signedLink = false;
           pending = answer.version;
         }
       } else if (answer.version >= Math.max(verify?.version ?? 0, pending ?? 0)) {
@@ -426,10 +434,17 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       verifyAskedAt = nowMs();
       // Numbered: an answer that arrives after a later one's is dropped (Codex on #288).
       const n = ++verifyAsks;
-      const fresh = await stageVerifyKey(gig);
+      const { answer, server } = await fetchVerifyKey(gig);
       if (cancelled || n < verifyTaken) return;
       verifyTaken = n;
-      take(fresh);
+      // The server's no while this phone holds the key, or waits for a rotation's
+      // (which always answers "pending", never no): this account lost the gig.
+      // Only offline keeps the copy (Codex on #288).
+      if (server && !answer && (verify || pending !== null)) {
+        lose();
+        return;
+      }
+      take(answer);
     };
     /** The leader signs with a newer pair than this phone has: it needs one trip online. */
     let staleKey = false;
@@ -660,6 +675,32 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               ? 'unverified'
               : 'connected';
 
+    /**
+     * This account lost the gig (the server's no to a phone holding its key):
+     * the kept keys go, the link and the search stop, nothing more is
+     * followed until Stage opens again (Codex on #288).
+     */
+    function lose() {
+      if (cancelled) return;
+      cancelled = true;
+      verify = null;
+      pending = null;
+      signedLink = false;
+      forgetStageKeys(gig);
+      const id = deviceId;
+      link++;
+      setDevice(null);
+      linkState = null;
+      linkHeard = null;
+      clearTimeout(retry);
+      clearTimeout(checkTimer);
+      stopSync();
+      setClock(null);
+      void BleClient.stopLEScan().catch(() => {});
+      if (id) void BleClient.disconnect(id).catch(() => {});
+      setStatus('off');
+    }
+
     const readNow = async () => {
       const id = deviceId;
       if (!id) return;
@@ -694,7 +735,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           const now = nowMs();
           authFails = [...authFails.filter((t) => now - t < AUTH_FAIL_WINDOW_MS), now];
           if (authFails.length < AUTH_FAILS_MAX) {
-            setTimeout(() => void readNow(), 300 * authFails.length);
+            // One of this session's waits: Stage closing clears it (Claude on #288).
+            void wait(300 * authFails.length).then(() => {
+              if (!cancelled) void readNow();
+            });
             return;
           }
           dropLink(id, DISTRUST_MS);
@@ -1103,8 +1147,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const reverify = async () => {
       const before = verify;
       await refreshVerify(true);
-      const id = deviceId;
       if (cancelled || !key) return;
+      // Another band key (someone may no longer see the gig, 191): another service, start again (Claude on #288).
+      const nowKey = await stageKey(gig);
+      if (cancelled) return;
+      if (nowKey !== key) {
+        if (nowKey) setAttempt((n) => n + 1);
+        else lose();
+        return;
+      }
+      const id = deviceId;
       if ((before?.public ?? null) === (verify?.public ?? null) && (before?.version ?? null) === (verify?.version ?? null)) return;
       // Not linked (a phone skipped for the old key): the search tries it again now (take cleared the skip).
       if (!id) {

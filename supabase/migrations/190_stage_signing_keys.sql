@@ -166,17 +166,20 @@ BEGIN
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
-  -- Then the band's row, which a rotation (bw_stage_rotate_signer,
-  -- bw_stage_event_moved) locks for update before it looks at the pairs: a
-  -- pair stored while another admin is demoted can't slip past it unseen
-  -- (READ COMMITTED skips a row whose committed pair is still empty). After
-  -- the caller's admin row, so a demotion of the caller can't deadlock with
-  -- this. And the gig must still be that band's (a move may have committed).
-  PERFORM 1 FROM public.bands b WHERE b.id = band FOR SHARE;
-  PERFORM 1 FROM public.events e WHERE e.id = p_event_id AND e.band_id = band;
+  -- Then the gig's own row, and it must still be that band's: a move to
+  -- another band in progress makes this wait, and the re-check under the
+  -- lock then finds the new band and stores nothing (Codex on #288).
+  PERFORM 1 FROM public.events e WHERE e.id = p_event_id AND e.band_id = band FOR UPDATE;
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
+  -- Then the band's row, which a rotation (bw_stage_rotate_signer,
+  -- bw_stage_event_moved) locks for update before it looks at the pairs: a
+  -- pair stored while another admin is demoted can't slip past it unseen
+  -- (READ COMMITTED skips a row whose committed pair is still empty). This
+  -- order (admin row, gig row, band row) can't deadlock: a demotion holds the
+  -- admin row then wants the band's; a move holds the gig's then the band's.
+  PERFORM 1 FROM public.bands b WHERE b.id = band FOR SHARE;
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
   UPDATE public.stage_keys

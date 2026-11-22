@@ -101,23 +101,6 @@ export function setStageCacheUser(id: string | null | undefined) {
   cacheUser = id;
   setSignedMemoryUser(id);
 }
-/**
- * A session that ended without the sign-out button (expired or revoked:
- * SIGNED_OUT from the auth library, or none at start-up): fetches in flight
- * are dropped and every gig's kept keys go, private ones included, so a
- * phone left signed out holds no admin's key (Codex on #288).
- */
-export function endStageSession() {
-  cacheGeneration++;
-  cacheUser = null;
-  setSignedMemoryUser(null);
-  removeKeptKeys();
-  try {
-    localStorage.removeItem(OWNER_KEY);
-  } catch {
-    /* storage not available */
-  }
-}
 /** The kept Bluetooth keys of every gig, and the imported ones in memory. */
 function removeKeptKeys() {
   clearSignCaches();
@@ -292,22 +275,36 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
 
 /**
  * Members: the gig's public key and its version, to check the leader's
- * signature: fetched first, the kept copy offline. Null before any admin
- * made the pair (or for a gig the server no longer shows this account).
+ * signature: fetched first, the kept copy offline. `server`: the server
+ * answered (a null answer then is its no: no pair made yet, or this account
+ * may no longer see the gig); false: offline (no answer in time, an error),
+ * the answer is the kept copy.
  */
-export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer | null> {
+export async function fetchVerifyKey(eventId: string): Promise<{ answer: StageVerifyAnswer | null; server: boolean }> {
   const key = mine(VERIFY_PREFIX, eventId);
   const tag = tagFetch();
   const data = await ask('bw_stage_verify_key', { p_event_id: eventId });
-  if (!stillOurs(tag)) return null;
-  if (data === OFFLINE) return kept(key, asVerify);
+  if (!stillOurs(tag)) return { answer: null, server: false };
+  if (data === OFFLINE) return { answer: kept(key, asVerify), server: false };
   const verify = asVerify(data);
   if (!verify) {
     forget(key);
-    return null;
+    return { answer: null, server: true };
   }
   keep(key, JSON.stringify(verify));
-  return verify;
+  return { answer: verify, server: true };
+}
+
+/** The same, the answer only. Null before any admin made the pair (or for a gig the server no longer shows this account). */
+export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer | null> {
+  return (await fetchVerifyKey(eventId)).answer;
+}
+
+/** This account lost the gig (the server said no to a phone holding its key): every key kept for it goes. */
+export function forgetStageKeys(eventId: string) {
+  forget(KEY_PREFIX + eventId);
+  forget(mine(VERIFY_PREFIX, eventId));
+  forget(mine(SIGNER_PREFIX, eventId));
 }
 
 /** The public key kept on this phone (no network): Stage starts with it, then asks the server. */
@@ -330,9 +327,11 @@ export function prefetchStageKey(eventId?: string, isAdmin = false) {
 const SETLIST_PREFIX = 'bw-setlist-songs:';
 
 /**
- * Sign-out: the gigs' Bluetooth keys kept on this phone go too, with any
- * old setlist copy and my files kept for live mode. (The live packs
- * themselves are in the offline store, which sign-out clears.)
+ * Sign-out (the button, or a session that ended by itself: expired or
+ * revoked, or none at start-up): fetches in flight are dropped, the gigs'
+ * Bluetooth keys kept on this phone go (private ones included), with any old
+ * setlist copy and my files kept for live mode. (The live packs themselves
+ * are in the offline store, which sign-out clears.)
  */
 export function clearStageCache() {
   cacheGeneration++;

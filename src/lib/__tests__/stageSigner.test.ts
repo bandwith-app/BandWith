@@ -279,7 +279,7 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
   it('a session that ends without the sign-out button (expired, or none at start-up) takes the private keys along (Codex on #288)', async () => {
     const signer = (await stageSigner('gig'))!;
     expect(native.keptVerifyKey('gig')).not.toBeNull();
-    native.endStageSession();
+    clearStageCache();
     expect(storedValues().some((v) => String(v).includes(signer.private))).toBe(false);
     expect(storedKeys().filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
     native.setStageCacheUser('u1');
