@@ -11,7 +11,7 @@ const cal = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/lib/nativeFiles')>()), openExternal: cal.openExternal }));
 const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
 
-import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
+import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
 import { DeputyGigCard } from '@/app/components/deputy/DeputyGigsList';
 import type { DeputyGig } from '../services/deputies';
 
@@ -153,5 +153,56 @@ describe('deputy gigs in the app: calendar links (02 #3)', () => {
     const google = lastOpened() as string;
     expect(google).toContain('calendar.google.com');
     expect(google).not.toContain(REPLY_A);
+  });
+});
+
+// Coordinator round 3: #297 deletes one date of a series
+// (recurrence_rule.skip_dates); #298 keeps a monthly series on the 29th-31st
+// on the last day of shorter months. External calendars must show the same.
+describe('series dates the app shows, in external calendars', () => {
+  it('a deleted date is an EXDATE with the start time of the entry', () => {
+    const skipped = { ...weekly, recurrence: { frequency: 'weekly', interval: 1, skip_dates: ['2026-12-01', 'junk', '2026-12-15'] } };
+    const ics = memberFeedCalendar([skipped], { lang: 'en', site: SITE, now: NOW }) as string;
+    expect(ics).toContain('DTSTART:20261124T190000');
+    expect(ics).toContain('EXDATE:20261201T190000');
+    expect(ics).toContain('EXDATE:20261215T190000');
+    expect(ics).not.toMatch(/EXDATE:.*junk/);
+    // Load-in first: the entry (and so the EXDATE) starts at load-in.
+    const early = memberFeedCalendar([{ ...skipped, load_in_time: '18:30:00' }], { lang: 'en', site: SITE, now: NOW }) as string;
+    expect(early).toContain('DTSTART:20261124T183000');
+    expect(early).toContain('EXDATE:20261201T183000');
+    // No times: an all-day series, all-day EXDATE.
+    const allDay = memberFeedCalendar([{ ...skipped, start_time: null, end_time: null }], { lang: 'en', site: SITE, now: NOW }) as string;
+    expect(allDay).toContain('DTSTART;VALUE=DATE:20261124');
+    expect(allDay).toContain('EXDATE;VALUE=DATE:20261201');
+  });
+
+  it('no skip_dates (before #297): no EXDATE; a one-date file never has one', () => {
+    expect(memberFeedCalendar([weekly], { lang: 'en', site: SITE, now: NOW })).not.toContain('EXDATE');
+    const skipped = { ...weekly, recurrence: { frequency: 'weekly', skip_dates: ['2026-12-01'] } };
+    expect(memberFeedCalendar([skipped], { lang: 'en', site: SITE, one: 'ev-1', occurrence: '2026-12-08', now: NOW })).not.toContain('EXDATE');
+  });
+
+  it('a deleted date is no occurrence: its one-date file is gone', () => {
+    const skipped = { ...weekly, recurrence: { frequency: 'weekly', skip_dates: ['2026-12-01'] } };
+    expect(isOccurrence(skipped.recurrence, '2026-11-24', '2026-12-01')).toBe(false);
+    expect(isOccurrence(skipped.recurrence, '2026-11-24', '2026-12-08')).toBe(true);
+    expect(memberFeedCalendar([skipped], { lang: 'en', site: SITE, one: 'ev-1', occurrence: '2026-12-01', now: NOW })).toBeNull();
+  });
+
+  it('monthly on the 29th-31st: the last day of shorter months, as the app', () => {
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-31')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1');
+    // The 30th stays the 30th in a month that has a 31st (Jan 30 -> Mar 30).
+    expect(recurrenceRule({ frequency: 'monthly', interval: 2 }, '2027-01-30')).toBe('FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=28,29,30;BYSETPOS=-1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-29')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29;BYSETPOS=-1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-28')).toBe('FREQ=MONTHLY;INTERVAL=1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-15')).toBe('FREQ=MONTHLY;INTERVAL=1');
+    const monthly = { ...weekly, event_date: '2027-01-31', recurrence: { frequency: 'monthly' } };
+    expect(memberFeedCalendar([monthly], { lang: 'en', site: SITE, now: NOW })).toContain('RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1');
+    expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-02-28')).toBe(true);
+    expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-03-31')).toBe(true);
+    expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-03-03')).toBe(false);
+    expect(isOccurrence({ frequency: 'monthly' }, '2028-01-31', '2028-02-29')).toBe(true);
+    expect(isOccurrence({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')).toBe(true);
   });
 });

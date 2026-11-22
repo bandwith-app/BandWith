@@ -55,7 +55,10 @@
 --     calendar_feeds.review_link marks the accounts to ask once (the app
 --     offers "Make a new link" or "Keep my link"): every link made before
 --     182, and any served again in the old one-event form (t=&e=, older app
---     builds; bw_member_calendar_flag_shared, called by member-calendar).
+--     builds; bw_member_calendar_flag_shared, called by member-calendar),
+--     unless the owner chose "Keep my link" for it (review_kept).
+--   - A date of a series: a deleted date (recurrence_rule.skip_dates) is
+--     none; monthly on the 29th-31st takes the last day of shorter months.
 --   The account feed (bw_member_calendar_feed) is unchanged.
 --
 -- Deploy order: deploy the edge functions deputy-calendar and
@@ -141,19 +144,26 @@ DECLARE
   v_status text;
   v_changes jsonb := '[]'::jsonb;
   v_before jsonb := '{}'::jsonb;
+  v_cancelled boolean;
   k text;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
-  SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id)
-    INTO v_snap, v_status, v_now
-    FROM public.deputy_requests r WHERE r.token = p_token;
+  SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
+         coalesce(e.status, '') = 'cancelled'
+    INTO v_snap, v_status, v_now, v_cancelled
+    FROM public.deputy_requests r
+    JOIN public.events e ON e.id = r.event_id
+   WHERE r.token = p_token;
   -- What changed since the answer. The address counts only once they said
-  -- yes (before that they never saw it).
+  -- yes (before that they never saw it), and never once the gig is
+  -- cancelled (review of #285, round 3: neither the old nor the new one).
+  -- An address the band cleared shows as changed, without the old one.
   IF v_snap IS NOT NULL AND v_status IN ('available', 'maybe') THEN
     FOREACH k IN ARRAY ARRAY['date', 'load_in', 'soundcheck', 'start', 'end', 'venue', 'city', 'address'] LOOP
-      CONTINUE WHEN k = 'address' AND v_status <> 'available';
+      CONTINUE WHEN k = 'address' AND (v_status <> 'available' OR v_cancelled);
       IF (v_snap->>k) IS DISTINCT FROM (v_now->>k) THEN
         v_changes := v_changes || to_jsonb(k);
+        CONTINUE WHEN k = 'address' AND nullif(btrim(coalesce(v_now->>k, '')), '') IS NULL;
         v_before := v_before || jsonb_build_object(k, v_snap->k);
       END IF;
     END LOOP;
@@ -370,7 +380,11 @@ GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;
 -- ------------------------------------------------ one event, for members --
 
 -- A date of a repeating rehearsal, stepped as the app's calendar steps it
--- (EventsView; = isOccurrence in supabase/functions/_shared/deputy-calendar.ts).
+-- (src/lib/recurrence.ts; = isOccurrence in
+-- supabase/functions/_shared/deputy-calendar.ts). Review of #285, round 3:
+--   - a date the band deleted (recurrence_rule.skip_dates, #297) is none;
+--   - monthly repeats count from the first date and fall on the last day of
+--     a shorter month (Jan 31 -> Feb 28 -> Mar 31, #298), never run over.
 CREATE OR REPLACE FUNCTION public.bw_calendar_is_occurrence(p_rule jsonb, p_start date, p_date date)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -383,13 +397,15 @@ DECLARE
   v_count int := 1000;
   v_until text;
   v_cur date := p_start;
-  v_day int;
+  v_day int := extract(day FROM p_start)::int;
+  v_month date;
   v_d text;
   v_target text := to_char(p_date, 'YYYY-MM-DD');
 BEGIN
   IF p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' OR p_start IS NULL OR p_date IS NULL THEN RETURN false; END IF;
   v_freq := lower(coalesce(p_rule->>'freq', p_rule->>'frequency', ''));
   IF v_freq NOT IN ('weekly', 'biweekly', 'monthly') THEN RETURN false; END IF;
+  IF jsonb_typeof(p_rule->'skip_dates') = 'array' AND (p_rule->'skip_dates') ? v_target THEN RETURN false; END IF;
   IF p_date = p_start THEN RETURN true; END IF;
   IF (p_rule->>'interval') ~ '^\d{1,2}$' AND (p_rule->>'interval')::int BETWEEN 1 AND 52 THEN v_every := (p_rule->>'interval')::int; END IF;
   IF (p_rule->>'count') ~ '^\d{1,4}$' AND (p_rule->>'count')::int BETWEEN 1 AND 1000 THEN v_count := (p_rule->>'count')::int; END IF;
@@ -398,10 +414,10 @@ BEGIN
     IF v_freq = 'weekly' THEN v_cur := v_cur + 7 * v_every;
     ELSIF v_freq = 'biweekly' THEN v_cur := v_cur + 14;
     ELSE
-      -- Same day number in the month `every` months on; past the month's end
-      -- it runs into the next month, as Date.setMonth does.
-      v_day := extract(day FROM v_cur)::int;
-      v_cur := (date_trunc('month', v_cur) + make_interval(months => v_every))::date + (v_day - 1);
+      -- The first date's day number, `every * i` months on; a month without
+      -- it gets its last day.
+      v_month := (date_trunc('month', p_start) + make_interval(months => v_every * i))::date;
+      v_cur := v_month + (least(v_day, extract(day FROM (v_month + interval '1 month - 1 day'))::int) - 1);
     END IF;
     v_d := to_char(v_cur, 'YYYY-MM-DD');
     IF v_until IS NOT NULL AND v_d > v_until THEN RETURN false; END IF;
@@ -451,7 +467,9 @@ BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
   IF p_event_id IS NULL THEN RETURN NULL; END IF;
   INSERT INTO public.calendar_feeds (user_id) VALUES (v_uid) ON CONFLICT (user_id) DO NOTHING;
-  SELECT token INTO v_feed FROM public.calendar_feeds WHERE user_id = v_uid;
+  -- Locked: two devices making links at once take turns, so the 500 cap
+  -- below holds (review of #285, round 3).
+  SELECT token INTO v_feed FROM public.calendar_feeds WHERE user_id = v_uid FOR UPDATE;
 
   -- Only an event the user's calendar shows (the feed's rule, 165).
   SELECT x INTO v_event
@@ -552,6 +570,9 @@ BEGIN
   END IF;
 END
 $$;
+-- The owner chose "Keep my link" for this account link: not asked again
+-- (review of #285, round 3). A new link (new row) starts without it.
+ALTER TABLE public.calendar_feeds ADD COLUMN IF NOT EXISTS review_kept boolean NOT NULL DEFAULT false;
 
 -- Whether the app should ask the signed-in user to replace their link.
 CREATE OR REPLACE FUNCTION public.bw_my_calendar_link_review()
@@ -574,14 +595,15 @@ VOLATILE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  UPDATE public.calendar_feeds SET review_link = false WHERE user_id = auth.uid();
+  UPDATE public.calendar_feeds SET review_link = false, review_kept = true WHERE user_id = auth.uid();
 $$;
 REVOKE ALL ON FUNCTION public.bw_my_calendar_link_keep() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_my_calendar_link_keep() TO authenticated;
 
 -- member-calendar served a one-event link in the old form (t=&e=, app
--- builds before 182): ask the owner again. The token is the key; marking
--- only shows them the question.
+-- builds before 182): ask the owner again, unless they already answered
+-- "Keep my link" for this link (their own taps on older builds use the same
+-- form). The token is the key; marking only shows them the question.
 CREATE OR REPLACE FUNCTION public.bw_member_calendar_flag_shared(p_token text)
 RETURNS void
 LANGUAGE sql
@@ -590,7 +612,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   UPDATE public.calendar_feeds SET review_link = true
-   WHERE token = p_token AND p_token ~ '^[0-9a-f]{64}$' AND NOT review_link;
+   WHERE token = p_token AND p_token ~ '^[0-9a-f]{64}$' AND NOT review_link AND NOT review_kept;
 $$;
 REVOKE ALL ON FUNCTION public.bw_member_calendar_flag_shared(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_member_calendar_flag_shared(text) TO anon, authenticated;

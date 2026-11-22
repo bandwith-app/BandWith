@@ -1,0 +1,61 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+// 182 review round 3: bw_deputy_unlink rotates the reply and calendar links
+// also for a deputy without an account, but the sheet only offered "Unlink
+// account" to linked deputies, so an admin could never end a link that was
+// forwarded or sent to the wrong number.
+
+const list = vi.fn();
+const unlink = vi.fn();
+vi.mock('@/lib/services/deputies', () => ({
+  listDeputies: (...a: unknown[]) => list(...a),
+  unlinkDeputy: (...a: unknown[]) => unlink(...a),
+  saveDeputy: vi.fn(),
+  deleteDeputy: vi.fn(),
+  deputiesUnavailable: () => false,
+}));
+
+import { DeputiesSection } from '../DeputiesSection';
+
+const base = { band_id: 'b1', instrument: 'bass', phone: '+1 212 555 0100', email: null, notes: null, default_fee: null };
+
+describe('DeputiesSection: revoke sent links', () => {
+  beforeEach(() => {
+    list.mockReset();
+    unlink.mockReset();
+  });
+
+  it('offers to revoke the links of a deputy without an account', async () => {
+    list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
+    unlink.mockResolvedValue({ data: 'not_linked', error: null });
+    render(<DeputiesSection bandId="b1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
+    expect(screen.queryByRole('button', { name: 'Unlink account' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
+    expect(screen.getByText('Revoke sent links?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(unlink).toHaveBeenCalledWith('d1'));
+    expect(await screen.findByText('Links revoked. The next request you send carries a new one.')).toBeTruthy();
+  });
+
+  it('keeps Unlink account for a linked deputy, without the second button', async () => {
+    list.mockResolvedValue({ data: [{ ...base, id: 'd2', name: 'Alex Kim', user_id: 'u9' }], error: null });
+    render(<DeputiesSection bandId="b1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Alex Kim/ }));
+    expect(screen.getByRole('button', { name: 'Unlink account' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Revoke sent links' })).toBeNull();
+  });
+
+  it('says so when revoking fails', async () => {
+    list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
+    unlink.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    render(<DeputiesSection bandId="b1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('Could not revoke the links. Try again.')).toBeTruthy();
+  });
+});

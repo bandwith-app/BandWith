@@ -130,12 +130,20 @@ export function gigEvent(
   g: DeputyGig,
   labels: GigLabels,
   uid: string,
-  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean; rrule?: string | null } = {},
+  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean; rrule?: string | null; exdates?: string[] } = {},
 ): string[] {
   const w = gigWindow(g);
   const when = w.allDay
     ? [`DTSTART;VALUE=DATE:${ymd(w.day)}`, `DTEND;VALUE=DATE:${ymd(nextDay(w.day))}`]
     : [`DTSTART:${stamp(w.start)}`, `DTEND:${stamp(w.end)}`];
+  // Dates deleted from the series: the same value type as DTSTART, at the
+  // entry's own start time (RFC 5545 matches EXDATE to an instance's start).
+  const exdates = opts.rrule
+    ? (opts.exdates ?? []).map((d) => {
+        const x = gigWindow({ ...g, date: d });
+        return x.allDay ? `EXDATE;VALUE=DATE:${ymd(x.day)}` : `EXDATE:${stamp(x.start)}`;
+      })
+    : [];
   const changed = opts.updatedAt ? new Date(opts.updatedAt) : null;
   // Minutes since 2026 fit an integer for centuries.
   const sequence = changed && !Number.isNaN(changed.getTime())
@@ -148,6 +156,7 @@ export function gigEvent(
     `SEQUENCE:${sequence}`,
     ...when,
     opts.rrule ? `RRULE:${opts.rrule}` : '',
+    ...exdates,
     `SUMMARY:${icsText(summary(g))}`,
     location(g) ? `LOCATION:${icsText(location(g))}` : '',
     `DESCRIPTION:${icsText(details(g, labels))}`,
@@ -159,11 +168,17 @@ export function gigEvent(
 
 /**
  * A repeating rehearsal (events.recurrence_rule, as the app expands it in
- * EventsView: weekly / biweekly / monthly, interval, until, count) as an
- * RRULE, so the calendar repeats it by itself. Unknown rules: null (the
- * first date only).
+ * src/lib/recurrence.ts: weekly / biweekly / monthly, interval, until,
+ * count) as an RRULE, so the calendar repeats it by itself. Unknown rules:
+ * null (the first date only).
+ *
+ * Monthly from the 29th-31st (`start`): the app takes the last day of a
+ * month without that day (Jan 31 -> Feb 28 -> Mar 31; Jan 30 -> Feb 28 ->
+ * Mar 30), where a plain FREQ=MONTHLY skips that month. BYMONTHDAY=28..day
+ * with BYSETPOS=-1 is the latest of those days the month has: the day itself,
+ * else the month's last day.
  */
-export function recurrenceRule(rule: unknown): string | null {
+export function recurrenceRule(rule: unknown, start?: string | null): string | null {
   if (!rule || typeof rule !== 'object') return null;
   const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
   const freq = String(r.freq ?? r.frequency ?? '').toLowerCase();
@@ -175,6 +190,10 @@ export function recurrenceRule(rule: unknown): string | null {
     : freq === 'monthly' ? ['FREQ=MONTHLY', `INTERVAL=${every}`]
     : null;
   if (!parts) return null;
+  const day = Number(/^\d{4}-\d{2}-(\d{2})/.exec(start ?? '')?.[1]);
+  if (freq === 'monthly' && day >= 29 && day <= 31) {
+    parts.push(`BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')}`, 'BYSETPOS=-1');
+  }
   const until = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof r.until === 'string' ? r.until : '');
   const count = Number(r.count);
   if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}`);
@@ -307,11 +326,18 @@ export interface MemberFeedEvent {
 
 const ymdStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/** The dates deleted from a series (recurrence_rule.skip_dates, #297): valid YYYY-MM-DD only. */
+export function skipDates(rule: unknown): string[] {
+  const list = rule && typeof rule === "object" ? (rule as { skip_dates?: unknown }).skip_dates : null;
+  return Array.isArray(list) ? [...new Set(list.filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort() : [];
+}
+
 /**
  * Whether `date` (YYYY-MM-DD) is one of the dates of a repeating rehearsal
  * that starts on `start`, stepped the way the app's calendar steps it
- * (EventsView: weekly / biweekly / monthly by interval, until, count =
- * repeats after the first date).
+ * (src/lib/recurrence.ts: weekly / biweekly / monthly by interval, counted
+ * from the first date, a short month taking its last day; until; count =
+ * repeats after the first date). A deleted date (skip_dates) is none.
  */
 export function isOccurrence(rule: unknown, start: string, date: string): boolean {
   if (!rule || typeof rule !== "object") return false;
@@ -320,17 +346,23 @@ export function isOccurrence(rule: unknown, start: string, date: string): boolea
   if (!["weekly", "biweekly", "monthly"].includes(freq)) return false;
   const s = /^(\d{4})-(\d{2})-(\d{2})/.exec(start);
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (skipDates(rule).includes(date)) return false;
   if (date === `${s[1]}-${s[2]}-${s[3]}`) return true;
   const n = Number(r.interval);
   const every = Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
   const until = /^(\d{4}-\d{2}-\d{2})/.exec(typeof r.until === "string" ? r.until : "")?.[1] ?? null;
   const c = Number(r.count);
   const count = Number.isInteger(c) && c >= 1 && c <= 1000 ? c : 1000;
-  const cursor = new Date(Number(s[1]), Number(s[2]) - 1, Number(s[3]), 12, 0, 0);
-  for (let i = 0; i < count; i++) {
-    if (freq === "weekly") cursor.setDate(cursor.getDate() + 7 * every);
-    else if (freq === "biweekly") cursor.setDate(cursor.getDate() + 14);
-    else cursor.setMonth(cursor.getMonth() + every);
+  const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
+  for (let i = 1; i <= count; i++) {
+    let cursor: Date;
+    if (freq === "weekly") cursor = new Date(y, m, day + 7 * every * i, 12, 0, 0);
+    else if (freq === "biweekly") cursor = new Date(y, m, day + 14 * i, 12, 0, 0);
+    else {
+      const target = m + every * i;
+      const last = new Date(y, target + 1, 0, 12, 0, 0).getDate();
+      cursor = new Date(y, target, Math.min(day, last), 12, 0, 0);
+    }
     const d = ymdStr(cursor);
     if (until && d > until) return false;
     if (d === date) return true;
@@ -356,7 +388,7 @@ export function memberFeedCalendar(
   if (one && chosen.length === 0) return null;
   const events: string[][] = [];
   for (const e of chosen) {
-    const rrule = recurrenceRule(e.recurrence);
+    const rrule = recurrenceRule(e.recurrence, e.event_date);
     let occ = one && opts.occurrence ? opts.occurrence : null;
     if (occ && rrule) {
       if (!isOccurrence(e.recurrence, e.event_date as string, occ)) return null;
@@ -383,7 +415,7 @@ export function memberFeedCalendar(
       },
       labels,
       occ ? `event-${e.id}-${occ.replace(/-/g, "")}` : `event-${e.id}`,
-      { updatedAt: e.updated_at, rrule: occ ? null : rrule, now: opts.now },
+      { updatedAt: e.updated_at, rrule: occ ? null : rrule, exdates: occ ? [] : skipDates(e.recurrence), now: opts.now },
     ));
   }
   return calendarFile(events, one ? undefined : "BandWith", "Member");

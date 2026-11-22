@@ -12,6 +12,9 @@
  * review #285 round 2: a one-event link is asked again each time an event
  * opens (the server may have ended it: 500 per account), every mounted
  * button follows a new account link, and a failed check is not kept.
+ * Round 3: everything here belongs to the account signed in; another
+ * account on the device (or none) starts from nothing, and an old-link
+ * question answered "no" is asked again on the next open.
  */
 import { isDemoMode, supabase } from '@/lib/supabase';
 import { getLocale } from '@/lib/i18n';
@@ -166,7 +169,8 @@ export function useEventCalendarToken(eventId: string, date: string | null): { t
   useEffect(() => {
     let alive = true;
     const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-    const userId = cached?.userId ?? null;
+    // The last link of the account signed in now, never another's.
+    const userId = authUserId !== undefined ? (cached?.userId === authUserId ? authUserId : null) : cached?.userId ?? null;
     const last = userId && UUID.test(eventId) ? eventTokenValues.get(eventTokenKey(userId, eventId, day)) ?? null : null;
     setState({ key, token: last, loading: !last });
     void myEventCalendarToken(eventId, date, { refresh: true }).then((t) => {
@@ -194,7 +198,9 @@ export function memberEventCalendarUrl(eventToken: string, lang?: string): strin
 let review: { userId: string; value: Promise<boolean> } | null = null;
 const reviewListeners = new Set<(v: boolean) => void>();
 const setReview = (userId: string, v: boolean) => {
-  review = { userId, value: Promise.resolve(v) };
+  // Only a "yes" is kept: the flag can be set from elsewhere (an old link
+  // used on another device), so a "no" is asked again (review of #285, round 3).
+  review = v ? { userId, value: Promise.resolve(v) } : null;
   reviewListeners.forEach((l) => l(v));
 };
 
@@ -206,9 +212,10 @@ export async function myCalendarLinkReview(): Promise<boolean> {
   let value!: Promise<boolean>;
   value = (async () => {
     const { data, error } = await supabase.rpc('bw_my_calendar_link_review');
-    // Not reached (offline): not kept, the next check asks again.
-    if (error && review?.value === value) review = null;
-    return !error && data === true;
+    // Not reached (offline), or "no": not kept, the next check asks again.
+    const yes = !error && data === true;
+    if (!yes && review?.value === value) review = null;
+    return yes;
   })();
   review = { userId, value };
   return value;
@@ -253,6 +260,35 @@ export const webcalUrl = (feedUrl: string) => feedUrl.replace(/^https?:/, 'webca
 /** Google Calendar's "add calendar from URL" with the feed filled in. */
 export const googleSubscribeUrl = (feedUrl: string) =>
   `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcalUrl(feedUrl))}`;
+
+// -------------------------------------------- one account at a time --
+// A sign-out, or another account signing in on this device, drops what the
+// previous account had here (review of #285, round 3): its account link, its
+// one-event links and its old-link answer. Mounted hooks start again.
+
+/** The account the auth client reports (undefined until it has said). */
+let authUserId: string | null | undefined;
+
+function forgetAccount() {
+  cached = null;
+  pending = null;
+  review = null;
+  listeners.forEach((l) => l(null));
+  endEventTokens();
+}
+
+try {
+  if (typeof (supabase.auth as { onAuthStateChange?: unknown } | undefined)?.onAuthStateChange === 'function') {
+    supabase.auth.onAuthStateChange((_event, session) => {
+      const next = session?.user?.id ?? null;
+      const changed = authUserId !== undefined && next !== authUserId;
+      authUserId = next;
+      if (changed || (cached && cached.userId !== next)) forgetAccount();
+    });
+  }
+} catch {
+  /* demo / test clients without auth events */
+}
 
 /** For tests. */
 export function _resetCalendarTokenCache() {

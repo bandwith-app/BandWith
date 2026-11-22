@@ -34,7 +34,7 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
   const [editing, setEditing] = React.useState<Deputy | 'new' | null>(null);
   const [form, setForm] = React.useState(EMPTY);
   const [saving, setSaving] = React.useState(false);
-  const [confirm, setConfirm] = React.useState<'delete' | 'unlink' | null>(null);
+  const [confirm, setConfirm] = React.useState<'delete' | 'unlink' | 'revoke' | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
@@ -127,6 +127,21 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
     setConfirm(null);
     setNotice(t('Unlinked. Send the next request by message: its new link lets them join again from the app.'));
     void load();
+  };
+
+  // A deputy without an account: the same call rotates the reply and
+  // calendar links of every request (182), so a forwarded link stops working.
+  const revoke = async () => {
+    if (!editing || editing === 'new') return;
+    setSaving(true);
+    const { error: e } = await unlinkDeputy(editing.id);
+    setSaving(false);
+    if (e) {
+      setError(t('Could not revoke the links. Try again.'));
+      return;
+    }
+    setConfirm(null);
+    setNotice(t('Links revoked. The next request you send carries a new one.'));
   };
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -237,7 +252,7 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
         open={!!editing}
         onClose={close}
         overline={bandName}
-        title={editing === 'new' ? t('New deputy') : confirm === 'delete' ? t('Delete deputy?') : confirm === 'unlink' ? t('Unlink BandWith account?') : t('Edit deputy')}
+        title={editing === 'new' ? t('New deputy') : confirm === 'delete' ? t('Delete deputy?') : confirm === 'unlink' ? t('Unlink BandWith account?') : confirm === 'revoke' ? t('Revoke sent links?') : t('Edit deputy')}
         zIndex={102}
         footer={
           confirm ? (
@@ -248,6 +263,10 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
               {confirm === 'delete' ? (
                 <PillButton variant="danger" loading={saving} icon={<Trash2 className="w-4 h-4" />} onClick={remove}>
                   {t('Delete')}
+                </PillButton>
+              ) : confirm === 'revoke' ? (
+                <PillButton variant="danger" loading={saving} onClick={revoke}>
+                  {t('Revoke')}
                 </PillButton>
               ) : (
                 <PillButton variant="danger" loading={saving} onClick={unlink}>
@@ -281,6 +300,13 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
             <p>{t('Links already sent stop working. Send the next request by message: opening its new link from the app links the right account.')}</p>
             {error && <p role="alert" className="bw-body-sm text-destructive">{error}</p>}
           </div>
+        ) : confirm === 'revoke' ? (
+          <div className="flex flex-col gap-3 bw-body-md text-sheet-foreground/80">
+            <p>
+              {t('Reply and calendar links already sent to {name} stop working. The next request you send carries a new one.', { name: editing && editing !== 'new' ? editing.name : t('This deputy') })}
+            </p>
+            {error && <p role="alert" className="bw-body-sm text-destructive">{error}</p>}
+          </div>
         ) : (
           <form
             className="flex flex-col gap-3"
@@ -307,6 +333,18 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
                   {t('Unlink account')}
                 </button>
               </div>
+            )}
+            {editing && editing !== 'new' && !editing.user_id && (
+              <button
+                type="button"
+                className="bw-label-sm underline underline-offset-2 min-h-[44px] self-start"
+                onClick={() => {
+                  setError(null);
+                  setConfirm('revoke');
+                }}
+              >
+                {t('Revoke sent links')}
+              </button>
             )}
             {notice && (
               <p role="status" className="bw-body-sm rounded-[20px] bg-sheet-foreground/[0.08] p-4">

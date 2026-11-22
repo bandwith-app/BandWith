@@ -3,10 +3,17 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
 const rpc = vi.hoisted(() => vi.fn());
+const who = vi.hoisted(() => ({ id: 'user-1', onAuth: null as null | ((event: string, session: unknown) => void) }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     rpc,
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'user-1' } } } }) },
+    auth: {
+      getSession: async () => ({ data: { session: who.id ? { user: { id: who.id } } : null } }),
+      onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
+        who.onAuth = cb;
+        return { data: { subscription: { unsubscribe: () => undefined } } };
+      },
+    },
   },
 }));
 
@@ -18,6 +25,7 @@ import {
   memberEventCalendarUrl,
   myCalendarLinkReview,
   myCalendarToken,
+  useCalendarLinkReview,
   myEventCalendarToken,
   useEventCalendarToken,
   webcalUrl,
@@ -182,5 +190,50 @@ describe('member calendar: links stay current in a session', () => {
     expect(await myCalendarLinkReview()).toBe(true);
     expect(await myCalendarLinkReview()).toBe(true);
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Codex review #285 round 3.
+describe('member calendar: one device, two accounts', () => {
+  const EV = '11111111-2222-4333-8444-555555555555';
+  const A_LINK = 'd'.repeat(64);
+  const B_LINK = 'e'.repeat(64);
+  beforeEach(() => {
+    rpc.mockReset();
+    _resetCalendarTokenCache();
+    who.id = 'user-1';
+  });
+
+  it("B never sees A's event link, not even while B's own request is on its way", async () => {
+    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_token' ? { data: A_LINK, error: null } : { data: TOKEN, error: null }));
+    await myCalendarToken(); // A opened Calendar sync
+    const a = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(a.result.current.token).toBe(A_LINK));
+    a.unmount();
+    // A signs out, B signs in on the same device.
+    who.id = 'user-2';
+    who.onAuth?.('SIGNED_OUT', null);
+    who.onAuth?.('SIGNED_IN', { user: { id: 'user-2' } });
+    let answer: (v: unknown) => void = () => undefined;
+    rpc.mockImplementation(() => new Promise((r) => (answer = r)));
+    const b = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    expect(b.result.current.token).toBeNull();
+    await waitFor(() => expect(rpc).toHaveBeenCalled());
+    expect(b.result.current.token).toBeNull();
+    await act(async () => answer({ data: B_LINK, error: null }));
+    await waitFor(() => expect(b.result.current.token).toBe(B_LINK));
+  });
+
+  // A "no" is not kept: the flag can be set from elsewhere (an old link used
+  // on another device), so each time the notice shows it asks again.
+  it('the old-link question is asked again on each open after a "no"', async () => {
+    rpc.mockResolvedValueOnce({ data: false, error: null });
+    const first = renderHook(() => useCalendarLinkReview());
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    expect(first.result.current).toBe(false);
+    first.unmount();
+    rpc.mockResolvedValueOnce({ data: true, error: null });
+    const again = renderHook(() => useCalendarLinkReview());
+    await waitFor(() => expect(again.result.current).toBe(true));
   });
 });

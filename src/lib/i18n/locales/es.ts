@@ -3334,6 +3334,12 @@ const dict: Dictionary = {
   "Links already sent stop working. Send the next request by message: opening its new link from the app links the right account.": "Los enlaces ya enviados dejan de funcionar. Envía la próxima solicitud por mensaje: al abrir el nuevo enlace desde la app se vincula la cuenta correcta.",
   "{name} answers in the app: requests and changes reach them as notifications.": "{name} responde en la app: las solicitudes y los cambios le llegan como notificaciones.",
   "Unlink account": "Desvincular cuenta",
+  "Revoke sent links": "Revocar enlaces enviados",
+  "Revoke sent links?": "¿Revocar los enlaces enviados?",
+  "Revoke": "Revocar",
+  "Reply and calendar links already sent to {name} stop working. The next request you send carries a new one.": "Los enlaces de respuesta y de calendario ya enviados a {name} dejan de funcionar. La próxima solicitud que envíes llevará uno nuevo.",
+  "Could not revoke the links. Try again.": "No se pudieron revocar los enlaces. Inténtalo de nuevo.",
+  "Links revoked. The next request you send carries a new one.": "Enlaces revocados. La próxima solicitud que envíes llevará uno nuevo.",
   // App lock, bands load error
   "Unlock BandWith": "Desbloquear BandWith",
   "device passcode": "código del dispositivo",

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { occurrenceOf } from '@/lib/eventOccurrence';
 import { motion } from 'motion/react';
 import { ArrowUpRight, EyeOff, MapPin } from '@/app/components/icons';
 import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card } from '@/app/components/bw';
@@ -76,7 +77,8 @@ interface HomeViewProps {
   onQuickAction?: (action: string) => void;
   onViewChange?: (tab: string) => void;
   onFilterEvents?: (filter: string) => void;
-  onSelectEvent?: (eventId: string) => void;
+  /** `occurrence`: a later date of a repeating rehearsal (YYYY-MM-DD). */
+  onSelectEvent?: (eventId: string, occurrence?: string) => void;
   /** "Go live" on the next gig: opens it in Stage mode. */
   onGoLive?: (eventId: string) => void;
   isAdmin?: boolean;
@@ -923,7 +925,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
               const valid = d && !isNaN(d.getTime());
               const eventId: string | undefined = event.eventId || event.id;
               const open = () => {
-                if (onSelectEvent && eventId) onSelectEvent(eventId);
+                // A later date of a series opens at that date (review of #285).
+                if (onSelectEvent && eventId) onSelectEvent(eventId, occurrenceOf(event));
                 else onViewChange?.('Events');
               };
               const row = (

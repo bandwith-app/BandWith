@@ -244,6 +244,69 @@ await check('round 2: nor the reply page once the gig is cancelled', async () =>
   return v.event_cancelled === true && v.closed === true && v.venue_address === null;
 });
 
+console.log('-- review round 3 (PR #285)');
+// A deputy says yes, then the band edits or clears the address and cancels.
+const [EV_R3A, EV_R3B, EV_R3C, RZ1, RZ2, RZ3] = [30, 31, 32, 33, 34, 35].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
+  ($1, $4, 'R3 cleared', 'gig', 'confirmed', current_date + 13, '20:00', 'Hall A', 'Queens', '1 First Ave', false, $5, 1),
+  ($2, $4, 'R3 edited', 'gig', 'confirmed', current_date + 14, '20:00', 'Hall B', 'Queens', '2 Second Ave', false, $5, 1),
+  ($3, $4, 'R3 cleared only', 'gig', 'confirmed', current_date + 15, '20:00', 'Hall C', 'Queens', '3 Third Ave', false, $5, 1)`, [EV_R3A, EV_R3B, EV_R3C, BAND, ADMIN]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status) VALUES
+  ($1, $4, $5, $8, 'Ada', 'Keys', 'pending'), ($2, $4, $6, $8, 'Ada', 'Keys', 'pending'), ($3, $4, $7, $8, 'Ada', 'Keys', 'pending')`,
+  [RZ1, RZ2, RZ3, BAND, EV_R3A, EV_R3B, EV_R3C, DEPUTY2]);
+for (const r of [RZ1, RZ2, RZ3]) await q(`SELECT public.bw_deputy_request_reply($1, 'available')`, [await tok(r)]);
+await q(`UPDATE events SET venue_address = NULL, status = 'cancelled' WHERE id = $1`, [EV_R3A]);
+await q(`UPDATE events SET venue_address = '9 New St', status = 'cancelled' WHERE id = $1`, [EV_R3B]);
+await q(`UPDATE events SET venue_address = NULL WHERE id = $1`, [EV_R3C]);
+const view = async (r) => (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(r)])).v;
+await check('Codex r3 B2: address cleared, then gig cancelled: the reply page gives no old address', async () => {
+  const v = await view(RZ1);
+  return !JSON.stringify(v).includes('1 First Ave') && !v.changes.includes('address');
+});
+await check('Claude r3: address edited, then gig cancelled: no old (or new) address in changes or before', async () => {
+  const v = await view(RZ2);
+  const s = JSON.stringify(v);
+  return !s.includes('2 Second Ave') && !s.includes('9 New St') && !v.changes.includes('address');
+});
+await check('Codex r3 B2: address cleared (gig still on): the old address is not shown as "before"', async () => {
+  const v = await view(RZ3);
+  return !JSON.stringify(v).includes('3 Third Ave') && v.venue_address === null;
+});
+
+await check('Claude r3: "Keep my link" holds: the owner using an old one-event link is not asked again', async () => {
+  await as(MEM);
+  const t = (await one(`SELECT public.bw_my_calendar_token() AS t`)).t;
+  await q(`SELECT public.bw_my_calendar_link_keep()`);
+  await db.exec('RESET ROLE');
+  await q(`SELECT public.bw_member_calendar_flag_shared($1)`, [t]);
+  await as(MEM);
+  const again = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await db.exec('RESET ROLE');
+  return again === false;
+});
+
+await check('Codex r3: the 500-link cap is taken under a lock on the account (no 501 by two devices)', async () => {
+  const def = (await one(`SELECT pg_get_functiondef('public.bw_my_event_calendar_token(uuid, date)'::regprocedure) AS d`)).d;
+  return /FROM public\.calendar_feeds[^;]*WHERE[^;]*user_id = v_uid[^;]*FOR UPDATE/i.test(def);
+});
+
+// #297: one date of a series deleted (recurrence_rule.skip_dates); #298: a
+// monthly series on the 29th-31st falls on the last day of shorter months.
+const occ = async (rule, start, date) => (await one(`SELECT public.bw_calendar_is_occurrence($1::jsonb, $2::date, $3::date) AS x`, [JSON.stringify(rule), start, date])).x;
+await check('#297: a deleted date (skip_dates) is no occurrence; the others still are', async () =>
+  (await occ({ frequency: 'weekly', skip_dates: ['2027-01-12'] }, '2027-01-05', '2027-01-12')) === false
+  && (await occ({ frequency: 'weekly', skip_dates: ['2027-01-12'] }, '2027-01-05', '2027-01-19')) === true
+  && (await occ({ frequency: 'weekly', skip_dates: ['2027-01-05'] }, '2027-01-05', '2027-01-05')) === false
+  && (await occ({ frequency: 'weekly', skip_dates: 'junk' }, '2027-01-05', '2027-01-12')) === true);
+await check('#298: monthly on the 31st: Feb 28, Mar 31, Apr 30 (never Mar 3)', async () =>
+  (await occ({ frequency: 'monthly' }, '2027-01-31', '2027-02-28')) === true
+  && (await occ({ frequency: 'monthly' }, '2027-01-31', '2027-03-31')) === true
+  && (await occ({ frequency: 'monthly' }, '2027-01-31', '2027-04-30')) === true
+  && (await occ({ frequency: 'monthly' }, '2027-01-31', '2027-03-03')) === false
+  && (await occ({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')) === true
+  && (await occ({ frequency: 'monthly', interval: 2 }, '2026-12-31', '2027-02-28')) === true
+  && (await occ({ frequency: 'monthly', count: 1 }, '2027-01-31', '2027-03-31')) === false);
+
 // -------------------------------------------------------------- members --
 console.log('-- members (02 #5 / 03 #6, 02 #11)');
 const evTok = async (uid, ev, date) => {
@@ -345,7 +408,9 @@ await check('Claude #3: a link made before 182 asks once to be replaced; keep or
   await as(MEM);
   const c = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
   await db.exec('RESET ROLE');
-  // An older build served a one-event link (t=&e=): ask again.
+  // An older build served a one-event link (t=&e=): not asked again once
+  // they chose to keep it (review of #285, round 3; the owner's own taps on
+  // older builds use that form too).
   const t = (await one(`SELECT token FROM calendar_feeds WHERE user_id = $1`, [ADMIN])).token;
   await db.exec('SET ROLE anon');
   await q(`SELECT public.bw_member_calendar_flag_shared($1)`, [t]);
@@ -355,7 +420,20 @@ await check('Claude #3: a link made before 182 asks once to be replaced; keep or
   await q(`SELECT public.bw_my_calendar_token(true)`);
   const e = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
   await db.exec('RESET ROLE');
-  return a === true && b === false && c === false && d === true && e === false;
+  return a === true && b === false && c === false && d === false && e === false;
+});
+await check('an account that never answered is asked when an old one-event link of it is used', async () => {
+  await as(OUT);
+  const t = (await one(`SELECT public.bw_my_calendar_token() AS t`)).t;
+  const before = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await db.exec('RESET ROLE');
+  await db.exec('SET ROLE anon');
+  await q(`SELECT public.bw_member_calendar_flag_shared($1)`, [t]);
+  await db.exec('RESET ROLE');
+  await as(OUT);
+  const after = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await db.exec('RESET ROLE');
+  return before === false && after === true;
 });
 await check('grants: anon reads a link, only signed-in users make one, nobody reads the table', async () => {
   const r = await one(`SELECT has_function_privilege('anon', 'public.bw_member_event_calendar(text)', 'EXECUTE') AS a,
