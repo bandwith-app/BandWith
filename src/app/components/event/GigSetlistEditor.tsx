@@ -74,11 +74,21 @@ const loadedOrder = (songs: GigSetlistSong[]): { song_id: string; set_number: nu
     }))
   );
 
-/** Rows to save: empty sets drop out and the rest are numbered 1, 2, … */
-const rowsOf = (sets: DraftSet[]) =>
+/**
+ * Rows to save: empty sets drop out and the rest are numbered 1, 2, …
+ * A song that was loaded names its row (188 keeps that row: the same song
+ * twice with the first removed leaves the second its own singers and notes).
+ */
+const rowsOf = (sets: DraftSet[]): { id?: string; song_id: string; set_number: number }[] =>
   sets
     .filter((s) => s.songs.length > 0)
-    .flatMap((s, i) => s.songs.map((sg) => ({ song_id: sg.songId, set_number: i + 1 })));
+    .flatMap((s, i) =>
+      s.songs.map((sg) => ({
+        ...(typeof sg.source?.id === 'string' && sg.source.id ? { id: sg.source.id } : {}),
+        song_id: sg.songId,
+        set_number: i + 1,
+      }))
+    );
 
 export interface GigSetlistDraft {
   sets: DraftSet[];
@@ -203,7 +213,8 @@ export function useGigSetlistDraft(opts: {
         const name = eventTitle?.trim() ? t('{title} setlist', { title: eventTitle.trim() }) : t('Event setlist');
         const { data, error: err } = await createSetlist(
           { band_id: bandId, name, song_count: rows.length },
-          rows.map((r, i) => ({ ...r, position: i + 1 }))
+          // A new setlist: new rows, no ids from another one.
+          rows.map(({ song_id, set_number }, i) => ({ song_id, set_number, position: i + 1 }))
         );
         if (err || !data?.id) throw err || new Error(t('Could not save the setlist'));
         id = data.id;

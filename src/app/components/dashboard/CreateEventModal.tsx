@@ -778,7 +778,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const rebaseEdit = () => {
     if (!editDirtyRef.current) editBaselineRef.current = null;
   };
+  // A save refused here, before anything is sent: shown over the Save button.
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
+    // Another gig (or none): nothing is loaded for it yet. savedSetlistRef
+    // stays null until the gig's setlist has loaded; a load that fails leaves
+    // it null, and the save then refuses songs (handleCreate, Codex C1).
+    savedSetlistRef.current = null;
+    savedSongCountRef.current = 0;
+    setSaveError(null);
     if (!editingSetlistId || Array.isArray(ds?.setlist)) return;
     let cancelled = false;
     getSetlist(editingSetlistId).then(({ data, error }) => {
@@ -789,6 +797,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       savedSongCountRef.current = setSongCount(sets);
       rebaseEdit();
       setSetlist((prev) => (setSongCount(prev) > 0 ? prev : sets));
+    }, () => {
+      /* a load that throws: not loaded either */
     });
     return () => {
       cancelled = true;
@@ -972,6 +982,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const handleCreate = async () => {
     if (isSaving) return;
+    setSaveError(null);
+    // The gig has a setlist, and this form does not hold it as it is saved
+    // (the load failed, has not come back yet, or was skipped): songs sent
+    // now would replace all of it, unchecked. Nothing is saved (Codex C1).
+    const setlistUnknown = isEditing && !!editingSetlistId && !savedSetlistRef.current;
+    if (setlistUnknown && setSongCount(setlist) > 0) {
+      setSaveError(t('The setlist could not be loaded. Close and reopen the gig.'));
+      return;
+    }
     const fallbackTitle = getEffectiveTitle();
 
     const membersWithUserIds = selectedMembers.map(id => {
@@ -1002,7 +1021,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       _lineupCleared: lineupCleared(isEditing, initialLineupCount, membersWithUserIds.length),
       setlist,
       // Every song removed from a saved setlist: empty it (no songs alone means "unchanged").
-      _setlistCleared: isEditing && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
+      // A setlist that never loaded is never "emptied": no songs leaves it as it is.
+      _setlistCleared: isEditing && !setlistUnknown && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
       // No setlist when the gig was opened: a setlist someone adds meanwhile is never written over (B3).
       _setlistExpected: isEditing ? (editingSetlistId ? savedSetlistRef.current : { id: null, songs: [] }) : null,
       // A task typed but not yet added with the button still counts.
@@ -2465,6 +2485,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
           {/* CTA bar */}
           <div className="bw-edit-cta shrink-0 px-4 pt-3 bg-background" style={ctaPadBottom}>
+            {saveError && (
+              <p role="alert" className="bw-body-sm text-destructive mb-2 [overflow-wrap:anywhere]">
+                {saveError}
+              </p>
+            )}
             <div className="grid grid-cols-[2fr_3fr] gap-3">
               <PillButton variant="outline" size="lg" onClick={requestEditClose}>
                 {t('Cancel')}

@@ -314,6 +314,9 @@ export const ChordEditor: React.FC = () => {
     } catch {
       /* offline: the lyrics the conflict brought */
     }
+    // Another song was opened (or the editor closed) meanwhile: its text,
+    // undo steps and conflict are not this song's to replace.
+    if (openId !== id) return;
     const lyrics = editableLyrics(latest.stored);
     setSong((cur) => (cur && cur.id === id ? { ...cur, lyrics, stored: latest.stored, key: latest.key, chart: latest.chart } : cur));
     setText(lyrics);

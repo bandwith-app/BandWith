@@ -1827,6 +1827,7 @@ const dict: Dictionary = {
   "Saved offline • Will sync when connected": "Guardado sin conexión • Se sincronizará al conectarte",
   "Event updated, but there was a problem saving members.": "Evento actualizado, pero hubo un problema al guardar los miembros.",
   "Event updated, but the setlist was not saved.": "Evento actualizado, pero la setlist no se guardó.",
+  "The setlist could not be loaded. Close and reopen the gig.": "No se pudo cargar la setlist. Cierra el concierto y vuelve a abrirlo.",
   "Event updated. Someone else changed the setlist meanwhile, so your setlist changes were not saved.": "Evento actualizado. Otra persona cambió la setlist mientras tanto, así que tus cambios en la setlist no se guardaron.",
   "Someone else changed a gig setlist meanwhile, so your offline changes were not saved. They’re kept in {place}.": "Otra persona cambió la setlist de un concierto mientras tanto, así que tus cambios sin conexión no se guardaron. Se conservan en {place}.",
   "Too many unsaved changes: review them in {place}. Your gig setlist waits on this device until there’s room.": "Demasiados cambios sin guardar: revísalos en {place}. Tu setlist del concierto espera en este dispositivo hasta que haya espacio.",
