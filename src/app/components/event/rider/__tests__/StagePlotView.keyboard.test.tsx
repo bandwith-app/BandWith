@@ -73,6 +73,17 @@ describe('Stage plot, keyboard only', () => {
     expect(latest.items[0].x).toBe(0);
   });
 
+  it('arrows with Alt, Ctrl or Meta are left to the system (Alt+Left is Back)', () => {
+    render(<Harness />);
+    const before = { ...latest.items[0] };
+    for (const mod of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true, shiftKey: true }]) {
+      const ev = fireEvent.keyDown(stage().getByRole('button', { name: /Lead vocals/ }), { key: 'ArrowLeft', ...mod });
+      expect(ev).toBe(true); // not prevented
+    }
+    expect(latest.items[0].x).toBe(before.x);
+    expect(latest.items[0].y).toBe(before.y);
+  });
+
   it("a screen reader's click (no pointer) selects the item; a pointer tap still selects it once", () => {
     render(<Harness />);
     const singer = stage().getByRole('button', { name: /Lead vocals/ });

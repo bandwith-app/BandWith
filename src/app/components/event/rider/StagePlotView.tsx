@@ -232,6 +232,8 @@ export const StagePlotView: React.FC<{
       setSelected(null);
       return;
     }
+    // Alt/Ctrl/Meta with an arrow belong to the system (Alt+Left is Back).
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
     const step = e.shiftKey ? 0.1 : 0.02;
     const d =
       e.key === 'ArrowLeft' ? [-step, 0] : e.key === 'ArrowRight' ? [step, 0] : e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : null;
