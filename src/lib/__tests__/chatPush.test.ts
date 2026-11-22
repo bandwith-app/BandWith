@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CHAT_PUSH_CHANNEL,
   chatPreview,
+  chooseUnannounced,
+  findAnnouncedCandidates,
+  isUuid,
+  legacyContentFilter,
+  mentionsAmong,
   chatPushData,
   chatPushSubtitle,
   chatPushTitle,
@@ -97,5 +103,75 @@ describe('chat push review fixes', () => {
     expect(out).not.toHaveProperty('aps');
     expect(out).not.toHaveProperty('route');
     expect(out).toMatchObject({ chat_id: 'c1', chatId: 'c1', senderName: 'Bob', content: 'hi', message_id: 'm1', band_id: 'b1', type: 'chat_message', tag: 'Band Message' });
+  });
+});
+
+// Codex + Claude review #284, round 2.
+describe('chat push review fixes, round 2', () => {
+  const ANA = 'ana', ANAM = 'anam';
+  const roster = [{ id: ANA, name: 'Ana' }, { id: ANAM, name: 'Ana Maria' }, { id: BOB, name: 'Bob' }];
+
+  it('mentions are read against the whole chat, not only the requested recipients', () => {
+    // Only Ana is asked for, but the message mentions Ana Maria.
+    expect(mentionsAmong('@Ana Maria bring the capo', roster, [ANA], BOB)).toEqual([]);
+    expect(mentionsAmong('@Ana Maria and @Ana', roster, [ANA], BOB)).toEqual([ANA]);
+    expect(mentionsAmong('@Ana Maria', roster, [ANA, ANAM], BOB)).toEqual([ANAM]);
+  });
+
+  it('a verified chat push always rings on the Messages channel', () => {
+    const out = chatPushData(
+      { channel_id: 'bandwith_events', tag: 'Band Message' },
+      { chatId: 'c1', type: 'chat_message', senderName: 'Bob', body: 'hi', messageId: 'm1', bandId: null, bandName: null, chatType: 'direct', subtitle: 'Private Message' },
+    );
+    expect(out.channel_id).toBe(CHAT_PUSH_CHANNEL);
+    expect(CHAT_PUSH_CHANNEL).toBe('bandwith_messages');
+  });
+
+  it('the push payload carries the subtitle (foreground iOS banner reads data.subtitle)', () => {
+    const out = chatPushData({}, { chatId: 'c1', type: 'chat_message', senderName: 'Bob', body: 'hi', messageId: 'm1', bandId: 'b1', bandName: 'Hudson Horns', chatType: 'band', subtitle: 'Hudson Horns' });
+    expect(out.subtitle).toBe('Hudson Horns');
+  });
+
+  it('a name with $ stays literal in "mentioned you"', () => {
+    expect(chatPushTitle('chat_mention', 'Ke$$', 'en')).toBe('Ke$$ mentioned you');
+    expect(chatPushTitle('chat_mention', "$& $' $`", 'it')).toBe("$& $' $` ti ha menzionato");
+  });
+
+  it('a message id must be a UUID (anything else is refused, not a 500)', () => {
+    expect(isUuid('8b0c6f4e-2a1d-4c3b-9e8f-0a1b2c3d4e5f')).toBe(true);
+    expect(isUuid('8B0C6F4E-2A1D-4C3B-9E8F-0A1B2C3D4E5F')).toBe(true);
+    expect(isUuid('temp-123')).toBe(false);
+    expect(isUuid("' or 1=1 --")).toBe(false);
+    expect(isUuid(42)).toBe(false);
+  });
+
+  it('older builds: the preview is looked up by content, so 20 newer messages can’t hide it', () => {
+    expect(legacyContentFilter('Load-in moved to 6 pm')).toEqual({ eq: 'Load-in moved to 6 pm' });
+    expect(legacyContentFilter('New message')).toEqual({ in: ['', 'New message'] });
+    const long = 'a'.repeat(114) + '50%_\\x';
+    expect(long).toHaveLength(120);
+    expect(legacyContentFilter(long)).toEqual({ like: 'a'.repeat(114) + '50\\%\\_\\\\x%' });
+    // Cut in the middle of an emoji: the lone half isn't part of the pattern.
+    const cut = ('x'.repeat(119) + '🎸🎸').substring(0, 120);
+    expect(legacyContentFilter(cut)).toEqual({ like: 'x'.repeat(119) + '%' });
+  });
+
+  it('one message rings each recipient once', () => {
+    const m = (id: string): ChatMessageRow => ({ id, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5) });
+    // Re-calling with the same message: only those not told yet.
+    expect(chooseUnannounced([m('m9')], ['u1', 'u2'], [{ user_id: 'u1', message_id: 'm9' }])).toEqual({ message: m('m9'), recipients: ['u2'] });
+    expect(chooseUnannounced([m('m9')], ['u1'], [{ user_id: 'u1', message_id: 'm9' }])).toBeNull();
+    // Older builds, "OK" twice: the second push announces the other "OK".
+    expect(chooseUnannounced([m('m2'), m('m1')], ['u1'], [{ user_id: 'u1', message_id: 'm2' }])?.message.id).toBe('m1');
+    expect(chooseUnannounced([], ['u1'], [])).toBeNull();
+  });
+
+  it('older builds: every recent message with that preview is a candidate, newest first', () => {
+    const twice: ChatMessageRow[] = [
+      { id: 'n2', chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5) },
+      { id: 'n1', chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(50) },
+    ];
+    expect(findAnnouncedCandidates(twice, { callerId: BOB, chatId: CHAT, body: 'OK', now: NOW }).map((r) => r.id)).toEqual(['n2', 'n1']);
+    expect(findAnnouncedCandidates(twice, { callerId: BOB, chatId: CHAT, messageId: 'n1', now: NOW }).map((r) => r.id)).toEqual(['n1']);
   });
 });

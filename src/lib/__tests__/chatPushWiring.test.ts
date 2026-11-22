@@ -7,7 +7,7 @@ import chats from '../services/chats.ts?raw';
 
 describe('send-push wiring', () => {
   it('refuses an app push that is not the caller’s own recent message', () => {
-    expect(sendPush).toMatch(/findAnnouncedMessage\(/);
+    expect(sendPush).toMatch(/findAnnouncedCandidates\(/);
     expect(sendPush).toMatch(/if \(userType && !chatPush\) throw new HttpError\(403/);
   });
 
@@ -19,7 +19,7 @@ describe('send-push wiring', () => {
   });
 
   it('rings only devices of people who left push on', () => {
-    expect(sendPush).toMatch(/\.in\('user_id', silent \? targetUserIds : pushAllowed\(targetUserIds, peopleRows\)\)/);
+    expect(sendPush).toMatch(/\.in\('user_id', silent \? ringIds : pushAllowed\(ringIds, peopleRows\)\)/);
   });
 
   // Codex review #284.
@@ -33,16 +33,48 @@ describe('send-push wiring', () => {
   });
 
   it('a message named by id is looked up exactly, not in a 20-row window', () => {
-    expect(sendPush).toMatch(/\.eq\('id', messageId\)/);
+    expect(sendPush).toMatch(/\.eq\('id', messageId as string\)/);
   });
 
   it('mentions, the chat id and the payload come from the server', () => {
-    expect(sendPush).toMatch(/mentionedInMessage\(/);
+    expect(sendPush).toMatch(/mentionsAmong\(/);
     expect(sendPush).toMatch(/resolveChatId\(data\)/);
     expect(sendPush).toMatch(/chatPushData\(/);
   });
 
   it('the app names the message it announces', () => {
     expect(chats).toMatch(/message_id: data\?\.id/);
+  });
+});
+
+// Codex + Claude review #284, round 2.
+describe('send-push wiring, round 2', () => {
+  it('a verified chat push rings on the Messages channel, whatever the caller asked', () => {
+    expect(sendPush).toMatch(/const effectiveChannel = chatPush \? CHAT_PUSH_CHANNEL :/);
+  });
+
+  it('mentions are resolved against the whole chat roster', () => {
+    expect(sendPush).toMatch(/from\('chat_participants'\)/);
+    expect(sendPush).toMatch(/mentionsAmong\(/);
+  });
+
+  it('chat, sender and band lookups fail loudly', () => {
+    expect(sendPush).toMatch(/if \(chatError\) throw chatError;/);
+    expect(sendPush).toMatch(/if \(senderError\) throw senderError;/);
+    expect(sendPush).toMatch(/if \(bandError\) throw bandError;/);
+  });
+
+  it('a non-UUID message id is refused before the query', () => {
+    expect(sendPush).toMatch(/!isUuid\(messageId\)\) return null;/);
+  });
+
+  it('older builds look the preview up by content', () => {
+    expect(sendPush).toMatch(/legacyContentFilter\(/);
+  });
+
+  it('each recipient is told about a message once, and only those whose inbox row was written ring', () => {
+    expect(sendPush).toMatch(/chooseUnannounced\(/);
+    expect(sendPush).toMatch(/\.insert\(notifications\)\s*\.select\('user_id'\)/);
+    expect(sendPush).toMatch(/ringIds/);
   });
 });

@@ -31,13 +31,15 @@ export const CHAT_PUSH_WINDOW_MS = 10 * 60 * 1000;
 export const CHAT_PUSH_FUTURE_SKEW_MS = 60 * 1000;
 
 /**
- * The caller's message this push announces, or null. `recent` are the
- * caller's latest messages in the chat (newest first).
+ * Every message of the caller's this push could announce, newest first
+ * (`recent` newest first too). By id: at most that one. Older builds (by
+ * preview): each recent message with that preview, so "OK" sent twice gives
+ * two candidates and each push announces a different one.
  */
-export function findAnnouncedMessage(
+export function findAnnouncedCandidates(
   recent: ChatMessageRow[],
   opts: { callerId: string; chatId: string; messageId?: unknown; body?: unknown; now?: number },
-): ChatMessageRow | null {
+): ChatMessageRow[] {
   const now = opts.now ?? Date.now();
   const mine = recent.filter(
     (m) =>
@@ -48,10 +50,55 @@ export function findAnnouncedMessage(
       Date.parse(m.created_at) - now <= CHAT_PUSH_FUTURE_SKEW_MS,
   );
   if (typeof opts.messageId === 'string' && opts.messageId) {
-    return mine.find((m) => m.id === opts.messageId) ?? null;
+    return mine.filter((m) => m.id === opts.messageId).slice(0, 1);
   }
   const body = typeof opts.body === 'string' ? opts.body : '';
-  return mine.find((m) => chatPreview(m.content) === body) ?? null;
+  return mine.filter((m) => chatPreview(m.content) === body);
+}
+
+/** The newest message this push could announce, or null. */
+export function findAnnouncedMessage(
+  recent: ChatMessageRow[],
+  opts: { callerId: string; chatId: string; messageId?: unknown; body?: unknown; now?: number },
+): ChatMessageRow | null {
+  return findAnnouncedCandidates(recent, opts)[0] ?? null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Message ids are UUIDs: anything else would make the database cast fail (500). */
+export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
+
+/**
+ * Older builds send only the preview (`chatPreview`). Looking it up by
+ * content, not in the caller's latest 20 messages, finds it however busy the
+ * chat got before a delayed push arrived. A 120-unit preview may be cut: a
+ * prefix match (LIKE, with % _ \ escaped, without a half emoji at the end).
+ */
+export function legacyContentFilter(body: string): { eq: string } | { like: string } | { in: string[] } {
+  if (body === 'New message') return { in: ['', 'New message'] };
+  if (body.length < 120) return { eq: body };
+  const whole = /[\uD800-\uDBFF]$/.test(body) ? body.slice(0, -1) : body;
+  return { like: whole.replace(/[\\%_]/g, '\\$&') + '%' };
+}
+
+/**
+ * Each recipient hears about a message once (Claude review #284): calling
+ * send-push again with the same message rang everyone again and added inbox
+ * rows. `existing` are the chat notifications already written for these
+ * candidates. Picks the newest candidate someone hasn't been told about, and
+ * who that is; null when everyone already was.
+ */
+export function chooseUnannounced(
+  candidates: ChatMessageRow[],
+  targets: string[],
+  existing: { user_id: string; message_id: string | null }[],
+): { message: ChatMessageRow; recipients: string[] } | null {
+  for (const message of candidates) {
+    const told = new Set(existing.filter((e) => e.message_id === message.id).map((e) => String(e.user_id)));
+    const recipients = targets.filter((id) => !told.has(id));
+    if (recipients.length > 0) return { message, recipients };
+  }
+  return null;
 }
 
 /** Name, else email address, else fallback (same rule as src/lib/personName.ts). */
@@ -76,7 +123,8 @@ const MENTIONED: Record<string, string> = {
 export function chatPushTitle(type: 'chat_message' | 'chat_mention', senderName: string, lang: string | null | undefined): string {
   if (type === 'chat_message') return senderName;
   const l = String(lang || 'en').slice(0, 2).toLowerCase();
-  return (MENTIONED[l] ?? MENTIONED.en).replace('{name}', senderName);
+  // A callback, so a "$" in the name stays literal (Ke$$, not Ke$).
+  return (MENTIONED[l] ?? MENTIONED.en).replace('{name}', () => senderName);
 }
 
 /** The push subtitle: "Private Message" for a direct chat, else the band (or chat) name. */
@@ -133,6 +181,19 @@ export function mentionedInMessage(content: string | null | undefined, people: {
   return found;
 }
 
+/**
+ * The recipients a message mentions. Names are read against the whole chat
+ * (`roster`), then narrowed to `recipients`: with Ana and Ana Maria in the
+ * chat, "@Ana Maria" isn't a mention of Ana when only Ana was asked for.
+ */
+export function mentionsAmong(content: string | null | undefined, roster: { id: string; name: string }[], recipients: string[], excludeId?: string | null): string[] {
+  const asked = new Set(recipients);
+  return mentionedInMessage(content, roster, excludeId).filter((id) => asked.has(id));
+}
+
+/** Android channel for every verified chat push (muting Messages mutes chat). */
+export const CHAT_PUSH_CHANNEL = 'bandwith_messages';
+
 export interface VerifiedChatFields {
   chatId: string;
   type: 'chat_message' | 'chat_mention';
@@ -142,6 +203,8 @@ export interface VerifiedChatFields {
   bandId: string | null;
   bandName: string | null;
   chatType: string | null;
+  /** "Private Message" or the band name (the foreground iOS banner reads data.subtitle). */
+  subtitle?: string | null;
 }
 
 /**
@@ -161,8 +224,9 @@ export function chatPushData(data: Record<string, unknown> | null | undefined, v
     band_id: v.bandId,
     bandName: v.bandName ?? undefined,
     chatType: v.chatType ?? undefined,
+    subtitle: v.subtitle || undefined,
     tag: label('tag'),
-    channel_id: label('channel_id'),
+    channel_id: CHAT_PUSH_CHANNEL,
   };
   for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
   return out;

@@ -13,6 +13,14 @@
 -- android-v1.0.1). So bw_can_notify now refuses chat types for anyone but
 -- the actor; everything else is as in 073.
 --
+-- Round 2 (Claude review #284): one chat notice per recipient per message.
+-- Calling send-push again with a real message id rang everyone again and
+-- added inbox rows. send-push now skips recipients who already have that
+-- message's notice; this unique index is the backstop when two calls race
+-- (send-push answers 23505 with "already announced" and rings nobody).
+-- Only rows with data.message_id count: send-push writes it since #284,
+-- nothing wrote it before, so existing rows can't collide.
+--
 -- Older builds: nothing they do changes. Idempotent.
 -- ============================================================================
 
@@ -69,5 +77,10 @@ $function$;
 
 REVOKE EXECUTE ON FUNCTION public.bw_can_notify(uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_can_notify(uuid, uuid, text) TO authenticated;
+
+-- One notice per recipient per chat message (also serves send-push's lookup).
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_chat_message_once
+  ON public.notifications (user_id, ((data->>'message_id')))
+  WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id';
 
 COMMIT;

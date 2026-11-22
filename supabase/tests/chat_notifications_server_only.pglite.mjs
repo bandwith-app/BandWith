@@ -70,5 +70,26 @@ await db.exec(`INSERT INTO notifications (user_id, band_id, type, title, body) V
 await db.exec('RESET ROLE');
 ok(true, 'send-push (service role) still writes chat notices');
 
+// Round 2: one notice per recipient per message (Claude review #284).
+const MSG = id(500), MSG2 = id(501);
+const serviceInsert = async (to, type, msg) => {
+  try {
+    await db.query(`INSERT INTO notifications (user_id, band_id, type, title, body, data) VALUES ($1, $2, $3, 'Bob', 'hi', $4)`,
+      [to, BAND, type, JSON.stringify(msg ? { message_id: msg, chat_id: id(900) } : { chat_id: id(900) })]);
+    return true;
+  } catch (e) {
+    return e.code ?? e.message;
+  }
+};
+ok((await serviceInsert(MEM2, 'chat_message', MSG)) === true, 'first notice for a message is written');
+ok((await serviceInsert(MEM2, 'chat_message', MSG)) === '23505', 'the same message again for the same person is refused (23505)');
+ok((await serviceInsert(MEM2, 'chat_mention', MSG)) === '23505', 'also as a "mentioned you" notice');
+ok((await serviceInsert(ADMIN, 'chat_message', MSG)) === true, 'the same message for someone else is fine');
+ok((await serviceInsert(MEM2, 'chat_message', MSG2)) === true, 'another message for the same person is fine');
+ok((await serviceInsert(MEM2, 'chat_message', null)) === true && (await serviceInsert(MEM2, 'chat_message', null)) === true,
+  'rows without a message id (older ones) never collide');
+ok((await serviceInsert(MEM2, 'event_update', MSG)) === true && (await serviceInsert(MEM2, 'event_update', MSG)) === true,
+  'other types are not affected');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
