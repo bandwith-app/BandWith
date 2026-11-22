@@ -265,3 +265,62 @@ describe('lists owned by the trapped layer', () => {
     wrapsFromLast(composer);
   });
 });
+
+describe('layers that go away or close beneath', () => {
+  it('a dialog above that is hidden or leaving (still on the page) no longer traps: Tab is back in the sheet', async () => {
+    for (const leave of [
+      (el: HTMLElement) => el.setAttribute('hidden', ''),
+      (el: HTMLElement) => (el.style.pointerEvents = 'none'),
+      (el: HTMLElement) => el.setAttribute('aria-hidden', 'true'),
+    ]) {
+      const { rerender, unmount } = render(<Page />);
+      const { sheet } = await typeInSheet();
+      rerender(<Page invite={<InviteCard modal z={500} />} />);
+      const card = screen.getByRole('dialog', { name: 'Band invite' });
+      await waitFor(() => expect(card.contains(document.activeElement)).toBe(true));
+      leave(card);
+      screen.getByRole('button', { name: 'Create gig' }).focus();
+      tab();
+      expect(sheet.contains(document.activeElement)).toBe(true);
+      unmount();
+    }
+  });
+
+  it('a sheet that closes beneath another one leaves focus where it is', async () => {
+    const Two: React.FC<{ lower: boolean }> = ({ lower }) => {
+      const [upper, setUpper] = useState(false);
+      return (
+        <>
+          <button type="button">Page button</button>
+          <BwSheet open={lower} onClose={() => {}} title="Lower">
+            <button type="button" onClick={() => setUpper(true)}>
+              Open upper
+            </button>
+          </BwSheet>
+          <BwSheet open={upper} onClose={() => setUpper(false)} title="Upper">
+            <button type="button">First</button>
+            <button type="button">Second</button>
+          </BwSheet>
+        </>
+      );
+    };
+    const { rerender } = render(<Two lower={false} />);
+    screen.getByRole('button', { name: 'Page button' }).focus();
+    rerender(<Two lower />);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Lower' }).contains(document.activeElement)).toBe(true));
+    const open = screen.getByRole('button', { name: 'Open upper' });
+    open.focus();
+    fireEvent.click(open);
+    const upper = await screen.findByRole('dialog', { name: 'Upper' });
+    await waitFor(() => expect(upper.contains(document.activeElement)).toBe(true));
+    const second = screen.getByRole('button', { name: 'Second' });
+    second.focus();
+    rerender(<Two lower={false} />);
+    await frame();
+    await frame();
+    expect(document.activeElement).toBe(second);
+    // The upper one still traps.
+    tab();
+    expect(upper.contains(document.activeElement)).toBe(true);
+  });
+});

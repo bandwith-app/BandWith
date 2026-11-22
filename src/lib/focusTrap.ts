@@ -32,7 +32,18 @@ interface Layer {
 }
 
 const stack: Layer[] = [];
-const topLayer = (): Layer | undefined => stack[stack.length - 1];
+/**
+ * The layer on top: the newest one still in play. A layer found above that
+ * is hidden or leaving (its exit fade lets touches through) is skipped
+ * while it is still on the page.
+ */
+const topLayer = (): Layer | undefined => {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const l = stack[i];
+    if (!l.auto || inPlay(l.el)) return l;
+  }
+  return undefined;
+};
 /** The layer that traps, if the top one leaves focus to the trap. */
 const top = (): HTMLElement | undefined => {
   const l = topLayer();
@@ -203,6 +214,11 @@ const backToTrap = (opener: HTMLElement | null) => {
     if (!(typing && opener?.isConnected && root.contains(opener))) focusInto(root);
   }
 };
+
+/** Still in play: on the page, shown, and not leaving (touches pass through it then). */
+function inPlay(el: HTMLElement): boolean {
+  return el.isConnected && shown(el) && getComputedStyle(el).pointerEvents !== 'none';
+}
 
 /** Shown: not hidden, aria-hidden, inert, display:none or visibility:hidden. */
 const shown = (el: HTMLElement): boolean => {
@@ -380,8 +396,12 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     return () => {
       window.cancelAnimationFrame(id);
       if (!layer) return;
+      // Closing beneath another layer: focus stays where it is, up there.
+      const wasTop = topLayer() === layer;
+      const active = document.activeElement;
+      const heldFocus = !active || active === document.body || !active.isConnected || layer.el.contains(active);
       remove(layer);
-      backToTrap(layer.opener);
+      if (wasTop || heldFocus) backToTrap(layer.opener);
     };
   }, [active, ref]);
 }
