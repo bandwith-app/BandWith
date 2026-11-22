@@ -2314,6 +2314,12 @@ const dict: Dictionary = {
   "Play {title}": "{title} abspielen",
   "Actions for {title}": "Aktionen für {title}",
   "Lyrics": "Songtext",
+  "Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.": "Jemand anderes hat diesen Songtext geändert, während du ihn bearbeitet hast. Deine Änderungen sind noch da, aber noch nicht gespeichert.",
+  "Load the latest version to see their changes (yours are dropped), or save yours over theirs.": "Lade die neueste Version, um die anderen Änderungen zu sehen (deine gehen verloren), oder speichere deine über die anderen.",
+  "Load the latest version": "Neueste Version laden",
+  "Save mine instead": "Meine speichern",
+  "The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.": "Der Songtext ist zu lang zum Speichern: {count} Zeichen, das Limit ist {max}. Kürze ihn, der ganze Text bleibt hier.",
+  "You changed this quote. Save to keep the changes, or discard them.": "Du hast dieses Angebot geändert. Speichere, um die Änderungen zu behalten, oder verwirf sie.",
   "Open chart": "Chart öffnen",
   "Mark as ready": "Als bereit markieren",
   "Approve · learning": "Annehmen · üben",
@@ -4638,12 +4644,6 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} Zeilen haben eine Gesangsstimme. Sie bleiben an ihren Zeilen, wenn du den Text änderst.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Tippe auf ein Wort, um einen Akkord hinzuzufügen oder festzulegen, wer es singt. Ziehe einen Akkord, um ihn auf ein anderes Wort zu verschieben.",
   "Filled in from each member’s instrument. Change it and save.": "Ausgefüllt nach dem Instrument jedes Mitglieds. Ändere es und speichere.",
-  "Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.": "Jemand anderes hat diesen Songtext geändert, während du ihn bearbeitet hast. Deine Änderungen sind noch da, aber noch nicht gespeichert.",
-  "Load the latest version to see their changes (yours are dropped), or save yours over theirs.": "Lade die neueste Version, um die anderen Änderungen zu sehen (deine gehen verloren), oder speichere deine über die anderen.",
-  "Load the latest version": "Neueste Version laden",
-  "Save mine instead": "Meine speichern",
-  "The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.": "Der Songtext ist zu lang zum Speichern: {count} Zeichen, das Limit ist {max}. Kürze ihn, der ganze Text bleibt hier.",
-  "You changed this quote. Save to keep the changes, or discard them.": "Du hast dieses Angebot geändert. Speichere, um die Änderungen zu behalten, oder verwirf sie.",
 };
 
 export default dict;

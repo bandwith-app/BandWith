@@ -2314,6 +2314,12 @@ const dict: Dictionary = {
   "Play {title}": "Tocar {title}",
   "Actions for {title}": "Ações para {title}",
   "Lyrics": "Letra",
+  "Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.": "Outra pessoa alterou esta letra enquanto você editava. Suas alterações continuam aqui, ainda não salvas.",
+  "Load the latest version to see their changes (yours are dropped), or save yours over theirs.": "Carregue a versão mais recente para ver as alterações da outra pessoa (as suas são descartadas), ou salve as suas por cima.",
+  "Load the latest version": "Carregar a versão mais recente",
+  "Save mine instead": "Salvar a minha",
+  "The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.": "A letra é longa demais para salvar: {count} caracteres, o limite é {max}. Encurte-a, o texto completo continua aqui.",
+  "You changed this quote. Save to keep the changes, or discard them.": "Você alterou este orçamento. Salve para manter as alterações ou descarte-as.",
   "Open chart": "Abrir cifra",
   "Mark as ready": "Marcar como pronta",
   "Approve · learning": "Aprovar · aprendendo",
@@ -4638,12 +4644,6 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} linhas têm uma parte vocal. Elas ficam nas suas linhas quando você edita a letra.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Toque numa palavra para adicionar um acorde ou marcar quem a canta. Arraste um acorde para movê-lo para outra palavra.",
   "Filled in from each member’s instrument. Change it and save.": "Preenchido a partir do instrumento de cada membro. Altere e salve.",
-  "Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.": "Outra pessoa alterou esta letra enquanto você editava. Suas alterações continuam aqui, ainda não salvas.",
-  "Load the latest version to see their changes (yours are dropped), or save yours over theirs.": "Carregue a versão mais recente para ver as alterações da outra pessoa (as suas são descartadas), ou salve as suas por cima.",
-  "Load the latest version": "Carregar a versão mais recente",
-  "Save mine instead": "Salvar a minha",
-  "The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.": "A letra é longa demais para salvar: {count} caracteres, o limite é {max}. Encurte-a, o texto completo continua aqui.",
-  "You changed this quote. Save to keep the changes, or discard them.": "Você alterou este orçamento. Salve para manter as alterações ou descarte-as.",
 };
 
 export default dict;
