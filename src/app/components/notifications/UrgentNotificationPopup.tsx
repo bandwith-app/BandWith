@@ -89,11 +89,11 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
       style={leaving}
     />
     <motion.div
+      // data-bw-urgent: not a layer for useLayerOpen, so the pop-up never waits on itself (#271).
       ref={cardRef}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      // Not a layer for useLayerOpen: the pop-up never waits on itself (#271).
       data-bw-urgent=""
       tabIndex={-1}
       initial={{ opacity: 0, y: -24, scale: 0.97 }}

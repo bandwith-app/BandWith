@@ -126,6 +126,7 @@ const NOT_A_LAYER_ABOVE_A_SHEET: Record<string, string> = {
   '/src/app/components/ui/ErrorBoundary.tsx': 'error page in place of the app',
   '/src/app/components/dashboard/StageClick.tsx': 'aria-hidden click flash of Stage mode, no controls',
   '/src/app/components/chat/ChatDetailModal.tsx': 'chat page, opened from the chat list page',
+  '/src/app/components/calendar/CalendarLinkNotice.tsx': 'inline card (role="region") in the event and in Settings › Calendar sync (#285), not a floating layer',
   '/src/app/components/quotes/QuoteDetailModal.tsx': 'quote page, opened from the Quotes hub',
   '/src/app/components/profile/EditProfileModal.tsx': 'profile page, opened from the identity hub',
   '/src/app/components/layout/IdentityHub.tsx': 'identity hub page',

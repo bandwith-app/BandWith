@@ -27,7 +27,8 @@ describe('the urgent pop-up while it leaves', () => {
     const onOpen = vi.fn();
     const { container, rerender, getByRole } = render(<Host show onDismiss={onDismiss} onOpen={onOpen} />);
     const backdrop = container.ownerDocument.querySelector('.bw-pane-dialog') as HTMLElement;
-    const card = getByRole('alert');
+    // (#298 makes the pop-up a modal alert dialog.)
+    const card = getByRole('alertdialog');
     // Shown: tapping the dimmed screen dismisses it, as before.
     expect(backdrop.style.pointerEvents).not.toBe('none');
 
@@ -45,7 +46,7 @@ describe('the urgent pop-up while it leaves', () => {
 
   it('marks itself data-bw-urgent, so the layer check (useLayerOpen) never waits on the pop-up itself', () => {
     const { getByRole } = render(<Host show onDismiss={() => undefined} onOpen={() => undefined} />);
-    expect(getByRole('alert').hasAttribute('data-bw-urgent')).toBe(true);
+    expect(getByRole('alertdialog').hasAttribute('data-bw-urgent')).toBe(true);
   });
 
   it('shown, a tap on the dimmed screen still dismisses it', () => {
