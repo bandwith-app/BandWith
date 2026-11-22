@@ -675,11 +675,11 @@ const basics: AreaModule = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "no connection", "sync", "airplane mode", "cached"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Your bands, gigs and setlists stay available without a connection: the app shows what it last loaded on this device. A strip under the status bar says **You’re offline · showing cached info**." },
-        { type: "p", text: "Creating, editing or deleting a gig or rehearsal works offline. The app says **Saved offline • Will sync when connected** and the strip counts the waiting changes: **You’re offline · 2 changes will sync**." },
-        { type: "p", text: "When the connection comes back, the changes are sent on their own. The strip shows **Back online · 2 changes to sync** with a **Sync now** button, then **Back online · synced**." },
+        { type: "p", text: "Creating, editing or deleting a gig or rehearsal works offline. The app says **Saved offline • Will sync when connected** and the strip counts the waiting changes: **You’re offline · 2 changes waiting for signal**." },
+        { type: "p", text: "When the connection comes back, the changes are sent on their own. The strip shows **Back online · sending 2 changes** with a **Send now** button, then **Back online · up to date**. For Stage and Live mode, see [[live-mode-offline]]." },
         {
           type: "list",
           title: "Needs a connection",
@@ -690,7 +690,7 @@ const basics: AreaModule = {
             "Signing in for the first time on a device.",
           ],
         },
-        { type: "note", tone: "tip", text: "Signing out sends waiting changes first, which can take a few seconds. Sign out only once the strip says synced if you want to be sure." },
+        { type: "note", tone: "tip", text: "Signing out sends waiting changes first, which can take a few seconds. Sign out only once the strip says up to date if you want to be sure." },
       ],
     },
 
@@ -725,7 +725,7 @@ const basics: AreaModule = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["settings", "preferences", "options", "app settings"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Open the menu (the last tab), then tap **Settings & account**. **App settings** lists the sections:" },
         {
@@ -734,6 +734,7 @@ const basics: AreaModule = {
           rows: [
             ["**Notifications**", "**Push notifications**, **Email notifications**, **Product news**", "Your account (all devices)"],
             ["**Calendar sync**", "A private link to your events for **Apple Calendar**, **Google Calendar** or Outlook ([[calendar-sync]])", "Your account (all devices)"],
+            ["**Offline & live**", "**Automatic download**, **Wi-Fi only**, **Space used** for the setlists kept for no signal ([[offline-and-live-settings]])", "Mixed: **Automatic download** follows your account, the rest is this device"],
             ["**Appearance**", "Theme: **Light**, **Dark**, **System**", "This device"],
             ["**Units**", "**Kilometres** or **Miles**", "This device"],
             ["**Privacy & account**", "**App lock**, **Anonymous usage statistics**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
@@ -1332,7 +1333,7 @@ const basics: AreaModule = {
     { term: "Side rail", definition: "On a dual-screen phone, the column beside the screen that holds the tabs, Back, Search and your profile.", see: "duo-closed" },
     { term: "Book", definition: "A dual-screen phone opened like a book: two pages, lists on the left and details on the right.", see: "duo-book" },
     { term: "Laptop pose", definition: "A dual-screen phone standing half folded: the upper half (Display) to read, the lower half (Deck) to touch.", see: "duo-laptop-pose" },
-    { term: "Offline strip", definition: "The bar under the status bar that says you are offline and how many changes will sync.", see: "offline-mode" },
+    { term: "Offline strip", definition: "The bar under the status bar that says you are offline and how many changes are waiting for signal.", see: "offline-mode" },
   ],
 
   shots: [

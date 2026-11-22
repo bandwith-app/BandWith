@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["hors ligne", "pas de connexion", "synchronisation", "mode avion", "cache"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Tes groupes, concerts et setlists restent disponibles sans connexion : l’app montre ce qu’elle a chargé en dernier sur cet appareil. Un bandeau sous la barre d’état indique **Hors ligne · données en cache**." },
-        { type: "p", text: "Créer, modifier ou supprimer un concert ou une répétition fonctionne hors ligne. L’app indique **Enregistré hors ligne • Synchro dès la connexion** et le bandeau compte les modifications en attente : **Hors ligne · 2 modifications en attente**." },
-        { type: "p", text: "Quand la connexion revient, les modifications partent d’elles-mêmes. Le bandeau affiche **En ligne · 2 modifications à synchroniser** avec un bouton **Synchroniser**, puis **En ligne · synchronisé**." },
+        { type: "p", text: "Créer, modifier ou supprimer un concert ou une répétition fonctionne hors ligne. L’app indique **Enregistré hors ligne • Synchro dès la connexion** et le bandeau compte les modifications en attente : **Hors ligne · 2 modifications en attente de réseau**." },
+        { type: "p", text: "Quand la connexion revient, les modifications partent d’elles-mêmes. Le bandeau affiche **De retour en ligne · envoi de 2 modifications** avec un bouton **Envoyer maintenant**, puis **De retour en ligne · tout est à jour**. Pour le mode scène et le mode live, voir [[live-mode-offline]]." },
         {
           type: "list",
           title: "Il faut une connexion pour",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Se connecter pour la première fois sur un appareil.",
           ],
         },
-        { type: "note", tone: "tip", text: "La déconnexion envoie d’abord les modifications en attente, ce qui peut prendre quelques secondes. Pour être sûr, déconnecte-toi seulement quand le bandeau indique synchronisé." },
+        { type: "note", tone: "tip", text: "La déconnexion envoie d’abord les modifications en attente, ce qui peut prendre quelques secondes. Pour être sûr, déconnecte-toi seulement quand le bandeau indique que tout est à jour." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["réglages", "préférences", "options", "paramètres", "réglages de l’app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Ouvre le menu (le dernier onglet), puis touche **Réglages et compte**. **Réglages** liste les sections :" },
         {
@@ -727,6 +727,7 @@ const basics: AreaText = {
           rows: [
             ["**Notifications**", "**Notifications push**, **Notifications par e-mail**, **Nouveautés**", "Ton compte (tous les appareils)"],
             ["**Synchroniser le calendrier**", "Un lien privé vers tes événements pour **Calendrier Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Ton compte (tous les appareils)"],
+            ["**Hors ligne et live**", "**Téléchargement automatique**, **Wi-Fi uniquement**, **Espace utilisé** pour les setlists gardées pour les endroits sans réseau ([[offline-and-live-settings]])", "Variable : **Téléchargement automatique** suit ton compte, le reste vaut pour cet appareil"],
             ["**Apparence**", "Thème : **Clair**, **Sombre**, **Système**", "Cet appareil"],
             ["**Unités**", "**Kilomètres** ou **Miles**", "Cet appareil"],
             ["**Confidentialité et compte**", "**Verrouillage de l’app**, **Statistiques d’utilisation anonymes**, masquer les détails des concerts perso, **Exporter mes données**, conditions, politique de confidentialité, **Supprimer le compte**", "Variable (voir [[privacy-and-account-settings]])"],
@@ -1325,7 +1326,7 @@ const basics: AreaText = {
     { term: "Rail latéral", definition: "Sur un téléphone double écran, la colonne à côté de l’écran qui contient les onglets, Retour, Recherche et ton profil.", see: "duo-closed" },
     { term: "Livre", definition: "Un téléphone double écran ouvert comme un livre : deux pages, listes à gauche et détails à droite.", see: "duo-book" },
     { term: "Position ordinateur", definition: "Un téléphone double écran posé à moitié plié : la moitié haute (Display) pour lire, la moitié basse (Deck) pour toucher.", see: "duo-laptop-pose" },
-    { term: "Bandeau hors ligne", definition: "La barre sous la barre d’état qui indique que tu es hors ligne et combien de modifications vont se synchroniser.", see: "offline-mode" },
+    { term: "Bandeau hors ligne", definition: "La barre sous la barre d’état qui indique que tu es hors ligne et combien de modifications sont en attente de réseau.", see: "offline-mode" },
   ],
 };
 

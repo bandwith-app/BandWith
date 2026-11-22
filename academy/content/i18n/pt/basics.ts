@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "sem conexão", "sem internet", "sincronizar", "modo avião", "cache"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Suas bandas, shows e setlists continuam disponíveis sem conexão: o app mostra o que carregou por último neste dispositivo. Uma faixa abaixo da barra de status diz **Offline · dados em cache**." },
-        { type: "p", text: "Criar, editar ou excluir um show ou ensaio funciona offline. O app diz **Salvo offline • Sincroniza quando conectar** e a faixa conta as alterações em espera: **Offline · 2 alterações pendentes**." },
-        { type: "p", text: "Quando a conexão volta, as alterações são enviadas sozinhas. A faixa mostra **Online · 2 alterações pendentes** com um botão **Sincronizar agora** e depois **Online · sincronizado**." },
+        { type: "p", text: "Criar, editar ou excluir um show ou ensaio funciona offline. O app diz **Salvo offline • Sincroniza quando conectar** e a faixa conta as alterações em espera: **Você está offline · 2 alterações aguardando sinal**." },
+        { type: "p", text: "Quando a conexão volta, as alterações são enviadas sozinhas. A faixa mostra **Online de novo · enviando 2 alterações** com um botão **Enviar agora** e depois **Online de novo · tudo em dia**. Para o Modo palco e o Modo ao vivo, veja [[live-mode-offline]]." },
         {
           type: "list",
           title: "Precisa de conexão",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Entrar pela primeira vez num dispositivo.",
           ],
         },
-        { type: "note", tone: "tip", text: "Ao sair da conta, as alterações em espera são enviadas antes, o que pode levar alguns segundos. Se quiser ter certeza, só saia quando a faixa disser sincronizado." },
+        { type: "note", tone: "tip", text: "Ao sair da conta, as alterações em espera são enviadas antes, o que pode levar alguns segundos. Se quiser ter certeza, só saia quando a faixa disser tudo em dia." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["ajustes", "configurações", "preferências", "opções", "configurações do app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Abra o menu (a última aba) e toque em **Ajustes e conta**. **Configurações** lista as seções:" },
         {
@@ -727,6 +727,7 @@ const basics: AreaText = {
           rows: [
             ["**Notificações**", "**Notificações push**, **Notificações por e-mail**, **Novidades do produto**", "Sua conta (todos os dispositivos)"],
             ["**Sincronizar calendário**", "Um link privado para os seus eventos para **Calendário Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Sua conta (todos os dispositivos)"],
+            ["**Offline e ao vivo**", "**Download automático**, **Só com Wi-Fi**, **Espaço usado** para as setlists guardadas para quando não há sinal ([[offline-and-live-settings]])", "Misto: o **Download automático** segue a sua conta, o resto vale para este dispositivo"],
             ["**Aparência**", "Tema: **Claro**, **Escuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Quilômetros** ou **Milhas**", "Este dispositivo"],
             ["**Privacidade e conta**", "**Bloqueio do app**, **Estatísticas de uso anônimas**, ocultar os detalhes dos shows pessoais, **Exportar meus dados**, Termos, Política de Privacidade, **Excluir conta**", "Misto (veja [[privacy-and-account-settings]])"],
@@ -1325,7 +1326,7 @@ const basics: AreaText = {
     { term: "Barra lateral", definition: "Num celular de duas telas, a coluna ao lado da tela com as abas, Voltar, a busca e o seu perfil.", see: "duo-closed" },
     { term: "Modo livro", definition: "Um celular de duas telas aberto como um livro: duas páginas, listas à esquerda e detalhes à direita.", see: "duo-book" },
     { term: "Posição notebook", definition: "Um celular de duas telas de pé, meio dobrado: a metade de cima (Display) para ler, a de baixo (Deck) para tocar.", see: "duo-laptop-pose" },
-    { term: "Faixa offline", definition: "A barra abaixo da barra de status que avisa que você está offline e quantas alterações serão sincronizadas.", see: "offline-mode" },
+    { term: "Faixa offline", definition: "A barra abaixo da barra de status que avisa que você está offline e quantas alterações estão aguardando sinal.", see: "offline-mode" },
   ],
 };
 

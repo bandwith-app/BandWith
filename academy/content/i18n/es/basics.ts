@@ -665,11 +665,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["sin conexión", "offline", "sin internet", "sincronizar", "modo avión", "datos guardados"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Tus bandas, conciertos y setlists siguen disponibles sin conexión: la app muestra lo último que cargó en este dispositivo. Una franja bajo la barra de estado dice **Sin conexión · datos guardados**." },
-        { type: "p", text: "Crear, editar o eliminar un concierto o un ensayo funciona sin conexión. La app dice **Guardado sin conexión • Se sincronizará al conectarte** y la franja cuenta los cambios pendientes: **Sin conexión · 2 cambios pendientes**." },
-        { type: "p", text: "Cuando vuelve la conexión, los cambios se envían solos. La franja muestra **En línea · 2 cambios pendientes** con un botón **Sincronizar ahora** y luego **En línea · sincronizado**." },
+        { type: "p", text: "Crear, editar o eliminar un concierto o un ensayo funciona sin conexión. La app dice **Guardado sin conexión • Se sincronizará al conectarte** y la franja cuenta los cambios pendientes: **Sin conexión · 2 cambios esperando señal**." },
+        { type: "p", text: "Cuando vuelve la conexión, los cambios se envían solos. La franja muestra **De nuevo en línea · enviando 2 cambios** con un botón **Enviar ahora** y luego **De nuevo en línea · todo al día**. Para el Modo escenario y el Modo en vivo, consulta [[live-mode-offline]]." },
         {
           type: "list",
           title: "Necesita conexión",
@@ -680,7 +680,7 @@ const basics: AreaText = {
             "Entrar por primera vez en un dispositivo.",
           ],
         },
-        { type: "note", tone: "tip", text: "Al cerrar sesión se envían primero los cambios pendientes, lo que puede tardar unos segundos. Si quieres ir sobre seguro, cierra sesión cuando la franja diga sincronizado." },
+        { type: "note", tone: "tip", text: "Al cerrar sesión se envían primero los cambios pendientes, lo que puede tardar unos segundos. Si quieres ir sobre seguro, cierra sesión cuando la franja diga todo al día." },
       ],
     },
     {
@@ -713,7 +713,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["ajustes", "preferencias", "opciones", "configuración", "ajustes de la app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Abre el menú (la última pestaña) y toca **Ajustes y cuenta**. **Ajustes** muestra las secciones:" },
         {
@@ -722,6 +722,7 @@ const basics: AreaText = {
           rows: [
             ["**Notificaciones**", "**Notificaciones push**, **Notificaciones por correo**, **Novedades del producto**", "Tu cuenta (todos los dispositivos)"],
             ["**Sincronizar calendario**", "Un enlace privado a tus eventos para **Calendario de Apple**, **Google Calendar** u Outlook ([[calendar-sync]])", "Tu cuenta (todos los dispositivos)"],
+            ["**Sin conexión y en vivo**", "**Descarga automática**, **Solo con Wi-Fi**, **Espacio usado** para las setlists guardadas para cuando no hay señal ([[offline-and-live-settings]])", "Depende: **Descarga automática** sigue a tu cuenta, el resto es de este dispositivo"],
             ["**Apariencia**", "Tema: **Claro**, **Oscuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Kilómetros** o **Millas**", "Este dispositivo"],
             ["**Privacidad y cuenta**", "**Bloqueo de la app**, **Estadísticas de uso anónimas**, ocultar los detalles de los conciertos personales, **Exportar mis datos**, Términos, Política de privacidad, **Eliminar cuenta**", "Depende (consulta [[privacy-and-account-settings]])"],
@@ -1314,7 +1315,7 @@ const basics: AreaText = {
     { term: "Barra lateral", definition: "En un móvil de doble pantalla, la columna junto a la pantalla que contiene las pestañas, Atrás, Buscar y tu perfil.", see: "duo-closed" },
     { term: "Modo libro", definition: "Un móvil de doble pantalla abierto como un libro: dos páginas, listas a la izquierda y detalles a la derecha.", see: "duo-book" },
     { term: "Postura portátil", definition: "Un móvil de doble pantalla de pie y medio plegado: la mitad de arriba (Display) para leer, la de abajo (Deck) para tocar.", see: "duo-laptop-pose" },
-    { term: "Franja sin conexión", definition: "La barra bajo la barra de estado que dice que no tienes conexión y cuántos cambios se sincronizarán.", see: "offline-mode" },
+    { term: "Franja sin conexión", definition: "La barra bajo la barra de estado que dice que no tienes conexión y cuántos cambios están esperando señal.", see: "offline-mode" },
   ],
 };
 

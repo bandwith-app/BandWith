@@ -264,7 +264,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["chordpro", "markdown", "seções", "estrofe", "refrão", "acordes no texto", "formato", "json"],
-      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics"],
+      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics", "voice-parts"],
       body: [
         { type: "p", text: "A letra é texto simples com algumas marcas fáceis. O mesmo texto guarda as palavras e os acordes, então uma música serve para quem canta e para quem toca." },
         {
@@ -275,6 +275,7 @@ const music: AreaText = {
             "Uma linha em branco separa as estrofes.",
             "Um acorde vai entre colchetes logo antes da palavra em que cai: `[Am]word`. No leitor, ele aparece em cima dessa palavra.",
             "`**bold**` e `*italic*` funcionam dentro de uma linha.",
+            "As partes vocais são marcas em volta das palavras: `{v2}…{/v2}` segunda voz, `{bv}…{/bv}` coro, `{all}…{/all}` todos, `{sp}…{/sp}` falado. Veja [[voice-parts]].",
             "JSON também funciona, por exemplo uma lista de linhas ou uma lista de seções com nome e linhas.",
           ],
         },
@@ -450,7 +451,7 @@ const music: AreaText = {
       roles: ["admin"],
       kind: "task",
       keywords: ["editor de acordes", "editar acordes", "adicionar acorde", "mover acorde", "copiar acordes", "ireal"],
-      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro"],
+      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro", "mark-voice-parts"],
       body: [
         {
           type: "steps",
@@ -459,6 +460,7 @@ const music: AreaText = {
             "Toque numa palavra. A barra embaixo mostra **Acorde em “…”** e os acordes que a música já usa.",
             "Toque num acorde para colocá-lo na palavra, ou digite um novo em **Novo acorde, p. ex. F#m7** e toque em **Adicionar**. Toque em **Sem acorde** para removê-lo. Toque em **Pronto** para fechar a barra.",
             "Para mover um acorde, arraste-o para outra palavra.",
+            "Para marcar quem canta uma linha, use **Voz** na mesma barra: veja [[mark-voice-parts]].",
             "Para reaproveitar os acordes de uma estrofe, toque em **Copiar acordes de…** acima de uma seção e escolha a seção de onde copiar.",
             "Se a música tem uma grade do iReal, toque em **Do iReal (…)** acima de uma seção para pôr os acordes da seção correspondente da grade sobre as linhas dela.",
             "Toque em **Desfazer** no canto superior direito para voltar um passo. Quando terminar, toque em **Salvar acordes**.",
@@ -487,6 +489,159 @@ const music: AreaText = {
           rows: [
             { role: "admin", text: "Edita os acordes da banda para todos." },
             { role: "member", text: "Não tem editor de acordes. Sugere uma correção de acordes com **Sugerir uma alteração** (veja [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    // ───────────────────────────── Partes vocais ─────────────────────────────
+    {
+      id: "voice-parts",
+      title: "As partes vocais na letra",
+      summary: "Voz principal, segunda voz, coro, todos juntos e linhas faladas têm cada um o seu visual, para cada cantor achar a sua parte.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["vozes", "harmonia", "coro", "backing vocal", "vocal de apoio", "segunda voz", "falado", "voz principal", "partes", "abertura de vozes", "bv", "v2"],
+      related: ["mark-voice-parts", "who-sings-what", "highlight-my-part", "lyrics-and-chords-format", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Quando uma música tem mais de uma voz, a letra pode mostrar quem canta quais palavras. Cada parte tem um visual próprio, feito de uma forma e de uma cor, para ser lida num palco escuro, no sol e por músicos daltônicos.",
+        },
+        {
+          type: "table",
+          head: ["Parte", "Como aparece"],
+          rows: [
+            ["**Voz principal**", "Texto normal. As linhas sem parte são da voz principal."],
+            ["**Segunda voz**", "Uma linha colorida embaixo das palavras."],
+            ["**Coro**", "Em itálico e mais suave, com uma barra colorida à esquerda."],
+            ["**Todos**", "Em negrito: todo mundo canta."],
+            ["**Falado**", "Em versaletes, na cor cinza."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Onde você as vê",
+          items: [
+            "No leitor da música, no Modo palco e no Modo ao vivo, em Só a música e no retorno de chão de um dispositivo de duas telas.",
+            "Uma legenda no alto da música mostra as partes que ela usa e quem canta cada uma, por exemplo “Coro · Sam, Alex”. Ela só aparece quando a música tem partes.",
+            "Sem sinal também: as partes vão junto com a setlist no seu celular ([[live-mode-offline]]).",
+            "Uma nota de ensaio numa linha mostra a parte, por exemplo “Coro · linha 3”.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Como são escritas",
+          items: [
+            "Você não precisa digitar nada: os admins marcam as partes no editor de acordes ([[mark-voice-parts]]).",
+            "No texto da letra, uma parte é uma marca curta em volta das palavras: `{v2}…{/v2}` segunda voz, `{bv}…{/bv}` coro, `{all}…{/all}` todos, `{sp}…{/sp}` falado. A voz principal não tem marca.",
+            "Por exemplo, `{bv}(ooh, [Am]yeah){/bv}` é uma linha de coro com um acorde em “yeah”.",
+            "Uma parte cobre uma linha inteira ou algumas palavras dela, nunca mais de uma linha. O app arruma as marcas quando a música é salva.",
+            "As suas notas e as notas de ensaio continuam na linha delas quando partes são adicionadas.",
+          ],
+        },
+        { type: "shot", id: "voice-parts-stage", caption: "Uma música com partes vocais no Modo palco: a legenda no alto, as linhas de coro em itálico com uma barra, a segunda voz sublinhada." },
+      ],
+    },
+    {
+      id: "mark-voice-parts",
+      title: "Marcar quem canta cada linha",
+      summary: "No editor de acordes, toque numa linha ou em algumas palavras e escolha Voz principal, Segunda voz, Coro, Todos ou Falado.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["escolher a voz", "marcar coro", "marcar backing vocal", "harmonia", "segunda voz", "editar partes", "voz"],
+      related: ["voice-parts", "chord-editor", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "No Repertório, toque na linha da música e em **Editar acordes**.",
+            "Toque numa palavra da linha que você quer marcar. A barra embaixo mostra **Voz** acima dos acordes.",
+            "Deixe **Linha inteira** para marcar a linha toda. Para marcar só algumas palavras, toque em **Só estas palavras** e depois nas outras palavras da mesma linha.",
+            "Toque numa parte: **Voz principal**, **Segunda voz**, **Coro**, **Todos** ou **Falado**. As palavras ganham o visual dela na hora.",
+            "Para tirar uma parte, toque numa das palavras dela e escolha **Voz principal**.",
+            "Toque em **Salvar acordes**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Deixe o app sugerir",
+          items: [
+            "Numa letra colada ou importada, uma linha toda entre parênteses, como “(ooh, yeah)”, parece coro. Uma linha que começa com “All:” parece todos juntos.",
+            "O editor de acordes e o formulário da música então dizem, por exemplo, “2 linhas parecem de coro ou de todos juntos.”",
+            "Toque em **Marcar as partes vocais** para marcá-las. Nada muda até você tocar.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Marca as partes para a banda toda." },
+            { role: "member", text: "Vê as partes. Para pedir uma mudança, usa **Sugerir uma alteração** (veja [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+        { type: "shot", id: "voice-picker", caption: "O editor de acordes com Voz aberto: Linha inteira ou Só estas palavras, depois as cinco partes." },
+      ],
+    },
+    {
+      id: "who-sings-what",
+      title: "Dizer quem canta o quê",
+      summary: "Dê cada parte vocal aos membros que a cantam, para todos os shows ou só para uma setlist.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["atribuir cantores", "partes vocais", "vocais de apoio", "backing vocal", "substituto que canta", "quem canta", "cantores"],
+      related: ["voice-parts", "highlight-my-part", "mark-voice-parts"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abra uma música que tenha partes vocais: no leitor da música, ou no Modo palco ou no Modo ao vivo.",
+            "Na legenda no alto da letra, toque em **Quem canta o quê**.",
+            "Embaixo de cada parte, toque nos membros que a cantam. Toque num nome de novo para tirá-lo.",
+            "Num show, escolha **Todos os shows** para salvar na música, ou **Só este show** para esta setlist, por exemplo quando um substituto canta.",
+            "Toque em **Salvar**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Na primeira vez, as partes são preenchidas pelo instrumento de cada membro: “Backing vocals” vai para Coro, “Lead vocals” para Voz principal. Mude o que precisar e salve.",
+            "Para voltar às partes da própria música num show, abra **Só este show** e toque em **Usar as partes da música**.",
+            "Os nomes aparecem na legenda, e cada cantor vê a própria parte destacada ([[highlight-my-part]]).",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Diz quem canta o quê, para a música ou para um show." },
+            { role: "member", text: "Vê os nomes na legenda. Não pode mudá-los." },
+          ],
+        },
+        { type: "shot", id: "who-sings-what", caption: "Quem canta o quê num show: Todos os shows ou Só este show, e os membros embaixo de cada parte." },
+      ],
+    },
+    {
+      id: "highlight-my-part",
+      title: "Destacar a sua parte",
+      summary: "Deixe as linhas que você canta bem visíveis e as outras um pouco esmaecidas, no seu próprio dispositivo.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["minha parte", "esmaecer", "destacar", "cantor", "backing vocal", "coro", "linhas esmaecidas", "linhas apagadas"],
+      related: ["voice-parts", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abra uma música com partes vocais no leitor, no Modo palco ou no Modo ao vivo.",
+            "**Destacar a minha parte** na legenda está ligado: as suas linhas ficam bem visíveis e as outras um pouco esmaecidas.",
+            "Na primeira vez, uma dica diz “As linhas que você não canta ficam esmaecidas.” Toque em **Entendi**.",
+            "Para ver todas as linhas iguais, toque em **Destacar a minha parte** para desligar. Toque de novo para ligar.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "A sua parte vem de **Quem canta o quê**. Se nada estiver definido ali, ela vem do seu instrumento na banda: com “Backing vocals” você vê Coro destacado.",
+            "As linhas que todos cantam (**Todos**) ficam sempre visíveis.",
+            "O botão só aparece quando a música tem uma parte para você. Ele fica guardado neste dispositivo e vale para todas as músicas.",
           ],
         },
       ],
@@ -1188,7 +1343,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["palco", "dia do show", "ao vivo", "roteiro", "go live", "modo apresentação", "ensaio", "modo ao vivo", "ensaio ao vivo", "só a música", "só a letra", "vista limpa"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "live-mode-offline", "voice-parts", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1281,7 +1436,7 @@ const music: AreaText = {
             "A tela fica acesa enquanto o Modo palco está aberto.",
             "**Tela cheia** (o botão de quatro cantos no alto, na barra lateral em um dispositivo de tela dupla) esconde as barras do app, a barra lateral e a barra de status do celular, e mantém a tela ligada. Com letras ou grades na setlist, mostra só a música (**Só a música**); sem elas, a setlist ocupa a tela inteira e **Sair da tela cheia** ou Voltar sai dela.",
             "Sem setlist, ele diz “Nenhuma setlist vinculada a este show.”",
-            "Nos apps de celular e tablet, a setlist com letras e cifras fica guardada no dispositivo quando você abre o show, então o Modo palco funciona sem internet. Sair da conta apaga essa cópia.",
+            "Nos apps de celular e tablet, as setlists dos seus próximos 7 dias ficam no dispositivo, então o Modo palco funciona sem sinal. Veja [[live-mode-offline]].",
             "Sem internet e sem cópia no dispositivo, ele diz “Offline: não foi possível carregar a setlist.” com **Tentar de novo**.",
           ],
         },
@@ -1497,7 +1652,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["bluetooth", "offline", "sem sinal", "sem wifi", "ble", "chave do palco"],
-      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
         {
           type: "p",
@@ -1507,7 +1662,7 @@ const music: AreaText = {
           type: "steps",
           title: "Prepare-se antes do show",
           items: [
-            "Todos abrem o show uma vez enquanto estão online. O app guarda no celular a setlist (com letras e cifras) e a chave Bluetooth do show.",
+            "Todos colocam a setlist no celular: aceitando o download (veja [[live-mode-offline]]) ou abrindo o show uma vez enquanto estão online. A chave Bluetooth do show vem junto.",
             "Ative o Bluetooth e permita que o BandWith o use.",
             "No palco, todos abrem o Modo palco. O líder mostra **Bluetooth** ou **Ao vivo · BT**; os membros mostram **· BT** depois do rótulo de seguir.",
           ],
@@ -1529,6 +1684,200 @@ const music: AreaText = {
           type: "devices",
           rows: [{ devices: ["web"], text: "Sem sincronização por Bluetooth e sem cópia da setlist no dispositivo: na web, o Modo palco precisa de internet." }],
         },
+      ],
+    },
+    // ─────────────────────────── Sem sinal ───────────────────────────
+    {
+      id: "live-mode-offline",
+      title: "Usar o Modo palco e o Modo ao vivo sem sinal",
+      summary: "O seu celular guarda as setlists dos seus próximos 7 dias, com letras, acordes e as suas notas, para o Modo palco e o Modo ao vivo funcionarem sem sinal.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["offline", "sem sinal", "sem internet", "baixar", "download", "setlist offline", "modo avião", "porão", "7 dias", "deixar automático"],
+      related: ["offline-and-live-settings", "offline-members-ready", "changes-without-signal", "stage-mode", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "p",
+          text: "Muitos lugares não têm sinal. Nos apps de celular e tablet, o BandWith guarda no seu dispositivo as setlists dos seus próximos 7 dias, para o Modo palco e o Modo ao vivo abrirem e funcionarem sem internet.",
+        },
+        {
+          type: "list",
+          title: "O que fica no seu dispositivo",
+          items: [
+            "Todos os shows e ensaios dos próximos 7 dias de que você participa e que têm setlist. Os shows que você recusou ficam de fora.",
+            "Para cada música: título, artista, tom, BPM, a letra com acordes e partes vocais, a grade de acordes e quem canta o quê.",
+            "As suas próprias notas e arquivos nessas músicas. As notas dos outros, não.",
+            "Nunca cachês, contratos ou orçamentos.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Na primeira vez, diga sim uma vez",
+          items: [
+            "Cerca de uma semana antes do show, você recebe um push, por exemplo “O setlist de sábado, pronto sem sinal · Baixe letras, acordes e estruturas para The Loft, Brooklyn (12 músicas). Toque para ver o que inclui.”",
+            "Toque nele. O show abre com uma janela: **Tenha o setlist com você, mesmo sem sinal.** Ela diz o que é guardado, onde e mais ou menos quanto espaço ocupa.",
+            "Toque em **Baixar e deixar automático**. Esta setlist e as próximas são baixadas sozinhas, sem mais perguntas.",
+            "Ou toque em **Só este show** (num ensaio, **Só este ensaio**) para guardar só esta.",
+            "Ou toque em **Agora não**. Você recebe a pergunta mais uma vez, na véspera.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Na página do show",
+          items: [
+            "Embaixo da setlist, **Pronto offline · atualizado …** quer dizer que a setlist está neste dispositivo e em dia.",
+            "**Ainda não está neste dispositivo** quer dizer que ela ainda não foi guardada. Toque em **Baixar para offline** enquanto tiver sinal. Na primeira vez, a mesma janela pergunta como você quer.",
+            "Se o download falhar, aparece “Não foi possível baixar. Tente de novo com internet.”",
+          ],
+        },
+        {
+          type: "list",
+          title: "No palco sem sinal",
+          items: [
+            "Abra o show ou o ensaio como sempre e toque em **Abrir modo palco**, ou em **Em cena** no Início. Ele abre a partir da cópia no seu dispositivo.",
+            "Uma etiqueta no alto diz **Offline · conteúdo de …**, com a hora em que a cópia foi salva.",
+            "As mudanças de música do líder continuam chegando por Bluetooth: veja [[stage-bluetooth-sync]].",
+            "As notas e mudanças que você faz esperam no seu celular e saem quando o sinal voltar: veja [[changes-without-signal]].",
+          ],
+        },
+        {
+          type: "list",
+          title: "Ela se atualiza sozinha",
+          items: [
+            "Quando um admin muda a setlist ou uma das músicas dela, a sua cópia se atualiza quando você abre o app, quando volta para ele e em segundo plano quando o celular permite.",
+            "A cópia é apagada no dia seguinte ao show, quando você sai da banda ou o seu papel muda, e quando você sai da conta.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "A cópia fica só no seu dispositivo e só para você. Os admins veem se o seu celular está pronto, nunca o que tem nele.",
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Recebe a mesma pergunta na primeira vez, e também vê quem na banda está pronto: veja [[offline-members-ready]]." },
+            { role: "member", text: "Diz sim uma vez; depois as setlists são baixadas sozinhas." },
+            { role: "deputy", text: "Os substitutos não recebem as setlists da banda, então nada é guardado para eles." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Na web, o app precisa de internet para abrir, então não dá para usá-lo sem sinal. Use o app de celular ou tablet no palco." }],
+        },
+        { type: "shot", id: "live-pack-consent", caption: "A pergunta na primeira vez: Baixar e deixar automático, Só este show ou Agora não." },
+        { type: "shot", id: "live-offline-ready", caption: "Embaixo da setlist: Pronto offline e, para os admins, quantos membros estão prontos." },
+      ],
+    },
+    {
+      id: "offline-and-live-settings",
+      title: "Mudar a sua escolha offline nos Ajustes",
+      summary: "Ligue ou desligue os downloads automáticos, espere pelo Wi-Fi, veja o espaço usado e apague o que está guardado.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["ajustes", "configurações", "offline", "só wi-fi", "apagar offline", "armazenamento", "espaço", "download automático", "dados móveis"],
+      related: ["live-mode-offline", "settings-overview"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abra o menu, toque em **Ajustes e conta** e depois em **Offline e ao vivo**.",
+            "Ligue o **Download automático** para receber sozinho todas as setlists dos seus próximos 7 dias. Desligue para receber a pergunta a cada show.",
+            "Ligue **Só com Wi-Fi** se os downloads automáticos devem esperar pelo Wi-Fi neste dispositivo.",
+            "Olhe o **Espaço usado**: ele mostra quantas setlists estão guardadas e quanto espaço ocupam, por exemplo “2 setlists · 1,4 MB”.",
+            "Para liberar o espaço, toque em **Apagar tudo** e de novo em **Apagar tudo** para confirmar. As setlists voltam quando você abre o show com sinal.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "O **Download automático** segue a sua conta em todos os dispositivos. **Só com Wi-Fi** e o que está guardado valem só para este dispositivo.",
+            "O texto de uma setlist é pequeno. Os seus próprios arquivos nas músicas ocupam a maior parte do espaço.",
+          ],
+        },
+        { type: "shot", id: "settings-offline-live", caption: "Ajustes › Offline e ao vivo: Download automático, Só com Wi-Fi e Espaço usado." },
+      ],
+    },
+    {
+      id: "offline-members-ready",
+      title: "Ver quem tem a setlist para quando não há sinal",
+      summary: "Num show ou ensaio, veja quantos membros têm a setlist no celular e lembre os outros.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["pronto", "pronto offline", "lembrar", "lembrete", "membros prontos", "baixar", "download", "4 de 5"],
+      related: ["live-mode-offline", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abra o show ou o ensaio. Embaixo da setlist, procure **Offline: … de … membros prontos**.",
+            "Se todos estiverem prontos, aparece “Todos têm o setlist no celular.” Não há mais nada a fazer.",
+            "Se não, toque na linha. Ela mostra quem ainda não está pronto.",
+            "Toque em **Lembrar** ao lado de um nome. A pessoa recebe um push pedindo para baixar, e o botão diz **Lembrete enviado**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Um membro está pronto quando o app de celular ou tablet dele tem a versão mais recente desta setlist. Depois que você muda a setlist, ele volta a contar quando o celular dele se atualizar.",
+            "Cada membro recebe no máximo um lembrete a cada 6 horas para o mesmo show.",
+            "Os membros que só usam o app na web não podem ficar prontos: a cópia para quando não há sinal fica nos apps de celular e tablet.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "Você vê só se um celular está pronto, nunca o que tem nele nem as notas de ninguém.",
+        },
+      ],
+    },
+    {
+      id: "changes-without-signal",
+      title: "Mudanças feitas sem sinal",
+      summary: "As suas notas, as sugestões e a nova ordem do líder esperam no celular e saem sozinhas quando o sinal voltar.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["mudanças offline", "alterações offline", "aguardando sinal", "enviar agora", "sincronizar", "fila", "pendente", "caixa de saída"],
+      related: ["live-mode-offline", "my-notes-and-files", "lead-stage-mode", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Sem sinal você pode continuar trabalhando no Modo palco e no Modo ao vivo. O que você escreve é salvo no seu celular na hora e enviado assim que o sinal voltar.",
+        },
+        {
+          type: "list",
+          title: "O que espera no seu celular",
+          items: [
+            "As suas próprias notas numa música ([[my-notes-and-files]]).",
+            "Uma **Nota para a banda** e sugestões de alteração numa música.",
+            "Notas e marcas de ensaio.",
+            "A nova ordem da setlist feita pelo líder no Modo palco.",
+          ],
+        },
+        {
+          type: "list",
+          title: "O que você vê",
+          items: [
+            "Uma barra no alto, por exemplo **Você está offline · 2 alterações aguardando sinal**. Sem nada esperando, ela diz **Offline · dados em cache**.",
+            "Depois que o líder arrasta uma música sem sinal, o status diz **Salvo neste celular** e depois **Salvo** quando chega à setlist da banda.",
+            "Quando o sinal volta, a barra diz **Online de novo · enviando 2 alterações** e depois **Online de novo · tudo em dia**.",
+            "Para enviar na hora sem esperar, toque em **Enviar agora** na barra.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Quando é enviado",
+          items: [
+            "Assim que o sinal volta, quando você abre o app de novo, e a cada 30 segundos enquanto algo estiver esperando.",
+            "Fechar o app mantém o que está esperando. Vai na próxima vez que você abrir o app com sinal.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "tip",
+          text: "Os membros por perto veem a nova ordem do líder na hora por Bluetooth, antes de ela ser salva.",
+        },
+        { type: "shot", id: "stage-offline-banner", caption: "O Modo palco sem sinal: a etiqueta do conteúdo e a barra com as alterações aguardando sinal." },
       ],
     },
     {
@@ -1588,7 +1937,19 @@ const music: AreaText = {
     },
     {
       q: "O Modo palco funciona sem internet?",
-      a: "Nos apps de celular e tablet, sim: abra o show uma vez enquanto estiver online, e o celular do líder mantém a banda sincronizada por Bluetooth. Na web, o Modo palco precisa de internet.",
+      a: "Nos apps de celular e tablet, sim. Aceite o download uma vez e as setlists dos seus próximos 7 dias ficam no seu celular; o celular do líder mantém a banda na mesma música por Bluetooth. Na web, o Modo palco precisa de internet.",
+    },
+    {
+      q: "O meu celular baixa as setlists sem perguntar?",
+      a: "Não. Na primeira vez, uma janela pergunta. Escolha Baixar e deixar automático e as próximas setlists são baixadas sozinhas. Você pode mudar isso quando quiser em Ajustes › Offline e ao vivo.",
+    },
+    {
+      q: "As setlists no meu celular incluem cachês ou contratos?",
+      a: "Não. Só letras, acordes, estruturas, partes vocais e as suas próprias notas e arquivos. Cachês, contratos, orçamentos e as notas dos outros membros nunca vão para o seu celular.",
+    },
+    {
+      q: "Por que algumas linhas da letra estão esmaecidas?",
+      a: "Destacar a minha parte está ligado: as linhas que você não canta ficam um pouco esmaecidas. Toque em Destacar a minha parte no alto da música para ver todas.",
     },
     {
       q: "Dá para ouvir o clique?",
@@ -1632,6 +1993,9 @@ const music: AreaText = {
     { term: "Clique", definition: "O metrônomo visual do Modo palco: um brilho a cada tempo, sincronizado entre os celulares.", see: "stage-click" },
     { term: "Roteiro", definition: "Os horários de Montagem, Passagem de som, Show e Fim no alto do Modo palco.", see: "stage-mode" },
     { term: "Retorno de chão", definition: "O Modo palco num dispositivo de duas telas na posição laptop: dados da música em cima, botões grandes Anterior / Próximo embaixo.", see: "stage-mode-on-devices" },
+    { term: "Setlist offline", definition: "A cópia da setlist de um show ou ensaio guardada no seu celular para quando não há sinal: letras, acordes, partes vocais e as suas próprias notas.", see: "live-mode-offline" },
+    { term: "Parte vocal", definition: "Quem canta uma linha ou algumas palavras: Voz principal, Segunda voz, Coro, Todos ou Falado, cada uma com o seu visual.", see: "voice-parts" },
+    { term: "Destacar a minha parte", definition: "Um botão em cada dispositivo que deixa bem visíveis as linhas que você canta e esmaece um pouco as outras.", see: "highlight-my-part" },
   ],
 };
 

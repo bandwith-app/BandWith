@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "keine Verbindung", "synchronisieren", "Flugmodus", "zwischengespeichert", "Sync"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Deine Bands, Gigs und Setlists bleiben auch ohne Verbindung verfügbar: Die App zeigt, was sie zuletzt auf diesem Gerät geladen hat. Ein Streifen unter der Statusleiste zeigt **Offline · gespeicherte Daten**." },
-        { type: "p", text: "Einen Gig oder eine Probe erstellen, bearbeiten oder löschen klappt auch offline. Die App meldet **Offline gespeichert • Wird bei Verbindung synchronisiert** und der Streifen zählt die wartenden Änderungen: **Offline · 2 Änderungen ausstehend**." },
-        { type: "p", text: "Kommt die Verbindung zurück, werden die Änderungen von selbst gesendet. Der Streifen zeigt **Wieder online · 2 Änderungen ausstehend** mit einem Button **Jetzt synchronisieren** und danach **Wieder online · synchronisiert**." },
+        { type: "p", text: "Einen Gig oder eine Probe erstellen, bearbeiten oder löschen klappt auch offline. Die App meldet **Offline gespeichert • Wird bei Verbindung synchronisiert** und der Streifen zählt die wartenden Änderungen: **Offline · wartet auf Empfang: 2 Änderungen**." },
+        { type: "p", text: "Kommt die Verbindung zurück, werden die Änderungen von selbst gesendet. Der Streifen zeigt **Wieder online · wird gesendet: 2 Änderungen** mit einem Button **Jetzt senden** und danach **Wieder online · alles aktuell**. Zum Bühnen- und Live-Modus siehe [[live-mode-offline]]." },
         {
           type: "list",
           title: "Braucht eine Verbindung",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Die erste Anmeldung auf einem Gerät.",
           ],
         },
-        { type: "note", tone: "tip", text: "Beim Abmelden werden wartende Änderungen zuerst gesendet, das kann ein paar Sekunden dauern. Wenn du sichergehen willst, melde dich erst ab, wenn der Streifen „synchronisiert“ zeigt." },
+        { type: "note", tone: "tip", text: "Beim Abmelden werden wartende Änderungen zuerst gesendet, das kann ein paar Sekunden dauern. Wenn du sichergehen willst, melde dich erst ab, wenn der Streifen „alles aktuell“ zeigt." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["Einstellungen", "Optionen", "Präferenzen", "App-Einstellungen"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Öffne das Menü (den letzten Tab) und tippe auf **Einstellungen & Konto**. **Einstellungen** listet die Bereiche auf:" },
         {
@@ -727,6 +727,7 @@ const basics: AreaText = {
           rows: [
             ["**Mitteilungen**", "**Push-Mitteilungen**, **E-Mail-Mitteilungen**, **Produktneuigkeiten**", "Dein Konto (alle Geräte)"],
             ["**Kalender-Sync**", "Ein privater Link zu deinen Terminen für **Apple Kalender**, **Google Kalender** oder Outlook ([[calendar-sync]])", "Dein Konto (alle Geräte)"],
+            ["**Offline & live**", "**Automatischer Download**, **Nur über WLAN**, **Belegter Speicher** für die Setlists, die für Orte ohne Empfang gespeichert sind ([[offline-and-live-settings]])", "Gemischt: **Automatischer Download** folgt deinem Konto, der Rest gilt für dieses Gerät"],
             ["**Darstellung**", "Design: **Hell**, **Dunkel**, **System**", "Dieses Gerät"],
             ["**Einheiten**", "**Kilometer** oder **Meilen**", "Dieses Gerät"],
             ["**Datenschutz & Konto**", "**App-Sperre**, **Anonyme Nutzungsstatistiken**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
@@ -1325,7 +1326,7 @@ const basics: AreaText = {
     { term: "Seitliche Leiste", definition: "Auf einem Dual-Screen-Handy die Spalte neben dem Bildschirm mit den Tabs, Zurück, Suche und deinem Profil.", see: "duo-closed" },
     { term: "Buch", definition: "Ein Dual-Screen-Handy, aufgeklappt wie ein Buch: zwei Seiten, Listen links und Details rechts.", see: "duo-book" },
     { term: "Laptop-Haltung", definition: "Ein halb aufgeklappt stehendes Dual-Screen-Handy: die obere Hälfte (Display) zum Lesen, die untere Hälfte (Deck) zum Tippen.", see: "duo-laptop-pose" },
-    { term: "Offline-Streifen", definition: "Die Leiste unter der Statusleiste, die anzeigt, dass du offline bist und wie viele Änderungen noch synchronisiert werden.", see: "offline-mode" },
+    { term: "Offline-Streifen", definition: "Die Leiste unter der Statusleiste, die anzeigt, dass du offline bist und wie viele Änderungen auf Empfang warten.", see: "offline-mode" },
   ],
 };
 

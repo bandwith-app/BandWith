@@ -264,7 +264,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["ChordPro", "Markdown", "Teile", "Strophe", "Refrain", "Akkorde im Text", "Format", "JSON"],
-      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics"],
+      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics", "voice-parts"],
       body: [
         { type: "p", text: "Songtexte sind einfacher Text mit ein paar simplen Zeichen. Derselbe Text enthält Wörter und Akkorde, so dient ein Song dem Gesang und den Instrumenten." },
         {
@@ -275,6 +275,7 @@ const music: AreaText = {
             "Eine Leerzeile trennt Strophen.",
             "Ein Akkord steht in Klammern direkt vor dem Wort, auf das er fällt: `[Am]word`. Im Reader erscheint er über diesem Wort.",
             "`**bold**` und `*italic*` funktionieren innerhalb einer Zeile.",
+            "Gesangsstimmen sind Zeichen um die Wörter: `{v2}…{/v2}` zweite Stimme, `{bv}…{/bv}` Chor, `{all}…{/all}` alle, `{sp}…{/sp}` gesprochen. Siehe [[voice-parts]].",
             "Auch JSON geht, zum Beispiel eine Liste von Zeilen oder eine Liste von Teilen mit Namen und Zeilen.",
           ],
         },
@@ -450,7 +451,7 @@ const music: AreaText = {
       roles: ["admin"],
       kind: "task",
       keywords: ["Akkord-Editor", "Akkorde bearbeiten", "Akkord hinzufügen", "Akkord verschieben", "Akkorde kopieren", "iReal"],
-      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro"],
+      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro", "mark-voice-parts"],
       body: [
         {
           type: "steps",
@@ -459,6 +460,7 @@ const music: AreaText = {
             "Tippe auf ein Wort. Die Leiste unten zeigt **Akkord auf „…“** und die Akkorde, die der Song schon verwendet.",
             "Tippe auf einen Akkord, um ihn auf das Wort zu setzen, oder gib einen neuen in **Neuer Akkord, z. B. F#m7** ein und tippe auf **Hinzufügen**. Tippe auf **Kein Akkord**, um ihn zu entfernen. Tippe auf **Fertig**, um die Leiste zu schließen.",
             "Um einen Akkord zu verschieben, zieh ihn auf ein anderes Wort.",
+            "Um zu markieren, wer eine Zeile singt, nutze **Stimme** in derselben Leiste: siehe [[mark-voice-parts]].",
             "Um die Akkorde einer Strophe wiederzuverwenden, tippe über einem Teil auf **Akkorde kopieren von…** und wähle den Teil, aus dem kopiert wird.",
             "Hat der Song ein iReal-Chart, tippe über einem Teil auf **Aus iReal (…)**, um die Akkorde des passenden Chart-Teils über seine Zeilen zu legen.",
             "Tippe oben rechts auf **Rückgängig**, um einen Schritt zurückzugehen. Wenn du fertig bist, tippe auf **Akkorde speichern**.",
@@ -487,6 +489,159 @@ const music: AreaText = {
           rows: [
             { role: "admin", text: "Bearbeitet die Akkorde der Band für alle." },
             { role: "member", text: "Hat keinen Akkord-Editor. Schlägt eine Akkordkorrektur mit **Änderung vorschlagen** vor (siehe [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    // ───────────────────────────── Voice parts ─────────────────────────────
+    {
+      id: "voice-parts",
+      title: "Gesangsstimmen im Songtext",
+      summary: "Hauptstimme, zweite Stimme, Chor, alle zusammen und gesprochene Zeilen sehen jeweils anders aus, damit jede Stimme ihren Part findet.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["Stimmen", "Gesangsstimmen", "Harmonie", "Backing Vocals", "Chor", "zweite Stimme", "gesprochen", "Hauptstimme", "Lead Vocals", "Parts", "bv", "v2"],
+      related: ["mark-voice-parts", "who-sings-what", "highlight-my-part", "lyrics-and-chords-format", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Hat ein Song mehr als eine Stimme, kann sein Songtext zeigen, wer welche Wörter singt. Jede Stimme hat ihr eigenes Aussehen, aus Form und Farbe, damit sie auf einer dunklen Bühne, in der Sonne und auch für Farbenblinde lesbar ist.",
+        },
+        {
+          type: "table",
+          head: ["Stimme", "Wie sie aussieht"],
+          rows: [
+            ["**Hauptstimme**", "Normaler Text. Zeilen ohne Stimme sind die Hauptstimme."],
+            ["**Zweite Stimme**", "Eine farbige Linie unter den Wörtern."],
+            ["**Chor**", "Kursiv und blasser, mit einem farbigen Balken links."],
+            ["**Alle**", "Fett: Alle singen."],
+            ["**Gesprochen**", "Kleine Großbuchstaben, in Grau."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Wo du sie siehst",
+          items: [
+            "Im Song-Reader, im Bühnenmodus und Live-Modus, in Nur der Song und auf dem Bodenmonitor eines Dual-Screen-Geräts.",
+            "Eine Legende oben im Song nennt die Stimmen, die er nutzt, und wer jede singt, zum Beispiel „Chor · Sam, Alex“. Sie erscheint nur, wenn der Song Stimmen hat.",
+            "Auch ohne Empfang: Die Stimmen kommen mit der Setlist auf dein Handy ([[live-mode-offline]]).",
+            "Eine Probennotiz zu einer Zeile nennt die Stimme, zum Beispiel „Chor · Zeile 3“.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Wie sie geschrieben werden",
+          items: [
+            "Du musst nichts tippen: Admins markieren die Stimmen im Akkord-Editor ([[mark-voice-parts]]).",
+            "Im Songtext ist eine Stimme ein kurzes Zeichen um die Wörter: `{v2}…{/v2}` zweite Stimme, `{bv}…{/bv}` Chor, `{all}…{/all}` alle, `{sp}…{/sp}` gesprochen. Die Hauptstimme hat kein Zeichen.",
+            "Zum Beispiel ist `{bv}(ooh, [Am]yeah){/bv}` eine Chorzeile mit einem Akkord auf „yeah“.",
+            "Eine Stimme umfasst eine ganze Zeile oder ein paar Wörter davon, nie mehr als eine Zeile. Die App räumt die Zeichen beim Speichern des Songs auf.",
+            "Deine Notizen und die Probennotizen bleiben bei ihrer Zeile, wenn Stimmen hinzukommen.",
+          ],
+        },
+        { type: "shot", id: "voice-parts-stage", caption: "Ein Song mit Gesangsstimmen im Bühnenmodus: oben die Legende, Chorzeilen kursiv mit Balken, die zweite Stimme unterstrichen." },
+      ],
+    },
+    {
+      id: "mark-voice-parts",
+      title: "Markieren, wer welche Zeile singt",
+      summary: "Tippe im Akkord-Editor auf eine Zeile oder ein paar Wörter und wähle Hauptstimme, Zweite Stimme, Chor, Alle oder Gesprochen.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["Stimmenauswahl", "Chor markieren", "Backing Vocals markieren", "Harmonie", "zweite Stimme", "Stimmen bearbeiten", "Stimme"],
+      related: ["voice-parts", "chord-editor", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Tippe im Repertoire auf die Songzeile und dann auf **Akkorde bearbeiten**.",
+            "Tippe auf ein Wort in der Zeile, die du markieren willst. Die Leiste unten zeigt **Stimme** über den Akkorden.",
+            "Lass **Ganze Zeile** gewählt, um die ganze Zeile zu markieren. Um nur einige Wörter zu markieren, tippe auf **Nur diese Wörter** und dann auf die anderen Wörter derselben Zeile.",
+            "Tippe auf eine Stimme: **Hauptstimme**, **Zweite Stimme**, **Chor**, **Alle** oder **Gesprochen**. Die Wörter ändern sofort ihr Aussehen.",
+            "Um eine Stimme zu entfernen, tippe auf eines ihrer Wörter und wähle **Hauptstimme**.",
+            "Tippe auf **Akkorde speichern**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Lass dir Vorschläge machen",
+          items: [
+            "In eingefügten oder importierten Songtexten sieht eine Zeile ganz in Klammern, wie „(ooh, yeah)“, nach Chor aus. Eine Zeile, die mit „All:“ beginnt, sieht nach allen zusammen aus.",
+            "Der Akkord-Editor und das Songformular sagen dann zum Beispiel „2 Zeilen sehen nach Chor oder Alle zusammen aus.“",
+            "Tippe auf **Gesangsstimmen markieren**, um sie zu markieren. Nichts ändert sich, bevor du tippst.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Markiert die Stimmen für die ganze Band." },
+            { role: "member", text: "Sieht die Stimmen. Bittet mit **Änderung vorschlagen** um eine Änderung (siehe [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+        { type: "shot", id: "voice-picker", caption: "Der Akkord-Editor mit geöffneter Stimme: Ganze Zeile oder Nur diese Wörter, dann die fünf Stimmen." },
+      ],
+    },
+    {
+      id: "who-sings-what",
+      title: "Festlegen, wer was singt",
+      summary: "Gib jede Stimme den Mitgliedern, die sie singen, für jeden Gig oder nur für eine Setlist.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["Sänger zuweisen", "Gesangsstimmen", "Chorsänger", "Harmoniestimmen", "Vertretung singt", "wer singt", "Sänger", "Sängerin"],
+      related: ["voice-parts", "highlight-my-part", "mark-voice-parts"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Öffne einen Song mit Gesangsstimmen: im Song-Reader oder im Bühnen- oder Live-Modus.",
+            "Tippe in der Legende oben im Songtext auf **Wer singt was**.",
+            "Tippe unter jeder Stimme auf die Mitglieder, die sie singen. Tippe noch einmal auf einen Namen, um ihn zu entfernen.",
+            "Wähle bei einem Gig **Jeder Gig**, um es im Song zu speichern, oder **Nur dieser Gig** für diese Setlist, zum Beispiel wenn eine Vertretung singt.",
+            "Tippe auf **Speichern**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Beim ersten Mal werden die Stimmen nach dem Instrument jedes Mitglieds vorausgefüllt: „Backing Vocals“ kommt zu Chor, „Lead Vocals“ zu Hauptstimme. Ändere, was nötig ist, und speichere.",
+            "Um bei einem Gig zu den Stimmen des Songs zurückzukehren, öffne **Nur dieser Gig** und tippe auf **Stimmen des Songs verwenden**.",
+            "Die Namen erscheinen in der Legende, und jede Person sieht ihre eigene Stimme hervorgehoben ([[highlight-my-part]]).",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Legt fest, wer was singt, für den Song oder für einen Gig." },
+            { role: "member", text: "Sieht die Namen in der Legende. Kann sie nicht ändern." },
+          ],
+        },
+        { type: "shot", id: "who-sings-what", caption: "Wer singt was bei einem Gig: Jeder Gig oder Nur dieser Gig, und die Mitglieder unter jeder Stimme." },
+      ],
+    },
+    {
+      id: "highlight-my-part",
+      title: "Deine eigene Stimme hervorheben",
+      summary: "Halte die Zeilen, die du singst, hell und blende die anderen etwas ab, auf deinem eigenen Gerät.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["meine Stimme", "abblenden", "hervorheben", "Sänger", "Chorsänger", "abgeblendete Zeilen", "mein Part"],
+      related: ["voice-parts", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Öffne einen Song mit Gesangsstimmen im Reader, im Bühnenmodus oder im Live-Modus.",
+            "**Meine Stimme hervorheben** in der Legende ist an: Deine Zeilen bleiben hell, die anderen werden etwas abgeblendet.",
+            "Beim ersten Mal sagt ein Hinweis „Zeilen, die du nicht singst, sind abgeblendet.“ Tippe auf **Verstanden**.",
+            "Um alle Zeilen gleich zu sehen, tippe auf **Meine Stimme hervorheben**, um es auszuschalten. Tippe noch einmal, um es wieder einzuschalten.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Deine Stimme kommt aus **Wer singt was**. Ist dort nichts festgelegt, kommt sie von deinem Instrument in der Band: Mit „Backing Vocals“ siehst du Chor hervorgehoben.",
+            "Zeilen, die alle singen (**Alle**), bleiben immer hell.",
+            "Der Schalter erscheint nur, wenn der Song eine Stimme für dich hat. Er wird auf diesem Gerät gemerkt und gilt für jeden Song.",
           ],
         },
       ],
@@ -1188,7 +1343,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["Bühne", "Gig-Tag", "live", "Ablauf", "Go live", "Auftrittsmodus", "Probe", "Live-Modus", "Probe live", "nur der Song", "nur Songtext", "aufgeräumte Ansicht"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "live-mode-offline", "voice-parts", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1281,7 +1436,7 @@ const music: AreaText = {
             "Der Bildschirm bleibt an, solange der Bühnenmodus offen ist.",
             "**Vollbild** (der Knopf mit den vier Ecken oben, auf einem Dual-Screen-Gerät in der Seitenleiste) blendet die Leisten der App, die Seitenleiste und die Statusleiste des Telefons aus und hält den Bildschirm an. Mit Texten oder Charts in der Setlist zeigt es nur den Song (**Nur der Song**); ohne bekommt die Setlist den ganzen Bildschirm, und **Vollbild beenden** oder Zurück verlässt es.",
             "Ohne Setlist steht dort „Diesem Gig ist keine Setlist zugeordnet.“",
-            "In den Apps für Handy und Tablet wird die Setlist mit Songtexten und Charts beim Öffnen des Gigs auf dem Gerät gespeichert, sodass der Bühnenmodus ohne Internet funktioniert. Beim Abmelden wird sie entfernt.",
+            "In den Apps für Handy und Tablet bleiben die Setlists deiner nächsten 7 Tage auf dem Gerät, sodass der Bühnenmodus ohne Empfang funktioniert. Siehe [[live-mode-offline]].",
             "Ohne Internet und ohne Kopie auf dem Gerät steht dort „Offline: Die Setlist konnte nicht geladen werden.“ mit **Erneut versuchen**.",
           ],
         },
@@ -1497,7 +1652,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["Bluetooth", "offline", "kein Empfang", "kein WLAN", "BLE", "Bühnenschlüssel"],
-      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
         {
           type: "p",
@@ -1507,7 +1662,7 @@ const music: AreaText = {
           type: "steps",
           title: "Vor dem Gig vorbereiten",
           items: [
-            "Alle öffnen den Gig einmal, während sie online sind. Die App speichert die Setlist (mit Songtexten und Charts) und den Bluetooth-Schlüssel des Gigs auf dem Handy.",
+            "Alle holen sich die Setlist aufs Handy: Sag Ja zum Download (siehe [[live-mode-offline]]) oder öffne den Gig einmal, während du online bist. Der Bluetooth-Schlüssel des Gigs kommt mit.",
             "Schalte Bluetooth ein und erlaube BandWith, es zu nutzen.",
             "Auf der Bühne öffnen alle den Bühnenmodus. Der Leader zeigt **Bluetooth** oder **Live · BT**; Mitglieder zeigen **· BT** hinter ihrer Folgen-Bezeichnung.",
           ],
@@ -1529,6 +1684,200 @@ const music: AreaText = {
           type: "devices",
           rows: [{ devices: ["web"], text: "Keine Bluetooth-Synchronisierung und keine Kopie der Setlist auf dem Gerät: Der Bühnenmodus im Web braucht Internet." }],
         },
+      ],
+    },
+    // ─────────────────────────── Without signal ───────────────────────────
+    {
+      id: "live-mode-offline",
+      title: "Bühnen- und Live-Modus ohne Empfang nutzen",
+      summary: "Dein Handy behält die Setlists deiner nächsten 7 Tage, mit Songtexten, Akkorden und deinen Notizen, damit Bühnen- und Live-Modus ohne Empfang funktionieren.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["offline", "kein Empfang", "kein Netz", "kein Internet", "herunterladen", "Download", "Setlist offline", "Flugmodus", "Keller", "7 Tage", "automatisch lassen"],
+      related: ["offline-and-live-settings", "offline-members-ready", "changes-without-signal", "stage-mode", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "p",
+          text: "Viele Locations haben keinen Empfang. In den Apps für Handy und Tablet behält BandWith die Setlists deiner nächsten 7 Tage auf deinem Gerät, sodass Bühnenmodus und Live-Modus auch ohne Internet öffnen und funktionieren.",
+        },
+        {
+          type: "list",
+          title: "Was auf deinem Gerät bleibt",
+          items: [
+            "Jeder Gig und jede Probe der nächsten 7 Tage, bei denen du dabei bist und die eine Setlist haben. Gigs, die du abgesagt hast, fehlen.",
+            "Zu jedem Song: Titel, Interpret, Tonart, BPM, der Songtext mit Akkorden und Gesangsstimmen, das Akkordchart und wer was singt.",
+            "Deine eigenen Notizen und Dateien zu diesen Songs. Keine Notizen anderer.",
+            "Nie Gagen, Verträge oder Angebote.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "Beim ersten Mal einmal Ja sagen",
+          items: [
+            "Etwa eine Woche vor dem Gig bekommst du eine Push-Mitteilung, zum Beispiel „Die Setlist für Samstag, auch ohne Netz bereit · Lade Texte, Akkorde und Abläufe für The Loft, Brooklyn herunter (12 Songs). Tippe, um zu sehen, was dabei ist.“",
+            "Tippe darauf. Der Gig öffnet sich mit einem Fenster: **Die Setlist dabei, auch ohne Empfang.** Es sagt, was gespeichert wird, wo und wie viel Platz es ungefähr braucht.",
+            "Tippe auf **Laden und automatisch lassen**. Diese Setlist und die nächsten kommen von selbst, ohne weitere Fragen.",
+            "Oder tippe auf **Nur diesen Gig** (bei einer Probe **Nur diese Probe**), um nur diese zu behalten.",
+            "Oder tippe auf **Nicht jetzt**. Du wirst am Tag davor noch einmal gefragt.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Auf der Seite des Gigs",
+          items: [
+            "Unter der Setlist heißt **Offline bereit · aktualisiert …**, dass die Setlist auf diesem Gerät und aktuell ist.",
+            "**Noch nicht auf diesem Gerät** heißt, dass sie noch nicht gespeichert ist. Tippe auf **Für offline laden**, solange du Empfang hast. Beim ersten Mal fragt dasselbe Fenster, wie du es willst.",
+            "Schlägt der Download fehl, steht dort „Download fehlgeschlagen. Versuch es mit Internet noch einmal.“",
+          ],
+        },
+        {
+          type: "list",
+          title: "Auf der Bühne ohne Empfang",
+          items: [
+            "Öffne den Gig oder die Probe wie immer und tippe auf **Bühnenmodus öffnen** oder auf Start auf **Bühne**. Er öffnet sich aus der Kopie auf deinem Gerät.",
+            "Ein Hinweis oben zeigt **Offline · Inhalte von …** mit der Uhrzeit, zu der die Kopie gespeichert wurde.",
+            "Die Songwechsel des Leaders erreichen dich weiter per Bluetooth: siehe [[stage-bluetooth-sync]].",
+            "Notizen und Änderungen, die du machst, warten auf deinem Handy und gehen raus, sobald der Empfang zurück ist: siehe [[changes-without-signal]].",
+          ],
+        },
+        {
+          type: "list",
+          title: "Sie bleibt von selbst aktuell",
+          items: [
+            "Ändert ein Admin die Setlist oder einen ihrer Songs, wird deine Kopie aktualisiert, wenn du die App öffnest, wenn du zu ihr zurückkehrst und im Hintergrund, wenn das Handy es erlaubt.",
+            "Die Kopie wird am Tag nach dem Gig entfernt, wenn du die Band verlässt oder sich deine Rolle ändert und wenn du dich abmeldest.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "Die Kopie ist nur auf deinem Gerät und nur für dich. Admins sehen, ob dein Handy bereit ist, nie, was darauf ist.",
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Bekommt beim ersten Mal dieselbe Frage und sieht außerdem, wer in der Band bereit ist: siehe [[offline-members-ready]]." },
+            { role: "member", text: "Sagt einmal Ja; danach kommen die Setlists von selbst." },
+            { role: "deputy", text: "Vertretungen bekommen die Setlists der Band nicht, daher wird für sie nichts gespeichert." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Im Web braucht die App Internet zum Öffnen, daher lässt sie sich ohne Empfang nicht nutzen. Nimm auf der Bühne die App für Handy oder Tablet." }],
+        },
+        { type: "shot", id: "live-pack-consent", caption: "Die Frage beim ersten Mal: Laden und automatisch lassen, Nur diesen Gig oder Nicht jetzt." },
+        { type: "shot", id: "live-offline-ready", caption: "Unter der Setlist: Offline bereit und, für Admins, wie viele Mitglieder bereit sind." },
+      ],
+    },
+    {
+      id: "offline-and-live-settings",
+      title: "Deine Offline-Wahl in den Einstellungen ändern",
+      summary: "Schalte automatische Downloads ein oder aus, warte auf WLAN, sieh den belegten Speicher und lösche, was gespeichert ist.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["Einstellungen", "offline", "nur WLAN", "Offline löschen", "Speicher", "Platz", "automatischer Download", "mobile Daten", "WLAN"],
+      related: ["live-mode-offline", "settings-overview"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Öffne das Menü, tippe auf **Einstellungen & Konto** und dann auf **Offline & live**.",
+            "Schalte **Automatischer Download** ein, um jede Setlist deiner nächsten 7 Tage von selbst zu bekommen. Schalte es aus, um bei jedem Gig gefragt zu werden.",
+            "Schalte **Nur über WLAN** ein, wenn automatische Downloads auf diesem Gerät auf WLAN warten sollen.",
+            "**Belegter Speicher** zeigt, wie viele Setlists gespeichert sind und wie viel Platz sie brauchen, zum Beispiel „2 Setlists · 1.4 MB“.",
+            "Um Platz zu schaffen, tippe auf **Alle löschen** und zur Bestätigung noch einmal auf **Alle löschen**. Die Setlists kommen zurück, wenn du den Gig mit Empfang öffnest.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "**Automatischer Download** folgt deinem Konto auf jedem Gerät. **Nur über WLAN** und was gespeichert ist, gelten nur für dieses Gerät.",
+            "Der Text einer Setlist ist klein. Deine eigenen Dateien zu den Songs brauchen den meisten Platz.",
+          ],
+        },
+        { type: "shot", id: "settings-offline-live", caption: "Einstellungen › Offline & live: Automatischer Download, Nur über WLAN und Belegter Speicher." },
+      ],
+    },
+    {
+      id: "offline-members-ready",
+      title: "Sehen, wer die Setlist für Orte ohne Empfang hat",
+      summary: "Sieh bei einem Gig oder einer Probe, wie viele Mitglieder die Setlist auf dem Handy haben, und erinnere die anderen.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["bereit", "offline bereit", "erinnern", "Mitglieder bereit", "herunterladen", "Download", "4 von 5"],
+      related: ["live-mode-offline", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Öffne den Gig oder die Probe. Such unter der Setlist **Offline: … von … Mitgliedern bereit**.",
+            "Sind alle bereit, steht dort „Alle haben die Setlist auf dem Handy.“ Sonst ist nichts zu tun.",
+            "Andernfalls tippe auf die Zeile. Sie listet, wer noch nicht bereit ist.",
+            "Tippe neben einem Namen auf **Erinnern**. Die Person bekommt eine Push-Mitteilung mit der Bitte, sie zu laden, und der Button zeigt **Erinnert**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Ein Mitglied ist bereit, wenn seine App auf Handy oder Tablet die neueste Version dieser Setlist hat. Nach einer Änderung an der Setlist zählt es wieder, sobald sein Handy aktualisiert hat.",
+            "Jedes Mitglied bekommt für denselben Gig höchstens eine Erinnerung alle 6 Stunden.",
+            "Mitglieder, die nur die Web-App nutzen, können nicht bereit sein: Die Kopie für Orte ohne Empfang gibt es in den Apps für Handy und Tablet.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "Du siehst nur, ob ein Handy bereit ist, nie, was darauf ist, und keine Notizen.",
+        },
+      ],
+    },
+    {
+      id: "changes-without-signal",
+      title: "Änderungen ohne Empfang",
+      summary: "Deine Notizen, Vorschläge und die neue Reihenfolge des Leaders warten auf dem Handy und gehen von selbst raus, sobald der Empfang zurück ist.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["Offline-Änderungen", "wartet auf Empfang", "jetzt senden", "Sync", "Warteschlange", "ausstehend", "Postausgang", "synchronisieren"],
+      related: ["live-mode-offline", "my-notes-and-files", "lead-stage-mode", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Ohne Empfang kannst du im Bühnenmodus und Live-Modus weiterarbeiten. Was du schreibst, wird sofort auf deinem Handy gespeichert und gesendet, sobald der Empfang zurück ist.",
+        },
+        {
+          type: "list",
+          title: "Was auf deinem Handy wartet",
+          items: [
+            "Deine eigenen Notizen zu einem Song ([[my-notes-and-files]]).",
+            "Eine **Notiz für die Band** und vorgeschlagene Änderungen an einem Song.",
+            "Probennotizen und Markierungen.",
+            "Die neue Setlist-Reihenfolge des Leaders im Bühnenmodus.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Was du siehst",
+          items: [
+            "Eine Leiste oben, zum Beispiel **Offline · wartet auf Empfang: 2 Änderungen**. Wartet nichts, zeigt sie **Offline · gespeicherte Daten**.",
+            "Zieht der Leader ohne Empfang einen Song, zeigt der Status **Auf diesem Handy gespeichert** und dann **Gespeichert**, sobald es die Setlist der Band erreicht.",
+            "Ist der Empfang zurück, zeigt die Leiste **Wieder online · wird gesendet: 2 Änderungen** und dann **Wieder online · alles aktuell**.",
+            "Um sofort zu senden, ohne zu warten, tippe in der Leiste auf **Jetzt senden**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Wann gesendet wird",
+          items: [
+            "Sobald der Empfang zurück ist, wenn du die App wieder öffnest und alle 30 Sekunden, solange etwas wartet.",
+            "Schließen der App behält, was wartet. Es geht raus, wenn du die App das nächste Mal mit Empfang öffnest.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "tip",
+          text: "Mitglieder in der Nähe sehen die neue Reihenfolge des Leaders sofort per Bluetooth, noch bevor sie gespeichert ist.",
+        },
+        { type: "shot", id: "stage-offline-banner", caption: "Der Bühnenmodus ohne Empfang: der Inhalts-Hinweis und die Leiste mit den Änderungen, die auf Empfang warten." },
       ],
     },
     {
@@ -1588,7 +1937,19 @@ const music: AreaText = {
     },
     {
       q: "Funktioniert der Bühnenmodus ohne Internet?",
-      a: "In den Apps für Handy und Tablet ja: Öffne den Gig einmal, während du online bist, und das Handy des Leaders hält die Band per Bluetooth synchron. Im Web braucht der Bühnenmodus Internet.",
+      a: "In den Apps für Handy und Tablet ja. Sag einmal Ja zum Download, und die Setlists deiner nächsten 7 Tage bleiben auf deinem Handy; das Handy des Leaders hält die Band per Bluetooth beim selben Song. Im Web braucht der Bühnenmodus Internet.",
+    },
+    {
+      q: "Lädt mein Handy die Setlists, ohne zu fragen?",
+      a: "Nein. Beim ersten Mal fragt ein Fenster. Wähle „Laden und automatisch lassen“, und die nächsten Setlists kommen von selbst. Du kannst das jederzeit unter Einstellungen › Offline & live ändern.",
+    },
+    {
+      q: "Enthalten die Setlists auf meinem Handy Gagen oder Verträge?",
+      a: "Nein. Nur Songtexte, Akkorde, Abläufe, Gesangsstimmen und deine eigenen Notizen und Dateien. Gagen, Verträge, Angebote und Notizen anderer Mitglieder kommen nie auf dein Handy.",
+    },
+    {
+      q: "Warum sind manche Zeilen im Songtext abgeblendet?",
+      a: "„Meine Stimme hervorheben“ ist an: Die Zeilen, die du nicht singst, sind etwas abgeblendet. Tippe oben im Song auf „Meine Stimme hervorheben“, um alle zu sehen.",
     },
     {
       q: "Kann ich den Klick hören?",
@@ -1632,6 +1993,9 @@ const music: AreaText = {
     { term: "Klick", definition: "Das visuelle Metronom des Bühnenmodus: ein Aufleuchten bei jedem Schlag, im Takt auf allen Handys.", see: "stage-click" },
     { term: "Ablauf", definition: "Die Zeiten für Load-in, Soundcheck, Show und Ende oben im Bühnenmodus.", see: "stage-mode" },
     { term: "Bodenmonitor", definition: "Der Bühnenmodus auf einem Dual-Screen-Gerät in Laptop-Haltung: Songinfos oben, große Felder Zurück / Weiter unten.", see: "stage-mode-on-devices" },
+    { term: "Offline-Setlist", definition: "Die Kopie der Setlist eines Gigs oder einer Probe, die für Orte ohne Empfang auf deinem Handy bleibt: Songtexte, Akkorde, Gesangsstimmen und deine eigenen Notizen.", see: "live-mode-offline" },
+    { term: "Gesangsstimme", definition: "Wer eine Zeile oder ein paar Wörter singt: Hauptstimme, Zweite Stimme, Chor, Alle oder Gesprochen, jede mit eigenem Aussehen.", see: "voice-parts" },
+    { term: "Meine Stimme hervorheben", definition: "Ein Schalter auf jedem Gerät, der die Zeilen, die du singst, hell hält und die anderen etwas abblendet.", see: "highlight-my-part" },
   ],
 };
 
