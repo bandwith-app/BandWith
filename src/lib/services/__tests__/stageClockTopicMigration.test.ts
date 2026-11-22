@@ -1,13 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import sql191 from '../../../../supabase/migrations/191_stage_clock_topic.sql?raw';
+import sql085 from '../../../../supabase/migrations/085_stage_live_channel.sql?raw';
 import { stageClockTopic, stageTopic } from '@/lib/stageLive';
 
 /** Static guards on 191 (audit #9); the dry run checks the behaviour. */
 const sql = sql191.replace(/--.*$/gm, '');
+const STRICT_UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+/** One function's CREATE ... $$; block. */
+const fn = (src: string, name: string) => {
+  const m = src.replace(/--.*$/gm, '').match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\([\\s\\S]*?\\$\\$;`));
+  return m ? m[0] : '';
+};
 
 describe('191 the stage clock topic', () => {
   it('members read and write broadcasts on stage-clock:event:<id> only', () => {
-    expect(sql).toMatch(/\^stage-clock:event:\(\[0-9a-fA-F-\]\{36\}\)\$/);
+    expect(fn(sql191, 'bw_stage_clock_topic_allowed')).toContain(`'^stage-clock:event:(${STRICT_UUID})$'`);
     expect(sql).toMatch(/bw_stage_clock_write ON realtime\.messages\s+FOR INSERT TO authenticated/);
     expect(sql).toMatch(/bw_stage_clock_read ON realtime\.messages\s+FOR SELECT TO authenticated/);
     expect(sql).toMatch(/RETURN public\.bw_is_band_member\(band\)/);
@@ -23,10 +30,28 @@ describe('191 the stage clock topic', () => {
     expect(sql).not.toMatch(/bw_stage_click_ping_write/);
   });
 
-  it('nothing for anon, and the stage topic itself is untouched (admins only)', () => {
+  it('nothing for anon, and the stage topic policies are untouched (admins only)', () => {
     expect(sql).not.toMatch(/TO anon/);
-    expect(sql).not.toMatch(/bw_stage_broadcast_write/);
-    expect(sql).not.toMatch(/'\^stage:event:/);
+    expect(sql).not.toMatch(/bw_stage_broadcast_write|bw_stage_read|bw_stage_presence_write/);
+  });
+
+  it("a topic with 36 characters that aren't a UUID is refused, not an error inside the policy (Claude on #283)", () => {
+    // '[0-9a-fA-F-]{36}' let '------------------------------------' through to ::uuid, which raises.
+    expect(sql).not.toMatch(/\[0-9a-fA-F-\]\{36\}/);
+    const stage = fn(sql191, 'bw_stage_topic_allowed');
+    expect(stage).toContain(`'^stage:event:(${STRICT_UUID})$'`);
+    // 085's helper, the same in every other way: same signature, same admin/member rule.
+    expect(stage.replace(STRICT_UUID, '[0-9a-fA-F-]{36}')).toBe(fn(sql085, 'bw_stage_topic_allowed'));
+    // Its grants come again with it.
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_topic_allowed\(text, boolean\) FROM PUBLIC, anon;/);
+    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_topic_allowed\(text, boolean\) TO authenticated;/);
+  });
+
+  it('the strict pattern takes UUIDs and nothing else', () => {
+    const re = new RegExp(`^stage-clock:event:(${STRICT_UUID})$`);
+    expect(re.test('stage-clock:event:0f8fad5b-d9cb-469f-a165-70867728950e')).toBe(true);
+    expect(re.test(`stage-clock:event:${'-'.repeat(36)}`)).toBe(false);
+    expect(re.test('stage-clock:event:0f8fad5bd9cb469fa16570867728950e0000')).toBe(false);
   });
 
   it('the app uses the same topic names', () => {

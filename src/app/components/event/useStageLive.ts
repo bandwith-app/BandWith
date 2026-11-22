@@ -24,6 +24,7 @@ import {
   bestSample,
   CLICK_EVENT,
   clockSample,
+  MAX_CLOCK_RTT_MS,
   nowMs,
   parseClickState,
   pickClock,
@@ -289,7 +290,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
     channelRef.current = channel;
-    /** Pongs sent per phone lately, and in all: a flood of pings gets a few answers, not one each. */
+    /**
+     * Pongs sent per phone lately, and in all: a flood of pings gets a few answers, not one each.
+     * Per claimed name, not per account: a Realtime broadcast carries no
+     * verified sender, so one member writing pings in 40 names can use up the
+     * overall cap for 2 s (the click keeps its last measure meanwhile). An
+     * admin's copy on the stage topic is the same ping (`seen`) and counts once.
+     */
     const answered = new Map<string, number[]>();
     let allAnswered: number[] = [];
     /** Pings answered lately, by name and t0: an admin's copy on the other topic isn't answered twice. */
@@ -362,6 +369,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const t2 = nowMs();
         if (asked < 0 || p.t0 > t2 || !Number.isFinite(p.t1)) return;
         book.sent.splice(asked, 1);
+        // Answered too late to trust: maybe our old ping, re-sent by someone else.
+        if (t2 - p.t0 > MAX_CLOCK_RTT_MS) return;
         book.samples.push(clockSample(p.t0, p.t1, t2));
         const best = bestSample(book.samples);
         if (best) setRtClock({ from: p.from, sample: best });

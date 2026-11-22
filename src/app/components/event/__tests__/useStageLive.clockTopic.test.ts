@@ -15,6 +15,8 @@ const net = vi.hoisted(() => ({
   /** Clock channels wait to join (Realtime reconnecting) until `joinClocks()`. */
   holdClock: false,
   pending: [] as Array<() => void>,
+  /** This phone's pings are lost on the way (seen by the others on the topic, not by the leader). */
+  dropPingsOf: '',
 }));
 const phones: Phone[] = [];
 const joinClocks = () => {
@@ -50,6 +52,7 @@ vi.mock('@/lib/supabase', () => ({
           const from = m.payload?.from ?? phone.key;
           if (!phone.joined || !mayBroadcast(topic, from)) return 'error';
           net.log.push({ topic, event: m.event, from, payload: m.payload });
+          if (net.dropPingsOf === from && m.event === PING_EVENT) return 'ok';
           for (const p of phones)
             if (p !== phone && p.topic === topic) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload: m.payload }));
           return 'ok';
@@ -82,6 +85,7 @@ beforeEach(() => {
   net.log = [];
   net.holdClock = false;
   net.pending = [];
+  net.dropPingsOf = '';
 });
 
 describe("useStageLive: an ordinary member measures the leader's clock (audit #9)", () => {
@@ -155,6 +159,25 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
         .forEach((h) => h.cb({ payload: { ...real, t1: real.t1 + 5000 } })),
     );
     expect(Math.abs(member.result.current.click.offset)).toBeLessThan(50);
+  });
+
+  it("a replay of the member's real ping, answered late, doesn't shift its clock: slow round trips are dropped (Claude on #283)", async () => {
+    const leader = phone(true);
+    const victim = phone(false);
+    const me = victim.result.current.clientId;
+    const boss = leader.result.current.clientId;
+    // The victim's first pings don't reach the leader, so they stay unanswered.
+    net.dropPingsOf = me;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await waitFor(() => expect(net.log.some((m) => m.event === PING_EVENT && m.from === me)).toBe(true), { timeout: 3000 });
+    const real = net.log.find((m) => m.event === PING_EVENT && m.from === me)!.payload as { t0: number };
+    // Another member sends that same ping again, 700 ms later; this time the answer arrives.
+    await new Promise((r) => setTimeout(r, 700));
+    const leaderClock = phones.find((p) => p.topic === 'stage-clock:event:gig-1')!;
+    act(() => leaderClock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from: me, to: boss, t0: real.t0 } })));
+    await new Promise((r) => setTimeout(r, 50));
+    // Same clock as the leader here: a usable sample would read about 0, the replay about +350 ms.
+    expect(Math.abs(victim.result.current.click.offset)).toBeLessThan(50);
   });
 
   it('an admin following another admin also pings on the stage topic, so a leader on an older app still answers', async () => {

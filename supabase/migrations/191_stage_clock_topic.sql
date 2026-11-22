@@ -12,6 +12,10 @@
 -- admin-only stage topic (085), so a member still can't fake the leader's
 -- clock, move anyone's song or start a click for the band. Nothing is stored.
 
+-- Topics carry the event id as text. The pattern is a strict UUID: the
+-- looser '[0-9a-fA-F-]{36}' of 085 let 36 dashes through to ::uuid, which
+-- raises inside the policy (an error, where a plain "no" belongs).
+
 -- The clock topic of a band gig, for its active members.
 CREATE OR REPLACE FUNCTION public.bw_stage_clock_topic_allowed(p_topic text)
 RETURNS boolean
@@ -26,7 +30,7 @@ BEGIN
   IF auth.uid() IS NULL OR p_topic IS NULL THEN
     RETURN false;
   END IF;
-  ev := substring(p_topic FROM '^stage-clock:event:([0-9a-fA-F-]{36})$');
+  ev := substring(p_topic FROM '^stage-clock:event:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$');
   IF ev IS NULL THEN
     RETURN false;
   END IF;
@@ -62,3 +66,35 @@ CREATE POLICY bw_stage_clock_write ON realtime.messages
 -- source it can't match (its write probe carries no event), but that wasn't
 -- checked against the live server: dropping it could only take something
 -- away from members on older builds, keeping it gives nobody anything new.
+
+-- 085's stage topic helper, the same apart from that strict pattern (its
+-- policies are unchanged and pick it up).
+CREATE OR REPLACE FUNCTION public.bw_stage_topic_allowed(p_topic text, p_lead boolean DEFAULT false)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  ev text;
+  band uuid;
+BEGIN
+  IF auth.uid() IS NULL OR p_topic IS NULL THEN
+    RETURN false;
+  END IF;
+  ev := substring(p_topic FROM '^stage:event:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$');
+  IF ev IS NULL THEN
+    RETURN false;
+  END IF;
+  SELECT e.band_id INTO band FROM public.events e WHERE e.id = ev::uuid;
+  IF band IS NULL THEN
+    RETURN false;
+  END IF;
+  IF p_lead THEN
+    RETURN public.bw_is_band_admin(band);
+  END IF;
+  RETURN public.bw_is_band_member(band);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_topic_allowed(text, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_stage_topic_allowed(text, boolean) TO authenticated;

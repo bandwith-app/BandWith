@@ -71,9 +71,16 @@ export interface ClockSample {
 
 export const clockSample = (t0: number, t1: number, t2: number): ClockSample => ({ offset: t1 - (t0 + t2) / 2, rtt: Math.max(0, t2 - t0) });
 
-/** The sample with the shortest round trip is the least distorted by the network. */
+/**
+ * The slowest round trip a clock sample may take. A slower one is too vague to
+ * keep a click in time, and may be someone answering an old ping late: a
+ * bandmate re-sending this phone's ping seconds later would shift its clock.
+ */
+export const MAX_CLOCK_RTT_MS = 500;
+
+/** The sample with the shortest round trip is the least distorted by the network (none slower than MAX_CLOCK_RTT_MS). */
 export const bestSample = (samples: ClockSample[]): ClockSample | null =>
-  samples.reduce<ClockSample | null>((best, s) => (!best || s.rtt < best.rtt ? s : best), null);
+  samples.reduce<ClockSample | null>((best, s) => (s.rtt > MAX_CLOCK_RTT_MS ? best : !best || s.rtt < best.rtt ? s : best), null);
 
 /** A clock measured against one leader (their clientId), over one path (Realtime or Bluetooth). */
 export interface PeerClock {
