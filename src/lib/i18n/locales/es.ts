@@ -2814,6 +2814,7 @@ const dict: Dictionary = {
   "Band required": "Necesitas una banda",
   "Proposing a rehearsal is only available when you’re in a band. Create one or ask an admin for an invite.": "Solo puedes proponer un ensayo si estás en una banda. Crea una o pide una invitación a un admin.",
   "Create a band": "Crear una banda",
+  "Free, with every tool": "Gratis, con todas las herramientas",
   "Free during the beta": "Gratis durante la beta",
   "Requires a Pro subscription": "Requiere una suscripción Pro",
 
