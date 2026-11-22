@@ -11,7 +11,7 @@ import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHa
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
-import { clearStageCache } from './stageBleNative';
+import { clearStageCache, setStageCacheUser } from './stageBleNative';
 import { unregisterPushToken } from './services/pushNotifications';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
@@ -228,6 +228,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (session) {
           setSession(session);
           setUser(session.user);
+          setStageCacheUser(session.user.id);
           const cachedProfile = await getOfflineItem<Profile>(getCacheKey(session.user.id, 'global', 'user_profile'));
           if (cachedProfile) {
             setProfile(cachedProfile);
@@ -260,6 +261,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setSession(session);
       setUser(session?.user ?? null);
+      setStageCacheUser(session?.user?.id);
 
       // Quick sign-in keeps the refresh token, which Supabase rotates.
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && Capacitor.isNativePlatform()) {

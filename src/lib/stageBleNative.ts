@@ -64,6 +64,23 @@ const cachedKey = (eventId: string): string | null => {
 };
 
 /**
+ * Bumped on sign-out and when another account signs in: a key fetch started
+ * before must not write its answer back (or hand it to Stage). Synchronous on
+ * purpose: the auth library's getSession refreshes an expired token, which
+ * offline can hang or come back empty.
+ */
+let cacheGeneration = 0;
+let cacheUser: string | null = null;
+/** The signed-in account (AuthContext); another one than before drops fetches in flight. */
+export function setStageCacheUser(id: string | null | undefined) {
+  if (!id) return;
+  if (cacheUser && cacheUser !== id) cacheGeneration++;
+  cacheUser = id;
+}
+const tagFetch = () => cacheGeneration;
+const stillOurs = (tag: number) => tag === cacheGeneration;
+
+/**
  * The gig's Bluetooth key: from the device, or fetched (and kept) when
  * online. Null for people outside the band, or offline before the first fetch.
  */
@@ -71,8 +88,10 @@ export async function stageKey(eventId: string): Promise<string | null> {
   const cached = cachedKey(eventId);
   if (cached) return cached;
   try {
+    const tag = tagFetch();
     const { data, error } = await supabase.rpc('bw_stage_key', { p_event_id: eventId });
     if (error || typeof data !== 'string' || !data) return null;
+    if (!stillOurs(tag)) return null;
     try {
       localStorage.setItem(KEY_PREFIX + eventId, data);
     } catch {
@@ -160,12 +179,16 @@ async function ask(fn: string, args: Record<string, string>): Promise<unknown> {
  */
 export async function stageSigner(eventId: string): Promise<StageSigner | null> {
   const key = SIGNER_PREFIX + eventId;
+  const tag = tagFetch();
   let data = await ask('bw_stage_signer', { p_event_id: eventId });
+  // Signed out (or another account) meanwhile: nothing is kept, nothing returned.
+  if (!stillOurs(tag)) return null;
   if (data === OFFLINE) return kept(key, asSigner);
   let signer = asSigner(data);
   if (!signer) {
     const fresh = await generateSigner();
     data = await ask('bw_stage_set_signer', { p_event_id: eventId, p_public: fresh.public, p_private: fresh.private });
+    if (!stillOurs(tag)) return null;
     if (data === OFFLINE) return kept(key, asSigner);
     signer = asSigner(data);
   }
@@ -186,7 +209,9 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
  */
 export async function stageVerifyKey(eventId: string): Promise<StageVerifyKey | null> {
   const key = VERIFY_PREFIX + eventId;
+  const tag = tagFetch();
   const data = await ask('bw_stage_verify_key', { p_event_id: eventId });
+  if (!stillOurs(tag)) return null;
   if (data === OFFLINE) return kept(key, asVerify);
   const verify = asVerify(data);
   if (!verify) {
@@ -222,6 +247,8 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
  * themselves are in the offline store, which sign-out clears.)
  */
 export function clearStageCache() {
+  cacheGeneration++;
+  cacheUser = null;
   void removeAllPackFiles().catch(() => undefined);
   try {
     const keys: string[] = [];

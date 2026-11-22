@@ -16,6 +16,8 @@ const db = vi.hoisted(() => ({
   /** The network hangs (a venue with one bar): calls never answer. */
   hang: false,
   version: 1,
+  /** Calls wait for this (an answer still on its way). */
+  gate: null as Promise<void> | null,
 }));
 
 vi.mock('../supabase', () => ({
@@ -25,6 +27,7 @@ vi.mock('../supabase', () => ({
       db.calls.push(fn);
       if (db.offline) throw new TypeError('Failed to fetch');
       if (db.hang) return new Promise(() => {});
+      if (db.gate) await db.gate;
       const withVersion = (p: object | null) => (p ? { ...p, version: db.version } : null);
       if (fn === 'bw_stage_verify_key') return { data: db.pair ? { public: db.pair.public, version: db.version } : null, error: null };
       if (fn === 'bw_stage_signer') return { data: db.admin ? withVersion(db.pair) : null, error: null };
@@ -53,6 +56,8 @@ beforeEach(() => {
   db.offline = false;
   db.hang = false;
   db.version = 1;
+  db.gate = null;
+  native.setStageCacheUser('u1');
 });
 
 describe('stageSigner / stageVerifyKey (migration 190)', () => {
@@ -136,6 +141,28 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
       expect(await pending).toEqual([signer, { public: signer!.public, version: 1 }]);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('an answer that arrives after sign-out (or another account signed in) is dropped, not kept', async () => {
+    for (const change of ['sign-out', 'other account'] as const) {
+      localStorage.clear();
+      db.pair = null;
+      let open!: () => void;
+      db.gate = new Promise<void>((r) => (open = r));
+      const signer = stageSigner('gig');
+      const verify = stageVerifyKey('gig');
+      const band = native.stageKey('gig');
+      await new Promise((r) => setTimeout(r, 0));
+      if (change === 'sign-out') clearStageCache();
+      else native.setStageCacheUser('u2');
+      open();
+      expect(await signer).toBeNull();
+      expect(await verify).toBeNull();
+      expect(await band).toBeNull();
+      expect(Object.keys(localStorage).filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
+      db.gate = null;
+      native.setStageCacheUser('u1');
     }
   });
 });
