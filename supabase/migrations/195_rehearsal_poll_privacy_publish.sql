@@ -80,6 +80,8 @@
 --     Claude #297 r5:
 --       - the one-off gets its own copy of the setlist (setlists +
 --         setlist_songs), so editing it there leaves the series' one alone;
+--         only a setlist of the series' own band is copied, any other
+--         leaves the one-off without one (Codex #297 B1);
 --       - p_fields may carry the other columns edited in the wizard (venue,
 --         notes, fee...; never the band, the links, the recurrence, the date,
 --         the status or the type): one write, one notice listing the
@@ -110,10 +112,24 @@
 --     (a start moved along its cadence moves nothing), monthly to the new
 --     day in the same month (clamped, #298). Turning the repeat off (rule NULL)
 --     still clears it. Only bw_restore_rehearsal_date(event, date) takes a
---     date out, through a transaction-local flag (bw.restore_skip). The
+--     date out, through a transaction-local flag (bw.restore_skip); it
+--     refuses a NULL date (22023, HINT bw:not_a_date, Codex #297 M2). Only
+--     bw_skip_rehearsal_date and bw_move_rehearsal_date add one (flag
+--     bw.skip_add): any other write's list is ignored, so a cadence edit
+--     replayed from an offline queue cannot cancel a date restored meanwhile
+--     (Codex #297 M3). The
 --     only other BEFORE UPDATE trigger on events is update_events_updated_at
 --     (002); "bw_events_00_" fires first by name, and neither reads what
 --     the other writes. 178 (#294) adds only AFTER triggers on events.
+--
+-- M1  bw_band_free_slots (095): a series' deleted first date is free in the
+--     date pickers' heatmap, as in the demo (Codex #297 M1). Redefined from
+--     095 only when the function in place does not read skip_dates yet;
+--     178 (#294) carries the same rule and is left as it is.
+--
+-- B4  The calendar feeds' EXDATE lines for deleted and moved dates live in
+--     #285 (182 + _shared/deputy-calendar.ts, same batch); they read
+--     recurrence_rule.skip_dates as 'YYYY-MM-DD' strings, the form stored here.
 --
 -- Older TestFlight / APK builds keep working: they read the same columns and
 -- simply receive fewer rows for invite-only polls they were not on (they hid
@@ -421,10 +437,14 @@ BEGIN
       SELECT to_char(p_date, 'YYYY-MM-DD')
     ) AS all_dates;
 
+  -- Transaction-local: only this step (and the move) may add a date
+  -- (bw_events_00_keep_skip_dates, Codex #297 M3).
+  PERFORM set_config('bw.skip_add', 'on', true);
   UPDATE public.events
      SET recurrence_rule = v_rule || jsonb_build_object('skip_dates', v_skips),
          updated_at = now()
    WHERE id = p_event_id;
+  PERFORM set_config('bw.skip_add', '', true);
 
   RETURN jsonb_build_object('event_id', p_event_id, 'skip_dates', v_skips);
 END;
@@ -643,12 +663,15 @@ BEGIN
   -- The series' setlist is copied (its songs too): editing this date's
   -- setlist never changes the series' (Claude #297 round 5). The copy has
   -- no event yet while its songs go in, so nobody is told about them.
+  -- Only a setlist of the series' own band: this function runs as its
+  -- owner, and a link to another band's setlist must not create rows there
+  -- (Codex #297 B1). Any other setlist leaves the one-off without one.
   IF v_ev.setlist_id IS NOT NULL THEN
     v_setlist := gen_random_uuid();
     INSERT INTO public.setlists
     SELECT (jsonb_populate_record(sl, to_jsonb(sl) || jsonb_build_object('id', v_setlist, 'created_at', now(), 'updated_at', now(),
                                                                          'created_by', auth.uid()))).*
-      FROM public.setlists sl WHERE sl.id = v_ev.setlist_id;
+      FROM public.setlists sl WHERE sl.id = v_ev.setlist_id AND sl.band_id = v_ev.band_id;
     IF FOUND THEN
       INSERT INTO public.setlist_songs
       SELECT (jsonb_populate_record(ss, to_jsonb(ss) || jsonb_build_object('id', gen_random_uuid(), 'setlist_id', v_setlist, 'created_at', now()))).*
@@ -701,10 +724,12 @@ BEGIN
   -- The lineup hears one notice: what changed on the new one-off (date,
   -- time, place), not "cancelled" (bw_trg_events_skip_notice).
   PERFORM set_config('bw.skip_moved_to', v_id::text, true);
+  PERFORM set_config('bw.skip_add', 'on', true);
   UPDATE public.events
      SET recurrence_rule = v_rule || jsonb_build_object('skip_dates', v_skips),
          updated_at = now()
    WHERE id = p_event_id;
+  PERFORM set_config('bw.skip_add', '', true);
   PERFORM set_config('bw.skip_moved_to', '', true);
 
   RETURN jsonb_build_object('event_id', v_id, 'series_id', p_event_id, 'skip_dates', v_skips, 'setlist_id', v_setlist);
@@ -741,10 +766,19 @@ BEGIN
     RETURN NEW; -- bw_restore_rehearsal_date takes a date out
   END IF;
   v_old := CASE WHEN jsonb_typeof(OLD.recurrence_rule -> 'skip_dates') = 'array' THEN OLD.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
-  IF jsonb_array_length(v_old) = 0 THEN
+  -- A date is added only by bw_skip_rehearsal_date / bw_move_rehearsal_date
+  -- (transaction-local bw.skip_add). Any other write's list is ignored: a
+  -- cadence edit replayed from an offline queue carries a stale list, and
+  -- would cancel a date restored meanwhile (Codex #297 M3).
+  IF coalesce(current_setting('bw.skip_add', true), '') = 'on' THEN
+    v_new := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
+  ELSE
+    v_new := '[]'::jsonb;
+  END IF;
+  IF jsonb_array_length(v_old) = 0 AND jsonb_array_length(v_new) = 0 THEN
+    NEW.recurrence_rule := NEW.recurrence_rule - 'skip_dates';
     RETURN NEW;
   END IF;
-  v_new := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
   -- The series start moved: its deleted dates follow only a change of
   -- phase (Claude #297 round 5). A start moved along its own cadence (an
   -- older build saving a later date's overview card writes event_date = that
@@ -755,7 +789,7 @@ BEGIN
   --   monthly: each deleted date keeps its month and takes the new start's
   --     day of the month, or the last day of a shorter month (#298's rule:
   --     the 31st -> the 29th turns Apr 30 into Apr 29, Feb 28 stays).
-  -- Dates the write adds (not in the stored list) are kept as sent.
+  -- Dates the skip / move step adds (not in the stored list) are kept as sent.
   IF NEW.event_date IS NOT NULL AND OLD.event_date IS NOT NULL AND NEW.event_date <> OLD.event_date THEN
     v_freq := lower(coalesce(OLD.recurrence_rule ->> 'frequency', OLD.recurrence_rule ->> 'freq', ''));
     v_every := CASE WHEN coalesce(OLD.recurrence_rule ->> 'interval', '') ~ '^[0-9]+$' AND (OLD.recurrence_rule ->> 'interval')::int >= 1
@@ -1029,6 +1063,11 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
   END IF;
+  -- No date: refused, never "every date" (x <> NULL keeps nothing; Codex
+  -- #297 M2). A string that is not a date never gets here (the date cast).
+  IF p_date IS NULL THEN
+    RAISE EXCEPTION 'A date is needed' USING ERRCODE = '22023', HINT = 'bw:not_a_date';
+  END IF;
   SELECT band_id, recurrence_rule INTO v_band, v_rule FROM public.events WHERE id = p_event_id FOR UPDATE;
   IF v_band IS NULL OR NOT public.bw_is_band_admin(v_band) THEN
     RAISE EXCEPTION 'Only band admins can restore a rehearsal date' USING ERRCODE = '42501';
@@ -1058,5 +1097,145 @@ GRANT EXECUTE ON FUNCTION public.bw_restore_rehearsal_date(uuid, date) TO authen
 
 COMMENT ON FUNCTION public.bw_restore_rehearsal_date(uuid, date) IS
   'Put a deleted date of a repeating rehearsal back: the only way a date leaves recurrence_rule.skip_dates (bw_events_00_keep_skip_dates); admins of the band (195, Codex #297).';
+
+-- ── Availability: a deleted date is free (Codex #297 M1) ────────────────
+-- The date pickers' heatmap (bw_band_free_slots, 095) counted a series'
+-- deleted first date as busy; only the demo left it out. 178 (#294)
+-- redefines this function with the same rule, so 195 redefines it from 095
+-- (the latest definition before it on main) only when the definition in
+-- place does not read skip_dates yet: after 178 it is left as 178 wrote it.
+-- Same signature, same columns, same grants.
+DO $do$
+DECLARE
+  v_fn regprocedure := to_regprocedure('public.bw_band_free_slots(uuid,date,date,time,time,integer,uuid)');
+BEGIN
+  IF v_fn IS NULL OR position('skip_dates' IN pg_get_functiondef(v_fn)) = 0 THEN
+    EXECUTE $ddl$
+CREATE OR REPLACE FUNCTION public.bw_band_free_slots(
+  p_band_id uuid,
+  p_from date,
+  p_to date,
+  p_start time DEFAULT NULL,
+  p_end time DEFAULT NULL,
+  p_slot_minutes integer DEFAULT NULL,
+  p_exclude_event uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  day date,
+  slot_start time,
+  free_count integer,
+  total_count integer
+)
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $body$
+  WITH allowed AS (
+    SELECT auth.uid() IS NOT NULL
+       AND public.bw_is_band_member(p_band_id, auth.uid())
+       AND p_from IS NOT NULL AND p_to IS NOT NULL
+       AND p_to >= p_from
+       AND p_to - p_from <= 62 AS ok
+  ),
+  members AS (
+    SELECT DISTINCT bm.user_id
+    FROM band_members bm, allowed a
+    WHERE a.ok
+      AND bm.band_id = p_band_id
+      AND bm.user_id IS NOT NULL
+      AND coalesce(bm.is_active, true)
+      AND bm.left_at IS NULL
+  ),
+  days AS (
+    SELECT d::date AS day
+    FROM allowed a, generate_series(p_from, p_to, interval '1 day') d
+    WHERE a.ok
+  ),
+  win AS (
+    SELECT
+      (extract(epoch FROM p_start) / 60)::int AS ws,
+      CASE
+        WHEN p_end IS NULL THEN NULL
+        WHEN p_end <= p_start THEN (extract(epoch FROM p_end) / 60)::int + 1440
+        ELSE (extract(epoch FROM p_end) / 60)::int
+      END AS we
+  ),
+  slots AS (
+    -- One row per day (whole window) or per slot inside the window.
+    SELECT d.day,
+           CASE WHEN w.ws IS NOT NULL AND w.we IS NOT NULL AND coalesce(p_slot_minutes, 0) >= 15
+                THEN s.m ELSE w.ws END AS s_from,
+           CASE WHEN w.ws IS NOT NULL AND w.we IS NOT NULL AND coalesce(p_slot_minutes, 0) >= 15
+                THEN least(s.m + p_slot_minutes, w.we) ELSE w.we END AS s_to
+    FROM days d
+    CROSS JOIN win w
+    CROSS JOIN LATERAL (
+      SELECT generate_series(w.ws, w.we - 1, greatest(coalesce(p_slot_minutes, 0), 15)) AS m
+      WHERE w.ws IS NOT NULL AND w.we IS NOT NULL AND coalesce(p_slot_minutes, 0) >= 15
+      UNION ALL
+      SELECT NULL::int
+      WHERE NOT (w.ws IS NOT NULL AND w.we IS NOT NULL AND coalesce(p_slot_minutes, 0) >= 15)
+    ) s
+  ),
+  busy_events AS (
+    -- Every commitment of every member in the range, with its time span in minutes.
+    SELECT x.user_id, x.event_date, x.e_from,
+           CASE
+             WHEN x.e_from IS NULL THEN NULL
+             WHEN x.e_to IS NULL THEN x.e_from + 180
+             WHEN x.e_to <= x.e_from THEN x.e_to + 1440
+             ELSE x.e_to
+           END AS e_to
+    FROM (
+      SELECT m.user_id,
+             e.event_date,
+             (extract(epoch FROM coalesce(e.start_time, e."time")) / 60)::int AS e_from,
+             coalesce(
+               (extract(epoch FROM e.end_time) / 60)::int,
+               CASE WHEN e.duration_hours IS NOT NULL AND coalesce(e.start_time, e."time") IS NOT NULL
+                    THEN (extract(epoch FROM coalesce(e.start_time, e."time")) / 60)::int + (e.duration_hours * 60)::int
+               END
+             ) AS e_to
+      FROM members m
+      JOIN events e
+        ON e.event_date BETWEEN p_from AND p_to
+       AND (p_exclude_event IS NULL OR e.id <> p_exclude_event)
+       AND lower(coalesce(e.status, '')) NOT IN ('cancelled', 'canceled', 'quote', 'quoted')
+       -- A date deleted from its series is free (Codex #297 M1).
+       AND NOT (coalesce(e.recurrence_rule -> 'skip_dates', '[]'::jsonb) ? coalesce(to_char(e.event_date, 'YYYY-MM-DD'), ''))
+       AND (
+         EXISTS (
+           SELECT 1 FROM event_members em
+           WHERE em.event_id = e.id
+             AND em.user_id = m.user_id
+             AND lower(coalesce(em.status, '')) NOT IN ('declined', 'removed')
+         )
+         OR (e.band_id IS NULL AND e.created_by = m.user_id)
+       )
+    ) x
+  ),
+  busy AS (
+    SELECT DISTINCT s.day, s.s_from, b.user_id
+    FROM slots s
+    JOIN busy_events b ON b.event_date = s.day
+    WHERE s.s_from IS NULL
+       OR b.e_from IS NULL
+       OR (b.e_from < s.s_to AND s.s_from < b.e_to)
+  )
+  SELECT s.day,
+         CASE WHEN s.s_from IS NULL THEN NULL
+              ELSE make_time(((s.s_from / 60) % 24)::int, (s.s_from % 60)::int, 0) END AS slot_start,
+         ((SELECT count(*) FROM members)
+           - (SELECT count(*) FROM busy b WHERE b.day = s.day AND b.s_from IS NOT DISTINCT FROM s.s_from))::int AS free_count,
+         (SELECT count(*) FROM members)::int AS total_count
+  FROM slots s
+  ORDER BY s.day, s.s_from NULLS FIRST;
+$body$;
+    $ddl$;
+  END IF;
+END
+$do$;
+REVOKE ALL ON FUNCTION public.bw_band_free_slots(uuid, date, date, time, time, integer, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_band_free_slots(uuid, date, date, time, time, integer, uuid) TO authenticated;
 
 COMMIT;
