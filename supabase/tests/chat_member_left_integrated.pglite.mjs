@@ -3,8 +3,8 @@
 // 175 takes it away. This loads the real migrations in apply order, from
 // their branch heads, and checks the whole chain:
 //
-//   175 (fix/security-audit) → 178 (feat/date-on-hold) → 194 (#284) → 192 → 193 (this PR) → 181 (fix/event-chat-lineup)
-// (the release apply order, main's fn-rule.md)
+//   194 (#284) → 175 (fix/security-audit) → 178 (feat/date-on-hold) → 192 → 193 (this PR) → 181 (fix/event-chat-lineup)
+// (the release apply order of the safety net, #278: …, 194, 184, 175, 176, 178, 180, 192, 193, 181, …)
 //
 // 175 and 178 are large: only the chat functions, policies and triggers are
 // taken, by name (never by line). 194, 192, 193 and 181 are loaded whole.
@@ -199,7 +199,12 @@ INSERT INTO chat_participants (chat_id, user_id) SELECT c, u FROM unnest(ARRAY['
 INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${EVCHAT}','${ADMIN}','before: load-in at 5', now() - interval '1 hour');
 `);
 
-// ── 175 (by name), 178 (by name), 193 (whole), 181 (whole) ─────────────────
+const loads = async (label, sql) => {
+  try { await db.exec(sql); ok(true, label); } catch (e) { await db.exec('ROLLBACK').catch(() => {}); ok(false, `${label} (${e.message})`); }
+};
+// ── 194 (whole), 175 (by name), 178 (by name), 192, 193, 181 (whole) ───────
+// Apply order (#278): 194 runs before 175.
+await loads('194 runs first', readFileSync(MIG194, 'utf8'));
 const parts175 = [
   fn(M175, 'bw_chats_immutable_keys'),
   stmt(M175, 'CREATE TRIGGER bw_chats_immutable_keys', 'DROP TRIGGER IF EXISTS bw_chats_immutable_keys'),
@@ -219,6 +224,7 @@ const parts175 = [
   // guard plus the own-row policy; older heads (d9971705) have neither.
   ...optStmt(M175, 'CREATE POLICY chat_participants_select_own', 'DROP POLICY IF EXISTS chat_participants_select_own'),
   ...optStmt(M175, 'CREATE POLICY chat_participants_scope_guard', 'DROP POLICY IF EXISTS chat_participants_scope_guard'),
+  ...(process.env.BW_TEST_DROP_GUARD ? ['DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;'] : []),
   fn(M175, 'bw_trg_band_member_left_chats'),
   stmt(M175, 'CREATE TRIGGER bw_band_member_left_chats', 'DROP TRIGGER IF EXISTS bw_band_member_left_chats'),
 ];
@@ -240,12 +246,13 @@ for (const [label, list] of [['175', parts175], ['178', parts178]]) {
   }
 }
 ok(true, '175 and 178 chat rules loaded from their branch heads');
-await db.exec(readFileSync(MIG194, 'utf8'));
-await db.exec(readFileSync(MIG192, 'utf8'));
-ok(true, '194 and 192 run after 178');
-const loads = async (label, sql) => {
-  try { await db.exec(sql); ok(true, label); } catch (e) { await db.exec('ROLLBACK').catch(() => {}); ok(false, `${label} (${e.message})`); }
-};
+// 175's final roster rule is the RESTRICTIVE chat_participants_scope_guard:
+// with a head that has it, it must be in (else ex-members show in the roster).
+if (M175.includes('CREATE POLICY chat_participants_scope_guard')) {
+  const g = await db.query(`SELECT permissive FROM pg_policies WHERE tablename = 'chat_participants' AND policyname = 'chat_participants_scope_guard'`);
+  ok(g.rows[0]?.permissive === 'RESTRICTIVE' || !!process.env.BW_TEST_DROP_GUARD, `175's RESTRICTIVE chat_participants_scope_guard is loaded (${g.rows[0]?.permissive ?? 'missing'})`);
+}
+await loads('192 runs after 178', readFileSync(MIG192, 'utf8'));
 await loads('193 runs after 192', readFileSync(MIG193, 'utf8'));
 await loads('181 runs after 193', M181);
 
