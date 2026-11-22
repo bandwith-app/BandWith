@@ -65,9 +65,21 @@ const writeReported = (r: Reported) => {
  * `partial`: held, but not complete (live_pack off, or a part not loaded yet):
  * the admins don't count it as ready, the server still keeps it current.
  */
-export async function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string; partial?: boolean }): Promise<void> {
-  if (!canReport() || !p.eventId || !p.userId || !p.version) return;
+/** One write at a time per event, in order (the server also drops an older one: 170). */
+const writing = new Map<string, Promise<void>>();
+
+export function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string; partial?: boolean }): Promise<void> {
+  if (!canReport() || !p.eventId || !p.userId || !p.version) return Promise.resolve();
   const key = `${p.userId}:${p.eventId}`;
+  const next = (writing.get(key) ?? Promise.resolve()).then(() => writeStatus(key, p));
+  writing.set(key, next);
+  void next.finally(() => {
+    if (writing.get(key) === next) writing.delete(key);
+  });
+  return next;
+}
+
+async function writeStatus(key: string, p: Parameters<typeof reportPackStatus>[0]): Promise<void> {
   const reported = readReported();
   const stamp = p.partial ? `${p.version}|partial` : p.version;
   if (reported[key] === stamp) return;

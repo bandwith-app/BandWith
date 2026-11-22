@@ -54,6 +54,27 @@ CREATE TABLE IF NOT EXISTS public.live_pack_status (
 ALTER TABLE public.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS live_pack_status_user_idx ON public.live_pack_status (user_id);
 
+-- An older status never overwrites a newer one: a device's writes can land
+-- out of order (a partial one on a slow connection after the full one).
+-- downloaded_at is the pack's save time on that device, so the older save loses.
+CREATE OR REPLACE FUNCTION public.bw_live_pack_status_newer_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.downloaded_at < OLD.downloaded_at THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_live_pack_status_newer_only() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_live_pack_status_newer_only ON public.live_pack_status;
+CREATE TRIGGER bw_live_pack_status_newer_only
+  BEFORE UPDATE ON public.live_pack_status
+  FOR EACH ROW EXECUTE FUNCTION public.bw_live_pack_status_newer_only();
+
 ALTER TABLE public.live_pack_status ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.live_pack_status FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.live_pack_status TO authenticated;

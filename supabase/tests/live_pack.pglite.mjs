@@ -221,6 +221,18 @@ await db.exec(`DELETE FROM notifications`);
 await q(`SELECT public.bw_live_pack_invite_sweep()`);
 ok((await q(`SELECT count(*)::int n FROM notifications WHERE user_id = $1 AND data->>'event_id' = $2 AND data->>'kind' = 'invite'`, [MEM, EV])).rows[0].n === 1, 'a partial holder is invited');
 
+// ---- An older status never overwrites a newer one (round 6): a partial write
+// that arrives after the full one is ignored.
+await db.exec(`DELETE FROM live_pack_status`);
+// (as the table owner: the guard is a trigger, it holds for every role)
+await q(`INSERT INTO live_pack_status (event_id, user_id, device_id, version, downloaded_at, partial) VALUES ($1, $2, 'dev-1', 'v2', '2026-11-23T10:00:05Z', false)`, [EV, MEM]);
+await q(`INSERT INTO live_pack_status (event_id, user_id, device_id, version, downloaded_at, partial) VALUES ($1, $2, 'dev-1', 'v1', '2026-11-23T10:00:00Z', true)
+  ON CONFLICT (event_id, user_id, device_id) DO UPDATE SET version = EXCLUDED.version, downloaded_at = EXCLUDED.downloaded_at, partial = EXCLUDED.partial`, [EV, MEM]);
+const kept = (await q(`SELECT version, partial FROM live_pack_status WHERE event_id = $1 AND user_id = $2`, [EV, MEM])).rows[0];
+ok(kept.version === 'v2' && kept.partial === false, `older status ignored: ${JSON.stringify(kept)}`);
+await q(`UPDATE live_pack_status SET version = 'v3', downloaded_at = '2026-11-23T10:01:00Z', partial = true WHERE event_id = $1 AND user_id = $2`, [EV, MEM]);
+ok((await q(`SELECT version FROM live_pack_status WHERE event_id = $1 AND user_id = $2`, [EV, MEM])).rows[0].version === 'v3', 'a newer status still lands');
+
 ok((await q(`SELECT count(*)::int n FROM cron.job WHERE jobname LIKE 'bw-live-pack-%'`)).rows[0].n === 2, 'two cron jobs scheduled');
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

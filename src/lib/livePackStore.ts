@@ -357,7 +357,9 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
       if (had) f.local = had;
       if (!f.local && filesWanted) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
       if (f.local) kept.add(f.id);
-      else if (filesWanted) fileMissing = true;
+      // On a phone, a file of mine not here (no download yes yet, or it
+      // failed) means not complete: never "Offline ready" without it.
+      else if (packFilesAvailable()) fileMissing = true;
     }
   }
   await removePackFiles([...prevFiles.values()].filter((f) => !kept.has(f.id)));
@@ -427,6 +429,9 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
  * band notes go, an empty setlist drops the pack) but nothing new is
  * downloaded and the pack stays partial.
  */
+/** Which songs, in which order: a pack for other songs is not this one. */
+const songsKey = (songs: LiveSong[]) => songs.map((s) => s.songId ?? s.id).join(',');
+
 export async function packOpenedEvent(args: {
   userId: string;
   event: Record<string, unknown>;
@@ -443,10 +448,12 @@ export async function packOpenedEvent(args: {
     await refreshPack({ userId, event, occurrenceDate, songs, partial });
     return;
   }
-  // Not held yet: these songs alone are partial until the full pack loads
-  // (notes, files, band notes), so no "ready" is claimed for them.
+  // Not held yet, or held for other songs (the setlist replaced or changed):
+  // these songs alone are partial until the full pack loads (notes, files,
+  // band notes), so no "ready" is claimed for them.
   const basics = packEventFrom(event);
-  const held = basics.band_id && basics.id ? await readPack(userId, basics.band_id, basics.id) : null;
+  const prev = basics.band_id && basics.id ? await readPack(userId, basics.band_id, basics.id) : null;
+  const held = !!prev && prev.setlistId === basics.setlist_id && songsKey(prev.songs) === songsKey(songs);
   await savePackSongs({ userId, event, occurrenceDate, songs, partial: partial || !held });
   if (args.fullDue) await refreshPack({ userId, event, occurrenceDate, songs, withFiles: livePackOn && args.allowFiles, partial });
 }
@@ -556,12 +563,18 @@ async function prefetchOnce({
     // never creates one. "Wi-Fi only" holds here too.
     let tidied = 0;
     if (online && !(choice.wifiOnly && !onWifi)) {
+      // Once per event, on the date the pack holds: the list has every
+      // occurrence of a series (its first one maybe last week), and a sweep
+      // must never move an upcoming pack to a past date (it would expire).
+      const done = new Set<string>();
       for (const e of events) {
+        if (done.has(e.eventId)) continue;
+        done.add(e.eventId);
         const prev = await readPack(userId, e.bandId, e.eventId);
         if (!prev) continue;
         const fresh = now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
         if (fresh && !force.includes(e.eventId)) continue;
-        await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: false, unknownTitle, partial: true });
+        await refreshPack({ userId, event: e.row, occurrenceDate: prev.event.event_date, withFiles: false, unknownTitle, partial: true });
         tidied++;
       }
     }

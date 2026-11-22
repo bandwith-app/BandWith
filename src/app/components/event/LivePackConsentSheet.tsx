@@ -19,7 +19,8 @@ export async function downloadPackNow(args: {
   unknownTitle: string;
 }): Promise<boolean> {
   const p = await refreshPack({ ...args, withFiles: true }).catch(() => null);
-  return !!p;
+  // Partial: a file or a part didn't come down. Not a success (the row says so).
+  return !!p && !p.partial;
 }
 
 /**

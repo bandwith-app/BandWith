@@ -561,3 +561,47 @@ describe('round 5 (review #273)', () => {
     expect(asked.filter((q) => q.table === 'setlist_songs')).toEqual([]);
   });
 });
+
+// Review #273 round 6.
+describe('round 6 (review #273)', () => {
+  const note = (id: string, body: string) => ({ id, song_id: 'song1', anchor: { type: 'song' }, body });
+  const pdf = { id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 };
+
+  it('switched off: resume keeps a recurring rehearsal on its upcoming date, never the series start (rule 0)', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
+    const reh = gig({ event_type: 'rehearsal', event_date: inDays(-7) });
+    await refreshPack({ userId: me, event: reh, occurrenceDate: inDays(1) });
+    expect((await readPack(me, 'b1', 'e1'))?.event.event_date).toBe(inDays(1));
+    // The list has every occurrence of the series, the first one last week.
+    const occ = (date: string) => ({ eventId: 'e1', bandId: 'b1', date, eventType: 'rehearsal', setlistId: 's1', row: reh });
+    const later = new Date(Date.now() + 31 * 60 * 1000);
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [occ(inDays(-7)), occ(inDays(1)), occ(inDays(8))], online: true, downloads: false, now: later });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.event.event_date).toBe(inDays(1));
+    expect(p?.songs).toHaveLength(1);
+  });
+
+  it('on a phone, a file of mine not on the device keeps the pack partial even before the download yes', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    await packOpenedEvent({ userId: me, event: gig(), songs, livePackOn: true, fullDue: true, allowFiles: false });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBe(true);
+    expect(isPackReady(p)).toBe(false);
+  });
+
+  it('a setlist replaced meanwhile: the new songs are partial until they load, even over a full pack', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBeUndefined();
+    const newSongs = [{ id: 'ss9', songId: 'song9', setNumber: 1, title: 'Hudson Line' }];
+    await packOpenedEvent({ userId: me, event: gig({ setlist_id: 's2' }), songs: newSongs, livePackOn: true, fullDue: false, allowFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+    // Same setlist, songs changed (one added): partial too.
+    await refreshPack({ userId: me, event: gig() });
+    await packOpenedEvent({ userId: me, event: gig(), songs: [...songs, newSongs[0]], livePackOn: true, fullDue: false, allowFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+  });
+});
