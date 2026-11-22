@@ -91,4 +91,35 @@ describe('QuoteClientLink: the draft stays with its client', () => {
     expect(items.findIndex((x) => x.includes('From here'))).toBeLessThan(items.findIndex((x) => x.includes('parking')));
     expect(screen.getByText('You’re writing to Jordan Lee')).toBeTruthy();
   });
+
+  // Round 6 (Codex, QuoteClientLink.tsx:268): "New link" for the same client
+  // renews the token of the same link: the draft follows it and goes out on
+  // the new token (it used to go on the old one and be refused).
+  it('the link renewed mid-draft (same client): the reply goes out on the new token', async () => {
+    mocks.state.mockResolvedValue({ data: { link: linkB, activity }, error: null });
+    mocks.reply.mockResolvedValue({ data: 'ok', error: null });
+    mocks.email.mockResolvedValue({ ok: true });
+    const view = render(<QuoteClientLink quote={quote} onSend={() => {}} notify={vi.fn()} refreshKey={0} />);
+    await typeDraft('Parking is on us.');
+    const renewed = { ...linkB, token: 'd'.repeat(64) };
+    mocks.state.mockResolvedValue({ data: { link: renewed, activity }, error: null });
+    await act(async () => { view.rerender(<QuoteClientLink quote={quote} onSend={() => {}} notify={vi.fn()} refreshKey={1} />); });
+    await waitFor(() => expect(screen.queryByText('The recipient changed: this draft was for the previous client.')).toBeNull());
+    fireEvent.click(screen.getByText('Send reply'));
+    await waitFor(() => expect(mocks.reply).toHaveBeenCalled());
+    expect(mocks.reply).toHaveBeenCalledWith(quote.id, 'Parking is on us.', 'd'.repeat(64));
+  });
+
+  it('a reply refused because the link changed: the draft stays, the text says to check it and send again', async () => {
+    const { linkChangedError } = { linkChangedError: Object.assign(new Error('BW_LINK_CHANGED: this conversation is with a client the quote is no longer for'), { code: 'P0001' }) };
+    mocks.state.mockResolvedValue({ data: { link: linkB, activity }, error: null });
+    mocks.reply.mockResolvedValue({ data: null, error: linkChangedError });
+    const notify = vi.fn();
+    render(<QuoteClientLink quote={quote} onSend={() => {}} notify={notify} />);
+    await typeDraft('Parking is on us.');
+    fireEvent.click(screen.getByText('Send reply'));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('The client link changed meanwhile. Your reply was not sent: check it and send it again.', 'error'));
+    expect((screen.getByLabelText('Reply to the client') as HTMLTextAreaElement).value).toBe('Parking is on us.');
+  });
 });
+

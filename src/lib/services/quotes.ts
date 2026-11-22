@@ -318,9 +318,11 @@ export const updateQuote = async (
     const run = (u: Partial<Quote>) => supabase.from('quotes').update(u).eq('id', quoteId).select().single();
     let { data, error } = await run(updates);
     // A database before 183 has no edit_base_at: the same edit without it.
+    // Round 6: and with the totals the app worked out (that database has no
+    // bw_quote_totals trigger, so it would keep the old ones).
     if (error && updates.edit_base_at && /edit_base_at/.test(error.message || '')) {
       const { edit_base_at: _base, ...rest } = updates;
-      ({ data, error } = await run(rest));
+      ({ data, error } = await run({ ...rest, ...(compatTotals.get(updates) || {}) }));
     }
 
     if (error) throw error;
@@ -949,9 +951,24 @@ export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original
     if (after[key] === undefined && KEEP_WHEN_UNSET.has(key)) continue;
     out[key] = after[key] === undefined ? null : after[key];
   }
-  if (!full) out.edit_base_at = original.updatedAt;
+  if (!full) {
+    out.edit_base_at = original.updatedAt;
+    // Round 6: kept aside for a database before 183 (updateQuote's retry).
+    const totals: Record<string, unknown> = {};
+    for (const key of SERVER_TOTALS) {
+      if (key in after && JSON.stringify(after[key] ?? null) !== JSON.stringify(before[key] ?? null)) totals[key] = after[key] ?? null;
+    }
+    if (Object.keys(totals).length > 0) compatTotals.set(out, totals);
+  }
   return out as Partial<Quote>;
 };
+
+/**
+ * Round 6: the totals an edit would have sent before 183 (worked out by the
+ * app), by the edit they belong to. Sent only when the database has no
+ * edit_base_at (no server totals): never to a database that computes them.
+ */
+const compatTotals = new WeakMap<object, Record<string, unknown>>();
 
 /** Computed by the database on an edit (183 round 5): never sent with one. */
 const SERVER_TOTALS = new Set(['subtotal', 'discount_amount', 'net_amount', 'vat_amount', 'total', 'deposit_amount']);

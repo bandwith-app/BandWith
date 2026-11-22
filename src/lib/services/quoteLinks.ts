@@ -228,7 +228,13 @@ const contentHash = (text: string) => {
  * (and the client's "I accept") when only the language changed.
  */
 export function buildClientQuoteSnapshot(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults = {}): ClientQuoteSnapshot {
-  return { ...snapshotIn(quote, lang, defaults), contentKey: contentHash(JSON.stringify(snapshotIn(quote, 'en', defaults))) };
+  return {
+    ...snapshotIn(quote, lang, defaults),
+    contentKey: contentHash(JSON.stringify(snapshotIn(quote, 'en', defaults))),
+    // Round 6: the client it was built for, outside contentKey (a name fixed
+    // is not a new version). Checked by the server, never stored.
+    client: { name: String(quote.clientName || '').trim(), email: String(quote.clientEmail || '').trim() },
+  };
 }
 
 function snapshotIn(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults): ClientQuoteSnapshot {

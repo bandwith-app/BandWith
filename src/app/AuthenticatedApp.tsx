@@ -2749,19 +2749,22 @@ export default function AuthenticatedApp() {
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
       }
-      // The event shows the quote's date, time, place, client and fee.
+      // The event shows the quote's date, time, place, client and fee, as
+      // saved (round 6: the row the database returns, with its own totals
+      // and another admin's changes; never the wizard's copy).
+      const merged = { ...q, ...dbQuoteToAppQuote(data as any) } as AppQuote;
       const { error: eventErr } = await updateEvent(editing.eventId, {
-        title: q.eventName || q.clientName || t('Quote Event'),
-        event_date: q.eventDate,
-        start_time: q.eventTimeStart || '20:00',
-        end_time: q.eventTimeEnd || null,
-        venue_name: q.venueName || null,
-        venue: q.venueName || null,
-        venue_city: q.venueCity || null,
-        venue_address: q.venueAddress || null,
-        indoor_outdoor: q.indoorOutdoor || null,
-        fee: q.total || 0,
-        client_name: q.clientName || null,
+        title: merged.eventName || merged.clientName || t('Quote Event'),
+        event_date: merged.eventDate,
+        start_time: merged.eventTimeStart || '20:00',
+        end_time: merged.eventTimeEnd || null,
+        venue_name: merged.venueName || null,
+        venue: merged.venueName || null,
+        venue_city: merged.venueCity || null,
+        venue_address: merged.venueAddress || null,
+        indoor_outdoor: merged.indoorOutdoor || null,
+        fee: Number((data as any)?.total) || 0,
+        client_name: merged.clientName || null,
       } as any);
       const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: q.musicians || editing.quote.musicians } as AppQuote;
       setEditingLinkedQuote(null);

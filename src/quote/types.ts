@@ -21,6 +21,12 @@ export interface ClientQuoteSnapshot {
   v: 1;
   /** Round 4 (183): the same in every language; the server keeps the version when only the language changed. */
   contentKey?: string;
+  /**
+   * Round 6: who this summary is for (the quote's client when it was built).
+   * The server checks it against the quote at publish and never stores it
+   * (the page never gets it).
+   */
+  client?: { name: string; email: string };
   ref: string;
   title: string;
   eventType?: string | null;

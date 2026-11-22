@@ -1,9 +1,9 @@
 /**
  * 183 round 5 (Codex review of 8f5922d7): the share sheet sends on what it
  * opened with. A sheet that read no link publishes with version 0, so a link
- * made since (another admin) refuses it. Right before WhatsApp, SMS or
- * email the client saved now is read again: another contact than the sheet
- * shows, and nothing goes out until the admin taps again.
+ * made since (another admin) refuses it. Right before every publish the
+ * client saved now is read again: another contact than the sheet's summary
+ * and PDF are for, and nothing goes out (round 6: open the quote again).
  */
 import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -84,24 +84,24 @@ describe('QuoteShareModal round 5: the version and the client it opened with', (
     expect(mocks.publish.mock.calls[0][5]).toBe(0);
   });
 
-  it('the phone changed since the sheet opened: WhatsApp sends nothing, says who it goes to now, the second tap sends there', async () => {
+  // Round 6 (Codex): the summary and the PDF name the client the sheet
+  // opened with; another one saved since: nothing is published or sent on
+  // any channel (Copy too), and the sheet asks to open the quote again.
+  it('the phone changed since the sheet opened: WhatsApp sends nothing, says who it goes to now and to open the quote again', async () => {
     open();
     await ready();
-    // Saved now: Jordan's phone written again (another admin fixed it).
     mocks.contact.mockResolvedValue({ data: { ...jordan, client_phone: '+1 646 555 0123' }, error: null });
     fireEvent.click(button('WhatsApp'));
     const notice = await screen.findByTestId('quote-recipient-changed');
-    expect(notice.textContent).toContain('This quote now goes to Jordan Lee · jordan@brooklynevents.example');
+    expect(notice.textContent).toContain('This quote now goes to Jordan Lee · jordan@brooklynevents.example. Nothing was sent: close this and open the quote again.');
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(openExternal).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByText('Send to Jordan Lee'));
-    await waitFor(() => expect(openExternal).toHaveBeenCalled());
-    expect(String(vi.mocked(openExternal).mock.calls[0][0])).toContain('wa.me/16465550123');
-    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    // No second tap sends the old summary and PDF to them.
+    expect(screen.queryByText('Send to Jordan Lee')).toBeNull();
+    expect(button('WhatsApp').disabled).toBe(true);
   });
 
-  it('the email changed since the sheet opened: no email, the notice; the second tap emails', async () => {
+  it('the email changed since the sheet opened: no email, nothing published', async () => {
     open();
     await ready();
     mocks.contact.mockResolvedValue({ data: { ...jordan, client_email: 'jordan.lee@brooklynevents.example' }, error: null });
@@ -109,8 +109,23 @@ describe('QuoteShareModal round 5: the version and the client it opened with', (
     await screen.findByTestId('quote-recipient-changed');
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.email).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Send to Jordan Lee'));
-    await waitFor(() => expect(mocks.email).toHaveBeenCalledTimes(1));
-    await screen.findByText('Email sent to jordan.lee@brooklynevents.example');
+  });
+
+  it('Copy checks the client too: another one saved since, nothing is published or copied', async () => {
+    open();
+    await ready();
+    mocks.contact.mockResolvedValue({ data: { ...jordan, client_name: 'Emma Carter', client_email: 'emma.carter@example.com' }, error: null });
+    fireEvent.click(button('Copy message & link'));
+    await screen.findByTestId('quote-recipient-changed');
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.markSent).not.toHaveBeenCalled();
+  });
+
+  it('the summary names the client it was made for, for the server to check', async () => {
+    open();
+    await ready();
+    fireEvent.click(button('Copy message & link'));
+    await waitFor(() => expect(mocks.publish).toHaveBeenCalledTimes(1));
+    expect(mocks.publish.mock.calls[0][1].client).toEqual({ name: 'Jordan Lee', email: 'jordan@brooklynevents.example' });
   });
 });

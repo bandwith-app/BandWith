@@ -106,8 +106,16 @@ describe('183_quote_page_fixes', () => {
     const olderBuild =
       " IF p_token IS NULL AND p_version IS NULL AND v_link.recipient_changed_at IS NOT NULL AND NOT public.bw_quote_snapshot_for_client(p_quote_id, p_snapshot, v_pdf) THEN RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP'; END IF;";
     expect(after).toContain(olderBuild);
+    // Round 6: a new build's summary names its client, checked and never
+    // stored; a 383f15b publish without a PDF is refused once the client
+    // changed since the link was last published.
+    const identity =
+      " IF jsonb_typeof(p_snapshot -> 'client') = 'object' THEN IF lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\\s+', ' ', 'g')) IS DISTINCT FROM lower(regexp_replace(coalesce(v_name, ''), '\\s+', ' ', 'g')) OR lower(btrim(coalesce(p_snapshot -> 'client' ->> 'email', ''))) IS DISTINCT FROM coalesce(v_email, '') THEN RAISE EXCEPTION 'BW_LINK_CHANGED: the quote now goes to another client, open the quote again' USING ERRCODE = '40001'; END IF; p_snapshot := p_snapshot - 'client'; ELSIF v_pdf IS NULL AND p_token IS NULL AND p_version IS NULL THEN v_last := CASE WHEN v_link.recipient_email IS NOT NULL OR v_link.recipient_name IS NOT NULL THEN jsonb_build_object('name', v_link.recipient_name, 'email', v_link.recipient_email) ELSE v_link.reassign_guard -> 'published' END; IF jsonb_typeof(v_last) = 'object' AND ((v_last ->> 'email') IS DISTINCT FROM v_email OR lower(v_last ->> 'name') IS DISTINCT FROM lower(v_name)) THEN RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP'; END IF; END IF;";
+    expect(after).toContain(identity);
     const back = after
       .replace(sawNone, '')
+      .replace(identity, '')
+      .replace(' v_last jsonb;', '')
       .replace(olderBuild, '')
       .replace(' RETURNING id INTO v_made;', ';')
       .replace(' v_made uuid;', '')

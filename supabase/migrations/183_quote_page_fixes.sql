@@ -132,6 +132,19 @@
 --    reassign guard keeps only the guarded columns;
 --  - bw_same_phone ignores spaces, brackets, dots and dashes before the
 --    country-code test.
+-- Round 6 (Codex review of 86dd51f6):
+--  - newer builds name who the summary is for (snapshot "client": name,
+--    email); publish checks it against the quote under the lock (40001 when
+--    the quote now goes to someone else) and never stores it;
+--  - a summary with no client in it and no PDF (383f15b): also refused when the quote's
+--    client is not the one the link was last published for (the link's
+--    recipient, or, on a link made for a new recipient, the one kept in
+--    reassign_guard.published at the change), 40001 "update the app"; with
+--    nothing recorded, the notes + PDF name check alone;
+--  - an older build's reply (no token) never lands on a link made for a new
+--    recipient: its screen may hold a draft for the previous client;
+--  - a quote whose gig has a deposit recorded (accepted by phone, no link)
+--    keeps its currency too.
 -- New functions take no grants beyond the definer's (REVOKE ALL); no RPC
 -- older builds call changed shape.
 --
@@ -625,6 +638,12 @@ BEGIN
           -- Round 5: only the guarded columns (never the old client's
           -- notes, address or anything else of theirs).
           jsonb_build_object('status', lower(coalesce(OLD.status, '')),
+                             -- Round 6: who the link was last published for
+                             -- (an older build's summary names nobody).
+                             'published', CASE WHEN v_link.recipient_email IS NOT NULL OR v_link.recipient_name IS NOT NULL
+                                               THEN jsonb_build_object('name', v_link.recipient_name, 'email', v_link.recipient_email)
+                                               WHEN jsonb_typeof(v_link.reassign_guard -> 'published') = 'object'
+                                               THEN v_link.reassign_guard -> 'published' END,
                              'before', (SELECT jsonb_object_agg(k, to_jsonb(OLD) -> k) FROM unnest(v_guarded) k WHERE to_jsonb(OLD) ? k),
                              'after', (SELECT jsonb_object_agg(k, to_jsonb(NEW) -> k) FROM unnest(v_guarded) k WHERE to_jsonb(NEW) ? k)))
   RETURNING id INTO v_new_link;
@@ -799,6 +818,7 @@ DECLARE
   v_email text;
   v_name text;
   v_made uuid;
+  v_last jsonb;
 BEGIN
   IF p_snapshot IS NULL OR jsonb_typeof(p_snapshot) <> 'object' OR octet_length(p_snapshot::text) > 48000 THEN
     RAISE EXCEPTION 'Invalid quote summary' USING ERRCODE = '22023';
@@ -825,6 +845,28 @@ BEGIN
   -- 183: published for a link that has been replaced since.
   IF p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token THEN
     RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = '40001';
+  END IF;
+  -- Round 6: who the summary is for. Newer builds name the client
+  -- ("client": name, email): the quote must still be for them (checked
+  -- here, never stored). A summary that names nobody and has no PDF
+  -- (383f15b; with a PDF its file name says whose it is, below): refused
+  -- when the quote's client is not the one the link was last published for.
+  IF jsonb_typeof(p_snapshot -> 'client') = 'object' THEN
+    IF lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g'))
+         IS DISTINCT FROM lower(regexp_replace(coalesce(v_name, ''), '\s+', ' ', 'g'))
+       OR lower(btrim(coalesce(p_snapshot -> 'client' ->> 'email', ''))) IS DISTINCT FROM coalesce(v_email, '') THEN
+      RAISE EXCEPTION 'BW_LINK_CHANGED: the quote now goes to another client, open the quote again' USING ERRCODE = '40001';
+    END IF;
+    p_snapshot := p_snapshot - 'client';
+  ELSIF v_pdf IS NULL AND p_token IS NULL AND p_version IS NULL THEN
+    v_last := CASE WHEN v_link.recipient_email IS NOT NULL OR v_link.recipient_name IS NOT NULL
+                   THEN jsonb_build_object('name', v_link.recipient_name, 'email', v_link.recipient_email)
+                   ELSE v_link.reassign_guard -> 'published' END;
+    IF jsonb_typeof(v_last) = 'object'
+       AND ((v_last ->> 'email') IS DISTINCT FROM v_email
+            OR lower(v_last ->> 'name') IS DISTINCT FROM lower(v_name)) THEN
+      RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP';
+    END IF;
   END IF;
   -- Round 5: an older build (no token, no version) on a link made for a new
   -- recipient: published when its summary is for the client the quote has
@@ -1112,6 +1154,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_paid text;
+  v_gig uuid;
 BEGIN
   IF upper(btrim(coalesce(NEW.currency, ''))) IS NOT DISTINCT FROM upper(btrim(coalesce(OLD.currency, ''))) THEN
     RETURN NEW;
@@ -1120,6 +1163,17 @@ BEGIN
                   CASE WHEN l.balance_paid_at IS NOT NULL THEN upper(nullif(btrim(l.balance ->> 'currency'), '')) END)
     INTO v_paid
     FROM public.quote_links l WHERE l.quote_id = NEW.id;
+  -- Round 6: a deposit recorded on the gig (accepted by phone, no link, or
+  -- no amount typed): it was taken in the currency the quote has now.
+  IF v_paid IS NULL THEN
+    v_gig := public.bw_quote_gig_id(NEW.id);
+    IF v_gig IS NOT NULL AND EXISTS (
+         SELECT 1 FROM public.events e
+          WHERE e.id = v_gig
+            AND (coalesce(e.deposit_paid, false) OR lower(coalesce(e.payment_status, '')) = 'paid')) THEN
+      v_paid := upper(nullif(btrim(OLD.currency), ''));
+    END IF;
+  END IF;
   IF v_paid ~ '^[A-Z]{3}$' AND upper(btrim(coalesce(NEW.currency, ''))) <> v_paid THEN
     RAISE EXCEPTION '%', public.bw_quote_currency_message(v_paid)
       USING ERRCODE = 'P0001', HINT = 'BW_QUOTE_CURRENCY_LOCKED', DETAIL = v_paid;
@@ -1560,8 +1614,10 @@ BEGIN
   IF p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token THEN
     RAISE EXCEPTION 'BW_LINK_CHANGED: this conversation is with a client the quote is no longer for' USING ERRCODE = 'P0001';
   END IF;
-  -- Round 5: older builds (no token): as mark sent.
-  IF p_token IS NULL AND NOT public.bw_quote_link_current(v_link) THEN
+  -- Round 5: older builds (no token): as mark sent. Round 6: and never on a
+  -- link made for a new recipient: an older screen can hold a draft written
+  -- to the previous client, and nothing says which link it was written on.
+  IF p_token IS NULL AND (v_link.recipient_changed_at IS NOT NULL OR NOT public.bw_quote_link_current(v_link)) THEN
     RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP';
   END IF;
   INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id, link_id)
