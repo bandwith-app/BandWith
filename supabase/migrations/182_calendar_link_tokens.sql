@@ -42,9 +42,9 @@
 --     builds delete the row directly).
 --   - A cancelled event in either spelling ('cancelled', 'canceled', any
 --     case): bw_event_status_cancelled, used by every check here.
---   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden,
---     looked up at run time: 182 also works without 178): out of both
---     calendars and the old feed, and the reply page closed, without detail.
+--   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
+--     out of both calendars and the old feed, and the reply page closed,
+--     without detail.
 --   Replies on a withdrawn (cancelled) request were already refused (084:
 --   'closed'); unchanged.
 --
@@ -60,7 +60,10 @@
 --   - bw_my_event_calendar_token(event, date): the signed-in user's token for
 --     one event their calendar shows (same rule as the feed), else NULL. A
 --     series asked without a date, or at its first date once that is past,
---     gets its next date from today (bw_calendar_next_occurrence).
+--     gets its next date from today (bw_calendar_next_occurrence). "Today"
+--     is the earliest date still current on Earth (bw_calendar_today,
+--     UTC-12), never the server's UTC date: events and bands keep no time
+--     zone.
 --   - bw_member_event_calendar(token): that one event as a single date, never
 --     the series rule or start; NULL once the user no longer sees it or the
 --     date is no longer in the series.
@@ -71,7 +74,8 @@
 --     builds; bw_member_calendar_flag_shared, called by member-calendar),
 --     unless the owner chose "Keep my link" for it (review_kept).
 --   - A date of a series: a deleted date (recurrence_rule.skip_dates) is
---     none; monthly on the 29th-31st takes the last day of shorter months.
+--     none; monthly on the 29th-31st takes the last day of shorter months
+--     (bw_calendar_monthly_date), counted from the first date.
 --   The account feed (bw_member_calendar_feed) is unchanged.
 --
 -- Deploy order: deploy the edge functions deputy-calendar and
@@ -82,11 +86,26 @@
 -- design: the only value that old function can match is the reply token,
 -- which is the credential 182 takes out of calendar files.
 --
+-- Order: 178 (#294) BEFORE 182, hard: 182 stops at its first statement
+-- when 178's bw_event_deputy_hidden is missing.
+--
 -- Older app builds: no signature they call changes. Safe to run more than
 -- once.
 -- ============================================================================
 
 BEGIN;
+
+-- 178 first (hard order, Codex review of #285 round 5): the deputy views
+-- below hide a gig reverted to a private quote through its
+-- bw_event_deputy_hidden. Without it, stop here rather than show it.
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_event_deputy_hidden(uuid)') IS NULL THEN
+    RAISE EXCEPTION '182 needs 178 first: public.bw_event_deputy_hidden(uuid) is missing (apply 178_date_on_hold.sql, then 182)'
+      USING ERRCODE = '55000';
+  END IF;
+END;
+$$;
 
 -- -------------------------------------------------- deputy calendar keys --
 
@@ -153,27 +172,10 @@ AS $$
 $$;
 GRANT EXECUTE ON FUNCTION public.bw_event_status_cancelled(text) TO anon, authenticated;
 
--- A gig reverted to a private quote shows a deputy nothing (#294's 178,
--- bw_event_deputy_hidden). 182 also runs without 178: then nothing is hidden,
--- as before. Looked up at run time, so the order of the two doesn't matter.
-CREATE OR REPLACE FUNCTION public.bw_deputy_gig_hidden(p_event_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v boolean;
-BEGIN
-  IF p_event_id IS NULL OR to_regprocedure('public.bw_event_deputy_hidden(uuid)') IS NULL THEN
-    RETURN false;
-  END IF;
-  EXECUTE 'SELECT public.bw_event_deputy_hidden($1)' INTO v USING p_event_id;
-  RETURN coalesce(v, false);
-END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_deputy_gig_hidden(uuid) FROM PUBLIC, anon, authenticated;
+-- A gig reverted to a private quote shows a deputy nothing: #294's 178,
+-- bw_event_deputy_hidden, called directly (checked at the top: 178 comes
+-- first). An earlier draft of 182 had a run-time lookup wrapper; never live.
+DROP FUNCTION IF EXISTS public.bw_deputy_gig_hidden(uuid);
 
 -- -------------------------------------------- the reply page (084 + keys) --
 
@@ -197,7 +199,7 @@ DECLARE
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
-         public.bw_event_status_cancelled(e.status::text), public.bw_deputy_gig_hidden(r.event_id)
+         public.bw_event_status_cancelled(e.status::text), public.bw_event_deputy_hidden(r.event_id)
     INTO v_snap, v_status, v_now, v_cancelled, v_hidden
     FROM public.deputy_requests r
     JOIN public.events e ON e.id = r.event_id
@@ -319,7 +321,7 @@ BEGIN
          AND (r.id = v_req.id OR (v_req.deputy_id IS NOT NULL AND r.deputy_id = v_req.deputy_id))
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
          AND coalesce(e.event_date, e.date) >= current_date - 60
-         AND NOT public.bw_deputy_gig_hidden(e.id)
+         AND NOT public.bw_event_deputy_hidden(e.id)
     ), '[]'::jsonb)
   );
 END;
@@ -368,7 +370,7 @@ BEGIN
        WHERE r.id = v_req.id
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
          AND coalesce(e.event_date, e.date) >= current_date - 60
-         AND NOT public.bw_deputy_gig_hidden(e.id)
+         AND NOT public.bw_event_deputy_hidden(e.id)
     ), '[]'::jsonb)
   );
 END;
@@ -545,6 +547,21 @@ CREATE TRIGGER bw_band_deputy_delete_rotate BEFORE DELETE ON public.band_deputie
 -- from the first date; a monthly date the month doesn't have is its last
 -- day; deleted dates (skip_dates) skipped; until and count kept). NULL when
 -- the series has none left.
+-- A monthly series' date, p_months after its first (Codex review of #285,
+-- round 5: one rule, here and in isOccurrence's monthlyDate): the first
+-- date's day, else that month's last day, always counted from the first
+-- date, so a short month carries nothing over (Jan 31 -> Feb 28 -> Mar 31).
+CREATE OR REPLACE FUNCTION public.bw_calendar_monthly_date(p_start date, p_months int)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT m + (least(extract(day FROM p_start)::int, extract(day FROM (m + interval '1 month - 1 day'))::int) - 1)
+    FROM (SELECT (date_trunc('month', p_start) + make_interval(months => p_months))::date AS m) x;
+$$;
+REVOKE ALL ON FUNCTION public.bw_calendar_monthly_date(date, int) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_calendar_next_occurrence(p_rule jsonb, p_start date, p_from date)
 RETURNS date
 LANGUAGE plpgsql
@@ -558,8 +575,6 @@ DECLARE
   v_until text;
   v_skip jsonb;
   v_cur date;
-  v_day int := extract(day FROM p_start)::int;
-  v_month date;
 BEGIN
   IF p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' OR p_start IS NULL OR p_from IS NULL THEN RETURN NULL; END IF;
   v_freq := lower(coalesce(p_rule->>'freq', p_rule->>'frequency', ''));
@@ -572,9 +587,7 @@ BEGIN
     IF i = 0 THEN v_cur := p_start;
     ELSIF v_freq = 'weekly' THEN v_cur := p_start + 7 * v_every * i;
     ELSIF v_freq = 'biweekly' THEN v_cur := p_start + 14 * i;
-    ELSE
-      v_month := (date_trunc('month', p_start) + make_interval(months => v_every * i))::date;
-      v_cur := v_month + (least(v_day, extract(day FROM (v_month + interval '1 month - 1 day'))::int) - 1);
+    ELSE v_cur := public.bw_calendar_monthly_date(p_start, v_every * i);
     END IF;
     IF i > 0 AND v_until IS NOT NULL AND to_char(v_cur, 'YYYY-MM-DD') > v_until THEN RETURN NULL; END IF;
     IF v_cur >= p_from AND NOT (v_skip ? to_char(v_cur, 'YYYY-MM-DD')) THEN RETURN v_cur; END IF;
@@ -616,6 +629,22 @@ ALTER TABLE public.calendar_event_links ENABLE ROW LEVEL SECURITY;
 -- No policies and no grants: only the functions below touch it.
 REVOKE ALL ON public.calendar_event_links FROM PUBLIC, anon, authenticated;
 
+-- "Today" for a member's date (Codex review of #285, round 5): never the
+-- server's UTC date. Events and bands keep no time zone (only
+-- profiles.timezone, which the app doesn't keep current), so it is the
+-- earliest date still current somewhere on Earth (UTC-12): a date counts as
+-- past only once it is past everywhere, and a member whose day is behind UTC
+-- (Los Angeles after midnight UTC) keeps the date they see.
+CREATE OR REPLACE FUNCTION public.bw_calendar_today()
+RETURNS date
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT (now() AT TIME ZONE 'Etc/GMT+12')::date;
+$$;
+REVOKE ALL ON FUNCTION public.bw_calendar_today() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_my_event_calendar_token(p_event_id uuid, p_date date DEFAULT NULL)
 RETURNS text
 LANGUAGE plpgsql
@@ -630,6 +659,7 @@ DECLARE
   v_occ date;
   v_start date;
   v_token text;
+  v_today date := public.bw_calendar_today();
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
   IF p_event_id IS NULL THEN RETURN NULL; END IF;
@@ -652,10 +682,10 @@ BEGIN
     -- Opened without a date (a notification, a link), which shows the
     -- series at its first date: the next date from today instead, also when
     -- that first date is long past (Claude review of #285, round 4).
-    IF v_occ IS NULL OR (v_occ = v_start AND v_start < current_date) THEN
-      v_occ := coalesce(public.bw_calendar_next_occurrence(v_event->'recurrence', v_start, current_date), v_start);
+    IF v_occ IS NULL OR (v_occ = v_start AND v_start < v_today) THEN
+      v_occ := coalesce(public.bw_calendar_next_occurrence(v_event->'recurrence', v_start, v_today), v_start);
     END IF;
-    IF v_occ < current_date - 60 OR v_occ > current_date + 730
+    IF v_occ < v_today - 60 OR v_occ > v_today + 731
        OR NOT public.bw_calendar_is_occurrence(v_event->'recurrence', (v_event->>'event_date')::date, v_occ) THEN
       RETURN NULL;
     END IF;

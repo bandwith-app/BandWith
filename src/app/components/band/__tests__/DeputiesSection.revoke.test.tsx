@@ -9,8 +9,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const list = vi.fn();
 const unlink = vi.fn();
+const getOne = vi.fn();
 vi.mock('@/lib/services/deputies', () => ({
   listDeputies: (...a: unknown[]) => list(...a),
+  getDeputy: (...a: unknown[]) => getOne(...a),
   unlinkDeputy: (...a: unknown[]) => unlink(...a),
   saveDeputy: vi.fn(),
   deleteDeputy: vi.fn(),
@@ -25,6 +27,12 @@ describe('DeputiesSection: revoke sent links', () => {
   beforeEach(() => {
     list.mockReset();
     unlink.mockReset();
+    getOne.mockReset();
+    // By default the deputy is as the list showed them.
+    getOne.mockImplementation(async (id: string) => {
+      const { data } = await list();
+      return { data: data.find((d: { id: string }) => d.id === id) ?? null, error: null };
+    });
   });
 
   it('offers to revoke the links of a deputy without an account', async () => {
@@ -64,6 +72,33 @@ describe('DeputiesSection: revoke sent links', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('Could not revoke the links. Try again.')).toBeTruthy();
+    expect(screen.queryByText('Links revoked. The next request you send carries a new one.')).toBeNull();
+  });
+
+  // Codex review #285 round 5: the deputy joined from the app while the
+  // sheet was open. Revoke would unlink their account: the sheet shows the
+  // new state and asks again, never unlinks without saying so.
+  it('a deputy who joined meanwhile: nothing is unlinked, the sheet shows it and asks again', async () => {
+    list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
+    getOne.mockResolvedValue({ data: { ...base, id: 'd1', name: 'Sam Rivera', user_id: 'u9' }, error: null });
+    render(<DeputiesSection bandId="b1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    expect(await screen.findByText('Sam Rivera just joined from the app. Their account is below: choose again.')).toBeTruthy();
+    expect(unlink).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Unlink account' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Revoke sent links' })).toBeNull();
+  });
+
+  it('joined in the last moment (the server unlinked too): the sheet says so', async () => {
+    list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
+    unlink.mockResolvedValue({ data: 'unlinked', error: null });
+    render(<DeputiesSection bandId="b1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    expect(await screen.findByText('Sam Rivera had just joined from the app: their account is unlinked too, and the links are revoked.')).toBeTruthy();
     expect(screen.queryByText('Links revoked. The next request you send carries a new one.')).toBeNull();
   });
 

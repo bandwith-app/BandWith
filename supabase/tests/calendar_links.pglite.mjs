@@ -9,6 +9,8 @@
 //   cp <repo>/supabase/tests/calendar_links.pglite.mjs . && node calendar_links.pglite.mjs <repo> <repo>/supabase/migrations/182_calendar_link_tokens.sql
 //
 // With /dev/null as the migration, the checks show what was wrong before.
+// 182 needs #294's 178 first: without it (no origin/feat/date-on-hold and no
+// 178 in the repo) every check is skipped with a warning.
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -121,8 +123,41 @@ await q(`INSERT INTO calendar_feeds (user_id) VALUES ($1)`, [ADMIN]);
 const tok = async (r) => (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [r])).token;
 const [TA, TB, TC] = [await tok(RA), await tok(RB), await tok(RC)];
 
-// Two runs: the migration is safe to run more than once.
 const mig = readFileSync(MIG, 'utf8');
+
+// 178 (#294) comes first, hard (Codex review #285 round 5): 182 stops when
+// its bw_event_deputy_hidden is missing. 178's helpers come from #294's
+// branch head, or the repo once merged.
+let m178 = null;
+try {
+  m178 = execSync('git show origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql', { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+} catch {
+  const local = `${REPO}/supabase/migrations/178_date_on_hold.sql`;
+  m178 = existsSync(local) ? readFileSync(local, 'utf8') : null;
+}
+if (!m178 && mig.trim()) {
+  // Main's guard rule: the whole 182 run is skipped until 178 is reachable.
+  console.log('SKIP (pending #294) every 182 check: 178 not found, and 182 needs it first');
+  console.log('WARNING: neither origin/feat/date-on-hold nor supabase/migrations/178_date_on_hold.sql is available; nothing of 182 was checked');
+  process.exit(0);
+}
+if (mig.trim()) {
+  let refused = null;
+  try { await db.exec(mig); } catch (e) { refused = String(e.message); }
+  await db.exec('ROLLBACK').catch(() => {});
+  ok(refused && /182 needs 178 first/.test(refused), 'without 178, 182 stops at its first statement (hard order)');
+} else {
+  ok(false, 'without 178, 182 stops at its first statement (hard order)');
+}
+if (m178) {
+  const m111 = readFileSync(`${REPO}/supabase/migrations/111_quote_events_private.sql`, 'utf8');
+  await db.exec(`CREATE TABLE IF NOT EXISTS public.event_date_holds (event_id uuid PRIMARY KEY, band_id uuid, release_reason text, confirmed_once_at timestamptz);
+    CREATE TABLE IF NOT EXISTS public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), converted_to_event_id uuid, status text);`);
+  await db.exec(fn(m111, 'bw_event_is_quote'));
+  for (const name of ['bw_event_quote_private', 'bw_event_deputy_hidden']) await db.exec(fn(m178, name));
+}
+
+// Two runs: the migration is safe to run more than once.
 await db.exec(mig);
 await db.exec(mig);
 ok(true, 'migration runs twice');
@@ -314,6 +349,22 @@ await check('#298: monthly on the 31st: Feb 28, Mar 31, Apr 30 (never Mar 3)', a
   && (await occ({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')) === true
   && (await occ({ frequency: 'monthly', interval: 2 }, '2026-12-31', '2027-02-28')) === true
   && (await occ({ frequency: 'monthly', count: 1 }, '2027-01-31', '2027-03-31')) === false);
+
+// Codex review #285 round 5: one rule for a monthly date, in one helper
+// (bw_calendar_monthly_date): the start's day, else the month's last day,
+// counted from the first date, so nothing carries over (Jan 31 2027 ->
+// Feb 28 -> Mar 31).
+const nextOcc = async (rule, start, from) => (await one(`SELECT public.bw_calendar_next_occurrence($1::jsonb, $2::date, $3::date)::text AS d`, [JSON.stringify(rule), start, from])).d;
+await check('monthly from Jan 31 2027: Feb 28, then Mar 31, then Apr 30 (no overflow carried)', async () =>
+  (await nextOcc({ frequency: 'monthly' }, '2027-01-31', '2027-02-01')) === '2027-02-28'
+  && (await nextOcc({ frequency: 'monthly' }, '2027-01-31', '2027-03-01')) === '2027-03-31'
+  && (await nextOcc({ frequency: 'monthly' }, '2027-01-31', '2027-04-01')) === '2027-04-30'
+  && (await nextOcc({ frequency: 'monthly', skip_dates: ['2027-02-28'] }, '2027-01-31', '2027-02-01')) === '2027-03-31');
+await check('one helper for the monthly date (bw_calendar_monthly_date)', async () => {
+  const r = await one(`SELECT public.bw_calendar_monthly_date('2027-01-31', 1)::text AS a, public.bw_calendar_monthly_date('2027-01-31', 2)::text AS b,
+                     public.bw_calendar_monthly_date('2028-01-31', 1)::text AS c, public.bw_calendar_monthly_date('2027-01-30', 0)::text AS d`);
+  return r.a === '2027-02-28' && r.b === '2027-03-31' && r.c === '2028-02-29' && r.d === '2027-01-30';
+});
 
 // -------------------------------------------------------------- members --
 console.log('-- members (02 #5 / 03 #6, 02 #11)');
@@ -536,6 +587,28 @@ await check('next date skips a deleted one (skip_dates)', async () => {
   return after > nxt && ended === null;
 });
 
+// Codex review #285 round 5: "today" is never UTC's. A member whose day is
+// behind the server's (Los Angeles after midnight UTC) asks for the series'
+// first date, which is still today for them: that date, not next week's.
+// Here the server's own date is the latest on Earth (UTC+14), the series
+// starts on the earliest date still current somewhere (UTC-12).
+await check('the first date of a series is kept while it is still today somewhere (never UTC "today")', async () => {
+  const EV_TZ = id(60);
+  const start = (await one(`SELECT ((now() AT TIME ZONE 'Etc/GMT+12')::date)::text AS d`)).d;
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, is_recurring, recurrence_rule, created_by, fee) VALUES
+    ($1, $2, 'Late rehearsal', 'rehearsal', 'confirmed', $3::date, '19:00', 'Studio C', 'Queens', true, '{"frequency":"weekly","interval":1}', $4, 0)`, [EV_TZ, BAND, start, ADMIN]);
+  await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $2, NULL, 'confirmed')`, [EV_TZ, MEM]);
+  await db.exec(`SET TIME ZONE 'Etc/GMT-14'`);
+  try {
+    const picked = await evTok(MEM, EV_TZ, start);
+    const opened = await evTok(MEM, EV_TZ, null);
+    const occOf = async (t) => (await one(`SELECT occurrence::text AS o FROM calendar_event_links WHERE token = $1`, [t]))?.o;
+    return !!picked && (await occOf(picked)) === start && !!opened && (await occOf(opened)) === start;
+  } finally {
+    await db.exec(`SET TIME ZONE 'UTC'`);
+  }
+});
+
 console.log('-- #294: a gig reverted to a private quote (178)');
 const [EV_Q, DEPUTY4, RQ] = [50, 51, 52].map(id);
 await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
@@ -550,46 +623,22 @@ const quoteViews = async () => ({
   file: (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(RQ, 'gig_calendar_token')])).g,
   old: (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await col(RQ, 'calendar_token')])).f,
 });
-await check('without 178 (not applied yet): today\'s behaviour, the gig is still shown', async () => {
+await check('with 178: a gig reverted to a quote is hidden from an existing deputy in all four', async () => {
   const r = await quoteViews();
-  return r.view?.event_title === 'Wedding at the Pier' && r.feed.gigs.some((g) => g.id === RQ)
-    && r.file.gigs.length === 1 && r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
+  return r.view && r.view.closed === true && r.view.event_title === null && r.view.venue_address === null && r.view.event_date === null
+    && !r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 0
+    && !r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
 });
-// 178's helpers, from #294's branch head (or the repo once merged).
-let m178 = null;
-try {
-  m178 = execSync('git show origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql', { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-} catch {
-  const local = `${REPO}/supabase/migrations/178_date_on_hold.sql`;
-  m178 = existsSync(local) ? readFileSync(local, 'utf8') : null;
-}
-const m111 = readFileSync(`${REPO}/supabase/migrations/111_quote_events_private.sql`, 'utf8');
-if (!m178) {
-  // Main's guard rule: skipped until #294 is merged, required after.
-  console.log('SKIP (pending #294) the reverted-to-quote checks: 178 not found');
-  console.log('WARNING: neither origin/feat/date-on-hold nor supabase/migrations/178_date_on_hold.sql is available; these checks become required once #294 is merged');
-} else {
-  await db.exec(`CREATE TABLE IF NOT EXISTS public.event_date_holds (event_id uuid PRIMARY KEY, band_id uuid, release_reason text, confirmed_once_at timestamptz);
-    CREATE TABLE IF NOT EXISTS public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), converted_to_event_id uuid, status text);`);
-  await db.exec(fn(m111, 'bw_event_is_quote'));
-  for (const name of ['bw_event_quote_private', 'bw_event_deputy_hidden']) await db.exec(fn(m178, name));
-  await check('with 178: a gig reverted to a quote is hidden from an existing deputy in all four', async () => {
-    const r = await quoteViews();
-    return r.view && r.view.closed === true && r.view.event_title === null && r.view.venue_address === null && r.view.event_date === null
-      && !r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 0
-      && !r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
-  });
-  await check('with 178: confirmed again, it is back', async () => {
-    await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);
-    const r = await quoteViews();
-    return r.view?.event_title === 'Wedding at the Pier' && r.view.closed === false && r.view.venue_address === '1 Pier Rd'
-      && r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 1;
-  });
-  await check('with 178: rehearsals and other gigs are untouched', async () => {
-    const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
-    return f.gigs.some((g) => g.id === RA);
-  });
-}
+await check('with 178: confirmed again, it is back', async () => {
+  await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);
+  const r = await quoteViews();
+  return r.view?.event_title === 'Wedding at the Pier' && r.view.closed === false && r.view.venue_address === '1 Pier Rd'
+    && r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 1;
+});
+await check('with 178: rehearsals and other gigs are untouched', async () => {
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
+  return f.gigs.some((g) => g.id === RA);
+});
 
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

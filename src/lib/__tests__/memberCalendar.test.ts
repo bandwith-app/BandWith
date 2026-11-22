@@ -27,6 +27,7 @@ import {
   myCalendarLinkReview,
   myCalendarToken,
   useCalendarLinkReview,
+  useCalendarToken,
   myEventCalendarToken,
   useEventCalendarToken,
   webcalUrl,
@@ -253,6 +254,31 @@ describe('member calendar: one device, two accounts', () => {
     expect(b.result.current.token).toBeNull();
     await act(async () => answer({ data: B_LINK, error: null }));
     await waitFor(() => expect(b.result.current.token).toBe(B_LINK));
+  });
+
+  // Codex review #285 round 5 (B2): A's account-link answer arriving after
+  // A signed out and B signed in is dropped: never on B's screen, never kept.
+  it("a late account-link answer for A never reaches B", async () => {
+    const A_TOKEN = 'b'.repeat(64);
+    const B_TOKEN = 'c'.repeat(64);
+    who.onAuth?.('SIGNED_IN', { user: { id: 'user-1' } });
+    const answers: ((v: unknown) => void)[] = [];
+    rpc.mockImplementation(() => new Promise((r) => answers.push(r)));
+    const forA = myCalendarToken(); // A's request goes out
+    await waitFor(() => expect(answers).toHaveLength(1));
+    who.id = 'user-2';
+    who.onAuth?.('SIGNED_OUT', null);
+    who.onAuth?.('SIGNED_IN', { user: { id: 'user-2' } });
+    const b = renderHook(() => useCalendarToken());
+    await waitFor(() => expect(answers).toHaveLength(2));
+    await act(async () => answers[0]({ data: A_TOKEN, error: null })); // A's answer, late
+    expect(await forA).toBeNull();
+    expect(b.result.current.token).not.toBe(A_TOKEN);
+    await act(async () => answers[1]({ data: B_TOKEN, error: null }));
+    await waitFor(() => expect(b.result.current.token).toBe(B_TOKEN));
+    rpc.mockReset();
+    expect(await myCalendarToken()).toBe(B_TOKEN); // B's, from the cache
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   // A "no" is not kept: the flag can be set from elsewhere (an old link used

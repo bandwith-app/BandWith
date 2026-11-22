@@ -6,6 +6,7 @@ import { PillButton, PillField } from '@/app/components/bw/Form';
 import {
   deleteDeputy,
   deputiesUnavailable,
+  getDeputy,
   listDeputies,
   saveDeputy,
   unlinkDeputy,
@@ -134,6 +135,23 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
   const revoke = async () => {
     if (!editing || editing === 'new') return;
     setSaving(true);
+    // They may have joined from the app since the sheet opened: the same call
+    // would unlink their account (Codex review #285 round 5). Look again
+    // first; if so, show it and let the admin choose again.
+    const { data: now, error: nowError } = await getDeputy(editing.id);
+    if (nowError || !now) {
+      setSaving(false);
+      setError(t('Could not revoke the links. Try again.'));
+      return;
+    }
+    if (now.user_id) {
+      setSaving(false);
+      setEditing({ ...editing, ...now });
+      setConfirm(null);
+      setNotice(t('{name} just joined from the app. Their account is below: choose again.', { name: now.name }));
+      void load();
+      return;
+    }
     const { data, error: e } = await unlinkDeputy(editing.id);
     setSaving(false);
     // Only 182 rotates the links of a deputy without an account, and says
@@ -146,7 +164,12 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
     }
     if (data === 'unlinked') setEditing({ ...editing, user_id: null });
     setConfirm(null);
-    setNotice(t('Links revoked. The next request you send carries a new one.'));
+    // 'unlinked': they joined between the look and the call. Said, not hidden.
+    setNotice(
+      data === 'unlinked'
+        ? t('{name} had just joined from the app: their account is unlinked too, and the links are revoked.', { name: editing.name })
+        : t('Links revoked. The next request you send carries a new one.'),
+    );
     if (data === 'unlinked') void load();
   };
 

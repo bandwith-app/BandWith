@@ -1451,6 +1451,15 @@ const rpc = (fn: string, args: Row = {}) => {
       const d = table('band_deputies').find((x) => x.id === args.p_deputy_id);
       data = d?.user_id ? 'unlinked' : 'revoked';
       if (d) d.user_id = null;
+      // As 182: every request's reply and calendar links change, so an old
+      // one stops (Codex review #285 round 5).
+      const fresh = () => (uuid() + uuid()).replace(/-/g, '');
+      for (const r of table('deputy_requests')) {
+        if (r.deputy_id !== args.p_deputy_id) continue;
+        r.token = fresh();
+        if (r.calendar_token) r.calendar_token = fresh();
+        if (r.gig_calendar_token) r.gig_calendar_token = fresh();
+      }
       persist();
       break;
     }

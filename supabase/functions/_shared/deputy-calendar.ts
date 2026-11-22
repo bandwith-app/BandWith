@@ -337,6 +337,22 @@ export function skipDates(rule: unknown): string[] {
 }
 
 /**
+ * A monthly series' date (YYYY-MM-DD), `k` months after its first (`start`),
+ * or null for a bad start. One rule, also in 182's bw_calendar_monthly_date
+ * and the app's repeatDates (#298): the first date's day, else that month's
+ * last day, always counted from the first date, so a short month carries
+ * nothing over (Jan 31 -> Feb 28 -> Mar 31; Codex review #285 round 5).
+ */
+export function monthlyDate(start: string, k: number): string | null {
+  const s = /^(\d{4})-(\d{2})-(\d{2})/.exec(start || "");
+  if (!s || !Number.isInteger(k) || k < 0) return null;
+  const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
+  // Day 0 of the following month is the last day of this one.
+  const last = new Date(y, m + k + 1, 0, 12, 0, 0).getDate();
+  return ymdStr(new Date(y, m + k, Math.min(day, last), 12, 0, 0));
+}
+
+/**
  * Whether `date` (YYYY-MM-DD) is one of the dates of a repeating rehearsal
  * that starts on `start`, stepped the way the app's calendar steps it
  * (src/lib/recurrence.ts: weekly / biweekly / monthly by interval, counted
@@ -359,15 +375,10 @@ export function isOccurrence(rule: unknown, start: string, date: string): boolea
   const count = Number.isInteger(c) && c >= 1 && c <= 1000 ? c : 1000;
   const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
   for (let i = 1; i <= count; i++) {
-    let cursor: Date;
-    if (freq === "weekly") cursor = new Date(y, m, day + 7 * every * i, 12, 0, 0);
-    else if (freq === "biweekly") cursor = new Date(y, m, day + 14 * i, 12, 0, 0);
-    else {
-      const target = m + every * i;
-      const last = new Date(y, target + 1, 0, 12, 0, 0).getDate();
-      cursor = new Date(y, target, Math.min(day, last), 12, 0, 0);
-    }
-    const d = ymdStr(cursor);
+    const d =
+      freq === "weekly" ? ymdStr(new Date(y, m, day + 7 * every * i, 12, 0, 0))
+      : freq === "biweekly" ? ymdStr(new Date(y, m, day + 14 * i, 12, 0, 0))
+      : (monthlyDate(start, every * i) as string);
     if (until && d > until) return false;
     if (d === date) return true;
     if (d > date) return false;

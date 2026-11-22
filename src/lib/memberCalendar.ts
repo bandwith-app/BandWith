@@ -33,8 +33,19 @@ const endEventTokens = () => {
   eventTokensInFlight.clear();
   eventTokenListeners.forEach((l) => l());
 };
-let pending: Promise<string | null> | null = null;
+/** The account-link request on its way: whose, and in which account generation. */
+let pending: { userId: string; gen: number; run: Promise<string | null> } | null = null;
+/**
+ * Bumped when the account on the device changes (Codex review #285 round 5,
+ * B2): an answer asked for before is dropped, never cached or shown.
+ */
+let accountGen = 0;
+/** Still the account (and generation) the request was made for? */
+const sameAccount = (userId: string, gen: number) =>
+  gen === accountGen && (authUserId === undefined || authUserId === userId);
 const listeners = new Set<(token: string | null) => void>();
+/** Mounted account-link hooks: told when another account signs in. */
+const accountListeners = new Set<() => void>();
 
 async function currentUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
@@ -46,9 +57,12 @@ export async function myCalendarToken(rotate = false): Promise<string | null> {
   const userId = await currentUserId();
   if (!userId) return null;
   if (!rotate && cached?.userId === userId) return cached.token;
-  if (!rotate && pending) return pending;
+  const gen = accountGen;
+  if (!rotate && pending?.userId === userId && pending.gen === gen) return pending.run;
   const run = (async () => {
     const { data, error } = await supabase.rpc('bw_my_calendar_token', { p_rotate: rotate });
+    // Another account signed in meanwhile: not this one's link.
+    if (!sameAccount(userId, gen)) return null;
     if (error || typeof data !== 'string' || !/^[0-9a-f]{64}$/.test(data)) return null;
     cached = { userId, token: data };
     listeners.forEach((l) => l(data));
@@ -60,18 +74,28 @@ export async function myCalendarToken(rotate = false): Promise<string | null> {
     }
     return data;
   })();
-  if (!rotate) pending = run;
+  if (!rotate) pending = { userId, gen, run };
   try {
     return await run;
   } finally {
-    if (!rotate) pending = null;
+    if (pending?.run === run) pending = null;
   }
 }
 
 /** The token for the signed-in user (null while loading or unavailable). */
 export function useCalendarToken(enabled = true): { token: string | null; loading: boolean } {
-  const [token, setToken] = useState<string | null>(cached?.token ?? null);
-  const [loading, setLoading] = useState(enabled && !cached);
+  const mine = () => (cached && (authUserId === undefined || cached.userId === authUserId) ? cached.token : null);
+  const [token, setToken] = useState<string | null>(mine);
+  const [loading, setLoading] = useState(enabled && !mine());
+  // A new account on the device: ask again, for that account.
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => {
+    const l = () => setGeneration((g) => g + 1);
+    accountListeners.add(l);
+    return () => {
+      accountListeners.delete(l);
+    };
+  }, []);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
@@ -85,7 +109,7 @@ export function useCalendarToken(enabled = true): { token: string | null; loadin
       alive = false;
       listeners.delete(setToken);
     };
-  }, [enabled]);
+  }, [enabled, generation]);
   return { token, loading };
 }
 
@@ -278,6 +302,7 @@ export const googleSubscribeUrl = (feedUrl: string) =>
 let authUserId: string | null | undefined;
 
 function forgetAccount() {
+  accountGen += 1;
   cached = null;
   pending = null;
   review = null;
@@ -285,6 +310,7 @@ function forgetAccount() {
   reviewListeners.forEach((l) => l(false));
   listeners.forEach((l) => l(null));
   endEventTokens();
+  accountListeners.forEach((l) => l());
 }
 
 try {

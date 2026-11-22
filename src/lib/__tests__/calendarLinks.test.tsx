@@ -11,7 +11,7 @@ const cal = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/lib/nativeFiles')>()), openExternal: cal.openExternal }));
 const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
 
-import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
+import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, monthlyDate, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
 import { DeputyGigCard } from '@/app/components/deputy/DeputyGigsList';
 import type { DeputyGig } from '../services/deputies';
 
@@ -204,6 +204,19 @@ describe('series dates the app shows, in external calendars', () => {
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-03-03')).toBe(false);
     expect(isOccurrence({ frequency: 'monthly' }, '2028-01-31', '2028-02-29')).toBe(true);
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')).toBe(true);
+  });
+
+  // Codex review #285 round 5: one rule for the monthly date, in one helper
+  // (= bw_calendar_monthly_date in 182): counted from the first date, a short
+  // month takes its last day and carries nothing over.
+  it('monthly from Jan 31 2027: Feb 28, Mar 31, Apr 30, through one helper', () => {
+    expect([1, 2, 3].map((k) => monthlyDate('2027-01-31', k))).toEqual(['2027-02-28', '2027-03-31', '2027-04-30']);
+    expect(monthlyDate('2028-01-31', 1)).toBe('2028-02-29');
+    expect(monthlyDate('2026-12-31', 2)).toBe('2027-02-28');
+    expect(monthlyDate('2027-01-30', 0)).toBe('2027-01-30');
+    expect(monthlyDate('junk', 1)).toBeNull();
+    expect(isOccurrence({ frequency: 'monthly', skip_dates: ['2027-02-28'] }, '2027-01-31', '2027-03-31')).toBe(true);
+    expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-04-03')).toBe(false);
   });
 });
 

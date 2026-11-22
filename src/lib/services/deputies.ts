@@ -48,6 +48,16 @@ export async function listDeputies(bandId: string) {
   return { data: (data || []) as Deputy[], error };
 }
 
+/** One deputy as the server has them now (null once deleted). */
+export async function getDeputy(id: string) {
+  const { data, error } = await supabase
+    .from('band_deputies')
+    .select('id, band_id, name, instrument, phone, email, notes, default_fee, user_id, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  return { data: (data ?? null) as Deputy | null, error };
+}
+
 export async function saveDeputy(bandId: string, input: DeputyInput, id?: string) {
   const row = clean(input);
   const q = id
