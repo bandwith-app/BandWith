@@ -24,7 +24,10 @@
 -- Superset of 183: the three bodies below are 183's as of fix/quote-page
 -- 8f5922d7 (PR #286 round 4: link_id conversations, the deposit receipt in
 -- the currency recorded with it, the quote locked first) plus the changes
--- above.
+-- above. 183 round 5 (86dd51f6) leaves these three bodies as they were.
+-- Round 5 (Claude review of #293): the message limit (20 an hour) counts
+-- the messages on this link, not on the quote: a new client is not held
+-- back by what the previous one wrote.
 -- 183 must not be run again after this one (183 refuses: its guard sees
 -- balance_sent in the view). Same signatures and grants (anon keeps
 -- EXECUTE on the page RPCs it had). Apply after 183 and 185 (this
@@ -297,8 +300,9 @@ BEGIN
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
   IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL OR v_link.snapshot IS NULL THEN RETURN NULL; END IF;
   IF public.bw_quote_link_view(p_token) IS NULL THEN RETURN NULL; END IF;
+  -- Round 5: this link's messages (a new client is not held back by what the previous one wrote).
   SELECT count(*) INTO v_recent FROM public.quote_activity a
-   WHERE a.quote_id = v_link.quote_id AND a.kind = 'client_message' AND a.created_at > now() - interval '1 hour';
+   WHERE a.link_id = v_link.id AND a.kind = 'client_message' AND a.created_at > now() - interval '1 hour';
   IF v_recent >= 20 THEN
     RAISE EXCEPTION 'Too many messages, try again later' USING ERRCODE = '54000';
   END IF;

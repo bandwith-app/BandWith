@@ -38,7 +38,9 @@ export const DepositReceivedSheet: React.FC<DepositReceivedSheetProps> = ({ open
   const [busy, setBusy] = useState<'save' | 'undo' | null>(null);
   const [flash, setFlash] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
 
-  const currency = (gig?.currency || quote.currency || 'EUR').toUpperCase();
+  // Round 5: the deposit is recorded in the quote's currency (the RPC), so
+  // the sheet names that one; the gig's only for a quote without one.
+  const currency = (quote.currency || gig?.currency || 'EUR').toUpperCase();
   const money = useMemo(() => {
     const sym = currencySymbol(currency);
     return (v: number) => formatQuoteMoney(v, sym, intlLocale('en-US'));

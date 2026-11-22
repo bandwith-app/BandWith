@@ -21,6 +21,8 @@
 //   8. round 4: replacing a musician on a quote changes the tentative gig's
 //      lineup in the same transaction; a gig confirmed meanwhile is left as
 //      it is; members never read the lineup's fees through it;
+//   8b. round 5: a lineup changed meanwhile is refused, the gig loses only
+//      who was on the quote's previous lineup, the message limit is per link;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -477,6 +479,68 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   const member = await tryIt(asMember(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb)`, [Q])));
   const anon = await tryIt(asAnon(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb)`, [Q])));
   ok(!!member.e && !!anon.e, 'lineup + hold: members and anon cannot call it (no fees through it)');
+}
+
+// ---------------------------------------------------------------- 8b. round 5 (Codex + Claude review of #293)
+{
+  const DIRECT = id(90);
+  const DEPUTY = id(91);
+  await db.exec(`INSERT INTO auth.users VALUES ('${DIRECT}'), ('${DEPUTY}') ON CONFLICT DO NOTHING;
+                 INSERT INTO band_members (band_id, user_id, role, is_active)
+                 SELECT '${BAND}', '${DIRECT}', 'member', true WHERE NOT EXISTS (SELECT 1 FROM band_members WHERE user_id = '${DIRECT}');`);
+  const lineupOf = (Q) => q(`SELECT name, instrument, fee::float AS fee FROM quote_musicians WHERE quote_id = $1 ORDER BY name`, [Q]).then((r) => r.rows);
+  const onGig = (E) => q(`SELECT user_id FROM event_members WHERE event_id = $1 ORDER BY user_id`, [E]).then((r) => r.rows.map((x) => x.user_id));
+
+  // MINOR 3: the gig loses only who was on the quote's lineup before.
+  const { Q, E } = await quote();
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${E}'`);
+  await db.exec(`INSERT INTO quote_musicians (quote_id, user_id, name, instrument, fee) VALUES ('${Q}', '${MEMBER}', 'Maya Brooks', 'Bass', 300), ('${Q}', '${SUB}', 'Sam Ortiz', 'Drums', 250)`);
+  await db.exec(`INSERT INTO event_members (event_id, user_id, status, fee, role) VALUES
+    ('${E}', '${MEMBER}', 'confirmed', 300, 'Bass'), ('${E}', '${SUB}', 'pending', 250, 'Drums'),
+    ('${E}', '${ADMIN}', 'confirmed', 0, 'Keys'), ('${E}', '${DIRECT}', 'pending', 200, 'Guitar'), ('${E}', '${DEPUTY}', 'confirmed', 180, 'Sax')`);
+  const base = [
+    { user_id: MEMBER, name: 'Maya Brooks', instrument: 'Bass', fee: 300 },
+    { user_id: SUB, name: 'Sam Ortiz', instrument: 'Drums', fee: 250 },
+  ];
+  const keep = [{ user_id: MEMBER, name: 'Maya Brooks', instrument: 'Bass', fee: 300, is_external: false, is_available: true }];
+  // (The two-argument call: the round 4 shape, so this check fails on round 4's 185.)
+  const r1 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [Q, JSON.stringify(keep)])));
+  const g1 = await onGig(E);
+  ok(!r1.e && !g1.includes(SUB) && [MEMBER, ADMIN, DIRECT, DEPUTY].every((u) => g1.includes(u)),
+    `round 5: Sam leaves the gig; the admin, a direct add and a deputy stay (${r1.e || g1.length})`);
+
+  // Item 9: a lineup changed meanwhile is refused; nothing comes back.
+  const stale = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb, $3::jsonb) r`,
+    [Q, JSON.stringify([...keep, { user_id: SUB, name: 'Sam Ortiz', instrument: 'Drums', fee: 250 }]), JSON.stringify(base)])));
+  const l2 = await lineupOf(Q);
+  ok(!!stale.e && /changed this quote’s lineup/.test(stale.e) && l2.length === 1 && !(await onGig(E)).includes(SUB),
+    `round 5: a lineup saved over one changed meanwhile is refused, Sam stays off (${stale.e})`);
+  // The same lineup as stored (any order, fee as a number or text): accepted.
+  const same = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb, $3::jsonb) r`,
+    [Q, JSON.stringify([{ ...keep[0], fee: 325 }]), JSON.stringify([{ name: ' maya brooks ', instrument: 'bass', fee: '300.00' }])])));
+  ok(!same.e && (await lineupOf(Q))[0].fee === 325, `round 5: the lineup as opened saves (${same.e || 'fee 325'})`);
+  // An old call (no base) keeps working.
+  const old = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [Q, JSON.stringify(keep)])));
+  ok(!old.e && old.r.rows[0].r.synced === true, `round 5: the two-argument call still works (${old.e || 'synced'})`);
+
+  // MINOR 3: a quote with no lineup takes nobody off its gig.
+  const { Q: Q2, E: E2 } = await quote();
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${E2}'`);
+  await db.exec(`INSERT INTO event_members (event_id, user_id, status, fee, role) VALUES ('${E2}', '${MEMBER}', 'confirmed', 300, 'Bass'), ('${E2}', '${DIRECT}', 'pending', 200, 'Guitar')`);
+  const none = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb) r`, [Q2])));
+  const g2 = await onGig(E2);
+  ok(!none.e && g2.length === 2, `round 5: a quote with no musicians takes nobody off the gig (${none.e || g2.length})`);
+
+  // MINOR 9b: the message limit counts this link's messages, not the quote's.
+  const { Q: Q3, T: T3 } = await quote();
+  await db.exec(`INSERT INTO quote_activity (quote_id, band_id, kind, body, version, link_id)
+                 SELECT '${Q3}', '${BAND}', 'client_message', 'to the previous client ' || g, 1, gen_random_uuid() FROM generate_series(1, 20) g`);
+  const first = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Hi, is the date still free?') v`, [T3])));
+  ok(!first.e && first.r.rows[0].v !== null, `round 5: 20 messages on an old link do not block the new client (${first.e || 'sent'})`);
+  await db.exec(`INSERT INTO quote_activity (quote_id, band_id, kind, body, version, link_id)
+                 SELECT '${Q3}', '${BAND}', 'client_message', 'more ' || g, 1, (SELECT id FROM quote_links WHERE quote_id = '${Q3}') FROM generate_series(1, 19) g`);
+  const limit = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'One more') v`, [T3])));
+  ok(!!limit.e && /Too many/.test(limit.e), `round 5: 20 on this link and the next waits (${limit.e})`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)

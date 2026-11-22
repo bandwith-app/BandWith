@@ -41,6 +41,7 @@ import {
   appMusiciansToDb,
   dbQuoteToAppQuote,
   saveQuoteLineup,
+  changedQuoteLineup,
   syncQuoteHoldEvent,
   isUuid,
   gigFromAcceptedQuote,
@@ -253,8 +254,12 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         // Round 4: the gig on hold got the lineup with the quote (one transaction).
         let lineupOnHold = false;
         let gigConfirmed = false;
-        if (quoteData.musicians) {
-          const lineup = await saveQuoteLineup(existing.id, appMusiciansToDb(quoteData.musicians));
+        // Round 5: only a lineup changed in the wizard, checked against the
+        // one it opened with: a save of the venue alone never brings back a
+        // musician or a fee someone else changed meanwhile.
+        const lineupEdit = changedQuoteLineup(quoteData.musicians, baseline.musicians);
+        if (lineupEdit) {
+          const lineup = await saveQuoteLineup(existing.id, lineupEdit.musicians, lineupEdit.base);
           if (lineup.error || !lineup.data) {
             setQuotes(prev => prev.map(q => (q.id === existing.id ? ({ ...existing, ...dbQuoteToAppQuote(data), musicians: existing.musicians } as MockQuote) : q)));
             notify(errorText(lineup.error, t('Quote saved, but the lineup was not')), 'error');
@@ -270,7 +275,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         // accepting it confirms the gig as quoted. The quote stays saved.
         const hold = gigConfirmed
           ? { data: null, error: null, confirmed: true }
-          : await syncQuoteHoldEvent(existing.id, saved, lineupOnHold ? null : savedLineup);
+          : await syncQuoteHoldEvent(existing.id, saved, lineupOnHold ? null : savedLineup, (baseline.musicians || []).map((m) => m.userId));
         setQuotes(prev => prev.map(q => (q.id === existing.id ? saved : q)));
         setIsCreating(false);
         setEditingQuote(null);

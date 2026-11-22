@@ -227,4 +227,38 @@ describe('QuotesExpanded: saving', () => {
     );
     expect(mocks.syncQuoteHoldEvent).not.toHaveBeenCalled();
   });
+
+  // Codex round 5 (QuotesExpanded.tsx:253): a save of the venue alone sent the
+  // lineup as the wizard opened it, so a musician removed meanwhile came back.
+  it('a venue-only save does not send the lineup', async () => {
+    mocks.updateQuote.mockResolvedValue({ data: { ...row, venue_name: 'The Foundry' }, error: null });
+    mocks.wizardPayload = { venueName: 'The Foundry' };
+    const onShowToast = vi.fn();
+    render(
+      <QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[row]} onShowToast={onShowToast} focusQuoteId={QUOTE} onFocusConsumed={vi.fn()} />,
+    );
+    await clickAndSettle(await screen.findByText('detail edit'));
+    await act(async () => {
+      fireEvent.click(await screen.findByText('wizard save', undefined, { timeout: 10_000 }));
+    });
+    await waitFor(() => expect(onShowToast).toHaveBeenCalledWith('Quote updated', 'success'));
+    expect(mocks.saveQuoteLineup).not.toHaveBeenCalled();
+    // The gig on hold keeps its lineup too.
+    expect(mocks.syncQuoteHoldEvent.mock.calls[0][2]).toBeNull();
+  });
+
+  it('a changed lineup is sent with the lineup the wizard opened with', async () => {
+    mocks.updateQuote.mockResolvedValue({ data: { ...row }, error: null });
+    mocks.saveQuoteLineup.mockResolvedValue({ data: { musicians: [], eventId: null, synced: false, confirmed: false }, error: null });
+    mocks.wizardPayload = { musicians: [{ id: 'x', name: 'Sam Ortiz', instrument: 'Bass', fee: 350, isExternal: true }] };
+    render(
+      <QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[row]} onShowToast={vi.fn()} focusQuoteId={QUOTE} onFocusConsumed={vi.fn()} />,
+    );
+    await clickAndSettle(await screen.findByText('detail edit'));
+    await act(async () => {
+      fireEvent.click(await screen.findByText('wizard save', undefined, { timeout: 10_000 }));
+    });
+    await waitFor(() => expect(mocks.saveQuoteLineup).toHaveBeenCalledTimes(1));
+    expect(mocks.saveQuoteLineup.mock.calls[0][2]).toEqual([expect.objectContaining({ name: 'Maya Brooks', fee: 400 })]);
+  });
 });

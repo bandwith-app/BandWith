@@ -45,6 +45,12 @@
 --    quote's lineup and the lineup of the tentative gig holding its date in
 --    one transaction (a musician replaced on the quote leaves the gig).
 --
+-- 6. Round 5 (Codex + Claude review of #293): bw_quote_save_lineup takes
+--    the lineup the wizard opened with (p_base, optional) and refuses one
+--    changed meanwhile (40001, BW_LINEUP_CHANGED), and takes off the gig
+--    only who was on the quote's previous lineup (never someone added to
+--    the gig directly, the admin, a deputy).
+--
 -- No function here comes from an open PR (168 and 099 bodies). New anon
 -- grant: bw_quote_link_preview only (it needs the token and the key).
 -- Safe to run more than once.
@@ -113,7 +119,54 @@ GRANT EXECUTE ON FUNCTION public.bw_quote_save_musicians(uuid, jsonb) TO authent
 -- fee and instrument as on the quote. Admins only (bw_quote_admin_band);
 -- it returns the quote's rows (quote_musicians: admins only) and never a
 -- member's fee to anyone else.
-CREATE OR REPLACE FUNCTION public.bw_quote_save_lineup(p_quote_id uuid, p_musicians jsonb)
+-- Round 5: the lineup the musicians of a quote make, as one comparable
+-- value (who, what they play, their fee; in any order). user_id is left out:
+-- bw_quote_save_musicians drops the link of a former member, which is not a
+-- change anyone made.
+CREATE OR REPLACE FUNCTION public.bw_quote_lineup_key(p_musicians jsonb)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT coalesce(jsonb_agg(k ORDER BY k::text), '[]'::jsonb)
+    FROM (SELECT jsonb_build_array(
+                   lower(left(btrim(coalesce(m ->> 'name', '')), 255)),
+                   lower(coalesce(left(btrim(m ->> 'instrument'), 100), '')),
+                   CASE WHEN (m ->> 'fee') ~ '^-?\d+(\.\d+)?$' THEN round((m ->> 'fee')::numeric, 2)::text
+                        ELSE coalesce(nullif(m ->> 'fee', ''), '0.00') END) AS k
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_musicians) = 'array' THEN p_musicians ELSE '[]'::jsonb END) m
+           WHERE nullif(btrim(coalesce(m ->> 'name', '')), '') IS NOT NULL) x;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_lineup_key(jsonb) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_quote_lineup_stale_message()
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE lower(left(coalesce((SELECT p.preferred_language FROM public.profiles p WHERE p.id = auth.uid()), 'en'), 2))
+    WHEN 'it' THEN 'Qualcun altro ha cambiato i musicisti di questo preventivo mentre era aperto. Chiudilo e riaprilo: i musicisti non sono stati salvati.'
+    WHEN 'es' THEN 'Otra persona cambió los músicos de este presupuesto mientras estaba abierto. Ciérralo y vuelve a abrirlo: los músicos no se guardaron.'
+    WHEN 'fr' THEN 'Quelqu’un a modifié les musiciens de ce devis pendant qu’il était ouvert. Fermez-le et rouvrez-le : les musiciens n’ont pas été enregistrés.'
+    WHEN 'de' THEN 'Jemand hat die Besetzung dieses Angebots geändert, während es geöffnet war. Schließe es und öffne es erneut: Die Besetzung wurde nicht gespeichert.'
+    WHEN 'pt' THEN 'Outra pessoa mudou os músicos deste orçamento enquanto estava aberto. Feche-o e abra-o de novo: os músicos não foram guardados.'
+    ELSE 'Someone else changed this quote’s lineup while it was open. Close it and open it again: the lineup was not saved.'
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_lineup_stale_message() FROM PUBLIC, anon, authenticated;
+
+-- Round 5: p_base (optional) is the lineup the wizard opened with. When
+-- given, a lineup someone else changed meanwhile is refused (40001, hint
+-- BW_LINEUP_CHANGED): the save would bring back who they removed and the
+-- fees as they were. The gig loses only who was on the quote's lineup
+-- before this save and is not on it now: someone added to the gig
+-- directly, the admin, a deputy stay. The two-argument form of round 4
+-- is replaced (never shipped in a build).
+DROP FUNCTION IF EXISTS public.bw_quote_save_lineup(uuid, jsonb);
+CREATE OR REPLACE FUNCTION public.bw_quote_save_lineup(p_quote_id uuid, p_musicians jsonb, p_base jsonb DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -125,8 +178,17 @@ DECLARE
   v_linked uuid;
   v_event uuid;
   v_status text;
+  v_before uuid[];
 BEGIN
-  -- The quote first (bw_quote_save_musicians locks it), then the gig.
+  -- The quote first (as bw_quote_save_musicians), then the gig.
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  IF p_base IS NOT NULL AND public.bw_quote_lineup_key(p_base) IS DISTINCT FROM public.bw_quote_lineup_key(
+       (SELECT coalesce(jsonb_agg(to_jsonb(qm)), '[]'::jsonb) FROM public.quote_musicians qm WHERE qm.quote_id = p_quote_id)) THEN
+    RAISE EXCEPTION '%', public.bw_quote_lineup_stale_message() USING ERRCODE = '40001', HINT = 'BW_LINEUP_CHANGED';
+  END IF;
+  -- Who the quote's lineup had before this save (the only ones it can take off the gig).
+  v_before := ARRAY(SELECT DISTINCT qm.user_id FROM public.quote_musicians qm
+                     WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL);
   SELECT coalesce(jsonb_agg(to_jsonb(m)), '[]'::jsonb) INTO v_rows
     FROM public.bw_quote_save_musicians(p_quote_id, p_musicians) m;
 
@@ -146,6 +208,7 @@ BEGIN
 
   DELETE FROM public.event_members em
    WHERE em.event_id = v_event
+     AND em.user_id = ANY (v_before)
      AND em.user_id NOT IN (SELECT qm.user_id FROM public.quote_musicians qm
                              WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL);
   INSERT INTO public.event_members (event_id, user_id, role, fee, status)
@@ -164,8 +227,8 @@ BEGIN
   RETURN jsonb_build_object('musicians', v_rows, 'event_id', v_event, 'synced', true, 'confirmed', false);
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb, jsonb) TO authenticated;
 
 -- --------------------------------------------------------------------
 -- 2. Mark as paid remembers the deposit, Undo puts it back (168 + #7)

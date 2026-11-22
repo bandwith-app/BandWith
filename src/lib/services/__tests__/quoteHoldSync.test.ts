@@ -98,7 +98,7 @@ describe('syncQuoteHoldEvent', () => {
     const res = await quotes.syncQuoteHoldEvent(QUOTE, edited, [
       { user_id: MAYA, instrument: 'Vocals', fee: 450 },
       { user_id: LENA, instrument: 'Bass', fee: 375 },
-    ]);
+    ], [MAYA, SAM]);
     expect(res.error).toBeNull();
     const byUser = Object.fromEntries(db.event_members.map((m) => [m.user_id, m]));
     expect(Object.keys(byUser).sort()).toEqual([MAYA, LENA].sort());
@@ -128,6 +128,25 @@ describe('syncQuoteHoldEvent', () => {
     const res = await quotes.syncQuoteHoldEvent(QUOTE, edited, [{ user_id: LENA, instrument: 'Bass', fee: 375 }]);
     expect(res).toEqual({ data: null, error: null, confirmed: true });
     expect(db.events[0]).toMatchObject({ event_date: '2027-06-12', fee: 2400 });
+    expect(db.event_members.map((m) => m.user_id).sort()).toEqual([MAYA, SAM].sort());
+  });
+
+  // Claude review of #293, MINOR 3 (the fallback before 185): only who was on
+  // the quote's lineup before can leave the gig.
+  it('someone added to the gig directly, the admin, a deputy stay; only the replaced musician leaves', async () => {
+    const DEPUTY = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    db.event_members.push(
+      { event_id: EVENT, user_id: ADMIN, role: 'Keys', fee: 0, status: 'confirmed' },
+      { event_id: EVENT, user_id: DEPUTY, role: 'Sax', fee: 180, status: 'confirmed' },
+    );
+    const res = await quotes.syncQuoteHoldEvent(QUOTE, edited, [{ user_id: MAYA, instrument: 'Vocals', fee: 450 }], [MAYA, SAM]);
+    expect(res.error).toBeNull();
+    expect(db.event_members.map((m) => m.user_id).sort()).toEqual([MAYA, ADMIN, DEPUTY].sort());
+  });
+
+  it('a quote that had no lineup takes nobody off the gig', async () => {
+    const res = await quotes.syncQuoteHoldEvent(QUOTE, edited, [], []);
+    expect(res.error).toBeNull();
     expect(db.event_members.map((m) => m.user_id).sort()).toEqual([MAYA, SAM].sort());
   });
 });

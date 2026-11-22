@@ -403,8 +403,14 @@ export interface QuoteLineupSaved {
 export const saveQuoteLineup = async (
   quoteId: string,
   musicians: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[],
+  /**
+   * Round 5: the lineup the editor opened with. The server refuses the save
+   * when someone else changed the lineup meanwhile (40001), so a removed
+   * musician or an old fee never comes back. Null: not known (no check).
+   */
+  base?: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[] | null,
 ): Promise<{ data: QuoteLineupSaved | null; error: Error | null }> => {
-  const payload = musicians.map((m) => ({
+  const rows = (list: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[]) => list.map((m) => ({
     user_id: m.user_id ?? null,
     name: m.name,
     instrument: m.instrument ?? null,
@@ -412,7 +418,12 @@ export const saveQuoteLineup = async (
     is_external: !!m.is_external,
     is_available: m.is_available !== false,
   }));
-  const { data, error } = await supabase.rpc('bw_quote_save_lineup', { p_quote_id: quoteId, p_musicians: payload });
+  const payload = rows(musicians);
+  const { data, error } = await supabase.rpc('bw_quote_save_lineup', {
+    p_quote_id: quoteId,
+    p_musicians: payload,
+    ...(Array.isArray(base) ? { p_base: rows(base) } : {}),
+  });
   if (error && isMissingRpc(error)) {
     const alone = await saveQuoteMusicians(quoteId, musicians);
     return alone.data
@@ -659,6 +670,12 @@ export const syncQuoteHoldEvent = async (
   quoteId: string,
   q: Partial<AppQuote>,
   musicians?: Pick<QuoteMusician, 'user_id' | 'instrument' | 'fee'>[] | null,
+  /**
+   * Round 5: who was on the quote's lineup before this save. Only they can
+   * leave the gig: someone added to it directly, the admin, a deputy stay.
+   * Not given: nobody leaves.
+   */
+  previousUserIds?: (string | null | undefined)[] | null,
 ): Promise<{ data: string | null; error: Error | null; confirmed?: boolean }> => {
   try {
     const { data: link, error: linkErr } = await supabase
@@ -708,7 +725,8 @@ export const syncQuoteHoldEvent = async (
       if (readErr) throw readErr;
       const answered = new Map(((current || []) as { user_id: string; status: string }[]).map((r) => [r.user_id, r.status]));
       const keep = new Set(wanted.map((r) => r.user_id));
-      const gone = [...answered.keys()].filter((id) => !keep.has(id));
+      const before = new Set((previousUserIds || []).filter((id): id is string => !!id));
+      const gone = [...answered.keys()].filter((id) => !keep.has(id) && before.has(id));
       if (gone.length > 0) {
         const { error: delErr } = await supabase.from('event_members').delete().eq('event_id', eventId).in('user_id', gone);
         if (delErr) throw delErr;
@@ -1166,6 +1184,32 @@ export const appMusiciansToDb = (
       is_external: Boolean(m.isExternal),
       is_available: m.isAvailable !== false,
     }));
+
+/**
+ * Round 5: a lineup as one comparable value: who, what they play, their fee,
+ * in any order (as bw_quote_lineup_key, 185). The editors save the lineup
+ * only when it differs from the one they opened with.
+ */
+export const quoteLineupKey = (musicians?: AppQuoteMusician[]): string =>
+  JSON.stringify(
+    appMusiciansToDb(musicians)
+      .map((m) => JSON.stringify([
+        String(m.name || '').trim().toLowerCase(),
+        String(m.instrument || '').trim().toLowerCase(),
+        roundCents(Number(m.fee) || 0).toFixed(2),
+      ]))
+      .sort(),
+  );
+
+/** Round 5: the lineup to save (null: unchanged from the one opened, save nothing). */
+export const changedQuoteLineup = (
+  edited: AppQuoteMusician[] | undefined,
+  opened: AppQuoteMusician[] | undefined,
+): { musicians: ReturnType<typeof appMusiciansToDb>; base: ReturnType<typeof appMusiciansToDb> | null } | null => {
+  if (!edited) return null;
+  if (Array.isArray(opened) && quoteLineupKey(edited) === quoteLineupKey(opened)) return null;
+  return { musicians: appMusiciansToDb(edited), base: Array.isArray(opened) ? appMusiciansToDb(opened) : null };
+};
 
 /** Maps a `quotes` row to the app's camelCase quote used by the list, detail modal and PDF. */
 export const dbQuoteToAppQuote = (q: Quote & { musicians?: QuoteMusician[] }): AppQuote => ({

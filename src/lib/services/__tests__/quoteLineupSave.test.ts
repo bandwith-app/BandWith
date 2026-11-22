@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const rpc = vi.fn();
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: (n: string, a: unknown) => rpc(n, a), from: vi.fn() }, getSafeUser: vi.fn() }));
 
-import { saveQuoteLineup } from '../quotes';
+import { saveQuoteLineup, changedQuoteLineup, quoteLineupKey } from '../quotes';
 import AuthenticatedAppSrc from '@/app/AuthenticatedApp.tsx?raw';
 import QuotesExpandedSrc from '@/app/components/dashboard/expanded/QuotesExpanded.tsx?raw';
 
@@ -56,7 +56,47 @@ describe('saveQuoteLineup', () => {
 describe('both quote editors save the lineup with the gig on hold', () => {
   it('the calendar’s quote editor (AuthenticatedApp) and Quotes use saveQuoteLineup', () => {
     const linked = AuthenticatedAppSrc.slice(AuthenticatedAppSrc.indexOf('const handleLinkedQuoteSave'));
-    expect(linked.slice(0, 3000)).toMatch(/await saveQuoteLineup\(editing\.quote\.id, appMusiciansToDb\(q\.musicians\)\)/);
-    expect(QuotesExpandedSrc).toMatch(/await saveQuoteLineup\(existing\.id, appMusiciansToDb\(quoteData\.musicians\)\)/);
+    expect(linked.slice(0, 3000)).toMatch(/changedQuoteLineup\(q\.musicians, editing\.quote\.musicians\)/);
+    expect(linked.slice(0, 3000)).toMatch(/await saveQuoteLineup\(editing\.quote\.id, lineupEdit\.musicians, lineupEdit\.base\)/);
+    expect(QuotesExpandedSrc).toMatch(/changedQuoteLineup\(quoteData\.musicians, baseline\.musicians\)/);
+    expect(QuotesExpandedSrc).toMatch(/await saveQuoteLineup\(existing\.id, lineupEdit\.musicians, lineupEdit\.base\)/);
+  });
+});
+
+// Codex round 5 on #293 (QuotesExpanded.tsx:253): a venue-only save sent the
+// lineup the wizard opened with, bringing back a musician another admin had
+// removed meanwhile, with the old fees.
+describe('round 5: the lineup is saved only when it changed, checked against the one opened', () => {
+  const opened = [
+    { id: 'a', userId: MAYA, name: 'Maya Brooks', instrument: 'Bass', fee: 300 },
+    { id: 'b', name: 'Leo Park', instrument: 'Drums', fee: 275, isExternal: true },
+  ] as any[];
+  it('unchanged (any order, fee to the cent): nothing to save', () => {
+    const edited = [{ ...opened[1], fee: 275.001 }, { ...opened[0], instrument: ' bass ' }] as any[];
+    expect(quoteLineupKey(edited)).toBe(quoteLineupKey(opened));
+    expect(changedQuoteLineup(edited, opened)).toBeNull();
+    expect(changedQuoteLineup(undefined, opened)).toBeNull();
+  });
+  it('changed: the new lineup and the one opened, for the server to check', () => {
+    const r = changedQuoteLineup([opened[0]], opened);
+    expect(r?.musicians).toEqual([expect.objectContaining({ name: 'Maya Brooks', fee: 300 })]);
+    expect(r?.base).toHaveLength(2);
+  });
+  it('the lineup opened is not known: saved without a check, as before', () => {
+    expect(changedQuoteLineup([opened[0]], undefined)?.base).toBeNull();
+  });
+  it('the RPC gets the lineup opened as p_base; without one, no p_base', async () => {
+    rpc.mockResolvedValue({ data: { musicians: [], event_id: null, synced: false, confirmed: false }, error: null });
+    await saveQuoteLineup(QUOTE, [lineup[0]] as any, lineup as any);
+    expect(rpc.mock.calls[0][1].p_base).toHaveLength(2);
+    expect(rpc.mock.calls[0][1].p_base[1].fee).toBe(275.01);
+    await saveQuoteLineup(QUOTE, [lineup[0]] as any);
+    expect('p_base' in rpc.mock.calls[1][1]).toBe(false);
+  });
+  it('a lineup changed meanwhile: the server’s refusal is the error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'Someone else changed this quote’s lineup while it was open. Close it and open it again: the lineup was not saved.' } });
+    const r = await saveQuoteLineup(QUOTE, [lineup[0]] as any, lineup as any);
+    expect(r.data).toBeNull();
+    expect(r.error?.message).toMatch(/lineup while it was open/);
   });
 });

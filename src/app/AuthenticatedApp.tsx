@@ -142,7 +142,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteLineup } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteLineup, changedQuoteLineup } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -2911,8 +2911,10 @@ export default function AuthenticatedApp() {
       // The lineup is saved with the quote and the gig on hold, in one go (185).
       let roster = editing.quote.musicians;
       let gigConfirmed = false;
-      if (q.musicians) {
-        const lineup = await saveQuoteLineup(editing.quote.id, appMusiciansToDb(q.musicians));
+      // Round 5: only a lineup changed in the wizard, checked against the one it opened with.
+      const lineupEdit = changedQuoteLineup(q.musicians, editing.quote.musicians);
+      if (lineupEdit) {
+        const lineup = await saveQuoteLineup(editing.quote.id, lineupEdit.musicians, lineupEdit.base);
         if (lineup.error || !lineup.data) {
           // The wizard stays open: saving again saves the lineup.
           setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineup.error?.message || t('unknown error') }), type: 'error' });
