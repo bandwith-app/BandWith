@@ -45,7 +45,7 @@ import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
-import { deleteMyAccount } from '@/lib/services/account';
+import { asFinishedDeletion, deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -296,7 +296,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (deleteText.trim().toUpperCase() !== 'DELETE' || deleting) return;
     setDeleting(true);
     setDeleteError(null);
-    const result = await deleteMyAccount();
+    // Committed (round 6, Claude): the server finishes it within minutes,
+    // so this device signs out as after a deletion that finished.
+    const result = asFinishedDeletion(await deleteMyAccount());
     if (result.ok) {
       // Its unsent chat messages go with it (sign-out alone keeps them).
       await import('@/lib/chatOutbox').then((m) => m.discardChatOutbox(user?.id)).catch(() => {});
@@ -593,7 +595,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="bw-h2 text-destructive">{t('Delete account')}</span>
         </div>
         <p className="bw-body-md text-foreground">
-          {t('Permanently removes your profile, personal gigs and messages. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
+          {t('Permanently removes your profile, personal gigs and direct messages. Your messages in band, gig and group chats stay, shown as from a former member. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
         </p>
         <PillButton
           variant="danger"
@@ -866,7 +868,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('Delete account?')}
               </h2>
               <p id="delete-account-desc" className="bw-body-md text-muted-foreground">
-                {t("This can't be undone. Your profile, personal gigs and messages will be deleted.")}
+                {t("This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band, gig and group chats stay, shown as from a former member.")}
               </p>
               <div className="flex flex-col gap-2">
                 <label htmlFor="delete-account-confirm" className="bw-label-sm text-muted-foreground">

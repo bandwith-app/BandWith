@@ -927,13 +927,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Dein Konto löschen",
-      summary: "Entferne dein Profil, deine privaten Gigs und Nachrichten endgültig.",
+      summary: "Entferne dein Profil, deine privaten Gigs und Direktnachrichten endgültig.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["Konto löschen", "Konto schließen", "Konto entfernen", "Daten löschen"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Nachrichten werden gelöscht. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
+        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Direktnachrichten werden gelöscht. Deine Nachrichten in Band-, Gig- und Gruppenchats bleiben und erscheinen als **Ehemaliges Mitglied**. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
         {
           type: "steps",
           items: [

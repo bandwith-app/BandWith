@@ -14,6 +14,7 @@ import {
   requireBandAdmin,
   requireCaller,
 } from "../_shared/auth.ts";
+import { callerDeletionRefusal } from "../_shared/deletion-gate.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EmailTemplateName, renderEmail } from "../_shared/email-templates.ts";
 import { signQuotePdf } from "../_shared/quote-pdf-path.ts";
@@ -661,6 +662,14 @@ serve(async (req) => {
       caller = { kind: "service" };
     } else {
       caller = await requireCaller(req, admin);
+      // 180 round 8: no email in the name of an account being deleted.
+      const deleting = await callerDeletionRefusal(admin, caller);
+      if (deleting) {
+        return new Response(JSON.stringify(deleting.body), {
+          status: deleting.status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { type, data: requestData } = (await req.json()) as EmailRequest;

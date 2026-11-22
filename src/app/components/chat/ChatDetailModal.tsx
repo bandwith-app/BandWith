@@ -57,6 +57,7 @@ const hideChatKeyboard = () => {
   }
 };
 import { personName } from '@/lib/personName';
+import { authorName, directChatName } from '@/lib/formerMember';
 
 type FullChat = NonNullable<Awaited<ReturnType<typeof getChat>>['data']>;
 
@@ -490,8 +491,20 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         }
         typeResolvedRef.current = true;
         if (fullChat.type === 'direct') {
-          const other = fullChat.participants.find(p => p.user_id !== user?.id);
-          const name = personName(other?.profile, '');
+          const others = fullChat.participants.filter(p => p.user_id !== user?.id);
+          const other = others[0];
+          // The same rule as the chat list (#282 round 8): "Former member"
+          // only when no other account is there at all, not a participant,
+          // not the creator, not the last sender.
+          const name = directChatName({
+            others,
+            storedName: fullChat.name,
+            fallback: '',
+            former: t('Former member'),
+            me: user?.id,
+            otherIds: [(fullChat as any).created_by, fullChat.last_message?.sender_id],
+          });
+          if (!other) setChatAvatarUrl(undefined);
           if (name) {
             setChatName(name);
             const initials = name.split(' ').filter(Boolean).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -1287,8 +1300,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                       )}>
                         {!isMe && (chatType === 'band' || chatType === 'event') && (
                           <p className="bw-label-xs text-muted-foreground">
-                            {personName(message.sender, t('Member'))}
-                            {bandAdminIds.has(message.sender_id) ? ' · ' + t('Admin') : ''}
+                            {authorName(message.sender_id, message.sender, t('Member'), t('Former member'))}
+                            {message.sender_id && bandAdminIds.has(message.sender_id) ? ' · ' + t('Admin') : ''}
                           </p>
                         )}
 
@@ -1301,7 +1314,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                           {replyTo && message.reply_to_id && replyTo.content && (
                             <div className="flex flex-col gap-1 px-3 py-2 rounded-[20px] bg-black text-white min-w-0">
                               <p className="bw-label-xs text-accent truncate">
-                                {personName(replyTo.sender, t('Unknown'))}
+                                {authorName(replyTo.sender_id, replyTo.sender, t('Unknown'), t('Former member'))}
                               </p>
                               <p className={cn("bw-body-sm text-white line-clamp-1", replyTo.deleted && "italic opacity-70")}>
                                 {replyTo.content}
@@ -1392,7 +1405,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                     <span className="w-[3px] h-7 rounded-full bg-accent shrink-0" aria-hidden="true" />
                     <div className="flex-1 min-w-0 flex flex-col">
                       <span className="bw-label-sm text-foreground truncate">
-                        {t('Replying to {name}', { name: personName(replyingTo.sender, t('Message')) })}
+                        {t('Replying to {name}', { name: authorName(replyingTo.sender_id, replyingTo.sender, t('Message'), t('Former member')) })}
                       </span>
                       <p className="bw-body-sm text-muted-foreground line-clamp-1">{replyingTo.content}</p>
                     </div>

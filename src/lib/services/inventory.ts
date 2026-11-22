@@ -1,3 +1,4 @@
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
@@ -110,7 +111,7 @@ const asError = (err: unknown, fallback: string) => {
   const e = err as { message?: string; code?: string } | null;
   // A database before 127 accepts only the original categories.
   if (e?.code === '23514' && /category/i.test(e.message || '')) return new Error(t("This category can't be saved yet. Pick another one."));
-  return new Error(e?.message || fallback);
+  return new Error(serverErrorText(err, fallback));
 };
 
 const blankToNull = (v?: string | null) => {

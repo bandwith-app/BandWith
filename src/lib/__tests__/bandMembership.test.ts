@@ -88,3 +88,21 @@ describe('roster refresh', () => {
     expect(bandsUnchanged(before, [])).toBe(false);
   });
 });
+
+import * as membership from '../bandMembership';
+
+// #282 round 4: the server's hold message is plain English now (older builds
+// show it as it is); the code moved to the hint.
+describe('isDeletionHold', () => {
+  const isDeletionHold = (membership as any).isDeletionHold;
+  it('reads the code from the hint', () => {
+    expect(isDeletionHold?.({ message: 'A bandmate is deleting their account. Try again in a few minutes.', hint: 'account_deletion_in_progress' })).toBe(true);
+  });
+  it('still reads the code from the message (before 180 round 4)', () => {
+    expect(isDeletionHold?.({ message: 'account_deletion_in_progress' })).toBe(true);
+  });
+  it('not for other errors', () => {
+    expect(isDeletionHold?.({ message: 'last_admin: a band needs at least one admin.' })).toBe(false);
+    expect(isDeletionHold?.(null)).toBe(false);
+  });
+});

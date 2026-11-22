@@ -1,5 +1,6 @@
 import { supabase, getSafeUser } from '../supabase';
 import { sendPushToUsers } from './notifications';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { personName } from '@/lib/personName';
 import { isDirectChatBetween, type DirectChatFacts } from '@/lib/directChat';
 import { t, loadLocale, translate } from '@/lib/i18n';
@@ -46,7 +47,7 @@ export class ChatSenderChangedError extends Error {
 
 /** What to show for a chat error: the rule when one said no, never raw server text. */
 export const chatErrorMessage = (error: unknown, fallback: string): string =>
-  error instanceof ChatRuleError ? error.message : fallback;
+  error instanceof ChatRuleError ? error.message : deletionRefusalMessage(error) ?? fallback;
 
 // ============================================
 // TYPES
@@ -91,7 +92,8 @@ export interface ChatParticipant {
 export interface Message {
   id: string;
   chat_id: string;
-  sender_id: string;
+  /** NULL: a former member (account deleted, migration 180). */
+  sender_id: string | null;
   content: string;
   message_type: string;
   attachments?: unknown[];
@@ -376,7 +378,8 @@ export const getChats = async (
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('chat_id', chat.id)
-          .neq('sender_id', user.id);
+          // A former member's message has no sender and is still unread.
+          .or(`sender_id.is.null,sender_id.neq.${user.id}`);
 
         if (lastReadAt && clearedAt) {
           const cutOff = new Date(lastReadAt) > new Date(clearedAt) ? lastReadAt : clearedAt;
@@ -458,10 +461,24 @@ export const getChat = async (
       .in('id', partIds);
     const profileMap = new Map((profilesData || []).map((p: any) => [p.id, { id: p.id, full_name: p.full_name, avatar_url: p.avatar_url }]));
 
+    // A direct chat's newest message (#282 round 9): its sender tells a live
+    // account from a former member in the header (directChatName).
+    let lastMessage: Message | undefined;
+    if (chat.type === 'direct') {
+      const { data: last } = await supabase
+        .from('messages')
+        .select('id, chat_id, sender_id, created_at')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (Array.isArray(last) && last[0]) lastMessage = last[0] as unknown as Message;
+    }
+
     return {
       data: {
         ...chat,
         name: resolvedName,
+        last_message: lastMessage,
         logo_url: bandInfo?.logo_url || (chat as any).logo_url,
         band: bandInfo || undefined,
         participants: (chatParticipants || []).map((p: any) => ({
@@ -1287,7 +1304,11 @@ export const sendMessage = async (
           user.id,
         );
         const plain = otherParticipants.filter((id: string) => !mentioned.includes(id));
+        // Who and which message (180, round 5): an account deletion finds
+        // its notices by these ids, never by the sender's name.
+        const ids = { sender_id: user.id, message_id: data?.id };
         const common = {
+          ...ids,
           senderName,
           content: content.substring(0, 120),
           chatId,
@@ -1668,7 +1689,7 @@ export const searchChatsAndMessages = async (
           chat_type: chatInfo?.type as ChatType,
           message_id: msg.id,
           message_content: msg.content,
-          message_sender: msg.sender_id === user.id ? t('You') : (msg.sender_id && senders.get(msg.sender_id)) || t('Unknown'),
+          message_sender: msg.sender_id === user.id ? t('You') : !msg.sender_id ? t('Former member') : senders.get(msg.sender_id) || t('Unknown'),
           message_date: msg.created_at,
           match_text: msg.content,
         });

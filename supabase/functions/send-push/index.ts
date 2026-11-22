@@ -1,5 +1,6 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
+import { callerDeletionRefusal, pushActorBeingDeleted } from '../_shared/deletion-gate.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
 import {
@@ -590,6 +591,14 @@ Deno.serve(async (req: Request) => {
       caller = { kind: 'service' };
     } else {
       caller = await requireCaller(req, supabase);
+      // 180 round 8: no notice in the name of an account being deleted.
+      const deleting = await callerDeletionRefusal(supabase, caller);
+      if (deleting) {
+        return new Response(JSON.stringify(deleting.body), {
+          status: deleting.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     const body = await req.json();
@@ -919,6 +928,19 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ success: true, sent: 0, message: 'No active tokens found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // 180 round 10: the sender's deletion committed after the gate (its inbox
+    // rows were dropped by 180's trigger): no lock screen shows it either.
+    // Round 11: a user call's sender is the caller (never the app's
+    // sender_id); 108's suggestion author (by) too, as 180's trigger reads it.
+    const pushSender = caller.kind === 'user' ? caller.id : (data?.sender_id || data?.senderId || null);
+    // Round 11 (F3): no early return. No device rings, and the rest runs
+    // with no device, so whatever this call claimed settles as "nothing to
+    // deliver" the way the rest of this function settles it (with #284's
+    // claims, 194: pushSettledUsers → markPushed), on main and merged alike.
+    if (await pushActorBeingDeleted(supabase, { sender: pushSender, by: data?.by ?? null })) {
+      tokens.splice(0, tokens.length);
     }
 
     // Per recipient: the icon badge is their own unread count (a band message

@@ -927,13 +927,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Supprimer ton compte",
-      summary: "Supprime définitivement ton profil, tes concerts perso et tes messages.",
+      summary: "Supprime définitivement ton profil, tes concerts perso et tes messages privés.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["supprimer le compte", "fermer le compte", "effacer le compte", "effacer"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "C’est irréversible. Ton profil, tes concerts perso et tes messages sont supprimés. Exporte d’abord tes données si tu veux en garder une copie." },
+        { type: "note", tone: "warning", text: "C’est irréversible. Ton profil, tes concerts perso et tes messages privés sont supprimés. Tes messages dans les discussions du groupe, des concerts et à plusieurs restent, signés **Ancien membre**. Exporte d’abord tes données si tu veux en garder une copie." },
         {
           type: "steps",
           items: [

@@ -32,6 +32,16 @@ export function leaveBandBlock(members: MemberRow[], userId: string | null | und
 }
 
 /**
+ * A co-admin's account deletion holds the band's last-admin check (180). The
+ * server's message is plain English for older builds; the code is the hint
+ * (and was the message before 180 round 4).
+ */
+export function isDeletionHold(error: { message?: string; hint?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.hint === 'account_deletion_in_progress' || /account_deletion_in_progress/.test(error.message ?? '');
+}
+
+/**
  * The instrument to show for a band member: the band's own entry
  * (band_members.instrument), else the one on their profile. Members who
  * joined by invite have no band entry until an admin sets one.
