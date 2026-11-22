@@ -87,9 +87,29 @@ describe('191 the stage clock topic', () => {
     expect(f).toMatch(/NOT COALESCE\(NEW\.is_active, true\)/);
     expect(f).toMatch(/NEW\.band_id IS DISTINCT FROM OLD\.band_id/);
     expect(f).toMatch(/e\.band_id = OLD\.band_id/);
-    expect(f).toMatch(/e\.event_date IS NULL OR e\.event_date >= current_date/);
-    expect(sql).toMatch(/CREATE TRIGGER bw_stage_member_left\s+AFTER UPDATE OF is_active, band_id, user_id OR DELETE ON public\.band_members/);
+    expect(f).toMatch(/coalesce\(e\.event_date, e\."date"\) IS NULL OR coalesce\(e\.event_date, e\."date"\) >= current_date/);
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_member_left\s+AFTER UPDATE OF is_active, role, band_id, user_id OR DELETE ON public\.band_members/);
     expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;');
+  });
+
+  it("an admin made a member: the band's coming quote gigs get a new key (Claude on #283; behaviour: stage_topic_quote.pglite.mjs)", () => {
+    const f = fn(sql191, 'bw_stage_member_left');
+    expect(f).toMatch(/OLD\.role = 'admin' AND NEW\.role IS DISTINCT FROM 'admin'/);
+    expect(f).toMatch(/public\.bw_stage_quote_gig\(e\.id, e\.status::text, e\.event_type::text, e\.quote_id\)/);
+  });
+
+  it("with 178 applied first, the triggers use its bw_event_quote_private, not 111's rule alone (Claude on #283)", () => {
+    expect(sql).toMatch(/IF to_regprocedure\('public\.bw_event_quote_private\(uuid, text, text, uuid\)'\) IS NOT NULL THEN/);
+    expect(sql).toContain('SELECT public.bw_event_quote_private(p_event_id, p_status, p_event_type, p_quote_id);');
+    for (const name of ['bw_stage_lineup_left', 'bw_stage_event_hidden']) {
+      expect(fn(sql191, name)).toContain('public.bw_stage_quote_gig(');
+      expect(fn(sql191, name)).not.toContain('bw_event_is_quote');
+    }
+    expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_quote_gig(uuid, text, text, uuid) FROM PUBLIC, anon, authenticated;');
+  });
+
+  it('applying 191 changes no key by itself (main session on #283): only the triggers do, from then on', () => {
+    expect(sql).not.toMatch(/^\s*SELECT public\.bw_stage_new_band_key/m);
   });
 
   it('the strict pattern takes UUIDs and nothing else', () => {

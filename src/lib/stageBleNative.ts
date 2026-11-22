@@ -60,18 +60,46 @@ const cachedKey = (eventId: string): string | null => {
 /** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
 export const KEY_FETCH_TIMEOUT_MS = 4_000;
 
+/** Sign-out bumps it: an answer that arrives after the cache was cleared writes nothing. */
+let keyEpoch = 0;
+let keyAsks = 0;
+/** The newest ask whose answer was kept, per gig: an older answer arriving later writes nothing. */
+const keyKept = new Map<string, number>();
+
+function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number) {
+  if (epoch !== keyEpoch || ask < (keyKept.get(eventId) ?? 0)) return;
+  keyKept.set(eventId, ask);
+  try {
+    if (typeof data === 'string' && data) localStorage.setItem(KEY_PREFIX + eventId, data);
+    else localStorage.removeItem(KEY_PREFIX + eventId);
+  } catch {
+    /* kept for this session only */
+  }
+}
+
 /**
  * The gig's Bluetooth key: asked for whenever online (it changes when someone
  * may no longer see the gig, migration 191) and kept; the kept copy offline
- * (no answer in KEY_FETCH_TIMEOUT_MS). A no from the server deletes it.
- * Null for people outside the band, or offline before the first fetch.
+ * (no answer in KEY_FETCH_TIMEOUT_MS; an answer that comes later is still
+ * kept). A no from the server deletes it (`denied`: the caller drops any copy
+ * of its own too). Null for people outside the band, or offline before the
+ * first fetch.
  */
-export async function stageKey(eventId: string): Promise<string | null> {
+export async function fetchStageKey(eventId: string): Promise<{ key: string | null; denied: boolean }> {
+  const ask = ++keyAsks;
+  const epoch = keyEpoch;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let answer: { data: unknown; error: unknown } | null;
   try {
+    const call = Promise.resolve(supabase.rpc('bw_stage_key', { p_event_id: eventId })).then(
+      (a: { data: unknown; error: unknown }) => {
+        if (a && !a.error) keepAnswer(eventId, a.data, ask, epoch);
+        return a;
+      },
+      () => null,
+    );
     answer = await Promise.race([
-      Promise.resolve(supabase.rpc('bw_stage_key', { p_event_id: eventId })),
+      call,
       new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
     ]);
   } catch {
@@ -79,15 +107,13 @@ export async function stageKey(eventId: string): Promise<string | null> {
   } finally {
     clearTimeout(timer);
   }
-  if (!answer || answer.error) return cachedKey(eventId);
-  const data = answer.data;
-  try {
-    if (typeof data === 'string' && data) localStorage.setItem(KEY_PREFIX + eventId, data);
-    else localStorage.removeItem(KEY_PREFIX + eventId);
-  } catch {
-    /* kept for this session only */
-  }
-  return typeof data === 'string' && data ? data : null;
+  if (!answer || answer.error) return { key: cachedKey(eventId), denied: false };
+  const key = typeof answer.data === 'string' && answer.data ? answer.data : null;
+  return { key, denied: key === null };
+}
+
+export async function stageKey(eventId: string): Promise<string | null> {
+  return (await fetchStageKey(eventId)).key;
 }
 
 /** Fetch the key ahead of the gig (event detail open), so it's there offline (and a changed one replaces it). */
@@ -105,6 +131,8 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
  * themselves are in the offline store, which sign-out clears.)
  */
 export function clearStageCache() {
+  keyEpoch++;
+  keyKept.clear();
   void removeAllPackFiles().catch(() => undefined);
   try {
     const keys: string[] = [];

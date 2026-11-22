@@ -8,7 +8,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
  * member may (191). A broadcast nobody may send is dropped.
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
-type Phone = { topic: string; key: string; handlers: Handler[]; joined: boolean };
+type Phone = { topic: string; key: string; handlers: Handler[]; joined: boolean; status?: (s: string) => void };
 const net = vi.hoisted(() => ({
   admins: new Set<string>(),
   log: [] as Array<{ topic: string; event: string; from: string; payload: unknown }>,
@@ -47,6 +47,7 @@ vi.mock('@/lib/supabase', () => ({
           return ch;
         },
         subscribe(cb: (s: string) => void) {
+          phone.status = cb;
           const join = () => {
             phone.joined = true;
             cb('SUBSCRIBED');
@@ -360,6 +361,33 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
       // 5 quick rounds (~25 s), then one a minute: 7 or 8 in three minutes (15 s apart it would be 14).
       expect(rounds).toBeGreaterThanOrEqual(6);
       expect(rounds).toBeLessThanOrEqual(8);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an admin following whose stage channel dropped (Realtime reconnecting) sends no ping there, so nothing goes over HTTP (Claude on #283)", async () => {
+    vi.useFakeTimers();
+    try {
+      const leader = phone(true);
+      const other = phone(true);
+      const me = other.result.current.clientId;
+      net.dropPingsOf = me; // no measure: it keeps pinging
+      act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      const stagePings = () => net.tries.filter((t) => t.from === me && t.topic === 'stage:event:gig-1' && t.event === PING_EVENT);
+      expect(stagePings().length).toBeGreaterThan(0);
+      const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
+      stage.joined = false;
+      act(() => stage.status?.('CHANNEL_ERROR'));
+      net.tries = [];
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(net.tries.some((t) => t.from === me && t.topic.startsWith('stage-clock:') && t.event === PING_EVENT)).toBe(true);
+      expect(stagePings()).toEqual([]);
     } finally {
       vi.useRealTimers();
     }

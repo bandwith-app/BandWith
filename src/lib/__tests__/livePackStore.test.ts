@@ -37,7 +37,12 @@ vi.mock('../supabase', () => ({
   isDemoMode: false,
 }));
 // The native apps fetch the gig's Bluetooth key (087).
-vi.mock('../stageBleNative', () => ({ stageBleAvailable: () => true, stageKey: async () => 'KEY-1' }));
+const keyAnswer = vi.hoisted(() => ({ value: { key: 'KEY-1' as string | null, denied: false } }));
+vi.mock('../stageBleNative', () => ({
+  stageBleAvailable: () => true,
+  stageKey: async () => keyAnswer.value.key,
+  fetchStageKey: async () => keyAnswer.value,
+}));
 // What the band's admins see (migration 170).
 const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
 vi.mock('../livePackStatus', () => ({
@@ -161,6 +166,17 @@ describe('refreshPack', () => {
     expect(p?.stageKey).toBe('KEY-1');
     expect(p?.bandNotes?.date).toBe(inDays(3));
     expect((await personalFromPacks(me, 'song1'))?.notes).toHaveLength(1);
+  });
+
+  it("a no from the server drops the pack's kept stage key; offline keeps it (Claude on #283)", async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    keyAnswer.value = { key: 'KEY-1', denied: false };
+    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBe('KEY-1');
+    keyAnswer.value = { key: null, denied: false }; // offline, nothing cached
+    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBe('KEY-1');
+    keyAnswer.value = { key: null, denied: true }; // may no longer see the gig
+    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBeNull();
+    keyAnswer.value = { key: 'KEY-1', denied: false };
   });
 
   it('asks for the live fields of the other parts, and without them while the database has none', async () => {

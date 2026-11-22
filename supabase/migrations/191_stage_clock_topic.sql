@@ -188,12 +188,43 @@ $do$;
 --   - a gig becomes a quote (members off its lineup, or every member with 178,
 --     no longer see it);
 --   - a gig moves to another band;
---   - a member leaves the band (its coming gigs);
---   - and once now, for every quote gig (keys handed out before this).
+--   - a member leaves the band (its coming gigs), or an admin is made a
+--     member (its coming quote gigs).
+-- Applying this migration changes no key by itself (main session on #283):
+-- only these changes, from then on.
 -- Apps on this version ask for the key whenever online (stageBleNative.ts),
 -- so the band's phones pick up the new one. Released apps keep theirs: for a
 -- gig whose key changed, they need signing out and in once (noted in the PR).
 -- A gig with no key yet gets one on first use, as before.
+-- Is this gig a quote some members may not see? 111's rule; with 178 applied
+-- first, 178's bw_event_quote_private (a cancelled quote stays private only if
+-- it never became a gig), set just below (Claude on #283). Triggers only.
+CREATE OR REPLACE FUNCTION public.bw_stage_quote_gig(p_event_id uuid, p_status text, p_event_type text, p_quote_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT public.bw_event_is_quote(p_status, p_event_type, p_quote_id);
+$$;
+DO $do$
+BEGIN
+  IF to_regprocedure('public.bw_event_quote_private(uuid, text, text, uuid)') IS NOT NULL THEN
+    EXECUTE $f$
+CREATE OR REPLACE FUNCTION public.bw_stage_quote_gig(p_event_id uuid, p_status text, p_event_type text, p_quote_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT public.bw_event_quote_private(p_event_id, p_status, p_event_type, p_quote_id);
+$$;
+$f$;
+  END IF;
+END
+$do$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_quote_gig(uuid, text, text, uuid) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_stage_new_band_key(p_event_id uuid)
 RETURNS void
 LANGUAGE sql
@@ -220,7 +251,7 @@ BEGIN
   END IF;
   -- The gig itself going (its lineup goes with it, ON DELETE CASCADE): no row, nothing to do.
   IF EXISTS (SELECT 1 FROM public.events e WHERE e.id = OLD.event_id
-              AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)) THEN
+              AND public.bw_stage_quote_gig(e.id, e.status::text, e.event_type::text, e.quote_id)) THEN
     PERFORM public.bw_stage_new_band_key(OLD.event_id);
   END IF;
   RETURN NULL;
@@ -241,8 +272,8 @@ SET search_path TO 'public'
 AS $$
 BEGIN
   IF NEW.band_id IS DISTINCT FROM OLD.band_id
-     OR (public.bw_event_is_quote(NEW.status, NEW.event_type, NEW.quote_id)
-         AND NOT public.bw_event_is_quote(OLD.status, OLD.event_type, OLD.quote_id)) THEN
+     OR (public.bw_stage_quote_gig(NEW.id, NEW.status::text, NEW.event_type::text, NEW.quote_id)
+         AND NOT public.bw_stage_quote_gig(OLD.id, OLD.status::text, OLD.event_type::text, OLD.quote_id)) THEN
     PERFORM public.bw_stage_new_band_key(NEW.id);
   END IF;
   RETURN NULL;
@@ -258,8 +289,9 @@ CREATE TRIGGER bw_stage_event_hidden
 -- A member leaves the band (made inactive, removed, moved to another band or
 -- account): the band key of the band's coming gigs (today on, or no date)
 -- changes, so the copy on their phone finds nothing (Claude on #283). Past
--- gigs keep theirs. A role change isn't leaving (a demoted admin is still a
--- member; their key pair is 190's). Released apps (383f15b) keep the copy
+-- gigs keep theirs. An admin made a member stays in the band but no longer
+-- sees its quotes (111: off their lineup; 178: at all): the coming quote gigs
+-- change key (their signing pair is 190's). Released apps (383f15b) keep the copy
 -- they have and don't ask again: for those gigs they need signing out and in
 -- once (in the PR's release notes).
 CREATE OR REPLACE FUNCTION public.bw_stage_member_left()
@@ -278,7 +310,15 @@ BEGIN
        FROM public.events e
        JOIN public.stage_keys s ON s.event_id = e.id
       WHERE e.band_id = OLD.band_id
-        AND (e.event_date IS NULL OR e.event_date >= current_date);
+        AND (coalesce(e.event_date, e."date") IS NULL OR coalesce(e.event_date, e."date") >= current_date);
+  ELSIF TG_OP = 'UPDATE' AND COALESCE(OLD.is_active, true)
+        AND OLD.role = 'admin' AND NEW.role IS DISTINCT FROM 'admin' THEN
+    PERFORM public.bw_stage_new_band_key(e.id)
+       FROM public.events e
+       JOIN public.stage_keys s ON s.event_id = e.id
+      WHERE e.band_id = OLD.band_id
+        AND (coalesce(e.event_date, e."date") IS NULL OR coalesce(e.event_date, e."date") >= current_date)
+        AND public.bw_stage_quote_gig(e.id, e.status::text, e.event_type::text, e.quote_id);
   END IF;
   RETURN NULL;
 END;
@@ -287,11 +327,5 @@ REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, auth
 
 DROP TRIGGER IF EXISTS bw_stage_member_left ON public.band_members;
 CREATE TRIGGER bw_stage_member_left
-  AFTER UPDATE OF is_active, band_id, user_id OR DELETE ON public.band_members
+  AFTER UPDATE OF is_active, role, band_id, user_id OR DELETE ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_member_left();
-
--- Once: the keys of today's quote gigs (a run again changes them again, harmless).
-SELECT public.bw_stage_new_band_key(e.id)
-  FROM public.events e
-  JOIN public.stage_keys s ON s.event_id = e.id
- WHERE public.bw_event_is_quote(e.status, e.event_type, e.quote_id);

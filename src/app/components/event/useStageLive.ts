@@ -193,6 +193,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   /** The clock topic joined: sent to only then (supabase-js would post a ping over HTTP otherwise). */
   const clockJoined = useRef(false);
+  /** The stage topic joined: the same for what this phone sends there unasked (pings). */
+  const stageJoined = useRef(false);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -286,7 +288,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
             const payload = { from: clientId, to: peer, t0 };
             if (clockJoined.current) void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
             // Admins may write the stage topic too: a leader on an older app listens only there.
-            if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+            if (isLeader && stageJoined.current) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
           }, delay + i * PING_GAP_MS);
           return t;
         });
@@ -478,6 +480,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       .subscribe((status: string) => {
         setConnected(status === 'SUBSCRIBED');
+        stageJoined.current = status === 'SUBSCRIBED';
         if (status === 'SUBSCRIBED') {
           void channel.track({ lead: isLeader }).catch(() => {});
         }
@@ -493,6 +496,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       channelRef.current = null;
       clockRef.current = null;
       clockJoined.current = false;
+      stageJoined.current = false;
       setConnected(false);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(clock);

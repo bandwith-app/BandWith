@@ -19,6 +19,12 @@ const MIG191 = process.argv[4] ?? `${REPO}/supabase/migrations/191_stage_clock_t
 const with178 = MIG178 && MIG178 !== '/dev/null';
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
+/** One function's CREATE block from a migration, by name (line numbers move when a migration is edited, #273). */
+const fnFrom = (n, name) => {
+  const m = migFile(n).match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\([\\s\\S]*?AS (\\$[a-z_]*\\$)[\\s\\S]*?\\1;`));
+  if (!m) throw new Error(`${name} not found in ${n}`);
+  return m[0];
+};
 
 const db = new PGlite();
 process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
@@ -74,7 +80,7 @@ CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
   soundcheck_time time, venue text, venue_name text, venue_address text, venue_city text, setlist_id uuid,
   fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now(),
-  "time" time, duration_hours numeric);
+  "time" time, duration_hours numeric, recurrence_rule jsonb);
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric, paid_at timestamptz, role text, notes text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
@@ -141,7 +147,7 @@ await d.exec(lines('071_member_permissions.sql', 221, 238)); // bw_event_member_
 await d.exec(lines('093_rider_seen_member_paid.sql', 142, 160)); // bw_event_rider
 await d.exec(lines('087_stage_keys.sql', 22, 58)); // bw_stage_key
 await d.exec(lines('085_stage_live_channel.sql', 13, 39)); // bw_stage_topic_allowed
-await d.exec(lines('170_live_pack.sql', 157, 175)); // bw_live_pack_window_events
+await d.exec(fnFrom('170_live_pack.sql', 'bw_live_pack_window_events'));
 await d.exec(migFile('111_quote_events_private.sql')); // events read, bw_can_view_event, bw_trg_event_changed
 await d.exec(lines('042_security_hardening.sql', 103, 146)); // bw_can_add_chat_participant
 await d.exec(lines('042_security_hardening.sql', 225, 272)); // get_user_chats
@@ -256,7 +262,8 @@ await is(ADMIN, `SELECT public.bw_stage_topic_allowed('stage:event:${'-'.repeat(
 
 // A kept key stops working for whoever may no longer see the gig (Codex):
 // 191 changed the quote's key once, and changes it again on the triggers.
-ok((await keyOf(QUOTE)) !== 'old-quote', "191: a quote gig's key handed out before is changed");
+// No change on apply (main session): released apps keep finding today's gigs; the triggers below cover changes from now on.
+ok((await keyOf(QUOTE)) === 'old-quote', "191: applying it changes no key (a quote gig's key handed out before is kept)");
 ok((await keyOf(GIG)) === 'old-gig', "191: a normal gig's key is kept (released apps keep working)");
 let before = await keyOf(QUOTE);
 await db.exec(`DELETE FROM event_members WHERE event_id = '${QUOTE}' AND user_id = '${LINEUP}'`);
@@ -288,7 +295,18 @@ VALUES ('${PAST}','${BAND}','Last Friday','confirmed','gig','${ADMIN}', current_
 INSERT INTO stage_keys (event_id, key) VALUES ('${PAST}', 'past-key'), ('${NEXT}', 'next-key');
 `);
   await db.exec(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${LINEUP}'`);
-  ok((await keyOf(NEXT)) === 'next-key', 'a role change keeps the band key');
+  ok((await keyOf(NEXT)) === 'next-key', 'a member made an admin keeps the band key');
+  // Demoted (Claude on #283): an admin made a member no longer sees the band's quotes
+  // (111: off their lineup; 178: at all), so the coming quote gigs get a new key.
+  const [PASTQ] = [44].map(id);
+  await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date)
+    VALUES ('${PASTQ}','${BAND}','Old offer','tentative','gig','${ADMIN}', current_date - 3);
+    INSERT INTO stage_keys (event_id, key) VALUES ('${PASTQ}', 'pastq-key')`);
+  const q0 = await keyOf(QUOTE);
+  await db.exec(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${LINEUP}'`);
+  ok((await keyOf(QUOTE)) !== q0, "an admin made a member: a coming quote gig's band key changes");
+  ok((await keyOf(NEXT)) === 'next-key', 'an admin made a member: a coming normal gig keeps its key');
+  ok((await keyOf(PASTQ)) === 'pastq-key', 'an admin made a member: a past quote keeps its key');
   await db.exec(`DELETE FROM band_members WHERE band_id = '${BAND}' AND user_id = '${EX}'`);
   ok((await keyOf(NEXT)) === 'next-key', 'removing someone who had already left keeps the band key');
   const quoteBefore = await keyOf(QUOTE);
@@ -297,6 +315,18 @@ INSERT INTO stage_keys (event_id, key) VALUES ('${PAST}', 'past-key'), ('${NEXT}
   ok((await keyOf(QUOTE)) !== quoteBefore, "a member leaves: every coming gig of the band (the quote too)");
   ok((await keyOf(PAST)) === 'past-key', 'a member leaves: a past gig keeps its key');
   await is(ADMIN, `SELECT has_function_privilege('public.bw_stage_member_left()', 'EXECUTE')`, false, 'clients cannot call the trigger function');
+}
+
+// A gig made from a quote, cancelled: 178's bw_event_quote_private says the band still
+// sees it (it was a gig), so its key stays; 111's rule alone calls it a quote (new key).
+{
+  const FROMQ = id(42);
+  await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, quote_id)
+    VALUES ('${FROMQ}','${BAND}','Garcia Party','confirmed','gig','${ADMIN}', current_date + 30, '${id(43)}');
+    INSERT INTO stage_keys (event_id, key) VALUES ('${FROMQ}', 'fromq-key')`);
+  await db.exec(`UPDATE events SET status = 'cancelled' WHERE id = '${FROMQ}'`);
+  ok(((await keyOf(FROMQ)) === 'fromq-key') === with178,
+    `a gig from a quote, cancelled: ${with178 ? "the key is kept (178's bw_event_quote_private: the band still sees it)" : 'a new key (111: a quote again)'}`);
 }
 
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.
