@@ -14,7 +14,9 @@ vi.mock('@/lib/services/chats', () => ({
   },
   subscribeToReceipts: () => () => {},
 }));
-vi.mock('@/lib/offline/storage', () => ({
+vi.mock('@/lib/offline/storage', async (importOriginal) => ({
+  // The chat outbox helpers (#292's block) stay real.
+  ...(await importOriginal<typeof import('@/lib/offline/storage')>()),
   getCacheKey: (u: string, b: string | undefined, k: string) => `bw:${u}:${b || 'global'}:${k}`,
   getOfflineItem: async (k: string) => store.get(k) ?? null,
   setOfflineItem: async (k: string, v: unknown) => { store.set(k, v); },

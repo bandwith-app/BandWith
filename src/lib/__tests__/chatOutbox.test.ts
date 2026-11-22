@@ -15,7 +15,8 @@ vi.mock('@/lib/services/chats', () => ({
 }));
 vi.mock('@/lib/supabase', () => ({ getSafeUser: async () => ({ data: { user: h.uid ? { id: h.uid } : null } }) }));
 
-import { CHAT_OUTBOX_PREFIX, beginChatSend, dropRefusedOutsideChats, chatOutboxKey, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
+import { CHAT_OUTBOX_PREFIX, chatOutboxKey } from '../offline/storage';
+import { beginChatSend, dropRefusedOutsideChats, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
 import { useChatOutboxFlush } from '@/app/hooks/useChatOutbox';
 
 const item = (n: number, chatId = 'c1') => ({ chatId, clientId: `cid-${n}`, body: `message ${n}`, createdAt: `2026-11-22T10:0${n}:00.000Z` });
@@ -131,9 +132,9 @@ describe('chat outbox', () => {
     expect(h.send).toHaveBeenCalledTimes(1);
   });
   // Main (#292 Claude r5 M3): one key, one storage, owned by #292. The chat
-  // never touches it directly: only chatOutbox.ts's two store functions do
-  // (the stand-in until #292's helper block lands).
-  it('only the two store functions touch the key', async () => {
+  // never touches it directly: chatOutbox.ts goes through #292's helpers in
+  // src/lib/offline/storage.ts (a byte-identical copy of #292's block).
+  it("only #292's helpers touch the key", async () => {
     const NODE_FS = 'node:fs';
     const { readFileSync } = (await import(/* @vite-ignore */ NODE_FS)) as { readFileSync: (path: string, enc: 'utf8') => string };
     const { process } = globalThis as unknown as { process: { cwd(): string } };
@@ -142,11 +143,9 @@ describe('chat outbox', () => {
       expect(read(f)).not.toMatch(/localStorage|indexedDB|chat_outbox:|chatOutboxKey/);
     }
     const src = read('src/lib/chatOutbox.ts');
-    const outside = src
-      .replace(/async function loadStoredOutbox[\s\S]*?\n}\n/, '')
-      .replace(/async function saveStoredOutbox[\s\S]*?\n}\n/, '')
-      .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-    expect(outside).not.toMatch(/localStorage|indexedDB/);
+    const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    expect(code).not.toMatch(/localStorage|indexedDB|chat_outbox:|chatOutboxKey|CHAT_OUTBOX_PREFIX/);
+    expect(code).toMatch(/from '\.\/offline\/storage'/);
   });
   // Claude #291 r5 (5): the writer goes to sendMessage, which refuses to
   // send as anyone else.
