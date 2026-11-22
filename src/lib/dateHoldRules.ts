@@ -7,6 +7,10 @@
 export const DATE_HOLD_TYPES = ['date_hold', 'date_hold_changed', 'date_hold_released'] as const;
 export const isDateHoldType = (type: string | null | undefined): boolean =>
   !!type && (DATE_HOLD_TYPES as readonly string[]).includes(type);
+/** Notices after which the hold list may be stale: a hold, or its gig confirmed, cancelled or moved. */
+const EVENT_CHANGE_TYPES = ['event_confirmed', 'event_cancelled', 'event_update', 'event_invite'];
+export const refreshesDateHolds = (type: string | null | undefined): boolean =>
+  isDateHoldType(type) || (!!type && EVENT_CHANGE_TYPES.includes(type));
 
 /**
  * Still a quote, so members don't see it (bw_event_is_quote, 111): not a

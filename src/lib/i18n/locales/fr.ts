@@ -3185,6 +3185,7 @@ const dict: Dictionary = {
   "Can't ({count})": "Indisponibles ({count})",
   "No answer yet ({count})": "Sans réponse ({count})",
   "The date is free again": "La date est de nouveau libre",
+  "The date changed. Check it and answer again.": "La date a changé. Vérifie-la et réponds à nouveau.",
   "Possible gig – keep the date free": "Concert possible – garde la date libre",
   "Time not set yet": "Heure pas encore fixée",
   "Place not set yet": "Lieu pas encore fixé",

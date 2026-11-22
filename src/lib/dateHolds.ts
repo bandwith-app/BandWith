@@ -36,7 +36,7 @@ export interface DateHoldAnswerRow {
 /** Fired after an answer, so every hold list on screen loads again. */
 export const DATE_HOLDS_CHANGED = 'bw:date-holds-changed';
 
-export { DATE_HOLD_TYPES, isDateHoldType, isQuoteStageEvent } from '@/lib/dateHoldRules';
+export { DATE_HOLD_TYPES, isDateHoldType, isQuoteStageEvent, refreshesDateHolds } from '@/lib/dateHoldRules';
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const answerOf = (v: unknown): HoldAnswer | null => (v === 'free' || v === 'busy' ? v : null);
@@ -142,14 +142,38 @@ export async function fetchMyDateHolds(): Promise<{ data: DateHold[]; error: str
   return { data: sortHolds(rows.map((r) => toDateHold(r as Record<string, unknown>)).filter((h): h is DateHold => !!h)), error: null };
 }
 
-export async function answerDateHold(eventId: string, answer: HoldAnswer): Promise<{ error: string | null; gone?: boolean }> {
-  const { error } = await supabase.rpc('bw_answer_date_hold', { p_event_id: eventId, p_answer: answer });
+/**
+ * The answer RPC's arguments: with the day and time the card showed, so an
+ * answer never lands on a date that changed meanwhile (178, BWD01).
+ */
+export function answerArgs(eventId: string, answer: HoldAnswer, shown?: Pick<DateHold, 'date' | 'startTime'> | null) {
+  const args: Record<string, unknown> = { p_event_id: eventId, p_answer: answer };
+  if (shown?.date) {
+    args.p_date = shown.date.slice(0, 10);
+    args.p_start_time = shown.startTime ? shown.startTime.slice(0, 5) : null;
+  }
+  return args;
+}
+
+/** P0002: the date is free again (quote declined, gig cancelled…). BWD01: the date or time changed. */
+export function answerRefusal(code: string | undefined | null): 'gone' | 'changed' | null {
+  return code === 'P0002' ? 'gone' : code === 'BWD01' ? 'changed' : null;
+}
+
+export async function answerDateHold(
+  eventId: string,
+  answer: HoldAnswer,
+  shown?: Pick<DateHold, 'date' | 'startTime'> | null,
+): Promise<{ error: string | null; gone?: boolean; changed?: boolean }> {
+  const { error } = await supabase.rpc('bw_answer_date_hold', answerArgs(eventId, answer, shown));
   if (!error) {
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
     return { error: null };
   }
-  // P0002: the date is free again (quote declined, gig cancelled…).
-  return { error: error.message || 'error', gone: error.code === 'P0002' };
+  const refusal = answerRefusal(error.code);
+  // The card shows the new date after a reload.
+  if (refusal === 'changed' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
+  return { error: error.message || 'error', gone: refusal === 'gone', changed: refusal === 'changed' };
 }
 
 /** Admins only (the RPC refuses anyone else). */

@@ -33,11 +33,13 @@ export const DateHoldCard: React.FC<{
     const before = answer;
     setAnswer(next);
     setSaving(next);
-    const res = await answerDateHold(hold.eventId, next);
+    const res = await answerDateHold(hold.eventId, next, hold);
     setSaving(null);
     if (res.error) {
       setAnswer(before);
-      if (res.gone) {
+      if (res.changed) {
+        onShowToast?.(t('The date changed. Check it and answer again.'), 'info');
+      } else if (res.gone) {
         onShowToast?.(t('The date is free again'), 'info');
         onGone?.(hold.eventId);
       } else {

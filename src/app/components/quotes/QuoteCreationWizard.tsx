@@ -416,6 +416,8 @@ interface QuoteCreationWizardProps {
   initialClientName?: string;
   initialData?: Partial<Quote>;
   bandMembers?: QuoteBandMember[];
+  /** False when no event is linked or created (Quotes → New quote): no hold to promise. */
+  holdsDate?: boolean;
 }
 
 export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
@@ -425,6 +427,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   initialClientName,
   initialData,
   bandMembers,
+  holdsDate = true,
 }) => {
   const t = useT();
   const { selectedBand, refreshMembers } = useBand();
@@ -2779,7 +2782,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       {renderReviewDrawer('proposal_terms', t('Multi-option proposal & terms'), proposalSummary, renderProposalAndTermsControls())}
 
       {/* Date on hold (178): every member gets a hold card, no toggle. */}
-      {!isEditing && (
+      {!isEditing && holdsDate && (
         <section className="rounded-[16px] bg-card p-4 flex flex-col gap-1">
           <span className="bw-label-sm text-muted-foreground">{t('Lineup availability')}</span>
           <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>

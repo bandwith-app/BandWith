@@ -1116,8 +1116,15 @@ const rpc = (fn: string, args: Row = {}) => {
         error = { code: '22023', message: 'Answer free or busy' };
         break;
       }
-      if (!demoDateHolds().some((h) => h.event_id === args.p_event_id)) {
+      const held = demoDateHolds().find((h) => h.event_id === args.p_event_id);
+      if (!held) {
         error = { code: 'P0002', message: 'This date is free again' };
+        break;
+      }
+      // The day or time the card showed is not the hold's any more (178).
+      if (args.p_date && (String(held.event_date).slice(0, 10) !== args.p_date
+        || String(held.start_time || '').slice(0, 5) !== String(args.p_start_time || ''))) {
+        error = { code: 'BWD01', message: 'The date changed' };
         break;
       }
       const rows = table('event_hold_answers');
