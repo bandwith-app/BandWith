@@ -62,7 +62,9 @@
 -- 175's bw_chat_scope_ok_for). Someone removed after send-push picked the
 -- recipients gets no notice and no push, whichever send-push is deployed.
 -- The added lines end in "-- 192: may still read"; without them the
--- function is 194's, byte for byte (chat_audit checks it). An edited
+-- function is 194's, byte for byte (chat_audit checks it).
+-- Round 9 (main): the same for bw_claim_chat_push_only(uuid, uuid[]) ->
+-- SETOF uuid, the push-only path (create_in_app: false). An edited
 -- message's notices read "New message" in each reader's language when it
 -- is empty (194's bw_chat_preview_in).
 -- ============================================================================
@@ -457,6 +459,51 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;
+
+-- Claims a push-only call's recipients (194's function, round 9, main):
+-- the same read check, re-read inside the call, so someone removed after
+-- send-push picked the recipients is never rung on the create_in_app: false
+-- path either. 194's body with the "-- 192: may still read" lines added;
+-- same signature and result (SETOF uuid). chat_audit compares the two.
+CREATE OR REPLACE FUNCTION public.bw_claim_chat_push_only(p_message_id uuid, p_user_ids uuid[])
+RETURNS SETOF uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+BEGIN
+  PERFORM 1 FROM messages m
+   WHERE m.id = p_message_id
+     AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+     FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  INSERT INTO chat_push_only_log AS l (message_id, user_id)
+  SELECT p_message_id, u FROM (SELECT DISTINCT unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u) x
+   WHERE u IS NOT NULL
+     -- The log references profiles: someone with no profile (account gone)
+     -- has no device to ring either.
+     AND EXISTS (SELECT 1 FROM profiles p WHERE p.id = u)
+     AND EXISTS (SELECT 1 FROM messages m2 JOIN chat_participants cp ON cp.chat_id = m2.chat_id WHERE m2.id = p_message_id AND cp.user_id = u) -- 192: may still read
+     AND coalesce(public.bw_chat_scope_ok_for((SELECT m3.chat_id FROM messages m3 WHERE m3.id = p_message_id), u), false) -- 192: may still read
+   ORDER BY u
+  ON CONFLICT (message_id, user_id) DO NOTHING;
+  RETURN QUERY
+  UPDATE chat_push_only_log l
+     SET claimed_at = now()
+   WHERE l.message_id = p_message_id
+     AND l.user_id = ANY (coalesce(p_user_ids, '{}'::uuid[]))
+     AND EXISTS (SELECT 1 FROM messages m2 JOIN chat_participants cp ON cp.chat_id = m2.chat_id WHERE m2.id = p_message_id AND cp.user_id = l.user_id) -- 192: may still read
+     AND coalesce(public.bw_chat_scope_ok_for((SELECT m3.chat_id FROM messages m3 WHERE m3.id = p_message_id), l.user_id), false) -- 192: may still read
+     AND l.pushed_at IS NULL
+     AND public.bw_chat_push_claim_free(l.claimed_at)
+  RETURNING l.user_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) TO service_role;
 
 -- Round 2 wrote this guard as a trigger here; 194's bw_write_chat_notices
 -- does it now.

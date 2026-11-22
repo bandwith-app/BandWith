@@ -414,6 +414,20 @@ ok(JSON.stringify(w8) === JSON.stringify([LINE]), `write time: only who can stil
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_W8}' AND user_id = '${OUT}'`) === 0,
   'no notice for someone outside the chat');
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_W8}' AND user_id = '${LINE}'`) === 1, 'the reader gets one');
+// Round 9 (main): the push-only path (create_in_app: false,
+// bw_claim_chat_push_only) checks again too: Eli (kept row) and Oscar (no
+// row) are never claimed, nor is Eli's earlier unpushed log row.
+{
+  const M_P9 = id(61);
+  await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${M_P9}','${BANDCHAT}','${ADMIN}','van leaves at 6')`);
+  await db.exec(`INSERT INTO chat_push_only_log (message_id, user_id) VALUES ('${M_P9}','${EX}')`);
+  const p9 = await db.query(`SELECT u::text AS u FROM public.bw_claim_chat_push_only($1, $2::uuid[]) u`, [M_P9, `{${LINE},${EX},${OUT}}`])
+    .then((x) => x.rows.map((y) => y.u), (e) => 'ERROR ' + e.message);
+  ok(JSON.stringify(p9) === JSON.stringify([LINE]), `push-only: only who can still read the chat is claimed (${JSON.stringify(p9)})`);
+  ok(await count(`SELECT count(*)::int AS n FROM chat_push_only_log WHERE message_id = '${M_P9}' AND user_id = '${OUT}'`) === 0,
+    'push-only: no log row for someone outside the chat');
+  await db.exec(`DELETE FROM messages WHERE id = '${M_P9}'`);
+}
 // Round 8 (NIT 7): an edit to an empty message reads "New message" in the
 // reader's language.
 await db.exec(`UPDATE profiles SET preferred_language = 'es' WHERE id = '${LINE}'`);
@@ -572,12 +586,13 @@ await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_m
   const in194 = cut(migFile('194_chat_notifications_server_only.sql'));
   ok(!!in192 && in192 === in194, `bw_js_left and bw_chat_preview are the same in 192 and 194 (${in192 ? in192.length : 'missing'} / ${in194 ? in194.length : 'missing'})`);
 }
-// Round 8 (finding 3): 192 redefines 194's bw_write_chat_notices. Without
-// its "-- 192: may still read" lines it is 194's function byte for byte.
-{
+// Round 8 (finding 3) and round 9: 192 redefines 194's bw_write_chat_notices
+// and bw_claim_chat_push_only. Without their "-- 192: may still read" lines
+// they are 194's functions byte for byte.
+for (const [fname, sig] of [['bw_write_chat_notices', 'uuid, jsonb'], ['bw_claim_chat_push_only', 'uuid, uuid[]']]) {
   const cut = (sql) => {
-    const a = sql.indexOf('CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(');
-    const end = 'GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;';
+    const a = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${fname}(`);
+    const end = `GRANT EXECUTE ON FUNCTION public.${fname}(${sig}) TO service_role;`;
     const b = sql.indexOf(end, a);
     return a < 0 || b < 0 ? null : sql.slice(a, b + end.length);
   };
@@ -586,7 +601,7 @@ await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_m
   const added = in192 ? in192.split('\n').filter((l) => l.endsWith('-- 192: may still read')) : [];
   const base = in192 ? in192.split('\n').filter((l) => !l.endsWith('-- 192: may still read')).join('\n') : null;
   ok(!!base && base === in194 && added.length === 4 && added.every((l) => /bw_chat_scope_ok_for|chat_participants/.test(l)),
-    `192's bw_write_chat_notices is 194's plus the read check only (${added.length} lines added, ${base === in194 ? 'rest identical' : 'rest differs'})`);
+    `192's ${fname} is 194's plus the read check only (${added.length} lines added, ${base === in194 ? 'rest identical' : 'rest differs'})`);
 }
 // Codex #291 r7 B3: 192 needs 175's bw_chat_scope_ok_for (hard order 175 → 192).
 if (!process.argv[3]) {
