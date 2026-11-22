@@ -170,7 +170,16 @@ if (m178) {
   await db.exec(`CREATE TABLE IF NOT EXISTS public.event_date_holds (event_id uuid PRIMARY KEY, band_id uuid, release_reason text, confirmed_once_at timestamptz);
     CREATE TABLE IF NOT EXISTS public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), converted_to_event_id uuid, status text);`);
   await db.exec(fn(m111, 'bw_event_is_quote'));
-  for (const name of ['bw_event_quote_private', 'bw_event_deputy_hidden']) await db.exec(fn(m178, name));
+  // 073's body (live): an active row of the band.
+  await db.exec(`CREATE OR REPLACE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+    SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND COALESCE(is_active, true)); $f$;`);
+  for (const name of ['bw_event_quote_private', 'bw_event_deputy_hidden', 'bw_event_quote_hidden']) await db.exec(fn(m178, name));
+  // The read paths 178 patches and 182 rewrites: 182 must start from 178's
+  // body (the live state when 182 runs), so load 178's where it has one.
+  for (const name of ['bw_member_calendar_feed', 'bw_deputy_request_view', 'bw_deputy_feed', 'bw_my_deputy_gigs']) {
+    if (m178.includes(`CREATE OR REPLACE FUNCTION public.${name}(`)) await db.exec(fn(m178, name));
+  }
 }
 
 // Two runs: the migration is safe to run more than once.
@@ -852,6 +861,54 @@ await check('with 178: the hidden gig shows no fee, currency, note or calendar k
   const blank = (o) => o && ['fee', 'currency', 'reply_note', 'calendar_token', 'gig_calendar_token', 'event_title', 'venue_address'].every((k) => o[k] === null) && o.closed === true;
   return blank(v) && blank(g);
 });
+// #294 Codex (cross-PR, main): every link or token read path hides a gig
+// reverted to a quote. A member on the lineup, with an "Add to calendar"
+// link and the account feed, made while it was a gig.
+const [EV_Q2] = [53].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
+  ($1, $2, 'Gala at the Boathouse', 'gig', 'confirmed', current_date + 16, '19:00', 'Boathouse', 'Weehawken', '2 Dock St', false, $3, 4000)`, [EV_Q2, BAND, ADMIN]);
+await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $2, 'Bass', 'confirmed')`, [EV_Q2, MEM]);
+const TQ2 = await evTok(MEM, EV_Q2, null).catch(() => null);
+const memberViews = async () => {
+  const feedTok = (await one(`SELECT token FROM calendar_feeds WHERE user_id = $1`, [MEM])).token;
+  const feed = (await one(`SELECT public.bw_member_calendar_feed($1) AS f`, [feedTok])).f;
+  await as(MEM);
+  const link = (await one(`SELECT public.bw_my_event_calendar_link($1) AS t`, [EV_Q2])).t;
+  await db.exec('RESET ROLE');
+  return {
+    inFeed: JSON.stringify(feed).includes('Gala at the Boathouse') || JSON.stringify(feed).includes('2 Dock St'),
+    file: (await one(`SELECT public.bw_member_event_calendar($1) AS v`, [TQ2])).v,
+    lookup: (await one(`SELECT public.bw_member_calendar_event($1, $2) AS v`, [MEM, EV_Q2])).v,
+    link,
+  };
+};
+await check('#294 cross-PR: a gig reverted to a quote: the member feed, the one-event file and its link show nothing', async () => {
+  const before = await memberViews();
+  if (!/^[0-9a-f]{64}$/.test(TQ2 ?? '') || !before.inFeed || !before.file?.event || before.link !== TQ2) return false;
+  for (const revert of [`status = 'tentative'`, `quote_id = gen_random_uuid(), status = 'quoted'`]) {
+    await q(`UPDATE events SET ${revert} WHERE id = $1`, [EV_Q2]);
+    const r = await memberViews();
+    if (r.inFeed || r.file !== null || r.lookup !== null || r.link !== null) { console.log('   ', revert, JSON.stringify(r).slice(0, 200)); return false; }
+    await q(`UPDATE events SET status = 'confirmed', quote_id = NULL WHERE id = $1`, [EV_Q2]);
+  }
+  const back = await memberViews();
+  return back.inFeed && back.file?.event?.title === 'Gala at the Boathouse';
+});
+await check('#294 cross-PR: the same gig, reverted, gives an existing deputy nothing private (page, both calendars, old feed)', async () => {
+  const [DEPQ2, RQ2] = [54, 55].map(id);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Nia', NULL)`, [DEPQ2, BAND]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, status, answer_snapshot)
+    VALUES ($1, $2, $3, $4, 'Nia', 'Keys', 600, 'USD', 'available', '{}')`, [RQ2, BAND, EV_Q2, DEPQ2]);
+  await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_Q2]);
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RQ2)])).v;
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RQ2, 'calendar_token')])).f;
+  const g = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(RQ2, 'gig_calendar_token')])).g;
+  const o = (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await col(RQ2, 'calendar_token')])).f;
+  const leaks = (x) => /Gala at the Boathouse|2 Dock St|Boathouse|600/.test(JSON.stringify(x));
+  await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q2]);
+  return v?.closed === true && !leaks(v) && !leaks(f) && !leaks(g) && !leaks(o);
+});
+
 await check('with 178: confirmed again, it is back', async () => {
   await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);
   const r = await quoteViews();

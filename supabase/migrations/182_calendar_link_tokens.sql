@@ -122,11 +122,16 @@ BEGIN;
 
 -- 178 first (hard order, Codex review of #285 round 5): the deputy views
 -- below hide a gig reverted to a private quote through its
--- bw_event_deputy_hidden. Without it, stop here rather than show it.
+-- bw_event_deputy_hidden, the member's one-event link through its
+-- bw_event_quote_hidden. Without them, stop here rather than show it.
 DO $$
 BEGIN
   IF to_regprocedure('public.bw_event_deputy_hidden(uuid)') IS NULL THEN
     RAISE EXCEPTION '182 needs 178 first: public.bw_event_deputy_hidden(uuid) is missing (apply 178_date_on_hold.sql, then 182)'
+      USING ERRCODE = '55000';
+  END IF;
+  IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NULL THEN
+    RAISE EXCEPTION '182 needs 178 first: public.bw_event_quote_hidden(uuid, uuid) is missing (apply 178_date_on_hold.sql, then 182)'
       USING ERRCODE = '55000';
   END IF;
 END;
@@ -867,6 +872,9 @@ AS $$
        OR (bm.role::text = 'admin' AND coalesce(em.status, '') <> 'declined')
        OR (bm.id IS NOT NULL AND em.id IS NOT NULL AND coalesce(em.status, '') <> 'declined')
      )
+     -- A gig reverted to a private quote (#294's 178): nothing for whoever
+     -- may not read it, as everywhere a link or token reads an event.
+     AND NOT public.bw_event_quote_hidden(e.id, p_uid)
    LIMIT 1;
 $$;
 REVOKE ALL ON FUNCTION public.bw_member_calendar_event(uuid, uuid) FROM PUBLIC, anon, authenticated;
