@@ -24,7 +24,7 @@ import {
   decodeClock,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
-import { isNewer, type StageLiveState } from '@/lib/stageLive';
+import { isNewer, seqPlausible, type StageLiveState } from '@/lib/stageLive';
 import type { StageSigner, StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
@@ -41,12 +41,11 @@ interface Options {
   open: boolean;
   isLeader: boolean;
   /**
-   * A checked state from the leader (members only). `reset`: the first state
-   * from the admins' signed leader after band-key ones; it applies whatever
-   * its seq (a band-key phone, maybe a member posing as an older app, may have
-   * sent a higher one).
+   * A checked state from the leader (members only). `signed`: it carries the
+   * admins' signature, so it counts like a Realtime one (a band-key state,
+   * which any member could make, never holds it back).
    */
-  onState: (state: StageLiveState, reset?: boolean) => void;
+  onState: (state: StageLiveState, signed?: boolean) => void;
 }
 
 const RETRY_MS = 2000;
@@ -89,6 +88,27 @@ export const SIGNED_TRUST_MS = 10 * 60_000;
 const signedSeen = new Map<string, number>();
 /** Tests: start with no signed leader seen. */
 export const forgetSignedLeaders = () => signedSeen.clear();
+/**
+ * Android stops scanning without a word after 5 starts in 30 s: every path
+ * that starts a scan (search, restart, retry, leader look) shares this budget.
+ */
+export const SCAN_STARTS_MAX = 4;
+export const SCAN_WINDOW_MS = 30_000;
+const scanStarts: number[] = [];
+/** Milliseconds until a scan may start (0: now). */
+const scanWaitMs = () => {
+  const now = Date.now();
+  while (scanStarts.length && scanStarts[0] <= now - SCAN_WINDOW_MS) scanStarts.shift();
+  return scanStarts.length < SCAN_STARTS_MAX ? 0 : scanStarts[0] + SCAN_WINDOW_MS - now + 1;
+};
+/** Tests: a fresh budget. */
+export const forgetScanStarts = () => void scanStarts.splice(0);
+/**
+ * Phones linked as the leader by a Stage session: a look never probes one
+ * (connecting again would replace its goodbye handler) and a probe never lets
+ * go of one (that would cut the link), also across closing and reopening Stage.
+ */
+const leaderLinks = new Set<string>();
 /** A leader's change notice is just the 4-byte seq; full values (a read echoed on iOS) are longer. */
 export const isChangeNotice = (v: DataView | undefined) => v?.byteLength === 4;
 /** The characteristics a leader's phone serves (lower case), or none if they can't be listed. */
@@ -314,8 +334,19 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
     /** Looks in a row that found nothing while the linked phone served nothing: they slow down. */
     let idleChecks = 0;
-    /** Song reads under way (a look waits for them: the radio does one thing at a time). */
+    /** Song and clock reads under way (a look waits for them: the radio does one thing at a time). */
     let reads = 0;
+    /** A clock burst runs until then (a look doesn't probe meanwhile). */
+    let burstUntil = 0;
+    /** Other addresses of the linked leader's phone (Android rotates them): not probed again. */
+    let sameLeader = new Set<string>();
+    const radioBusy = () => reads > 0 || nowMs() < burstUntil;
+    /** The linked phone; leaderLinks follows it. */
+    const setDevice = (id: string | null) => {
+      if (deviceId) leaderLinks.delete(deviceId);
+      deviceId = id;
+      if (id) leaderLinks.add(id);
+    };
     /** A look's scan is running (the search for a lost leader takes it over). */
     let lookScanning = false;
     /** This session's waits, cleared when Stage closes, so a late one can't touch the next session's scan. */
@@ -350,10 +381,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const t0 = nowMs();
       let view: DataView;
       try {
+        reads++;
         view = await BleClient.read(id, serviceUuid, STAGE_BLE_CLOCK_CHARACTERISTIC);
       } catch (e) {
         // A dropped link is handled by onDisconnect; a missing characteristic is an older leader.
         return !/not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
+      } finally {
+        reads--;
       }
       const t2 = nowMs();
       const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), verify.public);
@@ -365,6 +399,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const runBurst = () => {
       if (!syncOn || cancelled) return;
       burstTimers.forEach(clearTimeout);
+      burstUntil = nowMs() + BURST_READS * BURST_GAP_MS + 200;
       burstTimers = Array.from({ length: BURST_READS }, (_, i) =>
         setTimeout(() => {
           if (syncOn) void readClockOnce();
@@ -413,8 +448,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     /** Band-key states are refused: this phone can check signatures and saw the admins sign lately. */
     const legacyRefused = () => !!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS;
-    /** The last state passed on came from a signed link (null: none yet). */
-    let appliedSigned: boolean | null = null;
     /** The linked phone leads a setlist this phone doesn't have. */
     let linkOutdated = false;
 
@@ -422,7 +455,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const dropLink = (id: string, skipMs: number) => {
       distrusted.set(id, nowMs() + skipMs);
       link++;
-      deviceId = null;
+      setDevice(null);
       linkState = null;
       clearTimeout(checkTimer);
       stopSync();
@@ -477,6 +510,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           dropLink(id, REFUSED_SKIP_MS);
           return;
         }
+        // Far ahead of the clock: made up (anyone with the band key can), never followed.
+        if (result.ok && !seqPlausible(result.state.seq)) return;
         if (result.ok) {
           authFails = 0;
           linkOutdated = false;
@@ -487,10 +522,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             leaderFrom = result.state.from;
             emitClock();
           }
-          // From band-key states to the admins' signed ones: start the seq afresh.
-          const reset = signedLink && appliedSigned === false;
-          appliedSigned = signedLink;
-          if (reset) onStateRef.current(result.state, true);
+          if (signedLink) onStateRef.current(result.state, true);
           else onStateRef.current(result.state);
         } else if (result.reason === 'setlist') {
           linkOutdated = true;
@@ -508,20 +540,22 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
      * yet), or nothing valid.
      */
     const probe = async (id: string): Promise<{ state: StageLiveState; signed: boolean } | { outdated: true; signed: boolean } | null> => {
+      // A phone linked as the leader (this session's, or a reopened one's): connecting again would replace its goodbye.
+      if (leaderLinks.has(id)) return null;
       try {
         await BleClient.connect(id, () => {}, { timeout: PROBE_TIMEOUT_MS });
         const signed = !!verify && (await servedBy(id)).includes(STAGE_BLE_SIGNED_CHARACTERISTIC);
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
-        if (result.ok) return { state: result.state, signed };
+        if (result.ok) return seqPlausible(result.state.seq) ? { state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
         if (result.reason === 'stale') void refreshVerify();
         return result.reason === 'setlist' ? { outdated: true, signed } : null;
       } catch {
         return null;
       } finally {
-        // Let go fully before anything links to it: a late disconnect would drop that link.
-        await BleClient.disconnect(id).catch(() => {});
+        // Let go fully before anything links to it, unless something linked to it meanwhile (that link stays).
+        if (!leaderLinks.has(id)) await BleClient.disconnect(id).catch(() => {});
       }
     };
 
@@ -536,12 +570,19 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const checkLeaders = async () => {
       const current = deviceId;
       if (cancelled || !current) return;
+      // Scans used up for now: look again when there's room.
+      if (scanWaitMs() > 0) {
+        clearTimeout(checkTimer);
+        checkTimer = setTimeout(() => void checkLeaders(), scanWaitMs());
+        return;
+      }
       const found: string[] = [];
       try {
         lookScanning = true;
+        scanStarts.push(Date.now());
         await BleClient.requestLEScan({ services: [serviceUuid] }, (r) => {
           const id = r.device.deviceId;
-          if (id !== current && trusted(id) && !found.includes(id)) found.push(id);
+          if (id !== current && trusted(id) && !sameLeader.has(id) && !found.includes(id)) found.push(id);
         });
         await wait(LEADER_SCAN_MS);
         // Ended in every case (unless the search for a lost leader took it over),
@@ -558,11 +599,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       // Every phone found, then the best of them: not the first one better than ours.
       const candidates: { id: string; state: StageLiveState | null; signed: boolean }[] = [];
       for (const id of found) {
-        // A song read from the leader first (the radio does one thing at a time).
-        while (reads > 0 && !cancelled && deviceId === current) await wait(100);
+        // Never while the leader's song or clock reads wait (the radio does one thing at a time).
+        while (radioBusy() && !cancelled && deviceId === current) await wait(100);
         if (cancelled || deviceId !== current) return;
         const theirs = await probe(id);
         if (cancelled || deviceId !== current) return;
+        // The linked leader itself at another address (Android rotates it): the same leader id in its state.
+        if (theirs && 'state' in theirs && linkState && theirs.state.from === linkState.from) {
+          sameLeader.add(id);
+          continue;
+        }
         if (theirs) candidates.push({ id, state: 'state' in theirs ? theirs.state : null, signed: theirs.signed });
       }
       // After the probes: one of them may just have shown the admins' signature.
@@ -587,7 +633,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (next) {
         // Leave the old link quietly (its goodbye is ignored), then follow this one.
         link++;
-        deviceId = null;
+        setDevice(null);
         linkState = null;
         stopSync();
         await BleClient.disconnect(current).catch(() => {});
@@ -607,7 +653,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const onDisconnect = (gen: number) => {
       if (gen !== link) return;
       link++;
-      deviceId = null;
+      setDevice(null);
       linkState = null;
       clearTimeout(checkTimer);
       stopSync();
@@ -625,6 +671,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           lookScanning = false;
           await BleClient.stopLEScan().catch(() => {});
         }
+        // Scans used up for now (Android would stop scanning without a word): start when there's room.
+        const room = scanWaitMs();
+        if (room > 0) {
+          clearTimeout(retry);
+          retry = setTimeout(() => void scan(), room);
+          return;
+        }
+        scanStarts.push(Date.now());
         await BleClient.requestLEScan({ services: [serviceUuid] }, (result) => {
           if (deviceId || cancelled || !trusted(result.device.deviceId)) return;
           linkTo(result.device.deviceId);
@@ -653,9 +707,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     /** Link to this leader's phone: subscribe, read, measure its clock, keep an eye out for another admin. */
     function linkTo(id: string) {
       clearTimeout(retry);
-      deviceId = id;
+      setDevice(id);
       linkState = null;
       idleChecks = 0;
+      sameLeader = new Set();
       if (bookDevice !== id) {
         // Another phone: the last one's clock isn't this one's (and an older app has none to replace it).
         book.clear();
@@ -701,7 +756,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         } catch {
           if (gen !== link) return;
           link++;
-          deviceId = null;
+          setDevice(null);
           void BleClient.disconnect(id).catch(() => {});
           later();
         }
@@ -746,7 +801,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               // The link is gone with the radio (Android often never calls back): drop it here.
               const id = deviceId;
               link++;
-              deviceId = null;
+              setDevice(null);
               linkState = null;
               clearTimeout(checkTimer);
               stopSync();
@@ -790,7 +845,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       setClock(null);
       if (watching) void BleClient.stopEnabledNotifications().catch(() => {});
       void BleClient.stopLEScan().catch(() => {});
-      if (deviceId) void BleClient.disconnect(deviceId).catch(() => {});
+      if (deviceId) {
+        leaderLinks.delete(deviceId);
+        void BleClient.disconnect(deviceId).catch(() => {});
+      }
       setStatus('off');
     };
     // A reloaded setlist doesn't drop the link: reads use savedRef.

@@ -33,6 +33,10 @@ const air = vi.hoisted(() => ({
   connectTimeouts: [] as number[],
   pendingReads: 0,
   goodbyes: new Map<string, () => void>(),
+  /** When (Date.now) each clock read and each connect happened. */
+  clockReadsAt: [] as number[],
+  connectsAt: [] as { id: string; at: number }[],
+  scansAt: [] as number[],
 }));
 
 const appear = (id: string, state: StageLiveState | null, extra: { clockAhead?: number } = {}) => {
@@ -46,6 +50,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     isEnabled: vi.fn(async () => true),
     requestLEScan: vi.fn(async (_o: unknown, cb: (r: { device: { deviceId: string } }) => void) => {
       // Like the plugin: one scan at a time; a second one is refused and the first is stopped.
+      air.scansAt.push(Date.now());
       if (air.scanCb) {
         air.scanCb = null;
         air.log.push('scan-refused');
@@ -62,6 +67,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     connect: vi.fn(async (id: string, cb: () => void, o?: { timeout?: number }) => {
       air.log.push(`connect:${id}`);
+      air.connectsAt.push({ id, at: Date.now() });
       air.goodbyes.set(id, cb);
       air.connectTimeouts.push(o?.timeout ?? 0);
       air.connected.add(id);
@@ -83,6 +89,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       const d = air.devices.get(id);
       if (char === STAGE_BLE_CLOCK_CHARACTERISTIC) {
         if (d?.clockAhead === undefined) throw new Error('Characteristic not found.');
+        air.clockReadsAt.push(Date.now());
         return new DataView((await encodeClock(nowMs() + d.clockAhead, SIGNER.private)).buffer);
       }
       const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC && d?.clockAhead !== undefined;
@@ -113,7 +120,7 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageSigner: async () => null,
 }));
 
-const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, SIGNED_TRUST_MS } = await import('../useStageBle');
+const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, forgetScanStarts, SIGNED_TRUST_MS } = await import('../useStageBle');
 
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
 const member = (onState: (s: StageLiveState) => void = () => {}) =>
@@ -128,6 +135,10 @@ beforeEach(() => {
   air.connectTimeouts = [];
   air.pendingReads = 0;
   air.goodbyes.clear();
+  air.clockReadsAt = [];
+  air.connectsAt = [];
+  air.scansAt = [];
+  forgetScanStarts();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 afterEach(() => vi.useRealTimers());
@@ -296,6 +307,104 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const probeReads = vi.mocked(BleClient.read).mock.calls.filter((c) => c[0] === 'admin-a');
     expect(probeReads.length).toBeGreaterThan(0);
     for (const c of probeReads) expect((c[3] as { timeout?: number } | undefined)?.timeout ?? Infinity).toBeLessThanOrEqual(2000);
+    m.unmount();
+  });
+
+  it('a state with a seq far ahead of the clock (anyone with the band key can make one) never takes the member', async () => {
+    appear('admin-b', lead('b', 3, 'a1'));
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b' })));
+    appear('forger', lead('x', 0xffffffff, 'c3'));
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'x' }));
+    expect(air.connected).toEqual(new Set(['admin-b']));
+    m.unmount();
+  });
+
+  it('alone, such a phone is linked but never followed', async () => {
+    appear('forger', lead('x', 0xffffffff, 'c3'));
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(air.connected).toEqual(new Set(['forger'])));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onState).not.toHaveBeenCalled();
+    m.unmount();
+  });
+
+  it("a probe never cuts a fresh link to the same phone (the leader dropped, the search linked to the probed one)", async () => {
+    appear('admin-b', lead('b', 3, 'a1'));
+    const m = member();
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    // Admin A's reads are slow: the probe of A is still under way when B drops and the search links to A.
+    air.devices.set('admin-a', { state: lead('a', 9, 'c3'), advertising: true, readMs: 6000 });
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 2200);
+    expect(air.log).toContain('connect:admin-a');
+    air.devices.delete('admin-b');
+    air.connected.delete('admin-b');
+    air.goodbyes.get('admin-b')!();
+    await vi.advanceTimersByTimeAsync(4_000);
+    await waitFor(() => expect(air.log.filter((l) => l === 'connect:admin-a').length).toBe(2));
+    // The probe's slow read ends after the link to A: its "let go" must not cut that link.
+    await vi.advanceTimersByTimeAsync(8_000);
+    await new Promise((r) => setTimeout(r, 800));
+    await vi.advanceTimersByTimeAsync(1_000);
+    const linked = air.log.lastIndexOf('connect:admin-a');
+    expect(air.log.slice(linked)).not.toContain('disconnect:admin-a');
+    expect(air.connected.has('admin-a')).toBe(true);
+    m.unmount();
+  });
+
+  it("probes wait for the leader's clock burst (the radio does one thing at a time)", async () => {
+    appear('admin-b', lead('b', 3, 'a1'), { clockAhead: 0 });
+    const m = member();
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    appear('admin-a', lead('a', 1, 'c3'));
+    // A count-in asks for a burst just as the look's scan ends.
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 1800);
+    air.clockReadsAt = [];
+    m.result.current.burst();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const burstEnd = Math.max(...air.clockReadsAt);
+    const burstStart = Math.min(...air.clockReadsAt);
+    expect(air.clockReadsAt.length).toBeGreaterThanOrEqual(6);
+    const probes = air.connectsAt.filter((c) => c.id === 'admin-a');
+    expect(probes.length).toBeGreaterThan(0);
+    for (const p of probes) expect(p.at < burstStart || p.at > burstEnd).toBe(true);
+    m.unmount();
+  });
+
+  it('the leader seen again at another address (Android rotates it) is probed once, not every look, and not switched to', async () => {
+    appear('admin-b', lead('b', 3, 'a1'));
+    const m = member();
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    // The same phone (same leader id in its state), at a new address, a newer state.
+    air.devices.set('admin-b-2', { state: lead('b', 4, 'a1'), advertising: true });
+    for (let look = 0; look < 3; look++) {
+      await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 3000);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    expect(air.log.filter((l) => l === 'connect:admin-b-2').length).toBe(1);
+    expect(air.connected.has('admin-b')).toBe(true);
+    m.unmount();
+  });
+
+  it('scans start at most 4 times in 30 s, whatever restarts them (Android silently stops scanning after 5)', async () => {
+    air.scanCb = () => {}; // a scan left running: every start is refused and retried
+    const m = member();
+    await waitFor(() => expect(air.scansAt.length).toBeGreaterThan(0));
+    // Refused starts clear the plugin's scan; keep one "left running" each time, so every start is refused.
+    const { BleClient } = await import('@capacitor-community/bluetooth-le');
+    const real = vi.mocked(BleClient.requestLEScan).getMockImplementation()!;
+    vi.mocked(BleClient.requestLEScan).mockImplementation(async (o, cb) => {
+      air.scanCb = () => {};
+      return real(o, cb);
+    });
+    for (let i = 0; i < 12; i++) await vi.advanceTimersByTimeAsync(5_000);
+    const starts = air.scansAt;
+    expect(starts.length).toBeGreaterThan(2);
+    for (const t of starts) expect(starts.filter((u) => u >= t && u < t + 30_000).length).toBeLessThanOrEqual(4);
     m.unmount();
   });
 });
