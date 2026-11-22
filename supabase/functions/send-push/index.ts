@@ -2,6 +2,29 @@
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
+import {
+  CHAT_PUSH_CHANNEL,
+  CHAT_PUSH_WINDOW_MS,
+  LEGACY_CANDIDATES,
+  noticeSettled,
+  chatPreview,
+  chatPreviewIn,
+  chatPushData,
+  chatPushSubtitle,
+  chatPushTitle,
+  pendingAnnouncements,
+  pushSettledUsers,
+  findAnnouncedCandidates,
+  isUuid,
+  legacyContentFilter,
+  mentionsAmong,
+  pushAllowed,
+  resolveChatId,
+  senderDisplayName,
+  storedAnnouncement,
+  retypedNotices,
+  pushOnlyReread,
+} from '../_shared/chat-push.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
 const APNS_TEAM_ID = Deno.env.get('APNS_TEAM_ID');
@@ -170,8 +193,11 @@ async function sendToAPNs(
       alert.subtitle = subtitle;
     }
     const threadId = pushThreadId(data);
+    // Custom keys first, our aps last: a caller's `aps` never replaces the alert.
+    const { aps: _callerAps, ...extra } = data ?? {};
 
     const apnsPayload = quiet ? quiet.payload : {
+      ...extra,
       aps: {
         alert,
         // No count known: leave the icon as it is rather than forcing 1.
@@ -182,7 +208,6 @@ async function sendToAPNs(
         // Notification Center stacks a chat's (or an event's) notifications.
         ...(threadId ? { 'thread-id': threadId } : {}),
       },
-      ...data,
     };
     
     let lastError = 'APNs: no host tried';
@@ -389,6 +414,155 @@ async function sendToFCM(
   }
 }
 
+type VerifiedChatPush = {
+  /** Messages this push may announce, newest first (one when named by id). */
+  candidates: { id: string; chat_id: string; sender_id: string; content: string | null; created_at: string }[];
+  senderName: string;
+  subtitle: string;
+  bandId: string | null;
+  bandName: string | null;
+  chatType: string | null;
+};
+
+/**
+ * 02 #7: a signed-in caller may only announce a message they just sent in
+ * that chat. Who sent it and what it says come from the database, never from
+ * the request. Older builds send no message id: the body (the app's preview
+ * of the message) is matched against the caller's recent messages instead.
+ */
+async function verifyChatPush(
+  supabase: ReturnType<typeof adminClient>,
+  callerId: string,
+  chatId: unknown,
+  messageId: unknown,
+  body: unknown,
+): Promise<VerifiedChatPush | null> {
+  if (!callerId || typeof chatId !== 'string' || !chatId) return null;
+  const since = new Date(Date.now() - CHAT_PUSH_WINDOW_MS).toISOString();
+  // Newer builds name the message: look it up exactly (a busy chat could push
+  // it out of any window). It must be a UUID: anything else made the cast
+  // fail with a 500 (Claude review #284), now it is refused (403).
+  const named = messageId !== undefined && messageId !== null && messageId !== '';
+  if (named && !isUuid(messageId)) return null;
+  if (!named && typeof body !== 'string') return null;
+  // The whole row: messages.deleted (when the column exists) must be seen,
+  // so text of a deleted message never reaches a lock screen, on any path.
+  let query = supabase
+    .from('messages')
+    .select('*')
+    .eq('chat_id', chatId)
+    .eq('sender_id', callerId);
+  if (named) {
+    query = query.eq('id', messageId as string);
+  } else {
+    // Older builds: by content, so a sender's 20 newer messages can't hide it.
+    const f = legacyContentFilter(body as string);
+    query = 'eq' in f ? query.eq('content', f.eq) : 'like' in f ? query.like('content', f.like) : query.in('content', f.in);
+    query = query.gte('created_at', since);
+  }
+  // Older builds: every recent message with that preview is a candidate
+  // (20 identical "OK"s within ten minutes left the 21st unannounced).
+  const { data: recent, error } = await query.order('created_at', { ascending: false }).limit(named ? 1 : LEGACY_CANDIDATES);
+  if (error) throw error;
+  const candidates = findAnnouncedCandidates(recent || [], {
+    callerId,
+    chatId,
+    messageId: named ? messageId : undefined,
+    body: typeof body === 'string' ? body : undefined,
+  });
+  if (candidates.length === 0) return null;
+
+  // A failed lookup must not label a DM "Band Chat" or the sender "Someone".
+  const [{ data: chat, error: chatError }, { data: sender, error: senderError }] = await Promise.all([
+    supabase.from('chats').select('type, name, band_id').eq('id', chatId).maybeSingle(),
+    supabase.from('profiles').select('full_name, email').eq('id', callerId).maybeSingle(),
+  ]);
+  if (chatError) throw chatError;
+  if (senderError) throw senderError;
+  if (!chat) return null;
+  // The chat's band labels the push only if the sender is in that band
+  // (Codex review #284 r4: chats.band_id is the creator's to change until
+  // 175's bw_chats_immutable_keys; never another band's name on a lock screen).
+  let bandName: string | null = null;
+  let inBand = false;
+  if (chat.band_id) {
+    const { data: membership, error: memberError } = await supabase
+      .from('band_members')
+      .select('user_id')
+      .eq('band_id', chat.band_id)
+      .eq('user_id', callerId)
+      .or('is_active.is.null,is_active.eq.true')
+      .limit(1);
+    if (memberError) throw memberError;
+    inBand = (membership || []).length > 0;
+  }
+  const pushBandId = inBand ? chat.band_id : null;
+  if (pushBandId) {
+    const { data: band, error: bandError } = await supabase.from('bands').select('name').eq('id', pushBandId).maybeSingle();
+    if (bandError) throw bandError;
+    bandName = band?.name ?? null;
+  }
+  return {
+    candidates,
+    senderName: senderDisplayName(sender?.full_name, sender?.email),
+    subtitle: chatPushSubtitle(chat.type ?? null, bandName, chat.name ?? null),
+    bandId: pushBandId,
+    bandName,
+    chatType: chat.type ?? null,
+  };
+}
+
+/**
+ * Chat notices already announced for these messages (Claude review #284):
+ * each recipient hears about a message once. Announced = pushed, or being
+ * pushed right now (Codex review #284 r3): a notice written but never
+ * pushed is pushed by a retry.
+ */
+const NOTICE_PAGE = 1000;
+
+async function chatNoticesFor(
+  supabase: ReturnType<typeof adminClient>,
+  userIds: string[],
+  messageIds: string[],
+  opts: { settledOnly?: boolean } = {},
+): Promise<{ user_id: string; message_id: string | null }[]> {
+  type Row = { user_id: string; message_id: string | null; pushed_at?: string | null; push_claimed_at?: string | null };
+  // Page by page: PostgREST returns at most 1000 rows per request.
+  const all: Row[] = [];
+  for (let from = 0; ; from += NOTICE_PAGE) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, user_id, message_id:data->>message_id, pushed_at:data->>pushed_at, push_claimed_at:data->>push_claimed_at')
+      .in('user_id', userIds)
+      .in('type', ['chat_message', 'chat_mention'])
+      .in('data->>message_id', messageIds)
+      .order('id')
+      .range(from, from + NOTICE_PAGE - 1);
+    if (error) throw error;
+    all.push(...((data || []) as Row[]));
+    if (!data || data.length < NOTICE_PAGE) break;
+  }
+  if (opts.settledOnly === false) return all;
+  const now = Date.now();
+  return all.filter((n) => noticeSettled(n, now));
+}
+
+/** Everyone in the chat but the caller, with display names (for @mentions). */
+async function chatRoster(
+  supabase: ReturnType<typeof adminClient>,
+  chatId: string,
+  callerId: string,
+): Promise<{ id: string; name: string }[]> {
+  const { data: parts, error } = await supabase.from('chat_participants').select('user_id').eq('chat_id', chatId);
+  if (error) throw error;
+  const ids = [...new Set((parts || []).map((p: { user_id: string }) => String(p.user_id)))].filter((id) => id !== callerId);
+  if (ids.length === 0) return [];
+  const { data: people, error: peopleError } = await supabase.from('profiles').select('id, full_name, email').in('id', ids);
+  if (peopleError) throw peopleError;
+  return ((people || []) as { id: string; full_name?: string | null; email?: string | null }[])
+    .map((p) => ({ id: String(p.id), name: senderDisplayName(p.full_name, p.email, '') }));
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -450,36 +624,112 @@ Deno.serve(async (req: Request) => {
     if (userType && userType !== 'chat_message' && userType !== 'chat_mention') {
       throw new HttpError(403, 'Only chat notifications can be sent from the app');
     }
-    const targetUserIds = caller.kind === 'service'
+    // One chat for checks, inbox and tap routing (chat_id and chatId must agree).
+    const requestChat = resolveChatId(data);
+    if (userType && requestChat.conflict) throw new HttpError(400, 'chat_id and chatId differ');
+    const allowedIds = caller.kind === 'service'
       ? requestedIds
-      : await chatRecipients(supabase, caller.id, data?.chat_id || data?.chatId, requestedIds);
-    if (targetUserIds.length === 0) {
+      : await chatRecipients(supabase, caller.id, requestChat.chatId, requestedIds);
+    if (allowedIds.length === 0) {
       return new Response(
         JSON.stringify({ success: true, sent: 0, message: 'No permitted recipients' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const effectiveSubtitle = subtitle || data?.subtitle;
+    // 02 #7: an app caller can only announce their own new message, and the
+    // server writes who sent it and what it says (title, subtitle, body).
+    const chatPush = userType
+      ? await verifyChatPush(supabase, caller.kind === 'user' ? caller.id : '', requestChat.chatId, data?.message_id ?? data?.messageId, notificationBody)
+      : null;
+    if (userType && !chatPush) throw new HttpError(403, 'Only your own new message can be announced');
+
+    // Recipients' language and push switch (02 #6), for everyone allowed.
+    // Without the push switch we can't know who turned push off: send nothing.
+    const { data: people, error: peopleError } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, preferred_language, notification_preferences')
+      .in('id', allowedIds);
+    if (peopleError) throw peopleError;
+    const peopleRows = (people || []) as { id: string; full_name?: string | null; email?: string | null; preferred_language?: string | null; notification_preferences: unknown }[];
+    const prefLangByUser = new Map(peopleRows.map((p) => [String(p.id), p.preferred_language ?? null]));
+    // @mentions are read against the whole chat (Ana vs Ana Maria).
+    const roster = chatPush && userType === 'chat_mention' && requestChat.chatId
+      ? await chatRoster(supabase, requestChat.chatId, caller.kind === 'user' ? caller.id : '')
+      : [];
+
+    // The message this call announces, and to whom (set per candidate below).
+    let announced: { id: string; content: string | null } | null = null;
+    let targetUserIds = allowedIds;
+    let mentioned = new Set<string>();
+    let pushBody = notificationBody;
+    // Per recipient, what their inbox row says (194 round 8): the preview in
+    // their language of the message as the database read it under its lock.
+    let pushBodyByUser = new Map<string, string>();
+    const announce = (message: { id: string; content: string | null }, recipients: string[]) => {
+      const now = { id: String(message.id), content: message.content ?? '' };
+      announced = now;
+      // One order for every call (the database locks rows in user order).
+      targetUserIds = [...recipients].sort();
+      // "{name} mentioned you" only for people the stored message mentions.
+      mentioned = new Set(
+        userType === 'chat_mention'
+          ? mentionsAmong(now.content, roster, targetUserIds, caller.kind === 'user' ? caller.id : null)
+          : [],
+      );
+      pushBody = chatPreview(now.content);
+      pushBodyByUser = new Map();
+      return now;
+    };
+
+    // A chat push's text for one reader: what the database wrote for them, or
+    // (push-only call, 194 before round 8) this call's read, "New message" in
+    // their language. Any other push: the body as sent.
+    const pushBodyFor = (uid: string) =>
+      chatPush && announced
+        ? pushBodyByUser.get(uid) ?? chatPreviewIn((announced as { content: string | null }).content, prefLangByUser.get(uid))
+        : pushBody;
+    const typeFor = (uid: string): 'chat_message' | 'chat_mention' =>
+      userType === 'chat_mention' && mentioned.has(uid) ? 'chat_mention' : 'chat_message';
+    const titleFor = (uid: string) =>
+      chatPush ? chatPushTitle(typeFor(uid), chatPush.senderName, prefLangByUser.get(uid)) : title;
+    const verifiedFor = (uid: string) =>
+      chatPush && announced && requestChat.chatId
+        ? chatPushData(data, {
+            chatId: requestChat.chatId,
+            type: typeFor(uid),
+            senderName: chatPush.senderName,
+            body: pushBodyFor(uid),
+            messageId: announced.id,
+            bandId: chatPush.bandId,
+            bandName: chatPush.bandName,
+            chatType: chatPush.chatType,
+            subtitle: localizePushLabel(chatPush.subtitle, pushLanguage(prefLangByUser.get(uid) ?? null)),
+          })
+        : null;
+    const pushDataFor = (uid: string): Record<string, any> | undefined => verifiedFor(uid) ?? data;
+
+    const effectiveSubtitle = chatPush ? chatPush.subtitle : (subtitle || data?.subtitle);
     const effectiveTag = tag || data?.tag;
     const notificationType = userType || data?.type || 'chat_message';
-    const effectiveChannel = channel_id || data?.channel_id || (
+    // A verified chat push always uses the Messages channel: someone who
+    // muted Messages must not get the preview through Events (Codex #284).
+    const effectiveChannel = chatPush ? CHAT_PUSH_CHANNEL : (channel_id || data?.channel_id || (
       notificationType.includes('chat') ? 'bandwith_messages' :
       notificationType.includes('quote') || notificationType.includes('payment') ? 'bandwith_finance' :
       notificationType.includes('event') || notificationType.includes('member_dropped_out') ? 'bandwith_events' :
       'bandwith_general'
-    );
+    ));
 
-    if (create_in_app !== false && !silent) {
-      const chatId = data?.chat_id || data?.chatId;
-      
-      const notifications = targetUserIds.map(userId => ({
+    const noticeRows = () => {
+      const chatId = requestChat.chatId;
+      return targetUserIds.map(userId => ({
         user_id: userId,
-        type: notificationType,
-        title: title,
-        body: notificationBody,
+        type: chatPush ? typeFor(userId) : notificationType,
+        title: titleFor(userId),
+        body: pushBody,
         data: {
-          ...data,
+          ...pushDataFor(userId),
           subtitle: effectiveSubtitle,
           tag: effectiveTag,
           chat_id: chatId,
@@ -487,22 +737,184 @@ Deno.serve(async (req: Request) => {
           skip_push: true,
         },
         read: false,
-        band_id: data?.band_id || null,
+        band_id: pushDataFor(userId)?.band_id || null,
         action_url: chatId ? `/chat/${chatId}` : null,
       }));
+    };
 
-      await supabase.from('notifications').insert(notifications);
+    // Devices that may ring. A chat push rings only recipients whose inbox
+    // row was written and claimed: once per message, and a message deleted
+    // meanwhile writes none (bw_write_chat_notices, 194).
+    let ringIds = targetUserIds;
+    // Chat notices this call claimed (id → recipient): marked pushed once a
+    // device took them or there was nothing to deliver to.
+    let claimed: { id: string; user_id: string }[] = [];
+    // Push-only call (no inbox row): the message whose recipients this call
+    // claimed in chat_push_only_log (194 round 5), or null.
+    let pushOnlyMessage: string | null = null;
+    const settlePushOnly = async (pushed: string[], released: string[]) => {
+      if (!pushOnlyMessage || (pushed.length === 0 && released.length === 0)) return;
+      const { error: settleError } = await supabase.rpc('bw_settle_chat_push_only', {
+        p_message_id: pushOnlyMessage, p_pushed: pushed, p_released: released,
+      });
+      if (settleError) console.warn('Push-only settle failed:', settleError.message);
+    };
+    const markPushed = async (userIds: string[]) => {
+      await settlePushOnly(userIds, []);
+      const done = new Set(userIds);
+      const ids = claimed.filter((c) => done.has(String(c.user_id))).map((c) => String(c.id));
+      if (ids.length === 0) return;
+      const { error: markError } = await supabase.rpc('bw_mark_chat_notices_pushed', { p_ids: ids });
+      if (markError) console.warn('Pushed mark failed:', markError.message);
+    };
+    // The push could not be attempted: give the claims back (Codex r4).
+    // userIds: only theirs (every device failed for now, Codex r5); none: all.
+    const releaseClaims = async (userIds?: string[]) => {
+      const only = userIds ? new Set(userIds) : null;
+      await settlePushOnly([], userIds ?? ringIds);
+      const ids = claimed.filter((c) => !only || only.has(String(c.user_id))).map((c) => String(c.id));
+      if (ids.length === 0) return;
+      const { error: releaseError } = await supabase.rpc('bw_release_chat_notice_claims', { p_ids: ids });
+      if (releaseError) console.warn('Claim release failed:', releaseError.message);
+    };
+
+    if (chatPush) {
+      // One message rings each recipient once (Claude review #284). Older
+      // builds sending "OK" twice get the other "OK" announced; when another
+      // call claimed a candidate first, the next one is tried (Codex r3).
+      let done = false;
+      for (let i = 0; i < chatPush.candidates.length && !done; i += 50) {
+        // In chunks: up to LEGACY_CANDIDATES ids don't fit one request URL.
+        const chunk = chatPush.candidates.slice(i, i + 50);
+        const existing = await chatNoticesFor(supabase, allowedIds, chunk.map((m) => String(m.id)));
+        for (const p of pendingAnnouncements(chunk, allowedIds, existing)) {
+          const current = announce(p.message, p.recipients);
+          if (create_in_app === false) {
+            // Push only, no inbox row (Codex review #284 r4), recorded per
+            // message and recipient so a retry never rings twice (r5).
+            const { data: mine, error: claimError } = await supabase
+              .rpc('bw_claim_chat_push_only', { p_message_id: current.id, p_user_ids: targetUserIds });
+            if (claimError && claimError.code === 'PGRST202') {
+              console.warn('bw_claim_chat_push_only missing (apply 194):', claimError.message);
+              ringIds = targetUserIds;
+              done = true;
+              break;
+            }
+            if (claimError) throw claimError;
+            const got = new Set(((mine || []) as unknown[]).map((x) => String(typeof x === 'object' && x !== null ? Object.values(x)[0] : x)));
+            if (got.size === 0) continue; // pushed, or another call is pushing it
+            pushOnlyMessage = current.id;
+            // The message as it is after the claim (round 9, Claude delta
+            // review MINOR-2; the claim keeps its SETOF uuid result for older
+            // builds): an edit after verifyChatPush is what rings, and
+            // @mentions are found in it. Gone or deleted since: nobody rings.
+            const { data: nowRow, error: nowError } = await supabase
+              .from('messages')
+              .select('*')
+              .eq('id', current.id)
+              .maybeSingle();
+            const reread = pushOnlyReread(nowRow, nowError);
+            if (nowError) console.warn('Push-only re-read failed, ringing the checked text:', nowError.message);
+            if (reread === 'gone') {
+              await settlePushOnly([], [...got]);
+              ringIds = [];
+              done = true;
+              break;
+            }
+            if (reread && reread !== 'gone') announce({ id: current.id, content: reread.content }, targetUserIds);
+            ringIds = targetUserIds.filter((uid) => got.has(uid));
+            done = true;
+            break;
+          }
+          const notifications = noticeRows();
+          // Per recipient, in the database (194): only for a message still
+          // there and not deleted, ON CONFLICT DO NOTHING (an overlapping
+          // call no longer rolls back the others); returns who to push now.
+          let { data: got, error: writeError } = await supabase
+            .rpc('bw_write_chat_notices', { p_message_id: current.id, p_rows: notifications });
+          // A deadlock with an overlapping call rolled this one back: retry.
+          for (let attempt = 0; attempt < 2 && writeError?.code === '40P01'; attempt++) {
+            ({ data: got, error: writeError } = await supabase
+              .rpc('bw_write_chat_notices', { p_message_id: current.id, p_rows: notifications }));
+          }
+          if (writeError && writeError.code === 'PGRST202') {
+            // send-push deployed before 194: write as before (the message
+            // was read whole above, so a deleted one never gets here).
+            console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);
+            // No unique index either: skip whoever already has this
+            // message's notice, written or not yet pushed (Codex r4).
+            const have = new Set((await chatNoticesFor(supabase, targetUserIds, [current.id], { settledOnly: false }))
+              .map((n) => String(n.user_id)));
+            const fresh = notifications.filter((r) => !have.has(String(r.user_id)));
+            if (fresh.length > 0) {
+              const { error: plainError } = await supabase.from('notifications').insert(fresh);
+              if (plainError) throw plainError;
+            }
+            ringIds = targetUserIds.filter((uid) => !have.has(uid));
+            done = true;
+            break;
+          }
+          if (writeError) throw writeError;
+          claimed = (got || []) as { id: string; user_id: string }[];
+          if (claimed.length > 0) {
+            // The message as the database read it under its lock (194 round
+            // 8): an edit after verifyChatPush is what rings, and @mentions
+            // are found in it (Claude review, finding 1).
+            const stored = storedAnnouncement(got);
+            if (stored) {
+              announce({ id: current.id, content: stored.content }, targetUserIds);
+              pushBodyByUser = stored.previewByUser;
+              for (const r of retypedNotices(notifications, claimed, typeFor, titleFor)) {
+                const { error: retypeError } = await supabase
+                  .from('notifications')
+                  .update({ type: r.type, title: r.title })
+                  .eq('id', r.id)
+                  .in('type', ['chat_message', 'chat_mention']);
+                if (retypeError) console.warn('Notice type update failed:', retypeError.message);
+              }
+            }
+            const toPush = new Set(claimed.map((r) => String(r.user_id)));
+            ringIds = targetUserIds.filter((id) => toPush.has(id));
+            done = true;
+            break;
+          }
+          // Claim lost (another call is pushing it) or the message is gone:
+          // try the next candidate.
+        }
+      }
+      if (!done) {
+        return new Response(
+          JSON.stringify({ success: true, sent: 0, message: 'Already announced' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (create_in_app !== false && !silent) {
+      const { error: writeError } = await supabase.from('notifications').insert(noticeRows());
+      if (writeError) console.warn('In-app notification insert failed:', writeError.message);
+    }
+    if (ringIds.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, sent: 0, message: 'Nothing to ring' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const { data: tokens, error: tokenError } = await supabase
       .from('push_tokens')
       .select('*')
-      .in('user_id', targetUserIds)
+      // Devices ring only for people who left push on (02 #6); the in-app
+      // notification above is kept either way. Silent refreshes aren't alerts.
+      .in('user_id', silent ? ringIds : pushAllowed(ringIds, peopleRows))
       .eq('is_active', true);
 
-    if (tokenError) throw tokenError;
+    if (tokenError) {
+      await releaseClaims();
+      throw tokenError;
+    }
 
     if (!tokens || tokens.length === 0) {
+      // Nobody to deliver to (no device, push off): nothing to retry.
+      await markPushed(ringIds);
       return new Response(
         JSON.stringify({ success: true, sent: 0, message: 'No active tokens found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -525,11 +937,7 @@ Deno.serve(async (req: Request) => {
     }
     const langByUser = new Map<string, ReturnType<typeof pushLanguage>>();
     if (effectiveSubtitle && !silent) {
-      const { data: prefs } = await supabase
-        .from('profiles')
-        .select('id, preferred_language')
-        .in('id', tokenUserIds);
-      (prefs || []).forEach((p: any) => langByUser.set(String(p.id), pushLanguage(p.preferred_language)));
+      tokenUserIds.forEach((uid) => langByUser.set(uid, pushLanguage(prefLangByUser.get(uid) ?? null)));
     }
     const collapseId = pushCollapseId(notificationType, data);
 
@@ -542,13 +950,13 @@ Deno.serve(async (req: Request) => {
         const userSubtitle = localizePushLabel(effectiveSubtitle, langByUser.get(uid) ?? null);
 
         if (platform === 'ios') {
-          const result = await sendToAPNs(deviceToken, title, userSubtitle, notificationBody, data, userBadge, sound, collapseId, silent);
+          const result = await sendToAPNs(deviceToken, titleFor(uid), userSubtitle, pushBodyFor(uid), pushDataFor(uid), userBadge, sound, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
           return { token_id: tokenRecord.id, platform, ...result };
         } else if (platform === 'android') {
-          const result = await sendToFCM(deviceToken, title, userSubtitle, notificationBody, data, effectiveChannel, effectiveTag, collapseId, silent);
+          const result = await sendToFCM(deviceToken, titleFor(uid), userSubtitle, pushBodyFor(uid), pushDataFor(uid), effectiveChannel, effectiveTag, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
@@ -558,12 +966,25 @@ Deno.serve(async (req: Request) => {
       })
     );
 
+    // Pushed = a device took it, or nothing could ever take it (dead
+    // tokens, no device). All devices failing for now (503, timeout): not
+    // marked, the claim lapses and a retry delivers (Codex review #284 r3).
+    const settled = pushSettledUsers(ringIds, results.map((r: any, i: number) => ({
+      userId: String(tokens[i].user_id),
+      success: r.status === 'fulfilled' && !!r.value.success,
+      error: r.status === 'fulfilled' ? r.value.error : 'promise_rejected',
+    })));
+    await markPushed(settled);
+    // Every device failed for now: their claims go back, so a retry within
+    // the push window delivers (Codex review #284 r5).
+    const settledSet = new Set(settled);
+    await releaseClaims(ringIds.filter((uid) => !settledSet.has(uid)));
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;
 
     // A chat push that Apple or Google accepted reached the recipient's phone:
     // the sender sees ✓✓ even while the recipient's app sleeps in the
     // background (migration 122). Recipients with no device reached stay ✓.
-    const pushChatId = data?.chat_id || data?.chatId;
+    const pushChatId = requestChat.chatId;
     if (pushChatId && (notificationType === 'chat_message' || notificationType === 'chat_mention')) {
       const reached = [...new Set(
         results
