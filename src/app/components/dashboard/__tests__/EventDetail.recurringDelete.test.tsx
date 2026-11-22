@@ -83,6 +83,7 @@ const rehearsal: EventData = {
   date: '2099-12-19',
   time: '20:00',
   location: 'Studio 4',
+  price: '0',
   members: [],
   color: '#000',
   is_recurring: true,

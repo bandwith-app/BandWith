@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
  * Audit 05 #11: a poll closes when the database says, not hours early for a
  * member whose phone is in another time zone than the creator's.
  */
-process.env.TZ = 'America/New_York';
+(globalThis as unknown as { process: { env: Record<string, string> } }).process.env.TZ = 'America/New_York';
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {

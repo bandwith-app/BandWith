@@ -486,9 +486,9 @@ export const createOrPublishAdminPoll = async ({
         })),
       });
       if (res?.error && !isMissingRpc(res.error)) throw res.error;
-      if (!res?.error) {
-        const out = (res?.data ?? {}) as { published?: boolean; band_id?: string };
-        if (out.published === false) throw alreadyPublishedError();
+      const out = (res?.error ? null : res?.data) as { published?: boolean; band_id?: string } | null;
+      if (out && typeof out.published === 'boolean') {
+        if (!out.published) throw alreadyPublishedError();
         if (out.band_id) notifyBandId = out.band_id;
         optionsSaved = true;
       } else {

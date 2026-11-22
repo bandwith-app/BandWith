@@ -65,7 +65,7 @@ afterEach(() => {
 describe('New rehearsal from a Calendar day (audit 05 #12)', () => {
   it('the rehearsal wizard opened from the event modal starts on the chosen day', async () => {
     const onCreate = vi.fn(async () => true);
-    render(<CreateEventModal isOpen initialType="rehearsal" initialDate="2099-12-04" onClose={vi.fn()} onCreate={onCreate} currentUserId="me" />);
+    render(<CreateEventModal initialType="rehearsal" initialDate="2099-12-04" onClose={vi.fn()} onCreate={onCreate} currentUserId="me" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
     expect(((await screen.findByTestId('rehearsal-date')) as HTMLInputElement).value).toBe('2099-12-04');
   });
