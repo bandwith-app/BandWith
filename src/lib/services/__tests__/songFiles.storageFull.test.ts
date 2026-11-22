@@ -103,13 +103,13 @@ describe('band storage full', () => {
 
 describe('band storage full, the words', () => {
   const KEY = 'Band storage is full: free up space to add this file.';
-  it('is in all 5 languages, as a file, and French says tu', async () => {
+  it('is in all 5 languages, as a file, and French says vous like its neighbours', async () => {
     const dicts = await Promise.all(
       (['de', 'es', 'fr', 'it', 'pt'] as const).map(async (l) => [l, (await import(`../../i18n/locales/${l}.ts`)).default] as const),
     );
     for (const [l, d] of dicts) expect(d[KEY], l).toBeTruthy();
     const fr = dicts.find(([l]) => l === 'fr')![1][KEY] as string;
-    expect(fr).toMatch(/libère/);
-    expect(fr).not.toMatch(/libérez|enregistrement/);
+    expect(fr).toMatch(/libérez/);
+    expect(fr).not.toMatch(/libère |enregistrement/);
   });
 });

@@ -72,7 +72,7 @@
 --    an audio_url / chart_url key, not text) uses is never removed:
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
 --    unchanged; withdraw identical to 180's on fix/account-deletion,
---    837c53f6 / 16e85658) return only the files of the song's band nothing
+--    16e85658) return only the files of the song's band nothing
 --    else uses, already claimed for deletion (withdraw: of the band of the
 --    suggestion it withdrew, also for a member of several bands). Reject closes the suggestion
 --    before deleting the song (as 108), so the author is notified once. The app deletes
@@ -769,19 +769,27 @@ BEGIN
     -- changes only if it is still the missing file it looked at. A field
     -- changed meanwhile (a re-upload on another device) stays as it is,
     -- and a song changed in both is left alone (BLOCKER).
-    PERFORM 1 FROM public.songs s WHERE s.id = ANY (v_ids) ORDER BY s.id FOR UPDATE;
-    UPDATE public.songs s
-       SET audio_url = CASE WHEN s.audio_url = 'sb://song-files/' || f.a_from THEN 'sb://song-files/' || f.a_dest ELSE s.audio_url END,
-           chart_url = CASE WHEN s.chart_url = 'sb://song-files/' || f.c_from THEN 'sb://song-files/' || f.c_dest ELSE s.chart_url END
-      FROM (SELECT x.id,
-                   max(x.p) FILTER (WHERE x.field = 'audio_url') AS a_from,
-                   max(x.dest) FILTER (WHERE x.field = 'audio_url') AS a_dest,
-                   max(x.p) FILTER (WHERE x.field = 'chart_url') AS c_from,
-                   max(x.dest) FILTER (WHERE x.field = 'chart_url') AS c_dest
-              FROM unnest(v_ids, v_fields, v_froms, v_dests) x(id, field, p, dest)
-             GROUP BY x.id) f
-     WHERE s.id = f.id
-       AND (s.audio_url = 'sb://song-files/' || f.a_from OR s.chart_url = 'sb://song-files/' || f.c_from);
+    -- Another device may claim or delete a copy after the look-up above:
+    -- the link trigger then refuses it (BWF02). Only the repair waits for
+    -- the next visit; the rest of this sweep goes on (Claude review of
+    -- 364284f6). Nothing else is caught.
+    BEGIN
+      PERFORM 1 FROM public.songs s WHERE s.id = ANY (v_ids) ORDER BY s.id FOR UPDATE;
+      UPDATE public.songs s
+         SET audio_url = CASE WHEN s.audio_url = 'sb://song-files/' || f.a_from THEN 'sb://song-files/' || f.a_dest ELSE s.audio_url END,
+             chart_url = CASE WHEN s.chart_url = 'sb://song-files/' || f.c_from THEN 'sb://song-files/' || f.c_dest ELSE s.chart_url END
+        FROM (SELECT x.id,
+                     max(x.p) FILTER (WHERE x.field = 'audio_url') AS a_from,
+                     max(x.dest) FILTER (WHERE x.field = 'audio_url') AS a_dest,
+                     max(x.p) FILTER (WHERE x.field = 'chart_url') AS c_from,
+                     max(x.dest) FILTER (WHERE x.field = 'chart_url') AS c_dest
+                FROM unnest(v_ids, v_fields, v_froms, v_dests) x(id, field, p, dest)
+               GROUP BY x.id) f
+       WHERE s.id = f.id
+         AND (s.audio_url = 'sb://song-files/' || f.a_from OR s.chart_url = 'sb://song-files/' || f.c_from);
+    EXCEPTION WHEN SQLSTATE 'BWF02' THEN
+      RAISE LOG 'bw_song_file_sweep_list: repair of band % skipped this visit: %', p_band_id, SQLERRM;
+    END;
   END IF;
   -- Lapsed claims nothing needs: the file is used again (another song, a
   -- pending suggestion), or is not in Storage (Codex B2): they go.
@@ -1405,8 +1413,8 @@ REVOKE ALL ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb,
 GRANT EXECUTE ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb, boolean) TO authenticated;
 
 -- The author takes a pending suggestion back (a suggested song is deleted).
--- Identical to 180_account_deletion_safety.sql (fix/account-deletion at
--- 837c53f6, line 969; at 16e85658, line 983): IS DISTINCT FROM for a NULL author,
+-- Identical to bw_withdraw_song_suggestion in 180_account_deletion_safety.sql
+-- (fix/account-deletion at 16e85658; unchanged since 837c53f6): IS DISTINCT FROM for a NULL author,
 -- and after the delete bw_song_files_left_unused when it exists (here it
 -- always does), so 180 and 197 give the same function in either order.
 -- Re-check against 180 if that file changes (the PGlite test loads 180's

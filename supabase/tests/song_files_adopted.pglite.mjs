@@ -1028,6 +1028,22 @@ ok(Array.isArray(inCall) && (await claimRow(RYF)) && !inCall.includes(RYF)
   `BLOCKER: a claim made during the call is not in its own list (${JSON.stringify(inCall).slice(0, 90)})`);
 await q(`DELETE FROM r11_inject`);
 ok((await sweepC(ADMIN)).includes(RYF), 'BLOCKER: the next visit lists it');
+// Round 12 (Claude review of 364284f6, MINOR): another device claims or
+// deletes the copy between the repair's look-up and its UPDATE: the link
+// trigger refuses it (BWF02). Only the repair is skipped this visit; the
+// rest of the sweep still runs and lists the lapsed claims.
+const G12 = id(154), G12D = `${BAND}/audio/r12-gone-copy.mp3`, G12L = `${BAND}/audio/r12-lapsed.mp3`;
+await putObj(G12D);
+await noTrig(`INSERT INTO songs VALUES ('${G12}','${BAND}','Copy gone meanwhile','ready','${R(sug(MEM, 'audio/r12-gone-copy.mp3'))}',NULL)`);
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${G12L}','${ADMIN}', now() - interval '3 days');
+  INSERT INTO song_file_removals (path, band_id, claimed_by, claimed_at) VALUES ('${G12L}','${BAND}',NULL, now() - interval '16 minutes')`);
+await q(`DELETE FROM r11_inject`);
+await inject(G12D, `DELETE FROM storage.objects WHERE bucket_id = 'song-files' AND name = '${G12D}'`);
+const r12 = await sweepC(ADMIN);
+ok(Array.isArray(r12) && r12.includes(G12L)
+  && (await q(`SELECT audio_url FROM songs WHERE id = $1`, [G12])).rows[0].audio_url === R(sug(MEM, 'audio/r12-gone-copy.mp3')),
+  `round 12: a copy gone during the repair (BWF02) skips only the repair; the lapsed claims are still listed (${JSON.stringify(r12).slice(0, 90)})`);
+await q(`DELETE FROM r11_inject`);
 await db.exec(`DROP FUNCTION public.bw_song_file_being_removed(text);
   ALTER FUNCTION public.bw_song_file_being_removed_r11(text) RENAME TO bw_song_file_being_removed; DROP TABLE r11_inject`);
 // NIT 5: the repair locks its songs in id order (as the claims do).
@@ -1070,8 +1086,10 @@ const scanT = (await qs(`SELECT c.relrowsecurity AS rls, has_table_privilege('au
 ok(scanT?.rls === true && scanT.a === false && scanT.n === false, 'MINOR 4: the scan marks have RLS on and no grants');
 await unthrottle();
 
-// NIT 6: the withdraw note names 180 where it is now.
-ok(/837c53f6, line 969/.test(mig), 'NIT 6: the withdraw note points at 180 @ 837c53f6, line 969');
+// NIT 6: the withdraw note names 180's function and commit (no line numbers: they move).
+const wNote = mig.slice(mig.indexOf('The author takes a pending suggestion back'), mig.indexOf('CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion'));
+ok(wNote.includes('bw_withdraw_song_suggestion in 180_account_deletion_safety.sql') && wNote.includes('16e85658') && !/line \d+|lines \d+/.test(wNote),
+  'NIT 6 / round 12: the withdraw note names 180\'s function and commit, no line numbers');
 
 // ---- Main (after the prod dry run of 220767ca): prod storage.objects has
 // archived_at / is_delete_marker; an archived object or a delete marker is not
