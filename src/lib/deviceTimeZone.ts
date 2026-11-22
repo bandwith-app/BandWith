@@ -22,7 +22,8 @@ export function deviceTimeZone(): string | null {
  * Keeps profiles.timezone equal to the device's zone, as useServerLocaleSync
  * does preferred_language, so the server's other "today" logic (vote
  * deadlines, 117) is the user's for new builds too. One write per change,
- * none when the profile already says so; the column default is left alone.
+ * none when the profile already says so or is still loading; the column
+ * default is left alone.
  */
 export function useServerTimezoneSync(userId: string | null | undefined, serverTz: string | null | undefined) {
   const zone = deviceTimeZone();
@@ -31,6 +32,9 @@ export function useServerTimezoneSync(userId: string | null | undefined, serverT
   const sent = useRef<{ userId: string; tz: string; over: string | null | undefined } | null>(null);
   useEffect(() => {
     if (!userId || !zone) return;
+    // Profile still loading (undefined until it is read): wait, or every
+    // cold launch writes the zone again (Claude #297 review).
+    if (serverTz === undefined) return;
     const last = sent.current;
     const serverHas = last && last.userId === userId && last.over === serverTz ? last.tz : serverTz;
     if (serverHas === zone) return;

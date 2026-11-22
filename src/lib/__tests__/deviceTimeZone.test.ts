@@ -85,6 +85,19 @@ describe('the profile zone written on sign-in', () => {
     expect(update).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for the profile: no write while it loads, one when it loads with another zone, none when it matches', () => {
+    zoneIs('America/New_York');
+    const { rerender } = renderHook(({ tz }) => useServerTimezoneSync('u1', tz), { initialProps: { tz: undefined as string | null | undefined } });
+    expect(update).not.toHaveBeenCalled();
+    rerender({ tz: 'Europe/Rome' });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith('profiles', { timezone: 'America/New_York' });
+    renderHook(() => useServerTimezoneSync('u2', undefined));
+    const other = renderHook(({ tz }) => useServerTimezoneSync('u3', tz), { initialProps: { tz: undefined as string | null | undefined } });
+    other.rerender({ tz: 'America/New_York' });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it('does nothing signed out, when it already matches, or when the device has no zone', () => {
     zoneIs('America/New_York');
     renderHook(() => useServerTimezoneSync(null, 'Europe/Rome'));

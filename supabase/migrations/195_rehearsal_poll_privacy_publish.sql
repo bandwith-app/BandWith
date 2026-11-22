@@ -639,7 +639,8 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_rehearsal_series_has_date(jsonb, date, date) FROM PUBLIC, anon, authenticated;
 
 -- The device's time zone, sent by the app with a date action (p_tz, r8):
--- the name when Postgres knows it, else NULL (ignored, no error: the
+-- the name when Postgres knows it and it fits profiles.timezone
+-- (VARCHAR(50), as the app's deviceTimeZone), else NULL (ignored, no error: the
 -- profile's zone, then New York, decide). The calling RPC keeps it in
 -- bw.user_tz with set_config(..., true): for the rest of the transaction
 -- (one RPC per request), its triggers included; an unknown name clears it.
@@ -649,7 +650,7 @@ LANGUAGE sql
 STABLE
 SET search_path TO 'public'
 AS $$
-  SELECT CASE WHEN p_tz IS NOT NULL AND length(p_tz) <= 64
+  SELECT CASE WHEN p_tz IS NOT NULL AND length(p_tz) <= 50
                AND EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name = p_tz)
               THEN p_tz END
 $$;

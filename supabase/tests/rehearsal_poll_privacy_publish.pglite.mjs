@@ -756,6 +756,13 @@ const r8Bad = await r8call(`SELECT public.bw_move_rehearsal_date($1, $2::date, $
 ok(r8Bad?.code === '22023' && r8Bad?.hint === 'bw:date_past', `r8: an unknown p_tz is ignored (the profile's zone decides: date_past, no error of its own) (${JSON.stringify(r8Bad)})`);
 const r8Inj = await r8call(`SELECT public.bw_move_rehearsal_date($1, $2::date, $3::date, '{}'::jsonb, $4::uuid, $5) AS r`, [R8_MOVE, r8.d, r8.d, R8_BAD, "UTC'; SELECT 1; --"]);
 ok(r8Inj?.code === '22023' && r8Inj?.hint === 'bw:date_past', `r8: a p_tz that is not a zone name is ignored too (${JSON.stringify(r8Inj)})`);
+// The zone must fit profiles.timezone (VARCHAR(50)), as the app's deviceTimeZone.
+const r8Cap = (await db.query(`SELECT public.bw_known_tz('America/Argentina/ComodRivadavia') AS real32,
+  public.bw_known_tz(repeat('A', 51)) AS long51,
+  (SELECT count(*)::int FROM pg_timezone_names WHERE length(name) > 50) AS realOver50,
+  (pg_get_functiondef('public.bw_known_tz(text)'::regprocedure) ~ 'length\\(p_tz\\) <= 50') AS cap50`).catch((e) => ({ rows: [{ error: e.message }] }))).rows[0];
+ok(r8Cap?.real32 === 'America/Argentina/ComodRivadavia' && r8Cap?.long51 === null && r8Cap?.realover50 === 0 && r8Cap?.cap50 === true,
+  `r8: a zone name is at most 50 characters, every real one fits (${JSON.stringify(r8Cap)})`);
 await db.exec(`DELETE FROM notifications;`);
 const r8Skip = await r8call(`SELECT public.bw_skip_rehearsal_date($1, $2::date, $3) AS r`, [R8_SKIP, r8.d, R8_DEVICE]);
 const r8SkipN = (await notes()).filter((n) => n.data?.event_id === R8_SKIP && n.type !== 'event_update').length;
