@@ -19,6 +19,8 @@ import { t } from '@/lib/i18n';
  *   on this phone (songs added or removed while it was offline);
  * - old-leader: linked and following, but the leader's app is from before
  *   signed states (audit #1): it works, the leader should update.
+ * - stale-key: the leader signs with a newer key pair than the one on this
+ *   phone (an admin stopped being one since, migration 190): one trip online.
  */
 export type StageBleStatus =
   | 'off'
@@ -26,6 +28,7 @@ export type StageBleStatus =
   | 'searching'
   | 'connected'
   | 'old-leader'
+  | 'stale-key'
   | 'denied'
   | 'bt-off'
   | 'unsupported'
@@ -83,6 +86,8 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
         : { tone: 'warn', text: t('Bluetooth is off: turn it on in Control Center to stay in sync without internet.') };
     case 'outdated':
       return { tone: 'warn', text: t('This phone has an older setlist: connect to the internet once to follow the leader.') };
+    case 'stale-key':
+      return { tone: 'warn', text: t('The band changed who can lead: connect to the internet once to follow the leader.') };
     case 'unsupported':
       return {
         tone: 'warn',

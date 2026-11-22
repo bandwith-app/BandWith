@@ -33,4 +33,32 @@ describe('190 the stage signing keys', () => {
       expect(sql).toContain(`GRANT EXECUTE ON FUNCTION public.${f} TO authenticated;`);
     }
   });
+
+  it('keys can never be NULL (decode(NULL) would pass every length check)', () => {
+    expect(fn('bw_stage_set_signer')).toMatch(/IF p_public IS NULL OR p_private IS NULL THEN\s+RAISE EXCEPTION 'bad stage key'/);
+  });
+
+  it("members get the public key only for gigs they can see, with the key's version", () => {
+    expect(fn('bw_stage_verify_key')).toMatch(/bw_can_view_event\(p_event_id\)/);
+    expect(fn('bw_stage_verify_key')).toMatch(/RETURNS jsonb/);
+    expect(fn('bw_stage_verify_key')).toMatch(/'version', s\.sign_version|'version', ver/);
+    expect(fn('bw_stage_signer')).toMatch(/'version'/);
+    expect(fn('bw_stage_set_signer')).toMatch(/'version'/);
+    // A dry run that leaked the text version can't block the jsonb one.
+    expect(sql).toMatch(/DROP FUNCTION IF EXISTS public\.bw_stage_verify_key\(uuid\);/);
+  });
+
+  it('an admin who stops being one (demoted, inactive, removed) takes no working key along: the pair is rotated', () => {
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS sign_version integer NOT NULL DEFAULT 1/);
+    const trig = fn('bw_stage_rotate_signer');
+    expect(trig).toMatch(/RETURNS trigger/);
+    expect(trig).toMatch(/OLD\.role = 'admin' AND COALESCE\(OLD\.is_active, true\)/);
+    expect(trig).toMatch(/TG_OP = 'DELETE'/);
+    expect(trig).toMatch(/NEW\.role IS DISTINCT FROM 'admin'/);
+    expect(trig).toMatch(/NOT COALESCE\(NEW\.is_active, true\)/);
+    expect(trig).toMatch(/SET sign_public = NULL, sign_private = NULL, sign_version = s\.sign_version \+ 1/);
+    expect(trig).toMatch(/e\.band_id = OLD\.band_id/);
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_rotate_signer\s+AFTER UPDATE OF role, is_active, band_id, user_id OR DELETE ON public\.band_members/);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_rotate_signer\(\) FROM PUBLIC, anon, authenticated/);
+  });
 });

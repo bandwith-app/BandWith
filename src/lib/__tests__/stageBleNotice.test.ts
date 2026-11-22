@@ -74,8 +74,17 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(bleLinked('searching')).toBe(false);
   });
 
+  it('a phone that kept an out-of-date key (the band changed who can lead): one plain line, offline only', () => {
+    expect(stageBleNotice(member({ status: 'stale-key' }))).toEqual({
+      tone: 'warn',
+      text: 'The band changed who can lead: connect to the internet once to follow the leader.',
+    });
+    expect(stageBleNotice(member({ status: 'stale-key', online: true }))).toBeNull();
+    expect(bleLinked('stale-key')).toBe(false);
+  });
+
   it('never uses technical words', () => {
-    const all = (['connected', 'old-leader', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
+    const all = (['connected', 'old-leader', 'stale-key', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
       [false, true].flatMap((isLeader) =>
         (['ios', 'android'] as const).map((platform) => stageBleNotice({ status, online: false, isLeader, followers: 2, platform })?.text ?? ''),
       ),

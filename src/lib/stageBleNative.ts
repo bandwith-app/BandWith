@@ -10,7 +10,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { supabase, isDemoMode } from './supabase';
 import { removeAllPackFiles } from './livePackFiles';
-import { generateSigner, isPublicKey, type StageSigner } from './stageSign';
+import { generateSigner, isPublicKey, type StageSigner, type StageVerifyKey } from './stageSign';
 
 export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unknown';
 
@@ -100,58 +100,105 @@ const keep = (k: string, v: string) => {
     /* kept for this session only */
   }
 };
+const asVersion = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 0xffff ? v : null);
 const asSigner = (v: unknown): StageSigner | null => {
-  const o = v as { public?: unknown; private?: unknown } | null;
-  return o && isPublicKey(o.public) && typeof o.private === 'string' && o.private ? { public: o.public, private: o.private } : null;
+  const o = v as { public?: unknown; private?: unknown; version?: unknown } | null;
+  const version = asVersion(o?.version);
+  return o && isPublicKey(o.public) && typeof o.private === 'string' && o.private && version
+    ? { public: o.public, private: o.private, version }
+    : null;
+};
+const asVerify = (v: unknown): StageVerifyKey | null => {
+  const o = v as { public?: unknown; version?: unknown } | null;
+  const version = asVersion(o?.version);
+  return o && isPublicKey(o.public) && version ? { public: o.public, version } : null;
+};
+const kept = <T>(k: string, as: (v: unknown) => T | null): T | null => {
+  try {
+    return as(JSON.parse(read(k) ?? 'null'));
+  } catch {
+    return null;
+  }
+};
+const forget = (k: string) => {
+  try {
+    localStorage.removeItem(k);
+  } catch {
+    /* storage not available */
+  }
 };
 
+/** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
+export const KEY_FETCH_TIMEOUT_MS = 4_000;
+const OFFLINE = Symbol('offline');
 /**
- * Admins: the gig's signing key pair (migration 190), from the device or
- * fetched; the first admin who needs one makes it (the server keeps the
- * first one stored). Null for members, or offline before the first fetch.
+ * The server's answer, or OFFLINE (no network, no answer in time, or an
+ * error): the server first, so a rotated pair or a lost admin role counts
+ * as soon as the phone is online; the kept copy only when it isn't.
  */
-export async function stageSigner(eventId: string): Promise<StageSigner | null> {
+async function ask(fn: string, args: Record<string, string>): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const kept = asSigner(JSON.parse(read(SIGNER_PREFIX + eventId) ?? 'null'));
-    if (kept) return kept;
+    const answer = await Promise.race([
+      Promise.resolve(supabase.rpc(fn, args)),
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
+    ]);
+    if (!answer || answer.error) return OFFLINE;
+    return answer.data;
   } catch {
-    /* fetched again */
-  }
-  try {
-    let { data, error } = await supabase.rpc('bw_stage_signer', { p_event_id: eventId });
-    if (error) return null;
-    let signer = asSigner(data);
-    if (!signer) {
-      const fresh = await generateSigner();
-      ({ data, error } = await supabase.rpc('bw_stage_set_signer', { p_event_id: eventId, p_public: fresh.public, p_private: fresh.private }));
-      if (error) return null;
-      signer = asSigner(data);
-    }
-    if (!signer) return null;
-    keep(SIGNER_PREFIX + eventId, JSON.stringify(signer));
-    keep(VERIFY_PREFIX + eventId, signer.public);
-    return signer;
-  } catch {
-    return null;
+    return OFFLINE;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * Members: the gig's public key, to check the leader's signature. Null
- * before any admin made the key pair, or offline before the first fetch.
+ * Admins: the gig's signing key pair (migration 190), fetched first and kept
+ * for offline; the first admin who needs one makes it (the server keeps the
+ * first one stored). Null for members, and the kept copy goes when the
+ * server says no (an admin no longer); the kept copy offline.
  */
-export async function stageVerifyKey(eventId: string): Promise<string | null> {
-  const kept = read(VERIFY_PREFIX + eventId);
-  if (isPublicKey(kept)) return kept;
-  try {
-    const { data, error } = await supabase.rpc('bw_stage_verify_key', { p_event_id: eventId });
-    if (error || !isPublicKey(data)) return null;
-    keep(VERIFY_PREFIX + eventId, data);
-    return data;
-  } catch {
+export async function stageSigner(eventId: string): Promise<StageSigner | null> {
+  const key = SIGNER_PREFIX + eventId;
+  let data = await ask('bw_stage_signer', { p_event_id: eventId });
+  if (data === OFFLINE) return kept(key, asSigner);
+  let signer = asSigner(data);
+  if (!signer) {
+    const fresh = await generateSigner();
+    data = await ask('bw_stage_set_signer', { p_event_id: eventId, p_public: fresh.public, p_private: fresh.private });
+    if (data === OFFLINE) return kept(key, asSigner);
+    signer = asSigner(data);
+  }
+  if (!signer) {
+    // Not an admin of the gig's band (any more): no private key stays on the phone.
+    forget(key);
     return null;
   }
+  keep(key, JSON.stringify(signer));
+  keep(VERIFY_PREFIX + eventId, JSON.stringify({ public: signer.public, version: signer.version }));
+  return signer;
 }
+
+/**
+ * Members: the gig's public key and its version, to check the leader's
+ * signature: fetched first, the kept copy offline. Null before any admin
+ * made the pair (or for a gig the server no longer shows this account).
+ */
+export async function stageVerifyKey(eventId: string): Promise<StageVerifyKey | null> {
+  const key = VERIFY_PREFIX + eventId;
+  const data = await ask('bw_stage_verify_key', { p_event_id: eventId });
+  if (data === OFFLINE) return kept(key, asVerify);
+  const verify = asVerify(data);
+  if (!verify) {
+    forget(key);
+    return null;
+  }
+  keep(key, JSON.stringify(verify));
+  return verify;
+}
+
+/** The public key kept on this phone (no network): Stage starts with it, then asks the server. */
+export const keptVerifyKey = (eventId: string) => kept(VERIFY_PREFIX + eventId, asVerify);
 
 /**
  * Fetch the keys ahead of the gig (event detail open), so they're there
@@ -161,8 +208,9 @@ export async function stageVerifyKey(eventId: string): Promise<string | null> {
 export function prefetchStageKey(eventId?: string, isAdmin = false) {
   if (!eventId || !stageBleAvailable()) return;
   if (!cachedKey(eventId)) void stageKey(eventId);
+  // Every time: a pair rotated since (an admin who stopped being one) is picked up here.
   if (isAdmin) void stageSigner(eventId);
-  else if (!isPublicKey(read(VERIFY_PREFIX + eventId))) void stageVerifyKey(eventId);
+  else void stageVerifyKey(eventId);
 }
 
 /** The old copy of a setlist (until 11-21); moved into the live pack (livePackStore.ts). */

@@ -10,7 +10,7 @@ import {
   fromBase64,
   toBase64,
 } from '@/lib/stageBle';
-import { generateSigner, type StageSigner } from '@/lib/stageSign';
+import { generateSigner, type StageKeyPair } from '@/lib/stageSign';
 import type { StageLiveState } from '@/lib/stageLive';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
@@ -31,12 +31,15 @@ const IDS = ['a1', 'b2', 'c3'];
  */
 type Kind = 'new' | 'old';
 const air = vi.hoisted(() => ({
-  devices: new Map<string, { kind: 'new' | 'old'; state: unknown; signer?: { private: string; public: string } }>(),
+  devices: new Map<string, { kind: 'new' | 'old'; state: unknown; signer?: { private: string; public: string }; version?: number }>(),
   connects: [] as string[],
   connected: new Set<string>(),
   reads: [] as string[],
-  verify: null as string | null,
-  signer: null as { private: string; public: string } | null,
+  /** The server's answer for the public key (what stageVerifyKey returns: the kept copy when offline). */
+  verify: null as { public: string; version: number } | null,
+  /** The copy kept on the phone (what Stage starts with). */
+  kept: null as { public: string; version: number } | null,
+  signer: null as { private: string; public: string; version: number } | null,
   started: [] as Record<string, unknown>[],
   updates: [] as { value: string; notify: string }[],
   signedUpdates: [] as { value: string; notify: string }[],
@@ -77,7 +80,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       }
       if (char === STAGE_BLE_SIGNED_CHARACTERISTIC && d.kind === 'new') {
         if (!st || !d.signer) return new DataView(new ArrayBuffer(0));
-        return new DataView((await encodeSignedState(st, IDS, d.signer.private))!.buffer);
+        return new DataView((await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1))!.buffer);
       }
       throw new Error('Characteristic not found.');
     }),
@@ -104,6 +107,7 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
   stageVerifyKey: async () => air.verify,
+  keptVerifyKey: () => air.kept,
   stageSigner: async () => air.signer,
 }));
 
@@ -111,8 +115,9 @@ const stageBleHook = await import('../useStageBle');
 const { useStageBle, LEADER_CHECK_MS } = stageBleHook;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
-let admins: StageSigner;
-const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageSigner) => air.devices.set(id, { kind, state, signer });
+let admins: StageKeyPair;
+const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageKeyPair, version = 1) =>
+  air.devices.set(id, { kind, state, signer, version });
 const member = (onState = vi.fn()) => ({
   onState,
   hook: renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState })),
@@ -124,7 +129,8 @@ beforeEach(async () => {
   air.connects = [];
   air.connected.clear();
   air.reads = [];
-  air.verify = admins.public;
+  air.verify = { public: admins.public, version: 1 };
+  air.kept = air.verify;
   air.signer = null;
   air.started = [];
   air.updates = [];
@@ -195,6 +201,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
 
   it('no public key yet on this phone (none made when it was online): it follows the band-key state, no note', async () => {
     air.verify = null;
+    air.kept = null;
     put('admin', 'new', lead('a', 5, 'b2'), admins);
     const { onState, hook } = member();
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ songId: 'b2' })));
@@ -203,7 +210,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
   });
 
   it('new leader + old member: the leader serves the band-key state for older apps and the signed state', async () => {
-    air.signer = admins;
+    air.signer = { ...admins, version: 1 };
     const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
     await waitFor(() => expect(air.started.length).toBe(1));
     expect(air.started[0]).toMatchObject({
@@ -219,7 +226,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     // An older app reads b7d50001 as before.
     const old = await decodeStageState(fromBase64(air.updates[0].value), IDS, KEY);
     expect(old).toMatchObject({ ok: true, state: { songId: 'c3', seq: 7 } });
-    const signed = await decodeSignedState(fromBase64(air.signedUpdates[0].value), IDS, admins.public);
+    const signed = await decodeSignedState(fromBase64(air.signedUpdates[0].value), IDS, admins.public, 1);
     expect(signed).toMatchObject({ ok: true, state: { songId: 'c3', seq: 7 } });
     expect(air.signedUpdates[0].notify).toBe(air.updates[0].notify);
     unmount();
@@ -311,5 +318,63 @@ describe('useStageBle: band-key states once the admins signed (Codex on #288)', 
     await vi.advanceTimersByTimeAsync(20_000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'o' })));
     hook.unmount();
+  });
+});
+
+describe('useStageBle: the pair rotated after an admin stopped being one (Codex on #288)', () => {
+  it('this phone kept the old public key: online, it fetches the new one and follows', async () => {
+    const before = await generateSigner();
+    air.kept = { public: before.public, version: 1 };
+    air.verify = { public: admins.public, version: 2 };
+    put('admin', 'new', lead('a', 5, 'b2'), admins, 2);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'b2' })));
+    expect(hook.result.current.status).toBe('connected');
+    hook.unmount();
+  });
+
+  it('offline with the old key: the leader is not taken for a forger, and one line asks to go online once', async () => {
+    const before = await generateSigner();
+    air.kept = { public: before.public, version: 1 };
+    air.verify = air.kept; // offline: the kept copy
+    put('admin', 'new', lead('a', 5, 'b2'), admins, 2);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('stale-key'));
+    // It stays (not flashing back to "searching"), and the leader is tried again, not skipped for a minute.
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(hook.result.current.status).toBe('stale-key');
+    expect(air.connects.filter((c) => c === 'admin').length).toBeGreaterThan(1);
+    expect(onState).not.toHaveBeenCalled();
+    // Back online: the new key, and the member follows.
+    air.verify = { public: admins.public, version: 2 };
+    await vi.advanceTimersByTimeAsync(8_000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
+    await waitFor(() => expect(hook.result.current.status).toBe('connected'));
+    hook.unmount();
+  });
+
+  it("a demoted admin's phone, signing with the pair from before, is refused by members with the new key", async () => {
+    const before = await generateSigner();
+    air.kept = { public: admins.public, version: 2 };
+    air.verify = air.kept;
+    put('ex-admin', 'new', lead('e', 50, 'c3'), before, 1);
+    const { onState, hook } = member();
+    await waitFor(() => expect(air.connects).toContain('ex-admin'));
+    await vi.advanceTimersByTimeAsync(3000);
+    await waitFor(() => expect(air.connected.size).toBe(0));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onState).not.toHaveBeenCalled();
+    expect(hook.result.current.status).toBe('searching');
+    hook.unmount();
+  });
+
+  it("the leader signs with its pair's version", async () => {
+    air.signer = { ...admins, version: 7 };
+    const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
+    await waitFor(() => expect(result.current.status).toBe('leading'));
+    result.current.publish(lead('a', 7, 'c3'));
+    await waitFor(() => expect(air.signedUpdates.length).toBe(1));
+    expect(await decodeSignedState(fromBase64(air.signedUpdates[0].value), IDS, admins.public, 7)).toMatchObject({ ok: true });
+    unmount();
   });
 });

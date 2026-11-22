@@ -1235,6 +1235,7 @@ const music: AreaText = {
             "**Desconectado** significa que ahora mismo no puede llegar nada a tu teléfono.",
             "Los miembros no pueden mover la canción de nadie más ni cambiar el orden.",
             "Si aparece **La app del líder no está actualizada: pídele que la actualice**, sigues al líder igual: solo le falta la última versión de BandWith.",
+            "Si aparece **La banda cambió quién puede dirigir: conéctate a internet una vez para seguir al líder.**, conéctate una vez (Wi-Fi o datos móviles) con Stage abierto: el teléfono recibe el cambio y vuelve a seguir al líder.",
           ],
         },
       ],

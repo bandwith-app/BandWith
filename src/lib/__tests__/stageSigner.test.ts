@@ -13,6 +13,9 @@ const db = vi.hoisted(() => ({
   pair: null as { public: string; private: string } | null,
   calls: [] as string[],
   offline: false,
+  /** The network hangs (a venue with one bar): calls never answer. */
+  hang: false,
+  version: 1,
 }));
 
 vi.mock('../supabase', () => ({
@@ -21,12 +24,14 @@ vi.mock('../supabase', () => ({
     rpc: vi.fn(async (fn: string, args: Record<string, string>) => {
       db.calls.push(fn);
       if (db.offline) throw new TypeError('Failed to fetch');
-      if (fn === 'bw_stage_verify_key') return { data: db.pair?.public ?? null, error: null };
-      if (fn === 'bw_stage_signer') return { data: db.admin ? db.pair : null, error: null };
+      if (db.hang) return new Promise(() => {});
+      const withVersion = (p: object | null) => (p ? { ...p, version: db.version } : null);
+      if (fn === 'bw_stage_verify_key') return { data: db.pair ? { public: db.pair.public, version: db.version } : null, error: null };
+      if (fn === 'bw_stage_signer') return { data: db.admin ? withVersion(db.pair) : null, error: null };
       if (fn === 'bw_stage_set_signer') {
         if (!db.admin) return { data: null, error: null };
         db.pair ??= { public: args.p_public, private: args.p_private };
-        return { data: db.pair, error: null };
+        return { data: withVersion(db.pair), error: null };
       }
       if (fn === 'bw_stage_key') return { data: 'a2V5', error: null };
       return { data: null, error: null };
@@ -35,7 +40,9 @@ vi.mock('../supabase', () => ({
 }));
 vi.mock('../livePackFiles', () => ({ removeAllPackFiles: async () => {} }));
 
-const { stageSigner, stageVerifyKey, clearStageCache } = await import('../stageBleNative');
+const native = await import('../stageBleNative');
+const { stageSigner, stageVerifyKey, clearStageCache } = native;
+const KEY_FETCH_TIMEOUT_MS = (native as { KEY_FETCH_TIMEOUT_MS?: number }).KEY_FETCH_TIMEOUT_MS ?? 4000;
 const { generateSigner, signBytes, verifyBytes } = await import('../stageSign');
 
 beforeEach(() => {
@@ -44,6 +51,8 @@ beforeEach(() => {
   db.pair = null;
   db.calls = [];
   db.offline = false;
+  db.hang = false;
+  db.version = 1;
 });
 
 describe('stageSigner / stageVerifyKey (migration 190)', () => {
@@ -56,7 +65,7 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     localStorage.clear();
     db.admin = false;
     expect(await stageSigner('gig')).toBeNull();
-    expect(await stageVerifyKey('gig')).toBe(first!.public);
+    expect(await stageVerifyKey('gig')).toEqual({ public: first!.public, version: 1 });
     // What the admin signs, the member's key checks.
     const data = new Uint8Array([1, 2, 3]);
     expect(await verifyBytes(first!.public, data, await signBytes(first!.private, data))).toBe(true);
@@ -69,14 +78,14 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     // bw_stage_signer says none yet (a race): set_signer returns the stored pair, not ours.
     const { supabase } = await import('../supabase');
     vi.mocked(supabase.rpc).mockImplementationOnce((async () => ({ data: null, error: null })) as never);
-    expect(await stageSigner('gig')).toEqual(other);
+    expect(await stageSigner('gig')).toEqual({ ...other, version: 1 });
   });
 
   it('kept on the phone for offline gigs, and gone on sign-out', async () => {
     const signer = await stageSigner('gig');
     db.offline = true;
     expect(await stageSigner('gig')).toEqual(signer);
-    expect(await stageVerifyKey('gig')).toBe(signer!.public);
+    expect(await stageVerifyKey('gig')).toEqual({ public: signer!.public, version: 1 });
     clearStageCache();
     expect(await stageSigner('gig')).toBeNull();
     expect(await stageVerifyKey('gig')).toBeNull();
@@ -86,6 +95,47 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     db.admin = false;
     expect(await stageVerifyKey('gig')).toBeNull();
     db.pair = await generateSigner();
-    expect(await stageVerifyKey('gig')).toBe(db.pair.public);
+    expect(await stageVerifyKey('gig')).toEqual({ public: db.pair.public, version: 1 });
+  });
+
+  it('an admin who is no longer one: the server says no, and the private key kept on the phone goes', async () => {
+    expect(await stageSigner('gig')).not.toBeNull();
+    db.admin = false;
+    expect(await stageSigner('gig')).toBeNull();
+    // Offline afterwards: nothing left to sign with.
+    db.offline = true;
+    expect(await stageSigner('gig')).toBeNull();
+  });
+
+  it('a rotated pair: admins and members get the new one even with an old copy kept', async () => {
+    const old = await stageSigner('gig');
+    expect(await stageVerifyKey('gig')).toEqual({ public: old!.public, version: 1 });
+    // An admin was demoted: the server cleared the pair and bumped the version; a new admin made a new pair.
+    db.pair = await generateSigner();
+    db.version = 2;
+    expect(await stageSigner('gig')).toEqual({ ...db.pair, version: 2 });
+    expect(await stageVerifyKey('gig')).toEqual({ public: db.pair.public, version: 2 });
+  });
+
+  it('members whose band no longer shows them the gig lose the kept public key', async () => {
+    db.pair = await generateSigner();
+    expect(await stageVerifyKey('gig')).not.toBeNull();
+    db.pair = null;
+    expect(await stageVerifyKey('gig')).toBeNull();
+    db.offline = true;
+    expect(await stageVerifyKey('gig')).toBeNull();
+  });
+
+  it('a network that hangs falls back to the kept copy in a few seconds', async () => {
+    const signer = await stageSigner('gig');
+    db.hang = true;
+    vi.useFakeTimers();
+    try {
+      const pending = Promise.all([stageSigner('gig'), stageVerifyKey('gig')]);
+      await vi.advanceTimersByTimeAsync(KEY_FETCH_TIMEOUT_MS + 100);
+      expect(await pending).toEqual([signer, { public: signer!.public, version: 1 }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

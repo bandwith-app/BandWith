@@ -1368,6 +1368,7 @@ const music: AreaText = {
             "**Offline** heißt, dass gerade nichts dein Handy erreichen kann.",
             "Mitglieder können den Song anderer nicht wechseln und die Reihenfolge nicht ändern.",
             "Steht dort **Die App des Leaders ist veraltet: bitte um ein Update**, folgst du trotzdem: Der Leader braucht nur die neueste Version von BandWith.",
+            "Steht dort **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.**, geh einmal online (WLAN oder mobile Daten), während Stage offen ist: Dein Handy holt sich die Änderung und folgt dem Leader wieder.",
           ],
         },
       ],

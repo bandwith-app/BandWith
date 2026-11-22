@@ -80,4 +80,36 @@ describe('the leader signs, members only check (audit #1)', () => {
     const mine = await generateSigner();
     expect(await decodeClock(await encodeClock(t1 + 400, mine.private), leader.public)).toBeNull();
   });
+
+  it("carries the pair's version: a newer one means this phone's public key is out of date, an older one is refused", async () => {
+    const leader = await generateSigner();
+    const bytes = (await encodeSignedState(state, IDS, leader.private, 2))!;
+    expect(await decodeSignedState(bytes, IDS, leader.public, 2)).toEqual({ ok: true, state });
+    // This phone kept version 1: it fetches the new key (not "a forger").
+    expect(await decodeSignedState(bytes, IDS, leader.public, 1)).toEqual({ ok: false, reason: 'stale' });
+    // Signed with a pair from before a rotation (an admin no longer): refused.
+    const old = (await encodeSignedState(state, IDS, leader.private, 1))!;
+    expect(await decodeSignedState(old, IDS, leader.public, 2)).toEqual({ ok: false, reason: 'auth' });
+  });
+
+  it('the version is signed: a forger cannot raise it to look like a newer key', async () => {
+    const leader = await generateSigner();
+    const bytes = (await encodeSignedState(state, IDS, leader.private, 3))!;
+    const bumped = bytes.slice();
+    bumped[2] = 4; // the version's low byte
+    expect(await decodeSignedState(bumped, IDS, leader.public, 4)).toEqual({ ok: false, reason: 'auth' });
+  });
+
+  it('the biggest setlist (254 songs, 200 struck off) fits one Bluetooth value (512 bytes) and reads back', async () => {
+    const ids = Array.from({ length: 254 }, (_, i) => `row-${String(i).padStart(3, '0')}`);
+    const big = { seq: 2 ** 31, from: 'x'.repeat(16), songId: ids[100], order: [...ids].reverse(), skipped: ids.slice(0, 200) };
+    const leader = await generateSigner();
+    const bytes = (await encodeSignedState(big, ids, leader.private, 65535))!;
+    expect(bytes.length).toBeLessThanOrEqual(512);
+    const back = await decodeSignedState(bytes, ids, leader.public, 65535);
+    expect(back.ok && back.state.order).toEqual(big.order);
+    expect(back.ok && [...(back.state.skipped ?? [])].sort()).toEqual(big.skipped);
+    // The band-key state for older apps fits too.
+    expect((await encodeStageState(big, ids, HMAC_KEY))!.length).toBeLessThanOrEqual(512);
+  });
 });

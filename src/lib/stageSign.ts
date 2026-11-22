@@ -31,15 +31,30 @@ const unb64 = (s: string) => {
   return out;
 };
 
-export interface StageSigner {
+export interface StageKeyPair {
   /** PKCS#8, base64: admins only. */
   private: string;
   /** Raw uncompressed point, base64: every member. */
   public: string;
 }
 
+/**
+ * The gig's pair as the server keeps it: `version` goes up each time an admin
+ * stops being one (migration 190 clears the pair then); the leader's messages
+ * carry it, so members know when their public key is out of date.
+ */
+export interface StageSigner extends StageKeyPair {
+  version: number;
+}
+
+/** What members check the leader with. */
+export interface StageVerifyKey {
+  public: string;
+  version: number;
+}
+
 /** A new key pair for a gig (the first admin who needs one makes it; the server keeps the first). */
-export async function generateSigner(): Promise<StageSigner> {
+export async function generateSigner(): Promise<StageKeyPair> {
   const pair = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']);
   return {
     private: b64(await crypto.subtle.exportKey('pkcs8', pair.privateKey)),

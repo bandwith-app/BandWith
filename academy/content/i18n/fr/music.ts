@@ -1368,6 +1368,7 @@ const music: AreaText = {
             "**Hors ligne** veut dire que rien ne peut atteindre ton téléphone pour l’instant.",
             "Les membres ne peuvent ni changer le morceau des autres ni modifier l’ordre.",
             "Si la ligne **L’app du leader n’est pas à jour : demande-lui de la mettre à jour** s’affiche, tu suis quand même : il lui suffit d’installer la dernière version de BandWith.",
+            "Si la ligne **Le groupe a changé qui peut mener : connecte-toi une fois à internet pour suivre le leader.** s’affiche, connecte-toi une fois (Wi-Fi ou données mobiles) avec Stage ouvert : ton téléphone récupère le changement et suit de nouveau le leader.",
           ],
         },
       ],
