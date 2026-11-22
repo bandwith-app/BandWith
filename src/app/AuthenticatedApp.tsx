@@ -100,7 +100,7 @@ import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
 import { deleteRehearsalDate } from "@/lib/services/rehearsalSkip";
-import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn } from "@/lib/recurrenceSkips";
+import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -1161,13 +1161,23 @@ export default function AuthenticatedApp() {
     item.band_name = row.band_id ? bands[row.band_id] : t('Personal');
     (openAt ?? handleEventCardClickRef.current)(item);
   }, []);
+  // The date being edited in the wizard. The form's close handlers reopen
+  // the event by id only: they run before this clears, so cancelling an
+  // edit of one date of a series reopens that date (Codex #297 round 3).
+  const editReturnRef = useRef<{ eventId: string; date: string } | null>(null);
+  useEffect(() => {
+    if (editingEventData?.eventId && editingEventData.date) {
+      editReturnRef.current = { eventId: editingEventData.eventId, date: editingEventData.date };
+    } else if (!isCreateEventOpen) editReturnRef.current = null;
+  }, [editingEventData, isCreateEventOpen]);
   /**
    * Opens an event by id. `date`: the date of a repeating rehearsal the user
    * picked (Home's list, a session summary). With none, a series opens on its
    * next date still on, never on a deleted or long-past first date, so
    * "Delete this date" deletes the date on screen (Codex #297 B1).
    */
-  const navigateToEvent = useCallback(async (eventDbId: string, date?: string | null) => {
+  const navigateToEvent = useCallback(async (eventDbId: string, asked?: string | null) => {
+    const date = openDateFor(eventDbId, asked, editReturnRef.current);
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const openAt = (item: EventData) =>

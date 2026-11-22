@@ -113,3 +113,18 @@ export function mergeRecurrenceRule<T extends Record<string, unknown>>(
   const { freq: _f, frequency: _fr, interval: _i, ...rest } = stored as Record<string, unknown>;
   return { ...rest, ...next };
 }
+
+/**
+ * The date to open an event on: the one asked for, else the date being
+ * edited in the wizard when this is that event (cancelling an edit of one
+ * date of a series reopens that exact date, Codex #297 round 3), else null
+ * (navigateToEvent then opens the next date still on).
+ */
+export function openDateFor(
+  eventId: string,
+  date: string | null | undefined,
+  editing: { eventId: string; date: string } | null | undefined,
+): string | null {
+  if (date) return date;
+  return editing && editing.eventId === eventId ? editing.date : null;
+}
