@@ -10,7 +10,7 @@
 //   mkdir -p /tmp/pgB && cd /tmp/pgB && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/date_on_hold.pglite.mjs . && node date_on_hold.pglite.mjs <repo>
 //   node date_on_hold.pglite.mjs <repo> /dev/null     # before: FAILs expected
-//   MIG_175=<175 file> MIG_181=<181 file> node date_on_hold.pglite.mjs <repo>   # + real 175 and 181, both orders
+//   MIG_175=<175> MIG_181=<181> MIG_193=<193> node date_on_hold.pglite.mjs <repo>   # + the real 175/181/193, all orders
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
@@ -681,11 +681,15 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
 }
 
 // ── Cross-PR: the real 175 (chat scope, section 3) and 181, both orders ────
-// MIG_175 / MIG_181: paths to those branches' files (git show
-// origin/fix/security-audit:supabase/migrations/175_security_audit_access.sql).
+// MIG_175 / MIG_181 / MIG_193: paths to those branches' files (git show
+// origin/fix/security-audit:supabase/migrations/175_security_audit_access.sql,
+// origin/fix/event-chat-lineup:…/181_event_chat_lineup.sql,
+// origin/fix/chat-audit:…/193_one_chat_per_gig.sql). Orders: 175 → 178
+// (no 181), both orders of 178 and 181, and main's 175 → 178 → 193 → 181.
 // chats.type is the chat_type enum here, as on databases built from 002.
 const M175 = process.env.MIG_175;
 const M181 = process.env.MIG_181;
+const M193 = process.env.MIG_193;
 if (M175 && M181) {
   const db1 = db;
   const sec175 = (() => {
@@ -717,22 +721,31 @@ if (M175 && M181) {
       INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${QC}','${ADMIN}','Client budget 4200', now() - interval '1 hour');`);
     const sc = async (chat, uid) => (await tryq(
       `SELECT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, '${uid}') ok FROM chats c WHERE c.id = '${chat}'`)).rows[0]?.ok;
-    const steps = order === 'A' ? ['175', '178', '181'] : ['175', '181', '178'];
+    const steps = order.split(' → ');
+    const has181 = steps.includes('181');
     const mid = {};
     for (const st of steps) {
-      const sql = st === '175' ? sec175 : st === '181' ? readFileSync(M181, 'utf8') : readFileSync(MIG, 'utf8');
+      const sql = st === '175' ? sec175 : st === '181' ? readFileSync(M181, 'utf8') : st === '193' ? readFileSync(M193, 'utf8') : readFileSync(MIG, 'utf8');
       const err = await db.exec(sql).then(() => null, (e) => e.message);
       if (err) console.log(`order ${order}, ${st}:`, err);
       if (st === '178') mid.grpOut = await sc(GRP, OUT);
     }
-    const tag = order === 'A' ? '175 → 178 → 181' : '175 → 181 → 178';
+    const tag = order;
     const inChat = async (chat, uid) => (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${chat}' AND user_id = '${uid}'`)).rows.length;
-    if (order === 'A') ok(mid.grpOut === false, `${tag}: 178's chat rule keeps 175's legacy 'group' = band rule (former member out: ${mid.grpOut})`);
+    if (steps.indexOf('178') < steps.indexOf('181') || !has181) ok(mid.grpOut === false, `${tag}: 178's chat rule keeps 175's legacy 'group' = band rule (former member out: ${mid.grpOut})`);
     ok(await sc(GRP, MEM) === true && await sc(GRP, OUT) === false, `${tag}: legacy group chat follows the band`);
     ok((await tryq(`SELECT public.bw_is_event_participant('${GIG8}', '${MEM2}') p`)).rows[0]?.p === false,
       `${tag}: dropped out is off the gig (bw_is_event_participant keeps 181's status list)`);
-    ok(await inChat(GC, MEM2) === 0 && await inChat(GC, MEM) === 1, `${tag}: gig chat = lineup (dropped out gone, lineup kept)`);
+    if (has181) ok(await inChat(GC, MEM2) === 0 && await inChat(GC, MEM) === 1, `${tag}: gig chat = lineup (dropped out gone, lineup kept)`);
     ok(await inChat(QC, MEM) === 0, `${tag}: a member is out of the quote chat`);
+    const seen = await as(MEM, `SELECT id FROM chats WHERE id = '${QC}'`);
+    ok(!seen.error && seen.rows.length === 0, `${tag}: a member can't see the quote chat row (${seen.error || seen.rows.length})`);
+    if (steps.includes('193')) {
+      const open = await as(MEM, `SELECT public.bw_open_group_chat('event', NULL, '${QE8}', NULL) j`);
+      ok(!!open.error && await inChat(QC, MEM) === 0, `${tag}: bw_open_group_chat refuses a member on a quote (${open.error || 'opened'})`);
+      const join = await as(ADMIN, `SELECT public.bw_chat_joinable('event', '${BAND}', '${QE8}', '${MEM}') j`);
+      ok(join.rows[0]?.j === false, `${tag}: a quote's chat is not joinable for a member`);
+    }
     // An older admin build adds the whole lineup to the quote chat in one insert.
     await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${QC}' AND user_id = '${ADMIN}'`);
     const ins = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${ADMIN}'), ('${QC}','${MEM}')`);
@@ -749,14 +762,19 @@ if (M175 && M181) {
     // Re-running 175 afterwards keeps the stronger rule.
     await db.exec(sec175).catch((e) => console.log(`order ${order}, re-run 175:`, e.message));
     const def = await fnDef('bw_chat_scope_ok');
-    ok(def.includes('bw_is_event_participant') && def.includes('dropped_out') && def.includes("'group'"),
-      `${tag}, then 175 again: the lineup + quote rule stays live`);
+    ok((has181 ? def.includes('bw_is_event_participant') && def.includes('dropped_out') : def.includes('bw_event_quote_hidden')) && def.includes("'group'"),
+      `${tag}, then 175 again: the ${has181 ? 'lineup + quote' : 'quote'} rule stays live`);
+    const still = await as(MEM, `SELECT id FROM chats WHERE id = '${QC}'`);
+    ok(still.rows.length === 1, `${tag}, then 175 again: the confirmed gig's chat stays open to the lineup`);
   };
-  await cross('A');
-  await cross('B');
+  await cross('175 → 178');
+  await cross('175 → 178 → 181');
+  await cross('175 → 181 → 178');
+  if (M193) await cross('175 → 178 → 193 → 181');
+  else console.log('skip: 175 → 178 → 193 → 181 (set MIG_193)');
   db = db1;
 } else {
-  console.log('skip: cross-PR 175 + 181 (set MIG_175 and MIG_181)');
+  console.log('skip: cross-PR 175 + 181 (+ 193) (set MIG_175, MIG_181, MIG_193)');
 }
 
 console.log(fails ? `\n${passes} passed, ${fails} FAILED` : `\n${passes} passed, ALL OK`);
