@@ -50,6 +50,7 @@ export interface StageStep {
   display: string;
 }
 
+/** A setlist song in live mode; LiveSongFields: time signature, count-in, pickup, backing track, line timing (171). */
 export interface StageSong extends LiveSongExtras {
   /** setlist_songs row id (live order and current song follow it). */
   id?: string;

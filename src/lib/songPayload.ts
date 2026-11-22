@@ -10,6 +10,7 @@
 import type { SongChanges } from './services/songs';
 import type { SongChart } from './ireal';
 import { joinGenres } from './songGenres';
+import { normalizeTime } from './meter';
 
 export type { SongChanges };
 
@@ -29,7 +30,15 @@ export interface SongFormValues {
   durationSeconds: number;
   /** Only when the chart was changed in this form. */
   chordChart?: { value: SongChart | null };
+  /** Live mode (171): time signature ("" = the chart's), count-in bars, pickup beats, backing track. */
+  timeSignature?: string;
+  countInBars?: number;
+  pickupBeats?: number;
+  backingTrack?: boolean;
 }
+
+/** Live-mode columns at their defaults are left out of a new song (they need 171; the database fills them). */
+const LIVE_DEFAULTS: Partial<SongChanges> = { time_signature: null, count_in_bars: 1, pickup_beats: 0, backing_track: false };
 
 /** Every field as the form saves it (null = empty). */
 export function songFields(f: SongFormValues): SongChanges {
@@ -48,13 +57,19 @@ export function songFields(f: SongFormValues): SongChanges {
     key: f.key.trim() || null,
     duration_seconds: f.durationSeconds > 0 ? f.durationSeconds : null,
     ...(f.chordChart ? { chord_chart: f.chordChart.value } : {}),
+    time_signature: normalizeTime(f.timeSignature) ?? null,
+    count_in_bars: f.countInBars === 2 ? 2 : f.countInBars === 0 ? 0 : 1,
+    pickup_beats: Math.max(0, Math.min(15, Math.round(f.pickupBeats ?? 0))),
+    backing_track: !!f.backingTrack,
   };
 }
 
 /** New song: the filled-in fields only. */
 export function songCreatePayload(f: SongFormValues): SongChanges {
   const all = songFields(f);
-  return Object.fromEntries(Object.entries(all).filter(([, v]) => v !== null && v !== undefined)) as SongChanges;
+  return Object.fromEntries(
+    Object.entries(all).filter(([k, v]) => v !== null && v !== undefined && !(k in LIVE_DEFAULTS && LIVE_DEFAULTS[k as keyof SongChanges] === v)),
+  ) as SongChanges;
 }
 
 const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null) || JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
