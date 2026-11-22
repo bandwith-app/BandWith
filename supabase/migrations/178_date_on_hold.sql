@@ -52,7 +52,8 @@
 -- don't get those rows (events, their own lineup row, notifications), which
 -- the app treats like a gig they are not on. No RPC they call changes shape.
 -- Apply after 175 (it defines bw_chat_scope_ok, redefined here); if 175 is
--- ever applied after this, run this file again.
+-- ever applied after this, run this file again. 181's bw_chat_scope_ok
+-- (lineup rule) already carries the quote rule and is kept on a re-run.
 -- Idempotent; safe to re-run on live data.
 -- ============================================================================
 
@@ -347,12 +348,24 @@ CREATE POLICY chat_participants_quote_admins_only ON public.chat_participants
 -- plus: the event chat of a quote is for the band's admins only. Used by
 -- bw_my_chat_ids, the chats read policies and bw_chat_recipient_ids
 -- (send-push), once 175 is applied.
+-- 181 (event chat = lineup) redefines it to also need bw_is_event_participant,
+-- which carries the quote rule since this migration. When that definition is
+-- live, keep it: re-running 178 after 181 must not undo the lineup rule.
+DO $do$
+BEGIN
+  IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NOT NULL THEN
+    IF pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)'))
+       LIKE '%bw_is_event_participant%' THEN
+      RETURN;
+    END IF;
+  END IF;
+  EXECUTE $sql$
 CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
-AS $$
+AS $f$
   SELECT CASE
     WHEN p_type = 'band' THEN
       p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
@@ -365,7 +378,10 @@ AS $$
       AND NOT public.bw_event_quote_hidden(p_event_id, p_user_id)
     ELSE true
   END;
-$$;
+$f$;
+  $sql$;
+END
+$do$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
 

@@ -356,5 +356,35 @@ ok((await as(MEM, `SELECT title FROM events WHERE id = '${QE5}'`)).rows[0]?.titl
 ok(Number((await as(MEM, `SELECT fee FROM public.bw_event_member_money(ARRAY['${QE5}']::uuid[])`)).rows[0]?.fee) === 350, 'confirmed: and their own fee');
 ok((await as(MEM, `SELECT * FROM public.bw_my_date_holds()`)).rows.every((r) => r.event_id !== QE5), 'confirmed: no more hold card');
 
+// ── Re-run after 181 (event chat = lineup): 178 must not undo it ───────────
+// 181 redefines bw_chat_scope_ok to also need bw_is_event_participant (which
+// carries the quote rule since 178). Re-running 178 later (its header says to
+// if 175 lands after it) must keep that definition.
+const [GIGCHAT, QCHAT, QE6] = [51, 52, 37].map(id);
+await mkQuote(QE6, 'Smith Brunch', `INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${QE6}','${MEM}','pending', 200)`);
+await db.exec(`INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES
+  ('${GIGCHAT}','event','Rooftop Session','${BAND}','${GIG}','${ADMIN}'), ('${QCHAT}','event','Smith Brunch','${BAND}','${QE6}','${ADMIN}')`);
+await db.exec(`
+CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT CASE
+    WHEN p_type = 'band' THEN p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
+    WHEN p_type = 'event' THEN
+      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
+      AND coalesce((
+        SELECT (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
+               AND public.bw_is_event_participant(e.id, p_user_id)
+          FROM events e WHERE e.id = p_event_id
+      ), true)
+    ELSE true
+  END;
+$f$;`);
+const scope = async (chat, uid) => (await db.query(
+  `SELECT public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, '${uid}') ok FROM chats c WHERE c.id = '${chat}'`)).rows[0]?.ok;
+await db.exec(readFileSync(MIG, 'utf8'));
+ok(await scope(GIGCHAT, MEM2) === false, 're-run after 181: a member off the lineup stays out of the gig chat');
+ok(await scope(GIGCHAT, MEM) === true, 're-run after 181: the lineup keeps the gig chat');
+ok(await scope(QCHAT, MEM) === false, 're-run after 181: the quote chat stays hidden from members');
+
 console.log(fails ? `\n${passes} passed, ${fails} FAILED` : `\n${passes} passed, ALL OK`);
 process.exit(fails ? 1 : 0);
