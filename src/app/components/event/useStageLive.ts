@@ -596,6 +596,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const clickLeader = click && click.from !== clientId ? click.from : null;
   const bestClock = pickClock(clickLeader, [rtClock, ble.clock]);
   const clickOffset = bestClock?.offset ?? 0;
+  // The playhead's leader, measured the same way (it may run with no click).
+  const playheadLeader = playhead && playhead.from !== clientId ? playhead.from : null;
+  const playheadOffset = pickClock(playheadLeader, [rtClock, ble.clock])?.offset ?? 0;
 
   return {
     /** The setlist in its live order. */
@@ -646,7 +649,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     playhead: {
       state: playhead,
       mine: !!playhead && playhead.from === clientId,
-      offset: playhead && playhead.from !== clientId && samplesRef.current.peer === playhead.from ? clickOffset : 0,
+      offset: playheadOffset,
       set: setPlayhead,
       clientId,
     },

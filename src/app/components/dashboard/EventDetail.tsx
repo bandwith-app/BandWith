@@ -3065,6 +3065,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           onIndexChange={stageLive.select}
           skipped={stageLive.skipped}
           click={stageLive.click}
+          playhead={stageLive.playhead}
           follow={{
             isLeader: stageLive.isLeader,
             following: stageLive.following,

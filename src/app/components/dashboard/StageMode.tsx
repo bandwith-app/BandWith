@@ -26,6 +26,7 @@ import { SortableSongList } from '@/app/components/ui/SortableSongList';
 import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
 import { keyLabel } from '@/lib/ireal';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from './StageClick';
+import { FollowArea, FollowStrip, FollowTempoSwitch, useFollowTempo, type StageFollowPlayhead } from './StageFollow';
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
@@ -100,6 +101,8 @@ export interface StageLiveControls {
   toggleSkip?: (index: number) => void;
   /** Visual metronome (useStageLive): newest click, ours or the leader's. */
   click?: StageClickControls;
+  /** Follow the tempo (useStageLive): the leader's playhead. */
+  playhead?: StageFollowPlayhead;
 }
 
 interface StageModeProps {
@@ -272,6 +275,9 @@ export const StageMode: React.FC<StageModeProps> = ({
   const currentSong = songs[Math.max(0, current)];
   const clickUi = useStageClickUi(click, currentSong);
   const { state: clickState, running: clickRunning, hidden: clickHidden, show: showClick, press: pressClick } = clickUi;
+  // Follow the tempo (StageFollow): the switch, the strip, the lit bar / line.
+  const followSong = useMemo(() => (lyricsSong ? { ...lyricsSong, lyrics: lyricsContent.lyrics } : null), [lyricsSong, lyricsContent.lyrics]);
+  const follow = useFollowTempo({ playhead: live?.playhead, song: followSong, isLeader: !!live?.isLeader, click });
   const lyricsRef = useRef<HTMLDivElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -826,8 +832,10 @@ export const StageMode: React.FC<StageModeProps> = ({
                   off="text-white/60"
                   className="min-w-0 -ml-1 overflow-x-auto scrollbar-hide"
                 />
+                <FollowTempoSwitch follow={follow} accent={accentColor} />
                 {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
               </div>
+              <FollowStrip follow={follow} accent={accentColor} className="pb-2" />
               <PersonalLayerScope
                 song={mine}
                 stage
@@ -846,6 +854,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   songTitle={lyricsSong?.title}
                   lyrics={lyricsContent.lyrics}
                 >
+                <FollowArea follow={follow} accent={accentColor}>
                 <SongBody
                   song={lyricsContent}
                   view={songView}
@@ -855,6 +864,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   className="w-full flex flex-col gap-6 pt-1 text-white"
                   chartClassName="w-full flex flex-col gap-5 pt-1 text-white"
                 />
+                </FollowArea>
                 </VoiceAssignmentScope>
               </div>
               </TransposeProvider>
@@ -1074,6 +1084,7 @@ export const StageMode: React.FC<StageModeProps> = ({
           onStep={(d) => live?.go(d)}
           accent={accentColor}
           onShowAll={showAll}
+          follow={follow}
           click={
             click ? (
               <StageClickButton
