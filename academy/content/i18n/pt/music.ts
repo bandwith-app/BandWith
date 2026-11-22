@@ -1518,6 +1518,7 @@ const music: AreaText = {
           items: [
             "“O Bluetooth está desligado ou sem permissão. Ative-o em Ajustes para continuar sincronizado sem internet.”",
             "“Este celular tem uma setlist antiga. Conecte-se à internet uma vez para seguir por Bluetooth.” Isso aparece quando foram adicionadas ou removidas músicas depois que o celular carregou a setlist pela última vez. Só uma nova ordem não é problema.",
+            "Quando alguém sai da banda, cada show que vem ganha uma nova chave Bluetooth. Os celulares com uma versão antiga do BandWith ficam com a chave antiga e, sem internet, não encontram os outros: atualize o BandWith e depois saia e entre de novo uma vez com internet.",
           ],
         },
         {

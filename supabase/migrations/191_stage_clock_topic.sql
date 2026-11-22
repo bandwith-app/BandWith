@@ -264,8 +264,8 @@ BEGIN
   -- The gig itself going (its lineup goes with it, ON DELETE CASCADE): no row, nothing to do.
   IF EXISTS (SELECT 1 FROM public.events e WHERE e.id = OLD.event_id
               AND public.bw_stage_quote_gig(e.id, e.status::text, e.event_type::text, e.quote_id)) THEN
-    -- The band's row before the key row, as in every key change (no cycle with 190).
-    PERFORM 1 FROM public.bands b WHERE b.id = (SELECT e.band_id FROM public.events e WHERE e.id = OLD.event_id) FOR NO KEY UPDATE;
+    -- The band's advisory lock before the key row, as in every key change (see bw_stage_member_left).
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || (SELECT e.band_id FROM public.events e WHERE e.id = OLD.event_id)::text, 0));
     PERFORM public.bw_stage_new_band_key(OLD.event_id);
   END IF;
   RETURN NULL;
@@ -288,10 +288,9 @@ BEGIN
   IF NEW.band_id IS DISTINCT FROM OLD.band_id
      OR (public.bw_stage_quote_gig(NEW.id, NEW.status::text, NEW.event_type::text, NEW.quote_id)
          AND NOT public.bw_stage_quote_gig(OLD.id, OLD.status::text, OLD.event_type::text, OLD.quote_id)) THEN
-    -- The band's row before the key row (Claude on 642676fc): 190's move
-    -- trigger takes the same row next, and 190's pair storing takes it before
-    -- its key row.
-    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
+    -- The band's advisory lock before the key row (see bw_stage_member_left):
+    -- 190's move trigger takes the same one next.
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     PERFORM public.bw_stage_new_band_key(NEW.id);
   END IF;
   RETURN NULL;
@@ -368,16 +367,20 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  -- The band's row first, before any key row: 190's bw_stage_set_signer
-  -- takes it (for share) before the gig's key row, so an admin leaving while
-  -- another stores a key pair waits instead of deadlocking (190's own
-  -- trigger takes the same row next; a second lock in one transaction is free).
-  PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
+  -- Before any key row changes, the band's advisory lock (exclusive). 190's
+  -- bw_stage_set_signer takes it shared before the gig's key row, so an admin
+  -- leaving while another stores a key pair waits instead of deadlocking
+  -- (190's own trigger takes it next; a second take in one transaction is
+  -- free). Not the band's row (Claude round 8): a band being deleted holds
+  -- that row and then cascades into the rows these triggers fire on, so a
+  -- trigger waiting for it while holding one of them is a cycle. No delete
+  -- takes the advisory lock. Taken only when keys change.
   IF COALESCE(OLD.is_active, true)
      AND (TG_OP = 'DELETE'
           OR NOT COALESCE(NEW.is_active, true)
           OR NEW.band_id IS DISTINCT FROM OLD.band_id
           OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     PERFORM public.bw_stage_new_band_key(e.id)
        FROM public.events e
        JOIN public.stage_keys s ON s.event_id = e.id
@@ -385,6 +388,7 @@ BEGIN
         AND public.bw_stage_gig_coming(coalesce(e.event_date, e."date"), e.is_recurring, e.recurrence_rule);
   ELSIF TG_OP = 'UPDATE' AND COALESCE(OLD.is_active, true)
         AND OLD.role = 'admin' AND NEW.role IS DISTINCT FROM 'admin' THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     PERFORM public.bw_stage_new_band_key(e.id)
        FROM public.events e
        JOIN public.stage_keys s ON s.event_id = e.id

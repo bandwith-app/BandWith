@@ -70,13 +70,18 @@ const native = vi.hoisted(() => ({
 }));
 
 /** What the server hands out now (null: no key yet, a first fetch still on its way). */
-const server = vi.hoisted(() => ({ key: null as string | null, asks: 0 }));
+const server = vi.hoisted(() => ({ key: null as string | null, asks: 0, denied: false }));
 vi.mock('@/lib/stageBleNative', () => ({
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => {
     server.asks++;
-    return server.key;
+    return server.denied ? null : server.key;
+  },
+  // The server's no (this account may no longer see the gig): no key, and nothing kept.
+  fetchStageKey: async () => {
+    server.asks++;
+    return server.denied ? { key: null, denied: true } : { key: server.key, denied: false };
   },
   STAGE_KEY_EVENT: 'bw:stage-key',
 }));
@@ -90,7 +95,7 @@ const announce = (eventId = 'gig') => window.dispatchEvent(new CustomEvent('bw:s
 
 beforeEach(() => {
   Object.assign(env, { platform: 'ios', initError: null, enabled: true, startState: 'on', stateCb: null, resumeCb: null });
-  Object.assign(server, { key: KEY, asks: 0 });
+  Object.assign(server, { key: KEY, asks: 0, denied: false });
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
@@ -139,6 +144,46 @@ describe('useStageBle: a band key changed while Stage is open (191; Codex + Clau
     server.key = KEY;
     await vi.advanceTimersByTimeAsync(6000);
     await waitFor(() => expect(result.current.status).toBe('leading'));
+    unmount();
+  });
+
+  it("removed from the band: the server's no stops the leader at once, it doesn't serve the old key until a later check (Claude round 8 on #283)", async () => {
+    const { result, unmount } = render(true);
+    await waitFor(() => expect(result.current.status).toBe('leading'));
+    server.denied = true;
+    act(() => announce());
+    await waitFor(() => expect(native.stop).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.status).toBe('off'));
+    await vi.advanceTimersByTimeAsync(KEY_RECHECK_MS * 2);
+    expect(native.start).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("removed from the band: the server's no stops a member's search at once (Claude round 8 on #283)", async () => {
+    const { result, unmount } = render(false);
+    await waitFor(() => expect(result.current.status).toBe('searching'));
+    server.denied = true;
+    act(() => announce());
+    await waitFor(() => expect(ble.stopLEScan).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.status).toBe('off'));
+    const scans = ble.requestLEScan.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(KEY_RECHECK_MS * 2);
+    expect(ble.requestLEScan.mock.calls.length).toBe(scans);
+    unmount();
+  });
+
+  it("Bluetooth turned off and on after the server's no: the member's search never starts again with the key it had (Claude round 8 on #283)", async () => {
+    const { result, unmount } = render(false);
+    await waitFor(() => expect(result.current.status).toBe('searching'));
+    const radio = (ble.startEnabledNotifications.mock.calls[0] as unknown as [(on: boolean) => void])[0];
+    server.denied = true;
+    act(() => radio(false));
+    await waitFor(() => expect(result.current.status).toBe('bt-off'));
+    const scans = ble.requestLEScan.mock.calls.length;
+    act(() => radio(true));
+    // Real time: the service id is a WebCrypto digest.
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(ble.requestLEScan.mock.calls.length).toBe(scans);
     unmount();
   });
 

@@ -80,6 +80,7 @@ vi.mock('@/lib/stageBleNative', () => ({
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
+  fetchStageKey: async () => ({ key: KEY, denied: false }),
 }));
 
 const { useStageBle } = await import('../useStageBle');

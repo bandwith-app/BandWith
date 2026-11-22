@@ -1518,6 +1518,7 @@ const music: AreaText = {
           items: [
             "“Il Bluetooth è spento o non consentito. Attivalo in Impostazioni per restare sincronizzato senza internet.”",
             "“Questo telefono ha una scaletta vecchia. Collegati a internet una volta per seguire via Bluetooth.” Compare quando sono stati aggiunti o tolti brani dopo l’ultima volta che il telefono ha caricato la scaletta. Un nuovo ordine da solo va bene.",
+            "Quando qualcuno lascia la band, ogni gig in arrivo riceve una nuova chiave Bluetooth. I telefoni con una versione vecchia di BandWith tengono la chiave vecchia e senza internet non trovano gli altri: aggiorna BandWith, poi esci e rientra una volta mentre sei online.",
           ],
         },
         {

@@ -372,6 +372,21 @@ INSERT INTO stage_keys (event_id, key) SELECT unnest(ARRAY['${TONIGHT}','${SERIE
     await db.exec('ROLLBACK').catch(() => {});
   }
   ok(!threw && (await kOf(SERIES)) !== before, `Realtime down: the member still leaves and the key still changes${threw ? ` (error: ${threw})` : ''}`);
+
+  // The band's advisory lock, never its row (Claude round 8): a band being deleted (its row, then
+  // the cascade into these rows) can't deadlock with a trigger. Taken only when keys change.
+  const advisoryHeld = async (stmt) => {
+    await db.exec('BEGIN');
+    try {
+      await db.exec(stmt);
+      return (await db.query(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ExclusiveLock' AND granted`)).rows[0].n;
+    } finally {
+      await db.exec('ROLLBACK');
+    }
+  };
+  await db.exec(`INSERT INTO auth.users (id) VALUES ('${id(58)}'); INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B3}','${id(58)}','member',true)`);
+  ok((await advisoryHeld(`UPDATE band_members SET is_active = false WHERE user_id = '${id(58)}'`)) === 1, "a member leaving takes the band's advisory lock (exclusive) before keys change");
+  ok((await advisoryHeld(`UPDATE band_members SET role = 'member' WHERE user_id = '${id(58)}'`)) === 0, 'a role touched with nobody leaving takes no lock (Claude round 8)');
 }
 
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.
