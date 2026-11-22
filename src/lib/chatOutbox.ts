@@ -36,7 +36,8 @@ export interface ChatOutboxItem {
 export interface ChatOutboxResult {
   userId: string;
   sent: { chatId: string; clientId: string; message: Message }[];
-  refused: { chatId: string; clientId: string; reason: string }[];
+  /** `denied`: a rule or 42501 said this account may not write here (the chat locks). */
+  refused: { chatId: string; clientId: string; reason: string; denied: boolean }[];
 }
 export const CHAT_OUTBOX_EVENT = 'bw:chat-outbox';
 
@@ -91,6 +92,12 @@ export function isRefusal(error: unknown): boolean {
   return code === 'PGRST116' || code.startsWith('42') || code.startsWith('23') || code === '22P02';
 }
 
+/** The server said this account may not write in the chat (a rule, or 42501). */
+export function isDenied(error: unknown): boolean {
+  if (!error || isOfflineError(error)) return false;
+  return chatErrorMessage(error, '') !== '' || String((error as { code?: unknown }).code ?? '') === '42501';
+}
+
 let lock: Promise<unknown> = Promise.resolve();
 
 const sameUser = (a: string | null | undefined, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
@@ -100,6 +107,50 @@ const signedInId = async (): Promise<string | null> => {
   } catch {
     return null;
   }
+};
+
+/** True only when <uid> is the account signed in now (no answer: false). */
+export async function isSignedInAs(uid: string | null | undefined): Promise<boolean> {
+  return !!uid && sameUser(await signedInId(), uid);
+}
+
+// Sends from the chat on screen (the composer, Try again): a flush waits
+// for them, so a waiting message never goes out alongside one being sent
+// (Claude #291 r5). Capped, so a send that never answers can't hold the
+// queue forever.
+let sendsInFlight = 0;
+let idleWaiters: (() => void)[] = [];
+export const CHAT_SEND_WAIT_MS = 20_000;
+
+/** A send from the chat on screen starts; call the result when it ends. */
+export function beginChatSend(): () => void {
+  sendsInFlight += 1;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    sendsInFlight -= 1;
+    if (sendsInFlight === 0) {
+      const waiting = idleWaiters;
+      idleWaiters = [];
+      waiting.forEach((wake) => wake());
+    }
+  };
+}
+
+const sendsDone = (): Promise<void> => {
+  if (sendsInFlight === 0) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      idleWaiters = idleWaiters.filter((w) => w !== wake);
+      resolve();
+    }, CHAT_SEND_WAIT_MS);
+    const wake = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    idleWaiters.push(wake);
+  });
 };
 
 /**
@@ -122,6 +173,7 @@ export function flushChatOutbox(
       .filter((x) => x.refused === undefined && (!opts.chatId || x.chatId === opts.chatId))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
     for (const item of waiting) {
+      await sendsDone();
       if (typeof navigator !== 'undefined' && !navigator.onLine) break;
       // Never as someone else (another account signed in on this device).
       if (!sameUser(await current(), uid)) break;
@@ -135,7 +187,7 @@ export function flushChatOutbox(
       } else if (isRefusal(error)) {
         const reason = chatErrorMessage(error, '');
         putChatOutbox(uid, { ...item, refused: reason });
-        result.refused.push({ chatId: item.chatId, clientId: item.clientId, reason });
+        result.refused.push({ chatId: item.chatId, clientId: item.clientId, reason, denied: isDenied(error) });
       } else {
         break;
       }

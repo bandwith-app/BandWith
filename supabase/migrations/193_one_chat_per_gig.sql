@@ -96,6 +96,10 @@ GRANT EXECUTE ON FUNCTION public.bw_chat_joinable_rule(text, uuid, uuid, uuid) T
 -- For the app and the read policy: about yourself, or (band admins) about
 -- someone in your band. Anyone else asking about someone else gets false
 -- (Claude review #291 r4: it told a member who may join which gig chat).
+-- The admin gate is tied to the key the rule checks (Claude r5): a band
+-- chat, admin of that band; a gig chat, admin of the gig's band, and a
+-- p_band_id given must be that band (an admin of band A asking about a gig
+-- of band B got an answer).
 CREATE OR REPLACE FUNCTION public.bw_chat_joinable(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -104,9 +108,12 @@ SET search_path TO 'public'
 AS $$
   SELECT (auth.uid() IS NULL
           OR p_user_id = auth.uid()
-          OR (p_band_id IS NOT NULL AND public.bw_is_band_admin(p_band_id, auth.uid()))
-          OR coalesce((SELECT e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, auth.uid())
-                         FROM events e WHERE e.id = p_event_id), false))
+          OR (p_type = 'band' AND p_band_id IS NOT NULL AND public.bw_is_band_admin(p_band_id, auth.uid()))
+          OR (p_type = 'event' AND coalesce((
+                SELECT e.band_id IS NOT NULL
+                       AND public.bw_is_band_admin(e.band_id, auth.uid())
+                       AND (p_band_id IS NULL OR p_band_id = e.band_id)
+                  FROM events e WHERE e.id = p_event_id), false)))
      AND public.bw_chat_joinable_rule(p_type, p_band_id, p_event_id, p_user_id);
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_joinable(text, uuid, uuid, uuid) FROM PUBLIC, anon;

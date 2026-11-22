@@ -9,6 +9,8 @@ const rt = vi.hoisted(() => ({
 // What every direct supabase query in the modal resolves to (band checks).
 const sb = vi.hoisted(() => ({ result: { data: null, error: null } as { data: unknown; error: unknown } }));
 const rule = vi.hoisted(() => ({ Err: class ChatRuleError extends Error {} }));
+// Who the session says is signed in (getSafeUser).
+const who = vi.hoisted(() => ({ id: 'me' as string | null }));
 const svc = vi.hoisted(() => ({
   getMessages: vi.fn(),
   getChat: vi.fn(),
@@ -43,7 +45,7 @@ vi.mock('@/lib/supabase', () => {
     },
     apply: () => b,
   });
-  return { supabase: new Proxy({}, { get: () => () => b }), getSafeUser: async () => ({ data: { user: { id: 'me' } } }) };
+  return { supabase: new Proxy({}, { get: () => () => b }), getSafeUser: async () => ({ data: { user: who.id ? { id: who.id } : null } }) };
 });
 vi.mock('@/lib/services/notifications', () => ({ markChatNotificationsAsRead: vi.fn() }));
 vi.mock('@/lib/services/activeChatTracker', () => ({ setActiveChat: vi.fn() }));
@@ -96,6 +98,7 @@ beforeEach(() => {
   svc.sendMessage.mockReset().mockResolvedValue({ data: null, error: null });
   scrollSpy.mockReset();
   sb.result = { data: null, error: null };
+  who.id = 'me';
   try { localStorage.clear(); } catch { /* none */ }
   rt.onMessage = null;
   rt.opts = null;
@@ -667,5 +670,84 @@ describe('ChatDetailModal offline: who may write', () => {
     await act(async () => { land({ data: saved, error: null }); });
     await settle();
     expect(screen.getAllByText('See you at 8')).toHaveLength(1);
+  });
+  // Claude #291 r5 (2): never sent as someone else.
+  it('another account signed in meanwhile: nothing is sent, the message waits for its writer', async () => {
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    who.id = 'someone-else';
+    fireEvent.change(composer()!, { target: { value: 'Set list is final' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(svc.sendMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+    const { readChatOutbox } = await import('@/lib/chatOutbox');
+    expect(readChatOutbox('me').map((x) => x.body)).toEqual(['Set list is final']);
+    expect(readChatOutbox('someone-else')).toEqual([]);
+  });
+
+  // Claude #291 r5 (4): the server's no at send time locks the chat.
+  it('a send the rule refuses locks the composer and keeps the no', async () => {
+    const { readChatPermission } = await import('@/lib/chatPermission');
+    bandChat();
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Err(bandRule) });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Can I still post?' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getAllByText(bandRule).length).toBeGreaterThan(0);
+    expect(await readChatPermission('me', 'c1')).toEqual({ permitted: false, reason: bandRule });
+  });
+
+  it('a send refused by the database (42501) locks the composer too', async () => {
+    const { readChatPermission } = await import('@/lib/chatPermission');
+    bandChat();
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'new row violates row-level security policy' } });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Hello?' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText('You no longer have access to this chat.')).toBeTruthy();
+    expect(await readChatPermission('me', 'c1')).toEqual({ permitted: false, reason: 'You no longer have access to this chat.' });
+  });
+
+  it('a waiting message refused when the network is back locks the chat', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Soundcheck at 6' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Err(bandRule) });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText('Not sent')).toBeTruthy();
+  });
+
+  it('the channel joins again: permission is asked again and a new no locks the chat', async () => {
+    bandChat();
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await settle();
+    expect(composer()).toBeTruthy();
+    // Dropped from the band while the connection was down.
+    sb.result = { data: null, error: null };
+    await act(async () => { rt.opts?.onStatus?.('CHANNEL_ERROR'); });
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText(bandRule)).toBeTruthy();
   });
 });

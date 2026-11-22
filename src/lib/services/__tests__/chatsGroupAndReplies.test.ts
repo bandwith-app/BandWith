@@ -181,6 +181,9 @@ describe('sending with a client id', () => {
     expect(up?.[1]).toMatchObject({ client_id: 'cid-1', content: 'see you at 8' });
     expect(up?.[2]).toEqual({ onConflict: 'sender_id,client_id', ignoreDuplicates: true });
     expect(messageChains().some((c) => c.calls.some(([m]) => m === 'insert'))).toBe(false);
+    // Claude r5: the copy read back is this chat's.
+    const back = messageChains().find((c) => c.calls.some(([m, col]) => m === 'eq' && col === 'client_id'));
+    expect(back?.calls).toContainEqual(['eq', 'chat_id', 'dm']);
   });
 
   it('a database without the column: a plain insert, as before', async () => {

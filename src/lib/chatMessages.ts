@@ -16,13 +16,17 @@ export const normalizeChatType = (type: string | null | undefined): ChatKind | n
 const isTemp = (m: Message) => m.id.startsWith('temp-');
 
 /**
- * The server row of a bubble on this device: same client id, never the same
- * text (Codex #291 r4 B4: a second "OK" that answers something else is not
- * the first one delivered). A row without one (an older build, a database
- * before 192) confirms nothing.
+ * The server row of a bubble on this device. Both have a client id: the same
+ * one (Codex #291 r4 B4: a second "OK" that answers something else is not
+ * the first one delivered). A row without one (a database before 192) only
+ * stands in for a bubble still being sent, by sender and text (Claude r5),
+ * and never confirms a bubble that failed or waits (queued).
  */
-export const isServerCopyOf = (row: Message, bubble: Message): boolean =>
-  !!row.client_id && !!bubble.client_id && row.client_id === bubble.client_id;
+export const isServerCopyOf = (row: Message, bubble: Message): boolean => {
+  if (row.client_id && bubble.client_id) return row.client_id === bubble.client_id;
+  if (row.client_id || bubble.failed || bubble.queued) return false;
+  return row.sender_id === bubble.sender_id && row.content === bubble.content;
+};
 
 const sameMessage = (a: Message, b: Message) =>
   a.id === b.id &&

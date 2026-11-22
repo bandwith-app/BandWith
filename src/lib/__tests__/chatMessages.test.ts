@@ -112,6 +112,17 @@ describe('appendIncoming (realtime)', () => {
     expect(ids(page)).toEqual(['m0', 'm2', 'temp-b']);
   });
 
+  // Claude r5: a database before 192 has no client ids; a bubble still
+  // being sent is matched by text there (never a failed or waiting one).
+  it('a row without a client id still stands in for a bubble being sent', () => {
+    const sending = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const legacy = msg(1, { content: 'hi', sender_id: 'me' });
+    expect(ids(appendIncoming([msg(0), sending], legacy))).toEqual(['m0', 'm1']);
+    expect(ids(mergeLatestPage([msg(0), sending], [msg(0), legacy]))).toEqual(['m0', 'temp-1']);
+    // ...but not one with another client id.
+    expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-2' }))).toEqual(['m0', 'm1', 'temp-1']);
+  });
+
   it('a row with the same text and no client id confirms nothing waiting', () => {
     const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
     const legacy = msg(1, { content: 'OK', sender_id: 'me' });

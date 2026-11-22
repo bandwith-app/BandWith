@@ -1090,6 +1090,7 @@ export const sendMessage = async (
         ({ data, error } = await supabase
           .from('messages')
           .select('*')
+          .eq('chat_id', chatId)
           .eq('sender_id', user.id)
           .eq('client_id', clientId)
           .maybeSingle());

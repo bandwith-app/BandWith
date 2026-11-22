@@ -405,6 +405,22 @@ ok(!r.error && r.rows[0].j === true, `the band's admin may ask about a member ($
 r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${EX}') AS j`);
 ok(!r.error && r.rows[0].j === false, `and gets the real answer (${r.error ?? r.rows[0].j})`);
 
+// Claude review #291 r5: the admin gate goes with the key the rule checks.
+// An admin of band A asking about a gig of band B (naming band A) or about
+// band B's chat gets no answer.
+const GIG3 = id(32);
+await db.exec(`INSERT INTO events (id, band_id, title, created_by) VALUES ('${GIG3}','${OTHERBAND}','Queens Gala','${MEM}');
+  INSERT INTO event_members VALUES ('${GIG3}','${LINE}','confirmed');`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG3}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === false, `an admin of band A asking about band B's gig (as band A) is refused (${r.error ?? r.rows[0].j})`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', NULL, '${GIG3}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === false, `nor without a band (${r.error ?? r.rows[0].j})`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('band', '${OTHERBAND}', NULL, '${MEM}') AS j`);
+ok(!r.error && r.rows[0].j === false, `nor about band B's chat (${r.error ?? r.rows[0].j})`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', NULL, '${GIG}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === true, `their own band's gig, without a band: still answered (${r.error ?? r.rows[0].j})`);
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG3}'; DELETE FROM events WHERE id = '${GIG3}';`);
+
 // Not on the lineup, not an admin: cannot see or open it.
 r = await as(MEM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);
 ok(r.rows.length === 0, `a member outside the lineup cannot see the gig chat (${r.rows.length})`);
