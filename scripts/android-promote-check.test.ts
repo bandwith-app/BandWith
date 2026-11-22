@@ -24,10 +24,11 @@ const { process } = globalThis as unknown as { process: { cwd(): string; env: Re
 const SCRIPT = `${process.cwd()}/scripts/android-promote-check.sh`;
 const at = (iso: string) => String(Math.floor(Date.parse(iso) / 1000));
 
-/** Release lines as gh --jq prints them: tag, prerelease, draft, published, recorded code. */
+/** Releases as [tag, prerelease, draft, published, recorded code, has BandWith.apk (default true)], printed in gh --jq's order (…, apk, code). */
 const check = (lines: string[][], args: string[], ghExit = 0) => {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/fake-gh-`);
-  fs.writeFileSync(`${dir}/out.tsv`, lines.map((l) => l.join('\t')).join('\n') + '\n');
+  const withApk = lines.map((l) => [...l.slice(0, 4), l[5] ?? 'true', l[4]]);
+  fs.writeFileSync(`${dir}/out.tsv`, withApk.map((l) => l.join('\t')).join('\n') + '\n');
   fs.writeFileSync(
     `${dir}/gh`,
     `#!/usr/bin/env bash\n[ ${ghExit} -eq 0 ] || { echo "HTTP 401: Bad credentials" >&2; exit ${ghExit}; }\ncat "${dir}/out.tsv"\n`,
@@ -102,5 +103,26 @@ describe('promote check, round 6 (review #278)', () => {
   it('an old release without a recorded code counts with its minute-based code', () => {
     const sh = fs.readFileSync(`${process.cwd()}/scripts/android-promote-check.sh`, 'utf8');
     expect(sh).toMatch(/android-version-code\.sh" --minute-based "\$published"/);
+  });
+});
+
+describe('promote check, Codex round (review #278)', () => {
+  it('refuses a prerelease without its BandWith.apk (withdrawn or never uploaded)', () => {
+    const r = check([[...pilot, 'false'], stable13], ['1.0.14']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/no BandWith\.apk/);
+    expect(r.stdout).toBe('');
+  });
+
+  it('reads the assets from GitHub, not only the notes', () => {
+    const sh = fs.readFileSync(`${process.cwd()}/scripts/android-promote-check.sh`, 'utf8');
+    expect(sh).toMatch(/\.assets/);
+    expect(sh).toMatch(/BandWith\.apk/);
+  });
+
+  it('a withdrawn stable release still counts: phones may have installed it', () => {
+    const withdrawn = ['android-v1.0.14.1', 'false', 'false', at('2026-11-24T09:00:00Z'), '41001401', 'false'];
+    const next = ['android-v1.0.15', 'true', 'false', at('2026-11-25T09:00:00Z'), '41001400', 'true'];
+    expect(check([next, withdrawn, stable13], ['1.0.15']).status).toBe(1);
   });
 });

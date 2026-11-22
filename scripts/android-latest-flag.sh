@@ -13,20 +13,39 @@
 # closed: any answer other than a tag or "release not found" (network, auth,
 # rate limit) stops with an error instead of guessing.
 #   scripts/android-latest-flag.sh --fix-latest
-#   → after a stable release went out: if "latest" is not on the highest stable
-#     version (two publishers read the same latest before either published),
-#     moves it there. Prints the tag that is latest afterwards. Fails closed.
+#   → after a stable release went out, or after a rollback: if "latest" is not
+#     on the highest stable version that is not withdrawn (its BandWith.apk
+#     asset is there), moves it there. Two publishers may have read the same
+#     latest before either published; a rollback makes the bad release a
+#     prerelease and removes its APK. Prints the tag that is latest afterwards.
+#     Fails closed.
 set -euo pipefail
 if [ "${1:-}" = "--fix-latest" ]; then
   REPO=bandwith-app/BandWith
-  TAGS="$("${GH:-gh}" release list --repo "$REPO" --exclude-pre-releases --exclude-drafts --limit 1000 --json tagName -q '.[].tagName')"
-  TOP="$(printf '%s\n' "$TAGS" | grep -E '^android-v[0-9]+(\.[0-9]+){1,3}$' | sed 's/^android-v//' | sort -V | tail -1)"
-  [ -n "$TOP" ] || { echo "No stable Android release found." >&2; exit 1; }
+  ERR="$(mktemp)"
+  trap 'rm -f "$ERR"' EXIT
+  # One line per release: tag, prerelease, draft, has a BandWith.apk asset.
+  JQ='.[] | select(.tag_name | startswith("android-v")) | [.tag_name, (.prerelease|tostring), (.draft|tostring), ([.assets[]?.name] | index("BandWith.apk") != null | tostring)] | @tsv'
+  if ! ROWS="$("${GH:-gh}" api --paginate "repos/$REPO/releases?per_page=100" --jq "$JQ" 2>"$ERR")"; then
+    echo "Could not read the releases (not moving latest on a guess): $(cat "$ERR")" >&2
+    exit 1
+  fi
+  # The highest stable release that is not withdrawn (its BandWith.apk is there).
+  TOP="$(printf '%s\n' "$ROWS" | awk -F '\t' '$2 == "false" && $3 == "false" && $4 == "true" { print $1 }' \
+    | grep -E '^android-v[0-9]+(\.[0-9]+){1,3}$' | sed 's/^android-v//' | sort -V | tail -1 || true)"
+  [ -n "$TOP" ] || { echo "No stable Android release with its BandWith.apk found." >&2; exit 1; }
   TOP="android-v$TOP"
-  CUR="$("${GH:-gh}" release view --repo "$REPO" --json tagName -q .tagName)"
+  if CUR="$("${GH:-gh}" release view --repo "$REPO" --json tagName -q .tagName 2>"$ERR")"; then
+    :
+  elif grep -qi 'release not found' "$ERR"; then
+    CUR="" # no latest at all (the last one was made a prerelease)
+  else
+    echo "Could not read the current latest release (not moving latest on a guess): $(cat "$ERR")" >&2
+    exit 1
+  fi
   if [ "$CUR" != "$TOP" ]; then
     "${GH:-gh}" release edit "$TOP" --repo "$REPO" --latest >/dev/null
-    echo "Latest moved from $CUR to $TOP." >&2
+    echo "Latest moved from ${CUR:-none} to $TOP." >&2
   fi
   echo "$TOP"
   exit 0

@@ -20,6 +20,10 @@
 # Since codes encode the version (scripts/android-version-code.sh), a release
 # built with them always passes against an older line; the check still guards
 # the releases from before.
+# A candidate without its BandWith.apk asset is refused: it was withdrawn (the
+# rollback in docs/release-checklist.md deletes or renames the asset) or never
+# uploaded, so the fixed link would have nothing to serve. A withdrawn stable
+# release still counts for the code check: phones may have installed it.
 # Fails closed: no answer from GitHub (network, auth) means no promotion.
 set -euo pipefail
 VERSION="${1:?usage: scripts/android-promote-check.sh <version> [--code <versionCode>]}"
@@ -35,24 +39,28 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 ERR="$(mktemp)"
 trap 'rm -f "$ERR"' EXIT
-# One line per release: tag, prerelease, draft, published (Unix time), recorded code.
-JQ='.[] | select(.tag_name | startswith("android-v")) | [.tag_name, (.prerelease|tostring), (.draft|tostring), ((.published_at // .created_at) | fromdateiso8601 | floor | tostring), (((.body // "") | capture("versionCode: (?<c>[0-9]+)") | .c) // "")] | @tsv'
+# One line per release: tag, prerelease, draft, published (Unix time), has a
+# BandWith.apk asset, recorded code (last: it can be empty, and read folds
+# empty fields between tabs).
+JQ='.[] | select(.tag_name | startswith("android-v")) | [.tag_name, (.prerelease|tostring), (.draft|tostring), ((.published_at // .created_at) | fromdateiso8601 | floor | tostring), ([.assets[]?.name] | index("BandWith.apk") != null | tostring), (((.body // "") | capture("versionCode: (?<c>[0-9]+)") | .c) // "")] | @tsv'
 if ! LINES="$("${GH:-gh}" api --paginate "repos/bandwith-app/BandWith/releases?per_page=100" --jq "$JQ" 2>"$ERR")"; then
   echo "Could not read the releases (not promoting on a guess): $(cat "$ERR")" >&2
   exit 1
 fi
 
 CAND_CODE=""
+CAND_APK=""
 FOUND=""
 TOP_CODE=0
 TOP_TAG=""
-while IFS=$'\t' read -r tag pre draft published code; do
+while IFS=$'\t' read -r tag pre draft published apk code; do
   [ -n "$tag" ] || continue
   [[ "$published" =~ ^[0-9]+$ ]] || { echo "Unexpected answer for $tag: '$published'" >&2; exit 1; }
   if [ "$tag" = "$TAG" ]; then
     FOUND=1
     [ "$pre" = "true" ] || { echo "$TAG is not a prerelease (already promoted?)." >&2; exit 1; }
     CAND_CODE="$code"
+    CAND_APK="$apk"
     continue
   fi
   [ "$pre" = "false" ] && [ "$draft" = "false" ] || continue
@@ -64,6 +72,10 @@ while IFS=$'\t' read -r tag pre draft published code; do
 done <<<"$LINES"
 
 [ -n "$FOUND" ] || { echo "$TAG not found among the releases." >&2; exit 1; }
+[ "$CAND_APK" = "true" ] || {
+  echo "Not promoting $TAG: it has no BandWith.apk asset (withdrawn, or never uploaded)." >&2
+  exit 1
+}
 if [ -n "$CODE_ARG" ]; then
   # --code is for a prerelease without a recorded code. With one, it must be that
   # code: a different number is another build, not the APK on the release.

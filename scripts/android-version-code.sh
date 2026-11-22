@@ -3,11 +3,14 @@
 # code always follows the version order.
 #
 #   40000000 + major·1000000 + minor·10000 + patch·100 + build
-#   1.0.14 → 41001400   1.0.13.1 → 41001301   2.3.4.5 → 42030405
+#   1.0.14 → 41001400   1.0.14.1 → 41001401   2.3.4.5 → 42030405
 #
-# - A hotfix of an older line published later (1.0.13.1 after 1.0.14) still
-#   has a LOWER code than the newer release, so phones on 1.0.14 never see a
-#   "newer" 1.0.13.1, and 1.0.14 can be promoted after it (review #278 round 6).
+# - A hotfix of an older line published later (1.0.14.1 after 1.0.15) still
+#   has a LOWER code than the newer release, so phones on 1.0.15 never see a
+#   "newer" 1.0.14.1, and 1.0.15 can be promoted after it (review #278 round 6).
+# - Nothing below 1.0.14, the first version of this scheme: a fix for 1.0.13
+#   ships as 1.0.14, never as 1.0.12.x or 1.0.13.x (those lines are minute-based
+#   and already published).
 # - minor and patch go up to 99, build 1–99, major up to 2059 (Google's limit is
 #   2100000000). A version outside that is refused, never wrapped.
 # - Above every code published before: those were minute-based (30000000 +
@@ -43,4 +46,7 @@ MINOR=${BASH_REMATCH[2]}
 PATCH=${BASH_REMATCH[3]}
 BUILD=${BASH_REMATCH[5]:-0}
 [ "$MAJOR" -le 2059 ] || { echo "Major $MAJOR is above 2059: the code would pass Google's limit." >&2; exit 1; }
-echo $((40000000 + MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+CODE=$((40000000 + MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+FLOOR=41001400 # 1.0.14
+[ "$CODE" -ge "$FLOOR" ] || { echo "Below 1.0.14: $VERSION. A fix for 1.0.13 ships as 1.0.14 (never 1.0.12.x or 1.0.13.x)." >&2; exit 1; }
+echo "$CODE"

@@ -30,11 +30,12 @@ The web app and the database reach everyone at once. That is why they get the mo
   ```
   - The `--duo-ok` run is the sign-off after checking every Duo posture.
   - `deploy-web.sh` and `release-android.sh --publish` refuse a commit without it.
-- [ ] **What is in, from the objects, never from `schema_migrations`.** On prod `supabase_migrations.schema_migrations` stops at 038: everything since was applied by hand without a row, so that table can't tell what is applied or pending. `supabase/checks/release_migrations.sql` decides each migration by an object it creates (table, column, function, policy, index, or a marker in a function body for 186 and 187). Read only, as the database owner:
+- [ ] **What is in, from the objects, never from `schema_migrations`.** On prod `supabase_migrations.schema_migrations` stops at 038: everything since was applied by hand without a row, so that table can't tell what is applied or pending. `supabase/checks/release_migrations.sql` decides each migration by an object it creates (table, column, function, policy, index) **and** a marker from the final body of its functions: several files were edited in place, so an object alone only says that some version ran. The markers were checked against every commit of each file on its branch head; the test `scripts/release-checklist.test.ts` checks each one is still in its file once the file is on `main`. A file edited again needs its marker checked again. Read only, as the database owner:
   ```sh
   npx supabase db query --remote --yes -f supabase/checks/release_migrations.sql
   ```
   Write down the answer: a row already `true` is skipped on release day.
+- [ ] **PGlite integration run on `main`, green.** A prerequisite: nothing goes to prod until it is green. With every PR of the release merged, one PGlite database loads every migration of the release, in the apply order of section 2 (173, 170, then step 4), on top of the ones already live, and runs every `supabase/tests/*.pglite.mjs` suite against it, the security suites included (each PR's suite alone only proves its own branch). Then `supabase/checks/release_migrations.sql` shows every row `true` but 177, and `supabase/checks/redefined_functions.sql` every row `ok = true`. Nothing goes to prod until it is green: a red suite is fixed on `main` first, and the run starts again.
 - [ ] **Never `supabase db push`, `supabase migration list` or `supabase migration repair` against prod.** They read `schema_migrations` and would try to apply 039 onwards again.
 - [ ] **170 is not applied anywhere yet**: its row is `false`. 170 was edited in place on 11-22, so a copy applied before that is the old version (`live_pack_status` without `partial`). Check **every** database it will go to, prod and any dev, local or branch database too, with the same file, and:
   ```sql
@@ -109,6 +110,7 @@ Do it in this order, so every build in use keeps working at every step:
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
    - **Before each**, its row in `supabase/checks/release_migrations.sql` is `false`; **after it**, `true`. Run the file again after every one: that is the record of what is in (no `schema_migrations` row is added: the table is incomplete before 039 and nothing reads it).
+   - **After the last one** (197): run `supabase/checks/redefined_functions.sql` (read only, as the database owner). It lists each function that more than one of the release's migrations defines, with the migration whose body must be live (the last in this order), and needs every row `ok = true`. A `false` row means an earlier body is live: stop, and apply that function's definition from the final migration's file again.
    - 174 schedules one pg_cron job, `bw-prune-client-errors` (hourly, minute 7). Check it shows in `cron.job`.
    - **live_pack stays off until stage 3**, when the new builds reach everyone (see there). While it is off, nobody gets invites or new packs. The trade-off for stages 1 and 2: `app_flags` is global, there is no per-band switch for it. To try the live pack on two phones, the owner turns it on for a short test window and off again after; every band with automatic packs gets invites during that window. A per-band switch would need a follow-up change.
 3. **Builds for stage 1**
@@ -143,7 +145,7 @@ Do it in this order, so every build in use keeps working at every step:
 ### Stage 3 · Everyone
 
 1. **Android**: promote the prerelease. From now on the in-app update offers it, and the latest link serves it.
-   - **Only an APK whose versionCode is above every published release** (Android won't go to a lower code, and the in-app updater needs a higher one). The code encodes the version (`scripts/android-version-code.sh`: 1.0.14 → 41001400, 1.0.13.1 → 41001301), so a hotfix of an older line published during the pilot stays below 1.0.14 and doesn't block it. Releases from before (up to 1.0.13) had minute-based codes, all below 40000000. `scripts/android-promote-check.sh` checks it against the code recorded in each release's notes (it fails closed: no answer from GitHub, no promotion). If it ever fails, don't promote: release a new version and pilot that.
+   - **Only an APK whose versionCode is above every published release** (Android won't go to a lower code, and the in-app updater needs a higher one). The code encodes the version (`scripts/android-version-code.sh`: 1.0.14 → 41001400, 1.0.14.1 → 41001401), so a hotfix of an older line published during the pilot (1.0.14.1 while 1.0.15 is piloted) stays below the pilot and doesn't block it. Releases from before (up to 1.0.13) had minute-based codes, all below 40000000. Nothing below 1.0.14 can be built: a fix for 1.0.13 is released as 1.0.14, never as 1.0.12.x or 1.0.13.x. A prerelease whose `BandWith.apk` was removed (withdrawn) can't be promoted. `scripts/android-promote-check.sh` checks it against the code recorded in each release's notes (it fails closed: no answer from GitHub, no promotion). If it ever fails, don't promote: release a new version and pilot that.
    - Mark it **Latest only if it is the highest version** released, so a hotfix of an older line never takes the latest link. `scripts/android-latest-flag.sh --lookup` picks `--latest` or `--latest=false`, and stops if it can't read the current latest (network, auth), instead of guessing "first release".
    - **One publisher at a time.** Two people publishing or promoting Android releases at once can both read the same "latest" and leave it on the lower version. Agree who publishes; after any stable release or promotion, `scripts/android-latest-flag.sh --fix-latest` puts "latest" back on the highest stable version (`release-android.sh --publish` runs it by itself).
    - All in one command (`release-android.sh --publish --prerelease` prints it):
@@ -226,16 +228,17 @@ npx vercel@latest rollback <previous-production-url> --yes
 
 An installed APK can't be downgraded: the version code only goes up. So:
 
-1. Hide the bad release from the updater and the latest link at once. The previous release becomes "latest" again:
+1. Hide the bad release from the updater and the latest link at once, then let the script put "latest" on the highest stable release that is not withdrawn (its `BandWith.apk` is there), never on a version typed by hand:
    ```sh
    gh release edit android-v1.0.14 --repo bandwith-app/BandWith --prerelease --latest=false
-   gh release edit android-v1.0.13 --repo bandwith-app/BandWith --latest
+   scripts/android-latest-flag.sh --fix-latest
    ```
+   It prints the release that is latest afterwards: check it is the one before the bad release.
 2. Remove the bad APK itself. A prerelease's direct link (`…/download/android-v1.0.14/BandWith.apk`) keeps working, and testers have it. Delete the asset, or rename it so the old link stops:
    ```sh
    gh release delete-asset android-v1.0.14 BandWith.apk --repo bandwith-app/BandWith --yes
    ```
-   To keep the file for debugging, download it first (`gh release download android-v1.0.14 --repo bandwith-app/BandWith`) and upload it again under another name, e.g. `BandWith-withdrawn.apk`.
+   To keep the file for debugging, download it first (`gh release download android-v1.0.14 --repo bandwith-app/BandWith`) and upload it again under another name, e.g. `BandWith-withdrawn.apk`. A release without `BandWith.apk` counts as withdrawn: `--fix-latest` skips it and `scripts/android-promote-check.sh` refuses it. Run `scripts/android-latest-flag.sh --fix-latest` again after this step.
 3. **The in-app updater caches the newest release for 6 hours** (`src/lib/androidUpdate.ts`). A phone that checked just before can still offer the bad version for up to 6 hours. With the asset gone, its download fails instead of installing. Tell testers not to update until the fix is out.
 4. Turn off the feature's flag if there is one.
 5. Ship a **new version** (1.0.15) with the fix, or with the revert, through the stages.
@@ -314,7 +317,7 @@ Code that stays only for older builds. Remove it once `min_version` (section 4) 
 
 - **177, quotes bucket private.** Not applied in the release that brought it: builds before it share the quote PDF's public storage URL (WhatsApp, email, copied text), and those links stop opening once the bucket is private. Apply it only when both hold:
   - `min_version` (section 4) is raised past every build that shares public URLs, on every platform, so nobody can still send one;
-  - a read-only check shows no live link relies on a public URL: no quote link still open (not expired, not answered) was sent with a `…/storage/v1/object/public/quotes/…` URL. Re-send those from the app first ("Re-send the quote from the app to get a fresh link.").
+  - the read-only query in the header of `supabase/migrations/177_quotes_bucket_private.sql` (#281), run right before applying, returns no rows, where `:t` is the moment `min_version` passed every build that shares public URLs: no live quote link (not revoked, not expired), of every status, drafts included, was created or shared before `:t`. Expired is the client page's rule (not accepted, and its `validUntil` more than a day ago); a link republished later with a new date is live again, hence right before. Stored `pdf_url` values keep the public format (they only locate the file for the gate), so they can't be the test. One live link left means wait, or revoke it, or re-send it from the app ("Re-send the quote from the app to get a fresh link."), then run the query again.
 
   Then, as the database owner: apply 177, check its row in `supabase/checks/release_migrations.sql` is `true`, and open a quote link made by the current app. Release notes line for admins still on an old build: "Update the app to share quote PDFs."
   - **Never roll the web back past 177** once it is in: a web build from before shares public PDF URLs, which don't open any more. Roll back only to a deployment that shares private links. If that isn't enough, fix forward: deploy a fix on top. The bucket stays private: don't make it public again.

@@ -6,7 +6,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
-const fs = (await import(/* @vite-ignore */ 'node:fs')) as { readFileSync: (p: string, e: 'utf8') => string };
+const fs = (await import(/* @vite-ignore */ 'node:fs')) as {
+  readFileSync: (p: string, e: 'utf8') => string;
+  readdirSync: (p: string) => string[];
+};
 const { process } = globalThis as unknown as { process: { cwd(): string } };
 const read = (p: string) => fs.readFileSync(`${process.cwd()}/${p}`, 'utf8');
 const checklist = read('docs/release-checklist.md');
@@ -25,7 +28,7 @@ const sunset = section(/^### Sunset list/m, /^## |(?![\s\S])/m);
 
 describe('release migrations: checked by their objects', () => {
   it('the check file has a row for every migration of the release order', () => {
-    const rows = [...checkSql.matchAll(/\('(\d{3})',/g)].map((m) => m[1]);
+    const rows = [...checkSql.matchAll(/^\s*\('(\d{3})', (?!')/gm)].map((m) => m[1]);
     // docs/release-checklist.md step 2 (no 179), and 177 (sunset list, expected false).
     const order = ['170', '171', '172', '173', '174', '175', '176', '177', '178', '180', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191', '192', '193', '194', '195', '196', '197'];
     for (const n of order) expect(rows, n).toContain(n);
@@ -68,7 +71,8 @@ describe('release checklist, round 6 (review #278)', () => {
   });
 
   it('the Android code encodes the version (no minute-based codes for new releases)', () => {
-    expect(checklist).toMatch(/1\.0\.14 → 41001400, 1\.0\.13\.1 → 41001301/);
+    expect(checklist).toMatch(/1\.0\.14 → 41001400, 1\.0\.14\.1 → 41001401/);
+    expect(checklist).toMatch(/never as 1\.0\.12\.x or 1\.0\.13\.x/);
     expect(checklist).not.toMatch(/The code is minute-based/);
   });
 
@@ -103,15 +107,13 @@ describe('release order with 192–197, 177 out of this release (main, 11-22)', 
     expect(stage3).not.toMatch(/177/);
     expect(sunset).toMatch(/177/);
     expect(sunset).toMatch(/min_version/);
-    expect(sunset).toMatch(/no live link relies on a public/);
     expect(sunset).toMatch(/Update the app to share quote PDFs\./);
     expect(checklist.split('## 6')[0]).not.toMatch(/Update the app to share quote PDFs/);
   });
 
   it('each new migration has its proof row', () => {
-    expect(checkSql).toMatch(/\('194', to_regclass\('public\.notifications_chat_message_once'\)/);
     expect(checkSql).toMatch(/\('195',[^)]*bw_publish_rehearsal_proposal/);
-    expect(checkSql).toMatch(/\('196', pg_get_functiondef\(to_regprocedure\('public\.bw_trg_rehearsal_session_guard\(\)'\)\) LIKE '%NEW\.started_at IS DISTINCT FROM OLD\.started_at%'/);
+    expect(markers.some((k) => k.m === '196' && k.fn === 'bw_trg_rehearsal_session_guard')).toBe(true);
     expect(checkSql).toMatch(/\('197', to_regclass\('public\.song_file_adoptions'\)/);
   });
 });
@@ -139,5 +141,162 @@ describe('edge functions that wait for, or go before, a migration (main, 11-22)'
     expect(waits.slice(push)).toMatch(/`send-push`[\s\S]*194's row is `true`/);
     expect(waits.slice(push)).toMatch(/emergency net/);
     expect(waits).toMatch(/supabase functions list/);
+  });
+});
+
+// ── Codex round (review #278, 11-22) ────────────────────────────────────────
+const MIGRATIONS = 'supabase/migrations';
+const migrationFile = (n: string) => fs.readdirSync(`${process.cwd()}/${MIGRATIONS}`).find((f) => f.startsWith(`${n}_`));
+const noComments = (sql: string) => sql.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+/** Body of the last CREATE [OR REPLACE] FUNCTION public.<fn>(...) in a migration file, or null. */
+const fnBody = (sql: string, fn: string) => {
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:public\\.)?${fn}\\s*\\([\\s\\S]*?\\)\\s*RETURNS[\\s\\S]*?AS\\s+(\\$\\w*\\$)([\\s\\S]*?)\\1`, 'gi');
+  let body: string | null = null;
+  for (const m of noComments(sql).matchAll(re)) body = m[2];
+  return body;
+};
+const definedFns = (sql: string) =>
+  new Set([...noComments(sql).matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(\w+)\s*\(/gi)].map((m) => m[1]));
+const unquote = (s: string) => s.replace(/''/g, "'");
+/** marker(m, fn, txt) rows of release_migrations.sql. */
+const markers = [...checkSql.matchAll(/^\s*\('(\d{3})', '(\w+)', '((?:[^']|'')*)'\)/gm)].map((m) => ({ m: m[1], fn: m[2], txt: unquote(m[3]) }));
+// The apply order of section 2 (173 and 170 first, then step 4).
+const releaseOrder = () => {
+  const line = applyStep.split('\n').find((l) => /^\s+4\. /.test(l)) ?? '';
+  return ['173', '170', ...[...line.matchAll(/(?:^|\D)(1[789]\d)(?=\D|$)/g)].map((m) => m[1])];
+};
+
+describe('every proof takes a marker from the final body (Codex, review #278)', () => {
+  it('each migration with a function is proven by at least one body marker, not by its objects alone', () => {
+    // 172: already live. 173: one version only, its table. 177: no function (a bucket flag). 171: its trigger (below).
+    const objectsOnly = new Set(['171', '172', '173', '177']);
+    for (const n of releaseOrder().filter((x) => !objectsOnly.has(x))) {
+      expect(markers.filter((k) => k.m === n).length, `${n} has a body marker`).toBeGreaterThan(0);
+    }
+    expect(checkSql).toMatch(/strpos\(/);
+  });
+
+  it('every marker is in that function in the migration file as it is now (checked once the file is on main)', () => {
+    // main has the A2 copy of 170 (#269); #273 replaces it in place. Remove 170 here once #273 is merged.
+    const replacedByOpenPr = new Set(['170']);
+    for (const k of markers) {
+      const f = migrationFile(k.m);
+      if (!f || replacedByOpenPr.has(k.m)) continue; // the file is on its own branch until it merges
+      const body = fnBody(read(`${MIGRATIONS}/${f}`), k.fn);
+      expect(body, `${k.m} defines ${k.fn}`).not.toBeNull();
+      expect(body ?? '', `${k.m} ${k.fn}: ${k.txt}`).toContain(k.txt);
+    }
+  });
+
+  it('194 is proven by bw_write_chat_notices and a marker from its final body, not by the index', () => {
+    const row = checkSql.split('\n').find((l) => /^\s*\('194', (?!')/.test(l)) ?? '';
+    expect(row).not.toMatch(/notifications_chat_message_once/);
+    expect(markers.some((k) => k.m === '194' && k.fn === 'bw_write_chat_notices' && /push_claimed_at/.test(k.txt))).toBe(true);
+  });
+
+  it('175 is proven by its final dropped_out rule, in a function no later migration redefines', () => {
+    const k = markers.find((x) => x.m === '175' && /'dropped_out'/.test(x.txt));
+    expect(k).toBeDefined();
+    // 178 redefines bw_chat_scope_ok and get_user_chats (redefined_functions.sql), so 175's own body is not the live one there.
+    expect(['bw_chat_scope_ok', 'get_user_chats']).not.toContain(k?.fn);
+  });
+
+  it('171 is proven by its final trigger (the live pack follows line_timing)', () => {
+    const row = checkSql.split('\n').slice(checkSql.split('\n').findIndex((l) => /^\s*\('171', /.test(l))).slice(0, 4).join(' ');
+    expect(row).toMatch(/pg_get_triggerdef/);
+    expect(row).toMatch(/bw_live_pack_song/);
+    expect(row).toMatch(/line_timing/);
+  });
+
+  it('the markers are matched as text (strpos), never with LIKE wildcards', () => {
+    expect(checkSql).not.toMatch(/LIKE '%/);
+  });
+});
+
+describe('functions redefined by more than one migration: post-apply check (main, 11-22)', () => {
+  const redef = read('supabase/checks/redefined_functions.sql');
+  const redefSql = noComments(redef);
+  const rows = [...redefSql.matchAll(/^\s*\('public\.(\w+)\(([^)]*)\)', '(\d{3})', '([\d, ]+)', '((?:[^']|'')*)'\)/gm)].map((m) => ({
+    fn: m[1],
+    final: m[3],
+    replaces: m[4].split(',').map((x) => x.trim()),
+    mark: unquote(m[5]),
+  }));
+
+  it('is read only and compares pg_get_functiondef with a marker of the intended final body', () => {
+    expect(redefSql).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|GRANT|REVOKE|TRUNCATE)\b/i);
+    expect(redefSql).toMatch(/pg_get_functiondef\(to_regprocedure\(/);
+    expect(redefSql).toMatch(/strpos\(/);
+  });
+
+  it('lists the known groups with the right final migration', () => {
+    const final = (fn: string) => rows.find((r) => r.fn === fn)?.final;
+    expect(final('bw_withdraw_song_suggestion')).toBe('197');
+    expect(final('bw_mark_chat_read')).toBe('180');
+    expect(final('bw_mark_chats_delivered')).toBe('180');
+    expect(final('bw_chat_scope_ok')).toBe('178');
+    expect(final('get_user_chats')).toBe('178');
+    for (const fn of ['bw_quote_link_view', 'bw_quote_link_respond', 'bw_quote_link_message']) expect(final(fn), fn).toBe('187');
+    expect(final('bw_live_pack_window_events')).toBe('178');
+    expect(final('bw_trg_dispatch_push')).toBe('178');
+    expect(final('bw_stage_key')).toBe('191');
+    expect(final('bw_stage_topic_allowed')).toBe('191');
+    expect(redefSql).toMatch(/bw_live_pack_song[\s\S]*pg_get_triggerdef/);
+  });
+
+  it('each marker is in the final body and in none of the bodies it replaces (files on main)', () => {
+    for (const r of rows) {
+      const f = migrationFile(r.final);
+      if (f) expect(fnBody(read(`${MIGRATIONS}/${f}`), r.fn) ?? '', `${r.final} ${r.fn}`).toContain(r.mark);
+      for (const old of r.replaces) {
+        const o = migrationFile(old);
+        if (o) expect(fnBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
+      }
+    }
+  });
+
+  it('every function defined by two or more release migrations has a row, final = the last in the apply order', () => {
+    const seen = new Map<string, string[]>();
+    for (const n of releaseOrder()) {
+      const f = migrationFile(n);
+      if (!f) continue;
+      for (const fn of definedFns(read(`${MIGRATIONS}/${f}`))) seen.set(fn, [...(seen.get(fn) ?? []), n]);
+    }
+    for (const [fn, migs] of seen) {
+      if (migs.length < 2) continue;
+      const r = rows.find((x) => x.fn === fn);
+      expect(r, `${fn} (${migs.join(' → ')}) has a row`).toBeDefined();
+      expect(r?.final, fn).toBe(migs[migs.length - 1]);
+    }
+  });
+
+  it('the checklist runs it after the last migration, and every row must be ok', () => {
+    expect(applyStep).toMatch(/supabase\/checks\/redefined_functions\.sql/);
+    expect(applyStep).toMatch(/every row `ok = true`/);
+  });
+});
+
+describe('checklist, Codex round (review #278)', () => {
+  const rollback = section(/^### Android: stop it spreading/m, /^### iOS/m);
+  const candidate = section(/^## 1 · Candidate ready/m, /^## 2 /m);
+
+  it('the Android rollback moves latest with --fix-latest (highest stable release not withdrawn), never to a fixed version', () => {
+    expect(rollback).toMatch(/scripts\/android-latest-flag\.sh --fix-latest/);
+    expect(rollback).not.toMatch(/gh release edit android-v1\.0\.13 [^\n]*--latest/);
+    expect(rollback).toMatch(/not withdrawn/);
+  });
+
+  it('177 waits for the strict check in its own header (#281): no live link of any status created or shared before :t', () => {
+    expect(sunset).toMatch(/177_quotes_bucket_private\.sql/);
+    expect(sunset).toMatch(/not revoked, not expired/);
+    expect(sunset).toMatch(/every status, drafts included/);
+    expect(sunset).toMatch(/created or shared before `:t`/);
+  });
+
+  it('a PGlite integration run on main is a prerequisite: every migration in release order, all security suites, green', () => {
+    expect(candidate).toMatch(/PGlite integration run on `main`/);
+    expect(candidate).toMatch(/every migration of the release, in the apply order/);
+    expect(candidate).toMatch(/every `supabase\/tests\/\*\.pglite\.mjs` suite/);
+    expect(candidate).toMatch(/Nothing goes to prod until it is green/);
   });
 });

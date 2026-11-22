@@ -76,13 +76,14 @@ describe('Android "latest" flag', () => {
 });
 
 describe('the highest stable release keeps "latest" (review #278 round 6)', () => {
-  /** gh stand-in: `release list` prints the tags, `release view` the current latest, `release edit` is recorded. */
-  const fix = (tags: string[], latest: string) => {
+  /** gh stand-in: `api` prints the stable releases with their APK, `release view` the current latest, `release edit` is recorded. */
+  const fixApi = (tags: string[], latest: string) => {
     const dir = fs.mkdtempSync(`${os.tmpdir()}/fake-gh-`);
     const gh = `${dir}/gh`;
+    fs.writeFileSync(`${dir}/rows.tsv`, tags.map((t) => `${t}\tfalse\tfalse\ttrue`).join('\n') + '\n');
     fs.writeFileSync(
       gh,
-      `#!/usr/bin/env bash\ncase "$2" in\n  list) printf '%s\\n' ${tags.map((t) => JSON.stringify(t)).join(' ')} ;;\n  view) echo ${JSON.stringify(latest)} ;;\n  edit) echo "$@" >> "${dir}/edits" ;;\nesac\n`,
+      `#!/usr/bin/env bash\ncase "$1 $2" in\n  "api --paginate") cat "${dir}/rows.tsv" ;;\n  "release view") echo ${JSON.stringify(latest)} ;;\n  "release edit") echo "$@" >> "${dir}/edits" ;;\nesac\n`,
       { mode: 0o755 },
     );
     const out = execFileSync('bash', [SCRIPT, '--fix-latest'], { env: { ...env, GH: gh }, stdio: 'pipe' }).toString().trim();
@@ -96,18 +97,71 @@ describe('the highest stable release keeps "latest" (review #278 round 6)', () =
   };
 
   it('two publishers raced and 1.0.14 took latest after 1.0.15: latest goes back to 1.0.15', () => {
-    const r = fix(['android-v1.0.15', 'android-v1.0.14', 'android-v1.0.13'], 'android-v1.0.14');
+    const r = fixApi(['android-v1.0.15', 'android-v1.0.14', 'android-v1.0.13'], 'android-v1.0.14');
     expect(r.edits).toMatch(/release edit android-v1\.0\.15 .*--latest/);
     expect(r.out).toMatch(/android-v1\.0\.15/);
   });
 
   it('already right: nothing changes', () => {
-    expect(fix(['android-v1.0.15', 'android-v1.0.14'], 'android-v1.0.15').edits).toBe('');
+    expect(fixApi(['android-v1.0.15', 'android-v1.0.14'], 'android-v1.0.15').edits).toBe('');
   });
 
   it('release-android.sh runs it right after publishing a stable release', () => {
     const sh = fs.readFileSync(`${process.cwd()}/scripts/release-android.sh`, 'utf8');
     const create = sh.indexOf('release create "$TAG"');
     expect(sh.indexOf('android-latest-flag.sh --fix-latest', create)).toBeGreaterThan(create);
+  });
+});
+
+describe('--fix-latest skips withdrawn releases (Codex round, review #278)', () => {
+  /** gh stand-in: `api` prints one line per release (tag, prerelease, draft, has BandWith.apk), `release view` the latest, `release edit` is recorded. */
+  const fix = (rows: string[][], latest: string | null) => {
+    const dir = fs.mkdtempSync(`${os.tmpdir()}/fake-gh-`);
+    const gh = `${dir}/gh`;
+    fs.writeFileSync(`${dir}/rows.tsv`, rows.map((r) => r.join('\t')).join('\n') + '\n');
+    const view = latest === null ? 'echo "release not found" >&2; exit 1' : `echo ${JSON.stringify(latest)}`;
+    fs.writeFileSync(
+      gh,
+      `#!/usr/bin/env bash\ncase "$1 $2" in\n  "api --paginate") cat "${dir}/rows.tsv" ;;\n  "release view") ${view} ;;\n  "release edit") echo "$@" >> "${dir}/edits" ;;\nesac\n`,
+      { mode: 0o755 },
+    );
+    const out = execFileSync('bash', [SCRIPT, '--fix-latest'], { env: { ...env, GH: gh }, stdio: 'pipe' }).toString().trim();
+    let edits = '';
+    try {
+      edits = fs.readFileSync(`${dir}/edits`, 'utf8').trim();
+    } catch {
+      /* none */
+    }
+    return { out, edits };
+  };
+
+  it('a stable release whose APK was removed is never made latest again', () => {
+    const r = fix(
+      [
+        ['android-v1.0.15', 'false', 'false', 'false'],
+        ['android-v1.0.14', 'false', 'false', 'true'],
+      ],
+      'android-v1.0.15',
+    );
+    expect(r.edits).toMatch(/release edit android-v1\.0\.14 .*--latest/);
+    expect(r.out).toBe('android-v1.0.14');
+  });
+
+  it('prereleases and drafts are skipped; the rollback (bad release made a prerelease) finds the previous one', () => {
+    const r = fix(
+      [
+        ['android-v1.0.14', 'true', 'false', 'true'],
+        ['android-v1.0.16', 'false', 'true', 'true'],
+        ['android-v1.0.13', 'false', 'false', 'true'],
+      ],
+      null,
+    );
+    expect(r.edits).toMatch(/release edit android-v1\.0\.13 .*--latest/);
+  });
+
+  it('fails closed when GitHub does not answer', () => {
+    const dir = fs.mkdtempSync(`${os.tmpdir()}/fake-gh-`);
+    fs.writeFileSync(`${dir}/gh`, '#!/usr/bin/env bash\necho "HTTP 401" >&2\nexit 1\n', { mode: 0o755 });
+    expect(() => execFileSync('bash', [SCRIPT, '--fix-latest'], { env: { ...env, GH: `${dir}/gh` }, stdio: 'pipe' })).toThrow();
   });
 });
