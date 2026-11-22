@@ -7,12 +7,13 @@
  * phones and the Duo keep the step wizards. The wizards render these pieces
  * with their own state, so saving behaves exactly as in the steps.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, X } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { IconButton, PillButton } from '@/app/components/bw';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useT } from '@/lib/i18n';
+import { useFocusTrap } from '@/lib/focusTrap';
 
 /** True when the wizard should open as a one-screen composer. */
 export function useComposerLayout(): { composer: boolean; landscape: boolean } {
@@ -88,8 +89,13 @@ export const ComposerShell: React.FC<ComposerShellProps> = ({
   zClassName = 'z-[100]',
 }) => {
   const t = useT();
+  // Full screen, but the app is still behind it: keyboard focus stays inside.
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(shellRef, true);
   return (
     <div
+      ref={shellRef}
+      tabIndex={-1}
       data-modal-open="true"
       data-wizard-type={kind}
       data-bw-composer=""
@@ -104,7 +110,7 @@ export const ComposerShell: React.FC<ComposerShellProps> = ({
           paddingBottom: 'calc(var(--safe-bottom, 0px) + 24px)',
         } as React.CSSProperties
       }
-      className={cn('fixed inset-0 bg-background text-foreground overflow-y-auto overscroll-contain animate-in fade-in duration-200', zClassName)}
+      className={cn('fixed inset-0 bg-background text-foreground overflow-y-auto overscroll-contain outline-none animate-in fade-in duration-200', zClassName)}
     >
       <div className="mx-auto w-full max-w-[1280px] px-8 flex flex-col gap-5">
         <header className="flex items-center gap-4 min-h-[56px] flex-wrap">
