@@ -8,7 +8,9 @@ import type { Locator } from '@playwright/test';
  * reach the controls behind the scrim.
  */
 
-const focusInside = (layer: Locator) => layer.evaluate((el) => el.contains(document.activeElement));
+// Inside the layer, or on the Duo rail's actions (its Close and Back move there).
+const focusInside = (layer: Locator) =>
+  layer.evaluate((el) => el.contains(document.activeElement) || !!document.activeElement?.closest('[data-bw-trap-include]'));
 
 async function cycle(app: App, layer: Locator, key: 'Tab' | 'Shift+Tab', presses: number) {
   for (let i = 0; i < presses; i++) {
@@ -107,6 +109,18 @@ test('@smoke Create band from the band switcher takes the focus (Duo: beside the
   const create = app.page.getByRole('dialog', { name: app.t('Create') }).last();
   await expect(create).toBeVisible();
   await expect.poll(() => focusInside(create), 'focus moves into Create band').toBe(true);
+  // Close is a stop of the cycle: in its header (phone, iPad), or on the Duo
+  // in the rail's actions, the last stops (Shift+Tab from the start wraps
+  // there; WebKit's own Tab skips buttons, the trap's wrap does not).
+  const rail = app.page.locator('[data-bw-trap-include]');
+  if (await rail.isVisible()) {
+    await create.evaluate((el) => (el as HTMLElement).focus());
+    await app.page.keyboard.press('Shift+Tab');
+    expect(await app.page.evaluate(() => !!document.activeElement?.closest('[data-bw-trap-include]')), 'Shift+Tab wraps to the rail').toBe(true);
+    await expect(rail.getByRole('button', { name: app.t('Close'), exact: true })).toBeVisible();
+  } else {
+    await expect(create.getByRole('button', { name: app.t('Close'), exact: true })).toBeVisible();
+  }
   await cycle(app, create, 'Tab', Math.min(await tabStops(create), 40) + 2);
   await cycle(app, create, 'Shift+Tab', 4);
 });

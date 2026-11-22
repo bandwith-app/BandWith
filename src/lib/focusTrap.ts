@@ -99,9 +99,23 @@ const ownedPopups = (root: HTMLElement): HTMLElement[] => {
   });
   return out;
 };
-/** `node` is in the layer, or in a list the layer owns. */
+/**
+ * Chrome outside every layer that serves the top one: the Duo rail's actions
+ * toolbar, where a layer's Close and Back move (marked data-bw-trap-include).
+ */
+const INCLUDED = '[data-bw-trap-include]';
+const includedFor = (root: HTMLElement): HTMLElement[] =>
+  Array.from(document.querySelectorAll<HTMLElement>(INCLUDED)).filter((el) => !root.contains(el) && !el.contains(root));
+
+/** `node` is in the layer, in a list the layer owns, or in the rail's actions. */
 const inLayer = (root: HTMLElement, node: Node | null): boolean =>
-  !!node && (root.contains(node) || ownedPopups(root).some((p) => p.contains(node)));
+  !!node &&
+  (root.contains(node) ||
+    ownedPopups(root).some((p) => p.contains(node)) ||
+    includedFor(root).some((c) => c.contains(node)));
+
+/** The layer's Tab stops, then the rail's actions (the last stops of the cycle). */
+const stopsOf = (root: HTMLElement): HTMLElement[] => [...tabbables(root), ...includedFor(root).flatMap(tabbables)];
 
 export const tabbables = (root: HTMLElement): HTMLElement[] =>
   Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter((el) => el.tabIndex >= 0 && visible(el));
@@ -119,7 +133,7 @@ const focusFirstOf = (list: HTMLElement[]): boolean =>
   });
 
 const wrapInto = (root: HTMLElement, backwards: boolean) => {
-  const items = tabbables(root);
+  const items = stopsOf(root);
   if (!focusFirstOf(backwards ? [...items].reverse() : items)) root.focus({ preventScroll: true });
 };
 
@@ -144,7 +158,7 @@ const onKeyDown = (e: KeyboardEvent) => {
   const active = document.activeElement as HTMLElement | null;
   // Anything outside the top layer is beneath it (layers above it would be on top).
   const inside = inLayer(root, active);
-  const items = tabbables(root);
+  const items = stopsOf(root);
   if (!inside || !items.length) {
     // Focus behind the layer (or nothing to focus in it): bring it back in.
     e.preventDefault();

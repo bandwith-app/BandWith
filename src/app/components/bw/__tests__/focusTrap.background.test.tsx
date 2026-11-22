@@ -324,3 +324,44 @@ describe('layers that go away or close beneath', () => {
     expect(upper.contains(document.activeElement)).toBe(true);
   });
 });
+
+describe('the Duo rail\'s actions (Close, Back) belong to the top layer', () => {
+  /** Stand-in for DuoRail's actions toolbar, where a layer's Close moves on the Duo. */
+  const Rail: React.FC = () => (
+    <div role="toolbar" aria-label="Screen actions" data-bw-trap-include="">
+      <button type="button">Close (rail)</button>
+    </div>
+  );
+  const Tabs: React.FC = () => (
+    <nav aria-label="Main">
+      <button type="button">Home</button>
+    </nav>
+  );
+
+  it('Tab reaches Close in the rail and wraps back into the layer; the tab bar stays out', async () => {
+    render(
+      <>
+        <Tabs />
+        <Rail />
+        <BwSheet open onClose={() => {}} title="Create" footer={<button type="button">Create gig</button>}>
+          <button type="button">New gig</button>
+        </BwSheet>
+      </>,
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Create' });
+    await waitFor(() => expect(document.activeElement).toBe(sheet));
+    const close = screen.getByRole('button', { name: 'Close (rail)' });
+    // Shift+Tab from the first control of the sheet goes round to Close, the last stop.
+    const first = Array.from(sheet.querySelectorAll<HTMLElement>('button'))[0];
+    first.focus();
+    tab(true);
+    expect(document.activeElement).toBe(close);
+    // On Close, Tab is not pulled away, and from it Tab wraps to the sheet.
+    tab();
+    expect(sheet.contains(document.activeElement)).toBe(true);
+    // The tab bar is still behind the trap.
+    screen.getByRole('button', { name: 'Home' }).focus();
+    tab();
+    expect(sheet.contains(document.activeElement) || document.activeElement === close).toBe(true);
+  });
+});

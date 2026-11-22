@@ -167,6 +167,10 @@ describe('every layer says what it is to the focus trap', () => {
     );
   });
 
+  it("the Duo rail's actions toolbar (where Close and Back move) is in every trap's Tab cycle", () => {
+    expect(SOURCES['/src/app/components/layout/DuoRail.tsx']).toMatch(/role="toolbar"[\s\S]{0,300}data-bw-trap-include=""/);
+  });
+
   it('Create band is a modal dialog (it opens beside the docked band switcher on the Duo)', () => {
     expect(SOURCES['/src/app/components/profile/CreateBandModal.tsx']).toMatch(/role="dialog"[\s\S]{0,40}aria-modal="true"/);
   });
