@@ -40,6 +40,10 @@ import { REGIA_EVENT } from '@/lib/stageRegia';
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
 const PING_GAP_MS = 200;
+/** A round of pings with no answer is tried again after this (doubling, up to the max), plus up to PING_JITTER_MS. */
+const PING_RETRY_MS = 1_500;
+const PING_RETRY_MAX_MS = 15_000;
+const PING_JITTER_MS = 500;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
 /** The leader answers at most this many pings per phone per window (a burst is 6). */
@@ -243,7 +247,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     if (state.songId !== undefined) setSongId(state.songId);
   }, []);
 
-  /** Measure the click leader's clock: a few pings, the fastest round trip wins. */
+  /**
+   * Measure the click leader's clock: a few pings, the fastest round trip wins.
+   * A round with no answer (the leader's clock channel not in yet, or its
+   * answers used up by a band starting together) is tried again, later each
+   * time and at a random moment, for as long as that leader's click runs.
+   */
   const syncWith = useCallback(
     (peer: string) => {
       const book = samplesRef.current;
@@ -251,18 +260,35 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       const fresh = { peer, at: nowMs(), samples: [] as ClockSample[], sent: [] as number[] };
       samplesRef.current = fresh;
       pingTimers.current.forEach(clearTimeout);
-      pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
-        setTimeout(() => {
-          if (samplesRef.current !== fresh) return;
-          const t0 = nowMs();
-          // Only pongs to these pings count (anyone can write the clock topic in our name).
-          fresh.sent.push(t0);
-          const payload = { from: clientId, to: peer, t0 };
-          void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
-          // Admins may write the stage topic too: a leader on an older app listens only there.
-          if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
-        }, i * PING_GAP_MS),
-      );
+      pingTimers.current = [];
+      const round = (attempt: number, delay: number) => {
+        const timers = Array.from({ length: PINGS }, (_, i) =>
+          setTimeout(() => {
+            if (samplesRef.current !== fresh) return;
+            const t0 = nowMs();
+            // Only pongs to these pings count (anyone can write the clock topic in our name).
+            fresh.sent.push(t0);
+            // Pings older than any usable answer are of no use any more.
+            fresh.sent = fresh.sent.filter((t) => t0 - t <= MAX_CLOCK_RTT_MS);
+            const payload = { from: clientId, to: peer, t0 };
+            void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+            // Admins may write the stage topic too: a leader on an older app listens only there.
+            if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+          }, delay + i * PING_GAP_MS),
+        );
+        // No answer to the whole round: again, while that leader's click runs.
+        const check = setTimeout(
+          () => {
+            const running = clickRef.current;
+            if (samplesRef.current !== fresh || fresh.samples.length || !running?.on || running.from !== peer) return;
+            round(attempt + 1, Math.min(PING_RETRY_MS * 2 ** attempt, PING_RETRY_MAX_MS) + Math.random() * PING_JITTER_MS);
+          },
+          delay + PINGS * PING_GAP_MS + MAX_CLOCK_RTT_MS,
+        );
+        pingTimers.current.push(...timers, check);
+      };
+      // A random start: phones that got the click together don't all ping at once.
+      round(0, Math.random() * PING_JITTER_MS);
     },
     [clientId, isLeader],
   );

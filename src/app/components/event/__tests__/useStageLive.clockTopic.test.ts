@@ -54,7 +54,7 @@ vi.mock('@/lib/supabase', () => ({
           net.log.push({ topic, event: m.event, from, payload: m.payload });
           if (net.dropPingsOf === from && m.event === PING_EVENT) return 'ok';
           for (const p of phones)
-            if (p !== phone && p.topic === topic) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload: m.payload }));
+            if (p !== phone && p.topic === topic && p.joined) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload: m.payload }));
           return 'ok';
         },
         __phone: phone,
@@ -73,7 +73,7 @@ vi.mock('@/lib/services/songs', () => ({ saveSetlistOrder: async () => ({ error:
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: async () => {} }));
 
 import { useStageLive } from '../useStageLive';
-import { PING_EVENT, PONG_EVENT } from '@/lib/stageClick';
+import { CLICK_EVENT, PING_EVENT, PONG_EVENT } from '@/lib/stageClick';
 
 const SONGS = [{ id: 'row-1', songId: 'song-1' }];
 const phone = (isLeader: boolean) =>
@@ -236,4 +236,39 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
       timeout: 3000,
     });
   });
+
+  it("the leader's clock channel joining after its stage channel: the member's first pings go nowhere, it pings again until it has a measure (Codex on #283)", async () => {
+    // Only the leader's clock channel waits (it is made while the hold is on).
+    net.holdClock = true;
+    const leader = phone(true);
+    net.holdClock = false;
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    // Its first round of pings is sent, and lost.
+    await waitFor(() => expect(net.log.filter((m) => m.event === PING_EVENT && m.from === me).length).toBeGreaterThanOrEqual(6), { timeout: 3000 });
+    expect(net.log.some((m) => m.event === PONG_EVENT)).toBe(false);
+    act(() => joinClocks());
+    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+      timeout: 8000,
+    });
+  }, 12_000);
+
+  it('ten members starting together and one joining right after: the late one still gets a measure (Codex on #283)', async () => {
+    const leader = phone(true);
+    const band = Array.from({ length: 10 }, () => phone(false));
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await new Promise((r) => setTimeout(r, 700));
+    const late = phone(false);
+    const me = late.result.current.clientId;
+    // The leader sends its running click to whoever joins (presence join, not in this mock).
+    const click = net.log.find((m) => m.event === CLICK_EVENT)!.payload;
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
+    act(() => stage.handlers.filter((h) => h.event === CLICK_EVENT).forEach((h) => h.cb({ payload: click })));
+    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+      timeout: 9000,
+    });
+    expect(band.length).toBe(10);
+  }, 12_000);
 });
+
