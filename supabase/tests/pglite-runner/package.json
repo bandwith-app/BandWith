@@ -1,0 +1,9 @@
+{
+  "name": "bandwith-pglite-runner",
+  "private": true,
+  "type": "module",
+  "description": "Runs supabase/tests/*.pglite.mjs (CI job PGlite suites). PGlite pinned: the suites were written against 0.5.15.",
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.15"
+  }
+}

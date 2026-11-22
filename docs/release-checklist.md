@@ -36,6 +36,10 @@ The web app and the database reach everyone at once. That is why they get the mo
   ```
   Write down the answer: a row already `true` is skipped on release day.
 - [ ] **PGlite integration run on `main`, green.** A prerequisite: nothing goes to prod until it is green. With every PR of the release merged, one PGlite database loads every migration of the release, in the apply order of section 2 (173, 170, then step 4), on top of the ones already live, and runs every `supabase/tests/*.pglite.mjs` suite against it, the security suites included (each PR's suite alone only proves its own branch). Then `supabase/checks/release_migrations.sql` shows every row `true` but 177, and `supabase/checks/redefined_functions.sql` every row `ok = true`. Nothing goes to prod until it is green: a red suite is fixed on `main` first, and the run starts again.
+  - Where it runs: the CI job **PGlite suites** (`.github/workflows/ci.yml`, `node supabase/tests/pglite-runner/run.mjs`), on every PR and on `main`. `supabase/tests/release_integration.pglite.mjs` is the release run: it applies `supabase/checks/release-sources.txt` in order on `supabase/tests/fixtures/base_schema.sql` and checks both files.
+  - Until every migration of `release-sources.txt` is on `main`, a suite that reads one from its branch (`git show origin/<branch>`) only warns when it fails, and a `SKIP` only warns. Once all of them are on `main` the run is strict on its own: a failure, a `SKIP` or a branch read fails it. Green for this box means a **strict** run (the summary line ends in `(strict)`).
+  - `base_schema.sql` (a schema-only dump of prod, `supabase/tests/fixtures/README.md`) must be there: without it the release run SKIPs, and a strict run fails on that.
+  - The CI job must be a **required check** on `main` (branch protection, the owner's setting), with *Typecheck, test, build* and the E2E shards.
 - [ ] **Never `supabase db push`, `supabase migration list` or `supabase migration repair` against prod.** They read `schema_migrations` and would try to apply 039 onwards again.
 - [ ] **170 is not applied anywhere yet**: its row is `false`. 170 was edited in place on 11-22, so a copy applied before that is the old version (`live_pack_status` without `partial`). Check **every** database it will go to, prod and any dev, local or branch database too, with the same file, and:
   ```sql
@@ -88,7 +92,7 @@ Do it in this order, so every build in use keeps working at every step:
      ```
    - Then check the function's logs in the Supabase dashboard for the first calls.
    - This release: `deputy-calendar` and `member-calendar` (#285) go here, before 182. Proof: `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` shows both with today's update time while 182's row is still `false` in `supabase/checks/release_migrations.sql`. (The new functions work on the feed from before 182; 182 needs them in first.)
-   - **Not here**: `delete-account` and `send-push`. They wait for their migration (step 2, "Functions that wait for their migration").
+   - **Not here**: `delete-account` and `send-push`, nor the other functions that import `_shared/auth.ts` (`send-email`, `invite-member`, `places`, `setup-invite-rls`) or the new `quote-pdf`. They wait for their migration (step 2, "Functions that wait for their migration").
 2. **Additive migrations**
    - Migrations run as the **database owner** (`postgres`), not the service role: from `~/Developer/BandWith-main` with `npx supabase db query --remote --yes -f <file>` (BEGIN/COMMIT kept), or pasted in the dashboard's SQL editor.
    - One at a time, **kill switches first**, then in number order. For the live release:
@@ -98,13 +102,17 @@ Do it in this order, so every build in use keeps working at every step:
         UPDATE public.app_flags SET enabled = false, updated_at = now() WHERE key = 'live_pack';
         ```
      3. `170_live_pack`;
-     4. then, one at a time and in this order: 171, 174, 175, 176, 178, 180, 194, 192, 193, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 195, 196, 197.
-        - That is number order, except where one needs another first: 175 → 178 → 193 → 181 (181 uses 193's one chat per gig), 194 → 192 → 193 (192 writes chat notices through 194's `bw_write_chat_notices`), 183 → 185 → 186 → 187. There is no 179.
+     4. then, one at a time and in this order: 171, 174, 194, 184, 175, 176, 178, 180, 192, 193, 181, 182, 183, 185, 186, 187, 188, 189, 190, 191, 195, 196, 197.
+        - The order keeps every line of "Constraints" (below). 194 and 184 come before 175 so that `send-push` goes out once, right after 175, with both already in. There is no 179.
         - 190 and 191 must be in before any new app build ships (stage 1).
         - All of them are additive.
-     - **Functions that wait for their migration**: deploy each in the same session, right after its migration, before the next one.
-       - right after 180: deploy `delete-account`. Proof: 180's row is `true` before the deploy, then `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` shows `delete-account` with today's update time. Before 180 it answers 503 (fails safe, but no one can delete their account), so don't deploy it earlier.
-       - right after 194: deploy `send-push`. Proof: 194's row is `true` before the deploy, then `supabase functions list` shows `send-push` with today's update time; check its logs for the first chat push. Its fallback for a missing 194 is an emergency net only, never the plan: on that path a deleted message's text could reach a lock screen.
+     - **Functions that wait for their migration**: deploy each in the same session, right after its migration, before the next one. Each from a **clean worktree** on the release commit, with `--no-verify-jwt`, and each proven with `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` (today's update time).
+       - right after 175: deploy `send-push`, `send-email`, `invite-member`, `places` and `setup-invite-rls`: every function that imports `_shared/auth.ts`, except `delete-account` (after 180) and `quote-pdf` (after 176). Find them again on the release commit with `grep -l "_shared/auth" supabase/functions/*/index.ts`.
+         - Why right after: 175 keeps the `chat_participants` rows of people who left the band or the lineup. The deployed `auth.ts` reads that roster directly, so until the redeploy an ex-member still gets chat pushes. The release's `auth.ts` (#281) asks 175's `bw_chat_recipient_ids` and sends to nobody without it, so it can't go before 175 either.
+         - Proof: 175's row is `true` before the deploy, then the functions list shows all five with today's update time. 194 and 184 are already in (they go before 175), so `send-push` runs neither fallback. Those fallbacks (no 194, no 184) are an emergency net only, never the plan: on the no-194 path a deleted message's text could reach a lock screen.
+         - Check: in a test band, someone who has left (`band_members.is_active = false`, or removed from the gig's lineup) and still has a device registered. Send a message in that band's chat (or that gig's chat). The push to the ex-member must not reach them: no alert on their device, `SELECT public.bw_chat_recipient_ids('<chat>', '<sender>')` doesn't list them, and they have no new `notifications` row for the message. The current members still get it.
+       - right after 176: deploy `quote-pdf` (new). It reads the PDF path through 176's `bw_quote_link_pdf_path`. Proof: 176's row is `true` before the deploy; nothing calls it until the web app ships in stage 3.
+       - right after 180: first check `SELECT jobname, schedule FROM cron.job WHERE jobname = 'bw-finish-account-deletions';` returns one row (`*/5 * * * *`). Then, from a clean worktree on the release commit, `npx supabase functions deploy delete-account --no-verify-jwt --project-ref elvlzpowkohjbhxjasvd`. Proof: 180's row is `true` before the deploy, and the functions list shows `delete-account` with today's update time. Before 180 it answers 503 (fails safe, but no one can delete their account), so don't deploy it earlier.
      - **Not 172**: already live (section 1).
      - **Not 177** (quotes bucket private): not in this release. Builds in the field share the PDF's public storage URL by WhatsApp, email and copied text, and links already sent to clients would stop opening. It waits in the sunset list (section 6) for `min_version`.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
@@ -119,6 +127,25 @@ Do it in this order, so every build in use keeps working at every step:
 4. **Stages 1 → 2 → 3**: see the next section. The **web app ships in stage 3**, because it has no stages of its own.
    - Exception: a web-only fix for a live bug can go out the same day, once the migrations it needs are in.
 5. **"Later" migrations** (revokes, drops) only after **every** build that used the old thing has updated. Raise `min_version` first (section 4) so stragglers are asked to update. Example: 119 waited for every build, TestFlight included. The code that waits for the same moment is in the **sunset list** (section 6).
+
+### Constraints
+
+The orders the release depends on. The apply step (step 2, item 4) keeps all of them; `scripts/release-checklist.test.ts` fails when it doesn't, and the headers of `supabase/checks/release_migrations.sql` and `supabase/checks/redefined_functions.sql` repeat the hard ones. **hard**: the later migration raises without the earlier one, so the wrong order stops at that migration instead of leaving a wrong body.
+
+- **178 → 182**, **hard** (182 uses 178's `bw_event_deputy_hidden`)
+- **175 → 193**, **hard** (193 uses 175's `bw_chat_scope_ok_for` and `bw_chats_immutable_keys`)
+- **180 → 197** (197's `bw_withdraw_song_suggestion` starts from 180's body; `redefined_functions.sql` checks 197's is live)
+- **194 → 192 → 193** (192 writes chat notices through 194's `bw_write_chat_notices`)
+- **183 → 185 → 186 → 187** (one quote link, built up in steps)
+- **175 → 178 → 193 → 181** (178 keeps 175's `bw_chat_scope_ok`; 181 uses 193's one chat per gig)
+- **178 → 191** (191's DO block adds 178's quote guard to the stage functions)
+- **194 and 184 → 175** (not a SQL need: so `send-push`, deployed once after 175, has both)
+- `member-calendar` and `deputy-calendar` → 182 (step 1: 182 needs the new functions first)
+- 175 → `send-push` and the other `_shared/auth.ts` functions (right after; with 184 and 194 already in)
+- 176 → `quote-pdf`
+- 180 → `delete-account` (`--no-verify-jwt`, clean worktree; `cron.job` has `bw-finish-account-deletions` first)
+
+Which functions more than one migration defines comes from `node scripts/fn-redefinitions.mjs --check`, over the branches in `supabase/checks/release-sources.txt` (same order as the apply step); it fails when one has no row in `redefined_functions.sql`.
 
 ## 3 · Staged rollout
 

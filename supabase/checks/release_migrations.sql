@@ -10,12 +10,16 @@
 -- Every proof takes a marker from the FINAL body on its branch head (review
 -- #278, Codex): an object (table, column, function) only says that some
 -- version ran, and several of these files were edited in place. A marker is
--- a line that is in the final version of that function and in no earlier
--- version of the file (checked against every commit of each file on its
--- branch head, 11-22); where one line can't tell them all apart, two or
--- three do. A file edited again needs its markers checked again (the test in
--- scripts/release-checklist.test.ts checks each marker is still in its file
--- once the file is on main).
+-- a line that is in that function's body at the head named in
+-- supabase/checks/release-sources.txt (4th column) and in none of main's
+-- bodies of it from before this release. It tells the final version from the
+-- edits that changed that function's marked lines; an older commit that
+-- differed only elsewhere in the file can still match (none of this release is
+-- live yet, and main's prod dry runs roll back; 170, applied on dev databases,
+-- has its own check in the candidate step). A file edited again needs its
+-- markers checked again: scripts/fn-redefinitions.mjs lists the files that
+-- changed since their head was checked, and scripts/release-checklist.test.ts
+-- checks each marker is still in its file once the file is on main.
 -- Markers are matched as plain text (strpos), never with LIKE: _ and % in a
 -- body are not wildcards. The markers sit in functions that no later
 -- migration of the release redefines (175's dropped_out rule is read in
@@ -32,6 +36,13 @@
 -- committed_at (earlier: prepared_at), 184 push_tokens.uid_gated, 195 the
 -- policy role (TO authenticated), 191 the quote guard its DO block adds to
 -- bw_stage_clock_topic_allowed once 178 is in.
+--
+-- Apply order (docs/release-checklist.md, "Constraints"). Hard, the later
+-- one raises without the earlier: 178 → 182 (bw_event_deputy_hidden),
+-- 175 → 193 (bw_chat_scope_ok_for). Also 180 → 197, 194 → 192 → 193,
+-- 183 → 185 → 186 → 187, 175 → 178 → 193 → 181, 178 → 191. A row can be
+-- true out of order; redefined_functions.sql catches a wrong live body.
+-- The source column: the PR whose branch head the markers were taken from.
 --
 -- applied = true: in. false: not in. A migration half applied can't happen
 -- (each runs in one transaction).
@@ -50,9 +61,9 @@ marker(m, f, txt) AS (VALUES
   ('170', 'bw_live_pack_refresh_flush', 'v_off := v_off OR NOT public.bw_live_pack_on();'),
   ('174', 'bw_report_client_error', 'IF auth.uid() IS NULL OR p_message IS NULL OR btrim(p_message) = '''' THEN'),
   ('175', 'bw_chat_recipient_ids', 'FROM ok WHERE user_id IS DISTINCT FROM p_sender'),
-  ('175', 'bw_event_recipient_ids', 'AND lower(coalesce(status::text, ''invited'')) NOT IN (''declined'', ''dropped_out'', ''removed'')'),
+  ('175', 'bw_event_recipient_ids', 'AND lower(btrim(coalesce(status::text, ''invited''))) NOT IN (''declined'', ''dropped_out'', ''removed'')'),
   ('176', 'bw_quote_link_doc_id', 'md5(concat_ws(''|'', ''doc'', p_link.token, p_link.version, p_link.pdf_url))'),
-  ('176', 'bw_quote_link_doc_id', 'CASE WHEN lower(p_link.status::text) = ''accepted'''),
+  ('176', 'bw_quote_link_doc_id', 'CASE WHEN lower(btrim(p_link.status::text)) = ''accepted'''),
   ('178', 'bw_event_quote_hidden', 'OR public.bw_is_band_admin(e.band_id, auth.uid())))'),
   ('180', 'bw_mark_chat_read', 'to_regprocedure(''public.bw_chat_scope_ok_for(uuid,uuid)'') IS NOT NULL'),
   ('181', 'bw_trg_event_member_left_chat', 'AND NOT coalesce(public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id), false)'),
@@ -80,15 +91,46 @@ marker(m, f, txt) AS (VALUES
   ('192', 'bw_purge_chat_notices', 'FROM jsonb_to_recordset(p_gone) AS g(chat_id uuid)) AS e'),
   ('192', 'bw_purge_chat_notices', 'AND public.bw_chat_notice_shows(n.body, n.data, m.content)'),
   ('193', 'bw_open_group_chat', 'IF to_regprocedure(''public.bw_chat_scope_ok_for(uuid, uuid)'') IS NOT NULL THEN'),
-  ('194', 'bw_write_chat_notices', 'coalesce(public.bw_try_timestamptz(n.data ->> ''push_claimed_at''), ''-infinity''::timestamptz)'),
+  ('194', 'bw_write_chat_notices', 'AND public.bw_chat_push_claim_free(public.bw_try_timestamptz(n.data ->> ''push_claimed_at''))'),
+  ('194', 'bw_chat_push_claim_free', 'OR p_claimed > now() + interval ''1 minute'';'),
   ('194', 'bw_release_chat_notice_claims', 'WHERE n.id = ANY (coalesce(p_ids, ''{}''::uuid[]))'),
-  ('194', 'bw_claim_chat_push_only', 'AND coalesce(l.claimed_at, ''-infinity''::timestamptz) < now() - interval ''10 minutes'''),
+  ('194', 'bw_claim_chat_push_only', 'AND public.bw_chat_push_claim_free(l.claimed_at)'),
   ('195', 'bw_skip_rehearsal_date', 'This rehearsal does not repeat any more'),
   ('196', 'bw_trg_rehearsal_session_guard', 'COALESCE(jsonb_typeof(NEW.summary -> ''pauses'') = ''array'', false)'),
-  ('196', 'bw_trg_rehearsal_session_guard', '|| jsonb_build_object(''pauses'', OLD.summary -> ''pauses'');'),
+  ('196', 'bw_trg_rehearsal_session_guard', 'AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> ''pauses'') = ''array'', false)) THEN'),
   ('197', 'bw_trg_song_file_not_removed', 'WHERE o.band_id = NEW.band_id AND o.id IS DISTINCT FROM NEW.id'),
   ('197', 'bw_song_file_adopt_repoint', 'OR coalesce(v_parts[4], '''') NOT IN (''audio'', ''chart'') OR coalesce(v_parts[5], '''') = '''' THEN'),
   ('197', 'bw_song_file_sweep_list', 'WHERE NOT public.bw_song_file_in_use(x.p)), ''{}''::text[]);')
+),
+-- Where each proof comes from: the PR that owns the migration
+-- (supabase/checks/release-sources.txt; its branch head is what the markers
+-- were taken from).
+source(m, pr) AS (VALUES
+  ('173', '#273'),
+  ('170', '#273'),
+  ('171', '#272'),
+  ('174', '#277'),
+  ('175', '#281'),
+  ('176', '#281'),
+  ('178', '#294'),
+  ('180', '#282'),
+  ('194', '#284'),
+  ('192', '#291'),
+  ('193', '#291'),
+  ('181', '#289'),
+  ('182', '#285'),
+  ('183', '#286'),
+  ('184', '#287'),
+  ('185', '#293'),
+  ('186', '#293'),
+  ('187', '#293'),
+  ('188', '#292'),
+  ('189', '#292'),
+  ('190', '#288'),
+  ('191', '#283'),
+  ('195', '#297'),
+  ('196', '#296'),
+  ('197', '#295')
 ),
 marked(m, ok, fns) AS (
   SELECT k.m,
@@ -98,7 +140,8 @@ marked(m, ok, fns) AS (
 )
 SELECT v.m AS migration,
        coalesce(v.applied, false) AND coalesce(mk.ok, true) AS applied,
-       v.proof || coalesce('; final body of ' || mk.fns, '') AS proof
+       v.proof || coalesce('; final body of ' || mk.fns, '') AS proof,
+       src.pr AS source
 FROM (VALUES
   ('170', EXISTS (SELECT 1 FROM col WHERE t = 'live_pack_status' AND c = 'partial')
           AND EXISTS (SELECT 1 FROM fn WHERE n = 'bw_live_pack_status_newer_only'),
@@ -127,21 +170,21 @@ FROM (VALUES
           AND EXISTS (SELECT 1 FROM col WHERE t = 'deputy_requests' AND c = 'was_available'),
           'deputy_requests.calendar_token, deputy_requests.was_available'),
   ('183', EXISTS (SELECT 1 FROM col WHERE t = 'quote_links' AND c = 'recipient_changed_at'), 'quote_links.recipient_changed_at'),
-  ('184', to_regprocedure('public.bw_revoke_push_token(text, uuid, timestamptz)') IS NOT NULL
-          -- an earlier 184 had no push_tokens.uid_gated
-          AND EXISTS (SELECT 1 FROM col WHERE t = 'push_tokens' AND c = 'uid_gated')
+  -- No signature (bw_revoke_push_token's changed on its branch, #287 ee0f5467):
+  -- the column (an earlier 184 had none) and the function, by name.
+  ('184', EXISTS (SELECT 1 FROM col WHERE t = 'push_tokens' AND c = 'uid_gated')
           AND EXISTS (SELECT 1 FROM fn WHERE n = 'bw_register_push_token_stamped'),
-          'bw_revoke_push_token(text, uuid, timestamptz), bw_register_push_token_stamped, push_tokens.uid_gated'),
+          'push_tokens.uid_gated, function bw_register_push_token_stamped'),
   ('185', EXISTS (SELECT 1 FROM col WHERE t = 'quote_links' AND c = 'balance_sent'), 'quote_links.balance_sent'),
-  ('186', to_regprocedure('public.bw_mark_event_paid(uuid)') IS NOT NULL, 'bw_mark_event_paid(uuid)'),
-  ('187', to_regprocedure('public.bw_quote_link_view(text)') IS NOT NULL, 'bw_quote_link_view(text)'),
+  ('186', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_mark_event_paid'), 'function bw_mark_event_paid'),
+  ('187', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_quote_link_view'), 'function bw_quote_link_view'),
   ('188', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_save_setlist_songs'), 'function bw_save_setlist_songs'),
   ('189', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_save_song_lyrics'), 'function bw_save_song_lyrics'),
   ('190', EXISTS (SELECT 1 FROM col WHERE t = 'stage_keys' AND c = 'sign_public'), 'stage_keys.sign_public'),
   -- With 178 in (it is, in this release), 191's DO block adds 178's quote
   -- guard to the clock topic; an earlier 191 had no DO block.
   ('191', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_stage_clock_topic_allowed')
-          AND (to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NULL
+          AND (NOT EXISTS (SELECT 1 FROM fn WHERE n = 'bw_event_quote_hidden')
                OR EXISTS (SELECT 1 FROM body WHERE n = 'bw_stage_clock_topic_allowed'
                            AND strpos(src, 'AND NOT public.bw_event_quote_hidden(ev::uuid)') > 0)),
           'function bw_stage_clock_topic_allowed (with 178: its quote guard)'),
@@ -153,9 +196,10 @@ FROM (VALUES
           AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'rehearsal_polls'
                        AND policyname = 'rehearsal_polls_select' AND roles = '{authenticated}'::name[]),
           'function bw_publish_rehearsal_proposal, policy rehearsal_polls_select TO authenticated'),
-  ('196', to_regprocedure('public.bw_trg_rehearsal_session_guard()') IS NOT NULL, 'bw_trg_rehearsal_session_guard()'),
+  ('196', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_trg_rehearsal_session_guard'), 'function bw_trg_rehearsal_session_guard'),
   ('197', to_regclass('public.song_file_adoptions') IS NOT NULL AND EXISTS (SELECT 1 FROM fn WHERE n = 'bw_song_file_adopt_begin'),
           'table song_file_adoptions, function bw_song_file_adopt_begin')
 ) AS v(m, applied, proof)
 LEFT JOIN marked mk ON mk.m = v.m
+LEFT JOIN source src ON src.m = v.m
 ORDER BY v.m;
