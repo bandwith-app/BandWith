@@ -88,8 +88,9 @@
 --      a personal file is there.
 --    * A poll's invitees no longer count them (never the last one); the
 --      proposal-expiry job reads the poll's copy of the time zone.
---    * Chat receipts (bw_mark_chat_read, bw_mark_chats_delivered) keep #281's
---      175 stale-participant check (175 lines 366-427) when 175 is there.
+--    * Chat receipts (bw_mark_chat_read, bw_mark_chats_delivered) are 175's
+--      bodies (#281, 44cf49fc), with its stale-participant rule called only
+--      when bw_chat_scope_ok_for exists.
 --    * The hold's errors are plain English (older builds show the message
 --      as it is); the code account_deletion_in_progress is the hint.
 --
@@ -827,11 +828,12 @@ REVOKE ALL ON FUNCTION public.bw_trg_song_suggestion_close() FROM PUBLIC, anon, 
 
 -- As 049 / 122, with IS DISTINCT FROM: a former member's message counts as
 -- someone else's, so opening the chat marks it read and delivered.
--- The two 049 receipts are a superset of #281's 175 versions (175 lines
--- 366-427, fix/security-audit 7eea78bb): when 175's bw_chat_scope_ok_for
--- exists, a participant row its rule refuses (a stale row) moves no receipt
--- and answers false / 0, as there. Without 175 they work as 049 did. The
--- check is added at run time (EXECUTE), so this works in either order.
+-- The two receipts start from the previous definition in the apply order:
+-- #281's 175 (bw_mark_chats_delivered and bw_mark_chat_read, fix/security-
+-- audit 44cf49fc), which already has IS DISTINCT FROM and the stale-row rule
+-- bw_chat_scope_ok_for. Same bodies; the only change is that the rule is
+-- added at run time (EXECUTE) when that function exists, so 180 also works
+-- without 175. PGlite loads the real 175 by function name, then 180.
 CREATE OR REPLACE FUNCTION public.bw_mark_chats_delivered()
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER

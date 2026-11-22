@@ -7,8 +7,11 @@
 //   mkdir -p /tmp/pg180 && cd /tmp/pg180 && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/account_deletion_safety.pglite.mjs . && node account_deletion_safety.pglite.mjs <repo>
 //   node account_deletion_safety.pglite.mjs <repo> /dev/null    # before: FAILs expected
+// The release guard below reads #281's 175 from the repo once merged, else
+// from its branch head (git show origin/fix/security-audit:...).
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
 const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/180_account_deletion_safety.sql`;
@@ -40,7 +43,7 @@ CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_
 -- Chats as 002 + 024 left them: sender_id SET NULL on a NOT NULL column.
 CREATE TYPE public.chat_type AS ENUM ('direct', 'group', 'band', 'event');
 CREATE TABLE public.chats (id uuid PRIMARY KEY, type public.chat_type NOT NULL, band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE,
-  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL);
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL, event_id uuid);
 CREATE TABLE public.chat_participants (chat_id uuid REFERENCES public.chats(id) ON DELETE CASCADE,
   user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, last_read_at timestamptz, last_delivered_at timestamptz);
 CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -588,6 +591,59 @@ await x(`DELETE FROM test_stale`);
 rr = await as(G3, `SELECT public.bw_mark_chat_read('${RB}') AS r`);
 ok(rr.rows?.[0]?.r === true, `with 175: a participant the rule allows still does (${rr.error ?? JSON.stringify(rr.rows)})`);
 await x(`DROP FUNCTION public.bw_chat_scope_ok_for(uuid, uuid); DROP TABLE test_stale`);
+
+// Release guard (apply order 175 → 180): #281's 175 from its real head,
+// its receipt functions taken by name, then 180 again. 180's copies must
+// keep 175's fixes: a stale participant row moves no receipt, and (both)
+// a message without sender still counts as unread.
+const P175 = 'supabase/migrations/175_security_audit_access.sql';
+let src175 = null;
+try {
+  src175 = existsSync(`${REPO}/${P175}`) ? readFileSync(`${REPO}/${P175}`, 'utf8')
+    : execFileSync('git', ['-C', REPO, 'show', `origin/fix/security-audit:${P175}`], { encoding: 'utf8' });
+} catch { src175 = null; }
+const fnByName = (src, name) => {
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (start < 0) return null;
+  const tag = src.slice(start).match(/\bAS\s+(\$[A-Za-z_]*\$)/);
+  if (!tag) return null;
+  const bodyStart = start + tag.index + tag[0].length;
+  const end = src.indexOf(tag[1], bodyStart);
+  return end < 0 ? null : src.slice(start, end + tag[1].length) + ';';
+};
+const f175 = src175 && ['bw_chat_scope_ok_for', 'bw_mark_chats_delivered', 'bw_mark_chat_read'].map((n) => fnByName(src175, n));
+ok(!!f175 && f175.every(Boolean), `guard: 175's receipt functions found by name (${src175 ? 'read' : 'not found'})`);
+if (f175 && f175.every(Boolean)) {
+  // 175's bw_chat_scope_ok (built in a DO block there) as a stand-in: the
+  // rule refuses the rows listed in test_stale175.
+  d = await x(`CREATE TABLE test_stale175 (chat_id uuid, user_id uuid);
+    CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid) RETURNS boolean
+      LANGUAGE sql STABLE AS $f$ SELECT NOT EXISTS (SELECT 1 FROM test_stale175 s JOIN chats c ON c.id = s.chat_id
+        WHERE s.user_id = p_user_id AND c.type::text = p_type AND c.band_id IS NOT DISTINCT FROM p_band_id) $f$;
+    ${f175.join('\n')}`);
+  ok(!d.error, `guard: 175 loaded (${d.error ?? 'ok'})`);
+  d = await x(readFileSync(MIG, 'utf8'));
+  ok(!d.error, `guard: then 180 (${d.error ?? 'ok'})`);
+  const [GC, GM1, GM2, GM3] = [87, 88, 89, 90].map(id);
+  await x(`INSERT INTO chats VALUES ('${GC}', 'band', '${T8}', '${G2}', NULL);
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${GC}','${G2}'), ('${GC}','${G3}');
+    INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES ('${GM1}','${GC}','${G2}','set list is up', now() + interval '2 minutes');
+    INSERT INTO test_stale175 VALUES ('${GC}', '${G3}')`);
+  rr = await as(G3, `SELECT public.bw_mark_chat_read('${GC}') AS r`);
+  ok(rr.rows?.[0]?.r === false, `guard: after 180, a stale participant gets false from mark read (${rr.error ?? JSON.stringify(rr.rows)})`);
+  rr = await as(G3, `SELECT public.bw_mark_chats_delivered() AS r`);
+  ok(rr.rows?.[0]?.r === 0, `guard: and 0 from mark delivered (${rr.error ?? JSON.stringify(rr.rows)})`);
+  await x(`DELETE FROM test_stale175`);
+  rr = await as(G3, `SELECT public.bw_mark_chat_read('${GC}') AS r`);
+  ok(rr.rows?.[0]?.r === true, `guard: an allowed participant still marks read (${rr.error ?? JSON.stringify(rr.rows)})`);
+  // A former member's message (sender NULL) after that read: still unread.
+  await x(`INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES ('${GM2}','${GC}',NULL,'(from a former member)', now() + interval '5 minutes')`);
+  rr = await as(G3, `SELECT public.bw_mark_chat_read('${GC}') AS r`);
+  ok(rr.rows?.[0]?.r === true, `guard: a message without sender still counts as unread (${rr.error ?? JSON.stringify(rr.rows)})`);
+  await x(`INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES ('${GM3}','${GC}',NULL,'(again)', now() + interval '10 minutes')`);
+  rr = await as(G3, `SELECT public.bw_mark_chats_delivered() AS r`);
+  ok(rr.rows?.[0]?.r >= 1, `guard: and as undelivered (${rr.error ?? JSON.stringify(rr.rows)})`);
+}
 
 // Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
 // authenticated): 180 running after it must not grant it back.
