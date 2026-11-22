@@ -28,9 +28,9 @@
  * phone posing as the leader, out of the real leader's range, can replay
  * frames it recorded earlier (and an old signed state: it can't make new
  * ones), so members following it get a click shifted by the replay's delay.
- * A real-time relay shifts it by at most half the round trip (500 ms at
- * most: the round-trip ceiling of #283). Fix once a write is safe: the member writes 8
- * random bytes, the leader signs t1 with them.
+ * A real-time relay shifts it by at most half the round trip, and round
+ * trips over 500 ms are dropped (#283): 250 ms at worst. Fix once a write
+ * is safe: the member writes 8 random bytes, the leader signs t1 with them.
  *
  * Then the NTP-style maths of the Realtime click (clockSample / bestSample).
  */
