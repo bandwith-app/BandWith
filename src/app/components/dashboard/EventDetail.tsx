@@ -101,6 +101,7 @@ import {
   rehearsalCadence,
   shortPlace,
 } from '@/app/components/event/format';
+import { stageSongOf } from '@/lib/stageSongs';
 import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
 import { RiderStageContent, RiderStageScreen } from '@/app/components/event/rider/RiderStage';
@@ -754,10 +755,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const sessionsOn = useBandFlag(event.band_id, 'rehearsal_sessions');
   const sessionBridge = useRef<StageSessionBridge>({});
   const regiaBridge = useRef<StageRegiaBridge>({});
+  // Follow the tempo and the count-in read the checked line timing and the length in seconds.
+  const stageSongs = useMemo(() => setlistSongs.map(stageSongOf), [setlistSongs]);
   const stageLive = useStageLive({
     eventId: isPersonalGig ? undefined : event.eventId,
     setlistId: event.setlistId,
-    songs: setlistSongs,
+    songs: stageSongs,
     open: isStageOpen,
     isLeader: isAdmin,
     session: sessionBridge,

@@ -55,6 +55,8 @@ export const buildSeed = (): DemoDB => {
   const bands: Row[] = [
     {
       id: IDS.band, name: 'Velvet Static', slug: 'velvet-static', logo_url: null, cover_url: null,
+      // Live mode count-in (171): 4 3 2 1 GO.
+      count_in_style: 'down',
       description: 'Five-piece soul & funk cover band for weddings, clubs and corporate nights.',
       genre: 'Soul / Funk', location: 'Milano', plan: 'unlimited', created_by: IDS.me,
       created_at: created, updated_at: created, standard_lineup_size: 5,
@@ -102,6 +104,8 @@ export const buildSeed = (): DemoDB => {
   const songs: Row[] = songList.map(([title, artist, duration_seconds, bpm, key], i) => ({
     id: id(300 + i), band_id: IDS.band, title, artist, duration_seconds, bpm, key, genre: 'Soul / Funk',
     category: 'repertoire', status: 'ready', priority: 'normal', times_played: 12 - (i % 6), added_by: IDS.me,
+    // Live mode (171): defaults; "Crazy in Love" is played with its backing track (no count-in).
+    time_signature: null, count_in_bars: 1, pickup_beats: 0, backing_track: title === 'Crazy in Love', line_timing: null,
     created_at: created, updated_at: created,
   }));
 

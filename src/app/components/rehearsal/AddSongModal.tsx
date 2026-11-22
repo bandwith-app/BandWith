@@ -52,6 +52,7 @@ import type { ImportedSong } from '@/lib/songImport';
 import { foldSemitones, parseKey, prefersFlats, transposeChart, transposeKey, transposeLyrics } from '@/lib/transpose';
 import { TempoKeyTools } from './TempoKeyTools';
 import { useVoiceSafeText, VoicePartsKept } from '@/app/components/songs/VoiceSafeText';
+import { LIVE_TEMPO_DEFAULTS, LiveTempoFields, type LiveTempoValues } from './LiveTempoFields';
 
 interface AddSongModalProps {
   isOpen: boolean;
@@ -66,6 +67,14 @@ interface AddSongModalProps {
 type StepType = 'details' | 'more' | 'extras';
 
 /** "245" seconds → { min: '4', sec: '05' }. */
+/** The song's live-mode fields as the form shows them (defaults before 171). */
+const liveTempoOf = (song: Song): LiveTempoValues => ({
+  timeSignature: song.time_signature || '',
+  countInBars: song.count_in_bars === 2 ? 2 : 1,
+  pickupBeats: song.pickup_beats && song.pickup_beats > 0 ? song.pickup_beats : 0,
+  backingTrack: !!song.backing_track,
+});
+
 const splitDuration = (seconds?: number | null) =>
   seconds && seconds > 0
     ? { min: String(Math.floor(seconds / 60)), sec: String(Math.round(seconds % 60)).padStart(2, '0') }
@@ -118,6 +127,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [chordChartTouched, setChordChartTouched] = useState(false);
   const [bpm, setBpm] = useState('');
   const [key, setKey] = useState('');
+  // Live mode (171): time signature, count-in, pickup, backing track.
+  const [liveTempo, setLiveTempo] = useState<LiveTempoValues>(LIVE_TEMPO_DEFAULTS);
   /** Semitones moved with Transpose in this edit. */
   const [transposed, setTransposed] = useState(0);
   // Duration as minutes + seconds (number pads have no ":").
@@ -149,6 +160,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setArtist(song.artist || '');
     setBpm(song.bpm ? String(song.bpm) : '');
     setKey(song.key || '');
+    const live = liveTempoOf(song);
+    setLiveTempo(live);
     const d = splitDuration(song.duration_seconds);
     setDurMin(d.min);
     setDurSec(d.sec);
@@ -173,6 +186,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       bpm: song.bpm ? String(song.bpm) : '',
       key: song.key || '',
       durationSeconds: song.duration_seconds && song.duration_seconds > 0 ? song.duration_seconds : 0,
+      ...live,
     };
   }, [isOpen, song?.id]);
 
@@ -183,7 +197,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   // against now. Closing with something typed asks first, like every wizard.
   const formSig = JSON.stringify([
     title, artist, genres, audioFile?.name, chartFile?.name, existingAudio, existingChart,
-    youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec,
+    youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec, liveTempo,
   ]);
   const baselineRef = useRef<string | null>(null);
   const [baselineTick, setBaselineTick] = useState(0);
@@ -325,6 +339,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         bpm,
         key,
         durationSeconds: mins * 60 + secs,
+        ...liveTempo,
         ...(chordChartTouched ? { chordChart: { value: chordChart } } : {}),
       };
 
@@ -404,6 +419,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setChordChartTouched(false);
     setBpm('');
     setKey('');
+    setLiveTempo(LIVE_TEMPO_DEFAULTS);
     setDurMin('');
     setDurSec('');
     setTransposed(0);
@@ -497,7 +513,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-song-title"
-      className="bw-pane-detail fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
+      className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
     >
       <UnsavedChangesSheet
         open={leaveOpen}
@@ -635,6 +651,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 moved={transposed}
                 onTranspose={transposeSong}
               />
+              <LiveTempoFields value={liveTempo} onChange={setLiveTempo} chartTime={chordChart?.time} />
 
               {/* Genre tags: used to filter the library when building a setlist */}
               <fieldset className="flex flex-col gap-2 pt-2">

@@ -42,6 +42,7 @@ import { enterScreen } from '@/lib/appAnalytics';
 import { WaitingChangesTag } from '@/app/components/event/WaitingChangesTag';
 import { packSavedLabel } from '@/app/components/event/OfflineReadyRow';
 import type { LiveSongExtras } from '@/lib/livePack';
+import type { LiveSongFields } from '@/lib/stageSongs';
 
 export interface StageStep {
   label: string;
@@ -51,7 +52,11 @@ export interface StageStep {
   display: string;
 }
 
-export interface StageSong extends LiveSongExtras {
+/**
+ * A setlist song in live mode: the live pack's extras (voice parts…) and the
+ * tempo fields read for Follow the tempo and the count-in (171).
+ */
+export interface StageSong extends Omit<LiveSongExtras, 'lineTiming'>, LiveSongFields {
   /** setlist_songs row id (live order and current song follow it). */
   id?: string;
   /** songs.id, needed to save a new order. */
