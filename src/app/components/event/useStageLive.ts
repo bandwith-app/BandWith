@@ -22,17 +22,18 @@ import {
   bestSample,
   CLICK_EVENT,
   clockSample,
+  nowMs,
   parseClickState,
+  pickClock,
   PING_EVENT,
   PONG_EVENT,
   START_LEAD_MS,
   type ClickState,
   type ClockSample,
+  type PeerClock,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
 
-/** Wall-clock ms with sub-ms steps (smooth for the metronome). */
-const nowMs = () => performance.timeOrigin + performance.now();
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
 const PING_GAP_MS = 200;
@@ -164,7 +165,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // Visual metronome (stageClick.ts): the newest click state, and the leader's clock offset.
   const [click, setClick] = useState<ClickState | null>(null);
   const clickRef = useRef<ClickState | null>(null);
-  const [clickOffset, setClickOffset] = useState(0);
+  /** The click leader's clock measured over Realtime (Bluetooth has its own, in useStageBle). */
+  const [rtClock, setRtClock] = useState<PeerClock | null>(null);
   const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[] }>({ peer: '', at: 0, samples: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -192,6 +194,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // Offline on stage: the same states over Bluetooth (native apps only).
   const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive });
   const blePublish = ble.publish;
+  const bleBurst = ble.burst;
   const hasIds = ordered.length > 0 && ordered.every((s) => !!s.id);
   // A song the setlist hasn't caught up with yet (played off the setlist on
   // stage, its row still on its way): stay on the last song found meanwhile.
@@ -251,9 +254,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (clickRef.current && clickRef.current.from !== clientId && !isNewer(state, clickRef.current)) return;
       clickRef.current = state;
       setClick(state);
-      if (state.on) syncWith(state.from);
+      if (state.on) {
+        syncWith(state.from);
+        // A fresh measure over Bluetooth too: the better of the two paths is used.
+        bleBurst();
+      }
     },
-    [clientId, syncWith],
+    [clientId, syncWith, bleBurst],
   );
 
   // The channel lives while Stage mode is open.
@@ -291,7 +298,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (book.peer !== p.from) return;
         book.samples.push(clockSample(p.t0, p.t1, nowMs()));
         const best = bestSample(book.samples);
-        if (best) setClickOffset(best.offset);
+        if (best) setRtClock({ from: p.from, sample: best });
       })
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
@@ -410,7 +417,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     ledRef.current = false;
     clickRef.current = null;
     setClick(null);
-    setClickOffset(0);
+    setRtClock(null);
     pingTimers.current.forEach(clearTimeout);
   }, [open]);
 
@@ -531,6 +538,11 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const sendSession = useCallback((payload: unknown) => {
     void channelRef.current?.send({ type: 'broadcast', event: SESSION_EVENT, payload });
   }, []);
+
+  // The click leader's clock: Realtime or Bluetooth, whichever measured it with the shorter round trip.
+  const clickLeader = click && click.from !== clientId ? click.from : null;
+  const bestClock = pickClock(clickLeader, [rtClock, ble.clock]);
+  const clickOffset = bestClock?.offset ?? 0;
 
   return {
     /** The setlist in its live order. */

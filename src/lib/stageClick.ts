@@ -32,6 +32,9 @@ export interface ClickState {
   songId: string | null;
 }
 
+/** Wall-clock ms with sub-ms steps (smooth for the metronome); the clock every offset refers to. */
+export const nowMs = () => performance.timeOrigin + performance.now();
+
 export const MIN_CLICK_BPM = 30;
 export const MAX_CLICK_BPM = 300;
 /** The leader starts this far ahead, so the others get the message before beat 0. */
@@ -71,6 +74,19 @@ export const clockSample = (t0: number, t1: number, t2: number): ClockSample => 
 /** The sample with the shortest round trip is the least distorted by the network. */
 export const bestSample = (samples: ClockSample[]): ClockSample | null =>
   samples.reduce<ClockSample | null>((best, s) => (!best || s.rtt < best.rtt ? s : best), null);
+
+/** A clock measured against one leader (their clientId), over one path (Realtime or Bluetooth). */
+export interface PeerClock {
+  from: string | null;
+  sample: ClockSample | null;
+}
+
+/**
+ * The offset to use for `leader`'s click: of the clocks measured against that
+ * same leader, over any path, the one with the shortest round trip.
+ */
+export const pickClock = (leader: string | null, clocks: Array<PeerClock | null | undefined>): ClockSample | null =>
+  leader ? bestSample(clocks.flatMap((c) => (c && c.from === leader && c.sample ? [c.sample] : []))) : null;
 
 export interface BeatPosition {
   /** Beat number from 0, or -1 before the start. */

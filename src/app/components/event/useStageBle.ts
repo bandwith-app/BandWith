@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BleClient } from '@capacitor-community/bluetooth-le';
-import type { PluginListenerHandle } from '@capacitor/core';
+import { BleClient, ConnectionPriority } from '@capacitor-community/bluetooth-le';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { StageBle, stageBleAvailable, stageKey } from '@/lib/stageBleNative';
 import { STAGE_BLE_CHARACTERISTIC, decodeStageState, encodeStageState, seqBytes, stageServiceUuid, toBase64 } from '@/lib/stageBle';
+import {
+  BURST_GAP_MS,
+  BURST_PINGS,
+  BleClockBook,
+  CLOCK_RESYNC_MS,
+  STAGE_BLE_SYNC_CHARACTERISTIC,
+  SYNC_PONG,
+  decodePong,
+} from '@/lib/stageBleSync';
+import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import type { StageLiveState } from '@/lib/stageLive';
 
 /**
@@ -26,15 +36,40 @@ interface Options {
 }
 
 const RETRY_MS = 2000;
+/** Calls to the plugin's clock when the leader sets its offset (the fastest wins). */
+const CALIBRATE_CALLS = 3;
+
+/** Leader: how far the app's clock is from the plugin's, so pongs carry the app's clock. */
+async function calibrateClock(): Promise<number | null> {
+  const samples: ClockSample[] = [];
+  for (let i = 0; i < CALIBRATE_CALLS; i++) {
+    const t0 = nowMs();
+    const { now } = await StageBle.now();
+    samples.push(clockSample(t0, now, nowMs()));
+  }
+  const best = bestSample(samples);
+  // sample.offset is the plugin's clock minus the app's.
+  return best ? -best.offset : null;
+}
 
 /**
  * Stage mode over Bluetooth, the offline twin of the Realtime channel in
  * useStageLive: the admin's phone serves the latest state as a Bluetooth
  * peripheral; members' phones find it by the gig's service UUID, subscribe
  * and read. Every state is checked with the gig's key (migration 087).
+ *
+ * Members also measure the leader's clock over the link (stageBleSync.ts):
+ * a burst of pings on connecting, again every 30 s and on demand (`burst`,
+ * e.g. when a click or a count-in starts). `clock` is the best measure,
+ * tied to the leader's id from its states. A leader on an older app has no
+ * sync characteristic: the song still syncs, `clock` stays null.
  */
 export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
+  const [clock, setClock] = useState<PeerClock | null>(null);
+  const burstRef = useRef<() => void>(() => {});
+  /** Member: measure the leader's clock again now (a burst of pings). */
+  const burst = useCallback(() => burstRef.current(), []);
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
   const savedRef = useRef(savedIds);
@@ -74,6 +109,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     if (!active || !isLeader || !eventId) return;
     let cancelled = false;
     let listener: PluginListenerHandle | null = null;
+    let recalibrate: ReturnType<typeof setInterval> | undefined;
+    const calibrate = async () => {
+      try {
+        const offset = await calibrateClock();
+        if (offset !== null && !cancelled) await StageBle.setClock({ offset });
+      } catch {
+        /* the members' pongs then carry the plugin's clock: they keep their last measure */
+      }
+    };
     (async () => {
       const key = await stageKey(eventId);
       if (cancelled || !key) return;
@@ -90,9 +134,20 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       listener = handle;
       try {
         // Empty until the first move; members ignore it. Asks for Bluetooth the first time.
-        const { state } = await StageBle.start({ serviceUuid, characteristicUuid: STAGE_BLE_CHARACTERISTIC, value: '', notify: '' });
+        const { state } = await StageBle.start({
+          serviceUuid,
+          characteristicUuid: STAGE_BLE_CHARACTERISTIC,
+          value: '',
+          notify: '',
+          syncUuid: STAGE_BLE_SYNC_CHARACTERISTIC,
+          key,
+        });
         if (cancelled) return;
         startedRef.current = true;
+        // Pongs carry the app's clock (the one `startAt` uses); kept right as the two drift.
+        await calibrate();
+        if (cancelled) return;
+        recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
         setStatus(state === 'on' ? 'leading' : state === 'unknown' ? 'off' : 'unavailable');
         const pending = pendingRef.current;
         pendingRef.current = null;
@@ -103,6 +158,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     })();
     return () => {
       cancelled = true;
+      clearInterval(recalibrate);
       startedRef.current = false;
       pendingRef.current = null;
       void listener?.remove();
@@ -119,6 +175,70 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let retry: ReturnType<typeof setTimeout> | undefined;
     let serviceUuid = '';
     let key = '';
+    // Clock over the link: kept across a dropped link (the click keeps its beat
+    // meanwhile), started afresh for another leader's phone.
+    const book = new BleClockBook();
+    let bookDevice: string | null = null;
+    let leaderFrom: string | null = null;
+    let syncOn = false;
+    let burstTimers: ReturnType<typeof setTimeout>[] = [];
+    let resync: ReturnType<typeof setInterval> | undefined;
+
+    const emitClock = () => {
+      const sample = book.best(nowMs());
+      if (sample) setClock({ from: leaderFrom, sample });
+    };
+
+    const onSync = (view: DataView) => {
+      const t2 = nowMs();
+      const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice();
+      if (bytes[1] !== SYNC_PONG) return;
+      void decodePong(bytes, key).then((pong) => {
+        if (!pong || cancelled) return;
+        if (book.pong(pong.nonce, pong.t1, t2)) emitClock();
+      });
+    };
+
+    const pingOnce = async () => {
+      const id = deviceId;
+      if (!id || !syncOn || cancelled) return;
+      const { bytes } = book.ping(nowMs());
+      try {
+        await BleClient.write(id, serviceUuid, STAGE_BLE_SYNC_CHARACTERISTIC, new DataView(bytes.buffer));
+      } catch {
+        /* a dropped link is handled by onDisconnect */
+      }
+    };
+
+    const runBurst = () => {
+      if (!syncOn || cancelled) return;
+      burstTimers.forEach(clearTimeout);
+      burstTimers = Array.from({ length: BURST_PINGS }, (_, i) => setTimeout(() => void pingOnce(), i * BURST_GAP_MS));
+    };
+    burstRef.current = runBurst;
+
+    const startSync = async (id: string) => {
+      if (bookDevice !== id) {
+        book.clear();
+        bookDevice = id;
+      }
+      try {
+        await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_SYNC_CHARACTERISTIC, onSync);
+      } catch {
+        // A leader on an older app: no clock over Bluetooth, the song still syncs.
+        syncOn = false;
+        return;
+      }
+      if (cancelled) return;
+      syncOn = true;
+      if (Capacitor.getPlatform() === 'android') {
+        // Shorter connection interval: tighter round trips, a better clock.
+        await BleClient.requestConnectionPriority(id, ConnectionPriority.CONNECTION_PRIORITY_HIGH).catch(() => {});
+      }
+      runBurst();
+      clearInterval(resync);
+      resync = setInterval(runBurst, CLOCK_RESYNC_MS);
+    };
 
     const readNow = async () => {
       const id = deviceId;
@@ -129,6 +249,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (cancelled) return;
         if (result.ok) {
           setStatus('connected');
+          if (result.state.from !== leaderFrom) {
+            leaderFrom = result.state.from;
+            emitClock();
+          }
           onStateRef.current(result.state);
         } else if (result.reason === 'setlist') {
           // Not silently "connected": this phone needs the setlist again (internet).
@@ -146,6 +270,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     const onDisconnect = () => {
       deviceId = null;
+      syncOn = false;
+      clearInterval(resync);
+      burstTimers.forEach(clearTimeout);
       if (cancelled) return;
       setStatus('searching');
       later();
@@ -167,6 +294,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               if (cancelled) return;
               setStatus('connected');
               await readNow();
+              await startSync(id);
             } catch {
               deviceId = null;
               void BleClient.disconnect(id).catch(() => {});
@@ -218,6 +346,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     return () => {
       cancelled = true;
       clearTimeout(retry);
+      clearInterval(resync);
+      burstTimers.forEach(clearTimeout);
+      burstRef.current = () => {};
+      setClock(null);
       void BleClient.stopLEScan().catch(() => {});
       if (deviceId) void BleClient.disconnect(deviceId).catch(() => {});
       setStatus('off');
@@ -225,5 +357,5 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     // A reloaded setlist doesn't drop the link: reads use savedRef.
   }, [active, isLeader, eventId]);
 
-  return { status, publish };
+  return { status, publish, clock, burst };
 }
