@@ -34,6 +34,8 @@ interface Options {
 }
 
 const RETRY_MS = 2000;
+/** A leader's change notice is just the 4-byte seq; full values (a read echoed on iOS) are longer. */
+export const isChangeNotice = (v: DataView | undefined) => v?.byteLength === 4;
 /** Calls to the plugin's clock when the leader sets its offset (the fastest wins). */
 const CALIBRATE_CALLS = 3;
 
@@ -314,7 +316,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             try {
               await BleClient.stopLEScan();
               await BleClient.connect(id, () => onDisconnect(gen), { timeout: 10000 });
-              await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, () => void readNow());
+              // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
+              // hands every read's value to this callback, which would read forever.
+              await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, (v) => {
+                if (isChangeNotice(v)) void readNow();
+              });
               // Closed, or Bluetooth went off meanwhile (that link is already dropped).
               if (cancelled || gen !== link) return;
               setStatus('connected');

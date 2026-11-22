@@ -22,6 +22,9 @@ const ble = vi.hoisted(() => ({
   clockReads: 0,
   enabledCb: null as null | ((on: boolean) => void),
   disconnectCbs: [] as Array<() => void>,
+  /** iOS (plugin 8.3.0): every read's value is also delivered to the notification callback. */
+  echo: false,
+  stateReads: 0,
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -52,8 +55,12 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         return new DataView(frame.buffer);
       }
       if (char !== STAGE_BLE_CHARACTERISTIC) return new DataView(new ArrayBuffer(0));
+      ble.stateReads++;
       const bytes = (await encodeStageState({ seq: 3, from: 'lead', songId: 'b2', order: null }, IDS, KEY))!;
-      return new DataView(bytes.buffer);
+      const view = new DataView(bytes.buffer);
+      const cb = ble.notify.get(char);
+      if (ble.echo && cb) setTimeout(() => cb(view), 0);
+      return view;
     }),
     write: vi.fn(async () => {
       throw new Error('members never write (an Android write can crash when Bluetooth turns off)');
@@ -88,6 +95,8 @@ beforeEach(() => {
   ble.notify.clear();
   ble.clockReads = 0;
   ble.disconnectCbs = [];
+  ble.echo = false;
+  ble.stateReads = 0;
   vi.clearAllMocks();
 });
 
@@ -103,6 +112,26 @@ describe('useStageBle clock over Bluetooth', () => {
     expect(result.current.clock!.from).toBe('lead');
     // The fastest of the burst's round trips wins (timers in a busy test run are uneven).
     await waitFor(() => expect(Math.abs(result.current.clock!.sample!.offset - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
+    unmount();
+  });
+
+  it('member on iOS: a read echoed to the notification callback does not trigger another read (idle band, no battery drain)', async () => {
+    ble.echo = true;
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+    await new Promise((r) => setTimeout(r, 500));
+    // The first read on connecting, nothing after while the leader changes nothing.
+    expect(ble.stateReads).toBe(1);
+    // A real change notification (the 4-byte seq) still reads.
+    const seq = new DataView(new ArrayBuffer(4));
+    seq.setUint32(0, 4);
+    await act(async () => ble.notify.get(STAGE_BLE_CHARACTERISTIC)!(seq));
+    await waitFor(() => expect(ble.stateReads).toBe(2));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ble.stateReads).toBe(2);
     unmount();
   });
 
