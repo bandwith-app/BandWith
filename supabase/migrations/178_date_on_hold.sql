@@ -27,7 +27,9 @@
 --       * bw_is_event_participant: a member is not a participant of a quote,
 --         so they can't be added to (or create) its event chat;
 --       * the event chat of a quote, on its own (with or without 175/181):
---         members' chat_participants rows are archived and removed, new ones
+--         members' chat_participants rows are kept and refused by the rule
+--         (recorded in chat_participants_quote_178, as 175 r4 / 181 keep
+--         theirs: the same row works again once it's a gig), new ones
 --         are dropped by a BEFORE INSERT trigger (an older admin build that
 --         adds the whole lineup still saves its own row), chats / messages /
 --         chat_participants are hidden by RESTRICTIVE policies,
@@ -82,11 +84,13 @@
 -- Older app builds: they already hid quotes from members; now members simply
 -- don't get those rows (events, their own lineup row, notifications), which
 -- the app treats like a gig they are not on. No RPC they call changes shape.
--- Works with or without 175 / 181, in either order (checked with the real
--- 175 + 181 loaded: 175 -> 178 -> 181, 175 -> 181 -> 178 and main's
--- 175 -> 178 -> 193 -> 181). bw_chat_scope_ok and get_user_chats start from
--- 175's bodies (lineup and status rule, caller check, roster filter) and add
--- the quote rule; 175's final bw_chat_scope_ok (marker bw:175-r4) is kept
+-- Works with or without 175 / 181 (checked with the real 175 + 193 + 181
+-- loaded: 175 -> 178, main's 175 -> 178 -> 193 -> 181, and 175 -> 193 ->
+-- 181 -> 178), on text or enum (002) events.status / event_type: they are
+-- passed on as ::text. Lineup answers are compared with lower(btrim()).
+-- bw_chat_scope_ok and get_user_chats are 175's final bodies (lineup and
+-- status rule, caller check, roster filter, one bw_my_chat_ids per query)
+-- plus the quote rule; 175's final bw_chat_scope_ok (marker bw:175-r4) is kept
 -- (it carries the quote rule via bw_is_event_participant), any other one is
 -- replaced.
 -- bw_is_event_participant keeps 181's off-the-gig statuses (declined,
@@ -201,7 +205,7 @@ AS $$
     SELECT 1 FROM events e
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
-       AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+       AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
        AND NOT (public.bw_is_band_admin(e.band_id, p_user_id)
                 AND (auth.uid() IS NULL OR auth.uid() = p_user_id OR public.bw_is_band_admin(e.band_id, auth.uid())))
   );
@@ -230,7 +234,7 @@ AS $$
        OR EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = auth.uid())
        OR public.bw_is_band_member(e.band_id, auth.uid())
      )
-     AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+     AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
      AND NOT public.bw_is_band_admin(e.band_id, auth.uid());
 $$;
 REVOKE ALL ON FUNCTION public.bw_hidden_quote_chat_ids() FROM PUBLIC, anon;
@@ -252,11 +256,11 @@ AS $$
        AND EXISTS (
          SELECT 1 FROM events e
           WHERE e.setlist_id = s.id AND e.band_id IS NOT NULL
-            AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id))
+            AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id))
        AND NOT EXISTS (
          SELECT 1 FROM events e
           WHERE e.setlist_id = s.id
-            AND NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id))
+            AND NOT public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id))
   );
 $$;
 REVOKE ALL ON FUNCTION public.bw_setlist_quote_hidden(uuid, uuid) FROM PUBLIC, anon;
@@ -264,12 +268,17 @@ GRANT EXECUTE ON FUNCTION public.bw_setlist_quote_hidden(uuid, uuid) TO authenti
 
 -- Chats where the caller (not an admin) came back after the quote became a
 -- gig: { chat id: confirmation time }. Older messages stay with the admins.
+-- Only chats the rule lets the caller into (bw_chat_scope_ok, defined below
+-- or by 175): a kept row the rule refuses gets nothing. plpgsql, so it can
+-- name bw_chat_scope_ok before this file creates it.
 CREATE OR REPLACE FUNCTION public.bw_quote_chat_cutoffs()
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
+BEGIN
+  RETURN (
   SELECT coalesce(jsonb_object_agg(c.id::text, h.released_at), '{}'::jsonb)
     FROM chats c
     JOIN events e ON e.id = c.event_id
@@ -278,7 +287,9 @@ AS $$
      AND c.type::text = 'event'
      AND e.band_id IS NOT NULL
      AND EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = auth.uid())
-     AND NOT public.bw_is_band_admin(e.band_id, auth.uid());
+     AND NOT public.bw_is_band_admin(e.band_id, auth.uid())
+     AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, auth.uid()));
+END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_chat_cutoffs() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_chat_cutoffs() TO authenticated;
@@ -321,7 +332,7 @@ CREATE POLICY events_select_policy ON public.events
     band_id IS NOT NULL
     AND public.bw_is_band_member(band_id)
     AND (
-      NOT public.bw_event_quote_private(id, status, event_type, quote_id)
+      NOT public.bw_event_quote_private(id, status::text, event_type::text, quote_id)
       OR public.bw_is_band_admin(band_id)
     )
   );
@@ -339,7 +350,7 @@ AS $$
         (e.band_id IS NOT NULL
           AND public.bw_is_band_member(e.band_id, p_user_id)
           AND (
-            NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+            NOT public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
             OR public.bw_is_band_admin(e.band_id, p_user_id)
           ))
         OR (e.band_id IS NULL AND e.created_by = p_user_id)
@@ -367,7 +378,7 @@ AS $$
             OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, auth.uid()))
             OR (e.band_id IS NULL AND e.created_by = auth.uid()))
        AND (e.band_id IS NULL
-            OR NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+            OR NOT public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
             OR public.bw_is_band_admin(e.band_id, p_user_id))
   );
 $$;
@@ -386,7 +397,7 @@ AS $$
     WHERE e.id = p_event_id
       AND NOT (
         e.band_id IS NOT NULL
-        AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+        AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
         AND NOT public.bw_is_band_admin(e.band_id, p_user_id)
       )
       AND (
@@ -451,8 +462,8 @@ AS $$
     SELECT 1 FROM quotes q
     JOIN events e ON e.id = q.converted_to_event_id
      WHERE q.id = p_quote_id
-       AND lower(coalesce(e.status, '')) IN ('confirmed', 'completed')
-       AND NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+       AND lower(coalesce(e.status::text, '')) IN ('confirmed', 'completed')
+       AND NOT public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
   );
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_musician_row_visible(uuid) FROM PUBLIC, anon;
@@ -591,14 +602,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT e.id, e.band_id, coalesce(e.event_date, e.date),
-         coalesce(e.event_type, '') = 'rehearsal',
+         coalesce(e.event_type::text, '') = 'rehearsal',
          coalesce(nullif(btrim(e.venue_name), ''), nullif(btrim(e.venue), ''), nullif(btrim(e.title), ''), ''),
          (SELECT count(*)::int FROM public.setlist_songs ss WHERE ss.setlist_id = e.setlist_id)
     FROM public.events e
    WHERE e.band_id IS NOT NULL
      AND e.setlist_id IS NOT NULL
-     AND coalesce(e.status, '') NOT IN ('cancelled', 'canceled')
-     AND NOT public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+     AND coalesce(e.status::text, '') NOT IN ('cancelled', 'canceled')
+     AND NOT public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
      AND coalesce(e.event_date, e.date) BETWEEN current_date AND current_date + 7
      AND (p_event_id IS NULL OR e.id = p_event_id)
      AND EXISTS (SELECT 1 FROM public.setlist_songs ss WHERE ss.setlist_id = e.setlist_id);
@@ -615,7 +626,7 @@ SET search_path TO 'public'
 AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM events e WHERE e.id = NEW.event_id
-              AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)) THEN
+              AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)) THEN
     RAISE EXCEPTION 'This gig is still a quote: ask a deputy once it is confirmed' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -640,7 +651,7 @@ STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
   SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event_id AND e.band_id IS NOT NULL
-                   AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id));
+                   AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id));
 $$;
 REVOKE ALL ON FUNCTION public.bw_event_deputy_hidden(uuid) FROM PUBLIC, anon, authenticated;
 
@@ -809,8 +820,13 @@ CREATE TRIGGER bw_chat_participants_00_quote_guard
   BEFORE INSERT ON public.chat_participants
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_chat_participant_quote_guard();
 
--- Members out of a quote's chat (rows archived). p_event_id NULL: every
--- quote chat (the one-off cleanup below).
+-- Members out of a quote's chat. As in 175 round 4 / 181, the participant
+-- row is KEPT and the rule refuses it everywhere (bw_chat_scope_ok, the
+-- RESTRICTIVE policies above, get_user_chats, push): a record goes to
+-- chat_participants_quote_178, nothing is deleted, so when the quote becomes
+-- a gig the same row (same chat) works again and no app build can miss the
+-- chat and start a second one. Returns how many rows it recorded.
+-- p_event_id NULL: every quote chat (the one-off cleanup below).
 CREATE OR REPLACE FUNCTION public.bw_quote_chat_prune(p_event_id uuid DEFAULT NULL)
 RETURNS integer
 LANGUAGE plpgsql
@@ -833,11 +849,9 @@ BEGIN
     SELECT g.chat_id, g.user_id, g.row_data FROM gone g
      WHERE EXISTS (SELECT 1 FROM profiles p WHERE p.id = g.user_id)
     ON CONFLICT (chat_id, user_id) DO UPDATE SET row_data = EXCLUDED.row_data, removed_at = now()
+    RETURNING 1
   )
-  DELETE FROM chat_participants cp
-   USING gone g
-   WHERE cp.chat_id = g.chat_id AND cp.user_id = g.user_id;
-  GET DIAGNOSTICS v_count = ROW_COUNT;
+  SELECT count(*)::int INTO v_count FROM saved;
   RETURN v_count;
 END;
 $$;
@@ -876,6 +890,13 @@ BEGIN
      AND public.bw_is_band_member(v_band, em.user_id)
      AND EXISTS (SELECT 1 FROM profiles p WHERE p.id = em.user_id)
      AND NOT EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = em.user_id);
+  -- Rows kept while it was a quote (members only: admins were never out):
+  -- the history before the confirmation is cleared for them too.
+  UPDATE chat_participants cp
+     SET cleared_at = greatest(coalesce(cp.cleared_at, now()), now())
+    FROM chats c
+   WHERE cp.chat_id = c.id AND c.type::text = 'event' AND c.event_id = p_event_id
+     AND NOT public.bw_is_band_admin(v_band, cp.user_id);
   DELETE FROM chat_participants_quote_178 a
    USING chats c
    WHERE a.chat_id = c.id AND c.type::text = 'event' AND c.event_id = p_event_id;
@@ -933,7 +954,7 @@ AS $f$
                 OR NOT EXISTS (
                   SELECT 1 FROM event_members em
                    WHERE em.event_id = e.id AND em.user_id = w.u
-                     AND lower(coalesce(em.status::text, '')) IN ('declined', 'dropped_out', 'removed')))
+                     AND lower(btrim(coalesce(em.status::text, ''))) IN ('declined', 'dropped_out', 'removed')))
            AND NOT public.bw_event_quote_hidden(e.id, w.u))
     ELSE true
   END, false));
@@ -991,8 +1012,8 @@ BEGIN
     ORDER BY c.updated_at DESC NULLS LAST
   ) INTO result
   FROM chats c
-  WHERE c.id = ANY (public.bw_my_chat_ids())
-    AND NOT (c.id = ANY (public.bw_hidden_quote_chat_ids()));
+  WHERE c.id = ANY ((SELECT public.bw_my_chat_ids())::uuid[])
+    AND NOT (c.id = ANY ((SELECT public.bw_hidden_quote_chat_ids())::uuid[]));
 
   RETURN COALESCE(result, '[]'::JSONB);
 END;
@@ -1034,8 +1055,8 @@ AS $$
     SELECT 1 FROM events e
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
-       AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
-       AND lower(coalesce(e.status, '')) NOT IN ('cancelled', 'canceled', 'draft')
+       AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
+       AND lower(coalesce(e.status::text, '')) NOT IN ('cancelled', 'canceled', 'draft')
        AND coalesce(e.event_date, e.date) >= public.bw_date_hold_today()
        AND NOT EXISTS (
          SELECT 1 FROM quotes q
@@ -1105,12 +1126,12 @@ AS $$
   WITH ev AS (
     SELECT e.id,
            e.event_date,
-           (lower(coalesce(e.event_type, '')) = 'rehearsal') AS is_rehearsal,
-           lower(coalesce(e.status, '')) AS ev_status
+           (lower(coalesce(e.event_type::text, '')) = 'rehearsal') AS is_rehearsal,
+           lower(coalesce(e.status::text, '')) AS ev_status
     FROM events e
     WHERE e.band_id = p_band_id
       AND e.event_date BETWEEN p_from AND p_to
-      AND NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+      AND NOT public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
   ),
   mine AS (
     SELECT em.user_id,
@@ -1231,9 +1252,9 @@ AS $$
       JOIN events e
         ON e.event_date BETWEEN p_from AND p_to
        AND (p_exclude_event IS NULL OR e.id <> p_exclude_event)
-       AND lower(coalesce(e.status, '')) NOT IN ('cancelled', 'canceled', 'quote', 'quoted')
+       AND lower(coalesce(e.status::text, '')) NOT IN ('cancelled', 'canceled', 'quote', 'quoted')
        AND NOT (coalesce(e.recurrence_rule -> 'skip_dates', '[]'::jsonb) ? to_char(e.event_date, 'YYYY-MM-DD'))
-       AND (e.band_id IS NULL OR NOT public.bw_event_is_quote(e.status, e.event_type, e.quote_id))
+       AND (e.band_id IS NULL OR NOT public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id))
        AND (
          EXISTS (
            SELECT 1 FROM event_members em
@@ -1253,7 +1274,7 @@ AS $$
         ON e.band_id = hb.band_id
        AND coalesce(e.event_date, e.date) BETWEEN p_from AND p_to
        AND (p_exclude_event IS NULL OR e.id <> p_exclude_event)
-       AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+       AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
        AND NOT (coalesce(e.recurrence_rule -> 'skip_dates', '[]'::jsonb) ? to_char(e.event_date, 'YYYY-MM-DD'))
        AND public.bw_date_hold_live(e.id)
   ),
@@ -1542,7 +1563,7 @@ AS $$
      AND bm.user_id = auth.uid()
      AND coalesce(bm.is_active, true)
      AND bm.role::text <> 'admin'
-     AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+     AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
      AND public.bw_date_hold_live(e.id)
    ORDER BY 4, 5 NULLS LAST, 1;
 $$;
@@ -1653,7 +1674,7 @@ DECLARE
   ev record;
 BEGIN
   IF TG_OP = 'DELETE' THEN ev := OLD; ELSE ev := NEW; END IF;
-  v_kind := CASE WHEN lower(coalesce(ev.event_type, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
+  v_kind := CASE WHEN lower(coalesce(ev.event_type::text, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
   v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
   v_when := coalesce(to_char(ev.event_date, 'Dy DD Mon'), 'date TBD') ||
             CASE WHEN ev.start_time IS NOT NULL THEN ' · ' || to_char(ev.start_time, 'HH24:MI') ELSE '' END;
@@ -1661,13 +1682,13 @@ BEGIN
   v_data := jsonb_build_object(
     'event_id', ev.id,
     'event_title', ev.title,
-    'event_type', ev.event_type,
+    'event_type', ev.event_type::text,
     'event_date', ev.event_date,
     'subtitle', ev.title,
     'tag', 'event-' || ev.id
   );
   -- 178: a quote, or a quote cancelled before it became a gig.
-  v_was_quote := OLD.band_id IS NOT NULL AND public.bw_event_quote_private(OLD.id, OLD.status, OLD.event_type, OLD.quote_id);
+  v_was_quote := OLD.band_id IS NOT NULL AND public.bw_event_quote_private(OLD.id, OLD.status::text, OLD.event_type::text, OLD.quote_id);
 
   IF TG_OP = 'DELETE' THEN
     IF v_was_quote THEN
@@ -1680,7 +1701,7 @@ BEGIN
       RETURN OLD;
     END IF;
     -- Skip drafts nobody was told about.
-    IF coalesce(OLD.status, '') IN ('draft') THEN RETURN OLD; END IF;
+    IF coalesce(OLD.status::text, '') IN ('draft') THEN RETURN OLD; END IF;
     v_recipients := public.bw_event_recipient_ids(OLD.id, OLD.band_id, v_was_quote);
     PERFORM public.bw_notify(v_recipients, OLD.band_id, 'event_cancelled',
       v_label || ' cancelled', OLD.title || ' · ' || v_when || ' was removed from the calendar.',
@@ -1688,7 +1709,7 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  v_is_quote := NEW.band_id IS NOT NULL AND public.bw_event_quote_private(NEW.id, NEW.status, NEW.event_type, NEW.quote_id);
+  v_is_quote := NEW.band_id IS NOT NULL AND public.bw_event_quote_private(NEW.id, NEW.status::text, NEW.event_type::text, NEW.quote_id);
 
   -- Back to a quote ("Revert to quote"): members leave its chat, and the
   -- confirmation is undone (a live hold starts again below; one that isn't
@@ -1700,7 +1721,7 @@ BEGIN
   END IF;
 
   -- UPDATE
-  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status = 'cancelled' THEN
+  IF NEW.status::text IS DISTINCT FROM OLD.status::text AND NEW.status::text = 'cancelled' THEN
     IF v_was_quote THEN
       PERFORM public.bw_notify(public.bw_active_band_member_ids(NEW.band_id, true), NEW.band_id, 'event_cancelled',
         v_label || ' cancelled', NEW.title || ' · ' || v_when || ' has been cancelled.',
@@ -1715,8 +1736,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status = 'confirmed'
-     AND coalesce(OLD.status, 'draft') IN ('draft', 'pending', 'tentative') THEN
+  IF NEW.status::text IS DISTINCT FROM OLD.status::text AND NEW.status::text = 'confirmed'
+     AND coalesce(OLD.status::text, 'draft') IN ('draft', 'pending', 'tentative') THEN
     v_recipients := public.bw_event_recipient_ids(NEW.id, NEW.band_id, v_is_quote);
     PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_confirmed',
       v_label || ' confirmed', NEW.title || ' · ' || v_when || ' is on. Check your lineup and times.',
@@ -1728,7 +1749,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF NEW.status = 'draft' THEN
+  IF NEW.status::text = 'draft' THEN
     IF v_was_quote THEN PERFORM public.bw_date_hold_sync(NEW.id, false); END IF;
     RETURN NEW;
   END IF;
@@ -1770,7 +1791,7 @@ BEGIN
       OR NEW.venue_city IS DISTINCT FROM OLD.venue_city;
     PERFORM public.bw_date_hold_sync(NEW.id, v_hold_changed);
     -- Confirmed some other way (e.g. from 'quoted'): its lineup back in its chat.
-    IF v_was_quote AND NOT v_is_quote AND lower(coalesce(NEW.status, '')) IN ('confirmed', 'completed') THEN
+    IF v_was_quote AND NOT v_is_quote AND lower(coalesce(NEW.status::text, '')) IN ('confirmed', 'completed') THEN
       PERFORM public.bw_quote_event_confirmed(NEW.id);
     END IF;
   END IF;
@@ -1790,7 +1811,7 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  IF NEW.band_id IS NOT NULL AND public.bw_event_is_quote(NEW.status, NEW.event_type, NEW.quote_id) THEN
+  IF NEW.band_id IS NOT NULL AND public.bw_event_is_quote(NEW.status::text, NEW.event_type::text, NEW.quote_id) THEN
     PERFORM public.bw_date_hold_sync(NEW.id, false);
   END IF;
   RETURN NEW;
@@ -1884,8 +1905,8 @@ BEGIN
          end_time = CASE WHEN NEW.event_time_end IS DISTINCT FROM OLD.event_time_end THEN NEW.event_time_end ELSE e.end_time END
    WHERE e.band_id = NEW.band_id
      AND (e.id = NEW.converted_to_event_id OR e.quote_id = NEW.id)
-     AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
-     AND lower(coalesce(e.status, '')) <> 'cancelled'
+     AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
+     AND lower(coalesce(e.status::text, '')) <> 'cancelled'
      AND (e.event_date IS DISTINCT FROM coalesce(NEW.event_date, e.event_date)
           OR (NEW.event_time_start IS DISTINCT FROM OLD.event_time_start AND e.start_time IS DISTINCT FROM NEW.event_time_start)
           OR (NEW.event_time_end IS DISTINCT FROM OLD.event_time_end AND e.end_time IS DISTINCT FROM NEW.event_time_end));
@@ -1932,7 +1953,7 @@ BEGIN
   FOR r IN
     SELECT e.id FROM events e
      WHERE e.band_id IS NOT NULL
-       AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+       AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
        AND coalesce(e.event_date, e.date) >= public.bw_date_hold_today()
        AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = e.id)
   LOOP
@@ -1985,7 +2006,7 @@ AS $$
       SELECT 1 FROM events e
        WHERE e.setlist_id = p_setlist_id
          AND e.band_id IS NOT NULL
-         AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+         AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
          AND public.bw_is_band_member(e.band_id, p_user_id)
          AND NOT public.bw_is_band_admin(e.band_id, p_user_id)
     ));
@@ -2009,7 +2030,7 @@ BEGIN
   IF v_event IS NOT NULL THEN
     SELECT e.band_id INTO v_band FROM events e
      WHERE e.id = v_event AND e.band_id IS NOT NULL
-       AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id);
+       AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id);
     -- Members of the band who are not admins: dropped (deputies and others
     -- outside the band are not concerned).
     IF v_band IS NOT NULL AND public.bw_is_band_member(v_band, NEW.user_id)
@@ -2056,7 +2077,7 @@ WITH stale AS (
     JOIN events e ON e.id = public.bw_notification_event_id(n.data, n.reference_type, n.reference_id)
    WHERE n.type NOT IN ('date_hold', 'date_hold_changed', 'date_hold_released')
      AND e.band_id IS NOT NULL
-     AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+     AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
      AND public.bw_is_band_member(e.band_id, n.user_id)
      AND NOT public.bw_is_band_admin(e.band_id, n.user_id)
   UNION
@@ -2167,7 +2188,7 @@ INSERT INTO public.event_date_holds (event_id, band_id, announced_at)
 SELECT e.id, e.band_id, now()
   FROM events e
  WHERE e.band_id IS NOT NULL
-   AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)
+   AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
    AND public.bw_date_hold_live(e.id)
 ON CONFLICT (event_id) DO NOTHING;
 
@@ -2176,7 +2197,7 @@ ON CONFLICT (event_id) DO NOTHING;
 -- so a re-run never brings back answers cleared by a change of date.
 INSERT INTO public.event_hold_answers (event_id, user_id, answer, answered_at)
 SELECT DISTINCT ON (em.event_id, em.user_id) em.event_id, em.user_id,
-       CASE WHEN lower(btrim(em.status::text)) IN ('confirmed', 'accepted') THEN 'free' ELSE 'busy' END, now()
+       CASE WHEN lower(btrim(coalesce(em.status::text, ''))) IN ('confirmed', 'accepted') THEN 'free' ELSE 'busy' END, now()
   FROM event_date_holds h
   JOIN events e ON e.id = h.event_id
   JOIN event_members em ON em.event_id = h.event_id

@@ -11,6 +11,8 @@
 //   cp <repo>/supabase/tests/date_on_hold.pglite.mjs . && node date_on_hold.pglite.mjs <repo>
 //   node date_on_hold.pglite.mjs <repo> /dev/null     # before: FAILs expected
 //   MIG_175=<175> MIG_181=<181> MIG_193=<193> node date_on_hold.pglite.mjs <repo>   # + the real 175/181/193, all orders
+//   CHAT_TYPE=text ...   # chats.type text in the enum (002-shape) block; default enum
+//   SCOPE_175=<175>  ...   # drift check against that 175 (default origin/fix/security-audit)
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
@@ -56,7 +58,7 @@ const fnDef = async (name) => (await tryq(`SELECT string_agg(pg_get_functiondef(
 const notes = async (where = 'true') =>
   (await db.query(`SELECT user_id, type, title, body, data FROM notifications WHERE ${where} ORDER BY created_at, type`)).rows;
 
-async function boot(d) {
+async function boot(d, opts = {}) {
 await d.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
 CREATE SCHEMA auth; CREATE SCHEMA vault; CREATE SCHEMA cron; CREATE SCHEMA net; CREATE SCHEMA extensions;
@@ -194,6 +196,29 @@ CREATE POLICY notifications_select_own ON public.notifications FOR SELECT TO aut
 CREATE POLICY notifications_insert_admin ON public.notifications FOR INSERT TO authenticated WITH CHECK (public.bw_is_band_admin(band_id));
 `);
 
+// The 002 shape (#289's replay): events.status / event_type and
+// quotes.status are enums, chats.type too unless CHAT_TYPE=text. Converted
+// after the older live functions load (170's, for one, compares status
+// with '' and wouldn't load on enums: prod's columns are text).
+if (opts.enums) await d.exec(`
+-- 111's events read policy names status / event_type: off while the type
+-- changes, back with ::text (111 itself passes them bare: prod is text).
+DROP POLICY IF EXISTS events_select_policy ON public.events;
+CREATE TYPE event_status AS ENUM ('draft', 'tentative', 'confirmed', 'cancelled', 'completed');
+CREATE TYPE event_type AS ENUM ('gig', 'rehearsal', 'wedding', 'corporate', 'private', 'festival', 'other');
+CREATE TYPE quote_status AS ENUM ('draft', 'sent', 'viewed', 'accepted', 'declined', 'expired', 'negotiating', 'archived');
+ALTER TABLE public.events ALTER COLUMN status TYPE event_status USING status::event_status,
+  ALTER COLUMN event_type TYPE event_type USING event_type::event_type;
+ALTER TABLE public.quotes ALTER COLUMN status DROP DEFAULT;
+ALTER TABLE public.quotes ALTER COLUMN status TYPE quote_status USING status::quote_status;
+ALTER TABLE public.quotes ALTER COLUMN status SET DEFAULT 'draft';
+CREATE POLICY events_select_policy ON public.events FOR SELECT TO authenticated
+  USING (band_id IS NOT NULL AND public.bw_is_band_member(band_id)
+    AND (NOT public.bw_event_is_quote(status::text, event_type::text, quote_id) OR public.bw_is_band_admin(band_id)
+         OR created_by = auth.uid() OR public.bw_is_on_event_lineup(id)));
+${process.env.CHAT_TYPE === 'text' ? '' : `CREATE TYPE chat_type AS ENUM ('direct', 'group', 'band', 'event', 'rider');
+ALTER TABLE public.chats ALTER COLUMN type TYPE chat_type USING type::chat_type;`}
+`);
 }
 await boot(db);
 
@@ -265,10 +290,21 @@ const seeded = await db.query(`SELECT 1 FROM event_date_holds WHERE event_id = '
 ok(seeded.rows.length === 1 && (await notes(`type = 'date_hold'`)).length === 0, 'a hold live today is known, not announced again');
 
 // Round 2 (Claude B2): 178 is self-sufficient for chats, without 175 / send-push.
-ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id = '${MEM}'`)).rows.length === 0,
-  'pre-178 quote chat: the member\'s participant row is removed');
+// #281 round 4: the member's row is KEPT (as 175 / 181 do) and the rule
+// refuses it everywhere: no chat, no roster, no own row, no messages.
+{
+  const kept = (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id = '${MEM}'`)).rows.length;
+  const sees = [
+    (await as(MEM, `SELECT 1 FROM chats WHERE id = '${QCHAT0}'`)).rows.length,
+    (await as(MEM, `SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}'`)).rows.length,
+    (await as(MEM, `SELECT 1 FROM messages WHERE chat_id = '${QCHAT0}'`)).rows.length,
+  ];
+  const scope = (await tryq(`SELECT public.bw_chat_scope_ok('event', '${BAND}', '${QE0}', '${MEM}') ok`)).rows[0]?.ok;
+  ok(kept === 1 && sees.join() === '0,0,0' && scope === false,
+    `pre-178 quote chat: the member's row is kept, nothing of the chat reaches them (kept ${kept}, sees ${sees.join('/')}, scope ${scope})`);
+}
 ok((await tryq(`SELECT 1 FROM chat_participants_quote_178 WHERE chat_id = '${QCHAT0}' AND user_id = '${MEM}'`)).rows.length === 1,
-  '... and archived');
+  '... and recorded in chat_participants_quote_178');
 ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id = '${ADMIN}'`)).rows.length === 1, '... the admin stays');
 {
   const gc = await as(MEM, `SELECT public.get_user_chats('${MEM}') j`);
@@ -810,6 +846,28 @@ await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
   ok(fs?.free_count === fs?.total_count, `free slots: mixed-case declined / dropped out are free (${JSON.stringify(fs)})`);
 }
 
+// #281 → #294: a quote confirmed puts its lineup back in the chat, compared
+// with lower(btrim()): ' Declined' is not put back. And a kept row the rule
+// refuses (dropped out after the confirmation) gets no cut-off from
+// bw_quote_chat_cutoffs (no chat id, no date).
+{
+  const [QC9, QCH9] = [2330, 2331].map(id);
+  await mkQuote(QC9, 'Smith Garden', `INSERT INTO event_members (event_id, user_id, status) VALUES ('${QC9}','${MEM}','confirmed'), ('${QC9}','${MEM2}',' Declined');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${QCH9}','event','Smith Garden','${BAND}','${QC9}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCH9}','${ADMIN}')`);
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QC9}'`);
+  const inChat = async (u) => (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCH9}' AND user_id = '${u}'`)).rows.length;
+  ok(await inChat(MEM) === 1 && await inChat(MEM2) === 0, `confirmed: the lineup is back in the chat, ' Declined' is not (${await inChat(MEM)}, ${await inChat(MEM2)})`);
+  const cut = async () => Object.keys((await as(MEM, `SELECT public.bw_quote_chat_cutoffs() j`)).rows[0]?.j || {}).includes(QCH9);
+  const before = await cut();
+  await asServer(ADMIN, `UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${QC9}' AND user_id = '${MEM}'`);
+  await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCH9}','${MEM}') ON CONFLICT DO NOTHING;
+    ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
+  const after = await cut();
+  ok(before === true && after === false, `bw_quote_chat_cutoffs: a kept row the rule refuses gets no cut-off (on the lineup ${before}, dropped out ${after})`);
+}
+
 // Claude: deputies of a gig that went back to a quote.
 {
   await db.exec(`ALTER TABLE band_deputies ADD COLUMN IF NOT EXISTS user_id uuid;
@@ -934,10 +992,59 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
     $f$;`);
   await db.exec(sweep181);
   await db.exec(readFileSync(MIG, 'utf8')).catch((e) => console.log('order B migration:', e.message));
-  const during = (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows.length;
+  // Kept row, refused by the rule (#281 round 4): the member can't reach the chat.
+  const during = (await as(MEM, `SELECT 1 FROM chats WHERE id = '${QCHAT}'`)).rows.length
+    + (await as(MEM, `SELECT 1 FROM messages WHERE chat_id = '${QCHAT}'`)).rows.length;
   await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE6}'`);
   const orderB = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows[0];
   ok(during === 0 && orderB?.c === true, `order 181 → 178: out while a quote, back once confirmed, history cleared (${during}, ${JSON.stringify(orderB || null)})`);
+  db = db1;
+}
+
+// ── The 002 shape: enum events.status / event_type / quotes.status ─────────
+// 178 must apply (twice) and work on enum columns as well as text ones: it
+// passes them on as ::text. CHAT_TYPE=text keeps chats.type text here.
+{
+  const db1 = db;
+  db = new PGlite();
+  await boot(db, { enums: true });
+  const [EQ, EG, EQC, EQQ] = [2340, 2341, 2342, 2343].map(id);
+  await db.exec(`
+    INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${MEM}']::uuid[]);
+    INSERT INTO profiles (id, full_name, preferred_language) VALUES ('${ADMIN}','Leo Admin','en'), ('${MEM}','Marta Drums','en');
+    INSERT INTO bands VALUES ('${BAND}', 'Velvet Static');
+    INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${MEM}','member');
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, created_at) VALUES
+      ('${EQ}','${BAND}','Smith Wedding','tentative','wedding','${ADMIN}', current_date + 14, '18:00', now() - interval '1 day'),
+      ('${EG}','${BAND}','Rooftop Session','confirmed','gig','${ADMIN}', current_date + 4, '21:00', now() - interval '1 day');
+    INSERT INTO quotes (id, band_id, created_by, client_name, total, status, converted_to_event_id, created_at)
+      VALUES ('${EQQ}','${BAND}','${ADMIN}','Smith', 4000, 'sent', '${EQ}', now() - interval '1 day');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${EQ}','${MEM}','Confirmed'), ('${EG}','${MEM}','confirmed');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EQC}','event','Smith Wedding','${BAND}','${EQ}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EQC}','${ADMIN}'), ('${EQC}','${MEM}');`);
+  const errs = [];
+  for (const run of [1, 2]) await db.exec(readFileSync(MIG, 'utf8')).catch((e) => { errs.push(`run ${run}: ${e.message}`); return db.exec('ROLLBACK').catch(() => {}); });
+  ok(errs.length === 0, `enum columns (chats.type ${process.env.CHAT_TYPE === 'text' ? 'text' : 'enum'}): 178 applies twice (${errs.join('; ') || 'ok'})`);
+  const tag = 'enum columns';
+  const srv = (sql) => asServer(ADMIN, sql).then(() => null, async (e) => { await db.exec('ROLLBACK').catch(() => {}); return { error: e.message }; });
+  const hidden = (await as(MEM, `SELECT id FROM events WHERE id = '${EQ}'`)).rows.length;
+  const gig = (await as(MEM, `SELECT id FROM events WHERE id = '${EG}'`)).rows.length;
+  const hold = (await tryq(`SELECT 1 FROM event_date_holds WHERE event_id = '${EQ}'`)).rows.length;
+  const ans = (await tryq(`SELECT answer FROM event_hold_answers WHERE event_id = '${EQ}' AND user_id = '${MEM}'`)).rows[0]?.answer;
+  ok(hidden === 0 && gig === 1 && hold === 1 && ans === 'free', `${tag}: the quote is hidden, the gig shown, its hold made, 'Confirmed' carried as free (${hidden}, ${gig}, ${hold}, ${ans})`);
+  const sc = (await tryq(`SELECT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, '${MEM}') ok FROM chats c WHERE c.id = '${EQC}'`));
+  ok(sc.rows[0]?.ok === false && !sc.error, `${tag}: the quote chat is out of scope for the member (${sc.error || sc.rows[0]?.ok})`);
+  const fs = await as(ADMIN, `SELECT free_count, total_count FROM public.bw_band_free_slots('${BAND}', current_date + 14, current_date + 14)`);
+  ok(!fs.error && fs.rows[0]?.free_count === 0, `${tag}: free slots run, the live hold blocks its day (${fs.error || JSON.stringify(fs.rows[0])})`);
+  const mv = await srv(`UPDATE events SET event_date = current_date + 15 WHERE id = '${EQ}'`);
+  const cleared = (await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${EQ}'`)).rows.length;
+  ok(!mv?.error && cleared === 0, `${tag}: moving the quote's date clears the answers (${mv?.error || cleared})`);
+  const conf = await srv(`UPDATE events SET status = 'confirmed' WHERE id = '${EQ}'`);
+  const back = (await as(MEM, `SELECT id FROM events WHERE id = '${EQ}'`)).rows.length;
+  const rel = (await tryq(`SELECT release_reason r FROM event_date_holds WHERE event_id = '${EQ}'`)).rows[0]?.r;
+  ok(!conf?.error && back === 1 && rel === 'confirmed', `${tag}: confirmed, the member sees the gig, the hold is released (${conf?.error || back}, ${rel})`);
+  const cancel = await srv(`UPDATE events SET status = 'cancelled' WHERE id = '${EG}'`);
+  ok(!cancel?.error, `${tag}: cancelling a gig works (${cancel?.error || 'ok'})`);
   db = db1;
 }
 
@@ -946,7 +1053,8 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
 // origin/fix/security-audit:supabase/migrations/175_security_audit_access.sql,
 // origin/fix/event-chat-lineup:…/181_event_chat_lineup.sql,
 // origin/fix/chat-audit:…/193_one_chat_per_gig.sql). Orders: 175 → 178
-// (no 181), both orders of 178 and 181, and main's 175 → 178 → 193 → 181.
+// (no 181), main's 175 → 178 → 193 → 181, and 178 last (175 → 193 → 181 →
+// 178); 181 needs 193 first.
 // chats.type is the chat_type enum here, as on databases built from 002.
 const M175 = process.env.MIG_175;
 const M181 = process.env.MIG_181;
@@ -987,7 +1095,7 @@ if (M175 && M181) {
     for (const st of steps) {
       const sql = st === '175' ? sec175 : st === '181' ? readFileSync(M181, 'utf8') : st === '193' ? readFileSync(M193, 'utf8') : readFileSync(MIG, 'utf8');
       const err = await db.exec(sql).then(() => null, (e) => e.message);
-      if (err) console.log(`order ${order}, ${st}:`, err);
+      if (err) { console.log(`order ${order}, ${st}:`, err); await db.exec('ROLLBACK').catch(() => {}); }
       if (st === '178') mid.grpOut = await sc(GRP, OUT);
     }
     const tag = order;
@@ -996,15 +1104,19 @@ if (M175 && M181) {
     ok(await sc(GRP, MEM) === true && await sc(GRP, OUT) === false, `${tag}: legacy group chat follows the band`);
     ok((await tryq(`SELECT public.bw_is_event_participant('${GIG8}', '${MEM2}') p`)).rows[0]?.p === false,
       `${tag}: dropped out is off the gig (bw_is_event_participant keeps 181's status list)`);
-    if (has181) ok(await inChat(GC, MEM2) === 0 && await inChat(GC, MEM) === 1, `${tag}: gig chat = lineup (dropped out gone, lineup kept)`);
+    // Off the lineup: the row may be kept (175 r4 / 181 keep rows), but the chat doesn't reach them.
+    const sees = async (chat, uid) => (await as(uid, `SELECT 1 FROM chats WHERE id = '${chat}'`)).rows.length
+      + (await as(uid, `SELECT 1 FROM messages WHERE chat_id = '${chat}'`)).rows.length;
+    if (has181) ok(await sees(GC, MEM2) === 0 && await inChat(GC, MEM) === 1 && await sees(GC, MEM) === 1,
+      `${tag}: gig chat = lineup (dropped out can't reach it, lineup kept)`);
     // The lineup rule and the off-the-gig statuses, through the live rule.
     ok(await sc(GC, MEM) === true && await sc(GC, MEM2) === false && await sc(GC, RMV) === false && await sc(GC, NOLINE) === false,
       `${tag}: gig chat rule = lineup (on ${await sc(GC, MEM)}, dropped out ${await sc(GC, MEM2)}, removed ${await sc(GC, RMV)}, not on it ${await sc(GC, NOLINE)})`);
-    ok(await inChat(QC, MEM) === 0, `${tag}: a member is out of the quote chat`);
+    ok(await sees(QC, MEM) === 0 && await sc(QC, MEM) === false, `${tag}: a member is out of the quote chat (row kept or not)`);
     // The rule itself, not only the cleanup: a stale row (written past the
     // triggers) still gives the member nothing.
     await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
-      INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${MEM}');
+      INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${MEM}') ON CONFLICT DO NOTHING;
       ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
     const listedStale = JSON.stringify((await as(MEM, `SELECT public.get_user_chats('${MEM}') j`)).rows[0]?.j || []).includes(QC);
     ok(await sc(QC, MEM) === false && !listedStale && await sc(QC, ADMIN) === true,
@@ -1035,6 +1147,11 @@ if (M175 && M181) {
     ok(!ins.error && await inChat(QC, ADMIN) === 1 && await inChat(QC, MEM) === 0,
       `${tag}: old build's whole-lineup insert saves the admin, skips the member (${ins.error || 'no error'})`);
     const trig = (await tryq(`SELECT string_agg(tgname, ',' ORDER BY tgname) t FROM pg_trigger WHERE tgrelid = 'public.chat_participants'::regclass AND NOT tgisinternal`)).rows[0]?.t || '';
+    // The member's row kept from before (as 178's prune now leaves it): the
+    // confirmation reuses it and clears the history before it.
+    await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+      INSERT INTO chat_participants (chat_id, user_id, cleared_at) VALUES ('${QC}','${MEM}', NULL) ON CONFLICT DO NOTHING;
+      ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
     await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE8}'`);
     const back = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QC}' AND user_id = '${MEM}'`)).rows[0];
     const list = await as(MEM, `SELECT public.get_user_chats('${MEM}') j`);
@@ -1101,9 +1218,9 @@ if (M175 && M181) {
   }
 
   await cross('175 → 178');
-  await cross('175 → 178 → 181');
-  await cross('175 → 181 → 178');
+  // 181 now needs 193 first (#291): its orders always carry 193.
   if (M193) await cross('175 → 178 → 193 → 181');
+  if (M193) await cross('175 → 193 → 181 → 178');
   else console.log('skip: 175 → 178 → 193 → 181 (set MIG_193)');
   db = db1;
 } else {
@@ -1141,7 +1258,7 @@ if (M175 && M181) {
   // 178's own additions on top of 175's body, and 175's quote placeholder.
   const rules = {
     bw_chat_scope_ok: { end: '$f$;', drop178: ['AND NOT public.bw_event_quote_hidden(e.id, w.u)'], drop175: ['%s'] },
-    get_user_chats: { end: '\n$$;', drop178: ['AND NOT (c.id = ANY (public.bw_hidden_quote_chat_ids()))'], drop175: [] },
+    get_user_chats: { end: '\n$$;', drop178: ['AND NOT (c.id = ANY ((SELECT public.bw_hidden_quote_chat_ids())::uuid[]))'], drop175: [] },
   };
   const body = (sql, name, end) => {
     const re = new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\(`, 'i');
