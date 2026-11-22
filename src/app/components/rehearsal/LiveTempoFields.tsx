@@ -32,7 +32,9 @@ export const LiveTempoFields: React.FC<{
   // Nothing picked: the chart's, else 4/4 (what live mode uses).
   const implicit = fromChart ?? DEFAULT_TIME;
   const shown = normalizeTime(value.timeSignature) ?? implicit;
-  const beatsInBar = Number(shown.split('/')[0]) || 4;
+  // A pickup is counted in the bar's beats (6/8: two), at most a bar less one.
+  const beatsOf = (ts: string) => meterOf(ts).beats.length;
+  const beatsInBar = beatsOf(shown);
   const step = 'h-9 w-9 rounded-full border border-border flex items-center justify-center disabled:opacity-40';
   const times = Array.from(new Set<string>([...COMMON_TIMES, shown]));
   // What the BPM counts, where it can differ (meter.ts): with no time
@@ -65,7 +67,9 @@ export const LiveTempoFields: React.FC<{
                 // Tapping the picked one again goes back to following the chart; so
                 // does the chart's own x/4 (same BPM either way). The chart's own
                 // 6/8 is set: the BPM then counts the dotted beats.
-                set({ timeSignature: (shown === ts && !!value.timeSignature) || (ts === implicit && meterOf(ts).den <= 4) ? '' : ts });
+                const next = (shown === ts && !!value.timeSignature) || (ts === implicit && meterOf(ts).den <= 4) ? '' : ts;
+                // A shorter bar: the pickup is cut to fit it.
+                set({ timeSignature: next, pickupBeats: Math.min(value.pickupBeats, beatsOf(next || implicit) - 1) });
               }}
             >
               {ts}
@@ -91,7 +95,11 @@ export const LiveTempoFields: React.FC<{
             <Minus className="w-4 h-4" />
           </button>
           <span className="bw-body-sm flex-1" aria-live="polite">
-            {value.pickupBeats > 0 ? t('Starts {n} beats early', { n: value.pickupBeats }) : t('Starts on the downbeat')}
+            {value.pickupBeats > 1
+              ? t('Starts {n} beats early', { n: value.pickupBeats })
+              : value.pickupBeats === 1
+                ? t('Starts 1 beat early')
+                : t('Starts on the downbeat')}
           </span>
           <button type="button" className={step} disabled={value.pickupBeats >= beatsInBar - 1} onClick={() => set({ pickupBeats: value.pickupBeats + 1 })} aria-label={t('One beat more')}>
             <Plus className="w-4 h-4" />

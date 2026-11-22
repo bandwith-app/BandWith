@@ -32,7 +32,7 @@ test.describe('Song form: live mode fields', () => {
     await ts('6/8').click();
     await app.page.getByRole('button', { name: app.t('2 bars'), exact: true }).click();
     await app.button('One beat more', { exact: true }).click();
-    await expect(app.page.getByText(app.t('Starts {n} beats early', { n: 1 }))).toBeVisible();
+    await expect(app.page.getByText(app.t('Starts 1 beat early'))).toBeVisible();
     await app.page.getByRole('switch', { name: app.t('Played with a backing track') }).click();
     await app.check('song form, live mode fields');
 

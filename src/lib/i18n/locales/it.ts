@@ -4653,6 +4653,7 @@ const dict: Dictionary = {
   "One beat less": "Un movimento in meno",
   "One beat more": "Un movimento in più",
   "Starts {n} beats early": "Parte {n} movimenti prima",
+  "Starts 1 beat early": "Parte 1 movimento prima",
   "Starts on the downbeat": "Parte sul primo movimento",
   "Played with a backing track": "Suonato con una base",
   "No count-in on stage: the track starts the band.": "Niente conteggio sul palco: è la base a far partire la band.",

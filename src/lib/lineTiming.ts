@@ -63,12 +63,18 @@ export function lyricsHash(lyrics: string | null | undefined): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * Earliest a line can start: a line sung in the pickup is before bar 1
+ * (negative). 171 allows a pickup of up to 15 beats, at most 4 ticks each.
+ */
+export const MIN_LINE_TICK = -60;
+
 /** A stored value, if it is a line timing (anything else: null). */
 export function asLineTiming(v: unknown): LineTiming | null {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
   if (o.v !== 1 || typeof o.hash !== 'string' || !Array.isArray(o.at)) return null;
-  const at = o.at.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0);
+  const at = o.at.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= MIN_LINE_TICK);
   if (at.length !== o.at.length) return null;
   const bars = Array.isArray(o.bars) ? o.bars.filter((x): x is number => typeof x === 'number' && x > 0) : undefined;
   return { v: 1, hash: o.hash, at, mode: o.mode === 'bars' ? 'bars' : 'tap', ...(bars?.length ? { bars } : {}) };

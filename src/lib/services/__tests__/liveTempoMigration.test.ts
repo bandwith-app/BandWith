@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import sql171 from '../../../../supabase/migrations/171_song_tempo_count_in.sql?raw';
 import sql170 from '../../../../supabase/migrations/170_live_pack.sql?raw';
-import { stageSongSelect, isMissingColumn, liveSongFields, stageSongOf } from '../../stageSongs';
+import * as stageSongs from '../../stageSongs';
+import { stageSongOf } from '../../stageSongs';
 
 const sql = sql171.replace(/--.*$/gm, '');
 const LIVE = ['time_signature', 'count_in_bars', 'pickup_beats', 'backing_track', 'line_timing'];
@@ -39,19 +40,8 @@ describe('171 live mode: tempo and count-in', () => {
     expect(sql.indexOf('CREATE TRIGGER bw_live_pack_song')).toBeLessThan(sql.lastIndexOf('COMMIT;'));
   });
 
-  it('live mode asks for exactly these columns, and again without them before 171 is applied', () => {
-    for (const c of LIVE) expect(stageSongSelect(true)).toContain(c);
-    for (const c of LIVE) expect(stageSongSelect(false)).not.toContain(c);
-    expect(isMissingColumn({ code: '42703', message: 'column songs.time_signature does not exist' })).toBe(true);
-    expect(isMissingColumn({ code: 'PGRST301', message: 'JWT expired' })).toBe(false);
-    expect(isMissingColumn(null)).toBe(false);
-  });
-
-  it('reads the joined row into the live fields, defaults left out', () => {
-    expect(liveSongFields({ time_signature: '6/8', count_in_bars: 2, pickup_beats: 1, backing_track: true, duration_seconds: 200 })).toEqual({
-      timeSignature: '6/8', countInBars: 2, pickupBeats: 1, backingTrack: true, durationSeconds: 200,
-    });
-    expect(liveSongFields({ time_signature: 'waltz', count_in_bars: 1, pickup_beats: 0, backing_track: false, line_timing: { v: 9 } })).toEqual({});
+  it('Stage songs come from the live pack: no select of its own any more', () => {
+    expect(Object.keys(stageSongs).sort()).toEqual(['stageSongOf']);
   });
 
   it('a song from the live pack (songFromRow) becomes a Stage song: line timing checked, length in seconds', () => {

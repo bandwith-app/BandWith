@@ -100,6 +100,21 @@ describe('meter', () => {
 });
 
 describe('line timing', () => {
+  it('keeps a line sung in the pickup (before bar 1), down to a bar of ticks early; refuses further', async () => {
+    const { asLineTiming, MIN_LINE_TICK } = await import('./lineTiming');
+    const lyrics = '# Verse\nOh\nOne\nTwo';
+    const t = { ...timingFromBars(lyrics, [1, 1, 1], 4), at: [-1, 0, 4] };
+    expect(asLineTiming(t)?.at).toEqual([-1, 0, 4]);
+    expect(validLineTiming(t, lyrics)).not.toBeNull();
+    expect(asLineTiming({ ...t, at: [MIN_LINE_TICK - 1, 0, 4] })).toBeNull();
+    const c = chart([['Verse', bars('C', 'F')]]);
+    const tl = buildTimeline({ chart: c, lyrics, lineTiming: t })!;
+    expect(tl.lines[0]).toBeLessThan(0);
+    const T = 1_000_000;
+    const head = startPlayhead({ from: 'l', songId: 's', bpm: 120, startAt: T });
+    expect(playheadAt(tl, head, T + 100).line).toBe(1);
+  });
+
   const lyrics = '# Verse\n[C]Crossing the [F]bridge at night\nLights on the river\n\n# Chorus\n{bv}(ooh){/bv} Brooklyn [G]calls';
 
   it('lists the lines with words only (no chords, no voice markers)', () => {

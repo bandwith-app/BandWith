@@ -54,6 +54,19 @@ describe('LiveTempoFields (song form, 171)', () => {
   });
 });
 
+describe('LiveTempoFields: pickup', () => {
+  it('says "1 beat" for one', () => {
+    setup({ timeSignature: '4/4', pickupBeats: 1 });
+    expect(screen.getByText('Starts 1 beat early')).toBeInTheDocument();
+  });
+
+  it('a shorter bar picked: the pickup is cut to fit it', () => {
+    const onChange = setup({ timeSignature: '4/4', pickupBeats: 3 });
+    fireEvent.click(screen.getByRole('button', { name: 'Time signature 2/4' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '2/4', pickupBeats: 1 }));
+  });
+});
+
 describe('LiveTempoFields: no chart', () => {
   it('shows 4/4 as the pick when nothing is set; picking 4/4 keeps it unset', () => {
     const onChange = setup();
