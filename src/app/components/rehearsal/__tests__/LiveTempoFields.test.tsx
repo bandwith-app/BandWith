@@ -18,12 +18,27 @@ describe('LiveTempoFields (song form, 171)', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '6/8' }));
   });
 
-  it("picking the chart's own again (or the picked one) goes back to following the chart", () => {
+  it('tapping the picked one again goes back to following the chart', () => {
     const onChange = setup({ timeSignature: '6/8' }, '3/4');
     fireEvent.click(screen.getByRole('button', { name: 'Time signature 6/8' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Time signature 3/4' }));
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '' }));
+  });
+
+  it("picking the chart's own 6/8 sets it: the BPM then counts the dotted beats, and the form says so", () => {
+    const onChange = setup({}, '6/8');
+    expect(screen.getByText('The BPM counts every eighth note.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Time signature 6/8' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '6/8' }));
+  });
+
+  it('says what the BPM counts in the meters where it can differ', () => {
+    setup({ timeSignature: '12/8' });
+    expect(screen.getByText('The BPM counts the dotted beats.')).toBeInTheDocument();
+  });
+
+  it('… and in odd meters the quarter note; nothing to say in x/4', () => {
+    setup({ timeSignature: '7/8' });
+    expect(screen.getByText('The BPM counts quarter notes.')).toBeInTheDocument();
   });
 
   it('2 bars of count-in, a pickup of up to a bar less one beat, and the backing track switch', () => {
@@ -44,6 +59,7 @@ describe('LiveTempoFields: no chart', () => {
     const onChange = setup();
     expect(screen.getByRole('button', { name: 'Time signature 4/4' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('From the chord chart.')).toBeNull();
+    expect(screen.queryByText(/The BPM counts/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Time signature 4/4' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '' }));
   });

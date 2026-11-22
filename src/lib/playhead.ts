@@ -90,7 +90,7 @@ export function buildTimeline(song: TimelineSong): Timeline | null {
       bar: b.bar,
       ...(b.part ? { part: b.part } : {}),
       label: b.label,
-      meter: b.time === meter.time ? meter : meterOf(b.time),
+      meter: b.time === meter.time ? meter : meterOf(b.time, null, meter.perTick),
       ...(b.hold ? { hold: true } : {}),
     }));
   } else if (lyricSections.length) {

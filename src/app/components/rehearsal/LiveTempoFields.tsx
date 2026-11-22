@@ -1,7 +1,7 @@
 import React from 'react';
 import { Minus, Plus } from '@/app/components/icons';
 import { Selector, Toggle } from '@/app/components/bw';
-import { COMMON_TIMES, DEFAULT_TIME, normalizeTime } from '@/lib/meter';
+import { COMMON_TIMES, DEFAULT_TIME, meterOf, normalizeTime } from '@/lib/meter';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 
@@ -35,6 +35,19 @@ export const LiveTempoFields: React.FC<{
   const beatsInBar = Number(shown.split('/')[0]) || 4;
   const step = 'h-9 w-9 rounded-full border border-border flex items-center justify-center disabled:opacity-40';
   const times = Array.from(new Set<string>([...COMMON_TIMES, shown]));
+  // What the BPM counts, where it can differ (meter.ts): with no time
+  // signature of its own a song keeps the old rule, every written note.
+  const meter = meterOf(shown);
+  const bpmCounts =
+    meter.den <= 4
+      ? null
+      : !normalizeTime(value.timeSignature)
+        ? meter.den === 8
+          ? t('The BPM counts every eighth note.')
+          : t('The BPM counts every sixteenth note.')
+        : meter.compound
+          ? t('The BPM counts the dotted beats.')
+          : t('The BPM counts quarter notes.');
 
   return (
     <div className="flex flex-col gap-4 pt-1">
@@ -49,8 +62,10 @@ export const LiveTempoFields: React.FC<{
               ariaLabel={t('Time signature {time}', { time: ts })}
               onClick={() => {
                 haptic.selection();
-                // Picking the chart's own again goes back to following the chart.
-                set({ timeSignature: (shown === ts && !!value.timeSignature) || ts === implicit ? '' : ts });
+                // Tapping the picked one again goes back to following the chart; so
+                // does the chart's own x/4 (same BPM either way). The chart's own
+                // 6/8 is set: the BPM then counts the dotted beats.
+                set({ timeSignature: (shown === ts && !!value.timeSignature) || (ts === implicit && meterOf(ts).den <= 4) ? '' : ts });
               }}
             >
               {ts}
@@ -58,6 +73,7 @@ export const LiveTempoFields: React.FC<{
           ))}
         </div>
         {fromChart && !value.timeSignature && <p className="bw-body-sm text-muted-foreground">{t('From the chord chart.')}</p>}
+        {bpmCounts && <p className="bw-body-sm text-muted-foreground">{bpmCounts}</p>}
       </fieldset>
 
       <fieldset className="flex flex-col gap-2">

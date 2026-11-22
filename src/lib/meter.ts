@@ -13,6 +13,10 @@
  *   compound 3/8, 6/8, 9/8, 12/8: the dotted beat (the "1 2" of a 6/8);
  *   odd /8 and /16 (5/8, 7/8, 11/16): the quarter note, so a 7/8 at 120
  *   lasts 3.5 quarters (1.75 s).
+ * That holds once the admin picks the song's time signature. A song with
+ * none of its own (a 6/8 iReal chart, songs from before live mode) keeps
+ * the old rule, `perTick`: the BPM counts every written note (a 6/8 at 120
+ * is six eighths of 500 ms), so it clicks and follows exactly as it did.
  */
 
 export interface Meter {
@@ -26,6 +30,8 @@ export interface Meter {
   compound: boolean;
   /** Ticks counted beat by beat from 1 (cumulative starts of `beats`). */
   starts: number[];
+  /** The BPM counts every tick (the `den` note): songs with no time signature of their own. */
+  perTick?: boolean;
 }
 
 export const DEFAULT_TIME = '4/4';
@@ -62,7 +68,7 @@ const defaultGroups = (num: number): number[] => {
 };
 
 /** A time signature (and the chart's grouping, for odd meters) → how it is counted. Unknown → 4/4. */
-export function meterOf(time: string | null | undefined, grouping?: number[] | null): Meter {
+export function meterOf(time: string | null | undefined, grouping?: number[] | null, perTick?: boolean): Meter {
   const t = normalizeTime(time) ?? DEFAULT_TIME;
   const [num, den] = t.split('/').map(Number);
   const compound = den >= 8 && num % 3 === 0;
@@ -72,13 +78,13 @@ export function meterOf(time: string | null | undefined, grouping?: number[] | n
   else beats = grouping && grouping.reduce((a, b) => a + b, 0) === num ? [...grouping] : defaultGroups(num);
   const starts: number[] = [];
   beats.reduce((at, b) => (starts.push(at), at + b), 0);
-  return { time: t, num, den, beats, compound, starts };
+  return { time: t, num, den, beats, compound, starts, ...(perTick ? { perTick: true } : {}) };
 }
 
 /** One tick (one `den` note) in ms at `bpm`, by the rule in the header. */
 export function tickMs(meter: Meter, bpm: number): number {
   const beat = 60000 / Math.max(1, bpm);
-  if (meter.den <= 4) return beat;
+  if (meter.den <= 4 || meter.perTick) return beat;
   if (meter.compound) return beat / 3;
   return (beat * 4) / meter.den;
 }
@@ -97,9 +103,14 @@ export function beatOfTick(meter: Meter, tick: number): { beat: number; first: b
   return { beat, first: meter.starts[beat] === t };
 }
 
-/** The song's meter: its own time signature, else the chart's, else 4/4; odd bars grouped as the chart writes them. */
+/**
+ * The song's meter: its own time signature, else the chart's, else 4/4; odd
+ * bars grouped as the chart writes them. Without its own, `perTick` (the
+ * BPM rule songs had before live mode, see the header).
+ */
 export function songMeter(song: { timeSignature?: string | null; chart?: { time?: string; sections?: { bars: { text?: string }[] }[] } | null }): Meter {
-  const time = normalizeTime(song.timeSignature) ?? normalizeTime(song.chart?.time) ?? DEFAULT_TIME;
+  const own = normalizeTime(song.timeSignature);
+  const time = own ?? normalizeTime(song.chart?.time) ?? DEFAULT_TIME;
   const num = Number(time.split('/')[0]);
   let grouping: number[] | null = null;
   for (const s of song.chart?.sections ?? []) {
@@ -109,7 +120,7 @@ export function songMeter(song: { timeSignature?: string | null; chart?: { time?
     }
     if (grouping) break;
   }
-  return meterOf(time, grouping);
+  return meterOf(time, grouping, !own);
 }
 
 /** Time signatures offered in the song editor. */

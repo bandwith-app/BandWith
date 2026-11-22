@@ -69,6 +69,28 @@ describe('meter', () => {
     expect(normalizeTime('waltz')).toBeNull();
   });
 
+  it("6/8 or 7/8 only from the chart (iReal, or no meter picked): the BPM counts every eighth, as before live mode", () => {
+    const fromChart = songMeter({ chart: chart([['A', bars('C')]], '6/8') });
+    expect(fromChart.perTick).toBe(true);
+    expect(tickMs(fromChart, 120)).toBeCloseTo(500);
+    expect(barMs(fromChart, 120)).toBeCloseTo(3000);
+    expect(barMs(songMeter({ chart: chart([['A', bars('C')]], '7/8') }), 120)).toBeCloseTo(3500);
+    // The admin picked 6/8 (even the chart's own): the BPM is the dotted beat.
+    const picked = songMeter({ timeSignature: '6/8', chart: chart([['A', bars('C')]], '6/8') });
+    expect(picked.perTick).toBeFalsy();
+    expect(barMs(picked, 120)).toBeCloseTo(1000);
+    // x/4 is the same either way.
+    expect(barMs(songMeter({ chart: chart([['A', bars('C')]], '3/4') }), 120)).toBeCloseTo(1500);
+  });
+
+  it('a time change inside a chart-only song keeps the same BPM rule', () => {
+    const c = chart([['A', [{ chords: ['C'] }, { chords: ['F'], time: '6/8' }]]], '4/4');
+    const t = buildTimeline({ bpm: 120, chart: c });
+    expect(t!.bars[1].meter.perTick).toBe(true);
+    const picked = buildTimeline({ bpm: 120, timeSignature: '4/4', chart: c });
+    expect(picked!.bars[1].meter.perTick).toBeFalsy();
+  });
+
   it('finds the counted beat of a tick', () => {
     const m = meterOf('7/8');
     expect([0, 1, 2, 3, 4, 5, 6].map((t) => beatOfTick(m, t).beat)).toEqual([0, 0, 1, 1, 2, 2, 2]);

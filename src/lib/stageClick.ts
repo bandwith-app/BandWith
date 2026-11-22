@@ -23,6 +23,7 @@ export interface ClickState {
   seq: number;
   from: string;
   on: boolean;
+  /** Ticks a minute (the 6/8 the admin set at a dotted 120: 360). */
   bpm: number;
   /**
    * Ticks in a bar (the first one is accented). For 4/4 the four beats; for
@@ -47,40 +48,90 @@ export interface ClickState {
 export const nowMs = () => performance.timeOrigin + performance.now();
 
 export const MIN_CLICK_BPM = 30;
+/** A song's BPM, and what builds before live mode accept in `bpm` on the wire. */
 export const MAX_CLICK_BPM = 300;
-/** Ticks a minute: a 12/8 at a dotted 120 ticks at 360, a 7/8 at 160 at 320. */
-export const MAX_CLICK_TICKS = 960;
+/**
+ * Ticks a minute, only in the wire's `tick` (new builds): a 12/8 at a dotted
+ * 120 ticks at 360, a 7/16 at 250 at 1000; 300 quarters in sixteenths at most.
+ */
+export const MAX_CLICK_TICKS = 1200;
 /** The leader starts this far ahead, so the others get the message before beat 0. */
 export const START_LEAD_MS = 700;
 
 const num = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** `groups` that add up to `beats`, else null. */
+const parseGroups = (g: unknown, beats: number): number[] | null => {
+  if (!Array.isArray(g) || !g.length || !g.every((x) => num(x, 1, 4))) return null;
+  const out = (g as number[]).map(Math.round);
+  return out.reduce((a, b) => a + b, 0) === beats ? out : null;
+};
+
+/**
+ * Reads a click message. Builds before live mode send (and accept) only
+ * `bpm` 30–300 and `beats`, every tick a beat. Live mode adds `tick` (the
+ * real ticks a minute, ticks a bar and their groups), which those builds
+ * ignore: when it is there and sound, it wins.
+ */
 export const parseClickState = (payload: unknown): ClickState | null => {
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as Record<string, unknown>;
   if (!num(p.seq, 0, Number.MAX_SAFE_INTEGER) || typeof p.from !== 'string' || !p.from) return null;
-  if (typeof p.on !== 'boolean' || !num(p.bpm, MIN_CLICK_BPM, MAX_CLICK_TICKS) || !num(p.beats, 1, 16)) return null;
-  let groups: number[] | null = null;
-  if (p.groups != null) {
-    const g = p.groups as unknown[];
-    if (!Array.isArray(g) || !g.every((x) => num(x, 1, 4)) || (g as number[]).reduce((a, b) => a + b, 0) !== Math.round(p.beats as number)) return null;
-    groups = (g as number[]).map(Math.round);
-  }
+  if (typeof p.on !== 'boolean' || !num(p.bpm, MIN_CLICK_BPM, MAX_CLICK_BPM) || !num(p.beats, 1, 16)) return null;
   if (p.bars !== null && !num(p.bars, 1, 64)) return null;
   if (!num(p.startAt, 0, Number.MAX_SAFE_INTEGER)) return null;
   if (p.songId !== null && typeof p.songId !== 'string') return null;
+  let bpm = p.bpm as number;
+  let beats = Math.round(p.beats as number);
+  let groups: number[] | null = null;
+  const tick = p.tick as Record<string, unknown> | null | undefined;
+  if (tick && typeof tick === 'object' && num(tick.bpm, MIN_CLICK_BPM, MAX_CLICK_TICKS) && num(tick.beats, 1, 16)) {
+    const tb = Math.round(tick.beats as number);
+    const tg = tick.groups == null ? null : parseGroups(tick.groups, tb);
+    if (tick.groups == null || tg) {
+      bpm = tick.bpm as number;
+      beats = tb;
+      groups = tg;
+    }
+  }
   return {
     seq: p.seq as number,
     from: p.from,
     on: p.on,
-    bpm: p.bpm as number,
-    beats: Math.round(p.beats as number),
+    bpm,
+    beats,
     bars: (p.bars as number | null) === null ? null : Math.round(p.bars as number),
     startAt: p.startAt as number,
     songId: (p.songId as string | null) ?? null,
     ...(groups ? { groups } : {}),
   };
 };
+
+/**
+ * What builds before live mode can play of a click: `bpm` 30–300, every
+ * tick a beat, the same bar length. Even groups (6/8, 12/8) → the counted
+ * beats; else the ticks if they fit; else one click a bar.
+ */
+function legacyClick(bpm: number, beats: number, groups: number[] | null | undefined): { bpm: number; beats: number } {
+  const fits = (b: number) => b >= MIN_CLICK_BPM && b <= MAX_CLICK_BPM;
+  const g = groups?.length ? groups[0] : 1;
+  if (groups?.length && g > 1 && groups.every((x) => x === g) && fits(bpm / g)) return { bpm: round2(bpm / g), beats: groups.length };
+  if (fits(bpm)) return { bpm, beats };
+  return { bpm: round2(Math.min(MAX_CLICK_BPM, Math.max(MIN_CLICK_BPM, bpm / beats))), beats: 1 };
+}
+
+/**
+ * The message for a click: the old fields as builds before live mode read
+ * them, plus `tick` when the click is more than they can say.
+ */
+export function clickWire(state: ClickState): Record<string, unknown> {
+  const { groups, ...rest } = state;
+  const old = legacyClick(state.bpm, state.beats, groups);
+  if (!groups?.length && old.bpm === state.bpm && old.beats === state.beats) return { ...rest };
+  return { ...rest, ...old, tick: { bpm: state.bpm, beats: state.beats, ...(groups?.length ? { groups: [...groups] } : {}) } };
+}
 
 /** One ping/pong: sent at t0 (mine), answered at t1 (theirs), back at t2 (mine). */
 export interface ClockSample {
@@ -147,10 +198,16 @@ export function beatAt(state: Pick<ClickState, 'bpm' | 'beats' | 'bars' | 'start
   return { beat, phase: (elapsed - beat * period) / period, downbeat: inBar === 0, count, onBeat, done };
 }
 
-/** The click for a song: its meter's ticks at the song's BPM (meter.ts), counted in its groups. */
+/**
+ * The click for a song: its meter's ticks at the song's BPM (meter.ts, BPM
+ * 30–300), counted in its groups. A song with no time signature of its own
+ * clicks as it always did: every tick a beat at the BPM, no groups.
+ */
 export function clickForSong(bpm: number, meter: Meter): { bpm: number; beats: number; groups: number[] | null } {
+  const songBpm = Math.min(MAX_CLICK_BPM, Math.max(MIN_CLICK_BPM, bpm));
+  if (meter.perTick) return { bpm: round2(songBpm), beats: meter.num, groups: null };
   const grouped = meter.beats.some((b) => b > 1);
-  return { bpm: Math.round(tickBpm(meter, bpm) * 100) / 100, beats: meter.num, groups: grouped ? [...meter.beats] : null };
+  return { bpm: round2(Math.min(MAX_CLICK_TICKS, tickBpm(meter, songBpm))), beats: meter.num, groups: grouped ? [...meter.beats] : null };
 }
 
 /** Beats in a bar from a chart's time signature ("3/4" → 3, "6/8" → 6, "12/8" → 12); 4 otherwise. */

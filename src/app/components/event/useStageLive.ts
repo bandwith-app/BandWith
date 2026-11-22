@@ -25,6 +25,7 @@ import {
   clockSample,
   nowMs,
   parseClickState,
+  clickWire,
   pickClock,
   PING_EVENT,
   PONG_EVENT,
@@ -331,7 +332,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (!isLeader && msg?.newPresences?.some((p) => p?.lead === true)) lastRef.current = null;
         // A running click of ours reaches late arrivals too.
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
-          void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickRef.current });
+          void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(clickRef.current) });
         }
         // …and the playhead (Follow the tempo), so a late phone lands on the right bar.
         if (isLeader && playheadRef.current?.from === clientId && playheadRef.current.on) {
@@ -367,7 +368,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (isLeader && running?.from === clientId && running.on) {
         const off: ClickState = { ...running, on: false, seq: nextSeq(running.seq) };
         clickRef.current = off;
-        void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: off });
+        void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(off) });
       }
       const head = playheadRef.current;
       if (isLeader && head?.from === clientId && head.on) {
@@ -508,7 +509,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       };
       clickRef.current = state;
       setClick(state);
-      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: CLICK_EVENT, payload: state });
+      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(state) });
     },
     [clientId, isLeader, songId, ordered, index],
   );
