@@ -124,3 +124,19 @@ test('@smoke Create band from the band switcher takes the focus (Duo: beside the
   await cycle(app, create, 'Tab', Math.min(await tabStops(create), 40) + 2);
   await cycle(app, create, 'Shift+Tab', 4);
 });
+
+test('@smoke inbox: one dialog over both pages, Tab moves between the list and the detail', async ({ app }) => {
+  await app.page.getByRole('button', { name: new RegExp(`^${app.t('Notifications')}, \\d`) }).first().click();
+  const inbox = app.page.getByRole('dialog', { name: app.t('Notifications'), exact: true });
+  await expect(inbox).toBeVisible();
+  test.skip(!(await app.page.locator('html[data-bw-two-pane]').count()), 'one page: the inbox is a single dialog');
+  const detail = inbox.getByRole('region');
+  // Two pages: the open notification is a region inside the inbox, not a dialog of its own.
+  await expect(detail.first()).toBeVisible();
+  await expect(app.page.getByRole('dialog', { name: app.t('Notifications'), exact: true })).toHaveCount(1);
+  await expect.poll(() => focusInside(inbox), 'focus moves into the inbox').toBe(true);
+  // Shift+Tab from the start wraps to the last stop and Tab comes back: the cycle spans both pages.
+  await inbox.evaluate((el) => (el as HTMLElement).focus());
+  await cycle(app, inbox, 'Shift+Tab', 3);
+  await cycle(app, inbox, 'Tab', 6);
+});
