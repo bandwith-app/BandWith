@@ -67,10 +67,15 @@ function fromBranch(n) {
 
 const runDir = join(HERE, '.run');
 mkdirSync(runDir, { recursive: true });
-const suites = readdirSync(TESTS)
-  .filter((f) => f.endsWith('.pglite.mjs'))
-  .filter((f) => !ONLY.size || ONLY.has(f))
-  .sort();
+const allSuites = readdirSync(TESTS).filter((f) => f.endsWith('.pglite.mjs'));
+// A suite named on the command line that isn't there (a typo) must not end as
+// "0 suites, exit 0": nothing runs, exit 1, strict or not (Codex 11-22).
+const unknown = [...ONLY].filter((f) => !allSuites.includes(f));
+if (unknown.length) {
+  for (const f of unknown) console.error(`no such suite: ${f} (in supabase/tests/: ${allSuites.length} *.pglite.mjs files)`);
+  process.exit(1);
+}
+const suites = allSuites.filter((f) => !ONLY.size || ONLY.has(f)).sort();
 
 const results = [];
 for (const name of suites) {

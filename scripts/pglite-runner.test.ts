@@ -134,3 +134,27 @@ describe('strict mode accepts reads pinned to an exact commit (PINNED)', () => {
     expect(chain).toMatch(/const isPin = /);
   });
 });
+
+// Codex 11-22 (known limit 3): a mistyped suite name selected no suite and exited 0.
+describe('a suite named on the command line that does not exist', () => {
+  const proc = (globalThis as unknown as { process: { cwd(): string; execPath: string; env: Record<string, string> } }).process;
+  const runWith = async (args: string[], env: Record<string, string>) => {
+    const { spawnSync } = (await import(/* @vite-ignore */ 'node:child_process')) as {
+      spawnSync: (c: string, a: string[], o: object) => { status: number | null; stdout: string; stderr: string };
+    };
+    return spawnSync(proc.execPath, [`${proc.cwd()}/supabase/tests/pglite-runner/run.mjs`, proc.cwd(), ...args], { encoding: 'utf8', env: { ...proc.env, ...env } });
+  };
+  for (const strict of ['1', '0']) {
+    it(`exits 1 and names it (BW_PGLITE_STRICT=${strict})`, async () => {
+      const r = await runWith(['integration-chian.pglite.mjs'], { BW_PGLITE_STRICT: strict });
+      expect(r.status).toBe(1);
+      expect(r.stdout + r.stderr).toMatch(/no such suite: integration-chian\.pglite\.mjs/);
+    });
+  }
+  it('one right and one wrong name: nothing runs, exit 1', async () => {
+    const r = await runWith(['integration-chain.pglite.mjs', 'nope.pglite.mjs'], { BW_PGLITE_STRICT: '0' });
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toMatch(/no such suite: nope\.pglite\.mjs/);
+    expect(r.stdout).not.toMatch(/suites: /);
+  });
+});
