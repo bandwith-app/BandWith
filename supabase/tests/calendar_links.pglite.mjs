@@ -1162,7 +1162,9 @@ await check('Claude r9: a gig back to a quote: closed request, no "removed" key,
     VALUES ($1, $2, $3, $4, 'Nora', 'Keys', 300, 'USD', 'available', '{}')`, [RH, BAND, EV_H, DEPH]);
   await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_H]); // back to a quote
   const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RH)])).v;
-  return !!v && v.closed === true && !('removed' in v) && v.status === 'cancelled' && v.event_title === null;
+  return !!v && v.closed === true && !('removed' in v) && v.status === 'cancelled' && v.event_title === null
+    && ['fee', 'currency', 'event_date', 'venue_name', 'venue_city', 'venue_address', 'calendar_token', 'gig_calendar_token']
+      .every((k) => k in v && v[k] === null);
 });
 await check('Claude r9: a deputy deleted from the band: removed: true (and only then)', async () => {
   const now = (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [RORPH])).token;
