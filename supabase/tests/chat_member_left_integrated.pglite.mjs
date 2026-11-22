@@ -94,6 +94,9 @@ function stmt(sql, head, drop) {
 function optStmt(sql, head, drop) {
   return sql.indexOf(head) < 0 ? [] : [stmt(sql, head, drop)];
 }
+function optFn(sql, name) {
+  return sql.includes(`CREATE OR REPLACE FUNCTION public.${name}(`) ? [fn(sql, name)] : [];
+}
 
 const db = new PGlite();
 process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
@@ -209,6 +212,10 @@ const parts175 = [
   fn(M175, 'bw_chats_immutable_keys'),
   stmt(M175, 'CREATE TRIGGER bw_chats_immutable_keys', 'DROP TRIGGER IF EXISTS bw_chats_immutable_keys'),
   fn(M175, 'bw_chat_scope_ok'),
+  // 175 r5 (#281 bc002cbd): the roster guard's row check. The internal rule
+  // is written from bw_chat_scope_ok's body, so it comes right after it.
+  ...optFn(M175, 'bw_chat_rule_ungated'),
+  ...optFn(M175, 'bw_chat_row_ok'),
   fn(M175, 'bw_my_chat_ids'),
   fn(M175, 'bw_chat_recipient_ids'),
   fn(M175, 'bw_chat_scope_ok_for'),
@@ -224,6 +231,11 @@ const parts175 = [
   // guard plus the own-row policy; older heads (d9971705) have neither.
   ...optStmt(M175, 'CREATE POLICY chat_participants_select_own', 'DROP POLICY IF EXISTS chat_participants_select_own'),
   ...optStmt(M175, 'CREATE POLICY chat_participants_scope_guard', 'DROP POLICY IF EXISTS chat_participants_scope_guard'),
+  // 175 r5: the same guard for UPDATE / DELETE, one on messages, and chats_upd.
+  ...optStmt(M175, 'CREATE POLICY chat_participants_update_guard', 'DROP POLICY IF EXISTS chat_participants_update_guard'),
+  ...optStmt(M175, 'CREATE POLICY chat_participants_delete_guard', 'DROP POLICY IF EXISTS chat_participants_delete_guard'),
+  ...optStmt(M175, 'CREATE POLICY messages_scope_guard', 'DROP POLICY IF EXISTS messages_scope_guard'),
+  ...optStmt(M175, 'CREATE POLICY chats_upd', 'DROP POLICY IF EXISTS chats_upd'),
   ...(process.env.BW_TEST_DROP_GUARD ? ['DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;'] : []),
   fn(M175, 'bw_trg_band_member_left_chats'),
   stmt(M175, 'CREATE TRIGGER bw_band_member_left_chats', 'DROP TRIGGER IF EXISTS bw_band_member_left_chats'),
@@ -320,8 +332,9 @@ ok(r.rows.length === 0, `'Dropped_Out': reads nothing (${r.rows.length})`);
 for (const [who, label] of [[DROP, "'dropped_out'"], [DEC, "' Declined'"]]) {
   r = await as(who, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${who}') AS j`);
   ok(r.rows[0]?.j === false, `${label}: bw_chat_joinable is false (${r.error ?? r.rows[0]?.j})`);
-  r = await db.query(`SELECT public.bw_chat_joinable_rule('event', '${BAND}', '${GIG}', '${who}') AS j`);
-  ok(r.rows[0]?.j === false, `${label}: the rule itself is false (${r.rows[0]?.j})`);
+  // (Without 193, /dev/null: a FAIL, not a crash.)
+  r = await db.query(`SELECT public.bw_chat_joinable_rule('event', '${BAND}', '${GIG}', '${who}') AS j`).catch((e) => ({ rows: [], error: e.message }));
+  ok(r.rows[0]?.j === false, `${label}: the rule itself is false (${r.error ?? r.rows[0]?.j})`);
   r = await as(who, `SELECT id FROM chats WHERE id = '${EVCHAT}'`);
   ok(r.rows.length === 0, `${label}: does not see the gig chat row (${r.rows.length})`);
 }
