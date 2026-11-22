@@ -131,7 +131,7 @@ describe('Home: one RSVP item for a pending repeating rehearsal', () => {
     renderHome(upcomingEvents.slice(1), onSelectEvent);
     fireEvent.click(screen.getByRole('button', { name: 'Weekly Jam' }));
     expect(onSelectEvent).toHaveBeenCalledTimes(1);
-    expect(onSelectEvent).toHaveBeenCalledWith('r1');
+    expect(onSelectEvent.mock.calls[0][0]).toBe('r1');
   });
 
   it('a pending one-off gig next to the series keeps its own item', () => {
@@ -140,6 +140,7 @@ describe('Home: one RSVP item for a pending repeating rehearsal', () => {
     const items = seen[seen.length - 1] ?? [];
     expect(items.filter((it) => it.id.startsWith('rsvp-')).map((it) => it.id).sort()).toEqual(['rsvp-g1', 'rsvp-r1']);
     fireEvent.click(screen.getByRole('button', { name: 'Club Night' }));
-    expect(onSelectEvent).toHaveBeenCalledWith('g1');
+    expect(onSelectEvent).toHaveBeenCalledTimes(1);
+    expect(onSelectEvent.mock.calls[0][0]).toBe('g1');
   });
 });
