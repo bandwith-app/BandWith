@@ -7,10 +7,6 @@ import { mentionedUserIds } from '@/lib/chatMentions';
 import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
 
-/** The database has no such function yet (migration not applied): use the older path. */
-const isMissingFunction = (error: { code?: string; message?: string } | null | undefined): boolean =>
-  !!error && (error.code === 'PGRST202' || error.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(error.message || ''));
-
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
 
@@ -664,7 +660,10 @@ export const createChat = async (
         }
         return { data: chat as Chat, error: null };
       }
-      if (openError && !isMissingFunction(openError)) {
+      // (Without 193: PGRST202 / 42883, the older path below. #291 has the
+      // same block with its isMissingFunction helper.)
+      const noRpc = !!openError && (openError.code === 'PGRST202' || openError.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(openError.message || ''));
+      if (openError && !noRpc) {
         if ((openError as { code?: string }).code === '42501') {
           return {
             data: null,
