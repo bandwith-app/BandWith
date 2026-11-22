@@ -133,7 +133,7 @@ export const RefusedLiveChanges: React.FC<{ userId?: string | null }> = ({ userI
   const pill = 'flex items-center min-h-11 px-3 rounded-full bw-label-sm whitespace-nowrap border border-border text-foreground';
 
   return (
-    <section aria-label={t('Not sent')} className="bg-card text-card-foreground rounded-[24px] p-4 flex flex-col gap-2 min-w-0">
+    <section aria-label={t('Changes not sent')} className="bg-card text-card-foreground rounded-[24px] p-4 flex flex-col gap-2 min-w-0">
       {/* Static text: read once as a status, not an alert. */}
       <span className="bw-label-sm" role="status">
         {t("These changes weren't sent: the band didn't accept them. Copy what you need, then remove them.")}

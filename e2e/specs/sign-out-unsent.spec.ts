@@ -76,7 +76,7 @@ test('@smoke refused changes show in Offline & live, with Copy and Remove', asyn
   await section.click();
   await app.settle();
 
-  const list = app.page.getByRole('region', { name: app.t('Not sent'), exact: true }).filter({ visible: true }).first();
+  const list = app.page.getByRole('region', { name: app.t('Changes not sent'), exact: true }).filter({ visible: true }).first();
   await list.scrollIntoViewIfNeeded();
   await expect(list.getByText('Watch the drummer before the bridge')).toBeVisible();
   await expect(list.getByText('Slower intro on Empire State')).toBeVisible();

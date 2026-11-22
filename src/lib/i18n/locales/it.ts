@@ -2599,7 +2599,7 @@ const dict: Dictionary = {
   "Send": "Invia",
   "Share PDF": "Condividi PDF",
   "Not sent yet": "Non ancora inviato",
-  "Not sent": "Non inviato",
+  "Changes not sent": "Modifiche non inviate",
   "These changes weren't sent: the band didn't accept them. Copy what you need, then remove them.": "Queste modifiche non sono state inviate: la band non le ha accettate. Copia quello che ti serve, poi rimuovile.",
   "Copy change: {change}": "Copia modifica: {change}",
   "Remove change: {change}": "Rimuovi modifica: {change}",

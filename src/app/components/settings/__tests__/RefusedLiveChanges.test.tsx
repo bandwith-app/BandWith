@@ -36,7 +36,7 @@ describe('Settings › Offline & live: changes the band refused', () => {
   it('lists each refused change, read as a status', () => {
     refuse([note, suggestion]);
     render(<OfflineLiveSection userId="u-1" />);
-    const list = screen.getByRole('region', { name: 'Not sent' });
+    const list = screen.getByRole('region', { name: 'Changes not sent' });
     expect(within(list).getByRole('status').textContent).toMatch(/weren.t sent/i);
     expect(within(list).getByText('Watch the drummer before the bridge')).toBeTruthy();
     expect(within(list).getByText('Slower intro on Empire State')).toBeTruthy();
@@ -68,7 +68,7 @@ describe('Settings › Offline & live: changes the band refused', () => {
 
   it('nothing refused: nothing shown', () => {
     render(<OfflineLiveSection userId="u-1" />);
-    expect(screen.queryByRole('region', { name: 'Not sent' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Changes not sent' })).toBeNull();
   });
 
   // Round 5 (Codex MINOR): a suggestion with only a chord chart copies the chart.
