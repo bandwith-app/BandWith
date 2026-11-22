@@ -34,6 +34,17 @@ export async function listSongSuggestions(
   }
 }
 
+/** One suggestion by id (RLS: the band's for admins, your own for members), e.g. opened from a notification. */
+export async function getSongSuggestion(id: string): Promise<{ data: SongSuggestion | null; error: Error | null }> {
+  try {
+    const { data, error } = await supabase.from('song_suggestions').select(SELECT).eq('id', id).maybeSingle();
+    if (error) throw error;
+    return { data: (data as unknown as SongSuggestion) ?? null, error: null };
+  } catch (error: any) {
+    return { data: null, error };
+  }
+}
+
 /** A correction to a band song, or a note for the band. */
 export async function suggestSongChange(input: {
   bandId: string;
@@ -99,12 +110,11 @@ export async function reviewSongSuggestion(
     const res = (data || {}) as { status?: SuggestionStatus; song_id?: string; files?: string[] };
     // A rejected suggested song is gone: so are its files.
     if (res.files?.length) await removeSongFiles(res.files);
-    // An accepted one keeps them, moved into the band's folders.
+    // An accepted one keeps them, moved into the band's folders. The review is
+    // already saved: if the move stops half-way the song still links to its
+    // original file, and the repertoire finishes the move later (audit 09 #9).
     if (decision === 'accept' && suggestion.kind === 'new_song' && res.song_id && opts.song) {
-      const moved = await adoptSuggestionFiles(opts.song);
-      if (Object.keys(moved).length > 0) {
-        await supabase.from('songs').update(moved).eq('id', res.song_id);
-      }
+      await adoptSuggestionFiles({ id: res.song_id, ...opts.song });
     }
     notifySuggestionsChanged();
     return { status: res.status ?? null, error: null };

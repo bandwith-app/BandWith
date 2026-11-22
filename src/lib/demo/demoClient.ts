@@ -812,6 +812,7 @@ const storage = {
   from: (bucket: string) => ({
     upload: async (path: string) => ({ data: { path, id: uuid(), fullPath: `${bucket}/${path}` }, error: null }),
     move: async () => ({ data: { message: 'Successfully moved' }, error: null }),
+    copy: async (_from: string, to: string) => ({ data: { path: to }, error: null }),
     update: async (path: string) => ({ data: { path }, error: null }),
     remove: async () => ({ data: [], error: null }),
     list: async () => ({ data: [], error: null }),

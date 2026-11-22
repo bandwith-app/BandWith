@@ -27,6 +27,8 @@ import {
 } from '@/lib/songSuggestions';
 import {
   closeSongSuggestions,
+  countPendingSuggestions,
+  getSongSuggestion,
   listSongSuggestions,
   reviewSongSuggestion,
   SUGGESTIONS_CHANGED,
@@ -67,15 +69,36 @@ export const SongSuggestionsView: React.FC = () => {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
+  // Each tab asks the server for its own status, a page at a time: an old
+  // correction still waiting never hides behind newer reviewed ones, and a
+  // notification's suggestion is fetched by id (audit 09 #10).
+  const [limits, setLimits] = React.useState<Record<'pending' | 'reviewed', number>>({ pending: PAGE, reviewed: PAGE });
+  const [more, setMore] = React.useState<Record<'pending' | 'reviewed', boolean>>({ pending: false, reviewed: false });
+  const [pendingCount, setPendingCount] = React.useState(0);
+  const focusId = screen?.suggestionId;
+
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
-    const { data, error } = await listSongSuggestions(bandId, isAdmin ? {} : { createdBy: user.id });
-    if (error || !data) {
+    const mine = isAdmin ? {} : { createdBy: user.id };
+    const [p, r, count] = await Promise.all([
+      listSongSuggestions(bandId, { ...mine, status: 'pending', limit: limits.pending + 1 }),
+      listSongSuggestions(bandId, { ...mine, status: REVIEWED, limit: limits.reviewed + 1 }),
+      countPendingSuggestions(bandId, isAdmin ? undefined : user.id),
+    ]);
+    const error = p.error || r.error;
+    if (error || !p.data || !r.data) {
       setLoadError(userMessage(error, t('Could not load the suggestions.')));
       return;
     }
+    const data = [...p.data.slice(0, limits.pending), ...r.data.slice(0, limits.reviewed)];
+    if (focusId && !data.some((s) => s.id === focusId)) {
+      const { data: one } = await getSongSuggestion(focusId);
+      if (one && one.band_id === bandId && one.status !== 'withdrawn') data.push(one);
+    }
     setLoadError(null);
-    setItems(data.filter((s) => s.status !== 'withdrawn'));
+    setMore({ pending: p.data.length > limits.pending, reviewed: r.data.length > limits.reviewed });
+    setPendingCount(count);
+    setItems(data);
     const ids = [...new Set(data.map((s) => s.song_id).filter((id): id is string => !!id))];
     if (ids.length) {
       const { data: rows } = await supabase
@@ -84,14 +107,18 @@ export const SongSuggestionsView: React.FC = () => {
         .in('id', ids);
       setSongs(Object.fromEntries(((rows || []) as SongRow[]).map((r) => [r.id, r])));
     } else setSongs({});
-  }, [bandId, user?.id, isAdmin, t]);
+  }, [bandId, user?.id, isAdmin, t, limits, focusId]);
 
   React.useEffect(() => {
     if (!open) return;
     setSelectedId(screen?.suggestionId ?? null);
     setTab('pending');
-    void load();
+    setLimits({ pending: PAGE, reviewed: PAGE });
   }, [open, screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening, a new page, another band: (re)load.
+  React.useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
 
   // A suggestion arrives or is reviewed elsewhere: refresh.
   React.useEffect(() => {
@@ -126,6 +153,7 @@ export const SongSuggestionsView: React.FC = () => {
   const pending = (items || []).filter((s) => s.status === 'pending');
   const reviewed = (items || []).filter((s) => s.status !== 'pending');
   const shown = tab === 'pending' ? pending : reviewed;
+  const showMore = () => setLimits((l) => ({ ...l, [tab]: l[tab] + PAGE }));
 
   return createPortal(
     <AnimatePresence>
@@ -164,7 +192,7 @@ export const SongSuggestionsView: React.FC = () => {
                 titleSize="h1"
               >
                 <div className="flex flex-wrap gap-2 pb-1" role="group" aria-label={isAdmin ? t('Suggestions') : t('My suggestions')}>
-                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={pending.length}>
+                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={Math.max(pendingCount, pending.length)}>
                     {t('Waiting')}
                   </Selector>
                   <Selector size="md" selected={tab === 'reviewed'} onClick={() => setTab('reviewed')} count={reviewed.length}>
@@ -196,6 +224,11 @@ export const SongSuggestionsView: React.FC = () => {
                     onClick={() => setSelectedId(s.id)}
                   />
                 ))}
+                {items && more[tab] && (
+                  <PillButton size="md" variant="outline" onClick={showMore}>
+                    {t('Load older suggestions')}
+                  </PillButton>
+                )}
               </div>
             </>
           )}
@@ -206,6 +239,10 @@ export const SongSuggestionsView: React.FC = () => {
     document.body,
   );
 };
+
+/** Suggestions per page, in each tab. */
+const PAGE = 100;
+const REVIEWED: SuggestionStatus[] = ['accepted', 'accepted_edited', 'rejected'];
 
 const kindLabel = (k: SuggestionKind, t: (s: string) => string) =>
   k === 'new_song' ? t('New song') : k === 'lyrics' ? t('Lyrics correction') : k === 'chords' ? t('Chords correction') : t('Note for the band');

@@ -53,7 +53,7 @@ import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet, ListRow } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
-import { isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
+import { adoptSuggestionFiles, hasUnadoptedFiles, isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
 import { formatHoursMinutes, genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
 import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
@@ -356,16 +356,39 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setSongs(prev => prev.filter(s => s.id !== songId));
   };
 
+  /**
+   * An accepted suggested song's files go into the band's folders, as when
+   * it is accepted in review: the member who suggested it can no longer
+   * replace or delete them (audit 09 #5). A move that stopped half-way is
+   * finished here too, once per song while the repertoire is open.
+   */
+  const adoptTried = useRef(new Set<string>());
+  const adoptFiles = useCallback(async (song: Pick<Song, 'id' | 'audio_url' | 'chart_url'>) => {
+    adoptTried.current.add(song.id);
+    const { refs } = await adoptSuggestionFiles(song);
+    if (Object.keys(refs).length) setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, ...refs } : s)));
+  }, []);
+  useEffect(() => {
+    if (!isAdmin) return;
+    for (const song of songs) if (hasUnadoptedFiles(song) && !adoptTried.current.has(song.id)) void adoptFiles(song);
+  }, [songs, isAdmin, adoptFiles]);
+
   /** Admins move a suggested song to Learning / Ready (and back). */
   const handleSetSongStatus = async (song: Song, status: Song['status']) => {
     setActionMenuId(null);
     const previous = song.status;
+    // Files move only once the new status is saved (not on the optimistic one).
+    const adoptWaits = !adoptTried.current.has(song.id);
+    adoptTried.current.add(song.id);
     setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, status } : s)));
     const { error } = await updateSong(song.id, { status });
     if (error) {
+      if (adoptWaits) adoptTried.current.delete(song.id);
       setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, status: previous } : s)));
       setNotice({ text: errorText(error, t('Could not update the song')), error: true });
+      return;
     }
+    if (status !== 'suggested' && hasUnadoptedFiles({ status, audio_url: song.audio_url, chart_url: song.chart_url })) void adoptFiles(song);
   };
 
   const handlePlaySong = async (song: Song) => {

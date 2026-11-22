@@ -285,10 +285,38 @@ const decode = (s: string) => {
   }
 };
 
-/** Finds the first irealb:// (or irealbook://) link in pasted text. */
+/**
+ * Finds the first irealb:// (or irealbook://) link in pasted text. An
+ * apostrophe belongs to the link: encodeURIComponent keeps it, so a title
+ * like "Don't Stop" carries one (audit 09 #11). Only a link written in single
+ * quotes ('irealb://…') loses its closing quote.
+ */
 export const findIrealLink = (text: string): string | null => {
-  const m = (text || '').match(/irealb(?:ook)?:\/\/[^\s"'<>]+/i);
-  return m ? m[0] : null;
+  const s = text || '';
+  const m = /irealb(?:ook)?:\/\/[^\s"<>]+/i.exec(s);
+  if (!m) return null;
+  const link = s[m.index - 1] === "'" && m[0].endsWith("'") ? m[0].slice(0, -1) : m[0];
+  return /^irealb(?:ook)?:\/\/./i.test(link) ? link : null;
+};
+
+const HTML_ENTITIES: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: '\u00a0' };
+const decodeHtmlEntities = (s: string) =>
+  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e: string) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : all;
+    }
+    return HTML_ENTITIES[e.toLowerCase()] ?? all;
+  });
+
+/** The first iReal Pro link in HTML: from an <a href> (quoted either way, entities decoded), else from the text. */
+export const findIrealLinkInHtml = (html: string): string | null => {
+  const s = html || '';
+  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+    const href = decodeHtmlEntities((m[1] ?? m[2] ?? '').trim());
+    if (/^irealb(?:ook)?:\/\/./i.test(href) && !/\s/.test(href)) return href;
+  }
+  return findIrealLink(decodeHtmlEntities(s.replace(/<[^>]*>/g, ' ')));
 };
 
 export interface IrealPlaylist {

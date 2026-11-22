@@ -4002,6 +4002,7 @@ const dict: Dictionary = {
   "My suggestions": "Mes suggestions",
   "No differences from the current version.": "Aucune différence avec la version actuelle.",
   "No reviewed suggestions yet.": "Aucune suggestion examinée pour l’instant.",
+  "Load older suggestions": "Charger les suggestions plus anciennes",
   "Not accepted": "Non retenue",
   "Note for the band": "Note pour le groupe",
   "Note for the whole band": "Note pour tout le groupe",

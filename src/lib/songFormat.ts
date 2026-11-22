@@ -650,7 +650,8 @@ export function matchChartSection(chart: SongChart | null | undefined, sectionNa
 
 /**
  * A section's chords proposed from the chart: its bars spread over the
- * section's lines, each bar's chords on evenly spaced words.
+ * section's lines, each bar's chords on evenly spaced words (several on one
+ * word when the line has fewer words than chords, in order).
  */
 export function proposeChordsFromChart(lyrics: string, section: TextSection, chartSection: ChartSection): string {
   const bars = chartSectionChords(chartSection).filter((b) => b.length);
@@ -668,11 +669,11 @@ export function proposeChordsFromChart(lyrics: string, section: TextSection, cha
     if (!count) {
       model.tail = chords;
     } else {
+      // Chords that share a word stay on it, in the chart's order
+      // ("[C][D]Hello [E][F]again"), never pushed to the end of the line.
       chords.forEach((c, j) => {
         const wi = Math.min(count - 1, Math.floor((j * count) / chords.length));
-        const w = model.words[wi];
-        if (w.chords.length) model.tail.push(c);
-        else w.chords = [{ at: 0, chord: c }];
+        model.words[wi].chords.push({ at: 0, chord: c });
       });
     }
     lines[li] = serializeLine(model);

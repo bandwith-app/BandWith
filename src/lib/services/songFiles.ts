@@ -160,26 +160,76 @@ export const isSuggestionFile = (ref?: string | null): ref is string =>
   isStoredSongFile(ref) && ref.slice(REF_PREFIX.length).split('/')[1] === 'suggestions';
 
 /**
- * An accepted suggested song: its files move into the band's own folders, so
- * the member who suggested it can no longer replace or delete them. Returns
- * the new references (the old ones when a move fails).
+ * An accepted suggested song: its files move into the band's own folders
+ * (`<band>/suggestions/<user>/<kind>/<name>` → `<band>/<kind>/<name>`), so the
+ * member who suggested it can no longer replace or delete them (197 also
+ * stops them on the server) and the copy belongs to the admin, not to the
+ * member's account.
+ *
+ * Safe at every step (audit 09 #9): copy, point the song at the copy (only if
+ * it still links to the original, and checked), then delete the original. A
+ * failure leaves the song on a file that exists, and running it again
+ * finishes the job (a copy left by an earlier try is reused). Returns the
+ * new references written to the song.
  */
-export const adoptSuggestionFiles = async (
-  refs: { audio_url?: string | null; chart_url?: string | null },
-): Promise<{ audio_url?: string; chart_url?: string }> => {
-  const out: { audio_url?: string; chart_url?: string } = {};
+export const adoptSuggestionFiles = async (song: {
+  id: string;
+  audio_url?: string | null;
+  chart_url?: string | null;
+}): Promise<{ refs: { audio_url?: string; chart_url?: string }; error: Error | null }> => {
+  try {
+    return await adoptFiles(song);
+  } catch (error: any) {
+    return { refs: {}, error };
+  }
+};
+
+const adoptFiles = async (song: {
+  id: string;
+  audio_url?: string | null;
+  chart_url?: string | null;
+}): Promise<{ refs: { audio_url?: string; chart_url?: string }; error: Error | null }> => {
+  const bucket = supabase.storage.from(SONG_FILES_BUCKET);
+  const copied: Array<{ key: 'audio_url' | 'chart_url'; from: string; to: string }> = [];
+  let error: Error | null = null;
   for (const key of ['audio_url', 'chart_url'] as const) {
-    const ref = refs[key];
+    const ref = song[key];
     if (!isSuggestionFile(ref)) continue;
     const from = ref.slice(REF_PREFIX.length);
     const parts = from.split('/');
-    // <band>/suggestions/<user>/<kind>/<name> → <band>/<kind>/<name>
     const to = [parts[0], ...parts.slice(3)].join('/');
-    const { error } = await supabase.storage.from(SONG_FILES_BUCKET).move(from, to);
-    if (!error) out[key] = `${REF_PREFIX}${to}`;
+    const { error: copyError } = await bucket.copy(from, to).catch((e: Error) => ({ error: e }));
+    // Already there: an earlier try copied it and stopped before the end.
+    if (copyError && !alreadyExists(copyError)) {
+      error = copyError instanceof Error ? copyError : new Error(String((copyError as { message?: string })?.message || 'Copy failed'));
+      continue;
+    }
+    copied.push({ key, from, to });
   }
-  return out;
+  if (!copied.length) return { refs: {}, error };
+
+  const refs: { audio_url?: string; chart_url?: string } = {};
+  for (const c of copied) refs[c.key] = `${REF_PREFIX}${c.to}`;
+  let q = supabase.from('songs').update(refs).eq('id', song.id);
+  for (const c of copied) q = q.eq(c.key, `${REF_PREFIX}${c.from}`);
+  const { data, error: updateError } = await Promise.resolve(q.select('id')).catch((e: Error) => ({ data: null, error: e }));
+  if (updateError || !Array.isArray(data) || data.length === 0) {
+    // The song still links to the originals (or was changed meanwhile): drop the unused copies.
+    await bucket.remove(copied.map((c) => c.to)).catch(() => undefined);
+    return { refs: {}, error: (updateError as Error) || new Error('The song changed: its files were left as they are.') };
+  }
+  await bucket.remove(copied.map((c) => c.from)).catch(() => undefined);
+  return { refs, error };
 };
+
+const alreadyExists = (e: unknown) => {
+  const x = e as { statusCode?: unknown; status?: unknown; message?: unknown };
+  return String(x?.statusCode ?? x?.status ?? '') === '409' || /already exists|duplicate/i.test(String(x?.message ?? ''));
+};
+
+/** A song past review that still links to files in a member's suggestions folder (an adoption to finish). */
+export const hasUnadoptedFiles = (song: { status?: string | null; audio_url?: string | null; chart_url?: string | null }) =>
+  song.status !== 'suggested' && (isSuggestionFile(song.audio_url) || isSuggestionFile(song.chart_url));
 
 /** Delete stored files (ignores links). Best effort. */
 export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => {
