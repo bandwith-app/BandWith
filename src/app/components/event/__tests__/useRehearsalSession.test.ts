@@ -131,23 +131,23 @@ describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
     expect(saveMock).not.toHaveBeenCalled();
   });
 
-  it('#4: never read (no signal) and a session is already saved: the first save only creates, then both merge (the earlier start, the saved songs)', async () => {
+  it('#4: never read (no signal) and a session already running: the first save only creates, then both merge (the earlier start, the saved songs)', async () => {
     fetchMock.mockResolvedValue(undefined);
     saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: 'r3' });
     const { result, send } = setup({ currentSong: null });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    // Still running there (an ended one is taken as it is: Claude r8 B1, above).
+    const running = { ...live, played: [{ id: 's1', title: 'Paper Boats' }, { id: 's2', title: 'Superstition' }] };
+    fetchMock.mockResolvedValue({ state: running, summary: null, rev: 'r2' });
     act(() => result.current.start());
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
     // Create only: no revision to overwrite.
     expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
-    // Then on top of the saved one: its start and songs kept, running here (#296 round 3: never closed by
-    // the saved End), the time between that End and this Start is a pause.
+    // Then on top of the saved one: its start and songs kept, running.
     expect(saveMock.mock.calls[1][1]).toBe('r2');
     const row = saveMock.mock.calls[1][0] as SessionRow;
     expect(row.started_at).toBe(new Date(T0).toISOString());
     expect(row.ended_at).toBeNull();
-    expect(row.paused_ms).toBeGreaterThanOrEqual(5 * 60_000 - 1000);
     await waitFor(() => expect(result.current.unsaved).toBe(false));
     expect(result.current.status).toBe('live');
     expect(result.current.state?.played).toHaveLength(2);
@@ -272,23 +272,46 @@ describe('#296 round 2: offline, upgrades and lost answers never drop a session 
     expect(result.current.status).toBe('ended');
   });
 
-  it('Claude minor: a first read that hangs (weak signal) frees Start after about 4 s; it starts as a new row only', async () => {
+  it('Claude r8 B1: a first read that hangs (weak signal): Start stays off past 4 s; the read brings the ended rehearsal: ended, nothing saved', async () => {
+    const ended = endSession(startSession(Date.now() - 30 * 60_000), Date.now() - 5 * 60_000);
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      fetchMock.mockImplementation(() => new Promise(() => {}));
+      let answer!: (v: unknown) => void;
+      fetchMock.mockImplementation(() => new Promise((r) => (answer = r)));
       const { result } = setup({ currentSong: null });
-      expect(result.current.ready).toBe(false);
       await act(async () => {
-        vi.advanceTimersByTime(4100);
+        vi.advanceTimersByTime(10_000);
       });
-      expect(result.current.ready).toBe(true);
+      expect(result.current.ready).toBe(false);
       act(() => result.current.start());
-      expect(result.current.status).toBe('live');
-      await waitFor(() => expect(saveMock).toHaveBeenCalled());
-      expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+      expect(result.current.status).toBe('idle');
+      await act(async () => answer({ state: ended, summary: null, rev: 'r2' }));
+      expect(result.current.ready).toBe(true);
+      expect(result.current.status).toBe('ended');
+      expect(saveMock).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('Claude r8 B1: weak signal, the read fails, Start, the insert finds the ended rehearsal (23505): the saved End stays, reopened nowhere, saved once', async () => {
+    const ended = endSession(startSession(Date.now() - 30 * 60_000), Date.now() - 5 * 60_000);
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValue({ error: null, conflict: true });
+    const { result, send } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    // Back online as the insert goes: the saved rehearsal ended before this Start.
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    // Only the insert: no save on r2 (no RPC reopen, so no second summary push).
+    expect(saveMock).toHaveBeenCalledTimes(1);
+    expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+    expect(result.current.state?.endedAt).toBe(ended.endedAt);
+    expect(result.current.justEnded).toBe(false);
+    // The band heard the Start: it hears the saved End again.
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: new Date(ended.endedAt!).toISOString() }) }));
   });
 });
 
@@ -317,25 +340,19 @@ describe('#296 round 3: a change kept on this device is never overwritten', () =
     expect(kept.row.ended_at).not.toBeNull();
   });
 
-  it('Codex/Claude minor: a slow first read comes back empty after Start (4 s) was saved: the session stays, and so does the copy here', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      let answer!: (v: unknown) => void;
-      fetchMock.mockImplementation(() => new Promise((r) => (answer = r)));
-      saveMock.mockResolvedValue({ error: null, rev: 'r1' });
-      const { result } = setup({ currentSong: null });
-      await act(async () => {
-        vi.advanceTimersByTime(4100);
-      });
-      act(() => result.current.start());
-      await waitFor(() => expect(result.current.unsaved).toBe(false));
-      // The read sent before Start: nothing was saved then.
-      await act(async () => answer(null));
-      expect(result.current.status).toBe('live');
-      expect(JSON.parse(localStorage.getItem(KEY)!).row.started_at).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('a slow first read that comes back empty: Start works then, as a new row (Claude r8 B1: not before)', async () => {
+    let answer!: (v: unknown) => void;
+    fetchMock.mockImplementation(() => new Promise((r) => (answer = r)));
+    saveMock.mockResolvedValue({ error: null, rev: 'r1' });
+    const { result } = setup({ currentSong: null });
+    act(() => result.current.start());
+    expect(result.current.status).toBe('idle');
+    await act(async () => answer(null));
+    act(() => result.current.start());
+    expect(result.current.status).toBe('live');
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+    expect(JSON.parse(localStorage.getItem(KEY)!).row.started_at).toBeTruthy();
   });
 });
 

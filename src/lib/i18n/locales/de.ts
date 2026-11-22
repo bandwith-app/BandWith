@@ -4229,6 +4229,7 @@ const dict: Dictionary = {
   "Couldn’t copy. Select the text and copy it yourself.": "Kopieren nicht möglich. Markiere den Text und kopiere ihn selbst.",
   "Space full: copy your note now": "Speicher voll: Kopiere deine Notiz jetzt",
   "Start rehearsal": "Probe starten",
+  "Loading the rehearsal…": "Probe wird geladen…",
   "{h} h {m} min": "{h} Std. {m} Min.",
   "{m} min": "{m} Min.",
   "{played} of {total} songs played": "{played} von {total} Songs gespielt",

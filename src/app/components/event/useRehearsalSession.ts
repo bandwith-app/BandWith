@@ -92,8 +92,6 @@ const SONG_SAVE_DELAY_MS = 1500;
 const RETRY_MS = 20_000;
 /** Another admin's change arrived: read its new revision once it is saved. */
 const REFRESH_AFTER_MS = 2500;
-/** A first read still not back (weak signal): Start is allowed anyway, as a new row only. */
-const FIRST_READ_MS = 4000;
 
 /**
  * A rehearsal's session in Live mode (plan A1b, migration 131): the leader
@@ -178,7 +176,26 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
         revRef.current = null;
         return !!mine;
       }
+      // Started here without ever reading the saved row (the first read failed, offline), over a
+      // rehearsal that had already ended before that Start: the saved one is taken as it is,
+      // nothing reopened (#296 round 8, Claude r8 B1). A Start that knew of it resumes instead.
+      const unread = revRef.current === undefined;
       revRef.current = saved.rev ?? null;
+      const savedEnd = saved.state.endedAt;
+      if (unread && mine && savedEnd !== null && savedEnd <= mine.startedAt) {
+        versionRef.current += 1;
+        clearTimeout(saveTimer.current);
+        saveTimer.current = undefined;
+        setState(saved.state);
+        // Not "just ended" here: it ended before this device's Start.
+        setJustEnded(false);
+        writeLocal(c.key, rowOf(saved.state), false, revRef.current);
+        markUnsaved(false);
+        // The band heard this Start: it hears the saved End again (no save, so no summary push).
+        const back = message(saved.state);
+        if (back) c.send?.(back);
+        return false;
+      }
       // A union of both (#296 round 8): the saved row tells when it was written itself (updated_at).
       const merged = mine ? mergeSessions(mine, saved.state) : saved.state;
       const adds = !sameSession(merged, saved.state) || !sameEvidence(merged, saved.state);
@@ -276,13 +293,9 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     }
     // A change made here while this read is on its way is newer than what it brings back (#296 round 3).
     const version = versionRef.current;
-    const slow = setTimeout(() => {
-      if (ctxRef.current.key !== c.key || readyRef.current) return;
-      readyRef.current = true;
-      setReady(true);
-    }, FIRST_READ_MS);
+    // Start waits for this answer (#296 round 8, Claude r8 B1: no 4 s fallback): a rehearsal
+    // already saved, ended included, is shown first. Failed (offline): Start works, as a new row.
     const saved = await fetchRehearsalSession(c.eventId, c.date);
-    clearTimeout(slow);
     if (ctxRef.current.key !== c.key) return;
     readyRef.current = true;
     setReady(true);

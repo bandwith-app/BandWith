@@ -504,7 +504,8 @@ const RejectedNotesList: React.FC<{ notes: RejectedNote[]; onRemove: (id: string
                 <button
                   type="button"
                   className={pill}
-                  aria-label={copied === n.id ? t('Copied') : t('Copy note: {note}', { note: short })}
+                  // The same name after a copy: "Copied" is announced once, by the live region below (Claude r8 N3).
+                  aria-label={t('Copy note: {note}', { note: short })}
                   onClick={() => void copy(n.id, text)}
                 >
                   {copied === n.id ? t('Copied') : t('Copy')}

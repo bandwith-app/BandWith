@@ -566,3 +566,18 @@ describe('#296 round 7 (Claude r6 B1): merging again changes nothing', () => {
     expect(fails).toEqual([]);
   });
 });
+
+describe('#296 round 8 (Claude r8 M1): a device whose clock is behind', () => {
+  const M = 60_000;
+  it('another admin’s clock 3 min fast ended it at 19:10 (their time); Resume here at 19:07 (ours) reopens it', () => {
+    const ended = endSession(startSession(0), 10 * M);
+    const back = resumeSession(ended, 7 * M);
+    expect(sessionStatus(back)).toBe('live');
+    // And a Pause right after, at the same clamped time, still pauses.
+    expect(sessionStatus(pauseSession(back, 7 * M))).toBe('paused');
+    // Ending again after that Resume, still behind: ended, later than the first End.
+    const again = endSession(back, 8 * M);
+    expect(sessionStatus(again)).toBe('ended');
+    expect(again.endedAt!).toBeGreaterThan(10 * M);
+  });
+});

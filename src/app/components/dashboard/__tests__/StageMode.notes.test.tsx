@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { rejectedKey } from '@/lib/rehearsalNotesOutbox';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -248,7 +248,7 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     else delete (navigator as { clipboard?: unknown }).clipboard;
   });
 
-  it('#296 round 4: after a copy the button is named “Copied” and the live region says so', async () => {
+  it('#296 round 4 / Claude r8 N3: after a copy the live region says “Copied”, once: the button keeps its name', async () => {
     const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
     const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
@@ -257,9 +257,11 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
       const list = sheet(/Notes · 0/);
       fireEvent.click(within(list).getByRole('button', { name: /^Copy note:/ }));
-      expect(await within(list).findByRole('button', { name: 'Copied' })).toBeInTheDocument();
       const live = list.querySelector('[aria-live="polite"]');
-      expect(live).toHaveTextContent('Copied');
+      await waitFor(() => expect(live).toHaveTextContent('Copied'));
+      // Seen on the button, announced only by the live region (not twice).
+      expect(within(list).queryByRole('button', { name: 'Copied' })).toBeNull();
+      expect(within(list).getByRole('button', { name: /^Copy note:/ })).toHaveTextContent('Copied');
     } finally {
       if (had) Object.defineProperty(navigator, 'clipboard', had);
       else delete (navigator as { clipboard?: unknown }).clipboard;

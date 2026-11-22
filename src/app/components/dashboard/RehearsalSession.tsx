@@ -78,7 +78,8 @@ export const RehearsalSessionBar: React.FC<{
           className={cn(pill, 'w-full min-h-12 text-black disabled:opacity-60')}
           style={{ backgroundColor: accentColor }}
         >
-          <Play className="w-5 h-5" aria-hidden /> {t('Start rehearsal')}
+          {/* Disabled until the saved rehearsal is read (Claude r8 B1): says why, seen and announced. */}
+          <Play className="w-5 h-5" aria-hidden /> {session.ready ? t('Start rehearsal') : t('Loading the rehearsal…')}
         </button>
       ) : (
         <div className="flex items-center gap-3 min-w-0 min-h-12">

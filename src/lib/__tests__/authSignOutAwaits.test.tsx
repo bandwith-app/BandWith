@@ -32,11 +32,18 @@ vi.mock('../supabase', () => ({
   resetPassword: vi.fn(),
   signInWithOAuth: vi.fn(),
   updatePassword: vi.fn(),
+  updatePasswordWithToken: vi.fn(),
   RECOVERY_FLAG: 'bw_recovery',
 }));
 vi.mock('../services/presence', () => ({ cleanupPresence: () => {} }));
 vi.mock('../stageBleNative', () => ({ clearStageCache: () => {} }));
-vi.mock('../services/pushNotifications', () => ({ unregisterPushToken: async () => {} }));
+// With #287's exports too, so this survives that merge.
+vi.mock('../services/pushNotifications', () => ({
+  unregisterPushToken: async () => {},
+  flushQueuedPushRevocations: async () => {},
+  forgetPushAccount: async () => {},
+  subscribeToPush: async () => {},
+}));
 vi.mock('../services/appBadge', () => ({ syncAppBadge: () => {} }));
 vi.mock('../regiaAudio', () => ({
   clearDownloadedAudio: async () => {},
@@ -89,5 +96,27 @@ describe('#296 round 8: sign-out is awaited end to end', () => {
       expect(localStorage.getItem(CACHE)).toBeNull();
       expect(localStorage.getItem(LIST)).toBe('[{"id":"x"}]');
     });
+  });
+
+  it('Claude r8 M2: a deleted account (discardPendingWrites): its refused notes are not put back; another account’s stay', async () => {
+    const V = 'bbbbbbbb-2222-4222-8222-222222222222';
+    localStorage.setItem(LIST, '[{"id":"x"}]');
+    localStorage.setItem(`bw:rehearsal_notes_rejected:${V}`, '[{"id":"y"}]');
+    let auth!: ReturnType<typeof useAuth>;
+    const Probe = () => {
+      auth = useAuth();
+      return null;
+    };
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(auth.user?.id).toBe(U));
+    await act(async () => {
+      await auth.signOut({ discardPendingWrites: true });
+    });
+    expect(localStorage.getItem(LIST)).toBeNull();
+    expect(localStorage.getItem(`bw:rehearsal_notes_rejected:${V}`)).toBe('[{"id":"y"}]');
   });
 });

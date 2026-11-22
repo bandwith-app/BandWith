@@ -486,11 +486,8 @@ describe('#296 round 8 (Codex r8 B1): refused notes live in the list sign-out ke
     expect(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)).toBeNull();
   });
 
-  it('AuthContext: sign-out clears the offline cache through keepingSignOutLists', async () => {
-    const auth = (await import('../AuthContext.tsx?raw')).default as string;
-    const body = auth.slice(auth.indexOf('const handleSignOut = async'), auth.indexOf('const handleResetPassword'));
-    expect(body).toMatch(/keepingSignOutLists\(\(\) => clearOfflineCache\(\)\)/);
-  });
+  // AuthContext's real sign-out (keeps the lists, awaited, a deleted account's go) is checked by
+  // behaviour in authSignOutAwaits.test.tsx, not by its source (Claude r8 N2: it survives #287).
 });
 
 // With #292 on the base: its counts (sign-out sheet) see a refused note as refused, never as waiting.

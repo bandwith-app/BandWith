@@ -84,10 +84,16 @@ export const sessionStatus = (s: SessionState | null | undefined): SessionStatus
 /** The newest time in a log (a device whose clock went back never writes before it). */
 const lastAt = (log: SessionEvent[]): number => log.reduce((m, e) => Math.max(m, e[1]), -Infinity);
 
-/** One more thing done on this copy. */
+/**
+ * One more thing done on this copy, always after the last one: a clock
+ * behind the copy's newest event (another admin's clock ahead) writes just
+ * after it, never at the same time, where the fixed order of kinds would put
+ * a Resume before that End and undo it (#296 round 8, Claude r8 M1).
+ */
 const act = (s: SessionState, kind: SessionEvent[0], now: number): SessionState => {
   const ev = evidence(s);
-  return derive([...ev.log, [kind, Math.max(now, lastAt(ev.log))]], ev.untimed, s.played);
+  const last = lastAt(ev.log);
+  return derive([...ev.log, [kind, now > last ? now : last + 1]], ev.untimed, s.played);
 };
 
 export const startSession = (now: number): SessionState => derive([['s', now]], [], []);

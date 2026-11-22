@@ -60,7 +60,8 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null; session: Session | null; existing: boolean }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signInWithApple: () => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  /** `discardPendingWrites`: the account is gone (deleted), drop its unsent changes too. */
+  signOut: (opts?: { discardPendingWrites?: boolean }) => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   /** True after the user opened a password-reset link: the app must ask for a new password. */
   isPasswordRecovery: boolean;
@@ -412,7 +413,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (opts?: { discardPendingWrites?: boolean }) => {
     // Offline edits not sent yet: try now, while the session is still valid.
     // What still can't be sent is kept on this device for this account only
     // (its own queue key) and syncs at its next sign-in, instead of being
@@ -451,7 +452,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // returns, so what follows (a deleted account's discardAccountWrites) always comes last.
       await import('./signOutWipe')
         // Its chunk not there (offline, an old cache): the clear still runs.
-        .then((m) => m.keepingSignOutLists(() => clearOfflineCache()), () => clearOfflineCache())
+        // A deleted account's lists are not kept (Claude r8 M2): deletion always wins.
+        .then((m) => m.keepingSignOutLists(() => clearOfflineCache(), { gone: opts?.discardPendingWrites ? user?.id ?? null : null }), () => clearOfflineCache())
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }

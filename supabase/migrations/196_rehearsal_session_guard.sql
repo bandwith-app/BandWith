@@ -33,7 +33,7 @@
 -- running copy, which would undo the End for everyone; an older admin that
 -- paused offline before the End has more paused time, so no paused-time rule
 -- can tell its copy apart. So an ended row stays ended for every plain
--- write: its End, pause fields and paused time stay as saved, the rest of
+-- write that clears ended_at: its End, pause fields and paused time stay as saved, the rest of
 -- the write (the songs it adds) goes in, no error. Two ways reopen it:
 --   * this build's Resume after an End: only through
 --     bw_save_rehearsal_session() below (sets bw.rehearsal_reopen for its one
@@ -43,9 +43,14 @@
 --     away, so its paused_ms minus its share before (the row's paused_ms, or
 --     one of the older builds' paused times this build saved in
 --     summary.untimed) matches now() - ended_at, within 2 minutes. An
---     offline copy's own pauses match that only by chance. Known limit: an
+--     offline copy's own pauses match that only by chance. Wider than a
+--     Resume of that End, accepted (Claude r8 N1): an online older leader that
+--     paused around an End it never heard and resumes after it matches too,
+--     and reopens it (its device and this build's merge agree). Known limit: an
 --     older build's Resume saved later than 2 minutes after it (offline)
 --     stays ended; its device shows the saved session at the next open.
+-- Held is a write that clears ended_at; one with another End (an older
+-- build's second End) moves ended_at and paused_ms, as before 196.
 --
 -- Songs played (#296 round 7): those builds' leaders don't hear the channel,
 -- so their save (an End, a Resume) carries only the songs they saw; over a
@@ -102,8 +107,10 @@ BEGIN
       ), '[]'::jsonb);
       IF OLD.ended_at IS NOT NULL AND NEW.ended_at IS NULL
          AND COALESCE(current_setting('bw.rehearsal_reopen', true), '') <> 'on' THEN
-        -- A plain write over an ended session (#296 round 8): it stays ended, unless it is an
-        -- older build's real Resume of that End (the gap it added matches the time since it).
+        -- A plain write that clears the End of an ended session (#296 round 8): it stays ended,
+        -- unless the paused time it added matches the time since the End (an older build's
+        -- Resume, see the header). Only ended_at NULL is held here: a write with another End
+        -- (an older build's second End) moves ended_at and paused_ms as before.
         v_gap := extract(epoch FROM (now() - OLD.ended_at)) * 1000;
         IF NOT (v_old_build AND EXISTS (
           SELECT 1
