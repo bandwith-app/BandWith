@@ -5,10 +5,13 @@ import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-s
 import {
   CHAT_PUSH_WINDOW_MS,
   chatPreview,
+  chatPushData,
   chatPushSubtitle,
   chatPushTitle,
   findAnnouncedMessage,
+  mentionedInMessage,
   pushAllowed,
+  resolveChatId,
   senderDisplayName,
 } from '../_shared/chat-push.ts';
 
@@ -179,8 +182,11 @@ async function sendToAPNs(
       alert.subtitle = subtitle;
     }
     const threadId = pushThreadId(data);
+    // Custom keys first, our aps last: a caller's `aps` never replaces the alert.
+    const { aps: _callerAps, ...extra } = data ?? {};
 
     const apnsPayload = quiet ? quiet.payload : {
+      ...extra,
       aps: {
         alert,
         // No count known: leave the icon as it is rather than forcing 1.
@@ -191,7 +197,6 @@ async function sendToAPNs(
         // Notification Center stacks a chat's (or an event's) notifications.
         ...(threadId ? { 'thread-id': threadId } : {}),
       },
-      ...data,
     };
     
     let lastError = 'APNs: no host tried';
@@ -401,6 +406,8 @@ async function sendToFCM(
 type VerifiedChatPush = {
   messageId: string;
   body: string;
+  /** The whole message, for @mentions. */
+  content: string;
   senderName: string;
   subtitle: string;
   bandId: string | null;
@@ -423,14 +430,17 @@ async function verifyChatPush(
 ): Promise<VerifiedChatPush | null> {
   if (!callerId || typeof chatId !== 'string' || !chatId) return null;
   const since = new Date(Date.now() - CHAT_PUSH_WINDOW_MS).toISOString();
-  const { data: recent, error } = await supabase
+  // Newer builds name the message: look it up exactly (a busy chat could push
+  // it out of any window). Older builds: the caller's latest 20 by preview.
+  const byId = typeof messageId === 'string' && messageId.length > 0 && messageId.length <= 64;
+  const query = supabase
     .from('messages')
     .select('id, chat_id, sender_id, content, created_at')
     .eq('chat_id', chatId)
-    .eq('sender_id', callerId)
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
-    .limit(20);
+    .eq('sender_id', callerId);
+  const { data: recent, error } = byId
+    ? await query.eq('id', messageId).limit(1)
+    : await query.gte('created_at', since).order('created_at', { ascending: false }).limit(20);
   if (error) throw error;
   const message = findAnnouncedMessage(recent || [], {
     callerId,
@@ -452,6 +462,7 @@ async function verifyChatPush(
   return {
     messageId: String(message.id),
     body: chatPreview(message.content),
+    content: message.content ?? '',
     senderName: senderDisplayName(sender?.full_name, sender?.email),
     subtitle: chatPushSubtitle(chat?.type ?? null, bandName, chat?.name ?? null),
     bandId: chat?.band_id ?? null,
@@ -521,9 +532,12 @@ Deno.serve(async (req: Request) => {
     if (userType && userType !== 'chat_message' && userType !== 'chat_mention') {
       throw new HttpError(403, 'Only chat notifications can be sent from the app');
     }
+    // One chat for checks, inbox and tap routing (chat_id and chatId must agree).
+    const requestChat = resolveChatId(data);
+    if (userType && requestChat.conflict) throw new HttpError(400, 'chat_id and chatId differ');
     const targetUserIds = caller.kind === 'service'
       ? requestedIds
-      : await chatRecipients(supabase, caller.id, data?.chat_id || data?.chatId, requestedIds);
+      : await chatRecipients(supabase, caller.id, requestChat.chatId, requestedIds);
     if (targetUserIds.length === 0) {
       return new Response(
         JSON.stringify({ success: true, sent: 0, message: 'No permitted recipients' }),
@@ -534,31 +548,48 @@ Deno.serve(async (req: Request) => {
     // 02 #7: an app caller can only announce their own new message, and the
     // server writes who sent it and what it says (title, subtitle, body).
     const chatPush = userType
-      ? await verifyChatPush(supabase, caller.kind === 'user' ? caller.id : '', data?.chat_id || data?.chatId, data?.message_id ?? data?.messageId, notificationBody)
+      ? await verifyChatPush(supabase, caller.kind === 'user' ? caller.id : '', requestChat.chatId, data?.message_id ?? data?.messageId, notificationBody)
       : null;
     if (userType && !chatPush) throw new HttpError(403, 'Only your own new message can be announced');
 
     // Recipients' language and push switch (02 #6).
-    const { data: people } = await supabase
+    // Without the push switch we can't know who turned push off: send nothing.
+    const { data: people, error: peopleError } = await supabase
       .from('profiles')
-      .select('id, preferred_language, notification_preferences')
+      .select('id, full_name, email, preferred_language, notification_preferences')
       .in('id', targetUserIds);
-    const peopleRows = (people || []) as { id: string; preferred_language?: string | null; notification_preferences: unknown }[];
+    if (peopleError) throw peopleError;
+    const peopleRows = (people || []) as { id: string; full_name?: string | null; email?: string | null; preferred_language?: string | null; notification_preferences: unknown }[];
     const prefLangByUser = new Map(peopleRows.map((p) => [String(p.id), p.preferred_language ?? null]));
+    // "{name} mentioned you" only for people the stored message mentions.
+    const mentioned = new Set(
+      chatPush && userType === 'chat_mention'
+        ? mentionedInMessage(
+            chatPush.content,
+            peopleRows.map((p) => ({ id: String(p.id), name: senderDisplayName(p.full_name, p.email, '') })),
+            caller.kind === 'user' ? caller.id : null,
+          )
+        : [],
+    );
+    const typeFor = (uid: string): 'chat_message' | 'chat_mention' =>
+      userType === 'chat_mention' && mentioned.has(uid) ? 'chat_mention' : 'chat_message';
     const titleFor = (uid: string) =>
-      chatPush ? chatPushTitle(userType as 'chat_message' | 'chat_mention', chatPush.senderName, prefLangByUser.get(uid)) : title;
+      chatPush ? chatPushTitle(typeFor(uid), chatPush.senderName, prefLangByUser.get(uid)) : title;
     const pushBody = chatPush ? chatPush.body : notificationBody;
-    const pushData = chatPush
-      ? {
-          ...data,
-          senderName: chatPush.senderName,
-          content: chatPush.body,
-          band_id: chatPush.bandId,
-          bandName: chatPush.bandName ?? undefined,
-          chatType: chatPush.chatType ?? undefined,
-          message_id: chatPush.messageId,
-        }
-      : data;
+    const verifiedFor = (uid: string) =>
+      chatPush && requestChat.chatId
+        ? chatPushData(data, {
+            chatId: requestChat.chatId,
+            type: typeFor(uid),
+            senderName: chatPush.senderName,
+            body: chatPush.body,
+            messageId: chatPush.messageId,
+            bandId: chatPush.bandId,
+            bandName: chatPush.bandName,
+            chatType: chatPush.chatType,
+          })
+        : null;
+    const pushDataFor = (uid: string): Record<string, any> | undefined => verifiedFor(uid) ?? data;
 
     const effectiveSubtitle = chatPush ? chatPush.subtitle : (subtitle || data?.subtitle);
     const effectiveTag = tag || data?.tag;
@@ -571,15 +602,15 @@ Deno.serve(async (req: Request) => {
     );
 
     if (create_in_app !== false && !silent) {
-      const chatId = data?.chat_id || data?.chatId;
-      
+      const chatId = requestChat.chatId;
+
       const notifications = targetUserIds.map(userId => ({
         user_id: userId,
-        type: notificationType,
+        type: chatPush ? typeFor(userId) : notificationType,
         title: titleFor(userId),
         body: pushBody,
         data: {
-          ...pushData,
+          ...pushDataFor(userId),
           subtitle: effectiveSubtitle,
           tag: effectiveTag,
           chat_id: chatId,
@@ -587,7 +618,7 @@ Deno.serve(async (req: Request) => {
           skip_push: true,
         },
         read: false,
-        band_id: pushData?.band_id || null,
+        band_id: pushDataFor(userId)?.band_id || null,
         action_url: chatId ? `/chat/${chatId}` : null,
       }));
 
@@ -640,13 +671,13 @@ Deno.serve(async (req: Request) => {
         const userSubtitle = localizePushLabel(effectiveSubtitle, langByUser.get(uid) ?? null);
 
         if (platform === 'ios') {
-          const result = await sendToAPNs(deviceToken, titleFor(uid), userSubtitle, pushBody, pushData, userBadge, sound, collapseId, silent);
+          const result = await sendToAPNs(deviceToken, titleFor(uid), userSubtitle, pushBody, pushDataFor(uid), userBadge, sound, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
           return { token_id: tokenRecord.id, platform, ...result };
         } else if (platform === 'android') {
-          const result = await sendToFCM(deviceToken, titleFor(uid), userSubtitle, pushBody, pushData, effectiveChannel, effectiveTag, collapseId, silent);
+          const result = await sendToFCM(deviceToken, titleFor(uid), userSubtitle, pushBody, pushDataFor(uid), effectiveChannel, effectiveTag, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
@@ -661,7 +692,7 @@ Deno.serve(async (req: Request) => {
     // A chat push that Apple or Google accepted reached the recipient's phone:
     // the sender sees ✓✓ even while the recipient's app sleeps in the
     // background (migration 122). Recipients with no device reached stay ✓.
-    const pushChatId = data?.chat_id || data?.chatId;
+    const pushChatId = requestChat.chatId;
     if (pushChatId && (notificationType === 'chat_message' || notificationType === 'chat_mention')) {
       const reached = [...new Set(
         results

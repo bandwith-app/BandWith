@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   chatPreview,
+  chatPushData,
   chatPushSubtitle,
   chatPushTitle,
   findAnnouncedMessage,
+  mentionedInMessage,
   pushAllowed,
+  resolveChatId,
   senderDisplayName,
   type ChatMessageRow,
 } from '../../../supabase/functions/_shared/chat-push';
@@ -57,5 +60,42 @@ describe('chat push: the recipient’s push switch', () => {
       { id: 'u4', notification_preferences: { push: 'false' } },
     ];
     expect(pushAllowed(['u1', 'u2', 'u3', 'u4', 'u5'], prefs)).toEqual(['u2', 'u3', 'u5']);
+  });
+});
+
+// Codex review #284.
+describe('chat push review fixes', () => {
+  it('a future-dated message is never announced', () => {
+    const future: ChatMessageRow[] = [{ id: 'f', chat_id: CHAT, sender_id: BOB, content: 'later', created_at: new Date(NOW + 3600_000).toISOString() }];
+    expect(findAnnouncedMessage(future, { callerId: BOB, chatId: CHAT, messageId: 'f', now: NOW })).toBeNull();
+    expect(findAnnouncedMessage(future, { callerId: BOB, chatId: CHAT, body: 'later', now: NOW })).toBeNull();
+    const skew: ChatMessageRow[] = [{ ...future[0], created_at: new Date(NOW + 20_000).toISOString() }];
+    expect(findAnnouncedMessage(skew, { callerId: BOB, chatId: CHAT, messageId: 'f', now: NOW })?.id).toBe('f');
+  });
+
+  it('"mentioned you" only for people the message mentions', () => {
+    const people = [{ id: 'ana', name: 'Ana' }, { id: 'anam', name: 'Ana Maria' }, { id: 'joe', name: 'Joe' }];
+    expect(mentionedInMessage('@Ana Maria bring the capo', people, BOB)).toEqual(['anam']);
+    expect(mentionedInMessage('hi @ana, and @Joe.', people, BOB).sort()).toEqual(['ana', 'joe']);
+    expect(mentionedInMessage('no mentions here', people, BOB)).toEqual([]);
+    expect(mentionedInMessage('@Bob talking to myself', [{ id: BOB, name: 'Bob' }], BOB)).toEqual([]);
+  });
+
+  it('one chat: chat_id and chatId must agree', () => {
+    expect(resolveChatId({ chat_id: 'c1' })).toEqual({ chatId: 'c1', conflict: false });
+    expect(resolveChatId({ chatId: 'c1' })).toEqual({ chatId: 'c1', conflict: false });
+    expect(resolveChatId({ chat_id: 'c1', chatId: 'c1' })).toEqual({ chatId: 'c1', conflict: false });
+    expect(resolveChatId({ chat_id: 'c1', chatId: 'c2' }).conflict).toBe(true);
+    expect(resolveChatId({}).chatId).toBeNull();
+  });
+
+  it('the push payload keeps only known fields, never caller APNs keys', () => {
+    const out = chatPushData(
+      { type: 'chat_message', tag: 'Band Message', chat_id: 'c1', chatId: 'evil', aps: { alert: { title: 'Admin' } }, senderName: 'Admin', route: '/x' },
+      { chatId: 'c1', type: 'chat_message', senderName: 'Bob', body: 'hi', messageId: 'm1', bandId: 'b1', bandName: 'The Band', chatType: 'band' },
+    );
+    expect(out).not.toHaveProperty('aps');
+    expect(out).not.toHaveProperty('route');
+    expect(out).toMatchObject({ chat_id: 'c1', chatId: 'c1', senderName: 'Bob', content: 'hi', message_id: 'm1', band_id: 'b1', type: 'chat_message', tag: 'Band Message' });
   });
 });
