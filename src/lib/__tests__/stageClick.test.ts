@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beatAt, beatsInBar, bestSample, clockSample, parseClickState } from '../stageClick';
+import { beatAt, beatsInBar, bestSample, BLE_MAX_CLOCK_RTT_MS, clockSample, MAX_CLOCK_RTT_MS, parseClickState } from '../stageClick';
 
 const state = { seq: 1, from: 'lead', on: true, bpm: 120, beats: 4, bars: null, startAt: 10_000, songId: 'row-1' };
 
@@ -22,6 +22,15 @@ describe('stage click', () => {
     expect(bestSample([])).toBeNull();
   });
 
+  it('never uses a slow round trip: a pong that took over half a second may be a replay (Claude on #283)', () => {
+    expect(MAX_CLOCK_RTT_MS).toBe(500);
+    // A real ping answered 2 s later by a replay: offset +1 s, round trip 2 s.
+    const replay = clockSample(1000, 1000 + 2000, 3000);
+    expect(bestSample([replay])).toBeNull();
+    expect(bestSample([clockSample(0, 0 + 250, 500)])).toEqual({ offset: 0, rtt: 500 });
+    expect(bestSample([replay, clockSample(5000, 5000 + 260, 5020)])).toEqual({ offset: 250, rtt: 20 });
+  });
+
   it('puts every phone on the same beat whatever its clock', () => {
     // Leader time 11_250 = beat 2 at 120 BPM (500 ms a beat), half way through.
     const leader = beatAt(state, 11_250, 0);
@@ -42,6 +51,18 @@ describe('stage click', () => {
     expect(beatsInBar('3/4')).toBe(3);
     expect(beatsInBar('6/8')).toBe(6);
     expect(beatsInBar(undefined)).toBe(4);
+  });
+
+  it('nothing under the ceiling: with a few samples the fastest is used (a slow network), a lone slow one is not (a replay)', () => {
+    const slow = [clockSample(0, 1350, 700), clockSample(1000, 2400, 1800), clockSample(2000, 3450, 2900)];
+    expect(bestSample(slow)).toEqual({ offset: 1000, rtt: 700 });
+    expect(bestSample([slow[0]])).toBeNull();
+  });
+
+  it('Bluetooth keeps its own, wider ceiling (2 s): a read of 1.5 s still counts there', () => {
+    const read = clockSample(0, 750 + 40, 1500);
+    expect(BLE_MAX_CLOCK_RTT_MS).toBe(2000);
+    expect(bestSample([read], BLE_MAX_CLOCK_RTT_MS)).toEqual({ offset: 40, rtt: 1500 });
   });
 });
 

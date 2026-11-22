@@ -96,6 +96,9 @@ vi.mock('@/lib/stageBleNative', () => ({
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
+  // #283: the key is asked for again while Stage is open, and the server may say no.
+  STAGE_KEY_EVENT: 'bw:stage-key',
+  fetchStageKey: async () => ({ key: KEY, denied: false }),
 }));
 
 const { useStageBle, forgetScanStarts } = await import('../useStageBle');

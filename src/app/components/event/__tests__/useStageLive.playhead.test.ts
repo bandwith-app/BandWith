@@ -7,19 +7,26 @@ import { renderHook, act, waitFor } from '@testing-library/react';
  * announced.
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
-const phones: { key: string; handlers: Handler[] }[] = [];
+// One entry per channel: the stage topic and, since #283, the clock topic (members' pings) of the same phone.
+const phones: { key: string; topic: string; handlers: Handler[] }[] = [];
+/** The phone whose stage channel was made last: its clock channel (no presence key) comes right after. */
+let lastKey = '';
 /** Clock skew of a phone's pongs (its clock minus the others'). */
 const skew: Record<string, number> = {};
 const bus = {
-  send(from: string, event: string, payload: unknown) {
-    if (event === 'click-pong' && skew[from]) payload = { ...(payload as object), t1: (payload as { t1: number }).t1 + skew[from] };
-    for (const p of phones) if (p.key !== from) p.handlers.filter((h) => h.type === 'broadcast' && h.event === event).forEach((h) => h.cb({ payload }));
+  send(from: string, topic: string, event: string, payload: unknown) {
+    // Answers to pings: the old event, and the one for members' pings on the clock topic (#283).
+    if (event.includes('pong') && skew[from]) payload = { ...(payload as object), t1: (payload as { t1: number }).t1 + skew[from] };
+    for (const p of phones)
+      if (p.key !== from && p.topic === topic) p.handlers.filter((h) => h.type === 'broadcast' && h.event === event).forEach((h) => h.cb({ payload }));
   },
 };
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    channel: (_topic: string, opts: { config: { presence: { key: string } } }) => {
-      const phone = { key: opts.config.presence.key, handlers: [] as Handler[] };
+    channel: (topic: string, opts: { config: { presence?: { key: string } } }) => {
+      const stage = !!opts.config.presence;
+      if (opts.config.presence) lastKey = opts.config.presence.key;
+      const phone = { key: lastKey, topic, handlers: [] as Handler[] };
       phones.push(phone);
       const ch = {
         on(type: string, filter: { event: string }, cb: (msg: unknown) => void) {
@@ -31,16 +38,17 @@ vi.mock('@/lib/supabase', () => ({
           return ch;
         },
         track: async () => {
+          if (!stage) return;
           for (const p of phones)
             if (p.key !== phone.key) p.handlers.filter((h) => h.type === 'presence' && h.event === 'join').forEach((h) => h.cb({ key: phone.key, newPresences: [{}] }));
         },
-        send: async (m: { event: string; payload: unknown }) => bus.send(phone.key, m.event, m.payload),
+        send: async (m: { event: string; payload: unknown }) => bus.send(phone.key, topic, m.event, m.payload),
         __phone: phone,
       };
       return ch;
     },
-    removeChannel: async (ch: { __phone: { key: string } }) => {
-      const i = phones.findIndex((p) => p.key === ch.__phone.key);
+    removeChannel: async (ch: { __phone: { key: string; topic: string } }) => {
+      const i = phones.findIndex((p) => p === ch.__phone);
       if (i >= 0) phones.splice(i, 1);
     },
   },

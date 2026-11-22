@@ -221,8 +221,6 @@ export interface LivePack {
   personal: Record<string, LivePackPersonal>;
   /** Rehearsals: this occurrence's notes and the band's open notes on these songs. */
   bandNotes?: { date: string; occurrence: RehearsalNote[]; open: RehearsalNote[] };
-  /** The gig's Bluetooth key (087). */
-  stageKey?: string | null;
   version: string;
   /** When it was downloaded (ISO). */
   savedAt: string;

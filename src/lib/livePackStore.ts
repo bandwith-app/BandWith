@@ -38,7 +38,7 @@ import { anyPackAllowed, packAllowed, readChoice } from './livePackConsent';
 import { downloadPackFile, hasPackFile, packFilesAvailable, removePackFiles } from './livePackFiles';
 import { fetchOccurrenceNotes, fetchOpenBandNotes } from './services/rehearsalNotes';
 import type { RehearsalNote } from './rehearsalNotes';
-import { stageBleAvailable, stageKey } from './stageBleNative';
+import { fetchStageKey, stageBleAvailable } from './stageBleNative';
 
 export const LIVE_PACK_CHANGED = 'bw:live-pack-changed';
 const PACK = 'live_pack:';
@@ -281,7 +281,6 @@ export async function savePackSongs(args: {
       songs: args.songs,
       personal,
       bandNotes: prev?.bandNotes,
-      stageKey: prev?.stageKey,
       version: packVersion(args.songs, personal),
       savedAt: new Date().toISOString(),
       expiresAt: packExpiresAt(event),
@@ -514,12 +513,13 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     }
   }
 
-  let bleKey = prev?.stageKey ?? null;
-  // Switched off: no new Bluetooth key either.
-  if (!bleKey && !args.partial) {
+  // Switched off: no Bluetooth key asked for either.
+  if (!args.partial) {
     try {
-      // Inside the try: a partial client mock (tests) has no isDemoMode.
-      if (!isDemoMode && stageBleAvailable()) bleKey = await stageKey(event.id);
+      // Asked again each time: the key changes when someone may no longer see the gig (191). The
+      // phone's kept copy is stageBleNative's (a no drops it there); the pack keeps none (nobody
+      // read it; Claude round 8 on #283). Inside the try: a partial client mock (tests) has no isDemoMode.
+      if (!isDemoMode && stageBleAvailable()) await fetchStageKey(event.id);
     } catch {
       /* no key: Bluetooth just needs internet the first time */
     }
@@ -546,7 +546,6 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
       songs: list,
       personal,
       bandNotes,
-      stageKey: bleKey,
       version: packVersion(list, personal),
       savedAt: new Date().toISOString(),
       expiresAt: packExpiresAt(event),

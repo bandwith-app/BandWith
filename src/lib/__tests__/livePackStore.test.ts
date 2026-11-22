@@ -43,7 +43,15 @@ vi.mock('../supabase', () => ({
   isDemoMode: false,
 }));
 // The native apps fetch the gig's Bluetooth key (087).
-vi.mock('../stageBleNative', () => ({ stageBleAvailable: () => true, stageKey: async () => 'KEY-1' }));
+const keyAnswer = vi.hoisted(() => ({ value: { key: 'KEY-1' as string | null, denied: false }, asks: 0 }));
+vi.mock('../stageBleNative', () => ({
+  stageBleAvailable: () => true,
+  stageKey: async () => keyAnswer.value.key,
+  fetchStageKey: async () => {
+    keyAnswer.asks++;
+    return keyAnswer.value;
+  },
+}));
 // What the band's admins see (migration 170).
 const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
 vi.mock('../livePackStatus', () => ({
@@ -201,9 +209,18 @@ describe('refreshPack', () => {
     const p = await refreshPack({ userId: me, event: gig({ event_type: 'rehearsal' }) });
     expect(p?.songs[0].title).toBe('Paper Boats');
     expect(p?.personal.song1.notes[0].body).toBe('capo 2');
-    expect(p?.stageKey).toBe('KEY-1');
     expect(p?.bandNotes?.date).toBe(inDays(3));
     expect((await personalFromPacks(me, 'song1'))?.notes).toHaveLength(1);
+  });
+
+  it("the pack keeps no copy of the band key (nobody read it): refreshing still asks the server, so the phone's kept key stays current (Claude round 8 on #283)", async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    keyAnswer.value = { key: 'KEY-1', denied: false };
+    keyAnswer.asks = 0;
+    const p = await refreshPack({ userId: me, event: gig() });
+    expect(p).toBeTruthy();
+    expect(p).not.toHaveProperty('stageKey');
+    expect(keyAnswer.asks).toBe(1);
   });
 
   it('asks for the live fields of the other parts, and without them while the database has none', async () => {
@@ -403,12 +420,14 @@ describe('live_pack off: nothing new, held data kept current', () => {
     answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
     answers.song_personal_files = () => ({ data: [{ id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 }], error: null });
     answers.rehearsal_notes = () => ({ data: [{ id: 'r1', band_id: 'b1', body: 'tighten the bridge', status: 'open' }], error: null });
+    keyAnswer.asks = 0;
     await packOpenedEvent({ userId: me, event: gig({ event_type: 'rehearsal' }), songs, livePackOn: false, fullDue: true, allowFiles: true });
     const p = await readPack(me, 'b1', 'e1');
     expect(p?.songs).toHaveLength(2);
     expect(p?.personal).toEqual({});
     expect(p?.bandNotes).toBeUndefined();
-    expect(p?.stageKey).toBeFalsy();
+    // No Bluetooth key asked for either (the pack keeps none since #283; the phone's copy is stageBleNative's).
+    expect(keyAnswer.asks).toBe(0);
   });
 
   it('a held pack opened while off keeps its notes current, gains no new ones', async () => {

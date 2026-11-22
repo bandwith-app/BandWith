@@ -20,6 +20,9 @@ vi.mock('@capacitor/app', () => ({ App: { addListener: async () => ({ remove: as
 vi.mock('@/lib/stageBleNative', () => ({
   stageBleAvailable: () => true,
   stageKey: async () => 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=',
+  // #283: the key is asked for again while Stage is open, and the server may say no.
+  STAGE_KEY_EVENT: 'bw:stage-key',
+  fetchStageKey: async () => ({ key: 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=', denied: false }),
   StageBle: {
     addListener: async () => ({ remove: async () => {} }),
     start: async (o: Record<string, unknown>) => {

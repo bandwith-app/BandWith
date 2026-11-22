@@ -1519,6 +1519,7 @@ const music: AreaText = {
             "« Le Bluetooth est désactivé ou non autorisé. Active-le dans Réglages pour rester synchronisé sans internet. »",
             "« Ce téléphone a une ancienne setlist. Connecte-toi une fois à internet pour suivre en Bluetooth. » Ce message s’affiche quand des morceaux ont été ajoutés ou retirés depuis le dernier chargement de la setlist sur ce téléphone. Un simple changement d’ordre ne pose pas de problème.",
             "« L'heure de ce téléphone et celle du leader sont très différentes. Règle la date et l'heure automatiques sur les deux. » Les messages du leader portent son heure ; s'il est très en avance sur ce téléphone, ils ne sont pas suivis, car un téléphone pourrait la falsifier.",
+            "Quand quelqu’un quitte le groupe, chaque concert à venir reçoit une nouvelle clé Bluetooth. Les téléphones avec une ancienne version de BandWith gardent l’ancienne clé et ne trouvent pas les autres sans internet : après avoir mis à jour BandWith, ouvre le concert une fois en étant en ligne.",
           ],
         },
         {

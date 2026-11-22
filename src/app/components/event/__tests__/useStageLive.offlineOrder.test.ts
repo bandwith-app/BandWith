@@ -15,8 +15,9 @@ const bus = {
 };
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    channel: (_topic: string, opts: { config: { presence: { key: string } } }) => {
-      const phone = { key: opts.config.presence.key, handlers: [] as Handler[] };
+    // The clock channel (#283) has no presence key: it gets the topic, and never sees the stage topic's states.
+    channel: (topic: string, opts?: { config?: { presence?: { key?: string } } }) => {
+      const phone = { key: opts?.config?.presence?.key ?? topic, handlers: [] as Handler[] };
       phones.push(phone);
       const ch = {
         on(type: string, filter: { event: string }, cb: (msg: unknown) => void) {

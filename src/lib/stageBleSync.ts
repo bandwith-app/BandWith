@@ -41,7 +41,7 @@
  * band's clock.
  */
 import { fromBase64 } from './stageBle';
-import { bestSample, clockSample, type ClockSample } from './stageClick';
+import { BLE_MAX_CLOCK_RTT_MS, bestSample, clockSample, type ClockSample } from './stageClick';
 
 export const STAGE_BLE_SYNC_VERSION = 3;
 /** The leader's clock, one fresh signed reading per read (same for every gig). */
@@ -193,9 +193,12 @@ export class BleClockBook {
   /** The fastest round trip among the samples that agree with the others. */
   best(now: number): ClockSample | null {
     const all = this.samples(now);
-    if (all.length < 3) return bestSample(all);
+    if (all.length < 3) return bestSample(all, BLE_MAX_CLOCK_RTT_MS);
     const mid = median(all.map((s) => s.offset));
-    return bestSample(all.filter((s) => Math.abs(s.offset - mid) <= CLOCK_OUTLIER_MS + s.rtt / 2));
+    return bestSample(
+      all.filter((s) => Math.abs(s.offset - mid) <= CLOCK_OUTLIER_MS + s.rtt / 2),
+      BLE_MAX_CLOCK_RTT_MS,
+    );
   }
 
   clear() {
