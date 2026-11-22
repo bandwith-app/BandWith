@@ -29,8 +29,8 @@
 --     index stopped a new one.
 -- Lineup statuses are compared with lower(btrim()) ('Declined', 'Dropped_Out ').
 --
--- Prerequisites and order: 175 -> 178 -> 180 -> 194 -> 192 -> 193 -> 181
--- (tested in that order).
+-- Prerequisites and order: 194 -> 184 -> 175 -> 176 -> 178 -> 180 -> 192
+-- -> 193 -> 181 (main's release order; tested in it).
 -- 193 (#291: bw_open_group_chat, chats_select_joinable, one chat per gig) is
 -- REQUIRED: someone added to a gig's lineup for the first time has no
 -- participant row, and without 193 an old build's "does the gig chat
