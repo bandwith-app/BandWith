@@ -32,6 +32,7 @@ import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import { useSystemBack } from '@/lib/backStack';
 import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
+import { repeatDates } from '@/lib/recurrence';
 
 interface EventsViewProps {
   loading?: boolean;
@@ -494,17 +495,9 @@ export const EventsView: React.FC<EventsViewProps> = ({
         const rule = rec.recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const [y, m, day] = normDate.split('-').map(Number);
           const until = rule.until ? new Date(rule.until) : new Date(new Date().getFullYear() + 1, 11, 31);
           const maxCount = rule.count || 24;
-          let cursor = new Date(y, m - 1, day, 12, 0, 0);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          for (const cursor of repeatDates(normDate, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
             if (occDate >= todayStr && occDate !== normDate) {
               upcoming.push({
@@ -514,7 +507,6 @@ export const EventsView: React.FC<EventsViewProps> = ({
                 date: occDate,
               });
             }
-            generated++;
           }
         }
       }
@@ -627,17 +619,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         if (!freq) return;
         const until = rule.until ? new Date(rule.until) : new Date(new Date().getFullYear() + 2, 11, 31);
         const maxCount = rule.count || 104;
-        let cursor = new Date(y, m - 1, day, 12, 0, 0);
-        let generated = 0;
-        while (cursor <= until && generated < maxCount) {
-          if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-          else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-          else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-          else break;
-          if (cursor > until) break;
-          addToMap(ev, new Date(cursor));
-          generated++;
-        }
+        for (const occ of repeatDates(normD, rule, until, maxCount)) addToMap(ev, occ);
       }
     });
     return map;

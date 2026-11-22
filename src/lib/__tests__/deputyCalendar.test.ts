@@ -11,14 +11,15 @@ describe('deputy calendar', () => {
   it('starts at load-in and ends after midnight on the next day', () => {
     const w = gigWindow(gig);
     if (w.allDay) throw new Error('expected times');
-    expect([w.start.getDate(), w.start.getHours(), w.start.getMinutes()]).toEqual([31, 17, 30]);
-    expect([w.end.getFullYear(), w.end.getMonth(), w.end.getDate(), w.end.getHours()]).toEqual([2027, 0, 1, 1]);
+    // Wall-clock times held as UTC (floating; Claude review #285 r7).
+    expect([w.start.getUTCDate(), w.start.getUTCHours(), w.start.getUTCMinutes()]).toEqual([31, 17, 30]);
+    expect([w.end.getUTCFullYear(), w.end.getUTCMonth(), w.end.getUTCDate(), w.end.getUTCHours()]).toEqual([2027, 0, 1, 1]);
   });
 
   it('lasts 3 hours from the show when there is no end time, all day without times', () => {
     const w = gigWindow({ ...gig, end: null });
     if (w.allDay) throw new Error('expected times');
-    expect(w.end.getHours()).toBe(0);
+    expect(w.end.getUTCHours()).toBe(0);
     expect(gigWindow({ ...gig, loadIn: null, start: null, end: null }).allDay).toBe(true);
   });
 

@@ -3380,6 +3380,13 @@ const dict: Dictionary = {
   "Links already sent stop working. Send the next request by message: opening its new link from the app links the right account.": "Bereits gesendete Links funktionieren nicht mehr. Schick die nächste Anfrage per Nachricht: Wer den neuen Link in der App öffnet, verbindet das richtige Konto.",
   "{name} answers in the app: requests and changes reach them as notifications.": "{name} antwortet in der App: Anfragen und Änderungen kommen als Benachrichtigungen an.",
   "Unlink account": "Konto trennen",
+  "Revoke sent links": "Gesendete Links widerrufen",
+  "Revoke sent links?": "Gesendete Links widerrufen?",
+  "Revoke": "Widerrufen",
+  "Reply and calendar links already sent to {name} stop working. The next request you send carries a new one.": "Bereits an {name} gesendete Antwort- und Kalenderlinks funktionieren nicht mehr. Die nächste Anfrage, die du schickst, enthält einen neuen.",
+  "Could not revoke the links. Try again.": "Links konnten nicht widerrufen werden. Versuch es nochmal.",
+  "Links revoked. The next request you send carries a new one.": "Links widerrufen. Die nächste Anfrage, die du schickst, enthält einen neuen.",
+  "{name} just joined from the app. Their account is below: choose again.": "{name} ist gerade über die App beigetreten. Das Konto steht unten: wähle noch einmal.",
   // App lock, bands load error
   "Unlock BandWith": "BandWith entsperren",
   "device passcode": "Gerätecode",
@@ -3625,6 +3632,7 @@ const dict: Dictionary = {
   "Could not load the rider & stage.": "Rider & Bühne konnten nicht geladen werden.",
   "Technical rider · {event}": "Technical Rider · {event}",
   "Could not create the link.": "Link konnte nicht erstellt werden.",
+  "Couldn't make the calendar file. Try again.": "Die Kalenderdatei konnte nicht erstellt werden. Versuch es noch einmal.",
   "Technical rider for {event}: stage plot, input list and who brings what.": "Technical Rider für {event}: Bühnenplan, Kanalliste und wer was mitbringt.",
   "Could not share the link.": "Link konnte nicht geteilt werden.",
   "Could not create the PDF.": "PDF konnte nicht erstellt werden.",
@@ -4443,6 +4451,10 @@ const dict: Dictionary = {
   "Making…": "Wird erstellt…",
   "Couldn’t copy the link. Try again.": "Link konnte nicht kopiert werden. Versuche es erneut.",
   "Couldn’t make a new link. Check your connection and try again.": "Neuer Link konnte nicht erstellt werden. Prüfe deine Verbindung und versuche es erneut.",
+  // Calendar links made before 182 (asked once)
+  "Check your calendar link": "Prüfe deinen Kalender-Link",
+  "Until now, “Add to calendar” links had your private calendar link inside. If you sent one to anyone, make a new link: with the old one they can see all your events. If you subscribed in a calendar, add the new link there again.": "Bisher steckte in den Links von „Zum Kalender hinzufügen“ der private Link deines Kalenders. Wenn du einen davon jemandem geschickt hast, erstelle einen neuen Link: Mit dem alten sieht man alle deine Termine. Wenn du den Kalender abonniert hast, füge dort den neuen Link erneut hinzu.",
+  "Keep my link": "Meinen Link behalten",
   // Pending invites (166)
   "Invited": "Eingeladen",
   "Waiting to join. An invite lasts 7 days.": "Noch nicht beigetreten. Eine Einladung gilt 7 Tage.",

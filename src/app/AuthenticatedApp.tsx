@@ -172,6 +172,7 @@ import { useBodyScrollLock } from "@/app/hooks";
 import { usePushNotifications } from "@/app/hooks/usePushNotifications";
 import { parseLocalDate } from '@/lib/dates';
 import { addressWithoutCity } from '@/lib/eventAddress';
+import { repeatDates } from '@/lib/recurrence';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
 import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
@@ -1960,28 +1961,23 @@ export default function AuthenticatedApp() {
         const rule = e.recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const baseDate = parseLocalDate(normDate);
           const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
           const maxCount = rule.count || 24;
-          let cursor = new Date(baseDate);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          repeatDates(normDate, rule, until, maxCount).forEach((cursor) => {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
             if (occDate >= todayStr && occDate !== normDate) {
               rehearsals.push({
                 ...e,
-                id: (e.id * 31 + generated) % 2147483647,
+                // Keyed by the date, not its place in the list: deleting one
+                // date leaves the ids of the later ones as they were (Claude
+                // review #285 r8).
+                id: uuidToNumericId(`${e.eventId ?? e.id}-occ-${occDate}`),
                 eventId: e.eventId,
+                occurrence_of: e.eventId ?? e.id,
                 date: occDate,
               });
             }
-            generated++;
-          }
+          });
         }
       }
     });
@@ -3939,28 +3935,20 @@ export default function AuthenticatedApp() {
         const rule = (e as any).recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const baseDate = new Date(d);
           const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
           const maxCount = rule.count || 24;
-          let cursor = new Date(baseDate);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          for (const cursor of repeatDates(d, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
             if (occDate >= todayStr && occDate !== d) {
               liveUpcomingEvents.push({
                 ...e,
                 id: `${e.id}-occ-${occDate}`,
                 eventId: e.id,
+                occurrence_of: e.id,
                 event_date: occDate,
                 date: occDate,
               });
             }
-            generated++;
           }
         }
       }

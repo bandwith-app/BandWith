@@ -26,6 +26,7 @@ import { useBandNotes } from '@/app/components/event/useBandNotes';
 import { useBandFlag } from '@/lib/flags';
 import { toPractise } from '@/lib/toPractise';
 import { openSongPage } from '@/lib/services/rehearsalNotes';
+import { repeatDates } from '@/lib/recurrence';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
@@ -361,32 +362,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
         expandedList.push(e);
       }
 
-      // If recurring rehearsal, generate its future weekly occurrences
-      if (isRehearsal && isRecurring && d) {
+      // If recurring rehearsal, generate its future weekly occurrences. Only
+      // from the series row: a date already expanded is not a new series
+      // start (Codex #285 M1: Jan 31 monthly showed a phantom Mar 28).
+      // AuthenticatedApp marks its dates with `occurrence_of`; the id check
+      // stays for dates built without the mark (EventsView's `<id>-occ-<date>`).
+      if (isRehearsal && isRecurring && d && !e.occurrence_of && !String(e.id ?? '').includes('-occ-')) {
         const rule = e.recurrence_rule || {};
         const freq = (rule.freq || rule.frequency || e.recurrence || 'weekly').toLowerCase();
-        const [y, m, day] = d.split('-').map(Number);
         const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
         const maxCount = rule.count || 24;
-        let cursor = new Date(y, m - 1, day, 12, 0, 0);
-        let generated = 0;
-        while (cursor <= until && generated < maxCount) {
-          if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-          else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-          else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-          else break;
-          if (cursor > until) break;
+        for (const cursor of repeatDates(d, { ...rule, frequency: freq }, until, maxCount)) {
           const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
           if (occDate >= todayStr && occDate !== d) {
             expandedList.push({
               ...e,
               id: `${e.id || e.eventId}-occ-${occDate}`,
               eventId: e.eventId || e.id,
+              occurrence_of: e.eventId || e.id,
               event_date: occDate,
               date: occDate,
             });
           }
-          generated++;
         }
       }
     });
@@ -562,9 +559,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
     // Gigs waiting on your RSVP.
     if (currentUserId && eventMembersMap) {
+      // One item per event. The dates of a repeating rehearsal (`occurrence_of`)
+      // share the series' line-up; the first one listed (the list runs by date)
+      // stands for it, also when the series row itself is already past.
+      const asked = new Set<string>();
       for (const e of dashboardData?.upcomingEvents || []) {
-        const id = String(e.eventId || e.id || '');
-        if (!id || id.includes('-occ-')) continue;
+        const id = String(e.occurrence_of || e.eventId || e.id || '');
+        if (!id || id.includes('-occ-') || asked.has(id)) continue;
+        asked.add(id);
         const me = (eventMembersMap[id] || []).find((m) => m.userId === currentUserId);
         if (me?.status !== 'pending') continue;
         const raw = e.event_date || e.date;

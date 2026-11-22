@@ -6,11 +6,11 @@
 // or a subscription that follows changes). If the band changes the gig
 // after the answer, the page shows what changed and asks "Still OK?".
 
-import { googleCalendarUrl } from './lib/deputyCalendar';
+import { deputyCalendarUrl, googleCalendarUrl } from './lib/deputyCalendar';
 import { addressWithoutCity } from './lib/eventAddress';
 import { APP_URL as WEB_APP_URL } from './lib/appUrl';
 import { instrumentKeys } from './lib/instruments';
-import { DEPUTY_STRINGS, fill, pickDeputyLang, roleLabel, type DeputyStrings } from './deputy/strings';
+import { DEPUTY_STRINGS, closedCopy, fill, pickDeputyLang, roleLabel, type DeputyStrings } from './deputy/strings';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -41,6 +41,11 @@ interface View {
   changes: ChangeKey[];
   before: Partial<Record<ChangeKey, string | null>>;
   closed: boolean;
+  /** Read-only keys of the calendar subscription and of this gig's file (182). */
+  calendar_token?: string | null;
+  gig_calendar_token?: string | null;
+  /** 182: the deputy was deleted from the band (only then sent). */
+  removed?: boolean;
 }
 
 const params = new URL(window.location.href).searchParams;
@@ -135,8 +140,11 @@ function simpleCard(kicker: string, title: string, body: string, ink = true) {
   return h('section', { class: `card ${ink ? 'ink' : 'lime'}` }, h('div', { class: 'kicker' }, kicker), h('h1', {}, title), h('p', {}, body));
 }
 
-function feedUrl(one: boolean) {
-  return `${SUPABASE_URL}/functions/v1/deputy-calendar?t=${token}&l=${lang}${one ? '&one=1' : ''}`;
+// The calendar links use the request's read-only keys (182), never the reply
+// token of this page: a calendar is easily shared, and this token shows the
+// fee and changes the answer. The file has its own key (this gig only).
+function feedUrl(v: View, one: boolean) {
+  return one ? deputyCalendarUrl(SUPABASE_URL, v.gig_calendar_token, lang, 'gig') : deputyCalendarUrl(SUPABASE_URL, v.calendar_token, lang, 'feed');
 }
 
 function detailRows(v: View) {
@@ -251,12 +259,14 @@ function answerCard(v: View) {
 }
 
 function calendarCard(v: View) {
-  const sub = feedUrl(false);
-  const webcal = sub.replace(/^https?:/, 'webcal:');
+  const sub = feedUrl(v, false);
+  const file = feedUrl(v, true);
+  const webcal = sub ? sub.replace(/^https?:/, 'webcal:') : null;
+  // No url: this page's address is the reply link.
   const gig = {
     title: v.event_title || 'Gig', bandName: v.band_name, date: v.event_date as string, loadIn: v.load_in_time,
     soundcheck: v.soundcheck_time, start: v.start_time, end: v.end_time, venue: v.venue_name, city: v.venue_city,
-    address: v.venue_address, role: roleLabel(v.role, lang, instrumentKeys), url: window.location.href,
+    address: v.venue_address, role: roleLabel(v.role, lang, instrumentKeys),
   };
   return h(
     'section',
@@ -265,17 +275,19 @@ function calendarCard(v: View) {
     h(
       'div',
       { class: 'stack' },
-      h('a', { class: 'btn', href: feedUrl(true) }, S.calApple, arrow()),
+      file ? h('a', { class: 'btn', href: file }, S.calApple, arrow()) : null,
       h('a', { class: 'btn light', href: googleCalendarUrl(gig, { loadIn: S.loadIn, soundcheck: S.soundcheck, show: S.show, role: S.role }), target: '_blank', rel: 'noopener' }, S.calGoogle, arrow()),
-      h('a', { class: 'btn lime', href: webcal }, S.calSubscribe, arrow()),
+      webcal ? h('a', { class: 'btn lime', href: webcal }, S.calSubscribe, arrow()) : null,
     ),
-    h(
-      'p',
-      { class: 'mute', style: 'font-size:14px;line-height:20px' },
-      fill(S.calSubscribeNote, vars(v)),
-      ' ',
-      h('a', { href: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`, target: '_blank', rel: 'noopener', style: 'color:inherit' }, S.calSubscribeGoogle),
-    ),
+    webcal
+      ? h(
+          'p',
+          { class: 'mute', style: 'font-size:14px;line-height:20px' },
+          fill(S.calSubscribeNote, vars(v)),
+          ' ',
+          h('a', { href: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`, target: '_blank', rel: 'noopener', style: 'color:inherit' }, S.calSubscribeGoogle),
+        )
+      : null,
   );
 }
 
@@ -306,7 +318,7 @@ function render() {
   const street = addressWithoutCity(view.venue_address, view.venue_city);
   const v: View = { ...view, venue_address: street && street.toLocaleLowerCase() !== (view.venue_city ?? '').toLocaleLowerCase() ? street : null };
   if (v.closed) {
-    const [t, b] = v.event_cancelled ? [S.cancelledTitle, S.cancelledBody] : v.status === 'cancelled' ? [S.closedTitle, S.closedBody] : [S.pastTitle, S.pastBody];
+    const [t, b] = closedCopy(v, S);
     app.append(simpleCard(`BandWith · ${v.band_name}`, t, fill(b, vars(v))));
     return;
   }

@@ -1098,6 +1098,7 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 // -------------------------------------------------------------------- rpc --
 
 let demoCalendarToken = '';
+const demoEventCalendarTokens = new Map<string, string>();
 
 const rpc = (fn: string, args: Row = {}) => {
   let data: any = null;
@@ -1165,11 +1166,51 @@ const rpc = (fn: string, args: Row = {}) => {
     // Calendar sync (165): a fixed link per demo session; rotate makes a new one.
     case 'bw_my_calendar_token': {
       if (args.p_rotate || !demoCalendarToken) {
+        demoEventCalendarTokens.clear();
+        if (args.p_rotate) {
+          try {
+            localStorage.removeItem('bw-demo-calendar-review');
+          } catch {
+            /* private mode */
+          }
+        }
         demoCalendarToken = Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
       }
       data = demoCalendarToken;
       break;
     }
+    // Calendar link made before 182 (asked once): e2e turns it on with
+    // localStorage bw-demo-calendar-review = 1.
+    case 'bw_my_calendar_link_review': {
+      try {
+        data = localStorage.getItem('bw-demo-calendar-review') === '1';
+      } catch {
+        data = false;
+      }
+      break;
+    }
+    case 'bw_my_calendar_link_keep': {
+      try {
+        localStorage.removeItem('bw-demo-calendar-review');
+      } catch {
+        /* private mode */
+      }
+      data = null;
+      break;
+    }
+    // "Add to calendar" (182): a link token per event and date.
+    case 'bw_my_event_calendar_token': {
+      const k = `${args.p_event_id}|${args.p_date ?? ''}`;
+      if (!demoEventCalendarTokens.has(k)) {
+        demoEventCalendarTokens.set(k, Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''));
+      }
+      data = demoEventCalendarTokens.get(k);
+      break;
+    }
+    // Opening the event: the link it has, made only by the tap above.
+    case 'bw_my_event_calendar_link':
+      data = demoEventCalendarTokens.get(`${args.p_event_id}|${args.p_date ?? ''}`) ?? null;
+      break;
     // Band members → Invited (166): the demo's own band_invitations rows.
     case 'bw_band_invitations': {
       const now = Date.now();
@@ -1520,10 +1561,25 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_deputy_request_ping':
       data = 'sent';
       break;
-    case 'bw_deputy_unlink': {
+    case 'bw_deputy_unlink':
+    case 'bw_deputy_revoke_links': {
       const d = table('band_deputies').find((x) => x.id === args.p_deputy_id);
-      data = d?.user_id ? 'unlinked' : 'not_linked';
+      // "Revoke sent links" never unlinks (182, Codex review #285 round 5).
+      if (fn === 'bw_deputy_revoke_links' && d?.user_id) {
+        data = 'linked';
+        break;
+      }
+      data = d?.user_id ? 'unlinked' : 'revoked';
       if (d) d.user_id = null;
+      // As 182: every request's reply and calendar links change, so an old
+      // one stops (Codex review #285 round 5).
+      const fresh = () => (uuid() + uuid()).replace(/-/g, '');
+      for (const r of table('deputy_requests')) {
+        if (r.deputy_id !== args.p_deputy_id) continue;
+        r.token = fresh();
+        if (r.calendar_token) r.calendar_token = fresh();
+        if (r.gig_calendar_token) r.gig_calendar_token = fresh();
+      }
       persist();
       break;
     }

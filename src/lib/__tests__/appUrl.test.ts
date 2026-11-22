@@ -13,7 +13,7 @@ import { APP_URL as SITE_APP_URL, ACADEMY_HOME } from '../../../site/src/content
 const RAW = import.meta.glob(
   [
     '../../../supabase/functions/send-email/index.ts',
-    '../../../supabase/functions/deputy-calendar/index.ts',
+    '../../../supabase/functions/member-calendar/index.ts',
     '../../../supabase/email-templates/_source/build.py',
     '../../../academy/src/blocks.tsx',
     '../../../academy/content/basics.ts',
@@ -42,7 +42,8 @@ describe('app address', () => {
     expect(SITE_APP_URL).toBe(APP_URL);
     expect(ACADEMY_HOME).toBe(`${APP_URL}/academy/`);
     expect(read('supabase/functions/send-email/index.ts')).toContain(`const DEFAULT_APP_URL = "${APP_URL}";`);
-    expect(read('supabase/functions/deputy-calendar/index.ts')).toContain(`const SITE = "${APP_URL}";`);
+    // deputy-calendar links nowhere since 182 (no reply link in a calendar).
+    expect(read('supabase/functions/member-calendar/index.ts')).toContain(`const SITE = "${APP_URL}"; // = src/lib/appUrl.ts`);
     expect(read('supabase/email-templates/_source/build.py')).toContain(`PUBLIC_URL = "${APP_URL}"`);
   });
 
