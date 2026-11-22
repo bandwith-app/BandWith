@@ -23,9 +23,15 @@ export interface StageCountInControls {
   set: (next: CountInState) => void;
 }
 
-/** useStageLive().playhead (only what the count-in needs). */
+/**
+ * useStageLive().playhead. The same shape as StageFollow's
+ * StageFollowPlayhead (B2): either type fits StageLiveControls.playhead.
+ */
 export interface StagePlayheadControls {
   state: PlayheadState | null;
+  mine: boolean;
+  /** Their clock minus mine (0 for my own playhead). */
+  offset: number;
   set: (next: PlayheadState) => void;
   clientId: string;
 }
@@ -190,6 +196,7 @@ export const StageCountInOverlay: React.FC<{
   const ringRef = React.useRef<SVGCircleElement>(null);
   const dotsRef = React.useRef<HTMLDivElement>(null);
   const subRef = React.useRef<HTMLSpanElement>(null);
+  const flashRef = React.useRef<HTMLDivElement>(null);
   const offsetRef = React.useRef(offset);
   offsetRef.current = offset;
   const vibrateRef = React.useRef(prefs.vibrate);
@@ -225,8 +232,14 @@ export const StageCountInOverlay: React.FC<{
         if (vibrateRef.current) (e.downbeat || e.go ? haptic.medium : haptic.tap)();
       }
       if (e && numRef.current && !still) {
-        const s = 1 + 0.14 * Math.exp(-pos.phase * 6);
+        const s = 1 + 0.22 * Math.exp(-pos.phase * 6);
         numRef.current.style.transform = `scale(${s.toFixed(3)})`;
+      }
+      // The beat, from the back of the stage: the whole screen pulses on each
+      // count (harder on the bar's first), then fades well before the next.
+      if (flashRef.current) {
+        const on = e && pos.stage === 'count' && !still;
+        flashRef.current.style.opacity = on ? ((e.downbeat ? 0.3 : 0.18) * Math.exp(-pos.phase * 9)).toFixed(3) : '0';
       }
       // GO: the song has started, the screen is back; the word only fades away over it.
       if (numRef.current) numRef.current.style.opacity = pos.stage === 'go' ? (1 - pos.phase).toFixed(3) : '1';
@@ -255,15 +268,17 @@ export const StageCountInOverlay: React.FC<{
   const size = big ? 'min(86cqmin, 720px)' : 'min(72cqmin, 520px)';
   return createPortal(
     <div
-      // At GO the band is playing: the black layer goes at once and lets every
+      // Over the app's pop-ups (an urgent alert must not hide the count), under
+      // the Duo rail. At GO the band is playing: the black layer goes at once and lets every
       // touch through, so the song, the chords and the click are there from
       // the first beat; GO just fades away on top.
-      className={cn('bw-countin fixed inset-0 z-[150] flex flex-col items-center justify-center text-white select-none', go ? 'pointer-events-none bg-transparent' : 'bg-black')}
+      className={cn('bw-countin fixed inset-0 z-[186] flex flex-col items-center justify-center text-white select-none', go ? 'pointer-events-none bg-transparent' : 'bg-black')}
       role="dialog"
       aria-modal={!go}
       aria-label={title ? t('Count-in · {title}', { title }) : t('Count-in')}
       data-stage={phase}
     >
+      <div ref={flashRef} data-testid="countin-flash" className="absolute inset-0 pointer-events-none" style={{ background: accent, opacity: 0 }} aria-hidden />
       {title && <p className={cn('bw-label text-white/70 truncate max-w-[90cqw] px-4 shrink-0', go && 'invisible')}>{title}</p>}
       <div className="relative flex items-center justify-center my-auto" style={{ '--bw-countin-ring': size, width: 'var(--bw-countin-ring)', height: 'var(--bw-countin-ring)' } as React.CSSProperties}>
         <svg viewBox="0 0 100 100" className={cn('absolute inset-0 w-full h-full -rotate-90', go && 'invisible')} aria-hidden>
@@ -334,9 +349,10 @@ export const CountInSheetButton: React.FC<{ onPress: () => void }> = ({ onPress 
         onPress();
       }}
       aria-label={t('Count-in options')}
-      className="w-11 h-11 flex items-center justify-center rounded-full border border-white/30 shrink-0"
+      className="h-11 px-4 flex items-center gap-2 rounded-full border border-white/30 shrink-0 bw-label-xs text-white"
     >
-      <Timer className="w-5 h-5" />
+      <Timer className="w-4 h-4" aria-hidden />
+      <span aria-hidden>{t('Count-in')}</span>
     </button>
   );
 };
@@ -397,6 +413,7 @@ export const CountInSheet: React.FC<{
   style?: { value: CountInStyle; set: (s: CountInStyle) => void } | null;
 }> = ({ open, onClose, force, style }) => {
   const t = useT();
+  const output = useAudioOutput();
   const prefs = useCountInPrefs();
   useSystemBack(open, onClose);
   if (!open || typeof document === 'undefined') return null;
@@ -451,7 +468,7 @@ export const CountInSheet: React.FC<{
           </div>
           <Row
             label={t('Also through the phone’s speaker')}
-            hint={t('Off: only in headphones or an audio interface. A browser can’t tell them apart, so turn this on there to hear it.')}
+            hint={output ? t('Off: only in headphones or in-ear monitors, never out loud.') : t('In a browser, turn this on to hear the count, also in headphones.')}
             checked={prefs.speaker}
             disabled={prefs.sound === 'off'}
             onChange={(on) => setCountInPrefs({ speaker: on })}

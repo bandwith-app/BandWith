@@ -37,7 +37,7 @@ const songs: StageSong[] = [
 
 function live(over: Partial<StageLiveControls> = {}, state: CountInState | null = null) {
   const countIn = { state, mine: !!state && state.from === 'me', offset: 0, set: vi.fn() };
-  const playhead = { state: null, set: vi.fn(), clientId: 'me' };
+  const playhead = { state: null, mine: false, offset: 0, set: vi.fn(), clientId: 'me' };
   const controls: StageLiveControls = {
     index: 0,
     select: vi.fn(),
@@ -107,6 +107,8 @@ describe('Stage mode count-in (plan §6)', () => {
 
   it('the leader sets the band’s direction in the sheet', () => {
     stage(live().controls);
+    // Found by its name, not a second stopwatch next to Count in.
+    expect(screen.getByRole('button', { name: 'Count-in options' })).toHaveTextContent('Count-in');
     fireEvent.click(screen.getByRole('button', { name: 'Count-in options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Count up: 1 2 3 4' }));
     expect(setCountInStyle).toHaveBeenCalledWith('band-1', 'up');
@@ -118,6 +120,8 @@ describe('Stage mode count-in (plan §6)', () => {
     expect((screen.getByRole('switch', { name: /phone’s speaker/ }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Click' }));
     expect((screen.getByRole('switch', { name: /phone’s speaker/ }) as HTMLButtonElement).disabled).toBe(false);
+    // In a browser (no output route known) the hint says what to do there, in plain words.
+    expect(screen.getByText('In a browser, turn this on to hear the count, also in headphones.')).toBeInTheDocument();
     localStorage.clear();
   });
 
@@ -128,11 +132,18 @@ describe('Stage mode count-in (plan §6)', () => {
     const member = live({ isLeader: false }, state);
     stage(member.controls);
     const dialog = screen.getByRole('dialog', { name: 'Count-in · Harbor Lights' });
+    // Over the app's pop-ups (urgent alerts 182–183, poll and RSVP sheets 184–185), under the Duo rail (190).
+    expect(dialog.className).toContain('z-[186]');
     // Sized to the pane it sits on (a Duo pane), never to the whole screen.
     const ring = dialog.querySelector('svg')!.parentElement as HTMLElement;
     expect(ring.style.getPropertyValue('--bw-countin-ring')).toMatch(/^min\(\d+cqmin, \d+px\)$/);
     act(() => void vi.advanceTimersByTime(COUNTIN_LEAD_MS + 20));
     expect(screen.getByTestId('countin-number').textContent).toBe('4');
+    // Each beat pulses the whole screen (readable from the back of the stage), then fades.
+    const flash = () => Number(screen.getByTestId('countin-flash').style.opacity);
+    expect(flash()).toBeGreaterThan(0.12);
+    act(() => void vi.advanceTimersByTime(400));
+    expect(flash()).toBeLessThan(0.03);
     act(() => void vi.advanceTimersByTime(1000));
     expect(screen.getByTestId('countin-number').textContent).toBe('2');
     act(() => void vi.advanceTimersByTime(1000));

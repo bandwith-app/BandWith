@@ -17,7 +17,7 @@ export const LIVE_TEMPO_DEFAULTS: LiveTempoValues = { timeSignature: '', countIn
 
 /**
  * Song form, next to BPM (live mode, migration 171): time signature, how
- * many bars the count-in lasts, a pickup ("starts N beats early") and
+ * many bars the count-in lasts, where the song starts ("Starts on beat 4") and
  * "Played with a backing track" (no count-in for that song).
  */
 export const LiveTempoFields: React.FC<{
@@ -32,9 +32,12 @@ export const LiveTempoFields: React.FC<{
   // Nothing picked: the chart's, else 4/4 (what live mode uses).
   const implicit = fromChart ?? DEFAULT_TIME;
   const shown = normalizeTime(value.timeSignature) ?? implicit;
-  // A pickup is counted in the bar's beats (6/8: two), at most a bar less one.
+  // Counted beats (6/8: two dotted ones), as the count-in counts them.
   const beatsOf = (ts: string) => meterOf(ts).beats.length;
   const beatsInBar = beatsOf(shown);
+  const pickup = Math.min(value.pickupBeats, beatsInBar - 1);
+  // The beat the band comes in on: 1 is bar 1; 4 in 4/4 is one beat early.
+  const startBeat = pickup > 0 ? beatsInBar - pickup + 1 : 1;
   const step = 'h-9 w-9 rounded-full border border-border flex items-center justify-center disabled:opacity-40';
   const times = Array.from(new Set<string>([...COMMON_TIMES, shown]));
   // What the BPM counts, where it can differ (meter.ts): with no time
@@ -90,18 +93,14 @@ export const LiveTempoFields: React.FC<{
           ))}
         </div>
         {value.countInBars === 2 && <p className="bw-body-sm text-muted-foreground">{t('For slow songs: the first bar counts in half time.')}</p>}
-        <div className="flex items-center gap-3 pt-1" role="group" aria-label={t('Pickup')}>
-          <button type="button" className={step} disabled={value.pickupBeats <= 0} onClick={() => set({ pickupBeats: value.pickupBeats - 1 })} aria-label={t('One beat less')}>
+        <div className="flex items-center gap-3 pt-1" role="group" aria-label={t('Where the song starts')}>
+          <button type="button" className={step} disabled={pickup >= beatsInBar - 1} onClick={() => set({ pickupBeats: pickup + 1 })} aria-label={t('One beat earlier')}>
             <Minus className="w-4 h-4" />
           </button>
           <span className="bw-body-sm flex-1" aria-live="polite">
-            {value.pickupBeats > 1
-              ? t('Starts {n} beats early', { n: value.pickupBeats })
-              : value.pickupBeats === 1
-                ? t('Starts 1 beat early')
-                : t('Starts on the downbeat')}
+            {t('Starts on beat {n}', { n: startBeat })}
           </span>
-          <button type="button" className={step} disabled={value.pickupBeats >= beatsInBar - 1} onClick={() => set({ pickupBeats: value.pickupBeats + 1 })} aria-label={t('One beat more')}>
+          <button type="button" className={step} disabled={pickup <= 0} onClick={() => set({ pickupBeats: pickup - 1 })} aria-label={t('One beat later')}>
             <Plus className="w-4 h-4" />
           </button>
         </div>
