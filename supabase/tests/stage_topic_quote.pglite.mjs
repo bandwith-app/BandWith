@@ -375,11 +375,12 @@ INSERT INTO stage_keys (event_id, key) SELECT unnest(ARRAY['${TONIGHT}','${SERIE
 
   // The band's advisory lock, never its row (Claude round 8): a band being deleted (its row, then
   // the cascade into these rows) can't deadlock with a trigger. Taken only when keys change.
+  // objsubid 1: the band's one-bigint key. 178 takes per-gig locks of its own (two-int keys, objsubid 2).
   const advisoryHeld = async (stmt) => {
     await db.exec('BEGIN');
     try {
       await db.exec(stmt);
-      return (await db.query(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ExclusiveLock' AND granted`)).rows[0].n;
+      return (await db.query(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND mode = 'ExclusiveLock' AND granted`)).rows[0].n;
     } finally {
       await db.exec('ROLLBACK');
     }
@@ -387,6 +388,62 @@ INSERT INTO stage_keys (event_id, key) SELECT unnest(ARRAY['${TONIGHT}','${SERIE
   await db.exec(`INSERT INTO auth.users (id) VALUES ('${id(58)}'); INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B3}','${id(58)}','member',true)`);
   ok((await advisoryHeld(`UPDATE band_members SET is_active = false WHERE user_id = '${id(58)}'`)) === 1, "a member leaving takes the band's advisory lock (exclusive) before keys change");
   ok((await advisoryHeld(`UPDATE band_members SET role = 'member' WHERE user_id = '${id(58)}'`)) === 0, 'a role touched with nobody leaving takes no lock (Claude round 8)');
+
+  // Round 11 (Claude round 10 review).
+  // First use of a gig's key: under the band's lock (shared), and who asks is checked again after it,
+  // so a member being removed at that moment never gets a key made after the removal's scan.
+  const [FRESH, FRESH2] = [59, 60].map(id);
+  await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, is_recurring, recurrence_rule) VALUES
+    ('${FRESH}','${B3}','Next week at Dizzy''s','confirmed','gig','${A3}', current_date + 7, false, null),
+    ('${FRESH2}','${B3}','Next month at Birdland','confirmed','gig','${A3}', current_date + 30, false, null)`);
+  await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claims', '${claims(A3)}', true);`);
+  const first = (await db.query(`SELECT public.bw_stage_key('${FRESH}') AS k`)).rows[0].k;
+  await db.exec('RESET ROLE');
+  const firstModes = (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted`)).rows.map((r) => r.mode);
+  await db.exec('ROLLBACK');
+  ok(!!first && firstModes.length === 1 && firstModes[0] === 'ShareLock', `the first key of a gig is made under the band's advisory lock, shared (got ${JSON.stringify(firstModes)})`);
+  // "Removed while waiting for the lock": the stand-in says yes until this session holds the shared lock, then no.
+  const viewArgs = (await db.query(`SELECT pg_get_function_arguments('public.bw_can_view_event(uuid, uuid)'::regprocedure) AS a`)).rows[0].a;
+  await db.exec('BEGIN');
+  await db.exec(`CREATE OR REPLACE FUNCTION public.bw_can_view_event(${viewArgs}) RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $f$
+    BEGIN RETURN NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND mode = 'ShareLock' AND granted AND pid = pg_backend_pid()); END $f$`);
+  await db.exec(`SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claims', '${claims(A3)}', true);`);
+  const late = (await db.query(`SELECT public.bw_stage_key('${FRESH2}') AS k`)).rows[0].k;
+  await db.exec('RESET ROLE');
+  const lateRows = (await db.query(`SELECT count(*)::int AS n FROM stage_keys WHERE event_id = '${FRESH2}'`)).rows[0].n;
+  await db.exec('ROLLBACK');
+  ok(late === null && lateRows === 0, `someone who may no longer see the gig once the lock is held gets no key, and none is made (got ${late === null ? 'null' : 'a key'}, ${lateRows} row)`);
+
+  // A band or a gig being deleted takes no advisory lock, and locks the rows the triggers start from
+  // (members, lineup) before it deletes anything: a member leaving and a band delete meet at the member's row.
+  const xmaxMine = `xmax = pg_current_xact_id()::xid`;
+  await db.exec('BEGIN');
+  await db.exec(`
+    ALTER TABLE events ADD CONSTRAINT t_events_band FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;
+    ALTER TABLE band_members ADD CONSTRAINT t_members_band FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;
+    ALTER TABLE stage_keys ADD CONSTRAINT t_keys_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE NOT VALID;
+    UPDATE band_members SET is_active = true WHERE band_id = '${B3}';
+    DELETE FROM bands WHERE id = '${B3}';`);
+  const bandGone = (await db.query(`SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted)::int AS locks,
+    (SELECT count(*) FROM band_members WHERE band_id = '${B3}')::int AS members,
+    (SELECT count(*) FROM stage_keys s JOIN events e ON e.id = s.event_id WHERE e.band_id = '${B3}')::int AS keys`)).rows[0];
+  await db.exec('ROLLBACK');
+  ok(bandGone.members === 0 && bandGone.keys === 0, 'a band delete cascades through members, gigs and keys with the triggers in place');
+  ok(bandGone.locks === 0, `a band delete takes no advisory lock: its members' trigger skips a band that is going (got ${bandGone.locks})`);
+  await db.exec(`BEGIN; DELETE FROM bands WHERE id = '${B3}';`);
+  const membersLocked = (await db.query(`SELECT count(*) FILTER (WHERE ${xmaxMine})::int AS locked, count(*)::int AS n FROM band_members WHERE band_id = '${B3}'`)).rows[0];
+  await db.exec('ROLLBACK');
+  ok(membersLocked.n > 0 && membersLocked.locked === membersLocked.n, `a band being deleted locks its members' rows first (${membersLocked.locked} of ${membersLocked.n})`);
+  await db.exec(`INSERT INTO event_members (event_id, user_id, status) VALUES ('${FRESH}','${A3}','confirmed'), ('${FRESH}','${M3}','confirmed')`);
+  const lineupFk = (await db.query(`SELECT conname FROM pg_constraint WHERE conrelid = 'public.event_members'::regclass AND contype = 'f' AND confrelid = 'public.events'::regclass`)).rows[0].conname;
+  await db.exec(`BEGIN; ALTER TABLE event_members DROP CONSTRAINT ${lineupFk}; DELETE FROM events WHERE id = '${FRESH}';`);
+  const lineupLocked = (await db.query(`SELECT count(*) FILTER (WHERE ${xmaxMine})::int AS locked, count(*)::int AS n FROM event_members WHERE event_id = '${FRESH}'`)).rows[0];
+  await db.exec('ROLLBACK');
+  ok(lineupLocked.n === 2 && lineupLocked.locked === 2, `a gig being deleted locks its lineup rows first (${lineupLocked.locked} of ${lineupLocked.n})`);
+  await db.exec(`BEGIN; DELETE FROM events WHERE id = '${FRESH}';`);
+  const gigGoneLocks = (await db.query(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted`)).rows[0].n;
+  await db.exec('ROLLBACK');
+  ok(gigGoneLocks === 0, 'a gig delete (its lineup goes with it) takes no advisory lock');
 }
 
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.
@@ -394,6 +451,8 @@ if (with178) {
   const defs = (await db.query(`SELECT string_agg(pg_get_functiondef(p.oid), ' ') d FROM pg_proc p
     WHERE p.proname IN ('bw_stage_key', 'bw_stage_topic_allowed', 'bw_stage_clock_topic_allowed')`)).rows[0].d;
   ok((defs.match(/bw_event_quote_hidden/g) ?? []).length >= 3, "the stage key, stage topic and clock topic each check bw_event_quote_hidden (178's rule)");
+  const keyDef = (await db.query(`SELECT pg_get_functiondef('public.bw_stage_key(uuid)'::regprocedure) AS d`)).rows[0].d;
+  ok((keyDef.match(/bw_event_quote_hidden/g) ?? []).length === 2, "the stage key's check after the lock carries 178's rule too (Claude round 10)");
 }
 
 console.log(fails ? `${fails} FAILED` : 'all ok');

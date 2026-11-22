@@ -1382,7 +1382,7 @@ const music: AreaText = {
           items: [
             "«El Bluetooth está apagado o no tiene permiso. Actívalo en Ajustes para seguir sincronizado sin internet.»",
             "«Este teléfono tiene una setlist antigua. Conéctate a internet una vez para seguir por Bluetooth.» Aparece cuando se han añadido o quitado canciones después de que el teléfono cargara la setlist por última vez. Un simple cambio de orden no da problemas.",
-            "Cuando alguien deja la banda, cada concierto que viene recibe una nueva clave Bluetooth. Los teléfonos con una versión antigua de BandWith se quedan con la clave anterior y sin internet no encuentran a los demás: actualiza BandWith y luego cierra sesión y vuelve a entrar una vez con conexión.",
+            "Cuando alguien deja la banda, cada concierto que viene recibe una nueva clave Bluetooth. Los teléfonos con una versión antigua de BandWith se quedan con la clave anterior y sin internet no encuentran a los demás: después de actualizar BandWith, abre el concierto una vez con conexión.",
           ],
         },
         { type: "note", tone: "privacy", text: "Cada concierto tiene su propia clave secreta, que solo reciben los miembros activos de la banda. Solo los teléfonos con la clave encuentran al líder y aceptan sus mensajes." },

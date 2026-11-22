@@ -1518,7 +1518,7 @@ const music: AreaText = {
           items: [
             "„Bluetooth ist aus oder nicht erlaubt. Schalte es in den Einstellungen ein, um ohne Internet synchron zu bleiben.“",
             "„Dieses Handy hat eine ältere Setlist. Geh einmal online, um per Bluetooth zu folgen.“ Das erscheint, wenn Songs hinzugefügt oder entfernt wurden, nachdem das Handy die Setlist zuletzt geladen hat. Eine neue Reihenfolge allein ist kein Problem.",
-            "Wenn jemand die Band verlässt, bekommt jeder kommende Gig einen neuen Bluetooth-Schlüssel. Handys mit einer älteren Version von BandWith behalten den alten Schlüssel und finden die anderen ohne Internet nicht: Aktualisiere BandWith und melde dich dann einmal online ab und wieder an.",
+            "Wenn jemand die Band verlässt, bekommt jeder kommende Gig einen neuen Bluetooth-Schlüssel. Handys mit einer älteren Version von BandWith behalten den alten Schlüssel und finden die anderen ohne Internet nicht: Öffne den Gig nach dem Update von BandWith einmal, während du online bist.",
           ],
         },
         {

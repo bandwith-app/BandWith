@@ -1528,7 +1528,7 @@ const music: AreaModule = {
           items: [
             "“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”",
             "“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.” This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine.",
-            "After someone leaves the band, every gig coming up gets a new Bluetooth key. Phones on an older version of BandWith keep the old key and can't find the others without internet: update BandWith, then sign out and back in once while online.",
+            "After someone leaves the band, every gig coming up gets a new Bluetooth key. Phones on an older version of BandWith keep the old key and can't find the others without internet: after updating BandWith, open the gig once while online.",
           ],
         },
         {

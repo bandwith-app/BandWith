@@ -85,13 +85,27 @@ let keyAsks = 0;
 /** The newest ask whose answer was kept, per gig: an older answer arriving later writes nothing. */
 const keyKept = new Map<string, number>();
 
-/** A window event (detail: the gig's id): its band key changed, Stage asks for it again (useStageBle). */
+/**
+ * Gigs whose last answer kept was the server's no. An ask with no answer in
+ * time (or offline) then still says no, so a no that came late stops a Stage
+ * already running (Claude round 10 on #283). Until a key is kept again, or
+ * sign-out; not kept across restarts (the key itself is gone by then).
+ */
+const keyRefused = new Set<string>();
+/** What stands for a gig when an ask brought nothing newer: the server's no, or the kept key. */
+const keptAnswer = (eventId: string): { key: string | null; denied: boolean } =>
+  keyRefused.has(eventId) ? { key: null, denied: true } : { key: cachedKey(eventId), denied: false };
+
+/** A window event (detail: the gig's id): its band key changed (or was refused), Stage asks for it again (useStageBle). */
 export const STAGE_KEY_EVENT = 'bw:stage-key';
 
 function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number, late: () => boolean) {
   if (epoch !== keyEpoch || ask < (keyKept.get(eventId) ?? 0)) return;
   keyKept.set(eventId, ask);
   const before = cachedKey(eventId);
+  const isKey = typeof data === 'string' && !!data;
+  if (isKey) keyRefused.delete(eventId);
+  else keyRefused.add(eventId);
   try {
     if (typeof data === 'string' && data) {
       localStorage.setItem(KEY_PREFIX + eventId, data);
@@ -104,8 +118,9 @@ function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number, 
   } catch {
     /* kept for this session only */
   }
-  // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc).
-  if (late() && typeof data === 'string' && data && data !== before && typeof window !== 'undefined')
+  // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc),
+  // a late no included (it asks again and is told no: Claude round 10 on #283).
+  if (late() && (isKey ? data !== before : true) && typeof window !== 'undefined')
     window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
 }
 
@@ -114,7 +129,8 @@ function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number, 
  * may no longer see the gig, migration 191) and kept; the kept copy offline
  * (no answer in KEY_FETCH_TIMEOUT_MS; an answer that comes later is still
  * kept). A no from the server deletes it (`denied`: the caller drops any copy
- * of its own too). Null for people outside the band, or offline before the
+ * of its own too), and stands until a key comes again, also for asks that
+ * get no answer. Null for people outside the band, or offline before the
  * first fetch.
  */
 export async function fetchStageKey(eventId: string): Promise<{ key: string | null; denied: boolean }> {
@@ -146,9 +162,10 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
   } finally {
     clearTimeout(timer);
   }
-  if (!answer || answer.error) return { key: cachedKey(eventId), denied: false };
+  // No answer (offline, or not in time): what's kept stands, the server's last no included.
+  if (!answer || answer.error) return keptAnswer(eventId);
   // A newer ask's answer was kept first: what's kept stands, not this older answer (Claude on #283).
-  if (ask < (keyKept.get(eventId) ?? 0)) return { key: cachedKey(eventId), denied: false };
+  if (ask < (keyKept.get(eventId) ?? 0)) return keptAnswer(eventId);
   const key = typeof answer.data === 'string' && answer.data ? answer.data : null;
   return { key, denied: key === null };
 }
@@ -174,6 +191,7 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
 export function clearStageCache() {
   keyEpoch++;
   keyKept.clear();
+  keyRefused.clear();
   void removeAllPackFiles().catch(() => undefined);
   try {
     const keys: string[] = [];
