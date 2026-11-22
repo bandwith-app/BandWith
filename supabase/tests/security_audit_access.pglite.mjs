@@ -805,6 +805,27 @@ ok(!r.error && r.rows[0].n === 0, `with another permissive read policy on messag
 r = await as(NEWM, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${GROUPB}'`);
 ok(!r.error && r.rows[0].n > 0, `... and members still read their chat (${r.error ?? r.rows[0].n})`);
 await db.exec(`DROP POLICY zz_handmade_msgs_all ON public.messages`);
+// Round 5b (Claude r5): an unfiltered DELETE on messages, as a former member.
+const leftMsgsN = async () => (await db.query(`SELECT count(*)::int AS n FROM messages WHERE sender_id = '${staleUsers.LEFT}'`)).rows[0].n;
+const lm0 = await leftMsgsN();
+r = await as(staleUsers.LEFT, `DELETE FROM messages`);
+ok(!r.error && lm0 > 0 && r.n === 0 && (await leftMsgsN()) === lm0, `DELETE on messages with no WHERE: a former member deletes none of their old band / gig messages (${r.error ?? `${r.n} deleted, ${lm0} kept`})`);
+await db.exec(`INSERT INTO messages (chat_id, sender_id, content) VALUES ('${GROUPB}','${NEWM}','typo, deleting')`);
+r = await as(NEWM, `DELETE FROM messages WHERE sender_id = '${NEWM}' AND content = 'typo, deleting'`);
+ok(!r.error && r.n === 1, `a member still deletes their own message in a chat they use (${r.error ?? r.n})`);
+const mg2 = (await db.query(`SELECT permissive, cmd, roles::text AS roles, qual FROM pg_policies WHERE tablename = 'messages' AND policyname = 'messages_delete_guard'`)).rows[0];
+ok(mg2?.permissive === 'RESTRICTIVE' && mg2?.cmd === 'DELETE' && mg2?.roles === '{authenticated}' && /SELECT bw_my_chat_ids\(\)/.test(mg2?.qual ?? ''),
+  `messages_delete_guard: RESTRICTIVE DELETE for authenticated, my chats once per query (${JSON.stringify(mg2)})`);
+// A server purge (SECURITY DEFINER, as 180's account deletion) runs as the owner: no RLS, still deletes.
+await db.exec(`CREATE OR REPLACE FUNCTION public.zz_purge_dm_messages(p_uid uuid) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $f$
+  DECLARE n integer; BEGIN
+    DELETE FROM messages m WHERE m.sender_id = p_uid AND EXISTS (SELECT 1 FROM chats c WHERE c.id = m.chat_id AND c.type::text = 'direct');
+    GET DIAGNOSTICS n = ROW_COUNT; RETURN n; END $f$;
+  GRANT EXECUTE ON FUNCTION public.zz_purge_dm_messages(uuid) TO service_role;`);
+const dmBefore = (await db.query(`SELECT count(*)::int AS n FROM messages m JOIN chats c ON c.id = m.chat_id WHERE c.type::text = 'direct' AND m.sender_id = '${MEM2}'`)).rows[0].n;
+r = await asRole('service_role', `SELECT public.zz_purge_dm_messages('${MEM2}') AS n`);
+ok(!r.error && dmBefore > 0 && r.rows[0]?.n === dmBefore, `a definer purge of a user's direct messages still deletes them (${r.error ?? `${r.rows[0]?.n} of ${dmBefore}`})`);
+await db.exec(`DROP FUNCTION public.zz_purge_dm_messages(uuid)`);
 // 5. One set-based recipients call (send-push), server only.
 const srv = (sql) => db.query(sql).catch((e) => ({ rows: [{}], error: e.message }));
 r = await srv(`SELECT public.bw_chat_recipients_shared('${ADMIN}', ARRAY['${NEWM}','${staleUsers.LEFT}','${EXM}','${ADMIN}']::uuid[]) AS ids`);

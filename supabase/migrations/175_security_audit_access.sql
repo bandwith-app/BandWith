@@ -70,7 +70,7 @@
 -- too (RESTRICTIVE update / delete policies, chats_upd needs a chat the
 -- creator can still use); the roster guard checks the rule once per row
 -- (bw_chat_row_ok over bw_chat_rule_ungated, granted to nobody); messages
--- get a RESTRICTIVE read guard; send-push asks one set-based RPC
+-- get RESTRICTIVE read and delete guards; send-push asks one set-based RPC
 -- (bw_chat_recipients_shared); the service role may change chat keys.
 --
 -- Older app builds: nothing they call changes shape. Chat rename keeps
@@ -741,8 +741,10 @@ CREATE POLICY chat_participants_select_own ON public.chat_participants
 -- again. A RESTRICTIVE policy is ANDed with all of them. The functions are
 -- SECURITY DEFINER (they read chat_participants as the owner: no RLS, no
 -- recursion). Round 5: own rows or rows of the caller's chats (one
--- bw_my_chat_ids per query), then the rule once per row (bw_chat_row_ok):
--- the roster costs about what it did without the guard.
+-- bw_my_chat_ids per query), then the rule once per row (bw_chat_row_ok).
+-- Measured (PGlite, roster of 500 rows): 6-28x slower than without the
+-- guard (about 80 ms vs 3-13 ms), about 25% less than round 4's guard;
+-- accepted by main (11-22). The rest is the rule's helper calls per row.
 DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;
 CREATE POLICY chat_participants_scope_guard ON public.chat_participants
   AS RESTRICTIVE FOR SELECT TO authenticated
@@ -770,6 +772,14 @@ CREATE POLICY chat_participants_delete_guard ON public.chat_participants
 DROP POLICY IF EXISTS messages_scope_guard ON public.messages;
 CREATE POLICY messages_scope_guard ON public.messages
   AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
+-- And deleting: messages_delete_own lets anyone delete their own messages;
+-- with no WHERE that was every message a former member ever sent in their
+-- old band and gig chats (round 5). Only in chats the caller can still use.
+-- (Server-side purges, e.g. account deletion, run as the owner: no RLS.)
+DROP POLICY IF EXISTS messages_delete_guard ON public.messages;
+CREATE POLICY messages_delete_guard ON public.messages
+  AS RESTRICTIVE FOR DELETE TO authenticated
   USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 -- Renaming a chat: its creator, only while they can still use it (a former
 -- member who made the band chat can't rename it; with no WHERE the read
