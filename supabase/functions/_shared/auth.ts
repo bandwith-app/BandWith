@@ -178,6 +178,16 @@ export async function chatRecipients(
   targetIds: string[],
 ): Promise<string[]> {
   if (typeof chatId !== "string" || chatId.length === 0) return [];
+  // 175: band and event chats count only people still in the band. Falls
+  // back to the participant list until the migration is applied.
+  const { data: allowed, error: rpcError } = await admin.rpc("bw_chat_recipient_ids", {
+    p_chat_id: chatId,
+    p_sender: callerId,
+  });
+  if (!rpcError && Array.isArray(allowed)) {
+    const ok = new Set(allowed as string[]);
+    return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
+  }
   const { data } = await admin
     .from("chat_participants")
     .select("user_id")

@@ -424,6 +424,23 @@ function quotePdfUrl(raw: string | null, bandId: string): string | null {
   }
 }
 
+/**
+ * 176/177: the quotes bucket is private. Resend fetches the attachment from
+ * a URL signed for a few minutes, never from the public storage URL.
+ */
+async function signedQuotePdf(admin: SupabaseClient, raw: string | null, bandId: string): Promise<string | null> {
+  const checked = quotePdfUrl(raw, bandId);
+  if (!checked) return null;
+  const marker = "/storage/v1/object/public/quotes/";
+  const path = decodeURIComponent(new URL(checked).pathname.slice(marker.length));
+  const { data, error } = await admin.storage.from("quotes").createSignedUrl(path, 600);
+  if (error || !data?.signedUrl) {
+    console.warn("Quote PDF: could not sign the attachment URL", error?.message);
+    return null;
+  }
+  return data.signedUrl;
+}
+
 /** The snapshot's deposit in the client's language ("" when the quote asks none). */
 function quoteDepositLabel(snap: Record<string, unknown>, lang: ReturnType<typeof pickQuoteEmailLang>): string {
   const dep = snap.deposit as { amount?: unknown } | null | undefined;
@@ -490,7 +507,7 @@ async function sendQuoteClientEmail(
   const lang = pickQuoteEmailLang(link.lang);
   const snap = link.snapshot ?? {};
   const ref = clean(snap.ref ?? quote.quote_number, "");
-  const pdf = kind === "reply" || link.pdf_version !== link.version ? null : quotePdfUrl(link.pdf_url, link.band_id);
+  const pdf = kind === "reply" || link.pdf_version !== link.version ? null : await signedQuotePdf(admin, link.pdf_url, link.band_id);
   const vars = {
     ...quoteEmailVars({
       kind,

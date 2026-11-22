@@ -15,6 +15,7 @@
 
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
+import { clientQuotePdfUrl } from './lib/quotePdfLink';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -280,7 +281,11 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   }
   if (q.notes) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.notes), h('p', { class: 'pre' }, q.notes));
   if (q.terms) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.terms), h('p', { class: 'pre mute', style: 'font-size:15px;line-height:21px' }, q.terms));
-  const pdf = b?.pdfUrl || v.pdf_url;
+  // 176/177: the PDF only through the link (checked by the server each time).
+  const storedPdf = b?.pdfUrl || v.pdf_url;
+  const pdf =
+    clientQuotePdfUrl(storedPdf, SUPABASE_URL, token, b?.pdfUrl ? 'balance' : 'doc') ??
+    (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
     card.append(
