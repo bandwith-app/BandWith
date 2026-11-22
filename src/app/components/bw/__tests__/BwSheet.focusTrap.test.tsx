@@ -109,6 +109,35 @@ describe('BwSheet keeps keyboard focus inside', () => {
     expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
   });
 
+  it("when the browser's own tab order leaves the sheet (Safari skips buttons), focus wraps back in", async () => {
+    render(<Screen />);
+    const { dialog, opener } = await openSheet();
+    // The amount field is not the last control, so the browser moves focus
+    // itself: Safari's next stop can be past the sheet (the page's end guard)…
+    const amount = screen.getByRole('textbox', { name: 'Amount' });
+    amount.focus();
+    tab();
+    const guards = document.querySelectorAll<HTMLElement>('[data-bw-focus-guard]');
+    expect(guards).toHaveLength(2);
+    guards[1].focus();
+    expect(document.activeElement).toBe(dialog.querySelector('button'));
+    // …or a control behind it, backwards.
+    amount.focus();
+    tab(true);
+    opener.focus();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Save' }));
+    // Focus moved by a pointer (not Tab) is left where it went.
+    await new Promise((r) => setTimeout(r, 5));
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+    // Closing removes the guards.
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.querySelectorAll('[data-bw-focus-guard]')).toHaveLength(0);
+  });
+
   it('Tab typed in a control that handles it itself is left alone', async () => {
     render(<Screen />);
     await openSheet();

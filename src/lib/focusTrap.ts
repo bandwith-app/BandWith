@@ -50,36 +50,68 @@ const focusFirstOf = (list: HTMLElement[]): boolean =>
     return document.activeElement === el;
   });
 
+/** A layer above `root` (a popover or picker on <body>) keeps its own focus. */
+const inLayerAbove = (el: Element, root: HTMLElement): boolean => {
+  const layer = el.closest(LAYER);
+  return !!layer && layer !== root && !layer.contains(root);
+};
+
+const wrapInto = (root: HTMLElement, backwards: boolean) => {
+  const items = tabbables(root);
+  if (!focusFirstOf(backwards ? [...items].reverse() : items)) root.focus({ preventScroll: true });
+};
+
+/** Direction of the Tab being handled, until the browser has moved focus. */
+let tabbing: { backwards: boolean } | null = null;
+
 const onKeyDown = (e: KeyboardEvent) => {
   if (e.key !== 'Tab' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
   const root = stack[stack.length - 1];
   if (!root || !root.isConnected) return;
   const active = document.activeElement as HTMLElement | null;
   const inside = !!active && root.contains(active);
-  if (!inside && active && active !== document.body) {
-    // In a layer opened above this one (it handles its own focus).
-    const layer = active.closest(LAYER);
-    if (layer && layer !== root && !layer.contains(root)) return;
-  }
+  if (!inside && active && active !== document.body && inLayerAbove(active, root)) return;
   const items = tabbables(root);
-  if (!items.length) {
+  if (!inside || !items.length) {
+    // Focus behind the layer (or nothing to focus in it): bring it back in.
     e.preventDefault();
-    root.focus({ preventScroll: true });
+    wrapInto(root, e.shiftKey);
     return;
   }
-  const first = items[0];
-  const last = items[items.length - 1];
-  if (!inside) {
-    // Focus behind the layer: bring it back in.
+  if (e.shiftKey ? active === items[0] || active === root : active === items[items.length - 1]) {
     e.preventDefault();
-    focusFirstOf(e.shiftKey ? [...items].reverse() : items);
-  } else if (e.shiftKey && (active === first || active === root)) {
-    e.preventDefault();
-    focusFirstOf([...items].reverse());
-  } else if (!e.shiftKey && active === last) {
-    e.preventDefault();
-    focusFirstOf(items);
+    wrapInto(root, e.shiftKey);
+    return;
   }
+  // Otherwise the browser moves focus. Its tab order can differ from ours
+  // (Safari skips buttons unless the user turned that on): if focus lands
+  // outside the layer, onFocusIn wraps it.
+  tabbing = { backwards: e.shiftKey };
+  window.setTimeout(() => {
+    tabbing = null;
+  }, 0);
+};
+
+const onFocusIn = (e: FocusEvent) => {
+  const root = stack[stack.length - 1];
+  const target = e.target as Element | null;
+  if (!tabbing || !root || !root.isConnected || !target || root.contains(target)) return;
+  if (!target.hasAttribute?.('data-bw-focus-guard') && inLayerAbove(target, root)) return;
+  wrapInto(root, tabbing.backwards);
+};
+
+/**
+ * Focusable edges of the page while a trap is on: Tab past the last control
+ * of the page lands here (and comes back into the layer) instead of leaving
+ * for the browser's toolbar.
+ */
+let guards: HTMLElement[] = [];
+const makeGuard = () => {
+  const g = document.createElement('span');
+  g.tabIndex = 0;
+  g.setAttribute('data-bw-focus-guard', '');
+  g.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;outline:none';
+  return g;
 };
 
 let listening = false;
@@ -87,6 +119,10 @@ const push = (el: HTMLElement) => {
   stack.push(el);
   if (!listening) {
     document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('focusin', onFocusIn, true);
+    guards = [makeGuard(), makeGuard()];
+    document.body.prepend(guards[0]);
+    document.body.append(guards[1]);
     listening = true;
   }
 };
@@ -95,6 +131,10 @@ const remove = (el: HTMLElement) => {
   if (i >= 0) stack.splice(i, 1);
   if (!stack.length && listening) {
     document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('focusin', onFocusIn, true);
+    guards.forEach((g) => g.remove());
+    guards = [];
+    tabbing = null;
     listening = false;
   }
 };
