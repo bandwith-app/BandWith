@@ -652,8 +652,16 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     hook.unmount();
   }, 20_000);
 
-  it("a signed state is followed whatever this phone's clock says: no time check on signed states (Codex on #288, rule B)", async () => {
+  it("a signed state an hour ahead of this phone's clock isn't followed: more than 5 minutes off never counts, signed or not (main session's rule)", async () => {
     put('admin', 'new', lead('a', nextSeq(null, Date.now() + 60 * 60_000), 'b2'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('clock-off'), { timeout: 3000 });
+    expect(onState).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('a signed state a few minutes ahead of this phone is followed (within the 5-minute limit)', async () => {
+    put('admin', 'new', lead('a', nextSeq(null, Date.now() + 4 * 60_000), 'b2'), admins);
     const { onState, hook } = member();
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'b2' }), true), { timeout: 3000 });
     expect(hook.result.current.status).toBe('connected');

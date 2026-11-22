@@ -38,6 +38,15 @@ const SEQ_EPOCH_MS = Date.UTC(2024, 0, 1);
 export const nextSeq = (last: number | null | undefined, now: number = Date.now()) =>
   Math.min(0xffffffff, Math.max((last ?? 0) + 1, Math.floor((now - SEQ_EPOCH_MS) / 100)));
 
+/**
+ * A leader's clock measured further off than this (either way) is not taken:
+ * that phone's states never count, and the member says the times are far
+ * apart (main session's rule). Within it, seqs are judged with the offset.
+ */
+export const MAX_CLOCK_OFFSET_MS = 5 * 60_000;
+/** The offset if it may be used, else null (see MAX_CLOCK_OFFSET_MS). */
+export const usableOffset = (offset: number) => (Math.abs(offset) <= MAX_CLOCK_OFFSET_MS ? offset : null);
+
 /** How far a seq may run ahead of this phone's clock (a leader's clock set a bit ahead): 10 minutes. */
 export const SEQ_AHEAD_MAX = 6_000;
 

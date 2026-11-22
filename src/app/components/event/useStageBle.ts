@@ -24,7 +24,7 @@ import {
   decodeClock,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
-import { isNewer, seqPlausible, type StageLiveState } from '@/lib/stageLive';
+import { isNewer, seqPlausible, usableOffset, type StageLiveState } from '@/lib/stageLive';
 import { pairMatches, type StageSigner, type StageVerifyAnswer, type StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
@@ -197,7 +197,13 @@ async function calibrateClock(): Promise<number | null> {
  */
 export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
-  const [clock, setClock] = useState<PeerClock | null>(null);
+  const [clock, setClockState] = useState<PeerClock | null>(null);
+  /** The same clock, set at once: a state read right after a clock sample is judged with it (no render in between). */
+  const clockRef = useRef<PeerClock | null>(null);
+  const setClock = useCallback((c: PeerClock | null) => {
+    clockRef.current = c;
+    setClockState(c);
+  }, []);
   /** Leader: phones linked to it. */
   const [followers, setFollowers] = useState(0);
   /** Bumped to start Bluetooth again (permission granted, Bluetooth turned on). */
@@ -468,8 +474,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
      * still followed), with none for any other phone.
      */
     const plausibleFrom = (seq: number, id: string | null) => {
-      const offset = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
-      return seqPlausible(seq, Date.now() + offset);
+      const measured = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
+      // A clock more than 5 minutes off never counts (MAX_CLOCK_OFFSET_MS).
+      const offset = usableOffset(measured);
+      return offset !== null && seqPlausible(seq, Date.now() + offset);
     };
     const radioBusy = () => reads > 0 || nowMs() < burstUntil;
     /** The linked phone; leaderLinks follows it. */
@@ -493,7 +501,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     const emitClock = () => {
       const sample = book.best(nowMs());
-      if (sample) setClock({ from: leaderFrom, sample });
+      if (!sample) return;
+      // More than 5 minutes off: not used for the click either, and the member is told.
+      if (usableOffset(sample.offset) === null) {
+        setClock(null);
+        setStatus('clock-off');
+        return;
+      }
+      setClock({ from: leaderFrom, sample });
     };
 
     const stopSync = () => {
@@ -700,10 +715,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           setStatus(linkedStatus());
           return;
         }
-        // A band-key seq far ahead of the leader's clock: made up (anyone with the band key can), never followed.
-        // Not silently "connected": the clocks may just be far apart. (Signed ones need no clock: only admins sign.)
+        // A seq far ahead of the leader's clock (band-key: made up, as anyone with the band key can; signed:
+        // a clock more than 5 minutes off, main session's rule), never followed.
+        // Not silently "connected": the clocks may just be far apart.
         const seq = result.ok ? result.state.seq : result.reason === 'setlist' ? result.seq : null;
-        if (!signedLink && seq !== null && !plausibleFrom(seq, id)) {
+        if (seq !== null && !plausibleFrom(seq, id)) {
           clockDropped = true;
           setStatus('clock-off');
           return;
@@ -752,8 +768,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
         // Leading nothing (seq 0): not a leader to move to (its signature was still noted, readState).
-        // A band-key seq is judged with the clock; a signed one needs none (only admins sign).
-        const plausible = (seq: number) => signed || plausibleFrom(seq, id);
+        // Judged with the clock, signed or not (a clock more than 5 minutes off never counts).
+        const plausible = (seq: number) => plausibleFrom(seq, id);
         if (result.ok) return plausible(result.state.seq) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
         if (result.reason === 'auth' && result.newer) void refreshVerify();
@@ -1178,5 +1194,5 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     setAttempt((n) => n + 1);
   }, []);
 
-  return { status, publish, clock, burst, followers, fix };
+  return { status, publish, clock, clockRef, burst, followers, fix };
 }
