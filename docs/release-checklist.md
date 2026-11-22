@@ -139,6 +139,7 @@ Do it in this order, so every build in use keeps working at every step:
 
 The orders the release depends on. The apply step (step 2, item 4) keeps all of them; `scripts/release-checklist.test.ts` fails when it doesn't, and the headers of `supabase/checks/release_migrations.sql` and `supabase/checks/redefined_functions.sql` repeat the hard ones. **hard**: the later migration raises without the earlier one, so the wrong order stops at that migration instead of leaving a wrong body.
 
+- **170 → 198**, **hard** (198 raises without 170; the two go in one transaction, step 3)
 - **178 → 182**, **hard** (182 uses 178's `bw_event_deputy_hidden`)
 - **175 → 193**, **hard** (193 uses 175's `bw_chat_scope_ok_for` and `bw_chats_immutable_keys`)
 - **175 → 181**, **hard** (181 raises without 175's final body, marker `bw:175-r4`)
@@ -146,6 +147,7 @@ The orders the release depends on. The apply step (step 2, item 4) keeps all of 
 - **183 → 187**, **hard** (187 raises without 183's quote page fixes)
 - **185 → 187**, **hard** (187 raises without 185's quote money fixes)
 - **175 → 192**, **hard** (192 raises without 175's `bw_chat_scope_ok_for`)
+- **194 → 192**, **hard** (192 raises without 194's `bw_write_chat_notices`)
 - **180 → 197**, soft (no raise: its `bw_withdraw_song_suggestion` starts from that body; `redefined_functions.sql` checks the final one is live)
 - **194 → 192 → 193** (192 writes chat notices through 194's `bw_write_chat_notices`)
 - **183 → 185 → 186 → 187** (one quote link, built up in steps)

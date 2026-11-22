@@ -38,10 +38,11 @@
 -- bw_stage_clock_topic_allowed once 178 is in.
 --
 -- Apply order (docs/release-checklist.md, "Constraints").
--- Hard (the later one raises without the earlier): 178 → 182, 175 → 193,
--- 175 → 181, 193 → 181, 183 → 187, 185 → 187, 175 → 192.
--- Soft: 180 → 197, 194 → 192 → 193, 183 → 185 → 186 → 187,
--- 175 → 178 → 193 → 181, 178 → 191. A row can be true out of order;
+-- Hard (the later one raises without the earlier): 170 → 198 (and they go
+-- in one transaction), 178 → 182, 175 → 193, 175 → 181, 193 → 181,
+-- 183 → 187, 185 → 187, 175 → 192, 194 → 192.
+-- Soft (no raise): 180 → 197, 192 → 193, 183 → 185 → 186 → 187,
+-- 175 → 178 → 193, 178 → 191. A row can be true out of order;
 -- redefined_functions.sql catches a wrong live body.
 -- The source column: the PR whose branch head the markers were taken from.
 --
@@ -74,6 +75,7 @@ marker(m, f, txt) AS (VALUES
   ('194', 'bw_release_chat_notice_claims', 'WHERE n.id = ANY (coalesce(p_ids, ''{}''::uuid[]))'),
   ('194', 'bw_claim_chat_push_only', 'AND public.bw_chat_push_claim_free(l.claimed_at)'),
   ('194', 'bw_chat_preview', 'SELECT coalesce(nullif(public.bw_js_left(coalesce(p_content, ''''), 120), ''''), ''New message'');'),
+  ('194', 'bw_chat_preview_in', '{"it":"Nuovo messaggio","es":"Nuevo mensaje"'),
   ('184', 'bw_revoke_push_token', 'AND (p_registered_at IS NULL OR updated_at = p_registered_at);'),
   ('184', 'bw_register_push_token_stamped', 'ELSIF length(v_secret) < 32 OR length(v_secret) > 256 THEN'),
   ('184', 'bw_revoke_push_token', 'WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)'),
@@ -92,6 +94,8 @@ marker(m, f, txt) AS (VALUES
   ('192', 'bw_purge_chat_notices', 'AND public.bw_chat_notice_shows(n.body, n.data, m.content)'),
   ('192', 'bw_trg_messages_edit_notices', 'PERFORM pg_advisory_xact_lock(hashtextextended(''bw_chat_notices:'' || NEW.chat_id::text, 0));'),
   ('192', 'bw_trg_messages_edit_notices', 'AND coalesce(public.bw_chat_scope_ok_for(NEW.chat_id, n.user_id), false));'),
+  ('192', 'bw_write_chat_notices', 'AND coalesce(public.bw_chat_scope_ok_for(v_chat, n2.user_id), false)'),
+  ('192', 'bw_claim_chat_push_only', 'AND coalesce(public.bw_chat_scope_ok_for((SELECT m3.chat_id FROM messages m3 WHERE m3.id = p_message_id), u), false)'),
   ('193', 'bw_open_group_chat', 'IF to_regprocedure(''public.bw_chat_scope_ok_for(uuid, uuid)'') IS NOT NULL THEN'),
   ('193', 'bw_trg_chats_one_group_chat', 'OR public.bw_chat_joinable_rule(NEW.type::text, v_rule_band, NEW.event_id, auth.uid()) THEN'),
   ('181', 'bw_trg_event_member_left_chat', 'AND NOT coalesce(public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id), false)'),
@@ -106,6 +110,7 @@ marker(m, f, txt) AS (VALUES
   ('183', 'bw_trg_quote_recipient_changed', '''deposit_required'', ''deposit_percentage'', ''deposit_amount''];'),
   ('183', 'bw_trg_quote_totals', 'v_rate := CASE WHEN coalesce((v_new ->> ''vat_exempt'')::boolean, false) OR coalesce((v_new ->> ''reverse_charge'')::boolean, false)'),
   ('183', 'bw_quote_link_publish', 'RAISE EXCEPTION ''BW_LINK_CHANGED: the quote now goes to another client, open the quote again'' USING ERRCODE = ''40001'';'),
+  ('183', 'bw_quote_link_rotate', 'reassign_guard = CASE WHEN l.recipient_changed_at IS NOT NULL AND public.bw_quote_link_current(v_link)'),
   ('185', 'bw_quote_balance_mark_sent', 'IF v_link.balance_paid_at IS NOT NULL AND v_link.balance_sent IS DISTINCT FROM v_link.balance THEN'),
   ('185', 'bw_quote_balance_mark_paid', 'balance_paid_deposit_amount = CASE WHEN v_paid THEN v_amount END,'),
   ('185', 'bw_quote_save_lineup', '(SELECT coalesce(jsonb_agg(to_jsonb(qm)), ''[]''::jsonb) FROM public.quote_musicians qm WHERE qm.quote_id = p_quote_id)) THEN'),

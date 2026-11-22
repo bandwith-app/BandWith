@@ -59,9 +59,12 @@ describe('Android versionCode', () => {
     const versionCheck = sh.indexOf('TAG="$(scripts/android-version-code.sh --tag "$VERSION")" || exit 1');
     expect(versionCheck).toBeGreaterThan(-1);
     expect(sh).not.toContain('TAG="android-v$VERSION"');
-    // Nothing reads the version or the tag before it is checked.
-    const firstUse = sh.search(/\$\{?(TAG|VERSION)\b(?![^\n]*--tag)/);
-    expect(firstUse === -1 || firstUse > versionCheck, `first use at ${firstUse}`).toBe(true);
+    // Nothing reads the version or the tag before the check line (VERSION="${1:?…}" only sets it).
+    const CHECK = 'TAG="$(scripts/android-version-code.sh --tag "$VERSION")" || exit 1';
+    const earlyUse = (script: string) => /\$\{?(TAG|VERSION)\b/.test(script.slice(0, script.indexOf(CHECK)));
+    expect(earlyUse(sh)).toBe(false);
+    // The guard bites: a use slipped in before the check is caught.
+    expect(earlyUse(sh.replace(CHECK, `echo "$VERSION"\n${CHECK}`))).toBe(true);
     expect(sh).not.toMatch(/\[\[ "\$VERSION" =~ \^\[0-9\]\+\(\\\.\[0-9\]\+\)\{1,3\}\$ \]\]/);
   });
 

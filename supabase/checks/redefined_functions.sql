@@ -25,8 +25,9 @@
 -- it has no row here.
 --
 -- Orders these rows depend on (docs/release-checklist.md, "Constraints").
--- Hard (the later migration raises without the earlier one): 178 → 182,
--- 175 → 193, 175 → 181, 193 → 181, 183 → 187, 185 → 187, 175 → 192.
+-- Hard (the later migration raises without the earlier one): 170 → 198,
+-- 178 → 182, 175 → 193, 175 → 181, 193 → 181, 183 → 187, 185 → 187,
+-- 175 → 192, 194 → 192.
 -- Soft (no raise; a wrong order leaves a wrong body, which a row here
 -- catches): 180 → 197 (bw_withdraw_song_suggestion starts from 180's body),
 -- 178 → 191 (without 178, 191's DO block does nothing).
@@ -38,6 +39,11 @@ SELECT v.fn AS function,
                   WHERE p.pronamespace = 'public'::regnamespace AND p.proname = v.fn), false) AS ok
 FROM (VALUES
   -- 182 rewrites 178's deputy views (178 → 182 is a hard order).
+  -- 192 rewrites 194's notice writer and push claim: it rechecks who may still read (194 → 192, hard).
+  ('bw_claim_chat_push_only', '192', '194', 'AND coalesce(public.bw_chat_scope_ok_for((SELECT m3.chat_id FROM messages m3 WHERE m3.id = p_message_id), u), false)'),
+  ('bw_write_chat_notices', '192', '194', 'AND coalesce(public.bw_chat_scope_ok_for(v_chat, r.user_id), false)'),
+  -- 183 rewrites 099's link rotation (on main, live): the recipient guard.
+  ('bw_quote_link_rotate', '183', '099', 'reassign_guard = CASE WHEN l.recipient_changed_at IS NOT NULL AND public.bw_quote_link_current(v_link)'),
   ('bw_deputy_feed', '182', '178', '(SELECT r.deputy_name FROM public.deputy_requests r WHERE r.calendar_token = p_token),'),
   ('bw_deputy_request_view', '182', '178', 'v := v || public.bw_deputy_frozen_gig(v_snap) || jsonb_build_object(''event_updated_at'', NULL);'),
   -- Re-declared unchanged by a later one (identical bodies on the 11-22 heads):

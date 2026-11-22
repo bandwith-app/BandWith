@@ -42,15 +42,19 @@ export function verdict({ code, out }, { pending, strict }) {
   // A suite that reads release migrations itself names them: "PENDING 175 184".
   const named = [...out.matchAll(/^PENDING ((?:\d{3}\s*)+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/));
   // Read at an exact commit (frozen heads: BW_RELEASE_HEADS=<pr>=<sha> or
-  // BW_RELEASE_AT=verified): "PINNED 175 184". Not moving, so not pending.
+  // BW_RELEASE_AT=verified): "PINNED 175 184". It only takes back what the
+  // suite itself named PENDING; a read the runner found stays pending.
   const pinned = new Set([...out.matchAll(/^PINNED ((?:\d{3}\s*)+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
-  pending = [...new Set([...pending, ...named])].filter((n) => !pinned.has(n));
+  pending = [...new Set([...pending, ...named.filter((n) => !pinned.has(n))])];
+  // A head whose file differs from the SHA its proofs were checked at.
+  const drifted = [...out.matchAll(/^WARN (\d{3}): .* differs from /gm)].map((m) => m[1]);
   const failed = code !== 0 || /^\s*(FAIL|ERROR)\b/m.test(out);
   const skipped = /^\s*SKIP\b/m.test(out);
   if (failed) {
     if (pending.length && !strict) return { status: 'warn', why: `failed while ${pending.join(', ')} is not merged (read from its branch)` };
     return { status: 'fail', why: code !== 0 ? `exit ${code}` : 'FAIL/ERROR line' };
   }
+  if (drifted.length && strict) return { status: 'fail', why: `${drifted.join(', ')} differs from its verified SHA in a strict run (refresh column 4 of release-sources.txt)` };
   if (skipped) return strict ? { status: 'fail', why: 'SKIP in a strict run' } : { status: 'warn', why: 'SKIP lines' };
   if (pending.length && strict) return { status: 'fail', why: `reads ${pending.join(', ')} from a branch in a strict run` };
   return { status: 'pass', why: '' };

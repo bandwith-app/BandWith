@@ -524,7 +524,7 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
     .map((l) => [...l.replace(/\(.*?\)/g, '').matchAll(/\b(1\d\d)\b/g)].map((m) => m[1]))
     .filter((c) => c.length >= 2);
 
-  const HARD = ['178 → 182', '175 → 193', '175 → 181', '193 → 181', '183 → 187', '185 → 187', '175 → 192'];
+  const HARD = ['178 → 182', '175 → 193', '175 → 181', '193 → 181', '183 → 187', '185 → 187', '175 → 192', '194 → 192', '170 → 198'];
   it('lists every order the release depends on, the hard ones marked as such', () => {
     expect(constraints).not.toBe('');
     for (const want of ['178 → 182', '175 → 193', '180 → 197', '194 → 192 → 193', '183 → 185 → 186 → 187', '175 → 178 → 193 → 181', '178 → 191'])
@@ -547,6 +547,12 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
       const hardLine = sql.match(/^-- Hard[^:]*:([\s\S]*?)(?=\n-- [A-Z]|\n[A-Z])/m)?.[1] ?? '';
       for (const c of HARD) expect(hardLine, c).toContain(c);
       for (const soft of ['180 → 197', '178 → 191']) expect(hardLine, soft).not.toContain(soft);
+      // No hard pair hides in a chain on the Soft line (Claude delta review of 9c2a90bc).
+      const softLine = sql.match(/^-- Soft[^:]*:([\s\S]*?)(?=\n-- [A-Z]|\n[A-Z])/m)?.[1] ?? '';
+      for (const chain of softLine.split(/[,(]/)) {
+        const ns = [...chain.matchAll(/\b(1\d\d)\b/g)].map((m) => m[1]);
+        for (let i = 1; i < ns.length; i++) expect(HARD, `soft line has ${ns[i - 1]} → ${ns[i]}`).not.toContain(`${ns[i - 1]} → ${ns[i]}`);
+      }
     }
   });
 

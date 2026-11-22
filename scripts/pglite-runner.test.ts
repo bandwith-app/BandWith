@@ -108,11 +108,19 @@ describe('CI runs it on main and on PRs', () => {
 describe('strict mode accepts reads pinned to an exact commit (PINNED)', () => {
   const out = (s: string, code = 0) => ({ code, out: s });
   it('PINNED numbers are not pending: a strict run with frozen heads can pass', () => {
-    expect(verdict(out('PINNED 175 184\nok  a\nALL OK'), { pending: ['175'], strict: true }).status).toBe('pass');
+    expect(verdict(out('PINNED 175 184\nok  a\nALL OK'), { pending: [], strict: true }).status).toBe('pass');
+    // PINNED only takes back what the suite itself named PENDING: a read the
+    // runner found on a moving tip stays pending (Claude delta review of 9c2a90bc).
+    expect(verdict(out('PINNED 175\nok  a\nALL OK'), { pending: ['175'], strict: true }).status).toBe('fail');
     // A branch head (moving) still fails a strict run.
     expect(verdict(out('PENDING 175\nPINNED 184\nok  a'), { pending: [], strict: true })).toMatchObject({ status: 'fail', why: expect.stringContaining('175') });
     // A failure is a failure, pinned or not.
     expect(verdict(out('PINNED 175\nFAIL a', 1), { pending: [], strict: true }).status).toBe('fail');
+  });
+  it('strict: a head that differs from its verified SHA fails (refresh column 4 at freeze)', () => {
+    const warn = 'PINNED 175\nWARN 175: 1a2b3c4d differs from 5e6f7a8b, where its proofs were checked\nok  a\nALL OK';
+    expect(verdict(out(warn), { pending: [], strict: true })).toMatchObject({ status: 'fail', why: expect.stringContaining('175') });
+    expect(verdict(out(warn), { pending: [], strict: false }).status).toBe('pass');
   });
   it('the release run prints PINNED for an exact SHA (BW_RELEASE_HEADS or BW_RELEASE_AT=verified), PENDING for a branch', async () => {
     const proc = (globalThis as unknown as { process: { cwd(): string } }).process;
