@@ -1022,6 +1022,16 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   const op = await probed('outcome', () => outcome(o1.Q, 'accepted'));
   await db.exec(`DROP TRIGGER test_r12_probe ON quote_links`);
   ok(!op.r.e && op.log.length === 1 && op.log[0].q, `round 12: set_outcome writes the link with the quote locked first (${op.r.e || JSON.stringify(op.log)})`);
+  // An 'accepted' also holds the event row when it writes the link (another
+  // admin's cancel is waited for, so 178's privacy trigger sees it); a
+  // 'declined' does not need it.
+  const oe = os.search(/PERFORM\s+1\s+FROM\s+public\.events\s+e\b[^;]*\bFOR\s+NO\s+KEY\s+UPDATE\s*;/i);
+  await db.exec(`CREATE TRIGGER test_r12_probe BEFORE UPDATE ON quote_links FOR EACH ROW EXECUTE FUNCTION test_r12_probe();`);
+  const od = await quote();
+  const odp = await probed('outcome_declined', () => outcome(od.Q, 'declined', 'Went with a DJ'));
+  await db.exec(`DROP TRIGGER test_r12_probe ON quote_links`);
+  ok(oe > ol && oe < os.indexOf('UPDATE public.quote_links') && op.log[0]?.e === true && !odp.r.e && odp.log.length === 1 && odp.log[0].q && !odp.log[0].e,
+    `round 12: set_outcome 'accepted' locks the event row (FOR NO KEY UPDATE, after the quote and the link) before it writes the link; 'declined' takes no event lock (source ${oe}, accepted ${JSON.stringify(op.log)}, declined ${odp.r.e || JSON.stringify(odp.log)})`);
   // What it returned and wrote before (105): the outcome; the link as accepted
   // under the client's name; one timeline row with who recorded it.
   const o1l = await link(o1.Q);

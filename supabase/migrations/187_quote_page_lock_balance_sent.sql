@@ -52,10 +52,13 @@
 --    locks the quote inside the trigger: link -> quote, against the quote
 --    -> link of every other writer, so an admin recording the answer at
 --    the same moment as the client's own answer or a save of the quote
---    could deadlock (40P01). It now locks the quote, then the link. This
---    migration redefines it from 105's body: same signature
---    (uuid, text, text) RETURNS text, same grants (authenticated), same
---    replies; the lock is the only change.
+--    could deadlock (40P01). It now locks the quote, then the link, and
+--    an 'accepted' also locks the event row before the link is written (as
+--    the client's accept in 3: another admin's cancel at the same moment
+--    is waited for, so 178's privacy trigger sees it). This migration
+--    redefines it from 105's body: same signature (uuid, text, text)
+--    RETURNS text, same grants (authenticated), same replies; the two
+--    locks are the only change.
 --
 -- Superset of 183: the three bodies below are 183's as of fix/quote-page
 -- 8f5922d7 (PR #286 round 4: link_id conversations, the deposit receipt in
@@ -503,7 +506,8 @@ BEGIN
   END IF;
   -- 187 round 12 (added): the quote first, then the link, as 183's and
   -- 185's writers of a link (the quote is there: bw_quote_admin_band
-  -- above refuses a quote that is not). Nothing else changed from 105.
+  -- above refuses a quote that is not). The two statements marked
+  -- "added" are all that changed from 105.
   PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
   IF v_link.id IS NULL THEN RETURN NULL; END IF;
@@ -515,6 +519,17 @@ BEGIN
   IF v_outcome = 'accepted' THEN
     SELECT nullif(left(regexp_replace(btrim(coalesce(q.client_name, '')), '\s+', ' ', 'g'), 120), '')
       INTO v_name FROM public.quotes q WHERE q.id = p_quote_id;
+    -- 187 round 12 (added): the event row before the link is written, as
+    -- the client's accept does (quote -> link -> event). Another admin's
+    -- cancel of the event that has not committed yet is waited for, so
+    -- 178's privacy trigger on the write below sees the cancel and closes
+    -- the private period; without the lock it saw "not cancelled", and the
+    -- cancelled event was left with an accepted link and no period closed.
+    -- The answer is recorded as before (an admin's own record is not
+    -- refused).
+    PERFORM 1 FROM public.events e
+      WHERE e.id = public.bw_quote_gig_id(p_quote_id)
+        FOR NO KEY UPDATE;
     UPDATE public.quote_links l
        SET status = 'accepted', responded_at = now(), accepted_name = v_name,
            accepted_version = l.version, accepted_snapshot = l.snapshot,
