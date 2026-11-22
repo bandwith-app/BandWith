@@ -33,6 +33,16 @@ export interface Song {
   lyrics?: string;
   /** Chords and form imported from iReal Pro (no melody, no lyrics). */
   chord_chart?: SongChart | null;
+  /** Live mode (171): "4/4", "6/8"…; null = the chart's, else 4/4. */
+  time_signature?: string | null;
+  /** Bars of count-in (1, or 2 for slow songs; 171). */
+  count_in_bars?: number;
+  /** The song starts this many beats before bar 1 (171). */
+  pickup_beats?: number;
+  /** Played with a backing track: no count-in offered (171). */
+  backing_track?: boolean;
+  /** Where each lyric line starts (src/lib/lineTiming.ts; 171). */
+  line_timing?: unknown;
   notes?: string;
   
   spotify_id?: string;

@@ -1,3 +1,5 @@
+import { tickBpm, type Meter } from './meter';
+
 /**
  * Visual metronome in Stage mode, kept in step across the band's phones.
  *
@@ -22,8 +24,17 @@ export interface ClickState {
   from: string;
   on: boolean;
   bpm: number;
-  /** Beats in a bar (the first one is accented). */
+  /**
+   * Ticks in a bar (the first one is accented). For 4/4 the four beats; for
+   * 6/8 the six eighths and 7/8 the seven, grouped by `groups`.
+   */
   beats: number;
+  /**
+   * How the ticks are counted (meter.ts): 6/8 → [3, 3], 7/8 → [2, 2, 3].
+   * A group's first tick is a beat, the others are the small ones. Absent
+   * (older apps, simple meters): every tick is a beat.
+   */
+  groups?: number[] | null;
   /** Bars to play, then stop on its own (a count-in); null until stopped. */
   bars: number | null;
   /** Beat 0, in the sender's clock (ms since epoch). */
@@ -37,6 +48,8 @@ export const nowMs = () => performance.timeOrigin + performance.now();
 
 export const MIN_CLICK_BPM = 30;
 export const MAX_CLICK_BPM = 300;
+/** Ticks a minute: a 12/8 at a dotted 120 ticks at 360, a 7/8 at 160 at 320. */
+export const MAX_CLICK_TICKS = 960;
 /** The leader starts this far ahead, so the others get the message before beat 0. */
 export const START_LEAD_MS = 700;
 
@@ -46,7 +59,13 @@ export const parseClickState = (payload: unknown): ClickState | null => {
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as Record<string, unknown>;
   if (!num(p.seq, 0, Number.MAX_SAFE_INTEGER) || typeof p.from !== 'string' || !p.from) return null;
-  if (typeof p.on !== 'boolean' || !num(p.bpm, MIN_CLICK_BPM, MAX_CLICK_BPM) || !num(p.beats, 1, 16)) return null;
+  if (typeof p.on !== 'boolean' || !num(p.bpm, MIN_CLICK_BPM, MAX_CLICK_TICKS) || !num(p.beats, 1, 16)) return null;
+  let groups: number[] | null = null;
+  if (p.groups != null) {
+    const g = p.groups as unknown[];
+    if (!Array.isArray(g) || !g.every((x) => num(x, 1, 4)) || (g as number[]).reduce((a, b) => a + b, 0) !== Math.round(p.beats as number)) return null;
+    groups = (g as number[]).map(Math.round);
+  }
   if (p.bars !== null && !num(p.bars, 1, 64)) return null;
   if (!num(p.startAt, 0, Number.MAX_SAFE_INTEGER)) return null;
   if (p.songId !== null && typeof p.songId !== 'string') return null;
@@ -59,6 +78,7 @@ export const parseClickState = (payload: unknown): ClickState | null => {
     bars: (p.bars as number | null) === null ? null : Math.round(p.bars as number),
     startAt: p.startAt as number,
     songId: (p.songId as string | null) ?? null,
+    ...(groups ? { groups } : {}),
   };
 };
 
@@ -95,21 +115,42 @@ export interface BeatPosition {
   phase: number;
   /** First beat of a bar. */
   downbeat: boolean;
-  /** Beat in the bar, 1-based (for "1 2 3 4"). */
+  /** Beat in the bar, 1-based (for "1 2 3 4"); with groups, the counted beat (6/8: 1 or 2). */
   count: number;
+  /** A counted beat starts on this tick (always, without groups). */
+  onBeat: boolean;
   /** A count-in has played out. */
   done: boolean;
 }
 
 /** Where the click is at `now` (my clock), given the leader's offset (their clock minus mine). */
-export function beatAt(state: Pick<ClickState, 'bpm' | 'beats' | 'bars' | 'startAt'>, now: number, offset: number): BeatPosition {
+export function beatAt(state: Pick<ClickState, 'bpm' | 'beats' | 'bars' | 'startAt' | 'groups'>, now: number, offset: number): BeatPosition {
   const period = 60000 / state.bpm;
   const elapsed = now + offset - state.startAt;
-  if (elapsed < 0) return { beat: -1, phase: 0, downbeat: false, count: 0, done: false };
+  if (elapsed < 0) return { beat: -1, phase: 0, downbeat: false, count: 0, onBeat: false, done: false };
   const beat = Math.floor(elapsed / period);
   const done = state.bars != null && beat >= state.bars * state.beats;
   const inBar = beat % state.beats;
-  return { beat, phase: (elapsed - beat * period) / period, downbeat: inBar === 0, count: inBar + 1, done };
+  let count = inBar + 1;
+  let onBeat = true;
+  if (state.groups?.length) {
+    let at = 0;
+    count = 0;
+    onBeat = false;
+    for (const g of state.groups) {
+      if (inBar < at) break;
+      count += 1;
+      onBeat = inBar === at;
+      at += g;
+    }
+  }
+  return { beat, phase: (elapsed - beat * period) / period, downbeat: inBar === 0, count, onBeat, done };
+}
+
+/** The click for a song: its meter's ticks at the song's BPM (meter.ts), counted in its groups. */
+export function clickForSong(bpm: number, meter: Meter): { bpm: number; beats: number; groups: number[] | null } {
+  const grouped = meter.beats.some((b) => b > 1);
+  return { bpm: Math.round(tickBpm(meter, bpm) * 100) / 100, beats: meter.num, groups: grouped ? [...meter.beats] : null };
 }
 
 /** Beats in a bar from a chart's time signature ("3/4" → 3, "6/8" → 6, "12/8" → 12); 4 otherwise. */
