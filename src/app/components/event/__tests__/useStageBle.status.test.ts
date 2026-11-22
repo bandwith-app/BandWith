@@ -92,9 +92,23 @@ describe('useStageBle status in plain terms', () => {
     env.initError = 'BLE permission denied';
     const { result, unmount } = render(false);
     await waitFor(() => expect(result.current.status).toBe('denied'));
+    await act(() => result.current.fix());
     env.initError = null;
     act(() => env.resumeCb?.());
     await waitFor(() => expect(result.current.status).toBe('searching'));
+    unmount();
+  });
+
+  it('closing the system permission dialog (the app resumes) does not ask a second time', async () => {
+    env.platform = 'android';
+    env.initError = 'Permission denied.';
+    const { result, unmount } = render(false);
+    await waitFor(() => expect(result.current.status).toBe('denied'));
+    const asked = ble.initialize.mock.calls.length;
+    act(() => env.resumeCb?.());
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ble.initialize.mock.calls.length).toBe(asked);
+    expect(result.current.status).toBe('denied');
     unmount();
   });
 
