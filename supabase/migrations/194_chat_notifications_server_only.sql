@@ -33,7 +33,7 @@
 --     them in one order (no 40P01); send-push retries a deadlock anyway;
 --   * returns the recipients to push now: their notice is new or was never
 --     pushed, and nobody else is pushing it (data.push_claimed_at, a claim
---     that lapses after 10 minutes: longer than any send-push call, round 4).
+--     that lapses after 7 minutes, 10 before round 5: longer than any send-push call).
 --     send-push marks them pushed afterwards
 --     (bw_mark_chat_notices_pushed, data.pushed_at) once a device took it
 --     or there was nothing to deliver to. A malformed claim (data is
@@ -49,7 +49,7 @@
 -- Round 5 (Codex review #284): a push-only call (create_in_app false, no
 -- inbox row) is recorded too, per message and recipient
 -- (chat_push_only_log, service role only): a retry after a lost reply never
--- rings twice. Same claim rule as the notices (10 minutes, released when
+-- rings twice. Same claim rule as the notices (7 minutes, released when
 -- every device failed for now or the push could not be attempted).
 --
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
@@ -149,6 +149,24 @@ $function$;
 REVOKE ALL ON FUNCTION public.bw_try_timestamptz(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_try_timestamptz(text) TO authenticated, service_role;
 
+-- Is a push claim free to take? Missing or malformed: yes. Older than
+-- 7 minutes (lapsed): yes. More than a minute ahead of now(): yes, it is
+-- bogus (a minute of slack: another call's claim, committed after this
+-- transaction began, is a little ahead of now() and still holds).
+-- Claude #284 r5; the same rule as send-push's noticeSettled (PUSH_CLAIM_MS).
+CREATE OR REPLACE FUNCTION public.bw_chat_push_claim_free(p_claimed timestamptz)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path TO 'public'
+AS $function$
+  SELECT p_claimed IS NULL
+      OR p_claimed < now() - interval '7 minutes'
+      OR p_claimed > now() + interval '1 minute';
+$function$;
+REVOKE ALL ON FUNCTION public.bw_chat_push_claim_free(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_chat_push_claim_free(timestamptz) TO service_role;
+
 -- Writes the chat notices of one message and claims those to push now.
 -- p_rows: [{user_id, type, title, body, data, band_id, action_url}].
 CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
@@ -196,9 +214,11 @@ BEGIN
               FOR UPDATE)
      AND NOT n.data ? 'pushed_at'
      -- Missing or malformed claim = unclaimed.
-     AND coalesce(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'), '-infinity'::timestamptz)
-         -- 10 min: longer than any send-push call (wall clock 150 s / 400 s).
-         < now() - interval '10 minutes'
+     -- 7 min: longer than any send-push call (wall clock 150 s / 400 s), and
+     -- a lapsed claim is retried well inside the 20-minute push window
+     -- (send-push CHAT_PUSH_WINDOW_MS; Claude #284 r5). A claim more than a
+     -- minute in the future is bogus (hand-edited data, clock jump): unclaimed.
+     AND public.bw_chat_push_claim_free(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'))
   RETURNING n.id, n.user_id;
 END;
 $function$;
@@ -248,12 +268,30 @@ CREATE TABLE IF NOT EXISTS public.chat_push_only_log (
   pushed_at timestamptz,
   PRIMARY KEY (message_id, user_id)
 );
+-- Gone with the account too (Claude #284 r5): account deletion (#282, 180)
+-- removes the profile, never blocked by this log. Added idempotently, also
+-- to a table made by an earlier run of this file.
+DO $$
+BEGIN
+  IF to_regclass('public.profiles') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM pg_constraint
+                      WHERE conrelid = 'public.chat_push_only_log'::regclass
+                        AND conname = 'chat_push_only_log_user_id_fkey') THEN
+    DELETE FROM public.chat_push_only_log l
+     WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = l.user_id);
+    ALTER TABLE public.chat_push_only_log
+      ADD CONSTRAINT chat_push_only_log_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+  END IF;
+END
+$$;
 ALTER TABLE public.chat_push_only_log ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.chat_push_only_log FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.chat_push_only_log TO service_role;
 
 -- Claims the recipients to push now for this message: never pushed, and
--- nobody else is pushing it (a claim older than 10 minutes has lapsed).
+-- nobody else is pushing it (bw_chat_push_claim_free: a claim older than
+-- 7 minutes has lapsed).
 -- Nothing for a message that is gone or marked deleted.
 CREATE OR REPLACE FUNCTION public.bw_claim_chat_push_only(p_message_id uuid, p_user_ids uuid[])
 RETURNS SETOF uuid
@@ -273,6 +311,9 @@ BEGIN
   INSERT INTO chat_push_only_log AS l (message_id, user_id)
   SELECT p_message_id, u FROM (SELECT DISTINCT unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u) x
    WHERE u IS NOT NULL
+     -- The log references profiles: someone with no profile (account gone)
+     -- has no device to ring either.
+     AND EXISTS (SELECT 1 FROM profiles p WHERE p.id = u)
    ORDER BY u
   ON CONFLICT (message_id, user_id) DO NOTHING;
   RETURN QUERY
@@ -281,7 +322,7 @@ BEGIN
    WHERE l.message_id = p_message_id
      AND l.user_id = ANY (coalesce(p_user_ids, '{}'::uuid[]))
      AND l.pushed_at IS NULL
-     AND coalesce(l.claimed_at, '-infinity'::timestamptz) < now() - interval '10 minutes'
+     AND public.bw_chat_push_claim_free(l.claimed_at)
   RETURNING l.user_id;
 END;
 $function$;

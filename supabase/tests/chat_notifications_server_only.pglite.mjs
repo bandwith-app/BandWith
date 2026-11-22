@@ -35,6 +35,8 @@ CREATE FUNCTION public.bw_shares_chat(a uuid, b uuid) RETURNS boolean LANGUAGE s
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean DEFAULT false, action_url text, created_at timestamptz DEFAULT now());
 CREATE TABLE public.messages (id uuid PRIMARY KEY, chat_id uuid, sender_id uuid, content text, deleted boolean DEFAULT false);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY);
+INSERT INTO profiles SELECT ('00000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid FROM unnest(ARRAY[1, 2, 3, 4, 10, 11]) n;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 GRANT INSERT ON public.notifications TO authenticated, service_role;
 `);
@@ -199,6 +201,38 @@ await db.query(`SELECT public.bw_settle_chat_push_only('${MSG5}', '{}'::uuid[], 
 ok(JSON.stringify(await claimPO(CAROL)) === '[]', 'push only: nothing for a deleted message');
 const poAsUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_claim_chat_push_only('${MSG5}', '{}'::uuid[]); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
 ok(poAsUser !== 'ran', `app users cannot claim push-only (${poAsUser})`);
+
+// Claude review #284 r5: a claim lapses after 7 minutes (inside send-push's
+// 20-minute window), and one more than a minute in the future is unclaimed.
+const MSG6 = id(906);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG6}', '${id(900)}', '${MEM}', 'claims')`);
+const claim6 = (...users) => db.query(`SELECT u::text AS u FROM public.bw_claim_chat_push_only('${MSG6}', $1::uuid[]) u ORDER BY 1`, [users])
+  .then((r) => r.rows.map((x) => x.u), (e) => `error: ${e.message}`);
+const setPO = (when) => db.exec(`UPDATE chat_push_only_log SET claimed_at = now() + interval '${when}' WHERE message_id = '${MSG6}'`);
+ok(JSON.stringify(await claim6(ALICE)) === JSON.stringify([ALICE]), 'push only: claimed');
+await setPO('-5 minutes');
+ok(JSON.stringify(await claim6(ALICE)) === '[]', 'push only: a 5-minute-old claim still holds');
+await setPO('-8 minutes');
+ok(JSON.stringify(await claim6(ALICE)) === JSON.stringify([ALICE]), 'push only: an 8-minute-old claim has lapsed (7 min)');
+await setPO('30 minutes');
+ok(JSON.stringify(await claim6(ALICE)) === JSON.stringify([ALICE]), 'push only: a claim 30 minutes in the future counts as unclaimed');
+await setPO('20 seconds');
+ok(JSON.stringify(await claim6(ALICE)) === '[]', 'push only: a claim a few seconds ahead still holds');
+const MSG7 = id(907);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG7}', '${id(900)}', '${MEM}', 'see you at 8')`);
+await write(MSG7, ALICE);
+const setN = (when) => db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() + interval '${when}') WHERE data->>'message_id' = '${MSG7}'`);
+await setN('-8 minutes');
+ok(JSON.stringify(await write(MSG7, ALICE)) === JSON.stringify([ALICE]), 'notice: an 8-minute-old claim has lapsed (7 min)');
+await setN('30 minutes');
+ok(JSON.stringify(await write(MSG7, ALICE)) === JSON.stringify([ALICE]), 'notice: a claim 30 minutes in the future counts as unclaimed');
+// Account deletion (#282, 180) removes the profile: its log rows go with it.
+const fk = await db.query(`SELECT confdeltype FROM pg_constraint WHERE conrelid = 'public.chat_push_only_log'::regclass AND conname = 'chat_push_only_log_user_id_fkey'`)
+  .then((r) => r.rows[0]?.confdeltype ?? null);
+ok(fk === 'c', `push only: user_id references profiles ON DELETE CASCADE (${fk})`);
+const del = await db.exec(`DELETE FROM profiles WHERE id = '${CAROL}'`).then(() => 'ok', (e) => e.message);
+const left = await db.query(`SELECT count(*)::int AS n FROM chat_push_only_log WHERE user_id = '${CAROL}'`).then((r) => r.rows[0].n);
+ok(del === 'ok' && left === 0, `push only: deleting the account deletes its log rows (${del}, ${left} left)`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

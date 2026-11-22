@@ -927,7 +927,7 @@ Deno.serve(async (req: Request) => {
     })));
     await markPushed(settled);
     // Every device failed for now: their claims go back, so a retry within
-    // the 10 minutes delivers (Codex review #284 r5).
+    // the push window delivers (Codex review #284 r5).
     const settledSet = new Set(settled);
     await releaseClaims(ringIds.filter((uid) => !settledSet.has(uid)));
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;

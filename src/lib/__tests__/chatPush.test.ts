@@ -214,6 +214,27 @@ describe('chat push review fixes, round 3', () => {
     expect(noticeSettled({ push_claimed_at: '2026-11-22T19:55:00Z' }, t)).toBe(true);
   });
 
+  // Claude review #284 r5: send-push took the claim and crashed. Once the
+  // claim lapses a later call must still find the message (inside the
+  // window) and see it as not announced, so it pushes.
+  it('a call that crashed after claiming: a later retry still pushes', () => {
+    const sent = NOW;
+    const claimedAt = sent + 60_000; // the claim is taken up to a minute after the send
+    const retryAt = claimedAt + PUSH_CLAIM_MS + 1000;
+    const row: ChatMessageRow = { id: 'c1', chat_id: CHAT, sender_id: BOB, content: 'Crash test', created_at: new Date(sent).toISOString() };
+    expect(noticeSettled({ push_claimed_at: new Date(claimedAt).toISOString() }, retryAt)).toBe(false);
+    expect(findAnnouncedCandidates([row], { callerId: BOB, chatId: CHAT, messageId: 'c1', now: retryAt }).map((r) => r.id)).toEqual(['c1']);
+    // A claim still lasts past the longest call.
+    expect(PUSH_CLAIM_MS).toBeGreaterThan(400_000);
+  });
+
+  it('a claim far in the future counts as unclaimed', () => {
+    const t = Date.parse('2026-11-22T20:00:00Z');
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T20:30:00Z' }, t)).toBe(false);
+    // A few seconds of clock difference still holds.
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T20:00:20Z' }, t)).toBe(true);
+  });
+
   it('older builds: far more than 20 identical previews are candidates', () => {
     expect(LEGACY_CANDIDATES).toBeGreaterThanOrEqual(500);
     const many: ChatMessageRow[] = Array.from({ length: 25 }, (_, i) => ({ id: `ok${i}`, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5 + i) }));

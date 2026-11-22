@@ -35,8 +35,12 @@ const wholeEnd = (s: string): string => (/[\uD800-\uDBFF]$/.test(s) ? s.slice(0,
 export const chatPreview = (content: string | null | undefined): string =>
   wholeEnd((content ?? '').substring(0, 120)) || 'New message';
 
-/** A message older than this can't be announced any more. */
-export const CHAT_PUSH_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * A message older than this can't be announced any more. Well past a lapsed
+ * claim (PUSH_CLAIM_MS): a call that took the claim and crashed is retried
+ * by a later call, still inside the window (Claude #284 r5).
+ */
+export const CHAT_PUSH_WINDOW_MS = 20 * 60 * 1000;
 /** Device clocks drift: a message this far "ahead" still counts as new. */
 export const CHAT_PUSH_FUTURE_SKEW_MS = 60 * 1000;
 
@@ -105,7 +109,7 @@ export const LEGACY_CANDIDATES = 500;
  * twice (Claude review #284 r4). A call that can't push releases its claim
  * at once (bw_release_chat_notice_claims).
  */
-export const PUSH_CLAIM_MS = 10 * 60 * 1000;
+export const PUSH_CLAIM_MS = 7 * 60 * 1000;
 
 /**
  * Whether a chat notice is announced: pushed, or being pushed right now.
@@ -115,7 +119,9 @@ export const PUSH_CLAIM_MS = 10 * 60 * 1000;
 export function noticeSettled(n: { pushed_at?: string | null; push_claimed_at?: string | null }, now = Date.now()): boolean {
   if (n.pushed_at) return true;
   const claimed = n.push_claimed_at ? Date.parse(n.push_claimed_at) : NaN;
-  return Number.isFinite(claimed) && now - claimed < PUSH_CLAIM_MS;
+  // A claim far in the future is bogus (Claude #284 r5): unclaimed. Same
+  // minute of slack as 194's bw_chat_push_claim_free.
+  return Number.isFinite(claimed) && now - claimed < PUSH_CLAIM_MS && claimed - now <= CHAT_PUSH_FUTURE_SKEW_MS;
 }
 
 /**
