@@ -183,14 +183,25 @@ test('@smoke the unsent-changes sheet opens above "Update BandWith" and takes ta
   await expect(sheet).toBeVisible();
   await app.settle();
   // On top: the point under each button belongs to the sheet, not the update screen.
+  // Asked until it is: the sheet slides in, and while a button is still below
+  // the screen its point belongs to nothing (CI, 11-22: settle() can return
+  // before the slide ends on a loaded machine). Under the update screen it
+  // would never be true.
   for (const name of ['Send now', 'Sign out anyway']) {
     const button = sheet.getByRole('button', { name: app.t(name), exact: true });
-    const box = (await button.boundingBox())!;
-    const onTop = await app.page.evaluate(
-      ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[role="dialog"]')?.textContent?.includes('unsent'),
-      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
-    );
-    expect(onTop, name).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const box = await button.boundingBox();
+          if (!box) return false;
+          return app.page.evaluate(
+            ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[role="dialog"]')?.textContent?.includes('unsent'),
+            { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+          );
+        },
+        { message: name },
+      )
+      .toBe(true);
   }
   await press(sheet.getByRole('button', { name: app.t('Send now'), exact: true }));
   await expect(sheet.getByText(app.t('No connection. Try again when you are online.'))).toBeVisible();
