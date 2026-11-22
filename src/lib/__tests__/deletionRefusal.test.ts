@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { deletionRefusal, deletionRefusalMessage } from '../deletionRefusal';
+import { deletionRefusal, deletionRefusalMessage, serverErrorText } from '../deletionRefusal';
+import eventTasksSrc from '../services/eventTasks.ts?raw';
+import taskTemplatesSrc from '../services/taskTemplates.ts?raw';
+import inventorySrc from '../services/inventory.ts?raw';
+import gearKitsSrc from '../services/gearKits.ts?raw';
+import contractsSrc from '../services/contracts.ts?raw';
+import personalGigModalSrc from '../../app/components/modals/PersonalGigModal.tsx?raw';
+import personalGigPartsSrc from '../../app/components/event/PersonalGigParts.tsx?raw';
+import financeSrc from '../../app/components/dashboard/expanded/FinanceExpanded.tsx?raw';
+import pollModalSrc from '../../app/components/rehearsal/RehearsalPollModal.tsx?raw';
+import proposeSrc from '../../app/components/rehearsal/ProposeRehearsalModal.tsx?raw';
+import pollCardSrc from '../../app/components/rehearsal/RehearsalPollCard.tsx?raw';
+const writePaths = {
+  eventTasks: eventTasksSrc, taskTemplates: taskTemplatesSrc, inventory: inventorySrc, gearKits: gearKitsSrc, contracts: contractsSrc,
+  PersonalGigModal: personalGigModalSrc, PersonalGigParts: personalGigPartsSrc, FinanceExpanded: financeSrc,
+  RehearsalPollModal: pollModalSrc, ProposeRehearsalModal: proposeSrc, RehearsalPollCard: pollCardSrc,
+};
 import { userMessage, planOr, planRefusal } from '../userError';
 import { chatErrorMessage } from '../services/chats';
 import viewSource from '../../app/views/BandMembersView.tsx?raw';
@@ -51,8 +67,32 @@ describe('account deletion refusals', () => {
     expect(viewSource).not.toMatch(/\n\s*\n\s*\n\s*const confirmRemoveMember/);
   });
 
+  // Main, round 6: the two new refusals (a band that goes with a deletion,
+  // a row pointed at a member who is deleting), and every write path.
+  it('a band that goes with a deletion, and a member who is deleting', () => {
+    const closing = { code: 'P0001', message: 'This band is being deleted. You can’t join it.', hint: 'account_deletion_in_progress',
+      details: JSON.stringify({ conflict: 'band_closing', by: 'admin' }) };
+    const assignee = { code: 'P0001', message: 'This member is deleting their account. Choose someone else.', hint: 'account_deletion_in_progress',
+      details: JSON.stringify({ conflict: 'account_being_deleted', by: 'member' }) };
+    expect(deletionRefusal(closing)).toBe('band_closing');
+    expect(deletionRefusal(assignee)).toBe('assignee');
+    expect(deletionRefusalMessage(closing)).toBe('This band is being deleted. You can’t join it.');
+    expect(deletionRefusalMessage(assignee)).toBe('This member is deleting their account. Choose someone else.');
+    expect(serverErrorText(assignee, 'x')).toBe('This member is deleting their account. Choose someone else.');
+    expect(serverErrorText({ message: 'duplicate key' }, 'x')).toBe('duplicate key');
+    expect(serverErrorText(null, 'Could not save.')).toBe('Could not save.');
+  });
+
+  it('every screen that shows a server error for a write these triggers refuse', () => {
+    for (const [name, src] of Object.entries(writePaths)) {
+      expect(src, name).toMatch(/serverErrorText\(/);
+    }
+  });
+
   it('is translated in all five languages', () => {
     const keys = [
+      'This band is being deleted. You can’t join it.',
+      'This member is deleting their account. Choose someone else.',
       'An admin of this band is deleting their account. Try again in a few minutes.',
       'A member of this band is deleting their account. Try again in a few minutes.',
       'Your account is being deleted.',

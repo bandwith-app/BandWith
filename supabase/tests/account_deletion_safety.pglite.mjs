@@ -84,6 +84,10 @@ CREATE TABLE public.notification_logs (id uuid PRIMARY KEY DEFAULT gen_random_uu
 CREATE TABLE public.rehearsal_tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text, assigned_to uuid REFERENCES public.profiles(id));
 CREATE TABLE public.task_templates (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), created_by uuid REFERENCES auth.users(id));
 CREATE TABLE public.transactions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), created_by uuid REFERENCES auth.users(id));
+-- 001's onboarding invites: SET NULL on a NOT NULL inviter (prod, round 7).
+CREATE TABLE public.member_invites (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE,
+  invited_by uuid NOT NULL REFERENCES public.profiles(id) ON DELETE SET NULL, email text NOT NULL, token text UNIQUE NOT NULL,
+  status text DEFAULT 'pending');
 CREATE TABLE public.rehearsal_poll_options (id uuid PRIMARY KEY, poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE);
 CREATE TABLE public.rehearsal_poll_votes (poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE,
   option_id uuid NOT NULL REFERENCES public.rehearsal_poll_options(id) ON DELETE CASCADE,
@@ -666,6 +670,11 @@ const setup5 = await x(`INSERT INTO auth.users VALUES ('${AA}'), ('${BB}'), ('${
   INSERT INTO song_suggestions (id, band_id, status, created_by, reviewed_by, kind, song_title, reason) VALUES
     ('${QS2}', '${T9}', 'rejected', '${CC}', '${AA}', 'lyrics', 'Moanin', 'Too long for the set');
   INSERT INTO events (id, band_id, created_by, title) VALUES ('${EV1}', '${T9}', '${BB}', 'Friday'), ('${EV3}', '${T9}', '${AA}', 'Saturday');
+  -- Round 7: onboarding invites AA sent, in a band with another admin and in one without.
+  INSERT INTO bands VALUES ('${id(156)}', 'Yonkers Jam');
+  INSERT INTO band_members VALUES ('${id(156)}','${AA}','member',true), ('${id(156)}','${CC}','member',true);
+  INSERT INTO member_invites (id, band_id, invited_by, email, token) VALUES
+    ('${id(157)}', '${T9}', '${AA}', 'sam@example.com', 'tok-1'), ('${id(158)}', '${id(156)}', '${AA}', 'lee@example.com', 'tok-2');
   INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES ('avatars', '${AA}/me.png', '${AA}', '${AA}')`);
 ok(!setup5.error, `round 5: setup (${setup5.error ?? 'ok'})`);
 await reset();
@@ -709,6 +718,7 @@ await x(`DELETE FROM events WHERE created_by = '${BB}' AND band_id IS NULL`);
 // Claude round 5 blocker: nobody points a new row at them either.
 e6 = await errAs(BB, `INSERT INTO rehearsal_tasks (title, assigned_to) VALUES ('Bring the PA', '${AA}')`);
 ok(e6?.hint === 'account_deletion_in_progress', `round 6 (Claude blocker): a task assigned to them is refused (${JSON.stringify(e6)})`);
+ok(e6?.message === 'This member is deleting their account. Choose someone else.', `round 7: in words that fit (older builds show it as it is) (${JSON.stringify(e6)})`);
 await x(`INSERT INTO rehearsal_tasks (id, title) VALUES ('${id(148)}', 'Print set lists')`);
 e6 = await errAs(BB, `UPDATE rehearsal_tasks SET assigned_to = '${AA}' WHERE id = '${id(148)}'`);
 ok(e6?.hint === 'account_deletion_in_progress', `round 6 (Claude blocker): and reassigning one to them (${JSON.stringify(e6)})`);
@@ -724,6 +734,8 @@ console.log('     author columns:', authorCols.map((c) => `${c.table_name}.${c.c
 ok(authorCols.some((c) => c.table_name === 'events' && c.column_name === 'created_by' && c.blocks === 'check')
    && authorCols.some((c) => c.table_name === 'messages' && c.column_name === 'sender_id'),
   `round 6 (B1): the catalog finds the personal-gig check and the NOT NULL sender (${JSON.stringify(authorCols)})`);
+ok(authorCols.some((c) => c.table_name === 'member_invites' && c.column_name === 'invited_by' && c.blocks === 'not_null'),
+  'round 7: and the onboarding invites\' NOT NULL inviter (prod)');
 const restrictCols = authorCols.filter((c) => c.blocks === 'restrict').map((c) => `${c.table_name}.${c.column_name}`);
 ok(JSON.stringify(restrictCols) === JSON.stringify(['band_invitations.invited_by', 'contracts.created_by', 'notification_logs.user_id',
   'rehearsal_tasks.assigned_to', 'task_templates.created_by', 'transactions.created_by']),
@@ -787,6 +799,9 @@ ok(!d.error, `round 5: then the last step runs (${d.error ?? 'ok'})`);
 const refs = (await qq(`SELECT (SELECT assigned_to FROM rehearsal_tasks WHERE id = '${id(149)}') AS task,
   (SELECT count(*)::int FROM transactions WHERE created_by = '${AA}') AS tx, (SELECT count(*)::int FROM notification_logs WHERE user_id = '${AA}') AS logs`)).rows[0] ?? {};
 ok(refs.task === null && refs.tx === 0 && refs.logs === 0, `round 6 (Claude blocker): the last step clears what points at them after the commit (${JSON.stringify(refs)})`);
+const invites = (await qq(`SELECT id, invited_by FROM member_invites WHERE id IN ('${id(157)}', '${id(158)}') ORDER BY id`)).rows;
+ok(invites.length === 1 && invites[0].id === id(157) && invites[0].invited_by === BB,
+  `round 7: an invite they sent passes to another admin of the band; with none left it goes (${JSON.stringify(invites)})`);
 const gigs = (await qq(`SELECT id FROM events WHERE id IN ('${EV2}', '${EV3}') ORDER BY id`)).rows.map((r) => r.id);
 ok(JSON.stringify(gigs) === JSON.stringify([EV3]), `round 6 (B1): the late personal gig goes, their band gig stays (${JSON.stringify(gigs)})`);
 const owned = (await qq(`SELECT owner, private FROM test_owned ORDER BY id`)).rows;
@@ -818,6 +833,8 @@ ok(q8?.body === 'Ehemaliges Mitglied schlägt eine Korrektur am Songtext vor.' &
 const before = (await qq(`SELECT now() AS t`)).rows[0].t;
 d = await x(`DELETE FROM auth.users WHERE id = '${AA}'`);
 ok(!d.error, `round 5: Auth deletes the account (${d.error ?? 'ok'})`);
+const ev3 = (await qq(`SELECT band_id, created_by FROM events WHERE id = '${EV3}'`)).rows[0];
+ok(ev3?.band_id === T9 && ev3.created_by === null, `round 7: a band gig they created stays with the band, no creator (029's check allows it) (${JSON.stringify(ev3)})`);
 const left = (await qq(`SELECT user_id, title, data FROM notifications WHERE type = 'member_left' AND band_id = '${T9}' ORDER BY user_id`)).rows;
 ok(left.length === 2 && left.every((l) => l.data.member_user_id === null)
    && left.find((l) => l.user_id === BB)?.data.member_name === 'Ehemaliges Mitglied'
@@ -851,6 +868,7 @@ ok(b6?.ok === true && (b6.band_ids ?? []).includes(T11), `round 6 (B2): begin no
 let j6 = null;
 try { await db.query(`INSERT INTO band_members VALUES ('${T11}','${JJ}','admin',true)`); } catch (e) { j6 = { message: e.message, hint: e.hint }; }
 ok(j6?.hint === 'account_deletion_in_progress', `round 6 (B2): joining a band that goes with a deletion is refused, same hint (${JSON.stringify(j6)})`);
+ok(j6?.message === 'This band is being deleted. You can’t join it.', `round 7: in words that fit (${JSON.stringify(j6)})`);
 // One that got in all the same (before this check existed): prepare looks again.
 await x(`ALTER TABLE band_members DISABLE TRIGGER bw_band_admin_deletion_guard;
   INSERT INTO band_members VALUES ('${T11}','${JJ}','admin',true);

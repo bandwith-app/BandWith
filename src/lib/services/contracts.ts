@@ -3,6 +3,7 @@ import { attachEventPrivate } from './eventPrivate';
 import { parseLocalDate, toLocalDateString, todayLocal } from '../dates';
 import { t, translate, intlLocale, type Locale } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { channelLabel, stageSize, type StageData } from '../stagePlot';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ export const errorMessage = (err: unknown, fallback = t('Something went wrong. P
   if (!err) return fallback;
   if (typeof err === 'string') return err;
   const e = err as { message?: string; details?: string };
-  return e.message || e.details || fallback;
+  return serverErrorText(err, e.details || fallback);
 };
 
 // The translated fallback only: the server's own text (English, sometimes

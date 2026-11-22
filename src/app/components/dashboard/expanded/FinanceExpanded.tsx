@@ -1,3 +1,4 @@
+import { serverErrorText } from '@/lib/deletionRefusal';
 import React, { useState } from 'react';
 import { uuidToNumericId } from '@/lib/numericId';
 import { motion } from 'motion/react';
@@ -83,7 +84,7 @@ export const FinanceExpanded: React.FC<FinanceExpandedProps> = ({
     });
 
     if (error) {
-      setTxError(error.message || t('Could not save the transaction'));
+      setTxError(serverErrorText(error, t('Could not save the transaction')));
     } else {
       setTxError(null);
       setShowAddTransaction(false);

@@ -2417,6 +2417,8 @@ const dict: Dictionary = {
   "Could not change the role. Try again.": "Impossibile cambiare il ruolo. Riprova.",
   "An admin of this band is deleting their account. Try again in a few minutes.": "Un admin della band sta eliminando il suo account. Riprova tra qualche minuto.",
   "A member of this band is deleting their account. Try again in a few minutes.": "Un membro della band sta eliminando il suo account. Riprova tra qualche minuto.",
+  "This band is being deleted. You can’t join it.": "Questa band sta per essere eliminata. Non puoi unirti.",
+  "This member is deleting their account. Choose someone else.": "Questo membro sta eliminando il suo account. Scegli qualcun altro.",
   "Your account is being deleted.": "Il tuo account è in fase di eliminazione.",
   "Your account is being deleted. It will be gone within a few minutes.": "Il tuo account è in fase di eliminazione. Sparirà entro pochi minuti.",
   "Invite sent to {name}. They’ll see it next time they open BandWith.": "Invito inviato a {name}. Lo vedrà la prossima volta che apre BandWith.",

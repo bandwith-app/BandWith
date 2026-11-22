@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Event tasks (table `rehearsal_tasks`, migration 008: despite the name it
@@ -31,8 +32,8 @@ export interface EventTaskDraft {
 const COLUMNS = 'id, event_id, title, is_completed, due_date, assigned_to, notes';
 
 const asError = (err: unknown, fallback: string) => {
-  const e = err as { message?: string } | null;
-  return new Error(e?.message || fallback);
+  // An account deletion's refusal in the app's words (180, round 7).
+  return new Error(serverErrorText(err, fallback));
 };
 
 /** Event date (YYYY-MM-DD) shifted by `offset` days; null when unknown. */

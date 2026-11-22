@@ -22,6 +22,7 @@ import {
 import { toLocalDateString } from '../../../lib/dates';
 import { personName, personInitials } from '@/lib/personName';
 import { useT, intlLocale, shortWeekday } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { useBandFreeDays, useCandidateFreeCounts, slotKey } from '@/lib/bandAvailability';
 import { FreeDots, FreeHeatLegend, FreeLabel, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { ComposerCard, ComposerPreview, ComposerShell, Segmented, useComposerLayout } from '@/app/components/composer/Composer';
@@ -389,7 +390,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
     setSubmitting(false);
 
     if (publishErr) {
-      setError(publishErr.message || t('Failed to publish poll.'));
+      setError(serverErrorText(publishErr, t('Failed to publish poll.')));
       return;
     }
 

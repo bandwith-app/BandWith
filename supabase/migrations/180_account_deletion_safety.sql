@@ -135,6 +135,11 @@
 --      the reader's language.
 --    * Old chat notices without sender or message id in every chat they were
 --      in are deleted, with no text or time matching (as 192 does).
+-- 10. Round 7 (main, prod catalog 11-22): onboarding invites they sent
+--    (member_invites.invited_by, NOT NULL) pass to another admin of the band
+--    who stays, else go; band gigs they created stay (029's check allows no
+--    creator on a band gig). The refusals for a band that goes and for a
+--    member who is deleting say so in words that fit.
 --
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
@@ -1327,6 +1332,13 @@ BEGIN
        AND c.conflict IS NOT NULL
      LIMIT 1;
     END IF;
+    IF v_conflict = 'band_closing' THEN
+      -- Round 7: the band goes with the account; waiting doesn't help.
+      RAISE EXCEPTION 'This band is being deleted. You can’t join it.'
+        USING ERRCODE = 'P0001',
+              DETAIL = jsonb_build_object('conflict', v_conflict, 'by', v_by)::text,
+              HINT = 'account_deletion_in_progress';
+    END IF;
     IF v_conflict IS NOT NULL THEN
       -- Older builds show the message as it is (round 4): plain English;
       -- newer ones read the code from the hint and who is deleting (round 5,
@@ -1631,6 +1643,27 @@ BEGIN
     RAISE EXCEPTION 'p_uid is required' USING ERRCODE = '22004';
   END IF;
   DELETE FROM public.events WHERE band_id IS NULL AND created_by = p_uid;
+  -- Round 7: 001's onboarding invites need an inviter (SET NULL on a NOT
+  -- NULL column). One they sent passes to another admin of the band who
+  -- stays, so the band's invite keeps working; with no such admin the loop
+  -- below deletes it.
+  IF to_regclass('public.member_invites') IS NOT NULL THEN
+    EXECUTE $q$
+      UPDATE public.member_invites mi
+         SET invited_by = (SELECT bm.user_id FROM public.band_members bm
+                            WHERE bm.band_id = mi.band_id AND bm.user_id <> $1
+                              AND bm.role::text = 'admin' AND coalesce(bm.is_active, true)
+                              AND NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                                               WHERE d.user_id = bm.user_id AND d.committed_at IS NOT NULL)
+                            ORDER BY bm.user_id LIMIT 1)
+       WHERE mi.invited_by = $1
+         AND EXISTS (SELECT 1 FROM public.band_members bm
+                      WHERE bm.band_id = mi.band_id AND bm.user_id <> $1
+                        AND bm.role::text = 'admin' AND coalesce(bm.is_active, true)
+                        AND NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                                         WHERE d.user_id = bm.user_id AND d.committed_at IS NOT NULL))$q$
+    USING p_uid;
+  END IF;
   FOR r IN SELECT * FROM public.bw_account_deletion_author_columns() WHERE blocks IS NOT NULL LOOP
     IF r.blocks = 'check' THEN
       -- events.created_by: the personal gigs just went, band gigs pass.
@@ -1692,7 +1725,8 @@ BEGIN
     CONTINUE WHEN v_ref IS NULL OR v_ref IS NOT DISTINCT FROM (v_old ->> v_col);
     IF EXISTS (SELECT 1 FROM public.account_deletions_pending p
                 WHERE p.user_id::text = v_ref AND p.committed_at IS NOT NULL) THEN
-      RAISE EXCEPTION 'A member of this band is deleting their account. Try again in a few minutes.'
+      -- Round 7: words that fit (older builds show the message as it is).
+      RAISE EXCEPTION 'This member is deleting their account. Choose someone else.'
         USING ERRCODE = 'P0001',
               DETAIL = jsonb_build_object('conflict', 'account_being_deleted', 'by', 'member')::text,
               HINT = 'account_deletion_in_progress';
