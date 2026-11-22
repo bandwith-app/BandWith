@@ -685,62 +685,90 @@ export const replaceSetlistSongs = async (
   return replaceSetlistSongsStepwise(setlistId, entries);
 };
 
-/** Before 188: read, delete, insert (put the old rows back if that fails), recount. */
+/**
+ * Before 188: read, delete, insert (put the old rows back if that fails),
+ * recount. Like 188, the n-th time a song appears takes the n-th stored row
+ * of that song: its id, notes and vocal_parts (who sings what for this gig,
+ * 172) stay. When only the name changed, no row is rewritten at all.
+ */
 const replaceSetlistSongsStepwise = async (
   setlistId: string,
   entries: ReturnType<typeof setlistEntry>[]
 ): Promise<{ error: Error | null; previous?: PreviousSetlistRow[] }> => {
   try {
-    // Read the current rows first so a failed insert can be undone.
+    // Read the current rows first so a failed insert can be undone. Every
+    // column, so a database with 172 hands back vocal_parts and one without
+    // it doesn't fail.
     const { data: previous, error: readError } = await supabase
       .from('setlist_songs')
-      .select('id, setlist_id, song_id, position, set_number, notes')
+      .select('*')
       .eq('setlist_id', setlistId);
 
     if (readError) throw readError;
-    const previousRows = (previous || []) as Array<{
+    type StoredRow = {
       id: string;
       setlist_id: string;
       song_id: string;
       position: number;
       set_number: number | null;
       notes: string | null;
-    }>;
-    const previousNotes = new Map<string, string | null>();
-    for (const r of previousRows) {
-      if (!previousNotes.has(r.song_id)) previousNotes.set(r.song_id, r.notes ?? null);
-    }
+      vocal_parts?: unknown;
+    };
+    const previousRows = (previous || []) as StoredRow[];
+    // In play order, like 188 and the editor.
+    const ordered = [...previousRows].sort(
+      (a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position || String(a.id).localeCompare(String(b.id))
+    );
+    const hasVoices = previousRows.some((r) => 'vocal_parts' in r);
+    const bySong = new Map<string, StoredRow[]>();
+    for (const r of ordered) bySong.set(r.song_id, [...(bySong.get(r.song_id) ?? []), r]);
 
-    const rows = entries.map((item, i) => ({
-      setlist_id: setlistId,
-      song_id: item.song_id,
-      position: i + 1,
-      set_number: item.set_number,
-      notes: 'notes' in item ? (item.notes ?? null) : previousNotes.get(item.song_id) ?? null,
-    }));
+    const rows = entries.map((item, i) => {
+      const kept = bySong.get(item.song_id)?.shift();
+      return {
+        ...(kept ? { id: kept.id } : {}),
+        setlist_id: setlistId,
+        song_id: item.song_id,
+        position: i + 1,
+        set_number: item.set_number,
+        notes: 'notes' in item ? (item.notes ?? null) : kept?.notes ?? null,
+        ...(hasVoices ? { vocal_parts: kept?.vocal_parts ?? null } : {}),
+      };
+    });
 
-    const { error: deleteError } = await supabase
-      .from('setlist_songs')
-      .delete()
-      .eq('setlist_id', setlistId);
+    // Same songs, sets, notes and positions (a rename): nothing to rewrite.
+    const unchanged =
+      rows.length === ordered.length &&
+      rows.every((r, i) => {
+        const o = ordered[i];
+        return r.id === o.id && r.position === o.position && r.set_number === (o.set_number ?? 1) && r.notes === (o.notes ?? null);
+      });
 
-    if (deleteError) throw deleteError;
-
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase
+    if (!unchanged) {
+      const { error: deleteError } = await supabase
         .from('setlist_songs')
-        .insert(rows);
+        .delete()
+        .eq('setlist_id', setlistId);
 
-      if (insertError) {
-        if (previousRows.length > 0) {
-          const { error: restoreError } = await supabase
-            .from('setlist_songs')
-            .insert(previousRows);
-          if (restoreError) {
-            console.error('Could not restore setlist songs after a failed save:', restoreError);
+      if (deleteError) throw deleteError;
+
+      if (rows.length > 0) {
+        // New rows (no id) take the column defaults, not null.
+        const { error: insertError } = await supabase
+          .from('setlist_songs')
+          .insert(rows, { defaultToNull: false });
+
+        if (insertError) {
+          if (previousRows.length > 0) {
+            const { error: restoreError } = await supabase
+              .from('setlist_songs')
+              .insert(previousRows);
+            if (restoreError) {
+              console.error('Could not restore setlist songs after a failed save:', restoreError);
+            }
           }
+          throw insertError;
         }
-        throw insertError;
       }
     }
 
@@ -752,8 +780,7 @@ const replaceSetlistSongsStepwise = async (
     if (updateError) throw updateError;
 
     // What was there before, in play order: callers sum up the change (setlistChanges.ts).
-    const before = [...previousRows]
-      .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position)
+    const before = ordered
       .map(({ song_id, set_number, position }) => ({ song_id, set_number, position }));
     return { error: null, previous: before };
   } catch (error: any) {
@@ -794,7 +821,7 @@ export const saveSetlistOrder = async (
  */
 export const saveSongLyricsIfUnchanged = async (
   songId: string,
-  lyrics: string,
+  lyrics: string | null,
   expected: string | null
 ): Promise<{ error: Error | null; conflict?: string | null }> => {
   try {
@@ -812,11 +839,26 @@ export const saveSongLyricsIfUnchanged = async (
   } catch (error: any) {
     if (!isMissingFunction(error)) return { error };
   }
-  // Database without 189 yet: compare, then write (a much shorter window than before).
-  const { data: now, error: readError } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
-  if (readError) return { error: readError as unknown as Error };
-  const current = ((now as { lyrics?: string | null } | null)?.lyrics ?? null);
-  if (current !== expected) return { error: null, conflict: current };
-  const { error } = await supabase.from('songs').update({ lyrics }).eq('id', songId);
-  return { error: (error as unknown as Error) ?? null };
+  // Database without 189 yet: compare, then write only over the row as it
+  // was read. updated_at moves on every save (update_songs_updated_at), so a
+  // bandmate's save between the read and the write makes it match no row.
+  const read = async () => {
+    const { data, error } = await supabase.from('songs').select('lyrics, updated_at').eq('id', songId).single();
+    const row = (data ?? null) as { lyrics?: string | null; updated_at?: string | null } | null;
+    return { error: error as unknown as Error | null, lyrics: row?.lyrics ?? null, updatedAt: row?.updated_at ?? null };
+  };
+  const now = await read();
+  if (now.error) return { error: now.error };
+  if (now.lyrics !== expected) return { error: null, conflict: now.lyrics };
+  const write = supabase.from('songs').update({ lyrics }).eq('id', songId);
+  const { data: written, error } = await (now.updatedAt ? write.eq('updated_at', now.updatedAt) : write.is('updated_at', null)).select('id');
+  if (error) return { error: error as unknown as Error };
+  if (Array.isArray(written) && written.length > 0) return { error: null };
+  // Nothing written: changed meanwhile (or not this user's to change).
+  const latest = await read();
+  if (latest.error) return { error: latest.error };
+  if (latest.lyrics === expected && latest.updatedAt === now.updatedAt) {
+    return { error: permissionError('The lyrics could not be saved. You may not have permission.') };
+  }
+  return { error: null, conflict: latest.lyrics };
 };

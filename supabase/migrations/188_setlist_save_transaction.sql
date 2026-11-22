@@ -27,14 +27,30 @@
 --
 -- Who: active band admins of the setlist's band (setlists are admin-written
 -- since 074). A song must belong to that band or already be in this setlist.
--- Concurrent saves of the same setlist wait for each other (row lock).
+-- Concurrent saves of the same setlist wait for each other (row lock on the
+-- setlist). The setlist's song rows are locked too before they are copied:
+-- a singer change another admin saves meanwhile (Voice picker, 172) is either
+-- in the copy or waits for this save, never put back to the old value.
 --
 -- Additive only: older TestFlight / APK builds keep doing their own
 -- delete + insert on setlist_songs under the 074 policies, unchanged.
--- Needs 172 (setlist_songs.vocal_parts). Safe to run more than once.
+-- Needs 172 (setlist_songs.vocal_parts): stops with a message without it.
+-- Safe to run more than once.
 -- ============================================================================
 
 BEGIN;
+
+DO $guard$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'setlist_songs' AND column_name = 'vocal_parts'
+  ) THEN
+    RAISE EXCEPTION '188 needs migration 172 first (setlist_songs.vocal_parts is missing)'
+      USING ERRCODE = '42703';
+  END IF;
+END
+$guard$;
 
 CREATE OR REPLACE FUNCTION public.bw_save_setlist_songs(
   p_setlist_id uuid,
@@ -79,6 +95,11 @@ BEGIN
   IF v_bad > 0 THEN
     RAISE EXCEPTION 'A song in this setlist is not in the band''s repertoire' USING ERRCODE = '22023';
   END IF;
+
+  -- Lock the rows first, so the copy below holds what is stored now: a
+  -- concurrent update of who sings what waits here, or has committed and is
+  -- read (each statement sees what committed before it started).
+  PERFORM 1 FROM public.setlist_songs ss WHERE ss.setlist_id = p_setlist_id FOR UPDATE;
 
   -- The rows as they are now, numbered per song in play order.
   SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.set_number, r.position, r.id), '[]'::jsonb)

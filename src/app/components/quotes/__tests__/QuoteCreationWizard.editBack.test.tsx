@@ -14,9 +14,10 @@ vi.mock('@/lib/BandContext', () => ({
   useOptionalBand: () => ({ selectedBand: { id: 'b1', name: 'Hudson Line', members: [] } }),
 }));
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+const pricing = vi.hoisted(() => ({ load: null as null | (() => Promise<unknown>) }));
 vi.mock('@/lib/services/pricing', async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
-  return { ...real, getBandPricing: vi.fn(async () => real.DEFAULT_BAND_PRICING) };
+  return { ...real, getBandPricing: vi.fn(async () => (pricing.load ? pricing.load() : real.DEFAULT_BAND_PRICING)) };
 });
 vi.mock('@/lib/services/location', () => ({ calculateTravelDistance: vi.fn(async () => null), venueFields: () => ({}) }));
 
@@ -28,8 +29,12 @@ globalThis.ResizeObserver = class {
 
 import { QuoteCreationWizard } from '../QuoteCreationWizard';
 import { handleBackFromStack } from '@/lib/backStack';
+import { DEFAULT_BAND_PRICING } from '@/lib/services/pricing';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  pricing.load = null;
+});
 
 const quote = {
   id: 'q1',
@@ -80,6 +85,24 @@ describe('editing a quote: Android Back', () => {
       handled = handleBackFromStack();
     });
     expect(handled).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Round 2 (Codex MINOR): a tap that changes nothing (opening a section),
+  // then the band's pricing arrives in another currency: still no change.
+  it('a tap first, then pricing loads in another currency: Back just closes', async () => {
+    let arrive: (v: unknown) => void = () => {};
+    pricing.load = () => new Promise((r) => (arrive = r));
+    const { onClose } = await renderEdit();
+    fireEvent.click(screen.getByText('Editing'));
+    await act(async () => arrive({ ...DEFAULT_BAND_PRICING, currency: 'USD' }));
+
+    let handled = false;
+    act(() => {
+      handled = handleBackFromStack();
+    });
+    expect(handled).toBe(true);
+    expect(screen.queryByText('Save your changes?')).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -24,7 +24,9 @@ export interface ImportedSong {
 
 export type SongFileError = 'unsupported' | 'empty' | 'not-musicxml' | 'no-chords' | 'too-large';
 
-const MAX_LYRICS = 20000;
+// No length limit here: an import is never cut. The song form says when the
+// lyrics are over the limit a song keeps (MAX_LYRICS_LENGTH, songPayload.ts)
+// and keeps the whole text while they are shortened (audit 09 #7).
 
 /** Section names used when a format names none ("Verse", "Chorus"…), in the user's language. */
 export interface SectionNames {
@@ -35,13 +37,12 @@ export interface SectionNames {
 
 const clean = (s: string) => s.replace(/\r\n?/g, '\n').replace(/\t/g, '    ');
 
-/** Tidy the result: no runs of blank lines, nothing past the size limit. */
+/** Tidy the result: no runs of blank lines. */
 const finish = (lines: string[]) =>
   lines
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, MAX_LYRICS);
+    .trim();
 
 // ── Chords over lyrics (plain text, as pasted from songbooks) ──
 
@@ -225,7 +226,7 @@ export async function readSongFile(bytes: Uint8Array, fileName: string, names: S
     const { chart, lyrics, title, composer } = await parseMusicXmlSong(bytes, fileName, names);
     return {
       ...(chart ? { chart, key: keyLabel(chart.key), bpm: chart.bpm } : {}),
-      ...(lyrics ? { lyrics: lyrics.slice(0, MAX_LYRICS) } : {}),
+      ...(lyrics ? { lyrics } : {}),
       ...(title ? { title } : {}),
       ...(composer ? { artist: composer } : {}),
     };

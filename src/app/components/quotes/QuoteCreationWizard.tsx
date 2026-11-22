@@ -3136,20 +3136,41 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Editing a saved quote: Back, X and Cancel ask first when something
   // changed (audit 10 #5: Back went past the editor and dropped the edits).
-  // The baseline follows the quote until the user first touches the form,
-  // so values the form settles on load (pricing, extras) don't count.
-  const editTouchedRef = useRef(false);
+  // Only a change made by the user's own input counts: the baseline follows
+  // the quote through what the form settles by itself (band pricing and its
+  // currency, extras), even after a tap that changed nothing, like opening
+  // a section.
+  const editChangedRef = useRef(false); // the user's input changed the quote
+  const editInputRef = useRef(false); // a tap or keystroke is being handled
   const editBaselineRef = useRef<string | null>(null);
+  const editLastRef = useRef<string | null>(null);
   const editSnapshot = isEditing
     ? (() => {
         const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData();
         return JSON.stringify(rest);
       })()
     : '';
-  if (isEditing && (!editTouchedRef.current || editBaselineRef.current === null)) editBaselineRef.current = editSnapshot;
-  const editDirty = isEditing && editTouchedRef.current && editSnapshot !== editBaselineRef.current;
-  const markEditTouched = () => {
-    editTouchedRef.current = true;
+  if (isEditing) {
+    if (editBaselineRef.current === null) editBaselineRef.current = editSnapshot;
+    else if (editSnapshot !== editLastRef.current) {
+      if (editInputRef.current) editChangedRef.current = true;
+      else if (!editChangedRef.current) editBaselineRef.current = editSnapshot;
+    }
+    editLastRef.current = editSnapshot;
+    // This render answers the input (if any): later changes are the form's own.
+    editInputRef.current = false;
+  }
+  const editDirty = isEditing && editChangedRef.current && editSnapshot !== editBaselineRef.current;
+  // A tap re-renders in the same batch as its own changes (so a tap that
+  // changes nothing is answered at once); a key press is followed by its
+  // input event, which renders anyway.
+  const [, setEditInputTick] = useState(0);
+  const markEditInput = () => {
+    editInputRef.current = true;
+    setEditInputTick((n) => n + 1);
+  };
+  const markEditKey = () => {
+    editInputRef.current = true;
   };
   const [editLeaveOpen, setEditLeaveOpen] = useState(false);
   const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
@@ -3189,10 +3210,10 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         exit={{ opacity: 0, y: 20 }}
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
         className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
-        onChangeCapture={markEditTouched}
-        onInputCapture={markEditTouched}
-        onClickCapture={markEditTouched}
-        onKeyDownCapture={markEditTouched}
+        onChangeCapture={markEditInput}
+        onInputCapture={markEditInput}
+        onClickCapture={markEditInput}
+        onKeyDownCapture={markEditKey}
       >
         <header className="shrink-0 px-4 pb-4 bg-background" style={headerPadTop}>
           <div className="max-w-xl mx-auto w-full flex items-start gap-3">

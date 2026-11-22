@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 
 // Audit 09 #1: a private note left open, then another account signs in on
 // the same browser (sign-out and sign-in in another tab): the app comes back
@@ -14,13 +14,14 @@ const auth = vi.hoisted(() => ({ userId: 'user-a' as string | null }));
 vi.mock('@/lib/AuthContext', () => ({
   useOptionalAuth: () => (auth.userId ? { user: { id: auth.userId } } : { user: null }),
 }));
+const notes = vi.hoisted(() => ({ save: vi.fn() }));
 vi.mock('@/lib/services/personalLayer', () => ({
   addPersonalFile: vi.fn(),
   deletePersonalFile: vi.fn(),
   deletePersonalNote: vi.fn(),
   markMyNotesInfoSeen: vi.fn(),
   myNotesInfoSeen: () => true,
-  savePersonalNote: vi.fn(),
+  savePersonalNote: notes.save,
   usePersonalLayer: () => ({ notes: [], files: [] }),
   useShowMyNotes: () => [true, vi.fn()] as const,
 }));
@@ -67,5 +68,32 @@ describe('My notes: an open note belongs to the account that opened it', () => {
     first.unmount();
     render(<PersonalLayerSheets />);
     expect(screen.getByDisplayValue(note.body)).toBeTruthy();
+  });
+
+  // Round 2 (Codex B1): the save is still running when the account changes.
+  it('a save that finishes after another account signed in shows that account nothing', async () => {
+    let finish: (v: { error: null; queued: boolean }) => void = () => {};
+    notes.save.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+    const first = render(<PersonalLayerSheets />);
+    const onLine = { ...note, anchor: { type: 'line' as const, line: 'v1-1', occ: 1 } };
+    act(() => openNoteFor(song, { key: 'v1-1', occ: 1, text: 'Uptown lights' } as never, onLine as never));
+    fireEvent.click(screen.getByRole('button', { name: /^save/i }));
+
+    first.unmount();
+    auth.userId = 'user-b';
+    render(<PersonalLayerSheets />);
+    await act(async () => finish({ error: null, queued: false }));
+    expect(screen.queryByText(/note saved/i)).toBeNull();
+    expect(screen.queryByText(/uptown lights/i)).toBeNull();
+  });
+
+  it('the same account still sees where its note went', async () => {
+    let finish: (v: { error: null; queued: boolean }) => void = () => {};
+    notes.save.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+    render(<PersonalLayerSheets />);
+    act(() => openNoteFor(song, null, note as never));
+    fireEvent.click(screen.getByRole('button', { name: /^save/i }));
+    await act(async () => finish({ error: null, queued: false }));
+    expect(screen.getByText(/note saved on the whole song/i)).toBeTruthy();
   });
 });

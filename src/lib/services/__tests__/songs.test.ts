@@ -15,6 +15,7 @@ const builder = (table: string) => {
     update: (v: any) => ((call.op = 'update'), (call.payload = v), b),
     delete: () => ((call.op = 'delete'), b),
     eq: (c: string, v: any) => (call.filters.push([c, v]), b),
+    is: (c: string, v: any) => (call.filters.push([`${c}:is`, v]), b),
     order: () => b,
     single: () => b,
     maybeSingle: () => b,
@@ -32,7 +33,7 @@ vi.mock('@/lib/supabase', () => ({
   getSafeUser: async () => ({ data: { user: { id: 'user-1' } } }),
 }));
 
-import { createSetlist, replaceSetlistSongs, addSongToSetlist } from '../songs';
+import { createSetlist, replaceSetlistSongs, addSongToSetlist, saveSongLyricsIfUnchanged } from '../songs';
 import { supabase } from '@/lib/supabase';
 
 const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
@@ -97,7 +98,7 @@ describe('replaceSetlistSongs, before 188 (step by step)', () => {
     expect(error).toBeNull();
     const insert = calls.find((c) => c.table === 'setlist_songs' && c.op === 'insert');
     expect(insert?.payload).toEqual([
-      { setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1, notes: 'segue' },
+      { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1, notes: 'segue' },
       { setlist_id: 'sl', song_id: 'b', position: 2, set_number: 2, notes: null },
       { setlist_id: 'sl', song_id: 'c', position: 3, set_number: 1, notes: null },
     ]);
@@ -121,6 +122,63 @@ describe('replaceSetlistSongs, before 188 (step by step)', () => {
     const restore = calls.filter((c) => c.table === 'setlist_songs' && c.op === 'insert')[1];
     expect(restore?.payload).toEqual(previous);
     expect(calls.some((c) => c.table === 'setlists' && c.op === 'update')).toBe(false);
+  });
+});
+
+describe('replaceSetlistSongs, before 188: who sings what survives (round 2, Codex B4)', () => {
+  const stored = [
+    { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1, notes: 'segue', vocal_parts: { lead: ['u-ana'] } },
+    { id: 'r2', setlist_id: 'sl', song_id: 'b', position: 2, set_number: 1, notes: null, vocal_parts: { bv: ['u-joe'] } },
+  ];
+
+  it('a rename with the same songs rewrites no rows', async () => {
+    handler = (c) => (c.table === 'setlist_songs' && c.op === 'select' ? { data: stored } : {});
+    const { error } = await replaceSetlistSongs('sl', [{ song_id: 'a', set_number: 1 }, { song_id: 'b', set_number: 1 }], { name: 'Gig' });
+    expect(error).toBeNull();
+    expect(calls.filter((c) => c.table === 'setlist_songs' && c.op !== 'select')).toEqual([]);
+  });
+
+  it('a new order keeps each row id and its vocal_parts', async () => {
+    handler = (c) => (c.table === 'setlist_songs' && c.op === 'select' ? { data: stored } : {});
+    const { error } = await replaceSetlistSongs('sl', ['b', 'a', 'c']);
+    expect(error).toBeNull();
+    const insert = calls.find((c) => c.table === 'setlist_songs' && c.op === 'insert');
+    expect(insert?.payload).toEqual([
+      { id: 'r2', setlist_id: 'sl', song_id: 'b', position: 1, set_number: 1, notes: null, vocal_parts: { bv: ['u-joe'] } },
+      { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 2, set_number: 1, notes: 'segue', vocal_parts: { lead: ['u-ana'] } },
+      { setlist_id: 'sl', song_id: 'c', position: 3, set_number: 1, notes: null, vocal_parts: null },
+    ]);
+  });
+});
+
+describe('saveSongLyricsIfUnchanged, before 189 (round 2, Codex B2)', () => {
+  it('the write itself only lands on the version it compared', async () => {
+    let reads = 0;
+    handler = (c) => {
+      if (c.table === 'songs' && c.op === 'select') {
+        reads += 1;
+        return reads === 1
+          ? { data: { lyrics: 'Verse 1', updated_at: '2026-11-20T10:00:00.123456+00:00' } }
+          : { data: { lyrics: 'Verse 1\n\nVerse 2', updated_at: '2026-11-20T10:00:01.5+00:00' } };
+      }
+      // Another admin saved a verse between the read and this write: no row matches.
+      if (c.table === 'songs' && c.op === 'update') return { data: [] };
+      return {};
+    };
+    const res = await saveSongLyricsIfUnchanged('s1', '[C]Verse 1', 'Verse 1');
+    const update = calls.find((c) => c.table === 'songs' && c.op === 'update');
+    expect(update?.filters).toContainEqual(['updated_at', '2026-11-20T10:00:00.123456+00:00']);
+    expect(res).toEqual({ error: null, conflict: 'Verse 1\n\nVerse 2' });
+  });
+
+  it('no one else saved: written, no conflict', async () => {
+    handler = (c) => {
+      if (c.table === 'songs' && c.op === 'select') return { data: { lyrics: 'Verse 1', updated_at: '2026-11-20T10:00:00+00:00' } };
+      if (c.table === 'songs' && c.op === 'update') return { data: [{ id: 's1' }] };
+      return {};
+    };
+    const res = await saveSongLyricsIfUnchanged('s1', '[C]Verse 1', 'Verse 1');
+    expect(res).toEqual({ error: null });
   });
 });
 

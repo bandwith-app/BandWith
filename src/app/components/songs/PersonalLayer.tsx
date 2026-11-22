@@ -457,9 +457,11 @@ const PickingBar: React.FC<{ stage: boolean; onWholeSong: () => void; onCancel: 
 let savedMsg: string | null = null;
 let savedOwner: string | null = null;
 const savedListeners = new Set<() => void>();
-const setSaved = (m: string | null) => {
+// `owner`: the account that saved the note, taken when Save was tapped (the
+// save may finish after another account signed in: it never sees the line).
+const setSaved = (m: string | null, owner: string | null = viewer) => {
   savedMsg = m;
-  savedOwner = m ? viewer : null;
+  savedOwner = m ? owner : null;
   savedListeners.forEach((l) => l());
 };
 const SavedToast: React.FC = () => {
@@ -624,10 +626,13 @@ const Sheets: React.FC = () => {
 
   const save = async () => {
     if (!canSave) return;
+    const owner = sheetOwner;
     setBusy(true);
     setError(null);
     const { error: err, queued } = await savePersonalNote(song.id, anchor, body, note?.id);
     setBusy(false);
+    // Another account signed in meanwhile: nothing of this note reaches it.
+    if (viewer !== owner) return;
     if (err) setError(userMessage(err, t('Couldn’t save the note. Try again.')));
     else {
       setSheet(null);
@@ -638,6 +643,7 @@ const Sheets: React.FC = () => {
           : anchor.type !== 'song' && line
           ? t('Note saved on “{line}”', { line: lyricsLineText(line) })
           : t('Note saved on the whole song'),
+        owner,
       );
     }
   };

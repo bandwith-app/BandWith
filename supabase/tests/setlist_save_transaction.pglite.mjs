@@ -177,6 +177,36 @@ ok(dup.length === 2 && dup[0].id === R1 && dup[1].id === id(34), 'a song played 
 await save(ADMIN, []);
 ok((await rows()).length === 0 && (await setlist())?.song_count === 0, 'an empty list empties the setlist');
 
+// Round 2 (Codex B3): who-sings-what is read for the copy only after the rows
+// are locked. Else another admin's singer change committed after the read
+// but before the delete is put back to the old value, and both saves say OK.
+// One PGlite session can't run two transactions at once, so this checks the
+// lock itself: when the first row is deleted, every other row of the setlist
+// is already locked by this save, and the lock comes before the read.
+await seed();
+await db.exec(`
+CREATE TABLE public.lock_seen (n int);
+GRANT INSERT, SELECT ON public.lock_seen TO authenticated;
+CREATE FUNCTION public.t_lock_seen() RETURNS trigger LANGUAGE plpgsql AS $f$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.lock_seen) THEN
+    INSERT INTO public.lock_seen
+    SELECT count(*) FROM public.setlist_songs x
+     WHERE x.setlist_id = OLD.setlist_id AND x.id <> OLD.id AND x.xmax::text = (txid_current() % 4294967296)::text;
+  END IF;
+  RETURN OLD;
+END $f$;
+CREATE TRIGGER t_lock_seen BEFORE DELETE ON public.setlist_songs FOR EACH ROW EXECUTE FUNCTION public.t_lock_seen();
+`);
+await save(ADMIN, [{ song_id: S3 }, { song_id: S2 }, { song_id: S1 }]);
+const locked = (await db.query(`SELECT n FROM public.lock_seen`)).rows[0]?.n;
+ok(locked === 2, `the setlist's rows are locked before they are deleted (${locked ?? 'none'} of 2 others locked)`);
+await db.exec(`DROP TRIGGER t_lock_seen ON public.setlist_songs; DROP FUNCTION public.t_lock_seen(); DROP TABLE public.lock_seen;`);
+const src = (await db.query(`SELECT prosrc FROM pg_proc WHERE proname = 'bw_save_setlist_songs'`)).rows[0]?.prosrc ?? '';
+const lockAt = src.search(/FROM\s+public\.setlist_songs[^;]*FOR\s+UPDATE/i);
+const readAt = src.search(/INTO\s+v_prev/i);
+ok(lockAt >= 0 && readAt > lockAt, 'the lock is taken before the rows are read for the copy');
+
 // Older builds: their own delete + insert keeps working for admins, not for members.
 await seed();
 await asCommit(ADMIN, async () => {
@@ -191,6 +221,27 @@ const memberOld = await as(MEMBER, async () => {
   return d.rows.length;
 });
 ok(memberOld === 0, 'old builds: a member still cannot delete rows (074)');
+
+// Round 2: on a database without 172 the migration stops with a clear
+// message, instead of a function that fails on every save (42703).
+{
+  const bare = new PGlite();
+  await bare.exec(`
+CREATE ROLE anon; CREATE ROLE authenticated;
+CREATE SCHEMA auth;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text);
+CREATE TABLE public.setlists (id uuid PRIMARY KEY, band_id uuid NOT NULL, name text NOT NULL, song_count int DEFAULT 0, updated_at timestamptz);
+CREATE TABLE public.setlist_songs (id uuid PRIMARY KEY, setlist_id uuid, song_id uuid, position int, set_number int, notes text);
+CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT NULL) RETURNS boolean LANGUAGE sql AS $f$ SELECT false $f$;
+`);
+  let refused = null;
+  try { await bare.exec(readFileSync(MIG, 'utf8')); } catch (e) { refused = e.message; }
+  ok(!!refused && /172/.test(refused), `without 172 (setlist_songs.vocal_parts) the migration stops and says so (${refused ?? 'it ran'})`);
+  if (refused) await bare.exec('ROLLBACK');
+  const made = (await bare.query(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'bw_save_setlist_songs'`)).rows[0].n;
+  ok(made === 0, 'and leaves no function behind');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

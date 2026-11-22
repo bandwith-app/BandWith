@@ -515,14 +515,16 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
 
   // ── Setlist Editor Logic ──
 
-  // The setlist whose load is awaited, and the one the editor holds now. On
-  // iPad / Duo the list stays next to the editor: tapping A then B must never
-  // let A's late answer fill B's editor, or Save would write A over B (audit 09 #4).
-  const editorRequestRef = useRef<string | null>(null);
+  // The load awaited now (a number per tap, not the setlist id), and the
+  // setlist the editor holds. On iPad / Duo the list stays next to the
+  // editor: tapping A then B must never let A's late answer fill B's editor,
+  // or Save would write A over B (audit 09 #4); and A, B, A again must never
+  // let the first A answer replace what the user typed after the second.
+  const editorRequestRef = useRef(0);
   const [editorLoadedId, setEditorLoadedId] = useState<string | null>(null);
 
   const openSetlistEditor = useCallback(async (setlistId: string) => {
-    editorRequestRef.current = setlistId;
+    const request = ++editorRequestRef.current;
     setEditorLoadedId(null);
     setEditingSetlistId(setlistId);
     setSetlistEditorLoading(true);
@@ -536,8 +538,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setEditorBaseline(null);
 
     const { data, error } = await getSetlist(setlistId);
-    // Another setlist was opened (or the editor closed) meanwhile: drop this answer.
-    if (editorRequestRef.current !== setlistId) return;
+    // Opened again (this or another setlist), or closed, meanwhile: drop this answer.
+    if (editorRequestRef.current !== request) return;
     if (data && data.id && data.id !== setlistId) return;
     if (data) {
       setEditorLoadedId(setlistId);
@@ -590,7 +592,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   };
 
   const closeSetlistEditor = () => {
-    editorRequestRef.current = null;
+    editorRequestRef.current += 1;
     setEditorLoadedId(null);
     setEditingSetlistId(null);
     setSetlistEditorSearch(false);

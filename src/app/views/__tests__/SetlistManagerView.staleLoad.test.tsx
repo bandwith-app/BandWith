@@ -26,7 +26,9 @@ const setlist = (id: string, name: string, songId: string) => ({
   songs: [{ id: `row-${id}`, setlist_id: id, song_id: songId, position: 1, set_number: 1 }],
 });
 type Load = { data: ReturnType<typeof setlist>; error: null };
-const pending = new Map<string, (v: Load) => void>();
+// Every load still waiting for its answer, per setlist, oldest first.
+const pending = new Map<string, ((v: Load) => void)[]>();
+const answer = (id: string, n: number, v: Load) => pending.get(id)![n](v);
 const svc = vi.hoisted(() => ({ replaceSetlistSongs: vi.fn(async () => ({ error: null, previous: [] })) }));
 vi.mock('@/lib/services/songs', () => ({
   getSongs: vi.fn(async () => ({ data: songs, error: null })),
@@ -37,7 +39,7 @@ vi.mock('@/lib/services/songs', () => ({
     ],
     error: null,
   })),
-  getSetlist: vi.fn((id: string) => new Promise<Load>((resolve) => pending.set(id, resolve))),
+  getSetlist: vi.fn((id: string) => new Promise<Load>((resolve) => pending.set(id, [...(pending.get(id) ?? []), resolve]))),
   createSong: vi.fn(), deleteSong: vi.fn(), updateSong: vi.fn(),
   createSetlist: vi.fn(), updateSetlist: vi.fn(), deleteSetlist: vi.fn(),
   replaceSetlistSongs: svc.replaceSetlistSongs, seedRepertoireSongs: vi.fn(), bulkCreateSongs: vi.fn(),
@@ -64,8 +66,8 @@ describe('SetlistManagerView: a slow load never lands on another setlist', () =>
     fireEvent.click(await screen.findByText('Brooklyn Wedding'));
     await waitFor(() => expect(pending.size).toBe(2));
 
-    await act(async () => pending.get('sl-b')!({ data: setlist('sl-b', 'Brooklyn Wedding', 'song-b'), error: null }));
-    await act(async () => pending.get('sl-a')!({ data: setlist('sl-a', 'Rooftop Session', 'song-a'), error: null }));
+    await act(async () => answer('sl-b', 0, { data: setlist('sl-b', 'Brooklyn Wedding', 'song-b'), error: null }));
+    await act(async () => answer('sl-a', 0, { data: setlist('sl-a', 'Rooftop Session', 'song-a'), error: null }));
 
     const name = (await screen.findByDisplayValue(/Brooklyn Wedding|Rooftop Session/)) as HTMLInputElement;
     expect(name.value).toBe('Brooklyn Wedding');
@@ -74,5 +76,29 @@ describe('SetlistManagerView: a slow load never lands on another setlist', () =>
     fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
     await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalled());
     expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-b', [{ song_id: 'song-b', set_number: 1 }], { name: 'Brooklyn Wedding' });
+  });
+
+  // Round 2 (Codex B5): A, then B, then A again. The first A answer arrives
+  // last, after the second one and after the user started editing.
+  it('A, B, A again: the first A answer, arriving last, never replaces the edits', async () => {
+    svc.replaceSetlistSongs.mockClear();
+    render(<SetlistManagerView onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^setlists/i }));
+    fireEvent.click(await screen.findByText('Rooftop Session'));
+    fireEvent.click(await screen.findByText('Brooklyn Wedding'));
+    fireEvent.click((await screen.findAllByText('Rooftop Session'))[0]);
+    await waitFor(() => expect(pending.get('sl-a')?.length).toBe(2));
+
+    await act(async () => answer('sl-a', 1, { data: setlist('sl-a', 'Rooftop Session', 'song-a'), error: null }));
+    const name = (await screen.findByDisplayValue('Rooftop Session')) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'Rooftop Session · Saturday' } });
+    await act(async () => answer('sl-b', 0, { data: setlist('sl-b', 'Brooklyn Wedding', 'song-b'), error: null }));
+    // The old answer: the setlist before the user's edit.
+    await act(async () => answer('sl-a', 0, { data: setlist('sl-a', 'Rooftop Session', 'song-b'), error: null }));
+
+    expect((screen.getByDisplayValue(/Rooftop Session/) as HTMLInputElement).value).toBe('Rooftop Session · Saturday');
+    fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalled());
+    expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-a', [{ song_id: 'song-a', set_number: 1 }], { name: 'Rooftop Session · Saturday' });
   });
 });

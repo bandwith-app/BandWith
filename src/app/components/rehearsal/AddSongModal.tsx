@@ -20,7 +20,7 @@ import {
 import { IconButton, NavBackButton, PillButton, PillField, Selector, FormError } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
 import { cn } from '@/app/components/ui/utils';
-import { createSong, updateSong, type Song } from '@/lib/services/songs';
+import { createSong, saveSongLyricsIfUnchanged, updateSong, type Song } from '@/lib/services/songs';
 import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, savedLyricsLength, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
 import { UserError, userMessage } from '@/lib/userError';
 import {
@@ -131,6 +131,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const successTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The song as the form was filled from it (edit): only changes are saved. */
   const openedRef = useRef<SongFormValues | null>(null);
+  /** songs.lyrics exactly as stored when the form opened: lyrics are written only over it (189). */
+  const storedLyricsRef = useRef<string | null>(null);
   /** Title of the same song already in the library (asked once before adding a copy). */
   const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
@@ -159,6 +161,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setExistingAudio(song.audio_url || undefined);
     setExistingChart(song.chart_url || undefined);
     setChartUrl(song.chart_url && !isStoredSongFile(song.chart_url) ? song.chart_url : '');
+    storedLyricsRef.current = song.lyrics ?? null;
     openedRef.current = {
       title: song.title || '',
       artist: song.artist || '',
@@ -265,9 +268,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       setError(t('Song title is required'));
       return;
     }
+    // Edit: lyrics the user didn't touch are not written at all (no tidy-up
+    // over a bandmate's newer version, no limit for a title change).
+    const openedValues = isEdit && song ? openedRef.current : null;
+    const finalLyrics = openedValues && lyrics === openedValues.lyrics ? openedValues.lyrics : normalizeLyrics(lyrics);
+    const writesLyrics = openedValues ? 'lyrics' in songUpdatePayload(openedValues, { ...openedValues, lyrics: finalLyrics }) : true;
     // Never cut on save (audit 09 #7): too long is said here, the whole text stays in the field.
-    const finalLyrics = normalizeLyrics(lyrics);
-    if (lyricsTooLong(finalLyrics)) {
+    if (writesLyrics && lyricsTooLong(finalLyrics)) {
       setStep('extras');
       setError(lyricsTooLongText(savedLyricsLength(finalLyrics)));
       return;
@@ -332,7 +339,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         youtubeUrl: youtube ?? null,
         notes: noteText,
         // One format for the band: section names and chords tidied on save.
-        lyrics: normalizeLyrics(lyrics),
+        lyrics: finalLyrics,
         bpm,
         key,
         durationSeconds: mins * 60 + secs,
@@ -347,8 +354,23 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         const opened = openedRef.current ?? values;
         const changes = songUpdatePayload(opened, values);
         if (Object.keys(changes).length > 0) {
-          const { error: songError } = await updateSong(song.id, changes);
-          if (songError) throw songError;
+          const { lyrics: newLyrics, ...rest } = changes;
+          if ('lyrics' in changes) {
+            // Written only over the lyrics this form opened (189): a
+            // bandmate's chords or verse saved meanwhile are never erased.
+            const saved = await saveSongLyricsIfUnchanged(song.id, newLyrics ?? null, storedLyricsRef.current);
+            if (saved.error) throw saved.error;
+            if (saved.conflict !== undefined) {
+              throw new UserError(t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.'));
+            }
+            storedLyricsRef.current = newLyrics ?? null;
+            // Saved: a retry after a failure below doesn't write them again.
+            openedRef.current = { ...opened, lyrics };
+          }
+          if (Object.keys(rest).length > 0) {
+            const { error: songError } = await updateSong(song.id, rest);
+            if (songError) throw songError;
+          }
           replaced = replacedFiles(opened, changes);
           // One push to the band: "Ana changed: key, tempo" (107).
           void notifySongUpdated(song.id, songFieldsChanged(changes as Record<string, unknown>));
