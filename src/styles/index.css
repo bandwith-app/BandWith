@@ -815,3 +815,59 @@ html[data-keyboard="open"] .bw-poll-cta {
     height: 44px !important;
   }
 }
+
+/* ── Voice parts in the lyrics (plan "live offline & tempo" §5) ─────────────
+   Shape + colour, never colour alone (sunlight, dark, colour-blind players):
+   second voice underlined, backing italic with a bar on the left and softer,
+   all bold, spoken small caps and grey. Stage, Song only and the floor wedge
+   are always black: they take the dark colours whatever the app theme. */
+:root {
+  --voice-v2: #0147ff;
+  --voice-bv: #c2004e;
+}
+.dark,
+.bw-stage,
+.bw-song-only,
+.bg-black,
+.bg-sheet {
+  --voice-v2: #8aa8ff;
+  --voice-bv: #ff4d8f;
+}
+/* The word under a chord sits in its own box (LyricsViewer ChordedText): it draws the underline itself. */
+.bw-voice-v2,
+.bw-voice-v2 .bw-chord-word {
+  text-decoration-line: underline;
+  text-decoration-color: var(--voice-v2);
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.2em;
+  text-decoration-skip-ink: none;
+}
+.bw-voice-bv {
+  font-style: italic;
+  color: color-mix(in srgb, currentColor 78%, transparent);
+  border-left: 0.18em solid var(--voice-bv);
+  padding-left: 0.4em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+span.bw-voice-bv {
+  margin-left: 0.1em;
+  padding-left: 0.25em;
+}
+.bw-voice-all {
+  font-weight: 800;
+}
+.bw-voice-sp {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, currentColor 62%, transparent);
+}
+/* Chords keep their own look inside any part. */
+:is(.bw-voice-bv, .bw-voice-sp) .bw-chord {
+  font-style: normal;
+  font-variant-caps: normal;
+}
+/* "Highlight my part": the parts I don't sing step back a little. */
+[data-voice-dim='true'] {
+  opacity: 0.5;
+}

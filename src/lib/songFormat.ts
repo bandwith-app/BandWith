@@ -10,6 +10,7 @@ import { isChordToken, parseLyrics, type LyricsSection } from './lyrics';
 import { foldSemitones, parseKey, pitchClass, transposeLyrics, prefersFlats } from './transpose';
 import { instrumentKeys } from './instruments';
 import { chordTokenSymbol } from './musicSymbols';
+import { hasVoiceMarkers, normalizeVoiceLines } from './voiceParts';
 
 // ── Section names ──────────────────────────────────────────────────────────
 
@@ -443,7 +444,9 @@ export function normalizeLyrics(raw: string | null | undefined): string {
       out[i] = `# ${['Verse ' + (n + 1), p.suffix].filter(Boolean).join(' ')}`;
     });
   }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  // Voice parts (§5): one span per line, opening marker before the word's chord.
+  const tidy = hasVoiceMarkers(text) ? normalizeVoiceLines(out) : out;
+  return tidy.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // ── Word by word (chord editor) ────────────────────────────────────────────
@@ -453,11 +456,19 @@ export interface WordChord {
   at: number;
   chord: string;
 }
+/** A voice marker on a word (voiceParts.ts): `tag` 'bv' opens, '/bv' closes; `at` 0…text.length. */
+export interface WordMark {
+  at: number;
+  tag: string;
+}
 export interface LineWord {
+  /** The word as written: no chords, no voice markers. */
   text: string;
   chords: WordChord[];
   /** Whitespace after the word. */
   after: string;
+  /** Voice markers on the word (only when the line has some). */
+  marks?: WordMark[];
 }
 export interface LineModel {
   lead: string;
@@ -467,14 +478,18 @@ export interface LineModel {
 }
 
 /** "[C]Paper boats on the [G]river" → words with their chords. */
+const CHORD_OR_VOICE = /\[([^\]\s]{1,16})\]|\{(\/?)(v2|bv|all|sp)\}/gi;
+
 export function parseLine(line: string): LineModel {
   let plain = '';
   const marks: { at: number; chord: string }[] = [];
+  const voices: { at: number; tag: string }[] = [];
   let last = 0;
-  for (const m of line.matchAll(BRACKET)) {
-    if (!isChordToken(m[1])) continue;
+  for (const m of line.matchAll(CHORD_OR_VOICE)) {
+    if (m[1] !== undefined && !isChordToken(m[1])) continue;
     plain += line.slice(last, m.index);
-    marks.push({ at: plain.length, chord: m[1] });
+    if (m[1] !== undefined) marks.push({ at: plain.length, chord: m[1] });
+    else voices.push({ at: plain.length, tag: `${m[2]}${m[3].toLowerCase()}` });
     last = m.index! + m[0].length;
   }
   plain += line.slice(last);
@@ -506,6 +521,22 @@ export function parseLine(line: string): LineModel {
     const at = Math.max(0, mk.at - starts[wi]);
     words[wi].chords.push({ at, chord: mk.chord });
   }
+  // Voice markers: an opening one goes on the word it starts (or the next),
+  // a closing one on the word it ends (or the one before). Others are dropped.
+  for (const v of voices) {
+    let wi = -1;
+    if (v.tag.startsWith('/')) {
+      for (let k = words.length - 1; k >= 0; k--) if (starts[k] < v.at) {
+        wi = k;
+        break;
+      }
+    } else {
+      wi = words.findIndex((w, k) => v.at < starts[k] + w.text.length);
+    }
+    if (wi < 0) continue;
+    const at = Math.min(words[wi].text.length, Math.max(0, v.at - starts[wi]));
+    (words[wi].marks ??= []).push({ at, tag: v.tag });
+  }
   return { lead, words, tail };
 }
 
@@ -513,13 +544,17 @@ export function parseLine(line: string): LineModel {
 export function serializeLine(model: LineModel): string {
   let out = model.lead;
   model.words.forEach((w) => {
-    const sorted = [...w.chords].sort((a, b) => a.at - b.at);
+    // At one offset: closing markers, then opening ones, then chords ("{/v2}{bv}[Am]ooh").
+    const rank = (x: { tag?: string }) => (x.tag === undefined ? 2 : x.tag.startsWith('/') ? 0 : 1);
+    const events = [
+      ...(w.marks ?? []).map((m) => ({ at: Math.min(m.at, w.text.length), text: `{${m.tag}}`, tag: m.tag })),
+      ...w.chords.map((c) => ({ at: Math.min(c.at, w.text.length), text: `[${c.chord}]`, tag: undefined })),
+    ].sort((a, b) => a.at - b.at || rank(a) - rank(b));
     let s = '';
     let last = 0;
-    for (const c of sorted) {
-      const at = Math.min(c.at, w.text.length);
-      s += w.text.slice(last, at) + `[${c.chord}]`;
-      last = at;
+    for (const e of events) {
+      s += w.text.slice(last, e.at) + e.text;
+      last = e.at;
     }
     out += s + w.text.slice(last) + w.after;
   });
