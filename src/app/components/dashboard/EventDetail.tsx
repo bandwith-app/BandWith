@@ -100,6 +100,7 @@ import {
   rehearsalCadence,
   shortPlace,
 } from '@/app/components/event/format';
+import { liveSongFields } from '@/lib/stageSongs';
 import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
 import { RiderStageContent, RiderStageScreen } from '@/app/components/event/rider/RiderStage';

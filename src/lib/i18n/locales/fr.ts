@@ -4638,6 +4638,20 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} lignes ont une partie vocale. Elles restent sur leurs lignes quand tu modifies les paroles.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Touche un mot pour ajouter un accord ou indiquer qui le chante. Fais glisser un accord pour le déplacer sur un autre mot.",
   "Filled in from each member’s instrument. Change it and save.": "Rempli d’après l’instrument de chaque membre. Modifie-le et enregistre.",
+  "Time signature": "Mesure",
+  "Time signature {time}": "Mesure {time}",
+  "From the chord chart.": "Depuis la grille d’accords.",
+  "Count-in": "Décompte",
+  "1 bar": "1 mesure",
+  "2 bars": "2 mesures",
+  "For slow songs: the first bar counts in half time.": "Pour les morceaux lents : la première mesure compte à mi-temps.",
+  "Pickup": "Levée",
+  "One beat less": "Un temps de moins",
+  "One beat more": "Un temps de plus",
+  "Starts {n} beats early": "Commence {n} temps avant",
+  "Starts on the downbeat": "Commence sur le premier temps",
+  "Played with a backing track": "Joué avec une bande",
+  "No count-in on stage: the track starts the band.": "Pas de décompte sur scène : la bande lance le groupe.",
 };
 
 export default dict;

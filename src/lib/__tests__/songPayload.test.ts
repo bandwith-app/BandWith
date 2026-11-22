@@ -75,3 +75,23 @@ describe('songPayload', () => {
     expect(songIdentity('Superstition', 'Stevie Wonder')).not.toBe(songIdentity('Superstition', 'Beck'));
   });
 });
+
+describe('songPayload: live mode fields (171)', () => {
+  it('a new song at the defaults sends none of them (saves before 171 is applied)', () => {
+    const p = songCreatePayload({ ...opened, timeSignature: '', countInBars: 1, pickupBeats: 0, backingTrack: false });
+    for (const k of ['time_signature', 'count_in_bars', 'pickup_beats', 'backing_track']) expect(p).not.toHaveProperty(k);
+  });
+
+  it('a new song sends the ones set', () => {
+    const p = songCreatePayload({ ...opened, timeSignature: ' 6 / 8 ', countInBars: 2, pickupBeats: 1, backingTrack: true });
+    expect(p).toMatchObject({ time_signature: '6/8', count_in_bars: 2, pickup_beats: 1, backing_track: true });
+  });
+
+  it('an edit sends only what changed, and an unknown time signature as null', () => {
+    const base = { ...opened, timeSignature: '3/4', countInBars: 1, pickupBeats: 0, backingTrack: false };
+    expect(songUpdatePayload(base, { ...base })).toEqual({});
+    expect(songUpdatePayload(base, { ...base, countInBars: 2, timeSignature: 'waltz' })).toEqual({ count_in_bars: 2, time_signature: null });
+    // A form opened without them (older code path) is the same as the defaults.
+    expect(songUpdatePayload(opened, { ...opened, timeSignature: '', countInBars: 1, pickupBeats: 0, backingTrack: false })).toEqual({});
+  });
+});

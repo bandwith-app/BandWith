@@ -44,3 +44,31 @@ describe('stage click', () => {
     expect(beatsInBar(undefined)).toBe(4);
   });
 });
+
+describe('the click in compound and odd meters', () => {
+  it('6/8: ticks at three times the dotted BPM, counted in two', async () => {
+    const { clickForSong } = await import('../stageClick');
+    const { meterOf } = await import('../meter');
+    const c = clickForSong(60, meterOf('6/8'));
+    expect(c).toEqual({ bpm: 180, beats: 6, groups: [3, 3] });
+    const state = { bpm: c.bpm, beats: c.beats, groups: c.groups, bars: null, startAt: 0 };
+    const at = (tick: number) => beatAt(state, tick * (60000 / 180) + 1, 0);
+    expect([0, 1, 2, 3, 4, 5].map((k) => at(k).count)).toEqual([1, 1, 1, 2, 2, 2]);
+    expect([0, 1, 2, 3, 4, 5].map((k) => at(k).onBeat)).toEqual([true, false, false, true, false, false]);
+    expect(at(6).downbeat).toBe(true);
+  });
+
+  it('7/8 grouped 2+2+3; 4/4 unchanged (every tick a beat, no groups)', async () => {
+    const { clickForSong } = await import('../stageClick');
+    const { meterOf } = await import('../meter');
+    expect(clickForSong(120, meterOf('7/8'))).toEqual({ bpm: 240, beats: 7, groups: [2, 2, 3] });
+    expect(clickForSong(96, meterOf('4/4'))).toEqual({ bpm: 96, beats: 4, groups: null });
+  });
+
+  it('accepts groups that add up to the bar, refuses others; tick rates above 300', () => {
+    const base = { seq: 1, from: 'a', on: true, bpm: 360, beats: 12, bars: null, startAt: 1, songId: null };
+    expect(parseClickState({ ...base, groups: [3, 3, 3, 3] })).toMatchObject({ bpm: 360, groups: [3, 3, 3, 3] });
+    expect(parseClickState({ ...base, groups: [3, 3] })).toBeNull();
+    expect(parseClickState({ ...base, bpm: 2000 })).toBeNull();
+  });
+});
