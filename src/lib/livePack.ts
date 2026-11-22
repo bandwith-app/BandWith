@@ -329,3 +329,21 @@ export function legacyPacksFrom<S>(
   }
   return out;
 }
+
+/**
+ * A silent push said an event's setlist or songs changed (migration 170):
+ * `detail.eventId` (iOS native also sets `eventId` on the event itself).
+ */
+export const LIVE_PACK_REFRESH_EVENT = 'bw:live-pack-refresh';
+
+/** About how much the songs take on the device (text, UTF-8-ish). Files are counted apart. */
+export function estimatePackBytes(songs: LiveSong[]): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(songs)).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** "0.1", "2.3": megabytes with one decimal, never 0 (shown as "About {size} MB"). */
+export const packSizeMb = (bytes: number): string => Math.max(0.1, Math.round(bytes / 100_000) / 10).toFixed(1);

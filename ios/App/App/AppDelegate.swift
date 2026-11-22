@@ -75,4 +75,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
     }
 
+    // Silent push (send-push `silent`, plan §3.5): the setlist of a gig this
+    // person keeps offline changed. iOS wakes the app in the background and
+    // the web app refreshes that pack (src/app/hooks/useLivePackPrefetch.ts).
+    // The plugin only sees pushes shown on screen, so this one is forwarded
+    // here; the app gets ~25 s to save it before iOS suspends it again.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard (userInfo["type"] as? String) == "live_pack_refresh",
+              let bridge = (window?.rootViewController as? CAPBridgeViewController)?.bridge else {
+            completionHandler(.noData)
+            return
+        }
+        let eventId = (userInfo["event_id"] as? String) ?? ""
+        let safeId = eventId.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        bridge.triggerWindowJSEvent(eventName: "bw:live-pack-refresh", data: "{\"eventId\":\"\(safeId)\"}")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25) { completionHandler(.newData) }
+    }
+
 }

@@ -1,6 +1,7 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
+import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
 const APNS_TEAM_ID = Deno.env.get('APNS_TEAM_ID');
@@ -33,6 +34,8 @@ interface PushRequest {
   badge?: number;
   sound?: string;
   create_in_app?: boolean; 
+  /** Background wake-up only (live pack refresh, migration 170). Server calls only. */
+  silent?: boolean;
 }
 
 // Pure JS Base64URL encoder to avoid external std library imports
@@ -156,17 +159,19 @@ async function sendToAPNs(
   data?: Record<string, any>,
   badge?: number,
   sound?: string,
-  collapseId?: string
+  collapseId?: string,
+  silent = false
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let jwt = await generateAPNsJWT();
+    const quiet = silent ? silentApns(data ?? {}) : null;
     const alert: Record<string, string> = { title, body };
     if (subtitle) {
       alert.subtitle = subtitle;
     }
     const threadId = pushThreadId(data);
 
-    const apnsPayload = {
+    const apnsPayload = quiet ? quiet.payload : {
       aps: {
         alert,
         // No count known: leave the icon as it is rather than forcing 1.
@@ -192,7 +197,9 @@ async function sendToAPNs(
           'apns-priority': '10',
           'apns-expiration': '0',
           // Was data.tag ("Direct Message", "Gig Alert"): every DM replaced the last one.
-          ...(collapseId ? { 'apns-collapse-id': collapseId } : {}),
+          ...(collapseId && !quiet ? { 'apns-collapse-id': collapseId } : {}),
+          // Silent: background push type, priority 5.
+          ...(quiet ? quiet.headers : {}),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(apnsPayload),
@@ -315,7 +322,8 @@ async function sendToFCM(
   data?: Record<string, any>,
   channelId?: string,
   tag?: string,
-  collapseId?: string
+  collapseId?: string,
+  silent = false
 ): Promise<{ success: boolean; error?: string }> {
   if (!FCM_PROJECT_ID) return { success: false, error: 'FCM not configured' };
   const accessToken = await getFCMAccessToken();
@@ -341,7 +349,7 @@ async function sendToFCM(
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(silent ? { message: silentFcmMessage(deviceToken, data ?? {}) } : {
           message: {
             token: deviceToken,
             notification: { title: displayTitle, body },
@@ -425,8 +433,12 @@ Deno.serve(async (req: Request) => {
       create_in_app
     } = body as PushRequest;
 
-    if (!title || !notificationBody) throw new HttpError(400, 'Missing title or body');
-    if (String(title).length > 200 || String(notificationBody).length > 2000) {
+    if ((body as PushRequest)?.silent === true && caller.kind !== 'service') {
+      throw new HttpError(403, 'Silent pushes come from the server only');
+    }
+    const silent = isSilentRequest(body as PushRequest, caller.kind);
+    if (!silent && (!title || !notificationBody)) throw new HttpError(400, 'Missing title or body');
+    if (String(title ?? '').length > 200 || String(notificationBody ?? '').length > 2000) {
       throw new HttpError(400, 'Title or body too long');
     }
     const requestedIds = (user_ids || (user_id ? [user_id] : [])).slice(0, 200);
@@ -458,7 +470,7 @@ Deno.serve(async (req: Request) => {
       'bandwith_general'
     );
 
-    if (create_in_app !== false) {
+    if (create_in_app !== false && !silent) {
       const chatId = data?.chat_id || data?.chatId;
       
       const notifications = targetUserIds.map(userId => ({
@@ -501,7 +513,7 @@ Deno.serve(async (req: Request) => {
     // used to set everyone's to 1), and the subtitle label is in their language.
     const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
     const badgeByUser = new Map<string, number>();
-    if (badge === undefined) {
+    if (badge === undefined && !silent) {
       await Promise.all(tokenUserIds.map(async (uid) => {
         const { count, error } = await supabase
           .from('notifications')
@@ -512,7 +524,7 @@ Deno.serve(async (req: Request) => {
       }));
     }
     const langByUser = new Map<string, ReturnType<typeof pushLanguage>>();
-    if (effectiveSubtitle) {
+    if (effectiveSubtitle && !silent) {
       const { data: prefs } = await supabase
         .from('profiles')
         .select('id, preferred_language')
@@ -530,13 +542,13 @@ Deno.serve(async (req: Request) => {
         const userSubtitle = localizePushLabel(effectiveSubtitle, langByUser.get(uid) ?? null);
 
         if (platform === 'ios') {
-          const result = await sendToAPNs(deviceToken, title, userSubtitle, notificationBody, data, userBadge, sound, collapseId);
+          const result = await sendToAPNs(deviceToken, title, userSubtitle, notificationBody, data, userBadge, sound, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
           return { token_id: tokenRecord.id, platform, ...result };
         } else if (platform === 'android') {
-          const result = await sendToFCM(deviceToken, title, userSubtitle, notificationBody, data, effectiveChannel, effectiveTag, collapseId);
+          const result = await sendToFCM(deviceToken, title, userSubtitle, notificationBody, data, effectiveChannel, effectiveTag, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }

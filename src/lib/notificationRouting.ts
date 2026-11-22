@@ -6,7 +6,8 @@ import { t } from '@/lib/i18n';
  */
 export type NotificationTarget =
   | { screen: 'chat'; chatId: string }
-  | { screen: 'event'; eventId?: string }
+  // livePack: open its "setlist without signal" consent sheet (170).
+  | { screen: 'event'; eventId?: string; livePack?: true }
   // A rehearsal poll to vote on (its sheet, like the inbox).
   | { screen: 'poll'; pollId: string }
   // quoteId: the quote a client answered on its page (migration 099).
@@ -38,6 +39,8 @@ export function notificationTarget(
     const requestId = str(d.deputy_request_id) || str(d.deputyRequestId);
     return requestId ? { screen: 'deputyGigs', requestId } : { screen: 'deputyGigs' };
   }
+  // The setlist ready for offline (170): the event, with the consent sheet.
+  if (kind === 'live_pack_ready') return eventId ? { screen: 'event', eventId, livePack: true } : { screen: 'event' };
   // Taken off a gig's lineup: it's no longer theirs to open.
   if (kind === 'event_update' && d.kind === 'lineup_removed') return null;
   if (kind === 'chat_message' || kind === 'chat_mention') {

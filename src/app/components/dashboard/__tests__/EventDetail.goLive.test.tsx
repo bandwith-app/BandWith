@@ -84,3 +84,30 @@ describe('EventDetail Go live', () => {
     await waitFor(() => expect(stage()).not.toBeNull());
   });
 });
+
+// The live_pack_ready push (170) opens the event with the consent sheet (plan §3.3).
+describe('EventDetail from the live pack push', () => {
+  const sheet = () => screen.queryByRole('dialog', { name: /Have the setlist with you, even without signal/ });
+  it('opens the offline sheet when the push comes for the gig on screen', async () => {
+    const props = { onClose: vi.fn(), isAdmin: false, currentUserId: 'u-1' };
+    const { rerender } = render(<EventDetail {...props} event={gig('evt-a', 'sl-a')} />);
+    await waitFor(() => expect(screen.queryAllByText('Empire State of Mind').length).toBeGreaterThan(0));
+    expect(sheet()).toBeNull();
+    rerender(<EventDetail {...props} event={gig('evt-a', 'sl-a')} startOnLivePack />);
+    await waitFor(() => expect(sheet()).not.toBeNull());
+    expect(screen.getByRole('button', { name: 'Only this gig' })).toBeTruthy();
+  });
+
+  it('does not ask again when the person already said yes: it just downloads', async () => {
+    localStorage.setItem('bw-live-pack:u-1', JSON.stringify({ auto: true, events: [], wifiOnly: false }));
+    const props = { onClose: vi.fn(), isAdmin: false, currentUserId: 'u-1' };
+    const { rerender } = render(<EventDetail {...props} event={gig('evt-a', 'sl-a')} />);
+    await waitFor(() => expect(screen.queryAllByText('Empire State of Mind').length).toBeGreaterThan(0));
+    rerender(<EventDetail {...props} event={gig('evt-a', 'sl-a')} startOnLivePack />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(sheet()).toBeNull();
+    localStorage.clear();
+  });
+});

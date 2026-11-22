@@ -10,6 +10,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
+import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
 
 // Cache the token to avoid re-registration issues
 let cachedToken: string | null = null;
@@ -306,7 +307,12 @@ export const setupNativePushListeners = (
 
   // Listen for push notifications received while app is in foreground
   PushNotifications.addListener('pushNotificationReceived', async (notification) => {
-    
+    // Silent live pack refresh (170): download the changed setlist, show nothing.
+    if (notification.data?.type === 'live_pack_refresh') {
+      window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: String(notification.data?.event_id || '') } }));
+      return;
+    }
+
     // Check if this is a chat notification for the currently open chat
     const notificationChatId = notification.data?.chatId || notification.data?.chat_id;
     const activeChat = getActiveChat();

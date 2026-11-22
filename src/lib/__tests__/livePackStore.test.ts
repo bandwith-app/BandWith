@@ -38,6 +38,13 @@ vi.mock('../supabase', () => ({
 }));
 // The native apps fetch the gig's Bluetooth key (087).
 vi.mock('../stageBleNative', () => ({ stageBleAvailable: () => true, stageKey: async () => 'KEY-1' }));
+// What the band's admins see (migration 170).
+const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
+vi.mock('../livePackStatus', () => ({
+  reportPackStatus: async (p: { eventId: string; version: string }) => void status.reported.push(`${p.eventId}@${p.version}`),
+  forgetPackStatus: async (_u: string, ids?: string[]) => void status.forgotten.push(...(ids ?? ['*'])),
+  saveProfileChoice: async () => undefined,
+}));
 
 import { getCacheKey, getOfflineItem, setOfflineItem, syncCachedRoles, clearOfflineCache } from '../offline/storage';
 import {
@@ -90,6 +97,8 @@ beforeEach(() => {
   asked.length = 0;
   for (const k of Object.keys(answers)) delete answers[k];
   resetExtrasProbe();
+  status.reported.length = 0;
+  status.forgotten.length = 0;
 });
 
 describe('savePackSongs', () => {
@@ -164,6 +173,26 @@ describe('refreshPack', () => {
     expect(selects[1]).not.toContain('time_signature');
   });
 
+  it('drops only the columns the database lacks: voice parts stay when the tempo ones are missing', async () => {
+    answers.setlist_songs = (q) =>
+      /time_signature|count_in_bars/.test(q.select)
+        ? { data: null, error: { message: `column songs.${q.select.includes('time_signature') ? 'time_signature' : 'count_in_bars'} does not exist`, code: '42703' } }
+        : { data: [row('ss1', 'song1', 'Paper Boats')], error: null };
+    const { rows } = await fetchSetlistRows('s1');
+    expect(rows).toHaveLength(1);
+    const selects = asked.filter((q) => q.table === 'setlist_songs').map((q) => q.select);
+    expect(selects).toHaveLength(3);
+    expect(selects[2]).toContain('vocal_parts');
+    expect(selects[2]).toContain('line_timing');
+    expect(selects[2]).not.toMatch(/time_signature|count_in_bars/);
+  });
+
+  it('tells the admins the full pack is on this device', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    const p = await refreshPack({ userId: me, event: gig() });
+    expect(status.reported).toEqual([`e1@${p?.version}`]);
+  });
+
   it('keeps the songs it had when the setlist cannot be fetched (offline)', async () => {
     await savePackSongs({ userId: me, event: gig(), songs });
     answers.setlist_songs = () => ({ data: null, error: { message: 'Failed to fetch' } });
@@ -197,6 +226,19 @@ describe('runLivePackPrefetch', () => {
     expect((await listPacks(me)).map((p) => p.eventId)).toEqual(['e1']);
     writeChoice(me, { auto: true, events: [], wifiOnly: true });
     expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev('e4', inDays(1))], online: true, onWifi: false })).toBe(0);
+  });
+
+  it('a silent push refreshes a fresh pack anyway; a pack that goes is forgotten on the server', async () => {
+    writeChoice(me, { auto: true, events: [], wifiOnly: false });
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    const events = [ev('e1', inDays(1))];
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true })).toBe(1);
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true })).toBe(0);
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats'), row('ss2', 'song2', 'Harbor Lights')], error: null });
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true, force: ['e1'] })).toBe(1);
+    expect((await readPack(me, 'b1', 'e1'))?.songs).toHaveLength(2);
+    await sweepPacks(me, []);
+    expect(status.forgotten).toEqual(['e1']);
   });
 
   it('"Only this gig": that event only', async () => {

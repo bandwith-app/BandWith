@@ -268,3 +268,14 @@ describe('packRowFromItem', () => {
     });
   });
 });
+
+describe('pack size on the consent sheet', () => {
+  it('counts the songs’ text, shown in MB with one decimal, never 0', async () => {
+    const { estimatePackBytes, packSizeMb } = await import('../livePack');
+    const song = { id: 's', songId: 'x', setNumber: 1, title: 'Empire State of Mind', lyrics: 'x'.repeat(4000) } as never;
+    const bytes = estimatePackBytes([song, song]);
+    expect(bytes).toBeGreaterThan(8000);
+    expect(packSizeMb(bytes)).toBe('0.1');
+    expect(packSizeMb(2_340_000)).toBe('2.3');
+  });
+});

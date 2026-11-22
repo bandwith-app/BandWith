@@ -80,6 +80,10 @@ check (`app.check`) on each screen it reaches.
 | Live sync between two devices: the admin's Next reaches a member following (rehearsal and gig) | `stage-live` | full |
 | Offline (live pack): a gig opened online shows "Offline ready"; with no network it still opens Stage mode with its songs and "Offline · content from …" (admin and member) | `stage-offline` | all |
 | Offline with no pack: Stage mode says the setlist couldn't be loaded | `stage-offline` | all |
+| Offline consent: the "setlist ready without signal" push opens the gig with the sheet (what, where, size); "Only this gig" keeps just that one (member) | `live-pack-consent` | all |
+| Offline consent: "Not now" downloads nothing and is remembered | `live-pack-consent` | full |
+| Offline readiness (admin): "Offline: N of M members ready", the not-ready list, Remind sends one push | `live-pack-consent` | all |
+| Settings › Offline & live: automatic on/off, Wi-Fi only, space used, Delete all with a confirm | `live-pack-consent` | all |
 | Rehearsal session: a running session shows its clock in Live mode and on the rehearsal page; members get no controls; before the start only the admin sees Start rehearsal (Duo Laptop: the floor wedge's clock and Pause) | `rehearsal-session` | all |
 | Rehearsal session: start, pause (clock stands), resume, two songs, End asks first, summary (songs played) saved and on the rehearsal page | `rehearsal-session` | full |
 | Rehearsal session survives closing Live mode and restarting the app | `rehearsal-session` | full |
@@ -194,6 +198,7 @@ matrix before a release.
   own focus scrolling (the suite fires the Keyboard plugin's window events and shrinks the
   viewport, see `support/keyboard.ts`; it does not run the real keyboard; the on-screen keyboard over the main input screens
   runs on emulators, `maestro/flows/keyboard-*.yaml`).
+- **Live pack silent refresh**: a setlist change on the server wakes a phone that keeps the gig offline (APNs background / FCM data push) and its pack updates without a banner; needs migration 170 + send-push deployed and a real device.
 - **Bluetooth stage sync**: two phones offline in Stage mode (gig) or Live mode (rehearsal), synced click.
 - **Native sharing and files**: share sheets (rider PDF, quote), file pickers, camera.
 - **Sign in with Google / Apple and real email links** (the suite only tests the callback
