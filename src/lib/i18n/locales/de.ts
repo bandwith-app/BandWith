@@ -4640,6 +4640,8 @@ const dict: Dictionary = {
   "Filled in from each member’s instrument. Change it and save.": "Ausgefüllt nach dem Instrument jedes Mitglieds. Ändere es und speichere.",
   "New client, new link: the old one no longer works. Send the quote to the new client.": "Neuer Kunde, neuer Link: Der alte funktioniert nicht mehr. Sende das Angebot an den neuen Kunden.",
   "New link for the new client": "Neuer Link für den neuen Kunden",
+  "Previous client": "Vorheriger Kunde",
+  "The quote link changed meanwhile. Close this and open the quote again.": "Der Link des Angebots hat sich inzwischen geändert. Schließe das Angebot und öffne es erneut.",
 };
 
 export default dict;

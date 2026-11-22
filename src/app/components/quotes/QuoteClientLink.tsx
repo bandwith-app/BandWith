@@ -22,6 +22,7 @@ import type { Quote } from '@/app/data/quotes';
 import {
   getQuoteLinkState,
   quoteLinkUrl,
+  recipientChangedAt,
   replyToQuoteClient,
   revokeQuoteLink,
   rotateQuoteLink,
@@ -116,6 +117,7 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     new Date(iso).toLocaleString(intlLocale('en-GB'), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
   const messages = useMemo(() => activity.filter((a) => a.kind === 'client_message' || a.kind === 'band_reply'), [activity]);
+  const changedAt = useMemo(() => recipientChangedAt(activity), [activity]);
   const timeline = useMemo(() => activity.filter((a) => a.kind !== 'client_message' && a.kind !== 'band_reply').slice().reverse(), [activity]);
 
   // An edit the client hasn't been told about: the last "updated" after the last send.
@@ -428,7 +430,14 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
               >
                 {m.body}
                 <span className="block mt-1 bw-label-xs opacity-60">
-                  {(m.kind === 'band_reply' ? t('You') : quote.clientName || t('Client')) + ' · ' + when(m.created_at)}
+                  {(m.kind === 'band_reply'
+                    ? t('You')
+                    : // 183: written before the quote went to the current client.
+                      changedAt && m.created_at < changedAt
+                      ? t('Previous client')
+                      : quote.clientName || t('Client')) +
+                    ' · ' +
+                    when(m.created_at)}
                 </span>
               </li>
             ))}

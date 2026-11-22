@@ -18,30 +18,40 @@
 --    - puts the quote's own pipeline status (sent / viewed / negotiating /
 --      declined) back to draft, so the app offers "Send to client";
 --    - records link_rotated with body 'recipient_changed'.
+--    The summary goes too (snapshot NULL: the page says the link is not
+--    available until B's version is published): Copy, SMS and WhatsApp
+--    hand the new token over before publishing finishes, which can fail.
 --    The recipient changed when (names and emails compared without case
---    and extra spaces, phones as digits):
---    a. an email or a phone on file is replaced or cleared. Two numbers
---       are one when equal, or when the shorter has 9 digits or more and
---       the longer only adds a country code (up to 3 digits; a leading 00
---       ignored): "917-555-0101" = "+1 917 555 0101", but "555-0101" is
---       not "+1 646 555 0101";
---    b. the name changes and a contact is added: older builds leave a
---       cleared field out of the UPDATE (supabase-js drops undefined), so
---       "A's email kept, B's phone added, B's name" is B;
---    c. the name changes on a quote with no email and no phone (sent with
---       Copy link: the name is all there is).
---    A name fix next to an unchanged contact, a contact added under the
---    same name, a never-sent (draft) link and an accepted link are left
---    alone. While the link waits for the new client, a save from a stale
---    screen cannot bring back the old client's viewed / negotiating /
---    declined (an answer recorded in the app sets response_type and still
---    counts). A trigger, not the publish RPC: every way of saving the
---    quote (old builds, offline queue, any screen) is covered and the RPC
---    signatures do not change.
+--    and extra spaces):
+--    a. an email or a phone on file is replaced or cleared. Two phones are
+--       one when they are the same number with the same country code
+--       (bw_same_phone): "+1 9175550101" is not "+91 9175550101", and a
+--       number without its country code is not one with it;
+--    b. the name changes and a contact is added;
+--    c. no contact on file (sent with Copy link): the name changes, or a
+--       contact is given to a quote with no name (saved as "Client").
+--    Older builds leave a cleared email or phone out of a save (supabase-js
+--    drops undefined): a save that writes the client name but not the
+--    email clears the email, the same for the phone, so A's address never
+--    stays on B's quote (three UPDATE OF triggers tell which columns the
+--    save wrote). A name fix next to an unchanged contact and a contact
+--    added under the same name are left alone. A link never recorded as
+--    sent gets a new token quietly (its token may be out: the send can
+--    fail after the copy). An accepted link keeps the acceptance and gets
+--    a new token too: the balance emails go to the new address, which gets
+--    its own conversation, no PDF of the signer and no signature.
+--    While the link waits for the new client, a full save from a screen
+--    opened before the change (the old client's viewed / negotiating /
+--    declined written back, no answer recorded) is refused with an error;
+--    a status change alone goes through. A trigger, not the publish RPC:
+--    every way of saving the quote (old builds, any screen) is covered.
 -- 2. bw_quote_link_publish (105's body): the key named in its ON CONFLICT
 --    (the draft branch failed with 42702, audit #10), and the new
 --    recipient's first publish is always a new version, even with the same
 --    summary: the version A saw, accepted or declined stays as it was.
+--    A new optional p_token: a publish meant for a link replaced since
+--    (a slow PDF upload for A landing after the quote went to B) writes
+--    nothing and fails (BW_LINK_CHANGED). Older builds don't send it.
 -- 3. Consent per version (#9): bw_quote_link_respond (120) made the
 --    version optional, so an acceptance without one landed on whatever
 --    version was current. Now 'accept' needs the exact version the client
@@ -59,11 +69,15 @@
 --    the amount asked). bw_quote_link_view gives them as
 --    deposit_paid_amount / deposit_paid_currency while the gig's deposit
 --    is paid at that amount.
+-- 6. Lock order: the functions that write the link, then the quote (seen,
+--    message, respond, mark sent) lock the quote first, as a save of the
+--    quote does, so the two cannot deadlock.
 --
 -- bw_quote_link_view is 168's body plus the conversation start, the
 -- "updated" rule for a new recipient, the accepted client name and the
 -- deposit amount; bw_quote_link_respond is 120's body plus the version
--- check. No new anon grant: the trigger functions are not callable by anon
+-- check; seen, message and mark sent are 099's / 161's plus one lock. No
+-- new anon grant: the trigger and helper functions are not callable by anon
 -- or authenticated. Safe to run more than once.
 -- ====================================================================
 
@@ -82,25 +96,73 @@ ALTER TABLE public.quote_links
   ADD COLUMN IF NOT EXISTS deposit_received_amount numeric,
   ADD COLUMN IF NOT EXISTS deposit_received_currency text;
 
--- Two phone numbers are one person's: equal digits, or the shorter has 9
--- digits or more and the longer only adds a country code (up to 3 digits).
--- A leading 00 (international prefix) is ignored.
+-- Two phone numbers are one person's when they are the same number with
+-- the same country code: "+1 917 555 0101" = "001 (917) 555-0101", but
+-- "+1 9175550101" is not "+91 9175550101", and a number written without
+-- its country code is not the same as one written with it (a leading +
+-- or 00 is the country code; nothing is guessed).
 CREATE OR REPLACE FUNCTION public.bw_same_phone(p_a text, p_b text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 SET search_path = public
 AS $$
-  SELECT CASE
-    WHEN a = b THEN true
-    WHEN least(length(a), length(b)) < 9 OR abs(length(a) - length(b)) > 3 THEN false
-    WHEN length(a) > length(b) THEN right(a, length(b)) = b
-    ELSE right(b, length(a)) = a
-  END
-  FROM (SELECT regexp_replace(regexp_replace(coalesce(p_a, ''), '\D', '', 'g'), '^00', '') AS a,
-               regexp_replace(regexp_replace(coalesce(p_b, ''), '\D', '', 'g'), '^00', '') AS b) d;
+  SELECT a = b
+  FROM (SELECT CASE WHEN btrim(coalesce(p_a, '')) ~ '^(\+|00)'
+                    THEN '+' || regexp_replace(regexp_replace(btrim(p_a), '\D', '', 'g'), '^00', '')
+                    ELSE regexp_replace(coalesce(p_a, ''), '\D', '', 'g') END AS a,
+               CASE WHEN btrim(coalesce(p_b, '')) ~ '^(\+|00)'
+                    THEN '+' || regexp_replace(regexp_replace(btrim(p_b), '\D', '', 'g'), '^00', '')
+                    ELSE regexp_replace(coalesce(p_b, ''), '\D', '', 'g') END AS b) d;
 $$;
 REVOKE ALL ON FUNCTION public.bw_same_phone(text, text) FROM PUBLIC, anon, authenticated;
+
+-- Which client fields an UPDATE writes. "UPDATE OF col" fires only when the
+-- column is in the UPDATE's SET list (whatever its value), so these three
+-- tell the recipient trigger (it runs after them: triggers of one event run
+-- in name order) that the save wrote the name, the email, the phone. Every
+-- app build writes client_name on each save of the wizard; older builds
+-- leave an empty email or phone out (supabase-js drops undefined).
+CREATE OR REPLACE FUNCTION public.bw_trg_quote_field_listed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM set_config('bw.quote_listed_' || TG_ARGV[0], NEW.id::text, true);
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_quote_field_listed() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_quote_0_listed_name ON public.quotes;
+CREATE TRIGGER bw_quote_0_listed_name BEFORE UPDATE OF client_name ON public.quotes
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_field_listed('name');
+DROP TRIGGER IF EXISTS bw_quote_0_listed_email ON public.quotes;
+CREATE TRIGGER bw_quote_0_listed_email BEFORE UPDATE OF client_email ON public.quotes
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_field_listed('email');
+DROP TRIGGER IF EXISTS bw_quote_0_listed_phone ON public.quotes;
+CREATE TRIGGER bw_quote_0_listed_phone BEFORE UPDATE OF client_phone ON public.quotes
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_field_listed('phone');
+
+-- The quote row of a link, locked: the functions that write a link and then
+-- the quote take the quote first, as a save of the quote does (its trigger
+-- below locks the link), so the two never wait on each other (deadlock).
+CREATE OR REPLACE FUNCTION public.bw_quote_lock_for_token(p_token text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN; END IF;
+  PERFORM 1 FROM public.quotes q
+   WHERE q.id = (SELECT l.quote_id FROM public.quote_links l WHERE l.token = p_token)
+     FOR UPDATE;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_lock_for_token(text) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_recipient_changed()
 RETURNS trigger
@@ -109,49 +171,108 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_old_name text := lower(regexp_replace(btrim(coalesce(OLD.client_name, '')), '\s+', ' ', 'g'));
-  v_new_name text := lower(regexp_replace(btrim(coalesce(NEW.client_name, '')), '\s+', ' ', 'g'));
-  v_old_email text := lower(btrim(coalesce(OLD.client_email, '')));
-  v_new_email text := lower(btrim(coalesce(NEW.client_email, '')));
-  v_old_phone text := regexp_replace(coalesce(OLD.client_phone, ''), '\D', '', 'g');
-  v_new_phone text := regexp_replace(coalesce(NEW.client_phone, ''), '\D', '', 'g');
+  v_id text := NEW.id::text;
+  -- A save of the whole quote (the wizard): it writes the client name.
+  v_save boolean := coalesce(current_setting('bw.quote_listed_name', true), '') = v_id;
+  v_email_listed boolean := coalesce(current_setting('bw.quote_listed_email', true), '') = v_id;
+  v_phone_listed boolean := coalesce(current_setting('bw.quote_listed_phone', true), '') = v_id;
+  v_old_name text;
+  v_new_name text;
+  v_old_email text;
+  v_new_email text;
+  v_old_phone text;
+  v_new_phone text;
   v_renamed boolean;
+  v_no_name boolean;
   v_new_recipient boolean;
   v_link public.quote_links;
 BEGIN
+  PERFORM set_config('bw.quote_listed_name', '', true);
+  PERFORM set_config('bw.quote_listed_email', '', true);
+  PERFORM set_config('bw.quote_listed_phone', '', true);
+  -- An older build's save leaves a cleared email or phone out: the form has
+  -- it empty, so it is cleared here too (as newer builds send it), and the
+  -- old client's address never stays on the new client's quote.
+  IF v_save AND NOT v_email_listed THEN NEW.client_email := NULL; END IF;
+  IF v_save AND NOT v_phone_listed THEN NEW.client_phone := NULL; END IF;
+  IF OLD.client_name IS NOT DISTINCT FROM NEW.client_name AND OLD.client_email IS NOT DISTINCT FROM NEW.client_email
+     AND OLD.client_phone IS NOT DISTINCT FROM NEW.client_phone AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+  END IF;
+
+  v_old_name := lower(regexp_replace(btrim(coalesce(OLD.client_name, '')), '\s+', ' ', 'g'));
+  v_new_name := lower(regexp_replace(btrim(coalesce(NEW.client_name, '')), '\s+', ' ', 'g'));
+  v_old_email := lower(btrim(coalesce(OLD.client_email, '')));
+  v_new_email := lower(btrim(coalesce(NEW.client_email, '')));
+  v_old_phone := regexp_replace(coalesce(OLD.client_phone, ''), '\D', '', 'g');
+  v_new_phone := regexp_replace(coalesce(NEW.client_phone, ''), '\D', '', 'g');
   v_renamed := v_new_name <> v_old_name;
+  -- The wizard saves an empty name as "Client": that is no name.
+  v_no_name := v_old_name IN ('', 'client');
   v_new_recipient :=
     -- a. a contact on file replaced or cleared
     (v_old_email <> '' AND v_new_email <> v_old_email)
     OR (v_old_phone <> '' AND NOT public.bw_same_phone(OLD.client_phone, NEW.client_phone))
-    -- b. another name and a contact added (older builds drop a cleared field)
+    -- b. another name and a contact added
     OR (v_renamed AND ((v_old_email = '' AND v_new_email <> '') OR (v_old_phone = '' AND v_new_phone <> '')))
-    -- c. another name, no contact on file (Copy link)
-    OR (v_renamed AND v_old_email = '' AND v_old_phone = '');
+    -- c. no contact on file (sent with Copy link): another name, or a
+    --    contact given to a quote with no name (whose link it is, unknown)
+    OR (v_old_email = '' AND v_old_phone = ''
+        AND (v_renamed OR (v_no_name AND (v_new_email <> '' OR v_new_phone <> ''))));
 
   IF NOT v_new_recipient THEN
-    -- Waiting for the new client: a stale screen's generic save (no answer
-    -- recorded, response_type untouched) does not bring back the old
-    -- client's status. "Sent" stays possible (the PDF shared as a file).
-    IF lower(coalesce(OLD.status, '')) = 'draft'
+    -- Waiting for the new client: a save from a screen opened before the
+    -- change (it writes back the old client's viewed / negotiating /
+    -- declined, with no answer recorded) is refused, with an error the app
+    -- shows; the screen opened again has the quote as it is now. A status
+    -- change alone (no full save) is the band's own and goes through, and
+    -- "sent" stays possible (the PDF shared as a file).
+    IF v_save
+       AND lower(coalesce(OLD.status, '')) = 'draft'
        AND lower(coalesce(NEW.status, '')) IN ('viewed', 'negotiating', 'declined')
        AND NEW.response_type IS NOT DISTINCT FROM OLD.response_type
        AND EXISTS (SELECT 1 FROM public.quote_links l
                     WHERE l.quote_id = NEW.id AND l.status = 'draft' AND l.recipient_changed_at IS NOT NULL) THEN
-      NEW.status := OLD.status;
+      RAISE EXCEPTION 'This quote changed while it was open. Close it and open it again.' USING ERRCODE = '40001';
     END IF;
     RETURN NEW;
   END IF;
 
   SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = NEW.id FOR UPDATE;
-  -- Never sent (nobody has the link) or already accepted (the acceptance stays).
-  IF v_link.id IS NULL OR v_link.status IN ('draft', 'accepted') THEN RETURN NEW; END IF;
+  IF v_link.id IS NULL THEN RETURN NEW; END IF;
+  IF v_link.status = 'draft' THEN
+    -- Never recorded as sent, but its token may be out: Copy, SMS and
+    -- WhatsApp hand it over before the send is recorded, which can fail.
+    -- A new token, quietly (nothing was sent, nothing to tell).
+    UPDATE public.quote_links l
+       SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), updated_at = now()
+     WHERE l.id = v_link.id;
+    RETURN NEW;
+  END IF;
 
+  IF v_link.status = 'accepted' THEN
+    -- The acceptance stays (the deal is done), but the old address no
+    -- longer holds the link the balance emails go out with: a new token,
+    -- the new addressee's conversation from now, and no PDF of the signer
+    -- (the version history keeps it). The page shows them no signature.
+    UPDATE public.quote_links l
+       SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+           pdf_url = NULL, pdf_version = NULL, accepted_pdf_url = NULL,
+           recipient_changed_at = now(), updated_at = now()
+     WHERE l.id = v_link.id;
+    INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
+    VALUES (NEW.id, v_link.band_id, 'link_rotated', 'recipient_changed', v_link.version, auth.uid());
+    RETURN NEW;
+  END IF;
+
+  -- The summary goes too: the new token can be handed out (Copy, SMS,
+  -- WhatsApp) before the new client's version is published, and until it
+  -- is the page says the link is not available, never the old terms.
   UPDATE public.quote_links l
      SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
          status = 'draft', first_viewed_at = NULL, last_viewed_at = NULL,
          responded_at = NULL, accepted_name = NULL, decline_reason = NULL,
-         pdf_url = NULL, pdf_version = NULL,
+         snapshot = NULL, pdf_url = NULL, pdf_version = NULL,
          recipient_changed_at = now(), updated_at = now()
    WHERE l.id = v_link.id;
   INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
@@ -171,12 +292,11 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_trg_quote_recipient_changed() FROM PUBLIC, anon, authenticated;
 
+-- Every update (no column list): it also clears what the three above noted.
 DROP TRIGGER IF EXISTS bw_quote_recipient_changed ON public.quotes;
 CREATE TRIGGER bw_quote_recipient_changed
-  BEFORE UPDATE OF client_name, client_email, client_phone, status ON public.quotes
+  BEFORE UPDATE ON public.quotes
   FOR EACH ROW
-  WHEN (OLD.client_name IS DISTINCT FROM NEW.client_name OR OLD.client_email IS DISTINCT FROM NEW.client_email
-        OR OLD.client_phone IS DISTINCT FROM NEW.client_phone OR OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION public.bw_trg_quote_recipient_changed();
 
 -- --------------------------------------------------------------------
@@ -215,18 +335,28 @@ UPDATE public.quote_links l
 -- 2. Publish
 -- --------------------------------------------------------------------
 
--- 105's body with two changes:
+-- 105's body with three changes:
 -- - the draft branch failed: its ON CONFLICT (quote_id, version) is
 --   ambiguous with the function's output column "version" (42702, audit
 --   #10); the key is named instead;
 -- - a new recipient's first publish is always a new version, even with the
 --   same summary, so the version the old client saw (accepted, declined)
---   is never overwritten; later drafts before the send replace that one.
+--   is never overwritten; later drafts before the send replace that one;
+-- - p_token (new, optional): the link the caller is publishing for, as it
+--   read it. When the link has another token now (the client changed, or
+--   "New link"), nothing is written and the call fails (P0001 BW_LINK_CHANGED): a
+--   publish that started for the old client (a slow PDF upload, a screen
+--   left open on another device) never lands on the new client's link.
+--   Older builds don't send it and publish as before. The function is
+--   dropped and created again with the new parameter (a default, so the
+--   four named arguments of older builds still find it); same grants.
+DROP FUNCTION IF EXISTS public.bw_quote_link_publish(uuid, jsonb, text, text);
 CREATE OR REPLACE FUNCTION public.bw_quote_link_publish(
   p_quote_id uuid,
   p_snapshot jsonb,
   p_lang text DEFAULT NULL,
-  p_pdf_url text DEFAULT NULL
+  p_pdf_url text DEFAULT NULL,
+  p_token text DEFAULT NULL
 )
 RETURNS TABLE (token text, status text, version int, revoked boolean)
 LANGUAGE plpgsql
@@ -254,6 +384,10 @@ BEGIN
   VALUES (p_quote_id, v_band, coalesce(v_lang, 'en'))
   ON CONFLICT (quote_id) DO NOTHING;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  -- 183: published for a link that has been replaced since.
+  IF p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token THEN
+    RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = 'P0001';
+  END IF;
 
   -- 183: back to draft for a new recipient, and nothing published for them yet.
   v_fresh := v_link.status = 'draft' AND v_link.recipient_changed_at IS NOT NULL
@@ -296,11 +430,12 @@ BEGIN
   RETURN QUERY SELECT v_link.token, v_link.status, v_link.version, v_link.revoked_at IS NOT NULL;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) TO authenticated;
 
 -- --------------------------------------------------------------------
--- 3. Accept needs the version the client saw (120 + one check)
+-- 3. Accept needs the version the client saw (120 + one check, and the
+--    quote locked before the link)
 -- --------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.bw_quote_link_respond(
@@ -331,6 +466,8 @@ BEGIN
   IF v_action = 'accept' AND p_version IS NULL THEN
     RAISE EXCEPTION 'The version shown is needed to accept' USING ERRCODE = '22023';
   END IF;
+  -- 183: the quote first, then the link (the order of a save of the quote).
+  PERFORM public.bw_quote_lock_for_token(p_token);
   v_view := public.bw_quote_link_view(p_token);
   IF v_view IS NULL THEN RETURN NULL; END IF;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
@@ -505,6 +642,7 @@ DECLARE
   v_gig_deposit_amount numeric;
   v_show_balance boolean;
   v_show_deposit boolean;
+  v_signer boolean;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token;
@@ -523,6 +661,9 @@ BEGIN
       INTO v_gig_status, v_gig_paid, v_gig_deposit, v_gig_deposit_amount
       FROM public.events e WHERE e.id = public.bw_quote_gig_id(v_link.quote_id);
   END IF;
+  -- 183: the link is the signer's (not given to another client since the acceptance).
+  v_signer := v_link.status = 'accepted'
+              AND (v_link.recipient_changed_at IS NULL OR v_link.recipient_changed_at <= v_link.responded_at);
   v_show_balance := v_link.status = 'accepted' AND v_link.balance IS NOT NULL AND coalesce(v_gig_status, '') <> 'cancelled';
   v_show_deposit := v_link.status = 'accepted' AND coalesce(v_gig_deposit, false)
                     AND v_link.deposit_received_amount > 0 AND v_gig_deposit_amount = v_link.deposit_received_amount;
@@ -531,8 +672,9 @@ BEGIN
     'status', v_link.status,
     'lang', v_link.lang,
     'band_name', v_band,
-    -- 183: an accepted link keeps the name it was accepted under.
-    'client_name', CASE WHEN v_link.status = 'accepted' THEN coalesce(v_link.accepted_client_name, v_client) ELSE v_client END,
+    -- 183: an accepted link keeps the name it was accepted under; given to
+    -- another client since, it shows theirs.
+    'client_name', CASE WHEN v_signer THEN coalesce(v_link.accepted_client_name, v_client) ELSE v_client END,
     -- 168: how to pay the deposit, only once accepted.
     'quote', CASE WHEN v_link.status = 'accepted' AND coalesce(v_gig_status, '') <> 'cancelled' THEN v_snap ELSE v_snap - 'pay' END,
     'version', CASE WHEN v_link.status = 'accepted' THEN coalesce(v_link.accepted_version, v_link.version) ELSE v_link.version END,
@@ -543,7 +685,8 @@ BEGIN
                        THEN v_link.version_at END,
     'pdf_url', CASE WHEN v_link.status = 'accepted' THEN v_link.accepted_pdf_url
                     WHEN v_link.pdf_version = v_link.version THEN v_link.pdf_url END,
-    'accepted_name', v_link.accepted_name,
+    -- 183: the signature only on the signer's link.
+    'accepted_name', CASE WHEN v_link.status <> 'accepted' OR v_signer THEN v_link.accepted_name END,
     'accepted_at', CASE WHEN v_link.status = 'accepted' THEN v_link.responded_at END,
     'declined_at', CASE WHEN v_link.status = 'declined' THEN v_link.responded_at END,
     'decline_reason', CASE WHEN v_link.status = 'declined' THEN v_link.decline_reason END,
@@ -579,5 +722,144 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_view(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_view(text) TO anon, authenticated;
+
+-- --------------------------------------------------------------------
+-- 6. The quote before the link: seen (099), message (099), mark sent
+--    (161), each with one line that locks the quote row first. A save of
+--    the quote locks the quote, then (its trigger) the link; these locked
+--    the link, then wrote the quote, so a save and a client's tap at the
+--    same moment could deadlock and one of them failed.
+-- --------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.bw_quote_link_seen(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_link public.quote_links;
+  v_title text;
+BEGIN
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  PERFORM public.bw_quote_lock_for_token(p_token); -- 183: the quote first
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
+  IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL OR v_link.snapshot IS NULL THEN RETURN NULL; END IF;
+
+  IF v_link.first_viewed_at IS NULL THEN
+    UPDATE public.quote_links l
+       SET first_viewed_at = now(), last_viewed_at = now(),
+           status = CASE WHEN l.status IN ('draft', 'sent') THEN 'viewed' ELSE l.status END,
+           updated_at = now()
+     WHERE l.id = v_link.id;
+    INSERT INTO public.quote_activity (quote_id, band_id, kind, version)
+    VALUES (v_link.quote_id, v_link.band_id, 'viewed', v_link.version);
+    UPDATE public.quotes q
+       SET status = CASE WHEN coalesce(q.status, 'draft') IN ('draft', 'sent') THEN 'viewed' ELSE q.status END,
+           viewed_at = coalesce(q.viewed_at, now())
+     WHERE q.id = v_link.quote_id;
+    v_title := v_link.snapshot ->> 'title';
+    PERFORM public.bw_quote_notify(v_link.quote_id, 'quote_viewed',
+      coalesce((SELECT q.client_name FROM public.quotes q WHERE q.id = v_link.quote_id), 'The client') || ' opened the quote',
+      coalesce(v_title, 'Quote') || coalesce(' · ' || (v_link.snapshot ->> 'ref'), ''),
+      jsonb_build_object('kind', 'viewed', 'eventTitle', v_title, 'ref', v_link.snapshot ->> 'ref'));
+  ELSIF v_link.last_viewed_at IS NULL OR v_link.last_viewed_at < now() - interval '5 minutes' THEN
+    UPDATE public.quote_links l SET last_viewed_at = now() WHERE l.id = v_link.id;
+  END IF;
+  RETURN public.bw_quote_link_view(p_token);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_link_seen(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_seen(text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_quote_link_message(p_token text, p_body text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_link public.quote_links;
+  v_body text := nullif(left(btrim(coalesce(p_body, '')), 2000), '');
+  v_recent int;
+  v_title text;
+  v_client text;
+BEGIN
+  IF v_body IS NULL THEN RAISE EXCEPTION 'Empty message' USING ERRCODE = '22023'; END IF;
+  PERFORM public.bw_quote_lock_for_token(p_token); -- 183: the quote first
+  IF public.bw_quote_link_view(p_token) IS NULL THEN RETURN NULL; END IF;
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
+  SELECT count(*) INTO v_recent FROM public.quote_activity a
+   WHERE a.quote_id = v_link.quote_id AND a.kind = 'client_message' AND a.created_at > now() - interval '1 hour';
+  IF v_recent >= 20 THEN
+    RAISE EXCEPTION 'Too many messages, try again later' USING ERRCODE = '54000';
+  END IF;
+
+  INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version)
+  VALUES (v_link.quote_id, v_link.band_id, 'client_message', v_body, v_link.version);
+  IF v_link.status IN ('draft', 'sent', 'viewed', 'declined') THEN
+    UPDATE public.quote_links l SET status = 'discussing', updated_at = now() WHERE l.id = v_link.id;
+    UPDATE public.quotes q SET status = 'negotiating', updated_at = now()
+     WHERE q.id = v_link.quote_id AND coalesce(q.status, 'draft') NOT IN ('accepted', 'archived');
+  END IF;
+
+  v_title := v_link.snapshot ->> 'title';
+  SELECT q.client_name INTO v_client FROM public.quotes q WHERE q.id = v_link.quote_id;
+  PERFORM public.bw_quote_notify(v_link.quote_id, 'quote_message',
+    coalesce(v_client, 'The client') || ' wrote about the quote',
+    coalesce(v_title, 'Quote') || ': "' || left(v_body, 140) || '"',
+    jsonb_build_object('kind', 'message', 'eventTitle', v_title, 'ref', v_link.snapshot ->> 'ref',
+                       'excerpt', left(v_body, 140)));
+  RETURN public.bw_quote_link_view(p_token);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_link_message(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_message(text, text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_quote_link_mark_sent(p_quote_id uuid, p_kind text DEFAULT 'sent'::text, p_channel text DEFAULT NULL::text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_link public.quote_links;
+  v_kind text;
+  v_channel text := nullif(lower(btrim(coalesce(p_channel, ''))), '');
+BEGIN
+  IF v_channel IS NOT NULL AND v_channel NOT IN ('whatsapp', 'sms', 'email', 'copy', 'share') THEN v_channel := NULL; END IF;
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE; -- 183: the quote first
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  IF v_link.id IS NULL THEN
+    RAISE EXCEPTION 'Publish the quote first' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_link.revoked_at IS NOT NULL THEN
+    RAISE EXCEPTION 'The link is turned off' USING ERRCODE = '22023';
+  END IF;
+  -- Paid plans (161): the first send counts towards this month's sends.
+  IF v_link.status = 'draft' AND COALESCE(p_kind, 'sent') <> 'reminded' THEN
+    PERFORM public.bw_plan_guard(v_band, 'quotes_sent_month', 1);
+  END IF;
+  v_kind := CASE WHEN p_kind = 'reminded' THEN 'reminded'
+                 WHEN v_link.status = 'draft' THEN 'sent' ELSE 'resent' END;
+
+  INSERT INTO public.quote_activity (quote_id, band_id, kind, channel, version, actor_id)
+  VALUES (p_quote_id, v_band, v_kind, v_channel, v_link.version, auth.uid());
+
+  IF v_link.status = 'draft' THEN
+    UPDATE public.quote_links l SET status = 'sent', sent_at = now(), updated_at = now() WHERE l.id = v_link.id;
+    v_link.status := 'sent';
+  END IF;
+  UPDATE public.quotes q SET status = 'sent', sent_at = coalesce(q.sent_at, now()), updated_at = now()
+   WHERE q.id = p_quote_id AND coalesce(q.status, 'draft') = 'draft';
+  RETURN v_link.status;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_quote_link_mark_sent(uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_mark_sent(uuid, text, text) TO authenticated;
+
+-- bw_quote_link_publish has a new parameter: PostgREST reads it now.
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
