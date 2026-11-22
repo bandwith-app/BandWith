@@ -180,6 +180,41 @@ export const fromRow = (row: unknown): SessionState | null => {
 };
 
 /**
+ * Two copies of one occurrence's session: this device's, and the saved one
+ * that moved on meanwhile (another admin, a Start whose answer was lost, an
+ * edit kept by an older version). Nothing is lost (#296): the saved start
+ * stays (196 refuses another), every song played on either is kept (the
+ * saved order first), an end on either stays (the later one), and this
+ * device's pause counts only for the same session still running.
+ */
+export const mergeSessions = (mine: SessionState, saved: SessionState): SessionState => {
+  const same = mine.startedAt === saved.startedAt;
+  const played = [...saved.played, ...mine.played.filter((p) => !saved.played.some((q) => q.id === p.id))];
+  const ends = [mine.endedAt, saved.endedAt].filter((e): e is number => e !== null);
+  const endedAt = ends.length ? Math.max(saved.startedAt, ...ends) : null;
+  const pausedMs = same ? Math.max(mine.pausedMs, saved.pausedMs) : saved.pausedMs;
+  let pausedAt: number | null = null;
+  if (endedAt === null) {
+    if (!same || saved.pausedMs > mine.pausedMs) pausedAt = saved.pausedAt;
+    else if (mine.pausedMs > saved.pausedMs) pausedAt = mine.pausedAt;
+    else pausedAt = mine.pausedAt ?? saved.pausedAt;
+  }
+  return { startedAt: saved.startedAt, pausedMs, pausedAt, endedAt, played };
+};
+
+/** The same session, field by field. */
+export const sameSession = (a: SessionState | null, b: SessionState | null): boolean =>
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.startedAt === b.startedAt &&
+    a.pausedMs === b.pausedMs &&
+    a.pausedAt === b.pausedAt &&
+    a.endedAt === b.endedAt &&
+    a.played.length === b.played.length &&
+    a.played.every((p, i) => p.id === b.played[i].id));
+
+/**
  * Which session to show: a change on this device not saved yet (offline)
  * wins; otherwise the saved one. Saved before and now gone from the server
  * means someone deleted it.

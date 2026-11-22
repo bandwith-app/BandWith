@@ -7,6 +7,7 @@ import { packSizeMb, type LivePack } from '@/lib/livePack';
 import { LIVE_PACK_CHANGED, deleteAllPacks, listPacks } from '@/lib/livePackStore';
 import { packFilesSize } from '@/lib/livePackFiles';
 import { LIVE_PACK_CHOICE_EVENT, readChoice, setAutomatic, setWifiOnly, type LivePackChoice } from '@/lib/livePackConsent';
+import { RejectedNotesForUser } from '@/app/components/dashboard/RehearsalNotes';
 
 const CARD = 'bg-card text-card-foreground rounded-[24px]';
 const ROW = 'p-4 flex items-center gap-3 w-full text-left';
@@ -142,6 +143,9 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
             </PillButton>
           ))}
       </div>
+
+      {/* Rehearsal notes the server refused, whatever rehearsal they were for (#296). */}
+      <RejectedNotesForUser userId={userId} />
     </div>
   );
 };

@@ -6,6 +6,7 @@ import {
   formatClock,
   fromRow,
   markPlayed,
+  mergeSessions,
   occurrenceDate,
   parseSummary,
   pauseSession,
@@ -193,5 +194,48 @@ describe('rehearsal session: saved row', () => {
     // Saved before and gone from the server: someone deleted it.
     expect(pickSession({ state: local, dirty: false }, null)).toBeNull();
     expect(pickSession({ state: local, dirty: true }, null)).toBe(local);
+  });
+});
+
+describe('rehearsal session: two copies of one rehearsal merge, nothing is lost (#296 round 2)', () => {
+  const A = { id: 's1', title: 'Paper Boats' };
+  const B = { id: 's2', title: 'Superstition' };
+  const C = { id: 's3', title: 'Harbor Lights' };
+  const live = { ...startSession(T0), played: [A] };
+
+  it('the same start: the later end and every song played on either', () => {
+    const mine = endSession({ ...live, played: [A, B] }, T0 + 40 * MIN);
+    const saved = { ...live, played: [A, C] };
+    const m = mergeSessions(mine, saved);
+    expect(m.startedAt).toBe(T0);
+    expect(m.endedAt).toBe(T0 + 40 * MIN);
+    expect(m.played.map((p) => p.id)).toEqual(['s1', 's3', 's2']);
+  });
+
+  it('an end saved elsewhere stays, a stale pause does not undo it', () => {
+    const saved = endSession(live, T0 + 30 * MIN);
+    const mine = pauseSession(live, T0 + 20 * MIN);
+    const m = mergeSessions(mine, saved);
+    expect(m.endedAt).toBe(T0 + 30 * MIN);
+    expect(m.pausedAt).toBeNull();
+    expect(m).toEqual(saved);
+  });
+
+  it('both ended: the later end', () => {
+    expect(mergeSessions(endSession(live, T0 + 50 * MIN), endSession(live, T0 + 30 * MIN)).endedAt).toBe(T0 + 50 * MIN);
+    expect(mergeSessions(endSession(live, T0 + 30 * MIN), endSession(live, T0 + 50 * MIN)).endedAt).toBe(T0 + 50 * MIN);
+  });
+
+  it('a different start (started unread on another device): the saved start stays, songs and the end are kept', () => {
+    const mine = endSession({ ...startSession(T0 + 5 * MIN), played: [B] }, T0 + 45 * MIN);
+    const m = mergeSessions(mine, live);
+    expect(m.startedAt).toBe(T0);
+    expect(m.played.map((p) => p.id)).toEqual(['s1', 's2']);
+    expect(m.endedAt).toBe(T0 + 45 * MIN);
+  });
+
+  it('nothing new on this device: the saved one as it is', () => {
+    const saved = endSession({ ...live, played: [A, B] }, T0 + 30 * MIN);
+    expect(mergeSessions(live, saved)).toEqual(saved);
   });
 });

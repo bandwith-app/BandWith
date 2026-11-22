@@ -427,8 +427,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     const { error } = await signOut({ keepDeviceSession });
     if (!error) {
-      // The band's private recordings downloaded for Stage go too, downloads on their way included (audit 06 #2).
-      void import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {});
+      // The band's private recordings downloaded for Stage go too, downloads on their way included
+      // (audit 06 #2). Awaited: the app navigates as soon as this returns (#296 B4); 3 s at most.
+      await Promise.race([
+        import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {}),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
       setUser(null);
       setProfile(null);
       setSession(null);

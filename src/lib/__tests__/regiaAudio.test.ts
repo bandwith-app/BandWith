@@ -242,6 +242,7 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
   const web = () => {
     native.on = false;
     idbData.clear();
+    localStorage.clear();
     Object.defineProperty(globalThis, 'indexedDB', { value: fakeIndexedDb(), configurable: true, writable: true });
   };
 
@@ -280,6 +281,27 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
   it('sign-out (once the session has ended) clears them', () => {
     const signOut = authContext.slice(authContext.indexOf('const handleSignOut'), authContext.indexOf('const handleResetPassword'));
     expect(signOut).toMatch(/if \(!error\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.clearDownloadedAudio\(\)\)/);
+  });
+
+  it('#296 B4: sign-out waits for the deletion before it returns (the app navigates right after)', () => {
+    const signOut = authContext.slice(authContext.indexOf('const handleSignOut'), authContext.indexOf('const handleResetPassword'));
+    const afterSignOut = signOut.slice(signOut.indexOf('if (!error) {'));
+    expect(afterSignOut).toMatch(/await [^;]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.clearDownloadedAudio\(\)\)/);
+    expect(afterSignOut.indexOf('clearDownloadedAudio')).toBeLessThan(afterSignOut.indexOf('return { error }'));
+  });
+
+  it('#296 B5: another tab signing out: a download finishing here keeps nothing', async () => {
+    web();
+    let arrive!: () => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => (arrive = () => resolve(audioResponse())))));
+    const run = downloadAudio(DRIVE);
+    await vi.waitFor(() => expect(arrive).toBeTypeOf('function'));
+    // The other tab: its sign-out leaves its mark in the storage both tabs share.
+    localStorage.setItem('bw-regia-audio:cleared', String(Date.now()));
+    arrive();
+    expect((await run).ok).toBe(false);
+    expect(storedSongs()).toBe(0);
+    vi.unstubAllGlobals();
   });
 
   it('phone: the files in the app library go too, and one still downloading is deleted', async () => {

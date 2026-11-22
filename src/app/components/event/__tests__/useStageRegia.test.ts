@@ -361,6 +361,26 @@ describe('useStageRegia (stage manager mode)', () => {
     expect(players[0].play).not.toHaveBeenCalled();
   });
 
+  it('#296: Stage closed while a kept song is being opened: its in-memory copy is let go', async () => {
+    let resolve!: (v: { url: string; local: boolean }) => void;
+    playableMock.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const { result, rerender, players } = setup();
+    act(() => result.current.turnOn());
+    let pending!: Promise<boolean | undefined | void>;
+    act(() => {
+      pending = result.current.play(0);
+    });
+    rerender({ open: false });
+    await act(async () => {
+      resolve({ url: 'blob:http://localhost/1234', local: true });
+      await pending;
+    });
+    expect(players[0].load).not.toHaveBeenCalled();
+    expect(revoke).toHaveBeenCalledWith('blob:http://localhost/1234');
+    revoke.mockRestore();
+  });
+
   it('audit 06 #7: taken over while a song loads: it never starts here', async () => {
     let loaded!: (ok: boolean) => void;
     const { result, bridge: br, players } = setup();

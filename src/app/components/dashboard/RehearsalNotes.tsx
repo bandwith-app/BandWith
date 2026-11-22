@@ -25,6 +25,7 @@ import {
   type RehearsalNote,
 } from '@/lib/rehearsalNotes';
 import type { RehearsalNotesControls } from '@/app/components/event/useRehearsalNotes';
+import { dismissRejected, OUTBOX_EVENT, readRejected } from '@/lib/rehearsalNotesOutbox';
 import type { EarlierNotes } from './FromLastTime';
 
 type T = ReturnType<typeof useT>;
@@ -440,9 +441,27 @@ const rejectedText = (n: RehearsalNote, t: T) =>
  * Notes the server refused for good (no longer allowed, the rehearsal gone):
  * they are not saved, but their words are still here to copy (audit 06 #5).
  */
-export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: boolean }> = ({ controls, dark }) => {
+export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: boolean }> = ({ controls, dark }) => (
+  <RejectedNotesList notes={controls.rejected ?? []} onRemove={(id) => controls.dismissRejected?.(id)} dark={dark} />
+);
+
+/**
+ * Every note of mine the server refused, whatever rehearsal it was for (one
+ * deleted meanwhile included): Settings › Offline & live (#296).
+ */
+export const RejectedNotesForUser: React.FC<{ userId?: string | null }> = ({ userId }) => {
+  const [notes, setNotes] = useState<RehearsalNote[]>(() => readRejected(userId));
+  useEffect(() => {
+    const sync = () => setNotes(readRejected(userId));
+    sync();
+    window.addEventListener(OUTBOX_EVENT, sync);
+    return () => window.removeEventListener(OUTBOX_EVENT, sync);
+  }, [userId]);
+  return <RejectedNotesList notes={notes} onRemove={(id) => userId && dismissRejected(userId, id)} />;
+};
+
+const RejectedNotesList: React.FC<{ notes: RehearsalNote[]; onRemove: (id: string) => void; dark?: boolean }> = ({ notes: list, onRemove, dark }) => {
   const t = useT();
-  const list = controls.rejected ?? [];
   const [copied, setCopied] = useState<string | null>(null);
   if (!list.length) return null;
   const pill = cn(
@@ -477,7 +496,7 @@ export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: 
                 >
                   {copied === n.id ? t('Copied') : t('Copy')}
                 </button>
-                <button type="button" className={pill} onClick={() => controls.dismissRejected?.(n.id)}>
+                <button type="button" className={pill} onClick={() => onRemove(n.id)}>
                   {t('Remove')}
                 </button>
               </span>

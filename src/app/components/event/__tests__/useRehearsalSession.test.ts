@@ -10,7 +10,7 @@ vi.mock('@/lib/services/rehearsalSessions', () => ({
 
 import { useRehearsalSession } from '../useRehearsalSession';
 import type { StageSessionBridge } from '../useStageLive';
-import { endSession, startSession, toRow } from '@/lib/rehearsalSession';
+import { endSession, fromRow, startSession, toRow, type SessionRow } from '@/lib/rehearsalSession';
 
 const CTX = { bandId: 'band-1', eventId: 'event-1', date: '2026-11-19' };
 
@@ -185,5 +185,64 @@ describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
     act(() => result.current.resume());
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
     expect(saveMock.mock.calls.map((c) => c[1])).toEqual(['r1', 'r2']);
+  });
+});
+
+describe('#296 round 2: offline, upgrades and lost answers never drop a session change', () => {
+  const KEY = 'bw-rehearsal-session:event-1|2026-11-19';
+  const T0 = Date.now() - 30 * 60_000;
+  const live = startSession(T0);
+
+  it('B1: reopened with no signal from a clean copy, End is saved on top of the revision it was read at', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ row: toRow(live, CTX, 3, Date.now()), dirty: false, rev: 'r1' }));
+    fetchMock.mockResolvedValue(undefined);
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.status).toBe('live');
+    act(() => result.current.end());
+    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    expect(saveMock.mock.calls[0][1]).toBe('r1');
+  });
+
+  it('B2: an edit waiting from the previous version (no revision) is merged into the saved row, not dropped', async () => {
+    const mine = endSession({ ...live, played: [{ id: 's1', title: 'Paper Boats' }] }, T0 + 25 * 60_000);
+    // Written by the previous version: no rev.
+    localStorage.setItem(KEY, JSON.stringify({ row: toRow(mine, CTX, 3, Date.now()), dirty: true }));
+    fetchMock.mockResolvedValue({ state: { ...live, played: [{ id: 's2', title: 'Superstition' }] }, summary: null, rev: 'r1' });
+    saveMock.mockImplementation(async (_row: SessionRow, rev?: string | null) => (rev === 'r1' ? { error: null, rev: 'r2' } : { error: null, conflict: true }));
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    const last = saveMock.mock.calls[saveMock.mock.calls.length - 1];
+    expect(last[1]).toBe('r1');
+    expect(last[0].ended_at).not.toBeNull();
+    expect(last[0].summary.played.map((p: { id: string }) => p.id).sort()).toEqual(['s1', 's2']);
+    expect(result.current.status).toBe('ended');
+  });
+
+  it('B3: Start saved but its answer lost: on reconnect the row is ours, and the end goes on top of it', async () => {
+    fetchMock.mockResolvedValue(null);
+    let firstRow: SessionRow | null = null;
+    saveMock.mockImplementationOnce(async (row: SessionRow) => {
+      firstRow = row; // the server kept it, the answer never arrived
+      return { error: { message: 'Failed to fetch' } };
+    });
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.unsaved).toBe(true));
+    saveMock.mockResolvedValue({ error: { message: 'Failed to fetch' } });
+    act(() => result.current.end());
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
+    // Back online: the insert finds its own Start there.
+    fetchMock.mockImplementation(async () => ({ state: fromRow(firstRow)!, summary: null, rev: 'r1' }));
+    saveMock.mockImplementation(async (_row: SessionRow, rev?: string | null) => (rev === 'r1' ? { error: null, rev: 'r2' } : { error: null, conflict: true }));
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    const last = saveMock.mock.calls[saveMock.mock.calls.length - 1];
+    expect(last[1]).toBe('r1');
+    expect(last[0].ended_at).not.toBeNull();
+    expect(result.current.status).toBe('ended');
   });
 });

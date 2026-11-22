@@ -345,7 +345,11 @@ export function useStageRegia({
           return false;
         }
         const src = await playableUrl(song.audio);
-        if (!current()) return false;
+        if (!current()) {
+          // Nobody takes the copy kept in memory: let it go (a whole recording).
+          if (src?.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
+          return false;
+        }
         const ok = !!src && (await player.load(src.url));
         if (!current()) return false;
         if (!ok) {

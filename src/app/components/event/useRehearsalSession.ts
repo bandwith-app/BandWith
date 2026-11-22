@@ -3,9 +3,11 @@ import {
   endSession,
   fromRow,
   markPlayed,
+  mergeSessions,
   pauseSession,
   pickSession,
   resumeSession,
+  sameSession,
   sessionStatus,
   startSession,
   toRow,
@@ -135,57 +137,65 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   );
 
   /**
-   * Someone else saved this rehearsal first (another admin, or a session
-   * already there when this device started one unread): theirs wins. Shown
-   * here and sent to the band; this device's change is dropped.
+   * The saved session moved on (another admin, a session already there when
+   * this device started one unread, our own Start whose answer was lost, an
+   * edit kept by the previous version): read it and merge this device's
+   * session into it (mergeSessions: nothing is lost, an end stays). Shown
+   * here and sent to the band; saved again on top of it when it adds
+   * anything. True: save again now.
    */
-  const adoptSaved = useCallback(
-    async (c: typeof ctxRef.current) => {
-      if (!c.key || !c.eventId || !c.date) return;
+  const resolveConflict = useCallback(
+    async (c: typeof ctxRef.current): Promise<boolean> => {
+      if (!c.key || !c.eventId || !c.date) return false;
       const saved = await fetchRehearsalSession(c.eventId, c.date);
-      if (ctxRef.current.key !== c.key) return;
+      if (ctxRef.current.key !== c.key) return false;
       if (saved === undefined) {
         // Can't read it now: still unsaved, the next try asks again.
         markUnsaved(true);
-        return;
+        return false;
       }
+      const mine = stateRef.current;
+      if (!saved) {
+        // Gone from the server (deleted meanwhile): this device's goes in as a new row.
+        revRef.current = null;
+        return !!mine;
+      }
+      revRef.current = saved.rev ?? null;
+      const merged = mine ? mergeSessions(mine, saved.state) : saved.state;
+      const adds = !sameSession(merged, saved.state);
       versionRef.current += 1;
-      flushAgain.current = false;
       clearTimeout(saveTimer.current);
       saveTimer.current = undefined;
-      revRef.current = saved?.rev ?? null;
-      const state = saved?.state ?? null;
-      setState(state);
-      writeLocal(c.key, rowOf(state), false, revRef.current);
-      markUnsaved(false);
-      const msg = message(state);
+      setState(merged);
+      writeLocal(c.key, rowOf(merged), adds, revRef.current);
+      markUnsaved(adds);
+      const msg = message(merged);
       if (msg) c.send?.(msg);
+      return adds;
     },
     [setState, rowOf, message, markUnsaved],
   );
 
-  /** One save of the newest state, on top of the revision it is based on. */
-  const saveOnce = useCallback(async () => {
+  /** One save of the newest state, on top of the revision it is based on. 'again': merged after a conflict, save that. */
+  const saveOnce = useCallback(async (): Promise<'done' | 'again'> => {
     const c = ctxRef.current;
     const row = rowOf(stateRef.current);
-    if (!c.isLeader || !c.key || !row) return;
+    if (!c.isLeader || !c.key || !row) return 'done';
     const version = versionRef.current;
     const res = await saveRehearsalSession(row, revRef.current ?? null);
-    if (ctxRef.current.key !== c.key) return;
-    if (res.conflict) {
-      await adoptSaved(c);
-      return;
-    }
+    if (ctxRef.current.key !== c.key) return 'done';
+    if (res.conflict) return (await resolveConflict(c)) ? 'again' : 'done';
     if (res.error) {
       markUnsaved(true);
-      return;
+      return 'done';
     }
     if (res.rev !== undefined) revRef.current = res.rev;
     if (versionRef.current === version) {
       writeLocal(c.key, row, false, revRef.current);
       markUnsaved(false);
     } else writeLocal(c.key, rowOf(stateRef.current), true, revRef.current);
-  }, [rowOf, markUnsaved, adoptSaved]);
+    return 'done';
+  }, [rowOf, markUnsaved, resolveConflict]);
 
   /** Save the newest state now (leader), one save at a time. The device copy stays "unsaved" until it is. */
   const flush = useCallback(async () => {
@@ -197,10 +207,13 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       return flushing.current;
     }
     const run = (async () => {
-      do {
+      // A few merges in a row at most (two admins saving at the same moment); then the retry timer.
+      for (let merges = 0; ; ) {
         flushAgain.current = false;
-        await saveOnce();
-      } while (flushAgain.current);
+        const next = await saveOnce();
+        if (next === 'again' && ++merges <= 3) continue;
+        if (!flushAgain.current) break;
+      }
     })().finally(() => {
       flushing.current = null;
     });
@@ -233,8 +246,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     const local = c.isLeader ? readLocal(c.key) : null;
     if (local && !stateRef.current) {
       setState(local.state);
-      // Its unsaved change is checked against the revision it was made on.
-      if (local.dirty && revRef.current === undefined) revRef.current = local.rev;
+      // Changes made here (offline too) are saved on top of the revision this copy was read at.
+      if (revRef.current === undefined) revRef.current = local.rev;
     }
     const saved = await fetchRehearsalSession(c.eventId, c.date);
     if (ctxRef.current.key !== c.key) return;

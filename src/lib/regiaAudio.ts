@@ -188,14 +188,56 @@ let generation = 0;
 const fetches = new Set<AbortController>();
 
 /**
- * Sign-out: every song file this device downloaded goes (the band's private
- * recordings), and downloads still on their way keep nothing.
+ * Sign-out in any tab of this browser (#296 B5): its mark in the storage the
+ * tabs share, read again right before a download writes, and a message to
+ * the other tabs so they stop theirs at once.
  */
-export async function clearDownloadedAudio(): Promise<void> {
+const CLEARED_KEY = 'bw-regia-audio:cleared';
+const clearedMark = (): string | null => {
+  try {
+    return localStorage.getItem(CLEARED_KEY);
+  } catch {
+    return null;
+  }
+};
+let tabs: BroadcastChannel | null = null;
+const otherTabs = (): BroadcastChannel | null => {
+  if (!tabs && typeof BroadcastChannel !== 'undefined') {
+    try {
+      tabs = new BroadcastChannel(DB);
+      tabs.onmessage = (e) => {
+        if (e.data === 'cleared') stopDownloads();
+      };
+    } catch {
+      tabs = null;
+    }
+  }
+  return tabs;
+};
+function stopDownloads() {
   generation += 1;
   inflight.clear();
   fetches.forEach((c) => c.abort());
   fetches.clear();
+}
+
+/**
+ * Sign-out: every song file this device downloaded goes (the band's private
+ * recordings), and downloads still on their way keep nothing, in other tabs
+ * of this browser too.
+ */
+export async function clearDownloadedAudio(): Promise<void> {
+  stopDownloads();
+  try {
+    localStorage.setItem(CLEARED_KEY, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  } catch {
+    /* storage blocked: this tab only */
+  }
+  try {
+    otherTabs()?.postMessage('cleared');
+  } catch {
+    /* no other tabs to tell */
+  }
   if (Capacitor.isNativePlatform()) {
     const { Filesystem } = await fs();
     const { directory } = await nativeLoc('');
@@ -215,8 +257,10 @@ export async function clearDownloadedAudio(): Promise<void> {
 }
 
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {
+  otherTabs();
   const started = generation;
-  const stale = () => generation !== started;
+  const mark = clearedMark();
+  const stale = () => generation !== started || clearedMark() !== mark;
   let url: string | null = null;
   try {
     url = await remoteUrl(ref);
@@ -284,6 +328,11 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
     const type = res.headers.get('content-type') || 'audio/mpeg';
     // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
     await idb('readwrite', (s) => s.put({ type, data } satisfies StoredAudio, key));
+    if (stale()) {
+      // Signed out while it was being written (another tab): taken back out.
+      await idb('readwrite', (s) => s.delete(key)).catch(() => undefined);
+      return { ok: false, reason: 'failed' };
+    }
     return { ok: true };
   } catch {
     return { ok: false, reason: isOnline() ? 'failed' : 'offline' };
