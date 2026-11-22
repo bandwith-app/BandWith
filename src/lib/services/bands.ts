@@ -352,6 +352,23 @@ export const deleteBand = async (bandId: string): Promise<{ error: Error | null 
 // BAND MEMBERS
 // ============================================
 
+/**
+ * Who is in a band, names only: for a band that is not the selected one
+ * (an admin publishing that band's proposal, Codex #297 B4). No fees.
+ */
+export const getBandRoster = async (
+  bandId: string,
+): Promise<{ data: { user_id: string | null; profile: { id?: string; full_name?: string | null; email?: string | null; avatar_url?: string | null } | null }[] | null; error: Error | null }> => {
+  const { data, error } = await supabase
+    .from('band_members')
+    .select('user_id, profile:profiles (id, full_name, email, avatar_url)')
+    .eq('band_id', bandId)
+    .eq('is_active', true)
+    .order('joined_at', { ascending: true });
+  if (error) return { data: null, error: error as unknown as Error };
+  return { data: ((data || []) as any[]).map((m) => ({ user_id: m.user_id ?? null, profile: m.profile || null })), error: null };
+};
+
 export const getBandMembers = async (bandId: string): Promise<{ data: BandMember[] | null; error: Error | null }> => {
   try {
     const { data, error } = await supabase

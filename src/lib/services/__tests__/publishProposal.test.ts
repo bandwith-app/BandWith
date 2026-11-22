@@ -11,6 +11,9 @@ const db = vi.hoisted(() => ({
   calls: [] as string[],
   updatedRows: [{ id: 'p1', band_id: 'band-B' }] as unknown[],
   members: { 'band-A': ['a-admin', 'a-member'], 'band-B': ['a-admin', 'b-member'] } as Record<string, string[]>,
+  // The stored poll, for the "cut off half-way" check (Codex #297).
+  pollRow: null as null | { id: string; band_id: string; status: string },
+  optionCount: 1,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -24,10 +27,11 @@ vi.mock('@/lib/supabase', () => {
             db.calls.push(`${table}.${op}${Object.keys(filters).length ? ':' + Object.entries(filters).map(([k, v]) => `${k}=${v}`).join(',') : ''}`);
             if (table === 'band_members') return res({ data: (db.members[filters.band_id as string] || []).map((user_id) => ({ user_id })), error: null });
             if (table === 'rehearsal_polls' && op === 'update') return res({ data: db.updatedRows, error: null });
+            if (table === 'rehearsal_poll_options' && op === 'select') return res({ data: [], count: db.optionCount, error: null });
             return res({ data: [], error: null });
           };
         }
-        if (prop === 'single' || prop === 'maybeSingle') return async () => ({ data: null, error: null });
+        if (prop === 'single' || prop === 'maybeSingle') return async () => ({ data: table === 'rehearsal_polls' ? db.pollRow : null, error: null });
         return (...args: unknown[]) => {
           if (prop === 'update' || prop === 'delete' || prop === 'insert') op = String(prop);
           if (prop === 'eq') filters[String(args[0])] = args[1];
@@ -74,6 +78,8 @@ beforeEach(() => {
   db.rpc = null;
   db.calls.length = 0;
   db.updatedRows = [{ id: 'p1', band_id: 'band-B' }];
+  db.pollRow = null;
+  db.optionCount = 1;
   notify.mockClear();
 });
 
@@ -117,5 +123,27 @@ describe('publishing a proposal (audit 05 #1 #8)', () => {
 
   it('the poll builder opened from a proposal works in the proposal\'s band', () => {
     expect(appSource).toMatch(/bandId=\{pollModalInitialProposal\?\.band_id \|\| realBand\.id\}/);
+  });
+});
+
+describe('a publish cut off half-way on a database before 195 (Codex #297)', () => {
+  it('a poll left with no options is finished on retry, not reported as already published', async () => {
+    db.updatedRows = []; // no longer 'proposed': the first try changed the status
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
+    db.optionCount = 0;
+    const { error } = await createOrPublishAdminPoll(args as any);
+    expect(error).toBeNull();
+    expect(db.calls).toContain('rehearsal_poll_options.insert');
+    expect(db.calls.some((c) => c.startsWith('rehearsal_poll_options.delete'))).toBe(false);
+    expect(notify).toHaveBeenCalled();
+  });
+
+  it('a poll that has its options is still "already published"', async () => {
+    db.updatedRows = [];
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
+    db.optionCount = 2;
+    const { error } = await createOrPublishAdminPoll(args as any);
+    expect((error as any)?.code ?? (error as any)?.message).toMatch(/poll_already_published|already/i);
+    expect(db.calls).not.toContain('rehearsal_poll_options.insert');
   });
 });

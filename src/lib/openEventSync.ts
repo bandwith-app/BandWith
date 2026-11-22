@@ -23,5 +23,16 @@ export function syncOpenEvent<T extends object>(
   const sig = JSON.stringify(fresh);
   // First version seen since the detail opened: remember it, change nothing.
   if (seen === null || sig === seen) return { next: open, seen: sig };
-  return { next: { ...open, ...fresh }, seen: sig };
+  const next = { ...open, ...fresh };
+  // One date of a repeating rehearsal (opened from Home or the Calendar on a
+  // later date): the list only has the series, whose date is the first one.
+  // Keep the date on screen while it still repeats (Codex #297 B1).
+  const o = open as { date?: unknown };
+  const f = fresh as { date?: unknown; is_recurring?: unknown; recurrence_rule?: unknown };
+  let seenDate: unknown;
+  try { seenDate = (JSON.parse(seen) as { date?: unknown })?.date; } catch { seenDate = undefined; }
+  if (f.is_recurring && f.recurrence_rule && o.date && seenDate !== undefined && o.date !== seenDate) {
+    (next as { date?: unknown }).date = o.date;
+  }
+  return { next, seen: sig };
 }

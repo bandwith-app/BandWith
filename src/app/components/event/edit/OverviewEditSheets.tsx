@@ -205,7 +205,7 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
   }, [open]);
   const set = (p: Partial<EventCardValues>) => setV((prev) => ({ ...prev, ...p }));
   // Only what the admin changed (a gig with no start time yet opens on 20:00).
-  const patch = JSON.stringify(v) !== JSON.stringify(initial) ? changedPatch(event, eventCardPatch(kind, v)) : null;
+  const patch = JSON.stringify(v) !== JSON.stringify(initial) ? changedPatch(event, eventCardPatch(kind, v, event)) : null;
   const accent = kind === 'rehearsal' ? 'var(--accent-rehearsal)' : 'var(--accent-gig)';
   const overline = timeOverlineOf(t, kind, v.date);
   const pickerEvents = useMemo(() => toDatePickerEvents(allEvents, event.eventId), [allEvents, event.eventId]);

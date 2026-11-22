@@ -30,3 +30,27 @@ describe('syncOpenEvent', () => {
     expect(r.seen).not.toBe(seen);
   });
 });
+
+describe('one date of a repeating rehearsal (Codex #297 B1)', () => {
+  const base = { eventId: 'r1', title: 'Weekly', date: '2099-12-01', is_recurring: true, recurrence_rule: { frequency: 'weekly' } as { frequency: string } | null };
+
+  it('a newer list version keeps the date the detail was opened on', () => {
+    const open = { ...base, date: '2099-12-08' };
+    const first = syncOpenEvent(open, base, null);
+    const { next } = syncOpenEvent(open, { ...base, title: 'Weekly jam' }, first.seen);
+    expect(next).toMatchObject({ title: 'Weekly jam', date: '2099-12-08' });
+  });
+
+  it('opened on its own date, the detail follows a moved series', () => {
+    const first = syncOpenEvent(base, base, null);
+    const { next } = syncOpenEvent(base, { ...base, date: '2099-12-02' }, first.seen);
+    expect(next?.date).toBe('2099-12-02');
+  });
+
+  it('a series that stops repeating takes the list date', () => {
+    const open = { ...base, date: '2099-12-08' };
+    const first = syncOpenEvent(open, base, null);
+    const { next } = syncOpenEvent(open, { ...base, is_recurring: false, recurrence_rule: null }, first.seen);
+    expect(next?.date).toBe('2099-12-01');
+  });
+});

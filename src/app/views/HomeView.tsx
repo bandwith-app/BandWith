@@ -78,7 +78,8 @@ interface HomeViewProps {
   onQuickAction?: (action: string) => void;
   onViewChange?: (tab: string) => void;
   onFilterEvents?: (filter: string) => void;
-  onSelectEvent?: (eventId: string) => void;
+  /** date: the date tapped, for one date of a repeating rehearsal (Codex #297 B1). */
+  onSelectEvent?: (eventId: string, date?: string) => void;
   /** "Go live" on the next gig: opens it in Stage mode. */
   onGoLive?: (eventId: string) => void;
   isAdmin?: boolean;
@@ -561,7 +562,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             .join(' · '),
           kind: (e.event_type || e.eventType) === 'rehearsal' ? 'rehearsal' : 'gig',
           urgent: true,
-          onSelect: onSelectEvent ? () => onSelectEvent(id) : undefined,
+          onSelect: onSelectEvent ? () => onSelectEvent(id, raw || undefined) : undefined,
         });
       }
     }
@@ -851,7 +852,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               if (mapQuery) {
                 openMaps(mapQuery);
               } else if (nextMemberGig && onSelectEvent) {
-                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id);
+                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id, nextMemberGig.event_date || nextMemberGig.date || undefined);
               } else {
                 onViewChange?.('Events');
               }
@@ -926,7 +927,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               const valid = d && !isNaN(d.getTime());
               const eventId: string | undefined = event.eventId || event.id;
               const open = () => {
-                if (onSelectEvent && eventId) onSelectEvent(eventId);
+                if (onSelectEvent && eventId) onSelectEvent(eventId, rawDate || undefined);
                 else onViewChange?.('Events');
               };
               const row = (

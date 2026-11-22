@@ -30,7 +30,9 @@ vi.mock('@/lib/supabase', () => {
     });
     return q;
   };
-  return { supabase: { from } };
+  // Before 195: no one-step call, the read-then-write runs.
+  const rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+  return { supabase: { from, rpc } };
 });
 
 import { isSkippedOccurrence, skippedDates, withSkippedDate } from '../recurrenceSkips';

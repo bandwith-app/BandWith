@@ -127,7 +127,7 @@ describe('Event detail: deleting a repeating rehearsal (audit 05 #4)', () => {
   it('the app takes only that date out of the series, before any delete of the event row', () => {
     const start = appSource.indexOf('const handleEventDelete = async');
     const body = appSource.slice(start, appSource.indexOf("from('events')\n          .delete()", start));
-    expect(body).toMatch(/scope === 'date'[\s\S]*skipRehearsalDate\(selectedEvent\.eventId, selectedEvent\.date\)[\s\S]*return;/);
+    expect(body).toMatch(/scope === 'date'[\s\S]*deleteRehearsalDate\(selectedEvent\)[\s\S]*return;/);
     expect(appSource).toMatch(/onDelete=\{\(scope\) => inItemBand\(selectedEvent\.band_id, "delete this event", \(\) => handleEventDelete\(scope\)\)\}/);
   });
 });

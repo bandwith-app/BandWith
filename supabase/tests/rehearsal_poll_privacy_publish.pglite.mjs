@@ -1,6 +1,7 @@
 // Local check of migration 195 (rehearsal polls: invite-only reads, one-step
 // publish of a proposal, the deadline the database enforces; audit 05 #1 #3
-// #8 #11) without Docker: PGlite with the poll tables as 038 + 058 + 097 +
+// #8 #11; Codex #297: one-step skip of a rehearsal date, the single-poll
+// deadline no longer callable) without Docker: PGlite with the poll tables as 038 + 058 + 097 +
 // 098 + 102 left them, the live read policies (073 / 102 / 118) and the
 // real 114 and 117 migrations loaded from the repo.
 // Failing first: with /dev/null as the migration every new check FAILs.
@@ -21,6 +22,7 @@ const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND_A, BAND_B, ADMIN, ADMIN2, INVITED, OUTSIDER, B_ONLY, PROPOSER] = [1, 2, 3, 4, 5, 6, 7, 8].map(id);
 const [POLL_PRIV, POLL_OPEN, PROPOSAL_B] = [11, 12, 13].map(id);
 const [OPT_PRIV, OPT_OPEN] = [21, 22].map(id);
+const [SERIES, ONCE] = [31, 32].map(id);
 
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated;
@@ -55,6 +57,13 @@ CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT a
 CREATE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND COALESCE(is_active, true)); $f$;
+
+CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, event_date date, is_recurring boolean DEFAULT false,
+  recurrence_rule jsonb, updated_at timestamptz DEFAULT now());
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "events_select" ON public.events FOR SELECT TO authenticated USING (bw_is_band_member(band_id));
+CREATE POLICY "events_update" ON public.events FOR UPDATE TO authenticated USING (bw_is_band_admin(band_id)) WITH CHECK (bw_is_band_admin(band_id));
+GRANT SELECT, UPDATE ON public.events TO authenticated;
 
 ALTER TABLE public.rehearsal_polls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rehearsal_poll_options ENABLE ROW LEVEL SECURITY;
@@ -99,6 +108,10 @@ INSERT INTO rehearsal_poll_options (id, poll_id, proposed_date, start_time) VALU
 INSERT INTO rehearsal_poll_options (poll_id, proposed_date, start_time) VALUES ('${PROPOSAL_B}','2099-12-07','19:00');
 INSERT INTO rehearsal_poll_votes (poll_id, option_id, user_id) VALUES ('${POLL_PRIV}','${OPT_PRIV}','${INVITED}'), ('${POLL_OPEN}','${OPT_OPEN}','${OUTSIDER}');
 INSERT INTO rehearsal_poll_unavailable (poll_id, user_id) VALUES ('${POLL_PRIV}','${ADMIN}');
+-- A weekly rehearsal: another admin has just taken out Dec 1; 'custom' is a key this build does not know.
+INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule) VALUES
+  ('${SERIES}','${BAND_A}','Weekly rehearsal','2099-11-24', true, '{"frequency":"weekly","interval":1,"custom":"keep me","skip_dates":["2099-12-01"]}'),
+  ('${ONCE}','${BAND_A}','One-off','2099-11-25', false, NULL);
 `);
 
 async function as(user, fn) {
@@ -199,6 +212,48 @@ ok(!!priv && new Date(priv.vote_deadline).toISOString() === '2099-12-11T23:00:00
 ok(Array.isArray(dl) && dl.find((r) => r.poll_id === POLL_OPEN)?.vote_deadline === null, '#11 no vote-by date: no deadline');
 const dlOut = await tryRows(OUTSIDER, `SELECT poll_id FROM bw_poll_vote_deadlines($1::uuid[])`, [[POLL_PRIV]]);
 ok(n(dlOut) === 0, '#11 nothing about polls the caller cannot read');
+
+// ---- Codex #297 MINOR: the single-poll deadline is not callable by clients
+const directDl = await tryRows(OUTSIDER, `SELECT public.bw_poll_vote_deadline($1) AS d`, [POLL_PRIV]);
+ok(!!directDl?.error, `uninvited member cannot read a poll's deadline directly (${JSON.stringify(directDl)})`);
+const authDl = (await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_poll_vote_deadline(uuid)', 'EXECUTE') AS a`)).rows[0].a;
+ok(authDl === false, 'bw_poll_vote_deadline is not granted to authenticated');
+await db.exec(`UPDATE rehearsal_polls SET vote_by = '2000-01-01' WHERE id = '${POLL_OPEN}'`);
+const late = await (async () => {
+  try { await asCommit(ADMIN2, () => db.query(`INSERT INTO rehearsal_poll_votes (poll_id, option_id, user_id) VALUES ($1,$2,$3)`, [POLL_OPEN, OPT_OPEN, ADMIN2])); return 'saved'; }
+  catch (e) { return e.message; }
+})();
+ok(late !== 'saved', `the vote policies still close voting after the deadline (${late})`);
+await db.exec(`UPDATE rehearsal_polls SET vote_by = NULL WHERE id = '${POLL_OPEN}'`);
+const onTime = await (async () => {
+  try { await asCommit(ADMIN2, () => db.query(`INSERT INTO rehearsal_poll_votes (poll_id, option_id, user_id) VALUES ($1,$2,$3)`, [POLL_OPEN, OPT_OPEN, ADMIN2])); return 'saved'; }
+  catch (e) { return e.message; }
+})();
+ok(onTime === 'saved', `and voting with no deadline still works (${onTime})`);
+
+// ---- Codex #297 B3: skip one date in one server step
+const skip = (user, ev, day) =>
+  asCommit(user, () => db.query(`SELECT public.bw_skip_rehearsal_date($1, $2::date) AS r`, [ev, day]))
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code }));
+const rule = async () => (await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [SERIES])).rows[0].r;
+const s1 = await skip(ADMIN, SERIES, '2099-12-08');
+const afterS1 = await rule();
+ok(JSON.stringify(afterS1?.skip_dates) === '["2099-12-01","2099-12-08"]', `B3 the date is appended to the stored list, the other admin's date kept (${JSON.stringify(afterS1)} / ${JSON.stringify(s1)})`);
+ok(afterS1?.custom === 'keep me' && afterS1?.frequency === 'weekly', 'B3 the rest of the rule is kept');
+ok(Array.isArray(s1?.skip_dates) && s1.skip_dates.length === 2, 'B3 the answer lists the skipped dates');
+await skip(ADMIN2, SERIES, '2099-12-08');
+await skip(ADMIN2, SERIES, '2099-11-24');
+ok(JSON.stringify((await rule())?.skip_dates) === '["2099-11-24","2099-12-01","2099-12-08"]', 'B3 sorted, no duplicates, the first date too');
+const s2 = await skip(OUTSIDER, SERIES, '2099-12-15');
+ok(!!s2?.error && s2.code === '42501', `B3 a member cannot skip a date (${JSON.stringify(s2)})`);
+const s3 = await skip(B_ONLY, SERIES, '2099-12-15');
+ok(!!s3?.error && s3.code === '42501', 'B3 someone outside the band cannot either');
+const s4 = await skip(ADMIN, ONCE, '2099-11-25');
+ok(!!s4?.error && s4.code === '22023', `B3 an event that does not repeat is refused (${JSON.stringify(s4)})`);
+const def = (await db.query(`SELECT pg_get_functiondef('public.bw_skip_rehearsal_date(uuid, date)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
+ok(/FOR UPDATE/i.test(def), 'B3 the row is locked while the date is added');
+const anonSkip = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_skip_rehearsal_date(uuid, date)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+ok(anonSkip === false, 'anon cannot call the skip function');
 
 const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonCan === false, 'anon cannot call the publish function');

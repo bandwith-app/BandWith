@@ -99,8 +99,8 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
-import { skipRehearsalDate } from "@/lib/services/rehearsalSkip";
-import { isSkippedOccurrence } from "@/lib/recurrenceSkips";
+import { deleteRehearsalDate } from "@/lib/services/rehearsalSkip";
+import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn } from "@/lib/recurrenceSkips";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -863,8 +863,9 @@ export default function AuthenticatedApp() {
     const { next, seen } = syncOpenEvent<EventData>(selectedEvent, fresh as Partial<EventData>, track.seen);
     track.seen = seen;
     if (next === selectedEvent) return;
+    // `next.date`: one date of a repeating rehearsal stays on that date.
     setSelectedEvent(prev =>
-      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>) } : prev,
+      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>), date: next?.date ?? prev.date } : prev,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, openEventKey]);
@@ -1071,7 +1072,7 @@ export default function AuthenticatedApp() {
   const missingCtxRef = useRef({ userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup });
   missingCtxRef.current = { userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup };
   /** Works out why an event isn't in the list, or opens it when it can. */
-  const explainMissingEvent = useCallback(async (eventDbId: string) => {
+  const explainMissingEvent = useCallback(async (eventDbId: string, openAt?: (item: EventData) => void) => {
     const { userId, isAdminOfBand: adminOf, eventMembersMap: membersMap, bandLookup: bands } = missingCtxRef.current;
     const { data: publicRow, error } = await supabase.from('events').select(EVENT_PUBLIC_COLUMNS).eq('id', eventDbId).maybeSingle();
     if (error) {
@@ -1158,9 +1159,19 @@ export default function AuthenticatedApp() {
     const item = eventToEventItem(row as Event);
     item.band_id = row.band_id || undefined;
     item.band_name = row.band_id ? bands[row.band_id] : t('Personal');
-    handleEventCardClickRef.current(item);
+    (openAt ?? handleEventCardClickRef.current)(item);
   }, []);
-  const navigateToEvent = useCallback(async (eventDbId: string) => {
+  /**
+   * Opens an event by id. `date`: the date of a repeating rehearsal the user
+   * picked (Home's list, a session summary). With none, a series opens on its
+   * next date still on, never on a deleted or long-past first date, so
+   * "Delete this date" deletes the date on screen (Codex #297 B1).
+   */
+  const navigateToEvent = useCallback(async (eventDbId: string, date?: string | null) => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const openAt = (item: EventData) =>
+      handleEventCardClickRef.current((date ? occurrenceOn(item, date) : occurrenceOn(item, null, today)) ?? item);
     // One pane: closing the gig goes back to the tab it was opened from
     // (Home's "Review payouts", a notification) instead of the calendar.
     const from = activeTabRef.current;
@@ -1171,7 +1182,7 @@ export default function AuthenticatedApp() {
     setTimeout(async () => {
       const ev = eventsRef.current.find(e => e.eventId === eventDbId);
       if (ev) {
-        handleEventCardClickRef.current(ev);
+        openAt(ev);
       } else {
         // No signal ("Go live" at a venue): open the event from its live
         // pack instead of fetching the list (plan §3.4).
@@ -1181,7 +1192,7 @@ export default function AuthenticatedApp() {
           const item = eventToEventItem(pack.event as unknown as Event);
           item.band_id = pack.bandId;
           item.band_name = bandsByIdRef.current[pack.bandId];
-          handleEventCardClickRef.current(item);
+          openAt(item);
           return true;
         };
         if (typeof navigator !== 'undefined' && navigator.onLine === false && (await fromPack())) return;
@@ -1194,9 +1205,9 @@ export default function AuthenticatedApp() {
         }
         setTimeout(() => {
           const evRetry = eventsRef.current.find(e => e.eventId === eventDbId);
-          if (evRetry) handleEventCardClickRef.current(evRetry);
+          if (evRetry) openAt(evRetry);
           else
-            void explainMissingEvent(eventDbId).catch((err: any) =>
+            void explainMissingEvent(eventDbId, openAt).catch((err: any) =>
               setEventLoadError({ id: eventDbId, kind: 'error', message: err?.message }),
             );
         }, 500);
@@ -1356,7 +1367,7 @@ export default function AuthenticatedApp() {
           window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);
         }
         // After it: a deleted event is named from this notification.
-        await navigateToEvent(d.eventId);
+        await navigateToEvent(d.eventId, typeof d.date === 'string' ? d.date : null);
       } else if (d.screen === "poll" && d.pollId) {
         setVotePollId(String(d.pollId));
       } else if (d.screen === "event") {
@@ -2214,7 +2225,8 @@ export default function AuthenticatedApp() {
     const realNotifNav = realId ? realNotifications?.find((rn) => rn.id === realId) : null;
     const navEventId = (realNotifNav?.data as any)?.event_id;
     if (navEventId && (actionType === "NAV_EVENTS" || actionType === "NAV_EVENTS_CONFIRMED")) {
-      setTimeout(() => navigateToEvent(navEventId), 300);
+      const navDate = (realNotifNav?.data as any)?.occurrence_date;
+      setTimeout(() => navigateToEvent(navEventId, typeof navDate === 'string' ? navDate : null), 300);
       return;
     }
 
@@ -2735,9 +2747,10 @@ export default function AuthenticatedApp() {
     if (!selectedEvent?.eventId) return;
     haptic.delete();
     try {
-      if (scope === 'date' && selectedEvent.band_id && selectedEvent.date) {
+      if (scope === 'date') {
         // One date of a repeating rehearsal: the series and its notes stay (audit 05 #4).
-        const { error } = await skipRehearsalDate(selectedEvent.eventId, selectedEvent.date);
+        // No band or no date: refused with a message, never the whole series.
+        const { error } = await deleteRehearsalDate(selectedEvent);
         if (error) throw error;
         setSaveToast({ message: t('Rehearsal date deleted'), type: 'success' });
         refetchEvents();
@@ -2972,7 +2985,13 @@ export default function AuthenticatedApp() {
     if (selectedEvent && eventKeyOf(selectedEvent) === eventKeyOf(event)) return void openEventCard(event);
     runGuarded(() => void openEventCard(event));
   };
-  const openEventCard = async (event: EventData) => {
+  const openEventCard = async (opened: EventData) => {
+    // A later date of a series (Calendar, Home): remember where the series
+    // starts, so editing that date does not move it (Codex #297).
+    const series = opened.eventId && !opened.seriesDate && opened.is_recurring
+      ? eventsRef.current.find((e) => e.eventId === opened.eventId)
+      : undefined;
+    const event: EventData = series?.date && series.date !== opened.date ? { ...opened, seriesDate: series.date } : opened;
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -3275,7 +3294,8 @@ export default function AuthenticatedApp() {
         title: title || t('Untitled Event'),
         event_type: eventType,
         status: isRehearsalWizard ? (data.status === 'draft' ? 'confirmed' : (data.status || 'confirmed')) : (data.status || 'confirmed'),
-        event_date: date,
+        // One date of a series, its date untouched: the series keeps its start.
+        event_date: editingEventData?.seriesDate && date === editingEventData.date ? editingEventData.seriesDate : date,
         start_time: timeFinal,
         end_time: endTime || null,
         ...(!isRehearsalWizard
@@ -3303,8 +3323,13 @@ export default function AuthenticatedApp() {
         is_recurring: isRehearsalWizard
           ? Boolean(data.recurrence && data.recurrence !== 'once')
           : Boolean(data.is_recurring || (data.recurrence && data.recurrence !== 'once')),
+        // On top of the rule it edits: dates deleted on their own stay deleted
+        // (Codex #297 B2; updateEvent merges the stored rule too).
         recurrence_rule: (data.recurrence && data.recurrence !== 'once')
-          ? { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 }
+          ? mergeRecurrenceRule(
+              data._editingEventId ? (editingEventData?.recurrence_rule ?? data.recurrence_rule) : null,
+              { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 },
+            )
           : (data.recurrence_rule || null),
       };
 
@@ -4387,8 +4412,9 @@ export default function AuthenticatedApp() {
                 onClose={() => {
                   // Cancelling an edit returns to the event it was opened from (saving has its own path).
                   const back = editingEventData?.eventId;
+                  const backDate = editingEventData?.date;
                   setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
-                  if (back) void navigateToEvent(back);
+                  if (back) void navigateToEvent(back, backDate);
                 }}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}

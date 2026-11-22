@@ -28,7 +28,7 @@ import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
-import { isSkippedOccurrence } from '@/lib/recurrenceSkips';
+import { isSkippedOccurrence, occurrenceOn } from '@/lib/recurrenceSkips';
 import { useSystemBack } from '@/lib/backStack';
 import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
@@ -445,7 +445,10 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
       if (titleMatch || locMatch || clientMatch || notesMatch) {
         seen.add(key);
-        matches.push(e);
+        // A repeating rehearsal whose first date was deleted: its next date
+        // still on; none left, no result (Codex #297).
+        const live = isSkippedOccurrence(e as any, e.date) ? occurrenceOn(e as any, null) as EventData | null : e;
+        if (live) matches.push(live);
       }
     });
 

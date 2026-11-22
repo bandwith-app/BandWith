@@ -1,6 +1,7 @@
 -- ============================================================================
--- 195 · Rehearsal polls: invite-only reads, one-step publish, deadline
---       (audit 383f15b, 05 #1 #3 #8 #11)
+-- 195 · Rehearsal polls: invite-only reads, one-step publish, deadline;
+--       one rehearsal date deleted in one step
+--       (audit 383f15b, 05 #1 #3 #4 #8 #11; Codex review of #297)
 -- ----------------------------------------------------------------------------
 -- #3  A poll with an invite list (098) was readable by every member of the
 --     band: the app filtered it out after the response had reached the
@@ -33,11 +34,24 @@
 --     enforces (bw_poll_vote_deadline, 117: the creator's time zone) as an
 --     absolute timestamp, so a travelling member's app does not close voting
 --     early (it read vote_by + vote_by_time in the device's zone).
+--     bw_poll_vote_deadline(poll) itself (117) is no longer granted to
+--     authenticated: it answered for any poll id, invited or not. No app
+--     build ever called it; the vote policies reach it through
+--     bw_poll_voting_open (SECURITY DEFINER), which keeps working.
+--
+-- #4  bw_skip_rehearsal_date(event, date) — "Delete this date" of a repeating
+--     rehearsal: locks the event row, checks the caller is an admin of its
+--     band and that it still repeats, and appends the date to
+--     recurrence_rule.skip_dates (sorted, no duplicates; every other key of
+--     the rule kept). Two admins deleting different dates at once both keep
+--     theirs (the app's read-then-write lost one). Errors: 42501 not an
+--     admin, 22023 not repeating. Returns { event_id, skip_dates }.
+--     Builds without it (or before 195) fall back to the read-then-write.
 --
 -- Older TestFlight / APK builds keep working: they read the same columns and
 -- simply receive fewer rows for invite-only polls they were not on (they hid
 -- those already); their own publish (update + delete + insert) is unchanged.
--- No new columns, so no GRANT changes. Idempotent; safe to re-run.
+-- No new columns, so no table GRANT changes. Idempotent; safe to re-run.
 -- ============================================================================
 
 BEGIN;
@@ -243,5 +257,71 @@ GRANT EXECUTE ON FUNCTION public.bw_poll_vote_deadlines(uuid[]) TO authenticated
 
 COMMENT ON FUNCTION public.bw_poll_vote_deadlines(uuid[]) IS
   'When voting closes for each poll the caller may read, as enforced by the vote policies (117); 195, audit 05 #11.';
+
+-- ── The single-poll deadline: no longer callable by clients ───────────────
+-- Only SECURITY DEFINER functions use it (bw_poll_voting_open, the vote
+-- policies' check, and bw_poll_vote_deadlines above, which filters by
+-- visibility); they run as the owner, so this changes nothing for them.
+REVOKE EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM authenticated;
+
+-- ── One date of a repeating rehearsal, in one step (#4, Codex #297) ───────
+CREATE OR REPLACE FUNCTION public.bw_skip_rehearsal_date(p_event_id uuid, p_date date)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_band uuid;
+  v_recurring boolean;
+  v_rule jsonb;
+  v_skips jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Only band admins can delete this event' USING ERRCODE = '42501';
+  END IF;
+  IF p_date IS NULL THEN
+    RAISE EXCEPTION 'A date is needed' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT e.band_id, e.is_recurring, e.recurrence_rule
+    INTO v_band, v_recurring, v_rule
+    FROM public.events e
+   WHERE e.id = p_event_id
+   FOR UPDATE;
+
+  IF NOT FOUND OR v_band IS NULL OR NOT public.bw_is_band_admin(v_band, auth.uid()) THEN
+    RAISE EXCEPTION 'Only band admins can delete this event' USING ERRCODE = '42501';
+  END IF;
+  IF NOT coalesce(v_recurring, false) OR v_rule IS NULL OR jsonb_typeof(v_rule) <> 'object' THEN
+    RAISE EXCEPTION 'This rehearsal does not repeat any more' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT coalesce(jsonb_agg(d ORDER BY d), '[]'::jsonb)
+    INTO v_skips
+    FROM (
+      SELECT DISTINCT x AS d
+        FROM jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(v_rule -> 'skip_dates') = 'array' THEN v_rule -> 'skip_dates' ELSE '[]'::jsonb END
+             ) AS x
+       WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      UNION
+      SELECT to_char(p_date, 'YYYY-MM-DD')
+    ) AS all_dates;
+
+  UPDATE public.events
+     SET recurrence_rule = v_rule || jsonb_build_object('skip_dates', v_skips),
+         updated_at = now()
+   WHERE id = p_event_id;
+
+  RETURN jsonb_build_object('event_id', p_event_id, 'skip_dates', v_skips);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) TO authenticated;
+
+COMMENT ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) IS
+  'Delete one date of a repeating rehearsal: append it to recurrence_rule.skip_dates under a row lock; admins of the event''s band (195, audit 05 #4, Codex #297 B3).';
 
 COMMIT;

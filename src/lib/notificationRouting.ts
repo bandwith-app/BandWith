@@ -7,7 +7,8 @@ import { t } from '@/lib/i18n';
 export type NotificationTarget =
   | { screen: 'chat'; chatId: string }
   // livePack: open its "setlist without signal" consent sheet (170).
-  | { screen: 'event'; eventId?: string; livePack?: true }
+  // date: the date of a repeating rehearsal it is about (a session summary, 133).
+  | { screen: 'event'; eventId?: string; livePack?: true; date?: string }
   // A rehearsal poll to vote on (its sheet, like the inbox).
   | { screen: 'poll'; pollId: string }
   // quoteId: the quote a client answered on its page (migration 099).
@@ -58,7 +59,9 @@ export function notificationTarget(
     kind === 'rehearsal_notes_added' ||
     kind === 'rehearsal_poll_finalized'
   ) {
-    return { screen: 'event', eventId };
+    // One date of a repeating rehearsal opens on that date (Codex #297 B1).
+    const date = str(d.occurrence_date) || str(d.occurrenceDate);
+    return date && eventId ? { screen: 'event', eventId, date } : { screen: 'event', eventId };
   }
   if (kind === 'rehearsal_poll' || kind === 'rehearsal_proposal') {
     const pollId = str(d.poll_id) || str(d.pollId);

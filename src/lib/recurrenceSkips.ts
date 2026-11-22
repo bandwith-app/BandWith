@@ -44,3 +44,72 @@ export function withSkippedDate<T extends object>(rule: T, date: string): T & { 
   if (DAY.test(day)) all.add(day);
   return { ...rule, skip_dates: Array.from(all).sort() };
 }
+
+type Repeating = { date?: string | null; is_recurring?: boolean | null; recurrence_rule?: unknown; seriesDate?: string };
+
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * The series opened on one of its dates (Codex #297 B1).
+ *
+ * Home, Calendar search and pushes only know the series row, whose date is
+ * the first one. Opening it on that date made "Delete this date" take out the
+ * first rehearsal instead of the one the user tapped.
+ *
+ * - `date` given: the series on that date.
+ * - no date: the first date still on from `from` (default: the first date),
+ *   null when none is left. Same steps as the Calendar's expansion: weekly
+ *   (× interval), biweekly, monthly (× interval), up to `until` and `count`
+ *   dates after the first.
+ *
+ * A later date carries `seriesDate` (the series' first date), so an edit
+ * of that date does not move the series start (see eventCardPatch and the
+ * wizard save). An event that does not repeat comes back as it is.
+ */
+export function occurrenceOn<T extends Repeating>(event: T, date?: string | null, from?: string | null): T | null {
+  const rule = event.recurrence_rule as Record<string, any> | null | undefined;
+  const base = dayOf(event.date);
+  if (!event.is_recurring || !rule || !DAY.test(base)) return event;
+  const picked = dayOf(date);
+  if (picked) return picked === base || !DAY.test(picked) ? event : { ...event, date: picked, seriesDate: base };
+
+  const start = dayOf(from);
+  const freq = String(rule.freq || rule.frequency || '').toLowerCase();
+  const skips = skippedDates(rule);
+  const until = typeof rule.until === 'string' ? dayOf(rule.until) : '';
+  const after = Number(rule.count) > 0 ? Number(rule.count) : Infinity;
+  const step = Math.max(1, Number(rule.interval) || 1);
+  const [y, m, d] = base.split('-').map(Number);
+  const cursor = new Date(y, m - 1, d);
+  // A bounded walk: a weekly series 20 years out at most.
+  for (let n = 0; n <= Math.min(after, 1100); n++) {
+    if (n > 0) {
+      if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * step);
+      else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
+      else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + step);
+      else break;
+    }
+    const day = ymd(cursor);
+    if (until && day > until) break;
+    if ((start && day < start) || skips.has(day)) continue;
+    return day === base ? event : { ...event, date: day, seriesDate: base };
+  }
+  return null;
+}
+
+/**
+ * A rule rewritten from the cadence (wizard, overview card) on top of the
+ * stored one (Codex #297 B2): the cadence keys are replaced, every other key
+ * (skip_dates, until, count, keys a newer build added) stays. null (the
+ * repeat turned off) stays null.
+ */
+export function mergeRecurrenceRule<T extends Record<string, unknown>>(
+  stored: unknown,
+  next: T | null | undefined,
+): (T & Record<string, unknown>) | null {
+  if (!next) return null;
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return next;
+  const { freq: _f, frequency: _fr, interval: _i, ...rest } = stored as Record<string, unknown>;
+  return { ...rest, ...next };
+}

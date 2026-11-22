@@ -7,6 +7,7 @@
  * before (bw_trg_event_changed: date, time, load-in / soundcheck, venue).
  */
 import { addressWithoutCity } from '@/lib/eventAddress';
+import { mergeRecurrenceRule } from '@/lib/recurrenceSkips';
 
 export type EditKind = 'gig' | 'rehearsal';
 
@@ -69,6 +70,8 @@ export interface EditableEvent {
   title: string;
   eventType?: string;
   date: string;
+  /** Opened on a later date of a repeating rehearsal: the series' first date. */
+  seriesDate?: string;
   time: string;
   timeSet?: boolean;
   endTime?: string;
@@ -84,7 +87,7 @@ export interface EditableEvent {
   price?: string;
   paymentStatus?: string;
   is_recurring?: boolean;
-  recurrence_rule?: { freq?: string; frequency?: string; interval?: number } | null;
+  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; skip_dates?: string[]; [key: string]: unknown } | null;
 }
 
 export type Recurrence = 'once' | 'weekly' | 'biweekly' | 'monthly';
@@ -136,14 +139,29 @@ export function eventCardValues(ev: EditableEvent): EventCardValues {
   };
 }
 
-export function eventCardPatch(kind: EditKind, v: EventCardValues): Record<string, unknown> {
+/**
+ * `saved`: the event as opened. A rehearsal's rule changes only its
+ * cadence: deleted dates (skip_dates) and other keys stay (Codex #297 B2).
+ * Opened on a later date of the series (`seriesDate`), the series keeps
+ * its first date unless the date itself was changed.
+ */
+export function eventCardPatch(
+  kind: EditKind,
+  v: EventCardValues,
+  saved?: Partial<Pick<EditableEvent, 'recurrence_rule' | 'date' | 'seriesDate'>>,
+): Record<string, unknown> {
+  // One date of a series, its date untouched: the series keeps its start.
+  const keepStart = !!saved?.seriesDate && v.date === saved.date;
   const base: Record<string, unknown> = {
     title: v.title.trim(),
-    event_date: v.date,
+    event_date: keepStart ? saved!.seriesDate : v.date,
     start_time: v.startTime || '20:00',
     end_time: v.endTime || null,
   };
-  if (kind === 'rehearsal') return { ...base, ...recurrencePatch(v.recurrence) };
+  if (kind === 'rehearsal') {
+    const r = recurrencePatch(v.recurrence);
+    return { ...base, ...r, recurrence_rule: mergeRecurrenceRule(saved?.recurrence_rule, r.recurrence_rule) };
+  }
   return {
     ...base,
     ...(v.eventType ? { event_type: v.eventType } : {}),
@@ -255,7 +273,7 @@ export function savedValue(ev: EditableEvent, column: string): unknown {
     case 'event_type':
       return (ev.eventType || '').toLowerCase();
     case 'event_date':
-      return ev.date;
+      return ev.seriesDate || ev.date;
     case 'start_time':
       return ev.timeSet === false ? '' : hhmm(ev.time);
     case 'end_time':
@@ -285,7 +303,7 @@ export function savedValue(ev: EditableEvent, column: string): unknown {
       return !!ev.is_recurring;
     case 'recurrence_rule': {
       const r = recurrenceOf(ev.is_recurring, ev.recurrence_rule);
-      return recurrencePatch(r).recurrence_rule;
+      return mergeRecurrenceRule(ev.recurrence_rule, recurrencePatch(r).recurrence_rule);
     }
     default:
       return undefined;
@@ -322,7 +340,8 @@ export function eventDataPatch(patch: Record<string, unknown>, ev: EditableEvent
         out.eventType = str(value);
         break;
       case 'event_date':
-        out.date = String(value ?? '');
+        // The series start kept under one date of it: that date stays on screen.
+        out.date = ev.seriesDate && value === ev.seriesDate ? ev.date : String(value ?? '');
         break;
       case 'start_time':
         out.time = String(value || '20:00');

@@ -411,6 +411,25 @@ const alreadyPublishedError = () =>
   });
 
 /**
+ * A poll published by a try that was cut off before its options were saved
+ * (a database before 195 publishes step by step): polling, with no option.
+ */
+async function unfinishedPublish(pollId: string): Promise<{ band_id?: string } | null> {
+  const { data: poll } = await supabase
+    .from('rehearsal_polls')
+    .select('id, band_id, status')
+    .eq('id', pollId)
+    .maybeSingle();
+  if (!poll || (poll as { status?: string }).status !== 'polling') return null;
+  const { count, error } = await supabase
+    .from('rehearsal_poll_options')
+    .select('id', { count: 'exact', head: true })
+    .eq('poll_id', pollId);
+  if (error || count !== 0) return null;
+  return poll as { band_id?: string };
+}
+
+/**
  * 3. Admin creates a new poll or converts an existing member proposal into a poll.
  * Bulk-inserts candidate time slots into `rehearsal_poll_options`.
  * Notifies ALL band members.
@@ -501,11 +520,18 @@ export const createOrPublishAdminPoll = async ({
           .select('id, band_id');
         if (updateError) throw updateError;
         const row = (Array.isArray(updated) ? updated[0] : updated) as { id: string; band_id?: string } | undefined;
-        if (!row) throw alreadyPublishedError();
-        if (row.band_id) notifyBandId = row.band_id;
-
-        // Clean up the proposal's own suggestions (nobody votes on a proposal).
-        await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+        if (row) {
+          if (row.band_id) notifyBandId = row.band_id;
+          // Clean up the proposal's own suggestions (nobody votes on a proposal).
+          await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+        } else {
+          // Not a proposal any more. A try cut off after the status change
+          // but before its options went in left a poll with none: finish it
+          // (Codex #297). Any other poll: another admin published it.
+          const unfinished = await unfinishedPublish(pollId);
+          if (!unfinished) throw alreadyPublishedError();
+          if (unfinished.band_id) notifyBandId = unfinished.band_id;
+        }
       }
       activePollId = pollId;
     } else {

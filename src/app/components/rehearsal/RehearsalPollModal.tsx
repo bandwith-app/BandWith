@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Sparkles, Send, ChevronLeft, ChevronRight, MapPin, Plus, Check } from '@/app/components/icons';
 import { useBand } from '@/lib/BandContext';
+import { getBandRoster } from '@/lib/services/bands';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { useFocusSuggestions } from './useFocusSuggestions';
 import { getActiveSymbol as sym } from '@/lib/currency';
@@ -86,19 +87,28 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   useEffect(() => {
     if (isOpen) void refreshMembers?.();
   }, [isOpen]);
+  // Another band's proposal (band A selected, B's proposal opened): B's
+  // roster, loaded here; never A's (Codex #297 B4).
+  const otherBand = !!bandId && selectedBand?.id !== bandId;
+  const [otherMembers, setOtherMembers] = useState<{ user_id: string | null; profile: any }[] | null>(null);
+  useEffect(() => {
+    if (!isOpen || !otherBand) return;
+    let live = true;
+    setOtherMembers(null);
+    void getBandRoster(bandId).then(({ data }) => { if (live) setOtherMembers(data || []); });
+    return () => { live = false; };
+  }, [isOpen, otherBand, bandId]);
   const roster = useMemo(
     () =>
-      selectedBand?.id === bandId
-        ? (selectedBand.members || [])
-            .filter((m) => !!m.user_id)
-            .map((m) => ({
-              id: m.user_id as string,
-              name: personName(m.profile, t('Band member')),
-              initials: personInitials(m.profile, '?'),
-            }))
-            .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
-        : [],
-    [selectedBand, bandId]
+      ((otherBand ? otherMembers : selectedBand?.members) || [])
+        .filter((m) => !!m.user_id)
+        .map((m) => ({
+          id: m.user_id as string,
+          name: personName(m.profile, t('Band member')),
+          initials: personInitials(m.profile, '?'),
+        }))
+        .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i),
+    [selectedBand, otherBand, otherMembers]
   );
   const invitedIds = excluded.length === 0 ? [] : roster.filter((m) => !excluded.includes(m.id)).map((m) => m.id);
   const [title, setTitle] = useState('');
@@ -548,6 +558,10 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
               setFocusSongs(prev => (prev.some(s => s.id === song.id) ? prev : [...prev, { id: song.id, title: song.title }]));
             }}
             selectedIds={focusSongs.map(s => s.id)}
+            // The poll's band, which may not be the selected one (B4); only
+            // its admins open this builder.
+            bandId={bandId}
+            bandAdmin
             theme="blue"
             zIndex={zIndex}
           />

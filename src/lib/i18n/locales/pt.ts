@@ -421,6 +421,7 @@ const dict: Dictionary = {
   "Delete the whole series": "Excluir toda a série",
   "Rehearsal date deleted": "Data do ensaio excluída",
   "This rehearsal does not repeat any more. Reload and try again.": "Este ensaio não se repete mais. Recarregue e tente de novo.",
+  "This date can't be deleted on its own. Reload and try again.": "Esta data não pode ser excluída sozinha. Recarregue e tente de novo.",
   "CANCEL": "CANCELAR",
   "CALL": "CHEGADA",
   "START": "INÍCIO",
