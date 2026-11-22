@@ -150,3 +150,48 @@ describe('Venue suggestions with a keyboard and a screen reader (ARIA 1.2 combob
     expect(input.getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('the highlighted suggestion stays in view', () => {
+  const second = { name: 'Bowery Ballroom', address: '6 Delancey St', city: 'New York', provider: 'osm' };
+  const open = async () => {
+    mocks.searchVenues.mockResolvedValue([place, second]);
+    const input = screen.getByRole('combobox');
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Blue' } });
+    await screen.findAllByRole('option');
+    return input;
+  };
+
+  it('moving the highlight scrolls the option into view (nearest), keeping aria-activedescendant', async () => {
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      render(<Harness onSelect={() => {}} />);
+      const input = await open();
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      const active = document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+      await waitFor(() => expect(spy.mock.contexts).toContain(active));
+      expect(spy).toHaveBeenLastCalledWith({ block: 'nearest' });
+      expect(active.textContent).toContain('Bowery Ballroom');
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it('Tab commits only an option that is in view; else it just closes the list', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    const listbox = screen.getByRole('listbox');
+    const option = document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+    // The list shows y 100–300; the option sits below it (scrolled away).
+    listbox.getBoundingClientRect = () => new DOMRect(0, 100, 300, 200);
+    option.getBoundingClientRect = () => new DOMRect(0, 400, 300, 48);
+    fireEvent.keyDown(input, { key: 'Tab' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});

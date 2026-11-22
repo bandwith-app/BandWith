@@ -55,6 +55,25 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   // One Google session from the first keystroke to the pick (billed as one search).
   const sessionTokenRef = useRef<string | undefined>(undefined);
   const listboxId = useId();
+  const optionId = (idx: number) => `${listboxId}-option-${idx}`;
+  const activeOption = isOpen && highlightedIndex >= 0 && highlightedIndex < suggestions.length ? highlightedIndex : -1;
+  // The highlighted suggestion stays in view as the arrows move it.
+  useEffect(() => {
+    if (activeOption < 0) return;
+    document.getElementById(optionId(activeOption))?.scrollIntoView?.({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOption]);
+  /** At least half of the option shows in the list (no layout: it counts as shown). */
+  const optionInView = (idx: number): boolean => {
+    const el = document.getElementById(optionId(idx));
+    const list = el?.closest('[role="listbox"]');
+    if (!el || !list) return false;
+    const r = el.getBoundingClientRect();
+    const l = list.getBoundingClientRect();
+    if (!r.height || !l.height) return true;
+    const shown = Math.min(r.bottom, l.bottom) - Math.max(r.top, l.top);
+    return shown >= r.height / 2;
+  };
   // Where a touch on a suggestion started: a tap picks it, a scroll doesn't.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -172,14 +191,12 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
       case 'Tab':
         // Leaving the field picks the highlighted venue (ARIA 1.2 combobox),
         // or just closes the list; focus moves on as usual.
-        if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) handleSelectPlace(suggestions[highlightedIndex]);
+        // A highlighted venue scrolled out of the list is not picked unseen.
+        if (activeOption >= 0 && optionInView(activeOption)) handleSelectPlace(suggestions[activeOption]);
         else setIsOpen(false);
         break;
     }
   };
-
-  const optionId = (idx: number) => `${listboxId}-option-${idx}`;
-  const activeOption = isOpen && highlightedIndex >= 0 && highlightedIndex < suggestions.length ? highlightedIndex : -1;
 
   return (
     <div ref={containerRef} className={cn('relative w-full', containerClassName)}>
