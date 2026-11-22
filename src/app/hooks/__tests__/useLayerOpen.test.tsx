@@ -45,6 +45,34 @@ describe('is a sheet, modal or Stage open?', () => {
     expect(anyLayerOpen()).toBe(false);
   });
 
+  it('the urgent pop-up itself is never a layer, even as a modal alert dialog (#298), nor anything inside it', () => {
+    const urgent = document.createElement('div');
+    urgent.setAttribute('data-bw-urgent', '');
+    urgent.setAttribute('role', 'alertdialog');
+    urgent.setAttribute('aria-modal', 'true');
+    urgent.innerHTML = '<div role="dialog" aria-modal="true" data-modal-open="true">inner</div>';
+    document.body.appendChild(urgent);
+    expect(anyLayerOpen()).toBe(false);
+    // A real sheet next to it still counts.
+    addDialog();
+    expect(anyLayerOpen()).toBe(true);
+  });
+
+  it('watching: the urgent pop-up appearing does not make it wait on itself', async () => {
+    const { result } = renderHook(() => useLayerOpen());
+    const urgent = document.createElement('div');
+    urgent.setAttribute('data-bw-urgent', '');
+    urgent.setAttribute('role', 'alertdialog');
+    urgent.setAttribute('aria-modal', 'true');
+    act(() => {
+      document.body.appendChild(urgent);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current).toBe(false);
+  });
+
   it('follows an editor opening and closing', async () => {
     const { result } = renderHook(() => useLayerOpen());
     const editor = document.createElement('div');

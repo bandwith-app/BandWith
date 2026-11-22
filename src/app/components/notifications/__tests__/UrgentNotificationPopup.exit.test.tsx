@@ -43,6 +43,11 @@ describe('the urgent pop-up while it leaves', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it('marks itself data-bw-urgent, so the layer check (useLayerOpen) never waits on the pop-up itself', () => {
+    const { getByRole } = render(<Host show onDismiss={() => undefined} onOpen={() => undefined} />);
+    expect(getByRole('alert').hasAttribute('data-bw-urgent')).toBe(true);
+  });
+
   it('shown, a tap on the dimmed screen still dismisses it', () => {
     const onDismiss = vi.fn();
     const { container } = render(<Host show onDismiss={onDismiss} onOpen={() => undefined} />);

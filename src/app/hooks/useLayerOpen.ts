@@ -8,11 +8,17 @@ import { useLayoutEffect, useState } from 'react';
  * screens have none of these on any device. Layers that announce
  * themselves (the urgent pop-up, toasts) step aside while one is open.
  */
-const SELECTOR = '[role="dialog"], [role="alertdialog"], [data-modal-open="true"], [aria-modal="true"]';
-const WATCHED = ['role', 'hidden', 'data-modal-open', 'aria-modal'];
+const URGENT = '[data-bw-urgent]';
+// The urgent pop-up (`data-bw-urgent`) is what steps aside, never a layer
+// itself: as a modal alert dialog (#298) it would wait on itself and leave
+// in a loop. Nor is anything inside it.
+const SELECTOR = ['[role="dialog"]', '[role="alertdialog"]', '[data-modal-open="true"]', '[aria-modal="true"]']
+  .map((s) => `${s}:not(${URGENT})`)
+  .join(', ');
+const WATCHED = ['role', 'hidden', 'data-modal-open', 'aria-modal', 'data-bw-urgent'];
 
 const shown = (el: Element): boolean => {
-  if (!el.isConnected || el.closest('[hidden]')) return false;
+  if (!el.isConnected || el.closest('[hidden]') || el.closest(URGENT)) return false;
   const style = (el as HTMLElement).style;
   return !style || style.display !== 'none';
 };
