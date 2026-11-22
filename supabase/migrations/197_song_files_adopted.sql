@@ -46,7 +46,9 @@
 --
 -- 3. A file another song (or a suggestion) uses is never removed:
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
---    unchanged) return only the files nothing else uses, and the app asks
+--    unchanged; withdraw as 180 lines 643-678 on fix/account-deletion at
+--    898303a2, with IS DISTINCT FROM for a NULL author) return only the
+--    files nothing else uses, and the app asks
 --    bw_song_files_unused before removing any (deleting a song, replacing a
 --    file). A member's song can't link a file another song uses
 --    (BW_FILE_IN_USE).
@@ -173,12 +175,12 @@ BEGIN
   END IF;
   v_ref := CASE p_field WHEN 'audio_url' THEN s.audio_url ELSE s.chart_url END;
   IF v_ref IS NULL OR left(v_ref, length(public.bw_song_file_ref(s.band_id::text || '/suggestions/')))
-                      <> public.bw_song_file_ref(s.band_id::text || '/suggestions/') THEN
+                      IS DISTINCT FROM public.bw_song_file_ref(s.band_id::text || '/suggestions/') THEN
     RETURN jsonb_build_object('won', false, 'reason', 'nothing', 'ref', v_ref);
   END IF;
   v_from := substr(v_ref, length(public.bw_song_file_ref('')) + 1);
   v_parts := string_to_array(v_from, '/');
-  IF array_length(v_parts, 1) <> 5 OR v_parts[4] NOT IN ('audio', 'chart') OR coalesce(v_parts[5], '') = '' THEN
+  IF array_length(v_parts, 1) IS DISTINCT FROM 5 OR coalesce(v_parts[4], '') NOT IN ('audio', 'chart') OR coalesce(v_parts[5], '') = '' THEN
     RETURN jsonb_build_object('won', false, 'reason', 'nothing', 'ref', v_ref);
   END IF;
   v_to := v_parts[1] || '/' || v_parts[4] || '/' || s.id::text || '-' || v_parts[5];
@@ -224,12 +226,13 @@ BEGIN
   END IF;
   -- From: a file of this band's suggestions folders. To: this song's own name in the band's folder.
   v_parts := string_to_array(coalesce(p_from, ''), '/');
-  IF array_length(v_parts, 1) <> 5 OR v_parts[1] <> s.band_id::text OR v_parts[2] <> 'suggestions'
-     OR v_parts[4] NOT IN ('audio', 'chart') OR coalesce(v_parts[5], '') = '' THEN
+  IF array_length(v_parts, 1) IS DISTINCT FROM 5 OR v_parts[1] IS DISTINCT FROM s.band_id::text
+     OR v_parts[2] IS DISTINCT FROM 'suggestions'
+     OR coalesce(v_parts[4], '') NOT IN ('audio', 'chart') OR coalesce(v_parts[5], '') = '' THEN
     RAISE EXCEPTION 'Bad source' USING ERRCODE = '22023';
   END IF;
   v_prefix := s.band_id::text || '/' || v_parts[4] || '/' || s.id::text || '-';
-  IF p_to IS NULL OR left(p_to, length(v_prefix)) <> v_prefix OR length(p_to) = length(v_prefix)
+  IF p_to IS NULL OR v_prefix IS NULL OR left(p_to, length(v_prefix)) IS DISTINCT FROM v_prefix OR length(p_to) = length(v_prefix)
      OR position('/' IN substr(p_to, length(v_prefix) + 1)) > 0 OR length(p_to) > 400 THEN
     RAISE EXCEPTION 'Bad destination' USING ERRCODE = '22023';
   END IF;
@@ -367,7 +370,7 @@ BEGIN
     -- A member links only their own new uploads, never a file another song
     -- uses (rejecting their song would then remove it).
     IF auth.uid() IS NOT NULL AND NOT public.bw_is_band_admin(NEW.band_id, auth.uid())
-       AND EXISTS (SELECT 1 FROM public.songs o WHERE o.id <> NEW.id AND (o.audio_url = v_ref OR o.chart_url = v_ref)) THEN
+       AND EXISTS (SELECT 1 FROM public.songs o WHERE o.id IS DISTINCT FROM NEW.id AND (o.audio_url = v_ref OR o.chart_url = v_ref)) THEN
       RAISE EXCEPTION 'BW_FILE_IN_USE: this file belongs to another song; upload it again'
         USING ERRCODE = '55000';
     END IF;
@@ -505,7 +508,7 @@ BEGIN
   IF g.id IS NULL OR NOT public.bw_is_band_admin(g.band_id) THEN
     RAISE EXCEPTION 'Only band admins can review suggestions' USING ERRCODE = '42501';
   END IF;
-  IF g.status <> 'pending' THEN
+  IF g.status IS DISTINCT FROM 'pending' THEN
     RAISE EXCEPTION 'This suggestion was already reviewed' USING ERRCODE = '55000';
   END IF;
   IF p_decision NOT IN ('accept', 'reject') THEN
@@ -591,6 +594,9 @@ REVOKE ALL ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb,
 GRANT EXECUTE ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb, boolean) TO authenticated;
 
 -- The author takes a pending suggestion back (a suggested song is deleted).
+-- Mirrors 180_account_deletion_safety.sql lines 643-678 (fix/account-deletion
+-- at 898303a2: "As 108, with IS DISTINCT FROM", created_by can be NULL)
+-- plus 197's file filter. Re-check against 180 if that file changes.
 CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion(p_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -604,10 +610,11 @@ DECLARE
   v_files jsonb := '[]'::jsonb;
 BEGIN
   SELECT * INTO g FROM public.song_suggestions WHERE id = p_id FOR UPDATE;
-  IF v_uid IS NULL OR g.id IS NULL OR g.created_by <> v_uid THEN
+  -- 180 (B1): a former member's suggestion has created_by NULL; "<>" would let anyone through.
+  IF v_uid IS NULL OR g.id IS NULL OR g.created_by IS DISTINCT FROM v_uid THEN
     RAISE EXCEPTION 'Not your suggestion' USING ERRCODE = '42501';
   END IF;
-  IF g.status <> 'pending' THEN
+  IF g.status IS DISTINCT FROM 'pending' THEN
     RAISE EXCEPTION 'This suggestion was already reviewed' USING ERRCODE = '55000';
   END IF;
   UPDATE public.song_suggestions SET status = 'withdrawn', reviewed_at = now() WHERE id = g.id;

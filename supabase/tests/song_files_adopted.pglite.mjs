@@ -277,6 +277,15 @@ ok(wd && Array.isArray(wd.files) && wd.files.length === 0, `withdraw keeps it to
 const rej2 = await review(ADMIN, id(32), 'reject');
 ok(rej2 && JSON.stringify(rej2.files) === JSON.stringify([`sb://song-files/${U}`]), `reject still returns a file only that song used (${JSON.stringify(rej2?.files ?? rej2)})`);
 ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id IN ('${id(24)}','${id(25)}','${id(26)}')`)).rows[0].n === 0, 'the rejected / withdrawn songs are gone');
+// 180 (account deletion, B1): a former member's suggestion has created_by NULL.
+// 197 redefines withdraw: it must keep 180's IS DISTINCT FROM.
+await db.exec(`INSERT INTO songs VALUES ('${id(27)}','${BAND}','Former member song','suggested',NULL,NULL);
+  INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES ('${id(33)}','${BAND}','${id(27)}','new_song',NULL)`);
+const wdNull = await withdraw(MEM2, id(33));
+ok(String(wdNull).includes('Not your suggestion'), `nobody withdraws a former member's suggestion (${JSON.stringify(wdNull)})`);
+ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id = '${id(27)}'`)).rows[0].n === 1, 'and its song stays');
+ok(String(await repoint(ADMIN, SONG, '', DEST)).includes('Bad source'), 'an empty source is refused (no NULL slip-through)');
+
 // What the app may remove (deleting a song, replacing a file).
 const unused = (user, refs) => rpc(user, `SELECT public.bw_song_files_unused($1) AS v`, [refs]);
 const u1 = await unused(ADMIN, [`sb://song-files/${O}`, `sb://song-files/${U}`, `sb://song-files/${OTHER_BAND}/audio/z.mp3`, 'https://example.com/x.mp3']);
