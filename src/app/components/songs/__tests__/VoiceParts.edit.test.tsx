@@ -47,9 +47,17 @@ vi.mock('@/lib/supabase', () => ({
           single: async () => ({ data: { id: 's1', band_id: 'b1', title: 'Hudson Line', key: 'F', lyrics: '# Chorus\n[F]Hold the line\nMorning comes', chord_chart: null }, error: null }),
         }),
       }),
+      // The save-if-unchanged chain (no 189): update → eq(id) → eq/is(updated_at) → select('id').
       update: (v: unknown) => {
         update(v);
-        return { eq: async () => ({ error: null }) };
+        const written = { data: [{ id: 's1' }], error: null };
+        const chain: Record<string, unknown> = {
+          eq: () => chain,
+          is: () => chain,
+          select: async () => written,
+          then: (ok: (r: typeof written) => unknown, no?: (e: unknown) => unknown) => Promise.resolve(written).then(ok, no),
+        };
+        return chain;
       },
     }),
     // A database without 189: the editor compares, then updates.
@@ -112,6 +120,9 @@ describe('the Voice picker in the chord editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save chords' }));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][0]).toEqual({ lyrics: '# Chorus\n[F]Hold {v2}the line{/v2}\nMorning comes' });
+    // The save itself finishes: saved, the editor closes, no error (a failure fails here, not after the test).
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save chords' })).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 
