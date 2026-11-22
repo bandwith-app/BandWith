@@ -16,6 +16,8 @@ const db = vi.hoisted(() => ({
   rule: { frequency: 'weekly' } as Record<string, unknown>,
 }));
 
+// The device's zone goes with every date action (Codex #297 r8).
+vi.mock('@/lib/deviceTimeZone', () => ({ deviceTimeZone: () => 'America/New_York' }));
 vi.mock('@/lib/supabase', () => {
   const from = (table: string) => {
     db.from.push(table);
@@ -62,7 +64,7 @@ describe('skipping one rehearsal date on the server', () => {
   it('uses the one-step server call and writes nothing itself', async () => {
     const { error } = await skipRehearsalDate('ev', '2099-12-19T20:00:00');
     expect(error).toBeNull();
-    expect(db.rpc).toEqual([{ fn: 'bw_skip_rehearsal_date', args: { p_event_id: 'ev', p_date: '2099-12-19' } }]);
+    expect(db.rpc).toEqual([{ fn: 'bw_skip_rehearsal_date', args: { p_event_id: 'ev', p_date: '2099-12-19', p_tz: 'America/New_York' } }]);
     expect(db.from).toEqual([]);
   });
 
@@ -125,7 +127,7 @@ describe('a deleted date back in the series (Claude #297 r5 minor 5)', () => {
     db.rpcAnswer = { data: { event_id: 'ev', skip_dates: ['2099-12-26'] }, error: null };
     const out = await skip.restoreRehearsalDate('ev', '2099-12-19T20:00:00');
     expect(out).toEqual({ error: null, skipDates: ['2099-12-26'] });
-    expect(db.rpc).toEqual([{ fn: 'bw_restore_rehearsal_date', args: { p_event_id: 'ev', p_date: '2099-12-19' } }]);
+    expect(db.rpc).toEqual([{ fn: 'bw_restore_rehearsal_date', args: { p_event_id: 'ev', p_date: '2099-12-19', p_tz: 'America/New_York' } }]);
     expect(db.updates).toEqual([]);
   });
 

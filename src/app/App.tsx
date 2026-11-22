@@ -15,6 +15,7 @@ import {
   useDeputyClaim,
 } from "@/lib/deputyClaim";
 import { listMyDeputyGigs } from "@/lib/services/deputies";
+import { useServerTimezoneSync } from "@/lib/deviceTimeZone";
 import { supabase } from "@/lib/supabase";
 import { appLockSupported, markUnlocked, shouldLockOnLaunch } from "@/lib/appLock";
 import { useServerLocaleSync } from "@/lib/i18n/serverLocale";
@@ -73,6 +74,8 @@ export default function App() {
   const { isAuthenticated, loading: authLoading, userMode, profile, isPasswordRecovery, user, signOut } = useAuth();
   // The server writes some pushes (deputies) in the language of the app.
   useServerLocaleSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.preferred_language);
+  // And "today" in the device's zone (vote deadlines, date moves; Codex #297 r8).
+  useServerTimezoneSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.timezone);
   const { startOnboarding, goToStep, resetOnboarding, path: onboardingPath, joinedEarly } = useOnboarding();
   const deputyClaim = useDeputyClaim();
   const { bands, loading: bandsLoading, refreshBands, error: bandsError } = useBand();

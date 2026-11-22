@@ -18,6 +18,8 @@ const db = vi.hoisted(() => ({
   deletes: [] as { table: string; id: unknown }[],
 }));
 
+// The device's zone goes with every date action (Codex #297 r8).
+vi.mock('@/lib/deviceTimeZone', () => ({ deviceTimeZone: () => 'America/New_York' }));
 vi.mock('@/lib/supabase', () => {
   const from = (table: string) => {
     let op = 'select';
@@ -97,7 +99,7 @@ describe('Only this date (Codex #297 round 3 B2 B3)', () => {
     expect(error).toBeNull();
     expect(db.rpc).toEqual([{
       fn: 'bw_move_rehearsal_date',
-      args: { p_event_id: 'ev', p_date: '2099-12-08', p_new_date: '2099-12-10', p_fields: { title: 'Weekly', start_time: '19:00', end_time: '22:00' }, p_client_id: 'req-1' },
+      args: { p_event_id: 'ev', p_date: '2099-12-08', p_new_date: '2099-12-10', p_fields: { title: 'Weekly', start_time: '19:00', end_time: '22:00' }, p_client_id: 'req-1', p_tz: 'America/New_York' },
     }]);
     expect(db.created).toEqual([]);
     expect(db.updates).toEqual([]);

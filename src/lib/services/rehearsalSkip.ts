@@ -14,6 +14,7 @@ import { skippedDates, withSkippedDate } from '@/lib/recurrenceSkips';
 import { createEvent } from './events';
 import { createSetlist } from './songs';
 import { newUuid } from '@/lib/uuid';
+import { deviceTimeZone } from '@/lib/deviceTimeZone';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const dayOf = (date: string | null | undefined) => {
@@ -79,7 +80,7 @@ export async function deleteRehearsalDate(event: {
 
 export async function skipRehearsalDate(eventId: string, date: string): Promise<{ error: Error | null }> {
   const day = dayOf(date);
-  const { data, error } = await supabase.rpc('bw_skip_rehearsal_date', { p_event_id: eventId, p_date: day });
+  const { data, error } = await supabase.rpc('bw_skip_rehearsal_date', { p_event_id: eventId, p_date: day, p_tz: deviceTimeZone() });
   if (error && !isMissingRpc(error as RpcError)) {
     const code = (error as RpcError)?.code;
     if (code === '42501') return { error: notAdmin() };
@@ -127,7 +128,7 @@ export async function skipRehearsalDate(eventId: string, date: string): Promise<
 export async function restoreRehearsalDate(eventId: string | null | undefined, date: string | null | undefined): Promise<{ error: Error | null; skipDates?: string[] }> {
   const day = dayOf(date);
   if (!eventId || !DAY.test(day)) return { error: new Error(t("This date can't be restored. Reload and try again.")) };
-  const { data, error } = await supabase.rpc('bw_restore_rehearsal_date', { p_event_id: eventId, p_date: day });
+  const { data, error } = await supabase.rpc('bw_restore_rehearsal_date', { p_event_id: eventId, p_date: day, p_tz: deviceTimeZone() });
   if (error && !isMissingRpc(error as RpcError)) {
     const code = (error as RpcError)?.code;
     if (code === '42501') return { error: new Error(t('Only band admins can restore a date.')) };
@@ -189,6 +190,8 @@ export async function moveRehearsalDateOnly(
     p_new_date: to,
     p_fields: { ...edited, title: values.title.trim(), start_time: values.startTime || null, end_time: values.endTime || null },
     p_client_id: values.clientId || newRequestId(),
+    // "Today" where the admin is (Codex #297 r8), not the profile's default.
+    p_tz: deviceTimeZone(),
   });
   if (error && !isMissingRpc(error as RpcError)) {
     const code = (error as RpcError)?.code;

@@ -11,10 +11,19 @@
 //   node rehearsal_poll_privacy_publish.pglite.mjs <repo> /dev/null    # before: FAILs expected
 //   BW_AFTER_178=<178 file> node rehearsal_poll_privacy_publish.pglite.mjs <repo>
 //     # 195 on top of 178's triggers on events and notifications (#294)
+//   BW_FAKE_NOW=2026-11-23T00:00:00Z node rehearsal_poll_privacy_publish.pglite.mjs <repo>
+//     # 19:00 in New York: the r8 checks run with the real pair (Rome profile, NY device)
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
+// BW_FAKE_NOW=<ISO time>: the clock PGlite reads (now()), e.g. 2026-11-23T00:00:00Z
+// = 19:00 in New York, already the 23rd in Rome (the r8 case itself).
+if (process.env.BW_FAKE_NOW) {
+  const off = Date.parse(process.env.BW_FAKE_NOW) - Date.now();
+  const realNow = Date.now.bind(Date);
+  Date.now = () => realNow() + off;
+}
 const REPO = process.argv[2];
 const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/195_rehearsal_poll_privacy_publish.sql`;
 const db = new PGlite();
@@ -36,7 +45,8 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
 
-CREATE TABLE public.profiles (id uuid PRIMARY KEY, timezone text);
+-- 004's default: every profile in prod holds Europe/Rome (the app never wrote it).
+CREATE TABLE public.profiles (id uuid PRIMARY KEY, timezone text DEFAULT 'Europe/Rome');
 CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true);
 CREATE TABLE public.rehearsal_polls (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid NOT NULL, created_by uuid NOT NULL,
@@ -142,7 +152,10 @@ for (const f of ['088_deputy_push_i18n.sql', '089_server_notifications_i18n.sql'
 await db.exec(readFileSync(`${REPO}/supabase/migrations/095_band_free_slots.sql`, 'utf8'));
 
 await db.exec(`
+-- ADMIN's zone as the app's sign-in sync writes it; id(96) keeps the column
+-- default, as every prod profile did before it.
 INSERT INTO profiles VALUES ('${ADMIN}','America/New_York'), ('${INVITED}','Europe/London'), ('${OUTSIDER}','America/New_York');
+INSERT INTO profiles (id) VALUES ('${id(96)}');
 -- ADMIN and ADMIN2 run both bands; B_ONLY is a member of band B only.
 INSERT INTO band_members (band_id, user_id, role) VALUES
   ('${BAND_A}','${ADMIN}','admin'), ('${BAND_A}','${ADMIN2}','admin'), ('${BAND_A}','${INVITED}','member'), ('${BAND_A}','${OUTSIDER}','member'),
@@ -397,9 +410,9 @@ const s3 = await skip(B_ONLY, SERIES, '2099-12-15');
 ok(!!s3?.error && s3.code === '42501', 'B3 someone outside the band cannot either');
 const s4 = await skip(ADMIN, ONCE, '2099-11-25');
 ok(!!s4?.error && s4.code === '22023', `B3 an event that does not repeat is refused (${JSON.stringify(s4)})`);
-const def = (await db.query(`SELECT pg_get_functiondef('public.bw_skip_rehearsal_date(uuid, date)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
+const def = (await db.query(`SELECT pg_get_functiondef('public.bw_skip_rehearsal_date(uuid, date, text)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
 ok(/FOR UPDATE/i.test(def), 'B3 the row is locked while the date is added');
-const anonSkip = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_skip_rehearsal_date(uuid, date)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+const anonSkip = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_skip_rehearsal_date(uuid, date, text)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonSkip === false, 'anon cannot call the skip function');
 
 const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb, uuid)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
@@ -447,9 +460,9 @@ ok(await hintOf('2099-11-19', '2099-12-06') === '22023/bw:not_a_date', 'round 5:
 ok(await hintOf('2099-12-03', '2099-12-06') === '22023/bw:date_deleted', 'round 5: a date already deleted (or moved) is refused (bw:date_deleted)');
 ok(await hintOf('2099-12-10', '2020-01-01') === '22023/bw:date_past', 'round 5: a new date in the past is refused (bw:date_past)');
 ok((await db.query(`SELECT count(*)::int AS n FROM events WHERE id = $1`, [MOVE_2])).rows[0].n === 0, 'round 5: nothing was created by the refused moves');
-const moveDef = (await db.query(`SELECT pg_get_functiondef('public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
+const moveDef = (await db.query(`SELECT pg_get_functiondef('public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
 ok(/FOR UPDATE/i.test(moveDef) && moveDef.indexOf('FOR UPDATE') < moveDef.indexOf('INSERT INTO public.events'), 'B2 the series row is locked first');
-const anonMove = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+const anonMove = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonMove === false, 'B2 anon cannot call it');
 
 // ---- Codex #297 round 3 B4: deleted dates survive every write
@@ -707,16 +720,79 @@ if (days.local === days.utc) {
 }
 const tz = (await db.query(`SELECT
     public.bw_user_today('${id(99)}') = (now() AT TIME ZONE 'America/New_York')::date AS nobody,
-    public.bw_user_today('${ADMIN}') = (now() AT TIME ZONE 'America/New_York')::date AS ny`).catch((e) => ({ rows: [{ error: e.message }] }))).rows[0];
+    public.bw_user_today('${ADMIN}') = (now() AT TIME ZONE 'America/New_York')::date AS ny,
+    public.bw_user_today('${id(96)}') = (now() AT TIME ZONE 'Europe/Rome')::date AS stored`).catch((e) => ({ rows: [{ error: e.message }] }))).rows[0];
 await db.exec(`INSERT INTO profiles (id, timezone) VALUES ('${id(98)}', 'Mars/Olympus') ON CONFLICT (id) DO UPDATE SET timezone = 'Mars/Olympus'`);
 const tzBad = (await db.query(`SELECT public.bw_user_today('${id(98)}') = (now() AT TIME ZONE 'America/New_York')::date AS bad`).catch((e) => ({ rows: [{ bad: e.message }] }))).rows[0].bad;
-ok(tz?.nobody === true && tz?.ny === true && tzBad === true, `r7 M2: today is the profile's zone, America/New_York without one or with an unknown one (${JSON.stringify({ ...tz, tzBad })})`);
+ok(tz?.nobody === true && tz?.ny === true && tz?.stored === true && tzBad === true, `r7 M2: today is the profile's zone, America/New_York without one or with an unknown one (${JSON.stringify({ ...tz, tzBad })})`);
 // The move branch always notifies: a past date of the series moved to a future day.
 const MOVE_PAST = id(55);
 const mPast = await move(ADMIN, PAST, '2020-01-16', '2099-12-30', {}, MOVE_PAST);
 const mPastN = (await notes()).filter((n) => n.type === 'event_update' && n.data?.event_id === MOVE_PAST).length;
 ok(mPast?.event_id === MOVE_PAST && mPastN > 0, `r7 M2: a moved date is always announced, even from a past day (${mPastN} notices, ${JSON.stringify(mPast)})`);
 await db.exec(`DELETE FROM notifications;`);
+
+// ---- Codex #297 r8 BLOCKER: "today" is the device's zone (p_tz), not the
+// profile's: every prod profile says Europe/Rome (004's default). The real
+// case is a New York admin after 18:00 ET (already tomorrow in Rome); at
+// other hours a pair whose dates always differ (UTC+14 / UTC-12) stands in.
+const pairDays = async (stored, device) => (await db.query(`SELECT to_char((now() AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS s,
+  to_char((now() AT TIME ZONE $2)::date, 'YYYY-MM-DD') AS d, to_char((now() AT TIME ZONE $2)::date + 7, 'YYYY-MM-DD') AS d7`, [stored, device])).rows[0];
+let [R8_STORED, R8_DEVICE] = ['Europe/Rome', 'America/New_York'];
+let r8 = await pairDays(R8_STORED, R8_DEVICE);
+if (!(r8.d < r8.s)) { [R8_STORED, R8_DEVICE] = ['Pacific/Kiritimati', 'Etc/GMT+12']; r8 = await pairDays(R8_STORED, R8_DEVICE); }
+console.log(`info: r8 stored zone ${R8_STORED} (${r8.s}), device zone ${R8_DEVICE} (${r8.d})`);
+await db.exec(`UPDATE profiles SET timezone = '${R8_STORED}' WHERE id = '${ADMIN}'; DELETE FROM notifications;`);
+const [R8_SKIP, R8_MOVE, R8_MOVED, R8_BAD, R8_OLD] = [56, 57, 58, 59, 60].map(id);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status, start_time) VALUES
+  ('${R8_SKIP}','${BAND_A}','Late rehearsal','${r8.d}', true, '{"frequency":"weekly"}', 'rehearsal', 'confirmed', '21:00'),
+  ('${R8_MOVE}','${BAND_A}','Weekly rehearsal','${r8.d}', true, '{"frequency":"weekly"}', 'rehearsal', 'confirmed', '20:00');
+  INSERT INTO event_members (event_id, user_id, status, fee, role, paid_at) VALUES
+  ('${R8_SKIP}','${INVITED}','confirmed', 0, 'Bass', NULL), ('${R8_MOVE}','${INVITED}','confirmed', 0, 'Bass', NULL);`);
+const r8call = (sql, params) => asCommit(ADMIN, () => db.query(sql, params)).then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code, hint: e.hint }));
+const r8Move = await r8call(`SELECT public.bw_move_rehearsal_date($1, $2::date, $3::date, '{}'::jsonb, $4::uuid, $5) AS r`, [R8_MOVE, r8.d7, r8.d, R8_MOVED, R8_DEVICE]);
+ok(r8Move?.event_id === R8_MOVED, `r8: a ${R8_DEVICE} device moves a date to its today (${r8.d}; ${R8_STORED} is on ${r8.s}): accepted (${JSON.stringify(r8Move)})`);
+const r8Bad = await r8call(`SELECT public.bw_move_rehearsal_date($1, $2::date, $3::date, '{}'::jsonb, $4::uuid, $5) AS r`, [R8_MOVE, r8.d, r8.d, R8_BAD, 'Mars/Olympus']);
+ok(r8Bad?.code === '22023' && r8Bad?.hint === 'bw:date_past', `r8: an unknown p_tz is ignored (the profile's zone decides: date_past, no error of its own) (${JSON.stringify(r8Bad)})`);
+const r8Inj = await r8call(`SELECT public.bw_move_rehearsal_date($1, $2::date, $3::date, '{}'::jsonb, $4::uuid, $5) AS r`, [R8_MOVE, r8.d, r8.d, R8_BAD, "UTC'; SELECT 1; --"]);
+ok(r8Inj?.code === '22023' && r8Inj?.hint === 'bw:date_past', `r8: a p_tz that is not a zone name is ignored too (${JSON.stringify(r8Inj)})`);
+await db.exec(`DELETE FROM notifications;`);
+const r8Skip = await r8call(`SELECT public.bw_skip_rehearsal_date($1, $2::date, $3) AS r`, [R8_SKIP, r8.d, R8_DEVICE]);
+const r8SkipN = (await notes()).filter((n) => n.data?.event_id === R8_SKIP && n.type !== 'event_update').length;
+ok(!r8Skip?.error && r8SkipN > 0, `r8: deleting tonight's date (${r8.d} on the device) sends the notice (${r8SkipN} notices, ${JSON.stringify(r8Skip)})`);
+await db.exec(`DELETE FROM notifications;`);
+const r8Rs = await r8call(`SELECT public.bw_restore_rehearsal_date($1, $2::date, $3) AS r`, [R8_SKIP, r8.d, R8_DEVICE]);
+const r8RsN = (await notes()).filter((n) => n.data?.event_id === R8_SKIP && n.data?.restored === true).length;
+ok(!r8Rs?.error && r8RsN > 0, `r8: restoring tonight's date sends "back on" (${r8RsN} notices, ${JSON.stringify(r8Rs)})`);
+await db.exec(`DELETE FROM notifications;`);
+// The device zone lasts for the call's transaction only, and counts for the caller only.
+const r8Scope = await as(ADMIN, async () => {
+  await db.query(`SELECT public.bw_skip_rehearsal_date($1, $2::date, $3)`, [R8_SKIP, r8.d7, R8_DEVICE]);
+  return (await db.query(`SELECT coalesce(current_setting('bw.user_tz', true), '') AS tz`)).rows[0].tz;
+}).catch((e) => e.message);
+await db.exec(`INSERT INTO profiles (id, timezone) VALUES ('${id(97)}', '${R8_STORED}')`);
+await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}","role":"authenticated"}', true), set_config('bw.user_tz', '${R8_DEVICE}', true);`);
+const r8Who = (await db.query(`SELECT public.bw_user_today($1) = (now() AT TIME ZONE $3)::date AS caller,
+  public.bw_user_today($2) = (now() AT TIME ZONE $4)::date AS other`, [ADMIN, id(97), R8_DEVICE, R8_STORED]).catch((e) => ({ rows: [{ error: e.message }] }))).rows[0];
+await db.exec('ROLLBACK');
+const r8Later = (await db.query(`SELECT coalesce(current_setting('bw.user_tz', true), '') AS tz`)).rows[0].tz;
+ok(r8Scope === R8_DEVICE && r8Later === '' && r8Who?.caller === true && r8Who?.other === true,
+  `r8: the device zone holds for the call's transaction, for the caller only (${JSON.stringify({ r8Scope, r8Later, ...r8Who })})`);
+await db.exec(`DELETE FROM notifications;`);
+// Older builds call without p_tz (positional or named): one function each, still answering.
+const r8Named = await r8call(`SELECT public.bw_skip_rehearsal_date(p_event_id => $1, p_date => $2::date) AS r`, [R8_SKIP, r8.d7]);
+const r8NamedRs = await r8call(`SELECT public.bw_restore_rehearsal_date(p_event_id => $1, p_date => $2::date) AS r`, [R8_SKIP, r8.d7]);
+const r8NamedMv = await r8call(`SELECT public.bw_move_rehearsal_date(p_event_id => $1, p_date => $2::date, p_new_date => '2099-12-31'::date, p_fields => '{}'::jsonb, p_client_id => $3::uuid) AS r`, [R8_MOVE, r8.d, R8_OLD]);
+ok(Array.isArray(r8Named?.skip_dates) && Array.isArray(r8NamedRs?.skip_dates) && r8NamedMv?.event_id === R8_OLD,
+  `r8: old-shape calls without p_tz still work (${JSON.stringify({ r8Named, r8NamedRs, r8NamedMv })})`);
+const r8Sigs = (await db.query(`SELECT proname, pg_get_function_identity_arguments(oid) AS a FROM pg_proc
+  WHERE proname IN ('bw_skip_rehearsal_date', 'bw_restore_rehearsal_date', 'bw_move_rehearsal_date') ORDER BY 1`)).rows;
+ok(r8Sigs.length === 3 && r8Sigs.every((r) => /p_tz text$/.test(r.a)), `r8: one signature each, ending in p_tz (${JSON.stringify(r8Sigs)})`);
+const r8Anon = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_skip_rehearsal_date(uuid, date, text)', 'EXECUTE')
+  OR has_function_privilege('anon', 'public.bw_restore_rehearsal_date(uuid, date, text)', 'EXECUTE')
+  OR has_function_privilege('anon', 'public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+ok(r8Anon === false, 'r8: anon still cannot call them');
+await db.exec(`UPDATE profiles SET timezone = 'America/New_York' WHERE id = '${ADMIN}'; DELETE FROM notifications;`);
 
 // Claude r6 #4: a date restored is announced as back on, to the same people.
 const rsBack = await restore(ADMIN, PAID, '2100-01-07');

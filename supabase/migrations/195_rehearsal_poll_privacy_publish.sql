@@ -98,6 +98,19 @@
 --         (bw:is_quote); "today" is the admin's profile time zone, else
 --         America/New_York (bw_user_today); the replay check looks only at
 --         the series' band (r6 #6).
+--       - Codex #297 r8: every prod profile holds 004's default zone
+--         (Europe/Rome; the app never wrote it), so a New York admin after
+--         18:00 ET got bw:date_past for tonight. Move, skip and restore take
+--         p_tz text DEFAULT NULL, the device's zone (Intl): checked against
+--         pg_timezone_names (bw_known_tz) and kept for the transaction
+--         (bw.user_tz, set_config local), an unknown name ignored. "Today" is bw.user_tz
+--         for the caller, then profiles.timezone, then America/New_York. The
+--         three functions are new in 195 (not on main or in 383f15b); the
+--         draft signatures without p_tz are dropped first, so a call without
+--         it (positional or named) resolves to one function. The app also
+--         writes the device's zone to profiles.timezone on sign-in (as it
+--         does preferred_language; authenticated already has UPDATE on
+--         profiles, own row by 002's policy): no grant, column default kept.
 --     Returns { event_id, series_id, skip_dates, setlist_id }.
 --
 -- #4  bw_events_skip_notice: a deleted future date is announced to the
@@ -110,7 +123,8 @@
 --     Codex/Claude #297 r7: a quote's notices go to its admins only (178's
 --     bw_event_quote_private when present, else 111's bw_event_is_quote), even
 --     with an empty lineup (B1); "future" is from today where the admin is
---     (bw_user_today, America/New_York by default), and a moved date is always
+--     (bw_user_today: the device's zone p_tz, r8, then the profile's, then
+--     America/New_York), and a moved date is always
 --     announced (M2); a date restored is announced as back on, to the same
 --     people (event_update, data.restored; translated here, r6 #4).
 --     Intervals are read as the app reads them, 1-52 else 1
@@ -409,7 +423,11 @@ COMMENT ON FUNCTION public.bw_poll_vote_deadlines(uuid[]) IS
 REVOKE EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM authenticated;
 
 -- ── One date of a repeating rehearsal, in one step (#4, Codex #297) ───────
-CREATE OR REPLACE FUNCTION public.bw_skip_rehearsal_date(p_event_id uuid, p_date date)
+-- p_tz (r8): the device's time zone, for "today" (bw_known_tz). An
+-- earlier draft of this file had no p_tz: drop that signature so a call
+-- without it resolves to this one (DEFAULT NULL), never to two overloads.
+DROP FUNCTION IF EXISTS public.bw_skip_rehearsal_date(uuid, date);
+CREATE OR REPLACE FUNCTION public.bw_skip_rehearsal_date(p_event_id uuid, p_date date, p_tz text DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -426,6 +444,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Only band admins can delete this event' USING ERRCODE = '42501';
   END IF;
+  PERFORM set_config('bw.user_tz', coalesce(public.bw_known_tz(p_tz), ''), true);
   IF p_date IS NULL THEN
     RAISE EXCEPTION 'A date is needed' USING ERRCODE = '22023';
   END IF;
@@ -480,11 +499,11 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_skip_rehearsal_date(uuid, date, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_skip_rehearsal_date(uuid, date, text) TO authenticated;
 
-COMMENT ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) IS
-  'Delete one date of a repeating rehearsal: append it to recurrence_rule.skip_dates under a row lock; admins of the event''s band (195, audit 05 #4, Codex #297 B3).';
+COMMENT ON FUNCTION public.bw_skip_rehearsal_date(uuid, date, text) IS
+  'Delete one date of a repeating rehearsal: append it to recurrence_rule.skip_dates under a row lock; "today" in the device''s zone p_tz; admins of the event''s band (195, audit 05 #4, Codex #297 B3, r8).';
 
 -- ── A poll's options stay while it has votes (Claude #297 round 3) ──────
 -- An older build (383f15b) publishing a stale form deletes the options of a
@@ -619,9 +638,29 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_rehearsal_series_has_date(jsonb, date, date) FROM PUBLIC, anon, authenticated;
 
--- Today where a user is: their profile's time zone, America/New_York when
--- it has none or one Postgres doesn't know (Codex/Claude #297 r7 M2: in UTC,
--- an evening in New York or Los Angeles is already tomorrow).
+-- The device's time zone, sent by the app with a date action (p_tz, r8):
+-- the name when Postgres knows it, else NULL (ignored, no error: the
+-- profile's zone, then New York, decide). The calling RPC keeps it in
+-- bw.user_tz with set_config(..., true): for the rest of the transaction
+-- (one RPC per request), its triggers included; an unknown name clears it.
+CREATE OR REPLACE FUNCTION public.bw_known_tz(p_tz text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path TO 'public'
+AS $$
+  SELECT CASE WHEN p_tz IS NOT NULL AND length(p_tz) <= 64
+               AND EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name = p_tz)
+              THEN p_tz END
+$$;
+REVOKE ALL ON FUNCTION public.bw_known_tz(text) FROM PUBLIC, anon, authenticated;
+
+-- Today where a user is (Codex/Claude #297 r7 M2: in UTC, an evening in New
+-- York or Los Angeles is already tomorrow). r8: for the caller, the device's
+-- zone sent with this call (bw.user_tz) comes first: every profile still
+-- holds 004's default (Europe/Rome) until the app's sign-in sync writes the
+-- device's zone. Then the profile's zone, then America/New_York (none, or
+-- one Postgres doesn't know).
 CREATE OR REPLACE FUNCTION public.bw_user_today(p_user_id uuid)
 RETURNS date
 LANGUAGE plpgsql
@@ -632,7 +671,12 @@ AS $$
 DECLARE
   v_tz text;
 BEGIN
-  SELECT nullif(btrim(p.timezone), '') INTO v_tz FROM public.profiles p WHERE p.id = p_user_id;
+  IF p_user_id = auth.uid() THEN
+    v_tz := nullif(btrim(current_setting('bw.user_tz', true)), '');
+  END IF;
+  IF v_tz IS NULL THEN
+    SELECT nullif(btrim(p.timezone), '') INTO v_tz FROM public.profiles p WHERE p.id = p_user_id;
+  END IF;
   BEGIN
     RETURN (now() AT TIME ZONE coalesce(v_tz, 'America/New_York'))::date;
   EXCEPTION WHEN others THEN
@@ -644,13 +688,17 @@ REVOKE ALL ON FUNCTION public.bw_user_today(uuid) FROM PUBLIC, anon, authenticat
 
 -- Errors the app translates (HINT): bw:not_a_date (p_date is not one of
 -- the series' dates), bw:date_deleted (already deleted), bw:date_past (the
--- new date is before today where the admin is), as 22023.
+-- new date is before today where the admin is), as 22023. p_tz (r8): the
+-- device's zone for "today"; the draft signature without it is dropped so
+-- older calls resolve to this one.
+DROP FUNCTION IF EXISTS public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid);
 CREATE OR REPLACE FUNCTION public.bw_move_rehearsal_date(
   p_event_id uuid,
   p_date date,
   p_new_date date,
   p_fields jsonb DEFAULT '{}'::jsonb,
-  p_client_id uuid DEFAULT NULL
+  p_client_id uuid DEFAULT NULL,
+  p_tz text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -711,6 +759,7 @@ BEGIN
      AND (v_ev.recurrence_rule -> 'skip_dates') ? to_char(p_date, 'YYYY-MM-DD') THEN
     RAISE EXCEPTION 'This date was deleted already' USING ERRCODE = '22023', HINT = 'bw:date_deleted';
   END IF;
+  PERFORM set_config('bw.user_tz', coalesce(public.bw_known_tz(p_tz), ''), true);
   v_today := public.bw_user_today(auth.uid());
   IF p_new_date < v_today THEN
     RAISE EXCEPTION 'The new date is in the past' USING ERRCODE = '22023', HINT = 'bw:date_past';
@@ -808,10 +857,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text) TO authenticated;
 
-COMMENT ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid) IS
+COMMENT ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid, text) IS
   'Move one date of a repeating rehearsal: a one-off copy (every column with the edits in p_fields, a copy of the setlist, lineup, rider & stage) on the new date and the old date skipped, in one transaction; one notice; idempotent by client id; admins of the band (195, Codex/Claude #297).';
 
 -- ── Deleted dates survive every write ────────────────────────────────────
@@ -1177,7 +1226,9 @@ CREATE TRIGGER bw_events_skip_notice
   EXECUTE FUNCTION public.bw_trg_events_skip_notice();
 
 -- ── A deleted date back on ───────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.bw_restore_rehearsal_date(p_event_id uuid, p_date date)
+-- p_tz (r8) as in bw_skip_rehearsal_date; the draft signature is dropped.
+DROP FUNCTION IF EXISTS public.bw_restore_rehearsal_date(uuid, date);
+CREATE OR REPLACE FUNCTION public.bw_restore_rehearsal_date(p_event_id uuid, p_date date, p_tz text DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1191,6 +1242,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
   END IF;
+  PERFORM set_config('bw.user_tz', coalesce(public.bw_known_tz(p_tz), ''), true);
   -- No date: refused, never "every date" (x <> NULL keeps nothing; Codex
   -- #297 M2). A string that is not a date never gets here (the date cast).
   IF p_date IS NULL THEN
@@ -1220,10 +1272,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_restore_rehearsal_date(uuid, date) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_restore_rehearsal_date(uuid, date) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_restore_rehearsal_date(uuid, date, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_restore_rehearsal_date(uuid, date, text) TO authenticated;
 
-COMMENT ON FUNCTION public.bw_restore_rehearsal_date(uuid, date) IS
+COMMENT ON FUNCTION public.bw_restore_rehearsal_date(uuid, date, text) IS
   'Put a deleted date of a repeating rehearsal back: the only way a date leaves recurrence_rule.skip_dates (bw_events_00_keep_skip_dates); admins of the band (195, Codex #297).';
 
 -- ── Availability: a deleted date is free (Codex #297 M1) ────────────────
