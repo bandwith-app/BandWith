@@ -33,9 +33,9 @@ const Text: React.FC<{ title: string; hint?: string }> = ({ title, hint }) => (
  */
 export const CalendarSyncSection: React.FC = () => {
   const t = useT();
-  const { token: loadedToken, loading } = useCalendarToken(true);
-  const [rotated, setRotated] = useState<string | null>(null);
-  const token = rotated ?? loadedToken;
+  // Follows every new link, made here or in a notice (Codex review #285):
+  // a copy of the first new link would be dead after the second.
+  const { token, loading } = useCalendarToken(true);
   const feed = token ? memberCalendarUrl(token) : null;
   const [copied, setCopied] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -61,7 +61,6 @@ export const CalendarSyncSection: React.FC = () => {
     setResetting(false);
     setConfirmReset(false);
     if (next) {
-      setRotated(next);
       setResetDone(true);
     } else {
       setError(t('Couldn’t make a new link. Check your connection and try again.'));

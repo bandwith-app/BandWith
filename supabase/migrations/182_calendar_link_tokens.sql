@@ -26,7 +26,9 @@
 --   - bw_deputy_gig_calendar(token): that one gig, by gig_calendar_token.
 --   - A gig is in the calendar while the deputy said yes, and as cancelled
 --     only if they had said yes before it was withdrawn (was_available; a
---     "maybe" leaves no trace). The street address only while they are on it.
+--     "maybe" leaves no trace). The street address only while they are on it
+--     and the gig is on: once the band cancels the event (the request can
+--     stay 'available'), no link or page gives the address any more.
 --   - bw_deputy_feed (084, called by the function deployed before 182): same
 --     rules, also takes the calendar token, and returns no token at all, so
 --     the old function writes no credential either.
@@ -55,6 +57,14 @@
 --     182, and any served again in the old one-event form (t=&e=, older app
 --     builds; bw_member_calendar_flag_shared, called by member-calendar).
 --   The account feed (bw_member_calendar_feed) is unchanged.
+--
+-- Deploy order: deploy the edge functions deputy-calendar and
+-- member-calendar BEFORE applying 182. Both work on the database before 182
+-- (deputy-calendar falls back to bw_deputy_feed and picks the gig of a
+-- one=1 link by its token there). Applied first, 182 leaves the function
+-- deployed before it writing empty one=1 files until it is redeployed, by
+-- design: the only value that old function can match is the reply token,
+-- which is the credential 182 takes out of calendar files.
 --
 -- Older app builds: no signature they call changes. Safe to run more than
 -- once.
@@ -167,8 +177,9 @@ BEGIN
            'soundcheck_time', e.soundcheck_time,
            'venue_name', coalesce(e.venue_name, e.venue),
            'venue_city', e.venue_city,
-           -- The street address only after they said yes.
-           'venue_address', CASE WHEN r.status = 'available' THEN e.venue_address END,
+           -- The street address only after they said yes, and while the
+           -- gig is on (review of #285, round 2).
+           'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
            'event_cancelled', coalesce(e.status, '') = 'cancelled',
            'event_updated_at', e.updated_at,
            'changes', v_changes,
@@ -230,8 +241,10 @@ BEGIN
                'soundcheck_time', e.soundcheck_time,
                'venue_name', coalesce(e.venue_name, e.venue),
                'venue_city', e.venue_city,
-               -- The street address only while they are on it (as the page).
-               'venue_address', CASE WHEN r.status = 'available' THEN e.venue_address END,
+               -- The street address only while they are on it and the gig is
+               -- on (as the page): a band's cancellation leaves the request
+               -- 'available' (review of #285, round 2).
+               'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
                'updated_at', greatest(e.updated_at, r.updated_at)
              ) ORDER BY coalesce(e.event_date, e.date))
         FROM public.deputy_requests r
@@ -277,8 +290,10 @@ BEGIN
                'soundcheck_time', e.soundcheck_time,
                'venue_name', coalesce(e.venue_name, e.venue),
                'venue_city', e.venue_city,
-               -- The street address only while they are on it (as the page).
-               'venue_address', CASE WHEN r.status = 'available' THEN e.venue_address END,
+               -- The street address only while they are on it and the gig is
+               -- on (as the page): a band's cancellation leaves the request
+               -- 'available' (review of #285, round 2).
+               'venue_address', CASE WHEN r.status = 'available' AND coalesce(e.status, '') <> 'cancelled' THEN e.venue_address END,
                'updated_at', greatest(e.updated_at, r.updated_at)
              ))
         FROM public.deputy_requests r

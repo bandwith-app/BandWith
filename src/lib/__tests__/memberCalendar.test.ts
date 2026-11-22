@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
 const rpc = vi.hoisted(() => vi.fn());
@@ -15,8 +16,10 @@ import {
   googleSubscribeUrl,
   memberCalendarUrl,
   memberEventCalendarUrl,
+  myCalendarLinkReview,
   myCalendarToken,
   myEventCalendarToken,
+  useEventCalendarToken,
   webcalUrl,
 } from '../memberCalendar';
 
@@ -118,5 +121,66 @@ describe('member calendar: one-event links (182)', () => {
   it('builds the one-event link without the account token', () => {
     expect(memberEventCalendarUrl('d'.repeat(64), 'it')).toMatch(/\/functions\/v1\/member-calendar\?o=d{64}&l=it$/);
     expect(memberEventCalendarUrl('nope')).toBeNull();
+  });
+});
+
+// Codex review #285 round 2.
+describe('member calendar: links stay current in a session', () => {
+  const EV = '11111111-2222-4333-8444-555555555555';
+  const D = 'd'.repeat(64);
+  const F = 'f'.repeat(64);
+  const G = 'c'.repeat(64);
+  beforeEach(() => {
+    rpc.mockReset();
+    _resetCalendarTokenCache();
+  });
+
+  // "Make a new link" ends the event's link: the mounted button must not
+  // keep it (it would open a 404).
+  it('a mounted Add to calendar picks up the new event link after a rotation', async () => {
+    let eventToken = D;
+    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_token' ? { data: eventToken, error: null } : { data: TOKEN, error: null }));
+    const { result } = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(result.current.token).toBe(D));
+    eventToken = F; // the server ended D with the account link
+    await act(async () => {
+      await myCalendarToken(true);
+    });
+    await waitFor(() => expect(result.current.token).toBe(F));
+  });
+
+  // The server drops the oldest links past 500 per account: reopening the
+  // event asks again instead of reusing a link that is gone.
+  it('reopening an event asks the server again (an evicted link is replaced)', async () => {
+    let eventToken = D;
+    rpc.mockImplementation(async () => ({ data: eventToken, error: null }));
+    const first = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(first.result.current.token).toBe(D));
+    first.unmount();
+    eventToken = G;
+    const again = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(again.result.current.token).toBe(G));
+  });
+
+  it('a failed refresh (offline) keeps the link it had', async () => {
+    rpc.mockResolvedValueOnce({ data: D, error: null });
+    const first = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(first.result.current.token).toBe(D));
+    first.unmount();
+    rpc.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    const again = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(again.result.current.token).toBe(D);
+  });
+
+  // Offline at the first check: the answer is not kept, the next check asks again.
+  it('a failed review check is asked again later', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'Failed to fetch' } });
+    expect(await myCalendarLinkReview()).toBe(false);
+    rpc.mockResolvedValueOnce({ data: true, error: null });
+    expect(await myCalendarLinkReview()).toBe(true);
+    expect(await myCalendarLinkReview()).toBe(true);
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

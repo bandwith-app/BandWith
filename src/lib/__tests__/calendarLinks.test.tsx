@@ -55,6 +55,20 @@ describe('deputy calendar feed (02 #3, 03 #2)', () => {
     expect(ics).toContain('UID:deputy-r-1@bandwith');
     expect(ics).not.toContain('UID:deputy-r-2@bandwith');
   });
+
+  // Codex review #285 round 2: the functions are deployed before 182 (see its
+  // header). On the database before 182 (084's feed: reply tokens, no `mine`)
+  // the new function still finds the gig of a one=1 link, and writes no token.
+  it('deployed before 182: one=1 still finds its gig on the old feed, without writing a token', () => {
+    const ics = deputyFeedCalendar(
+      { band_name: 'Velvet Static', gigs: [dGig({ id: 'r-1', token: REPLY_A }), dGig({ id: 'r-2', token: REPLY_B, event_date: '2026-12-12' })] },
+      { token: REPLY_A, lang: 'en', one: true, site: SITE, now: NOW },
+    );
+    expect(ics).toContain('UID:deputy-r-1@bandwith');
+    expect(ics).not.toContain('UID:deputy-r-2@bandwith');
+    expect(ics).not.toContain(REPLY_A);
+    expect(ics).not.toMatch(/deputy\.html/);
+  });
 });
 
 const weekly: MemberFeedEvent = {

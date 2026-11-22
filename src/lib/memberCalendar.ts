@@ -7,17 +7,29 @@
  * "Add to calendar" uses its own link, bound to that one event and date
  * (migration 182): a forwarded one-event link never opens the whole feed.
  *
- * The tokens are fetched once per session and cached, so the buttons can
- * open the link straight from the tap (a link opened after an await is a
- * blocked pop-up on the web).
+ * The tokens are cached, so the buttons can open the link straight from the
+ * tap (a link opened after an await is a blocked pop-up on the web). Codex
+ * review #285 round 2: a one-event link is asked again each time an event
+ * opens (the server may have ended it: 500 per account), every mounted
+ * button follows a new account link, and a failed check is not kept.
  */
 import { isDemoMode, supabase } from '@/lib/supabase';
 import { getLocale } from '@/lib/i18n';
 import { useEffect, useState } from 'react';
 
 let cached: { userId: string; token: string } | null = null;
-/** One-event link tokens by `user|event|date`. */
+/** One-event link tokens by `user|event|date`: the last answer, and the request on its way. */
 const eventTokens = new Map<string, Promise<string | null>>();
+const eventTokenValues = new Map<string, string>();
+const eventTokensInFlight = new Set<string>();
+/** Mounted one-event buttons: told when every event link has ended (a new account link). */
+const eventTokenListeners = new Set<() => void>();
+const endEventTokens = () => {
+  eventTokens.clear();
+  eventTokenValues.clear();
+  eventTokensInFlight.clear();
+  eventTokenListeners.forEach((l) => l());
+};
 let pending: Promise<string | null> | null = null;
 const listeners = new Set<(token: string | null) => void>();
 
@@ -36,9 +48,13 @@ export async function myCalendarToken(rotate = false): Promise<string | null> {
     const { data, error } = await supabase.rpc('bw_my_calendar_token', { p_rotate: rotate });
     if (error || typeof data !== 'string' || !/^[0-9a-f]{64}$/.test(data)) return null;
     cached = { userId, token: data };
-    // A new account link ends the one-event links too (182: they hang off it).
-    if (rotate) eventTokens.clear();
     listeners.forEach((l) => l(data));
+    if (rotate) {
+      // A new account link starts unmarked (182): nothing left to ask.
+      setReview(userId, false);
+      // It ends the one-event links too (182: they hang off it).
+      endEventTokens();
+    }
     return data;
   })();
   if (!rotate) pending = run;
@@ -88,42 +104,78 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * The signed-in user's link to one event (182). `date`: the date shown
  * (one date of a repeating rehearsal); the server keeps it only for a
- * repeating event.
+ * repeating event. `refresh`: ask the server again (it may have ended the
+ * link); when that fails (offline) the last link is kept.
  */
-export async function myEventCalendarToken(eventId: string, date: string | null): Promise<string | null> {
+export async function myEventCalendarToken(
+  eventId: string,
+  date: string | null,
+  opts: { refresh?: boolean } = {},
+): Promise<string | null> {
   if (!UUID.test(eventId)) return null;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   const userId = await currentUserId();
   if (!userId) return null;
-  const key = `${userId}|${eventId.toLowerCase()}|${day ?? ''}`;
+  const key = eventTokenKey(userId, eventId, day);
   const known = eventTokens.get(key);
-  if (known) return known;
-  const run = (async () => {
-    const { data, error } = await supabase.rpc('bw_my_event_calendar_token', { p_event_id: eventId, p_date: day });
-    if (error || typeof data !== 'string' || !/^[0-9a-f]{64}$/.test(data)) {
+  if (known && (!opts.refresh || eventTokensInFlight.has(key))) return known;
+  const before = eventTokenValues.get(key) ?? null;
+  // Assigned below; read only after the first await, to tell a stale reply.
+  let run!: Promise<string | null>;
+  run = (async () => {
+    try {
+      const { data, error } = await Promise.resolve(supabase.rpc('bw_my_event_calendar_token', { p_event_id: eventId, p_date: day })).catch(
+        (e: unknown) => ({ data: null, error: e }),
+      );
+      if (eventTokens.get(key) !== run) return (await eventTokens.get(key)) ?? null; // ended meanwhile
+      if (!error && typeof data === 'string' && /^[0-9a-f]{64}$/.test(data)) {
+        eventTokenValues.set(key, data);
+        return data;
+      }
+      if (error && before) return before; // not reached: keep the last link
       eventTokens.delete(key);
+      eventTokenValues.delete(key);
       return null;
+    } finally {
+      if (eventTokens.get(key) === run) eventTokensInFlight.delete(key);
     }
-    return data;
   })();
   eventTokens.set(key, run);
+  eventTokensInFlight.add(key);
   return run;
 }
 
-/** The one-event token for the signed-in user (null while loading or unavailable). */
+const eventTokenKey = (userId: string, eventId: string, day: string | null) => `${userId}|${eventId.toLowerCase()}|${day ?? ''}`;
+
+/**
+ * The one-event token for the signed-in user (null while loading or
+ * unavailable). Shows the last known link at once (for the tap), asks the
+ * server again on each mount, and follows a new account link.
+ */
 export function useEventCalendarToken(eventId: string, date: string | null): { token: string | null; loading: boolean } {
   const [state, setState] = useState<{ key: string; token: string | null; loading: boolean }>({ key: '', token: null, loading: true });
+  const [generation, setGeneration] = useState(0);
   const key = `${eventId}|${date ?? ''}`;
   useEffect(() => {
+    const l = () => setGeneration((g) => g + 1);
+    eventTokenListeners.add(l);
+    return () => {
+      eventTokenListeners.delete(l);
+    };
+  }, []);
+  useEffect(() => {
     let alive = true;
-    setState({ key, token: null, loading: true });
-    void myEventCalendarToken(eventId, date).then((t) => {
+    const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    const userId = cached?.userId ?? null;
+    const last = userId && UUID.test(eventId) ? eventTokenValues.get(eventTokenKey(userId, eventId, day)) ?? null : null;
+    setState({ key, token: last, loading: !last });
+    void myEventCalendarToken(eventId, date, { refresh: true }).then((t) => {
       if (alive) setState({ key, token: t, loading: false });
     });
     return () => {
       alive = false;
     };
-  }, [eventId, date, key]);
+  }, [eventId, date, key, generation]);
   return state.key === key ? { token: state.token, loading: state.loading } : { token: null, loading: true };
 }
 
@@ -151,8 +203,11 @@ export async function myCalendarLinkReview(): Promise<boolean> {
   const userId = await currentUserId();
   if (!userId) return false;
   if (review?.userId === userId) return review.value;
-  const value = (async () => {
+  let value!: Promise<boolean>;
+  value = (async () => {
     const { data, error } = await supabase.rpc('bw_my_calendar_link_review');
+    // Not reached (offline): not kept, the next check asks again.
+    if (error && review?.value === value) review = null;
     return !error && data === true;
   })();
   review = { userId, value };
@@ -204,5 +259,7 @@ export function _resetCalendarTokenCache() {
   cached = null;
   pending = null;
   eventTokens.clear();
+  eventTokenValues.clear();
+  eventTokensInFlight.clear();
   review = null;
 }

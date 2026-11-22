@@ -220,6 +220,30 @@ await check('Claude #1: unlink of a deputy with no account still rotates every k
   return r === 'not_linked' && before.every((t, i) => t !== after[i]);
 });
 
+console.log('-- review round 2 (PR #285)');
+// The band cancels the event; the deputy's request stays 'available'.
+const [EV_CXL, RY] = [17, 28].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee)
+  VALUES ($1, $2, 'Called off', 'gig', 'confirmed', current_date + 12, '20:00', 'Shut Hall', 'Queens', '5 Cancel Rd', false, $3, 1)`, [EV_CXL, BAND, ADMIN]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status) VALUES ($1, $2, $3, $4, 'Ada', 'Keys', 'available')`, [RY, BAND, EV_CXL, DEPUTY2]);
+await check('round 2: while the gig is on, the deputy who said yes gets its street address', async () => {
+  const f = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS f`, [await col(RY, 'gig_calendar_token')])).f;
+  return f.gigs[0]?.venue_address === '5 Cancel Rd';
+});
+await q(`UPDATE events SET status = 'cancelled' WHERE id = $1`, [EV_CXL]);
+await check('Codex r2 BLOCKER: a gig the band cancelled gives no street address to any calendar link', async () => {
+  const feed = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RY, 'calendar_token')])).f;
+  const file = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS f`, [await col(RY, 'gig_calendar_token')])).f;
+  const old = (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await tok(RY)])).f;
+  const g = feed.gigs.find((x) => x.id === RY);
+  return g?.cancelled === true && g.venue_name === 'Shut Hall' && file.gigs[0]?.cancelled === true
+    && ![feed, file, old].some((x) => JSON.stringify(x).includes('5 Cancel Rd'));
+});
+await check('round 2: nor the reply page once the gig is cancelled', async () => {
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RY)])).v;
+  return v.event_cancelled === true && v.closed === true && v.venue_address === null;
+});
+
 // -------------------------------------------------------------- members --
 console.log('-- members (02 #5 / 03 #6, 02 #11)');
 const evTok = async (uid, ev, date) => {

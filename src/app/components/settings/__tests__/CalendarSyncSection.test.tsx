@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
 const rpc = vi.hoisted(() => vi.fn());
@@ -14,7 +14,8 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('@/lib/nativeFiles', () => ({ openExternal }));
 
 import { CalendarSyncSection } from '../CalendarSyncSection';
-import { _resetCalendarTokenCache } from '@/lib/memberCalendar';
+import { _resetCalendarTokenCache, myCalendarToken } from '@/lib/memberCalendar';
+import { act } from '@testing-library/react';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
@@ -51,6 +52,37 @@ describe('Settings → Calendar sync', () => {
     expect(rpc).toHaveBeenLastCalledWith('bw_my_calendar_token', { p_rotate: true });
     fireEvent.click(screen.getByRole('button', { name: /Apple Calendar/ }));
     expect(openExternal).toHaveBeenLastCalledWith(expect.stringContaining(`t=${B}`));
+  });
+
+  // Codex review #285 round 2: an account asked to check its old link.
+  it('a new link made here answers the old-link question, and the buttons follow every new link', async () => {
+    const C = 'c'.repeat(64);
+    let current = A;
+    rpc.mockImplementation(async (fn: string, args?: { p_rotate?: boolean }) => {
+      if (fn === 'bw_my_calendar_link_review') return { data: true, error: null };
+      if (fn === 'bw_my_calendar_token') {
+        if (args?.p_rotate) current = current === A ? B : C;
+        return { data: current, error: null };
+      }
+      return { data: null, error: null };
+    });
+    render(<CalendarSyncSection />);
+    await screen.findByTestId('calendar-link-review');
+    const makes = screen.getAllByRole('button', { name: /Make a new link/ });
+    const make = makes[makes.length - 1];
+    await waitFor(() => expect(make).not.toBeDisabled());
+    fireEvent.click(make);
+    const group = await screen.findByRole('group', { name: 'Make a new link' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Make a new link' }));
+    await screen.findByText('New link ready');
+    // The new link starts unmarked: the question is gone.
+    await waitFor(() => expect(screen.queryByTestId('calendar-link-review')).toBeNull());
+    // Another new link (from an event's notice, say): Copy and Subscribe use it.
+    await act(async () => {
+      await myCalendarToken(true);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Apple Calendar/ }));
+    expect(openExternal).toHaveBeenLastCalledWith(expect.stringContaining(`t=${C}`));
   });
 
   it('says so when the link is not available', async () => {
