@@ -449,7 +449,8 @@ export default function AuthenticatedApp() {
   // Toasts raised outside this screen (src/lib/appToast.ts), e.g. a chat
   // message that could not be kept on this phone (#291 round 8).
   useEffect(() => {
-    const onToast = (e: Event) => {
+    // (`Event` here is the app's calendar type: the DOM one comes via EventListener.)
+    const onToast: EventListener = (e) => {
       const d = (e as CustomEvent<AppToast>).detail;
       if (d?.message) setSaveToast({ message: d.message, type: d.type, duration: d.type === 'error' ? 8000 : undefined });
     };
