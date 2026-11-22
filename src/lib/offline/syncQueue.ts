@@ -595,6 +595,10 @@ export const processSyncQueue = async (
         if (target && mutation.payload?.extrasOnly) extrasPending.add(target);
         continue;
       }
+      // The pass started for `userId`. Another account signed in meanwhile
+      // (or this one signed out): nothing more is sent, it would go out under
+      // the new session. What is left stays in `userId`'s queue (`key`).
+      if (currentUserId !== userId) break;
       let outcome: ExecOutcome;
       try {
         outcome = await executeMutation(mutation, userId);
