@@ -34,7 +34,7 @@ import {
   type LiveSong,
 } from './livePack';
 import { anyPackAllowed, packAllowed, readChoice } from './livePackConsent';
-import { downloadPackFile, packFilesAvailable, removePackFiles } from './livePackFiles';
+import { downloadPackFile, hasPackFile, packFilesAvailable, removePackFiles } from './livePackFiles';
 import { fetchOccurrenceNotes, fetchOpenBandNotes } from './services/rehearsalNotes';
 import type { RehearsalNote } from './rehearsalNotes';
 import { stageBleAvailable, stageKey } from './stageBleNative';
@@ -123,10 +123,32 @@ export async function openBandNotesFromPacks(userId: string | null | undefined, 
 
 // ── writing and removing ──────────────────────────────────────────────────
 
+/**
+ * My files on the device sit at one path per file (livePackFiles), so two gigs
+ * with the same song share it: of `files`, the ones no other pack of mine
+ * (besides the one at `key`) still points to. Those can go.
+ */
+async function filesNoOtherPackUses(userId: string, key: string, files: LivePackFile[]): Promise<LivePackFile[]> {
+  const local = files.filter((f) => f.local);
+  if (!local.length) return [];
+  const used = new Set<string>();
+  for (const k of (await listOfflineKeys(`bw:${userId}:`)).filter(isPackKey)) {
+    if (k === key) continue;
+    // Read as stored: an expired pack still holds its files until it is dropped.
+    const p = await getOfflineItem<LivePack>(k);
+    if (!valid(p) || p.userId !== userId) continue;
+    for (const x of Object.values(p.personal ?? {})) for (const f of x.files) if (f.local) used.add(localPath(f.local));
+  }
+  return local.filter((f) => !used.has(localPath(f.local!)));
+}
+const localPath = (l: NonNullable<LivePackFile['local']>) => `${l.directory}:${l.path}`;
+const removeOwnFiles = async (userId: string, key: string, files: LivePackFile[]) =>
+  removePackFiles(await filesNoOtherPackUses(userId, key, files));
+
 async function dropPack(key: string, pack: LivePack | null) {
   await removeOfflineItem(key);
   if (pack) {
-    await removePackFiles(Object.values(pack.personal ?? {}).flatMap((p) => p.files));
+    await removeOwnFiles(pack.userId, key, Object.values(pack.personal ?? {}).flatMap((p) => p.files));
     try {
       localStorage.removeItem(`bw-stage-key:${pack.eventId}`);
     } catch {
@@ -201,6 +223,11 @@ export async function savePackSongs(args: {
   if (!event.id || !event.band_id || !event.setlist_id || !event.event_date) return null;
   const prev = await readPack(args.userId, event.band_id, event.id);
   const personal = prev && prev.setlistId === event.setlist_id ? prev.personal : {};
+  // A song this pack didn't hold (added to the setlist, or another setlist):
+  // its notes and files aren't fetched yet, so no "ready" until the full
+  // refresh. Reordered or removed songs need nothing new.
+  const heldSongs = new Set(prev && prev.setlistId === event.setlist_id ? prev.songs.map((s) => s.songId ?? s.id) : []);
+  const songAdded = !!prev && args.songs.some((s) => !heldSongs.has(s.songId ?? s.id));
   const pack: LivePack = {
     v: 1,
     eventId: event.id,
@@ -216,7 +243,7 @@ export async function savePackSongs(args: {
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
     // Partial until a full refresh with the switch on completes it.
-    ...(args.partial || prev?.partial ? { partial: true } : {}),
+    ...(args.partial || prev?.partial || songAdded ? { partial: true } : {}),
   };
   if (!(await savePack(pack, generation))) return null;
   if (pack.partial) reportPartial(pack);
@@ -342,6 +369,7 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   const event = occurrenceEvent(packEventFrom(args.event), args.occurrenceDate);
   if (!event.id || !event.band_id || !event.setlist_id || !event.event_date) return null;
   const prev = await readPack(args.userId, event.band_id, event.id);
+  const key = packKey(args.userId, event.band_id, event.id);
   let songs = args.songs;
   if (!songs) {
     const { rows } = await fetchSetlistRows(event.setlist_id);
@@ -375,7 +403,9 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     for (const f of p.files) {
       const before = prevFiles.get(f.id);
       const same = !!before && before.ref === f.ref;
-      if (before?.local) f.local = before.local;
+      // Saved earlier, but is it still there? (The OS can clear it, or the
+      // person cleared the app's data.) Not there: downloaded again.
+      if (before?.local && (!packFilesAvailable() || (await hasPackFile(before.local)))) f.local = before.local;
       // A dead link given up on: not tried again until the file changes.
       if (!f.local && same && before!.unavailable) {
         f.tries = before!.tries;
@@ -403,10 +433,11 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   }
   if (generation !== generationOf(args.userId)) {
     // "Delete all" ran meanwhile: what this run downloaded goes too.
-    await removePackFiles(added);
+    await removeOwnFiles(args.userId, key, added);
     return null;
   }
-  await removePackFiles([...prevFiles.values()].filter((f) => !kept.has(f.id)));
+  // Files this pack no longer uses: only those no other pack still points to.
+  await removeOwnFiles(args.userId, key, [...prevFiles.values()].filter((f) => !kept.has(f.id)));
 
   let bandNotes = prev?.bandNotes;
   // A rehearsal's band notes: fetched only when on, or to keep held ones current.
@@ -428,12 +459,12 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     }
   }
 
-  let key = prev?.stageKey ?? null;
+  let bleKey = prev?.stageKey ?? null;
   // Switched off: no new Bluetooth key either.
-  if (!key && !args.partial) {
+  if (!bleKey && !args.partial) {
     try {
       // Inside the try: a partial client mock (tests) has no isDemoMode.
-      if (!isDemoMode && stageBleAvailable()) key = await stageKey(event.id);
+      if (!isDemoMode && stageBleAvailable()) bleKey = await stageKey(event.id);
     } catch {
       /* no key: Bluetooth just needs internet the first time */
     }
@@ -449,7 +480,7 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     songs,
     personal,
     bandNotes,
-    stageKey: key,
+    stageKey: bleKey,
     version: packVersion(songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
@@ -460,7 +491,7 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     ...(args.partial || fileMissing || (!complete && (!prev || prev.partial)) ? { partial: true } : {}),
   };
   if (!(await savePack(pack, generation))) {
-    await removePackFiles(added);
+    await removeOwnFiles(args.userId, key, added);
     return null;
   }
   // The full pack is on this device: tell the band's admins (native only).
@@ -550,7 +581,7 @@ export async function migrateLegacySetlists(
  * or that I declined go at once, not 24 h after the event. Only on a clear
  * answer from the server: offline or an error removes nothing.
  */
-export async function sweepGonePacks(userId: string): Promise<number> {
+export async function sweepGonePacks(userId: string, dates?: Map<string, string>): Promise<number> {
   const packs = await listPacks(userId);
   if (!packs.length) return 0;
   const ids = [...new Set(packs.map((p) => p.eventId))];
@@ -558,13 +589,17 @@ export async function sweepGonePacks(userId: string): Promise<number> {
   try {
     if (isDemoMode) return 0;
     const [ev, mine] = await Promise.all([
-      supabase.from('events').select('id, status').in('id', ids),
+      supabase.from('events').select('id, status, event_date, is_recurring').in('id', ids),
       supabase.from('event_members').select('event_id, status').eq('user_id', userId).in('event_id', ids),
     ]);
     const gone = new Set<string>();
     if (ev && !ev.error && Array.isArray(ev.data)) {
-      const found = new Map((ev.data as Array<{ id: string; status?: string }>).map((r) => [r.id, r.status]));
-      for (const id of ids) if (!found.has(id) || found.get(id) === 'cancelled') gone.add(id);
+      type Row = { id: string; status?: string; event_date?: string | null; is_recurring?: boolean | null };
+      const found = new Map((ev.data as Row[]).map((r) => [r.id, r]));
+      for (const id of ids) if (!found.has(id) || found.get(id)!.status === 'cancelled') gone.add(id);
+      // The date on the server now (a gig that moved). A recurring event's row
+      // has the series' first date: its occurrence stays the app's.
+      for (const r of found.values()) if (dates && r.event_date && !r.is_recurring) dates.set(r.id, String(r.event_date).slice(0, 10));
     }
     if (mine && !mine.error && Array.isArray(mine.data)) {
       for (const m of mine.data as Array<{ event_id: string; status?: string }>) if (m.status === 'declined') gone.add(m.event_id);
@@ -638,13 +673,17 @@ async function prefetchOnce({
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
   // Privacy, switch on or off: a cancelled or deleted event, or one I declined, loses its pack now.
-  if (online) await sweepGonePacks(userId);
+  // The same answer gives each held event's date on the server now: a gig
+  // that moved is refreshed on its new date, switch on or off. No answer
+  // (offline, an error): the date held, or the app's list.
+  const serverDates = new Map<string, string>();
+  if (online) await sweepGonePacks(userId, serverDates);
   const choice = readChoice(userId);
   if (!downloads || !keepGoing()) {
     // Switched off: the packs already on this device are still brought up to
-    // date (tidy, partial, no files: a note deleted elsewhere goes), on the
-    // server's silent refresh and on app open / resume when not fresh. It
-    // never creates one. "Wi-Fi only" holds here too.
+    // date (tidy, partial, no files: a note deleted elsewhere goes), on app
+    // open / resume when not fresh (the server sends no silent refresh while
+    // off). It never creates one. "Wi-Fi only" holds here too.
     let tidied = 0;
     if (online && !(choice.wifiOnly && !onWifi)) {
       // Once per event, on the date the pack holds: the list has every
@@ -658,7 +697,7 @@ async function prefetchOnce({
         if (!prev) continue;
         const fresh = now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
         if (fresh && !force.includes(e.eventId)) continue;
-        await refreshPack({ userId, event: e.row, occurrenceDate: prev.event.event_date, withFiles: false, unknownTitle, partial: true });
+        await refreshPack({ userId, event: e.row, occurrenceDate: serverDates.get(e.eventId) ?? prev.event.event_date, withFiles: false, unknownTitle, partial: true });
         tidied++;
       }
     }
@@ -679,9 +718,10 @@ async function prefetchOnce({
   for (const e of candidates) {
     if (!keepGoing()) break;
     const prev = await readPack(userId, e.bandId, e.eventId);
-    const fresh = prev && !prev.partial && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
+    const date = serverDates.get(e.eventId) ?? e.date;
+    const fresh = prev && !prev.partial && prev.event.event_date === date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
     if (fresh && !force.includes(e.eventId)) continue;
-    const pack = await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: true, unknownTitle });
+    const pack = await refreshPack({ userId, event: e.row, occurrenceDate: date, withFiles: true, unknownTitle });
     if (pack) done++;
   }
   return done;

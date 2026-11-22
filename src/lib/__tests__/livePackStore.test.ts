@@ -48,12 +48,20 @@ vi.mock('../livePackStatus', () => ({
 }));
 
 // My files on the device (native): off in jsdom unless a test turns it on.
-const files = vi.hoisted(() => ({ available: false, local: null as { path: string; directory: string } | null, downloads: 0 }));
+const files = vi.hoisted(() => ({
+  available: false,
+  local: null as { path: string; directory: string } | null,
+  downloads: 0,
+  removed: [] as string[],
+  gone: new Set<string>(),
+}));
 vi.mock('../livePackFiles', async (orig) => ({
   ...(await orig<typeof import('../livePackFiles')>()),
   packFilesAvailable: () => files.available,
   downloadPackFile: async () => (files.downloads++, files.local),
-  removePackFiles: async () => undefined,
+  removePackFiles: async (fs: Array<{ local?: { path: string } }>) => void files.removed.push(...fs.filter((f) => f.local).map((f) => f.local!.path)),
+  // On the device unless a test removed it (the OS cleared it, the person deleted the app's data).
+  hasPackFile: async (l?: { path: string }) => !!l && !files.gone.has(l.path),
 }));
 
 import { getCacheKey, getOfflineItem, setOfflineItem, syncCachedRoles, clearOfflineCache } from '../offline/storage';
@@ -115,6 +123,8 @@ beforeEach(() => {
   files.available = false;
   files.local = null;
   files.downloads = 0;
+  files.removed.length = 0;
+  files.gone.clear();
   // The events exist and are on, unless a test says otherwise (the privacy sweep reads them).
   answers.events = (q) => ({ data: ((q.filters.find((f) => f[1] === 'id')?.[2] as string[]) ?? []).map((id) => ({ id, status: 'confirmed' })), error: null });
 });
@@ -708,5 +718,113 @@ describe('round 7 (review #273)', () => {
     answers.song_personal_files = () => ({ data: null, error: { message: 'Failed to fetch' } });
     for (let i = 0; i < 4; i++) await refreshPack({ userId: me, event: gig(), withFiles: true });
     expect(unavailablePackFiles(await readPack(me, 'b1', 'e1'))).toEqual([]);
+  });
+});
+
+describe('Codex round (review #273, 11-22)', () => {
+  const pdf = { id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 };
+  const PATH = 'live-pack/u1/f1-chart.pdf';
+  const later = () => new Date(Date.now() + 31 * 60 * 1000);
+  const ev = (id: string, date: string, over: Record<string, unknown> = {}) => ({
+    eventId: id, bandId: 'b1', date, eventType: 'gig', setlistId: 's1', row: gig({ id, event_date: date, ...over }),
+  });
+  const withFile = () => {
+    files.available = true;
+    files.local = { path: PATH, directory: 'LIBRARY_NO_CLOUD' };
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+  };
+
+  describe('B2: a gig that moved is refreshed on its date on the server', () => {
+    for (const downloads of [true, false]) {
+      it(`live_pack ${downloads ? 'on' : 'off'}: the server's date, not the one held (nor the app's cached list)`, async () => {
+        writeChoice(me, { auto: true, events: [], wifiOnly: false });
+        answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+        await refreshPack({ userId: me, event: gig() });
+        // Moved from +3 to +5 days; the app's list still says +3.
+        answers.events = () => ({ data: [{ id: 'e1', status: 'confirmed', event_date: inDays(5), is_recurring: false }], error: null });
+        await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev('e1', inDays(3))], online: true, downloads, now: later() });
+        expect((await readPack(me, 'b1', 'e1'))?.event.event_date).toBe(inDays(5));
+      });
+    }
+
+    it('a recurring rehearsal keeps the occurrence it holds (the series row has its first date)', async () => {
+      const reh = gig({ event_type: 'rehearsal', event_date: inDays(-14) });
+      answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+      answers.rehearsal_notes = () => ({ data: [], error: null });
+      await refreshPack({ userId: me, event: reh, occurrenceDate: inDays(1) });
+      answers.events = () => ({ data: [{ id: 'e1', status: 'confirmed', event_date: inDays(-14), is_recurring: true }], error: null });
+      await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [{ ...ev('e1', inDays(1)), eventType: 'rehearsal', row: reh }], online: true, downloads: false, now: later() });
+      expect((await readPack(me, 'b1', 'e1'))?.event.event_date).toBe(inDays(1));
+    });
+
+    it('no answer from the server: the date held is kept', async () => {
+      answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+      await refreshPack({ userId: me, event: gig() });
+      answers.events = () => ({ data: null, error: { message: 'Failed to fetch' } });
+      await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev('e1', inDays(4))], online: true, downloads: false, now: later() });
+      expect((await readPack(me, 'b1', 'e1'))?.event.event_date).toBe(inDays(3));
+    });
+  });
+
+  describe('B3: two gigs with the same song share one file of mine', () => {
+    it('the first pack to go leaves the file for the other', async () => {
+      withFile();
+      await refreshPack({ userId: me, event: gig({ id: 'e1', event_date: inDays(1) }), withFiles: true });
+      await refreshPack({ userId: me, event: gig({ id: 'e2', event_date: inDays(6) }), withFiles: true });
+      expect((await readPack(me, 'b1', 'e2'))?.personal.song1.files[0].local?.path).toBe(PATH);
+      // e1 is over (24 h after the event): its pack goes, the file stays for e2.
+      await sweepPacks(me, ['b1'], new Date(Date.now() + 3 * 24 * 3600 * 1000));
+      expect(await readPack(me, 'b1', 'e1')).toBeNull();
+      expect(await readPack(me, 'b1', 'e2')).not.toBeNull();
+      expect(files.removed).not.toContain(PATH);
+      // The last one to use it takes it with it.
+      await deleteAllPacks(me);
+      expect(files.removed).toContain(PATH);
+    });
+
+    it('a refresh that drops the song from one gig leaves the file for the other', async () => {
+      withFile();
+      await refreshPack({ userId: me, event: gig({ id: 'e1' }), withFiles: true });
+      await refreshPack({ userId: me, event: gig({ id: 'e2', event_date: inDays(4), setlist_id: 's2' }), withFiles: true });
+      answers.setlist_songs = (q) =>
+        q.filters.some((f) => f[2] === 's1') ? { data: [row('ss2', 'song2', 'Harbor Lights')], error: null } : { data: [row('ss1', 'song1', 'Paper Boats')], error: null };
+      answers.song_personal_files = (q) => ({ data: (q.filters.find((f) => f[1] === 'song_id')?.[2] as string[]).includes('song1') ? [{ ...pdf }] : [], error: null });
+      await refreshPack({ userId: me, event: gig({ id: 'e1' }), withFiles: true });
+      expect(files.removed).not.toContain(PATH);
+    });
+
+    it('a saved file no longer on the device: downloaded again, never "Offline ready" without it', async () => {
+      withFile();
+      await refreshPack({ userId: me, event: gig(), withFiles: true });
+      expect(isPackReady(await readPack(me, 'b1', 'e1'))).toBe(true);
+      files.gone.add(PATH);
+      files.local = null; // the new download fails
+      await refreshPack({ userId: me, event: gig(), withFiles: true });
+      const p = await readPack(me, 'b1', 'e1');
+      expect(files.downloads).toBe(2);
+      expect(p?.partial).toBe(true);
+      expect(isPackReady(p)).toBe(false);
+    });
+  });
+});
+
+describe('Codex round MINOR (EventDetail:464): a song added to a ready setlist', () => {
+  it('is not "Offline ready" until its notes and files are fetched; a reorder or a removal keeps ready', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    expect(isPackReady(await readPack(me, 'b1', 'e1'))).toBe(true);
+    // The admin saves the setlist with a second song (EventDetail onSaved).
+    await savePackSongs({ userId: me, event: gig(), songs });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+    // The full refresh completes it.
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats'), row('ss2', 'song2', 'Harbor Lights')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    expect(isPackReady(await readPack(me, 'b1', 'e1'))).toBe(true);
+    // Same songs reordered, or one taken out: nothing new to fetch, still ready.
+    await savePackSongs({ userId: me, event: gig(), songs: [songs[1], songs[0]] });
+    expect(isPackReady(await readPack(me, 'b1', 'e1'))).toBe(true);
+    await savePackSongs({ userId: me, event: gig(), songs: [songs[0]] });
+    expect(isPackReady(await readPack(me, 'b1', 'e1'))).toBe(true);
   });
 });

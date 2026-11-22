@@ -5,7 +5,10 @@
 // RLS on live_pack_status, the silent-refresh queue and flush, Remind, cron.
 //
 //   mkdir -p /tmp/pg170 && cd /tmp/pg170 && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
-//   cp <repo>/supabase/tests/live_pack.pglite.mjs . && node live_pack.pglite.mjs <repo>/supabase/migrations/170_live_pack.sql
+//   cp <repo>/supabase/tests/live_pack.pglite.mjs . && node live_pack.pglite.mjs <repo>/supabase/migrations/170_live_pack.sql [earlier-170.sql]
+//
+// With a second file (an earlier copy of 170, e.g. `git show origin/main:supabase/migrations/170_live_pack.sql`)
+// that one is applied first: a database that already has it gets every new part.
 //
 // (PGlite 0.3.x cannot run PL/pgSQL RAISE; use 0.5.15 or later.)
 import { PGlite } from '@electric-sql/pglite';
@@ -67,8 +70,9 @@ CREATE FUNCTION public.bw_trg_dispatch_push() RETURNS trigger LANGUAGE plpgsql A
 CREATE TRIGGER bw_dispatch_push AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION public.bw_trg_dispatch_push();
 `);
 
-// Two runs: the migration is safe to run more than once.
+// Two runs: the migration is safe to run more than once (and over an earlier copy).
 const mig = readFileSync(MIG, 'utf8');
+if (process.argv[3]) { await db.exec(readFileSync(process.argv[3], 'utf8')); ok(true, 'earlier 170 applied first'); }
 await db.exec(mig);
 await db.exec(mig);
 ok(true, 'migration runs twice');
@@ -186,8 +190,34 @@ const targets = async (ev) => [...(await q(`SELECT public.bw_live_pack_refresh_t
 ok((await targets(EV_REH)).includes(AUTO), 'on: an automatic member with no pack is a target');
 await db.exec(`UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'`);
 ok((await targets(EV_REH)) === '', `off: no pack, no silent push, got ${await targets(EV_REH)}`);
-ok((await targets(EV)) === [MEM, AUTO].sort().join(), 'off: pack holders still get the refresh');
+ok((await targets(EV)) === [MEM, AUTO].sort().join(), 'off: pack holders are the targets (once it is back on)');
+// Off: no push at all (the flag is read before every push), the queue is kept.
+await db.exec(`DELETE FROM net.calls; INSERT INTO live_pack_refresh_queue (event_id, queued_at) VALUES ('${EV}', now() - interval '3 minutes')`);
+ok((await q(`SELECT public.bw_live_pack_refresh_flush() n`)).rows[0].n === 0, 'off: the flush sends nothing');
+ok((await q(`SELECT count(*)::int n FROM net.calls`)).rows[0].n === 0, 'off: no silent push posted');
+ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 1, 'off: the queued refresh is kept');
 await db.exec(`UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'`);
+ok((await q(`SELECT public.bw_live_pack_refresh_flush() n`)).rows[0].n === 1, 'back on: the kept refresh goes out');
+ok((await q(`SELECT count(*)::int n FROM net.calls`)).rows[0].n === 1, 'back on: one silent push posted');
+// Switched off while the flush runs: the next push is not sent, its event goes back in the queue.
+await db.exec(`DELETE FROM net.calls; DELETE FROM live_pack_refresh_queue;
+  INSERT INTO live_pack_refresh_queue (event_id, queued_at) VALUES ('${EV}', now() - interval '4 minutes'), ('${EV_REH}', now() - interval '3 minutes');
+  CREATE OR REPLACE FUNCTION net.http_post(url text, headers jsonb, body jsonb, timeout_milliseconds int) RETURNS bigint
+    LANGUAGE sql AS $$ UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'; INSERT INTO net.calls (url, body) VALUES (url, body) RETURNING id $$;`);
+ok((await q(`SELECT public.bw_live_pack_refresh_flush() n`)).rows[0].n === 1, 'off mid-run: only the push before the switch went out');
+ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 1, 'off mid-run: the other event is queued again');
+await db.exec(`CREATE OR REPLACE FUNCTION net.http_post(url text, headers jsonb, body jsonb, timeout_milliseconds int) RETURNS bigint
+    LANGUAGE sql AS $$ INSERT INTO net.calls (url, body) VALUES (url, body) RETURNING id $$;
+  UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'; DELETE FROM net.calls;`);
+// The sweep, switched off on its first row: the rows after it get nothing.
+await db.exec(`DELETE FROM notifications; DELETE FROM live_pack_status;
+  CREATE OR REPLACE FUNCTION public.bw_test_off_after_first() RETURNS trigger LANGUAGE plpgsql AS $$
+  BEGIN UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'; RETURN NEW; END $$;
+  CREATE TRIGGER bw_test_off_after_first AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION public.bw_test_off_after_first();`);
+await q(`SELECT public.bw_live_pack_invite_sweep()`);
+ok((await q(`SELECT count(*)::int n FROM notifications WHERE type = 'live_pack_ready'`)).rows[0].n === 1, 'off mid-sweep: no invite after the switch');
+await db.exec(`DROP TRIGGER bw_test_off_after_first ON public.notifications; DROP FUNCTION public.bw_test_off_after_first();
+  UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'; DELETE FROM notifications;`);
 await db.exec(`DELETE FROM live_pack_refresh_queue`);
 await db.exec(`INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES ('${SL}','${SONG}',3)`);
 ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 2, 'setlist change queues');
@@ -209,12 +239,12 @@ ok((await q(`SELECT count(*)::int n FROM notifications WHERE data->>'kind' = 're
 ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, DECL]).then((r) => r.rows[0].r))) === false, 'no remind to a declined member');
 ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, DEP]).then((r) => r.rows[0].r))) === false, 'no remind to a deputy');
 
-// ---- A partial pack (round 4): a holder for the silent refresh (also while
-// off), but not "ready": invited and reminded like no pack at all.
+// ---- A partial pack (round 4): a holder for the silent refresh (sent only
+// while on), but not "ready": invited and reminded like no pack at all.
 await db.exec(`DELETE FROM notifications; DELETE FROM live_pack_status; DELETE FROM profiles WHERE false;
   INSERT INTO live_pack_status (event_id, user_id, device_id, version, partial) VALUES ('${EV}','${MEM}','dev-1','v1', true)`);
 await db.exec(`UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'`);
-ok((await targets(EV)).split(',').includes(MEM), 'off: a partial holder still gets the refresh');
+ok((await targets(EV)).split(',').includes(MEM), 'a partial holder is a refresh target');
 await db.exec(`UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'`);
 ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, MEM]).then((r) => r.rows[0].r))) === true, 'a partial holder can be reminded');
 await db.exec(`DELETE FROM notifications`);

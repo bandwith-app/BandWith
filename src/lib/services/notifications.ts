@@ -320,7 +320,7 @@ export const markAllAsRead = async (): Promise<{ error: Error | null }> => {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
+    let query = supabase
       .from('notifications')
       .update({
         read: true,
@@ -329,7 +329,11 @@ export const markAllAsRead = async (): Promise<{ error: Error | null }> => {
       .eq('user_id', user.id)
       .eq('read', false)
       .not('type', 'in', CHAT_TYPES_FILTER);
+    // Kill switch live_pack off: the prompts are hidden from the inbox, so
+    // opening it doesn't read them (back on, they are still unread).
+    if (!isFlagOn('live_pack')) query = query.neq('type', 'live_pack_ready');
 
+    const { error } = await query;
     if (error) throw error;
 
     return { error: null };

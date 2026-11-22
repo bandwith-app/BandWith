@@ -69,13 +69,28 @@ const writeReported = (r: Reported) => {
 /**
  * One write at a time per event, in order: reports and the forgetting of a
  * pack ("Delete all", expiry) queue behind each other, so a write already in
- * flight can't bring a row back after it was deleted. The server also drops
- * a write older than its row (170).
+ * flight can't bring a row back after it was deleted. The delete goes through
+ * the same chain and cancels the writes still queued before it (they would
+ * report a pack that is gone). "Delete all" holds back every event's next
+ * write, queued or not, until it is done. The server also drops a write
+ * older than its row (170).
  */
 const writing = new Map<string, Promise<void>>();
+/** Moved on by a forget: a queued write of an older epoch is skipped. */
+const epochs = new Map<string, number>();
+let allEpoch = 0;
+/** The "Delete all" still running, if any: every write waits for it. */
+let forgettingAll: Promise<void> | null = null;
+const epochOf = (key: string) => `${allEpoch}:${epochs.get(key) ?? 0}`;
 
 function enqueue(key: string, job: () => Promise<void>): Promise<void> {
-  const next = (writing.get(key) ?? Promise.resolve()).then(job, job);
+  const at = epochOf(key);
+  // Forgotten since it was queued: not sent.
+  const run = () => (epochOf(key) === at ? job() : undefined);
+  const tail = writing.get(key);
+  const wait = tail && forgettingAll ? Promise.all([tail, forgettingAll]) : (tail ?? forgettingAll);
+  // Nothing ahead: it starts now (so it is in flight, not queued).
+  const next = wait ? wait.then(run, run) : Promise.resolve(run());
   writing.set(key, next);
   void next.finally(() => {
     if (writing.get(key) === next) writing.delete(key);
@@ -161,18 +176,24 @@ async function writeStatus(key: string, p: Parameters<typeof reportPackStatus>[0
 /** The pack left this device (expired, band left, deleted in Settings). */
 export function forgetPackStatus(userId: string, eventIds?: string[]): Promise<void> {
   const mine = (k: string) => k.startsWith(`${userId}:`) && (!eventIds || eventIds.includes(k.slice(userId.length + 1)));
-  // After every write already queued for these events (all of them for "Delete all").
-  const keys = new Set([...writing.keys()].filter(mine));
-  for (const id of eventIds ?? []) keys.add(`${userId}:${id}`);
-  const before = Promise.all([...keys].map((k) => (writing.get(k) ?? Promise.resolve()).catch(() => undefined)));
-  const done = before.then(() => forgetNow(userId, eventIds, mine));
-  // And the next writes for them wait for the delete.
-  for (const k of keys) {
-    writing.set(k, done);
-    void done.finally(() => {
-      if (writing.get(k) === done) writing.delete(k);
-    });
+  if (eventIds) {
+    // Through each event's chain: after the write in flight, instead of the queued ones.
+    const ids = [...new Set(eventIds)];
+    for (const id of ids) epochs.set(`${userId}:${id}`, (epochs.get(`${userId}:${id}`) ?? 0) + 1);
+    return Promise.all(
+      ids.map((id) => enqueue(`${userId}:${id}`, () => forgetNow(userId, [id], (k) => k === `${userId}:${id}`))),
+    ).then(() => undefined);
   }
+  // Delete all: after every write in flight; the queued ones are cancelled,
+  // and every later write waits for this delete.
+  allEpoch++;
+  const ahead = [...writing.values(), ...(forgettingAll ? [forgettingAll] : [])].map((w) => w.catch(() => undefined));
+  const done = Promise.all(ahead).then(() => forgetNow(userId, undefined, mine));
+  const barrier = done.catch(() => undefined);
+  forgettingAll = barrier;
+  void barrier.finally(() => {
+    if (forgettingAll === barrier) forgettingAll = null;
+  });
   return done;
 }
 

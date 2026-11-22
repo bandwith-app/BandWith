@@ -71,9 +71,50 @@ describe('170 live pack (plan A2)', () => {
     for (const fn of ['bw_live_pack_invite_sweep', 'bw_live_pack_invite_row', 'bw_live_pack_remind']) {
       expect(body(fn)).toMatch(/NOT public\.bw_live_pack_on\(\)/);
     }
-    // Packs already on a device still get the silent refresh.
-    expect(body('bw_live_pack_refresh_targets')).toMatch(/live_pack_auto, false\) AND public\.bw_live_pack_on\(\)/);
-    expect(body('bw_live_pack_refresh_flush')).not.toMatch(/bw_live_pack_on/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.bw_live_pack_on\(\) FROM PUBLIC, anon, authenticated/);
+  });
+
+  // Codex round (11-22): the flag is read before every push, not once per run
+  // (it can be switched off while a job is running).
+  const body = (name: string) => {
+    const from = sql.indexOf(`FUNCTION public.${name}(`);
+    return sql.slice(from, sql.indexOf('$$;', sql.indexOf('AS $$', from)));
+  };
+  it('the invite sweep checks the flag on every row, before a question or a queued download', () => {
+    const loop = body('bw_live_pack_invite_sweep').split(/\bLOOP\b/)[1];
+    const check = loop.search(/NOT public\.bw_live_pack_on\(\)/);
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(loop.indexOf('live_pack_refresh_queue'));
+    expect(check).toBeLessThan(loop.indexOf('bw_live_pack_invite_row'));
+  });
+
+  it('the silent refresh checks the flag before every push and keeps the queue while off', () => {
+    const flush = body('bw_live_pack_refresh_flush');
+    // Before the queue is emptied: off, the rows stay for when it is back on.
+    expect(flush.search(/NOT public\.bw_live_pack_on\(\)/)).toBeLessThan(flush.indexOf('DELETE FROM public.live_pack_refresh_queue'));
+    const loop = flush.slice(flush.indexOf('LOOP'));
+    expect(loop.search(/NOT public\.bw_live_pack_on\(\)/)).toBeGreaterThan(-1);
+    expect(loop.search(/NOT public\.bw_live_pack_on\(\)/)).toBeLessThan(loop.indexOf('net.http_post'));
+    // Switched off mid-run: the event goes back in the queue.
+    expect(loop).toMatch(/INSERT INTO public\.live_pack_refresh_queue[\s\S]*ON CONFLICT \(event_id\) DO NOTHING/);
+  });
+
+  it('safe to run again over an earlier 170: every object is created or replaced', () => {
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (?!OR REPLACE )FUNCTION/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+    // Triggers and policies: dropped first, then created.
+    const created = [...sql.matchAll(/CREATE (TRIGGER|POLICY) (\w+)/g)];
+    expect(created.length).toBeGreaterThan(8);
+    for (const [, kind, name] of created) {
+      const at = sql.indexOf(`CREATE ${kind} ${name}`);
+      expect(sql.slice(0, at), `${kind} ${name}`).toContain(`DROP ${kind} IF EXISTS ${name} ON public.`);
+    }
+    // Columns added after the first copy of the table (#269): an ALTER each, so
+    // a database with the earlier table gets them too.
+    const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS public.live_pack_status'), sql.indexOf(');', sql.indexOf('CREATE TABLE IF NOT EXISTS public.live_pack_status')));
+    expect(table).toMatch(/\bpartial boolean/);
+    expect(sql).toMatch(/ALTER TABLE public\.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false/);
   });
 });

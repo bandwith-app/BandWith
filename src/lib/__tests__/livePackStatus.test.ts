@@ -184,3 +184,32 @@ describe('round 7 (review #273, Claude)', () => {
     expect(calls.log.some((c) => c.op === 'select' && c.args[0] === 'downloaded_at')).toBe(true);
   });
 });
+
+describe('Codex round MINOR (livePackStatus:74, 11-22): the delete goes through the chain', () => {
+  const sent = () => calls.settled.filter((op) => op === 'upsert' || op === 'delete');
+
+  it('a write still queued (not started) when the pack is forgotten is cancelled, not sent', async () => {
+    let open!: () => void;
+    calls.gates.push(new Promise<void>((r) => (open = r)));
+    const inFlight = reportPackStatus(pack);
+    const queued = reportPackStatus({ ...pack, version: 'v2', savedAt: '2026-11-21T20:05:00.000Z' });
+    const forgetting = forgetPackStatus('u-1', ['ev-1']);
+    open();
+    await Promise.all([inFlight, queued, forgetting]);
+    expect(sent()).toEqual(['upsert', 'delete']);
+  });
+
+  it('Delete all: a queued write of any event is cancelled, and a write for an event not queued yet waits for the delete', async () => {
+    let open!: () => void;
+    calls.gates.push(new Promise<void>((r) => (open = r)));
+    const inFlight = reportPackStatus(pack);
+    const queued = reportPackStatus({ ...pack, version: 'v2', savedAt: '2026-11-21T20:05:00.000Z' });
+    const forgetting = forgetPackStatus('u-1');
+    // A pack saved again after Delete all, for another event.
+    const after = reportPackStatus({ ...pack, eventId: 'ev-2', version: 'v3', savedAt: '2026-11-21T20:06:00.000Z' });
+    open();
+    await Promise.all([inFlight, queued, forgetting, after]);
+    expect(sent()).toEqual(['upsert', 'delete', 'upsert']);
+  });
+});
+

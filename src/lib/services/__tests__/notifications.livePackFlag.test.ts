@@ -52,7 +52,7 @@ vi.mock('@capacitor/local-notifications', () => ({
   },
 }));
 
-import { getNotifications, getUnreadCount } from '../notifications';
+import { getNotifications, getUnreadCount, markAllAsRead } from '../notifications';
 import { setupNativePushListeners } from '../pushNotifications';
 import { __resetAppFlagsForTest, __setAppFlagsForTest } from '@/lib/appFlags';
 
@@ -90,3 +90,18 @@ describe('live_pack off: no download prompts', () => {
     expect(h.scheduled).toHaveLength(1);
   });
 });
+
+describe('Codex round MINOR (notifications:233, 11-22)', () => {
+  it('off: opening the inbox (mark all as read) leaves the hidden pack invitations unread', async () => {
+    __setAppFlagsForTest({ live_pack: false });
+    await markAllAsRead();
+    expect(h.calls.some(([m]) => m === 'update')).toBe(true);
+    expect(hides()).toHaveLength(1);
+  });
+
+  it('on: they are marked read with the rest', async () => {
+    await markAllAsRead();
+    expect(hides()).toHaveLength(0);
+  });
+});
+

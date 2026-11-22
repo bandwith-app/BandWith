@@ -11,7 +11,7 @@
 --    for an admin of the event's band, about a member (Remind). `partial`: the pack
 --    is held but not complete (live_pack off, or a part not loaded yet): not
 --    counted as ready, not "already on their device" for invites and Remind,
---    still a holder for the silent refresh (so it is kept current while off).
+--    still a holder for the silent refresh (sent only while live_pack is on).
 -- 2. profiles.live_pack_auto / live_pack_asked_at: the person's choice on the
 --    consent sheet ("Download and keep it automatic"), kept across devices.
 -- 3. bw_live_pack_invite_sweep(): daily (pg_cron) and when a setlist is first
@@ -32,9 +32,12 @@
 -- 5. bw_live_pack_remind(event, user): an admin's "Remind" (one push, at most
 --    every 6 hours per member and event).
 -- 6. bw_trg_dispatch_push: as live (133), plus live_pack_ready.
--- 7. Kill switch: with app_flags live_pack off (173), no invites, no Remind
---    and no new automatic downloads: the silent refresh goes only to people
---    who already hold the pack, and keeps their copy current.
+-- 7. Kill switch: with app_flags live_pack off (173), no push of any kind:
+--    no invites, no Remind, no silent refresh (queued refreshes are kept and
+--    go out once it is back on). The flag is read before every push, also
+--    mid-run. Packs already on a phone are brought up to date by the app on
+--    open and resume. Back on, the refresh goes to people who chose automatic
+--    or already hold a pack.
 --
 -- Nothing in the pack itself lives on the server: fees, contracts, quotes and
 -- other members' notes never reach these tables. Safe to run more than once.
@@ -277,8 +280,8 @@ DECLARE
   r record;
   n int := 0;
 BEGIN
-  -- Kill switch off: no question and no new automatic download. Packs already
-  -- on a device still get the silent refresh (bw_live_pack_refresh_flush).
+  -- Kill switch off: no question and no new automatic download. Read again
+  -- on every row (it can be switched off while the sweep runs).
   IF NOT public.bw_live_pack_on() THEN RETURN 0; END IF;
   FOR r IN
     SELECT w.*, m.u, coalesce(pr.live_pack_auto, false) AS auto,
@@ -297,6 +300,7 @@ BEGIN
        -- Already on one of their devices (a partial pack doesn't count).
        AND NOT EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = w.event_id AND s.user_id = m.u AND NOT s.partial)
   LOOP
+    EXIT WHEN NOT public.bw_live_pack_on();
     IF r.auto THEN
       -- Automatic: no question, a silent refresh instead.
       INSERT INTO public.live_pack_refresh_queue (event_id) VALUES (r.event_id) ON CONFLICT (event_id) DO NOTHING;
@@ -481,8 +485,8 @@ AS $$
     LEFT JOIN public.profiles p ON p.id = m.u
    WHERE e.id = p_event_id
      AND public.bw_is_event_participant(e.id, m.u)
-     -- Kill switch off: only people who already hold the pack (their copy is
-     -- kept current); "automatic" alone would start a new download.
+     -- Kill switch off: the flush sends nothing (it reads the flag before
+     -- every push). A second guard: "automatic" alone, while off, is no target.
      AND ((coalesce(p.live_pack_auto, false) AND public.bw_live_pack_on())
           OR EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = e.id AND s.user_id = m.u));
 $$;
@@ -500,7 +504,12 @@ DECLARE
   q record;
   v_users uuid[];
   n int := 0;
+  v_off boolean := false;
 BEGIN
+  -- Kill switch off: no push at all. The queue is kept, so the refresh goes
+  -- out once it is back on; the app also brings held packs up to date on open
+  -- and resume.
+  IF NOT public.bw_live_pack_on() THEN RETURN 0; END IF;
   SELECT decrypted_secret INTO v_url FROM vault.decrypted_secrets WHERE name = 'bw_project_url' LIMIT 1;
   SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'bw_push_dispatch_secret' LIMIT 1;
 
@@ -508,8 +517,15 @@ BEGIN
   FOR q IN
     DELETE FROM public.live_pack_refresh_queue
      WHERE queued_at < now() - interval '2 minutes'
-    RETURNING event_id
+    RETURNING event_id, queued_at
   LOOP
+    -- Read before every push: switched off mid-run, the rest go back in the queue.
+    v_off := v_off OR NOT public.bw_live_pack_on();
+    IF v_off THEN
+      INSERT INTO public.live_pack_refresh_queue (event_id, queued_at) VALUES (q.event_id, q.queued_at)
+      ON CONFLICT (event_id) DO NOTHING;
+      CONTINUE;
+    END IF;
     v_users := public.bw_live_pack_refresh_targets(q.event_id);
     CONTINUE WHEN cardinality(v_users) = 0 OR v_url IS NULL OR v_secret IS NULL;
     PERFORM net.http_post(
