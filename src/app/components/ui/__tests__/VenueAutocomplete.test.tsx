@@ -101,3 +101,52 @@ describe('Google sessions', () => {
     expect(lastSearch()?.[2]?.sessionToken).not.toBe(token);
   });
 });
+
+describe('Venue suggestions with a keyboard and a screen reader (ARIA 1.2 combobox)', () => {
+  const second = { name: 'Bowery Ballroom', address: '6 Delancey St', city: 'New York', provider: 'osm' };
+  const open = async () => {
+    mocks.searchVenues.mockResolvedValue([place, second]);
+    const input = screen.getByRole('combobox');
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Blue' } });
+    await screen.findAllByRole('option');
+    return input;
+  };
+
+  it('the field points at the highlighted option (aria-activedescendant); options stay out of the Tab order', async () => {
+    render(<Harness onSelect={() => {}} />);
+    const input = await open();
+    const options = screen.getAllByRole('option');
+    for (const o of options) expect(o.tabIndex).toBe(-1);
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id);
+    expect(options[0].getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[1].id);
+    expect(document.getElementById(input.getAttribute('aria-activedescendant')!)?.textContent).toContain('Bowery Ballroom');
+  });
+
+  it('Tab picks the highlighted venue, says so, and lets focus move on', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    const ev = fireEvent.keyDown(input, { key: 'Tab' });
+    expect(ev).toBe(true); // not prevented
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ name: 'Blue Note Jazz Club' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(screen.getByRole('status').textContent).toContain('Blue Note Jazz Club');
+  });
+
+  it('Tab with nothing highlighted just closes the list', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    expect(fireEvent.keyDown(input, { key: 'Tab' })).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+  });
+});

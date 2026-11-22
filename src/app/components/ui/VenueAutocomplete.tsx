@@ -46,6 +46,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   const [suggestions, setSuggestions] = useState<VenuePlace[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  // Read out by screen readers when a venue is picked (the list closes).
+  const [announce, setAnnounce] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,6 +135,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     sessionTokenRef.current = undefined;
     rememberPickedPlace(selectedPlace);
     onChange(venueFields(selectedPlace).location);
+    setAnnounce(t('Venue chosen: {name}', { name: venueFields(selectedPlace).location }));
     onSelect(selectedPlace);
     setIsOpen(false);
     setSuggestions([]);
@@ -167,14 +170,22 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         setIsOpen(false);
         break;
       case 'Tab':
-        // Leaving the field closes the list; focus moves on as usual.
-        setIsOpen(false);
+        // Leaving the field picks the highlighted venue (ARIA 1.2 combobox),
+        // or just closes the list; focus moves on as usual.
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) handleSelectPlace(suggestions[highlightedIndex]);
+        else setIsOpen(false);
         break;
     }
   };
 
+  const optionId = (idx: number) => `${listboxId}-option-${idx}`;
+  const activeOption = isOpen && highlightedIndex >= 0 && highlightedIndex < suggestions.length ? highlightedIndex : -1;
+
   return (
     <div ref={containerRef} className={cn('relative w-full', containerClassName)}>
+      <span role="status" aria-live="polite" className="sr-only">
+        {announce}
+      </span>
       <div className="relative flex items-center">
         <input
           ref={inputRef}
@@ -196,6 +207,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
           aria-autocomplete="list"
           aria-expanded={isOpen}
           aria-controls={isOpen ? listboxId : undefined}
+          aria-activedescendant={activeOption >= 0 ? optionId(activeOption) : undefined}
           className={cn(
             'w-full bg-transparent bw-body-lg text-foreground focus:outline-none placeholder:text-muted-foreground/60 transition-colors pr-8',
             className
@@ -233,8 +245,11 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
                 <button
                   key={`${item.placeId || item.name}-${idx}`}
                   type="button"
+                  id={optionId(idx)}
                   role="option"
                   aria-selected={isSelected}
+                  // The field keeps focus; arrows move the highlight (aria-activedescendant).
+                  tabIndex={-1}
                   onMouseEnter={() => setHighlightedIndex(idx)}
                   onClick={() => handleSelectPlace(item)}
                   // iOS with the keyboard up: the tap only blurs the field (the

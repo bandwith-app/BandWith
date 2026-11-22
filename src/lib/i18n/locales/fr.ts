@@ -823,6 +823,7 @@ const dict: Dictionary = {
   "Spotify, YouTube, Google Drive, or any audio link": "Spotify, YouTube, Google Drive ou tout lien audio",
   "Searching": "Recherche en cours",
   "Suggested venues": "Salles suggérées",
+  "Venue chosen: {name}": "Salle choisie : {name}",
   "Map": "Carte",
   "Select time...": "Choisis l’heure...",
   "Pick a time": "Choisis une heure",
