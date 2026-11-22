@@ -35,6 +35,13 @@ describe('iReal links with an apostrophe', () => {
     expect(parseIrealLink(irealLinkFrom(data({ 'text/html': `<a href=${plain}>x</a>` }))!).songs[0].title).toBe('Do Not Stop');
   });
 
+  it('reads an unquoted older irealbook:// link with its = separators (Codex review of #295)', () => {
+    const old = 'irealbook://Blue%20Monk=Monk%20Thelonious=Medium%20Swing=F=n=T44*A{F7XyQ}';
+    expect(irealLinkFrom(data({ 'text/html': `<a href=${old}>Blue Monk</a>` }))).toBe(old);
+    expect(irealLinkFrom(data({ 'text/html': `<a class=x href=${old} target=_blank>Blue Monk</a>` }))).toBe(old);
+    expect(parseIrealLink(irealLinkFrom(data({ 'text/html': `<a href=${old}>x</a>` }))!).songs[0].title).toBe('Blue Monk');
+  });
+
   it('drops a closing quote around a link written in single quotes', () => {
     expect(findIrealLink(`'${LINK}'`)).toBe(LINK);
   });

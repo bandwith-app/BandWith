@@ -8,7 +8,7 @@ import { render, screen, cleanup, act, fireEvent, within } from '@testing-librar
 // open it. Now each tab asks the server for its own status, a page at a time,
 // and a notification's suggestion is fetched by id.
 type Row = Record<string, unknown>;
-const db = vi.hoisted(() => ({ rows: [] as Row[] }));
+const db = vi.hoisted(() => ({ rows: [] as Row[], holdKeyset: null as Promise<void> | null, band: 'band-1' }));
 
 vi.mock('@/lib/supabase', () => {
   const query = (table: string) => {
@@ -17,6 +17,7 @@ vi.mock('@/lib/supabase', () => {
     let limit = Infinity;
     let head = false;
     let one = false;
+    let keyset = false;
     const run = () => {
       let rows = table === 'song_suggestions' ? db.rows.filter((r) => filters.every((f) => f(r))) : [];
       rows = [...rows].sort((a, b) => {
@@ -43,12 +44,18 @@ vi.mock('@/lib/supabase', () => {
         const m = expr.match(/^created_at\.lt\."([^"]+)",and\(created_at\.eq\."([^"]+)",id\.lt\."([^"]+)"\)$/);
         if (!m) throw new Error(`unexpected or(): ${expr}`);
         filters.push((r) => String(r.created_at) < m[1] || (r.created_at === m[2] && String(r.id) < m[3]));
+        keyset = true;
         return b;
       },
       limit: (n: number) => ((limit = n), b),
       maybeSingle: () => ((one = true), b),
       single: () => ((one = true), b),
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(run()).then(res, rej),
+      // A slow "Load older" page: the next keyset request waits for the test.
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+        const hold = keyset ? db.holdKeyset : null;
+        if (hold) db.holdKeyset = null;
+        return (hold ?? Promise.resolve()).then(run).then(res, rej);
+      },
     };
     return b;
   };
@@ -56,7 +63,7 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from: query, channel: () => channel, removeChannel: vi.fn() } };
 });
 vi.mock('@/lib/BandContext', () => ({
-  useBand: () => ({ selectedBand: { id: 'band-1', name: 'Velvet Static' }, isAdmin: true }),
+  useBand: () => ({ selectedBand: { id: db.band, name: db.band === 'band-1' ? 'Velvet Static' : 'Hudson Line' }, isAdmin: true }),
 }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin-1' } }) }));
 
@@ -64,8 +71,8 @@ import { SongSuggestionsView } from '../SongSuggestionsView';
 import { closeSongSuggestions, openSongSuggestions, SUGGESTIONS_CHANGED } from '@/lib/services/songSuggestions';
 
 const at = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 60_000).toISOString();
-const row = (i: number, status: string, title: string): Row => ({
-  id: `sg-${i}`, band_id: 'band-1', song_id: null, song_title: title, kind: 'note', proposed: { note: 'Count in 4' },
+const row = (i: number, status: string, title: string, band = 'band-1'): Row => ({
+  id: `sg-${band === 'band-1' ? '' : `${band}-`}${i}`, band_id: band, song_id: null, song_title: title, kind: 'note', proposed: { note: 'Count in 4' },
   original: {}, message: null, status, reason: null, applied: null, created_by: 'member-1', created_at: at(i),
   reviewed_by: null, reviewed_at: null, author: { id: 'member-1', full_name: 'Jordan Lee' }, reviewer: null,
 });
@@ -77,6 +84,8 @@ const seed = () => {
 afterEach(() => {
   act(() => closeSongSuggestions());
   cleanup();
+  db.band = 'band-1';
+  db.holdKeyset = null;
 });
 
 describe('Suggestions: an older pending one stays reachable', () => {
@@ -140,5 +149,43 @@ describe('Suggestions: an older pending one stays reachable', () => {
     }
     expect(await screen.findByText('Reviewed 1')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Load older suggestions' })).toBeNull();
+  });
+
+  it('a slow "Load older" from one band never lands in another band’s list (Codex review of #295)', { timeout: 30_000 }, async () => {
+    seed();
+    for (let i = 1; i <= 3; i++) db.rows.push(row(i, 'accepted', `Hudson reviewed ${i}`, 'band-2'));
+    const view = render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    fireEvent.click(await screen.findByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 230');
+    let release!: () => void;
+    db.holdKeyset = new Promise<void>((r) => (release = r));
+    fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' }));
+    // Meanwhile the user switches band.
+    db.band = 'band-2';
+    view.rerender(<SongSuggestionsView />);
+    expect(await screen.findByText('Hudson reviewed 3')).toBeTruthy();
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Hudson reviewed 1')).toBeTruthy();
+    expect(within(dialog).queryByText(/^Reviewed \d+$/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Load older suggestions' })).toBeNull();
+  });
+
+  it('tab badges show the server totals, not the rows loaded so far (Codex review of #295)', { timeout: 30_000 }, async () => {
+    seed();
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    await screen.findByText('Old correction · Harlem Nocturne');
+    const tabs = () => within(screen.getByRole('group', { name: 'Suggestions' }));
+    expect(tabs().getByRole('button', { name: /^Reviewed/ }).textContent).toBe('Reviewed230');
+    fireEvent.click(tabs().getByRole('button', { name: /^Reviewed/ }));
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Load older suggestions' })));
+    await screen.findByText('Reviewed 130');
+    expect(tabs().getByRole('button', { name: /^Reviewed/ }).textContent).toBe('Reviewed230');
+    expect(tabs().getByRole('button', { name: /^Waiting/ }).textContent).toBe('Waiting1');
   });
 });

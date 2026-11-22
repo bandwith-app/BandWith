@@ -190,9 +190,10 @@ const asError = (e: unknown, fallback: string): Error =>
  */
 export const adoptSuggestionFiles = async (
   song: { id: string; band_id?: string | null; audio_url?: string | null; chart_url?: string | null },
-  opts?: { client?: AdoptClient },
+  opts?: { client?: AdoptClient; busyWait?: BusyWait },
 ): Promise<{ refs: AdoptRefs; error: Error | null }> => {
   const client = opts?.client ?? supabase;
+  const busyWait = opts?.busyWait ?? { tries: 6, ms: 1500 };
   const refs: AdoptRefs = {};
   let error: Error | null = null;
   let bandId = song.band_id ?? null;
@@ -201,7 +202,7 @@ export const adoptSuggestionFiles = async (
       const ref = song[field];
       if (!isSuggestionFile(ref)) continue;
       bandId ??= ref.slice(REF_PREFIX.length).split('/')[0];
-      const one = await adoptOne(client, song.id, field);
+      const one = await adoptOne(client, song.id, field, busyWait);
       if (one.ref) refs[field] = one.ref;
       if (one.error) error ??= one.error;
     }
@@ -215,12 +216,33 @@ export const adoptSuggestionFiles = async (
   return { refs, error };
 };
 
-async function adoptOne(client: AdoptClient, songId: string, field: Field): Promise<{ ref?: string; error?: Error }> {
+/** How long a run waits for another admin's run on the same file (then the retry on the next visit). */
+type BusyWait = { tries: number; ms: number };
+
+/** The song's own copy (`<band>/<kind>/<song id>-…`), not the suggestion original. */
+const isOwnCopy = (ref: string | null | undefined, songId: string): ref is string => {
+  if (!isStoredSongFile(ref)) return false;
+  const parts = ref.slice(REF_PREFIX.length).split('/');
+  return parts.length === 3 && parts[1] !== 'suggestions' && parts[2].startsWith(`${songId}-`);
+};
+
+async function adoptOne(client: AdoptClient, songId: string, field: Field, busyWait: BusyWait): Promise<{ ref?: string; error?: Error }> {
   const bucket = client.storage.from(SONG_FILES_BUCKET);
   const { data: claim, error: claimError } = await client.rpc('bw_song_file_adopt_begin', { p_song_id: songId, p_field: field });
   if (claimError) return { error: asError(claimError, 'Could not move the files') };
-  const c = (claim || {}) as { won?: boolean; from?: string; to?: string };
-  // Waiting for review, nothing to move, or another admin is on it right now.
+  const c = (claim || {}) as { won?: boolean; from?: string; to?: string; reason?: string };
+  // Another admin is moving it right now: wait for their repoint and report
+  // the copy the song then uses (not the original this screen still shows).
+  if (c.reason === 'busy') {
+    for (let n = 0; n < busyWait.tries; n++) {
+      await new Promise((r) => setTimeout(r, busyWait.ms));
+      const now = await currentRef(client, songId, field);
+      if (isOwnCopy(now, songId)) return { ref: now };
+      if (now !== undefined && !isSuggestionFile(now)) return {};
+    }
+    return {};
+  }
+  // Waiting for review or nothing to move.
   if (!c.won || !c.from || !c.to) return {};
 
   // 2. The copy: ours, or the same file already there.
@@ -340,11 +362,23 @@ const alreadyExists = (e: unknown) => {
 export const hasUnadoptedFiles = (song: { status?: string | null; audio_url?: string | null; chart_url?: string | null }) =>
   song.status !== 'suggested' && (isSuggestionFile(song.audio_url) || isSuggestionFile(song.chart_url));
 
-/** Delete stored files (ignores links). Best effort. */
+/** Delete stored files nothing else uses (ignores links). Best effort: unsure means kept. */
 export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => {
-  const paths = refs.filter(isStoredSongFile).map((r) => r.slice(REF_PREFIX.length));
-  if (paths.length === 0) return;
-  await supabase.storage.from(SONG_FILES_BUCKET).remove(paths).catch(() => undefined);
+  const stored = [...new Set(refs.filter(isStoredSongFile))];
+  if (stored.length === 0) return;
+  try {
+    // Only files nothing uses any more: another song (or a suggestion) can
+    // link the same file (197). If the server can't say, keep them all: a
+    // leftover file costs space, a missing one loses a band's recording.
+    const { data, error } = await supabase.rpc('bw_song_files_unused', { p_refs: stored });
+    if (error || !Array.isArray(data)) return;
+    const unused = new Set(data as string[]);
+    const paths = stored.filter((r) => unused.has(r)).map((r) => r.slice(REF_PREFIX.length));
+    if (paths.length === 0) return;
+    await supabase.storage.from(SONG_FILES_BUCKET).remove(paths);
+  } catch {
+    /* kept */
+  }
 };
 
 /**

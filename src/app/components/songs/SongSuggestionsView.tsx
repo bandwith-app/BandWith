@@ -27,7 +27,7 @@ import {
 } from '@/lib/songSuggestions';
 import {
   closeSongSuggestions,
-  countPendingSuggestions,
+  countSongSuggestions,
   getSongSuggestion,
   listSongSuggestions,
   reviewSongSuggestion,
@@ -75,7 +75,8 @@ export const SongSuggestionsView: React.FC = () => {
   const [pages, setPages] = React.useState<Record<Tab, SongSuggestion[]>>({ pending: [], reviewed: [] });
   const [more, setMore] = React.useState<Record<Tab, boolean>>({ pending: false, reviewed: false });
   const [extra, setExtra] = React.useState<SongSuggestion | null>(null);
-  const [pendingCount, setPendingCount] = React.useState(0);
+  // Each tab's total on the server (null: not known, the loaded rows count).
+  const [totals, setTotals] = React.useState<Record<Tab, number | null>>({ pending: null, reviewed: null });
   // The notification target the shown items were loaded for (until then, a
   // target missing from the old items is not "gone": it is being fetched).
   const [loadedFor, setLoadedFor] = React.useState<{ focus: string | undefined } | null>(null);
@@ -83,6 +84,13 @@ export const SongSuggestionsView: React.FC = () => {
   pagesRef.current = pages;
   const focusId = screen?.suggestionId;
   const mine = React.useMemo(() => (isAdmin || !user?.id ? {} : { createdBy: user.id }), [isAdmin, user?.id]);
+  // Whose list is shown: a response for another band (or person) is dropped,
+  // and another band's pages never set how far a refresh pages down.
+  const scope = `${bandId ?? ''}|${mine.createdBy ?? ''}`;
+  const scopeRef = React.useRef(scope);
+  scopeRef.current = scope;
+  const pagesScope = React.useRef<string | null>(null);
+  const loadSeq = React.useRef(0);
 
   const loadSongs = React.useCallback(async (list: SongSuggestion[]) => {
     const ids = [...new Set(list.map((s) => s.song_id).filter((id): id is string => !!id))];
@@ -117,12 +125,17 @@ export const SongSuggestionsView: React.FC = () => {
 
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
-    const shown = pagesRef.current;
-    const [p, r, count] = await Promise.all([
+    const seq = ++loadSeq.current;
+    const forScope = scope;
+    const shown = pagesScope.current === forScope ? pagesRef.current : { pending: [], reviewed: [] };
+    const [p, r, nPending, nReviewed] = await Promise.all([
       fetchTab('pending', shown.pending[shown.pending.length - 1]),
       fetchTab('reviewed', shown.reviewed[shown.reviewed.length - 1]),
-      countPendingSuggestions(bandId, isAdmin ? undefined : user.id),
+      countSongSuggestions(bandId, { ...mine, status: STATUS.pending }),
+      countSongSuggestions(bandId, { ...mine, status: STATUS.reviewed }),
     ]);
+    // A newer load, or another band meanwhile: this one is stale.
+    if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
     if (p.error || r.error || !p.data || !r.data) {
       setLoadError(userMessage(p.error || r.error, t('Could not load the suggestions.')));
       setLoadedFor({ focus: focusId });
@@ -131,31 +144,47 @@ export const SongSuggestionsView: React.FC = () => {
     let one: SongSuggestion | null = null;
     if (focusId && !p.data.some((s) => s.id === focusId) && !r.data.some((s) => s.id === focusId)) {
       const { data } = await getSongSuggestion(focusId);
+      if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
       if (data && data.band_id === bandId && data.status !== 'withdrawn') one = data;
     }
     setLoadError(null);
+    pagesScope.current = forScope;
     setPages({ pending: p.data, reviewed: r.data });
     setMore({ pending: p.more, reviewed: r.more });
     setExtra(one);
-    setPendingCount(count);
+    setTotals({ pending: nPending, reviewed: nReviewed });
     setLoadedFor({ focus: focusId });
     await loadSongs([...p.data, ...r.data, ...(one ? [one] : [])]);
-  }, [bandId, user?.id, isAdmin, t, focusId, fetchTab, loadSongs]);
+  }, [bandId, user?.id, t, focusId, fetchTab, loadSongs, scope, mine]);
 
   const [loadingMore, setLoadingMore] = React.useState(false);
+  // Another band (or person): the pages shown are of the old one until it loads.
+  React.useEffect(() => {
+    setLoadingMore(false);
+    setPages({ pending: [], reviewed: [] });
+    setMore({ pending: false, reviewed: false });
+    setTotals({ pending: null, reviewed: null });
+    setExtra(null);
+    setLoadedFor(null);
+    pagesScope.current = null;
+  }, [scope]);
   const showMore = async () => {
     const last = pages[tab][pages[tab].length - 1];
-    if (!bandId || !last || loadingMore) return;
+    if (!bandId || !last || loadingMore || pagesScope.current !== scope) return;
+    const forScope = scope;
+    const forTab = tab;
     setLoadingMore(true);
-    const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[tab], limit: PAGE + 1, before: last });
+    const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[forTab], limit: PAGE + 1, before: last });
+    // The user moved to another band meanwhile: drop it.
+    if (scopeRef.current !== forScope || pagesScope.current !== forScope) return;
     setLoadingMore(false);
     if (error || !data) {
       setLoadError(userMessage(error, t('Could not load the suggestions.')));
       return;
     }
     const page = data.slice(0, PAGE);
-    setPages((prev) => ({ ...prev, [tab]: [...prev[tab], ...page.filter((s) => !prev[tab].some((x) => x.id === s.id))] }));
-    setMore((prev) => ({ ...prev, [tab]: data.length > PAGE }));
+    setPages((prev) => ({ ...prev, [forTab]: [...prev[forTab], ...page.filter((s) => !prev[forTab].some((x) => x.id === s.id))] }));
+    setMore((prev) => ({ ...prev, [forTab]: data.length > PAGE }));
     void loadSongs(page);
   };
 
@@ -248,10 +277,10 @@ export const SongSuggestionsView: React.FC = () => {
                 titleSize="h1"
               >
                 <div className="flex flex-wrap gap-2 pb-1" role="group" aria-label={isAdmin ? t('Suggestions') : t('My suggestions')}>
-                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={Math.max(pendingCount, pending.length)}>
+                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={totals.pending ?? pending.length}>
                     {t('Waiting')}
                   </Selector>
-                  <Selector size="md" selected={tab === 'reviewed'} onClick={() => setTab('reviewed')} count={reviewed.length}>
+                  <Selector size="md" selected={tab === 'reviewed'} onClick={() => setTab('reviewed')} count={totals.reviewed ?? reviewed.length}>
                     {t('Reviewed')}
                   </Selector>
                 </div>

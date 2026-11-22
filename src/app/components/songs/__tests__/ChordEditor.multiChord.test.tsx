@@ -69,6 +69,18 @@ describe('a word with two chords in the chord editor', () => {
     expect(hello()).toHaveAccessibleName('Hello, chords C, E');
   });
 
+  it('picking a word by keyboard starts from its first chord (Codex review of #295)', async () => {
+    render(<ChordEditor />);
+    act(() => openChordEditor('s1'));
+    const again = await screen.findByRole('button', { name: /^again/ });
+    fireEvent.click(hello());
+    fireEvent.click(within(screen.getByRole('group', { name: 'Chords on “Hello”' })).getByRole('button', { name: 'D' }));
+    fireEvent.keyDown(again, { key: 'Enter' });
+    fireEvent.click(within(screen.getByRole('group', { name: 'Chords of the song' })).getByRole('button', { name: 'C' }));
+    expect(screen.getByRole('button', { name: /^again/ })).toHaveAccessibleName('again, chord C');
+    expect(hello()).toHaveAccessibleName('Hello, chords C, D');
+  });
+
   it('removing C keeps D', async () => {
     render(<ChordEditor />);
     act(() => openChordEditor('s1'));

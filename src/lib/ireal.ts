@@ -312,10 +312,12 @@ const decodeHtmlEntities = (s: string) =>
 /**
  * The first iReal Pro link in HTML: from an <a href> (double, single or no
  * quotes; entities decoded), else from the text, else anywhere in the markup.
+ * An unquoted value keeps its "=": older irealbook:// links separate their
+ * fields with it.
  */
 export const findIrealLinkInHtml = (html: string): string | null => {
   const s = html || '';
-  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>=`]+))/gi)) {
+  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))/gi)) {
     const href = decodeHtmlEntities((m[1] ?? m[2] ?? m[3] ?? '').trim());
     if (/^irealb(?:ook)?:\/\/./i.test(href) && !/\s/.test(href)) return href;
   }

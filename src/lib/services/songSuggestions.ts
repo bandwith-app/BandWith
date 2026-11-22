@@ -155,17 +155,22 @@ export async function withdrawSongSuggestion(id: string): Promise<{ error: Error
 
 /** Pending suggestions: the band's for admins, your own for members (RLS). 0 when offline. */
 export async function countPendingSuggestions(bandId: string, createdBy?: string): Promise<number> {
+  return (await countSongSuggestions(bandId, { status: 'pending', createdBy })) ?? 0;
+}
+
+/** How many suggestions have this status (the server's total, not a page). Null if it could not be read. */
+export async function countSongSuggestions(
+  bandId: string,
+  opts: { status: SuggestionStatus | SuggestionStatus[]; createdBy?: string },
+): Promise<number | null> {
   try {
-    let q = supabase
-      .from('song_suggestions')
-      .select('id', { count: 'exact', head: true })
-      .eq('band_id', bandId)
-      .eq('status', 'pending');
-    if (createdBy) q = q.eq('created_by', createdBy);
+    let q = supabase.from('song_suggestions').select('id', { count: 'exact', head: true }).eq('band_id', bandId);
+    q = Array.isArray(opts.status) ? q.in('status', opts.status) : q.eq('status', opts.status);
+    if (opts.createdBy) q = q.eq('created_by', opts.createdBy);
     const { count, error } = await q;
-    return error ? 0 : count || 0;
+    return error ? null : count || 0;
   } catch {
-    return 0;
+    return null;
   }
 }
 

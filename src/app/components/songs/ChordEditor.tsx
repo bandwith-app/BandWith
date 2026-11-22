@@ -322,6 +322,8 @@ export const ChordEditor: React.FC = () => {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
+                  // A newly picked word starts from its first chord, as a tap does.
+                  setSelIdx(0);
                   setSelected(isSel ? null : pos);
                 }
               }}

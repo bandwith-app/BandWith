@@ -36,7 +36,8 @@ CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTA
 GRANT EXECUTE ON FUNCTION storage.foldername(text) TO authenticated;
 
 CREATE TABLE public.band_members (band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true);
-CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text, status text, audio_url text, chart_url text);
+CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text, status text, audio_url text, chart_url text,
+  notes text, lyrics text, chord_chart jsonb);
 ALTER TABLE public.songs ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE ON public.songs TO authenticated;
 CREATE POLICY songs_write_any ON public.songs FOR INSERT TO authenticated WITH CHECK (true);
@@ -44,6 +45,17 @@ CREATE POLICY songs_update_any ON public.songs FOR UPDATE TO authenticated USING
 CREATE POLICY songs_read ON public.songs FOR SELECT TO authenticated
   USING (band_id::text = ANY (ARRAY(SELECT band_id::text FROM public.band_members WHERE user_id = auth.uid())));
 GRANT SELECT ON public.band_members TO authenticated;
+-- song_suggestions (108), the columns that can hold text.
+CREATE TABLE public.song_suggestions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, song_id uuid, kind text,
+  proposed jsonb NOT NULL DEFAULT '{}', original jsonb NOT NULL DEFAULT '{}', applied jsonb, message text, reason text,
+  status text DEFAULT 'pending', created_by uuid, reviewed_by uuid, reviewed_at timestamptz);
+CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type text, reference_id uuid, read boolean);
+CREATE FUNCTION public.bw_notify_song_suggestion_outcome(uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+CREATE FUNCTION public.bw_notify_song_updated(uuid, text[]) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+ALTER TABLE public.song_suggestions ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT ON public.song_suggestions TO authenticated;
+CREATE POLICY sug_insert ON public.song_suggestions FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY sug_read ON public.song_suggestions FOR SELECT TO authenticated USING (true);
 CREATE FUNCTION public.bw_my_band_ids() RETURNS text[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT COALESCE(array_agg(band_id::text), '{}') FROM band_members WHERE user_id = auth.uid() AND COALESCE(is_active, true) $$;
 CREATE FUNCTION public.bw_my_admin_band_ids() RETURNS text[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
@@ -60,6 +72,10 @@ const m108 = readFileSync(`${REPO}/supabase/migrations/108_song_suggestions.sql`
 const start = m108.findIndex((l) => l.includes('song-files storage --'));
 const end = m108.findIndex((l, i) => i > start && l.includes('-- pushes --'));
 await db.exec(m108.slice(start, end).join('\n'));
+// And its review / withdraw RPCs (197 redefines them).
+const rpcStart = m108.findIndex((l) => l.includes('-- review RPC --'));
+const rpcEnd = m108.findIndex((l, i) => i > rpcStart && l.includes('-- songs RLS --'));
+await db.exec(m108.slice(rpcStart, rpcEnd).join('\n'));
 
 const mig = readFileSync(MIG, 'utf8');
 await db.exec(mig);
@@ -181,6 +197,22 @@ ok(c0 && c0.ok === false && c0.reason === 'referenced', `claim refused: a song l
 ok((await state(P.learning)) === 'repointed', 'still pending, not deleting');
 await db.exec(`DELETE FROM songs WHERE id = '${LATE}'`);
 
+// Only a member suggestion mentions it (a note with the path): no delete either.
+await db.exec(`INSERT INTO song_suggestions (band_id, song_id, kind, proposed) VALUES ('${BAND}','${id(11)}','note',
+  jsonb_build_object('note', 'the take is at sb://song-files/${P.learning}'))`);
+const cS = await claim(ADMIN, P.learning);
+ok(cS && cS.ok === false && cS.reason === 'referenced', `claim refused: a suggestion mentions it (${JSON.stringify(cS)})`);
+ok(!(await sweep(ADMIN)).includes(P.learning), 'and the sweep does not list it');
+await db.exec(`DELETE FROM song_suggestions`);
+await db.exec(`INSERT INTO song_suggestions (band_id, song_id, kind, message) VALUES ('${BAND}','${id(11)}','note','see ${P.learning}')`);
+ok((await claim(ADMIN, P.learning)).reason === 'referenced', 'a suggestion message counts too');
+await db.exec(`DELETE FROM song_suggestions`);
+// jsonb escapes quotes and backslashes: a hostile name is still found.
+const HOSTILE = `${BAND}/suggestions/${MEM}/audio/q"u\\o.mp3`;
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `x ${HOSTILE} y`]);
+ok((await q(`SELECT public.bw_song_file_in_use($1) AS v`, [HOSTILE])).rows[0].v === true, 'a name with quotes and backslashes is found in a suggestion');
+await db.exec(`DELETE FROM song_suggestions`);
+
 ok(String(await claim(MEM, P.learning)).startsWith('error'), 'members cannot claim a delete');
 const c1 = await claim(ADMIN, P.learning);
 ok(c1 && c1.ok === true, 'claim granted once no song links it');
@@ -194,6 +226,12 @@ ok(String(linkIns).includes('BW_FILE_REMOVED'), `linking it on a new song is ref
 const linkUpd = await asCommit(ADMIN, `UPDATE songs SET chart_url = 'sb://song-files/${P.learning}' WHERE id = '${id(14)}' RETURNING 1 AS v`);
 ok(String(linkUpd).includes('BW_FILE_REMOVED'), 'linking it on an existing song is refused');
 ok((await asCommit(ADMIN, `UPDATE songs SET title = 'Coney Island' WHERE id = '${id(14)}' RETURNING 1 AS v`)) === 1, 'other song edits are unaffected');
+const sugIns = await asCommit(MEM, `INSERT INTO song_suggestions (band_id, song_id, kind, proposed, created_by)
+  VALUES ('${BAND}','${id(11)}','note', jsonb_build_object('note', 'use ${P.learning}'), '${MEM}') RETURNING 1 AS v`);
+ok(String(sugIns).includes('BW_FILE_REMOVED'), `a suggestion mentioning it is refused while deleting (${sugIns})`);
+ok((await asCommit(MEM, `INSERT INTO song_suggestions (band_id, song_id, kind, proposed, created_by)
+  VALUES ('${BAND}','${id(11)}','note', '{"note":"louder chorus"}', '${MEM}') RETURNING 1 AS v`)) === 1, 'other suggestions are unaffected');
+await db.exec(`DELETE FROM song_suggestions`);
 
 // A failed delete (no done): after 10 minutes the claim lapses and it is pending again.
 await db.exec(`UPDATE song_file_adoptions SET deleting_at = now() - interval '11 minutes' WHERE from_path = '${P.learning}'`);
@@ -208,6 +246,44 @@ ok(done === 1 && (await state(P.learning)) === 'cleaned' && !(await sweep(ADMIN)
 ok((await as(ADMIN, () => q(`SELECT 1 FROM song_file_adoptions`).then(() => 'read', () => 'denied'))) === 'denied', 'adoption records: no direct access');
 // A lost response: the commit happened; a re-read shows the copy, nothing to undo.
 ok((await ref()) === `sb://song-files/${DEST}`, 'after the repoint the song keeps the copy');
+
+// ---- Claude review of #295: a file another song uses is never removed.
+const O = `${BAND}/audio/o-band-take.mp3`;
+const U = `${BAND}/suggestions/${MEM}/audio/u-own.mp3`;
+const S1 = id(20);
+await db.exec(`INSERT INTO songs VALUES ('${S1}','${BAND}','Band song on O','ready','sb://song-files/${O}',NULL)`);
+// A member can't point a song at a file another song uses.
+const reuse = await asCommit(MEM, `INSERT INTO songs VALUES ('${id(21)}','${BAND}','Reuse O','suggested','sb://song-files/${O}',NULL) RETURNING 1 AS v`);
+ok(String(reuse).includes('BW_FILE_IN_USE'), `a member's song reusing another song's file is refused (${reuse})`);
+ok((await as(MEM, () => q(`INSERT INTO songs VALUES ('${id(22)}','${BAND}','Own upload','suggested','sb://song-files/${U}x',NULL)`).then(() => 1, (e) => e.message))) === 1,
+  'a member links their own new upload');
+ok((await as(ADMIN, () => q(`INSERT INTO songs VALUES ('${id(23)}','${BAND}','Admin copy','ready','sb://song-files/${O}',NULL)`).then(() => 1, (e) => e.message))) === 1,
+  'an admin may still link a band file to two songs');
+// Older builds' songs that already point at O (inserted before 197): reject / withdraw keep O.
+const review = (user, g, d) => asCommit(user, `SELECT public.bw_review_song_suggestion($1, $2) AS v`, [g, d]);
+const withdraw = (user, g) => asCommit(user, `SELECT public.bw_withdraw_song_suggestion($1) AS v`, [g]);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed`).catch(() => undefined);
+await db.exec(`INSERT INTO songs VALUES ('${id(24)}','${BAND}','S2 on O','suggested','sb://song-files/${O}',NULL),
+  ('${id(25)}','${BAND}','S3 on O','suggested',NULL,'sb://song-files/${O}'),
+  ('${id(26)}','${BAND}','S4 own','suggested','sb://song-files/${U}',NULL);
+  INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES
+  ('${id(30)}','${BAND}','${id(24)}','new_song','${MEM}'), ('${id(31)}','${BAND}','${id(25)}','new_song','${MEM}'),
+  ('${id(32)}','${BAND}','${id(26)}','new_song','${MEM}')`);
+await db.exec(`ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed`).catch(() => undefined);
+const rej = await review(ADMIN, id(30), 'reject');
+ok(rej && Array.isArray(rej.files) && rej.files.length === 0, `reject keeps a file another song uses (${JSON.stringify(rej?.files ?? rej)})`);
+const wd = await withdraw(MEM, id(31));
+ok(wd && Array.isArray(wd.files) && wd.files.length === 0, `withdraw keeps it too (${JSON.stringify(wd?.files ?? wd)})`);
+const rej2 = await review(ADMIN, id(32), 'reject');
+ok(rej2 && JSON.stringify(rej2.files) === JSON.stringify([`sb://song-files/${U}`]), `reject still returns a file only that song used (${JSON.stringify(rej2?.files ?? rej2)})`);
+ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id IN ('${id(24)}','${id(25)}','${id(26)}')`)).rows[0].n === 0, 'the rejected / withdrawn songs are gone');
+// What the app may remove (deleting a song, replacing a file).
+const unused = (user, refs) => rpc(user, `SELECT public.bw_song_files_unused($1) AS v`, [refs]);
+const u1 = await unused(ADMIN, [`sb://song-files/${O}`, `sb://song-files/${U}`, `sb://song-files/${OTHER_BAND}/audio/z.mp3`, 'https://example.com/x.mp3']);
+ok(Array.isArray(u1) && u1.length === 1 && u1[0] === `sb://song-files/${U}`, `unused: only files nothing uses, of the caller's bands (${JSON.stringify(u1)})`);
+ok(JSON.stringify(await unused(STRANGER, [`sb://song-files/${U}`])) === '[]', 'unused: nothing of another band');
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${U}`]);
+ok(JSON.stringify(await unused(ADMIN, [`sb://song-files/${U}`])) === '[]', 'unused: a file a suggestion mentions is kept');
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

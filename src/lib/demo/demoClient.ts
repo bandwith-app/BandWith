@@ -120,12 +120,22 @@ interface SelectField {
   children?: SelectField[];
 }
 
-/** Split on top-level commas (ignores commas inside parentheses). */
+/** Split on top-level commas (ignores commas inside parentheses and "quoted values"). */
 const splitTop = (s: string): string[] => {
   const out: string[] = [];
   let depth = 0;
   let cur = '';
+  let quoted = false;
+  let escaped = false;
   for (const ch of s) {
+    if (quoted) {
+      cur += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') quoted = false;
+      continue;
+    }
+    if (ch === '"') quoted = true;
     if (ch === '(') depth++;
     if (ch === ')') depth--;
     if (ch === ',' && depth === 0) {
@@ -287,6 +297,9 @@ const safeJSON = (s: string) => {
   }
 };
 
+/** A PostgREST "double-quoted" value (backslash escapes), as the server reads it. */
+const unquote = (v: string) => (/^".*"$/s.test(v) ? v.slice(1, -1).replace(/\\(.)/gs, '$1') : v);
+
 /** Parse a PostgREST `or=(...)` expression such as `a.eq.1,and(b.is.null,c.eq.2)`. */
 const parseLogic = (expr: string, mode: 'or' | 'and'): Pred => {
   const parts = splitTop(expr).map((p): Pred => {
@@ -295,10 +308,10 @@ const parseLogic = (expr: string, mode: 'or' | 'and'): Pred => {
     const [col, maybeNot, ...rest] = p.split('.');
     if (maybeNot === 'not') {
       const [op, ...v] = rest;
-      const inner = opPred(col, op, v.join('.'));
+      const inner = opPred(col, op, unquote(v.join('.')));
       return (r) => !inner(r);
     }
-    return opPred(col, maybeNot, rest.join('.'));
+    return opPred(col, maybeNot, unquote(rest.join('.')));
   });
   return mode === 'or' ? (r) => parts.some((p) => p(r)) : (r) => parts.every((p) => p(r));
 };

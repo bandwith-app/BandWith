@@ -205,8 +205,8 @@ const ORIG = `${BAND}/suggestions/member-1/audio/abc-take.mp3`;
 const DEST = `${BAND}/audio/${SONG}-abc-take.mp3`;
 const ref = (p: string) => `${fake.REF}${p}`;
 const song = () => fake.songs.get(SONG)!;
-const adopt = (a: ReturnType<typeof fake.actor>, s = song()) =>
-  adoptSuggestionFiles({ ...s }, { client: a.client as never }).catch((e) => ({ refs: {}, error: e as Error }));
+const adopt = (a: ReturnType<typeof fake.actor>, s = song(), busyWait = { tries: 0, ms: 0 }) =>
+  adoptSuggestionFiles({ ...s }, { client: a.client as never, busyWait }).catch((e) => ({ refs: {}, error: e as Error }));
 
 /** Every song points at a file that exists (or at no stored file). */
 const noDanglingSong = () => {
@@ -294,6 +294,21 @@ describe('two runs at once (phone + iPad, or two admins)', () => {
     await adopt(B);
     aCopy.release();
     await pa;
+    finished();
+  });
+
+  it('another admin busy with the same file: the second waits, then reports the copy the song now uses (Codex review of #295)', async () => {
+    const other = fake.actor('admin-2');
+    const aRe = A.pause('repoint');
+    const pa = adopt(A);
+    await aRe.reached;
+    const po = adopt(other, song(), { tries: 20, ms: 5 });
+    await new Promise((r) => setTimeout(r, 12));
+    aRe.release();
+    await pa;
+    const out = await po;
+    expect(out.refs).toEqual({ audio_url: ref(DEST) });
+    expect(other.log.filter((l) => l.startsWith('copy') || l.startsWith('remove'))).toEqual([]);
     finished();
   });
 
