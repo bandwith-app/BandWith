@@ -113,4 +113,17 @@ describe("useStageLive: the admins' signed Bluetooth states (Claude on #288)", (
     signed({ seq: now() + 100, from: 'admin-2', songId: 'row-2', order: null });
     expect(m.result.current.currentId).toBe('row-2');
   });
+
+  it('a signed state that arrives late never overrides a newer Realtime one, also after a band-key link (Codex on #288)', () => {
+    const m = phone();
+    live({ seq: now(), from: 'admin', songId: 'row-2', order: null });
+    // Delayed over Bluetooth: older than what the live channel said.
+    signed({ seq: now() - 50, from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // A band-key phone in between (an older app, or a member posing as one).
+    bt({ seq: now() + 3000, from: 'x', songId: 'row-3', order: null });
+    signed({ seq: now() - 40, from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).not.toBe('row-1');
+  });
 });
+

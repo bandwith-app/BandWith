@@ -4,6 +4,8 @@ import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
   STAGE_BLE_SIGNED_VERSION,
+  SIGNED_FRESH_MS,
+  STALE_VERSION_MAX,
   decodeSignedState,
   decodeStageState,
   encodeSignedState,
@@ -85,8 +87,9 @@ describe('the leader signs, members only check (audit #1)', () => {
     const leader = await generateSigner();
     const bytes = (await encodeSignedState(state, IDS, leader.private, 2))!;
     expect(await decodeSignedState(bytes, IDS, leader.public, 2)).toEqual({ ok: true, state });
-    // This phone kept version 1: it fetches the new key (not "a forger").
-    expect(await decodeSignedState(bytes, IDS, leader.public, 1)).toEqual({ ok: false, reason: 'stale' });
+    // This phone kept version 1 (the pair from before the rotation): it fetches the new key (not "a forger").
+    const before = await generateSigner();
+    expect(await decodeSignedState(bytes, IDS, before.public, 1)).toEqual({ ok: false, reason: 'stale' });
     // Signed with a pair from before a rotation (an admin no longer): refused.
     const old = (await encodeSignedState(state, IDS, leader.private, 1))!;
     expect(await decodeSignedState(old, IDS, leader.public, 2)).toEqual({ ok: false, reason: 'auth' });
@@ -111,5 +114,35 @@ describe('the leader signs, members only check (audit #1)', () => {
     expect(back.ok && [...(back.state.skipped ?? [])].sort()).toEqual(big.skipped);
     // The band-key state for older apps fits too.
     expect((await encodeStageState(big, ids, HMAC_KEY))!.length).toBeLessThanOrEqual(512);
+  });
+
+  it('the signature is checked before the version: a newer version is believed only when the kept key cannot check it, and only a few versions ahead (Claude on #288)', async () => {
+    const kept = await generateSigner();
+    // Made with the kept pair but claiming a newer version: no admin's app does that.
+    const claimed = (await encodeSignedState(state, IDS, kept.private, 2))!;
+    expect(await decodeSignedState(claimed, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'auth' });
+    // Anything claiming a version far ahead (0xFFFF) is refused, so it can't make members fetch keys or show the line.
+    const junk = claimed.slice();
+    junk[1] = 0xff;
+    junk[2] = 0xff;
+    expect(await decodeSignedState(junk, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'auth' });
+    const nextPair = await generateSigner();
+    const far = (await encodeSignedState(state, IDS, nextPair.private, 1 + STALE_VERSION_MAX + 1))!;
+    expect(await decodeSignedState(far, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'auth' });
+    const near = (await encodeSignedState(state, IDS, nextPair.private, 1 + STALE_VERSION_MAX))!;
+    expect(await decodeSignedState(near, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'stale' });
+  });
+
+  it('signed states carry when they were signed: an old recording (or one from the future) is not followed (Claude on #288)', async () => {
+    const leader = await generateSigner();
+    const at = Date.UTC(2026, 10, 22, 21, 0, 0);
+    const bytes = (await encodeSignedState(state, IDS, leader.private, 1, at))!;
+    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at + 5 * 60_000)).toEqual({ ok: true, state });
+    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at + SIGNED_FRESH_MS + 60_000)).toEqual({ ok: false, reason: 'expired' });
+    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at - SIGNED_FRESH_MS - 60_000)).toEqual({ ok: false, reason: 'expired' });
+    // The time is signed: moving it forward breaks the signature.
+    const moved = bytes.slice();
+    moved[6] ^= 0x01;
+    expect(await decodeSignedState(moved, IDS, leader.public, 1, at)).toEqual({ ok: false, reason: 'auth' });
   });
 });

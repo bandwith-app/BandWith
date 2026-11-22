@@ -26,8 +26,12 @@
  * Residual risk, left for a later release (review of #288): the answer has
  * no member nonce, since a nonce means a member write, the crash above. A
  * phone posing as the leader, out of the real leader's range, can replay
- * frames it recorded earlier (and an old signed state: it can't make new
- * ones), so members following it get a click shifted by the replay's delay.
+ * clock frames it recorded earlier, so members following it get a click
+ * shifted by the replay's delay. (Signed states carry when they were signed
+ * and the leader signs again every minute, stageBle.ts: a recorded one is
+ * followed for at most SIGNED_FRESH_MS, 10 minutes, after it was signed.
+ * Seq plus that time stands in for a leader session id. The bound assumes
+ * the two phones' clocks within 10 minutes, as phones set by the network are.)
  * A real-time relay shifts it by at most half the round trip, and round
  * trips over 500 ms are dropped (#283): 250 ms at worst. Fix once a write
  * is safe: the member writes 8 random bytes, the leader signs t1 with them.

@@ -38,6 +38,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     disconnect: vi.fn(async (id: string) => void air.connected.delete(id)),
     requestConnectionPriority: vi.fn(async () => {}),
+    // Phones on an app from before signing: the band-key state only.
+    getServices: vi.fn(async () => [{ uuid: 'any', characteristics: [{ uuid: STAGE_BLE_CHARACTERISTIC, properties: {}, descriptors: [] }] }]),
     startNotifications: vi.fn(async () => {}),
     read: vi.fn(async (id: string, _s: string, char: string) => {
       if (char !== STAGE_BLE_CHARACTERISTIC) throw new Error('Characteristic not found.');

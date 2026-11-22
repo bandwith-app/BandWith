@@ -36,9 +36,15 @@
  * from before it. Its body differs from version 2 in two places:
  *   [1..2]   the pair's version (it goes up when an admin stops being one):
  *            newer than this phone's means its public key is out of date
+ *   [3..6]   when it was signed (seconds since 2024-01-01 UTC): the leader
+ *            signs again every minute, and members don't follow one signed
+ *            more than SIGNED_FRESH_MS away from their clock (a recording
+ *            replayed later, out of the leader's range)
  *   struck-off songs as a bitmap over the sorted ids (ceil(songs / 8)
  *            bytes, only when there are some), so the biggest setlist still
  *            fits one Bluetooth value (512 bytes) with the signature
+ * A version 4 state with seq 0 is the leader's "here, leading nothing yet":
+ * members note the admins' signature and follow nothing.
  */
 import type { StageLiveState } from './stageLive';
 import { SIGNATURE_BYTES, signBytes, verifyBytes } from './stageSign';
@@ -55,6 +61,16 @@ const MAX_SONGS = 254;
 const MAC_BYTES = 8;
 /** The most a Bluetooth characteristic value can hold. */
 export const MAX_VALUE_BYTES = 512;
+/** A signed state further than this from the member's clock (either way) is not followed. */
+export const SIGNED_FRESH_MS = 10 * 60_000;
+/**
+ * A signed state whose pair is newer than this phone's by at most this many
+ * versions means "this phone's key is out of date" (each admin who stops
+ * being one adds one); further ahead, it's made up.
+ */
+export const STALE_VERSION_MAX = 16;
+const SIGNED_EPOCH_MS = Date.UTC(2024, 0, 1);
+const SIGNED_HEAD = 7;
 
 const enc = new TextEncoder();
 /** WebCrypto wants ArrayBuffer-backed views; ours always are. */
@@ -122,8 +138,14 @@ export async function encodeStageState(
 }
 
 /** The same state signed by the leader (version 4) with pair `keyVersion`, or null when it can't be sent. */
-export async function encodeSignedState(state: StageLiveState, savedIds: string[], signKey: string, keyVersion = 1): Promise<Uint8Array | null> {
-  const body = await stateBody(state, savedIds, STAGE_BLE_SIGNED_VERSION, keyVersion);
+export async function encodeSignedState(
+  state: StageLiveState,
+  savedIds: string[],
+  signKey: string,
+  keyVersion = 1,
+  signedAtMs: number = Date.now(),
+): Promise<Uint8Array | null> {
+  const body = await stateBody(state, savedIds, STAGE_BLE_SIGNED_VERSION, keyVersion, signedAtMs);
   if (!body || body.length + SIGNATURE_BYTES > MAX_VALUE_BYTES) return null;
   const sig = await signBytes(signKey, body);
   const out = new Uint8Array(body.length + sig.length);
@@ -132,7 +154,7 @@ export async function encodeSignedState(state: StageLiveState, savedIds: string[
   return out;
 }
 
-async function stateBody(state: StageLiveState, savedIds: string[], version: number, keyVersion = 1): Promise<Uint8Array | null> {
+async function stateBody(state: StageLiveState, savedIds: string[], version: number, keyVersion = 1, signedAtMs = 0): Promise<Uint8Array | null> {
   if (savedIds.length > MAX_SONGS || !/^[\x20-\x7e]{1,16}$/.test(state.from)) return null;
   const signed = version === STAGE_BLE_SIGNED_VERSION;
   if (signed && (!Number.isInteger(keyVersion) || keyVersion < 1 || keyVersion > 0xffff)) return null;
@@ -155,7 +177,7 @@ async function stateBody(state: StageLiveState, savedIds: string[], version: num
   const fp = await setlistFingerprint(savedIds);
   const bitmap = Math.ceil(savedIds.length / 8);
   const tail = !skipped.length ? 0 : signed ? bitmap : 1 + skipped.length;
-  const head = signed ? 3 : 1;
+  const head = signed ? SIGNED_HEAD : 1;
   const body = new Uint8Array(head + 4 + 1 + from.length + 4 + 1 + 1 + order.length + tail);
   const view = new DataView(body.buffer);
   let o = 0;
@@ -163,6 +185,8 @@ async function stateBody(state: StageLiveState, savedIds: string[], version: num
   if (signed) {
     view.setUint16(o, keyVersion);
     o += 2;
+    view.setUint32(o, Math.max(0, Math.floor((signedAtMs - SIGNED_EPOCH_MS) / 1000)) >>> 0);
+    o += 4;
   }
   view.setUint32(o, state.seq >>> 0);
   o += 4;
@@ -190,7 +214,9 @@ export type DecodeResult =
   /** A real state for a setlist this phone doesn't have: its seq and sender still tell which leader is newest. */
   | { ok: false; reason: 'setlist'; seq: number; from: string }
   /** Signed with a newer pair than this phone's public key: it needs the new one (internet). */
-  | { ok: false; reason: 'stale' };
+  | { ok: false; reason: 'stale' }
+  /** Signed, but too long ago (or ahead) to follow: maybe a recording. Not the leader's fault: not distrusted. */
+  | { ok: false; reason: 'expired' };
 
 /** Checks and reads a state; `savedIds` is this phone's saved setlist (any order). */
 export async function decodeStageState(bytes: Uint8Array, savedIds: string[], keyB64: string): Promise<DecodeResult> {
@@ -205,21 +231,32 @@ export async function decodeStageState(bytes: Uint8Array, savedIds: string[], ke
 }
 
 /** Checks and reads a leader-signed state (version 4) with the gig's public key, version `keyVersion`. */
-export async function decodeSignedState(bytes: Uint8Array, savedIds: string[], publicKey: string, keyVersion = 1): Promise<DecodeResult> {
-  if (bytes.length < 3 + 4 + 1 + 4 + 1 + 1 + SIGNATURE_BYTES || bytes[0] !== STAGE_BLE_SIGNED_VERSION) return { ok: false, reason: 'format' };
+export async function decodeSignedState(
+  bytes: Uint8Array,
+  savedIds: string[],
+  publicKey: string,
+  keyVersion = 1,
+  nowMs: number = Date.now(),
+): Promise<DecodeResult> {
+  if (bytes.length < SIGNED_HEAD + 4 + 1 + 4 + 1 + 1 + SIGNATURE_BYTES || bytes[0] !== STAGE_BLE_SIGNED_VERSION) return { ok: false, reason: 'format' };
   const theirs = (bytes[1] << 8) | bytes[2];
-  // Newer: this phone's key can't check it (not a forgery as far as it can tell). Older: a pair from before a rotation.
-  if (theirs > keyVersion) return { ok: false, reason: 'stale' };
-  if (theirs < keyVersion) return { ok: false, reason: 'auth' };
   const body = bytes.slice(0, bytes.length - SIGNATURE_BYTES);
-  if (!(await verifyBytes(publicKey, body, bytes.slice(bytes.length - SIGNATURE_BYTES)))) return { ok: false, reason: 'auth' };
+  // The signature first, with this phone's key: only then is the version worth anything.
+  if (!(await verifyBytes(publicKey, body, bytes.slice(bytes.length - SIGNATURE_BYTES)))) {
+    // A few versions newer: this phone's key may be out of date (an admin stopped being one), not a forgery as far as it can tell.
+    return theirs > keyVersion && theirs - keyVersion <= STALE_VERSION_MAX ? { ok: false, reason: 'stale' } : { ok: false, reason: 'auth' };
+  }
+  // Checked with this phone's pair, so its version is this phone's: anything else (older, or "newer" under the old pair) is refused.
+  if (theirs !== keyVersion) return { ok: false, reason: 'auth' };
+  const signedAt = SIGNED_EPOCH_MS + new DataView(body.buffer, body.byteOffset + 3, 4).getUint32(0) * 1000;
+  if (Math.abs(nowMs - signedAt) > SIGNED_FRESH_MS) return { ok: false, reason: 'expired' };
   return parseBody(body, savedIds);
 }
 
 async function parseBody(body: Uint8Array, savedIds: string[]): Promise<DecodeResult> {
   const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
   const signed = body[0] === STAGE_BLE_SIGNED_VERSION;
-  let o = signed ? 3 : 1;
+  let o = signed ? SIGNED_HEAD : 1;
   const seq = view.getUint32(o);
   o += 4;
   const fromLen = body[o++];
