@@ -961,8 +961,8 @@ BEGIN
   RETURN v_local AT TIME ZONE 'Etc/GMT+12';
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) TO authenticated;
+-- No GRANT/REVOKE: CREATE OR REPLACE keeps the function's privileges, so
+-- #297's 195 (it revokes EXECUTE from authenticated) holds in either order.
 
 
 -- ── 6. Round 4 (Claude and Codex reviews #282) ────────────────────────────

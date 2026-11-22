@@ -89,6 +89,7 @@ await db.exec(readFileSync(`${REPO}/supabase/migrations/059_account_deletion_per
 await db.exec(lines('049_chat_participants_and_receipts.sql', 36, 90)); // mark delivered / read
 await db.exec(lines('122_chat_delivered_by_push.sql', 18, 44));
 await db.exec(lines('117_poll_vote_deadline.sql', 23, 53)); // vote deadline in the creator's time zone
+await db.exec(`REVOKE ALL ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM PUBLIC, anon; GRANT EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) TO authenticated;`); // 117 lines 65, 67
 await db.exec(lines('108_song_suggestions.sql', 339, 384)); // a suggested song moved on or deleted
 await db.exec(lines('108_song_suggestions.sql', 519, 553)); // the author withdraws
 await db.exec(lines('123_rehearsal_proposal_decline_expiry.sql', 95, 157)); // proposals lapse (Codex round 4)
@@ -587,6 +588,13 @@ await x(`DELETE FROM test_stale`);
 rr = await as(G3, `SELECT public.bw_mark_chat_read('${RB}') AS r`);
 ok(rr.rows?.[0]?.r === true, `with 175: a participant the rule allows still does (${rr.error ?? JSON.stringify(rr.rows)})`);
 await x(`DROP FUNCTION public.bw_chat_scope_ok_for(uuid, uuid); DROP TABLE test_stale`);
+
+// Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
+// authenticated): 180 running after it must not grant it back.
+await x(`REVOKE EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM authenticated`);
+d = await x(readFileSync(MIG, 'utf8'));
+const dlg = (await qq(`SELECT has_function_privilege('authenticated', 'public.bw_poll_vote_deadline(uuid)', 'EXECUTE') AS a`)).rows[0];
+ok(!d.error && dlg?.a === false, `180 again after 195: the deadline stays revoked from clients (${d.error ?? JSON.stringify(dlg)})`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
