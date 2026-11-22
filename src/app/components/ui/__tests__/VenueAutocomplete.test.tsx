@@ -206,10 +206,10 @@ describe('the highlighted suggestion stays in view', () => {
       const [value, setValue] = useState('');
       const [address, setAddress] = useState('');
       return (
-        <>
+        <form>
           <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
           <input aria-label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
-        </>
+        </form>
       );
     };
     render(<Form />);
@@ -243,6 +243,38 @@ describe('the highlighted suggestion stays in view', () => {
     await screen.findByRole('option');
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Tab' });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });
+  });
+
+  it('only typing in the same form counts: a checkbox there, or a field elsewhere (the chat on the other Duo page), still lets the details fill the pick', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Page: React.FC = () => {
+      const [value, setValue] = useState('');
+      return (
+        <>
+          <form>
+            <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+            <input type="checkbox" aria-label="Private event" />
+          </form>
+          <textarea aria-label="Message" />
+        </>
+      );
+    };
+    render(<Page />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Private event' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'On my way' } });
     resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });

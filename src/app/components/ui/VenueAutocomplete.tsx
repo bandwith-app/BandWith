@@ -4,6 +4,13 @@ import { cn } from './utils';
 import { searchVenues, getGooglePlaceDetails, rememberPickedPlace, venueFields, type VenuePlace } from '@/lib/services/location';
 import { useT } from '@/lib/i18n';
 
+/** A field the user types text into (not a checkbox, radio or button). */
+const NO_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+const typesText = (el: Element): boolean =>
+  el instanceof HTMLTextAreaElement ||
+  (el instanceof HTMLInputElement && !NO_TEXT.has(el.type)) ||
+  (el instanceof HTMLElement && el.isContentEditable);
+
 const newSessionToken = (): string | undefined => {
   try {
     return crypto.randomUUID();
@@ -144,9 +151,13 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     // another field (Address) it is never overwritten by the late details.
     let typedHere = false;
     let typedElsewhere = false;
+    // Only text typed in the same form or dialog (its Address, city…): not a
+    // checkbox there, nor a field elsewhere (the chat on the other Duo page).
+    const scope = inputRef.current?.closest('form, [role=dialog]');
     const onInput = (e: Event) => {
-      if (e.target === inputRef.current) typedHere = true;
-      else typedElsewhere = true;
+      const target = e.target as Element | null;
+      if (target === inputRef.current) typedHere = true;
+      else if (scope && target && scope.contains(target) && typesText(target)) typedElsewhere = true;
     };
     if (place.provider === 'google' && place.placeId && (!place.latitude || !place.city || !place.address)) {
       document.addEventListener('input', onInput, true);
