@@ -128,6 +128,16 @@ await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_
 ok(JSON.stringify(await write(LIVE, ALICE, MEM2, CAROL)) === '[]', 'once pushed, never again');
 ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${LIVE}' AND data ? 'pushed_at' AND data->>'message_id' IS NOT NULL`).then((r) => r.rows[0].n) === 3,
   'marked pushed');
+// Codex r3: push_claimed_at is in data the recipient can write. A bad value
+// must count as unclaimed and never abort the batch.
+const MSG3 = id(603);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG3}', '${id(900)}', '${MEM}', 'third')`);
+await write(MSG3, ALICE, CAROL);
+await db.exec(`UPDATE notifications SET data = data || '{"push_claimed_at":"not a date"}'::jsonb WHERE user_id = '${ALICE}' AND data->>'message_id' = '${MSG3}'`);
+await db.exec(`UPDATE notifications SET data = data || '{"push_claimed_at":"2026-13-45T99:00:00Z"}'::jsonb WHERE user_id = '${CAROL}' AND data->>'message_id' = '${MSG3}'`);
+const w3 = await write(MSG3, ALICE, CAROL, MEM2);
+ok(JSON.stringify(w3) === JSON.stringify([MEM2, ALICE, CAROL].sort()), `malformed claims count as unclaimed, nothing aborts (${w3})`);
+
 // Claude review: one lock order for overlapping calls (no 40P01).
 const def = await db.query(`SELECT pg_get_functiondef('public.bw_write_chat_notices(uuid, jsonb)'::regprocedure) AS d`).then((r) => r.rows[0].d, () => '');
 ok(/ORDER BY r\.user_id/.test(def) && /ORDER BY n2\.user_id[\s\S]*FOR UPDATE/.test(def), 'inserts and claims lock rows in user order');

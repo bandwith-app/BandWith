@@ -19,6 +19,8 @@ export interface ChatMessageRow {
   sender_id: string;
   content: string | null;
   created_at: string;
+  /** messages.deleted: a message marked deleted is never announced. */
+  deleted?: boolean | null;
 }
 
 /** Drops half an emoji left at the end by a cut (an unpaired high surrogate). */
@@ -51,6 +53,7 @@ export function findAnnouncedCandidates(
   const now = opts.now ?? Date.now();
   const mine = recent.filter(
     (m) =>
+      m.deleted !== true &&
       m.sender_id === opts.callerId &&
       m.chat_id === opts.chatId &&
       now - Date.parse(m.created_at) <= CHAT_PUSH_WINDOW_MS &&
@@ -119,12 +122,44 @@ export function chooseUnannounced(
   targets: string[],
   existing: { user_id: string; message_id: string | null }[],
 ): { message: ChatMessageRow; recipients: string[] } | null {
+  return pendingAnnouncements(candidates, targets, existing)[0] ?? null;
+}
+
+/**
+ * Every candidate someone hasn't been told about yet, newest first, with who
+ * that is. send-push tries them in order: when another call claimed the
+ * first (two quick requests from an older build), it moves on to the next
+ * instead of dropping a message (Codex review #284 r3).
+ */
+export function pendingAnnouncements(
+  candidates: ChatMessageRow[],
+  targets: string[],
+  existing: { user_id: string; message_id: string | null }[],
+): { message: ChatMessageRow; recipients: string[] }[] {
+  const out: { message: ChatMessageRow; recipients: string[] }[] = [];
   for (const message of candidates) {
     const told = new Set(existing.filter((e) => e.message_id === message.id).map((e) => String(e.user_id)));
     const recipients = targets.filter((id) => !told.has(id));
-    if (recipients.length > 0) return { message, recipients };
+    if (recipients.length > 0) out.push({ message, recipients });
   }
-  return null;
+  return out;
+}
+
+/**
+ * Recipients whose chat notice can be marked pushed (Codex review #284 r3):
+ * a device took it, or there was nothing to deliver to (no device, push
+ * off, only dead tokens). If every device failed for now (503, timeout),
+ * the claim lapses and a retry delivers.
+ */
+export function pushSettledUsers(
+  recipients: string[],
+  outcomes: { userId: string; success: boolean; error?: string }[],
+): string[] {
+  const permanent = (e?: string) => e === 'invalid_token' || e === 'Unknown platform';
+  return recipients.filter((uid) => {
+    const mine = outcomes.filter((o) => o.userId === uid);
+    return mine.length === 0 || mine.some((o) => o.success) || mine.every((o) => permanent(o.error));
+  });
 }
 
 /** Name, else email address, else fallback (same rule as src/lib/personName.ts). */

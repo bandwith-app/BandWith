@@ -34,7 +34,9 @@
 --   * returns the recipients to push now: their notice is new or was never
 --     pushed, and nobody else is pushing it (data.push_claimed_at, a claim
 --     that lapses after 2 minutes). send-push marks them pushed afterwards
---     (bw_mark_chat_notices_pushed, data.pushed_at). So a push lost after
+--     (bw_mark_chat_notices_pushed, data.pushed_at) once a device took it
+--     or there was nothing to deliver to. A malformed claim (data is
+--     writable by the recipient) counts as none. So a push lost after
 --     the insert (failed token lookup, crash) is retried, and "already
 --     announced" means already pushed, not only written.
 --
@@ -103,6 +105,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS notifications_chat_message_once
   ON public.notifications (user_id, ((data->>'message_id')))
   WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id';
 
+-- A timestamp from notification data, or NULL when it isn't one (the
+-- recipient can write their own notifications' data: a bad value must
+-- never abort a batch).
+CREATE OR REPLACE FUNCTION public.bw_try_timestamptz(p_value text)
+RETURNS timestamptz
+LANGUAGE plpgsql
+STABLE
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF p_value IS NULL OR p_value !~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}' THEN
+    RETURN NULL;
+  END IF;
+  RETURN p_value::timestamptz;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_try_timestamptz(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_try_timestamptz(text) TO authenticated, service_role;
+
 -- Writes the chat notices of one message and claims those to push now.
 -- p_rows: [{user_id, type, title, body, data, band_id, action_url}].
 CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
@@ -149,8 +172,9 @@ BEGIN
             ORDER BY n2.user_id
               FOR UPDATE)
      AND NOT n.data ? 'pushed_at'
-     AND (NOT n.data ? 'push_claimed_at'
-          OR (n.data ->> 'push_claimed_at')::timestamptz < now() - interval '2 minutes')
+     -- Missing or malformed claim = unclaimed.
+     AND coalesce(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'), '-infinity'::timestamptz)
+         < now() - interval '2 minutes'
   RETURNING n.id, n.user_id;
 END;
 $function$;

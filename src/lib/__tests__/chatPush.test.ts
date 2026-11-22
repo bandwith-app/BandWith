@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CHAT_PUSH_CHANNEL,
+  pendingAnnouncements,
+  pushSettledUsers,
   LEGACY_CANDIDATES,
   noticeSettled,
   chatPreview,
@@ -208,5 +210,35 @@ describe('chat push review fixes, round 3', () => {
     const many: ChatMessageRow[] = Array.from({ length: 25 }, (_, i) => ({ id: `ok${i}`, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5 + i) }));
     const told = many.slice(0, 24).map((m) => ({ user_id: 'u1', message_id: m.id }));
     expect(chooseUnannounced(many, ['u1'], told)?.message.id).toBe('ok24');
+  });
+});
+
+// Codex review #284, round 3 (second pass).
+describe('chat push review fixes, round 3b', () => {
+  it('a message marked deleted is never announced', () => {
+    const rows: ChatMessageRow[] = [
+      { id: 'd1', chat_id: CHAT, sender_id: BOB, content: 'oops', created_at: ago(5), deleted: true },
+      { id: 'd0', chat_id: CHAT, sender_id: BOB, content: 'oops', created_at: ago(9) },
+    ];
+    expect(findAnnouncedCandidates(rows, { callerId: BOB, chatId: CHAT, messageId: 'd1', now: NOW })).toEqual([]);
+    expect(findAnnouncedCandidates(rows, { callerId: BOB, chatId: CHAT, body: 'oops', now: NOW }).map((r) => r.id)).toEqual(['d0']);
+  });
+
+  it('marked pushed only when a device took it, or there was nothing to deliver to', () => {
+    const out = pushSettledUsers(['ok', 'down', 'none', 'dead', 'mixed'], [
+      { userId: 'ok', success: true },
+      { userId: 'down', success: false, error: 'FCM error: 503' },
+      { userId: 'down', success: false, error: 'timeout' },
+      { userId: 'dead', success: false, error: 'invalid_token' },
+      { userId: 'mixed', success: false, error: 'FCM error: 503' },
+      { userId: 'mixed', success: true },
+    ]);
+    expect(out.sort()).toEqual(['dead', 'mixed', 'none', 'ok']);
+  });
+
+  it('every candidate with someone left to tell, in order (a lost claim moves on)', () => {
+    const m = (id: string): ChatMessageRow => ({ id, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5) });
+    const got = pendingAnnouncements([m('m2'), m('m1'), m('m0')], ['u1'], [{ user_id: 'u1', message_id: 'm1' }]);
+    expect(got.map((p) => p.message.id)).toEqual(['m2', 'm0']);
   });
 });

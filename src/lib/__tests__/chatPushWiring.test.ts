@@ -73,7 +73,7 @@ describe('send-push wiring, round 2', () => {
   });
 
   it('each recipient is told about a message once, and only those whose inbox row was written ring', () => {
-    expect(sendPush).toMatch(/chooseUnannounced\(/);
+    expect(sendPush).toMatch(/pendingAnnouncements\(/);
     expect(sendPush).toMatch(/\.rpc\('bw_write_chat_notices'/);
     expect(sendPush).toMatch(/ringIds/);
   });
@@ -82,13 +82,13 @@ describe('send-push wiring, round 2', () => {
 // Codex review #284, round 3.
 describe('send-push wiring, round 3', () => {
   it('notices are written per recipient by the database, for a live message only', () => {
-    expect(sendPush).toMatch(/\.rpc\('bw_write_chat_notices', \{ p_message_id: announced\.id, p_rows: notifications \}\)/);
+    expect(sendPush).toMatch(/\.rpc\('bw_write_chat_notices', \{ p_message_id: current\.id, p_rows: notifications \}\)/);
     expect(sendPush).not.toMatch(/23505/);
   });
 
   it('pushes are marked once attempted, also when nobody has a device', () => {
     expect(sendPush).toMatch(/\.rpc\('bw_mark_chat_notices_pushed'/);
-    expect((sendPush.match(/await markPushed\(\);/g) || []).length).toBeGreaterThanOrEqual(2);
+    expect((sendPush.match(/await markPushed\(/g) || []).length).toBeGreaterThanOrEqual(2);
   });
 
   it('"already announced" means pushed (or being pushed), not only written', () => {
@@ -104,7 +104,28 @@ describe('send-push wiring, round 3', () => {
 // could deadlock (40P01) on the unique index.
 describe('send-push wiring, round 3 (Claude)', () => {
   it('recipients are written in one order, and a deadlock is retried', () => {
-    expect(sendPush).toMatch(/targetUserIds = \[\.\.\.pick\.recipients\]\.sort\(\);/);
+    expect(sendPush).toMatch(/targetUserIds = \[\.\.\.recipients\]\.sort\(\);/);
     expect(sendPush).toMatch(/writeError\?\.code === '40P01'/);
+  });
+});
+
+// Codex review #284, round 3 (second pass).
+describe('send-push wiring, round 3b', () => {
+  it('messages are read whole, so a deleted one is skipped on every path', () => {
+    expect(sendPush).toMatch(/\.from\('messages'\)\s*\.select\('\*'\)/);
+  });
+
+  it('marks pushed only the recipients a device took (or with nothing to deliver to)', () => {
+    expect(sendPush).toMatch(/pushSettledUsers\(/);
+    expect(sendPush).not.toMatch(/await markPushed\(\);\s*const successful/);
+  });
+
+  it('a lost claim moves on to the next candidate', () => {
+    expect(sendPush).toMatch(/pendingAnnouncements\(/);
+    expect(sendPush).toMatch(/claim lost/i);
+  });
+
+  it('existing notices are read page by page (PostgREST returns at most 1000 rows)', () => {
+    expect(sendPush).toMatch(/\.range\(from, from \+ NOTICE_PAGE - 1\)/);
   });
 });

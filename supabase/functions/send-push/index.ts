@@ -11,7 +11,8 @@ import {
   chatPushData,
   chatPushSubtitle,
   chatPushTitle,
-  chooseUnannounced,
+  pendingAnnouncements,
+  pushSettledUsers,
   findAnnouncedCandidates,
   isUuid,
   legacyContentFilter,
@@ -440,9 +441,11 @@ async function verifyChatPush(
   const named = messageId !== undefined && messageId !== null && messageId !== '';
   if (named && !isUuid(messageId)) return null;
   if (!named && typeof body !== 'string') return null;
+  // The whole row: messages.deleted (when the column exists) must be seen,
+  // so text of a deleted message never reaches a lock screen, on any path.
   let query = supabase
     .from('messages')
-    .select('id, chat_id, sender_id, content, created_at')
+    .select('*')
     .eq('chat_id', chatId)
     .eq('sender_id', callerId);
   if (named) {
@@ -495,21 +498,31 @@ async function verifyChatPush(
  * pushed right now (Codex review #284 r3): a notice written but never
  * pushed is pushed by a retry.
  */
+const NOTICE_PAGE = 1000;
+
 async function chatNoticesFor(
   supabase: ReturnType<typeof adminClient>,
   userIds: string[],
   messageIds: string[],
 ): Promise<{ user_id: string; message_id: string | null }[]> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('user_id, message_id:data->>message_id, pushed_at:data->>pushed_at, push_claimed_at:data->>push_claimed_at')
-    .in('user_id', userIds)
-    .in('type', ['chat_message', 'chat_mention'])
-    .in('data->>message_id', messageIds);
-  if (error) throw error;
+  type Row = { user_id: string; message_id: string | null; pushed_at?: string | null; push_claimed_at?: string | null };
+  // Page by page: PostgREST returns at most 1000 rows per request.
+  const all: Row[] = [];
+  for (let from = 0; ; from += NOTICE_PAGE) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, user_id, message_id:data->>message_id, pushed_at:data->>pushed_at, push_claimed_at:data->>push_claimed_at')
+      .in('user_id', userIds)
+      .in('type', ['chat_message', 'chat_mention'])
+      .in('data->>message_id', messageIds)
+      .order('id')
+      .range(from, from + NOTICE_PAGE - 1);
+    if (error) throw error;
+    all.push(...((data || []) as Row[]));
+    if (!data || data.length < NOTICE_PAGE) break;
+  }
   const now = Date.now();
-  return ((data || []) as { user_id: string; message_id: string | null; pushed_at?: string | null; push_claimed_at?: string | null }[])
-    .filter((n) => noticeSettled(n, now));
+  return all.filter((n) => noticeSettled(n, now));
 }
 
 /** Everyone in the chat but the caller, with display names (for @mentions). */
@@ -609,56 +622,44 @@ Deno.serve(async (req: Request) => {
       : null;
     if (userType && !chatPush) throw new HttpError(403, 'Only your own new message can be announced');
 
-    // One message rings each recipient once (Claude review #284): skip those
-    // who already have its chat notice. Older builds sending "OK" twice get
-    // the other "OK" announced.
-    let announced: { id: string; content: string | null } | null = null;
-    let targetUserIds = allowedIds;
-    if (chatPush) {
-      // In chunks: up to LEGACY_CANDIDATES ids don't fit one request URL.
-      let pick: ReturnType<typeof chooseUnannounced> = null;
-      for (let i = 0; i < chatPush.candidates.length && !pick; i += 50) {
-        const chunk = chatPush.candidates.slice(i, i + 50);
-        const existing = await chatNoticesFor(supabase, allowedIds, chunk.map((m) => String(m.id)));
-        pick = chooseUnannounced(chunk, allowedIds, existing);
-      }
-      if (!pick) {
-        return new Response(
-          JSON.stringify({ success: true, sent: 0, message: 'Already announced' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      announced = { id: String(pick.message.id), content: pick.message.content ?? '' };
-      // One order for every call (the database locks rows in user order).
-      targetUserIds = [...pick.recipients].sort();
-    }
-
-    // Recipients' language and push switch (02 #6).
+    // Recipients' language and push switch (02 #6), for everyone allowed.
     // Without the push switch we can't know who turned push off: send nothing.
     const { data: people, error: peopleError } = await supabase
       .from('profiles')
       .select('id, full_name, email, preferred_language, notification_preferences')
-      .in('id', targetUserIds);
+      .in('id', allowedIds);
     if (peopleError) throw peopleError;
     const peopleRows = (people || []) as { id: string; full_name?: string | null; email?: string | null; preferred_language?: string | null; notification_preferences: unknown }[];
     const prefLangByUser = new Map(peopleRows.map((p) => [String(p.id), p.preferred_language ?? null]));
-    // "{name} mentioned you" only for people the stored message mentions,
-    // with names read against the whole chat (Ana vs Ana Maria).
-    const mentioned = new Set(
-      chatPush && announced && userType === 'chat_mention' && requestChat.chatId
-        ? mentionsAmong(
-            announced.content,
-            await chatRoster(supabase, requestChat.chatId, caller.kind === 'user' ? caller.id : ''),
-            targetUserIds,
-            caller.kind === 'user' ? caller.id : null,
-          )
-        : [],
-    );
+    // @mentions are read against the whole chat (Ana vs Ana Maria).
+    const roster = chatPush && userType === 'chat_mention' && requestChat.chatId
+      ? await chatRoster(supabase, requestChat.chatId, caller.kind === 'user' ? caller.id : '')
+      : [];
+
+    // The message this call announces, and to whom (set per candidate below).
+    let announced: { id: string; content: string | null } | null = null;
+    let targetUserIds = allowedIds;
+    let mentioned = new Set<string>();
+    let pushBody = notificationBody;
+    const announce = (message: { id: string; content: string | null }, recipients: string[]) => {
+      const now = { id: String(message.id), content: message.content ?? '' };
+      announced = now;
+      // One order for every call (the database locks rows in user order).
+      targetUserIds = [...recipients].sort();
+      // "{name} mentioned you" only for people the stored message mentions.
+      mentioned = new Set(
+        userType === 'chat_mention'
+          ? mentionsAmong(now.content, roster, targetUserIds, caller.kind === 'user' ? caller.id : null)
+          : [],
+      );
+      pushBody = chatPreview(now.content);
+      return now;
+    };
+
     const typeFor = (uid: string): 'chat_message' | 'chat_mention' =>
       userType === 'chat_mention' && mentioned.has(uid) ? 'chat_mention' : 'chat_message';
     const titleFor = (uid: string) =>
       chatPush ? chatPushTitle(typeFor(uid), chatPush.senderName, prefLangByUser.get(uid)) : title;
-    const pushBody = chatPush && announced ? chatPreview(announced.content) : notificationBody;
     const verifiedFor = (uid: string) =>
       chatPush && announced && requestChat.chatId
         ? chatPushData(data, {
@@ -687,23 +688,9 @@ Deno.serve(async (req: Request) => {
       'bandwith_general'
     ));
 
-    // Devices that may ring. A chat push rings only recipients whose inbox
-    // row was written and claimed: once per message, and a message deleted
-    // meanwhile writes none (bw_write_chat_notices, 194).
-    let ringIds = targetUserIds;
-    // Chat notices this call claimed: marked pushed once the push was tried
-    // (also when nobody has a device), so a retry never pushes them again.
-    let claimedIds: string[] = [];
-    const markPushed = async () => {
-      if (claimedIds.length === 0) return;
-      const { error: markError } = await supabase.rpc('bw_mark_chat_notices_pushed', { p_ids: claimedIds });
-      if (markError) console.warn('Pushed mark failed:', markError.message);
-    };
-    // App chat pushes always write the inbox (the app never turns it off).
-    if ((create_in_app !== false || chatPush) && !silent) {
+    const noticeRows = () => {
       const chatId = requestChat.chatId;
-
-      const notifications = targetUserIds.map(userId => ({
+      return targetUserIds.map(userId => ({
         user_id: userId,
         type: chatPush ? typeFor(userId) : notificationType,
         title: titleFor(userId),
@@ -720,34 +707,76 @@ Deno.serve(async (req: Request) => {
         band_id: pushDataFor(userId)?.band_id || null,
         action_url: chatId ? `/chat/${chatId}` : null,
       }));
+    };
 
-      if (chatPush && announced) {
-        // Per recipient, in the database (194): only for a message still
-        // there and not deleted, ON CONFLICT DO NOTHING (an overlapping call
-        // no longer rolls back the others), and returns who to push now.
-        let { data: claimed, error: writeError } = await supabase
-          .rpc('bw_write_chat_notices', { p_message_id: announced.id, p_rows: notifications });
-        // A deadlock with an overlapping call rolled this one back: retry.
-        for (let attempt = 0; attempt < 2 && writeError?.code === '40P01'; attempt++) {
-          ({ data: claimed, error: writeError } = await supabase
-            .rpc('bw_write_chat_notices', { p_message_id: announced.id, p_rows: notifications }));
-        }
-        if (writeError && writeError.code === 'PGRST202') {
-          // send-push deployed before 194: write as before.
-          console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);
-          const { error: plainError } = await supabase.from('notifications').insert(notifications);
-          if (plainError) throw plainError;
-        } else {
+    // Devices that may ring. A chat push rings only recipients whose inbox
+    // row was written and claimed: once per message, and a message deleted
+    // meanwhile writes none (bw_write_chat_notices, 194).
+    let ringIds = targetUserIds;
+    // Chat notices this call claimed (id → recipient): marked pushed once a
+    // device took them or there was nothing to deliver to.
+    let claimed: { id: string; user_id: string }[] = [];
+    const markPushed = async (userIds: string[]) => {
+      const done = new Set(userIds);
+      const ids = claimed.filter((c) => done.has(String(c.user_id))).map((c) => String(c.id));
+      if (ids.length === 0) return;
+      const { error: markError } = await supabase.rpc('bw_mark_chat_notices_pushed', { p_ids: ids });
+      if (markError) console.warn('Pushed mark failed:', markError.message);
+    };
+
+    if (chatPush) {
+      // One message rings each recipient once (Claude review #284). Older
+      // builds sending "OK" twice get the other "OK" announced; when another
+      // call claimed a candidate first, the next one is tried (Codex r3).
+      let done = false;
+      for (let i = 0; i < chatPush.candidates.length && !done; i += 50) {
+        // In chunks: up to LEGACY_CANDIDATES ids don't fit one request URL.
+        const chunk = chatPush.candidates.slice(i, i + 50);
+        const existing = await chatNoticesFor(supabase, allowedIds, chunk.map((m) => String(m.id)));
+        for (const p of pendingAnnouncements(chunk, allowedIds, existing)) {
+          const current = announce(p.message, p.recipients);
+          const notifications = noticeRows();
+          // Per recipient, in the database (194): only for a message still
+          // there and not deleted, ON CONFLICT DO NOTHING (an overlapping
+          // call no longer rolls back the others); returns who to push now.
+          let { data: got, error: writeError } = await supabase
+            .rpc('bw_write_chat_notices', { p_message_id: current.id, p_rows: notifications });
+          // A deadlock with an overlapping call rolled this one back: retry.
+          for (let attempt = 0; attempt < 2 && writeError?.code === '40P01'; attempt++) {
+            ({ data: got, error: writeError } = await supabase
+              .rpc('bw_write_chat_notices', { p_message_id: current.id, p_rows: notifications }));
+          }
+          if (writeError && writeError.code === 'PGRST202') {
+            // send-push deployed before 194: write as before (the message
+            // was read whole above, so a deleted one never gets here).
+            console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);
+            const { error: plainError } = await supabase.from('notifications').insert(notifications);
+            if (plainError) throw plainError;
+            ringIds = targetUserIds;
+            done = true;
+            break;
+          }
           if (writeError) throw writeError;
-          const rows = (claimed || []) as { id: string; user_id: string }[];
-          claimedIds = rows.map((r) => String(r.id));
-          const toPush = new Set(rows.map((r) => String(r.user_id)));
-          ringIds = targetUserIds.filter((id) => toPush.has(id));
+          claimed = (got || []) as { id: string; user_id: string }[];
+          if (claimed.length > 0) {
+            const toPush = new Set(claimed.map((r) => String(r.user_id)));
+            ringIds = targetUserIds.filter((id) => toPush.has(id));
+            done = true;
+            break;
+          }
+          // Claim lost (another call is pushing it) or the message is gone:
+          // try the next candidate.
         }
-      } else {
-        const { error: writeError } = await supabase.from('notifications').insert(notifications);
-        if (writeError) console.warn('In-app notification insert failed:', writeError.message);
       }
+      if (!done) {
+        return new Response(
+          JSON.stringify({ success: true, sent: 0, message: 'Already announced' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (create_in_app !== false && !silent) {
+      const { error: writeError } = await supabase.from('notifications').insert(noticeRows());
+      if (writeError) console.warn('In-app notification insert failed:', writeError.message);
     }
     if (ringIds.length === 0) {
       return new Response(
@@ -767,7 +796,8 @@ Deno.serve(async (req: Request) => {
     if (tokenError) throw tokenError;
 
     if (!tokens || tokens.length === 0) {
-      await markPushed();
+      // Nobody to deliver to (no device, push off): nothing to retry.
+      await markPushed(ringIds);
       return new Response(
         JSON.stringify({ success: true, sent: 0, message: 'No active tokens found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -819,7 +849,14 @@ Deno.serve(async (req: Request) => {
       })
     );
 
-    await markPushed();
+    // Pushed = a device took it, or nothing could ever take it (dead
+    // tokens, no device). All devices failing for now (503, timeout): not
+    // marked, the claim lapses and a retry delivers (Codex review #284 r3).
+    await markPushed(pushSettledUsers(ringIds, results.map((r: any, i: number) => ({
+      userId: String(tokens[i].user_id),
+      success: r.status === 'fulfilled' && !!r.value.success,
+      error: r.status === 'fulfilled' ? r.value.error : 'promise_rejected',
+    }))));
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;
 
     // A chat push that Apple or Google accepted reached the recipient's phone:
