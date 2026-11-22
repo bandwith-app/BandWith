@@ -1,5 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import { openEvent } from '../support/flows';
+import { openHub } from '../support/hub';
 import { isLaptop, liveDialog, openLive, openWithFocusSongs, WEEKLY } from '../support/live';
 
 /**
@@ -62,11 +63,17 @@ test.describe('voice parts in Live mode', () => {
     // My part (backing, from my instrument) bright; lead, 2nd and spoken dimmed; "all" is everyone's.
     const toggle = legend.getByRole('button', { name: app.t('Highlight my part') });
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    // The legend says which part is mine, and the first time why lines are dimmed.
+    await expect(legend).toContainText(`· ${app.t('you')}`);
+    const hint = legend.getByRole('note');
+    await expect(hint).toContainText(app.t('Lines you don’t sing are dimmed. Tap “Highlight my part” to see them all.'));
     await expect(line('bv')).not.toHaveAttribute('data-voice-dim', 'true');
     await expect(line('all')).not.toHaveAttribute('data-voice-dim', 'true');
     await expect(line('v2')).toHaveAttribute('data-voice-dim', 'true');
     await expect(line('sp')).toHaveAttribute('data-voice-dim', 'true');
     await app.check('live mode, voice parts');
+    await hint.getByRole('button', { name: app.t('Got it') }).click();
+    await expect(hint).toHaveCount(0);
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -98,16 +105,57 @@ test.describe('voice parts in Live mode', () => {
     const sheet = app.page.getByRole('dialog', { name: app.t('Who sings what') });
     await expect(sheet).toBeVisible();
     await app.check('who sings what');
+    // Nothing set yet: it starts from the instruments (Leo plays lead vocals) and says so.
+    await expect(sheet).toContainText(app.t('Filled in from each member’s instrument. Change it and save.'));
+    const leadLeo = sheet.getByRole('region', { name: app.t('Lead', { context: 'voice' }) }).getByRole('button', { name: 'Leo M.' });
+    await expect(leadLeo).toHaveAttribute('aria-pressed', 'true');
+    // Leo moves to the backing.
+    await leadLeo.click();
     await sheet.getByRole('region', { name: app.t('Backing', { context: 'voice' }) }).getByRole('button', { name: 'Leo M.' }).click();
     await sheet.getByRole('button', { name: app.t('Save'), exact: true }).click();
     await expect(sheet).toHaveCount(0);
 
-    // Assigned to the backing now: it is bright, the lead line dims, the legend names him.
+    // Assigned to the backing now: it is bright, the lead line dims, the legend says it is me.
     await expect(line('bv')).not.toHaveAttribute('data-voice-dim', 'true');
     await expect(area.locator('p[data-voice-dim="true"]').filter({ hasText: 'Paper boats' }).first()).toBeVisible();
-    await expect(area.getByRole('group', { name: app.t('Voice parts') })).toContainText('Leo M.');
+    await expect(area.getByRole('group', { name: app.t('Voice parts') })).toContainText(`· ${app.t('you')}`);
     const db = await app.readDb();
     const song = (db as unknown as Record<string, Record<string, unknown>[]>).songs.find((s) => s.title === 'Paper Boats')!;
     expect(Object.keys((song.vocal_parts as Record<string, string[]>) ?? {})).toEqual(['bv']);
+  });
+
+  test('@smoke the song form shows the words without markers, and the parts stay on their lines', async ({ app }) => {
+    await app.open();
+    await app.editDb((db) => {
+      const rows = db as unknown as Record<string, Record<string, unknown>[]>;
+      rows.songs.find((s) => s.title === 'Paper Boats')!.lyrics = LYRICS;
+    });
+    await openHub(app);
+    await app.page.getByRole('button', { name: new RegExp(`^${app.t('Repertoire')}:`, 'i') }).first().click();
+    await app.settle();
+    await app.page.getByRole('button', { name: 'Actions for Paper Boats' }).first().click();
+    await app.page.getByRole('menuitem', { name: app.t('Edit'), exact: true }).first().click();
+    await app.settle();
+
+    // The form's steps: on to the lyrics.
+    const box = app.page.locator('label', { hasText: app.t('Lyrics · text, Markdown or JSON') }).locator('textarea');
+    for (let step = 0; step < 3 && !(await box.isVisible()); step++) {
+      await app.page.getByRole('button', { name: app.t('Next') }).filter({ visible: true }).last().click();
+      await app.settle();
+    }
+    await expect(box).toHaveValue(/All the way home/);
+    expect(await box.inputValue()).not.toMatch(/\{\/?(bv|v2|all|sp)\}/);
+    await expect(app.page.getByText(app.t('{n} lines have a voice part. They stay on their lines when you edit the words.', { n: 4 }))).toBeVisible();
+    await app.check('song form, voice parts kept');
+
+    // Fix a word in the line everyone sings: it stays "all".
+    await box.fill((await box.inputValue()).replace('All the way home', 'All the way back home'));
+    await app.page.getByRole('button', { name: app.t('Save song') }).filter({ visible: true }).last().click();
+    await app.settle();
+    const db = await app.readDb();
+    const lyrics = String((db as unknown as Record<string, Record<string, unknown>[]>).songs.find((s) => s.title === 'Paper Boats')!.lyrics);
+    expect(lyrics).toContain('{all}All the way back home{/all}');
+    expect(lyrics).toContain('{bv}(ooh, [Am]yeah){/bv}');
+    expect(lyrics).toContain('{sp}Count it, Brooklyn{/sp}');
   });
 });

@@ -132,7 +132,8 @@ describe('who sings what', () => {
     await waitFor(() => expect(saveSong).toHaveBeenCalledWith('s1', { bv: [SAM, ME] }));
     // Now Leo sings the backing: it is bright, his lead lines dim.
     await waitFor(() => expect(container.querySelector('p[data-voice="bv"]')).not.toHaveAttribute('data-voice-dim'));
-    expect(legend).toHaveTextContent('Leo M.');
+    // My own name reads "you".
+    expect(legend).toHaveTextContent(/Backing\s*· Sam R., you/);
   });
 
   it('on a gig, an admin can change it for this gig only', async () => {
@@ -152,6 +153,25 @@ describe('who sings what', () => {
     await waitFor(() => expect(saveSetlist).toHaveBeenCalledWith('r1', { bv: [ME] }));
     expect(saveSong).not.toHaveBeenCalled();
     await waitFor(() => expect(legend).not.toHaveTextContent('Sam R.'));
+  });
+
+  it('nothing set yet: the sheet starts from each member’s instrument and says so', async () => {
+    fetchSong.mockResolvedValue({ s1: null });
+    render(
+      <VoiceAssignmentScope songId="s1" songTitle="Hudson Line" lyrics={LYRICS}>
+        <LyricsText lyrics={LYRICS} size={20} />
+      </VoiceAssignmentScope>,
+    );
+    const legend = screen.getByRole('group', { name: 'Voice parts' });
+    await waitFor(() => expect(fetchSong).toHaveBeenCalled());
+    fireEvent.click(within(legend).getByRole('button', { name: 'Who sings what' }));
+    // Leo plays "Lead vocals": already on Lead.
+    const lead = await screen.findByRole('region', { name: 'Lead' });
+    expect(within(lead).getByRole('button', { name: 'Leo M.' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(lead).getByRole('button', { name: 'Sam R.' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Filled in from each member’s instrument. Change it and save.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(saveSong).toHaveBeenCalledWith('s1', { lead: [ME] }));
   });
 
   it('members read it but get no button', async () => {

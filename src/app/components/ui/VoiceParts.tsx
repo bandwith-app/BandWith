@@ -3,7 +3,7 @@ import { Check } from '@/app/components/icons';
 import { useOptionalBand } from '@/lib/BandContext';
 import { useOptionalAuth } from '@/lib/AuthContext';
 import { useT } from '@/lib/i18n';
-import { assignedParts, instrumentVoicePart, type VocalParts, type VoicePart } from '@/lib/voiceParts';
+import { assignedParts, instrumentVoicePart, isMyPart, type VocalParts, type VoicePart } from '@/lib/voiceParts';
 import { cn } from './utils';
 
 /**
@@ -28,6 +28,13 @@ export const voicePartLabel = (p: VoicePart, t: Translate): string =>
 
 export const voiceClass = (v: VoicePart | 'mixed'): string | undefined =>
   v === 'lead' || v === 'mixed' ? undefined : `bw-voice-${v}`;
+
+/**
+ * A part's name drawn the way its lines look (legend, Voice picker, "who
+ * sings what"): in the lyrics' font, so italic, bold and small caps read as
+ * they do on the lines, not lost in an all-caps label.
+ */
+export const voiceLabelClass = (v: VoicePart) => cn('font-sans normal-case tracking-normal text-[15px]', voiceClass(v));
 
 /**
  * "My part" when the page says it outright (tests, previews); `null` = I
@@ -112,6 +119,16 @@ export function useVoiceHighlight(): [boolean, (on: boolean) => void] {
   return [on, set];
 }
 
+/** The first time lines are dimmed, one line says why (per device). */
+export const VOICE_DIM_HINT_KEY = 'bw-voice-dim-hint';
+const hintSeen = () => {
+  try {
+    return localStorage.getItem(VOICE_DIM_HINT_KEY) === 'seen';
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The legend at the top of a song that uses parts ("Lead · 2nd voice ·
  * Backing"), each name drawn in its own style, with the "Highlight my part"
@@ -127,8 +144,25 @@ export const VoiceLegend: React.FC<{
   const t = useT();
   const assignment = useVoiceAssignment();
   const names = useMemberNames();
-  const who = (p: VoicePart) =>
-    p === 'all' ? [] : (assignment?.parts?.[p] ?? []).map((id) => names.get(id)).filter((n): n is string => !!n);
+  const auth = useOptionalAuth();
+  const uid = auth?.user?.id;
+  const [seen, setSeen] = React.useState(hintSeen);
+  const markSeen = () => {
+    try {
+      localStorage.setItem(VOICE_DIM_HINT_KEY, 'seen');
+    } catch {
+      /* per device */
+    }
+    setSeen(true);
+  };
+  // Who sings each part; "you" for me (assigned, or from my instrument). "All" is everyone's.
+  const who = (p: VoicePart) => {
+    if (p === 'all') return [];
+    const list = (assignment?.parts?.[p] ?? []).map((id) => (id === uid ? t('you') : names.get(id))).filter((n): n is string => !!n);
+    if (mine?.includes(p) && !list.includes(t('you'))) list.push(t('you'));
+    return list;
+  };
+  const dims = !!mine && highlight && parts.some((p) => !isMyPart(p, mine));
   return (
     <div
       role="group"
@@ -139,7 +173,7 @@ export const VoiceLegend: React.FC<{
     >
       {parts.map((p) => (
         <span key={p} className="inline-flex items-baseline gap-1">
-          <span data-voice={p} className={voiceClass(p)}>
+          <span data-voice={p} className={voiceLabelClass(p)}>
             {voicePartLabel(p, t)}
           </span>
           {who(p).length > 0 && <span className={muted}>· {who(p).join(', ')}</span>}
@@ -158,7 +192,10 @@ export const VoiceLegend: React.FC<{
         <button
           type="button"
           aria-pressed={highlight}
-          onClick={() => onHighlight(!highlight)}
+          onClick={() => {
+            markSeen();
+            onHighlight(!highlight);
+          }}
           className={cn(
             'ml-auto min-h-9 px-3 rounded-full border inline-flex items-center gap-1.5 whitespace-nowrap transition-colors',
             highlight ? 'border-current' : cn('border-current/30', muted),
@@ -167,6 +204,14 @@ export const VoiceLegend: React.FC<{
           {highlight && <Check className="w-4 h-4" aria-hidden />}
           {t('Highlight my part')}
         </button>
+      )}
+      {dims && !seen && (
+        <p role="note" className="basis-full flex flex-wrap items-center gap-x-3 gap-y-1 font-sans bw-body-sm normal-case tracking-normal">
+          <span className={muted}>{t('Lines you don’t sing are dimmed. Tap “Highlight my part” to see them all.')}</span>
+          <button type="button" onClick={markSeen} className="min-h-9 px-3 rounded-full border border-current/30 bw-label-sm">
+            {t('Got it')}
+          </button>
+        </p>
       )}
     </div>
   );

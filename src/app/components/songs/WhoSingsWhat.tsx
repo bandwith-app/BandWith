@@ -7,9 +7,9 @@ import { useOptionalBand } from '@/lib/BandContext';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { normalizeLyrics } from '@/lib/songFormat';
-import { ASSIGNABLE_PARTS, effectiveVocalParts, songVoiceParts, type VocalParts, type VoicePart } from '@/lib/voiceParts';
+import { ASSIGNABLE_PARTS, effectiveVocalParts, instrumentVoicePart, songVoiceParts, type VocalParts, type VoicePart } from '@/lib/voiceParts';
 import { fetchSetlistVocalParts, fetchSongVocalParts, saveSetlistVocalParts, saveSongVocalParts } from '@/lib/services/vocalParts';
-import { useMemberNames, voiceClass, voicePartLabel, VoiceAssignmentProvider } from '@/app/components/ui/VoiceParts';
+import { useMemberNames, voiceLabelClass, voicePartLabel, VoiceAssignmentProvider } from '@/app/components/ui/VoiceParts';
 
 /**
  * "Who sings what" (plan §5.2, migration 172): each voice part of a song
@@ -129,12 +129,25 @@ export const WhoSingsWhatSheet: React.FC<{
 }> = ({ songTitle, parts, song, setlist, onClose, onSave }) => {
   const t = useT();
   const names = useMemberNames();
+  const band = useOptionalBand();
   const gigable = setlist !== undefined;
   const [scope, setScope] = React.useState<'song' | 'gig'>(gigable && setlist ? 'gig' : 'song');
-  const start = scope === 'gig' ? setlist ?? song : song;
-  const [draft, setDraft] = React.useState<VocalParts>(() => ({ ...(start ?? {}) }));
+  // Nothing set yet: start from what the app already shows (each member's instrument).
+  const fromInstruments = React.useMemo(() => {
+    const out: VocalParts = {};
+    for (const m of band?.selectedBand?.members ?? []) {
+      if (m.is_active === false || !m.user_id) continue;
+      const p = instrumentVoicePart(m.instrument);
+      if (!p || p === 'all' || (p !== 'lead' && !parts.includes(p))) continue;
+      out[p] = [...(out[p] ?? []), m.user_id];
+    }
+    return Object.keys(out).length ? out : null;
+  }, [band?.selectedBand?.members, parts]);
+  const stored = (sc: 'song' | 'gig') => (sc === 'gig' ? setlist ?? song : song);
+  const prefilled = !stored(scope) && !!fromInstruments;
+  const [draft, setDraft] = React.useState<VocalParts>(() => ({ ...(stored(scope) ?? fromInstruments ?? {}) }));
   React.useEffect(() => {
-    setDraft({ ...((scope === 'gig' ? setlist ?? song : song) ?? {}) });
+    setDraft({ ...(stored(scope) ?? fromInstruments ?? {}) });
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -195,9 +208,10 @@ export const WhoSingsWhatSheet: React.FC<{
         <p className="bw-body-sm text-white/70">
           {scope === 'gig' ? t('Only for this setlist, e.g. when a deputy sings.') : t('Each singer sees their part highlighted.')}
         </p>
+        {prefilled && <p className="bw-body-sm text-white/70 -mt-3">{t('Filled in from each member’s instrument. Change it and save.')}</p>}
         {assignable.map((p) => (
           <section key={p} className="flex flex-col gap-2" aria-label={voicePartLabel(p, t)}>
-            <h3 className={cn('bw-label-md', voiceClass(p))}>{voicePartLabel(p, t)}</h3>
+            <h3 className={voiceLabelClass(p)}>{voicePartLabel(p, t)}</h3>
             <div className="flex flex-wrap gap-2">
               {[...names].map(([id, name]) => {
                 const on = !!draft[p]?.includes(id);

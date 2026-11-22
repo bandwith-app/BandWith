@@ -50,6 +50,7 @@ import { ChordImportSheet } from './ChordImportSheet';
 import type { ImportedSong } from '@/lib/songImport';
 import { foldSemitones, parseKey, prefersFlats, transposeChart, transposeKey, transposeLyrics } from '@/lib/transpose';
 import { TempoKeyTools } from './TempoKeyTools';
+import { useVoiceSafeText, VoicePartsKept } from '@/app/components/songs/VoiceSafeText';
 
 interface AddSongModalProps {
   isOpen: boolean;
@@ -108,6 +109,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   // Voice parts proposed from a paste or an import: applied only on a tap ("Not now" hides it).
   const [voiceHintOff, setVoiceHintOff] = useState(false);
   const voiceHints = useMemo(() => (voiceHintOff ? [] : suggestVoiceParts(lyrics)), [lyrics, voiceHintOff]);
+  // The box shows the words without the part markers; the parts stay with their lines.
+  const lyricsField = useVoiceSafeText(lyrics, setLyrics);
   // Chord chart pasted from iReal Pro (songs.chord_chart); saved only when changed here.
   const [chordChart, setChordChart] = useState<SongChart | null>(null);
   const [chordChartTouched, setChordChartTouched] = useState(false);
@@ -760,13 +763,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                   {t('Lyrics · text, Markdown or JSON')}
                 </span>
                 <textarea
-                  value={lyrics}
-                  onChange={(e) => setLyrics(e.target.value)}
+                  {...lyricsField}
                   placeholder={[`# ${t('Verse 1')}`, t('First line…'), '', `[${t('Chorus')}]`, '…'].join('\n')}
                   rows={6}
                   className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[140px] resize-y font-mono text-[15px]"
                 />
                 <span className="bw-body-sm text-muted-foreground">{t('Read them in the app from the song menu or the player.')}</span>
+                <VoicePartsKept lyrics={lyrics} />
               </label>
               {voiceHints.length > 0 && (
                 <div className="flex flex-col gap-2 p-4 rounded-[24px] bg-card -mt-2" role="status">

@@ -4589,6 +4589,12 @@ const dict: Dictionary = {
   "Only for this setlist, e.g. when a deputy sings.": "Nur für diese Setlist, z. B. wenn eine Aushilfe singt.",
   "Each singer sees their part highlighted.": "Alle Singenden sehen ihre Stimme hervorgehoben.",
   "line {n}": "Zeile {n}",
+  "you": "du",
+  "Lines you don’t sing are dimmed. Tap “Highlight my part” to see them all.": "Zeilen, die du nicht singst, sind abgeblendet. Tippe auf „Meine Stimme hervorheben“, um alle zu sehen.",
+  "1 line has a voice part. It stays on its line when you edit the words.": "1 Zeile hat eine Gesangsstimme. Sie bleibt an ihrer Zeile, wenn du den Text änderst.",
+  "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} Zeilen haben eine Gesangsstimme. Sie bleiben an ihren Zeilen, wenn du den Text änderst.",
+  "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Tippe auf ein Wort, um einen Akkord hinzuzufügen oder festzulegen, wer es singt. Ziehe einen Akkord, um ihn auf ein anderes Wort zu verschieben.",
+  "Filled in from each member’s instrument. Change it and save.": "Ausgefüllt nach dem Instrument jedes Mitglieds. Ändere es und speichere.",
 };
 
 export default dict;

@@ -93,7 +93,7 @@ check (`app.check`) on each screen it reaches.
 | Next rehearsal: "From last time" with OK for admins, Live mode badge opens a song's earlier notes | `to-practise` | full |
 | New rehearsal: focus songs offered from open notes, one tap adds one | `to-practise` | full |
 | Rehearsal note lifecycle (mark → write → save → page → OK → reopen) | model `rehearsal-note` | phone-portrait |
-| Voice parts: lead, 2nd voice, backing, all and spoken lines drawn in their own style (no markers on screen), the legend, "Highlight my part" from the singer's instrument (on by default, one tap off) in Live mode; Duo Laptop on the floor wedge | `voice-parts` | all |
+| Voice parts: lead, 2nd voice, backing, all and spoken lines drawn in their own style (no markers on screen), the legend ("you" on my part), "Highlight my part" from the singer's instrument (on by default, one tap off, a one-time hint on why lines are dimmed) in Live mode; Duo Laptop on the floor wedge; an admin sets who sings what; the song form shows the words without markers and the parts stay on their lines | `voice-parts` | all |
 | The Home rehearsal card's "Enter live mode" / "Check in / live" open the same live mode (no separate local session) | vitest `RehearsalExpanded.live` | unit |
 
 ## Create

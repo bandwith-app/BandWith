@@ -34,7 +34,7 @@ import {
   type TextSection,
 } from '@/lib/songFormat';
 import { applyVoiceSuggestions, setLineVoice, suggestVoiceParts, VOICE_PARTS, wordVoices, type VoicePart } from '@/lib/voiceParts';
-import { voiceClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
+import { voiceClass, voiceLabelClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
 
 /**
  * The admin's chord editor for a band song (`songs.lyrics`): tap a word and
@@ -455,7 +455,7 @@ export const ChordEditor: React.FC = () => {
               {song && (
                 <>
                   <p className="bw-body-sm text-muted-foreground">
-                    {t('Tap a word to put a chord on it. Drag a chord to move it to another word.')}
+                    {t('Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.')}
                   </p>
                   {canTidy && (
                     <Card className="flex flex-col gap-2">
@@ -548,7 +548,7 @@ export const ChordEditor: React.FC = () => {
                               selVoice === v && 'bg-foreground text-background',
                             )}
                           >
-                            <span className={selVoice === v ? undefined : voiceClass(v)}>{voicePartLabel(v, t)}</span>
+                            <span className={selVoice === v ? 'font-sans normal-case tracking-normal text-[15px]' : voiceLabelClass(v)}>{voicePartLabel(v, t)}</span>
                           </button>
                         ))}
                       </div>

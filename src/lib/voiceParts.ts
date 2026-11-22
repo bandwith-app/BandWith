@@ -242,6 +242,67 @@ export function setLineVoice(line: string, voice: VoicePart, range?: { from: num
   return serializeLine(model);
 }
 
+// ── Plain text boxes ───────────────────────────────────────────────────────
+
+/**
+ * Text boxes show the lyrics without markers (stripVoiceMarkers); this puts
+ * the parts back on the edited text. Unchanged lines get their marked line
+ * back; a changed line keeps its whole-line part (a typo fixed in a backing
+ * line stays backing, a backing line split in two stays backing on both
+ * halves); anything else is lead. Markers typed by hand are kept.
+ */
+export function keepVoiceParts(original: string | null | undefined, edited: string): string {
+  if (!edited || !hasVoiceMarkers(original)) return edited;
+  const old = normalizeVoiceLines((original || '').replace(/\r\n/g, '\n').split('\n'));
+  const plainOld = old.map(stripVoiceMarkers);
+  const next = edited.split('\n');
+  const out = next.slice();
+  const typed = next.map((l) => hasVoiceMarkers(l));
+  const same = (i: number, j: number) => {
+    if (!typed[j]) out[j] = old[i];
+  };
+  const wholeVoice = (line: string) => {
+    const v = lineVoice(line);
+    return v === 'lead' || v === 'mixed' ? null : v;
+  };
+  // Wrapped as typed (spaces kept), so the box shows exactly what was typed;
+  // normalizeLyrics tidies it on save.
+  const wrap = (j: number, v: VoicePart | null) => {
+    const line = next[j];
+    if (!v || typed[j] || !line.trim() || isHeadingLine(line)) return;
+    const [, lead, core, trail] = line.match(/^(\s*)(.*?)(\s*)$/)!;
+    out[j] = `${lead}{${v}}${core}{/${v}}${trail}`;
+  };
+
+  let s = 0;
+  while (s < old.length && s < next.length && plainOld[s] === next[s]) same(s, s), s++;
+  let eo = old.length;
+  let en = next.length;
+  while (eo > s && en > s && plainOld[eo - 1] === next[en - 1]) same(--eo, --en);
+
+  const midOld = old.slice(s, eo);
+  const midLen = en - s;
+  if (midOld.length === midLen) {
+    // Lines edited in place keep their part.
+    midOld.forEach((line, k) => wrap(s + k, wholeVoice(line)));
+  } else if (midOld.length === 1) {
+    // One line split (or grown) into several: they all keep its part.
+    for (let j = s; j < en; j++) wrap(j, wholeVoice(midOld[0]));
+  } else {
+    // Lines moved or pasted: same words, same part.
+    const pool = new Map<string, string[]>();
+    midOld.forEach((line) => {
+      const key = stripVoiceMarkers(line);
+      pool.set(key, [...(pool.get(key) ?? []), line]);
+    });
+    for (let j = s; j < en; j++) {
+      const hit = pool.get(next[j])?.shift();
+      if (hit && !typed[j]) out[j] = hit;
+    }
+  }
+  return out.join('\n');
+}
+
 // ── Suggestions on paste / import ──────────────────────────────────────────
 
 export interface VoiceSuggestion {
