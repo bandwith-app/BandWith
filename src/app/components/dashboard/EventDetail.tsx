@@ -800,7 +800,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         onAsk={() => setPackSheetOpen(true)}
         pending={packPending}
       />
-      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} />}
+      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} currentUserId={currentUserId} selfReady={!!livePack} />}
     </>
   ) : null;
   const rehearsalSession = useRehearsalSession({

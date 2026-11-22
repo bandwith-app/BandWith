@@ -49,6 +49,19 @@ describe('Offline: N of M members ready (plan §3.4)', () => {
     expect(screen.getByRole('button', { name: 'Remind Ava Brooks' })).toBeTruthy();
   });
 
+  it('the viewer counts as ready when this device has the setlist, and is never reminded', async () => {
+    render(<OfflineMembersRow eventId="ev-1" members={lineup} online currentUserId="u-2" selfReady />);
+    fireEvent.click(await screen.findByRole('button', { name: /Offline: 2 of 3 members ready/ }));
+    expect(screen.queryByRole('button', { name: 'Remind Luis Ortiz' })).toBeNull();
+  });
+
+  it('the viewer without it: "You", no Remind', async () => {
+    render(<OfflineMembersRow eventId="ev-1" members={lineup} online currentUserId="u-2" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Offline: 1 of 3 members ready/ }));
+    expect(screen.queryByRole('button', { name: 'Remind Luis Ortiz' })).toBeNull();
+    expect(screen.getByText('You')).toBeTruthy();
+  });
+
   it('everyone ready: nothing to open', async () => {
     m.status = [ready('u-1'), ready('u-2'), ready('u-4')];
     render(<OfflineMembersRow eventId="ev-1" members={lineup} online />);

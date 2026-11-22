@@ -9,9 +9,11 @@ import { fetchEventPackStatus, remindPackDownload, type MemberPackStatus } from 
 import type { ResolvedMember } from './parts';
 
 /** Who counts: the lineup with an account, minus those who declined. */
-export function offlineCounts(members: ResolvedMember[], status: MemberPackStatus[]) {
+export function offlineCounts(members: ResolvedMember[], status: MemberPackStatus[], self?: { userId?: string; ready?: boolean }) {
   const lineup = members.filter((m) => !!m.userId && m.status !== 'declined');
   const ready = new Set(status.map((s) => s.userId));
+  // The viewer's own phone may not have reported yet (web, first save): this device knows.
+  if (self?.userId && self.ready) ready.add(self.userId);
   const notReady = lineup.filter((m) => !ready.has(m.userId!));
   return { total: lineup.length, ready: lineup.length - notReady.length, notReady };
 }
@@ -25,8 +27,11 @@ export const OfflineMembersRow: React.FC<{
   eventId: string;
   members: ResolvedMember[];
   online: boolean;
+  /** The viewer: never reminded; counted as ready when this device holds the setlist. */
+  currentUserId?: string;
+  selfReady?: boolean;
   className?: string;
-}> = ({ eventId, members, online, className }) => {
+}> = ({ eventId, members, online, currentUserId, selfReady, className }) => {
   const t = useT();
   const [status, setStatus] = useState<MemberPackStatus[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -51,7 +56,10 @@ export const OfflineMembersRow: React.FC<{
     };
   }, [eventId]);
 
-  const counts = useMemo(() => offlineCounts(members, status ?? []), [members, status]);
+  const counts = useMemo(
+    () => offlineCounts(members, status ?? [], { userId: currentUserId, ready: selfReady }),
+    [members, status, currentUserId, selfReady],
+  );
   // No table yet (database without 170) or nobody to count: nothing to show.
   if (!status || counts.total === 0) return null;
 
@@ -85,10 +93,11 @@ export const OfflineMembersRow: React.FC<{
         <ul className="flex flex-col gap-2" aria-label={t('Not ready yet')}>
           {counts.notReady.map((m) => {
             const r = reminded[m.userId!];
+            const me = m.userId === currentUserId;
             return (
               <li key={m.userId} className="flex items-center gap-3 min-h-11">
-                <span className="bw-body-md flex-1 min-w-0 truncate">{m.name}</span>
-                {r === 'sent' ? (
+                <span className="bw-body-md flex-1 min-w-0 truncate">{me ? t('You') : m.name}</span>
+                {me ? null : r === 'sent' ? (
                   <span className="bw-label-sm text-muted-foreground" role="status">
                     {t('Reminded')}
                   </span>

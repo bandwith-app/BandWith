@@ -68,7 +68,7 @@ export const LivePackConsentSheet: React.FC<{
       zIndex={160}
       portal
       footer={
-        <div className="flex flex-col gap-2">
+        <div className="dark flex flex-col gap-2">
           <PillButton icon={<Download className="w-4 h-4" />} onClick={() => answer('auto')} disabled={!userId}>
             {t('Download and keep it automatic')}
           </PillButton>
