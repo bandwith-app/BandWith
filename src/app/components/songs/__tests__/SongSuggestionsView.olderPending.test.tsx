@@ -8,7 +8,13 @@ import { render, screen, cleanup, act, fireEvent, within } from '@testing-librar
 // open it. Now each tab asks the server for its own status, a page at a time,
 // and a notification's suggestion is fetched by id.
 type Row = Record<string, unknown>;
-const db = vi.hoisted(() => ({ rows: [] as Row[], holdKeyset: null as Promise<void> | null, band: 'band-1', inSizes: [] as number[] }));
+const db = vi.hoisted(() => ({
+  rows: [] as Row[], holdKeyset: null as Promise<void> | null, band: 'band-1', inSizes: [] as number[],
+  // The next first-page list request waits for the test (a slow refresh).
+  holdList: null as Promise<void> | null,
+  // The next fetch by id fails this many times.
+  failOne: 0,
+}));
 
 vi.mock('@/lib/supabase', () => {
   const query = (table: string) => {
@@ -52,8 +58,14 @@ vi.mock('@/lib/supabase', () => {
       single: () => ((one = true), b),
       // A slow "Load older" page: the next keyset request waits for the test.
       then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
-        const hold = keyset ? db.holdKeyset : null;
-        if (hold) db.holdKeyset = null;
+        if (one && table === 'song_suggestions' && db.failOne > 0) {
+          db.failOne--;
+          return Promise.resolve({ data: null, error: { message: 'Network request failed' } }).then(res, rej);
+        }
+        const list = table === 'song_suggestions' && !keyset && !head && !one;
+        const hold = keyset ? db.holdKeyset : list ? db.holdList : null;
+        if (hold && keyset) db.holdKeyset = null;
+        if (hold && list) db.holdList = null;
         return (hold ?? Promise.resolve()).then(run).then(res, rej);
       },
     };
@@ -86,6 +98,8 @@ afterEach(() => {
   cleanup();
   db.band = 'band-1';
   db.holdKeyset = null;
+  db.holdList = null;
+  db.failOne = 0;
 });
 
 describe('Suggestions: an older pending one stays reachable', () => {
@@ -223,5 +237,42 @@ describe('Suggestions: an older pending one stays reachable', () => {
     expect(within(screen.getByRole('dialog')).getAllByText('Old correction · Harlem Nocturne')).toHaveLength(1);
     fireEvent.click(tabs().getByRole('button', { name: /^Waiting/ }));
     expect(within(screen.getByRole('dialog')).queryByText('Old correction · Harlem Nocturne')).toBeNull();
+  });
+
+  it('the notification target fails to load: error with Try again, the target is kept (Codex review of f32a26e7)', { timeout: 30_000 }, async () => {
+    seed();
+    db.rows.push(row(-5, 'accepted', 'Very old reviewed · Brooklyn Bridge'));
+    db.failOne = 1;
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions({ suggestionId: 'sg--5' }));
+    expect(await screen.findByText('Could not load this suggestion.')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Try again' })));
+    expect(await screen.findByRole('heading', { name: 'Very old reviewed · Brooklyn Bridge' })).toBeTruthy();
+    expect(screen.queryByText('Could not load this suggestion.')).toBeNull();
+  });
+
+  it('a refresh that started before "Load older" keeps the older rows (Codex review of f32a26e7)', { timeout: 30_000 }, async () => {
+    seed();
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    fireEvent.click(await screen.findByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 230');
+    // A refresh starts and hangs on its first page.
+    let release!: () => void;
+    db.holdList = new Promise<void>((r) => (release = r));
+    // (Edited elsewhere: no row added, so the refresh reads the first page only.)
+    db.rows.find((r) => r.id === 'sg-230')!.song_title = 'Reviewed 230 · edited';
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    // Meanwhile the user loads older rows.
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    await screen.findByText('Reviewed 130');
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(await screen.findByText('Reviewed 230 · edited')).toBeTruthy();
+    expect(screen.getByText('Reviewed 130')).toBeTruthy();
+    expect(screen.getByText('Reviewed 31')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Load older suggestions' })).toBeTruthy();
   });
 });

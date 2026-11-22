@@ -91,6 +91,11 @@ export const SongSuggestionsView: React.FC = () => {
   scopeRef.current = scope;
   const pagesScope = React.useRef<string | null>(null);
   const loadSeq = React.useRef(0);
+  // Bumped by each "Load older" page: a refresh that started before it
+  // merges those rows instead of replacing them.
+  const moreGen = React.useRef(0);
+  // The notification target that failed to load (kept selected, with Try again).
+  const [focusError, setFocusError] = React.useState<string | null>(null);
 
   const loadSongs = React.useCallback(async (list: SongSuggestion[]) => {
     const ids = [...new Set(list.map((s) => s.song_id).filter((id): id is string => !!id))];
@@ -135,6 +140,7 @@ export const SongSuggestionsView: React.FC = () => {
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
     const seq = ++loadSeq.current;
+    const gen = moreGen.current;
     const forScope = scope;
     const shown = pagesScope.current === forScope ? pagesRef.current : { pending: [], reviewed: [] };
     const [p, r, nPending, nReviewed] = await Promise.all([
@@ -151,16 +157,31 @@ export const SongSuggestionsView: React.FC = () => {
       return;
     }
     let one: SongSuggestion | null = null;
+    let oneFailed = false;
     if (focusId && !p.data.some((s) => s.id === focusId) && !r.data.some((s) => s.id === focusId)) {
-      const { data } = await getSongSuggestion(focusId);
+      const { data, error } = await getSongSuggestion(focusId);
       if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
-      if (data && data.band_id === bandId && data.status !== 'withdrawn') one = data;
+      if (error) oneFailed = true;
+      else if (data && data.band_id === bandId && data.status !== 'withdrawn') one = data;
     }
     setLoadError(null);
+    setFocusError(oneFailed && focusId ? focusId : null);
+    const samePages = pagesScope.current === forScope;
     pagesScope.current = forScope;
-    setPages({ pending: p.data, reviewed: r.data });
-    setMore({ pending: p.more, reviewed: r.more });
-    setExtra(one);
+    if (samePages && moreGen.current !== gen) {
+      // "Load older" added rows while this ran: keep the ones past its range.
+      const merge = (prev: SongSuggestion[], fresh: SongSuggestion[]) => {
+        const last = fresh[fresh.length - 1];
+        const ids = new Set(fresh.map((s) => s.id));
+        return [...fresh, ...prev.filter((s) => !ids.has(s.id) && (!last || olderThan(s, last)))];
+      };
+      setPages((prev) => ({ pending: merge(prev.pending, p.data), reviewed: merge(prev.reviewed, r.data) }));
+    } else {
+      setPages({ pending: p.data, reviewed: r.data });
+      setMore({ pending: p.more, reviewed: r.more });
+    }
+    // A failed fetch keeps what was shown for the target.
+    setExtra((prev) => one ?? (oneFailed && prev?.id === focusId ? prev : null));
     setTotals({ pending: nPending, reviewed: nReviewed });
     setLoadedFor({ focus: focusId });
     await loadSongs([...p.data, ...r.data, ...(one ? [one] : [])]);
@@ -175,6 +196,7 @@ export const SongSuggestionsView: React.FC = () => {
     setTotals({ pending: null, reviewed: null });
     setExtra(null);
     setLoadedFor(null);
+    setFocusError(null);
     pagesScope.current = null;
   }, [scope]);
   const showMore = async () => {
@@ -192,6 +214,7 @@ export const SongSuggestionsView: React.FC = () => {
       return;
     }
     const page = data.slice(0, PAGE);
+    moreGen.current++;
     setPages((prev) => ({ ...prev, [forTab]: [...prev[forTab], ...page.filter((s) => !prev[forTab].some((x) => x.id === s.id))] }));
     setMore((prev) => ({ ...prev, [forTab]: data.length > PAGE }));
     void loadSongs(page);
@@ -239,9 +262,9 @@ export const SongSuggestionsView: React.FC = () => {
   // Opened from a notification on a suggestion that is no longer listed (once
   // the items were loaded for it: before that it is still being fetched).
   React.useEffect(() => {
-    if (!items || !selectedId || loadedFor?.focus !== focusId) return;
+    if (!items || !selectedId || loadedFor?.focus !== focusId || focusError === selectedId) return;
     if (!items.some((s) => s.id === selectedId)) setSelectedId(null);
-  }, [items, selectedId, loadedFor, focusId]);
+  }, [items, selectedId, loadedFor, focusId, focusError]);
 
   const back = () => {
     if (selected) setSelectedId(null);
@@ -303,6 +326,14 @@ export const SongSuggestionsView: React.FC = () => {
               </ScreenHeader>
               <div className="flex flex-col gap-3 px-4 pt-3 w-full" style={{ paddingBottom: 'calc(var(--safe-bottom) + 32px)' }}>
                 {loadError && <FormError>{loadError}</FormError>}
+                {focusError && focusError === selectedId && (
+                  <div className="flex flex-col items-start gap-2">
+                    <FormError>{t('Could not load this suggestion.')}</FormError>
+                    <PillButton size="md" variant="outline" onClick={() => void load()}>
+                      {t('Try again')}
+                    </PillButton>
+                  </div>
+                )}
                 {items && shown.length === 0 && (
                   <Card className="items-center text-center py-10 gap-3">
                     <StickyNote className="w-9 h-9 text-muted-foreground" />

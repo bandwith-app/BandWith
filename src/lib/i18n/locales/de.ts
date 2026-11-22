@@ -3992,6 +3992,7 @@ const dict: Dictionary = {
   "Chords go in brackets before the word: [Am]word.": "Akkorde stehen in eckigen Klammern vor dem Wort: [Am]Wort.",
   "Corrections to lyrics or chords, notes for the band": "Korrekturen an Text oder Akkorden, Notizen für die Band",
   "Could not load the suggestions.": "Die Vorschläge konnten nicht geladen werden.",
+  "Could not load this suggestion.": "Dieser Vorschlag konnte nicht geladen werden.",
   "Could not save the review.": "Die Prüfung konnte nicht gespeichert werden.",
   "Could not send the suggestion.": "Der Vorschlag konnte nicht gesendet werden.",
   "Could not withdraw the suggestion.": "Der Vorschlag konnte nicht zurückgezogen werden.",
