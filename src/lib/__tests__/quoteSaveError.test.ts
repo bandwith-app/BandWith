@@ -24,3 +24,17 @@ describe('quoteErrorText', () => {
     expect(QuotesExpandedSource).toMatch(/return quoteErrorText\(err, fallback, t\)/);
   });
 });
+
+// Round 4: an accepted quote keeps its client, a paid quote its currency.
+// The app's own words (its 5 languages), whatever the database language.
+describe('quoteErrorText: accepted quote, currency of recorded payments', () => {
+  const tp = (k: string, p?: Record<string, string>) => (p ? k.replace(/\{(\w+)\}/g, (_, n) => p[n] ?? '') : k);
+  it('a new client on an accepted quote: duplicate it', () => {
+    const e = { code: 'P0001', message: 'Questo preventivo è stato accettato…', hint: 'BW_QUOTE_ACCEPTED' };
+    expect(quoteErrorText(e, 'Failed to update quote', tp)).toBe('This quote has been accepted: to send it to someone else, duplicate it.');
+  });
+  it('another currency on a quote with payments: names the currency', () => {
+    const e = { code: 'P0001', message: 'This quote has payments recorded in USD…', hint: 'BW_QUOTE_CURRENCY_LOCKED', details: 'USD' };
+    expect(quoteErrorText(e, 'Failed to update quote', tp)).toBe('This quote has payments recorded in USD, so its currency can’t be changed.');
+  });
+});

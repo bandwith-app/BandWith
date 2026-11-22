@@ -15,6 +15,7 @@
 
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
+import { rememberFocus, restoreFocus } from './quote/focus';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -520,7 +521,8 @@ function statusCard(v: QuoteLinkView) {
     );
   }
   if (stale) {
-    return h('section', { class: 'card ink', role: 'alert' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
+    // Round 4: a polite status: it arrives on a refresh, while the client may be typing.
+    return h('section', { class: 'card ink', role: 'status' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
   }
   if (v.status === 'declined') {
     return h(
@@ -662,8 +664,11 @@ function poll() {
         JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount, b.deposit_paid_currency]);
       if (next && changed(next, view)) {
         readFields();
+        // Round 4: the field the client is typing in stays focused, caret and all.
+        const mark = rememberFocus();
         applyView(next, true);
         render();
+        restoreFocus(mark);
       }
     } catch {
       /* try again next time */

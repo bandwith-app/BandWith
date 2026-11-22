@@ -199,8 +199,8 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         const optimistic = { ...existing, ...quoteData, quoteNumber: existing.quoteNumber } as MockQuote;
         setQuotes(prev => prev.map(q => (q.id === existing.id ? optimistic : q)));
 
-        // Not the status the wizard was opened with: the server may have moved it on (183).
-        const updates = quoteUpdateRecord(quoteData, currentBandId);
+        // Only what changed, never the status the wizard was opened with (183).
+        const updates = quoteUpdateRecord(quoteData, currentBandId, existing);
         const { data, error } = await updateQuoteDB(existing.id, updates);
         if (error || !data) {
           setQuotes(previous);

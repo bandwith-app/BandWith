@@ -209,7 +209,26 @@ export function clientQuoteItems(quote: Partial<Quote>, lang: Locale, defaults: 
  * (src/lib/services/quotePdf.ts), in `lang`. Nothing internal: no
  * musician names or fees, no internal notes.
  */
+/** FNV-1a, 32 bits: a short key, not a secret. */
+const contentHash = (text: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${h.toString(16).padStart(8, '0')}${text.length.toString(16)}`;
+};
+
+/**
+ * What the client sees, in their language. `contentKey` (round 4): the same
+ * quote in any language has the same key, so the server keeps the version
+ * (and the client's "I accept") when only the language changed.
+ */
 export function buildClientQuoteSnapshot(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults = {}): ClientQuoteSnapshot {
+  return { ...snapshotIn(quote, lang, defaults), contentKey: contentHash(JSON.stringify(snapshotIn(quote, 'en', defaults))) };
+}
+
+function snapshotIn(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults): ClientQuoteSnapshot {
   const tr = (s: string, vars?: TranslateVars) => translate(lang, s, vars);
   const currency = (quote.currency || 'EUR').toUpperCase();
   const sym = currencySymbol(currency);
@@ -359,11 +378,14 @@ export async function publishQuoteLink(
   lang: Locale,
   pdfUrl?: string | null,
   token?: string | null,
+  /** Round 4: the version the screen shows; another one published since: refused (isVersionChangedError). */
+  version?: number | null,
 ): Promise<Result<{ token: string; status: QuoteLinkStatus; version: number; revoked: boolean }>> {
   const args = { p_quote_id: quoteId, p_snapshot: snapshot, p_lang: lang, p_pdf_url: pdfUrl || null };
-  let { data, error } = await supabase.rpc('bw_quote_link_publish', token ? { ...args, p_token: token } : args);
-  // A database before 183 has no p_token: publish as before.
-  if (error && token && missingParam(error)) {
+  const extra = { ...(token ? { p_token: token } : {}), ...(typeof version === 'number' ? { p_version: version } : {}) };
+  let { data, error } = await supabase.rpc('bw_quote_link_publish', { ...args, ...extra });
+  // A database before 183 has no p_token / p_version: publish as before.
+  if (error && Object.keys(extra).length && missingParam(error)) {
     ({ data, error } = await supabase.rpc('bw_quote_link_publish', args));
   }
   if (error) return { data: null, error: asError(error) };
@@ -424,11 +446,18 @@ export interface QuoteContact {
   client_name: string | null;
   client_email: string | null;
   client_phone: string | null;
+  /** Round 4: the price saved now (a sheet opened on an older copy publishes nothing). */
+  total?: number | string | null;
+  currency?: string | null;
 }
 
 /** 183: who the quote is for, as saved now (the share sheet never sends from an older copy). */
 export async function getQuoteContact(quoteId: string): Promise<Result<QuoteContact | null>> {
-  const { data, error } = await supabase.from('quotes').select('client_name, client_email, client_phone').eq('id', quoteId).maybeSingle();
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('client_name, client_email, client_phone, total, currency')
+    .eq('id', quoteId)
+    .maybeSingle();
   return error ? { data: null, error: asError(error) } : { data: (data as QuoteContact | null) ?? null, error: null };
 }
 
@@ -446,6 +475,23 @@ const contactKey = (name?: string | null, email?: string | null, phone?: string 
 export const sameQuoteContact = (saved: QuoteContact, quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone'>>) =>
   contactKey(saved.client_name === 'Client' && !quote.clientName ? '' : saved.client_name, saved.client_email, saved.client_phone) ===
   contactKey(quote.clientName, quote.clientEmail, quote.clientPhone);
+
+/**
+ * Round 4: and its price as saved now (total and currency, when both sides
+ * have them): another admin's edit since this copy was made is never
+ * published from it.
+ */
+export const sameQuoteTerms = (
+  saved: QuoteContact,
+  quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone' | 'total' | 'currency'>>,
+) => {
+  if (!sameQuoteContact(saved, quote)) return false;
+  const cents = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100));
+  const [a, b] = [cents(saved.total), cents(quote.total)];
+  if (a !== null && b !== null && a !== b) return false;
+  const [x, y] = [(saved.currency || '').trim().toUpperCase(), (quote.currency || '').trim().toUpperCase()];
+  return !x || !y || x === y;
+};
 
 /** The link (if any) and the timeline of a quote. Admins only (RLS). */
 export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link: QuoteLinkRow | null; activity: QuoteActivity[] }>> {
@@ -483,9 +529,12 @@ export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link:
 export async function sendQuoteEmail(
   quoteId: string,
   kind: QuoteMessageKind | 'reply',
+  /** Round 4: the link the email is for; replaced since (another client): nothing is sent (code link_changed). */
+  linkId?: string | null,
 ): Promise<{ ok: boolean; code?: string; error?: Error }> {
+  const link = linkId ? { linkId } : {};
   const { data, error } = await supabase.functions.invoke('send-email', {
-    body: kind === 'reply' ? { type: 'quote_reply', data: { quoteId } } : { type: 'quote_link', data: { quoteId, kind } },
+    body: kind === 'reply' ? { type: 'quote_reply', data: { quoteId, ...link } } : { type: 'quote_link', data: { quoteId, kind, ...link } },
   });
   if (error) {
     let code: string | undefined;
@@ -585,8 +634,14 @@ export async function getBalanceGig(quoteId: string, eventId?: string | null): P
  * language, link and amount come from the database). Codes as
  * sendQuoteEmail, plus 'no_balance'.
  */
-export async function sendQuoteBalanceEmail(quoteId: string, kind: 'sent' | 'updated' | 'reminder') {
-  const { data, error } = await supabase.functions.invoke('send-email', { body: { type: 'quote_balance', data: { quoteId, kind } } });
+export async function sendQuoteBalanceEmail(
+  quoteId: string,
+  kind: 'sent' | 'updated' | 'reminder',
+  /** Round 4: the balance version the screen shows; another one on the page now: nothing is sent (code balance_changed). */
+  balanceVersion?: number | null,
+) {
+  const seen = typeof balanceVersion === 'number' ? { balanceVersion } : {};
+  const { data, error } = await supabase.functions.invoke('send-email', { body: { type: 'quote_balance', data: { quoteId, kind, ...seen } } });
   if (error) {
     let code: string | undefined;
     try {

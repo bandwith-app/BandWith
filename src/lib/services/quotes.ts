@@ -122,6 +122,8 @@ export interface Quote {
   created_by?: string;
   created_at: string;
   updated_at: string;
+  /** Write-only (183 round 4): when the editing screen read the quote; the server clears it. */
+  edit_base_at?: string | null;
 }
 
 export interface QuoteMusician {
@@ -313,12 +315,13 @@ export const updateQuote = async (
   updates: Partial<Quote>
 ): Promise<{ data: Quote | null; error: Error | null }> => {
   try {
-    const { data, error } = await supabase
-      .from('quotes')
-      .update(updates)
-      .eq('id', quoteId)
-      .select()
-      .single();
+    const run = (u: Partial<Quote>) => supabase.from('quotes').update(u).eq('id', quoteId).select().single();
+    let { data, error } = await run(updates);
+    // A database before 183 has no edit_base_at: the same edit without it.
+    if (error && updates.edit_base_at && /edit_base_at/.test(error.message || '')) {
+      const { edit_base_at: _base, ...rest } = updates;
+      ({ data, error } = await run(rest));
+    }
 
     if (error) throw error;
 
@@ -909,21 +912,38 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
 };
 
 /**
- * The columns an edit of an existing quote writes: as appQuoteToDbRecord,
- * without the band, the status and the send time. The wizard only echoes
- * the status it was opened with; writing it back could restore the old
- * client's status after the server moved the quote on (183: new recipient).
+ * The columns an edit of an existing quote writes (round 4): only those
+ * whose value changed from `original`, the quote as the screen read it.
+ * A field the user cleared goes out as null (undefined would be left out of
+ * the UPDATE by supabase-js, and the old value, maybe the previous client's
+ * company or notes, would stay); a field the edit does not carry (not in
+ * `q`) keeps what the quote has. Never the band, the status or the send
+ * time: the wizard only echoes the status it was opened with, and writing
+ * it back could restore the old client's status after the server moved the
+ * quote on (183: new recipient). `edit_base_at`: when the screen read the
+ * quote, so the server refuses a contact edit made on a copy older than a
+ * change of client (183).
  */
-export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string): Partial<Quote> => {
-  const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = appQuoteToDbRecord(q, bandId);
-  // A field the wizard has empty is cleared (null): undefined would be left
-  // out of the UPDATE (supabase-js drops it) and the old value, maybe the
-  // previous client's company or notes, would stay. The yes/no fields the
-  // wizard may not have touched keep what they have.
-  const out: Record<string, unknown> = { ...rest };
-  for (const [key, value] of Object.entries(out)) {
-    if (value === undefined && !KEEP_WHEN_UNSET.has(key)) out[key] = null;
+export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original: Partial<AppQuote>): Partial<Quote> => {
+  const strip = (r: Partial<Quote>) => {
+    const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = r;
+    return rest as Record<string, unknown>;
+  };
+  const before = strip(appQuoteToDbRecord(original, bandId));
+  // A key the edit leaves undefined is one it does not carry (not one it cleared: '' or null).
+  const carried = Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined)) as Partial<AppQuote>;
+  const after = strip(appQuoteToDbRecord({ ...original, ...carried }, bandId));
+  // Without the time the screen read the quote (never for a quote loaded
+  // from the database) the whole form goes out, as before round 4: the
+  // server then treats it as a full save.
+  const full = !original.updatedAt;
+  const out: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (!full && JSON.stringify(after[key] ?? null) === JSON.stringify(before[key] ?? null)) continue;
+    if (after[key] === undefined && KEEP_WHEN_UNSET.has(key)) continue;
+    out[key] = after[key] === undefined ? null : after[key];
   }
+  if (!full) out.edit_base_at = original.updatedAt;
   return out as Partial<Quote>;
 };
 

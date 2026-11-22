@@ -27,6 +27,7 @@ import {
   type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
+import { type ClaimClient, claimQuoteEmailSlot, staleBalanceVersion } from "../_shared/quote-email-claim.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain
@@ -405,6 +406,25 @@ interface QuoteLinkRow {
   snapshot: Record<string, unknown> | null;
   revoked_at: string | null;
   last_emailed_at: string | null;
+  /** Round 4 (183): who this link was published for: the email goes here. */
+  recipient_email: string | null;
+  recipient_name: string | null;
+  quote: { quote_number: string | null; event_name: string | null } | null;
+}
+
+const QUOTE_LINK_COLUMNS =
+  "id, band_id, token, lang, version, pdf_url, pdf_version, snapshot, revoked_at, last_emailed_at, recipient_email, recipient_name, " +
+  "quote:quotes(quote_number, event_name)";
+
+/**
+ * The link and its recipient in one read (round 4): by the link the app
+ * holds when it sends one (`linkId`), else the quote's link. A link replaced
+ * since (the quote went to another client) is not found: nothing is sent.
+ */
+async function readQuoteLink<T>(admin: SupabaseClient, quoteId: string, linkId: string | null, extra = "") {
+  const q = admin.from("quote_links").select(QUOTE_LINK_COLUMNS + extra).eq("quote_id", quoteId);
+  const { data } = await (linkId ? q.eq("id", linkId) : q).maybeSingle();
+  return data as T | null;
 }
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -437,20 +457,17 @@ async function sendQuoteClientEmail(
   admin: SupabaseClient,
   caller: Caller,
   type: "quote_link" | "quote_reply",
-  data: { quoteId?: unknown; kind?: unknown },
+  data: { quoteId?: unknown; kind?: unknown; linkId?: unknown },
 ) {
   if (caller.kind !== "user") throw new HttpError(403, "Quote emails are sent from the app");
   const quoteId = typeof data?.quoteId === "string" && UUID_RE.test(data.quoteId) ? data.quoteId : null;
   if (!quoteId) throw new HttpError(400, "Missing quote");
+  const linkId = typeof data?.linkId === "string" && UUID_RE.test(data.linkId) ? data.linkId : null;
   const kind: QuoteEmailKind =
     type === "quote_reply" ? "reply" : data?.kind === "reminder" ? "reminder" : data?.kind === "updated" ? "updated" : "sent";
 
-  const { data: linkRow } = await admin
-    .from("quote_links")
-    .select("id, band_id, token, lang, version, pdf_url, pdf_version, snapshot, revoked_at, last_emailed_at")
-    .eq("quote_id", quoteId)
-    .maybeSingle();
-  const link = linkRow as QuoteLinkRow | null;
+  const link = await readQuoteLink<QuoteLinkRow>(admin, quoteId, linkId);
+  if (!link && linkId) return jsonResponse({ success: false, code: "link_changed", error: "The quote went to another client" }, 410);
   if (!link) throw new HttpError(404, "This quote has no client link");
   await requireBandAdmin(admin, caller.id, link.band_id);
   if (link.revoked_at) throw new HttpError(410, "The client link is turned off");
@@ -461,14 +478,11 @@ async function sendQuoteClientEmail(
     return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
   }
 
-  const { data: quote } = await admin
-    .from("quotes")
-    .select("client_email, client_name, quote_number, event_name")
-    .eq("id", quoteId)
-    .eq("band_id", link.band_id)
-    .maybeSingle();
+  const quote = link.quote;
   if (!quote) throw new HttpError(404, "Quote not found");
-  const to = String(quote.client_email ?? "").trim().toLowerCase();
+  // Round 4: the client this link was published for, never the quote's
+  // contact now (it may already be the next client's).
+  const to = String(link.recipient_email ?? "").trim().toLowerCase();
   if (!EMAIL_RE.test(to)) return jsonResponse({ success: false, code: "no_client_email", error: "The quote has no client email" }, 400);
 
   let reply = "";
@@ -506,7 +520,7 @@ async function sendQuoteClientEmail(
       event: clean(snap.title ?? quote.event_name, ref),
       date: quoteEmailDate(snap.date, lang),
       total: clean(snap.totalLabel, ""),
-      clientName: clean(quote.client_name, ""),
+      clientName: clean(link.recipient_name, ""),
       to,
       url: `${appUrl()}/quote.html?t=${encodeURIComponent(link.token)}`,
       pdfAttached: !!pdf,
@@ -519,8 +533,10 @@ async function sendQuoteClientEmail(
   const { subject, html } = renderEmail(type === "quote_reply" ? "quote-reply" : "quote-link", vars);
   const filename = `${(ref || "quote").replace(/[^A-Za-z0-9._-]+/g, "-")}.pdf`;
 
-  // Claim the slot before sending so two taps don't send twice.
-  await admin.from("quote_links").update({ last_emailed_at: new Date().toISOString() }).eq("id", link.id);
+  // Round 4: the slot is taken before sending, by one conditional update:
+  // of two taps at the same moment only one gets the row and sends.
+  const slot = await claimQuoteEmailSlot(admin as unknown as ClaimClient, link.id, link.last_emailed_at, QUOTE_EMAIL_INTERVAL_MS);
+  if (!slot) return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
   console.log(`Sending ${type} (${kind}) email`);
   try {
     const result = await resend("/emails", {
@@ -533,7 +549,7 @@ async function sendQuoteClientEmail(
     });
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
-    await admin.from("quote_links").update({ last_emailed_at: link.last_emailed_at }).eq("id", link.id);
+    await slot.release();
     throw e;
   }
 }
@@ -547,39 +563,41 @@ async function sendQuoteClientEmail(
 async function sendQuoteBalanceEmail(
   admin: SupabaseClient,
   caller: Caller,
-  data: { quoteId?: unknown; kind?: unknown },
+  data: { quoteId?: unknown; kind?: unknown; linkId?: unknown; balanceVersion?: unknown },
 ) {
   if (caller.kind !== "user") throw new HttpError(403, "Quote emails are sent from the app");
   const quoteId = typeof data?.quoteId === "string" && UUID_RE.test(data.quoteId) ? data.quoteId : null;
   if (!quoteId) throw new HttpError(400, "Missing quote");
+  const linkId = typeof data?.linkId === "string" && UUID_RE.test(data.linkId) ? data.linkId : null;
   const kind: QuoteBalanceKind = data?.kind === "reminder" ? "reminder" : data?.kind === "updated" ? "updated" : "sent";
 
-  const { data: linkRow } = await admin
-    .from("quote_links")
-    .select("id, band_id, token, lang, status, snapshot, accepted_snapshot, revoked_at, last_emailed_at, balance, balance_paid_at")
-    .eq("quote_id", quoteId)
-    .maybeSingle();
-  const link = linkRow as
-    | (QuoteLinkRow & { status: string; accepted_snapshot: Record<string, unknown> | null; balance: Record<string, unknown> | null; balance_paid_at: string | null })
-    | null;
+  const link = await readQuoteLink<
+    QuoteLinkRow & {
+      status: string; accepted_snapshot: Record<string, unknown> | null; balance: Record<string, unknown> | null;
+      balance_paid_at: string | null; balance_version: number | null;
+    }
+  >(admin, quoteId, linkId, ", status, accepted_snapshot, balance, balance_paid_at, balance_version");
+  if (!link && linkId) return jsonResponse({ success: false, code: "link_changed", error: "The quote went to another client" }, 410);
   if (!link) throw new HttpError(404, "This quote has no client link");
   await requireBandAdmin(admin, caller.id, link.band_id);
   if (link.revoked_at) throw new HttpError(410, "The client link is turned off");
   if (link.status !== "accepted" || !link.balance || link.balance_paid_at || !(Number(link.balance.amount) > 0)) {
     return jsonResponse({ success: false, code: "no_balance", error: "There is no open balance to send" }, 409);
   }
+  // Round 4: the balance the admin's screen showed, not another admin's newer one.
+  if (staleBalanceVersion(data?.balanceVersion, link.balance_version)) {
+    return jsonResponse({ success: false, code: "balance_changed", error: "The balance was updated meanwhile" }, 409);
+  }
   if (link.last_emailed_at && Date.now() - new Date(link.last_emailed_at).getTime() < QUOTE_EMAIL_INTERVAL_MS) {
     return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
   }
 
-  const { data: quote } = await admin
-    .from("quotes")
-    .select("client_email, client_name, quote_number, event_name")
-    .eq("id", quoteId)
-    .eq("band_id", link.band_id)
-    .maybeSingle();
+  const quote = link.quote;
   if (!quote) throw new HttpError(404, "Quote not found");
-  const to = String(quote.client_email ?? "").trim().toLowerCase();
+  // Round 4: the client the link was published for (an accepted quote keeps
+  // its client: 183 refuses a new one, and a correction of the same client's
+  // contact is copied onto the link).
+  const to = String(link.recipient_email ?? "").trim().toLowerCase();
   if (!EMAIL_RE.test(to)) return jsonResponse({ success: false, code: "no_client_email", error: "The quote has no client email" }, 400);
 
   if (!RESEND_API_KEY) {
@@ -598,7 +616,7 @@ async function sendQuoteBalanceEmail(
       ref,
       event: clean(snap.title ?? quote.event_name, ref),
       date: quoteEmailDate(snap.date, lang),
-      clientName: clean(quote.client_name, ""),
+      clientName: clean(link.recipient_name, ""),
       to,
       url: `${appUrl()}/quote.html?t=${encodeURIComponent(link.token)}`,
       balance: link.balance,
@@ -607,8 +625,8 @@ async function sendQuoteBalanceEmail(
   };
   const { subject, html } = renderEmail("quote-balance", vars);
 
-  // Claim the slot before sending so two taps don't send twice.
-  await admin.from("quote_links").update({ last_emailed_at: new Date().toISOString() }).eq("id", link.id);
+  const slot = await claimQuoteEmailSlot(admin as unknown as ClaimClient, link.id, link.last_emailed_at, QUOTE_EMAIL_INTERVAL_MS);
+  if (!slot) return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
   console.log(`Sending quote_balance (${kind}) email`);
   try {
     const result = await resend("/emails", {
@@ -619,7 +637,7 @@ async function sendQuoteBalanceEmail(
     });
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
-    await admin.from("quote_links").update({ last_emailed_at: link.last_emailed_at }).eq("id", link.id);
+    await slot.release();
     throw e;
   }
 }

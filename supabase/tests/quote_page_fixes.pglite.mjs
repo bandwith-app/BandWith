@@ -64,6 +64,9 @@ CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, quote_id uuid, st
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title varchar, body text, data jsonb, created_at timestamptz DEFAULT now());
 GRANT SELECT, UPDATE ON public.quotes TO authenticated;
+-- As live (002): every update stamps updated_at (the app's read time for edit_base_at).
+CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN NEW.updated_at = now(); RETURN NEW; END $f$;
+CREATE TRIGGER update_quotes_updated_at BEFORE UPDATE ON public.quotes FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND role = 'admin' AND COALESCE(is_active, true)); $f$;
@@ -391,7 +394,8 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
     'an update without the client name clears no contact');
 }
 {
-  // R2-5: an accepted quote's email changes: the balance emails go to the new address.
+  // R4 (was R2-5): an accepted quote keeps its client. A new address is
+  // refused (duplicate it); the signed link, its balance and payments stay.
   const Q = await sentQuote();
   const T1 = await tokenOf(Q);
   const pdf = `https://abcd.supabase.co/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-0042_signed.pdf`;
@@ -399,22 +403,35 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   await asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Deposit sent today — Emma')`, [T1]));
   const before = await view(T1);
   await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, $2)`, [T1, before.version]));
-  // The old client's balance request, with a personal payment note, was on their link.
-  await db.exec(`UPDATE quote_links SET balance = '{"amount": 3700, "amountLabel": "$3,700", "note": "Emma, Venmo @emma-c is fine", "pdfUrl": "https://abcd.supabase.co/storage/v1/object/public/quotes/quotes/${BAND}/balance_A.pdf"}', balance_version = 1, balance_at = now(), balance_sent_at = now() WHERE quote_id = '${Q}'`);
-  await editClient(Q, `client_name = 'Emma Carter', client_email = 'accounts@brooklynevents.example'`);
-  const T2 = await tokenOf(Q);
-  ok(T2 !== T1 && (await view(T1)) === null, 'accepted, new address: the link the balance emails carry is a new one');
-  const l0 = await link(Q);
-  ok(l0.snapshot === null && l0.balance === null && l0.balance_sent_at === null && l0.pdf_url === null && (await view(T2)) === null,
-    `accepted, new address: the new link has nothing of the old client's, not even the balance or its PDF (${JSON.stringify(l0.balance)})`);
-  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3)`, [Q, snap(4200), T2]));
-  const v = await view(T2);
-  ok(v && v.status === 'accepted' && v.pdf_url === null && v.accepted_name === null && v.messages.length === 0 && v.balance === null,
-    `accepted, new address: no signer's PDF, signature, conversation or balance on it (${v && JSON.stringify({ pdf: v.pdf_url, name: v.accepted_name, m: v.messages.length, b: v.balance })})`);
-  const qs = (await q(`SELECT status FROM quotes WHERE id = $1`, [Q])).rows[0];
-  const old = (await qq(`SELECT status FROM quote_link_retired WHERE token = $1`, [T1])).rows[0];
-  ok((await link(Q)).status === 'accepted' && qs.status === 'accepted' && old && old.status === 'accepted',
-    'accepted, new address: the quote stays accepted for the band');
+  await db.exec(`UPDATE quote_links SET balance = '{"v": 1, "currency": "USD", "amount": 3700, "amountLabel": "$3,700", "note": "Venmo @emma-c is fine"}', balance_version = 1, balance_at = now(), balance_sent_at = now() WHERE quote_id = '${Q}'`);
+  const refused = await editClient(Q, `client_name = 'Emma Carter', client_email = 'accounts@brooklynevents.example'`)
+    .then(() => null, (e) => e);
+  ok(refused && refused.hint === 'BW_QUOTE_ACCEPTED' && /duplicate it/.test(refused.message),
+    `accepted, another address: refused, "duplicate it" (${refused && refused.message})`);
+  const kept = await link(Q);
+  const qs = (await q(`SELECT status, client_email FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(kept.token === T1 && kept.status === 'accepted' && qs.status === 'accepted' && qs.client_email === 'emma.carter@example.com',
+    'accepted, another address: nothing changed, the signed link stays');
+  const v = await view(T1);
+  ok(v && v.status === 'accepted' && v.balance && Number(v.balance.amount) === 3700 && v.messages.length === 1,
+    `accepted: the balance and the conversation still work on the signed link (${v && JSON.stringify({ b: v.balance && v.balance.amount, m: v.messages.length })})`);
+  // A correction of the same client keeps the link; its emails follow the correction.
+  await editClient(Q, `client_name = 'Emma Carter-Ross', client_email = ' Emma.Carter@Example.com '`);
+  const fixed = await link(Q);
+  ok(fixed.token === T1 && fixed.recipient_name === 'Emma Carter-Ross' && fixed.recipient_email === 'emma.carter@example.com',
+    `accepted, same client corrected: link kept, its recipient follows (${fixed.recipient_name}, ${fixed.recipient_email})`);
+  const EV = id(950);
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status, payment_status, deposit_amount, currency) VALUES ('${EV}', '${BAND}', '${Q}', 'tentative', 'pending', 500, 'USD')`);
+  const dep = await asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 300, true) r`, [Q])).then(() => 'ok', (e) => e.message);
+  ok(dep === 'ok' && (await view(T1))?.deposit_paid === true, `accepted: the deposit is still recorded on it (${dep})`);
+  // A phone-only accepted quote: the same number with its trunk 0 or country code is a fix; another number is refused.
+  const P = await sentQuote({ email: null, phone: '06 12 34 56 78' });
+  const TP = await tokenOf(P);
+  await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1)`, [TP]));
+  const same = await editClient(P, `client_phone = '+33 6 12 34 56 78'`).then(() => 'ok', (e) => e.message);
+  ok(same === 'ok' && (await tokenOf(P)) === TP, `accepted, 06… written as +33 6…: a fix, link kept (${same})`);
+  const other = await editClient(P, `client_phone = '+33 6 99 88 77 66'`).then(() => null, (e) => e);
+  ok(other && other.hint === 'BW_QUOTE_ACCEPTED' && (await tokenOf(P)) === TP, 'accepted, another phone: refused');
 }
 {
   // R2-6: lock order. A save of the quote locks the quote, then the link; the
@@ -650,6 +667,101 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   v = await view(T);
   ok(v.deposit_paid === true && (v.deposit_paid_amount ?? null) === null,
     `received without an amount: no amount, not the 500 asked (got ${v.deposit_paid_amount})`);
+}
+
+// ---------------------------------------------------------------- round 4
+{
+  // R4-1 phones: the trunk 0, at least 9 digits, the earlier false matches.
+  const same = async (a, b) => (await q(`SELECT public.bw_same_phone($1, $2) s`, [a, b]).then((r) => r.rows[0].s, (e) => e.message));
+  ok((await same('06 12 34 56 78', '+33 6 12 34 56 78')) === true, 'bw_same_phone: FR 06 12 34 56 78 = +33 6 12 34 56 78');
+  ok((await same('030 1234567', '+49 30 1234567')) === true, 'bw_same_phone: DE 030 1234567 = +49 30 1234567');
+  ok((await same('07700 900123', '+44 7700 900123')) === true, 'bw_same_phone: UK 07700 900123 = +44 7700 900123');
+  ok((await same('(917) 555-0101', '+1 917 555 0101')) === true, 'bw_same_phone: US (917) 555-0101 = +1 917 555 0101');
+  ok((await same('06 1234 5678', '+39 06 1234 5678')) === true, 'bw_same_phone: IT 06 1234 5678 = +39 06 1234 5678 (the 0 stays)');
+  ok((await same('+1 9175550101', '+91 9175550101')) === false, 'bw_same_phone: +1 9175550101 is not +91 9175550101');
+  ok((await same('555-0101', '+1 646 555 0101')) === false && (await same('0555 0101', '+1 646 555 0101')) === false,
+    'bw_same_phone: a 7-digit local number is not a full number (with or without a 0)');
+  ok((await same('06 12 34 56 78', '+33 6 99 88 77 66')) === false, 'bw_same_phone: another FR number is not the same');
+}
+{
+  // R4-2 stale guard, the newer wizard's payload (only what changed, no status).
+  const Q = await sentQuote({ email: 'emma.carter@example.com' });
+  const readAt = (await q(`SELECT updated_at FROM quotes WHERE id = $1`, [Q])).rows[0].updated_at.toISOString();
+  await new Promise((r) => setTimeout(r, 5));
+  // Admin B gives the quote to Jordan.
+  await editClient(Q, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`);
+  // Admin A, on the screen read before: a phone change is refused.
+  const stale = await editClient(Q, `client_phone = '+1 917 555 0101', edit_base_at = '${readAt}'`).then(() => null, (e) => e);
+  ok(stale && stale.code === '40001', `edit made on a screen read before the new client: refused (${stale && stale.message})`);
+  const qs = (await q(`SELECT client_phone, client_email FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(qs.client_phone === null && qs.client_email === 'jordan@brooklynevents.example', 'nothing of the stale edit was written');
+  // The same screen changing only the fee: no contact touched, it goes through.
+  const fee = await editClient(Q, `base_fee = 4300, edit_base_at = '${readAt}'`).then(() => 'ok', (e) => e.message);
+  const after = (await qq(`SELECT base_fee, edit_base_at, client_email FROM quotes WHERE id = $1`, [Q])).rows[0] || {};
+  ok(fee === 'ok' && Number(after.base_fee) === 4300 && after.edit_base_at === null && after.client_email === 'jordan@brooklynevents.example',
+    `a stale screen's fee-only edit goes through and edit_base_at is never stored (${fee})`);
+  // A screen read after the change: its contact edit goes through.
+  const fresh = (await q(`SELECT updated_at FROM quotes WHERE id = $1`, [Q])).rows[0].updated_at.toISOString();
+  const ok2 = await editClient(Q, `client_phone = '+1 646 555 0199', edit_base_at = '${fresh}'`).then(() => 'ok', (e) => e.message);
+  ok(ok2 === 'ok', `a screen read after the new client: its contact edit goes through (${ok2})`);
+  // A newer build writing name, fee and items (all changed) clears nothing it left out.
+  const full = await editClient(Q, `client_name = 'Jordan A. Lee', base_fee = 4400, custom_items = '[{"d":"Ceremony"}]', edit_base_at = '${fresh}'`)
+    .then(() => 'ok', (e) => e.message);
+  const kept = (await q(`SELECT client_phone, client_email FROM quotes WHERE id = $1`, [Q])).rows[0];
+  ok(full === 'ok' && kept.client_phone === '+1 646 555 0199' && kept.client_email === 'jordan@brooklynevents.example',
+    `a newer build's save of name + prices clears no contact it did not send (${full}, ${kept.client_phone}, ${kept.client_email})`);
+}
+{
+  // R4-3 publish: the version the admin sees; the recipient kept on the link; a language-only change is no new version.
+  const Q = await sentQuote();
+  const T = await tokenOf(Q);
+  const L = await link(Q);
+  ok(L.recipient_email === 'emma.carter@example.com' && L.recipient_name === 'Emma Carter', 'publish: the link keeps who it was published for');
+  const wrong = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q, snap(4300), T, L.version + 1]))
+    .then(() => null, (e) => e.message);
+  ok(/BW_VERSION_CHANGED/.test(wrong || '') && Number((await view(T))?.quote?.total) === 4200,
+    `publish on a version another admin replaced: refused, nothing written (${wrong})`);
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q, snap(4300), T, L.version])).catch(() => null);
+  const v2 = await link(Q);
+  ok(v2.version === L.version + 1, `publish on the version shown: a new version (${v2.version})`);
+  // The client ticks "I accept"; the admin switches the language only (same contentKey).
+  const withKey = (lang, key) => JSON.stringify({ ...JSON.parse(snap(4300)), title: lang === 'it' ? 'Matrimonio' : 'Rooftop wedding', contentKey: key });
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q, withKey('en', 'k1'), T, v2.version])).catch(() => null);
+  const v3 = (await link(Q)).version;
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'it', NULL, $3, $4)`, [Q, withKey('it', 'k1'), T, v3])).catch(() => null);
+  const v4 = await link(Q);
+  ok(v4.version === v3 && v4.lang === 'it', `a language-only change: same version (${v3} → ${v4.version}), the page in Italian`);
+  const acc = await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, $2) r`, [T, v3]))
+    .then((r) => r.rows[0].r, (e) => e.message);
+  ok(acc && acc.status === 'accepted', `the client's "I accept" on that version still counts (${acc && acc.status})`);
+}
+{
+  // R4-4 the deposit: in cents, capped; its currency stays the quote's.
+  const Q = await sentQuote();
+  const T = await tokenOf(Q);
+  await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1)`, [T]));
+  await db.exec(`UPDATE quotes SET currency = 'USD' WHERE id = '${Q}'`);
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status, payment_status, deposit_amount, currency) VALUES ('${id(960)}', '${BAND}', '${Q}', 'tentative', 'pending', 500, 'USD')`);
+  const big = await asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 100000000, true)`, [Q])).then(() => 'ran', (e) => e.message);
+  ok(/Invalid amount/.test(big), `a deposit over 99,999,999.99: refused (${big})`);
+  await asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 300.456, true)`, [Q])).catch(() => null);
+  const ev = (await q(`SELECT deposit_amount FROM events WHERE id = $1`, [id(960)])).rows[0];
+  const l = await link(Q);
+  ok(Number(l.deposit_received_amount) === 300.46 && Number(ev.deposit_amount) === 300.46,
+    `300.456 recorded as 300.46 on the receipt and the gig (${l.deposit_received_amount}, ${ev.deposit_amount})`);
+  ok((await view(T))?.deposit_paid_currency === 'USD', 'the receipt is in the currency recorded with the payment');
+  // R4-5 another currency on a quote with a payment recorded: refused, names the currency.
+  const cur = await editClient(Q, `currency = 'EUR'`).then(() => null, (e) => e);
+  ok(cur && cur.hint === 'BW_QUOTE_CURRENCY_LOCKED' && cur.detail === 'USD' && /USD/.test(cur.message),
+    `currency change with a USD payment recorded: refused (${cur && cur.message})`);
+  ok((await editClient(Q, `currency = 'usd'`).then(() => 'ok', (e) => e.message)) === 'ok', 'the same currency written again: fine');
+  // A quote without payments changes currency freely.
+  const Q2 = await sentQuote();
+  ok((await editClient(Q2, `currency = 'GBP'`).then(() => 'ok', (e) => e.message)) === 'ok', 'no payment recorded: the currency can change');
+  // A deposit recorded before round 4 (no currency kept): backfilled with the quote's.
+  await db.exec(`UPDATE quote_links SET deposit_received_currency = NULL WHERE quote_id = '${Q}'`);
+  await db.exec(m);
+  ok((await link(Q)).deposit_received_currency === 'USD', 'a deposit recorded earlier gets the quote’s currency (migration run again)');
 }
 
 // ---------------------------------------------------------------- grants

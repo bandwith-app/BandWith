@@ -97,8 +97,8 @@ describe('a new client on a sent quote (183)', () => {
   });
 
   it('the share sheet publishes for the token it handed out', () => {
-    // Round 3: once, for the link it shows, before any channel opens (QuoteShareModal.newRecipient.test.tsx).
-    expect(shareModalSrc).toContain('buildClientQuoteSnapshot(quoteRef.current, docLang, settings), docLang, uploadedUrl, link.token)');
+    // Round 4: on Send or Copy only, for the link and the version it shows (QuoteShareModal.newRecipient.test.tsx).
+    expect(shareModalSrc).toMatch(/publishQuoteLink\(\s*String\(quote\.id\),\s*buildClientQuoteSnapshot\(quoteRef\.current, docLang, settings\),\s*docLang,\s*uploadedUrl,\s*link\?\.token \?\? null,\s*typeof link\?\.version === 'number' \? link\.version : null,/);
   });
 
   it('client messages before the latest change of client belong to the previous client', () => {

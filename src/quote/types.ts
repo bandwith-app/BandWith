@@ -19,6 +19,8 @@ export interface ClientQuoteOption {
 
 export interface ClientQuoteSnapshot {
   v: 1;
+  /** Round 4 (183): the same in every language; the server keeps the version when only the language changed. */
+  contentKey?: string;
   ref: string;
   title: string;
   eventType?: string | null;

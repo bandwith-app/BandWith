@@ -27,9 +27,15 @@ describe('183_quote_page_fixes', () => {
     // accepted before 183, and the link of the timeline rows before 183.
     const backfill = /UPDATE public\.quote_links l\s+SET accepted_client_name = q\.client_name\s+FROM public\.quotes q\s+WHERE q\.id = l\.quote_id AND l\.status = 'accepted' AND l\.accepted_client_name IS NULL\s+AND l\.recipient_changed_at IS NULL;/;
     const linkBackfill = /UPDATE public\.quote_activity a\s+SET link_id = l\.id\s+FROM public\.quote_links l\s+WHERE a\.link_id IS NULL AND l\.quote_id = a\.quote_id;/;
+    // Round 4: who each published link was for, and the currency of deposits recorded before.
+    const recipientBackfill = /UPDATE public\.quote_links l\s+SET recipient_email = nullif\(lower\(btrim\(q\.client_email\)\), ''\), recipient_name = nullif\(btrim\(q\.client_name\), ''\)\s+FROM public\.quotes q\s+WHERE q\.id = l\.quote_id AND l\.snapshot IS NOT NULL AND l\.recipient_email IS NULL AND l\.recipient_name IS NULL\s+AND l\.recipient_changed_at IS NULL;/;
+    const currencyBackfill = /UPDATE public\.quote_links l\s+SET deposit_received_currency = upper\(btrim\(q\.currency\)\)\s+FROM public\.quotes q\s+WHERE q\.id = l\.quote_id AND l\.deposit_received_amount > 0 AND l\.deposit_received_currency IS NULL\s+AND upper\(btrim\(coalesce\(q\.currency, ''\)\)\) ~ '\^\[A-Z\]\{3\}\$';/;
     expect(sql).toMatch(backfill);
     expect(sql).toMatch(linkBackfill);
-    const outside = sql.replace(/AS \$\$[\s\S]*?\$\$;/g, '').replace(/AS \$function\$[\s\S]*?\$function\$;/g, '').replace(backfill, '').replace(linkBackfill, '');
+    expect(sql).toMatch(recipientBackfill);
+    expect(sql).toMatch(currencyBackfill);
+    const outside = sql.replace(/AS \$\$[\s\S]*?\$\$;/g, '').replace(/AS \$function\$[\s\S]*?\$function\$;/g, '')
+      .replace(backfill, '').replace(linkBackfill, '').replace(recipientBackfill, '').replace(currencyBackfill, '');
     expect(outside).not.toMatch(/INSERT\s+INTO|UPDATE\s+public\.|DELETE\s+FROM/i);
     expect(outside).toMatch(/ADD COLUMN IF NOT EXISTS recipient_changed_at/);
     expect(outside).toMatch(/DROP TRIGGER IF EXISTS bw_quote_recipient_changed ON public\.quotes;/);
@@ -48,10 +54,14 @@ describe('183_quote_page_fixes', () => {
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_trg_quote_link_accepted_name() FROM PUBLIC, anon, authenticated;');
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_deposit_received(uuid, text, numeric, boolean) FROM PUBLIC, anon;');
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_same_phone(text, text) FROM PUBLIC, anon, authenticated;');
-    expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) FROM PUBLIC, anon;');
-    expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) TO authenticated;');
-    // The four-argument publish is replaced (one function: older builds' named arguments find the new one).
+    expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text, int) FROM PUBLIC, anon;');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text, int) TO authenticated;');
+    // The four- and five-argument publish are replaced (one function: older builds' named arguments find the new one).
     expect(sql).toContain('DROP FUNCTION IF EXISTS public.bw_quote_link_publish(uuid, jsonb, text, text);');
+    expect(sql).toContain('DROP FUNCTION IF EXISTS public.bw_quote_link_publish(uuid, jsonb, text, text, text);');
+    expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_accepted_message() FROM PUBLIC, anon, authenticated;');
+    expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_currency_message(text) FROM PUBLIC, anon, authenticated;');
+    expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_trg_quote_currency_locked() FROM PUBLIC, anon, authenticated;');
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_quote_lock_for_token(text) FROM PUBLIC, anon, authenticated;');
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.bw_trg_quote_field_listed() FROM PUBLIC, anon, authenticated;');
     // Round 3: mark sent and reply take the link (and the version) that went out.
@@ -73,11 +83,26 @@ describe('183_quote_page_fixes', () => {
     const token =
       " IF (p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token) OR (p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL) THEN RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = 'P0001'; END IF;";
     expect(after).toContain(token);
-    const quoteLock = ' PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;';
+    // Round 4: the quote locked, and who it is for read under that lock.
+    const quoteLock =
+      " SELECT nullif(lower(btrim(q.client_email)), ''), nullif(btrim(q.client_name), '') INTO v_email, v_name FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;";
     expect(after).toContain(quoteLock);
+    // Round 4: the version the admin sees, and a language-only change is no new version.
+    const versionCheck =
+      " IF p_version IS NOT NULL AND v_link.version IS DISTINCT FROM p_version THEN RAISE EXCEPTION 'BW_VERSION_CHANGED: another version was published meanwhile, open the quote again' USING ERRCODE = 'P0001'; END IF;";
+    expect(after).toContain(versionCheck);
+    const sameContent =
+      " AND NOT (v_link.snapshot ? 'contentKey' AND p_snapshot ? 'contentKey' AND v_link.snapshot ->> 'contentKey' = p_snapshot ->> 'contentKey')";
+    expect(after).toContain(sameContent);
     const back = after
       .replace(token, '')
       .replace(quoteLock, '')
+      .replace(versionCheck, '')
+      .replace(sameContent, '')
+      .replace('v_changed := (v_link.snapshot IS DISTINCT FROM p_snapshot) OR v_fresh;', 'v_changed := v_link.snapshot IS DISTINCT FROM p_snapshot OR v_fresh;')
+      .replace(' recipient_email = v_email, recipient_name = v_name,', '')
+      .replace(' v_email text; v_name text;', '')
+      .replace(', p_version int DEFAULT NULL )', ' )')
       .replace("v_link.version > 1 AND NOT v_fresh THEN", 'v_link.version > 1 THEN')
       .replace(', p_token text DEFAULT NULL )', ' )')
       .replace('ON CONFLICT ON CONSTRAINT quote_link_versions_pkey', 'ON CONFLICT (quote_id, version)')
@@ -90,12 +115,16 @@ describe('183_quote_page_fixes', () => {
 
   it('deposit received is 168 plus the amount kept on the link, in the quote\'s currency', () => {
     const after = fnBody(sql, 'bw_quote_deposit_received');
-    expect(after).toContain('SET deposit_received_amount = CASE WHEN v_received AND p_amount > 0 THEN p_amount END');
+    expect(after).toContain('SET deposit_received_amount = CASE WHEN v_received AND v_amount > 0 THEN v_amount END');
+    // Round 4: in cents, capped where the gig's numeric(10,2) holds it.
+    expect(after).toContain('v_amount numeric := round(p_amount, 2);');
+    expect(after).toContain('IF v_amount IS NOT NULL AND (v_amount < 0 OR v_amount > 99999999.99) THEN');
     // The quote's currency; the gig's only when the quote has none (events.currency defaults to EUR).
     expect(after).toContain("SELECT lower(coalesce(q.status, '')), upper(nullif(btrim(q.currency), '')) INTO v_quote_status, v_currency");
     expect(after).toContain("coalesce(v_currency, upper(nullif(btrim(e.currency), '')))");
     expect(after).not.toContain("upper(coalesce(nullif(btrim(e.currency), ''),");
-    expect(fnBody(sql, 'bw_quote_link_view')).toContain("coalesce(v_currency, v_link.deposit_received_currency)");
+    // Round 4: the currency recorded with the payment first, then the quote's.
+    expect(fnBody(sql, 'bw_quote_link_view')).toContain("coalesce(v_link.deposit_received_currency, v_currency)");
     expect(fnBody(sql168, 'bw_quote_deposit_received').length).toBeLessThan(after.length);
   });
 

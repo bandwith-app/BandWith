@@ -2688,8 +2688,8 @@ export default function AuthenticatedApp() {
     if (!editing || quoteSaveRunningRef.current) return;
     quoteSaveRunningRef.current = true;
     try {
-      // Not the status the wizard was opened with: the server may have moved it on (183).
-      const updates = quoteUpdateRecord(q, editing.bandId);
+      // Only what changed, never the status the wizard was opened with (183).
+      const updates = quoteUpdateRecord(q, editing.bandId, editing.quote);
       const { data, error } = await updateQuoteDB(editing.quote.id, updates);
       if (error || !data) {
         // The wizard stays open with what was typed.

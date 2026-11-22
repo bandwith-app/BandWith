@@ -203,7 +203,7 @@ describe('Quote Service', () => {
     });
 
     it('an edit does not write the status a screen loaded earlier', () => {
-      const rec = quoteUpdateRecord({ status: 'VIEWED', clientName: 'Jordan Lee', sentAt: '2026-11-01T10:00:00Z' }, BAND_ID);
+      const rec = quoteUpdateRecord({ status: 'VIEWED', clientName: 'Jordan Lee', sentAt: '2026-11-01T10:00:00Z' }, BAND_ID, {});
       expect(rec).not.toHaveProperty('status');
       expect(rec).not.toHaveProperty('sent_at');
       expect(rec).not.toHaveProperty('band_id');

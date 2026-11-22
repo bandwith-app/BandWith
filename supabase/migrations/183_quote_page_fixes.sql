@@ -18,8 +18,7 @@
 --      from its default, also those other migrations add). It is
 --      unpublished: the page shows nothing and the app shares nothing until
 --      B's version is published on it. The version count goes on (A's
---      versions stay in quote_link_versions). An accepted quote stays
---      accepted, on the new link too, without the signer's name or PDF;
+--      versions stay in quote_link_versions);
 --    - puts the quote's pipeline status (sent / viewed / negotiating /
 --      declined) back to draft, so the app offers "Send to client";
 --    - records link_rotated with body 'recipient_changed'.
@@ -37,6 +36,14 @@
 --    c. no contact on file (sent with Copy link): the name changes, or a
 --       contact is given to a quote with no name (saved as "Client"). Not
 --       on an accepted link: a rename there is a fix.
+--    Round 4: an accepted quote keeps its client: a new recipient there is
+--    refused (P0001, hint BW_QUOTE_ACCEPTED, "duplicate it" in the admin's
+--    language); the acceptance, the deposit and the balance stay on its
+--    link. A correction of the same client (the name, the phone with its
+--    country code or trunk 0, the email's case) is no new recipient and is
+--    copied onto the link's recipient. Phones: the number without a
+--    country code may start with its trunk 0 ("06 12 34 56 78" =
+--    "+33 6 12 34 56 78"), and the national part has at least 9 digits.
 --    Older builds leave a cleared field out of a save (supabase-js drops
 --    undefined): a full save of the wizard (it writes the client name and
 --    the prices) that leaves out the email, phone, company, billing
@@ -49,6 +56,12 @@
 --    what changed since it read the quote: the client, the prices, the
 --    amounts (quote_links.reassign_guard keeps the quote before and after
 --    the change). Newer builds never write the status in an edit.
+--    Round 4: newer builds write only the fields that changed, and say when
+--    their screen read the quote (quotes.edit_base_at, cleared by the
+--    trigger, never stored). An edit of the client's name, email or phone
+--    made on a screen read before the quote went to a new client is
+--    refused (40001), whatever else it sends; the full-save clearing above
+--    is for older builds only.
 -- 2. bw_quote_link_publish (105's body): the key named in its ON CONFLICT
 --    (the draft branch failed with 42702, audit #10), and the new
 --    recipient's first publish is always a new version, even with the same
@@ -57,6 +70,14 @@
 --    (a slow PDF upload for A landing after the quote went to B) writes
 --    nothing and fails (BW_LINK_CHANGED). Older builds don't send it: on a
 --    link made for a new recipient their publish is refused.
+--    Round 4: a new optional p_version, the version the admin's screen
+--    shows: another version published since writes nothing and fails
+--    (BW_VERSION_CHANGED). A summary with the same contentKey (the app's
+--    hash of its content in English) is no new version: switching the
+--    page's language keeps the version and the client's "I accept". The
+--    link keeps who it was published for (recipient_email / _name, read
+--    under the quote's lock): send-email writes to that address only, by
+--    the link id the app holds, and sends nothing on a link replaced since.
 -- 3. Consent per version (#9): bw_quote_link_respond (120) made the
 --    version optional, so an acceptance without one landed on whatever
 --    version was current. Now 'accept' needs the exact version the client
@@ -73,7 +94,12 @@
 --    (deposit_received_amount / _currency; nothing typed = no amount, not
 --    the amount asked). bw_quote_link_view gives them as
 --    deposit_paid_amount / deposit_paid_currency while the gig's deposit
---    is paid at that amount.
+--    is paid at that amount. Round 4: the amount in cents (round(.., 2)),
+--    at most 99,999,999.99; the receipt's currency is the one recorded with
+--    the payment (deposits recorded before get the quote's); a quote with a
+--    payment recorded (the deposit, or the balance marked paid) cannot
+--    change currency (P0001, hint BW_QUOTE_CURRENCY_LOCKED, detail = the
+--    currency).
 -- 6. Lock order, one for all: the quote, then the link, then the gig.
 --    publish, seen, message, respond, mark sent, reply and the deposit
 --    received lock the quote first, as a save of the quote does. Mark sent
@@ -85,6 +111,10 @@
 -- check; seen, message and mark sent are 099's / 161's plus one lock. No
 -- new anon grant: the trigger and helper functions are not callable by anon
 -- or authenticated. Safe to run more than once.
+--
+-- Deploy order: 183, 185, 186, 187, then redeploy send-email (it reads
+-- quote_links.recipient_email and balance_version and claims the email
+-- slot with a conditional update).
 -- ====================================================================
 
 BEGIN;
@@ -117,7 +147,18 @@ ALTER TABLE public.quote_links
   -- What the quote held when it was given to the new recipient (before /
   -- after the save, and the old client's status): an older build's screen
   -- opened before that save is recognised by it (see the trigger).
-  ADD COLUMN IF NOT EXISTS reassign_guard jsonb;
+  ADD COLUMN IF NOT EXISTS reassign_guard jsonb,
+  -- Round 4: who this link was published for (the quote's contact at the
+  -- publish, under the quote's lock). The email goes to this address, never
+  -- to the quote's contact read separately (it may be the next client's).
+  ADD COLUMN IF NOT EXISTS recipient_email text,
+  ADD COLUMN IF NOT EXISTS recipient_name text;
+
+-- Round 4: the quote as the admin's screen read it (its updated_at), sent by
+-- newer builds with an edit. An edit of the client's contact made on a
+-- screen read before the quote went to a new client is refused (whatever
+-- other fields the save sends). Never kept: the trigger clears it.
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS edit_base_at timestamptz;
 
 -- The links a new recipient replaced. Their tokens open nothing (the page
 -- finds only quote_links), and the sends they had still count for the plan.
@@ -200,9 +241,14 @@ $function$;
 
 -- Two phone numbers are one person's when their digits are the same, or
 -- when one is the other with its country code added ("917-555-0101" =
--- "+1 917 555 0101", 00 = +). Both written with a country code, the codes
--- must match: "+1 9175550101" is not "+91 9175550101". A shorter number
--- inside a longer one is not enough ("555-0101" is not "+1 646 555 0101").
+-- "+1 917 555 0101", 00 = +). Round 4: the number written without a
+-- country code may start with the national trunk 0, which the
+-- international form drops ("06 12 34 56 78" = "+33 6 12 34 56 78",
+-- "030 1234567" = "+49 30 1234567", "07700 900123" = "+44 7700 900123");
+-- kept too where the 0 stays ("06 1234 5678" = "+39 06 1234 5678"). Both
+-- written with a country code, the codes must match: "+1 9175550101" is not
+-- "+91 9175550101". A shorter number inside a longer one is not enough: the
+-- national part has at least 9 digits ("555-0101" is not "+1 646 555 0101").
 CREATE OR REPLACE FUNCTION public.bw_same_phone(p_a text, p_b text)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -216,6 +262,7 @@ DECLARE
   v_b text := regexp_replace(coalesce(p_b, ''), '\D', '', 'g');
   v_long text;
   v_short text;
+  v_national text;
 BEGIN
   IF btrim(coalesce(p_a, '')) ~ '^00' THEN v_a := substr(v_a, 3); END IF;
   IF btrim(coalesce(p_b, '')) ~ '^00' THEN v_b := substr(v_b, 3); END IF;
@@ -223,9 +270,15 @@ BEGIN
   -- Both with a country code (or both without): the digits must match.
   IF v_a_cc = v_b_cc THEN RETURN false; END IF;
   IF v_a_cc THEN v_long := v_a; v_short := v_b; ELSE v_long := v_b; v_short := v_a; END IF;
-  RETURN length(v_short) >= 8
-     AND length(v_long) - length(v_short) BETWEEN 1 AND 3
-     AND right(v_long, length(v_short)) = v_short;
+  FOREACH v_national IN ARRAY ARRAY[v_short, CASE WHEN v_short ~ '^0[1-9]' THEN substr(v_short, 2) END] LOOP
+    CONTINUE WHEN v_national IS NULL;
+    IF length(v_national) >= 9
+       AND length(v_long) - length(v_national) BETWEEN 1 AND 3
+       AND right(v_long, length(v_national)) = v_national THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+  RETURN false;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_same_phone(text, text) FROM PUBLIC, anon, authenticated;
@@ -314,6 +367,45 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_stale_message() FROM PUBLIC, anon, authenticated;
 
+-- Round 4: an accepted quote keeps its client (the deal, the signature, the
+-- payments are theirs). Hint BW_QUOTE_ACCEPTED: newer builds show their own text.
+CREATE OR REPLACE FUNCTION public.bw_quote_accepted_message()
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE lower(left(coalesce((SELECT p.preferred_language FROM public.profiles p WHERE p.id = auth.uid()), 'en'), 2))
+    WHEN 'it' THEN 'Questo preventivo è stato accettato: per mandarlo a qualcun altro, duplicalo.'
+    WHEN 'es' THEN 'Este presupuesto ya fue aceptado: para enviarlo a otra persona, duplícalo.'
+    WHEN 'fr' THEN 'Ce devis a été accepté : pour l’envoyer à quelqu’un d’autre, duplique-le.'
+    WHEN 'de' THEN 'Dieses Angebot wurde angenommen: Um es jemand anderem zu schicken, dupliziere es.'
+    WHEN 'pt' THEN 'Este orçamento foi aceito: para enviá-lo a outra pessoa, duplique-o.'
+    ELSE 'This quote has been accepted: to send it to someone else, duplicate it.'
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_accepted_message() FROM PUBLIC, anon, authenticated;
+
+-- Round 4: a payment recorded in one currency keeps it. Hint BW_QUOTE_CURRENCY_LOCKED.
+CREATE OR REPLACE FUNCTION public.bw_quote_currency_message(p_currency text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE lower(left(coalesce((SELECT p.preferred_language FROM public.profiles p WHERE p.id = auth.uid()), 'en'), 2))
+    WHEN 'it' THEN 'Su questo preventivo ci sono pagamenti registrati in ' || p_currency || ': la valuta non si può cambiare.'
+    WHEN 'es' THEN 'Este presupuesto tiene pagos registrados en ' || p_currency || ': no se puede cambiar su moneda.'
+    WHEN 'fr' THEN 'Ce devis a des paiements enregistrés en ' || p_currency || ' : sa devise ne peut pas être changée.'
+    WHEN 'de' THEN 'Für dieses Angebot sind Zahlungen in ' || p_currency || ' erfasst: Die Währung lässt sich nicht ändern.'
+    WHEN 'pt' THEN 'Este orçamento tem pagamentos registrados em ' || p_currency || ': a moeda não pode ser alterada.'
+    ELSE 'This quote has payments recorded in ' || p_currency || ', so its currency can’t be changed.'
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_currency_message(text) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_recipient_changed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -345,11 +437,28 @@ DECLARE
   v_new_recipient boolean;
   v_link public.quote_links;
   v_new_link uuid;
+  v_base timestamptz;
+  v_changed_at timestamptz;
 BEGIN
   PERFORM set_config('bw.quote_listed', '', true);
+  -- Round 4: a newer build's edit says when its screen read the quote; never stored.
+  v_base := NEW.edit_base_at;
+  NEW.edit_base_at := NULL;
   v_listed := CASE WHEN split_part(v_flags, ':', 1) = NEW.id::text
                    THEN string_to_array(split_part(v_flags, ':', 2), ',') ELSE ARRAY[]::text[] END;
-  v_full := v_listed @> ARRAY['client_name', 'base_fee', 'custom_items'];
+  -- A full save is an older build's: newer builds (they send edit_base_at)
+  -- write only the fields that changed, and what they leave out stays.
+  v_full := v_base IS NULL AND v_listed @> ARRAY['client_name', 'base_fee', 'custom_items'];
+
+  -- Round 4: an edit of the client's contact made on a screen that read the
+  -- quote before it went to a new client: refused, whatever else the save
+  -- sends (newer builds send no status; the guard below needs one).
+  IF v_base IS NOT NULL AND v_listed && ARRAY['client_name', 'client_email', 'client_phone'] THEN
+    SELECT l.recipient_changed_at INTO v_changed_at FROM public.quote_links l WHERE l.quote_id = NEW.id;
+    IF v_changed_at > v_base THEN
+      RAISE EXCEPTION '%', public.bw_quote_stale_message() USING ERRCODE = '40001';
+    END IF;
+  END IF;
 
   -- An older build's full save leaves a cleared field out: the form has it
   -- empty, so it is cleared here too, as newer builds send it (null), and
@@ -420,9 +529,26 @@ BEGIN
     --    Never on an accepted (signed) link: a rename there is a fix.
     OR (v_old_email = '' AND v_old_phone = '' AND v_link.status <> 'accepted'
         AND (v_renamed OR (v_no_name AND (v_new_email <> '' OR v_new_phone <> ''))));
-  IF NOT v_new_recipient THEN RETURN NEW; END IF;
+  IF NOT v_new_recipient THEN
+    -- Round 4: the same client, written another way (a name fixed, the
+    -- phone with its country code, the email's case): the link's recipient
+    -- follows, so its emails reach them as they are written now.
+    IF v_link.recipient_email IS NOT NULL OR v_link.recipient_name IS NOT NULL THEN
+      UPDATE public.quote_links l
+         SET recipient_email = nullif(lower(btrim(coalesce(NEW.client_email, ''))), ''),
+             recipient_name = nullif(btrim(coalesce(NEW.client_name, '')), '')
+       WHERE l.id = v_link.id;
+    END IF;
+    RETURN NEW;
+  END IF;
+  -- Round 4: an accepted quote keeps its client: the acceptance, the
+  -- signature, the deposit and the balance are theirs. To send it to
+  -- someone else, the band duplicates it.
+  IF v_link.status = 'accepted' OR lower(coalesce(OLD.status, '')) = 'accepted' THEN
+    RAISE EXCEPTION '%', public.bw_quote_accepted_message() USING ERRCODE = 'P0001', HINT = 'BW_QUOTE_ACCEPTED';
+  END IF;
 
-  -- A new recipient, whatever the link's state (draft, sent, accepted...):
+  -- A new recipient, whatever the link's state (draft, sent, viewed...):
   -- the old link is revoked (its token kept in quote_link_retired opens
   -- nothing) and a new, empty one takes its place, all in this
   -- transaction. Empty: no summary, PDF, balance, payment note, signature
@@ -431,19 +557,12 @@ BEGIN
   -- shows nothing until the new client's version is published, and the app
   -- shares nothing until then. Kept: the version count (the old client's
   -- versions stay in quote_link_versions), the language, the plan's send.
-  -- An accepted quote stays accepted (the deal is done), on the new link
-  -- too, without the signer's name or PDF.
   INSERT INTO public.quote_link_retired (link_id, quote_id, band_id, token, status, sent_at)
   VALUES (v_link.id, v_link.quote_id, v_link.band_id, v_link.token, v_link.status, v_link.sent_at)
   ON CONFLICT (link_id) DO NOTHING;
   DELETE FROM public.quote_links l WHERE l.id = v_link.id;
-  INSERT INTO public.quote_links (quote_id, band_id, lang, version, status, responded_at, accepted_version,
-                                  recipient_changed_at, reassign_guard)
-  VALUES (NEW.id, v_link.band_id, v_link.lang, v_link.version,
-          CASE WHEN v_link.status = 'accepted' THEN 'accepted' ELSE 'draft' END,
-          CASE WHEN v_link.status = 'accepted' THEN v_link.responded_at END,
-          CASE WHEN v_link.status = 'accepted' THEN v_link.accepted_version END,
-          now(),
+  INSERT INTO public.quote_links (quote_id, band_id, lang, version, status, recipient_changed_at, reassign_guard)
+  VALUES (NEW.id, v_link.band_id, v_link.lang, v_link.version, 'draft', now(),
           jsonb_build_object('status', lower(coalesce(OLD.status, '')),
                              'before', to_jsonb(OLD), 'after', to_jsonb(NEW)))
   RETURNING id INTO v_new_link;
@@ -528,13 +647,20 @@ UPDATE public.quote_links l
 --   the new parameter (a default, so the four named arguments of older
 --   builds still find it); same grants;
 -- - the quote is locked first (then the link), as everywhere else.
+-- Round 4: p_version (new, optional): the version the admin's screen
+-- shows. Another version published since (another admin, another device):
+-- nothing is written (P0001 BW_VERSION_CHANGED), the screen reloads. The
+-- link also keeps who it was published for (recipient_email / _name, the
+-- quote's contact under its lock): the email goes there.
 DROP FUNCTION IF EXISTS public.bw_quote_link_publish(uuid, jsonb, text, text);
+DROP FUNCTION IF EXISTS public.bw_quote_link_publish(uuid, jsonb, text, text, text);
 CREATE OR REPLACE FUNCTION public.bw_quote_link_publish(
   p_quote_id uuid,
   p_snapshot jsonb,
   p_lang text DEFAULT NULL,
   p_pdf_url text DEFAULT NULL,
-  p_token text DEFAULT NULL
+  p_token text DEFAULT NULL,
+  p_version int DEFAULT NULL
 )
 RETURNS TABLE (token text, status text, version int, revoked boolean)
 LANGUAGE plpgsql
@@ -548,6 +674,8 @@ DECLARE
   v_pdf text := nullif(btrim(coalesce(p_pdf_url, '')), '');
   v_changed boolean;
   v_fresh boolean;
+  v_email text;
+  v_name text;
 BEGIN
   IF p_snapshot IS NULL OR jsonb_typeof(p_snapshot) <> 'object' OR octet_length(p_snapshot::text) > 48000 THEN
     RAISE EXCEPTION 'Invalid quote summary' USING ERRCODE = '22023';
@@ -559,7 +687,8 @@ BEGIN
   END IF;
 
   -- 183: the quote first, then the link (the order of a save of the quote).
-  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  SELECT nullif(lower(btrim(q.client_email)), ''), nullif(btrim(q.client_name), '') INTO v_email, v_name
+    FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
   INSERT INTO public.quote_links (quote_id, band_id, lang)
   VALUES (p_quote_id, v_band, coalesce(v_lang, 'en'))
   ON CONFLICT (quote_id) DO NOTHING;
@@ -570,10 +699,19 @@ BEGIN
      OR (p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL) THEN
     RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = 'P0001';
   END IF;
+  -- Round 4: the screen shows another version than the link has now.
+  IF p_version IS NOT NULL AND v_link.version IS DISTINCT FROM p_version THEN
+    RAISE EXCEPTION 'BW_VERSION_CHANGED: another version was published meanwhile, open the quote again' USING ERRCODE = 'P0001';
+  END IF;
 
   -- 183: a link made for a new recipient, nothing published on it yet.
   v_fresh := v_link.recipient_changed_at IS NOT NULL AND v_link.version_at IS NULL;
-  v_changed := v_link.snapshot IS DISTINCT FROM p_snapshot OR v_fresh;
+  -- Round 4: the same quote in another language (same contentKey) is not a
+  -- new version: the client's page keeps its version and its "I accept".
+  v_changed := (v_link.snapshot IS DISTINCT FROM p_snapshot
+                AND NOT (v_link.snapshot ? 'contentKey' AND p_snapshot ? 'contentKey'
+                         AND v_link.snapshot ->> 'contentKey' = p_snapshot ->> 'contentKey'))
+               OR v_fresh;
   IF v_changed AND v_link.status = 'draft' AND v_link.version >= 1 AND NOT v_fresh THEN
     -- Never sent: the client has seen no version yet, so this one is still
     -- version 1 (or the draft's current version, for links made before 105).
@@ -599,6 +737,8 @@ BEGIN
 
   UPDATE public.quote_links l
      SET snapshot = p_snapshot,
+         recipient_email = v_email,
+         recipient_name = v_name,
          version = v_link.version,
          version_at = CASE WHEN v_changed THEN now() ELSE l.version_at END,
          lang = coalesce(v_lang, l.lang),
@@ -612,8 +752,16 @@ BEGIN
   RETURN QUERY SELECT v_link.token, v_link.status, v_link.version, v_link.revoked_at IS NOT NULL;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_publish(uuid, jsonb, text, text, text, int) TO authenticated;
+
+-- Round 4: links published before this keep their client as they were then
+-- (the best there is: no link has had a new recipient before 183).
+UPDATE public.quote_links l
+   SET recipient_email = nullif(lower(btrim(q.client_email)), ''), recipient_name = nullif(btrim(q.client_name), '')
+  FROM public.quotes q
+ WHERE q.id = l.quote_id AND l.snapshot IS NOT NULL AND l.recipient_email IS NULL AND l.recipient_name IS NULL
+   AND l.recipient_changed_at IS NULL;
 
 -- --------------------------------------------------------------------
 -- 3. Accept needs the version the client saw (120 + one check, and the
@@ -729,6 +877,8 @@ DECLARE
   v_band uuid := public.bw_quote_admin_band(p_quote_id);
   v_received boolean := coalesce(p_received, true);
   v_method text := lower(btrim(coalesce(p_method, '')));
+  -- Round 4: in cents, as the gig and the receipt store it.
+  v_amount numeric := round(p_amount, 2);
   v_quote_status text;
   v_gig uuid;
   v_gig_status text;
@@ -738,7 +888,7 @@ DECLARE
   v_currency text;
 BEGIN
   IF v_method NOT IN ('transfer', 'cash', 'other') THEN v_method := 'other'; END IF;
-  IF p_amount IS NOT NULL AND (p_amount < 0 OR p_amount > 100000000) THEN
+  IF v_amount IS NOT NULL AND (v_amount < 0 OR v_amount > 99999999.99) THEN
     RAISE EXCEPTION 'Invalid amount' USING ERRCODE = '22023';
   END IF;
   -- 183: the quote, then the link, then the gig (the order everywhere).
@@ -771,7 +921,7 @@ BEGIN
 
   UPDATE public.events e
      SET deposit_paid = v_received,
-         deposit_amount = CASE WHEN v_received AND p_amount IS NOT NULL AND p_amount > 0 THEN p_amount ELSE e.deposit_amount END,
+         deposit_amount = CASE WHEN v_received AND v_amount > 0 THEN v_amount ELSE e.deposit_amount END,
          payment_status = CASE
            WHEN lower(coalesce(e.payment_status, '')) = 'paid' THEN e.payment_status
            WHEN v_received THEN 'partial'
@@ -781,8 +931,8 @@ BEGIN
   -- 183: what the client's receipt says: the amount typed, in the quote's
   -- currency; nothing typed = no amount (not the amount asked).
   UPDATE public.quote_links l
-     SET deposit_received_amount = CASE WHEN v_received AND p_amount > 0 THEN p_amount END,
-         deposit_received_currency = CASE WHEN v_received AND p_amount > 0 AND v_currency ~ '^[A-Z]{3}$' THEN v_currency END
+     SET deposit_received_amount = CASE WHEN v_received AND v_amount > 0 THEN v_amount END,
+         deposit_received_currency = CASE WHEN v_received AND v_amount > 0 AND v_currency ~ '^[A-Z]{3}$' THEN v_currency END
    WHERE l.quote_id = p_quote_id;
 
   IF v_received THEN
@@ -806,6 +956,47 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_deposit_received(uuid, text, numeric, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_deposit_received(uuid, text, numeric, boolean) TO authenticated;
+
+-- Round 4: deposits recorded before the currency was kept with them: the
+-- quote's currency now (the one they were asked in, as far as is known).
+UPDATE public.quote_links l
+   SET deposit_received_currency = upper(btrim(q.currency))
+  FROM public.quotes q
+ WHERE q.id = l.quote_id AND l.deposit_received_amount > 0 AND l.deposit_received_currency IS NULL
+   AND upper(btrim(coalesce(q.currency, ''))) ~ '^[A-Z]{3}$';
+
+-- Round 4: a quote with a payment recorded keeps that payment's currency
+-- (the deposit received, or a balance marked as paid): another currency
+-- would change what the receipts and the totals mean.
+CREATE OR REPLACE FUNCTION public.bw_trg_quote_currency_locked()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_paid text;
+BEGIN
+  IF upper(btrim(coalesce(NEW.currency, ''))) IS NOT DISTINCT FROM upper(btrim(coalesce(OLD.currency, ''))) THEN
+    RETURN NEW;
+  END IF;
+  SELECT coalesce(CASE WHEN l.deposit_received_amount > 0 THEN l.deposit_received_currency END,
+                  CASE WHEN l.balance_paid_at IS NOT NULL THEN upper(nullif(btrim(l.balance ->> 'currency'), '')) END)
+    INTO v_paid
+    FROM public.quote_links l WHERE l.quote_id = NEW.id;
+  IF v_paid ~ '^[A-Z]{3}$' AND upper(btrim(coalesce(NEW.currency, ''))) <> v_paid THEN
+    RAISE EXCEPTION '%', public.bw_quote_currency_message(v_paid)
+      USING ERRCODE = 'P0001', HINT = 'BW_QUOTE_CURRENCY_LOCKED', DETAIL = v_paid;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_quote_currency_locked() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_quote_currency_locked ON public.quotes;
+CREATE TRIGGER bw_quote_currency_locked
+  BEFORE UPDATE OF currency ON public.quotes
+  FOR EACH ROW
+  EXECUTE FUNCTION public.bw_trg_quote_currency_locked();
 
 -- --------------------------------------------------------------------
 -- 5. The client's page: 168 plus the recipient's own conversation, the
@@ -903,11 +1094,12 @@ BEGIN
     'balance_paid_at', CASE WHEN v_show_balance THEN v_link.balance_paid_at END,
     -- 168: the band recorded the deposit as received.
     'deposit_paid', v_link.status = 'accepted' AND coalesce(v_gig_deposit, false),
-    -- 183: and how much it recorded, in the quote's currency (the receipt
-    -- says this, not the amount asked). Only while the gig still has the
+    -- 183: and how much it recorded, in the currency it was recorded in (the
+    -- quote's then; round 4: never the currency the quote has now). The
+    -- receipt says this, not the amount asked. Only while the gig still has the
     -- deposit paid at that amount (changed in the gig itself: no amount).
     'deposit_paid_amount', CASE WHEN v_show_deposit THEN v_link.deposit_received_amount END,
-    'deposit_paid_currency', CASE WHEN v_show_deposit THEN coalesce(v_currency, v_link.deposit_received_currency) END
+    'deposit_paid_currency', CASE WHEN v_show_deposit THEN coalesce(v_link.deposit_received_currency, v_currency) END
   );
 END;
 $$;
