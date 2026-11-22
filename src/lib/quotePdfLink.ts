@@ -3,7 +3,8 @@
  *
  * Quote PDFs live in the "quotes" bucket (public until 177, a later release).
  * A client reaches one only through the quote link: /functions/v1/quote-pdf?p=<key> checks that the
- * link still shows that PDF and redirects to a short-lived signed URL. Each
+ * link still shows that PDF and streams the file back (never a redirect, so the
+ * storage path stays hidden). Each
  * document has its own random key (176), so a PDF link passed on (to an
  * accountant, say) opens that one PDF and nothing else: not a later version,
  * not the balance PDF, not the client page, not Accept/Decline.
@@ -11,7 +12,8 @@
  * it is only a locator, so this module never hands it out.
  */
 
-const STORAGE_PDF = /\/storage\/v1\/object\/public\/quotes\/quotes\/[0-9a-f-]{36}\/[A-Za-z0-9._%-]+$/;
+// Same file name characters as the server (176: bw_quote_pdf_storage_path).
+const STORAGE_PDF = /\/storage\/v1\/object\/public\/quotes\/quotes\/[0-9a-f-]{36}\/[A-Za-z0-9._~%-]+$/;
 
 /** Is this one of the band's quote PDFs in storage (as uploaded by the app)? */
 export function isQuoteStoragePdf(url: string | null | undefined): boolean {

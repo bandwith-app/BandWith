@@ -19,6 +19,13 @@ describe('quote PDF link', () => {
     expect(isQuoteStoragePdf('not a url')).toBe(false);
   });
 
+  // Round 5 (Claude on cc542575): the same file names as the server (176's
+  // bw_quote_pdf_storage_path allows "~"), so such a PDF still gets its link.
+  it('accepts every file name the server accepts ("~" included)', () => {
+    expect(isQuoteStoragePdf(`${SB}/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-015~v2_Quote.pdf`)).toBe(true);
+    expect(isQuoteStoragePdf(`${SB}/storage/v1/object/public/quotes/quotes/${BAND}/a(b).pdf`)).toBe(false);
+  });
+
   it('gives the client the gated link, never the storage URL', () => {
     const out = clientQuotePdfUrl(STORED, SB, KEY);
     expect(out).toBe(`${SB}/functions/v1/quote-pdf?p=${KEY}`);

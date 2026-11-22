@@ -65,6 +65,14 @@
 --    or edge function). Revoked from those three, kept for service_role;
 --    not dropped. Skipped where the function doesn't exist.
 --
+-- Round 5 (Claude on cc542575): bw_shares_chat no longer runs for anon and
+-- answers only about the caller; UPDATE / DELETE with no WHERE get the guard
+-- too (RESTRICTIVE update / delete policies, chats_upd needs a chat the
+-- creator can still use); the roster guard checks the rule once per row
+-- (bw_chat_row_ok over bw_chat_rule_ungated, granted to nobody); messages
+-- get a RESTRICTIVE read guard; send-push asks one set-based RPC
+-- (bw_chat_recipients_shared); the service role may change chat keys.
+--
 -- Older app builds: nothing they call changes shape. Chat rename keeps
 -- working (name, updated_at), invitations already use the RPCs. Their
 -- batch inserts of a gig's lineup into its chat keep working: a former
@@ -81,7 +89,8 @@
 -- gig) closes that, and the new app's fallback asks bw_group_chat_exists
 -- (below) and stops instead of creating a second chat. 175 must NOT ship
 -- without 193. Apply order:
--- 175 -> 178 -> 193 -> 181 (tested in that order; 178 first because 193's
+-- 194 -> 184 -> 175 -> 176 -> 178 -> 180 -> 192 -> 193 -> 181 (main's
+-- release order; tested in it; 178 before 193 because 193's
 -- bw_chat_joinable builds on 178's bw_is_event_participant).
 --
 -- Idempotent; safe to re-run, also after 178 or 181 (178 keeps this
@@ -101,6 +110,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- Round 5: the server (service role) may, e.g. merging duplicate band / gig
+  -- chats by hand (193), without turning the trigger off. current_user is
+  -- this function's owner here, so the session role and the JWT tell.
+  IF current_setting('role', true) = 'service_role'
+     OR coalesce(auth.jwt() ->> 'role', '') = 'service_role' THEN
+    RETURN NEW;
+  END IF;
   IF NEW.type IS DISTINCT FROM OLD.type
      OR NEW.band_id IS DISTINCT FROM OLD.band_id
      OR NEW.event_id IS DISTINCT FROM OLD.event_id
@@ -116,6 +132,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+-- (A trigger: nobody calls it directly.)
+REVOKE ALL ON FUNCTION public.bw_chats_immutable_keys() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS bw_chats_immutable_keys ON public.chats;
 CREATE TRIGGER bw_chats_immutable_keys
   BEFORE UPDATE ON public.chats
@@ -195,9 +213,12 @@ GRANT EXECUTE ON FUNCTION public.bw_delete_chat_history(uuid) TO authenticated;
 --     its roster anyway); anyone else gets false. Not "self only": the
 --     chat_participants insert policy and the roster ask about others on
 --     behalf of the person adding them or reading the chat. No auth.uid()
---     (service role, migrations): the plain answer (anon has no EXECUTE).
---     current_user can't tell those apart here: inside a SECURITY DEFINER
---     function it is always the owner;
+--     (service role, migrations, or a SECURITY DEFINER function that calls
+--     it for a caller without a user): the plain answer. So neither this nor
+--     any function that calls it may be run by anon: anon and PUBLIC have
+--     EXECUTE on none of them (round 5: bw_shares_chat had it through
+--     PUBLIC). current_user can't tell those apart here: inside a SECURITY
+--     DEFINER function it is always the owner;
 --   * lineup answers compared with lower(btrim()) ('Declined', 'Dropped_Out ');
 --   * the body carries the marker bw:175-r4: later migrations that keep a
 --     live definition (178, 181) look for it.
@@ -253,6 +274,81 @@ REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBL
 -- The chats read policy calls it (same exposure as bw_is_band_member).
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
 
+-- Round 5 (cost of the roster guard): the same rule for one user, with no
+-- caller check. Its text is taken from bw_chat_scope_ok just above (one
+-- source; the quote rule comes along when 178 is live, and once 178 runs it
+-- is in bw_is_event_participant as well). Internal: granted to nobody, only
+-- bw_chat_row_ok (below) calls it.
+DO $do$
+DECLARE
+  v_case text;
+BEGIN
+  v_case := substring(pg_get_functiondef('public.bw_chat_scope_ok(text, uuid, uuid, uuid)'::regprocedure)
+                      FROM 'NOT coalesce\((CASE.*END), false\)\);');
+  IF v_case IS NULL THEN
+    RAISE EXCEPTION '175: bw_chat_scope_ok body not recognised (no CASE ... END)';
+  END IF;
+  EXECUTE format($sql$
+CREATE OR REPLACE FUNCTION public.bw_chat_rule_ungated(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $f$
+BEGIN
+  -- bw:175-r5 internal (no caller check): never grant it. plpgsql: called
+  -- once per roster row, its plan is kept for the session.
+  RETURN p_user_id IS NOT NULL AND coalesce((SELECT %s FROM (VALUES (p_user_id)) AS w(u)), false);
+END;
+$f$;
+$sql$, v_case);
+END
+$do$;
+REVOKE ALL ON FUNCTION public.bw_chat_rule_ungated(text, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- The row check of the roster guard and of the chat_participants update /
+-- delete guards. The policies first keep only rows of the caller's own
+-- chats (bw_my_chat_ids, once per query), so this checks the rule once per
+-- row, for the row's user. Called directly, it answers about someone else
+-- only to a caller who has a row in that chat and is still in its band
+-- (they see that band's lineups anyway); anyone else gets false.
+-- plpgsql with the caller check written out (no nested helper calls): it
+-- runs once per roster row, and its plans are kept for the session.
+CREATE OR REPLACE FUNCTION public.bw_chat_row_ok(p_chat_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_me uuid := auth.uid();
+  c record;
+BEGIN
+  IF v_me IS NULL OR p_user_id IS NULL THEN
+    RETURN false;
+  END IF;
+  SELECT ch.type::text AS type, ch.band_id, ch.event_id INTO c FROM chats ch WHERE ch.id = p_chat_id;
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+  IF p_user_id IS DISTINCT FROM v_me AND NOT (
+       EXISTS (SELECT 1 FROM chat_participants me WHERE me.chat_id = p_chat_id AND me.user_id = v_me)
+       AND (c.band_id IS NULL
+            OR EXISTS (SELECT 1 FROM band_members bm
+                        WHERE bm.band_id = c.band_id AND bm.user_id = v_me AND coalesce(bm.is_active, true)))
+       AND NOT EXISTS (SELECT 1 FROM events e
+                        WHERE e.id = c.event_id AND e.band_id IS NOT NULL
+                          AND NOT EXISTS (SELECT 1 FROM band_members bm
+                                           WHERE bm.band_id = e.band_id AND bm.user_id = v_me
+                                             AND coalesce(bm.is_active, true)))) THEN
+    RETURN false;
+  END IF;
+  RETURN coalesce(public.bw_chat_rule_ungated(c.type, c.band_id, c.event_id, p_user_id), false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_row_ok(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_row_ok(uuid, uuid) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_my_chat_ids()
 RETURNS uuid[]
 LANGUAGE sql
@@ -291,6 +387,28 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_chat_recipient_ids(uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_chat_recipient_ids(uuid, uuid) TO service_role;
 
+-- Round 5: which of p_targets share a chat with p_sender that both can still
+-- use (send-push's other notices, one call instead of one per chat). Server
+-- only (service role).
+CREATE OR REPLACE FUNCTION public.bw_chat_recipients_shared(p_sender uuid, p_targets uuid[])
+RETURNS uuid[]
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT coalesce(array_agg(DISTINCT t.user_id), '{}'::uuid[])
+    FROM chat_participants s
+    JOIN chats c ON c.id = s.chat_id
+    JOIN chat_participants t ON t.chat_id = s.chat_id
+                            AND t.user_id = ANY (p_targets)
+                            AND t.user_id IS DISTINCT FROM p_sender
+   WHERE s.user_id = p_sender
+     AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, s.user_id)
+     AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, t.user_id);
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_recipients_shared(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_chat_recipients_shared(uuid, uuid[]) TO service_role;
+
 -- Joining a band or gig chat takes the same rule (an INSERT that would put a
 -- former member back, e.g. still on a gig's lineup, is refused), and the
 -- chat list RPC lists only chats the caller can still read: get_user_chats
@@ -306,6 +424,12 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) TO authenticated;
+
+-- Round 5: like bw_shares_chat, 042 revoked it from anon only, so anon kept
+-- EXECUTE through PUBLIC (it answers false without a user, but nothing
+-- without a user should run it). The insert policy is for authenticated.
+REVOKE ALL ON FUNCTION public.bw_can_add_chat_participant(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_can_add_chat_participant(uuid, uuid) TO authenticated;
 
 DROP POLICY IF EXISTS chat_participants_insert ON public.chat_participants;
 CREATE POLICY chat_participants_insert ON public.chat_participants
@@ -605,23 +729,56 @@ CREATE POLICY chat_participants_select_same_chat ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO authenticated
   USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 -- And their own kept row: not shown to them either (no chat list, unread
--- count or badge in any app build counts a chat the rule refuses). This one
--- is for every role (as on prod), so it carries the rule itself as well.
+-- count or badge in any app build counts a chat the rule refuses). As on
+-- prod this one is for every role; the guard below carries the rule (round
+-- 5: not repeated here). Without a user (anon) it matches nothing.
 DROP POLICY IF EXISTS chat_participants_select_own ON public.chat_participants;
 CREATE POLICY chat_participants_select_own ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO public
-  USING (user_id = auth.uid() AND public.bw_chat_scope_ok_for(chat_id, user_id));
+  USING (user_id = auth.uid());
 -- The central guard: permissive read policies are ORed, so any other one
 -- (made by hand on prod, or by a later migration) would show kept rows
--- again. A RESTRICTIVE policy is ANDed with all of them. Both functions are
+-- again. A RESTRICTIVE policy is ANDed with all of them. The functions are
 -- SECURITY DEFINER (they read chat_participants as the owner: no RLS, no
--- recursion). An UPDATE or DELETE that filters rows (every app build does,
--- by chat_id / user_id) goes through the read policies too, so a kept row
--- can't be changed or removed by its former owner either.
+-- recursion). Round 5: own rows or rows of the caller's chats (one
+-- bw_my_chat_ids per query), then the rule once per row (bw_chat_row_ok):
+-- the roster costs about what it did without the guard.
 DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;
 CREATE POLICY chat_participants_scope_guard ON public.chat_participants
   AS RESTRICTIVE FOR SELECT TO authenticated
-  USING (public.bw_chat_scope_ok_for(chat_id, user_id));
+  USING ((user_id = auth.uid() OR chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]))
+         AND public.bw_chat_row_ok(chat_id, user_id));
+-- An UPDATE or DELETE that filters rows goes through the read policies too,
+-- but one with no WHERE does not (round 5): the same guard for those, so a
+-- kept row can't be changed or removed by its former owner either way.
+DROP POLICY IF EXISTS chat_participants_update_guard ON public.chat_participants;
+CREATE POLICY chat_participants_update_guard ON public.chat_participants
+  AS RESTRICTIVE FOR UPDATE TO authenticated
+  USING ((user_id = auth.uid() OR chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]))
+         AND public.bw_chat_row_ok(chat_id, user_id))
+  WITH CHECK ((user_id = auth.uid() OR chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]))
+              AND public.bw_chat_row_ok(chat_id, user_id));
+DROP POLICY IF EXISTS chat_participants_delete_guard ON public.chat_participants;
+CREATE POLICY chat_participants_delete_guard ON public.chat_participants
+  AS RESTRICTIVE FOR DELETE TO authenticated
+  USING ((user_id = auth.uid() OR chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]))
+         AND public.bw_chat_row_ok(chat_id, user_id));
+-- Messages: the same idea. Every read policy on messages is ANDed with
+-- "a chat the caller can still use" (old builds, Realtime and any policy
+-- made later included). No such guard on chats: 193 lets members read the
+-- band / gig chat they can join before they have a row in it.
+DROP POLICY IF EXISTS messages_scope_guard ON public.messages;
+CREATE POLICY messages_scope_guard ON public.messages
+  AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
+-- Renaming a chat: its creator, only while they can still use it (a former
+-- member who made the band chat can't rename it; with no WHERE the read
+-- policies don't apply, so the rule is here).
+DROP POLICY IF EXISTS chats_upd ON public.chats;
+CREATE POLICY chats_upd ON public.chats
+  AS PERMISSIVE FOR UPDATE TO authenticated
+  USING (created_by = auth.uid() AND id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]))
+  WITH CHECK (created_by = auth.uid() AND id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 -- Exact duplicates on prod (073): "Users can update own chat participation"
 -- and "Users can delete own chat participation" have the same rule
 -- (user_id = auth.uid()) and stay.
@@ -642,6 +799,9 @@ $do$;
 -- "Shares a chat" (042: profiles read policy, chat notices): a band or gig
 -- chat counts only while both may still use it (a former member's kept row
 -- no longer shares the band chat with the band).
+-- Round 5: a signed-in caller only asks about themselves (p_user_id is
+-- ignored, so nobody can probe who chats with whom); p_user_id counts only
+-- without a user (server). anon had EXECUTE through PUBLIC: no more.
 CREATE OR REPLACE FUNCTION public.bw_shares_chat(p_other uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -652,12 +812,13 @@ AS $function$
     SELECT 1
     FROM chat_participants a
     JOIN chat_participants b ON b.chat_id = a.chat_id
-    WHERE a.user_id = p_user_id AND b.user_id = p_other
+    WHERE a.user_id = coalesce(auth.uid(), p_user_id) AND b.user_id = p_other
       AND public.bw_chat_scope_ok_for(a.chat_id, a.user_id)
       AND public.bw_chat_scope_ok_for(b.chat_id, b.user_id)
   );
 $function$;
-REVOKE ALL ON FUNCTION public.bw_shares_chat(uuid, uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.bw_shares_chat(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_shares_chat(uuid, uuid) TO authenticated, service_role;
 
 -- Is there a band chat for this band / a gig chat for this gig? For the app's
 -- fallback when 193 (bw_open_group_chat) is not there: a chat it cannot see

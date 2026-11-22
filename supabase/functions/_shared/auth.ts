@@ -150,24 +150,14 @@ export async function allowedRecipients(
   const remaining = unique.filter((id) => !allowed.has(id));
   if (remaining.length > 0) {
     // Round 4 (#281): rows are kept when someone leaves the band or the
-    // lineup (175), so who shares a chat comes only from
-    // bw_chat_recipient_ids (the rule), one chat at a time. The caller's own
-    // rows only list the chats to ask about (the rule answers nobody for a
-    // chat the caller can't use). Any error, a missing function included,
-    // adds nobody.
-    const { data: myChats } = await admin
-      .from("chat_participants")
-      .select("chat_id")
-      .eq("user_id", callerId);
-    const chatIds = [...new Set((myChats ?? []).map((r: { chat_id: string }) => r.chat_id))];
-    for (const chatId of chatIds) {
-      if (remaining.every((id) => allowed.has(id))) break;
-      const { data: ok, error } = await admin.rpc("bw_chat_recipient_ids", { p_chat_id: chatId, p_sender: callerId });
-      if (error) {
-        console.error("allowedRecipients: bw_chat_recipient_ids failed", error.message);
-        break;
-      }
-      if (Array.isArray(ok)) (ok as string[]).forEach((id) => remaining.includes(id) && allowed.add(id));
+    // lineup (175), so who shares a chat comes only from the rule. Round 5:
+    // one call for every chat (bw_chat_recipients_shared), not one per chat.
+    // Any error, a missing function included, adds nobody.
+    const { data: ok, error } = await admin.rpc("bw_chat_recipients_shared", { p_sender: callerId, p_targets: remaining });
+    if (error) {
+      console.error("allowedRecipients: bw_chat_recipients_shared failed", error.message);
+    } else if (Array.isArray(ok)) {
+      (ok as string[]).forEach((id) => remaining.includes(id) && allowed.add(id));
     }
   }
 

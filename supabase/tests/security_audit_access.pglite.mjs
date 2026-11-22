@@ -676,19 +676,20 @@ const cpPolicies = async () => (await db.query(`SELECT policyname, cmd, permissi
 let pols = await cpPolicies();
 const polNames = pols.map((x) => `${x.policyname}:${x.cmd}:${x.permissive}`).sort();
 const wantPols = ['Users can delete own chat participation:DELETE:PERMISSIVE', 'Users can update own chat participation:UPDATE:PERMISSIVE',
+  'chat_participants_delete_guard:DELETE:RESTRICTIVE', 'chat_participants_update_guard:UPDATE:RESTRICTIVE',
   'chat_participants_insert:INSERT:PERMISSIVE', 'chat_participants_scope_guard:SELECT:RESTRICTIVE',
   'chat_participants_select_own:SELECT:PERMISSIVE', 'chat_participants_select_same_chat:SELECT:PERMISSIVE'].sort();
 ok(JSON.stringify(polNames) === JSON.stringify(wantPols), `chat_participants policies after 175: ${polNames.join(', ')}`);
-ok(pols.filter((x) => x.cmd === 'SELECT').every((x) => /bw_chat_scope_ok_for/.test(x.qual) || x.roles === '{authenticated}'),
-  'every read policy on chat_participants applies the rule, or is for authenticated only (where the guard applies it)');
+ok(pols.filter((x) => x.cmd === 'SELECT').every((x) => x.roles === '{authenticated}' || /^\(user_id = auth\.uid\(\)\)$/.test(x.qual)),
+  'every read policy on chat_participants is for authenticated (where the guard applies the rule), or own rows only (nothing without a user)');
 // Cost: bw_my_chat_ids() checks the rule per chat now, so policies call it
 // once per query (InitPlan), never per row.
 const perRow = (await db.query(`SELECT tablename || '.' || policyname AS p FROM pg_policies WHERE schemaname = 'public'
   AND (coalesce(qual, '') || coalesce(with_check, '')) ~ 'bw_my_chat_ids\\(\\)'
   AND (coalesce(qual, '') || coalesce(with_check, '')) !~ '\\(\\s*SELECT\\s+bw_my_chat_ids\\(\\)'`)).rows.map((x) => x.p);
 ok(perRow.length === 0, `no policy calls bw_my_chat_ids() once per row (${perRow.join(', ') || 'none'})`);
-r = (await db.query(`SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('bw_chat_scope_ok_for','bw_chat_scope_ok','bw_my_chat_ids') AND pronamespace = 'public'::regnamespace`)).rows;
-ok(r.length === 3 && r.every((x) => x.prosecdef), `the guard's functions are SECURITY DEFINER: no RLS inside, no recursion (${JSON.stringify(r)})`);
+r = (await db.query(`SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('bw_chat_row_ok','bw_chat_rule_ungated','bw_chat_scope_ok','bw_my_chat_ids') AND pronamespace = 'public'::regnamespace`)).rows;
+ok(r.length === 4 && r.every((x) => x.prosecdef), `the guard's functions are SECURITY DEFINER: no RLS inside, no recursion (${JSON.stringify(r)})`);
 // Any other permissive read policy (hand-made on prod, a later migration) is ANDed with the guard.
 await db.exec(`CREATE POLICY zz_handmade_read_all ON public.chat_participants FOR SELECT USING (true)`);
 r = await as(staleUsers.LEFT, `SELECT chat_id FROM chat_participants WHERE user_id = '${staleUsers.LEFT}'`);
@@ -724,6 +725,103 @@ ok(!r.error && dupes === 0 && !r4.rows.some((x) => [DROP, REMOVED].includes(x.us
 // getChats / getMessages (own rows, cleared_at): the chat isn't listed.
 r = await as(DROP, `SELECT chat_id FROM chat_participants WHERE user_id = '${DROP}'`);
 ok(!r.error && !r.rows.some((x) => x.chat_id === EVCHAT5), `dropped out: the gig chat isn't in their own rows (${r.error ?? r.rows.length})`);
+
+// ── R5. Round 5 (Claude on cc542575 / 657b943d)
+const priv = async (role, fn) => db.query(`SELECT has_function_privilege('${role}', '${fn}', 'EXECUTE') AS p`).then((x) => x.rows[0].p, () => null);
+const fnDefOf = async (sig) => db.query(`SELECT pg_get_functiondef('${sig}'::regprocedure) AS d`).then((x) => x.rows[0].d, () => '');
+// 1. bw_shares_chat: anon had EXECUTE through PUBLIC; a caller could ask about two other people.
+for (const role of ['public', 'anon']) ok(await priv(role, 'public.bw_shares_chat(uuid,uuid)') === false, `bw_shares_chat: ${role} has no EXECUTE`);
+ok(await priv('authenticated', 'public.bw_shares_chat(uuid,uuid)') === true, 'bw_shares_chat: authenticated keeps EXECUTE (profiles policy, bw_can_notify)');
+for (const role of ['public', 'anon']) ok(await priv(role, 'public.bw_can_add_chat_participant(uuid,uuid)') === false, `bw_can_add_chat_participant: ${role} has no EXECUTE`);
+ok(await priv('authenticated', 'public.bw_can_add_chat_participant(uuid,uuid)') === true, 'bw_can_add_chat_participant: authenticated keeps EXECUTE (insert policy)');
+for (const role of ['public', 'anon', 'authenticated']) ok(await priv(role, 'public.bw_chats_immutable_keys()') === false, `bw_chats_immutable_keys (trigger): no EXECUTE for ${role}`);
+r = await asRole('anon', `SELECT public.bw_shares_chat('${MEM2}', '${MEM}') AS a`);
+ok(r.code === '42501', `bw_shares_chat: anon is refused (${r.code ?? 'ran'} ${r.error ?? JSON.stringify(r.rows[0])})`);
+r = await as(EXM, `SELECT public.bw_shares_chat('${MEM2}', '${MEM}') AS a`);
+ok(!r.error && r.rows[0]?.a === false, `bw_shares_chat: a stranger can't ask whether two others share a direct chat (${r.error ?? r.rows[0]?.a})`);
+r = await as(MEM, `SELECT public.bw_shares_chat('${MEM2}') AS a`);
+ok(!r.error && r.rows[0]?.a === true, `bw_shares_chat: asked about themselves it still answers (${r.error ?? r.rows[0]?.a})`);
+r = await db.query(`SELECT public.bw_shares_chat('${MEM2}', '${MEM}') AS a`);
+ok(r.rows[0].a === true, 'bw_shares_chat: the server (no user) still asks about anyone');
+// 2. UPDATE / DELETE with no WHERE skip the read policies (and so the guard).
+const CHATL = id(61);
+await db.exec(`INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${CHATL}','group','Other band horns','${OTHERBAND}',NULL,'${staleUsers.LEFT}')`);
+await staleRow(CHATL, staleUsers.LEFT);
+const leftRows = async () => (await db.query(`SELECT count(*)::int AS n, count(*) FILTER (WHERE muted)::int AS m FROM chat_participants WHERE user_id = '${staleUsers.LEFT}'`)).rows[0];
+const lr0 = await leftRows();
+r = await as(staleUsers.LEFT, `UPDATE chat_participants SET muted = true`);
+let lr1 = await leftRows();
+ok(!r.error && lr1.m === lr0.m, `UPDATE with no WHERE: a kept row is not changed (${r.error ?? `${lr1.m} muted`})`);
+r = await as(staleUsers.LEFT, `DELETE FROM chat_participants`);
+lr1 = await leftRows();
+ok(!r.error && lr1.n === lr0.n, `DELETE with no WHERE: a kept row is not removed (${r.error ?? `${lr0.n} -> ${lr1.n}`})`);
+r = await as(staleUsers.LEFT, `UPDATE chats SET name = 'renamed by a former member'`);
+const nameL = (await db.query(`SELECT name FROM chats WHERE id = '${CHATL}'`)).rows[0].name;
+ok(!r.error && nameL === 'Other band horns', `a former member who created a band chat can't rename it (no WHERE) (${r.error ?? nameL})`);
+r = await as(ADMIN, `UPDATE chats SET name = 'Horns (legacy, renamed)' WHERE id = '${GROUPB}'`);
+ok(!r.error && r.n === 1, `the creator still renames a chat they can use (${r.error ?? r.n})`);
+r = await as(NEWM, `UPDATE chat_participants SET muted = muted`);
+const newmRows = (await db.query(`SELECT count(*)::int AS n FROM chat_participants WHERE user_id = '${NEWM}'`)).rows[0].n;
+ok(!r.error && r.n > 0 && r.n <= newmRows, `an active member's own rows still update (no WHERE: ${r.error ?? r.n} of ${newmRows})`);
+r = await as(NEWM, `INSERT INTO chat_participants (chat_id, user_id, cleared_at) VALUES ('${EVCHAT3}','${NEWM}', now())
+  ON CONFLICT (chat_id, user_id) DO UPDATE SET cleared_at = excluded.cleared_at`);
+ok(!r.error, `an active member's upsert (DO UPDATE) still works (${r.error ?? 'ok'})`);
+// 3. The roster guard: own rows or rows of my chats, then the rule once per row.
+pols = await cpPolicies();
+const guardQ = pols.find((x) => x.policyname === 'chat_participants_scope_guard')?.qual ?? '';
+ok(/bw_chat_row_ok\(chat_id, user_id\)/.test(guardQ) && /SELECT bw_my_chat_ids\(\)/.test(guardQ) && /user_id = auth\.uid\(\)/.test(guardQ)
+  && !/bw_chat_scope_ok_for/.test(guardQ), `guard: (own row or my chats) and bw_chat_row_ok (${guardQ})`);
+for (const [name, cmd] of [['chat_participants_update_guard', 'UPDATE'], ['chat_participants_delete_guard', 'DELETE']]) {
+  const g = pols.find((x) => x.policyname === name);
+  ok(g && g.cmd === cmd && g.permissive === 'RESTRICTIVE' && g.qual === guardQ, `${name}: RESTRICTIVE ${cmd} with the read guard's rule`);
+}
+const ownQ = pols.find((x) => x.policyname === 'chat_participants_select_own')?.qual;
+ok(ownQ === '(user_id = auth.uid())', `select_own no longer repeats the rule (${ownQ})`);
+for (const role of ['public', 'anon', 'authenticated', 'service_role']) {
+  ok(await priv(role, 'public.bw_chat_rule_ungated(text,uuid,uuid,uuid)') === false, `bw_chat_rule_ungated: exists, no EXECUTE for ${role}`);
+}
+r = await as(NEWM, `SELECT public.bw_chat_rule_ungated('band', '${BAND}', NULL, '${ADMIN}') AS a`);
+ok(/permission denied/.test(r.error ?? ''), `bw_chat_rule_ungated: a user can't call it (${r.error ?? 'ran'})`);
+const caseOf = (d, re) => (d.match(re) ?? [])[1];
+const defUng = await fnDefOf('public.bw_chat_rule_ungated(text,uuid,uuid,uuid)');
+const defScope = await fnDefOf('public.bw_chat_scope_ok(text,uuid,uuid,uuid)');
+const cS = caseOf(defScope, /NOT coalesce\((CASE[\s\S]*END), false\)\);/);
+ok(!!cS && caseOf(defUng, /SELECT (CASE[\s\S]*END) FROM \(VALUES/) === cS, 'bw_chat_rule_ungated has the very rule of bw_chat_scope_ok');
+r = await as(NEWM, `SELECT public.bw_chat_row_ok('${GROUPB}', '${ADMIN}') AS a, public.bw_chat_row_ok('${GROUPB}', '${EXM}') AS b,
+  public.bw_chat_row_ok('${GROUPB}', '${NEWM}') AS c`);
+ok(!r.error && r.rows[0].a === true && r.rows[0].b === false && r.rows[0].c === true, `bw_chat_row_ok: a member gets the rule per row (${r.error ?? JSON.stringify(r.rows[0])})`);
+r = await as(staleUsers.LEFT, `SELECT public.bw_chat_row_ok('${BANDCHAT}', '${NEWM}') AS a, public.bw_chat_row_ok('${EVCHAT3}', '${NEWM}') AS b`);
+ok(!r.error && r.rows[0].a === false && r.rows[0].b === false, `bw_chat_row_ok: a kept row can't ask about the others (${r.error ?? JSON.stringify(r.rows[0])})`);
+r = await as(EXM, `SELECT public.bw_chat_row_ok('${BANDCHAT}', '${NEWM}') AS a`);
+ok(!r.error && r.rows[0].a === false, `bw_chat_row_ok: an outsider gets false (${r.error ?? r.rows[0].a})`);
+ok(await priv('anon', 'public.bw_chat_row_ok(uuid,uuid)') === false, 'bw_chat_row_ok: anon has no EXECUTE');
+// 4. messages: a RESTRICTIVE read guard as well.
+const msgG = (await db.query(`SELECT permissive, cmd, roles::text AS roles, qual FROM pg_policies WHERE tablename = 'messages' AND policyname = 'messages_scope_guard'`)).rows[0];
+ok(msgG?.permissive === 'RESTRICTIVE' && msgG?.cmd === 'SELECT' && msgG?.roles === '{authenticated}' && /SELECT bw_my_chat_ids\(\)/.test(msgG?.qual ?? ''),
+  `messages_scope_guard: RESTRICTIVE SELECT for authenticated, once per query (${JSON.stringify(msgG)})`);
+await db.exec(`CREATE POLICY zz_handmade_msgs_all ON public.messages FOR SELECT USING (true)`);
+r = await as(staleUsers.LEFT, `SELECT count(*)::int AS n FROM messages WHERE chat_id IN ('${BANDCHAT}','${EVCHAT3}')`);
+ok(!r.error && r.rows[0].n === 0, `with another permissive read policy on messages, a kept row still reads nothing (${r.error ?? r.rows[0].n})`);
+r = await as(NEWM, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${GROUPB}'`);
+ok(!r.error && r.rows[0].n > 0, `... and members still read their chat (${r.error ?? r.rows[0].n})`);
+await db.exec(`DROP POLICY zz_handmade_msgs_all ON public.messages`);
+// 5. One set-based recipients call (send-push), server only.
+const srv = (sql) => db.query(sql).catch((e) => ({ rows: [{}], error: e.message }));
+r = await srv(`SELECT public.bw_chat_recipients_shared('${ADMIN}', ARRAY['${NEWM}','${staleUsers.LEFT}','${EXM}','${ADMIN}']::uuid[]) AS ids`);
+const shared = r.rows[0].ids ?? [];
+ok(shared.includes(NEWM) && ![staleUsers.LEFT, EXM, ADMIN].some((u) => shared.includes(u)), `bw_chat_recipients_shared: chat mates the rule lets in, not kept rows or self (${JSON.stringify(shared.length)})`);
+r = await srv(`SELECT public.bw_chat_recipients_shared('${staleUsers.LEFT}', ARRAY['${NEWM}','${ADMIN}']::uuid[]) AS ids`);
+ok(!r.error && (r.rows[0].ids ?? []).length === 0, `bw_chat_recipients_shared: a sender with only kept rows reaches nobody (${r.error ?? 'ok'})`);
+for (const role of ['public', 'anon', 'authenticated']) ok(await priv(role, 'public.bw_chat_recipients_shared(uuid,uuid[])') === false, `bw_chat_recipients_shared: no EXECUTE for ${role}`);
+ok(await priv('service_role', 'public.bw_chat_recipients_shared(uuid,uuid[])') === true, 'bw_chat_recipients_shared: service_role has EXECUTE');
+// 5b. Chat keys: the server (service role) may change them (193's hand merge), nobody else.
+const CHATK = id(62);
+await db.exec(`INSERT INTO chats (id, type, name, created_by) VALUES ('${CHATK}','direct',NULL,'${ADMIN}')`);
+let kx;
+try { await db.exec(`UPDATE chats SET created_at = created_at - interval '1 day' WHERE id = '${CHATK}'`); kx = null; } catch (e) { kx = e.message; }
+ok(/cannot change/.test(kx ?? ''), `chat keys: still refused outside the service role (${kx ?? 'changed'})`);
+r = await asRole('service_role', `UPDATE chats SET created_at = created_at - interval '1 day' WHERE id = '${CHATK}'`);
+ok(!r.error, `chat keys: the service role may change them, no DISABLE TRIGGER (${r.error ?? 'ok'})`);
 
 // Marker for later migrations that keep a live definition (178, 181).
 const defR4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;

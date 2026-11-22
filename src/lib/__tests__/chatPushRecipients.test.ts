@@ -19,7 +19,10 @@ const rows = [
 function fakeAdmin(opts: { rpc?: (fn: string, a: Record<string, unknown>) => { data: unknown; error: unknown } } = {}) {
   const tables: string[] = [];
   const rpc = vi.fn(async (fn: string, a: Record<string, unknown>) =>
-    opts.rpc ? opts.rpc(fn, a) : fn === 'bw_chat_recipient_ids' ? { data: a.p_sender === 'stale' ? [] : ['me', 'mate'].filter((u) => u !== a.p_sender), error: null } : { data: null, error: null },
+    opts.rpc ? opts.rpc(fn, a)
+      : fn === 'bw_chat_recipient_ids' ? { data: a.p_sender === 'stale' ? [] : ['me', 'mate'].filter((u) => u !== a.p_sender), error: null }
+      : fn === 'bw_chat_recipients_shared' ? { data: a.p_sender === 'stale' ? [] : (a.p_targets as string[]).filter((u) => u === 'mate'), error: null }
+      : { data: null, error: null },
   );
   const from = (table: string) => {
     tables.push(table);
@@ -49,11 +52,19 @@ describe('send-push recipients follow the rule, not raw participant rows', () =>
     expect(await chatRecipients(admin, 'stale', CHAT, ['me', 'mate'])).toEqual([]);
   });
 
-  it('allowedRecipients: a kept row shares no chat (rule per chat, no raw roster)', async () => {
-    const { admin, rpc } = fakeAdmin();
+  it('allowedRecipients: a kept row shares no chat (the rule, no raw roster)', async () => {
+    const { admin } = fakeAdmin();
     expect(await allowedRecipients(admin, 'stale', ['mate'])).toEqual([]);
     expect(await allowedRecipients(admin, 'me', ['mate'])).toEqual(['mate']);
-    expect(rpc).toHaveBeenCalledWith('bw_chat_recipient_ids', { p_chat_id: CHAT, p_sender: 'me' });
+  });
+
+  // Round 5 (Claude on cc542575): one set-based call, not one per chat.
+  it('allowedRecipients: one bw_chat_recipients_shared call for all chats, no chat_participants read', async () => {
+    const { admin, rpc, tables } = fakeAdmin();
+    expect(await allowedRecipients(admin, 'me', ['mate', 'stale'])).toEqual(['mate']);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('bw_chat_recipients_shared', { p_sender: 'me', p_targets: ['mate', 'stale'] });
+    expect(tables).not.toContain('chat_participants');
   });
 
   // Main's central-guard decision: recipients come only from the rule.
