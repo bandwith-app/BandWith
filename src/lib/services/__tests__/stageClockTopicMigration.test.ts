@@ -15,7 +15,8 @@ describe('191 the stage clock topic', () => {
 
   it("no policy depends on the event: Realtime's write probe has none", () => {
     expect(sql).not.toMatch(/messages\.event/);
-    expect(sql).toMatch(/DROP POLICY IF EXISTS bw_stage_click_ping_write/);
+    // 103's policy stays: older builds keep whatever it gives them (nothing, by Realtime's source).
+    expect(sql).not.toMatch(/bw_stage_click_ping_write/);
   });
 
   it('nothing for anon, and the stage topic itself is untouched (admins only)', () => {

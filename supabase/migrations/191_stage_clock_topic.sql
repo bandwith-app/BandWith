@@ -57,5 +57,7 @@ CREATE POLICY bw_stage_clock_write ON realtime.messages
     AND public.bw_stage_clock_topic_allowed(realtime.topic())
   );
 
--- 103's policy never matched (no event in the probe): gone, so nobody reads it as a guard.
-DROP POLICY IF EXISTS bw_stage_click_ping_write ON realtime.messages;
+-- 103's policy (bw_stage_click_ping_write) is kept as it is. By Realtime's
+-- source it can't match (its write probe carries no event), but that wasn't
+-- checked against the live server: dropping it could only take something
+-- away from members on older builds, keeping it gives nobody anything new.

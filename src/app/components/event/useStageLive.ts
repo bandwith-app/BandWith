@@ -43,6 +43,8 @@ const PING_GAP_MS = 200;
 const RESYNC_MS = 60_000;
 /** The leader answers at most this many pings per phone per window (a burst is 6). */
 const PONGS_PER_WINDOW = 12;
+/** And in all, whatever names the pings carry (any member may write the clock topic). */
+const ALL_PONGS_PER_WINDOW = 40;
 const PONG_WINDOW_MS = 2_000;
 
 /** A setlist song as Stage mode gets it (setlist_songs row id, song id, set). */
@@ -175,7 +177,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const clickRef = useRef<ClickState | null>(null);
   /** The click leader's clock measured over Realtime (Bluetooth has its own, in useStageBle). */
   const [rtClock, setRtClock] = useState<PeerClock | null>(null);
-  const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[] }>({ peer: '', at: 0, samples: [] });
+  /** The measure of one peer's clock: its samples, and the t0 of each ping still unanswered. */
+  const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[]; sent: number[] }>({ peer: '', at: 0, samples: [], sent: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const live = !!eventId && open;
@@ -244,15 +247,23 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     (peer: string) => {
       const book = samplesRef.current;
       if (book.peer === peer && nowMs() - book.at < RESYNC_MS && book.samples.length) return;
-      samplesRef.current = { peer, at: nowMs(), samples: [] };
+      const fresh = { peer, at: nowMs(), samples: [] as ClockSample[], sent: [] as number[] };
+      samplesRef.current = fresh;
       pingTimers.current.forEach(clearTimeout);
       pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
         setTimeout(() => {
-          void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload: { from: clientId, to: peer, t0: nowMs() } });
+          if (samplesRef.current !== fresh) return;
+          const t0 = nowMs();
+          // Only pongs to these pings count (anyone can write the clock topic in our name).
+          fresh.sent.push(t0);
+          const payload = { from: clientId, to: peer, t0 };
+          void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+          // Admins may write the stage topic too: a leader on an older app listens only there.
+          if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
         }, i * PING_GAP_MS),
       );
     },
-    [clientId],
+    [clientId, isLeader],
   );
 
   const receiveClick = useCallback(
@@ -278,8 +289,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
     channelRef.current = channel;
-    /** Pongs sent per phone lately: a flood of pings gets a few answers, not one each. */
+    /** Pongs sent per phone lately, and in all: a flood of pings gets a few answers, not one each. */
     const answered = new Map<string, number[]>();
+    let allAnswered: number[] = [];
     /**
      * A bandmate measuring our clock: answer straight away with our time, on
      * the stage topic (admins only), so nobody else can pose as the leader's clock.
@@ -288,10 +300,16 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       const p = raw as { from?: unknown; to?: unknown; t0?: unknown } | undefined;
       if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
       const now = nowMs();
+      allAnswered = allAnswered.filter((t) => now - t < PONG_WINDOW_MS);
+      if (allAnswered.length >= ALL_PONGS_PER_WINDOW) return;
+      // Names nobody answered lately are forgotten (at most ALL_PONGS_PER_WINDOW stay).
+      if (answered.size > ALL_PONGS_PER_WINDOW)
+        for (const [name, times] of answered) if (!times.some((t) => now - t < PONG_WINDOW_MS)) answered.delete(name);
       const recent = (answered.get(p.from) ?? []).filter((t) => now - t < PONG_WINDOW_MS);
       if (recent.length >= PONGS_PER_WINDOW) return;
       recent.push(now);
       answered.set(p.from, recent);
+      allAnswered.push(now);
       void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
     };
     // Members' pings (migration 191): everyone in the band may write this topic.
@@ -320,7 +338,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
         const book = samplesRef.current;
         if (book.peer !== p.from) return;
-        book.samples.push(clockSample(p.t0, p.t1, nowMs()));
+        // An answer to a ping this phone sent, once: not one written in our name, nor a replay.
+        const asked = book.sent.indexOf(p.t0);
+        const t2 = nowMs();
+        if (asked < 0 || p.t0 > t2 || !Number.isFinite(p.t1)) return;
+        book.sent.splice(asked, 1);
+        book.samples.push(clockSample(p.t0, p.t1, t2));
         const best = bestSample(book.samples);
         if (best) setRtClock({ from: p.from, sample: best });
       })
