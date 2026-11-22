@@ -344,7 +344,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         typeResolvedRef.current = true;
         if (fullChat.type === 'direct') {
           const other = fullChat.participants.find(p => p.user_id !== user?.id);
-          const name = personName(other?.profile, '');
+          // Nobody else left: the other person deleted their account (#282).
+          const name = other ? personName(other.profile, '') : t('Former member');
+          if (!other) setChatAvatarUrl(undefined);
           if (name) {
             setChatName(name);
             const initials = name.split(' ').filter(Boolean).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();

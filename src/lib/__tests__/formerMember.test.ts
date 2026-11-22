@@ -36,3 +36,30 @@ describe('former member', () => {
     for (const d of [it_, es, fr, de, pt] as Record<string, string>[]) expect(d['Former member']).toBeTruthy();
   });
 });
+
+import appSource from '../../app/AuthenticatedApp.tsx?raw';
+
+// #282 round 4: a direct chat whose other person deleted their account (no
+// other participant left) is named "Former member" in the chat list, never
+// the name stored on the chat.
+describe('former member in a direct chat', () => {
+  const directChatName = (former as any).directChatName;
+  const base = { storedName: 'Rosa Diaz', fallback: 'Member', former: 'Former member' };
+
+  it('no other participant left: a former member', () => {
+    expect(directChatName?.({ ...base, others: [] })).toBe('Former member');
+  });
+
+  it('the other person with a profile: their name', () => {
+    expect(directChatName?.({ ...base, others: [{ profile: { full_name: 'Gina Torres' } }] })).toBe('Gina Torres');
+  });
+
+  it('the other person without a profile loaded: as before (stored name, else Member)', () => {
+    expect(directChatName?.({ ...base, others: [{ profile: null }] })).toBe('Rosa Diaz');
+    expect(directChatName?.({ ...base, storedName: 'Direct Chat', others: [{ profile: null }] })).toBe('Member');
+  });
+
+  it('the chat list uses it', () => {
+    expect(appSource).toMatch(/directChatName\(\{/);
+  });
+});

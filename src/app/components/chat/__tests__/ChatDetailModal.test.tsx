@@ -179,6 +179,23 @@ describe('ChatDetailModal', () => {
     expect(screen.getAllByText('Leo M.').length).toBeGreaterThan(0);
   });
 
+  // #282 round 4: the other person deleted their account. Their participant
+  // row and profile are gone, their direct messages deleted; only the
+  // survivor's messages are left (one replying to their own).
+  it('a direct chat whose other person deleted their account shows a former member', async () => {
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    svc.getChatParticipants.mockResolvedValue({ data: [participant('me', 'Me')] });
+    const mine = (i: number) => ({ ...msg(i, 'me'), sender: { id: 'me', full_name: 'Me' } });
+    latest = [mine(1), { ...mine(2), reply_to_id: 'm1', reply_to: mine(1) } as Message];
+    render(<ChatDetailModal chat={{ ...directProp, name: 'Rosa Diaz', initials: 'RD' }} onClose={() => {}} />);
+    await settle();
+    await settle(CHAT_FALLBACK_POLL_MS + 100);
+    expect(screen.getByRole('heading', { name: /former member/i })).toBeTruthy();
+    expect(screen.queryByText(/Rosa Diaz/)).toBeNull();
+    expect(screen.getAllByText('message 1').length).toBeGreaterThan(0); // the bubble and the reply quote
+    expect(screen.getByText('message 2')).toBeTruthy();
+  });
+
   // No band check to pass in these: the composer stays open.
   const openComposer = () =>
     svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });

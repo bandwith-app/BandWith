@@ -166,6 +166,7 @@ import { addressWithoutCity } from '@/lib/eventAddress';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
 import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
+import { directChatName } from "@/lib/formerMember";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
 import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
@@ -1709,9 +1710,9 @@ export default function AuthenticatedApp() {
       let displayName = "";
       let avatarUrl: string | undefined = undefined;
       if (type === "direct") {
-        const otherWithProfile = others.find((p) => (p as any).profile);
-        // Always the other person's name, never a generic "Direct Chat".
-        displayName = (otherWithProfile ? personName((otherWithProfile as any).profile, "") : "") || (chat.name && chat.name !== "New Chat" && chat.name !== "Chat" && chat.name !== "Direct Chat" ? chat.name : t("Member"));
+        // Always the other person's name, never a generic "Direct Chat"; a
+        // former member when they deleted their account (#282).
+        displayName = directChatName({ others: others as { profile?: any }[], storedName: chat.name, fallback: t("Member"), former: t("Former member") });
         const otherWithAvatar = others.find((p) => (p as any).profile?.avatar_url);
         avatarUrl = (otherWithAvatar as any)?.profile?.avatar_url || undefined;
       } else if (type === "band") {
