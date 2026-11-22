@@ -137,6 +137,8 @@ interface Props {
   draft?: EventDraft | null;
   /** To-dos to start with (a to-do list template). */
   initialTasks?: { title: string; templateId?: string; dueOffset?: number }[];
+  /** The day picked in Calendar ("Add rehearsal" on an empty date), YYYY-MM-DD (audit 05 #12). */
+  initialDate?: string;
 }
 
 type PickerSourceEvents = Parameters<typeof toDatePickerEvents>[0];
@@ -338,7 +340,7 @@ const RehearsalAccordionCard: React.FC<{
   </div>
 );
 
-export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, editingEvent, onOpenPollBuilder, existingEvents, draft, initialTasks }) => {
+export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, editingEvent, onOpenPollBuilder, existingEvents, draft, initialTasks, initialDate }) => {
   const t = useT();
   const pickerEvents = useMemo(
     () => toDatePickerEvents(existingEvents, editingEvent?.eventId),
@@ -454,7 +456,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     title: editingEvent?.title || '',
     location: editingEvent?.location || '',
     address: editingEvent?.venueAddress || '',
-    date: editingEvent?.date || toLocalDateString(new Date(Date.now() + 86400000)),
+    date: editingEvent?.date || initialDate || toLocalDateString(new Date(Date.now() + 86400000)),
     time: editingEvent?.time?.slice(0, 5) || '20:00',
     duration: '2h',
     recurrence: initialRecurrence,
@@ -570,7 +572,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     if (!draftIdRef.current) draftIdRef.current = newDraftId();
     // The date counts once the user picked it (or saw it on step 2):
     // otherwise it is only tomorrow's default and the draft stays undated.
-    const dated = !!data.date && (data.date !== initialDateRef.current || step >= 1 || !!ds?.dated);
+    const dated = !!data.date && (data.date !== initialDateRef.current || step >= 1 || !!ds?.dated || !!initialDate);
     saveEventDraft({
       id: draftIdRef.current,
       userId: currentUserId,
