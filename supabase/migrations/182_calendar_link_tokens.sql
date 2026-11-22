@@ -44,7 +44,8 @@
 --   - Deleting a deputy rotates their requests' keys first (trigger; older
 --     builds delete the row directly). Requests of deputies deleted before
 --     182 (deputy_id NULL) get new keys when 182 runs, and the reply page of
---     a request with no deputy is closed, without fee, address or keys.
+--     a request with no deputy is closed, without fee, address or keys, and
+--     says 'removed': true (the only branch that sends it).
 --   - A cancelled event in either spelling ('cancelled', 'canceled', any
 --     case): bw_event_status_cancelled, used by every check here.
 --   - A date deleted from its series since (skip_dates, #297;
@@ -55,8 +56,9 @@
 --     skip_dates).
 --   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
 --     out of both calendars and the old feed, and the reply page closed,
---     without detail, offer (fee, currency), note or calendar keys; the
---     deputy's in-app list (bw_my_deputy_gigs, 086) shows that page.
+--     without detail, offer (fee, currency), note or calendar keys, as a
+--     closed request ('status' 'cancelled', as #294's 178); the deputy's
+--     in-app list (bw_my_deputy_gigs, 086) shows that page.
 --   - A request withdrawn after a yes stays as the deputy last saw it: the
 --     gig of their answer (answer_snapshot, which now keeps the title too),
 --     never later changes, no street address (bw_deputy_frozen_gig). Those
@@ -383,21 +385,25 @@ BEGIN
   END IF;
   -- Reverted to a private quote (178): closed, and no detail of the gig,
   -- nor the offer or the calendar keys (Claude review of #285, round 5;
-  -- bw_my_deputy_gigs, 086, returns this view).
+  -- bw_my_deputy_gigs, 086, returns this view). Shown as a closed request
+  -- ('status' 'cancelled', as #294's 178 does): every build, 383f15b too,
+  -- says "This request is closed" / "Request withdrawn", never "over" or
+  -- "took you off this gig" (Claude review #285 r9).
   IF v IS NOT NULL AND coalesce(v_hidden, false) THEN
     v := v || jsonb_build_object(
       'event_title', NULL, 'event_type', NULL, 'event_date', NULL, 'start_time', NULL, 'end_time', NULL,
       'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
       'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
       'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'calendar_token', NULL, 'gig_calendar_token', NULL,
-      'closed', true);
+      'status', 'cancelled', 'closed', true);
   END IF;
   -- The deputy was deleted from the band (deputy_id NULL; Codex review #285
   -- round 7): closed, without the offer, the address or the calendar keys.
+  -- 'removed' (only here) is what the page keys "took you off this gig" on.
   IF v IS NOT NULL AND coalesce(v_orphan, false) THEN
     v := v || jsonb_build_object(
       'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'venue_address', NULL,
-      'calendar_token', NULL, 'gig_calendar_token', NULL, 'closed', true);
+      'calendar_token', NULL, 'gig_calendar_token', NULL, 'closed', true, 'removed', true);
   END IF;
   RETURN v;
 END;

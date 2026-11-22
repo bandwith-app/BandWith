@@ -1146,5 +1146,30 @@ await check('function rule: the 084 feed keeps every key of 178\'s body (deputy_
     && !!ga && !!gb && Object.keys(ga).every((k) => k in gb);
 });
 
+// ------------------------------------------- round 12 (Claude r9) --
+console.log('-- round 12');
+// MINOR: a gig back to a private quote sent fee and both keys null, the
+// shape the page read as "removed" ("{band} took you off this gig"). Only
+// the orphan branch says removed, explicitly; the hidden one is a closed
+// request ('status' 'cancelled', as #294's 178), so old builds (383f15b)
+// show "This request is closed" / "Request withdrawn" too.
+await check('Claude r9: a gig back to a quote: closed request, no "removed" key, status cancelled', async () => {
+  const [EV_H, DEPH, RH] = [111, 112, 113].map(id);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_address, is_recurring, created_by, fee)
+    VALUES ($1, $2, 'Gala at the Club', 'gig', 'confirmed', current_date + 20, '19:00', 'Club Room', '5 Club St', false, $3, 2000)`, [EV_H, BAND, ADMIN]);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Nora', NULL)`, [DEPH, BAND]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, status, answer_snapshot)
+    VALUES ($1, $2, $3, $4, 'Nora', 'Keys', 300, 'USD', 'available', '{}')`, [RH, BAND, EV_H, DEPH]);
+  await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_H]); // back to a quote
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RH)])).v;
+  return !!v && v.closed === true && !('removed' in v) && v.status === 'cancelled' && v.event_title === null;
+});
+await check('Claude r9: a deputy deleted from the band: removed: true (and only then)', async () => {
+  const now = (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [RORPH])).token;
+  const o = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [now])).v;
+  const on = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RA)])).v;
+  return o?.removed === true && o.closed === true && !!on && !('removed' in on);
+});
+
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

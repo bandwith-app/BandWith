@@ -5,12 +5,22 @@ import { describe, it, expect } from 'vitest';
 import { DEPUTY_STRINGS, closedCopy } from '../../deputy/strings';
 
 const S = DEPUTY_STRINGS.en;
-const base = { closed: true, event_cancelled: false, status: 'available', fee: 250, calendar_token: 'a'.repeat(64), gig_calendar_token: 'b'.repeat(64) };
+const base = { closed: true, event_cancelled: false, status: 'available', fee: 250, calendar_token: 'a'.repeat(64), gig_calendar_token: 'b'.repeat(64), event_title: 'Spring Social', event_date: '2001-06-01' };
 
 describe('the closed reply page says why', () => {
-  it("removed from the band (fee and keys gone): You're no longer on this gig.", () => {
-    expect(closedCopy({ ...base, fee: null, calendar_token: null, gig_calendar_token: null }, S)).toEqual([S.removedTitle, S.removedBody]);
+  it("removed from the band (182 says removed: true): You're no longer on this gig.", () => {
+    expect(closedCopy({ ...base, fee: null, calendar_token: null, gig_calendar_token: null, removed: true }, S)).toEqual([S.removedTitle, S.removedBody]);
     expect(S.removedTitle).toBe("You're no longer on this gig.");
+  });
+
+  // Claude #285 r9 MINOR: a gig back to a private quote sends fee and both
+  // keys null too (and no title or date). Without the flag that is not
+  // "removed": the neutral closed wording, whatever the status says.
+  it('a gig back to a private quote (hidden: no title, no date, keys null): closed, never removed', () => {
+    const hidden = { ...base, fee: null, calendar_token: null, gig_calendar_token: null, event_title: null, event_date: null };
+    expect(closedCopy(hidden, S)).toEqual([S.closedTitle, S.closedBody]);
+    expect(closedCopy({ ...hidden, status: 'cancelled' }, S)).toEqual([S.closedTitle, S.closedBody]);
+    expect(closedCopy(hidden, S)[0]).not.toBe(S.removedTitle);
   });
 
   it('cancelled by the band, withdrawn, or over: as before', () => {

@@ -44,6 +44,8 @@ interface View {
   /** Read-only keys of the calendar subscription and of this gig's file (182). */
   calendar_token?: string | null;
   gig_calendar_token?: string | null;
+  /** 182: the deputy was deleted from the band (only then sent). */
+  removed?: boolean;
 }
 
 const params = new URL(window.location.href).searchParams;
