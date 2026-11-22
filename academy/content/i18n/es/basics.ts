@@ -921,13 +921,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Elimina tu cuenta",
-      summary: "Borra para siempre tu perfil, tus conciertos personales y tus mensajes.",
+      summary: "Borra para siempre tu perfil, tus conciertos personales y tus mensajes directos.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["eliminar cuenta", "cerrar cuenta", "borrar cuenta", "darse de baja"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes. Si quieres una copia, exporta antes tus datos." },
+        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes directos. Tus mensajes en los chats de la banda y de los conciertos se quedan, como de un **Antiguo miembro**. Si quieres una copia, exporta antes tus datos." },
         {
           type: "steps",
           items: [

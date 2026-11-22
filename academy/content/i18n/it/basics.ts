@@ -926,13 +926,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Elimina il tuo account",
-      summary: "Rimuovi per sempre il tuo profilo, i gig personali e i messaggi.",
+      summary: "Rimuovi per sempre il tuo profilo, i gig personali e i messaggi privati.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["eliminare account", "chiudere account", "rimuovere account", "cancellare"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Non si può annullare. Il tuo profilo, i gig personali e i messaggi vengono eliminati. Se vuoi una copia, esporta prima i tuoi dati." },
+        { type: "note", tone: "warning", text: "Non si può annullare. Il tuo profilo, i gig personali e i messaggi privati vengono eliminati. I tuoi messaggi nelle chat della band e dei gig restano, come di un **Ex membro**. Se vuoi una copia, esporta prima i tuoi dati." },
         {
           type: "steps",
           items: [

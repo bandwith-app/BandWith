@@ -195,7 +195,7 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'Can I export or delete my data?',
-      a: 'Yes. In Privacy & account, Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers, and Delete account removes your profile, personal gigs and messages for good.',
+      a: 'Yes. In Privacy & account, Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers, and Delete account removes your profile, personal gigs and direct messages for good. Your messages in band and gig chats stay, shown as from a Former member.',
     },
   ],
   devices: [

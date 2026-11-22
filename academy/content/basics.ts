@@ -933,13 +933,13 @@ const basics: AreaModule = {
     {
       id: "delete-your-account",
       title: "Delete your account",
-      summary: "Permanently remove your profile, personal gigs and messages.",
+      summary: "Permanently remove your profile, personal gigs and direct messages.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["delete account", "close account", "remove account", "erase"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and messages are deleted. Export your data first if you want a copy." },
+        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and direct messages are deleted. Your messages in band and gig chats stay, shown as from a **Former member**. Export your data first if you want a copy." },
         {
           type: "steps",
           items: [

@@ -926,13 +926,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Excluir sua conta",
-      summary: "Remova de vez seu perfil, seus shows pessoais e suas mensagens.",
+      summary: "Remova de vez seu perfil, seus shows pessoais e suas mensagens diretas.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["excluir conta", "encerrar conta", "apagar conta", "remover conta"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Não dá para desfazer. Seu perfil, seus shows pessoais e suas mensagens são excluídos. Se quiser uma cópia, exporte seus dados antes." },
+        { type: "note", tone: "warning", text: "Não dá para desfazer. Seu perfil, seus shows pessoais e suas mensagens diretas são excluídos. Suas mensagens nos chats da banda e dos shows ficam, como de um **Antigo membro**. Se quiser uma cópia, exporte seus dados antes." },
         {
           type: "steps",
           items: [

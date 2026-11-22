@@ -53,7 +53,7 @@ export const page: ChannelPage = {
       { icon: 'message-circle', title: 'Who can message whom', body: 'Admins write to anyone in the band. Members write directly only to admins, and talk to each other in the band or gig chat. Deputies are in no chat.' },
       { icon: 'eye-off', title: 'Statistics only with a yes', body: 'In the iPhone and Android apps, Anonymous usage statistics stays off until you say yes. It counts which screens are used, never your songs, gigs or messages, and nothing for ads.' },
       { icon: 'lock', title: 'App lock', body: 'Face ID, fingerprint or the device passcode when BandWith starts again after being closed. On by default on iPhone, iPad and Android.' },
-      { icon: 'download', title: 'Export, or delete', body: 'Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers. Delete account removes your profile, personal gigs and messages for good. The only admin of a band makes someone else admin first.', wide: true },
+      { icon: 'download', title: 'Export, or delete', body: 'Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers. Delete account removes your profile, personal gigs and direct messages for good; your band and gig chat messages stay, shown as from a Former member. The only admin of a band makes someone else admin first.', wide: true },
     ],
   },
   learn: [
