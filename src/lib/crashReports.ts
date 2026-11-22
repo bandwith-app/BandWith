@@ -206,6 +206,46 @@ function scrubLinks(s: string): string {
 }
 
 /**
+ * A path with spaces in a folder name (…/audio/[Mirage] Mary Smith/x.pdf):
+ * the plain link rules stop at the space and would keep "Mary Smith/x.pdf".
+ * When a link's path goes on after a space with another "/", the whole rest
+ * goes, up to the end of the line or a quote; a frame's closing bracket at
+ * the end stays. The origin stays, as for any link.
+ */
+const LINE_QUOTE = /['"`“”‘’„‚«»‹›]/;
+const SPACED_START = new RegExp(`(${ORIGIN}|file:\\/\\/)|(^|[\\s('"=,:[])(?=\\/[^\\s/'"\`<>]+\\/)`, 'gi');
+
+function scrubSpacedLine(line: string): string {
+  let out = '';
+  let last = 0;
+  SPACED_START.lastIndex = 0;
+  for (let m = SPACED_START.exec(line); m; m = SPACED_START.exec(line)) {
+    const origin = m[1];
+    const pathStart = m.index + m[0].length;
+    if (m[0].length === 0) SPACED_START.lastIndex++; // a bare start of line: don't loop on it
+    const quote = line.slice(pathStart).search(LINE_QUOTE);
+    let end = quote === -1 ? line.length : pathStart + quote;
+    let rest = line.slice(pathStart, end);
+    const frameClose = quote === -1 ? /\)\s*$/.exec(rest) : null;
+    if (frameClose) {
+      rest = rest.slice(0, frameClose.index);
+      end = pathStart + frameClose.index;
+    }
+    const space = rest.search(/\s/);
+    if (space === -1 || !rest.slice(space).includes('/')) continue;
+    if (origin && origin.toLowerCase() !== 'file://' && !rest.startsWith('/')) continue; // a bare host
+    out += line.slice(last, pathStart) + (origin?.toLowerCase() === 'file://' ? '…' : '/…');
+    last = end;
+    SPACED_START.lastIndex = end;
+  }
+  return out + line.slice(last);
+}
+
+function scrubSpacedPaths(s: string): string {
+  return s.split('\n').map(scrubSpacedLine).join('\n');
+}
+
+/**
  * file:// paths (a WebView, a download): the whole path goes, with the words
  * after it up to a file extension (…/Documents/Mary Smith - Yesterday.mp3).
  * Only a file of the app's own bundle keeps its name.
@@ -282,7 +322,7 @@ function scrubEchoes(line: string): string {
 
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  const out = scrubFileLinks(scrubLinks(scrubKeyDetails(scrubEchoes(s)).replace(QUERY, '').replace(FRAGMENT, '$1')))
+  const out = scrubFileLinks(scrubLinks(scrubSpacedPaths(scrubKeyDetails(scrubEchoes(s))).replace(QUERY, '').replace(FRAGMENT, '$1')))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
     .replace(JWT, '<token>')

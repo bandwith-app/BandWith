@@ -62,14 +62,18 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 | Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too, with brackets in the path or the query (`Chart(Private%20Gig).pdf`, `?t=ab(cd)`) | `https://xyz.supabase.co/…` |
 | Random-looking strings: 16+ characters with a digit, or 40+ of anything (the app's own bundle names under `/assets/` stay) | `<token>` |
 | **All** quoted text, even one word (a song called "Yesterday"). Each opening quote with its own closing one, typographic ones too (`“ ” ‘ ’ „ ‚ « » ‹ ›`); double quotes first, so an apostrophe inside ("Don't Stop Me Now") is just text; a quote left open hides the rest of the line. The message is made one line first, so a quote across a line break (a lyric) still goes, in the stack's first lines too | `"…"` (so `(reading 'map')` is sent as `(reading '…')`: the stack's file, line and column still point at the code) |
+| A link whose path goes on after a space with another `/` (`…/audio/[Mirage] Mary Smith/x.pdf`): the whole rest, up to the end of the line or a quote | `https://host/…`, `file://…`, `/…` |
 
 Kept: error names, function names, file names, and each stack line's `:line:column`.
+
+**Unquoted free text** is not caught (accepted, by design): a message like `Could not save Mary Smith` keeps the name, because nothing tells a name from the words around it. So, in our code, a name in an error message always goes between quotes (`Could not save "${name}"`), which the scrub removes. `safeName` (`src/lib/services/songFiles.ts`) only makes a file name safe for a path; it does not hide it, so it is no substitute for the quotes.
 
 The server cuts everything to size again.
 
 **Limits**
 - Device: each error once per session, at most 10 per session.
 - Server, per person: **no count** (review #277 round 4), so nothing per person is stored. The device sends at most 10 a session; one account sending more can only use up the global caps below (crash reports stop for everyone for that hour), nothing else.
+- **Accepted risk: one account can use up the global caps** (owner's call, 11-22). A modified app or a script can send 300 reports in an hour (or 1000 in a day) and crash reports then stop for everyone until the next hour or day. The impact is only lost reports: nothing else is slowed or blocked, and storage stays bounded. A per-person count would store who sent what, which the "no stored link" rule rules out.
 - Server, everyone together: 300 an hour, 1000 a day, and at most 15,000 reports kept. In the worst case that is about 65 MB, far below the Free plan's 500 MB. The counters are one row each, bumped atomically, so two reports at the limit can't both pass. The hourly prune locks the row counter before it counts, so a report committing meanwhile is never lost from the count.
 - **No stored link to a person**: the user id is only checked (signed in), never stored. A report's transaction writes only the report and the global counters, which everyone shares. Report times are kept to the minute only. That is not anonymity, said plainly:
   - ordering metadata: a row's `xmin` and its identity order put a report next to the reporter's own writes in other tables made around the same time, which undoes the minute rounding;

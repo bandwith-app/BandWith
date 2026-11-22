@@ -12,7 +12,7 @@
 -- - per person: no count on the server, so no row for it. The app sends each
 --   error once and at most 10 a session; one account sending more can only
 --   use up the global caps below (crash reports stop for that hour), nothing
---   else.
+--   else. Accepted risk (owner, 11-22): the impact is only lost reports.
 -- - everyone together: 300 an hour, 1000 a day, and never more than 15000
 --   rows kept (client_error_counters, one row per bucket, bumped atomically:
 --   two reports at the limit can't both pass). Worst case ~15000 x 4.4 kB

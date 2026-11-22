@@ -5,6 +5,7 @@ import raw174 from '../../../../supabase/migrations/174_client_errors.sql?raw';
  * Static guards on 174 (behaviour: supabase/tests/client_errors.sql on the
  * database, PGlite locally).
  */
+const NODE_FS = 'node:fs'; // a variable: the app's tsconfig has no Node types
 const sql = raw174.replace(/--.*$/gm, '');
 const fnBody = (name: string) => {
   const from = sql.indexOf(`FUNCTION public.${name}(`);
@@ -61,12 +62,21 @@ describe('174 client errors', () => {
   });
 
   it('docs/crash-reports.md says the same', async () => {
-    const fs = (await import(/* @vite-ignore */ 'node:fs')) as { readFileSync: (p: string, e: 'utf8') => string };
+    const fs = (await import(/* @vite-ignore */ NODE_FS)) as { readFileSync: (p: string, e: 'utf8') => string };
     const { process } = globalThis as unknown as { process: { cwd(): string } };
     const doc = fs.readFileSync(`${process.cwd()}/docs/crash-reports.md`, 'utf8');
     expect(doc).not.toMatch(/Unlinkable/i);
     expect(doc).not.toMatch(/no transaction id/i);
     expect(doc).toMatch(/No stored link/);
     expect(doc).toMatch(/service role is trusted not to correlate/);
+  });
+
+  it('docs/crash-reports.md names the accepted limits (review #277, Claude r5)', async () => {
+    const fs = (await import(/* @vite-ignore */ NODE_FS)) as { readFileSync: (p: string, e: 'utf8') => string };
+    const { process } = globalThis as unknown as { process: { cwd(): string } };
+    const doc = fs.readFileSync(`${process.cwd()}/docs/crash-reports.md`, 'utf8');
+    expect(doc).toMatch(/\*\*Unquoted free text\*\* is not caught/);
+    expect(doc).toMatch(/a name in an error message always goes between quotes/);
+    expect(doc).toMatch(/\*\*Accepted risk: one account can use up the global caps\*\*/);
   });
 });

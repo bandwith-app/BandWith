@@ -617,3 +617,34 @@ describe('round 5 (review #277)', () => {
     expect(h.rpc[0]?.args.p_route).toBe('Stage');
   });
 });
+
+describe('links with spaces inside brackets (review #277, Claude r5)', () => {
+  it('a link whose brackets hold a space goes whole, up to the end of the line or a quote', () => {
+    const cases = [
+      'Failed to fetch https://x.supabase.co/storage/v1/object/sign/audio/[Mirage] Mary Smith/x.pdf',
+      'Failed to fetch https://x.supabase.co/storage/v1/object/sign/audio/(Mirage) Mary Smith/Yesterday take 2/x.pdf',
+      'Could not open file:///var/mobile/Documents/[Mirage] Mary Smith/x.pdf',
+      'GET /storage/v1/object/sign/audio/[Mirage] Mary Smith/x.pdf 400',
+      'Load failed for "https://x.supabase.co/storage/v1/object/sign/[Mirage] Mary Smith/x.pdf" now',
+    ];
+    for (const raw of cases) {
+      const m = scrubMessage(raw);
+      expect(m, raw).not.toMatch(/Mirage|Mary|Smith|Yesterday|x\.pdf/);
+    }
+    expect(scrubMessage(cases[0])).toBe('Failed to fetch https://x.supabase.co/…');
+    expect(scrubMessage(cases[2])).toBe('Could not open file://…');
+  });
+
+  it('an encoded segment goes whole too', () => {
+    const m = scrubMessage('Failed to fetch https://x.supabase.co/storage/v1/object/sign/audio/%5BMirage%5D%20Mary%20Smith/x.pdf');
+    expect(m).toBe('Failed to fetch https://x.supabase.co/…');
+  });
+
+  it('links without spaces, and the app’s own frames, are as before', () => {
+    expect(scrubMessage('at f (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)')).toBe(
+      'at f (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+    );
+    expect(scrubMessage('Failed to load /deputy.html and then a / b')).toBe('Failed to load /deputy.html and then a / b');
+    expect(scrubMessage('at https://cdn.example.com/lib/x.js:1:2')).toBe('at https://cdn.example.com/…');
+  });
+});
