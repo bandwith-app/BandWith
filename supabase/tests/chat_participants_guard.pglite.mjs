@@ -473,17 +473,18 @@ for (let k = 0; k < 3; k++) {
   r4Runs.push(await fastest('public.bw_chat_scope_ok_for(chat_id, user_id)'));
   r5Runs.push(await fastest(guardQual));
 }
-const r4Guard = { roster: { median: Math.min(...r4Runs) } };
-const r5Again = { median: Math.min(...r5Runs) };
+// Fastest of 15 runs each (3 interleaved rounds of 5).
+const r4Fastest = Math.min(...r4Runs);
+const r5Fastest = Math.min(...r5Runs);
 const errs = Object.values(withGuard).map((x) => x.error).filter(Boolean);
 ok(errs.length === 0, `EXPLAIN ANALYZE runs (${errs.join('; ') || 'ok'})`);
-console.log(`COST (PGlite/WASM, median of 5 runs, ms, 50 chats x 10 people, 1000 messages): `
+console.log(`COST (PGlite/WASM, ms, 50 chats x 10 people, 1000 messages; median of 5 runs): `
   + Object.keys(withGuard).map((k) => `${k} ${withGuard[k].median?.toFixed(1)} with the guard / ${noGuard[k].median?.toFixed(1)} without`).join('; ')
-  + `; roster fastest run: round 4's guard ${r4Guard.roster.median?.toFixed(1)}, round 5's ${r5Again.median?.toFixed(1)}`);
+  + `; roster, fastest of 15 interleaved runs: round 4's guard ${r4Fastest.toFixed(1)}, round 5's ${r5Fastest.toFixed(1)}`);
 // A 2x margin: on a busy machine either can lose a run (1 in 4 flaked
 // with a plain "<"); a policy that goes back to the rule per row is far
 // beyond it.
-ok(r5Again.median < 2 * r4Guard.roster.median, `round 5's guard costs no more than 2x round 4's on the roster (${r5Again.median?.toFixed(1)} < 2 x ${r4Guard.roster.median?.toFixed(1)} ms)`);
+ok(r5Fastest < 2 * r4Fastest, `round 5's guard costs no more than 2x round 4's on the roster, fastest runs (${r5Fastest.toFixed(1)} < 2 x ${r4Fastest.toFixed(1)} ms)`);
 // A budget, so a policy that goes back to once-per-row fails (once per row was 3.6 s here).
 ok(withGuard.roster.median < 1000 && withGuard.chats.median < 200, `cost stays per query, not per row (roster ${withGuard.roster.median?.toFixed(0)} ms, chats ${withGuard.chats.median?.toFixed(0)} ms)`);
 
