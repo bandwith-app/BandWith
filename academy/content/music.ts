@@ -155,6 +155,11 @@ const music: AreaModule = {
             ["**Duration**", "Minutes and seconds in two boxes (min : sec). Used for setlist totals."],
             ["**BPM**", "Tempo, up to 3 digits. Stage mode's click uses it."],
             ["**Key**", "Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control."],
+            // <draft live-tempo>
+            ["**Time signature**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8. The click and the count-in use it. With none picked, the chord chart's, else 4/4. See [[song-live-settings]]."],
+            ["**Count-in**", "**1 bar** or **2 bars**, and how many beats early the song starts (**Starts on the downbeat** when none)."],
+            ["**Played with a backing track**", "The song gets no count-in on stage: the track starts the band."],
+            // </draft>
             ["**Tap**, **BPM from the recording**, ÷2 / ×2", "Tools under BPM to find the tempo. See [[transpose-and-tempo]]."],
             ["**Transpose for the band**", "Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose."],
             ["**Genre**", "Tags to pick from the band's genres, or a new one with the dashed **Genre** chip, then **Add genre**. Genres filter the library when you build a setlist."],
@@ -1566,7 +1571,9 @@ const music: AreaModule = {
           type: "list",
           items: [
             "The click is visual only: there is no sound. It doesn't block taps on the screen.",
-            "The beats in a bar come from the song's iReal chart time signature, else 4.",
+            // <draft live-tempo>
+            "The beats in a bar come from the song's **Time signature**, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see [[count-in]].",
+            // </draft>
             "A song without BPM can't start a click (**No BPM for this song**). Add the BPM in the song form.",
             "Moving to another song hides the click for the song before.",
             "Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.",
@@ -1575,6 +1582,176 @@ const music: AreaModule = {
         },
       ],
     },
+    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
+    {
+      id: "song-live-settings",
+      title: "Set a song up for the count-in",
+      summary: "Give a song its time signature, how long the count-in lasts, a pickup, and whether a backing track starts it.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["time signature", "meter", "6/8", "7/8", "count-in", "pickup", "upbeat", "backing track", "sequence"],
+      related: ["count-in", "follow-the-tempo", "song-fields", "transpose-and-tempo"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open the song's menu and tap **Edit**, then **Next** to reach **Details · optional**.",
+            "Under **BPM** and **Key**, pick the **Time signature**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8.",
+            "Under **Count-in**, pick **1 bar** or **2 bars**. Two bars suit slow songs: the first bar counts in half time.",
+            "If the song starts before the first beat of the bar, tap + until it says how many beats early, for example **Starts 2 beats early**. Tap − to go back to **Starts on the downbeat**.",
+            "If a backing track starts the band, turn on **Played with a backing track**: the song gets no count-in on stage.",
+            "Tap **Save now**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "With no time signature picked, the song uses its chord chart's (the form says **From the chord chart.**), else 4/4.",
+            "The click and the count-in follow the time signature: 6/8 and 12/8 are counted in dotted beats, as musicians count them.",
+            "The **BPM** is the beat you count: the quarter note in 4/4, 3/4 or 5/8, the dotted beat in 6/8, 9/8 and 12/8.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Sets the time signature, the count-in and the backing track for the band." },
+            { role: "member", text: "Sees the result on stage. Can't change it." },
+          ],
+        },
+        { type: "shot", id: "song-live-fields", caption: "The song form under BPM and Key: Time signature, Count-in, the pickup and Played with a backing track." },
+      ],
+    },
+    {
+      id: "count-in",
+      title: "Count the band in",
+      summary: "The leader taps Count in and every phone shows the same countdown in the song's tempo, then GO where the band comes in.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["count-in", "countdown", "count off", "1 2 3 4", "start together", "downbeat", "vibration", "metronome"],
+      related: ["song-live-settings", "follow-the-tempo", "stage-click", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Lead the count-in",
+          items: [
+            "In Stage mode or Live mode, go to the song.",
+            "Tap **Count in**.",
+            "After 1.5 seconds, every phone in Stage mode shows a full-screen countdown in the song's tempo: a big number on each beat and a ring that fills bar by bar.",
+            "The band comes in on **GO**. The countdown goes away by itself.",
+            "To stop it before the end, tap **Stop**. It stops on every phone.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Time signature", "What the countdown shows"],
+          rows: [
+            ["4/4", "4 3 2 1 GO"],
+            ["3/4", "3 2 1 GO"],
+            ["2/4", "2 1 GO"],
+            ["5/4", "5 4 3 2 1 GO"],
+            ["6/8, 12/8", "The dotted beats as big numbers (2 or 4), the eighth notes as small dots."],
+            ["5/8, 7/8", "The beats grouped as in the chart, for example 2+2+3: short, short, long."],
+          ],
+        },
+        {
+          type: "list",
+          title: "How it counts",
+          items: [
+            "With **2 bars** set on the song, the first bar counts in half time (“1 — 2 —”) and the second in time.",
+            "A song that starts a few beats early ends the countdown with **GO** on its first note, not on 1.",
+            "The band picks the direction: a countdown (4 3 2 1, the default) or the classic count (1 2 3 4).",
+            "If **Follow the tempo** is on, the song starts moving on **GO**. If the click is running, it goes on in time.",
+          ],
+        },
+        {
+          type: "list",
+          title: "On your own phone (optional)",
+          items: [
+            "Vibration on every beat, stronger on the first: for whoever can't look at the screen.",
+            "A spoken count or a click in your headphones. It never plays through the phone's speaker unless you choose it.",
+          ],
+        },
+        {
+          type: "list",
+          title: "When there is no count-in",
+          items: [
+            "A song set as **Played with a backing track** has no **Count in** button: the track starts the band. An admin can still start one from the song's menu.",
+            "While the stage manager plays the song's audio, the count-in isn't offered.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "A phone that gets the message late joins the countdown on the right beat.",
+            "With no signal, the count-in reaches phones nearby over Bluetooth.",
+            "Phones keep in time to about 20–40 ms.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Starts and stops the count-in for the whole band." },
+            { role: "member", text: "Sees it on their phone and chooses vibration or headphones for their own device." },
+          ],
+        },
+        { type: "shot", id: "stage-count-in", caption: "The count-in on every phone: the beat number, the ring and Stop." },
+      ],
+    },
+    {
+      id: "follow-the-tempo",
+      title: "Follow the tempo",
+      summary: "Turn it on and the chart, the structure or the lyrics move with the song, in time with the leader's phone.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["follow tempo", "auto scroll", "playhead", "current bar", "next section", "scroll lyrics", "hold", "vamp", "rehearsal speed"],
+      related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Turn it on",
+          items: [
+            "In Stage mode or Live mode, open the song tab's view choices (where you pick **Lyrics & chords** or **Chord chart**).",
+            "Turn on **Follow the tempo**. It is off by default and kept on this device.",
+            "When the leader starts the song with **Count in** or the click, your screen moves with it.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["View", "What moves"],
+          rows: [
+            ["**Chord chart**", "The current bar lights up, and the chart scrolls to keep it in view."],
+            ["Structure", "The current section is highlighted. A strip at the top says what comes next, for example “Next: Bridge in 4 bars”."],
+            ["**Lyrics & chords**, **Lyrics**, **Song only**", "The current line is highlighted and the text scrolls smoothly. Without line timing, it moves section by section."],
+            ["Floor wedge", "A big countdown to the next section, for example “Chorus in 4”."],
+          ],
+        },
+        {
+          type: "steps",
+          title: "Lead it",
+          items: [
+            "Start the song with **Count in** or the click. Bar 1 starts on every phone at the same moment.",
+            "If the band plays a part longer or shorter, tap the section, bar or line where you are: everyone jumps there.",
+            "Tap **Hold** to repeat the current section (a vamp, a solo) until you tap it again.",
+            "Tap **Stop** to end it. Moving to another song stops it too.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "Only the leader moves the band's place. Members turn the view on or off on their own phone.",
+            "A song needs a BPM to follow. Without one the switch says “Add a BPM to follow this song”.",
+            "Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order. A fermata waits until the leader taps.",
+            "To follow line by line, an admin sets the line timing in the song with **Sync lines**: tap along with the recording, or set the bars of each line.",
+            "At a rehearsal, **Play at 80%** slows down the click and the follow together. The song's BPM stays the same.",
+          ],
+        },
+        { type: "shot", id: "stage-follow-tempo", caption: "Follow the tempo on the chord chart: the current bar lit and the next section on top." },
+      ],
+    },
+    // </draft>
     {
       id: "stage-manager",
       title: "Play the songs' audio from the stage manager device",
@@ -1979,6 +2156,12 @@ const music: AreaModule = {
       q: "Why don't I see the iReal Pro forum inside the app on the web?",
       a: "The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap Paste link, or drag the link onto the box.",
     },
+    // <draft live-tempo>
+    {
+      q: "Why is there no Count in button on a song?",
+      a: "The song is set as Played with a backing track: the track starts the band. An admin can still start a count-in from the song's menu.",
+    },
+    // </draft>
   ],
 
   glossary: [
@@ -2006,6 +2189,10 @@ const music: AreaModule = {
     { term: "Offline setlist", definition: "The copy of a gig's or rehearsal's setlist kept on your phone for when there is no signal: lyrics, chords, voice parts and your own notes.", see: "live-mode-offline" },
     { term: "Voice part", definition: "Who sings a line or a few words: Lead, 2nd voice, Backing, All or Spoken, each with its own look.", see: "voice-parts" },
     { term: "Highlight my part", definition: "A switch on each device that keeps the lines you sing bright and dims the others a little.", see: "highlight-my-part" },
+    // <draft live-tempo>
+    { term: "Count-in", definition: "The countdown on every phone, in the song's tempo and time signature, that ends with GO where the band comes in.", see: "count-in" },
+    { term: "Follow the tempo", definition: "A switch on each device that moves the chart, the structure or the lyrics with the song, in time with the leader.", see: "follow-the-tempo" },
+    // </draft>
   ],
 
   shots: [
@@ -2106,6 +2293,26 @@ const music: AreaModule = {
       role: "admin",
       viewport: "phone",
     },
+    // <draft live-tempo>
+    {
+      id: "song-live-fields",
+      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Scroll so BPM, Key, Time signature (6/8), Count-in (2 bars, Starts 1 beats early) and Played with a backing track show.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "stage-count-in",
+      how: "As admin, open Rooftop Session in Stage mode on Paper Boats and tap Count in; capture on beat 2 of the countdown.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "stage-follow-tempo",
+      how: "As a member with Follow the tempo on, Chord chart tab, while the leader runs Harbor Lights; capture with a bar lit and the Next: … strip showing.",
+      role: "member",
+      viewport: "phone",
+    },
+    // </draft>
   ],
 };
 

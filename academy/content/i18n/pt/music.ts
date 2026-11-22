@@ -145,6 +145,11 @@ const music: AreaText = {
             ["**Duração**", "Minutos e segundos em duas caixas (min : seg). Usada nos totais das setlists."],
             ["**BPM**", "Andamento, até 3 dígitos. O clique do Modo palco usa esse valor."],
             ["**Tom**", "Texto livre, por exemplo C maj. Aparece na lista, no palco e no controle de transposição do leitor."],
+            // <draft live-tempo>
+            ["**Compasso**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 ou 7/8. O clique e a contagem usam esse valor. Se nenhum for escolhido, vale o da grade de acordes; se não houver, 4/4. Veja [[song-live-settings]]."],
+            ["**Contagem**", "**1 compasso** ou **2 compassos**, e quantos tempos antes a música começa (**Começa no primeiro tempo** quando não há nenhum)."],
+            ["**Tocada com playback**", "A música não tem contagem no palco: o playback dá a entrada à banda."],
+            // </draft>
             ["**Tap**, **BPM da gravação**, ÷2 / ×2", "Ferramentas embaixo do BPM para achar o andamento. Veja [[transpose-and-tempo]]."],
             ["**Transpor para a banda**", "Muda o tom, a grade de acordes e os acordes da letra para todos. Só aparece quando há algo para transpor."],
             ["**Gênero**", "Etiquetas para escolher entre os gêneros da banda, ou um novo com o chip tracejado **Gênero** e depois **Adicionar gênero**. Os gêneros filtram a biblioteca quando você monta uma setlist."],
@@ -1556,7 +1561,9 @@ const music: AreaText = {
           type: "list",
           items: [
             "O clique é só visual: não tem som. Ele não bloqueia os toques na tela.",
-            "Os tempos do compasso vêm da fórmula de compasso da grade do iReal da música; se não houver, são 4.",
+            // <draft live-tempo>
+            "Os tempos do compasso vêm do **Compasso** da música; se não houver, da grade de acordes; se não, 4/4. Em 6/8 e 12/8 ele pisca nos tempos pontuados. Para fazer a contagem da banda, veja [[count-in]].",
+            // </draft>
             "Uma música sem BPM não pode iniciar o clique (**Sem BPM para esta música**). Adicione o BPM no formulário da música.",
             "Passar para outra música esconde o clique da música anterior.",
             "Os celulares ficam no tempo com cerca de 20–40 ms de diferença: bom para uma contagem e como referência de andamento, não para um clique no ouvido.",
@@ -1565,6 +1572,176 @@ const music: AreaText = {
         },
       ],
     },
+    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
+    {
+      id: "song-live-settings",
+      title: "Preparar uma música para a contagem",
+      summary: "Dê a uma música o compasso, a duração da contagem, uma anacruse e se um playback dá a entrada.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["compasso", "fórmula de compasso", "métrica", "6/8", "7/8", "contagem", "anacruse", "contratempo", "playback", "backing track", "sequência"],
+      related: ["count-in", "follow-the-tempo", "song-fields", "transpose-and-tempo"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Abra o menu da música e toque em **Editar**, depois em **Próximo** para chegar a **Detalhes · opcional**.",
+            "Embaixo de **BPM** e **Tom**, escolha o **Compasso**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 ou 7/8.",
+            "Em **Contagem**, escolha **1 compasso** ou **2 compassos**. Dois compassos combinam com músicas lentas: o primeiro compasso conta em meio tempo.",
+            "Se a música começa antes do primeiro tempo do compasso, toque em + até aparecer quantos tempos antes, por exemplo **Começa 2 tempos antes**. Toque em − para voltar a **Começa no primeiro tempo**.",
+            "Se um playback dá a entrada à banda, ative **Tocada com playback**: a música não tem contagem no palco.",
+            "Toque em **Salvar agora**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Bom saber",
+          items: [
+            "Sem compasso escolhido, a música usa o da grade de acordes (o formulário diz **Da cifra de acordes.**); se não houver, 4/4.",
+            "O clique e a contagem seguem o compasso: 6/8 e 12/8 são contados em tempos pontuados, como os músicos contam.",
+            "O **BPM** é o tempo que você conta: a semínima em 4/4, 3/4 ou 5/8, o tempo pontuado em 6/8, 9/8 e 12/8.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Define o compasso, a contagem e o playback para a banda." },
+            { role: "member", text: "Vê o resultado no palco. Não pode mudá-lo." },
+          ],
+        },
+        { type: "shot", id: "song-live-fields", caption: "O formulário da música embaixo de BPM e Tom: Compasso, Contagem, a anacruse e Tocada com playback." },
+      ],
+    },
+    {
+      id: "count-in",
+      title: "Fazer a contagem para a banda",
+      summary: "O líder toca em Contar e todos os celulares mostram a mesma contagem regressiva no andamento da música, e depois JÁ onde a banda entra.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["contagem", "contagem regressiva", "contar a entrada", "1 2 3 4", "começar juntos", "primeiro tempo", "vibração", "metrônomo"],
+      related: ["song-live-settings", "follow-the-tempo", "stage-click", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Conduzir a contagem",
+          items: [
+            "No Modo palco ou no Modo ao vivo, vá até a música.",
+            "Toque em **Contar**.",
+            "Depois de 1,5 segundo, todos os celulares no Modo palco mostram uma contagem regressiva em tela cheia no andamento da música: um número grande a cada tempo e um anel que se enche compasso a compasso.",
+            "A banda entra no **JÁ**. A contagem some sozinha.",
+            "Para parar antes do fim, toque em **Parar**. Ela para em todos os celulares.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Compasso", "O que a contagem mostra"],
+          rows: [
+            ["4/4", "4 3 2 1 JÁ"],
+            ["3/4", "3 2 1 JÁ"],
+            ["2/4", "2 1 JÁ"],
+            ["5/4", "5 4 3 2 1 JÁ"],
+            ["6/8, 12/8", "Os tempos pontuados como números grandes (2 ou 4), as colcheias como pontinhos."],
+            ["5/8, 7/8", "Os tempos agrupados como na grade, por exemplo 2+2+3: curto, curto, longo."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Como ela conta",
+          items: [
+            "Com **2 compassos** definidos na música, o primeiro compasso conta em meio tempo (“1 — 2 —”) e o segundo no tempo.",
+            "Uma música que começa alguns tempos antes termina a contagem com **JÁ** na primeira nota, não no 1.",
+            "A banda escolhe o sentido: regressiva (4 3 2 1, o padrão) ou a contagem clássica (1 2 3 4).",
+            "Se **Seguir o andamento** estiver ligado, a música começa a andar no **JÁ**. Se o clique estiver rodando, ele continua no tempo.",
+          ],
+        },
+        {
+          type: "list",
+          title: "No seu próprio celular (opcional)",
+          items: [
+            "Vibração a cada tempo, mais forte no primeiro: para quem não pode olhar para a tela.",
+            "Uma contagem falada ou um clique nos seus fones. Nunca toca pelo alto-falante do celular, a não ser que você escolha.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Quando não há contagem",
+          items: [
+            "Uma música definida como **Tocada com playback** não tem o botão **Contar**: o playback dá a entrada à banda. Um admin ainda pode iniciar uma contagem pelo menu da música.",
+            "Enquanto a cabine toca o áudio da música, a contagem não é oferecida.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Bom saber",
+          items: [
+            "Um celular que recebe a mensagem atrasado entra na contagem no tempo certo.",
+            "Sem sinal, a contagem chega aos celulares por perto por Bluetooth.",
+            "Os celulares ficam no tempo com cerca de 20–40 ms de diferença.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Inicia e para a contagem para a banda toda." },
+            { role: "member", text: "Vê a contagem no celular e escolhe vibração ou fones para o próprio aparelho." },
+          ],
+        },
+        { type: "shot", id: "stage-count-in", caption: "A contagem em todos os celulares: o número do tempo, o anel e Parar." },
+      ],
+    },
+    {
+      id: "follow-the-tempo",
+      title: "Seguir o andamento",
+      summary: "Ative e a grade, a estrutura ou a letra andam com a música, no tempo do celular do líder.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["seguir o andamento", "rolagem automática", "auto scroll", "compasso atual", "próxima seção", "rolar a letra", "segurar", "vamp", "velocidade de ensaio"],
+      related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Ativar",
+          items: [
+            "No Modo palco ou no Modo ao vivo, abra as opções de visualização da aba da música (onde você escolhe **Letra e acordes** ou **Grade de acordes**).",
+            "Ative **Seguir o andamento**. Vem desligado e fica guardado neste dispositivo.",
+            "Quando o líder inicia a música com **Contar** ou com o clique, a sua tela anda junto.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Visualização", "O que anda"],
+          rows: [
+            ["**Grade de acordes**", "O compasso atual acende, e a grade rola para mantê-lo à vista."],
+            ["Estrutura", "A seção atual fica destacada. Uma faixa no alto diz o que vem depois, por exemplo “Próxima: Ponte em 4 compassos”."],
+            ["**Letra e acordes**, **Letra**, **Só a música**", "A linha atual fica destacada e o texto rola suavemente. Sem o tempo das linhas, anda seção por seção."],
+            ["Retorno de chão", "Uma contagem grande até a próxima seção, por exemplo “Refrão em 4”."],
+          ],
+        },
+        {
+          type: "steps",
+          title: "Conduzir",
+          items: [
+            "Inicie a música com **Contar** ou com o clique. O compasso 1 começa em todos os celulares no mesmo momento.",
+            "Se a banda tocar uma parte mais longa ou mais curta, toque na seção, no compasso ou na linha onde vocês estão: todos pulam para lá.",
+            "Toque em **Segurar** para repetir a seção atual (um vamp, um solo) até tocar de novo.",
+            "Toque em **Parar** para terminar. Passar para outra música também para.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Bom saber",
+          items: [
+            "Só o líder move o lugar da banda. Os membros ligam ou desligam a visualização no próprio celular.",
+            "Uma música precisa de BPM para ser seguida. Sem BPM, o botão diz “Adicione um BPM para seguir esta música”.",
+            "Repetições, casas de final, D.C., D.S., segno e coda da grade são tocados em ordem. Uma fermata espera até o líder tocar.",
+            "Para seguir linha por linha, um admin define o tempo das linhas na música com **Sincronizar linhas**: tocando junto com a gravação, ou definindo os compassos de cada linha.",
+            "Num ensaio, **Tocar a 80%** deixa mais lentos o clique e o seguimento juntos. O BPM da música continua o mesmo.",
+          ],
+        },
+        { type: "shot", id: "stage-follow-tempo", caption: "Seguir o andamento na grade de acordes: o compasso atual aceso e a próxima seção no alto." },
+      ],
+    },
+    // </draft>
     {
       id: "stage-manager",
       title: "Tocar o áudio das músicas pela cabine",
@@ -1969,6 +2146,12 @@ const music: AreaText = {
       q: "Por que não vejo o fórum do iReal Pro dentro do app na web?",
       a: "O fórum não pode ser mostrado dentro de uma página web, então abre numa janela própria. Copie um link ali e toque em Colar link, ou arraste o link para a caixa.",
     },
+    // <draft live-tempo>
+    {
+      q: "Por que uma música não tem o botão Contar?",
+      a: "A música está definida como Tocada com playback: o playback dá a entrada à banda. Um admin ainda pode iniciar uma contagem pelo menu da música.",
+    },
+    // </draft>
   ],
 
   glossary: [
@@ -1996,6 +2179,10 @@ const music: AreaText = {
     { term: "Setlist offline", definition: "A cópia da setlist de um show ou ensaio guardada no seu celular para quando não há sinal: letras, acordes, partes vocais e as suas próprias notas.", see: "live-mode-offline" },
     { term: "Parte vocal", definition: "Quem canta uma linha ou algumas palavras: Voz principal, Segunda voz, Coro, Todos ou Falado, cada uma com o seu visual.", see: "voice-parts" },
     { term: "Destacar a minha parte", definition: "Um botão em cada dispositivo que deixa bem visíveis as linhas que você canta e esmaece um pouco as outras.", see: "highlight-my-part" },
+    // <draft live-tempo>
+    { term: "Contagem", definition: "A contagem regressiva em todos os celulares, no andamento e no compasso da música, que termina com JÁ onde a banda entra.", see: "count-in" },
+    { term: "Seguir o andamento", definition: "Um botão em cada dispositivo que faz a grade, a estrutura ou a letra andarem com a música, no tempo do líder.", see: "follow-the-tempo" },
+    // </draft>
   ],
 };
 
