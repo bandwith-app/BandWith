@@ -21,7 +21,7 @@ import { FollowCountdown, FollowLeaderButtons, FollowTempoSwitch, useFollowTempo
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
-import type { StageBleStatus } from '@/lib/stageBleNotice';
+import { followLabel, type StageBleStatus } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
@@ -79,6 +79,8 @@ export interface FloorWedgeModeProps {
     isLeader: boolean;
     following: boolean;
     leaderSeen: boolean;
+    /** The leader's phone is in Stage mode and reachable, song picked or not. */
+    leaderHere?: boolean;
     connected: boolean;
     /** Bluetooth link (native apps): 'leading' for the admin, 'connected' for a member. */
     bluetooth?: StageBleStatus;
@@ -478,13 +480,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               )}
             >
               <span aria-hidden className={cn('w-2 h-2 rounded-full', follow.following ? 'bg-accent-foreground' : 'border border-white')} />
-              {!follow.following
-                ? t('Follow leader')
-                : !follow.leaderSeen
-                  ? t('Waiting for leader')
-                  : !follow.connected && follow.bluetooth !== 'connected'
-                    ? t('Offline')
-                    : t('Following leader')}
+              {followLabel(follow)}
             </button>
           )}
           {ownChrome && (

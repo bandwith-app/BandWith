@@ -45,7 +45,9 @@ vi.mock('@/lib/supabase', () => ({
     },
   },
 }));
-vi.mock('../useStageBle', () => ({ useStageBle: () => ({ status: 'off', publish: () => {} }) }));
+// Stable functions, like the real hook's.
+const bleStub = { status: 'off', publish: () => {}, publishLive: () => {}, burst: () => {}, clock: null };
+vi.mock('../useStageBle', () => ({ useStageBle: () => bleStub }));
 vi.mock('@/lib/services/songs', () => ({ saveSetlistOrder: async () => ({ error: null }) }));
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: async () => {} }));
 

@@ -30,6 +30,7 @@ import { FollowArea, FollowStrip, FollowTempoSwitch, useFollowTempo, type StageF
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
+import { followLabel } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
@@ -89,6 +90,8 @@ export interface StageLiveControls {
   following: boolean;
   setFollowing: (on: boolean) => void;
   leaderSeen: boolean;
+  /** The leader's phone is in Stage mode and reachable, song picked or not. */
+  leaderHere?: boolean;
   connected: boolean;
   /** Bluetooth link in the native apps (offline on stage). */
   bluetooth?: StageBleStatus;
@@ -784,7 +787,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                       className={cn('w-2 h-2 rounded-full shrink-0', live.following ? 'bg-black' : 'border border-white')}
                     />
                     <span className="truncate">
-                      {followLabel(live, t)}
+                      {followLabel(live)}
                     </span>
                   </button>
                 )}
@@ -1168,16 +1171,6 @@ export const StageMode: React.FC<StageModeProps> = ({
     </motion.div>
   );
 };
-
-/** A member's follow button: says so when nothing can reach this phone any more. */
-const followLabel = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
-  !live.following
-    ? t('Follow leader')
-    : !live.leaderSeen
-      ? t('Waiting for leader')
-      : !live.connected && live.bluetooth !== 'connected'
-        ? t('Offline')
-        : t('Following leader');
 
 const saveLabel = (state: StageSaveState, t: ReturnType<typeof useT>) =>
   state === 'saving'

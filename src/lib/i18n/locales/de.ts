@@ -3257,6 +3257,7 @@ const dict: Dictionary = {
   "Band follows you": "Die Band folgt dir",
   "Following leader": "Mit dem Leader",
   "Waiting for leader": "Warte auf Leader",
+  "Leader hasn't started yet": "Der Leader hat noch nicht angefangen",
   "Follow leader": "Leader folgen",
   "Reorder": "Sortieren",
   "Now playing: {title}": "Läuft: {title}",

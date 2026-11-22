@@ -36,12 +36,19 @@ import {
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
 import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
+import type { LiveEvent, LiveEvents } from '@/lib/stageBleSync';
 
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
 const PING_GAP_MS = 200;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
+/**
+ * No internet, and the leader's phone out of Bluetooth reach this long: its
+ * click and playhead stop showing (it closed Stage, or left). A shorter
+ * dropout keeps the beat going on the shared clock.
+ */
+export const BLE_LEADER_GONE_MS = 10_000;
 
 /** A setlist song as Stage mode gets it (setlist_songs row id, song id, set). */
 export interface LiveSongRef {
@@ -141,6 +148,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const [fallbackIndex, setFallbackIndex] = useState(0);
   const [following, setFollowingState] = useState(true);
   const [leaderSeen, setLeaderSeen] = useState(false);
+  /** Leaders' phones in Stage mode on the Realtime channel (presence). */
+  const [rtLeaders, setRtLeaders] = useState<ReadonlySet<string>>(() => new Set());
   const [connected, setConnected] = useState(false);
   const [saveState, setSaveState] = useState<StageSaveState>('idle');
   // Struck off for tonight: the leader's choice, shown to the whole band.
@@ -198,9 +207,23 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [clientId, setSkipped],
   );
 
+  // Click, playhead, count-in over Bluetooth: checked like the channel's, then the same receivers.
+  const bleLiveRef = useRef<(event: LiveEvent, payload: unknown) => void>(() => {});
+  const onBleLive = useCallback((event: LiveEvent, payload: unknown) => bleLiveRef.current(event, payload), []);
+  /** Leader closing Stage: the stopped click and playhead, for phones linked over Bluetooth. */
+  const bleFarewell = useCallback((): LiveEvents => {
+    const out: LiveEvents = {};
+    const running = clickRef.current;
+    if (isLeader && running?.from === clientId && running.on) out[CLICK_EVENT] = clickWire({ ...running, on: false, seq: nextSeq(running.seq) });
+    const head = playheadRef.current;
+    if (isLeader && head?.from === clientId && head.on) out[PLAYHEAD_EVENT] = stopPlayhead(head);
+    return out;
+  }, [isLeader, clientId]);
+
   // Offline on stage: the same states over Bluetooth (native apps only).
-  const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive });
+  const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive, onLive: onBleLive, farewell: bleFarewell });
   const blePublish = ble.publish;
+  const blePublishLive = ble.publishLive;
   const bleBurst = ble.burst;
   const hasIds = ordered.length > 0 && ordered.every((s) => !!s.id);
   // A song the setlist hasn't caught up with yet (played off the setlist on
@@ -279,10 +302,24 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (playheadRef.current && !isNewer(state, playheadRef.current)) return;
       playheadRef.current = state;
       setPlayheadState(state);
-      if (state.on) syncWith(state.from);
+      if (state.on) {
+        syncWith(state.from);
+        bleBurst();
+      }
     },
-    [clientId, syncWith],
+    [clientId, syncWith, bleBurst],
   );
+
+  bleLiveRef.current = (event, payload) => {
+    if (event === CLICK_EVENT) {
+      const state = parseClickState(payload);
+      if (state) receiveClick(state);
+    } else if (event === PLAYHEAD_EVENT) {
+      const state = parsePlayheadState(payload);
+      if (state) receivePlayhead(state);
+    }
+    // D1's count-in ('countin') arrives here too: parse it and hand it to its receiver.
+  };
 
   // The channel lives while Stage mode is open.
   useEffect(() => {
@@ -327,6 +364,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
+        const joined = msg?.key;
+        if (joined && msg?.newPresences?.some((p) => p?.lead === true)) setRtLeaders((s) => (s.has(joined) ? s : new Set(s).add(joined)));
         // A leader (re)joined, maybe after reopening Stage mode with a new
         // clock: take its next state whatever seq it carries.
         if (!isLeader && msg?.newPresences?.some((p) => p?.lead === true)) lastRef.current = null;
@@ -349,6 +388,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         void channel.send({ type: 'broadcast', event: 'state', payload: lastRef.current });
       })
       .on('presence', { event: 'leave' }, (msg: { key?: string }) => {
+        const gone = msg?.key;
+        if (gone) setRtLeaders((s) => (s.has(gone) ? new Set([...s].filter((k) => k !== gone)) : s));
         if (msg?.key && msg.key !== clientId) regiaRef.current?.current.left?.(msg.key);
         // The click's leader left (closed Stage mode or lost the network): stop showing its click.
         const running = clickRef.current;
@@ -378,6 +419,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
       channelRef.current = null;
       setConnected(false);
+      setRtLeaders(new Set());
       void supabase.removeChannel(channel);
     };
   }, [live, eventId, clientId, isLeader, receive, receiveClick, receivePlayhead]);
@@ -509,9 +551,14 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       };
       clickRef.current = state;
       setClick(state);
-      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(state) });
+      if (isLeader) {
+        // The same message on both paths (the members' parser reads the wire form, clickWire).
+        const wire = clickWire(state);
+        void channelRef.current?.send({ type: 'broadcast', event: CLICK_EVENT, payload: wire });
+        blePublishLive(CLICK_EVENT, wire);
+      }
     },
-    [clientId, isLeader, songId, ordered, index],
+    [clientId, isLeader, songId, ordered, index, blePublishLive],
   );
 
   /**
@@ -524,9 +571,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       const state = { ...next, from: clientId };
       playheadRef.current = state;
       setPlayheadState(state);
-      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: state });
+      if (isLeader) {
+        void channelRef.current?.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: state });
+        blePublishLive(PLAYHEAD_EVENT, state);
+      }
     },
-    [clientId, isLeader],
+    [clientId, isLeader, blePublishLive],
   );
 
   /** Make song `i` (in the live order) the current one. */
@@ -625,6 +675,30 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const playheadPeer = playhead && playhead.from !== clientId ? playhead.from : null;
   const playheadOffset = pickClock(playheadPeer, [rtClock, ble.clock])?.offset ?? 0;
 
+  // The leader's phone is reachable: on the channel, or linked over Bluetooth.
+  const bleLinked = !isLeader && ble.status === 'connected';
+  const leaderOnline = rtLeaders.size > 0;
+  const leaderHere = !isLeader && (leaderOnline || bleLinked);
+
+  // No internet path to the leader, and its Bluetooth link gone a while: stop
+  // showing its click and playhead (like the channel does when it leaves).
+  // Cleared, not stopped, so the leader back in reach catches up at once.
+  const remoteRunning = !!(click && click.from !== clientId && click.on) || !!(playhead && playhead.from !== clientId && playhead.on);
+  useEffect(() => {
+    if (isLeader || leaderOnline || bleLinked || !remoteRunning) return;
+    const timer = setTimeout(() => {
+      if (clickRef.current && clickRef.current.from !== clientId) {
+        clickRef.current = null;
+        setClick(null);
+      }
+      if (playheadRef.current && playheadRef.current.from !== clientId) {
+        playheadRef.current = null;
+        setPlayheadState(null);
+      }
+    }, BLE_LEADER_GONE_MS);
+    return () => clearTimeout(timer);
+  }, [isLeader, leaderOnline, bleLinked, remoteRunning, clientId]);
+
   return {
     /** The setlist in its live order. */
     songs: ordered,
@@ -642,6 +716,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     setFollowing,
     /** A leader's state has arrived since Stage mode opened. */
     leaderSeen,
+    /** Members: the leader's phone is in Stage mode and reachable (channel or Bluetooth), song picked or not. */
+    leaderHere,
     /** The live channel is connected. */
     connected,
     /** Bluetooth link (native apps): leading, searching, connected… */

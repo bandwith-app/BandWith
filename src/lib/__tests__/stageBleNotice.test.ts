@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bleProblem, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
+import { bleProblem, followLabel, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
 
 const member = (over: Partial<StageBleNoticeInput>): StageBleNoticeInput => ({
   status: 'connected',
@@ -82,5 +82,32 @@ describe('bleProblem: what a failed start means', () => {
     expect(bleProblem(new Error('BLE unsupported'))).toBe('unsupported');
     expect(bleProblem(new Error('BLE not available.'))).toBe('unsupported');
     expect(bleProblem('weird')).toBe('denied');
+  });
+});
+
+describe('followLabel: the member\'s follow button, one state at a time', () => {
+  const f = (over: Partial<Parameters<typeof followLabel>[0]>) =>
+    followLabel({ following: true, leaderSeen: false, leaderHere: false, connected: true, bluetooth: 'off', ...over });
+
+  it("leader's phone there but no song picked yet: never 'Waiting' next to 'Connected'", () => {
+    // Linked over Bluetooth, the internet down (the status line says "Connected to the leader's phone").
+    expect(f({ leaderHere: true, connected: false, bluetooth: 'connected' })).toBe("Leader hasn't started yet");
+    // Online, the leader in Stage.
+    expect(f({ leaderHere: true })).toBe("Leader hasn't started yet");
+  });
+
+  it('nobody to follow yet', () => {
+    expect(f({})).toBe('Waiting for leader');
+    expect(f({ connected: false, bluetooth: 'searching' })).toBe('Waiting for leader');
+  });
+
+  it('following, and whether anything still reaches this phone', () => {
+    expect(f({ leaderSeen: true, leaderHere: true })).toBe('Following leader');
+    expect(f({ leaderSeen: true, connected: false, bluetooth: 'connected', leaderHere: true })).toBe('Following leader');
+    expect(f({ leaderSeen: true, connected: false, bluetooth: 'searching' })).toBe('Offline');
+  });
+
+  it('stepping on your own', () => {
+    expect(f({ following: false, leaderSeen: true, leaderHere: true })).toBe('Follow leader');
   });
 });
