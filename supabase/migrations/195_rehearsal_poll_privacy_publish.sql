@@ -33,9 +33,23 @@
 --                  { published: true, replayed: true } and the app sends
 --                  its notices; any other request on a published poll gets
 --                  { published: false } (Codex #297 round 3). Stored in
---                  rehearsal_polls.publish_request_id (new, NULL by default;
---                  not in the 119 SELECT grant, so members never read it).
---       returns    { published, replayed?, poll_id, band_id, status }
+--                  the side table rehearsal_poll_publish_requests (new; RLS
+--                  on, no grants: only this SECURITY DEFINER function reads
+--                  or writes it). Not a column of rehearsal_polls: members
+--                  hold a table-level SELECT on it, so a column would be
+--                  readable whatever 119 grants (Claude #297 r5 minor 9).
+--       returns    { published, replayed?, poll_id, band_id, status,
+--                    invited_user_ids } — the invite list as stored, so the
+--                    app tells only the invitees (minor 8).
+--
+-- #8  bw_rehearsal_polls_keep_open_fields (BEFORE UPDATE): while a poll is
+--     open ('polling') and has votes, the title, the invite list and the
+--     vote-by date and time keep their stored values, unless the write comes
+--     from the publish above (transaction-local flag bw.poll_publish). A
+--     stale form of an older build can no longer rename the poll or change
+--     who votes under the members who voted (Claude #297 r5 minor 7). New
+--     builds write these columns only through the publish (or, before 195,
+--     while the row is still 'proposed'), so they are not affected.
 --
 -- #11 bw_poll_vote_deadlines(poll ids) returns the deadline the database
 --     enforces (bw_poll_vote_deadline, 117: the creator's time zone) as an
@@ -63,12 +77,26 @@
 --     p_fields), copies the lineup (each member's own row, as it is) and the
 --     rider & stage (event_stage), and adds the old date to skip_dates. The
 --     client id is the new event's id: a retry finds it and creates nothing.
+--     Claude #297 r5:
+--       - the one-off gets its own copy of the setlist (setlists +
+--         setlist_songs), so editing it there leaves the series' one alone;
+--       - p_fields may carry the other columns edited in the wizard (venue,
+--         notes, fee...; never the band, the links, the recurrence, the date,
+--         the status or the type): one write, one notice listing the
+--         changes, no second update from the app;
+--       - refused (22023, HINT for the app's translated message) when p_date
+--         is not a date of the series (bw:not_a_date), is already deleted
+--         (bw:date_deleted), or p_new_date is before today in the caller's
+--         time zone (bw:date_past). Nothing is created then.
+--     Returns { event_id, series_id, skip_dates, setlist_id }.
 --
 -- #4  bw_events_skip_notice: a deleted future date is announced to the
 --     series' lineup ("Rehearsal cancelled", translated by 089's
 --     bw_trg_server_notification_text, redefined here from its 089 body so
 --     the date shown is the deleted date: data.occurrence_date). A date moved
---     with "Only this date" is announced as an update of the new one-off.
+--     with "Only this date" is announced as an update of the new one-off,
+--     listing what changed (data.changes: date, time, venue). Draft and
+--     cancelled series announce nothing (Claude #297 r5 minor 3).
 --
 -- #8  bw_poll_options_keep_voted: no option of an open poll with votes is
 --     removed or added (an older build's stale publish), Claude #297 round 3.
@@ -78,8 +106,9 @@
 --     skip_dates back into any new recurrence_rule (union), so a cadence
 --     edit made at the same time, or an older build writing the whole rule,
 --     never brings a deleted date back. When the series start moves, the
---     stored dates move with it: weekly by the same number of days, monthly
---     to the same repeat counted in months (clamped, #298). Turning the repeat off (rule NULL)
+--     stored dates follow only a change of phase: weekly modulo its period
+--     (a start moved along its cadence moves nothing), monthly to the new
+--     day in the same month (clamped, #298). Turning the repeat off (rule NULL)
 --     still clears it. Only bw_restore_rehearsal_date(event, date) takes a
 --     date out, through a transaction-local flag (bw.restore_skip). The
 --     only other BEFORE UPDATE trigger on events is update_events_updated_at
@@ -88,9 +117,12 @@
 --
 -- Older TestFlight / APK builds keep working: they read the same columns and
 -- simply receive fewer rows for invite-only polls they were not on (they hid
--- those already); their own publish (update + delete + insert) is unchanged.
--- One new column (rehearsal_polls.publish_request_id, NULL by default),
--- deliberately left out of the column GRANT. Idempotent; safe to re-run.
+-- those already); their own publish (update + delete + insert on a
+-- 'proposed' row) is unchanged. They ignore skip_dates, so they still show
+-- deleted dates, and the old date of a moved one next to its one-off: a
+-- release-notes item, not fixable on the server (Claude #297 r5 minor 10).
+-- No new column on an existing table; one new table with no grants
+-- (rehearsal_poll_publish_requests). Idempotent; safe to re-run.
 -- ============================================================================
 
 BEGIN;
@@ -181,8 +213,17 @@ REVOKE ALL ON FUNCTION public.bw_rehearsal_poll_costs(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_rehearsal_poll_costs(uuid[]) TO authenticated;
 
 -- ── Publish a proposal as a poll, once ────────────────────────────────────
--- The request that published a poll, so its own retry is recognised.
-ALTER TABLE public.rehearsal_polls ADD COLUMN IF NOT EXISTS publish_request_id uuid;
+-- The request that published a poll, so its own retry is recognised. A
+-- side table with no grant and no policy: authenticated has table-level
+-- SELECT on rehearsal_polls, so a column there would be readable by every
+-- member (Claude #297 round 5). Only the SECURITY DEFINER publish reads it.
+CREATE TABLE IF NOT EXISTS public.rehearsal_poll_publish_requests (
+  poll_id uuid PRIMARY KEY REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE,
+  request_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.rehearsal_poll_publish_requests ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.rehearsal_poll_publish_requests FROM PUBLIC, anon, authenticated;
 
 -- 195 was never applied: the 3-argument form is replaced, not overloaded.
 DROP FUNCTION IF EXISTS public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb);
@@ -223,17 +264,20 @@ BEGIN
   END IF;
 
   -- One publish at a time per proposal; the band is the proposal's own.
-  SELECT rp.band_id, rp.status, rp.publish_request_id INTO v_band, v_status, v_request
+  SELECT rp.band_id, rp.status, rp.invited_user_ids INTO v_band, v_status, v_invited
     FROM public.rehearsal_polls rp
    WHERE rp.id = p_poll_id
    FOR UPDATE;
   IF v_band IS NULL OR NOT public.bw_is_band_admin(v_band, v_uid) THEN
     RAISE EXCEPTION 'Only band admins can publish this poll' USING ERRCODE = '42501';
   END IF;
+  SELECT pr.request_id INTO v_request FROM public.rehearsal_poll_publish_requests pr WHERE pr.poll_id = p_poll_id;
   IF v_status <> 'proposed' AND p_client_id IS NOT NULL AND v_request = p_client_id THEN
     -- This same request published it and its answer was lost: nothing to
-    -- change; the app sends the notices it did not send.
-    RETURN jsonb_build_object('published', true, 'replayed', true, 'poll_id', p_poll_id, 'band_id', v_band, 'status', v_status);
+    -- change; the app sends the notices it did not send, to the stored
+    -- invite list (empty = the whole band).
+    RETURN jsonb_build_object('published', true, 'replayed', true, 'poll_id', p_poll_id, 'band_id', v_band, 'status', v_status,
+                              'invited_user_ids', to_jsonb(coalesce(v_invited, '{}'::uuid[])));
   END IF;
   IF v_status <> 'proposed' THEN
     -- Another admin published (or declined) it already: change nothing.
@@ -256,6 +300,10 @@ BEGIN
   -- is still one (bw_poll_options_keep_voted guards open polls).
   DELETE FROM public.rehearsal_poll_options WHERE poll_id = p_poll_id;
 
+  -- This write may set the title, invitees and vote-by
+  -- (bw_rehearsal_polls_keep_open_fields keeps them on other writes).
+  PERFORM set_config('bw.poll_publish', 'on', true);
+
   UPDATE public.rehearsal_polls rp
      SET title = CASE WHEN v_f ? 'title' THEN coalesce(nullif(btrim(v_f ->> 'title'), ''), 'Rehearsal Availability Poll') ELSE rp.title END,
          notes = CASE WHEN v_f ? 'notes' THEN nullif(btrim(coalesce(v_f ->> 'notes', '')), '') ELSE rp.notes END,
@@ -271,9 +319,16 @@ BEGIN
                                ELSE rp.focus_song_ids END,
          invited_user_ids = CASE WHEN v_f ? 'invited_user_ids' THEN v_invited ELSE rp.invited_user_ids END,
          status = 'polling',
-         publish_request_id = p_client_id,
          updated_at = now()
-   WHERE rp.id = p_poll_id;
+   WHERE rp.id = p_poll_id
+  RETURNING rp.invited_user_ids INTO v_invited;
+  PERFORM set_config('bw.poll_publish', '', true);
+
+  IF p_client_id IS NOT NULL THEN
+    INSERT INTO public.rehearsal_poll_publish_requests (poll_id, request_id)
+    VALUES (p_poll_id, p_client_id)
+    ON CONFLICT (poll_id) DO UPDATE SET request_id = EXCLUDED.request_id, created_at = now();
+  END IF;
 
   INSERT INTO public.rehearsal_poll_options (poll_id, proposed_date, start_time, end_time)
   SELECT p_poll_id,
@@ -283,7 +338,9 @@ BEGIN
     FROM jsonb_array_elements(p_options) WITH ORDINALITY AS e(item, ord)
    ORDER BY e.ord;
 
-  RETURN jsonb_build_object('published', true, 'poll_id', p_poll_id, 'band_id', v_band, 'status', 'polling');
+  -- The stored invite list: the app notifies only them (empty = the band).
+  RETURN jsonb_build_object('published', true, 'poll_id', p_poll_id, 'band_id', v_band, 'status', 'polling',
+                            'invited_user_ids', to_jsonb(coalesce(v_invited, '{}'::uuid[])));
 END;
 $$;
 
@@ -409,7 +466,93 @@ CREATE TRIGGER bw_poll_options_keep_voted
   BEFORE INSERT OR DELETE ON public.rehearsal_poll_options
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_poll_options_keep_voted();
 
+-- ── An open poll with votes keeps what people voted on (Claude #297 r5) ──
+-- An older build (383f15b) publishing a stale form also rewrites the poll:
+-- its title, who is invited and the vote-by day. While the poll is open
+-- with votes, those stay as they are; only the publish RPC (flag
+-- bw.poll_publish, set by it alone) writes them. Status changes (lock in,
+-- close, cancel) and every other column go through as before. No current
+-- build writes these columns on an open poll (checked in src: only the
+-- publish of a proposal, while it is still 'proposed').
+CREATE OR REPLACE FUNCTION public.bw_trg_polls_keep_open_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF OLD.status = 'polling'
+     AND coalesce(current_setting('bw.poll_publish', true), '') <> 'on'
+     AND (NEW.title IS DISTINCT FROM OLD.title
+          OR NEW.invited_user_ids IS DISTINCT FROM OLD.invited_user_ids
+          OR NEW.vote_by IS DISTINCT FROM OLD.vote_by
+          OR NEW.vote_by_time IS DISTINCT FROM OLD.vote_by_time)
+     AND EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = OLD.id) THEN
+    NEW.title := OLD.title;
+    NEW.invited_user_ids := OLD.invited_user_ids;
+    NEW.vote_by := OLD.vote_by;
+    NEW.vote_by_time := OLD.vote_by_time;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_polls_keep_open_fields() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_rehearsal_polls_keep_open_fields ON public.rehearsal_polls;
+CREATE TRIGGER bw_rehearsal_polls_keep_open_fields
+  BEFORE UPDATE ON public.rehearsal_polls
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_polls_keep_open_fields();
+
 -- ── "Only this date": one date of a series moved, in one step ────────────
+-- A date of the series as the app counts it (lib/recurrence, #298): weekly
+-- (× interval) and biweekly by days from the first date; monthly by months
+-- from the first date, on its day or the last day of a shorter month; up to
+-- `until`, and `count` repeats after the first. Deleted dates still count
+-- here (the caller checks skip_dates).
+CREATE OR REPLACE FUNCTION public.bw_rehearsal_series_has_date(p_rule jsonb, p_start date, p_day date)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_freq text := lower(coalesce(p_rule ->> 'frequency', p_rule ->> 'freq', ''));
+  v_every integer := CASE WHEN coalesce(p_rule ->> 'interval', '') ~ '^[0-9]+$' AND (p_rule ->> 'interval')::int >= 1
+                          THEN (p_rule ->> 'interval')::int ELSE 1 END;
+  v_until date;
+  v_months integer;
+  v_steps integer;
+BEGIN
+  IF p_rule IS NULL OR p_start IS NULL OR p_day IS NULL OR p_day < p_start THEN
+    RETURN false;
+  END IF;
+  IF coalesce(p_rule ->> 'until', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+    v_until := left(p_rule ->> 'until', 10)::date;
+    IF p_day > v_until THEN RETURN false; END IF;
+  END IF;
+  IF v_freq = 'biweekly' THEN v_freq := 'weekly'; v_every := 2; END IF;
+  IF v_freq = 'weekly' THEN
+    IF (p_day - p_start) % (7 * v_every) <> 0 THEN RETURN false; END IF;
+    v_steps := (p_day - p_start) / (7 * v_every);
+  ELSIF v_freq = 'monthly' THEN
+    v_months := (extract(year FROM p_day)::int * 12 + extract(month FROM p_day)::int)
+              - (extract(year FROM p_start)::int * 12 + extract(month FROM p_start)::int);
+    IF v_months % v_every <> 0 OR (p_start + make_interval(months => v_months))::date <> p_day THEN RETURN false; END IF;
+    v_steps := v_months / v_every;
+  ELSE
+    RETURN false;
+  END IF;
+  IF coalesce(p_rule ->> 'count', '') ~ '^[0-9]+$' AND (p_rule ->> 'count')::int > 0 AND v_steps > (p_rule ->> 'count')::int THEN
+    RETURN false;
+  END IF;
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_rehearsal_series_has_date(jsonb, date, date) FROM PUBLIC, anon, authenticated;
+
+-- Errors the app translates (HINT): bw:not_a_date (p_date is not one of
+-- the series' dates), bw:date_deleted (already deleted), bw:date_past (the
+-- new date is before today where the admin is), as 22023.
 CREATE OR REPLACE FUNCTION public.bw_move_rehearsal_date(
   p_event_id uuid,
   p_date date,
@@ -428,9 +571,13 @@ DECLARE
   v_new public.events%ROWTYPE;
   v_id uuid := coalesce(p_client_id, gen_random_uuid());
   v_f jsonb := coalesce(p_fields, '{}'::jsonb);
+  v_edit jsonb;
   v_rule jsonb;
   v_skips jsonb;
   v_set jsonb;
+  v_tz text;
+  v_today date;
+  v_setlist uuid;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
@@ -458,25 +605,69 @@ BEGIN
     RAISE EXCEPTION 'This rehearsal does not repeat' USING ERRCODE = '22023';
   END IF;
 
+  -- The date moved is one of the series' dates, still on; the new one is
+  -- not before today in the admin's time zone (Claude #297 round 5).
+  IF NOT public.bw_rehearsal_series_has_date(v_ev.recurrence_rule, v_ev.event_date, p_date) THEN
+    RAISE EXCEPTION 'This date is not one of the rehearsal''s dates' USING ERRCODE = '22023', HINT = 'bw:not_a_date';
+  END IF;
+  IF jsonb_typeof(v_ev.recurrence_rule -> 'skip_dates') = 'array'
+     AND (v_ev.recurrence_rule -> 'skip_dates') ? to_char(p_date, 'YYYY-MM-DD') THEN
+    RAISE EXCEPTION 'This date was deleted already' USING ERRCODE = '22023', HINT = 'bw:date_deleted';
+  END IF;
+  SELECT nullif(btrim(p.timezone), '') INTO v_tz FROM public.profiles p WHERE p.id = auth.uid();
+  BEGIN
+    v_today := (now() AT TIME ZONE coalesce(v_tz, 'UTC'))::date;
+  EXCEPTION WHEN others THEN
+    v_today := (now() AT TIME ZONE 'UTC')::date;
+  END;
+  IF p_new_date < v_today THEN
+    RAISE EXCEPTION 'The new date is in the past' USING ERRCODE = '22023', HINT = 'bw:date_past';
+  END IF;
+
+  -- What the admin edited for this date (title, times, place, notes,
+  -- studio cost...): columns of events only, never the keys that tie the
+  -- copy to its band, its series or its date. Empty strings are empty.
+  SELECT coalesce(jsonb_object_agg(k, CASE WHEN v = '""'::jsonb THEN 'null'::jsonb ELSE v END), '{}'::jsonb)
+    INTO v_edit
+    FROM jsonb_each(CASE WHEN jsonb_typeof(v_f) = 'object' THEN v_f ELSE '{}'::jsonb END) AS e(k, v)
+   WHERE to_jsonb(v_ev) ? k
+     AND k NOT IN ('id', 'band_id', 'created_by', 'created_at', 'updated_at', 'is_recurring', 'recurrence_rule',
+                   'event_date', 'date', 'parent_event_id', 'quote_id', 'setlist_id', 'status', 'event_type');
+  IF v_edit ? 'title' AND nullif(btrim(coalesce(v_edit ->> 'title', '')), '') IS NULL THEN
+    v_edit := v_edit - 'title';
+  END IF;
+  IF v_edit ? 'start_time' AND to_jsonb(v_ev) ? 'time' THEN
+    v_edit := v_edit || jsonb_build_object('time', v_edit -> 'start_time');
+  END IF;
+
+  -- The series' setlist is copied (its songs too): editing this date's
+  -- setlist never changes the series' (Claude #297 round 5). The copy has
+  -- no event yet while its songs go in, so nobody is told about them.
+  IF v_ev.setlist_id IS NOT NULL THEN
+    v_setlist := gen_random_uuid();
+    INSERT INTO public.setlists
+    SELECT (jsonb_populate_record(sl, to_jsonb(sl) || jsonb_build_object('id', v_setlist, 'created_at', now(), 'updated_at', now(),
+                                                                         'created_by', auth.uid()))).*
+      FROM public.setlists sl WHERE sl.id = v_ev.setlist_id;
+    IF FOUND THEN
+      INSERT INTO public.setlist_songs
+      SELECT (jsonb_populate_record(ss, to_jsonb(ss) || jsonb_build_object('id', gen_random_uuid(), 'setlist_id', v_setlist, 'created_at', now()))).*
+        FROM public.setlist_songs ss WHERE ss.setlist_id = v_ev.setlist_id;
+    ELSE
+      v_setlist := NULL;
+    END IF;
+  END IF;
+
   -- Every column of the series, but the recurrence and the date (studio
-  -- cost, setlist, place, notes, ... and any column added later).
+  -- cost, place, notes, ... and any column added later), then the edits.
   v_row := to_jsonb(v_ev);
-  v_set := jsonb_build_object('id', v_id, 'event_date', p_new_date, 'is_recurring', false, 'recurrence_rule', NULL);
+  v_set := jsonb_build_object('id', v_id, 'event_date', p_new_date, 'is_recurring', false, 'recurrence_rule', NULL,
+                              'setlist_id', v_setlist);
   IF v_row ? 'parent_event_id' THEN v_set := v_set || jsonb_build_object('parent_event_id', p_event_id); END IF;
   IF v_row ? 'date' THEN v_set := v_set || jsonb_build_object('date', p_new_date); END IF;
   IF v_row ? 'created_at' THEN v_set := v_set || jsonb_build_object('created_at', now()); END IF;
   IF v_row ? 'updated_at' THEN v_set := v_set || jsonb_build_object('updated_at', now()); END IF;
-  IF v_f ? 'title' AND nullif(btrim(coalesce(v_f ->> 'title', '')), '') IS NOT NULL THEN
-    v_set := v_set || jsonb_build_object('title', btrim(v_f ->> 'title'));
-  END IF;
-  IF v_f ? 'start_time' THEN
-    v_set := v_set || jsonb_build_object('start_time', nullif(v_f ->> 'start_time', '')::time);
-    IF v_row ? 'time' THEN v_set := v_set || jsonb_build_object('time', nullif(v_f ->> 'start_time', '')::time); END IF;
-  END IF;
-  IF v_f ? 'end_time' THEN
-    v_set := v_set || jsonb_build_object('end_time', nullif(v_f ->> 'end_time', '')::time);
-  END IF;
-  v_new := jsonb_populate_record(v_ev, v_row || v_set);
+  v_new := jsonb_populate_record(v_ev, v_row || v_edit || v_set);
   INSERT INTO public.events SELECT (v_new).*;
 
   -- The lineup: each member's own row as it is (their fee stays theirs:
@@ -507,7 +698,8 @@ BEGIN
       UNION
       SELECT to_char(p_date, 'YYYY-MM-DD')
     ) AS all_dates;
-  -- The lineup hears "moved", not "cancelled" (bw_trg_events_skip_notice).
+  -- The lineup hears one notice: what changed on the new one-off (date,
+  -- time, place), not "cancelled" (bw_trg_events_skip_notice).
   PERFORM set_config('bw.skip_moved_to', v_id::text, true);
   UPDATE public.events
      SET recurrence_rule = v_rule || jsonb_build_object('skip_dates', v_skips),
@@ -515,7 +707,7 @@ BEGIN
    WHERE id = p_event_id;
   PERFORM set_config('bw.skip_moved_to', '', true);
 
-  RETURN jsonb_build_object('event_id', v_id, 'series_id', p_event_id, 'skip_dates', v_skips);
+  RETURN jsonb_build_object('event_id', v_id, 'series_id', p_event_id, 'skip_dates', v_skips, 'setlist_id', v_setlist);
 END;
 $$;
 
@@ -523,7 +715,7 @@ REVOKE ALL ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uu
 GRANT EXECUTE ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid) IS
-  'Move one date of a repeating rehearsal: a one-off copy (every column, lineup, rider & stage) on the new date and the old date skipped, in one transaction; idempotent by client id; admins of the band (195, Codex #297).';
+  'Move one date of a repeating rehearsal: a one-off copy (every column with the edits in p_fields, a copy of the setlist, lineup, rider & stage) on the new date and the old date skipped, in one transaction; one notice; idempotent by client id; admins of the band (195, Codex/Claude #297).';
 
 -- ── Deleted dates survive every write ────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.bw_trg_events_keep_skip_dates()
@@ -535,7 +727,11 @@ DECLARE
   v_old jsonb;
   v_new jsonb;
   v_shift integer := 0;
-  v_monthly boolean;
+  v_monthly boolean := false;
+  v_freq text;
+  v_every integer;
+  v_period integer;
+  v_day integer;
   v_all jsonb;
 BEGIN
   IF jsonb_typeof(NEW.recurrence_rule) IS DISTINCT FROM 'object' THEN
@@ -549,24 +745,37 @@ BEGIN
     RETURN NEW;
   END IF;
   v_new := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
-  -- The whole series moved: its deleted dates move with it (Claude #297
-  -- round 3), so none comes back on a shifted day. Weekly: by the same
-  -- number of days. Monthly: the same repeat of the moved series, counted
-  -- in months from its new start and clamped to a shorter month, as the app
-  -- counts them (#298 monthlyOccurrence; round 4). Dates the write adds (not
-  -- in the stored list) are kept as sent.
+  -- The series start moved: its deleted dates follow only a change of
+  -- phase (Claude #297 round 5). A start moved along its own cadence (an
+  -- older build saving a later date's overview card writes event_date = that
+  -- date) changes no date of the series, so no deleted date moves.
+  --   weekly / biweekly: by the days between the old and the new start,
+  --     modulo the period (7 × interval), to the nearest date (-3..+3 for
+  --     weekly): 0 when the new start is a date of the old series;
+  --   monthly: each deleted date keeps its month and takes the new start's
+  --     day of the month, or the last day of a shorter month (#298's rule:
+  --     the 31st -> the 29th turns Apr 30 into Apr 29, Feb 28 stays).
+  -- Dates the write adds (not in the stored list) are kept as sent.
   IF NEW.event_date IS NOT NULL AND OLD.event_date IS NOT NULL AND NEW.event_date <> OLD.event_date THEN
-    v_shift := NEW.event_date - OLD.event_date;
+    v_freq := lower(coalesce(OLD.recurrence_rule ->> 'frequency', OLD.recurrence_rule ->> 'freq', ''));
+    v_every := CASE WHEN coalesce(OLD.recurrence_rule ->> 'interval', '') ~ '^[0-9]+$' AND (OLD.recurrence_rule ->> 'interval')::int >= 1
+                    THEN (OLD.recurrence_rule ->> 'interval')::int ELSE 1 END;
+    IF v_freq IN ('weekly', 'biweekly') THEN
+      v_period := CASE WHEN v_freq = 'biweekly' THEN 14 ELSE 7 * v_every END;
+      v_shift := (((NEW.event_date - OLD.event_date) % v_period) + v_period) % v_period;
+      IF v_shift * 2 > v_period THEN v_shift := v_shift - v_period; END IF;
+    ELSIF v_freq = 'monthly' THEN
+      v_monthly := true;
+      v_day := extract(day FROM NEW.event_date)::int;
+    END IF;
   END IF;
-  v_monthly := lower(coalesce(NEW.recurrence_rule ->> 'frequency', NEW.recurrence_rule ->> 'freq', '')) = 'monthly';
   SELECT coalesce(jsonb_agg(d ORDER BY d), '[]'::jsonb)
     INTO v_all
     FROM (
       SELECT DISTINCT to_char(
-               CASE WHEN v_shift <> 0 AND v_monthly
-                    THEN (NEW.event_date + make_interval(months =>
-                           ((extract(year FROM x::date) * 12 + extract(month FROM x::date))
-                          - (extract(year FROM OLD.event_date) * 12 + extract(month FROM OLD.event_date)))::int))::date
+               CASE WHEN v_monthly
+                    THEN make_date(extract(year FROM x::date)::int, extract(month FROM x::date)::int,
+                                   least(v_day, extract(day FROM (date_trunc('month', x::date) + interval '1 month - 1 day'))::int))
                     ELSE x::date + v_shift END,
                'YYYY-MM-DD') AS d
         FROM jsonb_array_elements_text(v_old) AS x
@@ -743,8 +952,13 @@ DECLARE
   v_day date;
   v_when text;
   v_new_ev record;
+  v_changes text[];
 BEGIN
   IF NEW.band_id IS NULL OR NEW.event_date IS DISTINCT FROM OLD.event_date THEN
+    RETURN NULL;
+  END IF;
+  -- Nobody hears about a draft, or a series already cancelled (Claude #297 r5).
+  IF coalesce(NEW.status, '') IN ('draft', 'cancelled') THEN
     RETURN NULL;
   END IF;
   v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
@@ -757,14 +971,25 @@ BEGIN
   LOOP
     v_when := to_char(v_day, 'Dy DD Mon') || CASE WHEN NEW.start_time IS NOT NULL THEN ' · ' || to_char(NEW.start_time, 'HH24:MI') ELSE '' END;
     IF v_moved ~ '^[0-9a-f-]{36}$' THEN
-      SELECT id, event_date, start_time INTO v_new_ev FROM public.events WHERE id = v_moved::uuid;
+      -- "Only this date": one notice for the new one-off, with everything
+      -- that changed for that date (the edits came in the same step).
+      SELECT id, title, event_date, start_time, end_time, venue_name, venue_address, venue_city
+        INTO v_new_ev FROM public.events WHERE id = v_moved::uuid;
+      v_changes := ARRAY['date'];
+      IF v_new_ev.start_time IS DISTINCT FROM NEW.start_time OR v_new_ev.end_time IS DISTINCT FROM NEW.end_time THEN
+        v_changes := v_changes || 'time'::text;
+      END IF;
+      IF v_new_ev.venue_name IS DISTINCT FROM NEW.venue_name OR v_new_ev.venue_address IS DISTINCT FROM NEW.venue_address
+         OR v_new_ev.venue_city IS DISTINCT FROM NEW.venue_city THEN
+        v_changes := v_changes || 'venue'::text;
+      END IF;
       PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_update',
         v_label || ' updated',
-        v_title || ' · ' || coalesce(to_char(v_new_ev.event_date, 'Dy DD Mon'), v_when)
+        coalesce(nullif(v_new_ev.title, ''), v_title) || ' · ' || coalesce(to_char(v_new_ev.event_date, 'Dy DD Mon'), v_when)
           || CASE WHEN v_new_ev.start_time IS NOT NULL THEN ' · ' || to_char(v_new_ev.start_time, 'HH24:MI') ELSE '' END
-          || ' — changed: date.',
-        jsonb_build_object('event_id', v_moved, 'event_type', v_kind, 'event_title', v_title,
-                           'changes', jsonb_build_array('date'), 'moved_from', to_char(v_day, 'YYYY-MM-DD'), 'series_id', NEW.id),
+          || ' — new ' || array_to_string(v_changes, ', ') || '.',
+        jsonb_build_object('event_id', v_moved, 'event_type', v_kind, 'event_title', coalesce(nullif(v_new_ev.title, ''), v_title),
+                           'changes', to_jsonb(v_changes), 'moved_from', to_char(v_day, 'YYYY-MM-DD'), 'series_id', NEW.id),
         v_moved::uuid, 'event');
     ELSE
       PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_cancelled',
