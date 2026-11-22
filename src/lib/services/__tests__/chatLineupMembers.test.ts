@@ -80,8 +80,10 @@ const LINEUP = [
   { user_id: 'gone-1', status: 'removed' },
   { user_id: 'new-1', status: null },
   { user_id: 'mixed-1', status: 'Dropped_Out' }, // round 4: any case is off the gig
+  { user_id: 'trail-1', status: 'Dropped_Out ' }, // and with a trailing space (#294)
+  { user_id: 'decl-1', status: 'Declined' },
 ];
-const ACTIVE = ['me', 'line-1', 'drop-1', 'gone-1', 'new-1', 'mixed-1'];
+const ACTIVE = ['me', 'line-1', 'drop-1', 'gone-1', 'new-1', 'mixed-1', 'trail-1', 'decl-1'];
 // is_active NULL (older rows): active for the database (coalesce(is_active, true)).
 const NULL_ACTIVE = ['null-1'];
 

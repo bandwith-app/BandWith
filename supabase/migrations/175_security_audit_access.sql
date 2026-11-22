@@ -192,7 +192,7 @@ GRANT EXECUTE ON FUNCTION public.bw_delete_chat_history(uuid) TO authenticated;
 --     (service role, migrations): the plain answer (anon has no EXECUTE).
 --     current_user can't tell those apart here: inside a SECURITY DEFINER
 --     function it is always the owner;
---   * lineup answers compared with lower() ('Declined' is declined);
+--   * lineup answers compared with lower(btrim()) ('Declined', 'Dropped_Out ');
 --   * the body carries the marker bw:175-r4: later migrations that keep a
 --     live definition (178, 181) look for it.
 DO $do$
@@ -235,7 +235,7 @@ AS $f$
                 OR NOT EXISTS (
                   SELECT 1 FROM event_members em
                    WHERE em.event_id = e.id AND em.user_id = w.u
-                     AND lower(coalesce(em.status::text, '')) IN ('declined', 'dropped_out', 'removed')))
+                     AND lower(btrim(coalesce(em.status::text, ''))) IN ('declined', 'dropped_out', 'removed')))
            %s)
     ELSE true
   END, false));
@@ -661,7 +661,7 @@ BEGIN
   SELECT coalesce(array_agg(DISTINCT user_id), '{}'::uuid[]) INTO v_ids
   FROM public.event_members
   WHERE event_id = p_event_id
-    AND lower(coalesce(status::text, 'invited')) NOT IN ('declined', 'dropped_out', 'removed')
+    AND lower(btrim(coalesce(status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed')
     AND (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, user_id));
 
   IF p_band_id IS NOT NULL AND coalesce(array_length(v_ids, 1), 0) = 0 THEN
@@ -720,7 +720,7 @@ BEGIN
   IF NEW.event_id IS NOT NULL THEN
     SELECT coalesce(array_agg(DISTINCT user_id), '{}'::uuid[]) INTO v_lineup
     FROM public.event_members
-    WHERE event_id = NEW.event_id AND lower(coalesce(status::text, 'invited')) NOT IN ('declined', 'dropped_out', 'removed')
+    WHERE event_id = NEW.event_id AND lower(btrim(coalesce(status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed')
       AND user_id <> ALL (v_admins)
       -- 175: only people still in the band.
       AND public.bw_is_band_member(NEW.band_id, user_id);

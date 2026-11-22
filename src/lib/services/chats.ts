@@ -935,7 +935,7 @@ export const sendMessage = async (
         .eq('event_id', chat.event_id);
       if (lineupError) console.warn('[sendMessage] Could not read the lineup:', lineupError.message);
       const onGig = ((eMembers || []) as { user_id: string | null; status: string | null }[])
-        .filter((em) => !!em.user_id && !OFF_THE_GIG.has((em.status ?? '').toLowerCase()))
+        .filter((em) => !!em.user_id && !OFF_THE_GIG.has((em.status ?? '').trim().toLowerCase()))
         .map((em) => em.user_id as string);
       const lineup = await stillInBand(await gigBandId(chat.event_id, chat.band_id), onGig);
       if (lineup.length > 0) {

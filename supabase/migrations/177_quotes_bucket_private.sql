@@ -20,7 +20,7 @@
 --       SELECT ql.status, count(*) AS live_links_from_before_t
 --         FROM public.quote_links ql
 --        WHERE ql.revoked_at IS NULL
---          AND NOT (lower(ql.status) <> 'accepted'
+--          AND NOT (lower(btrim(ql.status)) <> 'accepted'
 --                   AND CASE WHEN ql.snapshot ->> 'validUntil' ~ '^\d{4}-\d{2}-\d{2}$'
 --                            THEN (ql.snapshot ->> 'validUntil')::date < current_date - 1
 --                            ELSE false END)

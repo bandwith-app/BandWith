@@ -139,6 +139,9 @@ ${before185 ? '' : `UPDATE public.quote_links SET balance_sent = balance WHERE b
   await db.exec(`UPDATE quote_links SET status = 'Accepted' WHERE token = '${tok('c')}'`);
   ok((await keys(tok('c'))).doc === cAcc && await open(cAcc) === P(30) && await open(c3.balance, 'balance') === P(33),
     "status 'Accepted' (mixed case): still the accepted PDF and its balance");
+  await db.exec(`UPDATE quote_links SET status = 'Accepted ' WHERE token = '${tok('c')}'`);
+  ok((await keys(tok('c'))).doc === cAcc && await open(cAcc) === P(30) && await open(c3.balance, 'balance') === P(33),
+    "status 'Accepted ' (trailing space, #294's btrim rule): still the accepted PDF and its balance");
   await db.exec(`UPDATE quote_links SET status = 'accepted' WHERE token = '${tok('c')}'`);
   await db.exec(`UPDATE events SET status = '${statusType === 'text' ? 'Cancelled' : 'cancelled'}' WHERE id = '${GIG}'`);
   ok(await open(c3.balance, 'balance') === null, `balance PDF hidden once the gig is cancelled (${statusType})`);

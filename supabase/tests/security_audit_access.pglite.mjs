@@ -554,18 +554,18 @@ ok(!r.error && backRow && backRow.cleared_at?.toISOString() === '2026-11-01T10:0
   `back in the band: cleared_at, last read and mute come back (${r.error ?? JSON.stringify(backRow)})`);
 
 // ── R4. Round 4 (Codex + Claude on 7eea78bb / 44cf49fc)
-const [QADMIN, MIXD] = [47, 48].map(id);
+const [QADMIN, MIXD, TRAIL] = [47, 48, 49].map(id);
 const [GIGQ, GIGD, GIGN] = [37, 38, 39].map(id);
 const [SETQ, EVCHATN] = [id(50), id(27)];
-await db.exec(`INSERT INTO auth.users VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid');
-  INSERT INTO profiles (id, email) VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid');
-  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${QADMIN}','admin'), ('${BAND}','${MIXD}','member');
+await db.exec(`INSERT INTO auth.users VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid'), ('${TRAIL}','trail@example.invalid');
+  INSERT INTO profiles (id, email) VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid'), ('${TRAIL}','trail@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${QADMIN}','admin'), ('${BAND}','${MIXD}','member'), ('${BAND}','${TRAIL}','member');
   INSERT INTO setlists VALUES ('${SETQ}','${BAND}','Wedding set');
   INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, venue_name, setlist_id) VALUES
     ('${GIGQ}','${BAND}','Private wedding (quote)','tentative','gig','${ADMIN}', current_date + 50, 'Montclair', '${SETQ}'),
     ('${GIGD}','${BAND}','Street fair','confirmed','gig','${RET}', current_date + 60, 'Astoria', NULL),
     ('${GIGN}','${BAND}','Jazz brunch','confirmed','gig','${ADMIN}', current_date + 70, 'Hoboken', NULL);
-  INSERT INTO event_members VALUES ('${GIG3}','${MIXD}','Declined'), ('${GIGD}','${DECL}','declined'), ('${GIGD}','${DROP}','dropped_out'),
+  INSERT INTO event_members VALUES ('${GIG3}','${MIXD}','Declined'), ('${GIG3}','${TRAIL}','Dropped_Out '), ('${GIGD}','${DECL}','declined'), ('${GIGD}','${DROP}','dropped_out'),
     ('${GIGN}','${NEWM}','confirmed'), ('${GIGN}','${RET}','confirmed');
   DELETE FROM notifications;`);
 // BLOCKER 175:657: a setlist on a private quote with no lineup tells its admins only.
@@ -585,10 +585,15 @@ await staleRow(EVCHAT3, MIXD);
 // which still compares the status raw: reported to #294.)
 const raw178 = process.env.M193 && process.env.M178 && !/lower\(coalesce\(em\.status/.test(fnDef(process.env.M178, 'bw_is_event_participant'));
 await staleChecks(MIXD, "'Declined' (mixed case)", [EVCHAT3], raw178 ? { knownChatRow: "178's bw_is_event_participant compares em.status raw (#294)" } : {});
+// #294 (main): 'Dropped_Out ' with a trailing space is dropped out too (lower(btrim())).
+await staleRow(EVCHAT3, TRAIL);
+const untrimmed178 = process.env.M193 && process.env.M178 && !/lower\(btrim\(coalesce\(em\.status/.test(fnDef(process.env.M178, 'bw_is_event_participant'));
+await staleChecks(TRAIL, "'Dropped_Out ' (trailing space)", [EVCHAT3], untrimmed178 ? { knownChatRow: "178's bw_is_event_participant doesn't btrim em.status (#294)" } : {});
 await db.exec(`DELETE FROM notifications; BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}"}', true);
   UPDATE events SET event_date = event_date + 1 WHERE id = '${GIG3}'; COMMIT;`);
 const told3 = (await db.query(`SELECT user_id FROM notifications WHERE type = 'event_update'`)).rows.map((x) => x.user_id);
 ok(told3.includes(NEWM) && !told3.includes(MIXD), `'Declined' on the lineup is not told about the gig (${told3.length})`);
+ok(!told3.includes(TRAIL), `'Dropped_Out ' on the lineup is not told about the gig either (${told3.length})`);
 // MINOR 175:199/253: about someone else only for a caller the rule lets in.
 r = await as(NEWM, `SELECT public.bw_chat_scope_ok('band', '${OTHERBAND}', NULL, '${ADMIN}') AS a,
   public.bw_chat_scope_ok_for('${BANDCHAT}', '${ADMIN}') AS b, public.bw_chat_scope_ok_for('${BANDCHAT}', '${NEWM}') AS c`);
