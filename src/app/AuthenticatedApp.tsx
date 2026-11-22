@@ -1712,7 +1712,10 @@ export default function AuthenticatedApp() {
       if (type === "direct") {
         // Always the other person's name, never a generic "Direct Chat"; a
         // former member when they deleted their account (#282).
-        displayName = directChatName({ others: others as { profile?: any }[], storedName: chat.name, fallback: t("Member"), former: t("Former member") });
+        displayName = directChatName({
+          others: others as { profile?: any }[], storedName: chat.name, fallback: t("Member"), former: t("Former member"),
+          me: user?.id, otherIds: [(chat as any).created_by, chat.last_message?.sender_id],
+        });
         const otherWithAvatar = others.find((p) => (p as any).profile?.avatar_url);
         avatarUrl = (otherWithAvatar as any)?.profile?.avatar_url || undefined;
       } else if (type === "band") {

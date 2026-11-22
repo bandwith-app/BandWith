@@ -320,7 +320,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setDeleting(true);
     setDeleteError(null);
     const result = await deleteMyAccount();
-    if (result.ok) {
+    // Committed (round 6, Claude): the server finishes it within minutes,
+    // so this device signs out as after a deletion that finished.
+    if (result.ok || result.reason === 'committed') {
       // Quick sign-in (Face ID) must not keep the deleted account's session.
       await import('@/lib/services/biometric')
         .then((m) => m.forgetQuickSignInFor(user?.id, user?.email))

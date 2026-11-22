@@ -31,7 +31,16 @@ describe('deleteMyAccount', () => {
   // Round 5: once committed the server job finishes it, retry or not.
   it('says the account will be gone in a few minutes once the deletion is committed', async () => {
     invoke.mockResolvedValue(refused(503, { success: false, code: 'storage_not_ready', committed: true }));
-    expect(await deleteMyAccount()).toEqual({ ok: false, reason: 'error', message: 'Your account is being deleted. It will be gone within a few minutes.' });
+    expect(await deleteMyAccount()).toEqual({ ok: false, reason: 'committed', message: 'Your account is being deleted. It will be gone within a few minutes.' });
+  });
+
+  // Round 6 (Claude): committed is not a failure the user can fix: the
+  // Settings screen signs out locally, as after a deletion that finished.
+  it('Settings signs out on a committed deletion, as on success', async () => {
+    const settings = (await import('../../../app/views/SettingsView.tsx?raw')).default as string;
+    const handler = settings.slice(settings.indexOf('const handleDeleteAccount'), settings.indexOf('const getSectionTitle'));
+    expect(handler).toMatch(/result\.ok \|\| result\.reason === 'committed'/);
+    expect(handler.indexOf('signOut(')).toBeGreaterThan(handler.indexOf("result.reason === 'committed'"));
   });
 
   it('still lists the bands that need another admin', async () => {

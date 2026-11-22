@@ -150,6 +150,21 @@ describe('round 5: committed before any file goes', () => {
   it('a 503 after commit says the deletion is underway (committed)', () => {
     expect(fn).toMatch(/committed: true/);
   });
+
+  // Round 6 (Claude 7): a retry whose begin answers committed and whose
+  // prepare then fails is still committed: a 503 with committed, not a 500.
+  it('a prepare error after a committed begin answers committed', () => {
+    expect(deletion.beginOutcome({ ok: true, committed: true, band_ids: [] }, null)).toEqual({ kind: 'ok', bandIds: [], committed: true });
+    const flow = fn.slice(fn.indexOf('const caller = await requireCaller'));
+    expect(flow).toMatch(/if \(prepError && begin\.committed\) return notReady\("prepare", prepError, true\);/);
+  });
+
+  // Round 6 (Codex B2): after prepare the pending row lists only the bands
+  // it deleted; begin's guess is not passed on.
+  it('finishes with the bands prepare noted, not begin\'s list', () => {
+    const flow = fn.slice(fn.indexOf('const caller = await requireCaller'));
+    expect(flow).toMatch(/finishCommitted\(deletionServer\(admin\), caller\.id\)/);
+  });
 });
 
 // Claude minor 1 / Codex B3: notices carry the sender's id and the message's

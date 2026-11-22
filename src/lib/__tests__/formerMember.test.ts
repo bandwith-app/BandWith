@@ -59,7 +59,20 @@ describe('former member in a direct chat', () => {
     expect(directChatName?.({ ...base, storedName: 'Direct Chat', others: [{ profile: null }] })).toBe('Member');
   });
 
-  it('the chat list uses it', () => {
+  // Codex round 6: a missing participant row alone is not a deleted account
+  // (old chats lost rows). An id of theirs still on the chat or its last
+  // message means the account is there (both columns are cleared when it goes).
+  it('no participant row but their id on the chat: the stored name, not a former member', () => {
+    expect(directChatName?.({ ...base, others: [], me: 'me', otherIds: ['them'] })).toBe('Rosa Diaz');
+    expect(directChatName?.({ ...base, storedName: 'Direct Chat', others: [], me: 'me', otherIds: ['them'] })).toBe('Member');
+  });
+
+  it('only my own id (or none) left: a former member', () => {
+    expect(directChatName?.({ ...base, others: [], me: 'me', otherIds: ['me', null, undefined] })).toBe('Former member');
+  });
+
+  it('the chat list uses it, with the chat creator and the last sender', () => {
     expect(appSource).toMatch(/directChatName\(\{/);
+    expect(appSource).toMatch(/otherIds: \[\(chat as any\)\.created_by, chat\.last_message\?\.sender_id\]/);
   });
 });

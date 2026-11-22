@@ -33,6 +33,8 @@ export interface DeletionBegin {
   code?: string;
   bands?: string[];
   band_ids?: string[];
+  /** A retry once committed (180, round 5). */
+  committed?: boolean;
 }
 
 /**
@@ -44,12 +46,14 @@ export function beginOutcome(
   data: DeletionBegin | null | undefined,
   error: unknown,
 ):
-  | { kind: 'ok'; bandIds: string[] }
+  | { kind: 'ok'; bandIds: string[]; committed: boolean }
   | { kind: 'blocked'; bands: string[] }
   | { kind: 'busy' }
   | { kind: 'not_ready' } {
   if (error || !data || typeof data !== 'object') return { kind: 'not_ready' };
-  if (data.ok === true) return { kind: 'ok', bandIds: Array.isArray(data.band_ids) ? data.band_ids.map(String) : [] };
+  if (data.ok === true) {
+    return { kind: 'ok', bandIds: Array.isArray(data.band_ids) ? data.band_ids.map(String) : [], committed: data.committed === true };
+  }
   if (data.ok === false && data.code === 'deletion_in_progress') return { kind: 'busy' };
   if (data.ok === false) return { kind: 'blocked', bands: Array.isArray(data.bands) ? data.bands.map(String) : [] };
   return { kind: 'not_ready' };

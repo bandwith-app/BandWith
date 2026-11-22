@@ -20,14 +20,22 @@ const GENERIC_CHAT_NAMES = new Set(['', 'New Chat', 'Chat', 'Direct Chat']);
  * with no other participant left, that is a former member, never the name
  * stored on the chat. Otherwise the other person's name, else the stored
  * name, else `fallback` (as before).
+ *
+ * Codex round 6: an old chat can miss a participant row while the account
+ * is there. `otherIds` are the ids still on the chat (its creator, the last
+ * sender): an id that isn't mine means that account exists (180 clears both
+ * when it goes), so the chat keeps its stored name.
  */
 export function directChatName(opts: {
   others: { profile?: Named | null }[];
   storedName?: string | null;
   fallback: string;
   former: string;
+  me?: string | null;
+  otherIds?: (string | null | undefined)[];
 }): string {
-  if (opts.others.length === 0) return opts.former;
+  const otherAccountThere = (opts.otherIds ?? []).some((id) => !!id && id !== opts.me);
+  if (opts.others.length === 0 && !otherAccountThere) return opts.former;
   const withProfile = opts.others.find((p) => p.profile);
   const name = withProfile ? personName(withProfile.profile, '') : '';
   if (name) return name;

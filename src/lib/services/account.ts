@@ -4,7 +4,9 @@ import { t } from '@/lib/i18n';
 export type DeleteAccountResult =
   | { ok: true }
   | { ok: false; reason: 'admin_of_bands'; bands: string[] }
-  | { ok: false; reason: 'error'; message: string };
+  | { ok: false; reason: 'error'; message: string }
+  // Committed (180): the server finishes it within minutes; the app signs out.
+  | { ok: false; reason: 'committed'; message: string };
 
 /**
  * Permanently deletes the signed-in user's account (edge function
@@ -34,7 +36,7 @@ export async function deleteMyAccount(): Promise<DeleteAccountResult> {
   // Committed (180, round 5): the server finishes it on its own within a
   // few minutes, even if nobody tries again.
   if (body?.code === 'storage_not_ready' && body?.committed === true) {
-    return { ok: false, reason: 'error', message: t('Your account is being deleted. It will be gone within a few minutes.') };
+    return { ok: false, reason: 'committed', message: t('Your account is being deleted. It will be gone within a few minutes.') };
   }
   // A step could not finish yet (files still there): nothing more is gone,
   // and trying again finishes it.

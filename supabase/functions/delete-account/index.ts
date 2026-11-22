@@ -132,11 +132,15 @@ serve(async (req) => {
       const bands = Array.isArray(still) ? still.map((b: { band_name: string }) => b.band_name) : [];
       return json({ success: false, code: "account_has_bands", bands }, 409);
     }
+    // A retry once committed stays committed whatever prepare says (round 6,
+    // Claude): the job finishes it.
+    if (prepError && begin.committed) return notReady("prepare", prepError, true);
     if (prepError) throw prepError;
 
     // Files, the last step, Auth, the final scrub. Not ready is "not yet":
-    // a retry or the job finishes it.
-    const result = await finishCommitted(deletionServer(admin), caller.id, begin.bandIds);
+    // a retry or the job finishes it. The bands: what prepare noted as
+    // deleted (round 6, Codex B2: begin's list was only a guess).
+    const result = await finishCommitted(deletionServer(admin), caller.id);
     if (result.kind === "not_ready") return notReady(result.what, result.detail, true);
 
     return json({ success: true });

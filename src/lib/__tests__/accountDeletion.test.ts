@@ -84,7 +84,7 @@ describe('delete-account: Codex review #282', () => {
   });
 
   it('reads the begin answer', () => {
-    expect(beginOutcome({ ok: true, band_ids: ['b1'] }, null)).toEqual({ kind: 'ok', bandIds: ['b1'] });
+    expect(beginOutcome({ ok: true, band_ids: ['b1'] }, null)).toEqual({ kind: 'ok', bandIds: ['b1'], committed: false });
     expect(beginOutcome({ ok: false, bands: ['Hudson Horns'] }, null)).toEqual({ kind: 'blocked', bands: ['Hudson Horns'] });
     expect(beginOutcome(null, { message: 'missing' })).toEqual({ kind: 'not_ready' });
   });
