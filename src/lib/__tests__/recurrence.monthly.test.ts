@@ -65,3 +65,47 @@ describe('monthly repeats on the 29th, 30th and 31st', () => {
     expect(monthlyOccurrence('31/01/2027', 1)).toBeNull();
   });
 });
+
+/**
+ * The calendar feed (#285, supabase/functions/_shared/deputy-calendar.ts):
+ * its RRULE, expanded the way a calendar app does (RFC 5545), gives the same
+ * dates. Main's feed before #285 writes plain FREQ=MONTHLY (a series on the
+ * 31st skips February): this runs once #285's clamp is in the file (both
+ * ship in the same batch; checked in a trial merge of #298 + #285).
+ */
+const FEED = import.meta.glob('/supabase/functions/_shared/deputy-calendar.ts', { eager: true }) as Record<
+  string,
+  { recurrenceRule?: (rule: unknown, start?: string | null, opts?: { timed?: boolean }) => string | null }
+>;
+const feedRule = Object.values(FEED)[0]?.recurrenceRule;
+const recurrenceRule = feedRule && /BYMONTHDAY/.test(feedRule({ frequency: 'monthly' }, '2027-01-31') ?? '') ? feedRule : undefined;
+
+/** FREQ=MONTHLY with INTERVAL, BYMONTHDAY (negative too) and BYSETPOS=-1: the first `n` dates from DTSTART. */
+function expandMonthly(rrule: string, dtstart: string, n: number): string[] {
+  const parts = Object.fromEntries(rrule.split(';').map((p) => p.split('=') as [string, string]));
+  expect(parts.FREQ).toBe('MONTHLY');
+  const every = Number(parts.INTERVAL || 1);
+  const [y0, m0, d0] = dtstart.split('-').map(Number);
+  const byDay = parts.BYMONTHDAY ? parts.BYMONTHDAY.split(',').map(Number) : [d0];
+  const out: string[] = [];
+  for (let k = 0; out.length < n && k < 200; k += every) {
+    const months = y0 * 12 + (m0 - 1) + k;
+    const y = Math.floor(months / 12);
+    const m = months - y * 12;
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const days = byDay.map((d) => (d < 0 ? last + 1 + d : d)).filter((d) => d >= 1 && d <= last).sort((a, b) => a - b);
+    const picked = parts.BYSETPOS === '-1' ? days.slice(-1) : days;
+    for (const d of picked) out.push(`${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  return out.slice(0, n);
+}
+
+describe.skipIf(!recurrenceRule)('the calendar feed (#285) repeats on the same dates', () => {
+  for (const [start, expected] of Object.entries(MONTHLY_VECTORS)) {
+    it(`RRULE from ${start}`, () => {
+      const rule = recurrenceRule!({ frequency: 'monthly' }, start);
+      expect(rule).toBeTruthy();
+      expect(expandMonthly(rule!, start, expected.length)).toEqual(expected);
+    });
+  }
+});
