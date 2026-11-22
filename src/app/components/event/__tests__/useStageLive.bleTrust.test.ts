@@ -377,6 +377,28 @@ describe('useStageLive: Bluetooth states never outrank the live channel (review 
     expect(Math.abs(next - nextSeq(null))).toBeLessThan(50);
   });
 
+  it("an hour-fast clock fixed while Stage stays open: the leader's next seq starts from now, not from its last one (Claude on #280)", () => {
+    const real = Date.now();
+    vi.setSystemTime(real + 60 * 60_000);
+    const l = renderHook(() => useStageLive({ eventId: 'gig-3', setlistId: 'list-1', songs: SONGS, open: true, isLeader: true }));
+    act(() => l.result.current.go(1));
+    const sent = () => chan.sent.filter((x) => x.event === 'state').map((x) => x.payload as StageLiveState);
+    const ahead = sent()[sent().length - 1].seq;
+    vi.setSystemTime(real);
+    act(() => l.result.current.go(2));
+    const next = sent()[sent().length - 1].seq;
+    expect(next).toBeLessThan(ahead);
+    expect(Math.abs(next - nextSeq(null))).toBeLessThan(50);
+  });
+
+  it("a member that took a state an hour ahead (that leader's clock, since fixed) follows the leader's next state at once (Claude on #280)", () => {
+    const m = phone();
+    live({ seq: now() + 36_000, from: 'A', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    live({ seq: now(), from: 'A', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-3');
+  });
+
   it('a live state that arrives after its Bluetooth copy still marks its sender as leading online (Codex on #288)', () => {
     const m = phone();
     const s1 = now();
