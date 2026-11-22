@@ -18,7 +18,7 @@ const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/178_date_on_hold.sql
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
 
-const db = new PGlite();
+let db = new PGlite();
 process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
 let fails = 0;
 let passes = 0;
@@ -27,7 +27,7 @@ const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND, ADMIN, ADMIN2, MEM, MEM2, OUT] = [1, 2, 3, 4, 5, 6].map(id);
 const [GIG, QE0, QE, QE2, QE3, QE4, QE5] = [30, 31, 32, 33, 34, 35, 36].map(id);
 const [Q, Q4, Q5] = [40, 44, 45].map(id);
-const [EVCHAT, SL, SONG] = [50, 60, 61].map(id);
+const [EVCHAT, SL, SONG, QCHAT0, SL2, SL3, SL4] = [50, 60, 61, 53, 62, 63, 64].map(id);
 const SECRETS = ['Smith', 'Jane', '4200', 'secret', 'Q-2026'];
 const leaks = (v) => SECRETS.filter((s) => JSON.stringify(v).includes(s));
 
@@ -49,10 +49,14 @@ async function as(uid, sql, params) {
 async function asServer(uid, sql) {
   await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '${uid ? claims(uid) : ''}', true); ${sql}; COMMIT;`);
 }
+// A query as the database owner; { rows } or { error } (a missing function is a FAIL, not a crash).
+const tryq = async (sql) => { try { return { rows: (await db.query(sql)).rows }; } catch (e) { return { rows: [], error: e.message }; } };
+const fnDef = async (name) => (await tryq(`SELECT string_agg(pg_get_functiondef(p.oid), ' ') d FROM pg_proc p WHERE p.proname = '${name}'`)).rows[0]?.d || '';
 const notes = async (where = 'true') =>
   (await db.query(`SELECT user_id, type, title, body, data FROM notifications WHERE ${where} ORDER BY created_at, type`)).rows;
 
-await db.exec(`
+async function boot(d) {
+await d.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
 CREATE SCHEMA auth; CREATE SCHEMA vault; CREATE SCHEMA cron; CREATE SCHEMA net; CREATE SCHEMA extensions;
 GRANT USAGE ON SCHEMA public, auth TO authenticated, anon, service_role;
@@ -82,15 +86,24 @@ CREATE TABLE public.quote_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), 
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, title text, status text, event_type text,
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
   soundcheck_time time, venue text, venue_name text, venue_address text, venue_city text, setlist_id uuid,
-  fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now());
+  fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now(),
+  "time" time, duration_hours numeric);
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric, paid_at timestamptz, role text, notes text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean DEFAULT false, reference_id uuid, reference_type text, created_at timestamptz DEFAULT clock_timestamp());
 CREATE TABLE public.chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type text, name text, band_id uuid, event_id uuid,
-  created_by uuid, created_at timestamptz DEFAULT now());
-CREATE TABLE public.chat_participants (chat_id uuid, user_id uuid, UNIQUE (chat_id, user_id));
-CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid, sender_id uuid, content text);
+  created_by uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
+CREATE TABLE public.chat_participants (id uuid DEFAULT gen_random_uuid(), chat_id uuid, user_id uuid, last_read_at timestamptz,
+  muted boolean DEFAULT false, joined_at timestamptz DEFAULT now(), cleared_at timestamptz, UNIQUE (chat_id, user_id));
+CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid, sender_id uuid, content text,
+  created_at timestamptz DEFAULT clock_timestamp());
+CREATE TABLE public.setlists (id uuid PRIMARY KEY, band_id uuid, name text, is_template boolean DEFAULT false);
+CREATE TABLE public.song_proposals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, event_id uuid, title text, proposed_by uuid);
+CREATE TABLE public.quote_musicians (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid, user_id uuid, fee numeric);
+CREATE TABLE public.band_deputies (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, name text);
+CREATE TABLE public.deputy_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, event_id uuid, deputy_id uuid,
+  deputy_name text, status text DEFAULT 'pending');
 CREATE TABLE public.contracts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, event_id uuid, type text, title text,
   version int DEFAULT 1, status text, sent_at timestamptz, viewed_at timestamptz, created_at timestamptz DEFAULT now());
 CREATE TABLE public.event_stage (event_id uuid PRIMARY KEY, band_id uuid, plot jsonb);
@@ -106,9 +119,16 @@ ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_stage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_gear_kits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.setlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.setlist_songs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.song_proposals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quote_musicians ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.setlists, public.setlist_songs, public.quote_musicians TO authenticated;
+GRANT SELECT, INSERT ON public.song_proposals TO authenticated;
 GRANT SELECT ON public.events, public.band_members, public.bands, public.profiles TO authenticated;
 GRANT SELECT (id, event_id, user_id, status, role, notes), UPDATE (status) ON public.event_members TO authenticated;
 GRANT SELECT, INSERT ON public.notifications, public.chats, public.chat_participants, public.messages TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid() TO service_role;
 GRANT SELECT ON public.event_stage, public.event_gear_kits TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 
@@ -125,18 +145,22 @@ CREATE TRIGGER bw_notifications_dispatch_push AFTER INSERT ON public.notificatio
 `);
 
 // Live helpers and functions, from the migrations that define them.
-await db.exec(lines('046_server_notifications_and_push.sql', 47, 101)); // bw_notify, bw_active_band_member_ids
-await db.exec(lines('046_server_notifications_and_push.sql', 128, 138)); // bw_display_name
-await db.exec(lines('088_deputy_push_i18n.sql', 18, 44)); // bw_i18n_short_date
-await db.exec(lines('073_baseline_live_policies.sql', 71, 85)); // bw_can_manage_event
-await db.exec(lines('073_baseline_live_policies.sql', 197, 216)); // bw_is_event_participant
-await db.exec(lines('071_member_permissions.sql', 221, 238)); // bw_event_member_money
-await db.exec(lines('093_rider_seen_member_paid.sql', 142, 160)); // bw_event_rider
-await db.exec(lines('087_stage_keys.sql', 22, 58)); // bw_stage_key
-await db.exec(lines('085_stage_live_channel.sql', 13, 39)); // bw_stage_topic_allowed
-await db.exec(lines('170_live_pack.sql', 157, 175)); // bw_live_pack_window_events
-await db.exec(migFile('111_quote_events_private.sql')); // events read, bw_can_view_event, bw_trg_event_changed
-await db.exec(`
+await d.exec(lines('046_server_notifications_and_push.sql', 47, 101)); // bw_notify, bw_active_band_member_ids
+await d.exec(lines('046_server_notifications_and_push.sql', 128, 138)); // bw_display_name
+await d.exec(lines('088_deputy_push_i18n.sql', 18, 44)); // bw_i18n_short_date
+await d.exec(lines('073_baseline_live_policies.sql', 71, 85)); // bw_can_manage_event
+await d.exec(lines('073_baseline_live_policies.sql', 197, 216)); // bw_is_event_participant
+await d.exec(lines('071_member_permissions.sql', 221, 238)); // bw_event_member_money
+await d.exec(lines('093_rider_seen_member_paid.sql', 142, 160)); // bw_event_rider
+await d.exec(lines('087_stage_keys.sql', 22, 58)); // bw_stage_key
+await d.exec(lines('085_stage_live_channel.sql', 13, 39)); // bw_stage_topic_allowed
+await d.exec(lines('170_live_pack.sql', 157, 175)); // bw_live_pack_window_events
+await d.exec(migFile('111_quote_events_private.sql')); // events read, bw_can_view_event, bw_trg_event_changed
+await d.exec(lines('042_security_hardening.sql', 103, 146)); // bw_can_add_chat_participant
+await d.exec(lines('042_security_hardening.sql', 225, 272)); // get_user_chats
+await d.exec(lines('083_member_stats_rpc.sql', 15, 86)); // bw_member_stats
+await d.exec(lines('095_band_free_slots.sql', 23, 145)); // bw_band_free_slots
+await d.exec(`
 CREATE TRIGGER bw_event_changed_notify AFTER UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_changed();
 CREATE TRIGGER bw_event_deleted_notify AFTER DELETE ON public.events FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_changed();
 -- Live policies (073, 092, 094).
@@ -152,10 +176,22 @@ CREATE POLICY chat_participants_select_own ON public.chat_participants FOR SELEC
 CREATE POLICY messages_select_participant ON public.messages FOR SELECT TO authenticated USING (chat_id = ANY (bw_my_chat_ids()));
 CREATE POLICY messages_insert_participant ON public.messages FOR INSERT TO authenticated
   WITH CHECK (sender_id = auth.uid() AND chat_id = ANY (bw_my_chat_ids()));
+CREATE POLICY chat_participants_insert ON public.chat_participants FOR INSERT TO authenticated
+  WITH CHECK (public.bw_can_add_chat_participant(chat_id, user_id));
+-- 074 setlists read, 118 song proposals, 073 quote_musicians.
+CREATE POLICY setlists_select ON public.setlists FOR SELECT TO authenticated USING (public.bw_is_band_member(band_id));
+CREATE POLICY setlist_songs_select ON public.setlist_songs FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_member(s.band_id)));
+CREATE POLICY "Band members can manage proposals" ON public.song_proposals FOR ALL TO authenticated
+  USING (public.bw_is_band_member(band_id)) WITH CHECK (public.bw_is_band_member(band_id));
+CREATE POLICY "Band members can view quote musicians" ON public.quote_musicians FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY notifications_select_own ON public.notifications FOR SELECT TO authenticated USING (user_id = auth.uid());
 -- The app writes notices for other members (bw_can_notify in prod: an admin may write to any member).
 CREATE POLICY notifications_insert_admin ON public.notifications FOR INSERT TO authenticated WITH CHECK (public.bw_is_band_admin(band_id));
 `);
+
+}
+await boot(db);
 
 // ── Seed: a band, a confirmed gig, a quote event made before 178 ───────────
 await db.exec(`
@@ -169,7 +205,12 @@ INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','
 INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city, fee)
 VALUES ('${GIG}','${BAND}','Rooftop Session','confirmed','gig','${ADMIN}', current_date + 3, '21:00','The Loft','Brooklyn', 1800),
        ('${QE0}','${BAND}','Smith Wedding (old)','tentative','gig','${ADMIN}', current_date + 20, '18:00','Hotel Park','Jersey City', 4200);
-INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${GIG}','${MEM}','confirmed', 250), ('${QE0}','${MEM}','pending', 300);
+INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${GIG}','${MEM}','confirmed', 250), ('${QE0}','${MEM}','pending', 300),
+  ('${QE0}','${MEM2}','confirmed', 300);
+-- A quote chat from before 178, with a member in it.
+INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${QCHAT0}','event','Smith Wedding (old)','${BAND}','${QE0}','${ADMIN}');
+INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCHAT0}','${ADMIN}'), ('${QCHAT0}','${MEM}');
+INSERT INTO messages (chat_id, sender_id, content) VALUES ('${QCHAT0}','${ADMIN}','Jane Smith pays 4200');
 -- An "Availability check" an older build wrote before 178.
 INSERT INTO notifications (user_id, band_id, type, title, body, data, reference_id, reference_type) VALUES
   ('${MEM}','${BAND}','event_invite','Availability check: Smith Wedding (old)','Jane is quoting. Your fee: $300',
@@ -194,14 +235,47 @@ ok((await notes(`user_id = '${MEM}' AND data->>'event_id' = '${GIG}'`)).length =
 const seeded = await db.query(`SELECT 1 FROM event_date_holds WHERE event_id = '${QE0}'`).catch(() => ({ rows: [] }));
 ok(seeded.rows.length === 1 && (await notes(`type = 'date_hold'`)).length === 0, 'a hold live today is known, not announced again');
 
+// Round 2 (Claude B2): 178 is self-sufficient for chats, without 175 / send-push.
+ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id = '${MEM}'`)).rows.length === 0,
+  'pre-178 quote chat: the member\'s participant row is removed');
+ok((await tryq(`SELECT 1 FROM chat_participants_quote_178 WHERE chat_id = '${QCHAT0}' AND user_id = '${MEM}'`)).rows.length === 1,
+  '... and archived');
+ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id = '${ADMIN}'`)).rows.length === 1, '... the admin stays');
+{
+  const gc = await as(MEM, `SELECT public.get_user_chats('${MEM}') j`);
+  ok(!gc.error && !JSON.stringify(gc.rows[0]?.j ?? '').includes(QCHAT0), `get_user_chats: no quote chat for the member (${gc.error || ''})`);
+  const ga = await as(ADMIN, `SELECT public.get_user_chats('${ADMIN}') j`);
+  ok(JSON.stringify(ga.rows[0]?.j ?? '').includes(QCHAT0), 'get_user_chats: the admin still has it');
+}
+// Codex m1: old "Availability check" answers carried over.
+const carried = await tryq(`SELECT answer FROM event_hold_answers WHERE event_id = '${QE0}' AND user_id = '${MEM2}'`);
+ok(carried.rows[0]?.answer === 'free', `backfill: the member who said yes to the old check is "free" (${carried.error || carried.rows[0]?.answer})`);
+ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${QE0}' AND user_id = '${MEM}'`)).rows.length === 0,
+  'backfill: a pending answer stays unanswered');
+
 // ── A new quote: the admin makes it, the band hears about a hold ───────────
 await db.exec(`DELETE FROM notifications`);
+// Codex m2 / Claude 6: the wizard saves the event first, then the quote.
+const QEF = id(38);
+await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name)
+  VALUES ('${QEF}','${BAND}','Smith Failed','tentative','gig','${ADMIN}', current_date + 11, '20:00','Blue Note')`);
+ok((await notes(`type LIKE 'date_hold%'`)).length === 0, 'event saved, quote not yet: no hold notice');
+ok((await as(MEM, `SELECT * FROM public.bw_my_date_holds() WHERE event_id = '${QEF}'`)).rows.length === 0, '... and no hold card');
+await asServer(ADMIN, `DELETE FROM events WHERE id = '${QEF}'`);
+ok((await notes(`type LIKE 'date_hold%'`)).length === 0, 'the quote failed, the event is taken back: no hold, no "free again"');
 await asServer(ADMIN, `
+INSERT INTO setlists (id, band_id, name) VALUES ('${SL}','${BAND}','Smith Wedding set'), ('${SL2}','${BAND}','Rooftop set'),
+  ('${SL3}','${BAND}','Standard set'), ('${SL4}','${BAND}','Wedding template');
+UPDATE setlists SET is_template = true WHERE id = '${SL4}';
+UPDATE events SET setlist_id = '${SL2}' WHERE id = '${GIG}';
 INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, end_time, venue, venue_name,
   venue_address, venue_city, fee, client_name, notes, setlist_id)
 VALUES ('${QE}','${BAND}','Smith Wedding','tentative','gig','${ADMIN}', current_date + 10, '20:00','23:00','Blue Note','Blue Note',
   '131 W 3rd St','New York', 4200, 'Jane Smith', 'secret notes', '${SL}');
 INSERT INTO event_members (event_id, user_id, status, fee, notes) VALUES ('${QE}','${MEM}','pending', 300, 'secret notes');
+`);
+ok((await notes(`type = 'date_hold'`)).length === 0, 'quote event saved alone: still no hold notice');
+await asServer(ADMIN, `
 INSERT INTO quotes (id, band_id, created_by, client_name, total, status, valid_until, converted_to_event_id, quote_number)
 VALUES ('${Q}','${BAND}','${ADMIN}','Jane Smith', 4200, 'sent', current_date + 30, '${QE}', 'Q-2026-0042');
 INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES ('${SL}','${SONG}',1);
@@ -209,7 +283,7 @@ INSERT INTO contracts (band_id, event_id, type, title, status) VALUES ('${BAND}'
 INSERT INTO event_stage VALUES ('${QE}','${BAND}','{"items":[]}');
 INSERT INTO event_gear_kits VALUES ('${QE}', gen_random_uuid(), '${BAND}');
 INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHAT}','event','Smith Wedding','${BAND}','${QE}','${ADMIN}');
-INSERT INTO chat_participants VALUES ('${EVCHAT}','${ADMIN}'), ('${EVCHAT}','${MEM}');
+INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${ADMIN}'), ('${EVCHAT}','${MEM}');
 INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT}','${ADMIN}','Jane wants a longer set');
 `);
 
@@ -283,6 +357,14 @@ ok(ch.some((n) => n.user_id === MEM2 && n.type === 'date_hold_changed' && /19:30
 ok(!ch.some((n) => [MEM, MEM2].includes(n.user_id) && n.type !== 'date_hold_changed'), 'members get no titled "Gig updated" about the quote');
 ok(ch.some((n) => n.user_id === ADMIN2 && n.type === 'event_update'), 'the other admin still gets "Gig updated"');
 ok(leaks(ch.filter((n) => [MEM, MEM2].includes(n.user_id))).length === 0, 'member notices leak nothing');
+// Codex B4: "I'm free" was for 20:00, not 19:30.
+ok((await as(MEM, `SELECT my_answer FROM public.bw_my_date_holds() WHERE event_id = '${QE}'`)).rows[0]?.my_answer == null,
+  'new time: the old "I\'m free" is cleared');
+ok((await as(ADMIN, `SELECT * FROM public.bw_date_hold_answers('${QE}')`)).rows.every((r) => r.answer == null), 'the admin sees no stale answers');
+await as(MEM, `SELECT public.bw_answer_date_hold('${QE}', 'free')`);
+await asServer(ADMIN, `UPDATE events SET venue_name = 'Village Vanguard', venue = 'Village Vanguard' WHERE id = '${QE}'`);
+ok((await as(MEM, `SELECT my_answer FROM public.bw_my_date_holds() WHERE event_id = '${QE}'`)).rows[0]?.my_answer === 'free',
+  'a new place only: the answer stays');
 await db.exec(`DELETE FROM notifications`);
 await asServer(ADMIN, `UPDATE events SET load_in_time = '17:00' WHERE id = '${QE}'`);
 ok((await notes(`user_id IN ('${MEM}','${MEM2}')`)).length === 0, 'load-in change: nothing to members (not on the card)');
@@ -314,8 +396,9 @@ ok((await notes(`user_id IN ('${MEM}','${MEM2}') AND type <> 'date_hold_released
 
 // ── Release: cancelled, deleted, link declined, expired ────────────────────
 const mkQuote = async (ev, title, extra = '') => asServer(ADMIN, `
-  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city, client_name)
-  VALUES ('${ev}','${BAND}','${title}','tentative','gig','${ADMIN}', current_date + 12, '20:00','Blue Note','New York','Jane Smith'); ${extra}`);
+  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city, client_name, created_at)
+  VALUES ('${ev}','${BAND}','${title}','tentative','gig','${ADMIN}', current_date + 12, '20:00','Blue Note','New York','Jane Smith',
+    now() - interval '5 minutes'); ${extra}`);
 await mkQuote(QE2, 'Smith Party');
 await mkQuote(QE3, 'Smith Gala');
 await db.exec(`DELETE FROM notifications`);
@@ -356,6 +439,176 @@ ok((await as(MEM, `SELECT title FROM events WHERE id = '${QE5}'`)).rows[0]?.titl
 ok(Number((await as(MEM, `SELECT fee FROM public.bw_event_member_money(ARRAY['${QE5}']::uuid[])`)).rows[0]?.fee) === 350, 'confirmed: and their own fee');
 ok((await as(MEM, `SELECT * FROM public.bw_my_date_holds()`)).rows.every((r) => r.event_id !== QE5), 'confirmed: no more hold card');
 
+// ══ Round 2 (review of 982d2a1f) ═══════════════════════════════════════════
+const [QE7, Q7, QE8, Q8, QE9, Q9, CH9, BAND2, ADM2B] = [39, 47, 41, 48, 42, 49, 54, 7, 8].map(id);
+
+// Codex B2: a wizard quote (linked only by quotes.converted_to_event_id) cancelled.
+await asServer(ADMIN, `
+  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, notes)
+  VALUES ('${QE7}','${BAND}','Smith Anniversary','tentative','gig','${ADMIN}', current_date + 25, '20:00','Blue Note','secret notes');
+  INSERT INTO quotes (id, band_id, created_by, client_name, status, converted_to_event_id) VALUES ('${Q7}','${BAND}','${ADMIN}','Jane Smith','sent','${QE7}');`);
+await db.exec(`DELETE FROM notifications`);
+await asServer(ADMIN, `UPDATE events SET status = 'cancelled' WHERE id = '${QE7}'`);
+ok((await as(MEM, `SELECT title, notes FROM events WHERE id = '${QE7}'`)).rows.length === 0, 'cancelled wizard quote: members still read nothing');
+ok((await as(MEM, `SELECT public.bw_can_view_event('${QE7}') v`)).rows[0]?.v === false, 'cancelled wizard quote: bw_can_view_event false');
+ok((await as(ADMIN, `SELECT title FROM events WHERE id = '${QE7}'`)).rows.length === 1, 'cancelled wizard quote: the admin still reads it');
+await asServer(ADMIN, `UPDATE events SET notes = 'more secret notes', start_time = '21:00' WHERE id = '${QE7}'`);
+await asServer(ADMIN, `DELETE FROM events WHERE id = '${QE7}'`);
+ok(leaks((await notes(`user_id IN ('${MEM}','${MEM2}')`))).length === 0, 'cancelled quote edited and deleted: nothing titled to members');
+await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date)
+  VALUES ('${id(43)}','${BAND}','Park Show','confirmed','gig','${ADMIN}', current_date + 30);
+  UPDATE events SET status = 'cancelled' WHERE id = '${id(43)}'`);
+ok((await as(MEM, `SELECT title FROM events WHERE id = '${id(43)}'`)).rows.length === 1, 'a cancelled real gig stays visible (only quotes are private)');
+
+// Codex B3 / Claude 7: the hidden-chat list never lists other bands' chats.
+await db.exec(`INSERT INTO bands VALUES ('${BAND2}', 'Other Band');
+  INSERT INTO auth.users (id) VALUES ('${ADM2B}'); INSERT INTO profiles (id, full_name) VALUES ('${ADM2B}', 'Other Admin');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND2}','${ADM2B}','admin'), ('${BAND2}','${OUT}','member');`);
+{
+  const r = await as(OUT, `SELECT public.bw_hidden_quote_chat_ids() ids`);
+  ok(!r.error && !(r.rows[0]?.ids || []).some((x) => [EVCHAT, QCHAT0].includes(x)), `another band's member: no quote chat ids of this band (${r.error || r.rows[0]?.ids})`);
+  const m = await as(MEM2, `SELECT public.bw_hidden_quote_chat_ids() ids`);
+  ok((m.rows[0]?.ids || []).includes(QCHAT0), 'a member of the band: their band\'s quote chats are listed (to hide them)');
+}
+
+// Codex B1 / Claude B2: chat pushes and inbox rows carry only chat_id.
+ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM}'`)).rows.length === 0,
+  'a member added to a quote chat is dropped (no participant row to push to)');
+await db.exec(`DELETE FROM notifications`);
+await asServer(null, `INSERT INTO notifications (user_id, band_id, type, title, body, data) VALUES
+  ('${MEM}','${BAND}','chat_message','Leo Admin','Jane wants a longer set', jsonb_build_object('chat_id','${QCHAT0}','skip_push',true)),
+  ('${ADMIN2}','${BAND}','chat_message','Leo Admin','Jane wants a longer set', jsonb_build_object('chat_id','${QCHAT0}','skip_push',true))`);
+ok((await notes(`user_id = '${MEM}' AND type = 'chat_message'`)).length === 0, 'send-push inbox row (chat_id only) for a member: dropped');
+ok((await notes(`user_id = '${ADMIN2}' AND type = 'chat_message'`)).length === 1, '... for an admin: kept');
+{
+  const r = await tryq(`SELECT public.bw_chat_push_readers('${QCHAT0}', ARRAY['${ADMIN2}','${MEM}','${MEM2}']::uuid[]) ids`);
+  ok(!r.error && JSON.stringify(r.rows[0]?.ids) === JSON.stringify([ADMIN2]), `push readers of a quote chat: admins only (${r.error || r.rows[0]?.ids})`);
+  const g = await tryq(`SELECT public.bw_chat_push_readers('${QCHAT0}', ARRAY['${MEM}']::uuid[]) a, has_function_privilege('authenticated', 'public.bw_chat_push_readers(uuid, uuid[])', 'EXECUTE') p`);
+  ok(g.rows[0]?.p === false, 'push readers: server only');
+}
+
+// Claude 5c: an older admin build adds the whole lineup to the quote chat.
+{
+  const r = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCHAT0}','${ADMIN2}'), ('${QCHAT0}','${MEM2}')`);
+  ok(!r.error, `old admin build: the insert does not fail (${r.error})`);
+  ok((await tryq(`SELECT user_id FROM chat_participants WHERE chat_id = '${QCHAT0}' AND user_id IN ('${ADMIN2}','${MEM2}')`)).rows.map((x) => x.user_id).join() === ADMIN2,
+    'old admin build: the other admin is added, the member silently is not');
+}
+
+// Owner 1: setlists of a quote. Owner 2: song proposals of a quote.
+await db.exec(`UPDATE events SET setlist_id = '${SL3}' WHERE id IN ('${QE0}', '${GIG}');
+  UPDATE events SET setlist_id = '${SL}' WHERE id = '${QE0}';
+  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, setlist_id, created_at)
+  VALUES ('${QE8}','${BAND}','Smith Gala 2','tentative','gig','${ADMIN}', current_date + 15, '${SL4}', now() - interval '5 minutes');
+  UPDATE events SET setlist_id = '${SL3}' WHERE id = '${GIG}';
+  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, setlist_id, created_at)
+  VALUES ('${QE9}','${BAND}','Smith Gala 3','tentative','gig','${ADMIN}', current_date + 16, '${SL3}', now() - interval '5 minutes');
+  INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES ('${SL}','${SONG}',2), ('${SL3}','${SONG}',1);`);
+{
+  const mine = (await as(MEM, `SELECT id FROM setlists`)).rows.map((r) => r.id);
+  ok(!mine.includes(SL), 'member: the setlist only a quote uses is hidden');
+  ok(mine.includes(SL3), 'member: a setlist a real gig also uses stays');
+  ok(mine.includes(SL4), 'member: a template stays');
+  ok(mine.includes(SL2), 'member: band setlists in general stay');
+  ok((await as(MEM, `SELECT * FROM setlist_songs WHERE setlist_id = '${SL}'`)).rows.length === 0, 'member: no songs of the quote setlist');
+  ok((await as(ADMIN, `SELECT id FROM setlists WHERE id = '${SL}'`)).rows.length === 1, 'admin: reads the quote setlist');
+  await asServer(null, `INSERT INTO notifications (user_id, band_id, type, title, body, data) VALUES
+    ('${MEM}','${BAND}','setlist_updated','Smith Wedding set','updated', jsonb_build_object('setlist_id','${SL}','skip_push',true))`);
+  ok((await notes(`user_id = '${MEM}' AND type = 'setlist_updated'`)).length === 0, 'setlist notice about a quote setlist: dropped for members');
+}
+await db.exec(`INSERT INTO song_proposals (band_id, event_id, title, proposed_by) VALUES ('${BAND}','${QE0}','Smith first dance','${ADMIN}')`);
+ok((await as(MEM, `SELECT * FROM song_proposals WHERE event_id = '${QE0}'`)).rows.length === 0, 'member: no song proposals of a quote');
+ok(!!(await as(MEM, `INSERT INTO song_proposals (band_id, event_id, title, proposed_by) VALUES ('${BAND}','${QE0}','x','${MEM}')`)).error,
+  'member: cannot propose a song for a quote');
+ok((await as(ADMIN, `SELECT * FROM song_proposals WHERE event_id = '${QE0}'`)).rows.length === 1, 'admin: sees them');
+
+// Claude B1: quote_musicians fee.
+await db.exec(`INSERT INTO quote_musicians (quote_id, user_id, fee) VALUES ('${Q4}','${MEM}', 300)`);
+ok((await as(MEM, `SELECT fee FROM quote_musicians WHERE quote_id = '${Q4}'`)).rows.length === 0, 'member: no own fee row of a pending quote');
+
+// Owner 3 / Claude 8: "the day has passed" is not UTC.
+{
+  const r = await tryq(`SELECT public.bw_date_hold_today('2026-11-23 03:00+00')::text a, public.bw_date_hold_today('2026-11-23 11:59+00')::text b,
+                               public.bw_date_hold_today('2026-11-23 12:01+00')::text c`);
+  ok(r.rows[0]?.a === '2026-11-22' && r.rows[0]?.b === '2026-11-22' && r.rows[0]?.c === '2026-11-23',
+    `10 pm Saturday in New York (03:00 UTC Sunday) is still Saturday (${r.error || JSON.stringify(r.rows[0])})`);
+  let clean = true;
+  for (const f of ['bw_date_hold_live', 'bw_date_hold_sync', 'bw_date_hold_gone', 'bw_date_hold_sweep']) {
+    const d = (await fnDef(f)).toLowerCase();
+    if (!d || /current_date/.test(d)) clean = false;
+  }
+  ok(clean, 'hold functions never compare with current_date (UTC)');
+  await db.exec(`UPDATE events SET event_date = public.bw_date_hold_today() WHERE id = '${QE8}'`).catch(() => {});
+  ok((await tryq(`SELECT public.bw_date_hold_live('${QE8}') l`)).rows[0]?.l === true, 'a hold dated "today" for the band is live');
+  await db.exec(`UPDATE events SET event_date = current_date + 15 WHERE id = '${QE8}'`);
+}
+
+// Owner 5: stats skip quote lineup rows; free slots: a hold blocks the band.
+{
+  const st = await as(MEM, `SELECT pending, declined FROM public.bw_member_stats('${BAND}', current_date - 30, current_date + 60)`);
+  // Only the confirmed Smith Dinner (QE5) waits for an answer; the quotes don't count.
+  ok(st.rows[0]?.pending === 1, `member stats: quote lineup rows are not pending gigs (${st.error || st.rows[0]?.pending})`);
+  await db.exec(`INSERT INTO event_members (event_id, user_id, status) VALUES ('${QE8}','${MEM}','pending');
+    INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id) VALUES ('${Q8}','${BAND}','sent', current_date + 30, '${QE8}')`);
+  await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+  const fs = async () => (await as(ADMIN, `SELECT free_count, total_count FROM public.bw_band_free_slots('${BAND}', current_date + 15, current_date + 15)`)).rows[0];
+  const live = await fs();
+  ok(live?.free_count === 0 && live?.total_count === 4, `free slots: a live hold blocks its day for the band (${JSON.stringify(live)})`);
+  await asServer(ADMIN, `UPDATE quotes SET status = 'declined' WHERE id = '${Q8}'`);
+  const off = await fs();
+  ok(off?.free_count === 4, `free slots: a quote's lineup row alone makes nobody busy (${JSON.stringify(off)})`);
+}
+
+// Owner 6: no new deputy for a quote.
+await db.exec(`INSERT INTO band_deputies (id, band_id, name) VALUES ('${id(70)}','${BAND}','Dan Dep')`);
+ok(!!(await tryq(`INSERT INTO deputy_requests (band_id, event_id, deputy_id, deputy_name) VALUES ('${BAND}','${QE0}','${id(70)}','Dan Dep')`)).error,
+  'deputy request for a quote event: refused');
+ok(!(await tryq(`INSERT INTO deputy_requests (band_id, event_id, deputy_id, deputy_name) VALUES ('${BAND}','${GIG}','${id(70)}','Dan Dep')`)).error,
+  'deputy request for a confirmed gig: fine');
+
+// Claude 9: one release at a time.
+{
+  const d = await fnDef('bw_date_hold_sync');
+  ok(/FOR UPDATE/i.test(d) && /pg_advisory_xact_lock/.test(d), 'bw_date_hold_sync locks the hold before deciding');
+}
+
+// Claude 5a: hold pushes open something on older builds.
+{
+  const calls = (await tryq(`SELECT body FROM net.calls ORDER BY id DESC LIMIT 200`)).rows.map((r) => r.body);
+  const holdPush = calls.find((b) => b?.data?.hold_type === 'date_hold' || b?.data?.type === 'date_hold');
+  ok(!!holdPush && holdPush.data.type === 'event_date_hold' && !holdPush.data.event_id && !!holdPush.data.hold_event_id,
+    `hold push: type event_date_hold (older builds open the calendar), no event_id (${JSON.stringify(holdPush?.data || null)})`);
+}
+
+// Claude 3 + 4: confirmed, the lineup is back in the chat, from now on.
+await asServer(ADMIN, `
+  INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${QE9}','${MEM}','pending', 200);
+  INSERT INTO quotes (id, band_id, status, converted_to_event_id) VALUES ('${Q9}','${BAND}','sent','${QE9}');
+  INSERT INTO quote_musicians (quote_id, user_id, fee) VALUES ('${Q9}','${MEM}', 200);
+  INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${CH9}','event','Smith Gala 3','${BAND}','${QE9}','${ADMIN}');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${CH9}','${ADMIN}'), ('${CH9}','${MEM}');
+  INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${CH9}','${ADMIN}','Jane Smith wants 3 sets', clock_timestamp() - interval '1 minute');`);
+await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE9}'`);
+await asServer(ADMIN, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${CH9}','${ADMIN}','Load-in at 5')`);
+{
+  const p = (await tryq(`SELECT cleared_at FROM chat_participants WHERE chat_id = '${CH9}' AND user_id = '${MEM}'`)).rows[0];
+  ok(!!p && !!p.cleared_at, `confirmed: the lineup member is back in the gig chat, history cleared (${JSON.stringify(p || null)})`);
+  const seen = (await as(MEM, `SELECT content FROM messages WHERE chat_id = '${CH9}'`)).rows.map((r) => r.content);
+  ok(seen.includes('Load-in at 5') && !seen.includes('Jane Smith wants 3 sets'), `member sees messages only from the confirmation on (${seen})`);
+  ok((await as(ADMIN, `SELECT content FROM messages WHERE chat_id = '${CH9}'`)).rows.length === 2, 'the admin keeps the whole history');
+  ok(Number((await as(MEM, `SELECT fee FROM quote_musicians WHERE quote_id = '${Q9}'`)).rows[0]?.fee) === 200, 'confirmed: the member reads their own quote fee row');
+  // A member who joins later gets the same cut-off.
+  await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${CH9}' AND user_id = '${MEM}'`);
+  await as(MEM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${CH9}','${MEM}')`);
+  const again = (await tryq(`SELECT cleared_at FROM chat_participants WHERE chat_id = '${CH9}' AND user_id = '${MEM}'`)).rows[0];
+  ok(!!again?.cleared_at, 'joining the gig chat later: the quote-stage history stays cleared');
+}
+
+// Re-run: answers cleared by a change of day don't come back.
+await db.exec(`UPDATE events SET event_date = current_date + 21 WHERE id = '${QE0}'`);
+await db.exec(readFileSync(MIG, 'utf8')).catch(() => {});
+ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${QE0}'`)).rows.length === 0, 're-run: old availability answers are carried only once');
+
 // ── Re-run after 181 (event chat = lineup): 178 must not undo it ───────────
 // 181 redefines bw_chat_scope_ok to also need bw_is_event_participant (which
 // carries the quote rule since 178). Re-running 178 later (its header says to
@@ -385,6 +638,46 @@ await db.exec(readFileSync(MIG, 'utf8'));
 ok(await scope(GIGCHAT, MEM2) === false, 're-run after 181: a member off the lineup stays out of the gig chat');
 ok(await scope(GIGCHAT, MEM) === true, 're-run after 181: the lineup keeps the gig chat');
 ok(await scope(QCHAT, MEM) === false, 're-run after 181: the quote chat stays hidden from members');
+
+// Claude 3, order 175 → 178 → 181: 181's sweep runs on top; confirmed, the lineup is back.
+await db.exec(`CREATE TABLE IF NOT EXISTS public.chat_participants_removed_175 (chat_id uuid, user_id uuid, row_data jsonb, removed_at timestamptz DEFAULT now())`);
+const sweep181 = `WITH stale AS (SELECT cp.chat_id, cp.user_id, to_jsonb(cp) AS row_data FROM chat_participants cp JOIN chats c ON c.id = cp.chat_id
+    WHERE c.type = 'event' AND NOT public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, cp.user_id)),
+  saved AS (INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data) SELECT chat_id, user_id, row_data FROM stale RETURNING chat_id, user_id)
+  DELETE FROM chat_participants cp USING saved s WHERE cp.chat_id = s.chat_id AND cp.user_id = s.user_id`;
+await db.exec(`INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCHAT}','${ADMIN}'), ('${QCHAT}','${MEM}')`);
+await db.exec(sweep181);
+await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE6}'`);
+const orderA = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows[0];
+ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back in the chat, history cleared (${JSON.stringify(orderA || null)})`);
+
+// Claude 3, order 175 → 181 → 178, on a fresh database: the same end state.
+{
+  const db1 = db;
+  db = new PGlite();
+  await boot(db);
+  await db.exec(`
+    INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${MEM}']::uuid[]);
+    INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Leo Admin'), ('${MEM}','Marta Drums');
+    INSERT INTO bands VALUES ('${BAND}', 'Velvet Static');
+    INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${MEM}','member');
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${QE6}','${BAND}','Smith Brunch','tentative','gig','${ADMIN}', current_date + 9);
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${QE6}','${MEM}','pending');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${QCHAT}','event','Smith Brunch','${BAND}','${QE6}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QCHAT}','${ADMIN}'), ('${QCHAT}','${MEM}');
+    CREATE TABLE public.chat_participants_removed_175 (chat_id uuid, user_id uuid, row_data jsonb, removed_at timestamptz DEFAULT now());
+    CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+    RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+      SELECT CASE WHEN p_type = 'event' THEN coalesce((SELECT public.bw_is_event_participant(e.id, p_user_id) FROM events e WHERE e.id = p_event_id), true) ELSE true END;
+    $f$;`);
+  await db.exec(sweep181);
+  await db.exec(readFileSync(MIG, 'utf8')).catch((e) => console.log('order B migration:', e.message));
+  const during = (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows.length;
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE6}'`);
+  const orderB = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows[0];
+  ok(during === 0 && orderB?.c === true, `order 181 → 178: out while a quote, back once confirmed, history cleared (${during}, ${JSON.stringify(orderB || null)})`);
+  db = db1;
+}
 
 console.log(fails ? `\n${passes} passed, ${fails} FAILED` : `\n${passes} passed, ALL OK`);
 process.exit(fails ? 1 : 0);
