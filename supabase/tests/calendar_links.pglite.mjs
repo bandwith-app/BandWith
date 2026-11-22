@@ -909,6 +909,35 @@ await check('#294 cross-PR: the same gig, reverted, gives an existing deputy not
   return v?.closed === true && !leaks(v) && !leaks(f) && !leaks(g) && !leaks(o);
 });
 
+// #294 Codex B2 (main: option a, deputy paths keep bw_event_deputy_hidden):
+// confirmed, reverted to a quote, then the quote gets a client and a new
+// title. An existing deputy (with an account too) sees none of it.
+await check('#294 B2: reverted to a quote, then a client and a new title: no deputy path shows them', async () => {
+  const [EV_B2, DEPB2, RB2, UB2] = [56, 57, 58, 59].map(id);
+  await q(`ALTER TABLE public.events ADD COLUMN IF NOT EXISTS client_name text`);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
+    ($1, $2, 'Spring Social', 'gig', 'confirmed', current_date + 18, '20:00', 'Hall B', 'Montclair', '8 Elm St', false, $3, 3000)`, [EV_B2, BAND, ADMIN]);
+  await q(`INSERT INTO auth.users VALUES ($1)`, [UB2]);
+  await q(`INSERT INTO profiles (id, preferred_language) VALUES ($1, 'en')`, [UB2]);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Omar', $3)`, [DEPB2, BAND, UB2]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, status, answer_snapshot)
+    VALUES ($1, $2, $3, $4, 'Omar', 'Drums', 700, 'USD', 'available', '{}')`, [RB2, BAND, EV_B2, DEPB2]);
+  await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_B2]);
+  await q(`UPDATE events SET client_name = 'Hartwell Family', title = 'Hartwell Wedding (private)', venue_address = '77 Secret Ln' WHERE id = $1`, [EV_B2]);
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RB2)])).v;
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RB2, 'calendar_token')])).f;
+  const g = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(RB2, 'gig_calendar_token')])).g;
+  const o = (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await col(RB2, 'calendar_token')])).f;
+  await as(UB2);
+  const mine = (await one(`SELECT public.bw_my_deputy_gigs() AS g`)).g;
+  await db.exec('RESET ROLE');
+  const leaks = (x) => /Hartwell|Secret Ln|Spring Social|8 Elm St|700/.test(JSON.stringify(x ?? null));
+  const ok = v?.closed === true && !leaks(v) && !leaks(f) && !leaks(g) && !leaks(o) && !leaks(mine)
+    && (mine?.gigs ?? []).some((x) => x.id === RB2 && x.closed === true);
+  if (!ok) console.log('   ', [v, f, g, o, mine].map((x) => leaks(x)).join(' '));
+  return ok;
+});
+
 await check('with 178: confirmed again, it is back', async () => {
   await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);
   const r = await quoteViews();
