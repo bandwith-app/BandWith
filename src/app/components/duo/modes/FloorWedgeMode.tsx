@@ -10,6 +10,7 @@ import { DeckButton, clock, durationSeconds } from './shared';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
 import { MyNotesBar, PersonalLayerScope } from '@/app/components/songs/PersonalLayer';
 import { SongBody, SongViewTabs, useSongViewPreference } from '@/app/components/ui/SongViews';
+import { VoiceAssignmentScope } from '@/app/components/songs/WhoSingsWhat';
 import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
 import { normalizeLyrics, resolveView } from '@/lib/songFormat';
 import { keyLabel, type SongChart } from '@/lib/ireal';
@@ -54,6 +55,8 @@ export interface WedgeSong {
 
 export interface FloorWedgeModeProps {
   songs: WedgeSong[];
+  /** Rehearsal Live mode: "who sings what" has no per-gig override there. */
+  rehearsal?: boolean;
   /** Gig title shown above the counter. */
   title?: string;
   /** The gig's band: my notes on its songs (109), as in Stage mode. */
@@ -109,6 +112,7 @@ export interface FloorWedgeModeProps {
 
 export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   songs,
+  rehearsal,
   title,
   bandId,
   setLabel,
@@ -259,6 +263,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             </span>
             <span className="bw-label-md normal-case truncate min-w-0 text-accent">{song.title}</span>
           </p>
+          <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics}>
           <SongBody
             song={content}
             view={songView}
@@ -269,6 +274,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
             showLegend={false}
           />
+          </VoiceAssignmentScope>
         </div>
       ) : !song ? (
         <p className="bw-display-lg text-white/70">{songsLoading ? t('Loading setlist…') : t('No setlist')}</p>
@@ -288,6 +294,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
             aria-label={shownView !== 'lyrics' ? t('Chords · {title}', { title: song.title }) : t('Lyrics · {title}', { title: song.title })}
           >
+            <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics}>
             <SongBody
               song={content}
               view={songView}
@@ -298,6 +305,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               chartClassName="w-full flex flex-col gap-5 pb-4 text-white"
               showLegend={false}
             />
+            </VoiceAssignmentScope>
           </div>
         </>
       ) : (

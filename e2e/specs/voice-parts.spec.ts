@@ -72,4 +72,42 @@ test.describe('voice parts in Live mode', () => {
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await expect(area.locator('[data-voice-dim="true"]')).toHaveCount(0);
   });
+
+  test('@smoke an admin sets who sings what; my part follows the assignment', async ({ app }) => {
+    await openWithFocusSongs(app);
+    await app.editDb((db, { me }) => {
+      const rows = db as unknown as Record<string, Record<string, unknown>[]>;
+      rows.songs.find((s) => s.title === 'Paper Boats')!.lyrics = LYRICS;
+      for (const m of rows.band_members.filter((m) => m.user_id === me)) m.instrument = 'Lead vocals';
+    });
+    await app.page.evaluate(() => localStorage.setItem('bw-song-view', 'chords'));
+    await openEvent(app, WEEKLY);
+    await openLive(app);
+    if (isLaptop()) {
+      await app.page.getByRole('region', { name: app.t('Song controls') }).getByRole('button', { name: app.t('Lyrics'), exact: true }).click();
+    } else {
+      await liveDialog(app, WEEKLY).getByRole('tablist', { name: app.t('Setlist') }).getByRole('tab').nth(1).click();
+    }
+    await app.settle();
+    const area = songArea(app);
+    const line = (v: string) => area.locator(`p[data-voice="${v}"]`).filter({ visible: true }).first();
+    // Lead vocals by instrument: the backing line dims.
+    await expect(line('bv')).toHaveAttribute('data-voice-dim', 'true');
+
+    await area.getByRole('group', { name: app.t('Voice parts') }).getByRole('button', { name: app.t('Who sings what') }).click();
+    const sheet = app.page.getByRole('dialog', { name: app.t('Who sings what') });
+    await expect(sheet).toBeVisible();
+    await app.check('who sings what');
+    await sheet.getByRole('region', { name: app.t('Backing', { context: 'voice' }) }).getByRole('button', { name: 'Leo M.' }).click();
+    await sheet.getByRole('button', { name: app.t('Save'), exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+
+    // Assigned to the backing now: it is bright, the lead line dims, the legend names him.
+    await expect(line('bv')).not.toHaveAttribute('data-voice-dim', 'true');
+    await expect(area.locator('p[data-voice-dim="true"]').filter({ hasText: 'Paper boats' }).first()).toBeVisible();
+    await expect(area.getByRole('group', { name: app.t('Voice parts') })).toContainText('Leo M.');
+    const db = await app.readDb();
+    const song = (db as unknown as Record<string, Record<string, unknown>[]>).songs.find((s) => s.title === 'Paper Boats')!;
+    expect(Object.keys((song.vocal_parts as Record<string, string[]>) ?? {})).toEqual(['bv']);
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { useSystemBack } from '@/lib/backStack';
 import { motion, AnimatePresence } from 'motion/react';
@@ -40,6 +40,7 @@ import { personName } from '@/lib/personName';
 import { notifySongAdded } from '@/lib/services/notifications';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
 import { normalizeLyrics } from '@/lib/songFormat';
+import { applyVoiceSuggestions, suggestVoiceParts } from '@/lib/voiceParts';
 import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
 import { useT } from '@/lib/i18n';
@@ -104,6 +105,9 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [notes, setNotes] = useState('');
   const [lyrics, setLyrics] = useState('');
   const [lyricsImportOpen, setLyricsImportOpen] = useState(false);
+  // Voice parts proposed from a paste or an import: applied only on a tap ("Not now" hides it).
+  const [voiceHintOff, setVoiceHintOff] = useState(false);
+  const voiceHints = useMemo(() => (voiceHintOff ? [] : suggestVoiceParts(lyrics)), [lyrics, voiceHintOff]);
   // Chord chart pasted from iReal Pro (songs.chord_chart); saved only when changed here.
   const [chordChart, setChordChart] = useState<SongChart | null>(null);
   const [chordChartTouched, setChordChartTouched] = useState(false);
@@ -764,6 +768,23 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 />
                 <span className="bw-body-sm text-muted-foreground">{t('Read them in the app from the song menu or the player.')}</span>
               </label>
+              {voiceHints.length > 0 && (
+                <div className="flex flex-col gap-2 p-4 rounded-[24px] bg-card -mt-2" role="status">
+                  <p className="bw-body-md">
+                    {voiceHints.length === 1
+                      ? t('1 line looks like backing vocals or all together.')
+                      : t('{n} lines look like backing vocals or all together.', { n: voiceHints.length })}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <PillButton size="sm" variant="dark" fullWidth={false} onClick={() => setLyrics(applyVoiceSuggestions(lyrics, voiceHints))}>
+                      {t('Mark the voice parts')}
+                    </PillButton>
+                    <PillButton size="sm" variant="ghost" fullWidth={false} onClick={() => setVoiceHintOff(true)}>
+                      {t('Not now')}
+                    </PillButton>
+                  </div>
+                </div>
+              )}
               <PillButton size="sm" variant="outline" fullWidth={false} className="self-start -mt-2" icon={<FileText className="w-4 h-4" />} onClick={() => setLyricsImportOpen(true)}>
                 {t('Paste or import lyrics')}
               </PillButton>

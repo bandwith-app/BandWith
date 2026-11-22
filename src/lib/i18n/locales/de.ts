@@ -4574,6 +4574,21 @@ const dict: Dictionary = {
   "Voice parts": "Gesangsstimmen",
   "Highlight my part": "Meine Stimme hervorheben",
   "Backing": "Chor",
+  "Voice": "Stimme",
+  "Just these words": "Nur diese Wörter",
+  "Tap more words of this line to add them.": "Tippe weitere Wörter dieser Zeile an, um sie hinzuzufügen.",
+  "1 line looks like backing vocals or all together.": "1 Zeile sieht nach Chor oder Alle zusammen aus.",
+  "{n} lines look like backing vocals or all together.": "{n} Zeilen sehen nach Chor oder Alle zusammen aus.",
+  "Mark the voice parts": "Gesangsstimmen markieren",
+  "Who sings what": "Wer singt was",
+  "Couldn’t save who sings what.": "Wer singt was konnte nicht gespeichert werden.",
+  "Use the song’s parts": "Stimmen des Songs verwenden",
+  "For": "Für",
+  "Every gig": "Jeder Gig",
+  "This gig only": "Nur dieser Gig",
+  "Only for this setlist, e.g. when a deputy sings.": "Nur für diese Setlist, z. B. wenn eine Aushilfe singt.",
+  "Each singer sees their part highlighted.": "Alle Singenden sehen ihre Stimme hervorgehoben.",
+  "line {n}": "Zeile {n}",
 };
 
 export default dict;

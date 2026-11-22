@@ -3031,6 +3031,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       {isStageOpen && laptopPose && (
         <FloorWedgeMode
           songs={stageLive.songs}
+          rehearsal={isRehearsalLive}
           songsLoading={setlistLoading}
           title={event.title}
           bandId={event.band_id ?? undefined}

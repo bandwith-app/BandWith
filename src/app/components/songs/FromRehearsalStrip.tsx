@@ -60,7 +60,7 @@ export const FromRehearsalStrip: React.FC<{
           const state = applied[n.id];
           return (
             <React.Fragment key={n.id}>
-              <PractiseNoteRow note={n} userId={userId} onPractised={practised} />
+              <PractiseNoteRow note={n} userId={userId} onPractised={practised} lyrics={lyrics} />
               {c && (
                 <li className="flex items-center gap-2 pb-2 border-t-0">
                   <button
@@ -81,7 +81,7 @@ export const FromRehearsalStrip: React.FC<{
                         : t('Suggest to the band: {what}', { what: changeLabel(c, t) })}
                   </button>
                   {state === 'error' && <span className="bw-body-sm text-destructive">{t('Not saved')}</span>}
-                  <span className="sr-only">{noteHeadline(n, t)}</span>
+                  <span className="sr-only">{noteHeadline(n, t, lyrics)}</span>
                 </li>
               )}
             </React.Fragment>

@@ -16,6 +16,7 @@
  * stripVoiceMarkers / lyricsLineText. Pure: no React, no network.
  */
 import { isChordToken } from './lyrics';
+import { parseLine, serializeLine, type WordMark } from './songFormat';
 
 export type VoiceTag = 'v2' | 'bv' | 'all' | 'sp';
 export type VoicePart = 'lead' | VoiceTag;
@@ -191,5 +192,165 @@ export function instrumentVoicePart(instrument: string | null | undefined): Voic
   return null;
 }
 
-/** A run is "mine" when it is my part, or everyone sings it. */
-export const isMyPart = (voice: VoicePart, mine: VoicePart | null | undefined): boolean => voice === 'all' || (!!mine && voice === mine);
+/** A run is "mine" when it is (one of) my part(s), or everyone sings it. */
+export const isMyPart = (voice: VoicePart, mine: VoicePart | readonly VoicePart[] | null | undefined): boolean =>
+  voice === 'all' || (Array.isArray(mine) ? mine.includes(voice) : !!mine && voice === mine);
+
+// ── Editing (C2: the Voice picker in the chord editor) ─────────────────────
+
+/** The part of each word of a line (as parseLine counts words): the part its first letter is in. */
+export function wordVoices(line: string): VoicePart[] {
+  let voice: VoicePart = 'lead';
+  const apply = (tag: string) => {
+    if (tag.startsWith('/')) {
+      if (voice === tag.slice(1)) voice = 'lead';
+    } else voice = tag as VoiceTag;
+  };
+  const rank = (tag: string) => (tag.startsWith('/') ? 0 : 1);
+  return parseLine(line).words.map((w) => {
+    const marks = [...(w.marks ?? [])].sort((a, b) => a.at - b.at || rank(a.tag) - rank(b.tag));
+    marks.filter((m) => m.at === 0).forEach((m) => apply(m.tag));
+    const v = voice;
+    marks.filter((m) => m.at > 0).forEach((m) => apply(m.tag));
+    return v;
+  });
+}
+
+/**
+ * One part on a line (or on words `from`…`to` of it, as parseLine counts
+ * them); 'lead' or tapping the part those words already have clears it.
+ * Chords stay where they are; the line's markers are rewritten in the
+ * band's form.
+ */
+export function setLineVoice(line: string, voice: VoicePart, range?: { from: number; to: number }): string {
+  const model = parseLine(line);
+  const n = model.words.length;
+  if (!n) return line;
+  const voices = wordVoices(line);
+  const from = Math.max(0, Math.min(range ? Math.min(range.from, range.to) : 0, n - 1));
+  const to = Math.max(from, Math.min(range ? Math.max(range.from, range.to) : n - 1, n - 1));
+  const already = voices.slice(from, to + 1).every((v) => v === voice);
+  for (let i = from; i <= to; i++) voices[i] = already ? 'lead' : voice;
+  model.words.forEach((w, i) => {
+    const marks: WordMark[] = [];
+    const v = voices[i];
+    if (v !== 'lead' && voices[i - 1] !== v) marks.push({ at: 0, tag: v });
+    if (v !== 'lead' && voices[i + 1] !== v) marks.push({ at: w.text.length, tag: `/${v}` });
+    if (marks.length) w.marks = marks;
+    else delete w.marks;
+  });
+  return serializeLine(model);
+}
+
+// ── Suggestions on paste / import ──────────────────────────────────────────
+
+export interface VoiceSuggestion {
+  /** Line index in the text. */
+  line: number;
+  voice: VoiceTag;
+}
+
+const ALL_PREFIX = /^(\s*)(?:all|tutti|todos|tous|alle|everyone|everybody|coro)\s*:\s*/i;
+
+/**
+ * Parts a pasted or imported text seems to have: a line wholly in
+ * parentheses — "(ooh, yeah)" — is backing; a line starting "All:" or
+ * "Tutti:" is everyone. Lines that already have a part are left alone.
+ * Nothing changes until applyVoiceSuggestions.
+ */
+export function suggestVoiceParts(lyrics: string | null | undefined): VoiceSuggestion[] {
+  const out: VoiceSuggestion[] = [];
+  (lyrics || '').split('\n').forEach((line, i) => {
+    if (!line.trim() || isHeadingLine(line) || hasVoiceMarkers(line)) return;
+    const words = line.replace(BRACKET, (all, c: string) => (isChordToken(c) ? '' : all)).trim();
+    if (/^\([^()]*\)$/.test(words)) out.push({ line: i, voice: 'bv' });
+    else if (ALL_PREFIX.test(line) && line.replace(ALL_PREFIX, '').trim()) out.push({ line: i, voice: 'all' });
+  });
+  return out;
+}
+
+/** The suggestions applied ("All:" labels dropped: the part says it now). */
+export function applyVoiceSuggestions(lyrics: string, suggestions: VoiceSuggestion[]): string {
+  const lines = lyrics.split('\n');
+  for (const s of suggestions) {
+    const line = lines[s.line];
+    if (line == null || hasVoiceMarkers(line)) continue;
+    lines[s.line] = setLineVoice(s.voice === 'all' ? line.replace(ALL_PREFIX, '$1') : line, s.voice);
+  }
+  return lines.join('\n');
+}
+
+// ── Who sings what (songs.vocal_parts, setlist_songs.vocal_parts: 172) ─────
+
+/** Part → user ids of the members who sing it. 'all' is everyone: never assigned. */
+export type VocalParts = Partial<Record<Exclude<VoicePart, 'all'>, string[]>>;
+export const ASSIGNABLE_PARTS: readonly Exclude<VoicePart, 'all'>[] = ['lead', 'v2', 'bv', 'sp'];
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The stored json, checked: known parts, uuids once each; null when empty or not an object. */
+export function parseVocalParts(raw: unknown): VocalParts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: VocalParts = {};
+  for (const p of ASSIGNABLE_PARTS) {
+    const ids = (raw as Record<string, unknown>)[p];
+    if (!Array.isArray(ids)) continue;
+    const clean = [...new Set(ids.filter((x): x is string => typeof x === 'string' && UUID.test(x)))];
+    if (clean.length) out[p] = clean;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** For one gig: the setlist's override when it has one, else the song's. */
+export const effectiveVocalParts = (song: VocalParts | null | undefined, setlist: VocalParts | null | undefined): VocalParts | null =>
+  setlist ?? song ?? null;
+
+/** The parts assigned to me, or undefined when I'm not assigned (the instrument decides then). */
+export function assignedParts(parts: VocalParts | null | undefined, userId: string | null | undefined): VoicePart[] | undefined {
+  if (!parts || !userId) return undefined;
+  const mine = ASSIGNABLE_PARTS.filter((p) => parts[p]?.includes(userId));
+  return mine.length ? mine : undefined;
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+
+/**
+ * Lyrics for an export (ChordPro, print): parts stripped, or written as
+ * labels a reader understands without the app — "Backing: (ooh)" for a
+ * line, "(2nd voice: high)" for words inside one. Lead is never labelled.
+ */
+export function lyricsForExport(lyrics: string, mode: 'strip' | 'labels', names: Record<VoicePart, string>): string {
+  return (lyrics || '')
+    .split('\n')
+    .map((line) => {
+      if (!hasVoiceMarkers(line)) return line;
+      if (mode === 'strip') return stripVoiceMarkers(line);
+      const v = lineVoice(line);
+      const lead = line.match(/^\s*/)![0];
+      if (v !== 'mixed') return v === 'lead' ? stripVoiceMarkers(line) : `${lead}${names[v]}: ${stripVoiceMarkers(line).trim()}`;
+      return voiceRuns(line)
+        .map((r) => {
+          if (r.voice === 'lead' || !r.text.trim()) return r.text;
+          const [, pre, body, post] = r.text.match(/^(\s*)([\s\S]*?)(\s*)$/)!;
+          return `${pre}(${names[r.voice]}: ${body})${post}`;
+        })
+        .join('');
+    })
+    .join('\n');
+}
+
+/** A song as a ChordPro file (sections as comments), parts as labels or stripped. */
+export function songToChordPro(
+  song: { title: string; artist?: string | null; key?: string | null; lyrics?: string | null },
+  mode: 'strip' | 'labels',
+  names: Record<VoicePart, string>,
+): string {
+  const head = [`{title: ${song.title}}`, song.artist ? `{artist: ${song.artist}}` : '', song.key ? `{key: ${song.key}}` : ''].filter(Boolean);
+  const body = lyricsForExport(song.lyrics || '', mode, names)
+    .split('\n')
+    .map((l) => {
+      const h = l.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+      return h ? `{comment: ${h[1]}}` : l;
+    });
+  return `${[...head, '', ...body].join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+}
