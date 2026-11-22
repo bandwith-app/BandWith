@@ -3069,6 +3069,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             isLeader: stageLive.isLeader,
             following: stageLive.following,
             leaderSeen: stageLive.leaderSeen,
+            leaderHere: stageLive.leaderHere,
             connected: stageLive.connected,
             bluetooth: stageLive.bluetooth,
             bluetoothFollowers: stageLive.bluetoothFollowers,

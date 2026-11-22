@@ -12,6 +12,10 @@ import {
   STAGE_BLE_CLOCK_CHARACTERISTIC,
   STAGE_BLE_LIVE_CHARACTERISTIC,
   decodeClock,
+  decodeLive,
+  encodeLive,
+  type LiveEvent,
+  type LiveEvents,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import type { StageLiveState } from '@/lib/stageLive';
@@ -31,6 +35,14 @@ interface Options {
   isLeader: boolean;
   /** A checked state from the leader (members only). */
   onState: (state: StageLiveState) => void;
+  /**
+   * Members: one of the leader's live events (click, playhead, count-in) from
+   * the live frame, unchecked: the same parser as on the Realtime channel
+   * checks it. Called again with the same payloads on every read.
+   */
+  onLive?: (event: LiveEvent, payload: unknown) => void;
+  /** Leader: the stopped states to send as Stage closes, before Bluetooth stops. */
+  farewell?: () => LiveEvents;
 }
 
 const RETRY_MS = 2000;
@@ -63,7 +75,7 @@ async function calibrateClock(): Promise<number | null> {
  * has no clock characteristic: the song still syncs, `clock` stays null.
  * Bluetooth turned off stops the reads at once (no crash, the clock is kept).
  */
-export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
+export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive, farewell }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
   const [clock, setClock] = useState<PeerClock | null>(null);
   /** Leader: phones linked to it. */
@@ -81,6 +93,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const burst = useCallback(() => burstRef.current(), []);
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
+  const onLiveRef = useRef(onLive);
+  onLiveRef.current = onLive;
+  const farewellRef = useRef(farewell);
+  farewellRef.current = farewell;
+  /** Leader: the newest payload of each live event, all served in one frame. */
+  const liveRef = useRef<LiveEvents>({});
+  const liveSeqRef = useRef(0);
+  /** Leader: Bluetooth stopping after the last frame went out; a new start waits for it. */
+  const stoppingRef = useRef<Promise<void>>(Promise.resolve());
   const savedRef = useRef(savedIds);
   savedRef.current = savedIds;
   const keyRef = useRef<string | null>(null);
@@ -103,6 +124,30 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       /* Bluetooth off: the next state goes out when it's back */
     }
   }, []);
+
+  /** Leader: serve the live frame (every event's newest payload); subscribers are told its seq. */
+  const pushLive = useCallback(async (events: LiveEvents = liveRef.current) => {
+    const key = keyRef.current;
+    if (!key || !startedRef.current) return;
+    const seq = ++liveSeqRef.current;
+    const bytes = await encodeLive(seq, events, key);
+    if (!bytes) return;
+    try {
+      await StageBle.updateLive({ value: toBase64(bytes), notify: toBase64(seqBytes(seq)) });
+    } catch {
+      /* Bluetooth off: members read the frame when they link again */
+    }
+  }, []);
+
+  /** Leader: a live event (click, playhead, count-in) for phones linked over Bluetooth. */
+  const publishLive = useCallback(
+    (event: LiveEvent, payload: unknown) => {
+      if (!isLeader) return;
+      liveRef.current = { ...liveRef.current, [event]: payload };
+      void pushLive();
+    },
+    [isLeader, pushLive],
+  );
 
   /** Leader: serve this state over Bluetooth too. */
   const publish = useCallback(
@@ -142,6 +187,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         return;
       }
       listener = handle;
+      // Stopping from a moment ago (its last frame still going out) first.
+      await stoppingRef.current;
+      if (cancelled) return;
       try {
         // Empty until the first move; members ignore it. Asks for Bluetooth the first time.
         const { state } = await StageBle.start({
@@ -163,6 +211,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         const pending = pendingRef.current;
         pendingRef.current = null;
         if (pending) void push(pending);
+        // A click or playhead already running (started before Bluetooth was up).
+        if (Object.keys(liveRef.current).length) void pushLive();
       } catch (e) {
         if (!cancelled) setStatus(bleProblem(e));
       }
@@ -171,13 +221,24 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       cancelled = true;
       clearInterval(recalibrate);
       setFollowers(0);
-      startedRef.current = false;
       pendingRef.current = null;
       void listener?.remove();
-      void StageBle.stop().catch(() => {});
+      // The band's phones hear that the click and the playhead stopped, then Bluetooth stops.
+      const last = farewellRef.current?.() ?? {};
+      const goodbye = Object.keys(last).length && startedRef.current;
+      const sent = goodbye ? pushLive({ ...liveRef.current, ...last }) : Promise.resolve();
+      stoppingRef.current = sent
+        .catch(() => {})
+        .then(() => {
+          startedRef.current = false;
+          return StageBle.stop();
+        })
+        .catch(() => {});
+      if (!goodbye) startedRef.current = false;
+      liveRef.current = {};
       setStatus('off');
     };
-  }, [active, isLeader, eventId, push, attempt]);
+  }, [active, isLeader, eventId, push, pushLive, attempt]);
 
   // Member: find the leader, subscribe, read on every change.
   useEffect(() => {
@@ -198,6 +259,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let watching = false;
     /** Bumped for every new link, so a late goodbye from an old one is ignored. */
     let link = 0;
+    /** The leader's app has the live characteristic (not an older one). */
+    let liveOn = false;
+
+    /** The leader's id, from its state or its live events: the clock is tied to it. */
+    const learnLeader = (from: unknown) => {
+      if (typeof from !== 'string' || !from || from === leaderFrom) return;
+      leaderFrom = from;
+      emitClock();
+    };
 
     const emitClock = () => {
       const sample = book.best(nowMs());
@@ -272,10 +342,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (cancelled) return;
         if (result.ok) {
           setStatus('connected');
-          if (result.state.from !== leaderFrom) {
-            leaderFrom = result.state.from;
-            emitClock();
-          }
+          learnLeader(result.state.from);
           onStateRef.current(result.state);
         } else if (result.reason === 'setlist') {
           // Not silently "connected": this phone needs the setlist again (internet).
@@ -283,6 +350,29 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         }
       } catch {
         /* a dropped link is handled by onDisconnect */
+      }
+    };
+
+    /** The live frame: the leader's click, playhead and count-in, as they are now. */
+    const readLive = async (again = true) => {
+      const id = deviceId;
+      if (!id || !liveOn || cancelled) return;
+      let view: DataView;
+      try {
+        view = await BleClient.read(id, serviceUuid, STAGE_BLE_LIVE_CHARACTERISTIC);
+      } catch {
+        return; /* a dropped link is handled by onDisconnect */
+      }
+      const frame = await decodeLive(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), key);
+      if (cancelled || deviceId !== id) return;
+      if (!frame) {
+        // Read while the leader changed it (a long read in two parts): once more.
+        if (again) setTimeout(() => void readLive(false), 100);
+        return;
+      }
+      for (const [event, payload] of Object.entries(frame.events) as Array<[LiveEvent, unknown]>) {
+        learnLeader((payload as { from?: unknown })?.from);
+        onLiveRef.current?.(event, payload);
       }
     };
 
@@ -315,10 +405,17 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               await BleClient.stopLEScan();
               await BleClient.connect(id, () => onDisconnect(gen), { timeout: 10000 });
               await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, () => void readNow());
+              // Click, playhead, count-in: a leader on an older app has none.
+              liveOn = await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_LIVE_CHARACTERISTIC, () => void readLive()).then(
+                () => true,
+                () => false,
+              );
               // Closed, or Bluetooth went off meanwhile (that link is already dropped).
               if (cancelled || gen !== link) return;
               setStatus('connected');
               await readNow();
+              // Where the band is right now: a phone that (re)connects mid-song lands on the beat.
+              if (gen === link) await readLive();
               if (gen === link) await startSync(id);
             } catch {
               if (gen !== link) return;
@@ -459,5 +556,5 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     setAttempt((n) => n + 1);
   }, []);
 
-  return { status, publish, clock, burst, followers, fix };
+  return { status, publish, publishLive, clock, burst, followers, fix };
 }

@@ -82,3 +82,26 @@ export const bleProblem = (error: unknown): 'denied' | 'unsupported' => {
   const msg = String((error as { message?: unknown })?.message ?? error);
   return /unsupported|not available|not supported/i.test(msg) ? 'unsupported' : 'denied';
 };
+
+export interface FollowLabelInput {
+  following: boolean;
+  /** A leader's state (a song) has arrived. */
+  leaderSeen: boolean;
+  /** The leader's phone is in Stage mode and reachable, song picked or not. */
+  leaderHere?: boolean;
+  /** The live channel (internet) is connected. */
+  connected: boolean;
+  bluetooth?: StageBleStatus;
+}
+
+/**
+ * A member's follow button, one state at a time and never against the status
+ * line: linked to the leader's phone before it picked a song is "hasn't
+ * started yet", not "waiting".
+ */
+export function followLabel({ following, leaderSeen, leaderHere, connected, bluetooth }: FollowLabelInput): string {
+  if (!following) return t('Follow leader');
+  if (!leaderSeen) return leaderHere ? t("Leader hasn't started yet") : t('Waiting for leader');
+  if (!connected && bluetooth !== 'connected') return t('Offline');
+  return t('Following leader');
+}
