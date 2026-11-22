@@ -1,5 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import { isWide, openCreate } from '../support/flows';
+import { openHubPage } from '../support/hub';
 import type { Locator } from '@playwright/test';
 
 /**
@@ -186,3 +187,35 @@ test('@smoke folding the Duo from book to closed: focus moves into the one-page 
   expect(await app.page.evaluate(() => (window as unknown as { __bwOutside: string[] }).__bwOutside)).toEqual([]);
   await cycle(app, one, 'Tab', 4);
 });
+
+test('@smoke folding the Duo with Edit kit open: focus stays in the editor, above the kit page', async ({ app }) => {
+  const duo = await app.page.evaluate(() => typeof (window as unknown as { __bwApplyRegions?: unknown }).__bwApplyRegions === 'function');
+  test.skip(!duo || !(await app.page.locator('html[data-bw-two-pane]').count()), 'needs the Duo open on two pages');
+  await openHubPage(app, 'Gear & inventory');
+  await app.page.getByRole('tab', { name: new RegExp(`^${app.t('Kits')}`) }).click();
+  // Two pages: the first kit opens beside the list.
+  const kitPage = app.page.locator('[role="region"].bw-pane-detail');
+  await expect(kitPage).toBeVisible();
+  const kitName = (await kitPage.getAttribute('aria-label'))!;
+  await kitPage.getByRole('button', { name: app.t('Edit'), exact: true }).click();
+  const editor = app.page.getByRole('dialog', { name: app.t('Edit kit') });
+  await expect(editor).toBeVisible();
+  await expect.poll(() => focusInside(editor), 'focus moves into the editor').toBe(true);
+  // The Duo closes to one screen: the kit page turns into a modal dialog with its trap.
+  await app.page.setViewportSize({ width: 466, height: 678 });
+  await app.page.evaluate(() =>
+    (window as unknown as { __bwApplyRegions: (r: unknown) => void }).__bwApplyRegions({
+      status: { x: 382, y: 0, w: 84, h: 82, edge: 'right' },
+      division: null,
+      hinge: { status: 'closed', angle: 0 },
+      viewport: { w: 466, h: 678 },
+    }),
+  );
+  await expect(app.page.locator('html[data-bw-two-pane]')).toHaveCount(0);
+  await expect(app.page.getByRole('dialog', { name: kitName, exact: true })).toHaveCount(1);
+  await app.page.waitForTimeout(300);
+  expect(await focusInside(editor), 'focus stays in the editor').toBe(true);
+  await cycle(app, editor, 'Tab', 6);
+  await cycle(app, editor, 'Shift+Tab', 6);
+});
+
