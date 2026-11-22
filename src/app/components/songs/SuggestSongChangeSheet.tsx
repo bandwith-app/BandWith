@@ -30,7 +30,8 @@ export const SuggestSongChangeSheet: React.FC = () => {
   const [message, setMessage] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [sent, setSent] = React.useState(false);
+  // 'queued': no signal, kept on this phone and sent when back online.
+  const [sent, setSent] = React.useState<false | 'sent' | 'queued'>(false);
   const sentTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   React.useEffect(() => {
@@ -63,7 +64,7 @@ export const SuggestSongChangeSheet: React.FC = () => {
     if (!song || !canSend || busy) return;
     setBusy(true);
     setError(null);
-    const { error: e } =
+    const { error: e, queued } =
       mode === 'text'
         ? await suggestSongChange({ bandId: song.band_id, songId: song.id, kind: kind!, lyrics: text, message })
         : await suggestSongChange({ bandId: song.band_id, songId: song.id, kind: 'note', note });
@@ -72,8 +73,8 @@ export const SuggestSongChangeSheet: React.FC = () => {
       setError(userMessage(e, t('Could not send the suggestion.')));
       return;
     }
-    setSent(true);
-    sentTimer.current = setTimeout(() => closeSuggestChange(), 1600);
+    setSent(queued ? 'queued' : 'sent');
+    sentTimer.current = setTimeout(() => closeSuggestChange(), queued ? 2600 : 1600);
   };
 
   const status =
@@ -96,8 +97,9 @@ export const SuggestSongChangeSheet: React.FC = () => {
       portal
       footer={
         sent ? (
-          <p className="flex items-center justify-center gap-2 bw-label-md min-h-14" role="status">
-            <CheckCircle2 className="w-5 h-5" /> {t('Sent to the admin')}
+          <p className="flex items-center justify-center gap-2 bw-label-md min-h-14 text-center" role="status">
+            <CheckCircle2 className="w-5 h-5 shrink-0" />{' '}
+            {sent === 'queued' ? t('Saved on this phone. It goes to the admin when you’re back online.') : t('Sent to the admin')}
           </p>
         ) : (
           <PillButton icon={<Send className="w-4 h-4" />} onClick={send} disabled={!canSend} loading={busy}>

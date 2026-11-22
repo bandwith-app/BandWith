@@ -39,6 +39,7 @@ import { openCountBySong } from '@/lib/toPractise';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
 import { NowPlayingStrip, RegiaBar, RegiaExtraSheet, RegiaRowPlay } from './StageRegia';
 import { enterScreen } from '@/lib/appAnalytics';
+import { WaitingChangesTag } from '@/app/components/event/WaitingChangesTag';
 import { packSavedLabel } from '@/app/components/event/OfflineReadyRow';
 import type { LiveSongExtras } from '@/lib/livePack';
 
@@ -128,6 +129,8 @@ interface StageModeProps {
    * (ISO). Shows "Offline · content from …" (plan §3.4).
    */
   offlineFrom?: string;
+  /** Signed-in person: "N changes waiting for signal" (plan §3.5). */
+  currentUserId?: string;
   onRetrySongs?: () => void;
   accentColor?: string;
   live?: StageLiveControls;
@@ -168,6 +171,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   city,
   dateLabel,
   offlineFrom,
+  currentUserId,
   date,
   steps,
   songs,
@@ -234,7 +238,7 @@ export const StageMode: React.FC<StageModeProps> = ({
     const id = window.setTimeout(() => setShowSaved(false), 2000);
     return () => window.clearTimeout(id);
   }, [saveState]);
-  const showSave = saveState === 'saving' || saveState === 'error' || (saveState === 'saved' && showSaved);
+  const showSave = saveState === 'saving' || saveState === 'error' || saveState === 'waiting' || (saveState === 'saved' && showSaved);
   // Lyrics view: the current song's lyrics, following it (also when the leader moves).
   // Chords view: the same for its chord chart.
   // Song view: lyrics, chords or structure, from the player's instrument or last pick (one tap switches).
@@ -540,6 +544,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span className="truncate">{t('Offline · content from {time}', { time: packSavedLabel(offlineFrom, t) })}</span>
               </span>
             )}
+            <WaitingChangesTag userId={currentUserId} stage />
           </div>
           <RailCover pane />
           {full ? (
@@ -1158,7 +1163,15 @@ const followLabel = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
         : t('Following leader');
 
 const saveLabel = (state: StageSaveState, t: ReturnType<typeof useT>) =>
-  state === 'saving' ? t('Saving…') : state === 'error' ? t('Not saved') : state === 'saved' ? t('Saved') : t('Live');
+  state === 'saving'
+    ? t('Saving…')
+    : state === 'error'
+      ? t('Not saved')
+      : state === 'waiting'
+        ? t('Saved on this phone')
+        : state === 'saved'
+          ? t('Saved')
+          : t('Live');
 
 /** Leader's live dot and status. */
 const LiveStatus: React.FC<{ on: boolean; label: string; hint?: string; accentColor: string }> = ({ on, label, hint, accentColor }) => (

@@ -179,6 +179,7 @@ import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsen
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
+import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -1223,6 +1224,9 @@ export default function AuthenticatedApp() {
     // Not opened after all (deleted, hidden): don't start the next visit in Stage mode.
     window.setTimeout(() => setStageOnOpen((cur) => (cur === eventDbId ? null : cur)), 5000);
   }, [navigateToEvent]);
+
+  // Changes made with no signal (notes, suggestions, the leader's order): sent when back online.
+  useLiveOutboxFlush(user?.id);
 
   // The live_pack_ready push: open the event with the offline consent sheet.
   const [livePackOnOpen, setLivePackOnOpen] = useState<string | null>(null);

@@ -1,4 +1,7 @@
 import { useSyncExternalStore } from 'react';
+import { isOfflineError } from '../offline/networkErrors';
+import { queueLiveOp } from '../liveOutbox';
+import { newLocalId, sessionUserId } from '../sessionUser';
 import { supabase } from '../supabase';
 import { adoptSuggestionFiles, removeSongFiles } from './songFiles';
 import type { SongChart } from '../ireal';
@@ -40,7 +43,8 @@ export async function suggestSongChange(input: {
   chordChart?: SongChart | null;
   note?: string;
   message?: string;
-}): Promise<{ data: SongSuggestion | null; error: Error | null }> {
+}): Promise<{ data: SongSuggestion | null; error: Error | null; queued?: true }> {
+  let row: Record<string, unknown> | null = null;
   try {
     const proposed =
       input.kind === 'note'
@@ -49,21 +53,24 @@ export async function suggestSongChange(input: {
             ...(input.lyrics !== undefined ? { lyrics: input.lyrics } : {}),
             ...(input.chordChart ? { chord_chart: input.chordChart } : {}),
           };
-    const { data, error } = await supabase
-      .from('song_suggestions')
-      .insert({
-        band_id: input.bandId,
-        song_id: input.songId,
-        kind: input.kind,
-        proposed,
-        message: input.message?.trim() || null,
-      })
-      .select('*')
-      .single();
+    row = {
+      band_id: input.bandId,
+      song_id: input.songId,
+      kind: input.kind,
+      proposed,
+      message: input.message?.trim() || null,
+    };
+    const { data, error } = await supabase.from('song_suggestions').insert(row).select('*').single();
     if (error) throw error;
     notifySuggestionsChanged();
     return { data: data as unknown as SongSuggestion, error: null };
   } catch (error: any) {
+    // No signal (a venue, a basement): kept on this phone, sent when back online.
+    const me = row && isOfflineError(error) ? await sessionUserId() : null;
+    if (row && me) {
+      queueLiveOp(me, { kind: 'suggestion', id: newLocalId(), row });
+      return { data: null, error: null, queued: true };
+    }
     return { data: null, error };
   }
 }

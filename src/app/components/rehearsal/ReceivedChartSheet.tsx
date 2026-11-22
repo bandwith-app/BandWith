@@ -30,6 +30,8 @@ export const ReceivedChartSheet: React.FC = () => {
   const { selectedBand, isAdmin } = useBand();
   /** A member's chart goes to the admin as a suggestion (108). */
   const [suggested, setSuggested] = React.useState(false);
+  /** No signal: the suggestion waits on this phone (sent when back online). */
+  const [queued, setQueued] = React.useState(false);
   const [chart, setChart] = React.useState<SongChart | null>(() => peekReceivedChart());
   const [songs, setSongs] = React.useState<Song[] | null>(null);
   const [search, setSearch] = React.useState('');
@@ -86,11 +88,12 @@ export const ReceivedChartSheet: React.FC = () => {
     setBusy(song.id);
     setError(null);
     if (!isAdmin) {
-      const { error: e } = await suggestSongChange({ bandId: song.band_id, songId: song.id, kind: 'chords', chordChart: chart });
+      const { error: e, queued: kept } = await suggestSongChange({ bandId: song.band_id, songId: song.id, kind: 'chords', chordChart: chart });
       setBusy(null);
       if (e) return setError(t('Could not send the suggestion.'));
       takeReceivedChart();
       setSuggested(true);
+      setQueued(!!kept);
       setDone({ song, chart });
       setChart(null);
       return;
@@ -147,7 +150,11 @@ export const ReceivedChartSheet: React.FC = () => {
         <div className="flex flex-col gap-4 pb-2">
           <p className="bw-body-md text-sheet-foreground/85 flex items-center gap-2">
             <Check className="w-5 h-5 shrink-0" aria-hidden />
-            {suggested ? t('Sent to the admin. The band’s song stays the same until they accept it.') : chartSource(done.chart, t)}
+            {suggested
+              ? queued
+                ? t('Saved on this phone. It goes to the admin when you’re back online.')
+                : t('Sent to the admin. The band’s song stays the same until they accept it.')
+              : chartSource(done.chart, t)}
           </p>
           <div className="flex flex-wrap gap-2">
             {!suggested && (
