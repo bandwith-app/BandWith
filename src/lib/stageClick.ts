@@ -15,6 +15,14 @@
 export const CLICK_EVENT = 'click';
 export const PING_EVENT = 'click-ping';
 export const PONG_EVENT = 'click-pong';
+/**
+ * Answers to members' pings from the clock topic (migration 191), which any
+ * band member may write, in anyone's name. Released apps take any PONG_EVENT
+ * addressed to them, ping sent or not, so these go out under a name they
+ * don't listen to (Codex on #283). Pings from the admins-only stage topic are
+ * still answered with PONG_EVENT, as older apps expect.
+ */
+export const CLOCK_PONG_EVENT = 'click-pong-2';
 
 export interface ClickState {
   /** Lamport clock, as for the stage state. */
@@ -78,9 +86,25 @@ export const clockSample = (t0: number, t1: number, t2: number): ClockSample => 
  */
 export const MAX_CLOCK_RTT_MS = 500;
 
-/** The sample with the shortest round trip is the least distorted by the network (none slower than MAX_CLOCK_RTT_MS). */
-export const bestSample = (samples: ClockSample[]): ClockSample | null =>
-  samples.reduce<ClockSample | null>((best, s) => (s.rtt > MAX_CLOCK_RTT_MS ? best : !best || s.rtt < best.rtt ? s : best), null);
+/** Bluetooth reads have a ceiling of their own: a slow link answers within the read's 2 s timeout. */
+export const BLE_MAX_CLOCK_RTT_MS = 2_000;
+/**
+ * With nothing under the ceiling, this many samples make the fastest one
+ * usable: a slow network answers every ping slowly, a late replay is one
+ * answer. Better than no measure at all (the click then runs on this phone's
+ * own clock).
+ */
+export const SLOW_SAMPLES_MIN = 3;
+
+const fastest = (samples: ClockSample[]) => samples.reduce<ClockSample | null>((best, s) => (!best || s.rtt < best.rtt ? s : best), null);
+
+/**
+ * The sample with the shortest round trip is the least distorted by the
+ * network: the fastest under `maxRtt`, else (SLOW_SAMPLES_MIN or more) the
+ * fastest of all.
+ */
+export const bestSample = (samples: ClockSample[], maxRtt: number = MAX_CLOCK_RTT_MS): ClockSample | null =>
+  fastest(samples.filter((s) => s.rtt <= maxRtt)) ?? (samples.length >= SLOW_SAMPLES_MIN ? fastest(samples) : null);
 
 /** A clock measured against one leader (their clientId), over one path (Realtime or Bluetooth). */
 export interface PeerClock {
@@ -93,7 +117,7 @@ export interface PeerClock {
  * same leader, over any path, the one with the shortest round trip.
  */
 export const pickClock = (leader: string | null, clocks: Array<PeerClock | null | undefined>): ClockSample | null =>
-  leader ? bestSample(clocks.flatMap((c) => (c && c.from === leader && c.sample ? [c.sample] : []))) : null;
+  leader ? fastest(clocks.flatMap((c) => (c && c.from === leader && c.sample ? [c.sample] : []))) : null;
 
 export interface BeatPosition {
   /** Beat number from 0, or -1 before the start. */

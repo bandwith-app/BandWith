@@ -30,6 +30,7 @@ import {
   pickClock,
   PING_EVENT,
   PONG_EVENT,
+  CLOCK_PONG_EVENT,
   START_LEAD_MS,
   type ClickState,
   type ClockSample,
@@ -41,6 +42,8 @@ import { REGIA_EVENT } from '@/lib/stageRegia';
 const PINGS = 6;
 const PING_GAP_MS = 200;
 /** A round of pings with no answer is tried again after this (doubling, up to the max), plus up to PING_JITTER_MS. */
+/** A ping is matched to its answer for this long (a slow network), then forgotten. */
+const PING_FORGET_MS = 5_000;
 const PING_RETRY_MS = 1_500;
 const PING_RETRY_MAX_MS = 15_000;
 const PING_JITTER_MS = 500;
@@ -268,8 +271,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
             const t0 = nowMs();
             // Only pongs to these pings count (anyone can write the clock topic in our name).
             fresh.sent.push(t0);
-            // Pings older than any usable answer are of no use any more.
-            fresh.sent = fresh.sent.filter((t) => t0 - t <= MAX_CLOCK_RTT_MS);
+            // Pings older than any answer worth waiting for are of no use any more.
+            fresh.sent = fresh.sent.filter((t) => t0 - t <= PING_FORGET_MS);
             const payload = { from: clientId, to: peer, t0 };
             void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
             // Admins may write the stage topic too: a leader on an older app listens only there.
@@ -351,7 +354,26 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       answered.set(p.from, recent);
       seen.set(ping, now);
       if (!fromAdmin) allAnswered.push(now);
-      void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
+      // A member's ping (clock topic) gets the new answer: released apps would take a click-pong in their name.
+      void channel.send({ type: 'broadcast', event: fromAdmin ? PONG_EVENT : CLOCK_PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
+    };
+    /** The leader's answer to one of this phone's pings (either event). */
+    const takePong = (raw: unknown) => {
+      const p = raw as { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } | undefined;
+      if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
+      const book = samplesRef.current;
+      if (book.peer !== p.from) return;
+      // An answer to a ping this phone sent, once: not one written in our name, nor a replay.
+      const asked = book.sent.indexOf(p.t0);
+      const t2 = nowMs();
+      if (asked < 0 || p.t0 > t2 || !Number.isFinite(p.t1)) return;
+      book.sent.splice(asked, 1);
+      // Slow ones are kept: bestSample prefers answers under MAX_CLOCK_RTT_MS (a late
+      // one may be our old ping re-sent by someone else) and takes the fastest slow
+      // one only when several came back slow (a slow network).
+      book.samples.push(clockSample(p.t0, p.t1, t2));
+      const best = bestSample(book.samples);
+      if (best) setRtClock({ from: p.from, sample: best });
     };
     // Members' pings (migration 191): everyone in the band may write this topic.
     const clock = supabase.channel(stageClockTopic(eventId), { config: { private: true, broadcast: { self: false } } });
@@ -385,27 +407,23 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       // An admin's ping (an older app pings here; admins may broadcast on this topic).
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, true))
-      .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } }) => {
-        const p = msg?.payload;
-        if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
-        const book = samplesRef.current;
-        if (book.peer !== p.from) return;
-        // An answer to a ping this phone sent, once: not one written in our name, nor a replay.
-        const asked = book.sent.indexOf(p.t0);
-        const t2 = nowMs();
-        if (asked < 0 || p.t0 > t2 || !Number.isFinite(p.t1)) return;
-        book.sent.splice(asked, 1);
-        // Answered too late to trust: maybe our old ping, re-sent by someone else.
-        if (t2 - p.t0 > MAX_CLOCK_RTT_MS) return;
-        book.samples.push(clockSample(p.t0, p.t1, t2));
-        const best = bestSample(book.samples);
-        if (best) setRtClock({ from: p.from, sample: best });
-      })
+      .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
+      .on('broadcast', { event: CLOCK_PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
         // A leader (re)joined, maybe after reopening Stage mode with a new
         // clock: take its next state whatever seq it carries.
         if (!isLeader && msg?.newPresences?.some((p) => p?.lead === true)) lastRef.current = null;
+        // The click's leader (re)joined while this phone has no measure of its clock (its
+        // clock channel late, say): ping now, not at the next, backed-off, retry.
+        const clickNow = clickRef.current;
+        if (clickNow?.on && clickNow.from !== clientId && clickNow.from === msg?.key) {
+          const book = samplesRef.current;
+          if (!(book.peer === clickNow.from && book.samples.length)) {
+            samplesRef.current = { peer: '', at: 0, samples: [], sent: [] };
+            syncWith(clickNow.from);
+          }
+        }
         // A running click of ours reaches late arrivals too.
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
           void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickRef.current });

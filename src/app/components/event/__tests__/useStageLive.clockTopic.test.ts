@@ -17,6 +17,10 @@ const net = vi.hoisted(() => ({
   pending: [] as Array<() => void>,
   /** This phone's pings are lost on the way (seen by the others on the topic, not by the leader). */
   dropPingsOf: '',
+  /** Answers take this long on the way (a slow mobile network). */
+  pongDelay: 0,
+  /** Added to the leader's time in its answers: the leader's clock runs this much ahead. */
+  pongSkew: 0,
 }));
 const phones: Phone[] = [];
 const joinClocks = () => {
@@ -53,8 +57,14 @@ vi.mock('@/lib/supabase', () => ({
           if (!phone.joined || !mayBroadcast(topic, from)) return 'error';
           net.log.push({ topic, event: m.event, from, payload: m.payload });
           if (net.dropPingsOf === from && m.event === PING_EVENT) return 'ok';
-          for (const p of phones)
-            if (p !== phone && p.topic === topic && p.joined) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload: m.payload }));
+          const pong = m.event !== PING_EVENT && /pong/.test(m.event);
+          const payload = pong && net.pongSkew ? { ...m.payload, t1: (m.payload as { t1: number }).t1 + net.pongSkew } : m.payload;
+          const deliver = () => {
+            for (const p of phones)
+              if (p !== phone && p.topic === topic && p.joined) p.handlers.filter((h) => h.type === 'broadcast' && h.event === m.event).forEach((h) => h.cb({ payload }));
+          };
+          if (pong && net.pongDelay) setTimeout(deliver, net.pongDelay);
+          else deliver();
           return 'ok';
         },
         __phone: phone,
@@ -73,7 +83,12 @@ vi.mock('@/lib/services/songs', () => ({ saveSetlistOrder: async () => ({ error:
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: async () => {} }));
 
 import { useStageLive } from '../useStageLive';
-import { CLICK_EVENT, PING_EVENT, PONG_EVENT } from '@/lib/stageClick';
+import * as click from '@/lib/stageClick';
+
+const { CLICK_EVENT, PING_EVENT, PONG_EVENT } = click;
+/** Answers to members' pings (clock topic) have an event of their own (Codex on #283). */
+const CLOCK_PONG_EVENT = (click as { CLOCK_PONG_EVENT?: string }).CLOCK_PONG_EVENT ?? 'missing';
+const isPong = (e: string) => e === PONG_EVENT || e === CLOCK_PONG_EVENT;
 
 const SONGS = [{ id: 'row-1', songId: 'song-1' }];
 const phone = (isLeader: boolean) =>
@@ -86,6 +101,8 @@ beforeEach(() => {
   net.holdClock = false;
   net.pending = [];
   net.dropPingsOf = '';
+  net.pongDelay = 0;
+  net.pongSkew = 0;
 });
 
 describe("useStageLive: an ordinary member measures the leader's clock (audit #9)", () => {
@@ -100,7 +117,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
       timeout: 3000,
     });
     await waitFor(() =>
-      expect(net.log.some((m) => m.event === PONG_EVENT && m.from === boss && m.topic === 'stage:event:gig-1' && (m.payload as { to?: string }).to === me)).toBe(true),
+      expect(net.log.some((m) => isPong(m.event) && m.from === boss && m.topic === 'stage:event:gig-1' && (m.payload as { to?: string }).to === me)).toBe(true),
     );
     // Nothing a member sends is meant for the admin-only topic.
     expect(net.log.filter((m) => m.from === me && m.topic === 'stage:event:gig-1')).toEqual([]);
@@ -114,7 +131,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
       for (let i = 0; i < 200; i++)
         clock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from: 'noisy', to: boss, t0: i } }));
     });
-    expect(net.log.filter((m) => m.event === PONG_EVENT).length).toBeLessThanOrEqual(12);
+    expect(net.log.filter((m) => isPong(m.event)).length).toBeLessThanOrEqual(12);
   });
 
   it("a member can't fake another member's clock: a pong for a ping this phone never sent is ignored", async () => {
@@ -124,7 +141,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     const boss = leader.result.current.clientId;
     act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
     // The victim's real measure (same clock as the leader in this test: offset ~0).
-    await waitFor(() => expect(net.log.filter((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me).length).toBeGreaterThanOrEqual(6), {
+    await waitFor(() => expect(net.log.filter((m) => isPong(m.event) && (m.payload as { to?: string }).to === me).length).toBeGreaterThanOrEqual(6), {
       timeout: 3000,
     });
     await waitFor(() => expect(Math.abs(victim.result.current.click.offset)).toBeLessThan(50));
@@ -148,14 +165,14 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     const member = phone(false);
     const me = member.result.current.clientId;
     act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), { timeout: 3000 });
-    const real = net.log.find((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)!.payload as { t0: number; t1: number };
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), { timeout: 3000 });
+    const real = net.log.find((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)!.payload as { t0: number; t1: number };
     await waitFor(() => expect(Math.abs(member.result.current.click.offset)).toBeLessThan(50), { timeout: 3000 });
     const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
     // The same t0, a far-off t1, sent later: not a fresh answer.
     act(() =>
       stage.handlers
-        .filter((h) => h.event === PONG_EVENT)
+        .filter((h) => isPong(h.event))
         .forEach((h) => h.cb({ payload: { ...real, t1: real.t1 + 5000 } })),
     );
     expect(Math.abs(member.result.current.click.offset)).toBeLessThan(50);
@@ -191,7 +208,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     await waitFor(() => expect(net.log.some((m) => m.event === PING_EVENT && m.from === me && m.topic === 'stage:event:gig-1')).toBe(true), {
       timeout: 3000,
     });
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true));
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true));
   });
 
   it('the leader bounds its answers in all: pings in many names get a few pongs, and it forgets old names', async () => {
@@ -202,7 +219,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
       for (let i = 0; i < 500; i++)
         clock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from: `name-${i}`, to: boss, t0: i } }));
     });
-    expect(net.log.filter((m) => m.event === PONG_EVENT).length).toBeLessThanOrEqual(40);
+    expect(net.log.filter((m) => isPong(m.event)).length).toBeLessThanOrEqual(40);
   });
 
   it("five admins following on both topics don't use up the leader's answers: a musician joining next still gets the clock", async () => {
@@ -217,7 +234,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
     act(() => stage.handlers.filter((h) => h.event === 'click').forEach((h) => h.cb({ payload: click })));
     await waitFor(() => expect(late.result.current.click.state?.on).toBe(true));
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), {
       timeout: 3000,
     });
   });
@@ -232,7 +249,7 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     await new Promise((r) => setTimeout(r, 1500));
     expect(net.log.some((m) => m.event === PING_EVENT && m.from === me)).toBe(false);
     act(() => joinClocks());
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), {
       timeout: 3000,
     });
   });
@@ -247,9 +264,9 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
     // Its first round of pings is sent, and lost.
     await waitFor(() => expect(net.log.filter((m) => m.event === PING_EVENT && m.from === me).length).toBeGreaterThanOrEqual(6), { timeout: 3000 });
-    expect(net.log.some((m) => m.event === PONG_EVENT)).toBe(false);
+    expect(net.log.some((m) => isPong(m.event))).toBe(false);
     act(() => joinClocks());
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), {
       timeout: 8000,
     });
   }, 12_000);
@@ -265,10 +282,52 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     const click = net.log.find((m) => m.event === CLICK_EVENT)!.payload;
     const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
     act(() => stage.handlers.filter((h) => h.event === CLICK_EVENT).forEach((h) => h.cb({ payload: click })));
-    await waitFor(() => expect(net.log.some((m) => m.event === PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), {
       timeout: 9000,
     });
     expect(band.length).toBe(10);
   }, 12_000);
+
+  it("a member's ping is answered on an event of its own: released apps, which take any answer addressed to them, never see it (Codex on #283)", async () => {
+    const leader = phone(true);
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await waitFor(() => expect(net.log.some((m) => m.event === CLOCK_PONG_EVENT && (m.payload as { to?: string }).to === me)).toBe(true), {
+      timeout: 3000,
+    });
+    // A member can write the clock topic in anyone's name: no answer to it goes out on the event older apps trust.
+    expect(net.log.filter((m) => m.event === PONG_EVENT)).toEqual([]);
+    expect(member.result.current.click.offset).toBeDefined();
+  });
+
+  it('a slow mobile network (every answer over half a second): the fastest answer still sets the clock, not none', async () => {
+    net.pongDelay = 700;
+    net.pongSkew = 1000;
+    const leader = phone(true);
+    const member = phone(false);
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    // The leader's clock is 1 s ahead here: measured, the offset reads about +1000 (minus half the delay); unmeasured, 0.
+    await waitFor(() => expect(member.result.current.click.offset).toBeGreaterThan(400), { timeout: 6000 });
+  });
+
+  it('the click leader showing up (presence) while the member waits between retries: it pings at once, not at the next retry (Codex on #283)', async () => {
+    net.holdClock = true;
+    const leader = phone(true);
+    net.holdClock = false;
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    const boss = leader.result.current.clientId;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    // Three rounds lost: the next retry is 6 s away.
+    await waitFor(() => expect(net.log.filter((m) => m.event === PING_EVENT && m.from === me).length).toBeGreaterThanOrEqual(18), { timeout: 11_000 });
+    await new Promise((r) => setTimeout(r, 300));
+    act(() => joinClocks());
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === me)!;
+    const at = Date.now();
+    act(() => stage.handlers.filter((h) => h.type === 'presence' && h.event === 'join').forEach((h) => h.cb({ key: boss, newPresences: [{ lead: true }] })));
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), { timeout: 1500 });
+    expect(Date.now() - at).toBeLessThan(1500);
+  }, 16_000);
 });
 
