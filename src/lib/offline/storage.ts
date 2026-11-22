@@ -252,13 +252,20 @@ const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<
  */
 export const clearOfflineCache = async (
   prefix: string = 'bw:',
-  opts?: { keepPendingWrites?: boolean },
+  opts?: {
+    keepPendingWrites?: boolean;
+    /** A deleted account: its own unsent changes go, never anyone else's. */
+    discardPendingWritesOf?: string | null;
+  },
 ): Promise<void> => {
   if (prefix === 'bw:') {
     await removeOfflineItem(LEGACY_MUTATION_QUEUE_KEY);
   }
   const keep = opts?.keepPendingWrites === true;
-  await removeOfflineItemsWhere((k) => k.startsWith(prefix) && !(keep && isPendingWriteKey(k)));
+  const gone = opts?.discardPendingWritesOf?.toLowerCase() ?? null;
+  await removeOfflineItemsWhere(
+    (k) => k.startsWith(prefix) && !(keep && isPendingWriteKey(k) && pendingWriteAccount(k) !== gone),
+  );
 };
 
 /**
@@ -272,6 +279,11 @@ export const PENDING_WRITE_PREFIXES = ['bw:offline_queue:', 'bw:rehearsal_notes_
 const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isPendingWriteKey = (key: string): boolean =>
   PENDING_WRITE_PREFIXES.some((p) => key.startsWith(p) && ACCOUNT_ID.test(key.slice(p.length)));
+/** The account a pending-write key belongs to (lower case), or null. */
+export const pendingWriteAccount = (key: string): string | null => {
+  const p = PENDING_WRITE_PREFIXES.find((x) => key.startsWith(x) && ACCOUNT_ID.test(key.slice(x.length)));
+  return p ? key.slice(p.length).toLowerCase() : null;
+};
 
 // ─── Cached data and the role it was read for ───────────────────────────────
 

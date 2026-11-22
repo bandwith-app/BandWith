@@ -11,7 +11,7 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
-import { flushPushRevocations, forgetRevocation, revokeOnSignOut } from '@/lib/pushRevocation';
+import { flushPushRevocations, forgetRevocation, rememberPushToken, rememberedPushToken, revokeOnSignOut } from '@/lib/pushRevocation';
 
 const revokeStore = (): Storage | null => {
   try {
@@ -217,14 +217,38 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 // Save the device token for the signed-in user. The RPC (migration 046) moves
 // the token to this account if another account used this device before;
 // the plain upsert is the fallback until the migration is applied.
+/**
+ * After a save: no revocation is waiting for this token any more, and the
+ * token and its server stamp are remembered for the next sign-out (audit
+ * 04 #6, Codex review #287). The stamp is the row's updated_at, so the
+ * offline revocation matches exactly this registration.
+ */
+const afterSave = async (userId: string, token: string) => {
+  savedToken = token;
+  savedAt = Date.now();
+  forgetRevocation(revokeStore(), token);
+  let registeredAt: string | null = null;
+  try {
+    const { data } = await supabase
+      .from('push_tokens')
+      .select('updated_at')
+      .eq('token', token)
+      .eq('user_id', userId)
+      .maybeSingle();
+    registeredAt = typeof data?.updated_at === 'string' ? data.updated_at : null;
+  } catch {
+    registeredAt = null;
+  }
+  rememberPushToken(revokeStore(), { token, userId, registeredAt });
+};
+
 const saveTokenToDatabase = async (userId: string, token: string): Promise<{ success: boolean; error: Error | null }> => {
   const platform = Capacitor.getPlatform();
 
   try {
     const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
     if (!rpcError) {
-      savedToken = token;
-      savedAt = Date.now();
+      await afterSave(userId, token);
       return { success: true, error: null };
     }
 
@@ -245,9 +269,7 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
       console.error('[Push] Token save failed:', error.message);
       return { success: false, error: new Error(error.message) };
     }
-    savedToken = token;
-    savedAt = Date.now();
-    forgetRevocation(revokeStore(), token);
+    await afterSave(userId, token);
     return { success: true, error: null };
   } catch (err: any) {
     console.error('[Push] Save error:', err);
@@ -260,12 +282,18 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
  * BEFORE the session ends (the RPC needs the user's JWT).
  */
 export const unregisterPushToken = async (userId?: string | null): Promise<void> => {
-  const owner = userId ?? pushUserId;
+  const owner = userId ?? pushUserId ?? '';
   pushUserId = null;
   savedToken = null;
-  if (!isNative() || !cachedToken) return;
-  const token = cachedToken;
-  const outcome = await revokeOnSignOut(token, owner ?? '', {
+  if (!isNative()) return;
+  // After an offline cold start the native token may not be back yet: the
+  // one last saved for this account is (Codex review #287).
+  const remembered = rememberedPushToken(revokeStore(), owner);
+  const token = cachedToken ?? remembered?.token ?? null;
+  rememberPushToken(revokeStore(), null);
+  if (!token) return;
+  const registeredAt = remembered?.token === token ? remembered.registeredAt : null;
+  const outcome = await revokeOnSignOut(token, owner, registeredAt, {
     store: owner ? revokeStore() : null,
     revokeOnServer: async () => {
       const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
@@ -289,8 +317,8 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
  */
 export const flushQueuedPushRevocations = async (): Promise<number> => {
   if (!isNative()) return 0;
-  return flushPushRevocations(revokeStore(), (p) =>
-    supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_signed_out_at: p.at }),
+  return flushPushRevocations(revokeStore(), async (p) =>
+    supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt }),
   );
 };
 

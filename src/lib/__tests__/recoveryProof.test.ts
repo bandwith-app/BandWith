@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RECOVERY_PROOF_TTL_MS, clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, noteRecovery } from '../recoveryProof';
+import { RECOVERY_PROOF_TTL_MS, clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, hasRecoveryProofSince, noteRecovery } from '../recoveryProof';
+import callback from '../../app/auth/callback.tsx?raw';
 import sb from '../supabase.ts?raw';
 import ctx from '../AuthContext.tsx?raw';
 
@@ -25,5 +26,18 @@ describe('recovery proof (audit 04 #2)', () => {
     expect(sb).toMatch(/event === 'PASSWORD_RECOVERY'\) noteRecovery\(session\?\.user\?\.id\)/);
     expect(ctx).toMatch(/if \(!hasRecoveryProof\(user\?\.id\)\) \{\s*return \{ error:/);
     expect(ctx).toMatch(/isPasswordRecovery: isPasswordRecovery && \(user \? hasRecoveryProof\(user\.id\)/);
+  });
+
+  // Codex review #287: Bob's unfinished reset must not vouch for Alice's link
+  // opened later in the same tab.
+  it('the callback only accepts a proof noted on this page load', () => {
+    const s = mem();
+    noteRecovery('bob', s, 1000);
+    expect(hasRecoveryProofSince('bob', 2000, s, 3000)).toBe(false);
+    noteRecovery('bob', s, 2500);
+    expect(hasRecoveryProofSince('bob', 2000, s, 3000)).toBe(true);
+    expect(hasRecoveryProofSince('alice', 2000, s, 3000)).toBe(false);
+    expect(callback).toMatch(/hasRecoveryProofSince\(now\?\.user\?\.id, RECOVERY_PAGE_LOADED_AT\)/);
+    expect(callback).toMatch(/clearRecoveryProof\(\);\s*fail\(\{ code: 'pkce_code_verifier_not_found' \}\)/);
   });
 });

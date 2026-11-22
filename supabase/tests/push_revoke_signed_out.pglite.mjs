@@ -43,17 +43,24 @@ const revoke = async (role, tok, uid, at) => {
   finally { await db.exec('RESET ROLE'); }
 };
 
-// Signed out at 10:30; a new sign-in would have set updated_at later.
-ok(await revoke('anon', TOK, BOB, '2026-11-20T10:30:00Z') === false, "another account can't switch Alice's token off");
+// The device saved its token at 10:00 and read back the row's updated_at.
+const REG = '2026-11-20T10:00:00Z';
+ok(await revoke('anon', TOK, BOB, REG) === false, "another account can't switch Alice's token off");
 ok(await active(TOK) === true, 'still active after the wrong account');
-ok(await revoke('anon', 'short', ALICE, '2026-11-20T10:30:00Z') === false, 'malformed token: nothing');
-ok(await revoke('anon', TOK, ALICE, '2026-11-20T10:30:00Z') === true, 'signed-out device (anon) switches its own token off');
+ok(await revoke('anon', 'short', ALICE, REG) === false, 'malformed token: nothing');
+// Codex review #287: a device time is never compared. A slow clock (sign-out
+// "before" the registration) or a future time decide nothing.
+ok(await revoke('anon', TOK, ALICE, '2026-11-20T09:00:00Z') === false, 'a time that is not the registration: nothing');
+ok(await revoke('anon', TOK, ALICE, '2099-01-01T00:00:00Z') === false, 'a future time: nothing');
+ok(await active(TOK) === true, 'still active after those');
+ok(await revoke('anon', TOK, ALICE, REG) === true, 'signed-out device (anon) switches its own registration off');
 ok(await active(TOK) === false, 'token is off: no more pushes to that phone');
-ok(await revoke('anon', TOK, ALICE, '2026-11-20T10:30:00Z') === false, 'twice: nothing more to do');
+ok(await revoke('anon', TOK, ALICE, REG) === false, 'twice: nothing more to do');
 
-// Re-registered after the sign-out (a new sign-in): a late revocation must not undo it.
+// Re-registered later (a new sign-in): the old stamp no longer matches.
 await db.exec(`UPDATE push_tokens SET is_active = true, updated_at = '2026-11-21T09:00:00Z' WHERE token = '${TOK}'`);
-ok(await revoke('anon', TOK, ALICE, '2026-11-20T10:30:00Z') === false, 'a newer registration is left alone');
+ok(await revoke('anon', TOK, ALICE, REG) === false, 'a newer registration is left alone');
+ok(await revoke('anon', TOK, ALICE, '2099-01-01T00:00:00Z') === false, 'and a future time cannot reach it either');
 ok(await active(TOK) === true, 'still active after the late revocation');
 ok(await active(TOK2) === true, "Bob's token untouched throughout");
 

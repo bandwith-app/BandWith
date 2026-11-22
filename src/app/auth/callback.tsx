@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, RECOVERY_FLAG } from '@/lib/supabase';
-import { hasRecoveryProof } from '@/lib/recoveryProof';
+import { RECOVERY_PAGE_LOADED_AT, clearRecoveryProof, hasRecoveryProofSince } from '@/lib/recoveryProof';
 import { Loader2 } from '@/app/components/icons';
 import { t, useT } from '@/lib/i18n';
 import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
@@ -109,8 +109,11 @@ export default function AuthCallback() {
           // password would go to that account (audit 04 #2). Only its own
           // PASSWORD_RECOVERY event proves the link signed this account in.
           const { data: { session: now } } = await supabase.auth.getSession();
-          if (!hasRecoveryProof(now?.user?.id)) {
+          // From this page load only: an older proof in this tab (someone's
+          // unfinished reset) says nothing about this link.
+          if (!hasRecoveryProofSince(now?.user?.id, RECOVERY_PAGE_LOADED_AT)) {
             console.warn('[AuthCallback] Reset link not exchanged here');
+            clearRecoveryProof();
             fail({ code: 'pkce_code_verifier_not_found' });
             return;
           }

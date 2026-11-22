@@ -11,9 +11,11 @@
 -- for anon too, and only:
 --   * for the exact token and the account that signed out (both known only to
 --     that device and the server);
---   * if the token was not registered again after the sign-out (a new
---     sign-in on the device sets updated_at later), so it never undoes a
---     newer registration, by the same or another account.
+--   * for exactly the registration the device saved: p_registered_at is the
+--     row's own updated_at, read back by the app when it saved the token.
+--     Any newer registration (a new sign-in, by the same or another
+--     account) changes updated_at, so a late or replayed call never undoes
+--     it. No device clock is compared with the server's (Codex review #287).
 -- It can only switch a token off, never on, and returns whether it did.
 --
 -- Older app builds: nothing they call changes. Idempotent.
@@ -21,10 +23,12 @@
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public.bw_revoke_push_token(
+-- Not live anywhere yet; the parameter name changed.
+DROP FUNCTION IF EXISTS public.bw_revoke_push_token(text, uuid, timestamptz);
+CREATE FUNCTION public.bw_revoke_push_token(
   p_token text,
   p_user_id uuid,
-  p_signed_out_at timestamptz
+  p_registered_at timestamptz
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -35,7 +39,7 @@ DECLARE
   v_count integer;
 BEGIN
   IF p_token IS NULL OR length(p_token) < 16 OR length(p_token) > 4096
-     OR p_user_id IS NULL OR p_signed_out_at IS NULL THEN
+     OR p_user_id IS NULL OR p_registered_at IS NULL THEN
     RETURN false;
   END IF;
 
@@ -45,7 +49,7 @@ BEGIN
    WHERE token = p_token
      AND user_id = p_user_id
      AND coalesce(is_active, true)
-     AND (updated_at IS NULL OR updated_at <= p_signed_out_at);
+     AND updated_at = p_registered_at;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count > 0;
 END;

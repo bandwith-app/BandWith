@@ -49,6 +49,32 @@ export function hasRecoveryProof(userId: string | null | undefined, store: Store
   }
 }
 
+/**
+ * When this page started (supabase.ts imports this module before it creates
+ * the auth client, so a reset link's PASSWORD_RECOVERY comes after it).
+ */
+export const RECOVERY_PAGE_LOADED_AT = Date.now();
+
+/**
+ * The callback's check (Codex review #287): the proof must come from THIS
+ * page load. An older one (Bob's unfinished reset in the same tab) can't
+ * vouch for a reset link the library didn't exchange here (Alice's).
+ */
+export function hasRecoveryProofSince(
+  userId: string | null | undefined,
+  since: number,
+  store: Store | null = sessionStore(),
+  now = Date.now(),
+): boolean {
+  if (!hasRecoveryProof(userId, store, now) || !store) return false;
+  try {
+    const v = JSON.parse(store.getItem(KEY) || 'null') as { at?: unknown } | null;
+    return typeof v?.at === 'number' && v.at >= since;
+  } catch {
+    return false;
+  }
+}
+
 /** True when any account has a fresh proof (the user isn't known yet at start). */
 export function hasAnyRecoveryProof(store: Store | null = sessionStore(), now = Date.now()): boolean {
   if (!store) return false;

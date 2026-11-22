@@ -449,8 +449,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearStageCache();
       clearRecoveryProof();
       // Read caches go; each account's unsent changes stay for its next
-      // sign-in (audit 04 #9), unless the account itself is gone.
-      clearOfflineCache('bw:', { keepPendingWrites: !opts?.discardPendingWrites })
+      // sign-in (audit 04 #9). A deleted account drops only its own: other
+      // people's notes on a shared tablet stay (Codex review #287).
+      clearOfflineCache('bw:', {
+        keepPendingWrites: true,
+        discardPendingWritesOf: opts?.discardPendingWrites ? user?.id ?? null : null,
+      })
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }

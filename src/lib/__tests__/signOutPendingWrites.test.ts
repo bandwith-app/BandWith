@@ -30,8 +30,14 @@ describe('sign-out and unsent changes', () => {
     expect(keys()).toEqual([]);
   });
 
-  it('sign-out asks for it, and account deletion does not', () => {
-    expect(ctx).toMatch(/clearOfflineCache\('bw:', \{ keepPendingWrites: !opts\?\.discardPendingWrites \}\)/);
+  // Codex review #287: deleting Bob's account must not erase Alice's notes.
+  it("a deleted account's unsent changes go, nobody else's", async () => {
+    await clearOfflineCache('bw:', { keepPendingWrites: true, discardPendingWritesOf: B });
+    expect(keys()).toEqual([`bw:offline_queue:${A}`]);
+  });
+
+  it('sign-out keeps them, account deletion drops only its own', () => {
+    expect(ctx).toMatch(/clearOfflineCache\('bw:', \{\s*keepPendingWrites: true,\s*discardPendingWritesOf: opts\?\.discardPendingWrites \? user\?\.id \?\? null : null,\s*\}\)/);
     expect(settings).toMatch(/signOut\(\{ discardPendingWrites: true \}\)/);
   });
 });
