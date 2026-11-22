@@ -19,8 +19,9 @@ import { t } from '@/lib/i18n';
  *   on this phone (songs added or removed while it was offline);
  * - old-leader: linked and following, but the leader's app is from before
  *   signed states (audit #1): it works, the leader should update.
- * - stale-key: the leader signs with a newer key pair than the one on this
- *   phone (an admin stopped being one since, migration 190): one trip online.
+ * - stale-key: the server says the gig's key pair changed (an admin stopped
+ *   being one, migration 190: "pending") and the new one isn't on this phone
+ *   yet: one trip online. Never from a leader's claim alone.
  * - unverified: linked and following, but this phone has no key to check the
  *   leader's signature yet (it wasn't online since the pair was made).
  * - leader-unverified: linked and following an admin on this app who has no
