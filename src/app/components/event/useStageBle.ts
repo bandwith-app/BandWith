@@ -224,6 +224,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let idleChecks = 0;
     /** Song reads under way (a look waits for them: the radio does one thing at a time). */
     let reads = 0;
+    /** A look's scan is running (the search for a lost leader takes it over). */
+    let lookScanning = false;
     /** This session's waits, cleared when Stage closes, so a late one can't touch the next session's scan. */
     const waits = new Set<ReturnType<typeof setTimeout>>();
     const wait = (ms: number) =>
@@ -329,13 +331,18 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
     };
 
-    /** Another phone advertising the gig: its state, read over a short link (null: none valid). */
-    const probe = async (id: string): Promise<StageLiveState | null> => {
+    /**
+     * Another phone advertising the gig, over a short link: its state, or
+     * `outdated` (it leads a setlist this phone doesn't have yet), or nothing valid.
+     */
+    const probe = async (id: string): Promise<{ state: StageLiveState } | { outdated: true } | null> => {
       try {
         await BleClient.connect(id, () => {}, { timeout: PROBE_TIMEOUT_MS });
-        const view = await BleClient.read(id, serviceUuid, STAGE_BLE_CHARACTERISTIC);
+        // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
+        const view = await BleClient.read(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, { timeout: PROBE_TIMEOUT_MS });
         const result = await decodeStageState(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), savedRef.current, key);
-        return result.ok ? result.state : null;
+        if (result.ok) return { state: result.state };
+        return result.reason === 'setlist' ? { outdated: true } : null;
       } catch {
         return null;
       } finally {
@@ -357,27 +364,39 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled || !current) return;
       const found: string[] = [];
       try {
+        lookScanning = true;
         await BleClient.requestLEScan({ services: [serviceUuid] }, (r) => {
           const id = r.device.deviceId;
           if (id !== current && !found.includes(id)) found.push(id);
         });
         await wait(LEADER_SCAN_MS);
-        if (cancelled || deviceId !== current) return;
-        await BleClient.stopLEScan();
+        // Ended in every case (unless the search for a lost leader took it over),
+        // or the next scan is refused as "already scanning".
+        const mine = lookScanning;
+        lookScanning = false;
+        if (cancelled) return;
+        if (mine) await BleClient.stopLEScan();
+        if (deviceId !== current) return;
       } catch {
+        lookScanning = false;
         /* Bluetooth off meanwhile: its own handler takes over */
       }
       // Every phone found, then the newest of them: not the first one newer than ours.
       let best: { id: string; state: StageLiveState } | null = null;
+      let outdated: string | null = null;
       for (const id of found) {
         // A song read from the leader first (the radio does one thing at a time).
         while (reads > 0 && !cancelled && deviceId === current) await wait(100);
         if (cancelled || deviceId !== current) return;
         const theirs = await probe(id);
         if (cancelled || deviceId !== current) return;
-        if (theirs && (!best || isNewer(theirs, best.state))) best = { id, state: theirs };
+        if (theirs && 'state' in theirs && (!best || isNewer(theirs.state, best.state))) best = { id, state: theirs.state };
+        else if (theirs && 'outdated' in theirs) outdated ??= id;
       }
-      if (best && (!linkState || isNewer(best.state, linkState))) {
+      // An admin leading a setlist this phone lacks beats one who leads nothing:
+      // linked to it, the member is told to get the setlist.
+      const next = best && (!linkState || isNewer(best.state, linkState)) ? best.id : !best && !linkState ? outdated : null;
+      if (next) {
         // Leave the old link quietly (its goodbye is ignored), then follow this one.
         link++;
         deviceId = null;
@@ -385,7 +404,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         stopSync();
         await BleClient.disconnect(current).catch(() => {});
         if (cancelled) return;
-        linkTo(best.id);
+        linkTo(next);
         return;
       }
       if (!linkState) idleChecks++;
@@ -413,6 +432,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled) return;
       setStatus('searching');
       try {
+        // A look's scan still running (the leader dropped mid-look): this search takes over.
+        if (lookScanning) {
+          lookScanning = false;
+          await BleClient.stopLEScan().catch(() => {});
+        }
         await BleClient.requestLEScan({ services: [serviceUuid] }, (result) => {
           if (deviceId || cancelled) return;
           linkTo(result.device.deviceId);
@@ -428,7 +452,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             });
         }, SEARCH_RESTART_MS);
       } catch (e) {
-        if (!cancelled) setStatus(bleProblem(e) === 'unsupported' ? 'unsupported' : 'bt-off');
+        if (cancelled) return;
+        // A scan left running: the plugin stops it as it refuses this one, so try again shortly.
+        if (/already scanning/i.test(String((e as { message?: unknown })?.message ?? e))) {
+          later();
+          return;
+        }
+        setStatus(bleProblem(e) === 'unsupported' ? 'unsupported' : 'bt-off');
       }
     };
 
