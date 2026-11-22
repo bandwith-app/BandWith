@@ -18,6 +18,22 @@
 --     preview text and time (written within an hour after the message);
 --   * notification previews of messages already deleted today are removed.
 --
+-- Round 2 (Codex + Claude review #291):
+--   * a message marked deleted (messages.deleted = true, deleteMessage in
+--     chats.ts) takes its notices too, not only a real DELETE;
+--   * a chat notice for a message that is gone or marked deleted is not
+--     written at all: send-push verifies the message, then writes the
+--     notices, and a delete in between used to leave the text in the inbox.
+--     The check locks the message row (FOR SHARE) until the notice is
+--     written, so a delete either comes first (no notice) or after (its
+--     purge sees the notice). send-push rings only the notices written;
+--   * the preview is cut like the app's JS substring: 120 UTF-16 units, not
+--     120 characters (an emoji is 2 units), so long messages with emoji are
+--     matched and the backfill keeps their valid notices;
+--   * an older notice (no message_id) belongs to the newest message with
+--     that preview sent before it: deleting the first of two "OK"s no longer
+--     takes the second one's notice.
+--
 -- Older app builds: nothing they call changes. Idempotent; one transaction.
 -- Independent of 175/181 (uses no function they redefine).
 -- ============================================================================
@@ -32,6 +48,36 @@ CREATE INDEX IF NOT EXISTS idx_notifications_chat_chat_id
   ON public.notifications ((coalesce(data ->> 'chat_id', data ->> 'chatId')), created_at)
   WHERE type IN ('chat_message', 'chat_mention');
 
+-- JS `s.substring(0, n)`: n UTF-16 code units (characters above U+FFFF take
+-- two). A cut through such a character drops it (Postgres text can't hold
+-- half of it).
+CREATE OR REPLACE FUNCTION public.bw_js_left(p_text text, p_units integer)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE STRICT
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_units integer := 0;
+  v_i integer := 0;
+  v_len integer;
+BEGIN
+  -- Each UTF-16 unit is at least one UTF-8 byte: short texts fit whole.
+  IF octet_length(p_text) <= p_units THEN
+    RETURN p_text;
+  END IF;
+  v_len := char_length(p_text);
+  WHILE v_i < v_len LOOP
+    v_units := v_units + CASE WHEN ascii(substr(p_text, v_i + 1, 1)) > 65535 THEN 2 ELSE 1 END;
+    EXIT WHEN v_units > p_units;
+    v_i := v_i + 1;
+  END LOOP;
+  RETURN left(p_text, v_i);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_js_left(text, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_js_left(text, integer) TO authenticated, service_role;
+
 -- The preview the app and send-push store for a message (chat-push.ts chatPreview).
 CREATE OR REPLACE FUNCTION public.bw_chat_preview(p_content text)
 RETURNS text
@@ -39,10 +85,66 @@ LANGUAGE sql
 IMMUTABLE
 SET search_path TO 'public'
 AS $$
-  SELECT coalesce(nullif(left(coalesce(p_content, ''), 120), ''), 'New message');
+  SELECT coalesce(nullif(public.bw_js_left(coalesce(p_content, ''), 120), ''), 'New message');
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_preview(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_preview(text) TO authenticated, service_role;
+
+-- Whether an older notice (no message_id) shows this message's text.
+CREATE OR REPLACE FUNCTION public.bw_chat_notice_shows(p_body text, p_data jsonb, p_content text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  SELECT p_body = public.bw_chat_preview(p_content)
+      OR p_data ->> 'content' = public.bw_js_left(coalesce(p_content, ''), 120);
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_notice_shows(text, jsonb, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_notice_shows(text, jsonb, text) TO authenticated, service_role;
+
+-- Deletes the chat notices of these messages (gone, or marked deleted):
+-- [{id, chat_id, content, created_at}]. messages.deleted is read through
+-- to_jsonb so this works with or without that column.
+CREATE OR REPLACE FUNCTION public.bw_purge_chat_notices(p_gone jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF p_gone IS NULL OR jsonb_array_length(p_gone) = 0 THEN
+    RETURN;
+  END IF;
+
+  -- Notifications that name the message.
+  DELETE FROM notifications n
+   USING jsonb_to_recordset(p_gone) AS g(id uuid, chat_id uuid, content text, created_at timestamptz)
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' = g.id::text;
+
+  -- Older rows without message_id: same chat, same preview, written after
+  -- it, and no later live message with that preview sent before the row.
+  DELETE FROM notifications n
+   USING jsonb_to_recordset(p_gone) AS g(id uuid, chat_id uuid, content text, created_at timestamptz)
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' IS NULL
+     AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') = g.chat_id::text
+     AND n.created_at >= g.created_at - interval '1 minute'
+     AND n.created_at < g.created_at + interval '1 hour'
+     AND public.bw_chat_notice_shows(n.body, n.data, g.content)
+     AND NOT EXISTS (
+       SELECT 1 FROM messages m2
+        WHERE m2.chat_id = g.chat_id
+          AND m2.id <> g.id
+          AND m2.created_at > g.created_at
+          AND m2.created_at <= n.created_at + interval '1 minute'
+          AND NOT coalesce((to_jsonb(m2) ->> 'deleted')::boolean, false)
+          AND public.bw_chat_notice_shows(n.body, n.data, m2.content)
+     );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_purge_chat_notices(jsonb) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.bw_trg_messages_purge_notifications()
 RETURNS trigger
@@ -51,22 +153,8 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  -- Notifications that name the message.
-  DELETE FROM notifications n
-   USING gone g
-   WHERE n.type IN ('chat_message', 'chat_mention')
-     AND n.data ->> 'message_id' = g.id::text;
-
-  -- Older rows without message_id: same chat, same preview, written after it.
-  DELETE FROM notifications n
-   USING gone g
-   WHERE n.type IN ('chat_message', 'chat_mention')
-     AND n.data ->> 'message_id' IS NULL
-     AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') = g.chat_id::text
-     AND n.created_at >= g.created_at - interval '1 minute'
-     AND n.created_at < g.created_at + interval '1 hour'
-     AND (n.body = public.bw_chat_preview(g.content)
-          OR n.data ->> 'content' = left(coalesce(g.content, ''), 120));
+  PERFORM public.bw_purge_chat_notices(
+    (SELECT jsonb_agg(jsonb_build_object('id', g.id, 'chat_id', g.chat_id, 'content', g.content, 'created_at', g.created_at)) FROM gone g));
   RETURN NULL;
 END;
 $$;
@@ -78,11 +166,76 @@ CREATE TRIGGER bw_messages_purge_notifications
   REFERENCING OLD TABLE AS gone
   FOR EACH STATEMENT EXECUTE FUNCTION public.bw_trg_messages_purge_notifications();
 
--- Previews of messages deleted before this migration.
+-- Marked deleted (deleted = true): the same purge.
+CREATE OR REPLACE FUNCTION public.bw_trg_messages_soft_delete_purge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  PERFORM public.bw_purge_chat_notices(jsonb_build_array(
+    jsonb_build_object('id', OLD.id, 'chat_id', OLD.chat_id, 'content', OLD.content, 'created_at', OLD.created_at)));
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_messages_soft_delete_purge() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.messages'::regclass
+                AND attname = 'deleted' AND NOT attisdropped) THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS bw_messages_soft_delete_purge ON public.messages';
+    EXECUTE 'CREATE TRIGGER bw_messages_soft_delete_purge
+               AFTER UPDATE OF deleted ON public.messages
+               FOR EACH ROW
+               WHEN (NEW.deleted IS TRUE AND OLD.deleted IS DISTINCT FROM TRUE)
+               EXECUTE FUNCTION public.bw_trg_messages_soft_delete_purge()';
+  END IF;
+END;
+$$;
+
+-- No chat notice for a message that is gone or marked deleted (a delete
+-- between send-push's check and its insert). FOR SHARE holds off a delete
+-- until this notice is in, so the delete's purge then removes it.
+CREATE OR REPLACE FUNCTION public.bw_trg_notifications_chat_message_live()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_id text := NEW.data ->> 'message_id';
+  v_row jsonb;
+BEGIN
+  IF v_id IS NULL OR NEW.type NOT IN ('chat_message', 'chat_mention') THEN
+    RETURN NEW;
+  END IF;
+  IF v_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RETURN NULL;
+  END IF;
+  SELECT to_jsonb(m) INTO v_row FROM messages m WHERE m.id = v_id::uuid FOR SHARE;
+  IF v_row IS NULL OR coalesce((v_row ->> 'deleted')::boolean, false) THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_notifications_chat_message_live() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_notifications_chat_message_live ON public.notifications;
+CREATE TRIGGER bw_notifications_chat_message_live
+  BEFORE INSERT ON public.notifications
+  FOR EACH ROW
+  WHEN (NEW.type IN ('chat_message', 'chat_mention'))
+  EXECUTE FUNCTION public.bw_trg_notifications_chat_message_live();
+
+-- Previews of messages deleted (or marked deleted) before this migration.
 DELETE FROM public.notifications n
  WHERE n.type IN ('chat_message', 'chat_mention')
    AND n.data ->> 'message_id' IS NOT NULL
-   AND NOT EXISTS (SELECT 1 FROM public.messages m WHERE m.id::text = n.data ->> 'message_id');
+   AND NOT EXISTS (SELECT 1 FROM public.messages m WHERE m.id::text = n.data ->> 'message_id'
+                     AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false));
 
 DELETE FROM public.notifications n
  WHERE n.type IN ('chat_message', 'chat_mention')
@@ -93,8 +246,8 @@ DELETE FROM public.notifications n
       WHERE m.chat_id::text = coalesce(n.data ->> 'chat_id', n.data ->> 'chatId')
         AND m.created_at <= n.created_at + interval '1 minute'
         AND m.created_at > n.created_at - interval '1 hour'
-        AND (n.body = public.bw_chat_preview(m.content)
-             OR n.data ->> 'content' = left(coalesce(m.content, ''), 120))
+        AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+        AND public.bw_chat_notice_shows(n.body, n.data, m.content)
    );
 
 COMMIT;

@@ -147,10 +147,15 @@ export const catchUpPage = async (
   fetchAfter: (after: string) => Promise<Message[] | null>,
   maxPages: number = CATCH_UP_MAX_PAGES,
 ): Promise<{ page: Message[]; complete: boolean }> => {
-  const last = newestSettled(prev);
-  if (!last || page.length < CHAT_PAGE_SIZE || page.some((m) => m.id === last.id) || page[0].created_at <= last.created_at) {
+  // Connected when the oldest message of the latest page is on screen. The
+  // newest one on screen proves nothing: it may have come by Realtime just
+  // before the refresh, with the missed ones still in between (Codex #291).
+  // So catch up from the newest message on screen older than the page.
+  if (page.length < CHAT_PAGE_SIZE || prev.some((m) => !isTemp(m) && m.id === page[0].id)) {
     return { page, complete: true };
   }
+  const last = newestSettled(prev.filter((m) => m.created_at < page[0].created_at));
+  if (!last) return { page, complete: true };
   const pageIds = new Set(page.map((m) => m.id));
   const forward: Message[] = [];
   const seen = new Set<string>();
@@ -171,6 +176,9 @@ export const catchUpPage = async (
   }
   return { page, complete: false };
 };
+
+/** Saved on the server (not a bubble still sending or "Not sent"): only these can be replied to. */
+export const canReplyTo = (m: Message): boolean => !isTemp(m) && !m.failed;
 
 /** A bubble whose send failed: kept, marked, ready for Try again (07 #5). */
 export const markSendFailed = (prev: Message[], tempId: string): Message[] =>

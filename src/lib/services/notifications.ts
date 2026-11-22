@@ -253,7 +253,9 @@ export const getNotifications = async (options?: {
         .select('*')
         .eq('user_id', user.id)
         .eq('read', false)
-        .lt('created_at', oldest)
+        // lte: unread rows with the same time as the last row on the page
+        // would fall between the two requests (dupes are dropped below).
+        .lte('created_at', oldest)
         .order('created_at', { ascending: false })
         .limit(options.withOlderUnread);
       if (options.excludeChat) older = older.not('type', 'in', CHAT_TYPES_FILTER);

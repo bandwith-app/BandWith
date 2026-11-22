@@ -134,6 +134,15 @@ describe('catchUpPage', () => {
     const res = await catchUpPage(range(0, 10), range(20, 70), after, 0);
     expect(res.complete).toBe(false);
   });
+
+  // Codex review #291: one Realtime arrival (69) before the refresh made the
+  // latest page look connected, and 10–19 never came.
+  it('a message that arrived by Realtime does not hide the gap', async () => {
+    const prev = [...range(0, 10), msg(69)];
+    const { page, complete } = await catchUpPage(prev, range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(prev, page))).toEqual(ids(history));
+  });
 });
 
 // Audit 07 #5

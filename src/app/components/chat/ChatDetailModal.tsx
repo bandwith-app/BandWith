@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { haptic } from '@/lib/haptics';
 
@@ -236,6 +236,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   };
   
   const handleReply = (message: Message) => {
+    // Not saved yet: its temp id is no reply_to_id (Codex review #291).
+    if (!canReplyTo(message)) return;
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -930,7 +932,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                   const isMe = message.sender_id === user?.id;
                   const replyTo = message.reply_to;
 
-                  const replyButton = (
+                  const replyButton = canReplyTo(message) && (
                     <button
                       type="button"
                       onClick={() => handleReply(message)}
@@ -947,7 +949,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.15 }}
-                      drag={touchReply ? 'x' : false}
+                      drag={touchReply && canReplyTo(message) ? 'x' : false}
                       dragDirectionLock
                       dragConstraints={{ left: 0, right: 0 }}
                       dragElastic={{ left: 0, right: 0.5 }}

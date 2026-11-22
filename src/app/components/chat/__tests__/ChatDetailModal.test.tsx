@@ -209,6 +209,29 @@ describe('ChatDetailModal', () => {
     expect(screen.queryByText(/permission denied/)).toBeNull();
   });
 
+  // Codex review #291: a bubble not saved yet (sending, or "Not sent") had
+  // Reply, and replying sent its temp id as reply_to_id (not a UUID).
+  it('a message that is not saved cannot be replied to', async () => {
+    openComposer();
+    let fail: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementation(() => new Promise((res) => { fail = res; }));
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    const replies = () => screen.queryAllByRole('button', { name: 'Reply to message' }).length;
+    const saved = replies();
+    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'hello' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    expect(screen.getByText('hello')).toBeTruthy();
+    expect(replies()).toBe(saved);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'new draft' } });
+    await act(async () => { fail({ data: null, error: new Error('Failed to fetch') }); });
+    await settle();
+    expect(screen.getByText('Not sent')).toBeTruthy();
+    expect(replies()).toBe(saved);
+  });
+
   // Egress: with Realtime connected the open chat must not re-download the
   // last 50 messages on a timer (it did every 3 s: ~1,200 requests an hour).
   describe('Realtime first, slow poll only when the channel is down', () => {

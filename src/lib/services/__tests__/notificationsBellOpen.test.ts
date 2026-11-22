@@ -52,9 +52,21 @@ describe('bell: unread items it would not show', () => {
     expect(data?.map((n) => n.id)).toContain('n20');
     const older = h.chains[1];
     expect(older).toContainEqual(['eq', 'read', false]);
-    expect(older).toContainEqual(['lt', 'created_at', at(19)]);
+    expect(older).toContainEqual(['lte', 'created_at', at(19)]);
     expect(older).toContainEqual(['not', 'type', 'in', '(chat_message,chat_mention)']);
     expect(older).toContainEqual(['limit', 100]);
+  });
+
+  // Codex review #291: unread rows with the same time as the 20th row fell
+  // between the page and the older request.
+  it('unread rows sharing the last row’s time are not lost', async () => {
+    const page = Array.from({ length: 20 }, (_, i) => row(i, true));
+    const twin = { ...row(19), id: 'n19b' };
+    h.pages.push(page, [page[19], twin]);
+    const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
+    expect(h.chains[1]).toContainEqual(['lte', 'created_at', at(19)]);
+    expect(data?.filter((n) => n.id === 'n19b')).toHaveLength(1);
+    expect(data?.filter((n) => n.id === 'n19')).toHaveLength(1);
   });
 
   it('no second request when the page is not full', async () => {

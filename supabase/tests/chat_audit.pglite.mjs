@@ -26,10 +26,11 @@ process.on('uncaughtException', (e) => { console.log('ERROR', e.message); proces
 let fails = 0;
 const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const [BAND, OTHERBAND, ADMIN, LINE, MEM, OUT, FAN] = [1, 2, 3, 4, 5, 6, 7].map(id);
-const [DM, BANDCHAT, EVCHAT, DUP_OLD, DUP_NEW, OTHERCHAT] = [20, 21, 22, 23, 24, 25].map(id);
+const [BAND, OTHERBAND, ADMIN, LINE, MEM, OUT, FAN, EX] = [1, 2, 3, 4, 5, 6, 7, 8].map(id);
+const [DM, BANDCHAT, EVCHAT, DUP_OLD, DUP_NEW, OTHERCHAT, TWINCHAT] = [20, 21, 22, 23, 24, 25, 26].map(id);
 const [GIG, GIG2] = [30, 31].map(id);
 const [M_SHORT, M_LONG, M_BAND_LINE, M_BAND_MEM, M_OTHER, M_GONE, M_DUP_OLD, M_DUP_NEW] = [40, 41, 42, 43, 44, 45, 46, 47].map(id);
+const [M_OK1, M_OK2, M_EMOJI, M_SOFT, M_LIVE] = [48, 49, 50, 51, 52].map(id);
 
 async function as(uid, sql) {
   try {
@@ -53,7 +54,7 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
 CREATE TYPE user_role AS ENUM ('admin', 'member');
 
-CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text, preferred_language text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
 CREATE TABLE public.band_members (band_id uuid, user_id uuid, role user_role, is_active boolean DEFAULT true, UNIQUE (band_id, user_id));
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, created_by uuid);
@@ -66,7 +67,7 @@ CREATE TABLE public.chat_participants (id uuid PRIMARY KEY DEFAULT gen_random_uu
   UNIQUE (chat_id, user_id));
 CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   sender_id uuid, content text, band_id uuid, reply_to_id uuid REFERENCES messages(id) ON DELETE SET NULL,
-  created_at timestamptz DEFAULT now());
+  deleted boolean DEFAULT false, deleted_at timestamptz, created_at timestamptz DEFAULT now());
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean DEFAULT false, action_url text, created_at timestamptz DEFAULT now());
 
@@ -114,14 +115,18 @@ await db.exec(migFile('104_direct_chat_two_people.sql'));
 await db.exec(`CREATE POLICY chat_participants_insert ON public.chat_participants FOR INSERT TO authenticated WITH CHECK (bw_can_add_chat_participant(chat_id, user_id));`);
 
 const preview = (s) => s.slice(0, 120);
+// 100 letters + 15 guitars = 130 UTF-16 units: the app's preview keeps 10 guitars.
+const EMOJI = 'x'.repeat(100) + '🎸'.repeat(15);
 const LONG = 'Load-in moved to 5:30 at the Brooklyn Bowl side door, bring the second amp and the long XLR cables, parking is on Wythe Ave, see you there';
 await db.exec(`
-INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${MEM}','Mia Member'),('${OUT}','Oscar Out'),('${FAN}','Fay Fan');
+INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${MEM}','Mia Member'),('${OUT}','Oscar Out'),('${FAN}','Fay Fan'),('${EX}','Eli Ex');
 INSERT INTO bands VALUES ('${BAND}','Hudson Horns'),('${OTHERBAND}','Queens Quartet');
 INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'),('${BAND}','${LINE}','member'),
   ('${BAND}','${MEM}','member'),('${OTHERBAND}','${MEM}','member'),('${OTHERBAND}','${LINE}','member');
+-- Eli left both bands (inactive) but is still on the Rooftop lineup.
+INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${BAND}','${EX}','member',false),('${OTHERBAND}','${EX}','member',false);
 INSERT INTO events (id, band_id, title, created_by) VALUES ('${GIG}','${BAND}','Rooftop Session','${ADMIN}'),('${GIG2}','${BAND}','Jazz Brunch','${ADMIN}');
-INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed'),('${GIG2}','${LINE}','confirmed');
+INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed'),('${GIG2}','${LINE}','confirmed'),('${GIG}','${EX}','confirmed');
 
 INSERT INTO chats (id, type, name, band_id, event_id, created_by, created_at) VALUES
   ('${DM}','direct',NULL,NULL,NULL,'${ADMIN}', now() - interval '3 days'),
@@ -129,12 +134,14 @@ INSERT INTO chats (id, type, name, band_id, event_id, created_by, created_at) VA
   ('${OTHERCHAT}','direct',NULL,NULL,NULL,'${MEM}', now() - interval '3 days'),
   -- Two band chats for the same band, from before this fix.
   ('${DUP_OLD}','band','Queens Quartet','${OTHERBAND}',NULL,'${MEM}', now() - interval '2 days'),
-  ('${DUP_NEW}','band','Queens Quartet','${OTHERBAND}',NULL,'${LINE}', now() - interval '1 day');
+  ('${DUP_NEW}','band','Queens Quartet','${OTHERBAND}',NULL,'${LINE}', now() - interval '1 day'),
+  ('${TWINCHAT}','direct',NULL,NULL,NULL,'${MEM}', now() - interval '3 days');
 INSERT INTO chat_participants (chat_id, user_id, cleared_at) VALUES
   ('${DM}','${ADMIN}',NULL),('${DM}','${LINE}',NULL),
   ('${BANDCHAT}','${ADMIN}',NULL),('${BANDCHAT}','${LINE}',NULL),('${BANDCHAT}','${MEM}',NULL),
   ('${OTHERCHAT}','${MEM}',NULL),('${OTHERCHAT}','${ADMIN}',NULL),
-  ('${DUP_OLD}','${MEM}',NULL),('${DUP_NEW}','${LINE}',NULL),('${DUP_NEW}','${MEM}', now() - interval '12 hours');
+  ('${DUP_OLD}','${MEM}',NULL),('${DUP_NEW}','${LINE}',NULL),('${DUP_NEW}','${MEM}', now() - interval '12 hours'),
+  ('${DUP_NEW}','${EX}',NULL),('${TWINCHAT}','${MEM}',NULL),('${TWINCHAT}','${ADMIN}',NULL);
 INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES
   ('${M_SHORT}','${DM}','${ADMIN}','see you at 8', now() - interval '2 hours'),
   ('${M_LONG}','${DM}','${ADMIN}',$t$${LONG}$t$, now() - interval '90 minutes'),
@@ -142,7 +149,12 @@ INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES
   ('${M_BAND_MEM}','${BANDCHAT}','${MEM}','running late', now() - interval '70 minutes'),
   ('${M_OTHER}','${OTHERCHAT}','${MEM}','see you at 8', now() - interval '60 minutes'),
   ('${M_DUP_OLD}','${DUP_OLD}','${MEM}','first thread', now() - interval '40 hours'),
-  ('${M_DUP_NEW}','${DUP_NEW}','${LINE}','second thread', now() - interval '20 hours');
+  ('${M_DUP_NEW}','${DUP_NEW}','${LINE}','second thread', now() - interval '20 hours'),
+  ('${M_OK1}','${TWINCHAT}','${MEM}','OK', now() - interval '50 minutes'),
+  ('${M_OK2}','${TWINCHAT}','${MEM}','OK', now() - interval '40 minutes'),
+  ('${M_EMOJI}','${TWINCHAT}','${MEM}',$t$${EMOJI}$t$, now() - interval '30 minutes'),
+  ('${M_SOFT}','${TWINCHAT}','${MEM}','delete me softly', now() - interval '20 minutes'),
+  ('${M_LIVE}','${TWINCHAT}','${MEM}','still here', now() - interval '10 minutes');
 -- Notifications: with message_id (send-push from #284), and older ones without.
 INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
   ('${LINE}','chat_message','Ava Admin','see you at 8',
@@ -162,7 +174,12 @@ INSERT INTO notifications (user_id, type, title, body, data, action_url, created
   ('${LINE}','chat_message','Ava Admin','older secret',
     jsonb_build_object('chat_id','${DM}','content','older secret'), '/chat/${DM}', now() - interval '6 days'),
   ('${MEM}','chat_message','Leo Line','second thread',
-    jsonb_build_object('chat_id','${DUP_NEW}','message_id','${M_DUP_NEW}','content','second thread'), '/chat/${DUP_NEW}', now() - interval '20 hours');
+    jsonb_build_object('chat_id','${DUP_NEW}','message_id','${M_DUP_NEW}','content','second thread'), '/chat/${DUP_NEW}', now() - interval '20 hours'),
+  -- Older rows (no message_id) for two "OK"s ten minutes apart, and a long emoji message.
+  ('${ADMIN}','chat_message','Mia Member','OK', jsonb_build_object('chat_id','${TWINCHAT}','content','OK','tag','ok-1'), '/chat/${TWINCHAT}', now() - interval '50 minutes' + interval '5 seconds'),
+  ('${ADMIN}','chat_message','Mia Member','OK', jsonb_build_object('chat_id','${TWINCHAT}','content','OK','tag','ok-2'), '/chat/${TWINCHAT}', now() - interval '40 minutes' + interval '5 seconds'),
+  ('${ADMIN}','chat_message','Mia Member',$t$${preview(EMOJI)}$t$, jsonb_build_object('chat_id','${TWINCHAT}','content',$t$${preview(EMOJI)}$t$), '/chat/${TWINCHAT}', now() - interval '30 minutes' + interval '5 seconds'),
+  ('${ADMIN}','chat_message','Mia Member','delete me softly', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_SOFT}','content','delete me softly'), '/chat/${TWINCHAT}', now() - interval '20 minutes');
 `);
 
 for (const m of MIGS) {
@@ -196,13 +213,45 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'messa
   "someone else's band message keeps its notification");
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE type = 'event_update'`) === 1, 'other notifications untouched');
 
+// ── 192 round 2 (Codex + Claude review #291)
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body LIKE 'xxx%'`) === 1,
+  'emoji: an older preview cut at 120 UTF-16 units is recognised (kept while the message exists)');
+r = await db.query(`SELECT public.bw_chat_preview($1) AS p`, [EMOJI]);
+ok(r.rows[0].p === preview(EMOJI), `bw_chat_preview cuts like the app (${[...r.rows[0].p].length} code points)`);
+await db.exec(`DELETE FROM messages WHERE id = '${M_EMOJI}'`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body LIKE 'xxx%'`) === 0,
+  'and goes with the message');
+await db.exec(`DELETE FROM messages WHERE id = '${M_OK1}'`);
+r = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body = 'OK'`);
+ok(r.rows.length === 1 && r.rows[0].tag === 'ok-2', `deleting the first "OK" keeps the second one's notice (${JSON.stringify(r.rows)})`);
+await db.exec(`UPDATE messages SET deleted = true, deleted_at = now() WHERE id = '${M_SOFT}'`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_SOFT}'`) === 0,
+  'a message marked deleted takes its notice with it');
+const notice = async (msgId) => db.query(`INSERT INTO notifications (user_id, type, title, body, data) VALUES ('${ADMIN}', 'chat_message', 'Mia Member', 'x',
+  jsonb_build_object('chat_id', '${TWINCHAT}', 'message_id', '${msgId}')) RETURNING id`).then((x) => x.rows.length, (e) => e.message);
+ok((await notice(M_OK1)) === 0, 'a notice for a message deleted before it was written is not stored');
+ok((await notice(M_SOFT)) === 0, 'nor for a message marked deleted');
+ok((await notice(M_LIVE)) === 1, 'a notice for a live message is stored');
+
 // ── 193 · duplicates from before are merged into the oldest chat
 ok(await count(`SELECT count(*)::int AS n FROM chats WHERE type = 'band' AND band_id = '${OTHERBAND}'`) === 1,
   'one band chat left for the band that had two');
 ok(await count(`SELECT count(*)::int AS n FROM messages WHERE chat_id = '${DUP_OLD}'`) === 2,
   'messages of the newer chat moved into the oldest one');
 r = await db.query(`SELECT user_id, cleared_at FROM chat_participants WHERE chat_id = '${DUP_OLD}' ORDER BY user_id`);
-ok(r.rows.length === 2 && r.rows.find((x) => x.user_id === MEM)?.cleared_at, `participants merged, deleted history stays deleted (${JSON.stringify(r.rows.map((x) => x.user_id))})`);
+ok(r.rows.length === 2 && r.rows.some((x) => x.user_id === LINE) && r.rows.some((x) => x.user_id === MEM),
+  `participants merged (${JSON.stringify(r.rows.map((x) => x.user_id))})`);
+// Codex #291 B3 / Claude: clearing the duplicate must not hide what Mia kept in the keeper.
+ok(r.rows.find((x) => x.user_id === MEM)?.cleared_at === null,
+  `the keeper's cleared_at is kept, so messages kept there stay visible (${r.rows.find((x) => x.user_id === MEM)?.cleared_at})`);
+// Codex #291 B1: Eli left the band; his row in the duplicate does not get him into the keeper.
+ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${DUP_OLD}' AND user_id = '${EX}'`) === 0,
+  'a former member in the duplicate is not added to the keeper');
+r = await as(EX, `SELECT id FROM messages WHERE chat_id = '${DUP_OLD}'`);
+ok(r.rows.length === 0, `and cannot read the keeper's history (${r.rows.length})`);
+ok(await count(`SELECT count(*)::int AS n FROM chat_merges_193 WHERE dup_chat_id = '${DUP_NEW}'
+    AND participant_rows @> '[{"user_id":"${EX}"}]' AND keeper_participant_rows @> '[{"user_id":"${MEM}","cleared_at":null}]'`) === 1,
+  "the archive keeps the duplicate's and the keeper's participant rows (undo)");
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${DUP_OLD}' AND action_url = '/chat/${DUP_OLD}'`) === 1,
   'its notifications open the merged chat');
 ok(await count(`SELECT count(*)::int AS n FROM chat_merges_193 WHERE dup_chat_id = '${DUP_NEW}' AND '${M_DUP_NEW}' = ANY (message_ids)`) === 1,
@@ -226,6 +275,19 @@ ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id =
 r = await as(ADMIN, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session','${BAND}','${GIG}','${ADMIN}')`);
 ok(!!r.error, `a second chat for the same gig is refused (${r.error ? 'refused' : 'inserted'})`);
 ok(await count(`SELECT count(*)::int AS n FROM chats WHERE type = 'event' AND event_id = '${GIG}'`) === 1, 'still one chat for the gig');
+
+// Claude review #291: an older build of someone who may not join (Eli left
+// the band) finds nothing and inserts: a clear refusal, not a raw 23505.
+r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
+ok(!!r.error && /already has a chat/.test(r.error), `older build, duplicate gig chat: clear message (${r.error})`);
+await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${EX}'`);
+r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
+ok(!!r.error && /ha già una chat/.test(r.error), `in their language (${r.error})`);
+// An older build's outbox sends into the merged duplicate: it lands in the keeper.
+r = await as(LINE, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${DUP_NEW}','${LINE}','from the outbox') RETURNING chat_id`);
+ok(!r.error && r.rows[0]?.chat_id === DUP_OLD, `outbox message to a merged chat goes to the keeper (${r.error ?? r.rows[0]?.chat_id})`);
+r = await as(EX, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${DUP_NEW}','${EX}','sneaky')`);
+ok(!!r.error, 'not for someone who is not in the keeper');
 
 // Not on the lineup, not an admin: cannot see or open it.
 r = await as(MEM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);
