@@ -518,9 +518,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Per recipient: the icon badge is their own unread count (a band message
-    // used to set everyone's to 1), and the subtitle label is in their language.
-    const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
     // 180 round 10: the sender's deletion committed after the gate (its inbox
     // rows were dropped by 180's trigger): no lock screen shows it either.
     if (await senderBeingDeleted(supabase, data?.sender_id || data?.senderId || (caller.kind === 'user' ? caller.id : null))) {
@@ -529,6 +526,10 @@ Deno.serve(async (req: Request) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Per recipient: the icon badge is their own unread count (a band message
+    // used to set everyone's to 1), and the subtitle label is in their language.
+    const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
     const badgeByUser = new Map<string, number>();
     if (badge === undefined && !silent) {
       await Promise.all(tokenUserIds.map(async (uid) => {

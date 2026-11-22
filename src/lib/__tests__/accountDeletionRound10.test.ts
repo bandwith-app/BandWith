@@ -34,7 +34,9 @@ describe('round 10: no device push for a sender being deleted', () => {
   it('send-push checks again right before any device rings', () => {
     const at = sendPush.indexOf('senderBeingDeleted(supabase');
     expect(at).toBeGreaterThan(sendPush.indexOf("from('notifications').insert"));
-    expect(at).toBeGreaterThan(sendPush.indexOf('const tokenUserIds'));
+    expect(at).toBeGreaterThan(sendPush.indexOf("message: 'No active tokens found'"));
+    // Before the tokens are read per recipient (#287 adds its lines after them).
+    expect(at).toBeLessThan(sendPush.indexOf('const tokenUserIds'));
     expect(at).toBeLessThan(sendPush.indexOf('const badgeByUser'));
   });
 });
