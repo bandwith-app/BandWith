@@ -78,24 +78,54 @@ export async function skipRehearsalDate(eventId: string, date: string): Promise<
   return { error: null };
 }
 
+const newRequestId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      });
+
 /**
- * A new date for one later date of a series, "Only this date" (Claude #297
- * round 3): a one-off rehearsal with the series' details and people on the
- * new date, then the old date taken out of the series. The series row and
- * its other dates are not touched.
+ * A new date for one date of a series, "Only this date" (Claude / Codex #297
+ * round 3). With 195: one server step (bw_move_rehearsal_date) locks the
+ * series, copies it as a one-off on the new date (every column but the
+ * recurrence and the date, so the studio cost and the setlist too; the
+ * lineup; rider & stage) and skips the old date, in one transaction. The
+ * request id (`clientId`, kept by the sheet while it is open) is the new
+ * event's id: a retry creates nothing more.
+ * Without 195 (or in the demo): the step-by-step copy below.
  */
 export async function moveRehearsalDateOnly(
   event: { eventId?: string | null; band_id?: string | null; date?: string | null; seriesDate?: string | null },
-  values: { title: string; date: string; startTime: string; endTime: string },
+  values: { title: string; date: string; startTime: string; endTime: string; clientId?: string },
 ): Promise<{ error: Error | null }> {
   const from = dayOf(event.date);
   const to = dayOf(values.date);
   if (!event.eventId || !event.band_id || !DAY.test(from) || !DAY.test(to)) {
     return { error: new Error(t("This date can't be deleted on its own. Reload and try again.")) };
   }
+  const { data, error } = await supabase.rpc('bw_move_rehearsal_date', {
+    p_event_id: event.eventId,
+    p_date: from,
+    p_new_date: to,
+    p_fields: { title: values.title.trim(), start_time: values.startTime || null, end_time: values.endTime || null },
+    p_client_id: values.clientId || newRequestId(),
+  });
+  if (error && !isMissingRpc(error as RpcError)) {
+    const code = (error as RpcError)?.code;
+    if (code === '42501') return { error: notAdmin() };
+    if (code === '22023') return { error: notRepeating() };
+    return { error: error as unknown as Error };
+  }
+  if (!error && data && typeof data === 'object' && typeof (data as { event_id?: unknown }).event_id === 'string') {
+    return { error: null };
+  }
+
+  // No 195: the public columns the app may read (081), then the old date out.
   const { data: series, error: readErr } = await supabase
     .from('events')
-    .select('id, band_id, title, event_type, status, venue, venue_name, venue_address, venue_city, notes, indoor_outdoor, is_recurring, recurrence_rule')
+    .select('id, band_id, title, event_type, status, venue, venue_name, venue_address, venue_city, venue_country, notes, indoor_outdoor, dress_code, setlist_id, load_in_time, soundcheck_time, is_recurring, recurrence_rule')
     .eq('id', event.eventId)
     .maybeSingle();
   if (readErr) return { error: readErr as unknown as Error };
@@ -111,16 +141,23 @@ export async function moveRehearsalDateOnly(
     {
       band_id: row.band_id,
       title: values.title.trim() || row.title,
-      event_type: 'rehearsal',
+      event_type: row.event_type || 'rehearsal',
       status: row.status || 'confirmed',
       event_date: to,
       start_time: values.startTime || null,
       end_time: values.endTime || null,
+      venue: row.venue ?? row.venue_name ?? null,
       venue_name: row.venue_name ?? row.venue ?? null,
       venue_address: row.venue_address ?? null,
       venue_city: row.venue_city ?? null,
+      venue_country: row.venue_country ?? null,
       notes: row.notes ?? null,
       indoor_outdoor: row.indoor_outdoor ?? null,
+      dress_code: row.dress_code ?? null,
+      setlist_id: row.setlist_id ?? null,
+      load_in_time: row.load_in_time ?? null,
+      soundcheck_time: row.soundcheck_time ?? null,
+      parent_event_id: event.eventId,
       is_recurring: false,
       recurrence_rule: null,
     } as any,

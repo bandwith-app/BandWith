@@ -13,7 +13,7 @@ const bandA = {
 };
 const rosterCalls = vi.hoisted(() => [] as string[]);
 const pickerBands = vi.hoisted(() => [] as (string | undefined)[]);
-const roster = vi.hoisted(() => ({ pending: false }));
+const roster = vi.hoisted(() => ({ pending: false, fail: false }));
 
 vi.mock('@/lib/BandContext', () => ({
   useBand: () => ({ selectedBand: bandA, refreshMembers: () => {} }),
@@ -23,6 +23,7 @@ vi.mock('@/lib/services/bands', async (orig) => ({
   getBandRoster: async (bandId: string) => {
     rosterCalls.push(bandId);
     if (roster.pending) return new Promise(() => {});
+    if (roster.fail) return { data: null, error: new Error('network') };
     return {
       data: bandId === 'bB'
         ? [{ user_id: 'bob', profile: { full_name: 'Bob Bass' } }, { user_id: 'admin', profile: { full_name: 'Alex Admin' } }]
@@ -43,9 +44,10 @@ vi.mock('@/lib/bandAvailability', async (orig) => ({
   useCandidateFreeCounts: () => new Map(),
 }));
 vi.mock('./../useFocusSuggestions', () => ({ useFocusSuggestions: () => ({ ready: true, songs: [] }) }));
+const publish = vi.hoisted(() => vi.fn(async (..._a: unknown[]) => ({ data: null, error: new Error('lost') })));
 vi.mock('@/lib/services/rehearsalPolls', async (orig) => ({
   ...(await orig<typeof import('@/lib/services/rehearsalPolls')>()),
-  createOrPublishAdminPoll: vi.fn(),
+  createOrPublishAdminPoll: (...a: unknown[]) => publish(...a),
 }));
 
 import { RehearsalPollModal } from '../RehearsalPollModal';
@@ -91,5 +93,34 @@ describe('Publish waits for that band to load (Claude #297 round 3)', () => {
     render(<RehearsalPollModal isOpen onClose={() => {}} bandId="bB" adminId="admin" initialProposal={withSlot} />);
     await act(async () => {});
     expect(publishButtons().some((b) => !b.disabled)).toBe(true);
+  });
+});
+
+describe("band B's roster failed to load (Claude #297 round 3)", () => {
+  const withSlot = { ...proposal, options: [{ id: 'o1', proposed_date: '2099-12-07', start_time: '20:00', end_time: '22:00' }] };
+  it('says so and keeps Publish off (never "everyone")', async () => {
+    roster.fail = true;
+    render(<RehearsalPollModal isOpen onClose={() => {}} bandId="bB" adminId="admin" initialProposal={withSlot} />);
+    await act(async () => {});
+    expect(screen.getAllByText("Couldn't load this band's members. Close and reopen to try again.").length).toBeGreaterThan(0);
+    for (const b of screen.getAllByRole('button', { name: /Publish poll/ }) as HTMLButtonElement[]) expect(b.disabled).toBe(true);
+    roster.fail = false;
+  });
+});
+
+describe('one request id per opening (Codex #297 round 3 B1)', () => {
+  it('a second tap on Publish after an error sends the same id', async () => {
+    roster.fail = false;
+    publish.mockClear();
+    const withSlot = { ...proposal, options: [{ id: 'o1', proposed_date: '2099-12-07', start_time: '20:00', end_time: '22:00' }] };
+    render(<RehearsalPollModal isOpen onClose={() => {}} bandId="bB" adminId="admin" initialProposal={withSlot} />);
+    await act(async () => {});
+    const btn = () => (screen.getAllByRole('button', { name: /Publish poll/ }) as HTMLButtonElement[]).find((b) => !b.disabled)!;
+    await act(async () => { fireEvent.click(btn()); });
+    await act(async () => { fireEvent.click(btn()); });
+    expect(publish).toHaveBeenCalledTimes(2);
+    const ids = publish.mock.calls.map((c) => (c[0] as { clientId?: string }).clientId);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).toBe(ids[0]);
   });
 });

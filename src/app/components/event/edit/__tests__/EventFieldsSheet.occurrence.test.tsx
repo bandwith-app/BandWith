@@ -54,3 +54,38 @@ describe('a new date for one date of a series', () => {
     expect(api.saveFields).toHaveBeenCalledWith(expect.objectContaining({ event_date: '2099-12-03' }));
   });
 });
+
+describe('the same question on the first date, and why Save waits (Claude #297 round 3)', () => {
+  const first = { ...event, id: 'ev', date: '2099-12-01', seriesDate: undefined };
+  const setupFirst = () => {
+    const api = { saveFields: vi.fn(async () => null), saveLineup: vi.fn(), saveTasks: vi.fn(), moveDateOnly: vi.fn(async () => null) };
+    render(<OverviewEditSheets card="event" onClose={() => {}} event={first} kind="rehearsal" api={api as any} lineup={[]} tasks={[]} />);
+    fireEvent.change(screen.getAllByTestId('ovw-date').slice(-1)[0], { target: { value: '2099-12-03' } });
+    return api;
+  };
+
+  it('the series\' first date asks too; Only this date moves that date alone', () => {
+    const api = setupFirst();
+    const ask = screen.getAllByRole('radiogroup', { name: 'Move which dates?' }).slice(-1)[0];
+    fireEvent.click(within(ask).getByRole('radio', { name: 'Only this date' }));
+    fireEvent.click(save());
+    expect(api.moveDateOnly).toHaveBeenCalledWith(expect.objectContaining({ date: '2099-12-03' }));
+    expect(api.saveFields).not.toHaveBeenCalled();
+  });
+
+  it('while no answer is chosen, Save says why (visible, aria-describedby)', () => {
+    setupFirst();
+    const hint = screen.getAllByText('Choose which dates to move to save.').slice(-1)[0];
+    expect(save().getAttribute('aria-describedby')).toBe(hint.id);
+  });
+
+  it('a retry of Only this date sends the same request id', () => {
+    const api = setup();
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Only this date' }).slice(-1)[0]);
+    fireEvent.click(save());
+    fireEvent.click(save());
+    const ids = (api.moveDateOnly.mock.calls as unknown as [{ clientId?: string }][]).map((c) => c[0].clientId);
+    expect(ids[0]).toBeTruthy();
+    expect(new Set(ids).size).toBe(1);
+  });
+});

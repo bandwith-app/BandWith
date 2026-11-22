@@ -121,7 +121,7 @@ describe('publishing a proposal (audit 05 #1 #8)', () => {
     db.updatedRows = [];
     const { error } = await createOrPublishAdminPoll(args);
     expect((error as any)?.code).toBe('poll_already_published');
-    expect(db.calls.some((c) => /^rehearsal_poll_options\./.test(c))).toBe(false);
+    expect(db.calls.some((c) => /^rehearsal_poll_options\.(delete|insert)/.test(c))).toBe(false);
   });
 
   it('the poll builder opened from a proposal works in the proposal\'s band', () => {
@@ -129,52 +129,99 @@ describe('publishing a proposal (audit 05 #1 #8)', () => {
   });
 });
 
-describe('a publish cut off half-way on a database before 195 (Codex #297)', () => {
-  it('a poll left with no options is finished on retry, not reported as already published', async () => {
+describe('a publish cut off half-way on a database before 195 (Codex #297, Claude round 3)', () => {
+  const mine = { ...args, clientId: 'req-1' };
+  const mark = (suggestionIds: string[]) =>
+    localStorage.setItem('bw-poll-publish:p1', JSON.stringify({ clientId: 'req-1', suggestionIds }));
+  beforeEach(() => {
+    localStorage.clear();
     db.updatedRows = []; // no longer 'proposed': the first try changed the status
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
+  });
+
+  it('this device\'s own try, left with no options, is finished', async () => {
+    mark(['s1']);
     db.options = [];
-    const { error } = await createOrPublishAdminPoll(args as any);
+    const { error } = await createOrPublishAdminPoll(mine as any);
     expect(error).toBeNull();
     expect(db.calls).toContain('rehearsal_poll_options.insert');
-    expect(db.calls.some((c) => c.startsWith('rehearsal_poll_options.delete'))).toBe(false);
+    expect(notify).toHaveBeenCalled();
+    expect(localStorage.getItem('bw-poll-publish:p1')).toBeNull();
+  });
+
+  it('its leftover suggestions (the ones it saw, no votes) are cleared, then the options go in', async () => {
+    mark(['s1']);
+    db.options = [{ id: 's1', proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null }];
+    const { error } = await createOrPublishAdminPoll(mine as any);
+    expect(error).toBeNull();
+    const del = db.calls.findIndex((c) => c.startsWith('rehearsal_poll_options.delete'));
+    expect(del).toBeGreaterThan(-1);
+    expect(db.calls.indexOf('rehearsal_poll_options.insert')).toBeGreaterThan(del);
+  });
+
+  it('its own options already in (the answer was lost): notifies, adds nothing', async () => {
+    mark(['s1']);
+    db.options = [{ id: 'o1', proposed_date: '2099-12-07', start_time: '20:00:00', end_time: '22:00:00' }];
+    const { error } = await createOrPublishAdminPoll(mine as any);
+    expect(error).toBeNull();
+    expect(db.calls).not.toContain('rehearsal_poll_options.insert');
     expect(notify).toHaveBeenCalled();
   });
 
-  it('a poll that has its options is still "already published"', async () => {
-    db.updatedRows = [];
-    // Another admin's poll: its own options, added after it was published, with votes.
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
-    db.options = [{ proposed_date: '2099-12-20', start_time: '19:00:00', end_time: null, created_at: '2099-01-03T00:00:01Z' }];
-    db.voteCount = 2;
-    const { error } = await createOrPublishAdminPoll(args as any);
-    expect((error as any)?.code ?? (error as any)?.message).toMatch(/poll_already_published|already/i);
+  it('live options (another admin\'s, or after a released lock-in) are never cleared', async () => {
+    mark(['s1']);
+    db.options = [{ id: 'o9', proposed_date: '2099-12-20', start_time: '19:00:00', end_time: null }];
+    const { error } = await createOrPublishAdminPoll(mine as any);
+    expect((error as any)?.code).toBe('poll_already_published');
+    expect(db.calls.some((c) => c.startsWith('rehearsal_poll_options.delete'))).toBe(false);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('no marker of this request on this device: "already published", nothing sent', async () => {
+    db.options = [];
+    const { error } = await createOrPublishAdminPoll({ ...args, clientId: 'req-2' } as any);
+    expect((error as any)?.code).toBe('poll_already_published');
     expect(db.calls).not.toContain('rehearsal_poll_options.insert');
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('a declined proposal does not say "turned into a poll"', async () => {
+    mark(['s1']);
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'cancelled' };
+    const { error } = await createOrPublishAdminPoll(mine as any);
+    expect((error as any)?.code).toBe('poll_already_published');
+    expect(String((error as any)?.message)).not.toMatch(/turned this proposal into a poll/);
   });
 });
 
-describe('a publish whose answer was lost (Codex / Claude #297 round 3)', () => {
-  it('195: the retry sees its own poll (same options), notifies, and does not say "Another admin"', async () => {
+describe('195: the request id decides (Codex #297 round 3 B1)', () => {
+  it('sends the form\'s request id', async () => {
+    db.rpc = { data: { published: true, poll_id: 'p1', band_id: 'band-B', status: 'polling' }, error: null };
+    await createOrPublishAdminPoll({ ...args, clientId: 'req-1' } as any);
+    expect(db.calls.find((c) => c.startsWith('rpc:bw_publish_rehearsal_proposal'))).toContain('"p_client_id":"req-1"');
+  });
+
+  it('another request with the same slots and other invitees: "already published", nothing sent', async () => {
     db.rpc = { data: { published: false, poll_id: 'p1', band_id: 'band-B', status: 'polling' }, error: null };
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
-    db.options = [{ proposed_date: '2099-12-07', start_time: '20:00:00', end_time: '22:00:00', created_at: '2099-01-03T00:00:00Z' }];
-    const { error } = await createOrPublishAdminPoll(args as any);
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
+    db.options = [{ id: 'o1', proposed_date: '2099-12-07', start_time: '20:00:00', end_time: '22:00:00' }];
+    const { error } = await createOrPublishAdminPoll({ ...args, clientId: 'req-2', invitedUserIds: ['b-member'] } as any);
+    expect((error as any)?.code).toBe('poll_already_published');
+    expect(notify).not.toHaveBeenCalled();
+    expect(db.calls.some((c) => /^rehearsal_poll_options\./.test(c))).toBe(false);
+  });
+
+  it('its own request replayed after a lost answer: notifies, adds nothing', async () => {
+    db.rpc = { data: { published: true, replayed: true, poll_id: 'p1', band_id: 'band-B', status: 'polling' }, error: null };
+    const { error } = await createOrPublishAdminPoll({ ...args, clientId: 'req-1' } as any);
     expect(error).toBeNull();
     expect(db.calls).not.toContain('rehearsal_poll_options.insert');
     expect(notify).toHaveBeenCalled();
   });
 
-  it("before 195: the proposal's suggestions left behind are cleared and the poll's options go in", async () => {
-    db.updatedRows = [];
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
-    // The member's suggestion, from before the status change; nobody voted.
-    db.options = [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }];
-    const { error } = await createOrPublishAdminPoll(args as any);
-    expect(error).toBeNull();
-    const del = db.calls.findIndex((c) => c.startsWith('rehearsal_poll_options.delete'));
-    const ins = db.calls.indexOf('rehearsal_poll_options.insert');
-    expect(del).toBeGreaterThan(-1);
-    expect(ins).toBeGreaterThan(del);
-    expect(notify).toHaveBeenCalled();
+  it('declined or expired: says it is no longer open', async () => {
+    db.rpc = { data: { published: false, poll_id: 'p1', band_id: 'band-B', status: 'expired' }, error: null };
+    const { error } = await createOrPublishAdminPoll({ ...args, clientId: 'req-1' } as any);
+    expect(String((error as any)?.message)).toMatch(/no longer open/);
   });
 });

@@ -20,7 +20,7 @@ export interface OverviewEditApi {
   saveLineup: (wanted: LineupRow[], eventPatch: Record<string, unknown> | null, feeTbd?: boolean) => Promise<string | null>;
   saveTasks: (drafts: EventTaskDraft[], originalIds: string[]) => Promise<string | null>;
   /** One later date of a series to a new date, that date only (Claude #297 round 3). */
-  moveDateOnly?: (values: { title: string; date: string; startTime: string; endTime: string }) => Promise<string | null>;
+  moveDateOnly?: (values: { title: string; date: string; startTime: string; endTime: string; clientId?: string }) => Promise<string | null>;
 }
 
 /**

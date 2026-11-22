@@ -17,6 +17,7 @@ import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
 import { venueFields } from '@/lib/services/location';
 import {
   createOrPublishAdminPoll,
+  newPublishRequestId,
   cleanNotesWithoutDays,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
@@ -91,11 +92,22 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   // roster, loaded here; never A's (Codex #297 B4).
   const otherBand = !!bandId && selectedBand?.id !== bandId;
   const [otherMembers, setOtherMembers] = useState<{ user_id: string | null; profile: any }[] | null>(null);
+  // Band B's roster could not be loaded: Publish stays off (an empty list
+  // would invite everyone), and the sheet says why (Claude #297 round 3).
+  const [rosterFailed, setRosterFailed] = useState(false);
   useEffect(() => {
     if (!isOpen || !otherBand) return;
     let live = true;
     setOtherMembers(null);
-    void getBandRoster(bandId).then(({ data }) => { if (live) setOtherMembers(data || []); });
+    setRosterFailed(false);
+    void getBandRoster(bandId).then(
+      ({ data, error }) => {
+        if (!live) return;
+        if (error || !data) setRosterFailed(true);
+        else setOtherMembers(data);
+      },
+      () => { if (live) setRosterFailed(true); },
+    );
     return () => { live = false; };
   }, [isOpen, otherBand, bandId]);
   const roster = useMemo(
@@ -113,6 +125,13 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   // Who votes is band B's: publishing before its roster is in would send an
   // empty or wrong invite list (Claude #297 round 3).
   const rosterLoading = otherBand && otherMembers === null;
+  const rosterNote = otherBand && rosterFailed ? t("Couldn't load this band's members. Close and reopen to try again.") : null;
+  // One id per opening of the form: a retry of the same publish is recognised (Codex #297 round 3).
+  const publishRequestId = React.useRef<string>('');
+  if (!publishRequestId.current) publishRequestId.current = newPublishRequestId();
+  useEffect(() => {
+    if (isOpen) publishRequestId.current = newPublishRequestId();
+  }, [isOpen, initialProposal?.id]);
   const invitedIds = excluded.length === 0 ? [] : roster.filter((m) => !excluded.includes(m.id)).map((m) => m.id);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -393,6 +412,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
       focusSongIds: focusSongs.map(s => s.id),
       invitedUserIds: invitedIds,
       voteByTime: voteBy ? voteByTime || null : null,
+      clientId: publishRequestId.current,
       timeSlots: timeSlots.map((s) => ({
         proposed_date: s.proposed_date,
         start_time: s.start_time,
@@ -867,7 +887,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         className={landscape ? 'sticky top-0 min-h-[min(720px,calc(100dvh-140px))]' : undefined}
         footer={
           <>
-            {error && <FormError>{error}</FormError>}
+            {(error || rosterNote) && <FormError>{error || rosterNote}</FormError>}
             {publishButton}
           </>
         }
@@ -1050,7 +1070,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           </header>
 
           <div className="w-full max-w-xl mx-auto px-4 pt-5 pb-6 flex flex-col gap-4">
-            {error && <FormError>{error}</FormError>}
+            {(error || rosterNote) && <FormError>{error || rosterNote}</FormError>}
 
             {/* Converting banner */}
             {initialProposal && (

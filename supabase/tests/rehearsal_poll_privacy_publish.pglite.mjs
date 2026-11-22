@@ -23,7 +23,8 @@ const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND_A, BAND_B, ADMIN, ADMIN2, INVITED, OUTSIDER, B_ONLY, PROPOSER] = [1, 2, 3, 4, 5, 6, 7, 8].map(id);
 const [POLL_PRIV, POLL_OPEN, PROPOSAL_B] = [11, 12, 13].map(id);
 const [OPT_PRIV, OPT_OPEN] = [21, 22].map(id);
-const [SERIES, ONCE] = [31, 32].map(id);
+const [SERIES, ONCE, PAID, SETLIST] = [31, 32, 33, 34].map(id);
+const [REQ_A, REQ_B, REQ_C, MOVE_1, MOVE_2] = [41, 42, 43, 44, 45].map(id);
 
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated;
@@ -61,9 +62,19 @@ CREATE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT 
 
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, event_date date, is_recurring boolean DEFAULT false,
   recurrence_rule jsonb, updated_at timestamptz DEFAULT now(),
-  status text, start_time time, "time" time, end_time time, duration_hours numeric, created_by uuid);
+  status text, start_time time, "time" time, end_time time, duration_hours numeric, created_by uuid,
+  event_type text, fee numeric(10,2), setlist_id uuid, venue_name text, notes text, parent_event_id uuid,
+  created_at timestamptz DEFAULT now(), "date" date);
 ALTER TABLE public.band_members ADD COLUMN left_at timestamptz;
-CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text);
+CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
+  user_id uuid, status text, fee numeric(10,2) DEFAULT 0, role text, notes text, paid_at timestamptz, UNIQUE (event_id, user_id));
+CREATE TABLE public.event_stage (event_id uuid PRIMARY KEY REFERENCES public.events(id) ON DELETE CASCADE, band_id uuid NOT NULL,
+  plots jsonb NOT NULL DEFAULT '[]', inputs jsonb NOT NULL DEFAULT '[]', mixer text, band_brings jsonb NOT NULL DEFAULT '[]',
+  venue_provides jsonb NOT NULL DEFAULT '[]', venue_agreed boolean NOT NULL DEFAULT false, updated_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+-- 002's updated_at trigger, the other BEFORE UPDATE trigger on events.
+CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN NEW.updated_at := now(); RETURN NEW; END $f$;
+CREATE TRIGGER update_events_updated_at BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "events_select" ON public.events FOR SELECT TO authenticated USING (bw_is_band_member(band_id));
 CREATE POLICY "events_update" ON public.events FOR UPDATE TO authenticated USING (bw_is_band_admin(band_id)) WITH CHECK (bw_is_band_admin(band_id));
@@ -91,6 +102,10 @@ CREATE POLICY "band_members_can_select_unavailable" ON public.rehearsal_poll_una
     WHERE rp.id = rehearsal_poll_unavailable.poll_id AND bm.user_id = auth.uid() AND COALESCE(bm.is_active, true)));
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.rehearsal_polls, public.rehearsal_poll_options, public.rehearsal_poll_votes, public.rehearsal_poll_unavailable TO authenticated;
 GRANT SELECT ON public.band_members, public.profiles TO authenticated;
+-- 119 (live): members read rehearsal_polls only through this column list.
+REVOKE SELECT ON public.rehearsal_polls FROM anon, authenticated;
+GRANT SELECT (id, band_id, created_by, creator_role, title, notes, status, confirmed_event_id, created_at, updated_at, vote_by, location, focus_song_ids, invited_user_ids, vote_by_time)
+  ON public.rehearsal_polls TO authenticated;
 `);
 // 114 (room cost RPC) and 117 (vote deadline + vote policies), as they are live.
 await db.exec(readFileSync(`${REPO}/supabase/migrations/114_poll_room_cost_rpc.sql`, 'utf8'));
@@ -120,6 +135,12 @@ INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rul
   ('${ONCE}','${BAND_A}','One-off','2099-11-25', false, NULL);
 -- INVITED plays both.
 INSERT INTO event_members (event_id, user_id, status) VALUES ('${SERIES}','${INVITED}','confirmed'), ('${ONCE}','${INVITED}','confirmed');
+-- A paid weekly rehearsal (studio cost 120) with a setlist, a lineup with fees and a stage plot.
+INSERT INTO events (id, band_id, title, event_date, "date", is_recurring, recurrence_rule, status, event_type, start_time, end_time, fee, setlist_id, venue_name, notes, created_by) VALUES
+  ('${PAID}','${BAND_A}','Studio night','2099-11-26','2099-11-26', true, '{"frequency":"weekly","interval":1}', 'confirmed', 'rehearsal', '19:00', '22:00', 120, '${SETLIST}', 'Studio 4, Brooklyn', 'Bring in-ears', '${ADMIN}');
+INSERT INTO event_members (event_id, user_id, status, fee, role, paid_at) VALUES
+  ('${PAID}','${INVITED}','confirmed', 15, 'Bass', now()), ('${PAID}','${OUTSIDER}','invited', 0, 'Keys', NULL);
+INSERT INTO event_stage (event_id, band_id, plots, mixer) VALUES ('${PAID}','${BAND_A}','[{"id":"p1","name":"Full band"}]','X32');
 `);
 
 async function as(user, fn) {
@@ -175,11 +196,13 @@ ok(vote === true, `#3 the invited member can still vote (${vote})`);
 // ---- #1 #8 publish
 const fields = { title: 'Band B rehearsal', notes: 'Bring the new charts', vote_by: '2099-12-05', vote_by_time: '18:00', location: 'Rehearsal Room 2, Queens', room_cost: 60, focus_song_ids: [], invited_user_ids: [] };
 const slots = [{ proposed_date: '2099-12-07', start_time: '20:00', end_time: '22:00' }, { proposed_date: '2099-12-08', start_time: '20:00' }];
-const publish = (user, f = fields, o = slots) =>
-  asCommit(user, () => db.query(`SELECT public.bw_publish_rehearsal_proposal($1, $2::jsonb, $3::jsonb) AS r`, [PROPOSAL_B, JSON.stringify(f), JSON.stringify(o)]))
+const publish = (user, f = fields, o = slots, client = null) =>
+  asCommit(user, () => client
+    ? db.query(`SELECT public.bw_publish_rehearsal_proposal($1, $2::jsonb, $3::jsonb, $4::uuid) AS r`, [PROPOSAL_B, JSON.stringify(f), JSON.stringify(o), client])
+    : db.query(`SELECT public.bw_publish_rehearsal_proposal($1, $2::jsonb, $3::jsonb) AS r`, [PROPOSAL_B, JSON.stringify(f), JSON.stringify(o)]))
     .then((r) => r.rows[0].r, (e) => ({ error: e.message }));
 
-const r1 = await publish(ADMIN);
+const r1 = await publish(ADMIN, fields, slots, REQ_A);
 ok(r1?.published === true, `#8 first admin publishes the proposal (${JSON.stringify(r1)})`);
 ok(r1?.band_id === BAND_B, '#1 the result names the proposal\'s own band (B), whatever band the app has selected');
 const pollRow = (await db.query(`SELECT status, title, location, room_cost, vote_by::text, vote_by_time::text FROM rehearsal_polls WHERE id = $1`, [PROPOSAL_B])).rows[0];
@@ -199,6 +222,19 @@ const titleAfter = (await db.query(`SELECT title FROM rehearsal_polls WHERE id =
 ok(votesBefore === 1, `members voted on the published poll (${votesBefore})`);
 ok(r2?.published === false && r2?.status === 'polling', `#8 stale second publish changes nothing (${JSON.stringify(r2)})`);
 ok(votesAfter === 1 && titleAfter === 'Band B rehearsal', '#8 votes and the first admin\'s poll kept');
+
+// Codex #297 round 3 B1: the same slots from another request, with other invitees.
+const r2b = await publish(ADMIN2, { ...fields, invited_user_ids: [B_ONLY] }, slots, REQ_B);
+const invAfterB = (await db.query(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = $1`, [PROPOSAL_B])).rows[0].i;
+ok(r2b?.published === false && !r2b?.replayed && invAfterB.length === 0, `B1 another request with the same slots is "already published", invitees untouched (${JSON.stringify(r2b)})`);
+// The first request again, its answer lost: recognised, nothing changed.
+const r1b = await publish(ADMIN, fields, slots, REQ_A);
+const votesReplay = (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_votes WHERE poll_id = $1`, [PROPOSAL_B])).rows[0].n;
+ok(r1b?.published === true && r1b?.replayed === true && r1b?.band_id === BAND_B && votesReplay === 1, `B1 the same request replays as published, votes kept (${JSON.stringify(r1b)})`);
+const r1c = await publish(ADMIN, fields, slots, REQ_C);
+ok(r1c?.published === false, 'B1 the same admin from a new request: already published');
+const reqCol = (await db.query(`SELECT has_column_privilege('authenticated', 'public.rehearsal_polls', 'publish_request_id', 'SELECT') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+ok(reqCol === false, 'B1 members cannot read publish_request_id');
 
 // Not an admin of the proposal's band.
 await db.exec(`UPDATE rehearsal_polls SET status = 'proposed' WHERE id = '${PROPOSAL_B}'`);
@@ -263,8 +299,77 @@ ok(/FOR UPDATE/i.test(def), 'B3 the row is locked while the date is added');
 const anonSkip = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_skip_rehearsal_date(uuid, date)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonSkip === false, 'anon cannot call the skip function');
 
-const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb, uuid)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonCan === false, 'anon cannot call the publish function');
+
+// ---- Codex #297 round 3 B2 B3: "Only this date" in one transaction
+const move = (user, ev, from, to, f, client) =>
+  asCommit(user, () => db.query(`SELECT public.bw_move_rehearsal_date($1, $2::date, $3::date, $4::jsonb, $5::uuid) AS r`, [ev, from, to, JSON.stringify(f), client]))
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code }));
+const m1 = await move(ADMIN, PAID, '2099-12-03', '2099-12-04', { title: 'Studio night (Thu)', start_time: '20:00', end_time: '23:00' }, MOVE_1);
+const copy = (await db.query(`SELECT * FROM events WHERE id = $1`, [MOVE_1])).rows[0];
+ok(m1?.event_id === MOVE_1 && !!copy, `B2 the one-off is created under the request's id (${JSON.stringify(m1)})`);
+ok(copy?.event_date?.toISOString?.().slice(0, 10) === '2099-12-04' || String(copy?.event_date).includes('2099-12-04') || copy?.event_date === '2099-12-04', `B2 on the new date (${copy?.event_date})`);
+ok(copy?.is_recurring === false && copy?.recurrence_rule === null && copy?.parent_event_id === PAID, 'B2 a one-off, linked to its series');
+ok(Number(copy?.fee) === 120 && copy?.setlist_id === SETLIST && copy?.venue_name === 'Studio 4, Brooklyn' && copy?.notes === 'Bring in-ears' && copy?.event_type === 'rehearsal' && copy?.status === 'confirmed',
+  `B3 studio cost, setlist, place, notes, type and status copied (${JSON.stringify({ fee: copy?.fee, setlist: copy?.setlist_id, venue: copy?.venue_name })})`);
+ok(copy?.title === 'Studio night (Thu)' && String(copy?.start_time).startsWith('20:00') && String(copy?.end_time).startsWith('23:00'), 'B2 title and times from the form');
+const lineup = (await db.query(`SELECT user_id, status, fee::numeric AS fee, role, paid_at FROM event_members WHERE event_id = $1 ORDER BY role`, [MOVE_1])).rows;
+ok(lineup.length === 2 && Number(lineup[0].fee) === 15 && lineup[0].role === 'Bass' && lineup[0].paid_at === null && lineup[1].status === 'invited',
+  `B3 the lineup copied, each member's own fee, nobody marked paid (${JSON.stringify(lineup)})`);
+const stageCopy = (await db.query(`SELECT mixer, plots FROM event_stage WHERE event_id = $1`, [MOVE_1])).rows[0];
+ok(stageCopy?.mixer === 'X32' && stageCopy?.plots?.[0]?.name === 'Full band', 'B3 rider & stage copied');
+const paidRule = async () => (await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [PAID])).rows[0].r;
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]', 'B2 the old date is skipped in the same transaction');
+const m1again = await move(ADMIN, PAID, '2099-12-03', '2099-12-04', { title: 'Studio night (Thu)' }, MOVE_1);
+const copies = (await db.query(`SELECT count(*)::int AS n FROM events WHERE parent_event_id = $1`, [PAID])).rows[0].n;
+const lineupN = (await db.query(`SELECT count(*)::int AS n FROM event_members WHERE event_id = $1`, [MOVE_1])).rows[0].n;
+ok(m1again?.replayed === true && copies === 1 && lineupN === 2, `B2 a retry with the same id creates nothing more (${JSON.stringify(m1again)}, ${copies} copy)`);
+const mMember = await move(INVITED, PAID, '2099-12-10', '2099-12-11', {}, MOVE_2);
+ok(mMember?.code === '42501' && (await db.query(`SELECT count(*)::int AS n FROM events WHERE id = $1`, [MOVE_2])).rows[0].n === 0, 'B2 a member cannot move a date');
+const mOnce = await move(ADMIN, ONCE, '2099-11-25', '2099-11-26', {}, MOVE_2);
+ok(mOnce?.code === '22023', 'B2 a rehearsal that does not repeat is refused');
+const moveDef = (await db.query(`SELECT pg_get_functiondef('public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid)'::regprocedure) AS d`).catch(() => ({ rows: [{ d: '' }] }))).rows[0].d;
+ok(/FOR UPDATE/i.test(moveDef) && moveDef.indexOf('FOR UPDATE') < moveDef.indexOf('INSERT INTO public.events'), 'B2 the series row is locked first');
+const anonMove = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_move_rehearsal_date(uuid, date, date, jsonb, uuid)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
+ok(anonMove === false, 'B2 anon cannot call it');
+
+// ---- Codex #297 round 3 B4: deleted dates survive every write
+// A cadence edit read before the delete, saved after it (the rule it read had none).
+await asCommit(ADMIN, () => db.query(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","interval":2}'::jsonb WHERE id = $1`, [PAID]));
+const afterCadence = await paidRule();
+ok(afterCadence?.interval === 2 && JSON.stringify(afterCadence?.skip_dates) === '["2099-12-03"]', `B4 a cadence edit keeps the deleted date (${JSON.stringify(afterCadence)})`);
+// An older build (383f15b) writes the whole rule {frequency, interval} on a rename, with an older list.
+await asCommit(ADMIN2, () => db.query(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-17"]}'::jsonb, title = 'Studio night' WHERE id = $1`, [PAID]));
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03","2099-12-17"]', 'B4 an old build writing the whole rule keeps both (union)');
+// The whole series moves two days later (an old build sends only the date, or
+// a new build sends the date and the rule it read): deleted dates move too.
+await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-28' WHERE id = $1`, [PAID]));
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-05","2099-12-19"]', `B4 a series moved by 2 days moves its deleted dates (${JSON.stringify((await paidRule())?.skip_dates)})`);
+await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-26', recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-05","2099-12-19","2099-12-31"]}'::jsonb WHERE id = $1`, [PAID]));
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03","2099-12-17","2099-12-31"]', `B4 moved back with the rule it read: stored dates shift back, a new one is kept (${JSON.stringify((await paidRule())?.skip_dates)})`);
+await asCommit(ADMIN, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, '2099-12-31'::date)`, [PAID]));
+// Turning the repeat off still clears the rule.
+await db.exec(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","skip_dates":["2099-12-01"]}' WHERE id = '${ONCE}'`);
+await asCommit(ADMIN, () => db.query(`UPDATE events SET is_recurring = false, recurrence_rule = NULL WHERE id = $1`, [ONCE]));
+ok((await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [ONCE])).rows[0].r === null, 'B4 turning the repeat off clears the rule');
+// Only the restore RPC takes a date out.
+const restore = (user, ev, day) =>
+  asCommit(user, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, $2::date) AS r`, [ev, day]))
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code }));
+const rs = await restore(ADMIN, PAID, '2099-12-17');
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]' && Array.isArray(rs?.skip_dates), `B4 the restore RPC puts a date back (${JSON.stringify(rs)})`);
+const rsMember = await restore(INVITED, PAID, '2099-12-03');
+ok(rsMember?.code === '42501' && JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]', 'B4 a member cannot restore a date');
+await asCommit(ADMIN, () => db.query(`UPDATE events SET recurrence_rule = recurrence_rule - 'skip_dates' WHERE id = $1`, [PAID]));
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]', 'B4 removing skip_dates with a plain update does nothing');
+const flagAfter = await as(ADMIN, async () => {
+  await db.query(`SELECT public.bw_restore_rehearsal_date($1, '2099-12-24'::date)`, [PAID]);
+  return (await db.query(`SELECT coalesce(current_setting('bw.restore_skip', true), '') AS f`)).rows[0].f;
+}).catch((e) => `error: ${e.message}`);
+ok(flagAfter === '', `B4 the restore flag is off again after the RPC (${JSON.stringify(flagAfter)})`);
+const trg = (await db.query(`SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.events'::regclass AND NOT tgisinternal ORDER BY tgname`)).rows.map((r) => r.tgname);
+ok(trg[0] === 'bw_events_00_keep_skip_dates', `B4 the keep trigger fires first by name (${trg.join(', ')})`);
 
 // Codex #297 round 3: free-slot counts and a deleted date. The skip_dates
 // line lands in 178 (#294, feat/date-on-hold), not in 195. This check loads
