@@ -12,7 +12,7 @@ describe('date on hold, round 3', () => {
     const answerArgs = (holds as Record<string, any>).answerArgs;
     expect(typeof answerArgs).toBe('function');
     expect(answerArgs('e1', 'free', { date: '2026-12-05', startTime: '20:00:00' })).toEqual({
-      p_event_id: 'e1', p_answer: 'free', p_date: '2026-12-05', p_start_time: '20:00',
+      p_event_id: 'e1', p_answer: 'free', p_date: '2026-12-05', p_start_time: '20:00', p_end_time: null,
     });
     expect(answerArgs('e1', 'busy', { date: '2026-12-05', startTime: null })).toMatchObject({ p_start_time: null });
     // Older shape when nothing was shown.

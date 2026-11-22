@@ -3478,7 +3478,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             setDocLang(l);
           }}
         />
-        {!isEditing && (
+        {!isEditing && holdsDate && (
           <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>
         )}
       </ComposerPreview>

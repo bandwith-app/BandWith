@@ -142,29 +142,36 @@ export async function fetchMyDateHolds(): Promise<{ data: DateHold[]; error: str
   return { data: sortHolds(rows.map((r) => toDateHold(r as Record<string, unknown>)).filter((h): h is DateHold => !!h)), error: null };
 }
 
+type ShownWindow = Pick<DateHold, 'date' | 'startTime'> & Partial<Pick<DateHold, 'endTime'>>;
+
 /**
- * The answer RPC's arguments: with the day and time the card showed, so an
- * answer never lands on a date that changed meanwhile (178, BWD01).
+ * The answer RPC's arguments: with the day and the time window (start and
+ * end) the card showed, so an answer never lands on a date or window that
+ * changed meanwhile (178, BWD01 / BWD02).
  */
-export function answerArgs(eventId: string, answer: HoldAnswer, shown?: Pick<DateHold, 'date' | 'startTime'> | null) {
+export function answerArgs(eventId: string, answer: HoldAnswer, shown?: ShownWindow | null) {
   const args: Record<string, unknown> = { p_event_id: eventId, p_answer: answer };
   if (shown?.date) {
     args.p_date = shown.date.slice(0, 10);
     args.p_start_time = shown.startTime ? shown.startTime.slice(0, 5) : null;
+    args.p_end_time = shown.endTime ? shown.endTime.slice(0, 5) : null;
   }
   return args;
 }
 
-/** P0002: the date is free again (quote declined, gig cancelled…). BWD01: the date or time changed. */
-export function answerRefusal(code: string | undefined | null): 'gone' | 'changed' | null {
-  return code === 'P0002' ? 'gone' : code === 'BWD01' ? 'changed' : null;
+/**
+ * P0002: the date is free again (quote declined, gig cancelled…). BWD01: the
+ * date changed. BWD02: the start or end time changed.
+ */
+export function answerRefusal(code: string | undefined | null): 'gone' | 'changed' | 'timeChanged' | null {
+  return code === 'P0002' ? 'gone' : code === 'BWD01' ? 'changed' : code === 'BWD02' ? 'timeChanged' : null;
 }
 
 export async function answerDateHold(
   eventId: string,
   answer: HoldAnswer,
-  shown?: Pick<DateHold, 'date' | 'startTime'> | null,
-): Promise<{ error: string | null; gone?: boolean; changed?: boolean }> {
+  shown?: ShownWindow | null,
+): Promise<{ error: string | null; gone?: boolean; changed?: boolean; timeChanged?: boolean }> {
   const { error } = await supabase.rpc('bw_answer_date_hold', answerArgs(eventId, answer, shown));
   if (!error) {
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
@@ -172,8 +179,10 @@ export async function answerDateHold(
   }
   const refusal = answerRefusal(error.code);
   // The card shows the new date after a reload.
-  if (refusal === 'changed' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
-  return { error: error.message || 'error', gone: refusal === 'gone', changed: refusal === 'changed' };
+  if ((refusal === 'changed' || refusal === 'timeChanged') && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
+  }
+  return { error: error.message || 'error', gone: refusal === 'gone', changed: refusal === 'changed', timeChanged: refusal === 'timeChanged' };
 }
 
 /** Admins only (the RPC refuses anyone else). */

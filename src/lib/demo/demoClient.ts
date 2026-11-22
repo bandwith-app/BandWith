@@ -1122,9 +1122,13 @@ const rpc = (fn: string, args: Row = {}) => {
         break;
       }
       // The day or time the card showed is not the hold's any more (178).
-      if (args.p_date && (String(held.event_date).slice(0, 10) !== args.p_date
-        || String(held.start_time || '').slice(0, 5) !== String(args.p_start_time || ''))) {
+      if (args.p_date && String(held.event_date).slice(0, 10) !== args.p_date) {
         error = { code: 'BWD01', message: 'The date changed' };
+        break;
+      }
+      if (args.p_date && (String(held.start_time || '').slice(0, 5) !== String(args.p_start_time || '')
+        || String(held.end_time || '').slice(0, 5) !== String(args.p_end_time || ''))) {
+        error = { code: 'BWD02', message: 'The time changed' };
         break;
       }
       const rows = table('event_hold_answers');
