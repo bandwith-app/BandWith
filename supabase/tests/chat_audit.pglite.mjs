@@ -363,7 +363,7 @@ await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content, created_at
     ('${M_ED4}','${TWINCHAT}','${MEM}','old address 12 Pier St', now() - interval '80 seconds');
   INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
   ('${ADMIN}','chat_message','Mia Member','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417','tag','ed3'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
-  ('${OUT}','chat_mention','Mia Member mentioned you','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
+  ('${ADMIN}','chat_mention','Mia Member mentioned you','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
   ('${ADMIN}','chat_message','Mia Member','old address 12 Pier St', jsonb_build_object('chat_id','${TWINCHAT}','content','old address 12 Pier St'), '/chat/${TWINCHAT}', now() - interval '79 seconds');`);
 const othersEd = await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body NOT LIKE '%4417%' AND body NOT LIKE '%Pier St%'`);
 await db.exec(`UPDATE messages SET content = 'ask me for the gate code', edited = true WHERE id = '${M_ED3}'`);
@@ -378,6 +378,25 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_
 await db.exec(`UPDATE messages SET edited = true WHERE id = '${M_ED3}'`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_ED3}'`) === 2, 'an update that keeps the text changes nothing');
 await db.exec(`DELETE FROM messages WHERE id IN ('${M_ED3}','${M_ED4}')`);
+// Codex #291 r7 B3: an edit gives the new text only to someone who can
+// still read the chat. Eli left the band (his kept row stays, as 175 keeps
+// it): his notice of the message goes instead of showing the new text.
+const M_ED5 = id(59);
+await db.exec(`SET session_replication_role = replica;
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${EX}') ON CONFLICT DO NOTHING;
+  SET session_replication_role = DEFAULT;
+  INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES ('${M_ED5}','${BANDCHAT}','${ADMIN}','old setlist v1', now() - interval '1 minute');
+  INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
+  ('${LINE}','chat_message','Ava Admin','old setlist v1', jsonb_build_object('chat_id','${BANDCHAT}','message_id','${M_ED5}','content','old setlist v1'), '/chat/${BANDCHAT}', now()),
+  ('${EX}','chat_message','Ava Admin','old setlist v1', jsonb_build_object('chat_id','${BANDCHAT}','message_id','${M_ED5}','content','old setlist v1'), '/chat/${BANDCHAT}', now()),
+  ('${FAN}','chat_mention','Ava Admin mentioned you','old setlist v1', jsonb_build_object('chat_id','${BANDCHAT}','message_id','${M_ED5}','content','old setlist v1'), '/chat/${BANDCHAT}', now());`);
+await db.exec(`UPDATE messages SET content = 'new setlist v2', edited = true WHERE id = '${M_ED5}'`);
+r = await db.query(`SELECT user_id, body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${M_ED5}'`);
+ok(r.rows.length === 1 && r.rows[0].user_id === LINE && r.rows[0].body === 'new setlist v2' && r.rows[0].c === 'new setlist v2',
+  `edited: only someone who can still read the chat gets the new text (${JSON.stringify(r.rows.map((x) => [x.user_id.slice(-2), x.body]))})`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE user_id IN ('${EX}','${FAN}') AND (body LIKE '%setlist v%' OR data::text LIKE '%setlist v%')`) === 0,
+  'a former member (kept row) and someone outside the chat: their notice of it goes, old and new text');
+await db.exec(`DELETE FROM messages WHERE id = '${M_ED5}'; SET session_replication_role = replica; DELETE FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${EX}'; SET session_replication_role = DEFAULT;`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_ED3}'`) === 0, 'and they still go with the message');
 
 
@@ -514,6 +533,27 @@ ok(await count(`SELECT count(*)::int AS n FROM chats WHERE event_id = '${GIG4}' 
 r = await as(FAN, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('band','Fan club','${OTHERBAND}',NULL,'${FAN}')`);
 ok(!!r.error, `someone outside a band cannot create its band chat (${r.error ? 'refused' : 'inserted'})`);
 await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_members WHERE event_id = '${GIG4}'; DELETE FROM events WHERE id = '${GIG4}';`);
+
+// Codex #284 r7 B4: 194 builds a notice's preview with bw_chat_preview
+// too (it runs before 192): the two copies must stay byte-identical.
+{
+  const cut = (sql) => {
+    const a = sql.indexOf('CREATE OR REPLACE FUNCTION public.bw_js_left(');
+    const end = 'GRANT EXECUTE ON FUNCTION public.bw_chat_preview(text) TO authenticated, service_role;';
+    const b = sql.indexOf(end, a);
+    return a < 0 || b < 0 ? null : sql.slice(a, b + end.length);
+  };
+  const in192 = cut(migFile('192_chat_notification_purge.sql'));
+  const in194 = cut(migFile('194_chat_notifications_server_only.sql'));
+  ok(!!in192 && in192 === in194, `bw_js_left and bw_chat_preview are the same in 192 and 194 (${in192 ? in192.length : 'missing'} / ${in194 ? in194.length : 'missing'})`);
+}
+// Codex #291 r7 B3: 192 needs 175's bw_chat_scope_ok_for (hard order 175 → 192).
+if (!process.argv[3]) {
+  const bare = new PGlite();
+  const e192 = await bare.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;` + migFile('192_chat_notification_purge.sql'))
+    .then(() => 'ran', (e) => e.message);
+  ok(/192 needs 175/.test(e192), `192 without 175 stops at once and names 175 (${e192.slice(0, 60)})`);
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

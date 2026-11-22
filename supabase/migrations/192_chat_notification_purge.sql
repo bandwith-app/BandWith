@@ -51,10 +51,22 @@
 -- chats in id order.
 --
 -- Older app builds: nothing they call changes. Idempotent; one transaction.
--- Independent of 175/181 (uses no function they redefine).
+-- Needs 175 first (round 7, Codex #291 B3: an edit rewrites a notice only
+-- for someone who can still read the chat, 175's bw_chat_scope_ok_for):
+-- without it this file stops at once, naming 175. Redefines nothing from
+-- 175/181.
 -- ============================================================================
 
 BEGIN;
+
+-- ── 175 first ───────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_chat_scope_ok_for(uuid, uuid)') IS NULL THEN
+    RAISE EXCEPTION '192 needs 175 (175_security_audit_access.sql, #281) applied first: missing public.bw_chat_scope_ok_for(uuid, uuid)';
+  END IF;
+END
+$$;
 
 -- One copy per bubble (round 4, Claude review): a send that timed out
 -- after its insert landed, then Try again, saved the message twice. Apps
@@ -290,6 +302,13 @@ $$;
 -- (no message_id) in its chat that match no live message as it reads now go,
 -- the backfill rule above. Same per-chat lock as the purge first (one chat
 -- per edited row), so an edit and a delete in that chat take turns.
+-- Lock order: one chat per row here. A statement that edits the text of
+-- messages in several chats takes these locks row by row; such a writer
+-- (none in the app: it edits one message) must touch the chats in sorted
+-- id order, as the purge does, or two of them can deadlock (Claude NIT).
+-- Round 7 (Codex #291 B3): only someone who can still read the chat (a row
+-- in it and 175's bw_chat_scope_ok_for) gets the new text; anyone else's
+-- notice of this message goes (a former member never sees the new text).
 CREATE OR REPLACE FUNCTION public.bw_trg_messages_edit_notices()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -301,6 +320,13 @@ BEGIN
     RETURN NULL; -- marked deleted: the soft-delete purge takes its notices
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('bw_chat_notices:' || NEW.chat_id::text, 0));
+
+  DELETE FROM notifications n
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' = NEW.id::text
+     AND NOT (EXISTS (SELECT 1 FROM chat_participants cp
+                       WHERE cp.chat_id = NEW.chat_id AND cp.user_id = n.user_id)
+              AND coalesce(public.bw_chat_scope_ok_for(NEW.chat_id, n.user_id), false));
 
   UPDATE notifications n
      SET body = public.bw_chat_preview(NEW.content),

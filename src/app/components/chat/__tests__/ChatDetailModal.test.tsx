@@ -741,6 +741,49 @@ describe('ChatDetailModal offline: who may write', () => {
     expect(await readChatPermission('me', 'c1')).toEqual({ permitted: false, reason: bandRule });
   });
 
+  // Codex #291 r7 B7: the refusal locks the composer; the text must not go
+  // into that hidden composer (and its copy deleted): it stays "Not sent".
+  it('a refused send stays in the "Not sent" list, never in the hidden composer', async () => {
+    bandChat();
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Err(bandRule) });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Setlist for Friday' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText('Setlist for Friday')).toBeTruthy();
+    expect(screen.getByText('Not sent')).toBeTruthy();
+    const kept = JSON.parse(localStorage.getItem('bw:chat_outbox:me') ?? '[]');
+    expect(kept).toEqual([expect.objectContaining({ body: 'Setlist for Friday', refused: bandRule })]);
+  });
+
+  // Codex #291 r7 B6: storage full or blocked: nothing waits on the device,
+  // so no "Waiting for connection"; the text stays in the composer.
+  it('offline with storage full: the text stays in the composer, with a clear message', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    const real = localStorage.setItem.bind(localStorage);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k.startsWith('bw:chat_outbox:')) throw new DOMException('full', 'QuotaExceededError');
+      return real(k, v);
+    });
+    try {
+      fireEvent.change(composer()!, { target: { value: 'Doors at 7' } });
+      fireEvent.keyDown(composer()!, { key: 'Enter' });
+      await settle();
+      expect(screen.queryByText('Waiting for connection')).toBeNull();
+      expect(composer()!.value).toBe('Doors at 7');
+      expect(screen.getByText('Couldn’t save this message offline: it hasn’t been sent.')).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('a send refused by the database (42501) locks the composer too', async () => {
     const { readChatPermission } = await import('@/lib/chatPermission');
     bandChat();

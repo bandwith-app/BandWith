@@ -285,8 +285,13 @@ export const deleteChatOutboxEntry = async (userId: string | null | undefined, c
   writeChatOutbox(userId, local);
 };
 
-/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
-const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
+/**
+ * Removes every cached key `drop` says yes to (IndexedDB and the localStorage
+ * fallback), never the chat outbox: sign-out keeps unsent chat messages for
+ * their account (Codex #291 r7 B5; #292's KEEP_ON_SIGN_OUT_PREFIXES has it).
+ */
+const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
+  const drop = (key: string) => !key.startsWith(CHAT_OUTBOX_PREFIX) && dropAny(key);
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();

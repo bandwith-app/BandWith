@@ -142,6 +142,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   // Event chats: the event pinned at the top (date, load-in, venue).
   const [eventContext, setEventContext] = useState<ChatEventContext | null>(null);
   const [canText, setCanText] = useState<boolean>(true);
+  // Whether the composer is on screen now (a send that ends later reads it).
+  const canTextRef = useRef(canText);
+  canTextRef.current = canText;
   const [restrictionReason, setRestrictionReason] = useState<string>('');
   // Band admins (user ids) for the chat's band: drives the " · Admin" sender label.
   const [bandAdminIds, setBandAdminIds] = useState<Set<string>>(() => new Set());
@@ -737,13 +740,32 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
             replyToId: pending.reply_to_id ?? null,
             refused: refusedReason,
           })
-        : Promise.resolve();
+        : Promise.resolve(false);
+    // Storage full or blocked (Codex #291 r7 B6): nothing waits on this
+    // device, so the chat never says "Waiting for connection" for it.
+    const notSaved = t('Couldn’t save this message offline: it hasn’t been sent.');
+    const unsaved = () => {
+      setSendError(notSaved);
+      if (!opts.fromQueue && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
+        // The text goes back into the composer, nothing is lost.
+        setMessages(prev => prev.filter(m => m.id !== pending.id));
+        setNewMessage(pending.content);
+        setReplyingTo(pending.reply_to ?? null);
+        returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
+      } else {
+        setMessages(prev => markSendFailed(prev, pending.id, { reason: notSaved }));
+      }
+    };
     try {
-      await keep();
+      const kept = await keep();
       // Only as the account that wrote it (Claude #291 r5): another account
       // signed in meanwhile, or no answer, and it waits in the writer's outbox.
       if (!(await isSignedInAs(author))) {
         if (chatIdRef.current === sentFrom) {
+          if (!kept) {
+            unsaved();
+            return 'failed';
+          }
           setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
           if (typeof navigator !== 'undefined' && !navigator.onLine) setSendError(t('No connection. It’s sent when you’re back online.'));
         }
@@ -753,7 +775,13 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       // Someone else signed in between the check above and the send: it was
       // not sent; it waits in its writer's outbox.
       if (error instanceof ChatSenderChangedError) {
-        if (chatIdRef.current === sentFrom) setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        if (chatIdRef.current === sentFrom) {
+          if (!kept) {
+            unsaved();
+            return 'failed';
+          }
+          setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        }
         return 'queued';
       }
       if (isDenied(error)) lockChat(sentFrom, chatErrorMessage(error, ''));
@@ -769,7 +797,10 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       if (error) {
         const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
         const refused = chatErrorMessage(error, '');
-        if (offline) {
+        if (offline && !kept) {
+          outcome = 'failed';
+          unsaved();
+        } else if (offline) {
           // No connection: the bubble waits, kept on this device (chatOutbox:
           // closing the chat or the app loses nothing), and goes out by itself
           // when the network is back, with the same client id (main, #291 r4).
@@ -786,7 +817,10 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         } else {
         outcome = 'failed';
         setSendError(refused || t('Message not sent. Try again.'));
-        if (!draftRef.current.trim() && !replyingToRef.current) {
+        // A refusal (the composer may be locked by it) stays in the "Not
+        // sent" list with its reason, never in a hidden composer (Codex #291
+        // r7 B7). A hiccup with the composer on screen and empty: back there.
+        if (!isRefusal(error) && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
           // Nothing new typed: the text goes back into the composer.
           setMessages(prev => prev.filter(m => m.id !== pending.id));
           setNewMessage(pending.content);
@@ -796,8 +830,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
           returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
           void dropChatOutbox(author, pending.client_id);
         } else {
-          // A new draft is in the composer: never overwrite it (07 #5). The
-          // message stays as a "Not sent" bubble with Try again (kept).
+          // A refusal, or a new draft is in the composer (never overwritten,
+          // 07 #5): a "Not sent" bubble with Try again (kept).
           await keep(refused);
           setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
         }

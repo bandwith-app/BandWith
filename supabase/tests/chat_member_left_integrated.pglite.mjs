@@ -235,6 +235,8 @@ const parts175 = [
   ...optStmt(M175, 'CREATE POLICY chat_participants_update_guard', 'DROP POLICY IF EXISTS chat_participants_update_guard'),
   ...optStmt(M175, 'CREATE POLICY chat_participants_delete_guard', 'DROP POLICY IF EXISTS chat_participants_delete_guard'),
   ...optStmt(M175, 'CREATE POLICY messages_scope_guard', 'DROP POLICY IF EXISTS messages_scope_guard'),
+  // 175 r6 (#281 65a55d18): deleting messages, only in chats still usable.
+  ...optStmt(M175, 'CREATE POLICY messages_delete_guard', 'DROP POLICY IF EXISTS messages_delete_guard'),
   ...optStmt(M175, 'CREATE POLICY chats_upd', 'DROP POLICY IF EXISTS chats_upd'),
   ...(process.env.BW_TEST_DROP_GUARD ? ['DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;'] : []),
   fn(M175, 'bw_trg_band_member_left_chats'),

@@ -3809,6 +3809,7 @@ const dict: Dictionary = {
   "Message not sent. Check your connection and try again.": "Message non envoyé. Vérifie ta connexion et réessaie.",
   "No connection. It’s sent when you’re back online.": "Pas de connexion. Il part dès que tu es de nouveau en ligne.",
   "Message not sent. Try again.": "Message non envoyé. Réessaie.",
+  "Couldn’t save this message offline: it hasn’t been sent.": "Impossible d’enregistrer ce message hors ligne : il n’a pas été envoyé.",
   "You no longer have access to this chat.": "Tu n’as plus accès à cette discussion.",
   // RSVP from a notification: removed from the event
   "You are no longer on this event, so there is nothing to answer.": "Tu ne fais plus partie de cet événement, il n’y a donc rien à répondre.",

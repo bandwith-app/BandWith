@@ -23,7 +23,7 @@
 import { getSafeUser } from './supabase';
 import { sendMessage, chatErrorMessage, type Message } from './services/chats';
 import { isOfflineError } from './offline/networkErrors';
-import { readChatOutboxAll, writeChatOutbox, deleteChatOutboxEntry, type ChatOutboxEntry } from './offline/storage';
+import { readChatOutbox, readChatOutboxAll, writeChatOutbox, deleteChatOutboxEntry, type ChatOutboxEntry } from './offline/storage';
 
 export type ChatOutboxItem = ChatOutboxEntry;
 
@@ -78,15 +78,44 @@ export function listChatOutbox(userId: string | null | undefined): Promise<ChatO
   return inOrder(() => readValid(userId));
 }
 
-/** Adds (or updates, same client id) a message; it waits to be sent unless `refused`. */
-export function putChatOutbox(userId: string | null | undefined, item: ChatOutboxItem): Promise<void> {
-  if (!userId) return Promise.resolve();
+/**
+ * Adds (or updates, same client id) a message; it waits to be sent unless
+ * `refused`. Says whether it is on the device now: storage full or blocked,
+ * #292's writer stores nothing and says nothing, so the list is read back
+ * (Codex #291 r7 B6: the chat then never shows "Waiting for connection").
+ */
+export function putChatOutbox(userId: string | null | undefined, item: ChatOutboxItem): Promise<boolean> {
+  if (!userId) return Promise.resolve(false);
   return inOrder(async () => {
     const list = (await readValid(userId)).filter((x) => x.clientId !== item.clientId);
     const clean: ChatOutboxItem = { chatId: item.chatId, clientId: item.clientId, body: item.body, createdAt: item.createdAt };
     if (item.replyToId) clean.replyToId = item.replyToId;
     if (typeof item.refused === 'string') clean.refused = item.refused;
     writeChatOutbox(userId, [...list, clean]);
+    return readChatOutbox(userId).some(
+      (x) => x.clientId === clean.clientId && x.body === clean.body && x.refused === clean.refused,
+    );
+  });
+}
+
+/** Marks a message refused only while it is still there (a Delete or a deleted account never brings it back). */
+function markRefused(userId: string, clientId: string, reason: string): Promise<boolean> {
+  return inOrder(async () => {
+    const list = await readValid(userId);
+    if (!list.some((x) => x.clientId === clientId)) return false;
+    writeChatOutbox(userId, list.map((x) => (x.clientId === clientId ? { ...x, refused: reason } : x)));
+    return true;
+  });
+}
+
+/**
+ * A deleted account: its unsent chat messages go from this device, in both
+ * stores (as #292's discardAccountWrites does). Plain sign-out keeps them.
+ */
+export function discardChatOutbox(userId: string | null | undefined): Promise<void> {
+  if (!userId) return Promise.resolve();
+  return inOrder(async () => {
+    await removeStored(userId, (await readValid(userId)).map((x) => x.clientId));
   });
 }
 
@@ -236,7 +265,7 @@ export function flushChatOutbox(
         }
         if (isRefusal(error)) {
           const reason = chatErrorMessage(error, '');
-          await putChatOutbox(uid, { ...now, refused: reason });
+          await markRefused(uid, now.clientId, reason);
           result.refused.push({ chatId: now.chatId, clientId: now.clientId, reason, denied: isDenied(error) });
           break;
         }

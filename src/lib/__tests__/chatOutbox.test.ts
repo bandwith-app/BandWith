@@ -15,8 +15,9 @@ vi.mock('@/lib/services/chats', () => ({
 }));
 vi.mock('@/lib/supabase', () => ({ getSafeUser: async () => ({ data: { user: h.uid ? { id: h.uid } : null } }) }));
 
-import { CHAT_OUTBOX_PREFIX, chatOutboxKey } from '../offline/storage';
-import { beginChatSend, dropRefusedOutsideChats, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
+import { CHAT_OUTBOX_PREFIX, chatOutboxKey, clearOfflineCache, syncCachedRoles } from '../offline/storage';
+import { beginChatSend, dropRefusedOutsideChats, discardChatOutbox, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
+import settingsView from '@/app/views/SettingsView.tsx?raw';
 import { useChatOutboxFlush } from '@/app/hooks/useChatOutbox';
 
 const item = (n: number, chatId = 'c1') => ({ chatId, clientId: `cid-${n}`, body: `message ${n}`, createdAt: `2026-11-22T10:0${n}:00.000Z` });
@@ -131,6 +132,57 @@ describe('chat outbox', () => {
     h.send.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
     await flushChatOutbox('u-a', { backoffMs: [0, 0] });
     expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  // Codex #291 r7 B5: sign-out keeps the waiting chat outbox (per account,
+  // as #292); a deleted account's goes.
+  it('sign-out (the offline cache wipe) keeps every account\'s chat outbox; a role change too', async () => {
+    await putChatOutbox('u-a', item(1));
+    await putChatOutbox('u-b', item(2));
+    localStorage.setItem('bw:u-a:global:chats_list', '[]');
+    await clearOfflineCache();
+    expect(localStorage.getItem('bw:u-a:global:chats_list')).toBeNull();
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-1']);
+    expect((await listChatOutbox('u-b')).map((x) => x.clientId)).toEqual(['cid-2']);
+    await syncCachedRoles('u-a', { b1: 'member' });
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-1']);
+  });
+
+  it('a deleted account: its chat outbox goes, nobody else\'s', async () => {
+    await putChatOutbox('u-a', item(1));
+    await putChatOutbox('u-b', item(2));
+    await discardChatOutbox('u-a');
+    expect(await listChatOutbox('u-a')).toEqual([]);
+    expect((await listChatOutbox('u-b')).map((x) => x.clientId)).toEqual(['cid-2']);
+    // Settings › Delete account runs it before signing out.
+    const del = settingsView.slice(settingsView.indexOf('const handleDeleteAccount'));
+    expect(del.indexOf('discardChatOutbox(user?.id)')).toBeGreaterThan(0);
+    expect(del.indexOf('discardChatOutbox(user?.id)')).toBeLessThan(del.indexOf('await signOut('));
+  });
+
+  // Codex #291 r7 B6: storage full or blocked: the caller learns it.
+  it('a write that storage refuses says so', async () => {
+    const real = localStorage.setItem.bind(localStorage);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k.startsWith('bw:chat_outbox:')) throw new DOMException('full', 'QuotaExceededError');
+      return real(k, v);
+    });
+    try {
+      expect(await putChatOutbox('u-a', item(1))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await putChatOutbox('u-a', item(1))).toBe(true);
+  });
+
+  it('a Delete while its send is refused never brings it back', async () => {
+    await putChatOutbox('u-a', item(1));
+    h.send.mockImplementation(async () => {
+      await dropChatOutbox('u-a', 'cid-1');
+      return { data: null, error: new h.Rule('No.') };
+    });
+    await flushChatOutbox('u-a', { backoffMs: [0, 0] });
+    expect(await listChatOutbox('u-a')).toEqual([]);
   });
 
   // Claude #291 CR6 M5: another tab's change is never written over: every
