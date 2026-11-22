@@ -724,7 +724,7 @@ const basics: AreaText = {
             ["**Sincronizar calendario**", "Un enlace privado a tus eventos para **Calendario de Apple**, **Google Calendar** u Outlook ([[calendar-sync]])", "Tu cuenta (todos los dispositivos)"],
             ["**Apariencia**", "Tema: **Claro**, **Oscuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Kilómetros** o **Millas**", "Este dispositivo"],
-            ["**Privacidad y cuenta**", "**Bloqueo de la app**, **Estadísticas de uso anónimas**, ocultar los detalles de los conciertos personales, **Exportar mis datos**, Términos, Política de privacidad, **Eliminar cuenta**", "Depende (consulta [[privacy-and-account-settings]])"],
+            ["**Privacidad y cuenta**", "**Bloqueo de la app**, **Estadísticas de uso anónimas**, **Enviar informes de errores**, ocultar los detalles de los conciertos personales, **Exportar mis datos**, Términos, Política de privacidad, **Eliminar cuenta**", "Depende (consulta [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Postura portátil**. Solo en móviles de doble pantalla", "Este dispositivo"],
             ["**Idioma**", "**Automático** o uno de los seis idiomas", "Este dispositivo, además de tus push y tus emails"],
             ["**Ayuda y soporte**", "Respuestas y qué puedes hacer en la app", "-"],
@@ -879,6 +879,7 @@ const basics: AreaText = {
           items: [
             "**Bloqueo de la app** (solo móviles y tablets): pide Face ID, la huella o el código del dispositivo cuando BandWith se vuelve a abrir después de cerrarla. Por dispositivo ([[app-lock]]).",
             "**Estadísticas de uso anónimas** (solo apps de Android e iOS): desactivadas hasta que digas que sí. BandWith lo pregunta una vez, después del primer tour; puedes cambiar la respuesta aquí cuando quieras. Solo comparte qué pantallas se usan y con qué frecuencia, nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad. Al desactivarlas se borra lo recogido en este dispositivo. Por dispositivo.",
+            "**Enviar informes de errores**: activado salvo que lo desactives. Cuando algo falla, BandWith envía el error, la pantalla donde ocurrió y la versión de la app, para poder arreglarlo. Nunca tus canciones, conciertos, mensajes ni contactos. Por dispositivo.",
             "**Los bolos personales son privados**: una fila informativa, no un interruptor. Solo tú ves el título y el lugar de tus conciertos personales; las bandas solo ven que estás ocupado ([[personal-gigs]]).",
             "**Exportar mis datos**: una copia en JSON de lo que es tuyo ([[export-your-data]]).",
             "**Términos del servicio** y **Política de privacidad**: abren los documentos dentro de la app.",

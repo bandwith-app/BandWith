@@ -4602,6 +4602,8 @@ const dict: Dictionary = {
   "Share anonymous usage statistics: which screens are used and how often. Never your songs, gigs, messages or contacts, and nothing for ads. You can change this anytime in Settings › Privacy & account.": "Compartilhe estatísticas de uso anônimas: quais telas são usadas e com que frequência. Nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade. Você pode mudar isso quando quiser em Ajustes › Privacidade e conta.",
   "No thanks": "Não, obrigado",
   "Anonymous usage statistics": "Estatísticas de uso anônimas",
+  "Send crash reports": "Enviar relatórios de erro",
+  "When something goes wrong: the error, the screen and the app version, so we can fix it. Never your songs, gigs, messages or contacts.": "Quando algo dá errado: o erro, a tela e a versão do app, para podermos corrigir. Nunca suas músicas, shows, mensagens ou contatos.",
   "Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.": "Quais telas são usadas e com que frequência, para melhorar o BandWith. Nunca suas músicas, shows, mensagens ou contatos, e nada para publicidade.",
   "Audio for the stage manager": "Áudio para a cabine",
   "Audio on this device {ready}/{total}": "Áudio neste dispositivo {ready}/{total}",

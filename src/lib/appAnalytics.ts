@@ -91,6 +91,9 @@ export const setAnalyticsConsent = async (consent: AnalyticsConsent): Promise<vo
   if (consent === 'denied') loggedScreen = null;
 };
 
+/** The screen on show (a name like "Stage", never ids): also used by crash reports. */
+export const currentScreenName = (): string | null => lastScreen;
+
 export const trackScreen = (name: string): void => {
   lastScreen = name;
   logScreen(name);

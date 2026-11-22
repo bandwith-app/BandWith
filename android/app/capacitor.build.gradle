@@ -13,6 +13,7 @@ dependencies {
     implementation project(':aparajita-capacitor-secure-storage')
     implementation project(':capacitor-community-bluetooth-le')
     implementation project(':capacitor-firebase-analytics')
+    implementation project(':capacitor-firebase-crashlytics')
     implementation project(':capacitor-app')
     implementation project(':capacitor-browser')
     implementation project(':capacitor-file-transfer')
