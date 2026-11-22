@@ -31,6 +31,7 @@
 // that touches chat_participants fails the test.
 //
 //   cd <dir with @electric-sql/pglite@0.5.15> && node chat_participants_guard.pglite.mjs <repo>
+//   BW_LOCAL_REF=0437db39 node chat_participants_guard.pglite.mjs <repo>   # before round 4's guard: FAILs
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -119,7 +120,8 @@ const cpPolicies = async () => (await db.query(`SELECT policyname, cmd, permissi
 ok((await cpPolicies()).length === 7, `base = prod today: 7 policies on chat_participants (${(await cpPolicies()).map((x) => x.policyname).join(', ')})`);
 
 // ── The chain ────────────────────────────────────────────────────────────────
-const local = (name) => readFileSync(`${MIGS}/${name}`, 'utf8');
+// BW_LOCAL_REF=<commit>: 175 and 181 from that commit (failing-first runs).
+const local = (name) => (process.env.BW_LOCAL_REF ? show(process.env.BW_LOCAL_REF, `supabase/migrations/${name}`) : readFileSync(`${MIGS}/${name}`, 'utf8'));
 const ref = (env, def) => process.env[env] ?? def;
 const CHAIN = [
   ['175', () => local('175_security_audit_access.sql'), 'this repo'],
@@ -282,6 +284,7 @@ const FN_ALLOW = {
   bw_hidden_quote_chat_ids: "178: the caller's own rows only to HIDE more chats (a restrictive policy); a kept row can only hide more",
   bw_account_deletion_dm_chats: "180, server only (revoked from authenticated): the deleted user's own direct chats, kept rows included on purpose",
   bw_account_deletion_messages: "180, server only: scrubs the deleted user's id from chats they were ever in, kept rows included on purpose",
+  bw_account_deletion_chats: "180, server only (revoked from authenticated): every chat the deleted user was ever in, kept rows included on purpose",
 };
 // On the list (they don't show a kept row to anyone), but routed to their PR.
 const FN_ROUTED = {
