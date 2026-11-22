@@ -245,7 +245,9 @@ describe('every proof takes a marker from the final body (Codex, review #278)', 
     for (const k of markers) {
       const f = migrationFile(k.m);
       if (!f || replacedByOpenPr.has(k.m)) continue; // the file is on its own branch until it merges
-      const body = fnBody(read(`${MIGRATIONS}/${f}`), k.fn);
+      // With its comments, as pg_get_functiondef shows it: 184's marker is a
+      // comment line (its only change drops an updated_at bump).
+      const body = markerBody(read(`${MIGRATIONS}/${f}`), k.fn);
       expect(body, `${k.m} defines ${k.fn}`).not.toBeNull();
       expect(body ?? '', `${k.m} ${k.fn}: ${k.txt}`).toContain(k.txt);
     }
