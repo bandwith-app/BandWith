@@ -540,9 +540,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
     // Gigs waiting on your RSVP.
     if (currentUserId && eventMembersMap) {
+      // One item per event. The dates of a repeating rehearsal (`occurrence_of`)
+      // share the series' line-up; the first one listed (the list runs by date)
+      // stands for it, also when the series row itself is already past.
+      const asked = new Set<string>();
       for (const e of dashboardData?.upcomingEvents || []) {
-        const id = String(e.eventId || e.id || '');
-        if (!id || id.includes('-occ-')) continue;
+        const id = String(e.occurrence_of || e.eventId || e.id || '');
+        if (!id || id.includes('-occ-') || asked.has(id)) continue;
+        asked.add(id);
         const me = (eventMembersMap[id] || []).find((m) => m.userId === currentUserId);
         if (me?.status !== 'pending') continue;
         const raw = e.event_date || e.date;
