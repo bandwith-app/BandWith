@@ -95,9 +95,13 @@ Do it in this order, so every build in use keeps working at every step:
         UPDATE public.app_flags SET enabled = false, updated_at = now() WHERE key = 'live_pack';
         ```
      3. `170_live_pack`;
-     4. `171`, `174_client_errors`, 175, 176, 178–189 (there is no 179), then 190 and 191, in number order. All of them are additive.
+     4. then, one at a time and in this order: 171, 174, 175, 176, 178, 180, 194, 192, 193, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 195, 196, 197.
+        - That is number order, except where one needs another first: 175 → 178 → 193 → 181 (181 uses 193's one chat per gig), 194 → 192 → 193 (192 writes chat notices through 194's `bw_write_chat_notices`), 183 → 185 → 186 → 187. There is no 179.
+        - 190 and 191 must be in before any new app build ships (stage 1).
+        - 194 and `send-push`: send-push falls back to a plain insert while 194's function is missing, so deploying it in step 1 is safe; check its logs again after 194.
+        - All of them are additive.
      - **Not 172**: already live (section 1).
-     - **Not 177** (quotes bucket private): it goes in **stage 3, after the web deploy**. Before it, the new quote page and the quote functions must be live, or people who got a quote can't download its PDF.
+     - **Not 177** (quotes bucket private): not in this release. Builds in the field share the PDF's public storage URL by WhatsApp, email and copied text, and links already sent to clients would stop opening. It waits in the sunset list (section 6) for `min_version`.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
    - **Before each**, its row in `supabase/checks/release_migrations.sql` is `false`; **after it**, `true`. Run the file again after every one: that is the record of what is in (no `schema_migrations` row is added: the table is incomplete before 039 and nothing reads it).
@@ -151,20 +155,18 @@ Do it in this order, so every build in use keeps working at every step:
      scripts/deploy-web.sh
      ```
    - Note the deployment URL it prints: you need it to roll back.
-4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, check its row in `supabase/checks/release_migrations.sql` is now `true`, and check the same link again.
-   - **Trade-off: admins on the previous native build.** Their app still shares the PDF's public storage URL, which stops opening once the bucket is private. The client gets a link that doesn't work. It lasts until they update (Android in up to 6 hours after the promote, iOS when TestFlight updates). Raise `min_version` first (section 4) to cut it short. Release notes line: "Update the app to share quote PDFs."
-5. **Product site** (only if `site/` changed):
+4. **Product site** (only if `site/` changed):
    ```sh
    scripts/deploy-site.sh --prod
    scripts/indexnow.sh
    ```
-6. **Turn the live pack on**, now that the new builds are out to everyone:
+5. **Turn the live pack on**, now that the new builds are out to everyone:
    ```sql
    UPDATE public.app_flags SET enabled = true, updated_at = now() WHERE key = 'live_pack';
    ```
    - **Trade-off: stragglers get invites they can't use.** The switch is server-wide, and the server doesn't know which app version each member runs (no last-seen version is recorded; `min_app_version` only hides things inside the app). So members still on APK 1.0.13 or an older TestFlight build also get the "ready without signal" push for gigs in the next days; their app opens the inbox but has no live pack to download. To keep it small, wait a few days after the APK promote and the Amici build (the in-app update reaches Android in up to 6 hours), or raise `min_version` first (section 4) so old builds must update. A per-version filter in 170's invites would need the app to record its version (follow-up).
-7. **Tell the admins** what changed. This release, also: once 177 makes the quotes bucket private, quote PDF links shared before stop working, and the previous app version can't share new ones. Lines for admins: "Update the app to share quote PDFs." and "Re-send the quote from the app to get a fresh link."
-8. Watch the crash reports for the first hours, then the next morning.
+6. **Tell the admins** what changed.
+7. Watch the crash reports for the first hours, then the next morning.
 
 ## 4 · When something goes wrong
 
@@ -193,7 +195,6 @@ npx vercel@latest rollback <previous-production-url> --yes
 npx vercel@latest rollback status
 ```
 
-- **Never roll the web back past 177.** A web build from before this release shares public PDF URLs, which don't open once 177 made the quotes bucket private: clients can't download their quote. After 177, roll the web back only to a deployment of this release or later. If that isn't enough, fix forward: deploy a fix on top of this release. The bucket stays private: don't make it public again.
 - On the Hobby plan, rollback goes to the **previous** production deployment only.
 - To go further back, promote any earlier Ready deployment from the list:
   ```sh
@@ -301,12 +302,18 @@ Go on when the new version shows nothing that the previous one didn't.
 
 - [ ] All surfaces are on the release, and the APK release is marked **Latest**.
 - [ ] "Later" migrations scheduled, if any (section 2, step 5).
-- [ ] Release notes for testers: `scripts/android-release-notes.md`, and the TestFlight "What to Test". Put in any line the admins need (stage 3, step 7), e.g. for 177: "Re-send the quote from the app to get a fresh link."
+- [ ] Release notes for testers: `scripts/android-release-notes.md`, and the TestFlight "What to Test". Put in any line the admins need (stage 3, step 6).
 
 ### Sunset list: when `min_version` is raised past this release
 
 Code that stays only for older builds. Remove it once `min_version` (section 4) is past the release that made it unnecessary, on every platform:
 
+- **177, quotes bucket private.** Not applied in the release that brought it: builds before it share the quote PDF's public storage URL (WhatsApp, email, copied text), and those links stop opening once the bucket is private. Apply it only when both hold:
+  - `min_version` (section 4) is raised past every build that shares public URLs, on every platform, so nobody can still send one;
+  - a read-only check shows no live link relies on a public URL: no quote link still open (not expired, not answered) was sent with a `…/storage/v1/object/public/quotes/…` URL. Re-send those from the app first ("Re-send the quote from the app to get a fresh link.").
+
+  Then, as the database owner: apply 177, check its row in `supabase/checks/release_migrations.sql` is `true`, and open a quote link made by the current app. Release notes line for admins still on an old build: "Update the app to share quote PDFs."
+  - **Never roll the web back past 177** once it is in: a web build from before shares public PDF URLs, which don't open any more. Roll back only to a deployment that shares private links. If that isn't enough, fix forward: deploy a fix on top. The bucket stays private: don't make it public again.
 - **Drop Bluetooth HMAC acceptance (audit #1).** Once `min_version` is raised past the release that shipped migration 190 (every leader signs), remove the band-key path on members:
   - `decodeStageState` fallback in `useStageBle` (`signedLink` false → band key);
   - the `'old-leader'` status and its line;

@@ -1,12 +1,13 @@
 -- Which of this release's migrations are on a database (docs/release-checklist.md).
--- Read only. Run as the database owner:
+-- Read only. 177 is expected false: it waits in the sunset list.
+-- Run as the database owner:
 --   npx supabase db query --remote --yes -f supabase/checks/release_migrations.sql
 --
 -- Each row is decided by an object the migration creates (a table, column,
 -- function, policy, index or a body marker), never by
 -- supabase_migrations.schema_migrations: on prod that table stops at 038
 -- (everything since was applied by hand), so it can't tell what is in.
--- A function that already existed before its migration (186, 187) is
+-- A function that already existed before its migration (186, 187, 196) is
 -- checked by a marker in its new body.
 --
 -- applied = true: in. false: not in. A migration half applied can't happen
@@ -57,6 +58,12 @@ FROM (VALUES
   ('190', EXISTS (SELECT 1 FROM col WHERE t = 'stage_keys' AND c = 'sign_public'), 'stage_keys.sign_public'),
   ('191', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_stage_clock_topic_allowed'), 'function bw_stage_clock_topic_allowed'),
   ('192', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_purge_chat_notices'), 'function bw_purge_chat_notices'),
-  ('193', to_regclass('public.chats_one_per_event') IS NOT NULL, 'index chats_one_per_event')
+  ('193', to_regclass('public.chats_one_per_event') IS NOT NULL, 'index chats_one_per_event'),
+  ('194', to_regclass('public.notifications_chat_message_once') IS NOT NULL, 'index notifications_chat_message_once'),
+  ('195', EXISTS (SELECT 1 FROM fn WHERE n = 'bw_publish_rehearsal_proposal'), 'function bw_publish_rehearsal_proposal'),
+  ('196', pg_get_functiondef(to_regprocedure('public.bw_trg_rehearsal_session_guard()')) LIKE '%NEW.started_at IS DISTINCT FROM OLD.started_at%',
+          'bw_trg_rehearsal_session_guard skips a restart of a saved session (body)'),
+  ('197', to_regclass('public.song_file_adoptions') IS NOT NULL AND EXISTS (SELECT 1 FROM fn WHERE n = 'bw_song_file_adopt_begin'),
+          'table song_file_adoptions, function bw_song_file_adopt_begin')
 ) AS v(m, applied, proof)
 ORDER BY m;

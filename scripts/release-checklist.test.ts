@@ -12,12 +12,22 @@ const read = (p: string) => fs.readFileSync(`${process.cwd()}/${p}`, 'utf8');
 const checklist = read('docs/release-checklist.md');
 const check = read('supabase/checks/release_migrations.sql');
 const checkSql = check.replace(/--.*$/gm, '');
+const section = (from: RegExp, to: RegExp) => {
+  const start = checklist.search(from);
+  if (start < 0) return '';
+  const body = checklist.indexOf('\n', start) + 1; // after the heading line
+  const end = checklist.slice(body).search(to);
+  return checklist.slice(start, end < 0 ? undefined : body + end);
+};
+const applyStep = section(/^2\. \*\*Additive migrations\*\*/m, /^3\. \*\*Builds for stage 1/m);
+const stage3 = section(/^### Stage 3/m, /^## 4 /m);
+const sunset = section(/^### Sunset list/m, /^## |(?![\s\S])/m);
 
 describe('release migrations: checked by their objects', () => {
   it('the check file has a row for every migration of the release order', () => {
     const rows = [...checkSql.matchAll(/\('(\d{3})',/g)].map((m) => m[1]);
-    // docs/release-checklist.md step 2 (no 179) and 177 in stage 3.
-    const order = ['170', '171', '172', '173', '174', '175', '176', '177', '178', '180', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191'];
+    // docs/release-checklist.md step 2 (no 179), and 177 (sunset list, expected false).
+    const order = ['170', '171', '172', '173', '174', '175', '176', '177', '178', '180', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191', '192', '193', '194', '195', '196', '197'];
     for (const n of order) expect(rows, n).toContain(n);
     expect(new Set(rows).size).toBe(rows.length);
   });
@@ -38,11 +48,11 @@ describe('release migrations: checked by their objects', () => {
 });
 
 describe('release checklist, round 6 (review #278)', () => {
-  it('never rolls 177 back: the web is not rolled back past 177, the fix goes forward', () => {
+  it('never rolls 177 back: once it is in, the web is not rolled back past it, the fix goes forward', () => {
     expect(checklist).not.toMatch(/public = true/);
     expect(checklist).not.toMatch(/roll 177 back/);
-    expect(checklist).toMatch(/Never roll the web back past 177/);
-    expect(checklist).toMatch(/fix forward/);
+    expect(sunset).toMatch(/Never roll the web back past 177/);
+    expect(sunset).toMatch(/fix forward/);
   });
 
   it('supabase db reset only on the local database, never as a prod step', () => {
@@ -66,5 +76,42 @@ describe('release checklist, round 6 (review #278)', () => {
     const row = checkSql.split('\n').filter((l, i, all) => /\('170'/.test(l) || /\('170'/.test(all[i - 1] ?? '') || /\('170'/.test(all[i - 2] ?? '')).join(' ');
     expect(row).toMatch(/c = 'partial'/);
     expect(row).toMatch(/bw_live_pack_status_newer_only/);
+  });
+});
+
+describe('release order with 192–197, 177 out of this release (main, 11-22)', () => {
+  const sequence = ['171', '174', '175', '176', '178', '180', '194', '192', '193', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191', '195', '196', '197'];
+
+  it('the apply step lists every migration once, in an order that keeps the dependencies', () => {
+    const line = applyStep.split('\n').find((l) => /^\s+4\. /.test(l)) ?? '';
+    const listed = [...line.matchAll(/(?:^|\D)(1[789]\d)(?=\D|$)/g)].map((m) => m[1]);
+    expect(listed).toEqual(sequence);
+    const before = (a: string, b: string) => expect(listed.indexOf(a), `${a} before ${b}`).toBeLessThan(listed.indexOf(b));
+    before('175', '178');
+    before('178', '193');
+    before('193', '181');
+    before('194', '192');
+    before('192', '193');
+    before('183', '185');
+    before('185', '186');
+    before('186', '187');
+  });
+
+  it('177 is not applied in this release: not in the apply step nor in stage 3, but in the sunset list', () => {
+    expect(applyStep).toMatch(/\*\*Not 177\*\*/);
+    expect(applyStep).not.toMatch(/stage 3, after the web deploy/);
+    expect(stage3).not.toMatch(/177/);
+    expect(sunset).toMatch(/177/);
+    expect(sunset).toMatch(/min_version/);
+    expect(sunset).toMatch(/no live link relies on a public/);
+    expect(sunset).toMatch(/Update the app to share quote PDFs\./);
+    expect(checklist.split('## 6')[0]).not.toMatch(/Update the app to share quote PDFs/);
+  });
+
+  it('each new migration has its proof row', () => {
+    expect(checkSql).toMatch(/\('194', to_regclass\('public\.notifications_chat_message_once'\)/);
+    expect(checkSql).toMatch(/\('195',[^)]*bw_publish_rehearsal_proposal/);
+    expect(checkSql).toMatch(/\('196', pg_get_functiondef\(to_regprocedure\('public\.bw_trg_rehearsal_session_guard\(\)'\)\) LIKE '%NEW\.started_at IS DISTINCT FROM OLD\.started_at%'/);
+    expect(checkSql).toMatch(/\('197', to_regclass\('public\.song_file_adoptions'\)/);
   });
 });
