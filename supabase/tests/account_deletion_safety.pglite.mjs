@@ -1134,14 +1134,19 @@ const fnOrDo = (src, name) => {
 // The whole file (one implicit transaction: all or nothing), else just the
 // functions 192 calls, as that migration wrote them. The stand-in schema
 // lacks some of what the rest of the file touches (175: chats.name).
-const loadForeign = async (m, names) => {
+// `around` adds statements of that file the functions need, as it wrote
+// them: { before, after } lists of [label, regex].
+const loadForeign = async (m, names, around = {}) => {
   const whole = await x(noTx(m.src));
   m.how = 'whole file';
   if (!whole.error) return null;
-  m.how = `by name: ${names.join(', ')}`;
-  const parts = names.map((n) => fnOrDo(m.src, n));
-  if (parts.some((p) => !p)) return `${whole.error}; and ${names[parts.indexOf(null)]} not found in it`;
-  const some = await x(`SET check_function_bodies = off;\n${parts.join('\n')}\nRESET check_function_bodies;`);
+  const pick = (list = []) => list.map(([label, re]) => [label, m.src.match(re)?.[0] ?? null]);
+  const before = pick(around.before), after = pick(around.after);
+  m.how = `by name: ${[...before.map(([l]) => l), ...names, ...after.map(([l]) => l)].join(', ')}`;
+  const parts = [...before, ...names.map((n) => [n, fnOrDo(m.src, n)]), ...after];
+  const missing = parts.find(([, sql]) => !sql);
+  if (missing) return `${whole.error}; and ${missing[0]} not found in it`;
+  const some = await x(`SET check_function_bodies = off;\n${parts.map(([, sql]) => sql).join('\n')}\nRESET check_function_bodies;`);
   return some.error ? `${whole.error}; by name: ${some.error}` : null;
 };
 // Round 16: 192 (#291, bd2c8866 on) needs 175 (#281) and 194 (#284) first.
@@ -1431,6 +1436,80 @@ if (f197) {
   ok((await qq(`SELECT path FROM song_file_removals`)).rows.map((r) => r.path).join() === `${T9}/suggestions/${CC}/b.pdf`,
     '197 guard: and what it returns is claimed, as 197 does');
 }
+
+// ── 187 guard (#293, round 17) ─────────────────────────────────────────────
+// 187 adds quote_links.event_removed_at, set by a BEFORE DELETE trigger on
+// events that also fires inside the account and band deletion cascades.
+// The quote tables as prod has them (002, 004, 099; only the columns used),
+// and events.band_id's cascade (002) for these scenarios only.
+const m187 = otherMigration('supabase/migrations/187_quote_page_lock_balance_sent.sql', 'BW_187_REF', 'fix/money-audit', 'ae36df37');
+const [QU, QO, QB1, QB2, QE1, QE2, QE3, QQ1, QQ2, QQ3, QL1, QL2, QL3] = [261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273].map(id);
+d = await x(`CREATE TABLE IF NOT EXISTS public.quotes (id uuid PRIMARY KEY, band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE,
+    status text DEFAULT 'draft', converted_to_event_id uuid REFERENCES public.events(id) ON DELETE SET NULL);
+  CREATE TABLE IF NOT EXISTS public.quote_links (id uuid PRIMARY KEY, quote_id uuid NOT NULL UNIQUE REFERENCES public.quotes(id) ON DELETE CASCADE,
+    band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE, status text NOT NULL DEFAULT 'draft', version int NOT NULL DEFAULT 0,
+    created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL);
+  ALTER TABLE public.events ADD COLUMN IF NOT EXISTS quote_id uuid;
+  ALTER TABLE public.events ADD CONSTRAINT events_band_id_187_fkey FOREIGN KEY (band_id) REFERENCES public.bands(id) ON DELETE CASCADE NOT VALID`);
+ok(!d.error, `187 guard: quote stand-ins (${d.error ?? 'ok'})`);
+let pre187 = m187 ? null : '187 (#293) not found: no BW_187_REF, origin/fix/money-audit or ae36df37';
+if (!pre187) {
+  // 187 needs 183 and 185 (and 178's quote parts) first; on the stand-ins
+  // only its trigger loads, as 187 wrote it.
+  const e = await loadForeign(m187, ['bw_trg_quote_link_event_removed'], {
+    before: [['quote_links.event_removed_at', /ALTER TABLE public\.quote_links ADD COLUMN IF NOT EXISTS event_removed_at[^;]*;/]],
+    after: [['trigger bw_quote_link_event_removed',
+      /DROP TRIGGER IF EXISTS bw_quote_link_event_removed ON public\.events;\s*CREATE TRIGGER bw_quote_link_event_removed[^;]*;/]],
+  });
+  if (e) pre187 = `187 (${m187.from}) did not load on the stand-ins (${e})`;
+}
+if (pre187) {
+  console.log(`SKIP 187 guard: ${pre187}`);
+} else {
+  console.log(`info 187 guard: 187 from ${m187.from} (${m187.how})`);
+  // QU is alone in QB1 (it goes with the account) and a member of QB2,
+  // which QO keeps. Each band has quotes with client links; QE2 is one of
+  // QB2's gigs QU created, QE3 its other one.
+  d = await x(`INSERT INTO auth.users VALUES ('${QU}'), ('${QO}'); INSERT INTO profiles (id) VALUES ('${QU}'), ('${QO}');
+    INSERT INTO bands VALUES ('${QB1}', 'Hoboken Horns'), ('${QB2}', 'Queens Quartet');
+    INSERT INTO band_members VALUES ('${QB1}', '${QU}', 'admin', true), ('${QB2}', '${QO}', 'admin', true), ('${QB2}', '${QU}', 'member', true);
+    INSERT INTO events (id, band_id, created_by, title) VALUES ('${QE1}', '${QB1}', '${QU}', 'Wedding, Montclair'),
+      ('${QE2}', '${QB2}', '${QU}', 'Gala, Astoria'), ('${QE3}', '${QB2}', '${QO}', 'Brunch, Flushing');
+    INSERT INTO quotes VALUES ('${QQ1}', '${QB1}', 'accepted', '${QE1}'), ('${QQ2}', '${QB2}', 'sent', '${QE2}'), ('${QQ3}', '${QB2}', 'sent', NULL);
+    UPDATE events SET quote_id = '${QQ3}' WHERE id = '${QE3}';
+    INSERT INTO quote_links (id, quote_id, band_id, status, version, created_by) VALUES ('${QL1}', '${QQ1}', '${QB1}', 'sent', 1, '${QU}'),
+      ('${QL2}', '${QQ2}', '${QB2}', 'sent', 2, '${QO}'), ('${QL3}', '${QQ3}', '${QB2}', 'viewed', 1, '${QO}')`);
+  ok(!d.error, `187 guard: setup (${d.error ?? 'ok'})`);
+  const links = async () => (await qq(`SELECT id, quote_id, band_id, status, version, created_by, event_removed_at
+    FROM quote_links WHERE band_id = '${QB2}' ORDER BY id`)).rows;
+  const before = JSON.stringify(await links());
+  await reset();
+  const steps = [];
+  const bg = await begin(QU);
+  steps.push(bg?.ok === true ? null : `begin ${JSON.stringify(bg)}`);
+  for (const sql of [`SELECT public.bw_prepare_account_deletion('${QU}')`, `SELECT public.bw_account_deletion_finish('${QU}')`,
+    `DELETE FROM auth.users WHERE id = '${QU}'`]) {
+    if (steps.some(Boolean)) break;
+    const r = await x(sql);
+    steps.push(r.error ? `${sql.slice(0, 50)}: ${r.error}` : null);
+  }
+  const err187 = steps.find(Boolean) ?? null;
+  const gone = (await qq(`SELECT (SELECT count(*) FROM bands WHERE id = '${QB1}') + (SELECT count(*) FROM events WHERE id = '${QE1}')
+    + (SELECT count(*) FROM quotes WHERE id = '${QQ1}') + (SELECT count(*) FROM quote_links WHERE id = '${QL1}') AS n`)).rows[0]?.n;
+  ok(err187 === null && Number(gone) === 0,
+    `187 guard: an account whose band has quotes and client links goes with it, and nothing errors (${err187 ?? `left ${gone}`})`);
+  const after = await links();
+  ok(JSON.stringify(after) === before && after.length === 2 && after.every((l) => l.event_removed_at === null),
+    `187 guard: the band that stays keeps its quote links as they were (${JSON.stringify(after)})`);
+  ok((await qq(`SELECT 1 FROM events WHERE id IN ('${QE2}', '${QE3}') AND band_id = '${QB2}'`)).rows.length === 2,
+    "187 guard: and its gigs, the one the person created too");
+  // One of its gigs deleted afterwards: only that quote's link is marked.
+  d = await x(`DELETE FROM events WHERE id = '${QE3}'`);
+  const marked = (await links()).map((l) => [l.id === QL3 ? 'QL3' : 'QL2', l.event_removed_at !== null]);
+  ok(!d.error && JSON.stringify(marked) === JSON.stringify([['QL2', false], ['QL3', true]]),
+    `187 guard: a gig of that band deleted marks only its quote's link (${d.error ?? JSON.stringify(marked)})`);
+}
+await x(`ALTER TABLE public.events DROP CONSTRAINT IF EXISTS events_band_id_187_fkey`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
