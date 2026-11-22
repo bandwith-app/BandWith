@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 
 /**
  * Keyboard focus for modal layers (BwSheet, the iPad composer): on open,
@@ -29,6 +29,8 @@ interface Layer {
   auto: boolean;
   /** A popover or menu: it handles Tab and focus itself while it is on top. */
   ownFocus?: boolean;
+  /** Its Tab cycle leaves out the Duo rail's actions (a layer with its own Close). */
+  noRail?: boolean;
 }
 
 const stack: Layer[] = [];
@@ -105,7 +107,9 @@ const ownedPopups = (root: HTMLElement): HTMLElement[] => {
  */
 const INCLUDED = '[data-bw-trap-include]';
 const includedFor = (root: HTMLElement): HTMLElement[] =>
-  Array.from(document.querySelectorAll<HTMLElement>(INCLUDED)).filter((el) => !root.contains(el) && !el.contains(root));
+  entryOf(root)?.noRail
+    ? []
+    : Array.from(document.querySelectorAll<HTMLElement>(INCLUDED)).filter((el) => !root.contains(el) && !el.contains(root));
 
 /** `node` is in the layer, in a list the layer owns, or in the rail's actions. */
 const inLayer = (root: HTMLElement, node: Node | null): boolean =>
@@ -189,14 +193,21 @@ const onFocusIn = (e: FocusEvent) => {
 /**
  * Focusable edges of the page while a trap is on: Tab past the last control
  * of the page lands here (and comes back into the layer) instead of leaving
- * for the browser's toolbar.
+ * for the browser's toolbar. Hidden from screen readers (nothing to read),
+ * and focus never stays on one: it goes straight back into the layer.
  */
 let guards: HTMLElement[] = [];
-const makeGuard = () => {
+const makeGuard = (start: boolean) => {
   const g = document.createElement('span');
   g.tabIndex = 0;
   g.setAttribute('data-bw-focus-guard', '');
+  g.setAttribute('aria-hidden', 'true');
   g.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;outline:none';
+  g.addEventListener('focus', () => {
+    const root = top();
+    // Before the page start: back to the layer's last stop; past its end: its first.
+    if (root && root.isConnected) wrapInto(root, start);
+  });
   return g;
 };
 
@@ -347,7 +358,7 @@ const start = () => {
   if (listening) return;
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('focusin', onFocusIn, true);
-  guards = [makeGuard(), makeGuard()];
+  guards = [makeGuard(true), makeGuard(false)];
   document.body.prepend(guards[0]);
   document.body.append(guards[1]);
   if (typeof MutationObserver !== 'undefined') {
@@ -371,14 +382,37 @@ const stop = () => {
   listening = false;
 };
 
+/**
+ * A layer of useFocusTrap that closed, whose focus goes back to its opener
+ * once React has run this commit's effects: if another layer opens in the
+ * same commit (the inbox going from two pages to one as the Duo folds), that
+ * layer takes the opener over and focus moves into it, never to the opener
+ * behind it on the way.
+ */
+let handover: { opener: HTMLElement | null } | null = null;
+const handBack = (opener: HTMLElement | null) => {
+  const mine = { opener };
+  handover = mine;
+  queueMicrotask(() => {
+    if (handover !== mine) return;
+    handover = null;
+    backToTrap(opener);
+  });
+};
+
 /** A layer registered by useFocusTrap (it may already be on the stack, found as it opened). */
-const push = (el: HTMLElement, opener: HTMLElement | null): Layer => {
+const push = (el: HTMLElement, opener: HTMLElement | null, noRail = false): Layer => {
+  if (handover) {
+    opener = handover.opener;
+    handover = null;
+  }
   const found = entryOf(el);
   if (found) {
     found.auto = false;
+    found.noRail = noRail;
     return found;
   }
-  const layer: Layer = { el, opener, auto: false };
+  const layer: Layer = { el, opener, auto: false, noRail };
   stack.push(layer);
   start();
   return layer;
@@ -394,16 +428,19 @@ const remove = (layer: Layer) => {
 /**
  * Traps keyboard focus in `ref` while `active`. The element needs
  * tabIndex={-1} so it can take focus itself when it has no control.
+ * `rail: false` leaves the Duo rail's actions out of its Tab cycle (a layer
+ * that has its own Close, above a sheet whose Close is in the rail).
  */
-export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean): void {
+export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean, opts?: { rail?: boolean }): void {
+  const noRail = opts?.rail === false;
   useEffect(() => {
     if (!active) return;
     const opener = document.activeElement as HTMLElement | null;
     // Registered at once (above the layer that opened it); focus moves on the
     // next frame, once the layer is on screen.
-    let layer: Layer | null = ref.current ? push(ref.current, opener) : null;
+    let layer: Layer | null = ref.current ? push(ref.current, opener, noRail) : null;
     const id = window.requestAnimationFrame(() => {
-      if (!layer && ref.current) layer = push(ref.current, opener);
+      if (!layer && ref.current) layer = push(ref.current, opener, noRail);
       const el = layer?.el;
       if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     });
@@ -415,7 +452,43 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
       const active = document.activeElement;
       const heldFocus = !active || active === document.body || !active.isConnected || layer.el.contains(active);
       remove(layer);
-      if (wasTop || heldFocus) backToTrap(layer.opener);
+      if (wasTop || heldFocus) handBack(layer.opener);
     };
-  }, [active, ref]);
+  }, [active, ref, noRail]);
+}
+
+/** Input types that type no text (no on-screen keyboard). */
+const NO_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+/** A field taking typed text now: the on-screen keyboard is up for it. */
+const isTextEntry = (el: Element | null): boolean => {
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
+  if (el instanceof HTMLInputElement) return !NO_TEXT.has(el.type) && !el.readOnly && !el.disabled;
+  return el instanceof HTMLElement && el.isContentEditable === true;
+};
+
+/**
+ * True while a text field has the focus (the keyboard is up). A layer that
+ * opens by itself (the urgent pop-up) waits for it, instead of taking the
+ * focus away mid-word.
+ */
+export function useTypingFocus(): boolean {
+  const [typing, setTyping] = useState(() => typeof document !== 'undefined' && isTextEntry(document.activeElement));
+  useEffect(() => {
+    const check = () => setTyping(isTextEntry(document.activeElement));
+    // On focusout the next field has not taken the focus yet: look once it has.
+    let id = 0;
+    const later = () => {
+      window.clearTimeout(id);
+      id = window.setTimeout(check, 0);
+    };
+    document.addEventListener('focusin', check);
+    document.addEventListener('focusout', later);
+    check();
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener('focusin', check);
+      document.removeEventListener('focusout', later);
+    };
+  }, []);
+  return typing;
 }
