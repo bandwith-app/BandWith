@@ -12,7 +12,7 @@ describe('190 the stage signing keys', () => {
   it('only admins get the private key', () => {
     expect(fn('bw_stage_admin_band')).toMatch(/bw_is_band_admin\(band\)/);
     expect(fn('bw_stage_signer')).toMatch(/bw_stage_admin_band\(p_event_id\) IS NULL THEN\s+RETURN NULL/);
-    expect(fn('bw_stage_set_signer')).toMatch(/bw_stage_admin_band\(p_event_id\) IS NULL THEN\s+RETURN NULL/);
+    expect(fn('bw_stage_set_signer')).toMatch(/band := public\.bw_stage_admin_band\(p_event_id\);\s+IF band IS NULL THEN\s+RETURN NULL/);
     // The members' function never reads the private column.
     expect(fn('bw_stage_verify_key')).toMatch(/bw_is_band_member\(band\)/);
     expect(fn('bw_stage_verify_key')).not.toMatch(/sign_private/);
@@ -32,6 +32,16 @@ describe('190 the stage signing keys', () => {
       expect(sql).toContain(`REVOKE EXECUTE ON FUNCTION public.${f} FROM PUBLIC, anon;`);
       expect(sql).toContain(`GRANT EXECUTE ON FUNCTION public.${f} TO authenticated;`);
     }
+  });
+
+  it("storing a pair serialises with a demotion: the caller's admin row is locked and re-checked before the update", () => {
+    const f = fn('bw_stage_set_signer');
+    // A demotion that commits first makes the locked re-check find no row;
+    // one that comes later waits, and its rotation clears the stored pair.
+    const lock = f.search(/PERFORM 1 FROM public\.band_members bm\s+WHERE bm\.band_id = band AND bm\.user_id = auth\.uid\(\)\s+AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
+    const update = f.search(/UPDATE public\.stage_keys/);
+    expect(lock).toBeGreaterThan(-1);
+    expect(update).toBeGreaterThan(lock);
   });
 
   it('keys can never be NULL (decode(NULL) would pass every length check)', () => {

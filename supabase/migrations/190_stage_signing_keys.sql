@@ -117,13 +117,15 @@ VOLATILE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
+  band uuid;
   pub_bytes bytea;
   priv_bytes bytea;
   pub text;
   priv text;
   ver integer;
 BEGIN
-  IF public.bw_stage_admin_band(p_event_id) IS NULL THEN
+  band := public.bw_stage_admin_band(p_event_id);
+  IF band IS NULL THEN
     RETURN NULL;
   END IF;
   -- decode(NULL) is NULL, and NULL passes every length check below.
@@ -140,6 +142,18 @@ BEGIN
   IF length(pub_bytes) <> 65 OR get_byte(pub_bytes, 0) <> 4
      OR length(priv_bytes) < 60 OR length(priv_bytes) > 200 THEN
     RAISE EXCEPTION 'bad stage key' USING ERRCODE = '22023';
+  END IF;
+  -- Lock the caller's admin row, so this serialises with a demotion or a
+  -- removal (bw_stage_rotate_signer). One that commits first: the locked
+  -- re-check finds no admin row (READ COMMITTED re-reads it) and nothing is
+  -- stored. One that comes later waits for this call, and its rotation then
+  -- clears the pair stored here.
+  PERFORM 1 FROM public.band_members bm
+   WHERE bm.band_id = band AND bm.user_id = auth.uid()
+     AND bm.role = 'admin' AND COALESCE(bm.is_active, true)
+   FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN NULL;
   END IF;
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
