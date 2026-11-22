@@ -1,8 +1,8 @@
 /**
  * Monthly repeats on the 29th, 30th and 31st: the shared vectors for the app
- * (src/lib/recurrence.ts, here), the calendar feed (#285, BYMONTHDAY=28..d;
- * BYSETPOS=-1, and the SQL next occurrence) and deleted dates (#297,
- * recurrenceSkips.ts). Each month falls on the start's day, or on the last
+ * (src/lib/recurrence.ts, here), the calendar feed (#285: BYMONTHDAY=-1 for
+ * the 31st, BYMONTHDAY=28..d;BYSETPOS=-1 for the 29th and 30th, and the SQL
+ * next occurrence) and deleted dates (#297, recurrenceSkips.ts). Each month falls on the start's day, or on the last
  * day of a shorter month; the overflow never carries (Jan 31 → Feb 28 →
  * Mar 31, not Mar 28). Months ahead 0 to 13, in 2027 and in 2028 (leap year).
  */
