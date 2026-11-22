@@ -90,7 +90,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
               <WifiOff className="w-[18px] h-[18px] shrink-0" aria-hidden />
               <span className="flex-1 min-w-0 truncate bw-label-sm">
                 {pendingCount > 0
-                  ? t('You’re offline · {changes} will sync', { changes })
+                  ? t('You’re offline · {changes} waiting for signal', { changes })
                   : t('You’re offline · showing cached info')}
               </span>
               <RefreshCw className="w-4 h-4 shrink-0" aria-hidden />
@@ -100,14 +100,14 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
               <Wifi className="w-[18px] h-[18px] shrink-0" aria-hidden />
               <span className="flex-1 min-w-0 truncate bw-label-sm">
                 {pendingCount > 0
-                  ? t('Back online · {changes} to sync', { changes })
+                  ? t('Back online · sending {changes}', { changes })
                   : t('Back online · up to date')}
               </span>
               {pendingCount > 0 && onSyncNow && (
                 <button
                   type="button"
                   onClick={onSyncNow}
-                  aria-label={t('Sync now')}
+                  aria-label={t('Send now')}
                   className="relative -m-2 p-2 shrink-0 rounded-full active:scale-[var(--press-scale,0.97)] transition-transform"
                 >
                   <RefreshCw className="w-4 h-4 animate-spin" aria-hidden />

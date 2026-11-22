@@ -1,0 +1,45 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { anyLayerOpen, useLayerOpen } from '../useLayerOpen';
+
+afterEach(() => {
+  document.body.innerHTML = '';
+});
+
+const addDialog = (attrs: Record<string, string> = {}) => {
+  const el = document.createElement('div');
+  el.setAttribute('role', 'dialog');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  document.body.appendChild(el);
+  return el;
+};
+
+describe('is a sheet, modal or Stage open?', () => {
+  it('no dialog: nothing open', () => {
+    document.body.innerHTML = '<main><p>Home</p><div role="alert">Urgent</div></main>';
+    expect(anyLayerOpen()).toBe(false);
+  });
+
+  it('a dialog or alert dialog counts; a hidden one does not', () => {
+    const d = addDialog();
+    expect(anyLayerOpen()).toBe(true);
+    d.hidden = true;
+    expect(anyLayerOpen()).toBe(false);
+    const a = document.createElement('div');
+    a.setAttribute('role', 'alertdialog');
+    document.body.appendChild(a);
+    expect(anyLayerOpen()).toBe(true);
+  });
+
+  it('follows sheets opening and closing', async () => {
+    const { result } = renderHook(() => useLayerOpen());
+    expect(result.current).toBe(false);
+    let d: HTMLElement;
+    act(() => {
+      d = addDialog({ 'aria-modal': 'true' });
+    });
+    await waitFor(() => expect(result.current).toBe(true));
+    act(() => d.remove());
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+});

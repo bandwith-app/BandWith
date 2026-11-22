@@ -1961,6 +1961,9 @@ const dict: Dictionary = {
   "Back online · synced": "En ligne · synchronisé",
   "Back online · up to date": "De retour en ligne · tout est à jour",
   "Sync now": "Synchroniser",
+  "You’re offline · {changes} waiting for signal": "Hors ligne · {changes} en attente de réseau",
+  "Back online · sending {changes}": "De retour en ligne · envoi de {changes}",
+  "Send now": "Envoyer maintenant",
 
   // Onboarding
   "Shared calendars": "Calendriers partagés",

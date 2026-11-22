@@ -180,6 +180,7 @@ import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
+import { useLayerOpen } from "@/app/hooks/useLayerOpen";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -525,6 +526,9 @@ export default function AuthenticatedApp() {
   // ═══ LOCAL CLIENT-SIDE BAND PILL FILTER (instant, <1ms) ═══
   const [selectedBandPill, setSelectedBandPill] = useState<string>('all');
   const [urgentNotification, setUrgentNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // The urgent pop-up never draws over an open sheet, modal or Stage mode:
+  // it waits for it to close (watched only while one is waiting).
+  const layerOpen = useLayerOpen(!!urgentNotification);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const { notifications: realNotifications, loading: notificationsLoading, refetch: refetchNotifications, setNotifications: setRealNotifications } = useNotifications({
@@ -5041,7 +5045,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {/* Waits for the welcome tour: one layer at a time on first launch. */}
-        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && (
+        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !layerOpen && (
           <UrgentNotificationPopup
             key={urgentNotification.id}
             notification={urgentNotification}
