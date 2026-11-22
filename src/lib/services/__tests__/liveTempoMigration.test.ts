@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sql171 from '../../../../supabase/migrations/171_song_tempo_count_in.sql?raw';
-import { stageSongSelect, isMissingColumn, liveSongFields } from '../../stageSongs';
+import { stageSongSelect, isMissingColumn, liveSongFields, stageSongOf } from '../../stageSongs';
 
 const sql = sql171.replace(/--.*$/gm, '');
 const LIVE = ['time_signature', 'count_in_bars', 'pickup_beats', 'backing_track', 'line_timing'];
@@ -37,5 +37,14 @@ describe('171 live mode: tempo and count-in', () => {
       timeSignature: '6/8', countInBars: 2, pickupBeats: 1, backingTrack: true, durationSeconds: 200,
     });
     expect(liveSongFields({ time_signature: 'waltz', count_in_bars: 1, pickup_beats: 0, backing_track: false, line_timing: { v: 9 } })).toEqual({});
+  });
+
+  it('a song from the live pack (songFromRow) becomes a Stage song: line timing checked, length in seconds', () => {
+    const timing = { v: 1, hash: 'abc', at: [0, 4.5], mode: 'tap' };
+    const s = stageSongOf({ title: 'Harbor Lights', duration: '3:25', timeSignature: '6/8', countInBars: 2, lineTiming: timing });
+    expect(s).toMatchObject({ title: 'Harbor Lights', timeSignature: '6/8', countInBars: 2, durationSeconds: 205 });
+    expect(s.lineTiming).toEqual({ ...timing, mode: 'tap' });
+    expect(stageSongOf({ title: 'x', lineTiming: { v: 9 }, duration: 'soon' })).not.toHaveProperty('lineTiming');
+    expect(stageSongOf({ title: 'x', duration: 'soon' })).not.toHaveProperty('durationSeconds');
   });
 });

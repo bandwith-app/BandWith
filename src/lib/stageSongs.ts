@@ -48,3 +48,20 @@ export function liveSongFields(song: Record<string, unknown> | null | undefined)
   if (typeof song.duration_seconds === 'number' && song.duration_seconds > 0) out.durationSeconds = song.duration_seconds;
   return out;
 }
+
+/**
+ * A song as the live pack reads it (livePack.songFromRow: line timing
+ * unchecked, length as "m:ss") → the fields Stage mode follows the tempo
+ * with: line timing checked, the length in seconds.
+ */
+export function stageSongOf<T extends { lineTiming?: unknown; duration?: string; durationSeconds?: number }>(
+  song: T,
+): Omit<T, 'lineTiming'> & Pick<LiveSongFields, 'lineTiming' | 'durationSeconds'> {
+  const { lineTiming, ...rest } = song;
+  const out: Omit<T, 'lineTiming'> & Pick<LiveSongFields, 'lineTiming' | 'durationSeconds'> = rest;
+  const timing = asLineTiming(lineTiming);
+  if (timing) out.lineTiming = timing;
+  const m = /^(\d+):([0-5]\d)$/.exec(song.duration ?? '');
+  if (m && out.durationSeconds === undefined) out.durationSeconds = Number(m[1]) * 60 + Number(m[2]);
+  return out;
+}
