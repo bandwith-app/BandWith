@@ -47,6 +47,15 @@ vi.mock('../livePackStatus', () => ({
   saveProfileChoice: async () => undefined,
 }));
 
+// My files on the device (native): off in jsdom unless a test turns it on.
+const files = vi.hoisted(() => ({ available: false, local: null as { path: string; directory: string } | null }));
+vi.mock('../livePackFiles', async (orig) => ({
+  ...(await orig<typeof import('../livePackFiles')>()),
+  packFilesAvailable: () => files.available,
+  downloadPackFile: async () => files.local,
+  removePackFiles: async () => undefined,
+}));
+
 import { getCacheKey, getOfflineItem, setOfflineItem, syncCachedRoles, clearOfflineCache } from '../offline/storage';
 import {
   fetchSetlistRows,
@@ -102,6 +111,8 @@ beforeEach(() => {
   resetExtrasProbe();
   status.reported.length = 0;
   status.forgotten.length = 0;
+  files.available = false;
+  files.local = null;
 });
 
 describe('savePackSongs', () => {
@@ -342,7 +353,7 @@ describe('packOpenedEvent', () => {
     await new Promise((r) => setTimeout(r, 0));
     const p = await readPack(me, 'b1', 'e1');
     expect(isPackReady(p)).toBe(true);
-    expect(status.reported).toHaveLength(1);
+    expect(status.reported.filter((r) => !r.endsWith(':partial'))).toHaveLength(1);
   });
 
   it('an empty setlist drops the pack, switch on or off', async () => {
@@ -473,4 +484,80 @@ describe('migrateLegacySetlists with live_pack on (round 4)', () => {
 it('pack keys live under the user and band (what logout and role changes clear)', () => {
   expect(packKey(me, 'b1', 'e1')).toBe(getCacheKey(me, 'b1', 'live_pack:e1'));
   void setOfflineItem;
+});
+
+// Review #273 round 5.
+describe('round 5 (review #273)', () => {
+  const ev = (over: Record<string, unknown> = {}) => ({ eventId: 'e1', bandId: 'b1', date: inDays(3), eventType: 'gig', setlistId: 's1', row: gig(over) });
+  const note = (id: string, body: string) => ({ id, song_id: 'song1', anchor: { type: 'song' }, body });
+  const pdf = { id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('a file that fails to download keeps the pack partial; it is full once every file is on the device', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    let p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBe(true);
+    expect(isPackReady(p)).toBe(false);
+    await tick();
+    expect(status.reported.every((r) => r.endsWith(':partial'))).toBe(true);
+    files.local = { path: 'live-pack/u1/f1-chart.pdf', directory: 'LIBRARY_NO_CLOUD' };
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBeUndefined();
+    expect(p?.personal.song1.files[0].local?.path).toBe('live-pack/u1/f1-chart.pdf');
+  });
+
+  it('a full pack whose new file fails to download turns partial (not "ready" without it)', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBeUndefined();
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+  });
+
+  it('an uncached open with the switch on: the songs-only copy is partial until the full pack loads', async () => {
+    await packOpenedEvent({ userId: me, event: gig(), songs, livePackOn: true, fullDue: false, allowFiles: true });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBe(true);
+    expect(isPackReady(p)).toBe(false);
+    await tick();
+    expect(status.reported.every((r) => r.endsWith(':partial'))).toBe(true);
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await packOpenedEvent({ userId: me, event: gig(), songs, livePackOn: true, fullDue: true, allowFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBeUndefined();
+  });
+
+  it('switched off: coming back still sweeps held packs (a note deleted elsewhere goes), not only on a push', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    answers.song_personal_notes = () => ({ data: [], error: null });
+    const later = new Date(Date.now() + 31 * 60 * 1000);
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: false, now: later })).toBe(1);
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.personal.song1).toBeUndefined();
+    expect(p?.partial).toBe(true);
+  });
+
+  it('switched off: a pack swept a moment ago is not fetched again on the next resume', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    asked.length = 0;
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: false })).toBe(0);
+    expect(asked.filter((q) => q.table === 'setlist_songs')).toEqual([]);
+  });
+
+  it('switched off, Wi-Fi only and on mobile data: a silent push fetches nothing', async () => {
+    writeChoice(me, { auto: true, events: [], wifiOnly: true });
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    asked.length = 0;
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, onWifi: false, downloads: false, force: ['e1'] })).toBe(0);
+    expect(asked.filter((q) => q.table === 'setlist_songs')).toEqual([]);
+  });
 });

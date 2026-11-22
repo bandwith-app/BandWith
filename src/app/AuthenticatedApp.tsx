@@ -4712,7 +4712,8 @@ export default function AuthenticatedApp() {
               navigateToNotificationTarget(notificationTarget(notif.type, notif.data), notificationBandId(notif), notif.id);
             }}
             onClearAll={() => {
-              const ids = [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
+              // Only what the inbox shows: items hidden by a kill switch stay.
+              const ids = [shownSelectedNotification?.id, ...shownSelectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
               setSelectedNotification(null);
               setSelectedNotifications([]); // the inbox stays open, empty
               removeNotifications(ids);

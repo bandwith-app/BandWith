@@ -348,12 +348,16 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   // My files: the copies already on the device stay; new ones come down (native).
   const prevFiles = new Map(Object.values(prev?.personal ?? {}).flatMap((p) => p.files).map((f) => [f.id, f]));
   const kept = new Set<string>();
+  const filesWanted = !!args.withFiles && !args.partial && packFilesAvailable();
+  // A file that should be on the device and isn't: the pack is not complete.
+  let fileMissing = false;
   for (const p of Object.values(personal)) {
     for (const f of p.files) {
       const had = prevFiles.get(f.id)?.local;
       if (had) f.local = had;
-      if (!f.local && args.withFiles && !args.partial && packFilesAvailable()) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
+      if (!f.local && filesWanted) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
       if (f.local) kept.add(f.id);
+      else if (filesWanted) fileMissing = true;
     }
   }
   await removePackFiles([...prevFiles.values()].filter((f) => !kept.has(f.id)));
@@ -404,8 +408,10 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
     // Partial while switched off, and until every part has loaded once (a full
-    // pack that misses a part now keeps what it held, and stays full).
-    ...(args.partial || (!complete && (!prev || prev.partial)) ? { partial: true } : {}),
+    // pack that can't fetch a part now keeps what it held, and stays full).
+    // One of my files not on the device: partial, whatever it was (it isn't
+    // there offline).
+    ...(args.partial || fileMissing || (!complete && (!prev || prev.partial)) ? { partial: true } : {}),
   };
   await savePack(pack);
   // The full pack is on this device: tell the band's admins (native only).
@@ -437,7 +443,11 @@ export async function packOpenedEvent(args: {
     await refreshPack({ userId, event, occurrenceDate, songs, partial });
     return;
   }
-  await savePackSongs({ userId, event, occurrenceDate, songs, partial });
+  // Not held yet: these songs alone are partial until the full pack loads
+  // (notes, files, band notes), so no "ready" is claimed for them.
+  const basics = packEventFrom(event);
+  const held = basics.band_id && basics.id ? await readPack(userId, basics.band_id, basics.id) : null;
+  await savePackSongs({ userId, event, occurrenceDate, songs, partial: partial || !held });
   if (args.fullDue) await refreshPack({ userId, event, occurrenceDate, songs, withFiles: livePackOn && args.allowFiles, partial });
 }
 
@@ -538,21 +548,25 @@ async function prefetchOnce({
   const rows = new Map(events.map((e) => [e.eventId, e.row]));
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
+  const choice = readChoice(userId);
   if (!downloads || !keepGoing()) {
-    // Switched off: the server's silent refresh still brings the packs
-    // already on this device up to date (tidy, partial, no files); it never
-    // creates one.
+    // Switched off: the packs already on this device are still brought up to
+    // date (tidy, partial, no files: a note deleted elsewhere goes), on the
+    // server's silent refresh and on app open / resume when not fresh. It
+    // never creates one. "Wi-Fi only" holds here too.
     let tidied = 0;
-    if (online) {
-      for (const e of events.filter((x) => force.includes(x.eventId))) {
-        if (!(await readPack(userId, e.bandId, e.eventId))) continue;
+    if (online && !(choice.wifiOnly && !onWifi)) {
+      for (const e of events) {
+        const prev = await readPack(userId, e.bandId, e.eventId);
+        if (!prev) continue;
+        const fresh = now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
+        if (fresh && !force.includes(e.eventId)) continue;
         await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: false, unknownTitle, partial: true });
         tidied++;
       }
     }
     return tidied;
   }
-  const choice = readChoice(userId);
   if (!online || !anyPackAllowed(choice) || (choice.wifiOnly && !onWifi)) return 0;
   let candidates = prefetchCandidates(events, now).filter((e) => packAllowed(choice, e.eventId));
   if (!candidates.length) return 0;
