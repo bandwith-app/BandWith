@@ -23,11 +23,11 @@ function fakeAdmin(opts: { rpc?: (fn: string, a: Record<string, unknown>) => { d
   );
   const from = (table: string) => {
     tables.push(table);
-    let q = table === 'chat_participants' ? rows : [];
+    let q: Record<string, unknown>[] = table === 'chat_participants' ? rows : [];
     const chain = {
       select: () => chain,
-      eq: (col: string, v: unknown) => ((q = (q as Record<string, unknown>[]).filter((r) => col === 'is_active' || r[col] === v)), chain),
-      in: (col: string, vs: unknown[]) => ((q = (q as Record<string, unknown>[]).filter((r) => vs.includes(r[col]))), chain),
+      eq: (col: string, v: unknown) => ((q = q.filter((r) => col === 'is_active' || r[col] === v)), chain),
+      in: (col: string, vs: unknown[]) => ((q = q.filter((r) => vs.includes(r[col]))), chain),
       then: (res: (v: unknown) => unknown) => Promise.resolve({ data: q, error: null }).then(res),
     };
     return chain;
