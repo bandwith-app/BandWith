@@ -64,7 +64,12 @@ import { FromLastTimeSection, type EarlierNotes } from './FromLastTime';
 import { fromLastTime } from '@/lib/toPractise';
 import { useBandFlag } from '@/lib/flags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
-import { prefetchStageKey, readCachedSetlist, writeCachedSetlist } from '@/lib/stageBleNative';
+import { prefetchStageKey } from '@/lib/stageBleNative';
+import { packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
+import { fetchSetlistRows, readPack, readPackBySetlist, refreshPack, savePackSongs } from '@/lib/livePackStore';
+import { packAllowed, readChoice } from '@/lib/livePackConsent';
+import { useLivePack, useOnline } from '@/app/components/event/useLivePack';
+import { OfflineReadyRow } from '@/app/components/event/OfflineReadyRow';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
 import {
@@ -93,7 +98,6 @@ import {
   rehearsalCadence,
   shortPlace,
 } from '@/app/components/event/format';
-import { asSongChart, type SongChart } from '@/lib/ireal';
 import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
 import { RiderStageContent, RiderStageScreen } from '@/app/components/event/rider/RiderStage';
@@ -310,6 +314,16 @@ const SetFlow: React.FC<{ seconds: number[]; max: number }> = ({ seconds, max })
   );
 };
 
+/** The whole live pack (my notes and files, band notes) is fetched again at most this often per event. */
+const FULL_PACK_MS = 5 * 60 * 1000;
+const fullPackAt = new Map<string, number>();
+const fullPackDue = (eventId: string) => {
+  const last = fullPackAt.get(eventId) ?? 0;
+  if (Date.now() - last < FULL_PACK_MS) return false;
+  fullPackAt.set(eventId, Date.now());
+  return true;
+};
+
 export const EventDetail: React.FC<EventDetailProps> = ({
   event: eventProp,
   onClose: onCloseProp,
@@ -400,12 +414,16 @@ export const EventDetail: React.FC<EventDetailProps> = ({
 
   // Setlist state
   const laptopPose = useLaptopPose();
-  const [setlistSongs, setSetlistSongs] = useState<
-    { id?: string; songId?: string; setNumber?: number; title: string; artist?: string; duration?: string; key?: string; lyrics?: string; chart?: SongChart; audio?: string }[]
-  >([]);
+  const [setlistSongs, setSetlistSongs] = useState<LiveSong[]>([]);
+  // The live pack (plan §3.1): this event's setlist kept on the device.
+  const packRow = useMemo(() => packRowFromItem({ ...event, eventType }), [event, eventType]);
+  const livePack = useLivePack(currentUserId, event.band_id, event.eventId);
+  const online = useOnline();
   const [setlistLoading, setSetlistLoading] = useState(false);
   /** The setlist couldn't be fetched and no copy is kept on the device (offline). */
   const [setlistError, setSetlistError] = useState(false);
+  /** The songs on screen came from the live pack (no signal): when it was downloaded. */
+  const [songsFromPack, setSongsFromPack] = useState<string | null>(null);
 
   // The admin's setlist edits in the overview: kept here until Save, then one
   // notification to the lineup (GigSetlistEditor, migration 107).
@@ -417,7 +435,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     eventTitle: event.title,
     onSaved: (songs, savedId) => {
       setSetlistSongs(songs as typeof setlistSongs);
-      writeCachedSetlist(savedId, songs as typeof setlistSongs);
+      if (currentUserId && savedId === event.setlistId)
+        void savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, songs: songs as LiveSong[] }).catch(() => undefined);
       setSetlistReloadKey((k) => k + 1);
       // A new setlist was linked to the gig: the events list picks up its id.
       if (savedId !== event.setlistId) onEventUpdated?.();
@@ -538,57 +557,47 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     // A live reload keeps the songs on screen while it fetches.
     if (setlistReloadKey === 0) setSetlistLoading(true);
     const fetchSetlist = async () => {
-      try {
-        const setlistId = event.setlistId!;
-        const { data, error } = await supabase
-          .from('setlist_songs')
-          // songs has duration_seconds, not duration: asking for a missing
-          // column makes PostgREST fail the whole query.
-          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart, audio_url)')
-          .eq('setlist_id', event.setlistId)
-          .order('set_number', { ascending: true })
-          .order('position', { ascending: true });
+      const setlistId = event.setlistId!;
+      // No internet (a venue with no signal): the live pack kept on the
+      // device, so Stage mode still has the songs (and Bluetooth sync).
+      const fromPack = async () => {
+        const pack =
+          (await readPack(currentUserId, event.band_id, event.eventId)) ?? (await readPackBySetlist(currentUserId, setlistId));
         if (cancelled) return;
-        // No internet (a venue with no signal): the copy kept on the phone, so
-        // Stage mode still has the songs (and Bluetooth sync).
-        if (error) {
-          const cached = readCachedSetlist(setlistId);
-          setSetlistSongs(cached ?? []);
-          setSetlistError(!cached);
+        const songs = pack?.setlistId === setlistId ? pack.songs : null;
+        setSetlistSongs(songs ?? []);
+        setSetlistError(!songs);
+        setSongsFromPack(songs ? pack!.savedAt : null);
+      };
+      try {
+        const { rows, error } = await fetchSetlistRows(setlistId);
+        if (cancelled) return;
+        if (error || !rows) {
+          await fromPack();
           return;
         }
         setSetlistError(false);
+        setSongsFromPack(null);
         // An empty or failed query clears the list instead of keeping the
         // songs of the setlist shown before.
-        if (!data || data.length === 0) {
-          setSetlistSongs([]);
-          writeCachedSetlist(setlistId, []);
-        } else {
-          const songs = data.map((s: any) => ({
-              id: s.id || undefined,
-              songId: s.song_id || undefined,
-              setNumber: typeof s.set_number === 'number' ? s.set_number : undefined,
-              title: s.song?.title || t('Unknown Song'),
-              artist: s.song?.artist || undefined,
-              duration:
-                typeof s.song?.duration_seconds === 'number' && s.song.duration_seconds > 0
-                  ? `${Math.floor(s.song.duration_seconds / 60)}:${String(s.song.duration_seconds % 60).padStart(2, '0')}`
-                  : undefined,
-              key: s.song?.key || undefined,
-              bpm: typeof s.song?.bpm === 'number' && s.song.bpm > 0 ? s.song.bpm : undefined,
-              lyrics: s.song?.lyrics || undefined,
-              chart: asSongChart(s.song?.chord_chart) || undefined,
-              // The Regia (stage manager mode) plays it; nobody else loads it.
-              audio: typeof s.song?.audio_url === 'string' && s.song.audio_url ? s.song.audio_url : undefined,
-            }));
-          setSetlistSongs(songs);
-          writeCachedSetlist(setlistId, songs);
+        const songs = rows.map((r: any) => songFromRow(r, t('Unknown Song')));
+        setSetlistSongs(songs);
+        if (currentUserId && event.band_id && event.eventId) {
+          const occurrence = occurrenceDate(event.date) ?? undefined;
+          if (songs.length === 0) {
+            void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
+          } else {
+            await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
+            // My notes and files, band notes, the key: at most every few minutes.
+            if (fullPackDue(event.eventId)) {
+              const withFiles = packAllowed(readChoice(currentUserId), event.eventId);
+              void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles }).catch(() => undefined);
+            }
+          }
         }
       } catch {
         if (cancelled) return;
-        const cached = readCachedSetlist(event.setlistId!);
-        setSetlistSongs(cached ?? []);
-        setSetlistError(!cached);
+        await fromPack();
       } finally {
         if (!cancelled) setSetlistLoading(false);
       }
@@ -597,7 +606,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [event.setlistId, isPersonalGig, t, setlistReloadKey]);
+    // packRow follows the event; the setlist reloads on its own keys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.setlistId, isPersonalGig, t, setlistReloadKey, currentUserId]);
 
   // Times of this gig on its day; `time` is a 19:00 default when none was set.
   const gigTimes = useMemo(
@@ -757,6 +768,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         auto={Capacitor.isNativePlatform() && !isRehearsal && event.status === 'CONFIRMED' && inPrefetchWindow(event.date, localToday())}
       />
     ) : null;
+  // Live mode with no signal (plan §3.4): this event's pack on the device.
+  const offlineReady =
+    !isPersonalGig && !isQuote && !isPast && !!event.setlistId && !!event.band_id && !setlistLoading && setlistSongs.length > 0 ? (
+      <OfflineReadyRow
+        pack={livePack}
+        userId={currentUserId}
+        event={packRow}
+        occurrenceDate={occurrenceDate(event.date) ?? undefined}
+        online={online}
+      />
+    ) : null;
   const rehearsalSession = useRehearsalSession({
     enabled: sessionsOn && isRehearsal && !isPersonalGig && !!event.band_id,
     bandId: event.band_id,
@@ -813,13 +835,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     if (canStage) prefetchStageKey(event.eventId);
   }, [canStage, event.eventId]);
   const isGigDay = isLiveDay(gigTimes);
-  // "Go live" opens the gig (or rehearsal) straight in live mode (once, on open).
+  // "Go live" opens the gig (or rehearsal) straight in live mode: on open, and
+  // again when it comes for the gig already open in the side pane (iPad, Duo).
   useEffect(() => {
     if (startInStage && canStage) setIsStageOpen(true);
-    // "Review payouts" from Home opens the gig on its Fee & payouts sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startInStage]);
+  // "Review payouts" from Home opens the gig on its Fee & payouts sheet.
+  useEffect(() => {
     if (startOnFee && eventType === 'gig' && !isPersonalGig) setActiveSheet('fee');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [startOnFee]);
   // iPhone Duo: Stage mode joins the rail's Side Actions; on gig day it is
   // the screen's primary action (filled).
   const stageInRail = useRailAction(
@@ -1719,6 +1745,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   ) : (
                     <p className="bw-body-md text-muted-foreground">{t('No setlist yet')}</p>
                   )}
+                  {offlineReady}
                   {offlineAudio}
                 </section>
               )}
@@ -1794,6 +1821,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   }}
                 />
               )}
+              {/* Tablets (gig workspace tabs): offline readiness sits in the overview too. */}
+              {tab === 'overview' && offlineReady}
 
               {/* ─── GEAR KIT (094; self-contained) ─── */}
               {(tab ? tab === 'rider' : true) && !isPersonalGig && !isRehearsal && !isQuote && !!event.band_id && !!event.eventId && (
@@ -2111,6 +2140,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     )}
                   </button>
                   )}
+                  {offlineReady}
                   {offlineAudio}
                 </section>
               )}
@@ -2151,6 +2181,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       {t('No songs picked for this rehearsal yet.')}
                     </button>
                   )}
+                  {offlineReady}
                   {offlineAudio}
                 </section>
               )}
@@ -2981,6 +3012,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             bandId={event.band_id ?? undefined}
             songsLoading={setlistLoading}
             songsError={setlistError}
+            offlineFrom={songsFromPack ?? (!online && livePack ? livePack.savedAt : undefined)}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
             session={isRehearsalLive ? rehearsalSession : undefined}

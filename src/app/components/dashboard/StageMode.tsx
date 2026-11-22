@@ -37,6 +37,8 @@ import { openCountBySong } from '@/lib/toPractise';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
 import { NowPlayingStrip, RegiaBar, RegiaExtraSheet, RegiaRowPlay } from './StageRegia';
 import { enterScreen } from '@/lib/appAnalytics';
+import { packSavedLabel } from '@/app/components/event/OfflineReadyRow';
+import type { LiveSongExtras } from '@/lib/livePack';
 
 export interface StageStep {
   label: string;
@@ -46,7 +48,7 @@ export interface StageStep {
   display: string;
 }
 
-export interface StageSong {
+export interface StageSong extends LiveSongExtras {
   /** setlist_songs row id (live order and current song follow it). */
   id?: string;
   /** songs.id, needed to save a new order. */
@@ -115,6 +117,11 @@ interface StageModeProps {
   songsLoading?: boolean;
   /** The setlist couldn't be loaded (offline, nothing kept on the device). */
   songsError?: boolean;
+  /**
+   * No signal: the songs come from the live pack downloaded at this time
+   * (ISO). Shows "Offline · content from …" (plan §3.4).
+   */
+  offlineFrom?: string;
   onRetrySongs?: () => void;
   accentColor?: string;
   live?: StageLiveControls;
@@ -154,6 +161,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   venue,
   city,
   dateLabel,
+  offlineFrom,
   date,
   steps,
   songs,
@@ -515,6 +523,15 @@ export const StageMode: React.FC<StageModeProps> = ({
             {(venue || city) && !compactHead && (
               <span className="bw-label-md text-white truncate">
                 {[venue, city && city !== venue ? city : ''].filter(Boolean).join(' · ')}
+              </span>
+            )}
+            {offlineFrom && (
+              <span
+                role="status"
+                className="self-start inline-flex items-center gap-1.5 min-h-6 max-w-full px-2.5 rounded-full border border-white/40 bw-label-xs text-white/80 whitespace-nowrap overflow-hidden text-ellipsis"
+              >
+                <span aria-hidden className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/60" />
+                <span className="truncate">{t('Offline · content from {time}', { time: packSavedLabel(offlineFrom, t) })}</span>
               </span>
             )}
           </div>

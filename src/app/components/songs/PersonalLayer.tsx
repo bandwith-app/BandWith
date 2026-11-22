@@ -44,6 +44,23 @@ export interface PersonalSong {
   notes?: string | null;
 }
 
+/**
+ * Open one of my files: the copy kept on this device for live mode when
+ * there's no signal (or the link can't be reached), else the stored file.
+ */
+const openMyFile = async (f: PersonalFile) => {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (f.local && offline) {
+    const { openPackFile } = await import('@/lib/livePackFiles');
+    if (await openPackFile(f as never)) return;
+  }
+  const opened = await openSongResource(f.ref);
+  if (!opened && f.local) {
+    const { openPackFile } = await import('@/lib/livePackFiles');
+    await openPackFile(f as never);
+  }
+};
+
 // ── the sheets, opened from anywhere ──
 
 /** Where a band note goes: the section and line held (rehearsal notes, 167). */
@@ -349,7 +366,7 @@ export const MyNotesBar: React.FC<{ className?: string }> = ({ className }) => {
         <ul className="flex flex-wrap gap-2" aria-label={t('My files')}>
           {files.map((f) => (
             <li key={f.id} className={cn('flex items-center rounded-full border max-w-full', stage ? 'border-accent text-white' : 'border-accent bg-accent/15')}>
-              <button type="button" onClick={() => void openSongResource(f.ref)} className="flex items-center gap-1.5 min-h-9 pl-3 pr-1 min-w-0 bw-label-sm">
+              <button type="button" onClick={() => void openMyFile(f)} className="flex items-center gap-1.5 min-h-9 pl-3 pr-1 min-w-0 bw-label-sm">
                 {f.kind === 'audio' ? <Music2 className="w-4 h-4 shrink-0" /> : <FileText className="w-4 h-4 shrink-0" />}
                 <span className="truncate normal-case">{f.name}</span>
               </button>

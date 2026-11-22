@@ -177,6 +177,8 @@ import { installKeyboardDismissOnTouch } from "@/lib/keyboardDismiss";
 import { analyticsAskBlocked, screenNameFor, setAnalyticsConsent, shouldAskAnalyticsConsent, trackScreen, type ScreenOverlay } from "@/lib/appAnalytics";
 import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsentSheet";
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
+import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
+import { findPack } from "@/lib/livePackStore";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -823,6 +825,9 @@ export default function AuthenticatedApp() {
   // The days before a confirmed gig, with internet: an admin's phone fetches
   // the setlist's song files for the stage manager (no signal at the venue).
   useAudioPrefetch(events, isAdminOfBand);
+  // Live packs (plan §3.2): tidied on open/resume, downloaded ahead once agreed.
+  const myBandIds = useMemo(() => (bandsLoading ? null : (realBands ?? []).map((b) => b.id)), [bandsLoading, realBands]);
+  useLivePackPrefetch(events, user?.id, myBandIds);
 
   // Calendar band filter: offered from two bands on (plus Personal when there
   // are personal gigs). A choice that is no longer offered goes back to All,
@@ -1042,6 +1047,11 @@ export default function AuthenticatedApp() {
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const handleEventCardClickRef = useRef<(event: EventData) => void>(() => {});
+  // "Go live" with no signal opens the event from its live pack (navigateToEvent).
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
+  const bandsByIdRef = useRef(bandLookup);
+  bandsByIdRef.current = bandLookup;
 
   /**
    * An event a notification points at that isn't on the user's calendar:
@@ -1156,9 +1166,22 @@ export default function AuthenticatedApp() {
       if (ev) {
         handleEventCardClickRef.current(ev);
       } else {
+        // No signal ("Go live" at a venue): open the event from its live
+        // pack instead of fetching the list (plan §3.4).
+        const fromPack = async () => {
+          const pack = await findPack(userIdRef.current, eventDbId);
+          if (!pack) return false;
+          const item = eventToEventItem(pack.event as unknown as Event);
+          item.band_id = pack.bandId;
+          item.band_name = bandsByIdRef.current[pack.bandId];
+          handleEventCardClickRef.current(item);
+          return true;
+        };
+        if (typeof navigator !== 'undefined' && navigator.onLine === false && (await fromPack())) return;
         try {
           await refetchEvents();
         } catch (err: any) {
+          if (await fromPack()) return;
           setEventLoadError({ id: eventDbId, kind: 'error', message: err?.message });
           return;
         }
