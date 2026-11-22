@@ -854,6 +854,10 @@ span.bw-voice-bv {
   margin-left: 0.1em;
   padding-left: 0.25em;
 }
+/* Word by word (chord editor): one bar at the start of a backing run. */
+span.bw-voice-bv[data-voice-cont='true'] {
+  border-left-color: transparent;
+}
 .bw-voice-all {
   font-weight: 800;
 }

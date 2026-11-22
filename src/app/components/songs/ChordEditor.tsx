@@ -335,7 +335,13 @@ export const ChordEditor: React.FC = () => {
               ) : (
                 <span className="h-5" aria-hidden />
               )}
-              <span className={voiceClass(voices[wi])} data-voice={voices[wi] === 'lead' ? undefined : voices[wi]}>{w.text}</span>
+              <span
+                className={voiceClass(voices[wi])}
+                data-voice={voices[wi] === 'lead' ? undefined : voices[wi]}
+                data-voice-cont={voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
+              >
+                {w.text}
+              </span>
             </span>
           );
         })}

@@ -87,6 +87,17 @@ describe('the Voice picker in the chord editor', () => {
     expect(screen.getByRole('button', { name: 'comes' }).querySelector('[data-voice]')).toBeNull();
   });
 
+  it('draws the backing bar once per run of words, not on every word', async () => {
+    render(<ChordEditor />);
+    act(() => openChordEditor('s1'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Morning' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Voice' })).getByRole('button', { name: 'Backing' }));
+    const first = screen.getByRole('button', { name: 'Morning' }).querySelector('[data-voice="bv"]')!;
+    const next = screen.getByRole('button', { name: 'comes' }).querySelector('[data-voice="bv"]')!;
+    expect(first).not.toHaveAttribute('data-voice-cont');
+    expect(next).toHaveAttribute('data-voice-cont', 'true');
+  });
+
   it('marks just a few words and saves them in the lyrics', async () => {
     render(<ChordEditor />);
     act(() => openChordEditor('s1'));
