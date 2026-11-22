@@ -3,9 +3,11 @@ import { isOfflineError } from '../offline/networkErrors';
 import { queueLiveOp } from '../liveOutbox';
 import { newLocalId, sessionUserId } from '../sessionUser';
 import { supabase } from '../supabase';
-import { adoptSuggestionFiles, isStorageFullError, isSuggestionFile, removeSongFiles, songFilesFit, storageFullError } from './songFiles';
+import { adoptSuggestionFiles, removeSongFiles } from './songFiles';
 import type { SongChart } from '../ireal';
 import type { SongSuggestion, SuggestionKind, SuggestionStatus } from '../songSuggestions';
+// Storage room for an accepted song's files (Codex review of #295).
+import { isStorageFullError, isSuggestionFile, songFilesFit, storageFullError } from './songFiles';
 
 /**
  * Members suggest, admins review (migration 108). Rows are read under RLS:
