@@ -22,6 +22,7 @@ import type { Quote } from '@/app/data/quotes';
 import {
   getQuoteLinkState,
   quoteLinkUrl,
+  isLinkChangedError,
   recipientChangedAt,
   replyToQuoteClient,
   revokeQuoteLink,
@@ -193,10 +194,15 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     const body = reply.trim();
     if (!body || replying) return;
     setReplying(true);
-    const { error } = await replyToQuoteClient(quote.id, body);
+    // 183: on the link of the conversation shown; if the quote went to
+    // another client since, nothing is written (it never reaches them).
+    const { error } = await replyToQuoteClient(quote.id, body, link?.token);
     if (error) {
       setReplying(false);
-      notify?.(t('Your reply was not sent. Try again.'), 'error');
+      if (isLinkChangedError(error)) {
+        notify?.(t('This conversation was with the previous client. Your reply was not sent: open the quote again to write to the current client.'), 'error');
+        void load();
+      } else notify?.(t('Your reply was not sent. Try again.'), 'error');
       return;
     }
     setReply('');
@@ -432,8 +438,8 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
                 <span className="block mt-1 bw-label-xs opacity-60">
                   {(m.kind === 'band_reply'
                     ? t('You')
-                    : // 183: written before the quote went to the current client.
-                      changedAt && m.created_at < changedAt
+                    : // 183: written on another link (the quote's previous client).
+                      (m.link_id && link?.id ? m.link_id !== link.id : !!changedAt && m.created_at < changedAt)
                       ? t('Previous client')
                       : quote.clientName || t('Client')) +
                     ' · ' +

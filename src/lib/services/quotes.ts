@@ -916,8 +916,22 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
  */
 export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string): Partial<Quote> => {
   const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = appQuoteToDbRecord(q, bandId);
-  return rest;
+  // A field the wizard has empty is cleared (null): undefined would be left
+  // out of the UPDATE (supabase-js drops it) and the old value, maybe the
+  // previous client's company or notes, would stay. The yes/no fields the
+  // wizard may not have touched keep what they have.
+  const out: Record<string, unknown> = { ...rest };
+  for (const [key, value] of Object.entries(out)) {
+    if (value === undefined && !KEEP_WHEN_UNSET.has(key)) out[key] = null;
+  }
+  return out as Partial<Quote>;
 };
+
+/** Flags with a meaning of their own when unset (the column default), never cleared to null by an edit. */
+const KEEP_WHEN_UNSET = new Set([
+  'travel_included', 'accommodation_needed', 'meals_included', 'sound_included', 'lights_included',
+  'backline_included', 'deposit_required',
+]);
 
 /** Maps the wizard's musicians to `quote_musicians` rows (user_id only when it is a real profile id). */
 export const appMusiciansToDb = (

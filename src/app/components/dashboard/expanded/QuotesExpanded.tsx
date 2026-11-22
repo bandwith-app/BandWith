@@ -50,6 +50,7 @@ import { getActiveSymbol as sym, useCurrency, currencySymbol } from '@/lib/curre
 import { formatQuoteMoney } from '@/lib/services/quoteMath';
 import { useT, intlLocale, localDecimal } from '@/lib/i18n';
 import { shownQuoteStatus } from '@/lib/quoteExpiry';
+import { quoteErrorText } from '@/lib/quoteSaveError';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
@@ -142,7 +143,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   // Translated text only: the server's own message goes to the console.
   const errorText = (err: unknown, fallback: string) => {
     console.warn(`[quotes] ${fallback}:`, err);
-    return `${fallback}. ${t('Check your connection and try again.')}`;
+    return quoteErrorText(err, fallback, t);
   };
   // A quote's own currency, cents only when it has them.
   const quoteMoney = (q: Pick<Quote, 'total' | 'currency'>) =>
