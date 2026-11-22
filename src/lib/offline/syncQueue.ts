@@ -5,7 +5,7 @@ import {
   LEGACY_MUTATION_QUEUE_KEY,
 } from './storage';
 import { isOfflineError } from './networkErrors';
-import { extrasOf, mergeExtras, replayEventExtras } from './eventExtras';
+import { extrasOf, mergeExtras, remainingExtras, replayEventExtras, type QueuedEventExtras } from './eventExtras';
 import * as eventsService from '@/lib/services/events';
 import { supabase } from '@/lib/supabase';
 import { t } from '@/lib/i18n';
@@ -314,9 +314,33 @@ export const isTransientSyncError = (err: any): boolean => {
   return isOfflineError(err);
 };
 
+/** Extras still to save for an event whose row is on the server now. */
+interface ExtrasLeft {
+  eventId: string;
+  extras: QueuedEventExtras;
+  error: any;
+}
+
 type ExecOutcome =
-  | { ok: true; realId?: string }
-  | { ok: false; error: any; orphaned?: boolean };
+  | { ok: true; realId?: string; extrasLeft?: ExtrasLeft }
+  | { ok: false; error: any; orphaned?: boolean; extrasLeft?: ExtrasLeft };
+
+/** Replays the extras; what failed comes back to stay in the queue (audit 05 #6). */
+const replayExtras = async (eventId: string, extras: QueuedEventExtras): Promise<ExtrasLeft | undefined> => {
+  const failed = await replayEventExtras(eventId, extras);
+  const left = Array.isArray(failed) ? remainingExtras(extras, failed) : null;
+  if (!left) return undefined;
+  return { eventId, extras: left, error: failed.error ?? new Error(`Not saved: ${failed.join(', ')}`) };
+};
+
+/** A queued retry of only the extras that failed, for an event already saved. */
+const extrasOnlyMutation = (from: OfflineMutation, left: ExtrasLeft): OfflineMutation => ({
+  id: from.type === 'update_event' && from.payload?.extrasOnly ? from.id : `extras_${from.id}`,
+  type: 'update_event',
+  timestamp: from.timestamp,
+  payload: { eventId: left.eventId, updates: {}, extrasOnly: true, extras: left.extras },
+  retryCount: 0,
+});
 
 const resolveEventId = (eventId: any): { id: any; orphaned: boolean } => {
   if (!isTempId(eventId)) return { id: eventId, orphaned: false };
@@ -353,8 +377,8 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
     if (!result.error && result.data) {
       const realId = result.data.id || clientId;
       // Setlist, to-dos, rider & stage saved with the gig offline.
-      if (extras && realId) await replayEventExtras(realId, extras);
-      return { ok: true, realId };
+      const extrasLeft = extras && realId ? await replayExtras(realId, extras) : undefined;
+      return { ok: true, realId, extrasLeft };
     }
     if (clientId && isDuplicateKeyError(result.error)) {
       // The first attempt reached the server (e.g. it only timed out on the
@@ -376,8 +400,8 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
           .upsert(lineup, { onConflict: 'event_id,user_id', ignoreDuplicates: true });
         if (lineupErr) console.warn('[syncQueue] lineup after duplicate create:', lineupErr);
       }
-      if (extras) await replayEventExtras(clientId, extras);
-      return { ok: true, realId: clientId };
+      const extrasLeft = extras ? await replayExtras(clientId, extras) : undefined;
+      return { ok: true, realId: clientId, extrasLeft };
     }
     return { ok: false, error: result.error || new Error('Create returned no data') };
   }
@@ -392,13 +416,18 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
       const { error } = await eventsService.updatePersonalGig({ ...personalGigInput, eventId: target.id });
       return error ? { ok: false, error } : { ok: true };
     }
+    const extras = extrasOf(mutation.payload);
+    if (mutation.payload?.extrasOnly) {
+      // The event row is saved already: only the extras that failed last time.
+      const extrasLeft = extras ? await replayExtras(target.id, extras) : undefined;
+      return extrasLeft ? { ok: false, error: extrasLeft.error, extrasLeft } : { ok: true };
+    }
     const { _isPendingSync, _tempId, ...cleanUpdates } = updates || {};
     const { error } = await eventsService.updateEvent(target.id, cleanUpdates);
     if (error) return { ok: false, error };
     // Lineup, setlist and to-dos edited offline.
-    const extras = extrasOf(mutation.payload);
-    if (extras) await replayEventExtras(target.id, extras);
-    return { ok: true };
+    const extrasLeft = extras ? await replayExtras(target.id, extras) : undefined;
+    return { ok: true, extrasLeft };
   }
 
   if (mutation.type === 'delete_event') {
@@ -472,6 +501,8 @@ export const processSyncQueue = async (
     const processed = new Set<string>();
     /** replacement versions of mutations that stay queued (folded payload / bumped retryCount). */
     const updated = new Map<string, OfflineMutation>();
+    /** an applied mutation whose extras partly failed -> the retry of just those, in its place. */
+    const followUps = new Map<string, OfflineMutation>();
 
     // Pass 1: fold updates/deletes that target a pending offline create into that create.
     const work: OfflineMutation[] = [];
@@ -509,8 +540,17 @@ export const processSyncQueue = async (
 
     // Pass 2: replay in order. Mutations still in their retry backoff wait for a later pass.
     const now = Date.now();
+    /** Events with to-dos / setlist / rider still waiting: later edits of them wait too, in order. */
+    const extrasPending = new Set<string>();
+    const eventOf = (m: OfflineMutation): string | undefined =>
+      m.type === 'create_event' ? undefined : withRealEventId(m).payload?.eventId;
     for (const mutation of work) {
-      if (!options.force && mutation.nextRetryAt && mutation.nextRetryAt > now) continue;
+      const target = eventOf(mutation);
+      if (target && extrasPending.has(target)) continue;
+      if (!options.force && mutation.nextRetryAt && mutation.nextRetryAt > now) {
+        if (target && mutation.payload?.extrasOnly) extrasPending.add(target);
+        continue;
+      }
       let outcome: ExecOutcome;
       try {
         outcome = await executeMutation(mutation);
@@ -526,11 +566,28 @@ export const processSyncQueue = async (
         if (mutation.type === 'create_event' && outcome.realId) {
           tempIdsOf(mutation).forEach((t) => tempIdMap.set(t, outcome.realId as string));
         }
+        if (outcome.extrasLeft) {
+          // The event is saved, some of its to-dos / setlist / rider are not:
+          // those stay queued and are retried on their own (audit 05 #6).
+          result.failed++;
+          const follow = extrasOnlyMutation(mutation, outcome.extrasLeft);
+          followUps.set(mutation.id, follow);
+          extrasPending.add(outcome.extrasLeft.eventId);
+          if (isTransientSyncError(outcome.extrasLeft.error)) break;
+          follow.retryCount = 1;
+          follow.lastError = errorMessage(outcome.extrasLeft.error);
+          follow.nextRetryAt = Date.now() + retryDelayMs(1);
+        }
         continue;
       }
 
       result.failed++;
       const message = errorMessage(outcome.error);
+      if (target && mutation.payload?.extrasOnly) extrasPending.add(target);
+      // Steps that did save are not sent again (a retry would add a second rider).
+      const narrowed: OfflineMutation = outcome.extrasLeft
+        ? { ...mutation, payload: { ...mutation.payload, extras: outcome.extrasLeft.extras } }
+        : mutation;
 
       if (outcome.orphaned) {
         processed.add(mutation.id);
@@ -541,11 +598,12 @@ export const processSyncQueue = async (
 
       if (isTransientSyncError(outcome.error)) {
         // Connectivity/auth problem: keep this and everything after it as-is and stop.
+        if (narrowed !== mutation) updated.set(mutation.id, narrowed);
         break;
       }
 
       const retried: OfflineMutation = {
-        ...mutation,
+        ...narrowed,
         retryCount: (mutation.retryCount || 0) + 1,
         lastError: message,
       };
@@ -569,9 +627,12 @@ export const processSyncQueue = async (
       // Mutations still queued for an event whose create synced point at its
       // real id now: the temp -> real map lives in memory only, and after a
       // restart they would be dropped as orphaned.
-      const next = stored
-        .filter((m) => !processed.has(m.id))
-        .map((m) => withRealEventId(updated.get(m.id) ?? m));
+      const next = stored.flatMap((m) => {
+        const follow = followUps.get(m.id);
+        if (follow) return [follow];
+        if (processed.has(m.id)) return [];
+        return [withRealEventId(updated.get(m.id) ?? m)];
+      });
       await setOfflineItem(key, next);
     });
     notifySubscribers();
