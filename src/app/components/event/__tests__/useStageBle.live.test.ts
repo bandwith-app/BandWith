@@ -26,6 +26,8 @@ const ble = vi.hoisted(() => ({
   /** What the leader's live characteristic holds (null: an older leader, no such characteristic). */
   live: null as null | { seq: number; events: Record<string, unknown> },
   liveReads: 0,
+  /** iOS (plugin 8.3.0): every read's value is also delivered to the notification callback. */
+  echo: false,
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -60,7 +62,10 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         if (!ble.live) throw new Error('Characteristic not found.');
         ble.liveReads++;
         const frame = (await encodeLive(ble.live.seq, ble.live.events, KEY))!;
-        return new DataView(frame.buffer);
+        const view = new DataView(frame.buffer);
+        const cb = ble.notify.get(char);
+        if (ble.echo && cb) setTimeout(() => cb(view), 0);
+        return view;
       }
       if (char !== STAGE_BLE_CHARACTERISTIC) return new DataView(new ArrayBuffer(0));
       const bytes = (await encodeStageState({ seq: 3, from: 'lead', songId: 'b2', order: null }, IDS, KEY))!;
@@ -93,7 +98,7 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageKey: async () => KEY,
 }));
 
-const { useStageBle } = await import('../useStageBle');
+const { useStageBle, forgetScanStarts } = await import('../useStageBle');
 const { __resetAppFlagsForTest, __setAppFlagsForTest } = await import('@/lib/appFlags');
 
 const click = { seq: 5, from: 'lead', on: true, bpm: 120, beats: 4, bars: null, startAt: 1_795_000_000_000, songId: 'a1' };
@@ -113,10 +118,13 @@ beforeEach(async () => {
   ble.notify.clear();
   ble.clockReads = 0;
   ble.liveReads = 0;
+  ble.echo = false;
   ble.live = { seq: 1, events: {} };
   ble.disconnectCbs = [];
   vi.clearAllMocks();
   __resetAppFlagsForTest(null);
+  // Each test is another session: the scans of the one before don't count against it (#280's scan budget).
+  forgetScanStarts();
 });
 
 describe('useStageBle: live frame (click, playhead)', () => {
@@ -335,6 +343,27 @@ describe('useStageBle: live frame (click, playhead)', () => {
     ble.live = { seq: 4, events: { click, playhead: stop } };
     await act(async () => ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)!(new DataView(new ArrayBuffer(4))));
     await waitFor(() => expect(onLive).toHaveBeenCalledWith('playhead', stop));
+    unmount();
+  });
+
+  it("member on an iPhone: a read's value comes back on the subscription too; the live frame is read once per change, not forever (#280's rule for the song)", async () => {
+    ble.echo = true;
+    ble.live = { seq: 3, events: { click } };
+    const onLive = vi.fn();
+    const { unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState: () => {}, onLive }),
+    );
+    await waitFor(() => expect(onLive).toHaveBeenCalledWith('click', click));
+    await new Promise((r) => setTimeout(r, 300));
+    // The catch-up read, and nothing set off by its own echo.
+    expect(ble.liveReads).toBe(1);
+    // A change notice (the 4-byte seq) still reads.
+    const faster = { ...click, bpm: 140, seq: 9 };
+    ble.live = { seq: 4, events: { click: faster } };
+    await act(async () => ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)!(new DataView(new ArrayBuffer(4))));
+    await waitFor(() => expect(onLive).toHaveBeenCalledWith('click', faster));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ble.liveReads).toBe(2);
     unmount();
   });
 

@@ -53,6 +53,7 @@ const ble = vi.hoisted(() => ({
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
   BleClient: ble,
+  BluetoothLe: { disconnect: vi.fn(async () => {}) },
   ConnectionPriority: { CONNECTION_PRIORITY_HIGH: 1 },
 }));
 
@@ -70,12 +71,13 @@ const native = vi.hoisted(() => ({
 
 vi.mock('@/lib/stageBleNative', () => ({ StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY }));
 
-const { useStageBle } = await import('../useStageBle');
+const { useStageBle, forgetScanStarts } = await import('../useStageBle');
 
 const render = (isLeader: boolean) =>
   renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader, onState: () => {} }));
 
 beforeEach(() => {
+  forgetScanStarts();
   Object.assign(env, { platform: 'ios', initError: null, enabled: true, startState: 'on', stateCb: null, resumeCb: null });
   vi.clearAllMocks();
 });

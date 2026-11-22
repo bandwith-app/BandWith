@@ -1528,6 +1528,7 @@ const music: AreaModule = {
           items: [
             "“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”",
             "“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.” This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine.",
+            "“This phone's time and the leader's are far apart. Set both to automatic date and time.” The leader's messages carry its time; one far ahead of this phone's isn't followed, since a phone could fake it.",
           ],
         },
         {

@@ -3973,6 +3973,7 @@ const dict: Dictionary = {
   "Bluetooth is off: turn it on to stay in sync without internet.": "Le Bluetooth est désactivé : active-le pour rester synchronisé sans internet.",
   "Bluetooth is off: turn it on in Control Center to stay in sync without internet.": "Le Bluetooth est désactivé : active-le dans le Centre de contrôle pour rester synchronisé sans internet.",
   "This phone has an older setlist: connect to the internet once to follow the leader.": "Ce téléphone a une ancienne setlist : connecte-toi une fois à internet pour suivre le leader.",
+  "This phone's time and the leader's are far apart: set both to automatic date and time.": "L'heure de ce téléphone et celle du leader sont très différentes : règle la date et l'heure automatiques sur les deux.",
   "This phone can't lead the band without internet.": "Ce téléphone ne peut pas guider le groupe sans internet.",
   "This phone can't follow the leader without internet.": "Ce téléphone ne peut pas suivre le leader sans internet.",
   "Open Settings": "Ouvrir Réglages",

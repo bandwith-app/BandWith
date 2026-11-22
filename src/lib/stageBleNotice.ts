@@ -16,9 +16,11 @@ import { t } from '@/lib/i18n';
  * - bt-off: Bluetooth turned off on the phone;
  * - unsupported: this phone can't do it;
  * - outdated: linked, but the leader's setlist has other songs than the one
- *   on this phone (songs added or removed while it was offline).
+ *   on this phone (songs added or removed while it was offline);
+ * - clock-off: linked, but the leader's state is far ahead of this phone's
+ *   time, with no clock measured to explain it: not followed.
  */
-export type StageBleStatus = 'off' | 'leading' | 'searching' | 'connected' | 'denied' | 'bt-off' | 'unsupported' | 'outdated';
+export type StageBleStatus = 'off' | 'leading' | 'searching' | 'connected' | 'denied' | 'bt-off' | 'unsupported' | 'outdated' | 'clock-off';
 
 export interface StageBleNoticeInput {
   status: StageBleStatus;
@@ -67,6 +69,8 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
         : { tone: 'warn', text: t('Bluetooth is off: turn it on in Control Center to stay in sync without internet.') };
     case 'outdated':
       return { tone: 'warn', text: t('This phone has an older setlist: connect to the internet once to follow the leader.') };
+    case 'clock-off':
+      return { tone: 'warn', text: t("This phone's time and the leader's are far apart: set both to automatic date and time.") };
     case 'unsupported':
       return {
         tone: 'warn',

@@ -1518,6 +1518,7 @@ const music: AreaText = {
           items: [
             "„Bluetooth ist aus oder nicht erlaubt. Schalte es in den Einstellungen ein, um ohne Internet synchron zu bleiben.“",
             "„Dieses Handy hat eine ältere Setlist. Geh einmal online, um per Bluetooth zu folgen.“ Das erscheint, wenn Songs hinzugefügt oder entfernt wurden, nachdem das Handy die Setlist zuletzt geladen hat. Eine neue Reihenfolge allein ist kein Problem.",
+            "„Die Uhrzeit dieses Handys und die des Leaders liegen weit auseinander. Stell bei beiden Datum und Uhrzeit auf automatisch.“ Die Nachrichten des Leaders tragen seine Uhrzeit; liegt sie weit vor der dieses Handys, wird ihnen nicht gefolgt, weil ein Handy sie fälschen könnte.",
           ],
         },
         {

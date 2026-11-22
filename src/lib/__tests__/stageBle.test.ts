@@ -62,8 +62,8 @@ describe('stageBle', () => {
     const tampered = bytes.slice();
     tampered[4] ^= 1;
     expect(await decodeStageState(tampered, ids, KEY)).toEqual({ ok: false, reason: 'auth' });
-    expect(await decodeStageState(bytes, ['a1', 'c3', 'b2', 'e5'], KEY)).toEqual({ ok: false, reason: 'setlist' });
-    expect(await decodeStageState(bytes, ['a1', 'b2', 'c3'], KEY)).toEqual({ ok: false, reason: 'setlist' });
+    expect(await decodeStageState(bytes, ['a1', 'c3', 'b2', 'e5'], KEY)).toMatchObject({ ok: false, reason: 'setlist' });
+    expect(await decodeStageState(bytes, ['a1', 'b2', 'c3'], KEY)).toMatchObject({ ok: false, reason: 'setlist' });
     expect(await decodeStageState(new Uint8Array([9, 9, 9]), ids, KEY)).toEqual({ ok: false, reason: 'format' });
   });
 

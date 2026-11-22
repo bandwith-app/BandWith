@@ -16,8 +16,12 @@ import {
   parseStageState,
   reorderRows,
   sameOrder,
+  seqPlausible,
+  SEQ_AHEAD_MAX,
+  SEQ_AHEAD_MEASURED,
   stageTopic,
   stepOver,
+  usableOffset,
   type StageLiveState,
 } from '@/lib/stageLive';
 import {
@@ -60,6 +64,16 @@ export interface LiveSongRef {
 
 /** Channel event carrying the rehearsal session (useRehearsalSession). */
 export const SESSION_EVENT = 'session';
+/**
+ * The leader's "still leading" beat on the live channel (only admins can
+ * send there, migration 085), every LEAD_BEAT_MS once it has led. A Bluetooth
+ * state (anyone with the band key can make one) is held back only while a
+ * state or a beat came in the last LIVE_LEAD_FRESH_MS. Presence can't do
+ * this: anyone on the channel can say "lead" in it.
+ */
+export const LEAD_BEAT_EVENT = 'lead-beat';
+export const LEAD_BEAT_MS = 4_000;
+export const LIVE_LEAD_FRESH_MS = 10_000;
 
 /**
  * A rehearsal session riding on the live channel: what to do with one that
@@ -97,6 +111,9 @@ interface Options<T extends LiveSongRef> {
 }
 
 /** `waiting`: no signal, the order is kept on this phone and saved when back online. */
+/** Where a leader's state came from: the live channel (admins only), or Bluetooth (anyone with the band key). */
+type StateSource = 'realtime' | 'bluetooth';
+
 export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error' | 'waiting';
 /** A setlist_songs row as stored (row id, song, set). */
 type StoredRow = { id: string; songId: string; setNumber: number };
@@ -140,12 +157,25 @@ const SAVE_DELAY_MS = 700;
  * - Someone opening Stage mode joins the channel's presence; the leader's app
  *   then sends its state again so late arrivals catch up.
  */
+/** The highest seq this phone sent per gig (kept across closing Stage): its next ones never go below it (Claude on #280). */
+const ownSeqs = new Map<string, number>();
+/**
+ * The last state, unless its seq is far ahead of now (a clock that ran fast,
+ * since fixed): then it counts as none, so the next state (ours, or that
+ * leader's) applies at once instead of waiting for the clock to catch up
+ * (Claude on #280).
+ */
+const recent = (s: StageLiveState | null): StageLiveState | null => (s && seqPlausible(s.seq) ? s : null);
+
 export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader, session, regia }: Options<T>) {
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const regiaRef = useRef(regia);
   regiaRef.current = regia;
-  const clientId = useMemo(() => Math.random().toString(36).slice(2, 10), []);
+  // A new leader id for every Stage opening (Codex on #280): a phone that reopens
+  // with its clock fixed is a new leader for members, not an old one gone back.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const clientId = useMemo(() => Math.random().toString(36).slice(2, 10), [eventId, open]);
   const [order, setOrder] = useState<string[] | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
   const [fallbackIndex, setFallbackIndex] = useState(0);
@@ -166,6 +196,21 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const channelRef = useRef<RealtimeChannel | null>(null);
   /** Newest state applied or sent (Lamport clock + what it said). */
   const lastRef = useRef<StageLiveState | null>(null);
+  /** Newest state from the live channel (only admins can send there). */
+  const trustedRef = useRef<StageLiveState | null>(null);
+  /** lastRef came over Bluetooth. */
+  const lastFromBluetoothRef = useRef(false);
+  /** When each leader last sent a state or a beat on the live channel (by its id). */
+  const liveLeadRef = useRef(new Map<string, number>());
+  /** The newest Bluetooth state held back while a leader leads online: it applies once they go quiet. */
+  const heldBleRef = useRef<StageLiveState | null>(null);
+  /**
+   * Another admin's newest live state refused while the followed leader led
+   * online (an older seq), with when that admin was last heard: applied when
+   * the leader goes quiet, if that admin still leads (Codex on #280).
+   */
+  const refusedRef = useRef(new Map<string, { state: StageLiveState; at: number }>());
+  const quietTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Newest leader state received, kept while not following. */
   const remoteRef = useRef<StageLiveState | null>(null);
   /** This app has led (sent) at least once: only then it answers late joiners. */
@@ -190,7 +235,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const [click, setClick] = useState<ClickState | null>(null);
   const clickRef = useRef<ClickState | null>(null);
   /** The click leader's clock measured over Realtime (Bluetooth has its own, in useStageBle). */
-  const [rtClock, setRtClock] = useState<PeerClock | null>(null);
+  const [rtClock, setRtClockState] = useState<PeerClock | null>(null);
+  /** The same clock, set at once (states arriving before the next render are judged with it). */
+  const rtClockRef = useRef<PeerClock | null>(null);
+  const setRtClock = useCallback((c: PeerClock | null) => {
+    rtClockRef.current = c;
+    setRtClockState(c);
+  }, []);
   const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[] }>({ peer: '', at: 0, samples: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Follow the tempo (playhead.ts): the newest playhead state, ours or the leader's.
@@ -201,13 +252,84 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
   const savedIds = useMemo(() => songs.map((s) => s.id).filter((id): id is string => !!id), [songs]);
 
-  /** A leader's state from either path (Realtime or Bluetooth); the newest wins. */
+  /**
+   * The leader followed on the live channel sent a state or a beat just now.
+   * Only that leader counts (Codex on #280): another admin still online but no
+   * longer leading holds nothing back.
+   */
+  const leadingOnline = useCallback((at: number = Date.now()) => {
+    const leader = trustedRef.current?.from;
+    return !!leader && leader !== clientId && at - (liveLeadRef.current.get(leader) ?? -Infinity) < LIVE_LEAD_FRESH_MS;
+  }, [clientId]);
+
+  /**
+   * A leader's state from either path; the newest wins, with limits on
+   * Bluetooth states (anyone with the band key can make one):
+   * - while a leader leads on the live channel (a state or a beat in the last
+   *   LIVE_LEAD_FRESH_MS) they're held back, the newest applying once it goes quiet;
+   * - one never holds back a Realtime state: a Realtime state newer than the
+   *   last Realtime one applies even when a Bluetooth one had a higher seq;
+   * - a seq far ahead of the clock is dropped (useStageBle drops them too).
+   * A live leader not heard before, once the one followed has gone quiet
+   * (Stage reopened, maybe on a phone with an earlier clock), is taken
+   * whatever its seq.
+   */
   const receive = useCallback(
-    (state: StageLiveState) => {
+    (state: StageLiveState, source: StateSource = 'realtime') => {
       if (state.from === clientId) return;
+      const bluetooth = source === 'bluetooth';
+      const at = Date.now();
+      if (bluetooth) {
+        // Judged with that leader's clock, when one was measured (a phone set an hour ahead still leads).
+        // Measured more than 5 minutes off: that phone's states never count (MAX_CLOCK_OFFSET_MS).
+        const clock = leaderOffsetRef.current(state.from);
+        if (!clock || !seqPlausible(state.seq, at + clock.offset, clock.measured ? SEQ_AHEAD_MEASURED : SEQ_AHEAD_MAX)) return;
+        if (leadingOnline(at)) {
+          if (isNewer(state, heldBleRef.current)) heldBleRef.current = state;
+          return;
+        }
+      }
+      let newLeader = false;
+      if (!bluetooth) {
+        const last = lastRef.current;
+        // The live copy of the state already applied from Bluetooth: its sender leads online
+        // (recorded before the duplicate is dropped, Codex on #288).
+        if (last && last.from === state.from && last.seq === state.seq) {
+          liveLeadRef.current.set(state.from, at);
+          trustedRef.current = state;
+          lastFromBluetoothRef.current = false;
+          refusedRef.current.delete(state.from);
+          armQuiet();
+          return;
+        }
+        const lead = liveLeadRef.current;
+        const followed = trustedRef.current?.from;
+        // This phone leading itself counts as a leader online (its own states are in trustedRef).
+        const followedFresh = followed === clientId ? ledRef.current : !!followed && at - (lead.get(followed) ?? -Infinity) < LIVE_LEAD_FRESH_MS;
+        // The followed leader gone quiet: another admin's state is taken whatever its seq.
+        newLeader = state.from !== followed && !followedFresh;
+      }
       // Clock moves on even for states we don't show (Lamport).
-      if (!isNewer(state, lastRef.current)) return;
+      const overBluetooth = !bluetooth && lastFromBluetoothRef.current && isNewer(state, recent(trustedRef.current));
+      if (!isNewer(state, recent(lastRef.current)) && !overBluetooth && !newLeader) {
+        if (!bluetooth) {
+          const kept = refusedRef.current.get(state.from);
+          if (!kept || isNewer(state, kept.state)) refusedRef.current.set(state.from, { state, at });
+          else kept.at = at;
+        }
+        return;
+      }
+      // Taken: only now is its sender a live leader (a refused state marks nothing, Codex on #288).
+      if (!bluetooth) {
+        liveLeadRef.current.set(state.from, at);
+        refusedRef.current.delete(state.from);
+        armQuiet();
+      }
+      // Another leader's newer state: this phone no longer leads (its beats stop).
+      ledRef.current = false;
       lastRef.current = state;
+      lastFromBluetoothRef.current = bluetooth;
+      if (!bluetooth) trustedRef.current = state;
       remoteRef.current = state;
       setLeaderSeen(true);
       // The order and the struck songs are the setlist's: they apply even when not following.
@@ -215,7 +337,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       setSkipped(state.skipped ?? []);
       if (followingRef.current) setSongId(state.songId);
     },
-    [clientId, setSkipped],
+    // armQuiet is stable (refs only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clientId, setSkipped, leadingOnline],
   );
 
   // Click, playhead, count-in over Bluetooth: checked like the channel's, then the same receivers.
@@ -265,8 +389,53 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   /** useStageBle's publishLive, for bleFarewell (made before the hook below returns it). */
   const blePublishLiveRef = useRef<(event: LiveEvent, payload: unknown) => void>(() => {});
 
+  /**
+   * The live leader went quiet (or the channel dropped): another admin's
+   * refused state applies if that admin still leads, then a held Bluetooth state.
+   */
+  const releaseHeld = () => {
+    if (leadingOnline()) return;
+    const at = Date.now();
+    let next: { state: StageLiveState; at: number } | null = null;
+    refusedRef.current.forEach((r) => {
+      if (at - r.at < LIVE_LEAD_FRESH_MS && (!next || r.at > next.at)) next = r;
+    });
+    refusedRef.current.clear();
+    if (next) receiveRef.current((next as { state: StageLiveState }).state, 'realtime');
+    const held = heldBleRef.current;
+    if (!held || leadingOnline()) return;
+    heldBleRef.current = null;
+    receiveRef.current(held, 'bluetooth');
+  };
+  const releaseRef = useRef(releaseHeld);
+  releaseRef.current = releaseHeld;
+  const receiveRef = useRef(receive);
+  receiveRef.current = receive;
+  function armQuiet() {
+    clearTimeout(quietTimer.current);
+    quietTimer.current = setTimeout(() => releaseRef.current(), LIVE_LEAD_FRESH_MS + 50);
+  }
+
   // Offline on stage: the same states over Bluetooth (native apps only).
-  const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive, onLive: onBleLive, farewell: bleFarewell });
+  const receiveBle = useCallback((state: StageLiveState) => receive(state, 'bluetooth'), [receive]);
+  const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receiveBle, onLive: onBleLive, farewell: bleFarewell });
+  /**
+   * A leader's clock offset, measured over Bluetooth or Realtime (0 when none
+   * was), read from the refs set at once; null when it is more than 5 minutes
+   * off (MAX_CLOCK_OFFSET_MS).
+   */
+  const bleClockRef = ble.clockRef;
+  const offsetOf = (from: string): { offset: number; measured: boolean } | null => {
+    const b = bleClockRef?.current ?? null;
+    const r = rtClockRef.current;
+    const sample = b?.from === from ? b.sample : r?.from === from ? r.sample : null;
+    if (!sample) return { offset: 0, measured: false };
+    // Measured: only ~30 s beyond that clock (Claude on #280).
+    const offset = usableOffset(sample.offset);
+    return offset === null ? null : { offset, measured: true };
+  };
+  const leaderOffsetRef = useRef(offsetOf);
+  leaderOffsetRef.current = offsetOf;
   const blePublish = ble.publish;
   const blePublishLive = ble.publishLive;
   blePublishLiveRef.current = blePublishLive;
@@ -292,14 +461,20 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
 
   const send = useCallback(
     (next: { songId: string | null; order: string[] | null }) => {
-      const seq = nextSeq(lastRef.current?.seq);
+      // A seq kept from a clock far ahead (since fixed) is dropped: a new start from now (Codex + Claude on #280).
+      const kept = (eventId && ownSeqs.get(eventId)) || 0;
+      const own = seqPlausible(kept) ? kept : 0;
+      const seq = nextSeq(Math.max(recent(lastRef.current)?.seq ?? 0, own));
       const state: StageLiveState = { seq, from: clientId, ...next, skipped: skippedRef.current };
+      if (eventId) ownSeqs.set(eventId, seq);
       lastRef.current = state;
+      // Its own state too: an admin heard for the first time with an older one is compared by seq (Codex on #280).
+      trustedRef.current = state;
       ledRef.current = true;
       void channelRef.current?.send({ type: 'broadcast', event: 'state', payload: state });
       blePublish(state);
     },
-    [clientId, blePublish],
+    [clientId, blePublish, eventId],
   );
 
   const applyRemote = useCallback((state: StageLiveState) => {
@@ -370,6 +545,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // The channel lives while Stage mode is open.
   useEffect(() => {
     if (!live || !eventId) return;
+    /** This channel joined (SUBSCRIBED); unasked sends wait for it. */
+    let joined = false;
     const channel = supabase.channel(stageTopic(eventId), {
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
@@ -408,13 +585,31 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const best = bestSample(book.samples);
         if (best) setRtClock({ from: p.from, sample: best });
       })
+      .on('broadcast', { event: LEAD_BEAT_EVENT }, (msg: { payload?: { from?: unknown; seq?: unknown } }) => {
+        // Only admins can send here: a leader still leading online.
+        const from = msg?.payload?.from;
+        if (typeof from !== 'string' || from === clientId) return;
+        const refused = refusedRef.current.get(from);
+        if (refused) refused.at = Date.now();
+        if (!liveLeadRef.current.has(from)) return;
+        liveLeadRef.current.set(from, Date.now());
+        // Only the followed leader's beat keeps things as they are (Codex on #280).
+        if (from !== trustedRef.current?.from) return;
+        armQuiet();
+        // Its beat names its newest seq: the Bluetooth copy of a live update this phone
+        // missed is that leader's latest, and applies (Codex on #280).
+        const seq = msg?.payload?.seq;
+        const held = heldBleRef.current;
+        if (typeof seq === 'number' && held && held.from === from && held.seq === seq && isNewer(held, recent(lastRef.current))) {
+          heldBleRef.current = null;
+          receiveRef.current(held, 'realtime');
+        }
+      })
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
         const joined = msg?.key;
         if (joined && msg?.newPresences?.some((p) => p?.lead === true)) setRtLeaders((s) => (s.has(joined) ? s : new Set(s).add(joined)));
-        // A leader (re)joined, maybe after reopening Stage mode with a new
-        // clock: take its next state whatever seq it carries.
-        if (!isLeader && msg?.newPresences?.some((p) => p?.lead === true)) lastRef.current = null;
+        // (A reopened leader's next state is taken by receive: a leader not heard before.)
         // A running click of ours reaches late arrivals too.
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
           void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(clickRef.current) });
@@ -445,10 +640,25 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       .subscribe((status: string) => {
         setConnected(status === 'SUBSCRIBED');
+        joined = status === 'SUBSCRIBED';
+        // Off the channel: no leader reaches this phone online, Bluetooth takes over at once.
+        if (status !== 'SUBSCRIBED') {
+          liveLeadRef.current.clear();
+          // Bluetooth takes over now, not another admin's older live state.
+          refusedRef.current.clear();
+          releaseRef.current();
+        }
         if (status === 'SUBSCRIBED') {
+          // (Released apps still read "lead" from presence; this app no longer trusts it.)
           void channel.track({ lead: isLeader }).catch(() => {});
         }
       });
+    // Once it has led: "still leading", so members hold Bluetooth states back.
+    // Only while joined: off it, supabase-js would post the beat over HTTP.
+    const beat = setInterval(() => {
+      const seq = lastRef.current?.from === clientId ? lastRef.current.seq : undefined;
+      if (ledRef.current && joined) void channel.send({ type: 'broadcast', event: LEAD_BEAT_EVENT, payload: { from: clientId, seq } });
+    }, LEAD_BEAT_MS);
     return () => {
       // Our running click stops on everyone's phone too.
       const running = clickRef.current;
@@ -463,7 +673,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         playheadRef.current = off;
         void channel.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: off });
       }
+      clearInterval(beat);
+      clearTimeout(quietTimer.current);
       channelRef.current = null;
+      liveLeadRef.current.clear();
+      refusedRef.current.clear();
+      heldBleRef.current = null;
       setConnected(false);
       setRtLeaders(new Set());
       void supabase.removeChannel(channel);
@@ -582,7 +797,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     setLeaderSeen(false);
     setSaveState('idle');
     lastRef.current = null;
+    trustedRef.current = null;
+    lastFromBluetoothRef.current = false;
     remoteRef.current = null;
+    liveLeadRef.current.clear();
+    refusedRef.current.clear();
+    heldBleRef.current = null;
     ledRef.current = false;
     clickRef.current = null;
     setClick(null);
