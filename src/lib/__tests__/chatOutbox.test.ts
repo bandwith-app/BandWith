@@ -16,8 +16,10 @@ vi.mock('@/lib/services/chats', () => ({
 vi.mock('@/lib/supabase', () => ({ getSafeUser: async () => ({ data: { user: h.uid ? { id: h.uid } : null } }) }));
 
 import { CHAT_OUTBOX_PREFIX, chatOutboxKey, clearOfflineCache, syncCachedRoles } from '../offline/storage';
-import { beginChatSend, dropRefusedOutsideChats, discardChatOutbox, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
+import { beginChatSend, dropRefusedOutsideChats, discardChatOutbox, holdUnsavedChatMessage, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
 import settingsView from '@/app/views/SettingsView.tsx?raw';
+import authenticatedApp from '@/app/AuthenticatedApp.tsx?raw';
+import { APP_TOAST_EVENT, showAppToast } from '../appToast';
 import { useChatOutboxFlush } from '@/app/hooks/useChatOutbox';
 
 const item = (n: number, chatId = 'c1') => ({ chatId, clientId: `cid-${n}`, body: `message ${n}`, createdAt: `2026-11-22T10:0${n}:00.000Z` });
@@ -132,6 +134,38 @@ describe('chat outbox', () => {
     h.send.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
     await flushChatOutbox('u-a', { backoffMs: [0, 0] });
     expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  // Claude review #291 round 8, finding 2: a message that could not go on
+  // the device is held in memory as "Not sent" for its chat.
+  it('a message held in memory shows as "Not sent", is never sent by itself, and goes with Delete', async () => {
+    holdUnsavedChatMessage('u-a', { ...item(7), refused: 'Couldn’t save this message offline: it hasn’t been sent.' });
+    expect((await listChatOutbox('u-a')).map((x) => [x.clientId, x.refused])).toEqual([['cid-7', 'Couldn’t save this message offline: it hasn’t been sent.']]);
+    expect(await listChatOutbox('u-b')).toEqual([]);
+    await flushChatOutbox('u-a', { backoffMs: [0, 0] });
+    expect(h.send).not.toHaveBeenCalled();
+    await dropChatOutbox('u-a', 'cid-7');
+    expect(await listChatOutbox('u-a')).toEqual([]);
+  });
+
+  it('held in memory, then kept on the device: listed once; a deleted account loses both', async () => {
+    holdUnsavedChatMessage('u-a', { ...item(8), refused: '' });
+    expect(await putChatOutbox('u-a', item(8))).toBe(true);
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-8']);
+    holdUnsavedChatMessage('u-a', { ...item(9), refused: '' });
+    await discardChatOutbox('u-a');
+    expect(await listChatOutbox('u-a')).toEqual([]);
+  });
+
+  it('a toast from anywhere reaches the app\'s toast', () => {
+    const seen: unknown[] = [];
+    const on = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener(APP_TOAST_EVENT, on);
+    showAppToast('Message not saved on this phone: hi', 'error');
+    window.removeEventListener(APP_TOAST_EVENT, on);
+    expect(seen).toEqual([{ message: 'Message not saved on this phone: hi', type: 'error' }]);
+    expect(authenticatedApp).toMatch(/window\.addEventListener\(APP_TOAST_EVENT, onToast\)/);
+    expect(authenticatedApp).toMatch(/setSaveToast\(\{ message: d\.message, type: d\.type/);
   });
 
   // Codex #291 r7 B5: sign-out keeps the waiting chat outbox (per account,

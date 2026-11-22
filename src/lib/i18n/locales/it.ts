@@ -3810,6 +3810,7 @@ const dict: Dictionary = {
   "No connection. It’s sent when you’re back online.": "Nessuna connessione. Viene inviato quando torni online.",
   "Message not sent. Try again.": "Messaggio non inviato. Riprova.",
   "Couldn’t save this message offline: it hasn’t been sent.": "Impossibile salvare questo messaggio offline: non è stato inviato.",
+  "Message not saved on this phone: {text}": "Messaggio non salvato su questo telefono: {text}",
   "You no longer have access to this chat.": "Non hai più accesso a questa chat.",
   // RSVP from a notification: removed from the event
   "You are no longer on this event, so there is nothing to answer.": "Non fai più parte di questo evento, quindi non c’è niente a cui rispondere.",

@@ -40,7 +40,8 @@ import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane
 import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { offlinePermission, readChatPermission, saveChatPermission, type ChatPermission } from '@/lib/chatPermission';
-import { CHAT_OUTBOX_EVENT, beginChatSend, dropChatOutbox, flushChatOutbox, isDenied, isRefusal, isSignedInAs, listChatOutbox, putChatOutbox, type ChatOutboxItem, type ChatOutboxResult } from '@/lib/chatOutbox';
+import { CHAT_OUTBOX_EVENT, beginChatSend, dropChatOutbox, flushChatOutbox, holdUnsavedChatMessage, isDenied, isRefusal, isSignedInAs, listChatOutbox, putChatOutbox, type ChatOutboxItem, type ChatOutboxResult } from '@/lib/chatOutbox';
+import { showAppToast } from '@/lib/appToast';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -756,6 +757,21 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         setMessages(prev => markSendFailed(prev, pending.id, { reason: notSaved }));
       }
     };
+    // Another chat is on screen and nothing could be kept on the device
+    // (Claude review #291 round 8, finding 2): the message is held in
+    // memory as "Not sent" for its chat, and a toast says so.
+    const strand = (reason?: string) => {
+      if (!author) return;
+      holdUnsavedChatMessage(author, {
+        chatId: sentFrom,
+        clientId: pending.client_id ?? newClientId(),
+        body: pending.content,
+        createdAt: pending.created_at,
+        replyToId: pending.reply_to_id ?? null,
+        refused: reason || notSaved,
+      });
+      showAppToast(t('Message not saved on this phone: {text}', { text: firstWords(pending.content) }), 'error');
+    };
     try {
       const kept = await keep();
       // Only as the account that wrote it (Claude #291 r5): another account
@@ -768,6 +784,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
           }
           setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
           if (typeof navigator !== 'undefined' && !navigator.onLine) setSendError(t('No connection. It’s sent when you’re back online.'));
+        } else if (!kept) {
+          strand();
+          return 'failed';
         }
         return 'queued';
       }
@@ -781,6 +800,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
             return 'failed';
           }
           setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        } else if (!kept) {
+          strand();
+          return 'failed';
         }
         return 'queued';
       }
@@ -789,7 +811,12 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       // Another chat is on screen now: its composer is not this one. A
       // refusal is kept as "Not sent"; anything else keeps waiting.
       if (chatIdRef.current !== sentFrom) {
-        if (error && isRefusal(error)) await keep(chatErrorMessage(error, ''));
+        if (error && isRefusal(error)) {
+          const reason = chatErrorMessage(error, '');
+          if (!(await keep(reason))) strand(reason);
+        } else if (error && !kept) {
+          strand();
+        }
         return error ? 'failed' : 'sent';
       }
 

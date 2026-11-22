@@ -127,6 +127,12 @@ GRANT USAGE ON SCHEMA public, auth TO authenticated, anon, service_role;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
+-- Supabase's auth.jwt() (Claude review round 8, NIT 8): 175's
+-- bw_chats_immutable_keys reads it; without it a change was refused only
+-- because the function was missing.
+CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
+  SELECT coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
+GRANT EXECUTE ON FUNCTION auth.jwt() TO authenticated, anon;
 
 CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text, preferred_language text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
@@ -294,6 +300,18 @@ r = await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}')
 const pushTo = [...r.rows[0].e, ...r.rows[0].b];
 ok(!pushTo.includes(LEFT) && !pushTo.includes(GONE) && pushTo.includes(LINE),
   `push recipients (send-push chatRecipients → bw_chat_recipient_ids) leave them out (${pushTo})`);
+// Round 8 (Claude review, finding 3): send-push picked the recipients before
+// Lia and Gus were removed (or runs from a build without 175's
+// bw_chat_recipient_ids). Writing the notices checks again (192's
+// bw_write_chat_notices): no notice and no push for them.
+{
+  const msg = (await db.query(`SELECT id FROM messages WHERE content = 'after: set list changed'`)).rows[0].id;
+  const rows = JSON.stringify([LINE, LEFT, GONE].map((u) => ({ user_id: u, type: 'chat_message', title: 'Ava Admin', body: 'x', data: { chat_id: EVCHAT } })));
+  const w = await db.query(`SELECT user_id FROM public.bw_write_chat_notices($1, $2::jsonb)`, [msg, rows]).then((x) => x.rows.map((y) => y.user_id), (e) => 'ERROR ' + e.message);
+  ok(JSON.stringify(w) === JSON.stringify([LINE]), `removed after the recipients were picked: no push (${JSON.stringify(w)})`);
+  ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${msg}' AND user_id IN ('${LEFT}','${GONE}')`) === 0,
+    'and no notice');
+}
 
 // Coming back: still on the gig's lineup, the app's restore and their own
 // join are skipped (175 + 193), and bw_open_group_chat refuses.
@@ -353,8 +371,9 @@ await db.exec(`INSERT INTO bands VALUES ('${id(9)}','Other Band')`);
 r = await as(ADMIN, `UPDATE chats SET band_id = '${id(9)}' WHERE id = '${BANDCHAT}'`);
 let moved = null;
 try { await db.exec(`UPDATE chats SET band_id = '${id(9)}' WHERE id = '${BANDCHAT}'`); } catch (e) { moved = e.message; }
-ok(!!moved && (await db.query(`SELECT band_id FROM chats WHERE id = '${BANDCHAT}'`)).rows[0].band_id === BAND,
-  `changing a chat's band_id is refused (${moved ?? 'changed'})`);
+ok(!!moved && /cannot change/.test(moved) && /cannot change/.test(r.error ?? '')
+  && (await db.query(`SELECT band_id FROM chats WHERE id = '${BANDCHAT}'`)).rows[0].band_id === BAND,
+  `changing a chat's band_id is refused by 175's trigger itself (${r.error ?? 'app: changed'} / ${moved ?? 'changed'})`);
 
 // Codex #291 r4 (B1/B2), main: 193 never runs without 175.
 {

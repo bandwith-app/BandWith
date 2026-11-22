@@ -937,7 +937,9 @@ export const sendMessage = async (
   messageType: string = 'text',
   replyToId?: string, // Optional: ID of message being replied to
   clientId?: string, // This bubble's id on the device: Try again never saves a second copy
-  expectedSenderId?: string, // Who wrote it: never sent as anyone else (Claude #291 r5)
+  // Who wrote it: never sent as anyone else (Claude #291 r5). Null (a
+  // message whose sender is gone, #282) counts as not given, like undefined.
+  expectedSenderId?: string | null,
 ): Promise<{ data: Message | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();

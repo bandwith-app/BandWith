@@ -55,6 +55,16 @@
 -- for someone who can still read the chat, 175's bw_chat_scope_ok_for):
 -- without it this file stops at once, naming 175. Redefines nothing from
 -- 175/181.
+-- Round 8 (Claude review, finding 3): needs 194 (round 8) first too, and
+-- redefines its bw_write_chat_notices(uuid, jsonb) -> TABLE (id uuid,
+-- user_id uuid, preview text, content text): 194's body plus a check, at
+-- write time, that each recipient can still read the chat (a row in it and
+-- 175's bw_chat_scope_ok_for). Someone removed after send-push picked the
+-- recipients gets no notice and no push, whichever send-push is deployed.
+-- The added lines end in "-- 192: may still read"; without them the
+-- function is 194's, byte for byte (chat_audit checks it). An edited
+-- message's notices read "New message" in each reader's language when it
+-- is empty (194's bw_chat_preview_in).
 -- ============================================================================
 
 BEGIN;
@@ -64,6 +74,20 @@ DO $$
 BEGIN
   IF to_regprocedure('public.bw_chat_scope_ok_for(uuid, uuid)') IS NULL THEN
     RAISE EXCEPTION '192 needs 175 (175_security_audit_access.sql, #281) applied first: missing public.bw_chat_scope_ok_for(uuid, uuid)';
+  END IF;
+END
+$$;
+
+-- ── 194 first (round 8) ─────────────────────────────────────────────────────
+-- 192 redefines 194's bw_write_chat_notices (below): its round-8 shape
+-- (id, user_id, preview, content) must be there.
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_proc
+                     WHERE oid = to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)')
+                       AND 'preview' = ANY (proargnames)) THEN
+    RAISE EXCEPTION '192 needs 194 (194_chat_notifications_server_only.sql, #284, round 8) applied first: missing public.bw_write_chat_notices(uuid, jsonb) returning preview';
   END IF;
 END
 $$;
@@ -329,9 +353,9 @@ BEGIN
               AND coalesce(public.bw_chat_scope_ok_for(NEW.chat_id, n.user_id), false));
 
   UPDATE notifications n
-     SET body = public.bw_chat_preview(NEW.content),
+     SET body = public.bw_chat_preview_in(NEW.content, (SELECT p.preferred_language FROM profiles p WHERE p.id = n.user_id)),
          data = CASE WHEN n.data ? 'content'
-                     THEN jsonb_set(n.data, '{content}', to_jsonb(public.bw_chat_preview(NEW.content)))
+                     THEN jsonb_set(n.data, '{content}', to_jsonb(public.bw_chat_preview_in(NEW.content, (SELECT p.preferred_language FROM profiles p WHERE p.id = n.user_id))))
                      ELSE n.data END
    WHERE n.type IN ('chat_message', 'chat_mention')
      AND n.data ->> 'message_id' = NEW.id::text;
@@ -359,6 +383,80 @@ CREATE TRIGGER bw_messages_edit_notices
   FOR EACH ROW
   WHEN (NEW.content IS DISTINCT FROM OLD.content)
   EXECUTE FUNCTION public.bw_trg_messages_edit_notices();
+
+-- Writes a message's chat notices (194's function, round 8, Claude review
+-- finding 3): only for recipients who can still read the chat at write time.
+-- 194's body with the "-- 192: may still read" lines added; keep the two in
+-- step (chat_audit compares them). #278's redefined_functions.sql lists the
+-- pair 194 -> 192.
+CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
+RETURNS TABLE (id uuid, user_id uuid, preview text, content text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+DECLARE
+  v_content text;
+  v_chat uuid;
+BEGIN
+  -- The message must still be there, and not marked deleted (read through
+  -- to_jsonb: works with or without messages.deleted).
+  SELECT m.content, m.chat_id INTO v_content, v_chat FROM messages m
+   WHERE m.id = p_message_id
+     AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+     FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO notifications AS n (user_id, type, title, body, data, read, band_id, action_url)
+  SELECT r.user_id, r.type, r.title, w.preview,
+         coalesce(r.data, '{}'::jsonb)
+           || jsonb_build_object('message_id', p_message_id::text, 'content', w.preview),
+         false, r.band_id, r.action_url
+    FROM jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
+         AS r(user_id uuid, type text, title text, body text, data jsonb, band_id uuid, action_url text)
+         CROSS JOIN LATERAL (
+           SELECT public.bw_chat_preview_in(v_content, (SELECT p.preferred_language FROM profiles p WHERE p.id = r.user_id)) AS preview
+         ) w
+   WHERE r.user_id IS NOT NULL AND r.type IN ('chat_message', 'chat_mention')
+     AND EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = v_chat AND cp.user_id = r.user_id) -- 192: may still read
+     AND coalesce(public.bw_chat_scope_ok_for(v_chat, r.user_id), false) -- 192: may still read
+   -- One lock order for overlapping calls (no deadlock on the index).
+   ORDER BY r.user_id
+  ON CONFLICT (user_id, ((data->>'message_id')))
+    WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id'
+    DO NOTHING;
+
+  RETURN QUERY
+  UPDATE notifications n
+     SET data = n.data || jsonb_build_object('push_claimed_at', now())
+   WHERE n.id IN (
+           -- Locked in user order too.
+           SELECT n2.id FROM notifications n2
+            WHERE n2.type IN ('chat_message', 'chat_mention')
+              AND n2.data ? 'message_id'
+              AND n2.data ->> 'message_id' = p_message_id::text
+              AND n2.user_id IN (SELECT (e ->> 'user_id')::uuid FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) e)
+              AND EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = v_chat AND cp.user_id = n2.user_id) -- 192: may still read
+              AND coalesce(public.bw_chat_scope_ok_for(v_chat, n2.user_id), false) -- 192: may still read
+            ORDER BY n2.user_id
+              FOR UPDATE)
+     AND NOT n.data ? 'pushed_at'
+     -- Missing or malformed claim = unclaimed.
+     -- 7 min: longer than any send-push call (wall clock 150 s / 400 s), and
+     -- a lapsed claim is retried well inside the 20-minute push window
+     -- (send-push CHAT_PUSH_WINDOW_MS; Claude #284 r5). A claim more than a
+     -- minute in the future is bogus (hand-edited data, clock jump): unclaimed.
+     AND public.bw_chat_push_claim_free(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'))
+  RETURNING n.id, n.user_id,
+            public.bw_chat_preview_in(v_content, (SELECT p.preferred_language FROM profiles p WHERE p.id = n.user_id)),
+            v_content;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;
 
 -- Round 2 wrote this guard as a trigger here; 194's bw_write_chat_notices
 -- does it now.

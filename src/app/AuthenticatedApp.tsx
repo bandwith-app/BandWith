@@ -1,6 +1,7 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
+import { APP_TOAST_EVENT, type AppToast } from '@/lib/appToast';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -445,6 +446,16 @@ export default function AuthenticatedApp() {
     const timer = setTimeout(() => setSaveToast(null), duration);
     return () => clearTimeout(timer);
   }, [saveToast]);
+  // Toasts raised outside this screen (src/lib/appToast.ts), e.g. a chat
+  // message that could not be kept on this phone (#291 round 8).
+  useEffect(() => {
+    const onToast = (e: Event) => {
+      const d = (e as CustomEvent<AppToast>).detail;
+      if (d?.message) setSaveToast({ message: d.message, type: d.type, duration: d.type === 'error' ? 8000 : undefined });
+    };
+    window.addEventListener(APP_TOAST_EVENT, onToast);
+    return () => window.removeEventListener(APP_TOAST_EVENT, onToast);
+  }, []);
 
   // Android test builds come from GitHub releases: offer a newer one
   // (src/lib/androidUpdate.ts), at most once a day per version.

@@ -72,10 +72,34 @@ function inOrder<T>(job: () => Promise<T>): Promise<T> {
 
 const readValid = (userId: string): Promise<ChatOutboxItem[]> => loadStoredOutbox(userId);
 
-/** This account's outbox, oldest first as written (waiting and "Not sent" ones). */
+// Storage full or blocked while another chat was on screen (Claude review
+// #291 round 8, finding 2): nothing could go on the device, so the message
+// is held here, in memory, as "Not sent" for its chat (Try again / Delete)
+// until it is saved, deleted or the app closes. Never sent by itself.
+const unsavedByUser = new Map<string, ChatOutboxItem[]>();
+const unsavedFor = (userId: string): ChatOutboxItem[] => unsavedByUser.get(userId.toLowerCase()) ?? [];
+const forgetUnsaved = (userId: string, clientIds: readonly string[]) => {
+  const k = userId.toLowerCase();
+  const rest = unsavedFor(userId).filter((x) => !clientIds.includes(x.clientId));
+  if (rest.length) unsavedByUser.set(k, rest);
+  else unsavedByUser.delete(k);
+};
+
+/** Holds a message that could not be kept on the device, as "Not sent" (`refused`: the reason shown). */
+export function holdUnsavedChatMessage(userId: string | null | undefined, item: ChatOutboxItem): void {
+  if (!userId) return;
+  const rest = unsavedFor(userId).filter((x) => x.clientId !== item.clientId);
+  unsavedByUser.set(userId.toLowerCase(), [...rest, { ...item, refused: item.refused ?? '' }]);
+}
+
+/** This account's outbox, oldest first as written (waiting and "Not sent" ones), then any held in memory. */
 export function listChatOutbox(userId: string | null | undefined): Promise<ChatOutboxItem[]> {
   if (!userId) return Promise.resolve([]);
-  return inOrder(() => readValid(userId));
+  return inOrder(async () => {
+    const stored = await readValid(userId);
+    const onDevice = new Set(stored.map((x) => x.clientId));
+    return [...stored, ...unsavedFor(userId).filter((x) => !onDevice.has(x.clientId))];
+  });
 }
 
 /**
@@ -92,9 +116,11 @@ export function putChatOutbox(userId: string | null | undefined, item: ChatOutbo
     if (item.replyToId) clean.replyToId = item.replyToId;
     if (typeof item.refused === 'string') clean.refused = item.refused;
     writeChatOutbox(userId, [...list, clean]);
-    return readChatOutbox(userId).some(
+    const kept = readChatOutbox(userId).some(
       (x) => x.clientId === clean.clientId && x.body === clean.body && x.refused === clean.refused,
     );
+    if (kept) forgetUnsaved(userId, [clean.clientId]);
+    return kept;
   });
 }
 
@@ -115,6 +141,7 @@ function markRefused(userId: string, clientId: string, reason: string): Promise<
 export function discardChatOutbox(userId: string | null | undefined): Promise<void> {
   if (!userId) return Promise.resolve();
   return inOrder(async () => {
+    unsavedByUser.delete(userId.toLowerCase());
     await removeStored(userId, (await readValid(userId)).map((x) => x.clientId));
   });
 }
@@ -123,6 +150,7 @@ export function discardChatOutbox(userId: string | null | undefined): Promise<vo
 export function dropChatOutbox(userId: string | null | undefined, clientId: string | null | undefined): Promise<void> {
   if (!userId || !clientId) return Promise.resolve();
   return inOrder(async () => {
+    forgetUnsaved(userId, [clientId]);
     await removeStored(userId, [clientId]);
   });
 }

@@ -161,6 +161,9 @@ await db.exec(lines('050_chat_and_profile_privacy.sql', 62, 105)); // immutable 
 await db.exec(migFile('067_delete_chat_history.sql'));
 await db.exec(migFile('104_direct_chat_two_people.sql'));
 await db.exec(`CREATE POLICY chat_participants_insert ON public.chat_participants FOR INSERT TO authenticated WITH CHECK (bw_can_add_chat_participant(chat_id, user_id));`);
+// Apply order 194 -> 175 -> 192 (round 8: 192 redefines 194's
+// bw_write_chat_notices and checks for it at its top).
+await db.exec(migFile('194_chat_notifications_server_only.sql'));
 // What 193 requires from 175 (and checks for at its top).
 for (const sql of [fn(M175, 'bw_chat_scope_ok'), fn(M175, 'bw_chat_scope_ok_for'), fn(M175, 'bw_chats_immutable_keys'),
   stmt175('CREATE TRIGGER bw_chats_immutable_keys')]) {
@@ -362,7 +365,8 @@ await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content, created_at
     ('${M_ED3}','${TWINCHAT}','${MEM}','gate code is 4417', now() - interval '90 seconds'),
     ('${M_ED4}','${TWINCHAT}','${MEM}','old address 12 Pier St', now() - interval '80 seconds');
   INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
-  ('${ADMIN}','chat_message','Mia Member','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417','tag','ed3'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
+  -- (194's index: one notice per reader and message, so the message notice is Mia's own here.)
+  ('${MEM}','chat_message','Mia Member','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417','tag','ed3'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
   ('${ADMIN}','chat_mention','Mia Member mentioned you','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
   ('${ADMIN}','chat_message','Mia Member','old address 12 Pier St', jsonb_build_object('chat_id','${TWINCHAT}','content','old address 12 Pier St'), '/chat/${TWINCHAT}', now() - interval '79 seconds');`);
 const othersEd = await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body NOT LIKE '%4417%' AND body NOT LIKE '%Pier St%'`);
@@ -396,6 +400,27 @@ ok(r.rows.length === 1 && r.rows[0].user_id === LINE && r.rows[0].body === 'new 
   `edited: only someone who can still read the chat gets the new text (${JSON.stringify(r.rows.map((x) => [x.user_id.slice(-2), x.body]))})`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE user_id IN ('${EX}','${FAN}') AND (body LIKE '%setlist v%' OR data::text LIKE '%setlist v%')`) === 0,
   'a former member (kept row) and someone outside the chat: their notice of it goes, old and new text');
+// Round 8 (Claude review, finding 3): access is checked again when the
+// notices are written. Eli was removed after send-push picked the
+// recipients (his kept row stays, as 175 keeps it), Oscar was never in the
+// chat: neither gets a notice, nor a push (not returned). An unpushed notice
+// Eli already had is not pushed either.
+const M_W8 = id(60);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${M_W8}','${BANDCHAT}','${ADMIN}','soundcheck at 4')`);
+await db.exec(`INSERT INTO notifications (user_id, type, title, body, data) VALUES ('${EX}','chat_message','Ava Admin','soundcheck at 4', jsonb_build_object('chat_id','${BANDCHAT}','message_id','${M_W8}','content','soundcheck at 4'))`);
+const rowsW8 = JSON.stringify([LINE, EX, OUT].map((u) => ({ user_id: u, type: 'chat_message', title: 'Ava Admin', body: 'soundcheck at 4', data: { chat_id: BANDCHAT } })));
+const w8 = await db.query(`SELECT user_id FROM public.bw_write_chat_notices($1, $2::jsonb)`, [M_W8, rowsW8]).then((x) => x.rows.map((y) => y.user_id), (e) => 'ERROR ' + e.message);
+ok(JSON.stringify(w8) === JSON.stringify([LINE]), `write time: only who can still read the chat is pushed (${JSON.stringify(w8)})`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_W8}' AND user_id = '${OUT}'`) === 0,
+  'no notice for someone outside the chat');
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_W8}' AND user_id = '${LINE}'`) === 1, 'the reader gets one');
+// Round 8 (NIT 7): an edit to an empty message reads "New message" in the
+// reader's language.
+await db.exec(`UPDATE profiles SET preferred_language = 'es' WHERE id = '${LINE}'`);
+await db.exec(`UPDATE messages SET content = '' WHERE id = '${M_W8}'`);
+r = await db.query(`SELECT body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${M_W8}' AND user_id = '${LINE}'`);
+ok(r.rows[0]?.body === 'Nuevo mensaje' && r.rows[0]?.c === 'Nuevo mensaje', `edited to nothing: "New message" in the reader's language (${JSON.stringify(r.rows[0])})`);
+await db.exec(`UPDATE profiles SET preferred_language = NULL WHERE id = '${LINE}'; DELETE FROM messages WHERE id = '${M_W8}'`);
 await db.exec(`DELETE FROM messages WHERE id = '${M_ED5}'; SET session_replication_role = replica; DELETE FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${EX}'; SET session_replication_role = DEFAULT;`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_ED3}'`) === 0, 'and they still go with the message');
 
@@ -547,12 +572,34 @@ await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_m
   const in194 = cut(migFile('194_chat_notifications_server_only.sql'));
   ok(!!in192 && in192 === in194, `bw_js_left and bw_chat_preview are the same in 192 and 194 (${in192 ? in192.length : 'missing'} / ${in194 ? in194.length : 'missing'})`);
 }
+// Round 8 (finding 3): 192 redefines 194's bw_write_chat_notices. Without
+// its "-- 192: may still read" lines it is 194's function byte for byte.
+{
+  const cut = (sql) => {
+    const a = sql.indexOf('CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(');
+    const end = 'GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;';
+    const b = sql.indexOf(end, a);
+    return a < 0 || b < 0 ? null : sql.slice(a, b + end.length);
+  };
+  const in192 = cut(migFile('192_chat_notification_purge.sql'));
+  const in194 = cut(migFile('194_chat_notifications_server_only.sql'));
+  const added = in192 ? in192.split('\n').filter((l) => l.endsWith('-- 192: may still read')) : [];
+  const base = in192 ? in192.split('\n').filter((l) => !l.endsWith('-- 192: may still read')).join('\n') : null;
+  ok(!!base && base === in194 && added.length === 4 && added.every((l) => /bw_chat_scope_ok_for|chat_participants/.test(l)),
+    `192's bw_write_chat_notices is 194's plus the read check only (${added.length} lines added, ${base === in194 ? 'rest identical' : 'rest differs'})`);
+}
 // Codex #291 r7 B3: 192 needs 175's bw_chat_scope_ok_for (hard order 175 → 192).
 if (!process.argv[3]) {
   const bare = new PGlite();
   const e192 = await bare.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;` + migFile('192_chat_notification_purge.sql'))
     .then(() => 'ran', (e) => e.message);
   ok(/192 needs 175/.test(e192), `192 without 175 stops at once and names 175 (${e192.slice(0, 60)})`);
+  // Round 8: with 175 but without 194 (round 8), it stops too, naming 194.
+  const bare2 = new PGlite();
+  const e192b = await bare2.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    CREATE FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;` + migFile('192_chat_notification_purge.sql'))
+    .then(() => 'ran', (e) => e.message);
+  ok(/192 needs 194/.test(e192b), `192 without 194 (round 8) stops at once and names 194 (${e192b.slice(0, 60)})`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

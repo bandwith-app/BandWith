@@ -269,6 +269,53 @@ describe('ChatDetailModal', () => {
     expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
   });
 
+  // Claude review #291 round 8, finding 2: storage full or blocked and
+  // another chat on screen when the send fails: the message is not lost
+  // silently. It is held as "Not sent" for its chat, and a toast says so.
+  it('offline, storage full, another chat on screen: a toast, and "Not sent" back in its chat', async () => {
+    openComposer();
+    let answer: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementation(() => new Promise((r) => { answer = r; }));
+    const real = localStorage.setItem.bind(localStorage);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k.startsWith('bw:chat_outbox:')) throw new DOMException('full', 'QuotaExceededError');
+      return real(k, v);
+    });
+    const toasts: string[] = [];
+    const onToast = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
+    window.addEventListener('bw:toast', onToast);
+    try {
+      const { rerender } = render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'gate code 4417' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await settle();
+      rerender(<ChatDetailModal chat={{ ...directProp, id: 'c2' }} onClose={() => {}} />);
+      await settle();
+      await act(async () => { answer({ data: null, error: new Error('Failed to fetch') }); });
+      await settle();
+      expect(toasts).toEqual(['Message not saved on this phone: gate code 4417']);
+      expect(screen.queryByText('gate code 4417')).toBeNull();
+      rerender(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      expect(screen.getByText('gate code 4417')).toBeTruthy();
+      expect(screen.getByText('Not sent')).toBeTruthy();
+      expect(screen.getByText('Couldn’t save this message offline: it hasn’t been sent.')).toBeTruthy();
+      // Delete takes it away for good.
+      fireEvent.click(screen.getByRole('button', { name: /^Delete unsent message/ }));
+      await settle();
+      rerender(<ChatDetailModal chat={{ ...directProp, id: 'c2' }} onClose={() => {}} />);
+      await settle();
+      rerender(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      expect(screen.queryByText('gate code 4417')).toBeNull();
+    } finally {
+      window.removeEventListener('bw:toast', onToast);
+      spy.mockRestore();
+    }
+  });
+
   it('saved: it leaves the device', async () => {
     openComposer();
     svc.sendMessage.mockResolvedValue({ data: { ...msg(205, 'me'), content: 'on my way' }, error: null });
