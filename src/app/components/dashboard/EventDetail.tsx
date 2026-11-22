@@ -93,6 +93,7 @@ import {
   rehearsalCadence,
   shortPlace,
 } from '@/app/components/event/format';
+import { isMissingColumn, liveSongFields, stageSongSelect } from '@/lib/stageSongs';
 import { asSongChart, type SongChart } from '@/lib/ireal';
 import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
@@ -540,14 +541,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     const fetchSetlist = async () => {
       try {
         const setlistId = event.setlistId!;
-        const { data, error } = await supabase
-          .from('setlist_songs')
-          // songs has duration_seconds, not duration: asking for a missing
-          // column makes PostgREST fail the whole query.
-          .select('*, song:songs(title, artist, duration_seconds, key, bpm, lyrics, chord_chart, audio_url)')
-          .eq('setlist_id', event.setlistId)
-          .order('set_number', { ascending: true })
-          .order('position', { ascending: true });
+        // songs has duration_seconds, not duration: asking for a missing
+        // column makes PostgREST fail the whole query (so the live-mode
+        // columns of 171 are asked again without, until it is applied).
+        const query = (withLive: boolean) =>
+          supabase
+            .from('setlist_songs')
+            .select(stageSongSelect(withLive))
+            .eq('setlist_id', setlistId)
+            .order('set_number', { ascending: true })
+            .order('position', { ascending: true });
+        let { data, error } = await query(true);
+        if (isMissingColumn(error)) ({ data, error } = await query(false));
         if (cancelled) return;
         // No internet (a venue with no signal): the copy kept on the phone, so
         // Stage mode still has the songs (and Bluetooth sync).
@@ -580,6 +585,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               chart: asSongChart(s.song?.chord_chart) || undefined,
               // The Regia (stage manager mode) plays it; nobody else loads it.
               audio: typeof s.song?.audio_url === 'string' && s.song.audio_url ? s.song.audio_url : undefined,
+              // Live mode: time signature, count-in, pickup, backing track, line timing (171).
+              ...liveSongFields(s.song),
             }));
           setSetlistSongs(songs);
           writeCachedSetlist(setlistId, songs);

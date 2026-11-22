@@ -4544,6 +4544,20 @@ const dict: Dictionary = {
   "Download it now: at the gig the stage manager plays it without internet.": "Descárgalo ahora: en el concierto la cabina lo reproduce sin internet.",
   "Download audio": "Descargar el audio",
   "Download progress": "Progreso de la descarga",
+  "Time signature": "Compás",
+  "Time signature {time}": "Compás {time}",
+  "From the chord chart.": "De la partitura de acordes.",
+  "Count-in": "Cuenta",
+  "1 bar": "1 compás",
+  "2 bars": "2 compases",
+  "For slow songs: the first bar counts in half time.": "Para canciones lentas: el primer compás cuenta a medio tiempo.",
+  "Pickup": "Anacrusa",
+  "One beat less": "Un tiempo menos",
+  "One beat more": "Un tiempo más",
+  "Starts {n} beats early": "Empieza {n} tiempos antes",
+  "Starts on the downbeat": "Empieza en el primer tiempo",
+  "Played with a backing track": "Se toca con pista de acompañamiento",
+  "No count-in on stage: the track starts the band.": "Sin cuenta en el escenario: la pista arranca a la banda.",
 };
 
 export default dict;

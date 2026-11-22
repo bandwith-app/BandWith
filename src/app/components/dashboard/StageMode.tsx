@@ -37,6 +37,7 @@ import { openCountBySong } from '@/lib/toPractise';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
 import { NowPlayingStrip, RegiaBar, RegiaExtraSheet, RegiaRowPlay } from './StageRegia';
 import { enterScreen } from '@/lib/appAnalytics';
+import type { LiveSongFields } from '@/lib/stageSongs';
 
 export interface StageStep {
   label: string;
@@ -46,7 +47,8 @@ export interface StageStep {
   display: string;
 }
 
-export interface StageSong {
+/** A setlist song in live mode; LiveSongFields: time signature, count-in, pickup, backing track, line timing (171). */
+export interface StageSong extends LiveSongFields {
   /** setlist_songs row id (live order and current song follow it). */
   id?: string;
   /** songs.id, needed to save a new order. */

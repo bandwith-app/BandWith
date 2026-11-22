@@ -30,6 +30,7 @@ import {
   type ClockSample,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
+import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
 
 /** Wall-clock ms with sub-ms steps (smooth for the metronome). */
 const nowMs = () => performance.timeOrigin + performance.now();
@@ -167,6 +168,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const [clickOffset, setClickOffset] = useState(0);
   const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[] }>({ peer: '', at: 0, samples: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Follow the tempo (playhead.ts): the newest playhead state, ours or the leader's.
+  const [playhead, setPlayheadState] = useState<PlayheadState | null>(null);
+  const playheadRef = useRef<PlayheadState | null>(null);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -228,11 +232,14 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     if (state.songId !== undefined) setSongId(state.songId);
   }, []);
 
-  /** Measure the click leader's clock: a few pings, the fastest round trip wins. */
+  /**
+   * Measure the leader's clock (click, playhead): a few pings, the fastest
+   * round trip wins. `fresh`: measure again now, even if measured lately.
+   */
   const syncWith = useCallback(
-    (peer: string) => {
+    (peer: string, fresh = false) => {
       const book = samplesRef.current;
-      if (book.peer === peer && nowMs() - book.at < RESYNC_MS && book.samples.length) return;
+      if (!fresh && book.peer === peer && nowMs() - book.at < RESYNC_MS && book.samples.length) return;
       samplesRef.current = { peer, at: nowMs(), samples: [] };
       pingTimers.current.forEach(clearTimeout);
       pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
@@ -251,6 +258,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (clickRef.current && clickRef.current.from !== clientId && !isNewer(state, clickRef.current)) return;
       clickRef.current = state;
       setClick(state);
+      if (state.on) syncWith(state.from);
+    },
+    [clientId, syncWith],
+  );
+
+  const receivePlayhead = useCallback(
+    (state: PlayheadState) => {
+      if (state.from === clientId) return;
+      if (playheadRef.current && !isNewer(state, playheadRef.current)) return;
+      playheadRef.current = state;
+      setPlayheadState(state);
       if (state.on) syncWith(state.from);
     },
     [clientId, syncWith],
@@ -278,6 +296,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const state = parseClickState(msg?.payload);
         if (state) receiveClick(state);
       })
+      .on('broadcast', { event: PLAYHEAD_EVENT }, (msg: { payload?: unknown }) => {
+        const state = parsePlayheadState(msg?.payload);
+        if (state) receivePlayhead(state);
+      })
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown } }) => {
         // A bandmate measuring our clock: answer straight away with our time.
         const p = msg?.payload;
@@ -301,6 +323,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         // A running click of ours reaches late arrivals too.
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
           void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickRef.current });
+        }
+        // …and the playhead (Follow the tempo), so a late phone lands on the right bar.
+        if (isLeader && playheadRef.current?.from === clientId && playheadRef.current.on) {
+          void channel.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: playheadRef.current });
         }
         // So does the rehearsal session (timer) the leader runs.
         const sessionNow = isLeader ? sessionRef.current?.current.latest?.() : null;
@@ -334,11 +360,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         clickRef.current = off;
         void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: off });
       }
+      const head = playheadRef.current;
+      if (isLeader && head?.from === clientId && head.on) {
+        const off = stopPlayhead(head);
+        playheadRef.current = off;
+        void channel.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: off });
+      }
       channelRef.current = null;
       setConnected(false);
       void supabase.removeChannel(channel);
     };
-  }, [live, eventId, clientId, isLeader, receive, receiveClick]);
+  }, [live, eventId, clientId, isLeader, receive, receiveClick, receivePlayhead]);
 
   /**
    * Save the pending order now. `closing`: Stage mode is closing, so only the
@@ -410,6 +442,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     ledRef.current = false;
     clickRef.current = null;
     setClick(null);
+    playheadRef.current = null;
+    setPlayheadState(null);
     setClickOffset(0);
     pingTimers.current.forEach(clearTimeout);
   }, [open]);
@@ -428,7 +462,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
    * whole band; anyone else's stays on their own phone.
    */
   const setClickOn = useCallback(
-    (on: boolean, opts?: { bpm: number; beats: number; bars?: number | null }) => {
+    (on: boolean, opts?: { bpm: number; beats: number; bars?: number | null; groups?: number[] | null; startAt?: number }) => {
       const prev = clickRef.current;
       const state: ClickState = {
         seq: nextSeq(prev?.seq),
@@ -437,7 +471,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         bpm: opts?.bpm ?? prev?.bpm ?? 120,
         beats: opts?.beats ?? prev?.beats ?? 4,
         bars: opts?.bars ?? null,
-        startAt: nowMs() + (isLeader && on ? START_LEAD_MS : 0),
+        ...(opts?.groups?.length ? { groups: opts.groups } : !opts && prev?.groups ? { groups: prev.groups } : {}),
+        startAt: opts?.startAt ?? nowMs() + (isLeader && on ? START_LEAD_MS : 0),
         songId: songId ?? ordered[index]?.id ?? null,
       };
       clickRef.current = state;
@@ -447,6 +482,21 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [clientId, isLeader, songId, ordered, index],
   );
 
+  /**
+   * Leader: a new playhead state (start, re-align, Hold, Stop), worked out
+   * with playhead.ts; it reaches every phone in Stage mode. Anyone else's
+   * stays on their own phone.
+   */
+  const setPlayhead = useCallback(
+    (next: PlayheadState) => {
+      const state = { ...next, from: clientId };
+      playheadRef.current = state;
+      setPlayheadState(state);
+      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: state });
+    },
+    [clientId, isLeader],
+  );
+
   /** Make song `i` (in the live order) the current one. */
   const select = useCallback(
     (i: number) => {
@@ -454,6 +504,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       const id = ordered[clamped]?.id ?? null;
       setFallbackIndex(clamped);
       setSongId(id);
+      // Another song: the playhead stops (for everyone, when the leader moves).
+      const head = playheadRef.current;
+      if (head?.on && head.songId !== id && (isLeader || head.from === clientId)) setPlayhead(stopPlayhead(head));
       if (isLeader) {
         send({ songId: id, order });
       } else if (followingRef.current) {
@@ -461,7 +514,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         setFollowingState(false);
       }
     },
-    [ordered, isLeader, send, order],
+    [ordered, isLeader, send, order, setPlayhead, clientId],
   );
 
   const skippedSet = useMemo(() => new Set(skipped), [skipped]);
@@ -569,6 +622,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       mine: !!click && click.from === clientId,
       offset: click && click.from !== clientId ? clickOffset : 0,
       setOn: setClickOn,
+    },
+    /**
+     * Follow the tempo: the newest playhead (playhead.ts), whose it is, the
+     * clock offset to use with it, and (leader) how to send a new one.
+     */
+    playhead: {
+      state: playhead,
+      mine: !!playhead && playhead.from === clientId,
+      offset: playhead && playhead.from !== clientId && samplesRef.current.peer === playhead.from ? clickOffset : 0,
+      set: setPlayhead,
+      clientId,
     },
   };
 }
