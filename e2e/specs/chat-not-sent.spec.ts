@@ -44,9 +44,13 @@ test.describe('a message that was not sent', () => {
       expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(43.9);
       expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(43.9);
     }
-    // The two targets don't overlap.
-    const a = (await tryAgain.boundingBox())!;
-    const b = (await del.boundingBox())!;
+    // The two targets don't overlap: both read in one frame (the list may
+    // still be scrolling to the new bubble; two boundingBox calls a frame
+    // apart saw a 1 px "overlap" on duo-book).
+    const [a, b] = await del.evaluate((d, label) => {
+      const t = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label')?.startsWith(label))!;
+      return [t.getBoundingClientRect(), d.getBoundingClientRect()].map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }));
+    }, `${app.t('Try again')}: Load-in moved`);
     const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
     expect(overlap, 'Try again and Delete overlap').toBe(false);
     await app.check('Waiting bubble');
