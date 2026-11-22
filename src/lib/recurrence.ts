@@ -17,6 +17,27 @@ export interface RepeatRule {
   until?: string | null;
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The monthly repeat `monthsAhead` months after `startYmd` (YYYY-MM-DD), as
+ * YYYY-MM-DD: the start's day, or the last day of a shorter month. Counted
+ * from the start, so the overflow never carries: Jan 31 → Feb 28 → Mar 31.
+ * The one rule for the app, the calendar feed (#285) and deleted dates
+ * (#297); shared vectors in __tests__/recurrence.monthly.test.ts. Null if
+ * the start can't be read.
+ */
+export function monthlyOccurrence(startYmd: string, monthsAhead: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((startYmd || '').slice(0, 10));
+  if (!m || !Number.isInteger(monthsAhead)) return null;
+  const months = Number(m[1]) * 12 + Number(m[2]) - 1 + monthsAhead;
+  const year = Math.floor(months / 12);
+  const month = months - year * 12; // 0-11
+  // Day 0 of the next month is the last day of this one (UTC: no time zone in it).
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return `${year}-${pad(month + 1)}-${pad(Math.min(Number(m[3]), last))}`;
+}
+
 
 /**
  * The repeats after `startYmd` (YYYY-MM-DD; the first date itself is not
@@ -42,10 +63,10 @@ export function repeatDates(startYmd: string, rule: RepeatRule, until: Date, max
     if (freq === 'weekly') return new Date(year, month, day + 7 * every * k, 12, 0, 0);
     if (freq === 'biweekly') return new Date(year, month, day + 14 * k, 12, 0, 0);
     if (freq === 'monthly') {
-      const target = month + every * k;
-      // Day 0 of the following month is the last day of this one.
-      const last = new Date(year, target + 1, 0, 12, 0, 0).getDate();
-      return new Date(year, target, Math.min(day, last), 12, 0, 0);
+      const on = monthlyOccurrence(startYmd, every * k);
+      if (!on) return null;
+      const [y, mo, d] = on.split('-').map(Number);
+      return new Date(y, mo - 1, d, 12, 0, 0);
     }
     return null;
   };
