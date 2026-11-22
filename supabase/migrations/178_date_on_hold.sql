@@ -63,8 +63,9 @@
 --     wizard save that fails never tells anyone. Moving the day or the time
 --     clears the answers.
 --     "The day has ended": there is no time zone on events or bands, and
---     profiles.timezone is never set by the app (it is 'Europe/Rome' for
---     everyone). So the day ends when it has ended everywhere a band can be:
+--     profiles.timezone is each member's own zone (the app syncs the device
+--     zone into it at sign-in, #297; America/New_York is the fallback), not
+--     the band's or the venue's. So the day ends when it has ended everywhere a band can be:
 --     at midnight in UTC-12 (as 117 does for poll deadlines). A New York gig
 --     on Saturday is held until Sunday 7:00 there.
 --
