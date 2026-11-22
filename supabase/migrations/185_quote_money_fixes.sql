@@ -51,6 +51,17 @@
 --    only who was on the quote's previous lineup (never someone added to
 --    the gig directly, the admin, a deputy).
 --
+-- 7. Round 12 (Claude review of #294's last 178): a save of the lineup
+--    locks the quote's events rows FOR UPDATE right after the quote and
+--    before anything is written (bw_quote_lock_events, new). It took the
+--    events row FOR UPDATE at the end, after 178's trigger on
+--    quote_musicians (or on the quote's own update) had taken the row FOR
+--    NO KEY UPDATE and then the hold's lock; a member answering the hold
+--    (178 bw_answer_date_hold: the events row FOR KEY SHARE, then the
+--    hold's lock) met it, and one of the two got 40P01. The rule: a
+--    transaction takes its strongest events-row lock before the hold's
+--    lock.
+--
 -- No function here comes from an open PR (168 and 099 bodies). New anon
 -- grant: bw_quote_link_preview only (it needs the token and the key).
 -- Safe to run more than once.
@@ -190,6 +201,37 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_quote_lineup_current(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_lineup_current(uuid, jsonb) TO authenticated;
 
+-- Round 12: the events rows of a quote (the one it points at, and any made
+-- from it), locked FOR UPDATE in id order (the order of 178's triggers).
+-- The rule: a transaction takes its strongest events-row lock before the
+-- hold's lock. A save of the lineup needs the events row FOR UPDATE, and
+-- 178's triggers on what it writes take the hold's lock (after the row FOR
+-- NO KEY UPDATE), so the row is locked FOR UPDATE here first, right after
+-- the quote (quote -> event -> hold's lock). p_also: an event the same
+-- save is about to point the quote at. A quote with no event locks
+-- nothing. Admins of the quote's band only (bw_quote_admin_band), and only
+-- their band's events; authenticated may call it because
+-- bw_quote_save_with_lineup runs as the caller.
+CREATE OR REPLACE FUNCTION public.bw_quote_lock_events(p_quote_id uuid, p_also uuid DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_linked uuid;
+BEGIN
+  SELECT q.converted_to_event_id INTO v_linked FROM public.quotes q WHERE q.id = p_quote_id;
+  PERFORM 1 FROM public.events e
+    WHERE e.band_id = v_band AND (e.id = v_linked OR e.quote_id = p_quote_id OR e.id = p_also)
+    ORDER BY e.id
+      FOR UPDATE;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_lock_events(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_lock_events(uuid, uuid) TO authenticated;
+
 -- Round 5: p_base (optional) is the lineup the wizard opened with. When
 -- given, a lineup someone else changed meanwhile is refused (40001, hint
 -- BW_LINEUP_CHANGED): the save would bring back who they removed and the
@@ -214,6 +256,10 @@ DECLARE
 BEGIN
   -- The quote first (as bw_quote_save_musicians), then the gig.
   PERFORM public.bw_quote_lineup_current(p_quote_id, p_base);
+  -- Round 12: the gig's row FOR UPDATE now, before the lineup is written
+  -- (178's trigger on quote_musicians takes the hold's lock; the strongest
+  -- events-row lock comes before it). The same row is read below.
+  PERFORM public.bw_quote_lock_events(p_quote_id);
   -- Who the quote's lineup had before this save (the only ones it can take off the gig).
   v_before := ARRAY(SELECT DISTINCT qm.user_id FROM public.quote_musicians qm
                      WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL);
@@ -302,6 +348,13 @@ BEGIN
 
   -- The lineup it opened with, under the quote's lock, before anything is written.
   PERFORM public.bw_quote_lineup_current(p_quote_id, p_base);
+  -- Round 12: the gig's row FOR UPDATE before the quote is written (178's
+  -- triggers on the quote's update take the hold's lock, and
+  -- bw_quote_save_lineup below needs the row FOR UPDATE); also the event
+  -- this save points the quote at, if it names one.
+  PERFORM public.bw_quote_lock_events(p_quote_id,
+    CASE WHEN (p_updates ->> 'converted_to_event_id') ~ '^[0-9a-fA-F-]{36}$'
+         THEN (p_updates ->> 'converted_to_event_id')::uuid END);
 
   SELECT string_agg(format('%I', k), ', ' ORDER BY k), string_agg(format('r.%I', k), ', ' ORDER BY k)
     INTO v_cols, v_vals

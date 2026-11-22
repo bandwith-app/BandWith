@@ -45,6 +45,10 @@
 //      as it did.
 //      PGlite is one connection: the two real races (two sessions) are
 //      left to the real-Postgres pass on the release checklist;
+//   13. round 12 (Claude review of #294's last 178): a save of the lineup
+//      (bw_quote_save_lineup, bw_quote_save_with_lineup) locks the quote's
+//      events rows FOR UPDATE right after the quote and before it writes
+//      (source and lock probe), and still saves with and without an event;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -1077,6 +1081,108 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   const ua = await answer(u.T, 'accept', uv?.version);
   ok(uv?.version === 1 && uv?.unavailable === true && ua.code === 'BWQ01',
     `round 12 (known limit): the unchanged quote sent again after its gig was deleted stays "no longer available" (version ${uv?.version}, ${uv?.unavailable}, ${ua.code || ua.e || ua.r?.status})`);
+}
+
+// ---------------------------------------------------------------- 13. round 12: a lineup save takes the events row FOR UPDATE before it writes
+{
+  const src = (fn) => q(`SELECT prosrc FROM pg_proc WHERE proname = $1 AND pronamespace = 'public'::regnamespace`, [fn])
+    .then((r) => (r.rows[0]?.prosrc ?? '').replace(/--[^\n]*/g, ''));
+  const rising = (a) => a.every((v, i) => v >= 0 && (i === 0 || v > a[i - 1]));
+  // a. The source. The helper locks the quote's events FOR UPDATE in id
+  // order; each save calls it after the quote's lock (bw_quote_lineup_current)
+  // and before its first write.
+  const hs = await src('bw_quote_lock_events');
+  const sl = await src('bw_quote_save_lineup');
+  const sw = await src('bw_quote_save_with_lineup');
+  const o1 = [sl.indexOf('bw_quote_lineup_current('), sl.indexOf('bw_quote_lock_events('), sl.indexOf('bw_quote_save_musicians(')];
+  const o2 = [sw.indexOf('bw_quote_lineup_current('), sw.indexOf('bw_quote_lock_events('), sw.indexOf('UPDATE public.quotes'), sw.indexOf('bw_quote_save_lineup(')];
+  ok(/FROM\s+public\.events\s+e\b[^;]*\bORDER\s+BY\s+e\.id\s+FOR\s+UPDATE\s*;/i.test(hs) && /bw_quote_admin_band\(p_quote_id\)/.test(hs) && rising(o1) && rising(o2),
+    `round 12: both lineup saves lock the quote's events rows FOR UPDATE (in id order) after the quote's lock and before they write (save_lineup ${JSON.stringify(o1)}, save_with_lineup ${JSON.stringify(o2)})`);
+
+  // b. Lock probe: the events row is held FOR UPDATE by the transaction
+  // when the lineup's rows go in, and when the quote's row is written.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS r13_log (tbl text, for_update boolean);
+    -- FOR UPDATE, not FOR NO KEY UPDATE: the exclusive lock bit and HEAP_KEYS_UPDATED.
+    CREATE OR REPLACE FUNCTION test_row_for_update(p_rel regclass, p_ctid tid, p_xmax xid) RETURNS boolean LANGUAGE plpgsql AS $f$
+    DECLARE v_ctid point := p_ctid::text::point; v_mask int; v_mask2 int;
+    BEGIN
+      SELECT h.t_infomask, h.t_infomask2 INTO v_mask, v_mask2 FROM heap_page_items(get_raw_page(p_rel::text, v_ctid[0]::int)) h WHERE h.lp = v_ctid[1]::int;
+      RETURN p_xmax::text = (txid_current() % 4294967296)::text AND (v_mask & 64) <> 0 AND (v_mask2 & 8192) <> 0;
+    END $f$;
+    CREATE OR REPLACE FUNCTION test_r13_probe() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $f$
+    DECLARE v_quote uuid;
+    BEGIN
+      IF TG_TABLE_NAME = 'quotes' THEN v_quote := NEW.id; ELSE v_quote := NEW.quote_id; END IF;
+      INSERT INTO r13_log SELECT TG_TABLE_NAME, test_row_for_update('public.events', x.ctid, x.xmax)
+        FROM events x WHERE x.id = public.bw_quote_gig_id(v_quote);
+      RETURN NEW;
+    END $f$;
+    CREATE TRIGGER test_r13_probe BEFORE INSERT ON quote_musicians FOR EACH ROW EXECUTE FUNCTION test_r13_probe();
+    CREATE TRIGGER test_r13_probe BEFORE UPDATE ON quotes FOR EACH ROW EXECUTE FUNCTION test_r13_probe();`);
+  const rows = [
+    { user_id: MEMBER, name: 'Maya Brooks', instrument: 'Bass', fee: 350, is_external: false, is_available: true },
+    { user_id: null, name: 'Leo Park', instrument: 'Drums', fee: 275, is_external: true, is_available: true },
+  ];
+  const logged = () => q(`SELECT tbl, for_update f FROM r13_log`).then((r) => r.rows);
+  // With a tentative event: the lineup and the gig, as before.
+  const t = await quote();
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${t.E}'; DELETE FROM r13_log;`);
+  const r1 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [t.Q, JSON.stringify(rows)]).then((x) => x.rows[0].r)));
+  const l1 = await logged();
+  const em1 = (await q(`SELECT user_id, status, fee::float fee, role FROM event_members WHERE event_id = $1`, [t.E])).rows;
+  ok(!r1.e && l1.length === 2 && l1.every((x) => x.tbl === 'quote_musicians' && x.f),
+    `round 12: save_lineup writes the lineup with the gig's row already locked FOR UPDATE (${r1.e || JSON.stringify(l1)})`);
+  ok(!r1.e && r1.r.synced === true && r1.r.confirmed === false && r1.r.event_id === t.E && r1.r.musicians.length === 2
+     && em1.length === 1 && em1[0].user_id === MEMBER && em1[0].status === 'pending' && em1[0].fee === 350 && em1[0].role === 'Bass',
+    `round 12: save_lineup with a tentative event still saves the lineup and the gig's (${r1.e || JSON.stringify({ s: r1.r.synced, n: r1.r.musicians.length, em: em1.length })})`);
+  // The quote and its lineup in one call: the row is locked before the quote is written.
+  await db.exec(`DELETE FROM r13_log`);
+  const r2 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_with_lineup($1, $2::jsonb, $3::jsonb, NULL) r`,
+    [t.Q, JSON.stringify({ client_phone: '+1 212 555 0142' }), JSON.stringify([rows[0]])]).then((x) => x.rows[0].r)));
+  const l2 = await logged();
+  ok(!r2.e && l2.some((x) => x.tbl === 'quotes') && l2.some((x) => x.tbl === 'quote_musicians') && l2.every((x) => x.f),
+    `round 12: save_with_lineup writes the quote and the lineup with the gig's row already locked FOR UPDATE (${r2.e || JSON.stringify(l2)})`);
+  ok(!r2.e && r2.r.quote?.client_phone === '+1 212 555 0142' && r2.r.lineup?.synced === true && r2.r.lineup?.event_id === t.E && r2.r.lineup?.musicians.length === 1
+     && (await q(`SELECT count(*)::int c FROM quote_musicians WHERE quote_id = $1`, [t.Q])).rows[0].c === 1,
+    `round 12: save_with_lineup with an event still returns {quote, lineup} and saves both (${r2.e || JSON.stringify({ p: r2.r.quote?.client_phone, s: r2.r.lineup?.synced })})`);
+  await db.exec(`DROP TRIGGER test_r13_probe ON quote_musicians; DROP TRIGGER test_r13_probe ON quotes;`);
+  // A confirmed gig: the quote's lineup is saved, the gig is left alone.
+  await db.exec(`UPDATE events SET status = 'confirmed' WHERE id = '${t.E}'`);
+  const r3 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [t.Q, JSON.stringify(rows)]).then((x) => x.rows[0].r)));
+  ok(!r3.e && r3.r.confirmed === true && r3.r.synced === false && r3.r.event_id === t.E && r3.r.musicians.length === 2
+     && (await q(`SELECT count(*)::int c FROM event_members WHERE event_id = $1`, [t.E])).rows[0].c === 1,
+    `round 12: save_lineup on a confirmed gig still saves the quote's lineup and leaves the gig (${r3.e || JSON.stringify({ c: r3.r.confirmed, s: r3.r.synced })})`);
+  // No event at all: nothing to lock, both saves go through.
+  const NOEV = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, status) VALUES ('${NOEV}', '${BAND}', 'Emma Carter', 'draft')`);
+  const r4 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [NOEV, JSON.stringify(rows)]).then((x) => x.rows[0].r)));
+  const r5 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_with_lineup($1, $2::jsonb, $3::jsonb, NULL) r`,
+    [NOEV, JSON.stringify({ client_phone: '+1 718 555 0199' }), JSON.stringify([rows[1]])]).then((x) => x.rows[0].r)));
+  ok(!r4.e && r4.r.event_id === null && r4.r.synced === false && r4.r.confirmed === false && r4.r.musicians.length === 2
+     && !r5.e && r5.r.quote?.client_phone === '+1 718 555 0199' && r5.r.lineup?.event_id === null && r5.r.lineup?.musicians.length === 1,
+    `round 12: both saves work on a quote with no event (${r4.e || JSON.stringify({ e: r4.r.event_id, n: r4.r.musicians.length })}, ${r5.e || JSON.stringify({ e: r5.r.lineup?.event_id, n: r5.r.lineup?.musicians.length })})`);
+  // A save that points the quote at another event of the band locks that one too; an unknown id is no error here.
+  const NEWE = id(n++);
+  await db.exec(`INSERT INTO events (id, band_id, status, payment_status) VALUES ('${NEWE}', '${BAND}', 'tentative', 'pending')`);
+  const r6 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_with_lineup($1, $2::jsonb, $3::jsonb, NULL) r`,
+    [NOEV, JSON.stringify({ converted_to_event_id: NEWE }), JSON.stringify([rows[0]])]).then((x) => x.rows[0].r)));
+  ok(!r6.e && r6.r.quote?.converted_to_event_id === NEWE && r6.r.lineup?.event_id === NEWE && r6.r.lineup?.synced === true,
+    `round 12: a save that points the quote at an event saves the lineup on it (${r6.e || JSON.stringify({ e: r6.r.lineup?.event_id, s: r6.r.lineup?.synced })})`);
+  // c. The helper: admins of the quote's band only, nothing returned; the saves keep their signatures and grants.
+  const hm = await tryIt(asMember(() => q(`SELECT public.bw_quote_lock_events($1)`, [t.Q])));
+  const ha = await tryIt(asAnon(() => q(`SELECT public.bw_quote_lock_events($1)`, [t.Q])));
+  const hx = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_lock_events($1)`, [id(n++)])));
+  const hok = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_lock_events($1) v`, [t.Q]).then((x) => x.rows[0].v)));
+  const sigs = (await q(`SELECT p.proname n, pg_get_function_identity_arguments(p.oid) a, pg_get_function_result(p.oid) r, p.prosecdef d,
+      has_function_privilege('anon', p.oid, 'EXECUTE') anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') auth
+      FROM pg_proc p WHERE p.proname IN ('bw_quote_save_lineup', 'bw_quote_save_with_lineup', 'bw_quote_lock_events') ORDER BY 1`)).rows;
+  ok(/Not allowed|permission denied/.test(hm.e || '') && !!ha.e && /Not allowed/.test(hx.e || '') && !hok.e
+     && JSON.stringify(sigs) === JSON.stringify([
+       { n: 'bw_quote_lock_events', a: 'p_quote_id uuid, p_also uuid', r: 'void', d: true, anon: false, auth: true },
+       { n: 'bw_quote_save_lineup', a: 'p_quote_id uuid, p_musicians jsonb, p_base jsonb', r: 'jsonb', d: true, anon: false, auth: true },
+       { n: 'bw_quote_save_with_lineup', a: 'p_quote_id uuid, p_updates jsonb, p_musicians jsonb, p_base jsonb', r: 'jsonb', d: false, anon: false, auth: true }]),
+    `round 12: bw_quote_lock_events is for the quote's admins only (member ${hm.e ? 'refused' : 'allowed'}, anon ${ha.e ? 'refused' : 'allowed'}, unknown quote ${hx.e ? 'refused' : 'allowed'}, admin ${hok.e || 'ok'}); the saves keep their signatures and grants (${JSON.stringify(sigs.map((x) => x.n + '(' + x.a + ') ' + x.r))})`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)

@@ -120,12 +120,19 @@ ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS event_removed_at timesta
 -- the FK's SET NULL writes the quote: link -> quote, while a client's
 -- message or answer and an admin's publish go quote -> link, so one of
 -- them at the same moment as a gig delete could deadlock (40P01). With the
--- quote locked here a link is always written after its quote is held (the
--- event row is already held by the delete). A quote deleted earlier in
--- this transaction (a band or an account going with its quotes and
--- events) is not seen by the lock and is skipped, without a wait or an
--- error; ORDER BY: two deletes that share quotes lock them in the same
--- order.
+-- quote locked here a link is always written after its quote is held. A
+-- quote deleted earlier in this transaction (a band or an account going
+-- with its quotes and events) is not seen by the lock and is skipped,
+-- without a wait or an error; ORDER BY: two deletes that share quotes lock
+-- them in the same order.
+-- The order that results: a gig delete goes event -> quote -> link (the
+-- DELETE holds the events row before this trigger runs; it was event ->
+-- link -> quote). Everything else goes quote -> link -> event. So one
+-- cycle is left, through the events row (known limit): a client's open,
+-- answer or message, an admin's recorded answer, or a save of the quote
+-- (each holds the quote and, with 178's triggers, then takes the quote's
+-- events row) at the same moment as a delete of that quote's gig can end
+-- in 40P01 for one of the two. Nothing is lost, and the retry works.
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_link_event_removed()
 RETURNS trigger
 LANGUAGE plpgsql
