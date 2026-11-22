@@ -8,6 +8,7 @@ import { generateSetlistPdf } from '../setlistPdf';
 import { generateQuotePdf } from '../quotePdf';
 import { DEFAULT_BAND_PRICING } from '../pricing';
 import { setLocalePref } from '@/lib/i18n';
+import { buildTaggedPdf } from '../pdfDocument';
 
 // jsdom has no canvas: a 2D context that only measures text (10 px a char).
 const fakeCtx = () => {
@@ -108,5 +109,20 @@ describe('quote PDF is readable by a screen reader', () => {
     expect(pdf).toContain(utf16('Acme Events'));
     expect(pdf).toContain('/StructTreeRoot');
     expect(pdf).toContain(`/ActualText <${utf16('Acme Events')}>`);
+  });
+});
+
+describe('the invisible text lines up with the drawn text', () => {
+  it('uses Helvetica\'s real widths: wide "WWW" and narrow "iii" both keep 100% scale', async () => {
+    // Drawn at 40 px in Helvetica: W is 0.944 em, i is 0.222 em.
+    const size = 40;
+    const runs = [
+      { text: 'WWW', x: 100, y: 200, size, width: 3 * 0.944 * size },
+      { text: 'iii', x: 100, y: 300, size, width: 3 * 0.222 * size },
+    ];
+    const pdf = await bytesOf(buildTaggedPdf([JPEG], { text: [runs] }));
+    const scales = [...pdf.matchAll(/([\d.]+) Tz/g)].map((m) => Number(m[1]));
+    expect(scales).toHaveLength(2);
+    for (const z of scales) expect(z).toBeCloseTo(100, 0);
   });
 });

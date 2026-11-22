@@ -77,12 +77,36 @@ const WIN_ANSI_EXTRA: Record<number, number> = {
   0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98,
   0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f,
 };
-const winAnsiHex = (s: string): string =>
+const winAnsiCodes = (s: string): number[] =>
   Array.from(s, (ch) => {
     const c = ch.codePointAt(0) ?? 0x3f;
-    const b = (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) ? c : WIN_ANSI_EXTRA[c] ?? 0x3f;
-    return b.toString(16).toUpperCase().padStart(2, '0');
-  }).join('');
+    return (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) ? c : WIN_ANSI_EXTRA[c] ?? 0x3f;
+  });
+const winAnsiHex = (s: string): string =>
+  winAnsiCodes(s)
+    .map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
+    .join('');
+
+/** Helvetica advance widths (1/1000 em) for WinAnsi codes 32–255, from its AFM. */
+const HELVETICA_WIDTHS = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584, 350,
+  556, 350, 222, 556, 333, 1000, 556, 556, 333, 1000, 667, 333, 1000, 350, 611, 350,
+  350, 222, 222, 333, 333, 350, 556, 1000, 333, 1000, 500, 333, 944, 350, 500, 667,
+  278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333,
+  400, 584, 333, 333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611,
+  667, 667, 667, 667, 667, 667, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278,
+  722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611,
+  556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500,
+];
+/** Width of `s` set in Helvetica at `size`, as the PDF viewer lays it out. */
+export const helveticaWidth = (s: string, size: number): number =>
+  (winAnsiCodes(s).reduce((sum, c) => sum + (HELVETICA_WIDTHS[c - 32] ?? 556), 0) / 1000) * size;
 
 /** A PDF text string as UTF-16BE hex with its byte-order mark. */
 export const pdfUtf16 = (s: string): string =>
@@ -149,8 +173,8 @@ export function buildTaggedPdf(jpegDataUrls: string[], info: PdfDocInfo = {}): B
       for (const r of line) {
         const size = Math.max(1, r.size * sy);
         // Stretch the invisible text to the drawn width (selection, highlights).
-        const approx = r.text.length * size * 0.5;
-        const scale = r.width > 0 && approx > 0 ? Math.min(300, Math.max(30, ((r.width * sx) / approx) * 100)) : 100;
+        const natural = helveticaWidth(r.text, size);
+        const scale = r.width > 0 && natural > 0 ? Math.min(300, Math.max(30, ((r.width * sx) / natural) * 100)) : 100;
         stream +=
           `/Span << /MCID ${mcid} /ActualText ${pdfUtf16(r.text)} >> BDC\n` +
           `BT\n3 Tr\n/F1 ${num(size)} Tf\n${num(scale)} Tz\n1 0 0 1 ${num(r.x * sx)} ${num(A4_HEIGHT_PT - r.y * sy)} Tm\n<${winAnsiHex(r.text)}> Tj\nET\nEMC\n`;
