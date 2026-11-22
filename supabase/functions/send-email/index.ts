@@ -575,7 +575,13 @@ async function sendQuoteClientEmail(
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
     // Round 5: given back only when Resend refused it (nothing went out).
-    if (sentNothing(e)) await slot.release();
+    // Round 6 (Claude r9): and said with a code, so the app can take back
+    // a send it recorded before the email (the balance page).
+    if (sentNothing(e)) {
+      await slot.release();
+      console.warn("Resend refused the email:", e instanceof Error ? e.message : String(e));
+      return jsonResponse({ success: false, code: "email_refused", error: "The email service refused the email" }, 502);
+    }
     throw e;
   }
 }
@@ -666,7 +672,13 @@ async function sendQuoteBalanceEmail(
     return jsonResponse({ success: true, id: result.id });
   } catch (e) {
     // Round 5: given back only when Resend refused it (nothing went out).
-    if (sentNothing(e)) await slot.release();
+    // Round 6 (Claude r9): and said with a code, so the app can take back
+    // a send it recorded before the email (the balance page).
+    if (sentNothing(e)) {
+      await slot.release();
+      console.warn("Resend refused the email:", e instanceof Error ? e.message : String(e));
+      return jsonResponse({ success: false, code: "email_refused", error: "The email service refused the email" }, 502);
+    }
     throw e;
   }
 }
