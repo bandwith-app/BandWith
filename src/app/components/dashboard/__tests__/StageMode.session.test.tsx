@@ -159,8 +159,12 @@ describe('Live mode on a rehearsal: the session timer (A1b)', () => {
     const notice = screen.getByText('This rehearsal had already ended. Any songs you played were added to it.');
     expect(notice).toHaveAttribute('role', 'status');
     cleanup();
-    renderLive(session(st));
+    // The live region stays, empty, so the text is announced when it comes (#296 round 10).
+    const { container } = renderLive(session(st));
     expect(screen.queryByText(/had already ended/)).toBeNull();
+    const region = container.ownerDocument.querySelector('[data-bw-ended-notice]');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveTextContent('');
   });
 
   it('switched off (flag) or on a gig: no timer', () => {

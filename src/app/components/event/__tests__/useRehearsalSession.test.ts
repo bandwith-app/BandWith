@@ -638,4 +638,23 @@ describe('Claude review of 5d858fe2: a Start over an ended rehearsal never reach
     expect(sessionStatus(fromRow({ ...row, updated_at: 'r3' } as SessionRow))).toBe('ended');
     expect(b.send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: row.ended_at }) }));
   });
+
+  it('round 10: the "had already ended" notice is about that End only: Resume, play, End and it is gone', async () => {
+    const T = Date.now();
+    const ended = endSession(startSession(T - 90 * M), T - 30 * M);
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: 'r3' });
+    const b = setup({ currentSong: { id: 's9', title: 'Cissy Strut' } });
+    await waitFor(() => expect(b.result.current.ready).toBe(true));
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => b.result.current.start());
+    await waitFor(() => expect(b.result.current.alreadyEnded).toBe(true));
+    await waitFor(() => expect(b.result.current.unsaved).toBe(false));
+    act(() => b.result.current.resume());
+    expect(b.result.current.status).toBe('live');
+    b.rerender({ currentSong: { id: 's10', title: 'Harbor Lights' } });
+    act(() => b.result.current.end());
+    expect(b.result.current.status).toBe('ended');
+    expect(b.result.current.alreadyEnded).toBe(false);
+  });
 });

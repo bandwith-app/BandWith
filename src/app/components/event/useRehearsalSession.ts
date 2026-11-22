@@ -110,6 +110,12 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const [justEnded, setJustEnded] = useState(false);
   /** A Start here met a rehearsal that had already ended (Claude r8 B1b): say so. */
   const [alreadyEnded, setAlreadyEnded] = useState(false);
+  // Said only of that End (#296 round 10): once the session runs again (Resume here or on
+  // another admin's device), a later End is an End like any other.
+  const running = state !== null && sessionStatus(state) !== 'ended';
+  useEffect(() => {
+    if (running) setAlreadyEnded(false);
+  }, [running]);
   const stateRef = useRef<SessionState | null>(null);
   /** Bumped on every change by the leader: a save clears "unsaved" only if nothing changed meanwhile. */
   const versionRef = useRef(0);

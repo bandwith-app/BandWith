@@ -51,7 +51,7 @@ describe('a sign-out that failed: wiped, but not what sign-out keeps', () => {
       [`bw:live_outbox:${UID}`]: '[5]',
       [`bw:offline_queue:${UID}`]: '[6]',
     };
-    const wiped = ['sb-project-auth-token', `bw:${UID}:global:songs`, `bw:${UID}:b1:events`, 'bandwith.theme', 'random-key'];
+    const wiped = ['sb-project-auth-token', `bw:${UID}:global:songs`, `bw:${UID}:b1:events`, 'bandwith.theme', 'random-key', 'bw:offline_queue:anonymous', 'bw_offline_mutation_queue'];
     for (const [k, v] of Object.entries(kept)) localStorage.setItem(k, v);
     for (const k of wiped) localStorage.setItem(k, 'x');
     await wipeAfterFailedSignOut();
