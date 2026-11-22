@@ -7,7 +7,6 @@
 // on `Authorization`, a secret key on `apikey`, or a database-generated
 // dispatch secret (pg_net triggers).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { quoteChatReaders } from "./quote-chat.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -187,6 +186,9 @@ async function chatParticipantRecipients(
   if (!inChat.has(callerId)) return [];
   return [...new Set(targetIds)].filter((id) => id !== callerId && inChat.has(id));
 }
+
+// (Imported here, next to its only use: other PRs add imports at the top.)
+import { quoteChatReaders } from "./quote-chat.ts";
 
 /**
  * The same, minus the people who may not read the chat any more: the event
