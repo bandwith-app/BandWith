@@ -58,7 +58,7 @@ describe('live pack status', () => {
     const ups = calls.log.filter((c) => c.op === 'upsert');
     expect(ups).toHaveLength(1);
     expect(ups[0].table).toBe('live_pack_status');
-    expect(ups[0].args[0]).toEqual({ event_id: 'ev-1', user_id: 'u-1', device_id: deviceId(), version: 'abc', downloaded_at: pack.savedAt });
+    expect(ups[0].args[0]).toEqual({ event_id: 'ev-1', user_id: 'u-1', device_id: deviceId(), version: 'abc', downloaded_at: pack.savedAt, partial: false });
     await reportPackStatus({ ...pack, version: 'def' });
     expect(calls.log.filter((c) => c.op === 'upsert')).toHaveLength(2);
   });
@@ -86,6 +86,23 @@ describe('live pack status', () => {
     ];
     const rows = await fetchEventPackStatus('ev-1');
     expect(rows?.map((r) => `${r.userId}:${r.version}`).sort()).toEqual(['a:v2', 'b:v1']);
+  });
+
+  it('a partial pack is reported partial, and again once it is whole (round 4)', async () => {
+    await reportPackStatus({ ...pack, partial: true });
+    await reportPackStatus({ ...pack, partial: true });
+    await reportPackStatus(pack);
+    const ups = calls.log.filter((c) => c.op === 'upsert').map((c) => (c.args[0] as { partial: boolean }).partial);
+    expect(ups).toEqual([true, false]);
+  });
+
+  it('admins: a partial pack does not count as ready (round 4)', async () => {
+    calls.rows = [
+      { user_id: 'a', version: 'v1', downloaded_at: '2026-11-21T10:00:00Z', partial: true },
+      { user_id: 'b', version: 'v1', downloaded_at: '2026-11-19T10:00:00Z', partial: false },
+    ];
+    const rows = await fetchEventPackStatus('ev-1');
+    expect(rows?.map((r) => r.userId)).toEqual(['b']);
   });
 
   it('remind and the profile choice go to the server', async () => {

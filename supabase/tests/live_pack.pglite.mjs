@@ -209,6 +209,18 @@ ok((await q(`SELECT count(*)::int n FROM notifications WHERE data->>'kind' = 're
 ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, DECL]).then((r) => r.rows[0].r))) === false, 'no remind to a declined member');
 ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, DEP]).then((r) => r.rows[0].r))) === false, 'no remind to a deputy');
 
+// ---- A partial pack (round 4): a holder for the silent refresh (also while
+// off), but not "ready": invited and reminded like no pack at all.
+await db.exec(`DELETE FROM notifications; DELETE FROM live_pack_status; DELETE FROM profiles WHERE false;
+  INSERT INTO live_pack_status (event_id, user_id, device_id, version, partial) VALUES ('${EV}','${MEM}','dev-1','v1', true)`);
+await db.exec(`UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'`);
+ok((await targets(EV)).split(',').includes(MEM), 'off: a partial holder still gets the refresh');
+await db.exec(`UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'`);
+ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, MEM]).then((r) => r.rows[0].r))) === true, 'a partial holder can be reminded');
+await db.exec(`DELETE FROM notifications`);
+await q(`SELECT public.bw_live_pack_invite_sweep()`);
+ok((await q(`SELECT count(*)::int n FROM notifications WHERE user_id = $1 AND data->>'event_id' = $2 AND data->>'kind' = 'invite'`, [MEM, EV])).rows[0].n === 1, 'a partial holder is invited');
+
 ok((await q(`SELECT count(*)::int n FROM cron.job WHERE jobname LIKE 'bw-live-pack-%'`)).rows[0].n === 2, 'two cron jobs scheduled');
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

@@ -13,6 +13,7 @@
  */
 import { supabase, isDemoMode } from './supabase';
 import { forgetPackStatus, reportPackStatus } from './livePackStatus';
+import { isFlagOn } from './appFlags';
 import { getCacheKey, getOfflineItem, listOfflineKeys, removeOfflineItem, setOfflineItem } from './offline/storage';
 import { isOfflineError } from './offline/networkErrors';
 import {
@@ -205,13 +206,18 @@ export async function savePackSongs(args: {
     ...(args.partial || prev?.partial ? { partial: true } : {}),
   };
   await savePack(pack);
-  forgetIfNowPartial(prev, pack);
+  if (pack.partial) reportPartial(pack);
   return pack;
 }
 
-/** A full pack that turns partial: the admins' "N of M ready" stops counting this device. */
-function forgetIfNowPartial(prev: LivePack | null, pack: LivePack) {
-  if (pack.partial && prev && !prev.partial) void forgetPackStatus(pack.userId, [pack.eventId]);
+/**
+ * A partial pack keeps its status row, marked partial: the admins' "N of M
+ * ready" doesn't count it, and the server can still reach it (170's refresh
+ * targets are the holders while live_pack is off), so an emptied setlist
+ * still removes it from the phone.
+ */
+function reportPartial(pack: LivePack) {
+  void reportPackStatus({ ...pack, partial: true });
 }
 
 /**
@@ -331,8 +337,13 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   }
   const songIds = [...new Set(songs.map((s) => s.songId).filter((x): x is string => !!x))];
   const heldPersonal = prev?.setlistId === event.setlist_id ? prev.personal : {};
-  const fetched = await fetchPersonal(args.userId, songIds).catch(() => null);
-  // Switched off: kept current, nothing new (an event not held yet: songs only).
+  // Switched off: only the songs whose notes or files are already held are asked
+  // about (an event not held yet: nothing is asked, songs only).
+  const askIds = args.partial ? songIds.filter((id) => heldPersonal[id]) : songIds;
+  const fetched = await fetchPersonal(args.userId, askIds).catch(() => null);
+  // Every part loaded? A partial pack becomes full only then.
+  let complete = fetched !== null;
+  // Switched off: kept current, nothing new.
   const personal = fetched ? (args.partial ? onlyHeld(fetched, heldPersonal) : fetched) : heldPersonal;
   // My files: the copies already on the device stay; new ones come down (native).
   const prevFiles = new Map(Object.values(prev?.personal ?? {}).flatMap((p) => p.files).map((f) => [f.id, f]));
@@ -355,6 +366,7 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
       fetchOpenBandNotes(event.band_id).catch(() => null),
     ]);
     const ids = new Set(songIds);
+    if (!occurrence || !open) complete = false;
     if (occurrence && open) {
       const fresh = { date: event.event_date, occurrence, open: open.filter((n) => !n.songId || ids.has(n.songId)) };
       if (!args.partial) bandNotes = fresh;
@@ -391,12 +403,14 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     version: packVersion(songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
-    ...(args.partial ? { partial: true } : {}),
+    // Partial while switched off, and until every part has loaded once (a full
+    // pack that misses a part now keeps what it held, and stays full).
+    ...(args.partial || (!complete && (!prev || prev.partial)) ? { partial: true } : {}),
   };
   await savePack(pack);
-  forgetIfNowPartial(prev, pack);
   // The full pack is on this device: tell the band's admins (native only).
-  if (!pack.partial) void reportPackStatus(pack);
+  if (pack.partial) reportPartial(pack);
+  else void reportPackStatus(pack);
   return pack;
 }
 
@@ -432,7 +446,12 @@ export async function packOpenedEvent(args: {
 const LEGACY_PREFIX = 'bw-setlist-songs:';
 
 /** The old copies (localStorage, PR #93) move into packs once, then go. */
-export async function migrateLegacySetlists(userId: string, events: LivePackCandidate[], eventRows: Map<string, Record<string, unknown>>) {
+export async function migrateLegacySetlists(
+  userId: string,
+  events: LivePackCandidate[],
+  eventRows: Map<string, Record<string, unknown>>,
+  livePackOn: boolean = isFlagOn('live_pack'),
+) {
   const legacy: Record<string, LiveSong[]> = {};
   const keys: string[] = [];
   try {
@@ -452,8 +471,8 @@ export async function migrateLegacySetlists(userId: string, events: LivePackCand
     const row = eventRows.get(m.eventId);
     if (!row) continue;
     const date = events.find((e) => e.eventId === m.eventId)?.date;
-    // Songs only: partial until a full download completes it.
-    if (!(await readPack(userId, m.bandId, m.eventId))) await savePackSongs({ userId, event: row, occurrenceDate: date, songs: m.songs, partial: true });
+    // On: the copy keeps the status it had before the switch existed. Off: partial.
+    if (!(await readPack(userId, m.bandId, m.eventId))) await savePackSongs({ userId, event: row, occurrenceDate: date, songs: m.songs, partial: !livePackOn });
   }
   try {
     keys.forEach((k) => localStorage.removeItem(k));

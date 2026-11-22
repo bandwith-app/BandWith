@@ -4725,13 +4725,12 @@ export default function AuthenticatedApp() {
               markAllNotificationsAsRead().then(() => refetchNotifications?.());
             }}
             onDelete={(id) => {
+              // One notification, by id. No id: nothing (never "all of them"; Clear all is its own button).
+              if (!id) return;
               // Deleted for real (it used to come back on the next refresh).
-              const ids = id
-                ? [id]
-                : [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
-              if (id) setSelectedNotifications((p) => p.filter((n) => n.id !== id));
-              else { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
-              removeNotifications(ids);
+              setSelectedNotifications((p) => p.filter((n) => n.id !== id));
+              if (selectedNotification?.id === id) setSelectedNotification(null);
+              removeNotifications([id]);
             }}
             onAction={async (action, notificationId) => {
               const notif = selectedNotification || selectedNotifications.find((n) => n.id === notificationId);

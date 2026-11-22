@@ -60,18 +60,30 @@ const writeReported = (r: Reported) => {
   }
 };
 
-/** This device holds this version of the event's pack. Sent once per version. */
-export async function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string }): Promise<void> {
+/**
+ * This device holds this version of the event's pack. Sent once per version.
+ * `partial`: held, but not complete (live_pack off, or a part not loaded yet):
+ * the admins don't count it as ready, the server still keeps it current.
+ */
+export async function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string; partial?: boolean }): Promise<void> {
   if (!canReport() || !p.eventId || !p.userId || !p.version) return;
   const key = `${p.userId}:${p.eventId}`;
   const reported = readReported();
-  if (reported[key] === p.version) return;
+  const stamp = p.partial ? `${p.version}|partial` : p.version;
+  if (reported[key] === stamp) return;
   try {
     const { error } = await supabase.from('live_pack_status').upsert(
-      { event_id: p.eventId, user_id: p.userId, device_id: deviceId(), version: p.version.slice(0, 64), downloaded_at: p.savedAt },
+      {
+        event_id: p.eventId,
+        user_id: p.userId,
+        device_id: deviceId(),
+        version: p.version.slice(0, 64),
+        downloaded_at: p.savedAt,
+        partial: !!p.partial,
+      },
       { onConflict: 'event_id,user_id,device_id' },
     );
-    if (!error) writeReported({ ...reported, [key]: p.version });
+    if (!error) writeReported({ ...reported, [key]: stamp });
   } catch {
     /* next save tries again */
   }
@@ -103,16 +115,17 @@ export interface MemberPackStatus {
   downloadedAt: string;
 }
 
-/** Admins: who has this event's pack (one row per person, latest device). */
+/** Admins: who has this event's whole pack (one row per person, latest device; partial ones don't count). */
 export async function fetchEventPackStatus(eventId: string): Promise<MemberPackStatus[] | null> {
   try {
     const { data, error } = await supabase
       .from('live_pack_status')
-      .select('user_id, version, downloaded_at')
+      .select('user_id, version, downloaded_at, partial')
       .eq('event_id', eventId);
     if (error || !Array.isArray(data)) return null;
     const byUser = new Map<string, MemberPackStatus>();
-    for (const r of data as Array<{ user_id: string; version: string; downloaded_at: string }>) {
+    for (const r of data as Array<{ user_id: string; version: string; downloaded_at: string; partial?: boolean }>) {
+      if (r.partial) continue;
       const prev = byUser.get(r.user_id);
       if (!prev || String(r.downloaded_at) > prev.downloadedAt) {
         byUser.set(r.user_id, { userId: r.user_id, version: r.version, downloadedAt: String(r.downloaded_at) });

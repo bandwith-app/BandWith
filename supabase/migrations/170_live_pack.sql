@@ -6,7 +6,10 @@
 --    pack it holds. A member writes and reads their own rows; band admins
 --    read the rows of their band's events ("Offline: 4 of 5 members ready").
 --    Only active band members taking part in the event (not declined) can
---    write a row: deputies and declined members cannot.
+--    write a row: deputies and declined members cannot. `partial`: the pack
+--    is held but not complete (live_pack off, or a part not loaded yet): not
+--    counted as ready, not "already on their device" for invites and Remind,
+--    still a holder for the silent refresh (so it is kept current while off).
 -- 2. profiles.live_pack_auto / live_pack_asked_at: the person's choice on the
 --    consent sheet ("Download and keep it automatic"), kept across devices.
 -- 3. bw_live_pack_invite_sweep(): daily (pg_cron) and when a setlist is first
@@ -45,8 +48,10 @@ CREATE TABLE IF NOT EXISTS public.live_pack_status (
   device_id text NOT NULL CHECK (char_length(device_id) BETWEEN 1 AND 100),
   version text NOT NULL CHECK (char_length(version) BETWEEN 1 AND 64),
   downloaded_at timestamptz NOT NULL DEFAULT now(),
+  partial boolean NOT NULL DEFAULT false,
   PRIMARY KEY (event_id, user_id, device_id)
 );
+ALTER TABLE public.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS live_pack_status_user_idx ON public.live_pack_status (user_id);
 
 ALTER TABLE public.live_pack_status ENABLE ROW LEVEL SECURITY;
@@ -263,8 +268,8 @@ BEGIN
      WHERE public.bw_is_event_participant(w.event_id, m.u)
        -- No app installed: nobody to ask.
        AND EXISTS (SELECT 1 FROM public.push_tokens t WHERE t.user_id = m.u AND coalesce(t.is_active, true))
-       -- Already on one of their devices.
-       AND NOT EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = w.event_id AND s.user_id = m.u)
+       -- Already on one of their devices (a partial pack doesn't count).
+       AND NOT EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = w.event_id AND s.user_id = m.u AND NOT s.partial)
   LOOP
     IF r.auto THEN
       -- Automatic: no question, a silent refresh instead.
@@ -518,7 +523,7 @@ BEGIN
     RAISE EXCEPTION 'only band admins can remind' USING ERRCODE = '42501';
   END IF;
   IF p_user_id = auth.uid() OR NOT public.bw_live_pack_can_hold(p_event_id, p_user_id) THEN RETURN false; END IF;
-  IF EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = p_event_id AND s.user_id = p_user_id) THEN
+  IF EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = p_event_id AND s.user_id = p_user_id AND NOT s.partial) THEN
     RETURN false;
   END IF;
   -- One push, not a stream of them.
