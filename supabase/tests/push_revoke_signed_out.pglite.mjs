@@ -195,6 +195,9 @@ ok(await revoke(null, 'short', ALICE, null, S1) === false, 'malformed token: not
   ok(await hashOf(TR) === null && await revoke(null, TR, ALICE, null, S1) === false && await active(TR) === true, 'back on through 046: the secret is gone, the old one refused');
   // The stamp of the switched-off registration no longer matches the new one.
   const offStamp = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TR])).rows[0].at;
+  // The two saves must not land in the same millisecond (the stamps are compared
+  // at the precision JavaScript reads them): a real re-save is never that close.
+  await new Promise((r) => setTimeout(r, 5));
   await register(ALICE, TR, S2);
   const reg2 = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TR])).rows[0].at;
   ok(new Date(reg2).getTime() !== new Date(offStamp).getTime() && await revoke3(null, TR, ALICE, new Date(offStamp).toISOString()) === false && await active(TR) === true,
