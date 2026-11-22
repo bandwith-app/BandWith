@@ -118,7 +118,7 @@ describe('sections', () => {
     expect(out[6]).toBe('[Am]Nobody signs [F]their name');
   });
   it('gives each section its progression', () => {
-    expect(sectionProgressions(song)[0]).toEqual({ name: 'Verse 1', chords: ['C', 'G', 'Am', 'F'] });
+    expect(sectionProgressions(song)[0]).toEqual({ name: 'Verse 1', chords: ['C', 'G', 'Am', 'F'], index: 0 });
   });
 });
 

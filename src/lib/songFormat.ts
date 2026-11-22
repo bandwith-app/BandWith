@@ -728,16 +728,17 @@ export function resolveView(want: SongView, song: SongContent): SongView | null 
 }
 
 /** Each section's chords in order (repeats in a row collapsed), for the structure view. */
-export function sectionProgressions(lyrics: string | null | undefined): { name: string | null; chords: string[] }[] {
+export function sectionProgressions(lyrics: string | null | undefined): { name: string | null; chords: string[]; index: number }[] {
   return parseLyrics(lyrics)
-    .map((s: LyricsSection) => {
+    .map((s: LyricsSection, index: number) => {
       const chords: string[] = [];
       for (const line of s.lines) {
         for (const m of line.matchAll(BRACKET)) {
           if (isChordToken(m[1]) && chords[chords.length - 1] !== m[1]) chords.push(m[1]);
         }
       }
-      return { name: s.name, chords };
+      // index: the section in parseLyrics (Follow the tempo marks it).
+      return { name: s.name, chords, index };
     })
     .filter((s) => s.name || s.chords.length);
 }

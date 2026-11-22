@@ -1,0 +1,29 @@
+/* Follow the tempo (StageFollow.tsx): what the band is playing, lit.
+   FollowArea sets data-follow-on on the song and data-follow-now on the
+   chart cell, the section and the lyric line being played; --bw-follow is
+   the stage accent. Colour and background only: nothing moves or resizes. */
+[data-follow-on] [data-cell][data-follow-now] {
+  background-color: color-mix(in srgb, var(--bw-follow) 30%, transparent);
+  box-shadow: inset 0 0 0 2px var(--bw-follow);
+  border-radius: 6px;
+}
+[data-follow-on] [data-chart-section][data-follow-now] > h3,
+[data-follow-on] [data-structure-section][data-follow-now] > h3 {
+  color: var(--bw-follow);
+}
+[data-follow-on] [data-structure-section][data-follow-now] {
+  box-shadow: inset 3px 0 0 0 var(--bw-follow);
+  padding-left: 0.5em;
+  border-radius: 2px;
+}
+[data-follow-on] [data-line][data-follow-now] {
+  color: var(--bw-follow);
+  background-color: color-mix(in srgb, var(--bw-follow) 14%, transparent);
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-follow-on] [data-cell],
+  [data-follow-on] [data-line] {
+    transition: background-color 120ms ease-out, color 120ms ease-out;
+  }
+}

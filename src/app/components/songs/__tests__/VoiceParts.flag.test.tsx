@@ -67,6 +67,15 @@ describe('voice_parts off', () => {
     expect(screen.queryByRole('group', { name: 'Voice parts' })).toBeNull();
   });
 
+  it('plain lines keep their line address, so Follow the tempo still finds the sung line', () => {
+    __setAppFlagsForTest({ voice_parts: false });
+    const { container } = render(<LyricsText lyrics={LYRICS} size={20} />);
+    expect(container.querySelector('[data-lyric-section="0"]')).not.toBeNull();
+    expect(container.querySelector('p[data-line="0:0"]')).toHaveTextContent('Hold the line');
+    expect(container.querySelector('p[data-line="0:1"]')).toHaveTextContent('(ooh, Gyeah)');
+    expect(container.querySelector('p[data-line="0:2"]')).toHaveTextContent('Lead and echo');
+  });
+
   it('turned off while the song is on screen: the parts go at once', () => {
     const { container } = render(<LyricsText lyrics={LYRICS} size={20} />);
     expect(screen.getByRole('group', { name: 'Voice parts' })).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 /**
  * A tiny stand-in for the Supabase stage channel: every hook instance is a
@@ -8,8 +8,11 @@ import { renderHook, act } from '@testing-library/react';
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
 const phones: { key: string; handlers: Handler[] }[] = [];
+/** Clock skew of a phone's pongs (its clock minus the others'). */
+const skew: Record<string, number> = {};
 const bus = {
   send(from: string, event: string, payload: unknown) {
+    if (event === 'click-pong' && skew[from]) payload = { ...(payload as object), t1: (payload as { t1: number }).t1 + skew[from] };
     for (const p of phones) if (p.key !== from) p.handlers.filter((h) => h.type === 'broadcast' && h.event === event).forEach((h) => h.cb({ payload }));
   },
 };
@@ -60,6 +63,7 @@ const tl = buildTimeline({ chart: { v: 1, source: 'ireal', title: 'x', time: '4/
 
 beforeEach(() => {
   phones.length = 0;
+  for (const k of Object.keys(skew)) delete skew[k];
 });
 
 describe('useStageLive: the playhead on every phone', () => {
@@ -106,5 +110,19 @@ describe('useStageLive: the playhead on every phone', () => {
     act(() => leader.result.current.playhead.set(startPlayhead({ from: 'x', songId: 'row-1', bpm: 90, startAt: Date.now() })));
     leader.unmount();
     expect(member.result.current.playhead.state?.on).toBe(false);
+  });
+
+  it("measures the leader's clock for the playhead, also with no click running", async () => {
+    const leader = phone(true);
+    const member = phone(false);
+    // The leader's phone runs 5 s ahead of the member's.
+    skew[leader.result.current.clientId] = 5_000;
+    const start = startPlayhead({ from: 'x', songId: 'row-1', bpm: 120, startAt: Date.now() + 6_000 });
+    act(() => leader.result.current.playhead.set(start));
+    expect(member.result.current.click.state).toBeNull();
+    await waitFor(() => expect(member.result.current.playhead.offset).toBeGreaterThan(4_900));
+    expect(member.result.current.playhead.offset).toBeLessThan(5_100);
+    // The leader's own playhead needs no offset.
+    expect(leader.result.current.playhead.offset).toBe(0);
   });
 });

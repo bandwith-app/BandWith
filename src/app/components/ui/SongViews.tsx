@@ -120,7 +120,7 @@ const LyricsStructure: React.FC<{ lyrics: string; size: number; muted: string; l
   return (
     <div className={className ?? 'w-full flex flex-col gap-6 pt-4'} style={{ fontSize: size, lineHeight: 1.2 }}>
       {sections.map((s, i) => (
-        <section key={i} className="flex flex-col gap-2">
+        <section key={i} data-structure-section={s.index} className="flex flex-col gap-2">
           {s.name && <h3 className={cn('bw-label-md uppercase', muted)}>{sectionLabel(s.name, t)}</h3>}
           {s.chords.length > 0 ? (
             <div className="grid grid-cols-4 gap-y-[0.5em]">
