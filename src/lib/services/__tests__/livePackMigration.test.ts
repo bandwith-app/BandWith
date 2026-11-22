@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import sql170 from '../../../../supabase/migrations/170_live_pack.sql?raw';
+import sql198 from '../../../../supabase/migrations/198_live_pack_flags.sql?raw';
 import sql133 from '../../../../supabase/migrations/133_rehearsal_summary_push.sql?raw';
 
 /**
- * Static guards on 170 (behaviour: supabase/tests/live_pack.pglite.mjs
- * locally, supabase/tests/live_pack.sql on the database).
+ * Static guards on 170 and 198 (behaviour: supabase/tests/live_pack.pglite.mjs
+ * locally, supabase/tests/live_pack.sql on the database). 170 is on main and
+ * frozen; this round's changes (kill switch, partial) are in 198.
  */
 const sql = sql170.replace(/--.*$/gm, '');
+const s198 = sql198.replace(/--.*$/gm, '');
 
 const pushTypes = (s: string) => {
   const fn = s.slice(s.indexOf('FUNCTION public.bw_trg_dispatch_push()'));
@@ -61,24 +64,24 @@ describe('170 live pack (plan A2)', () => {
   });
 
   it('kill switch live_pack (173) stops invites and Remind at the server, whatever the apply order', () => {
-    const on = sql.slice(sql.indexOf('FUNCTION public.bw_live_pack_on()'));
+    const on = s198.slice(s198.indexOf('FUNCTION public.bw_live_pack_on()'));
     expect(on).toMatch(/to_regclass\('public\.app_flags'\)/);
     expect(on).toMatch(/EXECUTE 'SELECT enabled FROM public\.app_flags WHERE key = \$1'/);
     const body = (name: string) => {
-      const from = sql.indexOf(`FUNCTION public.${name}(`);
-      return sql.slice(from, sql.indexOf('$$;', sql.indexOf('AS $$', from)));
+      const from = s198.indexOf(`FUNCTION public.${name}(`);
+      return s198.slice(from, s198.indexOf('$$;', s198.indexOf('AS $$', from)));
     };
     for (const fn of ['bw_live_pack_invite_sweep', 'bw_live_pack_invite_row', 'bw_live_pack_remind']) {
       expect(body(fn)).toMatch(/NOT public\.bw_live_pack_on\(\)/);
     }
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.bw_live_pack_on\(\) FROM PUBLIC, anon, authenticated/);
+    expect(s198).toMatch(/REVOKE ALL ON FUNCTION public\.bw_live_pack_on\(\) FROM PUBLIC, anon, authenticated/);
   });
 
   // Codex round (11-22): the flag is read before every push, not once per run
   // (it can be switched off while a job is running).
   const body = (name: string) => {
-    const from = sql.indexOf(`FUNCTION public.${name}(`);
-    return sql.slice(from, sql.indexOf('$$;', sql.indexOf('AS $$', from)));
+    const from = s198.indexOf(`FUNCTION public.${name}(`);
+    return s198.slice(from, s198.indexOf('$$;', s198.indexOf('AS $$', from)));
   };
   it('the invite sweep checks the flag on every row, before a question or a queued download', () => {
     const loop = body('bw_live_pack_invite_sweep').split(/\bLOOP\b/)[1];
@@ -99,22 +102,64 @@ describe('170 live pack (plan A2)', () => {
     expect(loop).toMatch(/INSERT INTO public\.live_pack_refresh_queue[\s\S]*ON CONFLICT \(event_id\) DO NOTHING/);
   });
 
-  it('safe to run again over an earlier 170: every object is created or replaced', () => {
-    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
-    expect(sql).not.toMatch(/CREATE (?!OR REPLACE )FUNCTION/);
-    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
-    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
-    // Triggers and policies: dropped first, then created.
-    const created = [...sql.matchAll(/CREATE (TRIGGER|POLICY) (\w+)/g)];
-    expect(created.length).toBeGreaterThan(8);
-    for (const [, kind, name] of created) {
-      const at = sql.indexOf(`CREATE ${kind} ${name}`);
-      expect(sql.slice(0, at), `${kind} ${name}`).toContain(`DROP ${kind} IF EXISTS ${name} ON public.`);
+  it('safe to run again: every object of 170 and 198 is created or replaced', () => {
+    for (const [name, src] of [['170', sql], ['198', s198]] as const) {
+      expect(src, name).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+      expect(src, name).not.toMatch(/CREATE (?!OR REPLACE )FUNCTION/);
+      expect(src, name).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+      expect(src, name).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+      for (const [, kind, obj] of src.matchAll(/CREATE (TRIGGER|POLICY) (\w+)/g)) {
+        const at = src.indexOf(`CREATE ${kind} ${obj}`);
+        expect(src.slice(0, at), `${name} ${kind} ${obj}`).toContain(`DROP ${kind} IF EXISTS ${obj} ON public.`);
+      }
     }
-    // Columns added after the first copy of the table (#269): an ALTER each, so
-    // a database with the earlier table gets them too.
-    const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS public.live_pack_status'), sql.indexOf(');', sql.indexOf('CREATE TABLE IF NOT EXISTS public.live_pack_status')));
-    expect(table).toMatch(/\bpartial boolean/);
-    expect(sql).toMatch(/ALTER TABLE public\.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false/);
+    expect(s198).toMatch(/ALTER TABLE public\.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false/);
+  });
+});
+
+// Codex round 2 (11-22): a migration already on main stays frozen.
+describe('170 frozen, this round in 198', () => {
+  const body = (name: string) => {
+    const from = s198.indexOf(`FUNCTION public.${name}(`);
+    return s198.slice(from, s198.indexOf('$$;', s198.indexOf('AS $$', from)));
+  };
+  it('170 is the file on main, byte for byte', async () => {
+    // src/test/setup.ts replaces globalThis.crypto; a non-literal specifier
+    // keeps tsc (no @types/node in the app) out of node:crypto.
+    const nodeCrypto = 'node:crypto';
+    const { createHash } = await import(/* @vite-ignore */ nodeCrypto);
+    expect(createHash('sha256').update(sql170).digest('hex')).toBe('5c1ad237d412ddb42c887a93c160a358a800a6e85e2128e8d4be9aead4cc3914');
+  });
+
+  it('198 needs 170 first and says so', () => {
+    expect(s198).toMatch(/to_regclass\('public\.live_pack_status'\) IS NULL/);
+    expect(s198).toMatch(/RAISE EXCEPTION '198 needs 170 first/);
+  });
+
+  it('198 redefines none of the functions a later release migration redefines (178: window events, dispatch)', () => {
+    expect(s198).not.toMatch(/FUNCTION public\.bw_live_pack_window_events\(/);
+    expect(s198).not.toMatch(/FUNCTION public\.bw_trg_dispatch_push\(/);
+  });
+
+  it('the switch fails open but leaves a warning in the logs', () => {
+    const on = body('bw_live_pack_on');
+    expect(on).toMatch(/EXCEPTION WHEN OTHERS THEN\s+RAISE WARNING/);
+  });
+
+  it('back on: the flush skips events no longer in the window', () => {
+    const loop = body('bw_live_pack_refresh_flush').split(/\bLOOP\b/)[1];
+    const skip = loop.search(/CONTINUE WHEN NOT EXISTS \(SELECT 1 FROM public\.bw_live_pack_window_events\(q\.event_id\)\)/);
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(loop.indexOf('net.http_post'));
+  });
+
+  it('bw_live_pack_keep: only the caller, not cancelled, readable, still in the lineup', () => {
+    const keep = body('bw_live_pack_keep');
+    expect(keep).toMatch(/auth\.uid\(\) IS NOT NULL/);
+    expect(keep).toMatch(/NOT IN \('cancelled', 'canceled'\)/);
+    expect(keep).toMatch(/bw_can_view_event\(e\.id, auth\.uid\(\)\)/);
+    expect(keep).toMatch(/bw_live_pack_can_hold\(e\.id, auth\.uid\(\)\)/);
+    const granted = [...s198.matchAll(/GRANT EXECUTE ON FUNCTION public\.(\w+)/g)].map((m) => m[1]).sort();
+    expect(granted).toEqual(['bw_live_pack_can_hold', 'bw_live_pack_keep', 'bw_live_pack_remind']);
   });
 });

@@ -7,11 +7,6 @@
 --    read the rows of their band's events ("Offline: 4 of 5 members ready").
 --    Only active band members taking part in the event (not declined) can
 --    write a row: deputies and declined members cannot.
---    bw_live_pack_can_hold(event, user) answers only about the caller, or,
---    for an admin of the event's band, about a member (Remind). `partial`: the pack
---    is held but not complete (live_pack off, or a part not loaded yet): not
---    counted as ready, not "already on their device" for invites and Remind,
---    still a holder for the silent refresh (sent only while live_pack is on).
 -- 2. profiles.live_pack_auto / live_pack_asked_at: the person's choice on the
 --    consent sheet ("Download and keep it automatic"), kept across devices.
 -- 3. bw_live_pack_invite_sweep(): daily (pg_cron) and when a setlist is first
@@ -32,12 +27,6 @@
 -- 5. bw_live_pack_remind(event, user): an admin's "Remind" (one push, at most
 --    every 6 hours per member and event).
 -- 6. bw_trg_dispatch_push: as live (133), plus live_pack_ready.
--- 7. Kill switch: with app_flags live_pack off (173), no push of any kind:
---    no invites, no Remind, no silent refresh (queued refreshes are kept and
---    go out once it is back on). The flag is read before every push, also
---    mid-run. Packs already on a phone are brought up to date by the app on
---    open and resume. Back on, the refresh goes to people who chose automatic
---    or already hold a pack.
 --
 -- Nothing in the pack itself lives on the server: fees, contracts, quotes and
 -- other members' notes never reach these tables. Safe to run more than once.
@@ -53,40 +42,15 @@ CREATE TABLE IF NOT EXISTS public.live_pack_status (
   device_id text NOT NULL CHECK (char_length(device_id) BETWEEN 1 AND 100),
   version text NOT NULL CHECK (char_length(version) BETWEEN 1 AND 64),
   downloaded_at timestamptz NOT NULL DEFAULT now(),
-  partial boolean NOT NULL DEFAULT false,
   PRIMARY KEY (event_id, user_id, device_id)
 );
-ALTER TABLE public.live_pack_status ADD COLUMN IF NOT EXISTS partial boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS live_pack_status_user_idx ON public.live_pack_status (user_id);
-
--- An older status never overwrites a newer one: a device's writes can land
--- out of order (a partial one on a slow connection after the full one).
--- downloaded_at is the pack's save time on that device, so the older save loses.
-CREATE OR REPLACE FUNCTION public.bw_live_pack_status_newer_only()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path TO 'public'
-AS $$
-BEGIN
-  IF NEW.downloaded_at < OLD.downloaded_at THEN
-    RETURN NULL;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_live_pack_status_newer_only() FROM PUBLIC, anon, authenticated;
-DROP TRIGGER IF EXISTS bw_live_pack_status_newer_only ON public.live_pack_status;
-CREATE TRIGGER bw_live_pack_status_newer_only
-  BEFORE UPDATE ON public.live_pack_status
-  FOR EACH ROW EXECUTE FUNCTION public.bw_live_pack_status_newer_only();
 
 ALTER TABLE public.live_pack_status ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.live_pack_status FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.live_pack_status TO authenticated;
 
 -- An active member of the event's band, taking part in it (not declined).
--- Only about the caller, or, for an admin of the event's band, about one of
--- its members (Remind): nobody else can ask who takes part in an event.
 CREATE OR REPLACE FUNCTION public.bw_live_pack_can_hold(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -98,7 +62,6 @@ AS $$
     SELECT 1 FROM public.events e
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
-       AND (p_user_id = auth.uid() OR public.bw_is_band_admin(e.band_id))
        AND public.bw_is_band_member(e.band_id, p_user_id)
        AND public.bw_is_event_participant(e.id, p_user_id)
   );
@@ -212,29 +175,6 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_live_pack_window_events(uuid) FROM PUBLIC, anon, authenticated;
 
--- Kill switch live_pack (173_app_flags, docs/flags.md). On unless the row
--- says off: no table yet, no row or an unreadable row all mean on, like the
--- app. So 170 and 173 can be applied in either order. min_app_version is the
--- app's business (the server cannot tell which version a person runs).
-CREATE OR REPLACE FUNCTION public.bw_live_pack_on()
-RETURNS boolean
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_on boolean;
-BEGIN
-  IF to_regclass('public.app_flags') IS NULL THEN RETURN true; END IF;
-  EXECUTE 'SELECT enabled FROM public.app_flags WHERE key = $1' INTO v_on USING 'live_pack';
-  RETURN v_on IS DISTINCT FROM false;
-EXCEPTION WHEN OTHERS THEN
-  RETURN true;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_live_pack_on() FROM PUBLIC, anon, authenticated;
-
 -- One invitation row for a person and an event (no checks: callers check).
 CREATE OR REPLACE FUNCTION public.bw_live_pack_invite_row(
   p_user uuid, p_band uuid, p_event uuid, p_date date, p_rehearsal boolean,
@@ -247,7 +187,6 @@ AS $$
 DECLARE
   v_lang text;
 BEGIN
-  IF NOT public.bw_live_pack_on() THEN RETURN; END IF;
   SELECT coalesce(nullif(lower(left(btrim(p.preferred_language), 2)), ''), 'en') INTO v_lang
     FROM public.profiles p WHERE p.id = p_user;
   v_lang := coalesce(v_lang, 'en');
@@ -280,9 +219,6 @@ DECLARE
   r record;
   n int := 0;
 BEGIN
-  -- Kill switch off: no question and no new automatic download. Read again
-  -- on every row (it can be switched off while the sweep runs).
-  IF NOT public.bw_live_pack_on() THEN RETURN 0; END IF;
   FOR r IN
     SELECT w.*, m.u, coalesce(pr.live_pack_auto, false) AS auto,
            (SELECT count(*) FROM public.notifications o
@@ -297,10 +233,9 @@ BEGIN
      WHERE public.bw_is_event_participant(w.event_id, m.u)
        -- No app installed: nobody to ask.
        AND EXISTS (SELECT 1 FROM public.push_tokens t WHERE t.user_id = m.u AND coalesce(t.is_active, true))
-       -- Already on one of their devices (a partial pack doesn't count).
-       AND NOT EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = w.event_id AND s.user_id = m.u AND NOT s.partial)
+       -- Already on one of their devices.
+       AND NOT EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = w.event_id AND s.user_id = m.u)
   LOOP
-    EXIT WHEN NOT public.bw_live_pack_on();
     IF r.auto THEN
       -- Automatic: no question, a silent refresh instead.
       INSERT INTO public.live_pack_refresh_queue (event_id) VALUES (r.event_id) ON CONFLICT (event_id) DO NOTHING;
@@ -485,9 +420,7 @@ AS $$
     LEFT JOIN public.profiles p ON p.id = m.u
    WHERE e.id = p_event_id
      AND public.bw_is_event_participant(e.id, m.u)
-     -- Kill switch off: the flush sends nothing (it reads the flag before
-     -- every push). A second guard: "automatic" alone, while off, is no target.
-     AND ((coalesce(p.live_pack_auto, false) AND public.bw_live_pack_on())
+     AND (coalesce(p.live_pack_auto, false)
           OR EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = e.id AND s.user_id = m.u));
 $$;
 REVOKE ALL ON FUNCTION public.bw_live_pack_refresh_targets(uuid) FROM PUBLIC, anon, authenticated;
@@ -504,12 +437,7 @@ DECLARE
   q record;
   v_users uuid[];
   n int := 0;
-  v_off boolean := false;
 BEGIN
-  -- Kill switch off: no push at all. The queue is kept, so the refresh goes
-  -- out once it is back on; the app also brings held packs up to date on open
-  -- and resume.
-  IF NOT public.bw_live_pack_on() THEN RETURN 0; END IF;
   SELECT decrypted_secret INTO v_url FROM vault.decrypted_secrets WHERE name = 'bw_project_url' LIMIT 1;
   SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'bw_push_dispatch_secret' LIMIT 1;
 
@@ -517,15 +445,8 @@ BEGIN
   FOR q IN
     DELETE FROM public.live_pack_refresh_queue
      WHERE queued_at < now() - interval '2 minutes'
-    RETURNING event_id, queued_at
+    RETURNING event_id
   LOOP
-    -- Read before every push: switched off mid-run, the rest go back in the queue.
-    v_off := v_off OR NOT public.bw_live_pack_on();
-    IF v_off THEN
-      INSERT INTO public.live_pack_refresh_queue (event_id, queued_at) VALUES (q.event_id, q.queued_at)
-      ON CONFLICT (event_id) DO NOTHING;
-      CONTINUE;
-    END IF;
     v_users := public.bw_live_pack_refresh_targets(q.event_id);
     CONTINUE WHEN cardinality(v_users) = 0 OR v_url IS NULL OR v_secret IS NULL;
     PERFORM net.http_post(
@@ -558,14 +479,13 @@ DECLARE
   w record;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
-  IF NOT public.bw_live_pack_on() THEN RETURN false; END IF;
   SELECT * INTO w FROM public.bw_live_pack_window_events(p_event_id);
   IF w.event_id IS NULL THEN RETURN false; END IF;
   IF NOT public.bw_is_band_admin(w.band_id) THEN
     RAISE EXCEPTION 'only band admins can remind' USING ERRCODE = '42501';
   END IF;
   IF p_user_id = auth.uid() OR NOT public.bw_live_pack_can_hold(p_event_id, p_user_id) THEN RETURN false; END IF;
-  IF EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = p_event_id AND s.user_id = p_user_id AND NOT s.partial) THEN
+  IF EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = p_event_id AND s.user_id = p_user_id) THEN
     RETURN false;
   END IF;
   -- One push, not a stream of them.

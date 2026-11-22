@@ -61,13 +61,23 @@ describe('app flags', () => {
     expect(isFlagOn('live_pack')).toBe(true);
   });
 
-  it('the table missing (migration not applied) → the built-in default', async () => {
-    // A cached "off" from before is dropped too: no table means nothing is off.
-    __resetAppFlagsForTest({ flags: { live_pack: { enabled: false, minAppVersion: null } }, version: null });
+  it('the table missing (migration not applied), nothing cached → the built-in default', async () => {
     h.result = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.app_flags' in the schema cache" } };
     await refreshAppFlags();
     expect(isFlagOn('live_pack')).toBe(true);
+  });
+
+  // Review #273 round 8: PGRST205 can be a schema cache not reloaded yet. Only a
+  // definite answer with no row for the key clears a cached "off".
+  it('the table "not found" (PGRST205, 42P01) keeps a cached "off"; an answer without the row clears it', async () => {
+    __resetAppFlagsForTest({ flags: { live_pack: { enabled: false, minAppVersion: null } }, version: null });
+    h.result = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.app_flags' in the schema cache" } };
+    await refreshAppFlags();
+    expect(isFlagOn('live_pack')).toBe(false);
     h.result = { data: null, error: { code: '42P01', message: 'relation "public.app_flags" does not exist' } };
+    await refreshAppFlags();
+    expect(isFlagOn('live_pack')).toBe(false);
+    h.result = { data: [], error: null };
     await refreshAppFlags();
     expect(isFlagOn('live_pack')).toBe(true);
   });

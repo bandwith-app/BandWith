@@ -6,7 +6,7 @@ import { WaitingChangesTag } from './WaitingChangesTag';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
-import { isPackReady, unavailablePackFiles, type LivePack } from '@/lib/livePack';
+import { isPackReady, type LivePack } from '@/lib/livePack';
 import { chooseThisEvent, hasAnswered, readChoice } from '@/lib/livePackConsent';
 import { downloadPackNow } from './LivePackConsentSheet';
 
@@ -47,10 +47,9 @@ const OfflineReadyRowInner: React.FC<{
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  // A pack kept while live_pack was off is partial: not ready until completed.
+  // A pack kept while live_pack was off is partial, and so is one missing a
+  // file of mine: not ready until completed.
   const ready = isPackReady(pack);
-  // My files whose link is gone: ready without them, and named.
-  const gone = ready ? unavailablePackFiles(pack) : [];
   React.useEffect(() => {
     if (!pending) return;
     let alive = true;
@@ -100,13 +99,6 @@ const OfflineReadyRowInner: React.FC<{
                 ? t('Lyrics, chords and your notes work in live mode without signal.')
                 : t('Download lyrics, chords and your notes to use live mode without signal.')}
           </span>
-          {gone.length > 0 && (
-            <span className="bw-body-sm text-muted-foreground">
-              {gone.length === 1
-                ? t('Except 1 file it couldn’t download: {names}', { names: gone[0].name })
-                : t('Except {n} files it couldn’t download: {names}', { n: gone.length, names: gone.map((f) => f.name).join(', ') })}
-            </span>
-          )}
           <WaitingChangesTag userId={userId} className="mt-1" />
         </span>
       </span>

@@ -23,21 +23,19 @@ const pack = (files: ReturnType<typeof file>[]) => ({
 });
 afterEach(cleanup);
 
-// Review #273 round 7: a dead link no longer keeps the pack partial forever.
-describe('Offline ready, except files whose link is gone', () => {
-  it('lists the files it gave up on', () => {
+// Review #273 round 8 (item 4): a file of mine missing keeps the pack from
+// "Offline ready", also a round 7 pack that gave up on a dead link.
+describe('Offline ready only with every file of mine', () => {
+  it('a file it gave up on (round 7): not ready, Download offered', () => {
     render(<OfflineReadyRow pack={pack([file('f1', 'Horns.pdf', true), file('f2', 'Bass.pdf')]) as never} userId="u1" event={{ id: 'e1' }} online />);
-    expect(screen.getByText(/^Offline ready/)).toBeTruthy();
-    expect(screen.getByText('Except 1 file it couldn’t download: Horns.pdf')).toBeTruthy();
+    expect(screen.queryByText(/^Offline ready/)).toBeNull();
+    expect(screen.getByText('Download for offline')).toBeTruthy();
+    expect(screen.queryByText(/^Except/)).toBeNull();
   });
 
-  it('several: counted and named', () => {
-    render(<OfflineReadyRow pack={pack([file('f1', 'Horns.pdf', true), file('f2', 'Bass.pdf', true)]) as never} userId="u1" event={{ id: 'e1' }} online />);
-    expect(screen.getByText('Except 2 files it couldn’t download: Horns.pdf, Bass.pdf')).toBeTruthy();
-  });
-
-  it('none: no such line', () => {
+  it('every file there: ready, no "except" line', () => {
     render(<OfflineReadyRow pack={pack([file('f2', 'Bass.pdf')]) as never} userId="u1" event={{ id: 'e1' }} online />);
+    expect(screen.getByText(/^Offline ready/)).toBeTruthy();
     expect(screen.queryByText(/^Except/)).toBeNull();
   });
 });

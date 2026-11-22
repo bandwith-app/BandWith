@@ -204,7 +204,8 @@ const eventToEventItem = (event: Event): EventItem => {
     eventId: event.id,
     title: event.title || t("Untitled Event"),
     status,
-    date: event.event_date || new Date().toISOString().split("T")[0],
+    // As the server reads it: coalesce(event_date, date).
+    date: event.event_date || event.date || new Date().toISOString().split("T")[0],
     time: event.start_time || "19:00",
     timeSet: !!event.start_time,
     location: event.venue_name || event.venue_city || "TBD",

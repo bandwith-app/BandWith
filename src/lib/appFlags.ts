@@ -175,10 +175,13 @@ export function refreshAppFlags(): Promise<void> {
     try {
       const version = await installedVersion().catch(() => null);
       const { data, error } = await supabase.from('app_flags').select('key, enabled, min_app_version');
+      // Only a definite answer replaces what the device knows: a key with no
+      // row there goes back to its default.
       if (!error) apply({ flags: parseAppFlagRows(data), version });
-      // No table on the server: nothing is switched off.
-      else if (isMissingTable(error)) apply({ flags: {}, version });
-      // Offline, signed out, server down: keep the last answer (the version may be newer).
+      // Anything else keeps the last answer (the version may be newer): offline,
+      // signed out, server down, and "table not found" too (isMissingTable:
+      // PGRST205 can be a schema cache not reloaded yet). Nothing cached: the
+      // defaults (fail open).
       else if (version && version !== state.version) apply({ ...state, version });
     } catch {
       /* network or client error: keep the last answer */

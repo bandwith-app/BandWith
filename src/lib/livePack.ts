@@ -141,6 +141,8 @@ export function packEventFrom(row: Record<string, unknown>): LivePackEvent {
     const v = row[k];
     if (typeof v === 'string' && v) out[k] = v;
   }
+  // The event's date as the server reads it: coalesce(event_date, date).
+  if (!out.event_date && typeof row.date === 'string' && row.date) out.event_date = row.date;
   return out as unknown as LivePackEvent;
 }
 
@@ -193,11 +195,11 @@ export interface LivePackFile {
   size?: number | null;
   created_at?: string;
   local?: { path: string; directory: string };
-  /** Downloads that failed while online (the link may be gone). */
+  /** Downloads that failed in a row while online (the next automatic try waits longer: livePackStore). */
   tries?: number;
   /**
-   * Given up after MAX_FILE_TRIES (a dead link): not asked for again until the
-   * file changes, and the pack is ready without it ("except 1 file").
+   * Round 7 only (no longer written): "given up" on a dead link. A pack with
+   * such a file is not ready; the next refresh tries the file again.
    */
   unavailable?: boolean;
 }
@@ -234,12 +236,16 @@ export interface LivePack {
   partial?: boolean;
 }
 
-/** My files the pack gave up on (dead links): listed under "Offline ready". */
+/** My files an older pack gave up on (round 7's dead links). */
 export const unavailablePackFiles = (p: LivePack | null | undefined): LivePackFile[] =>
   Object.values(p?.personal ?? {}).flatMap((x) => x.files.filter((f) => f.unavailable));
 
-/** Complete and on the device: "Offline ready", and counts for "N of M members ready". */
-export const isPackReady = (p: LivePack | null | undefined): boolean => !!p && !p.partial && p.songs.length > 0;
+/**
+ * Complete and on the device: "Offline ready", and counts for "N of M members
+ * ready". Never while one of my files is missing.
+ */
+export const isPackReady = (p: LivePack | null | undefined): boolean =>
+  !!p && !p.partial && p.songs.length > 0 && unavailablePackFiles(p).length === 0;
 
 /** FNV-1a, 32 bit, as 8 hex digits: a short, stable fingerprint. */
 const fnv = (s: string): string => {
