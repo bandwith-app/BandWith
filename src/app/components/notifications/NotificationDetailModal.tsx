@@ -277,6 +277,10 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   // trap, so the keyboard moves between them.
   const splitRef = useRef<HTMLDivElement | null>(null);
   useFocusTrap(splitRef, isOpen && split);
+  // One page: the inbox is a modal dialog with its own trap. Folding the Duo
+  // swaps one trap for the other in one go: focus moves into the new frame.
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(pageRef, isOpen && !split);
 
   // Filtered notifications
   const displayedNotifications = filter === 'unread'
@@ -775,6 +779,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
       {isOpen && !split && (
         <motion.div
           key={"notifications"}
+          ref={pageRef}
+          tabIndex={-1}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
@@ -787,7 +793,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           role="dialog"
           aria-modal="true"
           aria-label={isListView || !detailNotif ? t('Notifications') : cleanNotificationTitle(detailNotif.title)}
-          className="bw-pane-detail bw-fold-form fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden outline-none"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
