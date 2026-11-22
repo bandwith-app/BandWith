@@ -116,7 +116,8 @@ export type RejectedNote = RehearsalNote & { spaceFull?: boolean };
  * words is another entry, never written over (#296 round 6). Only Remove
  * takes one away.
  */
-export const rejectedKey = (n: RehearsalNote): string => JSON.stringify([n.id, n.body ?? null, n.section ?? null, n.preset ?? null, n.songId ?? null]);
+export const rejectedKey = (n: RehearsalNote): string =>
+  JSON.stringify([n.id, n.body ?? null, n.section ?? null, n.preset ?? null, n.songId ?? null, n.line ?? null]);
 
 /**
  * Refused changes no storage could take (this visit only), by the change
@@ -217,6 +218,69 @@ const send = (api: OutboxApi, op: NoteOp): Res => {
 let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
 
 /**
+ * A refused note goes to the refused list, `bw:rehearsal_notes_rejected:<uid>`,
+ * which sign-out keeps for that account (#296 round 8, Codex r8 B1; #292's
+ * KEEP_ON_SIGN_OUT_PREFIXES). The copy is read back before the outbox entry
+ * goes. No room for it: the entry is marked refused in the outbox, then taken
+ * out to make room and the copy tried again; still no room, the marked entry
+ * goes back (it fitted a moment ago). Not even the mark fits (storage
+ * completely full): the entry stays as it is, marked in memory, never sent again.
+ */
+function keepRefused(userId: string, op: Extract<NoteOp, { kind: 'save' }>): boolean {
+  const plain = JSON.stringify({ ...op, refused: undefined });
+  const isIt = (o: NoteOp) => JSON.stringify({ ...o, refused: undefined }) === plain;
+  const note = op.note;
+  const copy = () =>
+    writeRejected(userId, [...readStoredRejected(userId).filter((n) => rejectedKey(n) !== rejectedKey(note)), note]) &&
+    readStoredRejected(userId).some((n) => rejectedKey(n) === rejectedKey(note));
+  const without = () => readAllOps(userId).filter((o) => !isIt(o));
+  const done = () => {
+    refusedHere.get(userId)?.delete(JSON.stringify(op));
+    refusedHere.get(userId)?.delete(JSON.stringify({ ...op, refused: true }));
+    return true;
+  };
+  if (copy()) {
+    writeOutbox(userId, without());
+    return done();
+  }
+  const back: NoteOp = { ...op, refused: true };
+  const marked = readAllOps(userId).some(isIt) ? readAllOps(userId).map((o) => (isIt(o) ? back : o)) : [...readAllOps(userId), back];
+  if (!writeOutbox(userId, marked)) {
+    if (!refusedHere.has(userId)) refusedHere.set(userId, new Map());
+    refusedHere.get(userId)!.set(JSON.stringify(op), note);
+    return false;
+  }
+  writeOutbox(userId, without());
+  if (copy()) return done();
+  writeOutbox(userId, marked);
+  return false;
+}
+
+/**
+ * Refused notes still in an outbox (kept there when storage was full): moved
+ * to the refused list once there is room (each flush, and before a
+ * sign-out), so the sign-out keeps them. `userId` missing: every account's
+ * outbox on this device, each into its own list.
+ */
+export function settleRefusedNotes(userId?: string | null): void {
+  const users: string[] = [];
+  if (userId) users.push(userId);
+  else {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith(KEY_PREFIX)) users.push(k.slice(KEY_PREFIX.length));
+      }
+    } catch {
+      /* storage blocked */
+    }
+  }
+  for (const u of users) {
+    for (const op of readAllOps(u)) if (op.kind === 'save' && op.refused) keepRefused(u, op);
+  }
+}
+
+/**
  * A note the server keeps failing (5xx and the like) waits on its own, longer
  * each time (20 s, 40 s… up to 10 min), so the other notes still go (PR #296
  * review). In memory: a restart tries it again at once.
@@ -249,6 +313,7 @@ export function flushOutbox(userId: string, api: OutboxApi) {
     // Notes passed over in this pass (failing now, or waiting out a failure):
     // their later changes wait behind them, in order.
     const held = new Set<string>();
+    settleRefusedNotes(userId);
     // Changes queued while sending go in the same pass (a mark, then its preset).
     // (Bounded: storage that can't be written would hand back the same change.)
     for (let n = 0; n < 500; n++) {
@@ -273,16 +338,8 @@ export function flushOutbox(userId: string, api: OutboxApi) {
       if (error) {
         dropped++;
         if (op.kind === 'save') {
-          // The copy first, checked; only then the original goes (#296 round 4).
-          const kept =
-            writeRejected(userId, [...readStoredRejected(userId).filter((n) => rejectedKey(n) !== rejectedKey(op.note)), op.note]) &&
-            readStoredRejected(userId).some((n) => rejectedKey(n) === rejectedKey(op.note));
-          if (!kept) {
-            if (!refusedHere.has(userId)) refusedHere.set(userId, new Map());
-            refusedHere.get(userId)!.set(same, op.note);
-            writeOutbox(userId, readAllOps(userId).map((o) => (JSON.stringify(o) === same ? { ...op, refused: true as const } : o)));
-            continue;
-          }
+          keepRefused(userId, op);
+          continue;
         }
       } else {
         // A refused version of this note stays until the person removes it,

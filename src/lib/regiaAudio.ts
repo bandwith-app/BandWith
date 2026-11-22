@@ -341,7 +341,19 @@ interface Pending {
   users: string[];
   legacy: boolean;
 }
+/**
+ * The same, in memory too (#296 round 8, Codex r8 B4): with the storage full
+ * the mark can't be written, so the deletion still knows what to delete
+ * (this visit; the owner list stays until each deletion is confirmed).
+ */
+let memPending: Pending | null = null;
 const readPending = (): Pending | null => {
+  const a = readStoredPending();
+  const b = memPending;
+  if (!a && !b) return null;
+  return { users: [...new Set([...(a?.users ?? []), ...(b?.users ?? [])])], legacy: !!a?.legacy || !!b?.legacy };
+};
+const readStoredPending = (): Pending | null => {
   const v = store.get(PENDING_KEY);
   if (!v) return null;
   try {
@@ -354,21 +366,50 @@ const readPending = (): Pending | null => {
     return { users: [], legacy: true };
   }
 };
-const writePending = (p: Pending | null) =>
-  store.set(PENDING_KEY, p && (p.users.length || p.legacy) ? JSON.stringify({ users: [...new Set(p.users)], legacy: p.legacy }) : null);
+const writePending = (p: Pending | null) => {
+  memPending = p && (p.users.length || p.legacy) ? { users: [...new Set(p.users)], legacy: p.legacy } : null;
+  store.set(PENDING_KEY, memPending ? JSON.stringify(memPending) : null);
+};
 /** One more account to delete (a download that couldn't be deleted after its session ended). */
 const addPending = (owner: string | null, legacy = false) => {
   const p = readPending();
   writePending({ users: [...(p?.users ?? []), ...(owner ? [owner] : [])], legacy: legacy || !!p?.legacy });
 };
-/** A cleanup is done with `tried`: what is left of it stays pending, anything marked meanwhile too. */
-const settlePending = (tried: Pending, left: Pending) => {
+/**
+ * A cleanup is done with `tried`: what is left of it stays pending, anything
+ * marked meanwhile too. An account leaves the owner list only now, its
+ * deletion confirmed (#296 round 8, B4); one kept (signed in again) stays.
+ */
+const settlePending = (tried: Pending, left: Purged) => {
   const now = readPending();
   writePending({
     users: [...(now?.users ?? []).filter((u) => !tried.users.includes(u)), ...left.users],
     legacy: left.legacy || (!!now?.legacy && !tried.legacy),
   });
+  const gone = tried.users.filter((u) => !left.users.includes(u) && !left.kept.includes(u));
+  if (gone.length) writeList(OWNERS_KEY, readList(OWNERS_KEY).filter((u) => !gone.includes(u)));
   if (tried.legacy && !left.legacy) store.set(LEGACY_KEY, 'done');
+};
+
+/** What a purge left: still to delete, and accounts kept (signed in now). */
+type Purged = Pending & { kept: string[] };
+
+/** Something still to delete: tried again in a while, while this app runs (B4: a mark that couldn't be written). */
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+const RETRY_CLEANUP_MS = 30_000;
+const retryLater = () => {
+  if (retryTimer !== undefined || !readPending()) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined;
+    void (async () => {
+      const me = await sessionUserId();
+      await exclusive(async () => {
+        const p = readPending();
+        if (p) settlePending(p, await purge(p, me));
+      });
+      retryLater();
+    })().catch(() => undefined);
+  }, RETRY_CLEANUP_MS);
 };
 
 /**
@@ -376,8 +417,14 @@ const settlePending = (tried: Pending, left: Pending) => {
  * running (#296 round 6: a slow sign-out cleanup never meets a new download).
  */
 let busy: Promise<unknown> = Promise.resolve();
+/** Across this browser's tabs too, where the browser has it (#296 round 8, Codex r8 B2). */
+const locked = <T>(run: () => Promise<T>): Promise<T> => {
+  const locks = typeof navigator !== 'undefined' ? (navigator as { locks?: { request?: (n: string, f: () => Promise<T>) => Promise<T> } }).locks : undefined;
+  return typeof locks?.request === 'function' ? locks.request('bw-regia-audio', run) : run();
+};
 const exclusive = <T>(run: () => Promise<T>): Promise<T> => {
-  const next = busy.then(run, run);
+  const go = () => locked(run);
+  const next = busy.then(go, go);
   busy = next.catch(() => undefined);
   return next;
 };
@@ -388,8 +435,9 @@ const exclusive = <T>(run: () => Promise<T>): Promise<T> => {
  * folders or keys: never the whole place, so nothing another account put
  * there meanwhile goes. Every deletion is checked; an error keeps it pending.
  */
-async function purge({ users, legacy }: Pending, me: string | null): Promise<Pending> {
+async function purge({ users, legacy }: Pending, me: string | null): Promise<Purged> {
   const others = users.filter((u) => u !== me);
+  const kept = me && users.includes(me) ? [me] : [];
   if (Capacitor.isNativePlatform()) {
     try {
       const { Directory } = await fs();
@@ -399,16 +447,17 @@ async function purge({ users, legacy }: Pending, me: string | null): Promise<Pen
         // Signed in again meanwhile (a slow cleanup): theirs now, kept (#296 round 7).
         if ((await sessionUserId()) === u) {
           addOwner(u); // still theirs to delete at their next sign-out
+          kept.push(u);
           continue;
         }
         if (!(await removeNative(`${ROOT}/${ownerDir(u)}`, Directory.LibraryNoCloud))) left.push(u);
       }
-      return { users: left, legacy: legacyLeft };
+      return { users: left, legacy: legacyLeft, kept };
     } catch {
-      return { users: others, legacy };
+      return { users: others, legacy, kept };
     }
   }
-  if (typeof indexedDB === 'undefined') return { users: [], legacy: false };
+  if (typeof indexedDB === 'undefined') return { users: [], legacy: false, kept };
   try {
     const keys = await idb('readonly', (s) => s.getAllKeys());
     for (const k of keys) {
@@ -417,13 +466,14 @@ async function purge({ users, legacy }: Pending, me: string | null): Promise<Pen
       const owner = others.find((u) => key.startsWith(`${ownerDir(u)}/`));
       if (owner && (await sessionUserId()) === owner) {
         addOwner(owner);
+        if (!kept.includes(owner)) kept.push(owner);
         continue;
       }
       if ((legacy && !key.includes('/')) || owner) await idb('readwrite', (s) => s.delete(k));
     }
-    return { users: [], legacy: false };
+    return { users: [], legacy: false, kept };
   } catch {
-    return { users: others, legacy };
+    return { users: others, legacy, kept };
   }
 }
 
@@ -457,8 +507,15 @@ async function ownKeys(me: string): Promise<Set<string>> {
  * of its own songs move to its folder, the rest are deleted (#296 round 7,
  * Claude). True when nothing is left there.
  */
-async function adoptLegacy(me: string): Promise<boolean> {
+async function adoptLegacy(me: string, alive: () => boolean): Promise<boolean> {
   const mine = await ownKeys(me);
+  // A sign-out meanwhile (#296 round 8, Codex r8 B2): stop; what was moved already goes with it.
+  const stopped = () => {
+    if (alive()) return false;
+    addPending(me);
+    return true;
+  };
+  if (stopped()) return false;
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await fs();
     const dir = `${ROOT}/${ownerDir(me)}`;
@@ -471,10 +528,12 @@ async function adoptLegacy(me: string): Promise<boolean> {
         continue; // no such folder
       }
       if (names.some((n) => mine.has(n))) {
+        if (stopped()) return false;
         await Filesystem.mkdir({ path: dir, directory: Directory.LibraryNoCloud, recursive: true }).catch(() => undefined);
         addOwner(me);
       }
       for (const name of names) {
+        if (stopped()) return false;
         const to = { path: `${dir}/${name}`, directory: Directory.LibraryNoCloud };
         const there = !mine.has(name) || (await Filesystem.stat(to).then((st) => st.size > 0, () => false));
         try {
@@ -487,20 +546,24 @@ async function adoptLegacy(me: string): Promise<boolean> {
       }
       if (all) all = await removeNative(DIR, directory);
     }
+    if (stopped()) return false;
     if (all && !store.get(OWNER_KEY)) store.set(OWNER_KEY, me);
     return all;
   }
   if (typeof indexedDB === 'undefined') return true;
   try {
     const keys = (await idb('readonly', (s) => s.getAllKeys())).map(String).filter((k) => !k.includes('/'));
+    if (stopped()) return false;
     if (keys.some((k) => mine.has(k))) addOwner(me);
     for (const key of keys) {
+      if (stopped()) return false;
       const v = mine.has(key) ? await idb<StoredAudio | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredAudio | undefined>) : undefined;
       if (v?.data && !(await idb('readonly', (s) => s.getKey(webKey(me, key))))) {
         await idb('readwrite', (s) => s.put({ ...v, owner: me } satisfies StoredAudio, webKey(me, key)));
       }
       await idb('readwrite', (s) => s.delete(key));
     }
+    if (stopped()) return false;
     if (!store.get(OWNER_KEY)) store.set(OWNER_KEY, me);
     return true;
   } catch {
@@ -529,14 +592,21 @@ export async function clearDownloadedAudio(): Promise<void> {
   } catch {
     /* no other tabs to tell */
   }
-  // Synchronously, before anything else can start: who goes.
-  const owners = [...readList(OWNERS_KEY), ...(store.get(OWNER_KEY) ? [store.get(OWNER_KEY)!] : [])];
+  // Synchronously, before anything else can start: who goes. Marked (in memory too, B4); the
+  // owner list keeps each account until its deletion is confirmed (settlePending).
+  const last = store.get(OWNER_KEY);
+  if (last) addOwner(last);
+  const owners = [...readList(OWNERS_KEY), ...(last ? [last] : [])];
   addPending(null, true);
   for (const u of owners) addPending(u);
-  writeList(OWNERS_KEY, []);
+  // Signed out: its files are no longer found by the offline fallback.
   store.set(OWNER_KEY, null);
-  const tried = readPending()!;
-  await exclusive(async () => settlePending(tried, await purge(tried, null)));
+  await exclusive(async () => {
+    // Read when it runs (B2): a legacy move stopped by this sign-out added its account.
+    const tried = readPending() ?? { users: owners, legacy: true };
+    settlePending(tried, await purge(tried, null));
+  });
+  retryLater();
 }
 
 /**
@@ -547,7 +617,10 @@ export async function clearDownloadedAudio(): Promise<void> {
  * they stay where they are, read only (#296 round 6).
  */
 export async function finishPendingAudioCleanup(): Promise<void> {
+  const alive = audioSession();
   const me = await sessionUserId();
+  // Other accounts still listed (a deletion that never finished): not this account's to keep (#296 round 8).
+  if (me) for (const u of readList(OWNERS_KEY)) if (u !== me) addPending(u);
   await exclusive(async () => {
     const pending = readPending();
     if (pending) settlePending(pending, await purge(pending, me));
@@ -563,8 +636,9 @@ export async function finishPendingAudioCleanup(): Promise<void> {
       settlePending(tried, await purge(tried, me));
       return;
     }
-    if (await adoptLegacy(me).catch(() => false)) store.set(LEGACY_KEY, 'done');
+    if (await adoptLegacy(me, alive).catch(() => false)) store.set(LEGACY_KEY, 'done');
   });
+  retryLater();
 }
 
 /**
@@ -574,11 +648,18 @@ export async function finishPendingAudioCleanup(): Promise<void> {
 export async function legacyAudioSignedIn(): Promise<void> {
   // Marked at once: the app closed before the deletion ends, the next launch finishes it (#296 round 7).
   if (store.get(LEGACY_KEY) === 'unclaimed') addPending(null, true);
+  // Other accounts' recordings still listed here (#296 round 8, Claude r7): this account never keeps them.
+  const me = await sessionUserId();
+  const others = me ? readList(OWNERS_KEY).filter((u) => u !== me) : [];
+  for (const u of others) addPending(u);
   await exclusive(async () => {
-    if (store.get(LEGACY_KEY) !== 'unclaimed') return;
-    const tried = { users: [], legacy: true };
-    settlePending(tried, await purge(tried, null));
+    const legacy = store.get(LEGACY_KEY) === 'unclaimed';
+    const p = readPending();
+    const tried = { users: others.filter((u) => p?.users.includes(u)), legacy };
+    if (!tried.users.length && !tried.legacy) return;
+    settlePending(tried, await purge(tried, me));
   });
+  retryLater();
 }
 
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {

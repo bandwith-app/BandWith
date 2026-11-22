@@ -431,9 +431,9 @@ export const NoteGroups: React.FC<{
   );
 };
 
-/** The words of a note the band couldn't take, to copy. */
+/** The words of a note the band couldn't take, to copy: its lyric line too (#296 round 8). */
 const rejectedText = (n: RehearsalNote, t: T) =>
-  [n.songTitle, n.preset ? presetLabel(n.preset, t) : '', n.section ? sectionLabel(n.section, t) : '', n.body]
+  [n.songTitle, n.preset ? presetLabel(n.preset, t) : '', n.section ? sectionLabel(n.section, t) : '', n.line ? `“${n.line}”` : '', n.body]
     .filter(Boolean)
     .join(' · ') || noteHeadline(n, t);
 

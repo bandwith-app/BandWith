@@ -60,7 +60,13 @@ const upsert = (user, r) =>
        paused_at = EXCLUDED.paused_at, ended_at = EXCLUDED.ended_at, summary = EXCLUDED.summary`,
     [BAND, EVENT, DAY, r.started_at, r.paused_ms ?? 0, r.paused_at ?? null, r.ended_at ?? null, r.summary ?? summary([])],
   )).then(() => ({ ok: true }), (e) => ({ error: e.message }));
-const saved = async () => (await db.query(`SELECT started_at, ended_at, paused_at, summary, updated_at FROM rehearsal_sessions WHERE event_id = $1`, [EVENT])).rows[0];
+/** This build's save of a running session on its revision (#296 round 8). */
+const reopen = (user, r) =>
+  as(user, () => db.query(
+    `SELECT public.bw_save_rehearsal_session($1, $2, $3, $4, $5, $6, NULL, $7::jsonb) AS rev`,
+    [EVENT, DAY, r.rev, r.started_at, r.paused_ms ?? 0, r.paused_at ?? null, r.summary],
+  )).then((x) => x.rows[0].rev, (e) => ({ error: e.message }));
+const saved = async () => (await db.query(`SELECT started_at, ended_at, paused_at, paused_ms, summary, updated_at FROM rehearsal_sessions WHERE event_id = $1`, [EVENT])).rows[0];
 const reset = () => db.exec(`DELETE FROM rehearsal_sessions`);
 
 const A_START = '2026-11-19T19:00:00.000Z';
@@ -167,8 +173,8 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   ok(JSON.stringify((await saved()).summary.pauses) === '[]', "a new build's save replaces the pause times");
 }
 
-// #296 round 6: an old build that missed the End can't undo it with its running copy (same or
-// less paused time, no summary.pauses); its real Resume after the End (more paused time) still goes.
+// #296 round 6/8: an old build that missed the End can't undo it with its running copy (whatever its
+// paused time, round 8 B5); this build reopens only through bw_save_rehearsal_session.
 {
   const start = new Date((await saved()).started_at).toISOString();
   const withPauses = JSON.stringify({ v: 1, durationS: 900, played: PLAYED, total: 3, pauses: [] });
@@ -177,18 +183,20 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
     [withPauses, '2026-11-19T19:45:00.000Z', EVENT]));
   const stale = await upsert(ADMIN_B, { started_at: start, paused_ms: 300000, ended_at: null, summary: summary([...PLAYED, { id: 's3', title: 'Cissy Strut' }]) });
   const afterStale = await saved();
-  ok(stale.ok && afterStale.ended_at !== null && afterStale.summary.played.length === 2,
-    "an old build's running copy after the End (same paused time) is skipped: the End stays, no error");
+  ok(stale.ok && afterStale.ended_at !== null && JSON.stringify(afterStale.summary.played.map((p) => p.id)) === '["s1","s2","s3"]',
+    "an old build's running copy after the End (same paused time): the End stays, its song is added (round 8), no error");
   const less = await upsert(ADMIN_B, { started_at: start, paused_ms: 60000, ended_at: null, summary: summary(PLAYED) });
   ok(less.ok && (await saved()).ended_at !== null, "an old build's copy with less paused time is skipped too");
-  const realResume = await upsert(ADMIN_B, { started_at: start, paused_ms: 360000, ended_at: null, summary: summary(PLAYED) });
-  const afterResume = await saved();
-  ok(realResume.ok && afterResume.ended_at === null && JSON.stringify(afterResume.summary.pauses) === '[]',
-    "an old build's real Resume after the End (more paused time) goes through, pause times kept");
-  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET ended_at = $1 WHERE event_id = $2`, ['2026-11-19T19:50:00.000Z', EVENT]));
-  const newResume = await as(ADMIN_A, () => db.query(
+  const more = await upsert(ADMIN_B, { started_at: start, paused_ms: 360000, ended_at: null, summary: summary(PLAYED) });
+  const afterMore = await saved();
+  ok(more.ok && afterMore.ended_at !== null && String(afterMore.paused_ms) === '300000' && JSON.stringify(afterMore.summary.pauses) === '[]',
+    "Codex r8 B5: an old build's copy with more paused time (its own, offline) keeps the End too, no error");
+  const plain = await as(ADMIN_A, () => db.query(
     `UPDATE rehearsal_sessions SET ended_at = NULL, summary = $1::jsonb WHERE event_id = $2 RETURNING id`, [withPauses, EVENT]));
-  ok(newResume.rows.length === 1 && (await saved()).ended_at === null, "this build's Resume after the End (summary.pauses) goes through");
+  ok(plain.rows.length === 1 && (await saved()).ended_at !== null, "a plain update (this build's shape too) keeps the End");
+  const rev = (await saved()).updated_at;
+  const newResume = await reopen(ADMIN_A, { started_at: start, paused_ms: 300000, summary: withPauses, rev });
+  ok(newResume !== null && (await saved()).ended_at === null, "this build's Resume after the End goes through bw_save_rehearsal_session");
 }
 
 // #296 round 7: an old leader's End over a row this build wrote keeps the songs it never heard
@@ -217,6 +225,82 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   const now = await saved();
   ok(op.rows.length === 1 && new Date(now.started_at).toISOString() === B_START && now.ended_at === null && now.summary.pauses === undefined,
     "an operator's write goes through as written (start moved, End cleared, summary as given)");
+}
+
+// #296 round 8 (Codex r8 B5 + Claude r7 M-c): once ended, a plain write keeps the End; an older
+// build's real Resume of it (the gap it adds matches now - ended_at) still goes; this build reopens
+// only through the function, on its revision; the flag never outlives that one update.
+{
+  await reset();
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const startR = ago(40);
+  const spanA = [Date.parse(ago(35)), Date.parse(ago(25))];
+  const newSummary = (spans, played = PLAYED, extra = {}) => JSON.stringify({ v: 1, durationS: 1, played, total: 3, pauses: spans, log: [['s', Date.parse(startR)]], ...extra });
+  // A (this build) pauses 10 minutes; B (an older build, deaf to the channel) ends it 5 minutes ago with its own paused_ms 0.
+  await as(ADMIN_A, () => db.query(
+    `INSERT INTO rehearsal_sessions (band_id, event_id, occurrence_date, started_at, paused_ms, summary) VALUES ($1,$2,$3,$4,600000,$5::jsonb)`,
+    [BAND, EVENT, DAY, startR, newSummary([spanA])]));
+  const bEnd = await upsert(ADMIN_B, { started_at: startR, paused_ms: 0, ended_at: ago(5), summary: summary(PLAYED) });
+  let r = await saved();
+  ok(bEnd.ok && r.ended_at !== null && Array.isArray(r.summary.log) && JSON.stringify(r.summary.pauses) === JSON.stringify([spanA]),
+    "an old build's End over this build's row keeps the log and pause times");
+  // A merges B's End and saves 10 minutes paused, B's 0 in summary.untimed.
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET paused_ms = 600000, summary = $1::jsonb WHERE event_id = $2`,
+    [newSummary([spanA], PLAYED, { untimed: [[0, Date.parse(ago(5)), 'e']] }), EVENT]));
+  // Offline older admin C (here B's account, another device): paused 12 minutes of its own before the End, comes back running.
+  const offline = await upsert(ADMIN_B, { started_at: startR, paused_ms: 720000, ended_at: null,
+    summary: summary([...PLAYED, { id: 's3', title: 'Cissy Strut' }]) });
+  r = await saved();
+  ok(offline.ok && r.ended_at !== null && String(r.paused_ms) === '600000' && r.summary.played.some((p) => p.id === 's3') && Array.isArray(r.summary.log),
+    'Codex r8 B5: the offline older copy (more paused time) keeps the End and its paused time; its song is added, no error');
+  // B's real Resume of its own End: 0 + the 5 minutes since it (M-c: the row's paused_ms has A's 10 minutes B never heard).
+  const bResume = await upsert(ADMIN_B, { started_at: startR, paused_ms: 300000, ended_at: null, summary: summary(PLAYED) });
+  r = await saved();
+  ok(bResume.ok && r.ended_at === null && String(r.paused_ms) === '300000' && Array.isArray(r.summary.log),
+    "Claude r7 M-c: an older build's real Resume of its End (gap matches) reopens it, the log kept");
+  // Ended again; a Resume saved 10 minutes late (5 minutes added): not matched, stays ended.
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET ended_at = $1, paused_ms = 900000, summary = $2::jsonb WHERE event_id = $3`,
+    [ago(10), newSummary([spanA]), EVENT]));
+  const late = await upsert(ADMIN_B, { started_at: startR, paused_ms: 900000 + 300000, ended_at: null, summary: summary(PLAYED) });
+  ok(late.ok && (await saved()).ended_at !== null, "an older build's Resume whose gap doesn't match the time since the End: the End stays");
+  // This build: a plain update can't reopen; the function on a stale revision writes nothing; on the read one it does.
+  const plain = await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET ended_at = NULL WHERE event_id = $1 RETURNING id`, [EVENT]));
+  ok(plain.rows.length === 1 && (await saved()).ended_at !== null, "this build's plain update keeps the End");
+  const stale = await reopen(ADMIN_A, { started_at: startR, paused_ms: 900000, summary: newSummary([spanA]), rev: '2020-01-01T00:00:00Z' });
+  ok(stale === null && (await saved()).ended_at !== null, 'the function on a stale revision writes nothing (NULL: a conflict)');
+  const member = await reopen(MEMBER, { started_at: startR, paused_ms: 900000, summary: newSummary([spanA]), rev: (await saved()).updated_at });
+  ok((member === null || member.error) && (await saved()).ended_at !== null, `a member can't reopen it through the function (${member?.error ?? member})`);
+  const anon = await db.exec(`BEGIN; SET LOCAL ROLE anon; SELECT public.bw_save_rehearsal_session(NULL, NULL, NULL, NULL, 0, NULL, NULL, '{}'::jsonb); COMMIT;`)
+    .then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
+  ok(/permission denied/.test(anon), `anon can't call it (${anon})`);
+  // The flag is for that one update: a plain update later in the same transaction keeps the End again.
+  await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN_A}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+  const rev0 = (await db.query(`SELECT updated_at FROM rehearsal_sessions`)).rows[0].updated_at;
+  await db.query(`SELECT public.bw_save_rehearsal_session($1, $2, $3, $4, 900000, NULL, NULL, $5::jsonb)`, [EVENT, DAY, rev0, startR, newSummary([spanA])]);
+  const flag = (await db.query(`SELECT COALESCE(current_setting('bw.rehearsal_reopen', true), '') AS f`)).rows[0].f;
+  await db.query(`UPDATE rehearsal_sessions SET ended_at = $1 WHERE event_id = $2`, [ago(1), EVENT]);
+  await db.query(`UPDATE rehearsal_sessions SET ended_at = NULL WHERE event_id = $1`, [EVENT]);
+  const inTx = (await db.query(`SELECT ended_at FROM rehearsal_sessions`)).rows[0].ended_at;
+  await db.exec('COMMIT');
+  ok(flag === '' && inTx !== null, `the reopen flag is off after the function's update (flag '${flag}', End kept in the same transaction)`);
+}
+
+// Claude r7 extra cases: an ex-member and a member write nothing; an operator can't move band or date;
+// an older build's odd summary keeps the saved songs.
+{
+  const EX = id(5);
+  await db.exec(`INSERT INTO auth.users VALUES ('${EX}'); INSERT INTO band_members VALUES ('${BAND}','${EX}','admin',false);`);
+  const before = await saved();
+  await upsert(EX, { started_at: new Date(before.started_at).toISOString(), paused_ms: 999999999 });
+  ok(String((await saved()).paused_ms) !== '999999999', 'an ex-admin (inactive) writes nothing');
+  const mu = await as(MEMBER, () => db.query(`UPDATE rehearsal_sessions SET paused_ms = 1 RETURNING 1`)).catch(() => ({ rows: [] }));
+  ok(mu.rows.length === 0, 'a member update writes 0 rows');
+  await db.exec(`UPDATE rehearsal_sessions SET band_id = '${id(99)}', occurrence_date = '2020-01-01'`).catch(() => {});
+  const moved = (await db.query(`SELECT band_id, occurrence_date FROM rehearsal_sessions`)).rows[0];
+  ok(moved.band_id === BAND && String(moved.occurrence_date) !== String(new Date('2020-01-01')), "an operator's write can't move the band or the date");
+  const weird = await upsert(ADMIN_B, { started_at: new Date(before.started_at).toISOString(), summary: JSON.stringify({ v: 1, durationS: 1, total: 3, played: 'x' }) });
+  const w = await saved();
+  ok(weird.ok && Array.isArray(w.summary.played) && w.summary.played.length > 0, `an older build's summary with odd songs keeps the saved ones (${JSON.stringify(w.summary.played)})`);
 }
 
 // Members still cannot write.

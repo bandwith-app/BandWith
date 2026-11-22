@@ -60,11 +60,30 @@ describe('rehearsal note writes report their HTTP status', () => {
 describe('#296 round 5 (Codex): an edit no longer allowed is a refusal, never a success', () => {
   it('update finds no row it may change (0 rows) and the insert finds the note there (23505): refused', async () => {
     answers.length = 0;
-    answers.push({ data: [], error: null, status: 200 }, { data: null, error: { code: '23505', message: 'duplicate key' }, status: 409 });
+    answers.push(
+      { data: [], error: null, status: 200 },
+      { data: null, error: { code: '23505', message: 'duplicate key' }, status: 409 },
+      // Asked again: still no row it may change.
+      { data: [], error: null, status: 200 },
+    );
     const r = await saveNote(note, []);
     expect(r.error).not.toBeNull();
     // Final (not retried): the outbox keeps its text in the refused list.
     const { isRetryableWriteError } = await import('@/lib/rehearsalNotesOutbox');
     expect(isRetryableWriteError(r.error, r.status)).toBe(false);
+  });
+});
+
+describe('#296 round 8 (Codex r8 M1): two tabs replay the same new note', () => {
+  it('the other tab inserted it between this update and insert (23505): the update now finds it, saved', async () => {
+    answers.length = 0;
+    answers.push(
+      { data: [], error: null, status: 200 },
+      { data: null, error: { code: '23505', message: 'duplicate key' }, status: 409 },
+      { data: [{ id: 'n1' }], error: null, status: 200 },
+    );
+    const r = await saveNote(note, []);
+    expect(r.error).toBeNull();
+    expect(answers).toHaveLength(0);
   });
 });

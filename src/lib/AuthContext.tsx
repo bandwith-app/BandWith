@@ -446,7 +446,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setProfile(null);
       setSession(null);
       clearStageCache();
-      clearOfflineCache()
+      // Refused notes stay for this account (#296 round 8): read before the clear, put back after.
+      import('./signOutWipe')
+        // Its chunk not there (offline, an old cache): the clear still runs.
+        .then((m) => m.keepingSignOutLists(() => clearOfflineCache()), () => clearOfflineCache())
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }

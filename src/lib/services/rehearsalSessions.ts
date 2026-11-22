@@ -49,14 +49,38 @@ const isConflict = (e: unknown) => {
   return err.code === '23505' || String(err.message ?? '').includes('rehearsal_session_conflict');
 };
 
+/** The reopen function isn't there yet (196 not applied): the plain update, as before. */
+const noFunction = (e: unknown) => {
+  const code = (e as { code?: unknown } | null)?.code;
+  return code === 'PGRST202' || code === '42883';
+};
+
 /**
  * Save the whole session, never over a newer one (audit 06 #3/#4): with the
  * revision it was read at, only if the row is still at that revision; with
  * none (`null`: nothing saved, or never read), only as a new row. Otherwise
  * (0 rows: moved on, gone, or another start skipped by 196) `conflict`: the
  * caller reads the saved session and merges into it.
+ *
+ * Running (not ended) on a revision: through bw_save_rehearsal_session
+ * (196, #296 round 8), the one way to reopen an ended session (this build's
+ * Resume after the End); a plain update keeps a saved End.
  */
 export async function saveRehearsalSession(row: SessionRow, rev?: string | null): Promise<SaveSessionResult> {
+  if (rev && row.ended_at === null) {
+    const r = await supabase.rpc('bw_save_rehearsal_session', {
+      p_event_id: row.event_id,
+      p_occurrence_date: row.occurrence_date,
+      p_rev: rev,
+      p_started_at: row.started_at,
+      p_paused_ms: row.paused_ms,
+      p_paused_at: row.paused_at,
+      p_ended_at: null,
+      p_summary: row.summary,
+    });
+    if (!r.error) return typeof r.data === 'string' ? { error: null, rev: r.data } : { error: null, conflict: true };
+    if (!noFunction(r.error)) return isConflict(r.error) ? { error: null, conflict: true } : { error: r.error };
+  }
   const res = rev
     ? await supabase
         .from('rehearsal_sessions')

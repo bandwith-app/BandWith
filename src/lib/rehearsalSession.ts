@@ -22,10 +22,26 @@ export interface PlayedSong {
    * when merged again.
    */
   last?: number;
+  /**
+   * Where a song an older build saved with no time goes (#296 round 8):
+   * right after the song before it in that copy (that song's time + 1 ms),
+   * kept so that every merge puts it in the same place. Only without `at`.
+   */
+  after?: number;
 }
 
 /** A pause that is over: [from, to] in ms. */
 export type PauseSpan = [number, number];
+
+/** One thing done on a copy, and when (ms): s Start, p Pause, r Resume, e End (#296 round 8). */
+export type SessionEvent = ['s' | 'p' | 'r' | 'e', number];
+
+/**
+ * Paused time an older build reported with no times (#296 round 8): its
+ * paused_ms, when that was known (the row's updated_at, or when its message
+ * came in; null: not known) and its status then (r running, p paused, e ended).
+ */
+export type UntimedPause = [number, number | null, 'r' | 'p' | 'e'];
 
 export interface SessionState {
   startedAt: number;
@@ -38,15 +54,24 @@ export interface SessionState {
   played: PlayedSong[];
   /**
    * The pauses that are over, with their times (the gap after an End that
-   * was resumed too), so two copies merge by union (#296 round 3). pausedMs
-   * is their total, plus any paused time an older version saved without
-   * times (missing: none known).
+   * was resumed too). pausedMs is their total, plus any paused time an older
+   * build reported without times (missing: an older build's copy).
    */
   pauses?: PauseSpan[];
   /**
-   * The latest moment the paused time held without times (pausedMs minus the
-   * spans) can be from: when the copy it came from was saved or arrived
-   * (#296 round 6). Missing: not known (this device's own). Not saved.
+   * Everything done on every copy merged into this one (#296 round 8). The
+   * fields above are worked out from it (and from `played`, `untimed`) the
+   * same way on every device, so two copies merge by union, in any order and
+   * as often as they like, always to the same session. Missing: a copy from
+   * an older build (or made by hand): rebuilt from the fields.
+   */
+  log?: SessionEvent[];
+  /** Paused time older builds reported without times (#296 round 8). */
+  untimed?: UntimedPause[];
+  /**
+   * When the paused time of a copy without a log (an older build's) was
+   * known: when it was saved or came in. Read when that copy is merged; not
+   * saved.
    */
   untimedUntil?: number;
 }
@@ -56,39 +81,29 @@ export type SessionStatus = 'idle' | 'live' | 'paused' | 'ended';
 export const sessionStatus = (s: SessionState | null | undefined): SessionStatus =>
   !s ? 'idle' : s.endedAt !== null ? 'ended' : s.pausedAt !== null ? 'paused' : 'live';
 
-export const startSession = (now: number): SessionState => ({
-  startedAt: now,
-  pausedMs: 0,
-  pausedAt: null,
-  endedAt: null,
-  played: [],
-  pauses: [],
-});
+/** The newest time in a log (a device whose clock went back never writes before it). */
+const lastAt = (log: SessionEvent[]): number => log.reduce((m, e) => Math.max(m, e[1]), -Infinity);
+
+/** One more thing done on this copy. */
+const act = (s: SessionState, kind: SessionEvent[0], now: number): SessionState => {
+  const ev = evidence(s);
+  return derive([...ev.log, [kind, Math.max(now, lastAt(ev.log))]], ev.untimed, s.played);
+};
+
+export const startSession = (now: number): SessionState => derive([['s', now]], [], []);
 
 export const pauseSession = (s: SessionState, now: number): SessionState =>
-  sessionStatus(s) === 'live' ? { ...s, pausedAt: Math.max(now, s.startedAt) } : s;
+  sessionStatus(s) === 'live' ? act(s, 'p', now) : s;
 
 /** Back to running: after a pause, or after the end (the gap counts as a pause). */
 export const resumeSession = (s: SessionState, now: number): SessionState => {
   const status = sessionStatus(s);
-  if (status === 'paused') return { ...closePause(s, s.pausedAt!, now), pausedAt: null };
-  if (status === 'ended') return { ...closePause(s, s.endedAt!, now), endedAt: null };
-  return s;
+  return status === 'paused' || status === 'ended' ? act(s, 'r', now) : s;
 };
 
-/** A pause from `from` that ends at `to`: added to the spans and to pausedMs. */
-const closePause = (s: SessionState, from: number, to: number): SessionState => {
-  const end = Math.max(from, to);
-  return { ...s, pausedMs: s.pausedMs + (end - from), pauses: [...(s.pauses ?? []), [from, end]] };
-};
-
-export const endSession = (s: SessionState, now: number): SessionState => {
-  const status = sessionStatus(s);
-  if (status === 'ended') return s;
-  const end = Math.max(now, s.startedAt);
-  const closed = status === 'paused' ? closePause(s, s.pausedAt!, end) : s;
-  return { ...closed, endedAt: Math.max(end, closed.pausedAt ?? end), pausedAt: null };
-};
+/** Ended; a pause still open lasted until the end. */
+export const endSession = (s: SessionState, now: number): SessionState =>
+  sessionStatus(s) === 'ended' ? s : act(s, 'e', now);
 
 /** Seconds rehearsed so far, pauses left out. */
 export const elapsedSeconds = (s: SessionState, now: number): number => {
@@ -99,7 +114,8 @@ export const elapsedSeconds = (s: SessionState, now: number): number => {
 /** The current song counts as played (once) while the session runs; `now`: when (for merging copies by time). */
 export const markPlayed = (s: SessionState, song: PlayedSong, now?: number): SessionState => {
   if (sessionStatus(s) !== 'live' || !song.id || s.played.some((p) => p.id === song.id)) return s;
-  return { ...s, played: [...s.played, { id: song.id, title: song.title, ...(now === undefined ? {} : { at: now }) }] };
+  const at = now === undefined ? undefined : Math.max(now, lastAt(evidence(s).log));
+  return { ...s, played: [...s.played, { id: song.id, title: song.title, ...(at === undefined ? {} : { at }) }] };
 };
 
 /** "47:23", or "1:05:09" past an hour. */
@@ -135,33 +151,73 @@ export interface SessionSummary {
   total: number;
   /**
    * The pauses that are over (SessionState.pauses). Always there from this
-   * version: migration 196 lets only a write that has it move a saved start
-   * earlier (a merge), never an older build's Start.
+   * version: migration 196 tells this build's writes from older builds' by it.
    */
   pauses?: PauseSpan[];
+  /** SessionState.log (#296 round 8); 196 keeps it when an older build saves over it. */
+  log?: SessionEvent[];
+  /** SessionState.untimed, when there is any. */
+  untimed?: UntimedPause[];
 }
 
-export const buildSummary = (s: SessionState, total: number, now: number): SessionSummary => ({
-  v: 1,
-  durationS: elapsedSeconds(s, now),
-  played: s.played.map((p) => ({ id: p.id, title: p.title, ...(p.at === undefined ? {} : { at: p.at }), ...(p.last === undefined ? {} : { last: p.last }) })),
-  total: Math.max(0, Math.floor(total)),
-  pauses: unionSpans(s.pauses ?? []),
+const playedOut = (p: PlayedSong): PlayedSong => ({
+  id: p.id,
+  title: p.title,
+  ...(p.at === undefined ? {} : { at: p.at }),
+  ...(p.last === undefined ? {} : { last: p.last }),
+  ...(p.at === undefined && p.after !== undefined ? { after: p.after } : {}),
 });
+
+export const buildSummary = (s: SessionState, total: number, now: number): SessionSummary => {
+  const ev = evidence(s);
+  return {
+    v: 1,
+    durationS: elapsedSeconds(s, now),
+    played: s.played.map(playedOut),
+    total: Math.max(0, Math.floor(total)),
+    pauses: unionSpans(s.pauses ?? []),
+    log: canonLog(ev.log),
+    ...(ev.untimed.length ? { untimed: canonUntimed(ev.untimed) } : {}),
+  };
+};
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 const parsePlayed = (v: unknown): PlayedSong[] =>
   Array.isArray(v)
     ? v.filter((p): p is PlayedSong => isObj(p) && typeof p.id === 'string' && !!p.id && typeof p.title === 'string')
-        .map((p) => ({ id: p.id, title: p.title, ...(isTime(p.at) ? { at: p.at } : {}), ...(isTime(p.last) && (!isTime(p.at) || p.last > p.at) ? { last: p.last } : {}) }))
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          ...(isTime(p.at) ? { at: p.at } : {}),
+          ...(isTime(p.last) && (!isTime(p.at) || p.last > p.at) ? { last: p.last } : {}),
+          ...(!isTime(p.at) && isTime(p.after) ? { after: p.after } : {}),
+        }))
     : [];
 
-const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const parsePauses = (v: unknown): PauseSpan[] =>
   Array.isArray(v)
     ? v.filter((p): p is PauseSpan => Array.isArray(p) && p.length === 2 && isTime(p[0]) && isTime(p[1]) && p[0] <= p[1]).map(([a, b]) => [a, b])
+    : [];
+
+const KINDS = ['s', 'p', 'r', 'e'] as const;
+const parseLog = (v: unknown): SessionEvent[] | undefined =>
+  Array.isArray(v)
+    ? v
+        .filter((e): e is SessionEvent => Array.isArray(e) && e.length === 2 && (KINDS as readonly unknown[]).includes(e[0]) && isTime(e[1]))
+        .map(([k, t]) => [k, t] as SessionEvent)
+    : undefined;
+
+const parseUntimed = (v: unknown): UntimedPause[] =>
+  Array.isArray(v)
+    ? v
+        .filter(
+          (u): u is UntimedPause =>
+            Array.isArray(u) && u.length === 3 && isCount(u[0]) && (u[1] === null || isTime(u[1])) && (u[2] === 'r' || u[2] === 'p' || u[2] === 'e'),
+        )
+        .map(([a, b, c]) => [a, b, c] as UntimedPause)
     : [];
 
 export const parseSummary = (v: unknown): SessionSummary | null => {
@@ -206,21 +262,36 @@ export const toRow = (
   summary: buildSummary(s, total, now),
 });
 
-export const fromRow = (row: unknown): SessionState | null => {
+/**
+ * A saved row (or a message's row). `at`: when it was known (a message: when
+ * it came in); otherwise its updated_at. A row an older build wrote (no log,
+ * or columns the log doesn't give: written over this build's row, 196 keeps
+ * the log) is read as what that build did (#296 round 8).
+ */
+export const fromRow = (row: unknown, at?: number): SessionState | null => {
   if (!isObj(row)) return null;
   const startedAt = ms(row.started_at);
   const pausedMs = row.paused_ms === undefined || row.paused_ms === null ? 0 : Number(row.paused_ms);
   if (startedAt === null || !isCount(pausedMs)) return null;
-  // No pause times at all: written by an older build (kept undefined, so a merge knows, #296 round 5).
-  const pauses = isObj(row.summary) && Array.isArray(row.summary.pauses) ? parsePauses(row.summary.pauses) : undefined;
-  return {
+  const summary = isObj(row.summary) ? row.summary : {};
+  const known = at ?? ms(row.updated_at);
+  const s: SessionState = {
     startedAt,
-    pausedMs: Math.max(pausedMs, spanMs(unionSpans(pauses ?? []))),
+    pausedMs,
     pausedAt: ms(row.paused_at),
     endedAt: ms(row.ended_at),
-    played: isObj(row.summary) ? parsePlayed(row.summary.played) : [],
-    pauses,
+    played: parsePlayed(summary.played),
+    // No pause times at all: written by an older build (kept undefined, so a merge knows, #296 round 5).
+    pauses: Array.isArray(summary.pauses) ? parsePauses(summary.pauses) : undefined,
   };
+  const log = parseLog(summary.log);
+  if (log?.length) {
+    s.log = log;
+    s.untimed = parseUntimed(summary.untimed);
+  }
+  if (known !== null) s.untimedUntil = known;
+  const ev = evidence(s);
+  return derive(ev.log, ev.untimed, s.played);
 };
 
 /** Pause spans merged where they overlap, in time order. */
@@ -234,177 +305,260 @@ export const unionSpans = (spans: PauseSpan[]): PauseSpan[] => {
   return out;
 };
 const spanMs = (spans: PauseSpan[]) => spans.reduce((n, [a, b]) => n + (b - a), 0);
-/** Paused time an older version saved without times (it can't be placed, so it is kept as it is). */
-const untimedPauseMs = (s: SessionState) => Math.max(0, s.pausedMs - spanMs(unionSpans(s.pauses ?? [])));
-/** The newest thing that keeps this copy running: its start, a Resume, a song played (a pause doesn't undo an End). */
-const lastRun = (s: SessionState): number =>
-  Math.max(s.startedAt, ...(s.pauses ?? []).map((p) => p[1]), ...s.played.map(playedLast));
+/** Spans cut at `until` (the part after it dropped). */
+const clipSpans = (spans: PauseSpan[], until: number): PauseSpan[] =>
+  spans.filter(([a]) => a < until).map(([a, b]) => [a, Math.min(b, until)] as PauseSpan);
 /** The latest time a song was played on any copy merged into this one. */
 const playedLast = (p: PlayedSong): number => Math.max(p.at ?? -Infinity, p.last ?? -Infinity);
 
+// --------------------------------------------------------------- merge --
+
 /**
- * Two copies of one occurrence's session: this device's, and the saved one
- * that moved on meanwhile (another admin, a Start or End whose answer was
- * lost, a copy started unread elsewhere). Nothing is lost (#296 round 3):
+ * How two copies of one occurrence's session merge (#296 round 8, after
+ * rounds 2–7 patched one case at a time): everything either copy did is kept
+ * as a set (the log of Starts, Pauses, Resumes and Ends; the songs with
+ * their first and latest play; older builds' paused time without times),
+ * merged by union, and the session is worked out from that set alone, in
+ * time order. So a merge gives the same session whichever copy is whose, in
+ * any order, and merging again changes nothing. In time order:
  *
- * - Pauses: the union of both copies' pauses (two separate pauses both count).
- * - End: ended only if the newest action on either copy is an End (no Resume
- *   or song after it); a Resume later than the other copy's End wins and the
- *   gap counts as a pause, so the duration loses no minutes. A pause still
- *   open from before the End lasted until it.
- * - A different start (started unread on two devices): the earlier start;
- *   a copy still running is closed by the other's End only if it was last
- *   written before that End (`savedAt`: the saved copy's updated_at; this
- *   device's copy: its newest action), so it couldn't know; written after
- *   it, it is a real Resume and stays running. The time between the earlier
- *   copy's End and the later copy's Start is a pause.
- * - Songs: every song played on either, by when it was played (a song an
- *   older version saved, with no time, right after the timed one before it).
- */
-/**
- * `savedAt`: when the saved copy was written (its updated_at). `cutoff`: the
- * latest moment the other copy can know of (savedAt, or when a message
- * came in): pauses after it are none of its paused time.
+ * - Start: the first one starts it; a later one (a copy started unread on
+ *   another device) after a Pause or an End goes on running, the time in
+ *   between a pause.
+ * - Resume: after a Pause or an End, running again, the time in between a pause.
+ * - A song played: running then. After a Pause it closes it there; after an
+ *   End the copy that played it never heard the End, so it ran on (no pause).
+ * - Pause: paused, if running (a stale Pause never undoes an End).
+ * - End: ended (a pause still open lasted until it); a later End moves it.
+ * - An older build's copy, running, known at a time (its message, its saved
+ *   row), with more paused time than when it paused: its Resume. Of a Pause:
+ *   it resumed at the pause + what it added (by that time at the latest). Of
+ *   an End: only when what it added matches the time since the End (it saved
+ *   its Resume right then, within 2 minutes), as migration 196 checks it: an
+ *   offline older copy with more paused time of its own never undoes an End.
+ * - Paused time without times (older builds) counts once, the part the timed
+ *   pauses it could know of (up to when it was known) don't hold already.
  */
 export interface MergeTimes {
   savedAt?: number;
   cutoff?: number;
 }
 
-export const mergeSessions = (mine: SessionState, saved: SessionState, times?: number | MergeTimes): SessionState => {
-  const { savedAt, cutoff = savedAt } = typeof times === 'number' ? { savedAt: times, cutoff: times } : times ?? {};
-  const same = mine.startedAt === saved.startedAt;
-  const both = [mine, saved];
-  const other = (s: SessionState) => (s === mine ? saved : mine);
-  // What each copy can know of (#296 round 6, Claude): ours, up to when its untimed paused time
-  // came in (a message from an older build); the other, up to its cutoff.
-  const knownUntil = (s: SessionState) => (s === mine ? mine.untimedUntil : cutoff ?? saved.untimedUntil) ?? Infinity;
-  const spans: PauseSpan[] = [...(mine.pauses ?? []), ...(saved.pauses ?? [])];
-  if (!same) {
-    const [early, late] = mine.startedAt < saved.startedAt ? [mine, saved] : [saved, mine];
-    if (early.endedAt !== null && early.endedAt < late.startedAt) spans.push([early.endedAt, late.startedAt]);
-  }
-  const touched = (s: SessionState) => Math.max(lastRun(s), s.pausedAt ?? -Infinity);
-  const ends = both.map((s) => s.endedAt).filter((e): e is number => e !== null);
-  const lastEnd = ends.length ? Math.max(...ends) : null;
-  // Same start: no Resume or song after the End; a copy with paused time it holds no times
-  // for (an older build's Resume leaves no span) counts as written when it was saved (#296
-  // round 5). A different start: the running copy was last written before the End (it can't
-  // know about it, #296 round 4); written after it, it is a real Resume and stays running.
-  const untimed = (s: SessionState) => s.pauses === undefined || untimedPauseMs(s) > 0;
-  const writtenUntil = (s: SessionState) => (s === saved && savedAt !== undefined ? savedAt : touched(s));
-  const runUntil = (s: SessionState) => (s === saved && savedAt !== undefined && untimed(s) ? Math.max(lastRun(s), savedAt) : lastRun(s));
-  const ended =
-    lastEnd !== null &&
-    both.every((s) => s.endedAt !== null || (same ? runUntil(s) : writtenUntil(s)) <= lastEnd);
-  // Paused time a copy holds with no times: the part not covered by the spans it could have
-  // known (up to what it knows of, #296 round 5).
-  const untimedOf = (s: SessionState, timed: PauseSpan[]) =>
-    (s.pauses ?? []).length ? untimedPauseMs(s) : Math.max(0, s.pausedMs - spanMs(clipSpans(timed, knownUntil(s))));
-  const known = unionSpans(spans);
-  // A pause still open on one copy is closed by the other copy's Resume or End after it
-  // (#296 round 4), or by more untimed paused time on a running copy written after it (an
-  // older build's Resume of that pause, #296 round 6: closed, never also left open and
-  // counted twice). Still open on the copy that did the newest thing: the session is paused
-  // since the earliest pause still open on either (two offline pauses at 19:10 and 19:12: 19:10).
-  const newest = ended ? null : both.filter((s) => s.endedAt === null).sort((x, y) => touched(y) - touched(x))[0];
-  const stillOpen: number[] = [];
-  let newestPaused = false;
-  for (const s of both) {
-    if (s.endedAt !== null || s.pausedAt === null) continue;
-    const o = other(s);
-    const P = s.pausedAt;
-    const closers = [...(o.pauses ?? []).map((p) => p[1]), ...(o.endedAt !== null ? [o.endedAt] : [])].filter((t) => t > P);
-    const more = untimedOf(o, known) - untimedOf(s, known);
-    if (same && o.pausedAt === null && o.endedAt === null && more > 0 && knownUntil(o) > P) closers.push(Math.min(P + more, knownUntil(o)));
-    if (closers.length) spans.push([P, Math.min(...closers)]);
-    else {
-      stillOpen.push(P);
-      if (s === newest) newestPaused = true;
+/** What an older build's paused time needs to match the time since an End (ms). */
+const RESUME_MATCH_MS = 2 * 60_000;
+const ORDER: Record<string, number> = { s: 0, r: 1, g: 2, o: 3, p: 4, e: 5 };
+
+const canonLog = (log: SessionEvent[]): SessionEvent[] => {
+  const seen = new Set<string>();
+  const out: SessionEvent[] = [];
+  for (const [k, t] of log) {
+    const id = `${k}${t}`;
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push([k, t]);
     }
   }
-  let pausedAt: number | null = newestPaused ? Math.min(...stillOpen) : null;
-  const pauses = unionSpans(spans);
-  if (pausedAt !== null && pauses.length) pausedAt = Math.max(pausedAt, pauses[pauses.length - 1][1]);
-  // Untimed paused time is added once (the largest), never summed across copies.
-  const uMine = untimedOf(mine, pauses);
-  const uSaved = untimedOf(saved, pauses);
-  const pausedMs = spanMs(pauses) + Math.max(0, uMine, uSaved);
-  const until = uSaved > uMine ? knownUntil(saved) : uMine > 0 ? knownUntil(mine) : Infinity;
-  return {
-    startedAt: Math.min(mine.startedAt, saved.startedAt),
-    pausedMs,
-    pausedAt,
-    endedAt: ended ? lastEnd : null,
-    played: mergePlayed(saved.played, mine.played),
-    pauses,
-    ...(Number.isFinite(until) ? { untimedUntil: until } : {}),
-  };
+  return out.sort((x, y) => x[1] - y[1] || ORDER[x[0]] - ORDER[y[0]]);
 };
 
-/** Spans cut at `until` (the part after it dropped). */
-const clipSpans = (spans: PauseSpan[], until: number): PauseSpan[] =>
-  spans.filter(([a]) => a < until).map(([a, b]) => [a, Math.min(b, until)] as PauseSpan);
-
-/**
- * A message from an older build (no revision, no pause times) that resumed:
- * running, with more paused time than ours while ours is paused or ended.
- * That is a real Resume (#296 round 5): its state is taken, our pause times
- * and songs are kept, and our open pause (or the time since our End) is
- * closed at its start + the paused time it added (by the time it came in at
- * the latest). Null: not one (a stale copy can't undo an End).
- *
- * `base`: our open pause came from that older build's own Pause message,
- * with this much paused time (#296 round 6, Claude): its running message
- * closes it whatever our paused time (it never knew our other pauses), at
- * the pause + what it added (or when it came in).
- */
-export const oldBuildResume = (mine: SessionState, theirs: SessionState, receivedAt: number, base?: number): SessionState | null => {
-  if (mine.startedAt !== theirs.startedAt || theirs.pausedAt !== null || theirs.endedAt !== null) return null;
-  const from = base === undefined ? (mine.pausedAt ?? mine.endedAt) : mine.pausedAt;
-  const delta = theirs.pausedMs - (base ?? mine.pausedMs);
-  if (from === null || (base === undefined && delta <= 0)) return null;
-  const to = delta > 0 ? Math.min(from + delta, receivedAt) : receivedAt;
-  const pauses = unionSpans([...(mine.pauses ?? []), ...(theirs.pauses ?? []), [from, Math.max(from, to)]]);
-  const pausedMs = base === undefined ? Math.max(theirs.pausedMs, spanMs(pauses)) : spanMs(pauses) + untimedPauseMs(mine);
-  return {
-    startedAt: mine.startedAt,
-    pausedMs,
-    pausedAt: null,
-    endedAt: null,
-    played: mergePlayed(mine.played, theirs.played),
-    pauses,
-    untimedUntil: receivedAt,
-  };
+/** One per (when, status), the largest paused time. */
+const canonUntimed = (list: UntimedPause[]): UntimedPause[] => {
+  const by = new Map<string, UntimedPause>();
+  for (const [u, k, st] of list) {
+    const id = `${k}|${st}`;
+    const had = by.get(id);
+    if (!had || u > had[0]) by.set(id, [u, k, st]);
+  }
+  const key = (k: number | null) => (k === null ? Infinity : k);
+  return [...by.values()].sort((x, y) => key(x[1]) - key(y[1]) || x[2].localeCompare(y[2]) || x[0] - y[0]);
 };
 
-/**
- * Every song played on either copy, by when it was played. A song saved by
- * an older build (no time) keeps its place in its list: right after the
- * timed song before it (#296 round 4, Claude).
- */
-const mergePlayed = (first: PlayedSong[], second: PlayedSong[]): PlayedSong[] => {
-  const byId = new Map<string, { song: PlayedSong; key: number; order: number }>();
-  let order = 0;
-  for (const list of [first, second]) {
-    let prev = -Infinity;
-    for (const p of list) {
-      const key = p.at ?? prev;
-      prev = key;
-      const had = byId.get(p.id);
-      if (!had) byId.set(p.id, { song: { ...p }, key, order: order++ });
-      else {
-        // The latest play on either copy is kept too (#296 round 7: the merge stays the same when merged again).
-        const latest = Math.max(playedLast(had.song), playedLast(p));
-        if (p.at !== undefined && (had.song.at === undefined || p.at < had.song.at)) {
-          had.song.at = p.at;
-          had.key = p.at;
-        }
-        if (Number.isFinite(latest) && latest > (had.song.at ?? -Infinity)) had.song.last = latest;
+/** The part of older builds' paused time the timed pauses don't hold (it could know of those up to when it was known). */
+const untimedExtra = (spans: PauseSpan[], untimed: UntimedPause[], until = Infinity): number =>
+  untimed.reduce(
+    (m, [u, k]) => ((k ?? Infinity) <= until ? Math.max(m, u - spanMs(clipSpans(spans, k ?? Infinity))) : m),
+    0,
+  );
+
+/** The session worked out from a copy's (or a merge's) evidence. */
+const derive = (log0: SessionEvent[], untimed0: UntimedPause[], played: PlayedSong[]): SessionState => {
+  const log = canonLog(log0);
+  const untimed = canonUntimed(untimed0);
+  type Ev = { t: number; k: string; u?: number };
+  const evs: Ev[] = log.map(([k, t]) => ({ t, k }));
+  for (const p of played) {
+    for (const t of new Set([p.at, p.last])) if (isTime(t)) evs.push({ t, k: 'g' });
+  }
+  for (const [u, k, st] of untimed) if (st === 'r' && k !== null) evs.push({ t: k, k: 'o', u });
+  evs.sort((x, y) => x.t - y.t || ORDER[x.k] - ORDER[y.k] || (x.u ?? 0) - (y.u ?? 0));
+
+  let status: 'idle' | SessionStatus = 'idle';
+  let since = 0;
+  let startedAt = log.find((e) => e[0] === 's')?.[1] ?? log[0]?.[1] ?? 0;
+  const spans: PauseSpan[] = [];
+  const close = (to: number) => spans.push([since, Math.max(since, to)]);
+  /** An older build's running copy known at `t` with paused time `u`: its Resume, the pause length; or null. */
+  const oldResume = (t: number, u: number): number | null => {
+    const total = spanMs(spans) + untimedExtra(spans, untimed, since);
+    if (status === 'paused') {
+      // Its own Pause (its message or row, right after it): what it had then; otherwise ours then.
+      const own = untimed.filter(([, k, st]) => st === 'p' && k !== null && k >= since && k <= since + RESUME_MATCH_MS);
+      const base = own.length ? Math.max(...own.map((x) => x[0])) : total;
+      const d = u - base;
+      return d > 0 ? Math.min(d, t - since) : null;
+    }
+    let best: number | null = null;
+    for (const c of [total, ...untimed.filter(([, k]) => k !== null && k < t).map((x) => x[0])]) {
+      const d = u - c;
+      if (d <= 0 || Math.abs(since + d - t) > RESUME_MATCH_MS) continue;
+      if (best === null || Math.abs(since + d - t) < Math.abs(since + best - t)) best = d;
+    }
+    return best === null ? null : Math.min(best, t - since);
+  };
+  for (const { t, k, u } of evs) {
+    if (k === 's' || k === 'r') {
+      if (status === 'idle') {
+        status = 'live';
+        startedAt = t;
+      } else if (status === 'paused' || status === 'ended') {
+        close(t);
+        status = 'live';
+      }
+    } else if (k === 'g') {
+      if (status === 'paused') close(t);
+      if (status === 'paused' || status === 'ended') status = 'live';
+    } else if (k === 'p') {
+      if (status === 'live') {
+        status = 'paused';
+        since = t;
+      }
+    } else if (k === 'e') {
+      if (status === 'live') since = t;
+      else if (status === 'paused') {
+        close(t);
+        since = Math.max(since, t);
+      } else if (status === 'ended') since = Math.max(since, t);
+      if (status !== 'idle') status = 'ended';
+    } else if (k === 'o' && (status === 'paused' || status === 'ended') && t > since) {
+      const d = oldResume(t, u!);
+      if (d !== null) {
+        close(since + d);
+        status = 'live';
       }
     }
   }
-  return [...byId.values()].sort((x, y) => x.key - y.key || x.order - y.order).map((e) => e.song);
+  return {
+    startedAt,
+    pausedMs: spanMs(spans) + untimedExtra(spans, untimed),
+    pausedAt: status === 'paused' ? since : null,
+    endedAt: status === 'ended' ? since : null,
+    played,
+    pauses: spans,
+    log,
+    untimed,
+  };
+};
+
+/** A copy's fields, as evidence: what an older build's copy (no log) tells. */
+const fieldEvidence = (s: SessionState, known: number | null): { log: SessionEvent[]; untimed: UntimedPause[] } => {
+  const log: SessionEvent[] = [['s', s.startedAt]];
+  for (const [a, b] of s.pauses ?? []) log.push(['p', a], ['r', b]);
+  if (s.pausedAt !== null) log.push(['p', s.pausedAt]);
+  if (s.endedAt !== null) log.push(['e', s.endedAt]);
+  const st = s.endedAt !== null ? 'e' : s.pausedAt !== null ? 'p' : 'r';
+  return { log, untimed: [[Math.max(0, s.pausedMs), known, st]] };
+};
+
+/** The fields a log gives are the ones the copy has. */
+const sameFields = (a: SessionState, b: SessionState) =>
+  a.startedAt === b.startedAt &&
+  a.pausedMs === b.pausedMs &&
+  a.pausedAt === b.pausedAt &&
+  a.endedAt === b.endedAt &&
+  a.pauses !== undefined &&
+  JSON.stringify(unionSpans(a.pauses)) === JSON.stringify(unionSpans(b.pauses ?? []));
+
+/**
+ * Everything a copy tells. Its log, when its fields are what that log gives;
+ * a copy without one (an older build's) by its fields; a log whose fields
+ * were written over by an older build (196 keeps the log): both.
+ */
+const evidence = (s: SessionState): { log: SessionEvent[]; untimed: UntimedPause[] } => {
+  const known = s.untimedUntil ?? null;
+  if (!s.log) return fieldEvidence(s, known);
+  const own = { log: s.log, untimed: s.untimed ?? [] };
+  if (sameFields(s, derive(own.log, own.untimed, s.played))) return own;
+  const f = fieldEvidence(s, known);
+  return { log: [...own.log, ...f.log], untimed: [...own.untimed, ...f.untimed] };
+};
+
+/** Songs with no time get their place from the song before them in their own list. */
+const placePlayed = (list: PlayedSong[], startedAt: number): PlayedSong[] => {
+  let prev = startedAt;
+  return list.map((p) => {
+    if (p.at === undefined && p.after === undefined) {
+      prev += 1;
+      return { ...p, after: prev };
+    }
+    prev = p.at ?? p.after!;
+    return p;
+  });
+};
+
+/** Every song played on either copy: the first play, the latest, in the order played. */
+const joinPlayed = (lists: PlayedSong[][]): PlayedSong[] => {
+  const byId = new Map<string, PlayedSong>();
+  const lo = (a?: number, b?: number) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
+  for (const list of lists) {
+    for (const p of list) {
+      const had = byId.get(p.id);
+      if (!had) {
+        byId.set(p.id, playedOut({ ...p, last: Number.isFinite(playedLast(p)) && p.at !== undefined && playedLast(p) > p.at ? playedLast(p) : undefined }));
+        continue;
+      }
+      const at = lo(had.at, p.at);
+      const latest = Math.max(playedLast(had), playedLast(p));
+      const title = had.title === p.title ? had.title : [had.title, p.title].filter(Boolean).sort()[0] ?? '';
+      byId.set(
+        p.id,
+        playedOut({
+          id: p.id,
+          title,
+          at,
+          last: at !== undefined && Number.isFinite(latest) && latest > at ? latest : undefined,
+          after: lo(had.after, p.after),
+        }),
+      );
+    }
+  }
+  const key = (p: PlayedSong) => p.at ?? p.after ?? Infinity;
+  return [...byId.values()].sort((x, y) => key(x) - key(y) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+};
+
+/**
+ * Two copies of one occurrence's session: this device's, and the saved one
+ * that moved on meanwhile (another admin, a Start or End whose answer was
+ * lost, a copy started unread elsewhere). Nothing is lost; the rule is above.
+ * `times` (an older build's copy only, without a log): when the saved copy
+ * was known (savedAt: its updated_at; cutoff: when a message came in).
+ */
+export const mergeSessions = (mine: SessionState, saved: SessionState, times?: number | MergeTimes): SessionState => {
+  const known = typeof times === 'number' ? times : times?.cutoff ?? times?.savedAt;
+  const theirs = known !== undefined && saved.untimedUntil === undefined ? { ...saved, untimedUntil: known } : saved;
+  const a = evidence(mine);
+  const b = evidence(theirs);
+  const played = joinPlayed([placePlayed(mine.played, mine.startedAt), placePlayed(saved.played, saved.startedAt)]);
+  return derive([...a.log, ...b.log], [...a.untimed, ...b.untimed], played);
+};
+
+/** The same evidence: nothing in one that the other lacks. */
+export const sameEvidence = (a: SessionState, b: SessionState): boolean => {
+  const x = evidence(a);
+  const y = evidence(b);
+  return (
+    JSON.stringify(canonLog(x.log)) === JSON.stringify(canonLog(y.log)) &&
+    JSON.stringify(canonUntimed(x.untimed)) === JSON.stringify(canonUntimed(y.untimed))
+  );
 };
 
 /** The same session, field by field. */
@@ -417,7 +571,13 @@ export const sameSession = (a: SessionState | null, b: SessionState | null): boo
     a.pausedAt === b.pausedAt &&
     a.endedAt === b.endedAt &&
     a.played.length === b.played.length &&
-    a.played.every((p, i) => p.id === b.played[i].id && p.at === b.played[i].at && playedLast(p) === playedLast(b.played[i])) &&
+    a.played.every(
+      (p, i) =>
+        p.id === b.played[i].id &&
+        p.at === b.played[i].at &&
+        playedLast(p) === playedLast(b.played[i]) &&
+        (p.at !== undefined || p.after === b.played[i].after),
+    ) &&
     JSON.stringify(unionSpans(a.pauses ?? [])) === JSON.stringify(unionSpans(b.pauses ?? [])));
 
 /**

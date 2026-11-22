@@ -134,10 +134,24 @@ vi.mock('../services/songFiles', () => ({
 
 /** What this device keeps offline, per key (offline/storage.ts): an account's songs and live packs. */
 const offline = new Map<string, unknown>();
+/** A slow scan of what is kept offline (the legacy move reads it first): `gate` holds it. */
+const scan = { gate: null as Promise<void> | null, started: false };
 vi.mock('../offline/storage', () => ({
-  listOfflineKeys: async (prefix: string) => [...offline.keys()].filter((k) => k.startsWith(prefix)),
+  listOfflineKeys: async (prefix: string) => {
+    scan.started = true;
+    await scan.gate;
+    return [...offline.keys()].filter((k) => k.startsWith(prefix));
+  },
   getOfflineItem: async (k: string) => offline.get(k) ?? null,
+  clearOfflineCache: async () => {},
 }));
+/** A sign-out that ends this device's session (the failed-sign-out wipe calls it first, #296 round 8). */
+const localSignOut = vi.fn(async (_o?: unknown) => {
+  auth.user = null;
+  return { error: null };
+});
+vi.mock('../supabase', () => ({ supabase: { auth: { signOut: (o: unknown) => localSignOut(o) } } }));
+vi.mock('../appAnalytics', () => ({ ANALYTICS_CONSENT_KEY: 'bw.analytics.consent' }));
 
 import authContext from '../AuthContext.tsx?raw';
 import { audioFailureFor, audioKey, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, legacyAudioSignedIn, looksLikeAudio, playableUrl } from '../regiaAudio';
@@ -804,6 +818,109 @@ describe('#296 round 7 (Claude r6): older copies on a shared device, and cleanup
     // Still listed: its next sign-out deletes them.
     await signOutHere();
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+});
+
+describe('#296 round 8: sign-out, the legacy move, a full storage and other accounts', () => {
+  it('Codex r8 B2: a sign-out while the legacy move scans the songs: nothing it moves survives, signed out nothing is found', async () => {
+    localStorage.clear();
+    ownSongs();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
+    let release!: () => void;
+    scan.gate = new Promise<void>((r) => (release = r));
+    scan.started = false;
+    const launch = finishPendingAudioCleanup();
+    await vi.waitFor(() => expect(scan.started).toBe(true));
+    auth.user = null;
+    const out = clearDownloadedAudio();
+    release();
+    scan.gate = null;
+    await launch;
+    await out;
+    expect([...files.keys()].filter((f) => f.includes(k))).toEqual([]);
+    expect(localStorage.getItem('bw-regia-audio:owner')).toBeNull();
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+
+  it('Codex r8 B3 / Claude r7 M-b: a sign-out that threw with the session still valid: the local sign-out first, then its recordings go (cleanup not mocked)', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    const k = await audioKey(DRIVE);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-a/${k}`)).toBe(true);
+    const { wipeAfterFailedSignOut } = await import('../signOutWipe');
+    await wipeAfterFailedSignOut();
+    expect(localSignOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect([...files.keys()].filter((f) => f.includes(k))).toEqual([]);
+  });
+
+  it('Codex r8 B4: the storage is full, the cleanup mark can’t be written: the recordings are still deleted, nothing throws', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    const k = await audioKey(DRIVE);
+    const real = localStorage.setItem.bind(localStorage);
+    const full = vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, v: string) => {
+      if (key === 'bw-regia-audio:cleanup-pending') throw new DOMException('quota', 'QuotaExceededError');
+      return real(key, v);
+    });
+    try {
+      auth.user = null;
+      await expect(clearDownloadedAudio()).resolves.toBeUndefined();
+      expect([...files.keys()].filter((f) => f.includes(k))).toEqual([]);
+      expect(localStorage.getItem('bw-regia-audio:owners')).toBeNull();
+    } finally {
+      full.mockRestore();
+    }
+  });
+
+  it('Codex r8 B4: full storage and the deletion fails: the account stays on the owner list until a later cleanup deletes it', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    const k = await audioKey(DRIVE);
+    const real = localStorage.setItem.bind(localStorage);
+    const full = vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, v: string) => {
+      if (key === 'bw-regia-audio:cleanup-pending') throw new DOMException('quota', 'QuotaExceededError');
+      return real(key, v);
+    });
+    try {
+      // Its folder can't be deleted this time.
+      rmdir.mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
+        if (o.path.includes('admin-a')) throw new Error('busy');
+        for (const f of [...files.keys()]) if (o.recursive && f.startsWith(`${key(o)}/`)) files.delete(f);
+      });
+      auth.user = null;
+      await clearDownloadedAudio();
+      expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-a/${k}`)).toBe(true);
+      expect(JSON.parse(localStorage.getItem('bw-regia-audio:owners')!)).toContain('admin-a');
+    } finally {
+      full.mockRestore();
+      rmdir.mockReset();
+      rmdir.mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
+        for (const f of [...files.keys()]) if (o.recursive && f.startsWith(`${key(o)}/`)) files.delete(f);
+      });
+    }
+    // Someone else signs in: admin-a's recordings go (the owner list said so), theirs are kept.
+    auth.user = 'member-2';
+    expect(await downloadAudio(SECOND)).toEqual({ ok: true });
+    await legacyAudioSignedIn();
+    expect([...files.keys()].filter((f) => f.includes('admin-a'))).toEqual([]);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/member-2/${await audioKey(SECOND)}`)).toBe(true);
+    expect(JSON.parse(localStorage.getItem('bw-regia-audio:owners')!)).toEqual(['member-2']);
+  });
+
+  it('Claude r7 extra: a sign-in deletes the recordings of other accounts still listed here, never its own', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    // admin-a's session ended elsewhere (no sign-out ran here); member-2 signs in.
+    auth.user = 'member-2';
+    expect(await downloadAudio(SECOND)).toEqual({ ok: true });
+    await legacyAudioSignedIn();
+    expect([...files.keys()].filter((f) => f.includes('admin-a'))).toEqual([]);
+    expect([...files.keys()].filter((f) => f.includes('member-2'))).toHaveLength(1);
   });
 });
 

@@ -210,6 +210,17 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     expect(dismissRejected).toHaveBeenCalledWith(rejectedKey(refused));
   });
 
+  it('#296 round 8 (Codex r8 M2): a refused note pinned to a lyric line shows and copies the line; two versions that differ only by line are two entries', () => {
+    const a = note({ id: 'n9', status: 'open', preset: 'tempo', section: null, line: 'Paper boats on the river', body: 'Rushes here', markedAtS: null });
+    const b = { ...a, line: 'Sinking slow' };
+    expect(rejectedKey(a)).not.toBe(rejectedKey(b));
+    renderLive(controls([], { rejected: [a, b], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).getByText('Paper Boats · Tempo · “Paper boats on the river” · Rushes here')).toBeInTheDocument();
+    expect(within(list).getByText('Paper Boats · Tempo · “Sinking slow” · Rushes here')).toBeInTheDocument();
+  });
+
   it('#296 round 3: the refused notes read as a status (not an alert), each button names its note', () => {
     const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
     renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));

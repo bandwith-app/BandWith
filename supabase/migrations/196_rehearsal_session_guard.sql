@@ -28,31 +28,43 @@
 -- app's paused_ms minus the pause times is exactly what they added. A write
 -- that has summary.pauses (this build) replaces them.
 --
--- An End stays (#296 round 6): a leader on those builds doesn't hear another
--- admin's End, and its next save (a song played) upserts its running copy,
--- which would undo the End for everyone. Skipped when it reopens an ended
--- session with no summary.pauses (those builds) and no more paused time than
--- saved. Their real Resume after the End always adds the gap to paused_ms,
--- so it still goes through; this build always writes summary.pauses. Known
--- limit: an older build's stale running copy over a Pause can't be told
--- apart from its real Resume here (both clear paused_at, neither has pause
--- times), so that one is still written; this build's devices merge it.
+-- An End stays (#296 round 6, round 8): a leader on those builds doesn't
+-- hear another admin's End, and its next save (a song played) upserts its
+-- running copy, which would undo the End for everyone; an older admin that
+-- paused offline before the End has more paused time, so no paused-time rule
+-- can tell its copy apart. So an ended row stays ended for every plain
+-- write: its End, pause fields and paused time stay as saved, the rest of
+-- the write (the songs it adds) goes in, no error. Two ways reopen it:
+--   * this build's Resume after an End: only through
+--     bw_save_rehearsal_session() below (sets bw.rehearsal_reopen for its one
+--     UPDATE, on the revision it read), which only this build calls;
+--   * an older build's real Resume of the End (#296 round 8, Claude M-c): it
+--     adds the gap since the End to its own paused time and saves right
+--     away, so its paused_ms minus its share before (the row's paused_ms, or
+--     one of the older builds' paused times this build saved in
+--     summary.untimed) matches now() - ended_at, within 2 minutes. An
+--     offline copy's own pauses match that only by chance. Known limit: an
+--     older build's Resume saved later than 2 minutes after it (offline)
+--     stays ended; its device shows the saved session at the next open.
 --
 -- Songs played (#296 round 7): those builds' leaders don't hear the channel,
 -- so their save (an End, a Resume) carries only the songs they saw; over a
 -- row this build wrote, the saved songs stay and theirs are added (by id).
+-- The rest this build keeps in the summary (pauses, log, untimed: #296 round
+-- 8) stays as saved too.
 --
 -- Only the app's writes are checked (auth.uid() set): an operator's write
 -- (SQL editor, service_role) goes through as written (#296 round 7).
 --
--- Known limit, accepted as rare: an older build whose clock is behind the
--- clock of the admin who wrote the End by more than the wait before its
--- Resume adds no paused time to it (max(0, now - ended_at)), so that Resume
--- and its saves until its own End are skipped. Phones keep their clocks in
--- sync; its device shows the saved session at the next open.
+-- Known limit, accepted as rare: an older build whose clock is off from the
+-- server's by more than 2 minutes has its Resume after an End kept ended
+-- (the gap it adds doesn't match). Phones keep their clocks in sync; its
+-- device shows the saved session at the next open.
 --
--- Same function as 131 plus these checks. No new columns, grants or
--- policies. Idempotent.
+-- Same function as 131 plus these checks, and one new function
+-- (bw_save_rehearsal_session: SECURITY INVOKER, so 131's grants and policies
+-- apply; EXECUTE for authenticated only). No new columns or policies.
+-- Idempotent.
 
 BEGIN;
 
@@ -61,6 +73,11 @@ RETURNS trigger
 LANGUAGE plpgsql
 SET search_path TO 'public'
 AS $$
+DECLARE
+  v_old_played jsonb;
+  v_played jsonb;
+  v_old_build boolean;
+  v_gap numeric;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.started_by := auth.uid();
@@ -74,30 +91,44 @@ BEGIN
         -- Another start over a saved session: skipped, the saved one stays.
         RETURN NULL;
       END IF;
+      v_old_build := COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true);
+      -- The songs played: the saved ones first, then the ones this write adds (by id).
+      v_old_played := CASE WHEN jsonb_typeof(OLD.summary -> 'played') = 'array' THEN OLD.summary -> 'played' ELSE '[]'::jsonb END;
+      v_played := v_old_played || COALESCE((
+        SELECT jsonb_agg(p ORDER BY ord)
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.summary -> 'played') = 'array' THEN NEW.summary -> 'played' ELSE '[]'::jsonb END)
+          WITH ORDINALITY AS t(p, ord)
+        WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_old_played) AS o(q) WHERE o.q ->> 'id' = t.p ->> 'id')
+      ), '[]'::jsonb);
       IF OLD.ended_at IS NOT NULL AND NEW.ended_at IS NULL
-         AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true)
-         AND NEW.paused_ms <= OLD.paused_ms THEN
-        -- An older build that missed the End saving its running copy: skipped, the End stays.
-        RETURN NULL;
+         AND COALESCE(current_setting('bw.rehearsal_reopen', true), '') <> 'on' THEN
+        -- A plain write over an ended session (#296 round 8): it stays ended, unless it is an
+        -- older build's real Resume of that End (the gap it added matches the time since it).
+        v_gap := extract(epoch FROM (now() - OLD.ended_at)) * 1000;
+        IF NOT (v_old_build AND EXISTS (
+          SELECT 1
+          FROM (
+            SELECT OLD.paused_ms::numeric AS share
+            UNION ALL
+            SELECT (u ->> 0)::numeric
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(OLD.summary -> 'untimed') = 'array' THEN OLD.summary -> 'untimed' ELSE '[]'::jsonb END) AS x(u)
+            WHERE jsonb_typeof(u) = 'array' AND jsonb_typeof(u -> 0) = 'number'
+          ) c
+          WHERE NEW.paused_ms - c.share > 0 AND abs(NEW.paused_ms - c.share - v_gap) <= 120000
+        )) THEN
+          NEW.ended_at := OLD.ended_at;
+          NEW.paused_at := OLD.paused_at;
+          NEW.paused_ms := OLD.paused_ms;
+          NEW.summary := CASE WHEN jsonb_typeof(OLD.summary) = 'object' THEN OLD.summary ELSE '{}'::jsonb END
+            || jsonb_build_object('played', v_played);
+        END IF;
       END IF;
-      IF jsonb_typeof(OLD.summary -> 'pauses') = 'array'
-         AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true) THEN
-        -- An older build's save over a row this build wrote: the pause times stay, and the
-        -- songs played are the union (saved ones first, then the ones it adds).
+      IF jsonb_typeof(OLD.summary -> 'pauses') = 'array' AND v_old_build THEN
+        -- An older build's save over a row this build wrote: what this build keeps in the summary
+        -- (pause times, log, untimed) stays, and the songs played are the union.
         NEW.summary := CASE WHEN jsonb_typeof(NEW.summary) = 'object' THEN NEW.summary ELSE '{}'::jsonb END
-          || jsonb_build_object(
-            'pauses', OLD.summary -> 'pauses',
-            'played',
-            CASE WHEN jsonb_typeof(OLD.summary -> 'played') = 'array' THEN OLD.summary -> 'played' ELSE '[]'::jsonb END
-              || COALESCE((
-                SELECT jsonb_agg(p ORDER BY ord)
-                FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.summary -> 'played') = 'array' THEN NEW.summary -> 'played' ELSE '[]'::jsonb END)
-                  WITH ORDINALITY AS t(p, ord)
-                WHERE NOT EXISTS (
-                  SELECT 1
-                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(OLD.summary -> 'played') = 'array' THEN OLD.summary -> 'played' ELSE '[]'::jsonb END) AS o(q)
-                  WHERE o.q ->> 'id' = t.p ->> 'id')
-              ), '[]'::jsonb));
+          || (OLD.summary - 'v' - 'durationS' - 'played' - 'total')
+          || jsonb_build_object('played', v_played);
       END IF;
     END IF;
     NEW.started_by := OLD.started_by;
@@ -114,5 +145,42 @@ $$;
 DROP TRIGGER IF EXISTS rehearsal_sessions_guard ON public.rehearsal_sessions;
 CREATE TRIGGER rehearsal_sessions_guard BEFORE INSERT OR UPDATE ON public.rehearsal_sessions
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_rehearsal_session_guard();
+
+-- This build's save of a running session on top of the revision it read
+-- (#296 round 8): the one way to reopen an ended one (its Resume after the
+-- End). The caller's own rights apply (SECURITY INVOKER: 131's column grants
+-- and policies, so admins only). NULL: not written (the row moved on, or
+-- another start was skipped), the app reads it again and merges.
+CREATE OR REPLACE FUNCTION public.bw_save_rehearsal_session(
+  p_event_id uuid,
+  p_occurrence_date date,
+  p_rev timestamptz,
+  p_started_at timestamptz,
+  p_paused_ms bigint,
+  p_paused_at timestamptz,
+  p_ended_at timestamptz,
+  p_summary jsonb
+)
+RETURNS timestamptz
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_rev timestamptz;
+BEGIN
+  PERFORM set_config('bw.rehearsal_reopen', 'on', true);
+  UPDATE public.rehearsal_sessions
+     SET started_at = p_started_at, paused_ms = p_paused_ms, paused_at = p_paused_at,
+         ended_at = p_ended_at, summary = p_summary
+   WHERE event_id = p_event_id AND occurrence_date = p_occurrence_date AND updated_at = p_rev
+  RETURNING updated_at INTO v_rev;
+  PERFORM set_config('bw.rehearsal_reopen', '', true);
+  RETURN v_rev;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bw_save_rehearsal_session(uuid, date, timestamptz, timestamptz, bigint, timestamptz, timestamptz, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_save_rehearsal_session(uuid, date, timestamptz, timestamptz, bigint, timestamptz, timestamptz, jsonb) TO authenticated;
 
 COMMIT;

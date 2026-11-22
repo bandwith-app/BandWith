@@ -418,3 +418,99 @@ describe('#296 round 5 (Claude): a refused note kept here never blocks or loses 
     dismissRejected(ME, 'n1');
   });
 });
+
+// ------------------------------------------------- #296 round 8 (Codex r8 B1) --
+
+/** A localStorage that holds `limit` characters at most (keys and values), like a full phone. */
+const withQuota = (limit: number) => {
+  const real = localStorage.setItem.bind(localStorage);
+  const used = (skip: string) => {
+    let n = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (k !== skip) n += k.length + (localStorage.getItem(k) ?? '').length;
+    }
+    return n;
+  };
+  return vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+    if (used(k) + k.length + v.length > limit) throw new DOMException('quota', 'QuotaExceededError');
+    return real(k, v);
+  });
+};
+const refuseAll = () => ({
+  save: vi.fn(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 })),
+  remove: vi.fn(async () => ({ error: null })),
+  practised: vi.fn(async () => ({ error: null })),
+  ok: vi.fn(async () => ({ error: null })),
+});
+
+describe('#296 round 8 (Codex r8 B1): refused notes live in the list sign-out keeps, per account', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    clearNoteBackoff();
+  });
+
+  it('storage nearly full: the note leaves the outbox first, so its copy fits in the refused list (not left in the outbox)', async () => {
+    const long = 'Count the outro in four, then hold the last chord. '.repeat(40);
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: long }), before: [] }]);
+    // Room for one copy of the note, not two.
+    const quota = withQuota(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)!.length + 1500);
+    try {
+      await flushOutbox(ME, refuseAll());
+      expect(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)).toBeNull();
+      expect(readRejected(ME).map((n) => [n.id, n.body, n.spaceFull])).toEqual([['n1', long, undefined]]);
+    } finally {
+      quota.mockRestore();
+    }
+  });
+
+  it('an ordinary sign-out (the real clearOfflineCache of this build) keeps each account’s refused notes; the cache goes', async () => {
+    const { clearOfflineCache } = await import('../offline/storage');
+    const { keepingSignOutLists } = await import('../signOutWipe');
+    await refuseOne(ME, 'Outro: four bars');
+    await refuseOne('other-uid', 'Intro: drums only');
+    localStorage.setItem(`bw:${ME}:global:songs`, '[]');
+    await keepingSignOutLists(() => clearOfflineCache());
+    expect(localStorage.getItem(`bw:${ME}:global:songs`)).toBeNull();
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['Outro: four bars']);
+    expect(readRejected('other-uid').map((n) => n.body)).toEqual(['Intro: drums only']);
+    expect(readRejected('someone-else')).toEqual([]);
+  });
+
+  it('a refused note left in the outbox while storage was full moves to the refused list at sign-out, then stays', async () => {
+    const { clearOfflineCache } = await import('../offline/storage');
+    const { keepingSignOutLists } = await import('../signOutWipe');
+    writeOutbox(ME, [{ kind: 'save', note: note('n2', { body: 'Bridge: half time' }), before: [], refused: true }]);
+    await keepingSignOutLists(() => clearOfflineCache());
+    expect(readRejected(ME).map((n) => [n.id, n.body, n.spaceFull])).toEqual([['n2', 'Bridge: half time', undefined]]);
+    expect(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)).toBeNull();
+  });
+
+  it('AuthContext: sign-out clears the offline cache through keepingSignOutLists', async () => {
+    const auth = (await import('../AuthContext.tsx?raw')).default as string;
+    const body = auth.slice(auth.indexOf('const handleSignOut = async'), auth.indexOf('const handleResetPassword'));
+    expect(body).toMatch(/keepingSignOutLists\(\(\) => clearOfflineCache\(\)\)/);
+  });
+});
+
+// With #292 on the base: its counts (sign-out sheet) see a refused note as refused, never as waiting.
+const liveOutbox292 = import.meta.glob('../liveOutbox.ts', { eager: true }) as Record<string, Record<string, unknown>>;
+const counts292 = Object.values(liveOutbox292)[0] as
+  | { waitingChanges?: (u: string) => number; refusedRehearsalNotes?: (u: string) => number }
+  | undefined;
+describe.runIf(has292 && typeof counts292?.waitingChanges === 'function')('#296 round 8: with #292 merged, its sign-out counts', () => {
+  it('a refused note: 0 waiting, 1 refused; kept by the real sign-out clear; full storage the same once settled', async () => {
+    localStorage.clear();
+    clearNoteBackoff();
+    await refuseOne(ME, 'Outro: four bars');
+    expect(counts292!.waitingChanges!(ME)).toBe(0);
+    expect(counts292!.refusedRehearsalNotes!(ME)).toBe(1);
+    const { clearOfflineCache } = Object.values(storage292)[0] as { clearOfflineCache: () => Promise<void> };
+    const { keepingSignOutLists } = await import('../signOutWipe');
+    writeOutbox(ME, [{ kind: 'save', note: note('n3', { body: 'Bridge: half time' }), before: [], refused: true }]);
+    expect(counts292!.waitingChanges!(ME)).toBe(0);
+    await keepingSignOutLists(() => clearOfflineCache());
+    expect(counts292!.refusedRehearsalNotes!(ME)).toBe(2);
+    expect(readRejected(ME).map((n) => n.body).sort()).toEqual(['Bridge: half time', 'Outro: four bars']);
+  });
+});

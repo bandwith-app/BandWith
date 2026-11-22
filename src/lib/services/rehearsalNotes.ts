@@ -58,17 +58,20 @@ export async function saveNote(note: RehearsalNote, before: string[]): Promise<W
   delete changes.band_id;
   delete changes.event_id;
   delete changes.occurrence_date;
-  const upd = await supabase.from('rehearsal_notes').update(changes).eq('id', note.id).select('id');
+  const update = () => supabase.from('rehearsal_notes').update(changes).eq('id', note.id).select('id');
+  const upd = await update();
   if (upd.error) return result(upd);
   if (!upd.data?.length) {
     const ins = await supabase.from('rehearsal_notes').insert(row);
-    // Already there, yet the update found no row it may change: this account may no longer
-    // edit it (admin rights gone meanwhile, someone else's note). A refusal for good, never a
-    // success: the outbox keeps its text in the refused list (#296 round 5).
     if (ins.error && (ins.error as { code?: string }).code === '23505') {
-      return { error: { code: '42501', message: 'rehearsal_note_not_editable' }, status: 403 };
-    }
-    if (ins.error) return result(ins);
+      // Already there. Saved meanwhile by this same change from another tab (both replayed
+      // it, #296 round 8): the update now finds it, a success. Still no row it may change:
+      // this account may no longer edit it (admin rights gone meanwhile, someone else's
+      // note), a refusal for good: the outbox keeps its text in the refused list (round 5).
+      const again = await update();
+      if (again.error) return result(again);
+      if (!again.data?.length) return { error: { code: '42501', message: 'rehearsal_note_not_editable' }, status: 403 };
+    } else if (ins.error) return result(ins);
   }
   const want = note.scope === 'members' ? note.assignees.map((a) => a.userId) : [];
   const gone = before.filter((u) => !want.includes(u));

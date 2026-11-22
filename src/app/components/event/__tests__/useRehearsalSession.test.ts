@@ -10,7 +10,7 @@ vi.mock('@/lib/services/rehearsalSessions', () => ({
 
 import { useRehearsalSession } from '../useRehearsalSession';
 import type { StageSessionBridge } from '../useStageLive';
-import { endSession, fromRow, startSession, toRow, type SessionRow } from '@/lib/rehearsalSession';
+import { endSession, fromRow, markPlayed, startSession, toRow, type SessionRow } from '@/lib/rehearsalSession';
 
 const CTX = { bandId: 'band-1', eventId: 'event-1', date: '2026-11-19' };
 
@@ -167,7 +167,7 @@ describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
 
   it('#3: a change from a device that missed the end is checked against the saved revision; the saved end wins', async () => {
     fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
-    saveMock.mockResolvedValue({ error: null, conflict: true });
+    saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: 'r3' });
     const { result } = setup({ currentSong: null });
     await waitFor(() => expect(result.current.status).toBe('live'));
     // Meanwhile the other admin ended it (this device missed the message).
@@ -176,8 +176,11 @@ describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
     await waitFor(() => expect(saveMock).toHaveBeenCalled());
     expect(saveMock.mock.calls[0][1]).toBe('r1');
     await waitFor(() => expect(result.current.status).toBe('ended'));
-    expect(result.current.unsaved).toBe(false);
-    expect(saveMock).toHaveBeenCalledTimes(1);
+    // The stale Pause doesn't undo the End; it is saved with it on top of r2 (#296 round 8: every
+    // copy keeps all that was done, so all devices merge to the same session later too).
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    expect(saveMock.mock.calls.map((c) => c[1])).toEqual(['r1', 'r2']);
+    expect((saveMock.mock.calls[1][0] as SessionRow).ended_at).not.toBeNull();
   });
 
   it('the revision moves on with each save: the next change is checked against it', async () => {
@@ -388,10 +391,11 @@ describe('#296 round 4: a late message never undoes a saved End', () => {
   });
 });
 
-describe('#296 round 4: a conflict merge knows when the saved copy was written', () => {
-  it('started here unread and ended offline; the saved one (another start) was written after that End: it stays running', async () => {
+describe('#296 round 4: a conflict merge keeps a copy that ran on after the End', () => {
+  it('started here unread and ended offline; the saved one (another start) played a song after that End: it stays running', async () => {
     const T0 = Date.now() - 90 * 60_000;
-    const savedLive = startSession(T0);
+    // #296 round 8: what it did after the End decides (a song at 1:10), not when it was saved.
+    const savedLive = markPlayed(startSession(T0), { id: 's7', title: 'Harbor Lights' }, T0 + 70 * 60_000);
     fetchMock.mockResolvedValue(undefined);
     saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: new Date().toISOString() });
     const { result } = setup({ currentSong: null });
@@ -437,13 +441,25 @@ describe('#296 round 5: an older build’s Resume on the channel', () => {
   }
 
   it('an old build’s Resume after our End: running again, the duration keeps every minute', async () => {
-    const ended = endSession(live, T0 + 20 * 60_000);
+    // Ended 5 minutes ago; the old build's Resume adds those 5 minutes (#296 round 8: it must match).
+    const endAt = Date.now() - 5 * 60_000;
+    const ended = endSession(live, endAt);
     fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r1' });
     const { result, bridge } = setup({ isLeader: false, currentSong: null });
     await waitFor(() => expect(result.current.status).toBe('ended'));
     act(() => bridge.current.receive?.(oldMsg({ ...live, pausedMs: 5 * 60_000, pauses: undefined })));
     expect(result.current.status).toBe('live');
-    expect(result.current.state?.pauses).toEqual([[T0 + 20 * 60_000, T0 + 25 * 60_000]]);
+    expect(result.current.state?.pauses).toEqual([[endAt, endAt + 5 * 60_000]]);
+  });
+
+  it('Codex r8 B5: an offline old build’s copy with more paused time of its own does not undo our End', async () => {
+    const ended = endSession(live, Date.now() - 5 * 60_000);
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r1' });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    // It paused 12 minutes before our End, offline, and comes back running.
+    act(() => bridge.current.receive?.(oldMsg({ ...live, pausedMs: 12 * 60_000, pauses: undefined })));
+    expect(result.current.status).toBe('ended');
   });
 });
 

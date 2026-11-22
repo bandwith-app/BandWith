@@ -8,7 +8,6 @@ import {
   markPlayed,
   mergeSessions,
   occurrenceDate,
-  oldBuildResume,
   parseSummary,
   pauseSession,
   pickSession,
@@ -121,6 +120,8 @@ describe('rehearsal session: summary', () => {
       played: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
       total: 5,
       pauses: [[T0 + 30 * MIN, T0 + 40 * MIN]],
+      // What was done, in order (#296 round 8): how copies merge.
+      log: [['s', T0], ['p', T0 + 30 * MIN], ['r', T0 + 40 * MIN], ['e', T0 + 100 * MIN]],
     });
   });
 
@@ -178,7 +179,7 @@ describe('rehearsal session: saved row', () => {
       paused_at: new Date(T0 + 10 * MIN).toISOString(),
       ended_at: null,
     });
-    expect(row.summary).toEqual({ v: 1, durationS: 600, played: [{ id: 'a', title: 'A' }], total: 4, pauses: [] });
+    expect(row.summary).toEqual({ v: 1, durationS: 600, played: [{ id: 'a', title: 'A' }], total: 4, pauses: [], log: [['s', T0], ['p', T0 + 10 * MIN]] });
     expect(fromRow(row)).toEqual(s);
   });
 
@@ -212,7 +213,9 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
     const m = mergeSessions(mine, saved);
     expect(m.startedAt).toBe(T0);
     expect(m.endedAt).toBe(T0 + 40 * MIN);
-    expect(m.played.map((p) => p.id)).toEqual(['s1', 's3', 's2']);
+    // No times: each after the song before it in its own list (s2 and s3 tie: by id, the same both ways).
+    expect(m.played.map((p) => p.id)).toEqual(['s1', 's2', 's3']);
+    expect(mergeSessions(saved, mine).played.map((p) => p.id)).toEqual(['s1', 's2', 's3']);
   });
 
   it('an end saved elsewhere stays, a stale pause does not undo it (the pause lasted until the end)', () => {
@@ -243,7 +246,9 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
 
   it('nothing new on this device: the saved one as it is', () => {
     const saved = endSession({ ...live, played: [A, B] }, T0 + 30 * MIN);
-    expect(mergeSessions(live, saved)).toEqual(saved);
+    const m = mergeSessions(live, saved);
+    expect(sameSession(m, { ...saved, played: m.played })).toBe(true);
+    expect(m.played.map((p) => p.id)).toEqual(['s1', 's2']);
   });
 });
 
@@ -355,13 +360,14 @@ describe('#296 round 4: mixed builds and open pauses', () => {
     expect(elapsedSeconds(m, T0 + 40 * MIN)).toBe(30 * 60);
   });
 
-  it('Claude: different starts, one copy ended: it wins over the running copy saved before that End, not over one saved after it', () => {
+  it('Claude: different starts, one copy ended: it wins over the running copy that did nothing after it, not over one that played on', () => {
     const ended = endSession(startSession(T0), T0 + 60 * MIN);
     const running = startSession(T0 + 5 * MIN);
-    // Saved at 0:50, before the End: it couldn't know.
+    // Nothing done after the End: it couldn't know (#296 round 8: when it was saved no longer decides).
     expect(sessionStatus(mergeSessions(ended, running, T0 + 50 * MIN))).toBe('ended');
-    // Saved at 1:10, after the End: a real Resume, still running.
-    expect(sessionStatus(mergeSessions(ended, running, T0 + 70 * MIN))).toBe('live');
+    expect(sessionStatus(mergeSessions(ended, running, T0 + 70 * MIN))).toBe('ended');
+    // A song played at 1:10, after the End: it ran on, still running.
+    expect(sessionStatus(mergeSessions(ended, markPlayed(running, B, T0 + 70 * MIN)))).toBe('live');
   });
 
   it('Claude: a song an older build saved (no time) keeps its place, after the timed song before it', () => {
@@ -394,28 +400,32 @@ describe('#296 round 5: older builds and open pauses', () => {
   it('Claude: same start, an older build’s copy with paused time it has no times for, saved after our End: its Resume counts', () => {
     const live = startSession(T0);
     const ended = endSession(live, T0 + 30 * MIN);
-    // The old build resumed (paused_ms grew, no span) and saved at 0:40.
+    // The old build resumed at 0:35 (paused_ms grew by the 5 minutes since the End, no span) and saved it then.
     const old = { ...live, pausedMs: 5 * MIN, pauses: undefined };
-    expect(sessionStatus(mergeSessions(ended, old, { savedAt: T0 + 40 * MIN }))).toBe('live');
+    expect(sessionStatus(mergeSessions(ended, old, { savedAt: T0 + 35 * MIN }))).toBe('live');
+    // Saved at 0:40, 10 minutes after the End with 5 minutes paused: not its Resume of this End (#296 round 8, as 196 checks it).
+    expect(sessionStatus(mergeSessions(ended, old, { savedAt: T0 + 40 * MIN }))).toBe('ended');
     // Nothing untimed and nothing done after the End: still ended.
     expect(sessionStatus(mergeSessions(ended, { ...live, pauses: [] }, { savedAt: T0 + 40 * MIN }))).toBe('ended');
   });
 
   it('Claude blocker: an older build’s Resume message (more paused time, no times) closes our pause by what it added', () => {
     const paused = pauseSession(startSession(T0), T0 + 10 * MIN);
-    const theirs = { ...startSession(T0), pausedMs: 4 * MIN, pauses: undefined };
-    const r = oldBuildResume(paused, theirs, T0 + 20 * MIN)!;
+    const theirs = { ...startSession(T0), pausedMs: 4 * MIN, pauses: undefined, log: undefined };
+    const r = mergeSessions(paused, theirs, { cutoff: T0 + 20 * MIN });
     expect(sessionStatus(r)).toBe('live');
     expect(r.pauses).toEqual([[T0 + 10 * MIN, T0 + 14 * MIN]]);
     expect(elapsedSeconds(r, T0 + 20 * MIN)).toBe(16 * 60);
-    // After our End: running again, the gap is a pause, no minute lost.
+    // After our End: running again when what it added is the time since the End, the gap a pause.
     const ended = endSession(startSession(T0), T0 + 30 * MIN);
-    const back = oldBuildResume(ended, { ...startSession(T0), pausedMs: 6 * MIN, pauses: undefined }, T0 + 40 * MIN)!;
+    const old6 = { ...startSession(T0), pausedMs: 6 * MIN, pauses: undefined, log: undefined };
+    const back = mergeSessions(ended, old6, { cutoff: T0 + 36 * MIN });
     expect(sessionStatus(back)).toBe('live');
     expect(elapsedSeconds(back, T0 + 40 * MIN)).toBe(34 * 60);
+    // Came in at 0:40 with 6 minutes added: not a Resume of this End (#296 round 8, B5: an End stays).
+    expect(sessionStatus(mergeSessions(ended, old6, { cutoff: T0 + 40 * MIN }))).toBe('ended');
     // A stale message (no more paused time) is not a Resume, and can't undo the End.
-    expect(oldBuildResume(ended, { ...startSession(T0), pauses: undefined }, T0 + 40 * MIN)).toBeNull();
-    expect(sessionStatus(mergeSessions(ended, { ...startSession(T0), pauses: undefined }, { cutoff: T0 + 40 * MIN }))).toBe('ended');
+    expect(sessionStatus(mergeSessions(ended, { ...startSession(T0), pauses: undefined, log: undefined }, { cutoff: T0 + 40 * MIN }))).toBe('ended');
   });
 });
 
@@ -426,9 +436,9 @@ describe('#296 round 6: open pauses and untimed paused time', () => {
   it('Codex r7 #4: our Pause saved but its answer lost, then an older build resumed 5 min later: one closed pause, live, 5 min (never 10)', () => {
     const paused = pauseSession(startSession(0), 10 * M);
     // The server: the older build read our pause and resumed at 15 (196 carries pauses: []).
-    const savedPauses = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M })!;
+    const savedPauses = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M, updated_at: new Date(15 * M + 500).toISOString() })!;
     // ... and the same, saved before 196 carried anything (no pause times at all).
-    const savedNoArray = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M, summary: { v: 1, durationS: 0, played: [], total: 3 } })!;
+    const savedNoArray = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M, summary: { v: 1, durationS: 0, played: [], total: 3 }, updated_at: new Date(15 * M + 500).toISOString() })!;
     for (const saved of [savedPauses, savedNoArray]) {
       const m = mergeSessions(paused, saved, 15 * M + 500);
       expect(sessionStatus(m)).toBe('live');
@@ -460,13 +470,20 @@ describe('#296 round 6: open pauses and untimed paused time', () => {
 
   it('Claude r5 #3: our open pause came from an older build’s Pause: its Resume closes it whatever our paused time', () => {
     // Ours: the new admin's pause 20–25, then the older build's Pause at 30 (it never knew 20–25; its paused time 0).
-    const mine: SessionState = { ...startSession(0), pausedMs: 5 * M, pauses: [[20 * M, 25 * M]], pausedAt: 30 * M };
-    const theirs: SessionState = { ...startSession(0), pausedMs: 3 * M, pauses: undefined };
-    expect(oldBuildResume(mine, theirs, 34 * M)).toBeNull();
-    const r = oldBuildResume(mine, theirs, 34 * M, 0)!;
+    const newPause = resumeSession(pauseSession(startSession(0), 20 * M), 25 * M);
+    const oldRow = (pausedAt: string | null, pausedMs: number) => ({
+      started_at: new Date(0).toISOString(), paused_ms: pausedMs, paused_at: pausedAt, ended_at: null,
+      summary: { v: 1, durationS: 0, played: [], total: 3 },
+    });
+    const mine = mergeSessions(newPause, fromRow(oldRow(new Date(30 * M).toISOString(), 0), 30 * M)!);
+    expect(sessionStatus(mine)).toBe('paused');
+    // Its Resume (3 minutes added) at 0:34.
+    const r = mergeSessions(mine, fromRow(oldRow(null, 3 * M), 34 * M)!);
     expect(sessionStatus(r)).toBe('live');
     expect(r.pausedMs).toBe(8 * M);
     expect(r.pauses).toEqual([[20 * M, 25 * M], [30 * M, 33 * M]]);
+    // Our own Pause at 30 (not its): its 3 minutes are less than our 5, not a Resume of it.
+    expect(sessionStatus(mergeSessions(pauseSession(newPause, 30 * M), fromRow(oldRow(null, 3 * M), 34 * M)!))).toBe('paused');
   });
 });
 
