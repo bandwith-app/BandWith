@@ -12,6 +12,7 @@
 import { parseLyrics } from './lyrics';
 import { lyricsLineText } from './personalNotes';
 import { normalizeLyrics } from './songFormat';
+import { lineVoice, type VoicePart } from './voiceParts';
 
 /** Built-in presets, stored as keys and shown translated (rehearsalNoteLabels). */
 export const NOTE_PRESETS = ['review', 'repeat_section', 'tempo', 'key', 'ending', 'solo', 'nailed'] as const;
@@ -77,6 +78,29 @@ export function sectionLines(lyrics: string | null | undefined, section: string 
     }
   }
   return out;
+}
+
+/**
+ * The voice part of the line a note is pinned to, and its number in the
+ * section (1 = the section's first line): "Backing · line 3". Null when the
+ * line is no longer in the song. Section null: the first match anywhere.
+ */
+export function linePart(
+  lyrics: string | null | undefined,
+  section: string | null | undefined,
+  line: string | null | undefined,
+): { voice: VoicePart; index: number } | null {
+  if (!lyrics || !line) return null;
+  for (const s of parseLyrics(normalizeLyrics(lyrics))) {
+    if (section && s.name?.trim() !== section) continue;
+    const drawn = s.lines.filter((l) => l.trim());
+    const i = drawn.findIndex((l) => lyricsLineText(l) === line);
+    if (i >= 0) {
+      const v = lineVoice(drawn[i]);
+      return { voice: v === 'mixed' ? 'lead' : v, index: i + 1 };
+    }
+  }
+  return null;
 }
 
 /** Presets offered for a song: "Repeat a section" only when it has structure. */

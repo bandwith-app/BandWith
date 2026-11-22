@@ -16,6 +16,7 @@ import { useRailLayout } from '@/lib/deviceRegions';
 import { exitBrowserFullScreen, requestBrowserFullScreen, setStageSongOnly, useBrowserFullScreenExit, useStageBarHidden, useStageFullScreen, useStageSongOnly } from '@/lib/stageChrome';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { StageSongOnly } from './StageSongOnly';
+import { VoiceAssignmentScope } from '@/app/components/songs/WhoSingsWhat';
 import '@/styles/stage.css';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
@@ -839,6 +840,12 @@ export const StageMode: React.FC<StageModeProps> = ({
               {mine && <MyNotesBar className="shrink-0 pb-2" />}
               <TransposeProvider semitones={semitones} songKey={lyricsKey}>
               <div ref={lyricsRef} className={cn('flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-4 px-4 pb-6', !split && '[@media(max-height:520px)_and_(min-width:600px)]:flex-none [@media(max-height:520px)_and_(min-width:600px)]:overflow-visible')}>
+                <VoiceAssignmentScope
+                  songId={lyricsSong?.songId}
+                  setlistSongId={rehearsal ? undefined : lyricsSong?.id}
+                  songTitle={lyricsSong?.title}
+                  lyrics={lyricsContent.lyrics}
+                >
                 <SongBody
                   song={lyricsContent}
                   view={songView}
@@ -848,6 +855,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   className="w-full flex flex-col gap-6 pt-1 text-white"
                   chartClassName="w-full flex flex-col gap-5 pt-1 text-white"
                 />
+                </VoiceAssignmentScope>
               </div>
               </TransposeProvider>
               </PersonalLayerScope>
@@ -1051,6 +1059,7 @@ export const StageMode: React.FC<StageModeProps> = ({
         <StageClickFrame state={clickState} offset={click.offset} accent={accentColor} onDone={clickUi.onDone} />
       )}
       {songOnly && !laptop && lyricsSong && (
+        <VoiceAssignmentScope songId={lyricsSong.songId} setlistSongId={rehearsal ? undefined : lyricsSong.id} songTitle={lyricsSong.title} lyrics={lyricsContent.lyrics}>
         <StageSongOnly
           title={lyricsSong.title}
           index={Math.max(0, current)}
@@ -1083,6 +1092,7 @@ export const StageMode: React.FC<StageModeProps> = ({
             ) : undefined
           }
         />
+        </VoiceAssignmentScope>
       )}
       <AnimatePresence>
         {summary && session && (

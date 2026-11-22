@@ -33,13 +33,17 @@ import {
   wordChord,
   type TextSection,
 } from '@/lib/songFormat';
+import { applyVoiceSuggestions, setLineVoice, suggestVoiceParts, VOICE_PARTS, wordVoices, type VoicePart } from '@/lib/voiceParts';
+import { voiceClass, voiceLabelClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
 
 /**
  * The admin's chord editor for a band song (`songs.lyrics`): tap a word and
  * pick a chord from the song's palette, drag a chord to another word, copy a
  * verse's chords onto another, or take them from the matching iReal section.
  * Checks flag chords the chart doesn't play and a key that doesn't match.
- * Opened from anywhere with openChordEditor(songId).
+ * The Voice row marks a line, or a few words of it, as second voice,
+ * backing, all or spoken (src/lib/voiceParts.ts); tap the part again to
+ * clear it. Opened from anywhere with openChordEditor(songId).
  */
 
 // ── Store ──
@@ -87,6 +91,9 @@ export const ChordEditor: React.FC = () => {
   const [selected, setSelected] = React.useState<Pos | null>(null);
   const [newChord, setNewChord] = React.useState('');
   const [copyTo, setCopyTo] = React.useState<number | null>(null);
+  // Voice parts: the whole line of the selected word, or "just these words" (tap more words of that line).
+  const [wordsMode, setWordsMode] = React.useState(false);
+  const [rangeEnd, setRangeEnd] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
@@ -102,6 +109,11 @@ export const ChordEditor: React.FC = () => {
   const dropClick = React.useRef(false);
   const tapWord = (pos: Pos, isSel: boolean) => {
     if (dropClick.current) return;
+    if (wordsMode && selected && pos.word >= 0 && selected.word >= 0 && pos.line === selected.line && !isSel) {
+      setRangeEnd(pos.word);
+      return;
+    }
+    setRangeEnd(null);
     setSelected(isSel ? null : pos);
   };
 
@@ -184,6 +196,8 @@ export const ChordEditor: React.FC = () => {
   const keyFix = React.useMemo(() => checkKey(text, song?.key, song?.chart?.key), [text, song?.key, song?.chart?.key]);
   const tidy = React.useMemo(() => normalizeLyrics(text), [text]);
   const canTidy = !!text.trim() && tidy !== text.trim();
+  // Lines in parentheses → backing, "All:" → all: proposed, applied only on a tap.
+  const voiceHints = React.useMemo(() => suggestVoiceParts(text), [text]);
 
   const putChord = (pos: Pos, chord: string | null) => {
     const next = [...lines];
@@ -259,16 +273,28 @@ export const ChordEditor: React.FC = () => {
   };
 
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
+  const range = selected && selected.word >= 0 ? (wordsMode ? { from: Math.min(selected.word, rangeEnd ?? selected.word), to: Math.max(selected.word, rangeEnd ?? selected.word) } : null) : null;
+  const selVoices = selected && selected.word >= 0 ? wordVoices(lines[selected.line] || '') : [];
+  const shownVoices = range ? selVoices.slice(range.from, range.to + 1) : selVoices;
+  const selVoice: VoicePart | null = shownVoices.length && shownVoices.every((v) => v === shownVoices[0]) ? shownVoices[0] : null;
+  const putVoice = (v: VoicePart) => {
+    if (!selected || selected.word < 0) return;
+    const next = [...lines];
+    next[selected.line] = setLineVoice(next[selected.line], v, range ?? undefined);
+    edit(next.join('\n'));
+  };
   const selChord = selected ? (selected.word < 0 ? parseLine(lines[selected.line] || '').tail[0] ?? null : selWord ? wordChord(selWord) : null) : null;
 
   const renderLine = (li: number) => {
     const model = parseLine(lines[li]);
+    const voices = wordVoices(lines[li]);
     return (
       <div key={li} className="flex flex-wrap items-end gap-x-[0.3em] gap-y-1 font-mono text-[17px] leading-6">
         {model.words.map((w, wi) => {
           const pos = { line: li, word: wi };
           const chord = wordChord(w);
           const isSel = samePos(selected, pos);
+          const inRange = !isSel && !!range && selected?.line === li && wi >= range.from && wi <= range.to;
           return (
             <span
               key={wi}
@@ -287,7 +313,7 @@ export const ChordEditor: React.FC = () => {
               }}
               className={cn(
                 'inline-flex flex-col items-start rounded-lg px-1 -mx-0.5 min-h-11 justify-end cursor-pointer select-none',
-                isSel ? 'bg-accent text-accent-foreground' : 'hover:bg-foreground/5',
+                isSel ? 'bg-accent text-accent-foreground' : inRange ? 'bg-accent/50' : 'hover:bg-foreground/5',
                 drag?.moved && 'outline-dashed outline-1 outline-foreground/20',
               )}
             >
@@ -309,7 +335,13 @@ export const ChordEditor: React.FC = () => {
               ) : (
                 <span className="h-5" aria-hidden />
               )}
-              <span>{w.text}</span>
+              <span
+                className={voiceClass(voices[wi])}
+                data-voice={voices[wi] === 'lead' ? undefined : voices[wi]}
+                data-voice-cont={voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
+              >
+                {w.text}
+              </span>
             </span>
           );
         })}
@@ -423,13 +455,25 @@ export const ChordEditor: React.FC = () => {
               {song && (
                 <>
                   <p className="bw-body-sm text-muted-foreground">
-                    {t('Tap a word to put a chord on it. Drag a chord to move it to another word.')}
+                    {t('Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.')}
                   </p>
                   {canTidy && (
                     <Card className="flex flex-col gap-2">
                       <p className="bw-body-md">{t('Section names and chords can be put in the band’s format.')}</p>
                       <PillButton size="sm" variant="outline" fullWidth={false} className="self-start" icon={<Sparkles className="w-4 h-4" />} onClick={() => edit(tidy)}>
                         {t('Tidy the format')}
+                      </PillButton>
+                    </Card>
+                  )}
+                  {voiceHints.length > 0 && (
+                    <Card className="flex flex-col gap-2">
+                      <p className="bw-body-md">
+                        {voiceHints.length === 1
+                          ? t('1 line looks like backing vocals or all together.')
+                          : t('{n} lines look like backing vocals or all together.', { n: voiceHints.length })}
+                      </p>
+                      <PillButton size="sm" variant="outline" fullWidth={false} className="self-start" icon={<Sparkles className="w-4 h-4" />} onClick={() => edit(applyVoiceSuggestions(text, voiceHints))}>
+                        {t('Mark the voice parts')}
                       </PillButton>
                     </Card>
                   )}
@@ -472,6 +516,44 @@ export const ChordEditor: React.FC = () => {
             <div className="shrink-0 border-t border-border bg-background px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}>
               {selected ? (
                 <>
+                  {selected.word >= 0 && (
+                    <div className="flex flex-col gap-2" role="group" aria-label={t('Voice')}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bw-label-sm text-muted-foreground">{t('Voice')}</span>
+                        {([false, true] as const).map((words) => (
+                          <button
+                            key={String(words)}
+                            type="button"
+                            aria-pressed={wordsMode === words}
+                            onClick={() => {
+                              setWordsMode(words);
+                              setRangeEnd(null);
+                            }}
+                            className={cn('min-h-9 px-3 rounded-full bw-label-sm border border-border', wordsMode === words && 'bg-foreground text-background border-foreground')}
+                          >
+                            {words ? t('Just these words') : t('Whole line')}
+                          </button>
+                        ))}
+                      </div>
+                      {wordsMode && <p className="bw-body-sm text-muted-foreground">{t('Tap more words of this line to add them.')}</p>}
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
+                        {VOICE_PARTS.map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => putVoice(v)}
+                            aria-pressed={selVoice === v}
+                            className={cn(
+                              'h-11 px-3 rounded-full bw-label-md normal-case shrink-0 border-[1.5px] border-foreground',
+                              selVoice === v && 'bg-foreground text-background',
+                            )}
+                          >
+                            <span className={selVoice === v ? 'font-sans normal-case tracking-normal text-[15px]' : voiceLabelClass(v)}>{voicePartLabel(v, t)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <p className="bw-label-sm text-muted-foreground">
                     {selWord ? t('Chord on “{word}”', { word: selWord.text }) : t('Chords at the end of the line')}
                   </p>

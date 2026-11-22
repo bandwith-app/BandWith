@@ -10,6 +10,7 @@ import {
   suggestSongChange,
   useSuggestChangeTarget,
 } from '@/lib/services/songSuggestions';
+import { useVoiceSafeText, VoicePartsKept } from './VoiceSafeText';
 
 /**
  * A member suggests a change to a band song (108): a correction to the lyrics
@@ -23,6 +24,8 @@ export const SuggestSongChangeSheet: React.FC = () => {
   const song = useSuggestChangeTarget();
   const [mode, setMode] = React.useState<'text' | 'note'>('text');
   const [text, setText] = React.useState('');
+  // The box shows the words without the part markers; the parts stay with their lines.
+  const textField = useVoiceSafeText(text, setText);
   const [note, setNote] = React.useState('');
   const [message, setMessage] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -124,14 +127,14 @@ export const SuggestSongChangeSheet: React.FC = () => {
                 {t('Lyrics with chords')}
               </span>
               <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
+                {...textField}
                 placeholder={[`# ${t('Verse 1')}`, `[C]${t('First line…')}`].join('\n')}
                 rows={10}
                 spellCheck={false}
                 className="w-full bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 min-h-[200px] resize-y font-mono text-[15px] leading-6"
               />
               <span className="bw-body-sm text-muted-foreground">{t('Chords go in brackets before the word: [Am]word.')}</span>
+              <VoicePartsKept lyrics={text} />
             </label>
             {status && <p className="bw-body-sm text-muted-foreground" aria-live="polite">{status}</p>}
             <PillField

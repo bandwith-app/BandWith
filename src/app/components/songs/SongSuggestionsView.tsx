@@ -33,6 +33,8 @@ import {
   useSongSuggestionsScreen,
   withdrawSongSuggestion,
 } from '@/lib/services/songSuggestions';
+import { keepVoiceParts, stripVoiceMarkers } from '@/lib/voiceParts';
+import { useVoiceSafeText } from './VoiceSafeText';
 
 type SongRow = Pick<Song, 'id' | 'band_id' | 'title' | 'artist' | 'key' | 'bpm' | 'duration_seconds' | 'status' | 'lyrics' | 'notes' | 'audio_url' | 'chart_url' | 'youtube_url' | 'genre' | 'chord_chart' | 'created_at' | 'updated_at' | 'priority'>;
 
@@ -268,19 +270,27 @@ const SuggestionDetail: React.FC<{
     }
     return null;
   }, [s, song, pending]);
-  const diff = React.useMemo(() => (text ? diffLines(text.before, text.after) : []), [text]);
+  const isLyrics = s.kind === 'lyrics' || s.kind === 'chords';
+  // Voice part markers never show: compare and show the words.
+  const words = (v: string | undefined) => (isLyrics ? stripVoiceMarkers(v) : v ?? '');
+  const diff = React.useMemo(() => (text ? diffLines(words(text.before), words(text.after)) : []), [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editedField = useVoiceSafeText(edited, setEdited);
   const hasChartChange = !!s.proposed.chord_chart;
 
   const run = async (kind: 'accept' | 'edit' | 'reject') => {
     if (busy) return;
     setBusy(kind);
     setError(null);
+    // Accepting as it is keeps the voice parts the song has now (marked after the suggestion was sent).
+    const kept = kind === 'accept' && isLyrics && text && s.proposed.lyrics != null ? keepVoiceParts(text.before, s.proposed.lyrics) : null;
     const applied =
       kind === 'edit' && text
         ? s.kind === 'note'
           ? { notes: edited }
           : { lyrics: edited, ...(s.proposed.chord_chart ? { chord_chart: s.proposed.chord_chart } : {}) }
-        : undefined;
+        : kept != null && kept !== s.proposed.lyrics
+          ? { lyrics: kept, ...(s.proposed.chord_chart ? { chord_chart: s.proposed.chord_chart } : {}) }
+          : undefined;
     const { error: e } = await reviewSongSuggestion(s, kind === 'reject' ? 'reject' : 'accept', {
       reason,
       applied,
@@ -309,7 +319,7 @@ const SuggestionDetail: React.FC<{
       setEditSong(true);
       return;
     }
-    setEdited(text?.after ?? '');
+    setEdited(isLyrics && text ? keepVoiceParts(text.before, text.after) : text?.after ?? '');
     setEditing(true);
   };
 
@@ -351,8 +361,7 @@ const SuggestionDetail: React.FC<{
           <label className="flex flex-col gap-2 p-4 rounded-[24px] bg-field border border-border focus-within:border-2 focus-within:border-foreground transition-[border-color]">
             <span className="bw-label-sm text-muted-foreground">{s.kind === 'note' ? t('Song notes after your changes') : t('Text after your changes')}</span>
             <textarea
-              value={edited}
-              onChange={(e) => setEdited(e.target.value)}
+              {...editedField}
               rows={12}
               spellCheck={false}
               className="w-full bg-transparent outline-none text-foreground min-h-[220px] resize-y font-mono text-[15px] leading-6"
@@ -369,7 +378,7 @@ const SuggestionDetail: React.FC<{
               <DiffView diff={diff} />
             ) : (
               <pre className="rounded-[24px] bg-card text-card-foreground p-4 font-mono text-[14px] leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {(view === 'before' ? text?.before : text?.after) || <span className="text-muted-foreground">{t('Empty')}</span>}
+                {words(view === 'before' ? text?.before : text?.after) || <span className="text-muted-foreground">{t('Empty')}</span>}
               </pre>
             )}
             {hasChartChange && <p className="bw-body-sm text-muted-foreground">{t('Also replaces the song’s chord chart.')}</p>}

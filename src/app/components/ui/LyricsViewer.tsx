@@ -19,6 +19,7 @@ import { SongBody, SongViewTabs, songViewLabel, useSongViewPreference } from './
 import type { SongView } from '@/lib/songFormat';
 import { cn } from '@/app/components/ui/utils';
 import { ErrorBoundary } from './ErrorBoundary';
+import { VoiceAssignmentScope } from '@/app/components/songs/WhoSingsWhat';
 import { isMyPart, lineVoice, songVoiceParts, stripVoiceMarkers, voiceRuns, type VoicePart } from '@/lib/voiceParts';
 import { useMyVoicePart, useVoiceHighlight, voiceClass, VoiceLegend } from './VoiceParts';
 
@@ -114,7 +115,7 @@ const ChordedText: React.FC<{ text: string; hideChords?: boolean }> = ({ text, h
  * on their own. With "Highlight my part", the parts I don't sing dim a
  * little (`mine` null: nothing dims).
  */
-const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart | null }> = ({ line, hideChords, mine }) => {
+const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart[] | null }> = ({ line, hideChords, mine }) => {
   const runs = React.useMemo(() => voiceRuns(line), [line]);
   const voice = React.useMemo(() => lineVoice(line), [line]);
   // Lyrics only: a chords-only line disappears.
@@ -328,7 +329,9 @@ export const LyricsViewer: React.FC = () => {
                 </details>
               )}
               <TransposeProvider semitones={semitones} songKey={songKey}>
-                <SongBody song={song} view={view} size={size} />
+                <VoiceAssignmentScope songId={doc.songId} songTitle={doc.title} lyrics={song.lyrics}>
+                  <SongBody song={song} view={view} size={size} />
+                </VoiceAssignmentScope>
               </TransposeProvider>
             </div>
           </PersonalLayerScope>

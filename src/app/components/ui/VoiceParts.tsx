@@ -3,7 +3,7 @@ import { Check } from '@/app/components/icons';
 import { useOptionalBand } from '@/lib/BandContext';
 import { useOptionalAuth } from '@/lib/AuthContext';
 import { useT } from '@/lib/i18n';
-import { instrumentVoicePart, type VoicePart } from '@/lib/voiceParts';
+import { assignedParts, instrumentVoicePart, isMyPart, type VocalParts, type VoicePart } from '@/lib/voiceParts';
 import { cn } from './utils';
 
 /**
@@ -30,24 +30,61 @@ export const voiceClass = (v: VoicePart | 'mixed'): string | undefined =>
   v === 'lead' || v === 'mixed' ? undefined : `bw-voice-${v}`;
 
 /**
- * "My part" when the page knows it (the song's or the setlist's "who sings
- * what"); `null` = I sing no part. Without a provider the member's
- * instrument decides (useMyVoicePart).
+ * A part's name drawn the way its lines look (legend, Voice picker, "who
+ * sings what"): in the lyrics' font, so italic, bold and small caps read as
+ * they do on the lines, not lost in an all-caps label.
  */
-const MyPartContext = React.createContext<VoicePart | null | undefined>(undefined);
-export const MyVoicePartProvider: React.FC<{ value: VoicePart | null | undefined; children: React.ReactNode }> = ({ value, children }) => (
+export const voiceLabelClass = (v: VoicePart) => cn('font-sans normal-case tracking-normal text-[15px]', voiceClass(v));
+
+/**
+ * "My part" when the page says it outright (tests, previews); `null` = I
+ * sing no part. Without it: the song's or the setlist's "who sings what"
+ * (VoiceAssignmentProvider), else the member's instrument.
+ */
+const MyPartContext = React.createContext<VoicePart | VoicePart[] | null | undefined>(undefined);
+export const MyVoicePartProvider: React.FC<{ value: VoicePart | VoicePart[] | null | undefined; children: React.ReactNode }> = ({ value, children }) => (
   <MyPartContext.Provider value={value}>{children}</MyPartContext.Provider>
 );
 
-/** The part I sing: the assignment when there is one, else my instrument in the band ("Backing vocals" → Backing). */
-export function useMyVoicePart(): VoicePart | null {
+export interface VoiceAssignment {
+  /** Who sings what for this song (the setlist's override when it has one). */
+  parts: VocalParts | null;
+  /** Admins: open "Who sings what". */
+  onAssign?: () => void;
+}
+const AssignmentContext = React.createContext<VoiceAssignment | null>(null);
+export const VoiceAssignmentProvider: React.FC<{ value: VoiceAssignment | null; children: React.ReactNode }> = ({ value, children }) => (
+  <AssignmentContext.Provider value={value}>{children}</AssignmentContext.Provider>
+);
+export const useVoiceAssignment = () => React.useContext(AssignmentContext);
+
+const asList = (v: VoicePart | VoicePart[] | null | undefined): VoicePart[] | null => (v == null ? null : Array.isArray(v) ? (v.length ? v : null) : [v]);
+
+/** The parts I sing: given, else assigned to me, else from my instrument ("Backing vocals" → Backing). */
+export function useMyVoicePart(): VoicePart[] | null {
   const given = React.useContext(MyPartContext);
+  const assignment = React.useContext(AssignmentContext);
   const band = useOptionalBand();
   const auth = useOptionalAuth();
   const uid = auth?.user?.id;
   const instrument = band?.selectedBand?.members?.find((m) => m.user_id === uid)?.instrument ?? null;
-  if (given !== undefined) return given;
-  return instrumentVoicePart(instrument);
+  if (given !== undefined) return asList(given);
+  return assignedParts(assignment?.parts, uid) ?? asList(instrumentVoicePart(instrument));
+}
+
+/** Band members' names by user id (stage name first), for "who sings what". */
+export function useMemberNames(): Map<string, string> {
+  const band = useOptionalBand();
+  const members = band?.selectedBand?.members;
+  return React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of members ?? []) {
+      if (x.is_active === false) continue;
+      const name = x.stage_name?.trim() || x.profile?.full_name?.trim() || x.profile?.email?.split('@')[0] || '';
+      if (x.user_id && name) m.set(x.user_id, name);
+    }
+    return m;
+  }, [members]);
 }
 
 export const VOICE_HIGHLIGHT_KEY = 'bw-voice-highlight';
@@ -82,6 +119,16 @@ export function useVoiceHighlight(): [boolean, (on: boolean) => void] {
   return [on, set];
 }
 
+/** The first time lines are dimmed, one line says why (per device). */
+export const VOICE_DIM_HINT_KEY = 'bw-voice-dim-hint';
+const hintSeen = () => {
+  try {
+    return localStorage.getItem(VOICE_DIM_HINT_KEY) === 'seen';
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The legend at the top of a song that uses parts ("Lead · 2nd voice ·
  * Backing"), each name drawn in its own style, with the "Highlight my part"
@@ -89,12 +136,33 @@ export function useVoiceHighlight(): [boolean, (on: boolean) => void] {
  */
 export const VoiceLegend: React.FC<{
   parts: VoicePart[];
-  mine: VoicePart | null;
+  mine: VoicePart[] | null;
   highlight: boolean;
   onHighlight: (on: boolean) => void;
   muted?: string;
 }> = ({ parts, mine, highlight, onHighlight, muted = 'text-muted-foreground' }) => {
   const t = useT();
+  const assignment = useVoiceAssignment();
+  const names = useMemberNames();
+  const auth = useOptionalAuth();
+  const uid = auth?.user?.id;
+  const [seen, setSeen] = React.useState(hintSeen);
+  const markSeen = () => {
+    try {
+      localStorage.setItem(VOICE_DIM_HINT_KEY, 'seen');
+    } catch {
+      /* per device */
+    }
+    setSeen(true);
+  };
+  // Who sings each part; "you" for me (assigned, or from my instrument). "All" is everyone's.
+  const who = (p: VoicePart) => {
+    if (p === 'all') return [];
+    const list = (assignment?.parts?.[p] ?? []).map((id) => (id === uid ? t('you') : names.get(id))).filter((n): n is string => !!n);
+    if (mine?.includes(p) && !list.includes(t('you'))) list.push(t('you'));
+    return list;
+  };
+  const dims = !!mine && highlight && parts.some((p) => !isMyPart(p, mine));
   return (
     <div
       role="group"
@@ -104,15 +172,30 @@ export const VoiceLegend: React.FC<{
       style={{ lineHeight: 1.3 }}
     >
       {parts.map((p) => (
-        <span key={p} data-voice={p} className={voiceClass(p)}>
-          {voicePartLabel(p, t)}
+        <span key={p} className="inline-flex items-baseline gap-1">
+          <span data-voice={p} className={voiceLabelClass(p)}>
+            {voicePartLabel(p, t)}
+          </span>
+          {who(p).length > 0 && <span className={muted}>· {who(p).join(', ')}</span>}
         </span>
       ))}
+      {assignment?.onAssign && (
+        <button
+          type="button"
+          onClick={assignment.onAssign}
+          className={cn('min-h-9 px-3 rounded-full border border-current/30 inline-flex items-center whitespace-nowrap', muted)}
+        >
+          {t('Who sings what')}
+        </button>
+      )}
       {mine && (
         <button
           type="button"
           aria-pressed={highlight}
-          onClick={() => onHighlight(!highlight)}
+          onClick={() => {
+            markSeen();
+            onHighlight(!highlight);
+          }}
           className={cn(
             'ml-auto min-h-9 px-3 rounded-full border inline-flex items-center gap-1.5 whitespace-nowrap transition-colors',
             highlight ? 'border-current' : cn('border-current/30', muted),
@@ -121,6 +204,14 @@ export const VoiceLegend: React.FC<{
           {highlight && <Check className="w-4 h-4" aria-hidden />}
           {t('Highlight my part')}
         </button>
+      )}
+      {dims && !seen && (
+        <p role="note" className="basis-full flex flex-wrap items-center gap-x-3 gap-y-1 font-sans bw-body-sm normal-case tracking-normal">
+          <span className={muted}>{t('Lines you don’t sing are dimmed. Tap “Highlight my part” to see them all.')}</span>
+          <button type="button" onClick={markSeen} className="min-h-9 px-3 rounded-full border border-current/30 bw-label-sm">
+            {t('Got it')}
+          </button>
+        </p>
       )}
     </div>
   );

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LyricsText } from '../LyricsViewer';
 import { SongBody } from '../SongViews';
-import { MyVoicePartProvider, VOICE_HIGHLIGHT_KEY } from '../VoiceParts';
+import { MyVoicePartProvider, VOICE_DIM_HINT_KEY, VOICE_HIGHLIGHT_KEY } from '../VoiceParts';
 
 // Made-up song (no real lyrics).
 const LYRICS = [
@@ -19,6 +19,7 @@ const LYRICS = [
 afterEach(() => {
   cleanup();
   localStorage.removeItem(VOICE_HIGHLIGHT_KEY);
+  localStorage.removeItem(VOICE_DIM_HINT_KEY);
 });
 
 describe('voice parts in the lyrics', () => {
@@ -84,5 +85,47 @@ describe('voice parts in the lyrics', () => {
     );
     expect(screen.queryByRole('button', { name: 'Highlight my part' })).toBeNull();
     expect(container.querySelectorAll('[data-voice-dim="true"]')).toHaveLength(0);
+  });
+
+  it('marks my part in the legend and says once why lines are dimmed', () => {
+    const { unmount } = render(
+      <MyVoicePartProvider value="bv">
+        <LyricsText lyrics={LYRICS} size={20} />
+      </MyVoicePartProvider>,
+    );
+    const legend = screen.getByRole('group', { name: 'Voice parts' });
+    expect(legend.querySelector('[data-voice="bv"]')!.parentElement).toHaveTextContent(/Backing\s*· you/);
+    expect(legend.querySelector('[data-voice="v2"]')!.parentElement).not.toHaveTextContent('you');
+    const hint = screen.getByRole('note');
+    expect(hint).toHaveTextContent('Lines you don’t sing are dimmed.');
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(screen.queryByRole('note')).toBeNull();
+    unmount();
+    // Seen once: not again on this device.
+    render(
+      <MyVoicePartProvider value="bv">
+        <LyricsText lyrics={LYRICS} size={20} />
+      </MyVoicePartProvider>,
+    );
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('the hint goes away when the singer turns the highlight off, and never shows when nothing is dimmed', () => {
+    render(
+      <MyVoicePartProvider value="bv">
+        <LyricsText lyrics={LYRICS} size={20} />
+      </MyVoicePartProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Highlight my part' }));
+    expect(screen.queryByRole('note')).toBeNull();
+    cleanup();
+    localStorage.removeItem(VOICE_DIM_HINT_KEY);
+    localStorage.removeItem(VOICE_HIGHLIGHT_KEY);
+    render(
+      <MyVoicePartProvider value={['lead', 'bv']}>
+        <LyricsText lyrics={'# Chorus\nPaper boats\n{bv}(ooh){/bv}'} size={20} />
+      </MyVoicePartProvider>,
+    );
+    expect(screen.queryByRole('note')).toBeNull();
   });
 });

@@ -23,11 +23,13 @@ export const PractiseNoteRow: React.FC<{
   onPractised?: (id: string, value: boolean) => void;
   /** Who wrote it ("Marco"), when known. */
   author?: string;
-}> = ({ note, userId, onPractised, author }) => {
+  /** The song's lyrics, when at hand: a line's voice part in the headline. */
+  lyrics?: string | null;
+}> = ({ note, userId, onPractised, author, lyrics }) => {
   const t = useT();
   const mine = note.scope === 'members' && note.assignees.some((a) => a.userId === userId);
   const done = myNoteState(note, userId) === 'practised';
-  const headline = noteHeadline(note, t);
+  const headline = noteHeadline(note, t, lyrics);
   return (
     <li className="flex items-center gap-3 min-h-11 py-1" aria-label={headline}>
       <span className="flex flex-col min-w-0 flex-1">

@@ -6,6 +6,7 @@ import { useT } from '@/lib/i18n';
 import { cn } from '@/app/components/ui/utils';
 import { formatClock } from '@/lib/rehearsalSession';
 import { sectionLabel } from '@/lib/songFormat';
+import { voiceClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
 import {
   MAX_BODY,
   assigneesAllowed,
@@ -14,6 +15,7 @@ import {
   canMarkOk,
   groupBySong,
   isForMe,
+  linePart,
   myNoteState,
   presetsFor,
   sectionLines,
@@ -51,15 +53,26 @@ export const presetLabel = (p: NotePreset, t: T) =>
     nailed: t('Nailed it'),
   })[p];
 
-/** Where in the song: "Chorus · “Lanterns in the rain”" (empty for the whole song). */
-export function noteWhere(n: Pick<RehearsalNote, 'section' | 'line'>, t: T): string {
-  return [n.section ? sectionLabel(n.section, t) : '', n.line ? `“${n.line}”` : ''].filter(Boolean).join(' · ');
+/**
+ * Where in the song: "Chorus · “Lanterns in the rain”" (empty for the whole
+ * song). With the song's lyrics, a line sung by a part says so: "Chorus ·
+ * Backing · line 2 · “(ooh, yeah)”".
+ */
+export function noteWhere(n: Pick<RehearsalNote, 'section' | 'line'>, t: T, lyrics?: string | null): string {
+  const part = n.line ? linePart(lyrics, n.section, n.line) : null;
+  return [
+    n.section ? sectionLabel(n.section, t) : '',
+    part && part.voice !== 'lead' ? `${voicePartLabel(part.voice, t)} · ${t('line {n}', { n: part.index })}` : '',
+    n.line ? `“${n.line}”` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** "Tempo · Verse 3", "Chorus · “Hold on”: too fast", "Bridge too fast", "Marked at 12:34". */
-export function noteHeadline(n: RehearsalNote, t: T): string {
+export function noteHeadline(n: RehearsalNote, t: T, lyrics?: string | null): string {
   if (n.status === 'marked') return n.markedAtS != null ? t('Marked at {time}', { time: formatClock(n.markedAtS) }) : t('Marked');
-  const where = noteWhere(n, t);
+  const where = noteWhere(n, t, lyrics);
   if (n.preset) return [presetLabel(n.preset, t), where].filter(Boolean).join(' · ');
   if (where) return n.body ? `${where}: ${n.body}` : where;
   return n.body || '';
@@ -255,7 +268,17 @@ export const NoteEditorSheet: React.FC<{
                       on ? 'bg-foreground text-background border-foreground' : 'border-border text-foreground hover:bg-foreground/5',
                     )}
                   >
-                    {l}
+                    {(() => {
+                      const part = linePart(lyrics, draft.section, l);
+                      return part && part.voice !== 'lead' ? (
+                        <span className="flex flex-col">
+                          <span className="bw-label-xs opacity-70">{voicePartLabel(part.voice, t)}</span>
+                          <span className={on ? undefined : voiceClass(part.voice)}>{l}</span>
+                        </span>
+                      ) : (
+                        l
+                      );
+                    })()}
                   </button>
                 );
               })}
@@ -315,7 +338,9 @@ export const NoteItem: React.FC<{
   members: NoteMember[];
   onEdit: (n: RehearsalNote) => void;
   dark?: boolean;
-}> = ({ note, controls, members, onEdit, dark }) => {
+  /** The song's lyrics: a line's voice part in the headline. */
+  lyrics?: string | null;
+}> = ({ note, controls, members, onEdit, dark, lyrics }) => {
   const t = useT();
   const me = controls.userId;
   const mine = note.assignees.some((a) => a.userId === me);
@@ -325,7 +350,7 @@ export const NoteItem: React.FC<{
     dark ? 'border-white/40 text-white' : 'border-border text-foreground',
   );
   const on = dark ? 'bg-white text-black border-white' : 'bg-foreground text-background border-foreground';
-  const headline = noteHeadline(note, t);
+  const headline = noteHeadline(note, t, lyrics);
   return (
     <li className={cn('flex flex-col gap-2 py-3 border-b last:border-b-0', dark ? 'border-white/15' : 'border-border')} aria-label={headline}>
       <span className="flex items-baseline justify-between gap-3">
@@ -396,7 +421,7 @@ export const NoteGroups: React.FC<{
           <span className={cn('bw-label-sm uppercase', dark ? 'text-white/60' : 'text-muted-foreground')}>{g.title ?? t('General')}</span>
           <ul className="flex flex-col">
             {g.notes.map((n) => (
-              <NoteItem key={n.id} note={n} controls={controls} members={members} onEdit={onEdit} dark={dark} />
+              <NoteItem key={n.id} note={n} controls={controls} members={members} onEdit={onEdit} dark={dark} lyrics={songs.find((s) => s.songId === n.songId)?.lyrics} />
             ))}
           </ul>
         </section>
