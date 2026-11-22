@@ -119,27 +119,82 @@ function removeKeptKeys() {
 const tagFetch = () => cacheGeneration;
 const stillOurs = (tag: number) => tag === cacheGeneration;
 
+let keyAsks = 0;
+/** The newest ask whose answer was kept, per gig: an older answer arriving later writes nothing. */
+const keyKept = new Map<string, number>();
+
+/** A window event (detail: the gig's id): its band key changed, Stage asks for it again (useStageBle). */
+export const STAGE_KEY_EVENT = 'bw:stage-key';
+
 /**
- * The gig's Bluetooth key: from the device, or fetched (and kept) when
- * online. Null for people outside the band, or offline before the first fetch.
+ * The gig's Bluetooth key: asked for whenever online (it changes when someone
+ * may no longer see the gig, migration 191) and kept; the kept copy offline
+ * (no answer in KEY_FETCH_TIMEOUT_MS; an answer that comes later is still
+ * kept, unless the account changed meanwhile). A no from the server deletes
+ * it (`denied`: the caller drops any copy of its own too). Null for people
+ * outside the band, or offline before the first fetch.
  */
-export async function stageKey(eventId: string): Promise<string | null> {
-  const cached = cachedKey(eventId);
-  if (cached) return cached;
-  try {
-    const tag = tagFetch();
-    const { data, error } = await supabase.rpc('bw_stage_key', { p_event_id: eventId });
-    if (error || typeof data !== 'string' || !data) return null;
-    if (!stillOurs(tag)) return null;
+export async function fetchStageKey(eventId: string): Promise<{ key: string | null; denied: boolean }> {
+  const tag = tagFetch();
+  const n = ++keyAsks;
+  const keepAnswer = (data: unknown, late: () => boolean) => {
+    // Signed out (or another account) meanwhile, or a newer answer already kept: nothing written.
+    if (!stillOurs(tag) || n < (keyKept.get(eventId) ?? 0)) return;
+    keyKept.set(eventId, n);
+    const before = cachedKey(eventId);
     try {
-      localStorage.setItem(KEY_PREFIX + eventId, data);
+      if (typeof data === 'string' && data) {
+        localStorage.setItem(KEY_PREFIX + eventId, data);
+        // The key it replaced, kept for the gig day (previousStageKey).
+        if (before && before !== data)
+          localStorage.setItem(PREV_PREFIX + eventId, JSON.stringify({ key: before, until: Date.now() + PREV_KEY_MS }));
+      } else {
+        localStorage.removeItem(KEY_PREFIX + eventId);
+        localStorage.removeItem(PREV_PREFIX + eventId);
+      }
     } catch {
       /* kept for this session only */
     }
-    return data;
+    // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc).
+    if (late() && typeof data === 'string' && data && data !== before && typeof window !== 'undefined')
+      window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let answer: { data: unknown; error: unknown } | null;
+  let timedOut = false;
+  try {
+    const call = Promise.resolve(supabase.rpc('bw_stage_key', { p_event_id: eventId })).then(
+      (a: { data: unknown; error: unknown }) => {
+        if (a && !a.error) keepAnswer(a.data, () => timedOut);
+        return a;
+      },
+      () => null,
+    );
+    answer = await Promise.race([
+      call,
+      new Promise<null>(
+        (resolve) =>
+          (timer = setTimeout(() => {
+            timedOut = true;
+            resolve(null);
+          }, KEY_FETCH_TIMEOUT_MS)),
+      ),
+    ]);
   } catch {
-    return null;
+    answer = null;
+  } finally {
+    clearTimeout(timer);
   }
+  if (!stillOurs(tag)) return { key: null, denied: false };
+  if (!answer || answer.error) return { key: cachedKey(eventId), denied: false };
+  // A newer ask's answer was kept first: what's kept stands, not this older answer (Claude on #283).
+  if (n < (keyKept.get(eventId) ?? 0)) return { key: cachedKey(eventId), denied: false };
+  const key = typeof answer.data === 'string' && answer.data ? answer.data : null;
+  return { key, denied: key === null };
+}
+
+export async function stageKey(eventId: string): Promise<string | null> {
+  return (await fetchStageKey(eventId)).key;
 }
 
 const SIGNER_PREFIX = KEY_PREFIX + 'signer:';
@@ -372,8 +427,8 @@ export const keptVerifyKey = (eventId: string) => kept(mine(VERIFY_PREFIX, event
  */
 export function prefetchStageKey(eventId?: string, isAdmin = false) {
   if (!eventId || !stageBleAvailable()) return;
-  if (!cachedKey(eventId)) void stageKey(eventId);
-  // Every time: a pair rotated since (an admin who stopped being one) is picked up here.
+  // Every time: a changed band key (191) or a pair rotated since (an admin who stopped being one) is picked up here.
+  void stageKey(eventId);
   if (isAdmin) void stageSigner(eventId);
   else void stageVerifyKey(eventId);
 }
@@ -390,6 +445,7 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
  */
 export function clearStageCache() {
   cacheGeneration++;
+  keyKept.clear();
   refusedSigner.clear();
   cacheUser = null;
   setSignedMemoryUser(null);

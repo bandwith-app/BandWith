@@ -18,6 +18,7 @@ import {
   seqPlausible,
   SEQ_AHEAD_MAX,
   SEQ_AHEAD_MEASURED,
+  stageClockTopic,
   stageTopic,
   stepOver,
   usableOffset,
@@ -27,23 +28,43 @@ import {
   bestSample,
   CLICK_EVENT,
   clockSample,
+  MAX_CLOCK_RTT_MS,
   nowMs,
   parseClickState,
   pickClock,
   PING_EVENT,
   PONG_EVENT,
+  CLOCK_PONG_EVENT,
   START_LEAD_MS,
   type ClickState,
   type ClockSample,
   type PeerClock,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
+import { STAGE_KEY_EVENT } from '@/lib/stageBleNative';
+
+/** The broadcast 191's bw_stage_new_band_key sends on the stage topic. */
+const STAGE_KEY_BROADCAST = 'stage-key';
 
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
 const PING_GAP_MS = 200;
+/** A round of pings with no answer is tried again after this (doubling, up to the max), plus up to PING_JITTER_MS. */
+/** A ping is matched to its answer for this long (a slow network), then forgotten. */
+const PING_FORGET_MS = 5_000;
+const PING_RETRY_MS = 1_500;
+const PING_RETRY_MAX_MS = 15_000;
+const PING_JITTER_MS = 500;
+/** After this many rounds with no answer (a leader on an older app never answers), one round a minute. */
+const PING_FAST_ROUNDS = 5;
+const PING_SLOW_MS = 60_000;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
+/** The leader answers at most this many pings per phone per window (a burst is 6). */
+const PONGS_PER_WINDOW = 12;
+/** And in all, whatever names the pings carry (any member may write the clock topic). */
+const ALL_PONGS_PER_WINDOW = 40;
+const PONG_WINDOW_MS = 2_000;
 
 /** A setlist song as Stage mode gets it (setlist_songs row id, song id, set). */
 export interface LiveSongRef {
@@ -180,6 +201,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   }, []);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+  /** The clock topic: members' pings (the stage topic only takes the admins' broadcasts). */
+  const clockRef = useRef<RealtimeChannel | null>(null);
   /** Newest state applied or sent (Lamport clock + what it said). */
   const lastRef = useRef<StageLiveState | null>(null);
   /** Newest state from the live channel (only admins can send there). */
@@ -220,8 +243,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     rtClockRef.current = c;
     setRtClockState(c);
   }, []);
-  const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[] }>({ peer: '', at: 0, samples: [] });
+  /** The measure of one peer's clock: its samples, and the t0 of each ping still unanswered. */
+  const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[]; sent: number[] }>({ peer: '', at: 0, samples: [], sent: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** The clock topic joined: sent to only then (supabase-js would post a ping over HTTP otherwise). */
+  const clockJoined = useRef(false);
+  /** The stage topic joined: the same for what this phone sends there unasked (pings). */
+  const stageJoined = useRef(false);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -421,20 +449,61 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     if (state.songId !== undefined) setSongId(state.songId);
   }, []);
 
-  /** Measure the click leader's clock: a few pings, the fastest round trip wins. */
+  /**
+   * Measure the click leader's clock: a few pings, the fastest round trip wins.
+   * A round with no answer (the leader's clock channel not in yet, or its
+   * answers used up by a band starting together) is tried again, later each
+   * time and at a random moment, for as long as that leader's click runs.
+   */
   const syncWith = useCallback(
     (peer: string) => {
       const book = samplesRef.current;
-      if (book.peer === peer && nowMs() - book.at < RESYNC_MS && book.samples.length) return;
-      samplesRef.current = { peer, at: nowMs(), samples: [] };
+      if (book.peer === peer && nowMs() - book.at < RESYNC_MS && bestSample(book.samples)) return;
+      const fresh = { peer, at: nowMs(), samples: [] as ClockSample[], sent: [] as number[] };
+      samplesRef.current = fresh;
       pingTimers.current.forEach(clearTimeout);
-      pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
-        setTimeout(() => {
-          void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload: { from: clientId, to: peer, t0: nowMs() } });
-        }, i * PING_GAP_MS),
-      );
+      pingTimers.current = [];
+      const round = (attempt: number, delay: number) => {
+        const done = (t: ReturnType<typeof setTimeout>) => {
+          // A timer that has run is no handle to keep (Codex on #283).
+          pingTimers.current = pingTimers.current.filter((x) => x !== t);
+        };
+        const timers: ReturnType<typeof setTimeout>[] = Array.from({ length: PINGS }, (_, i) => {
+          const t = setTimeout(() => {
+            done(t);
+            if (samplesRef.current !== fresh) return;
+            const t0 = nowMs();
+            // Only pongs to these pings count (anyone can write the clock topic in our name).
+            fresh.sent.push(t0);
+            // Pings older than any answer worth waiting for are of no use any more.
+            fresh.sent = fresh.sent.filter((t) => t0 - t <= PING_FORGET_MS);
+            const payload = { from: clientId, to: peer, t0 };
+            if (clockJoined.current) void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+            // Admins may write the stage topic too: a leader on an older app listens only there.
+            if (isLeader && stageJoined.current) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+          }, delay + i * PING_GAP_MS);
+          return t;
+        });
+        // No answer to the whole round: again, while that leader's click runs.
+        const check: ReturnType<typeof setTimeout> = setTimeout(
+          () => {
+            done(check);
+            const running = clickRef.current;
+            // Answers that came back but none usable (too few slow ones): not a measure, tried again (Codex on #283).
+            if (samplesRef.current !== fresh || bestSample(fresh.samples) || !running?.on || running.from !== peer) return;
+            // This round's timers have all run: not kept (the list would grow for as long as the click runs).
+            pingTimers.current = [];
+            const wait = attempt + 1 < PING_FAST_ROUNDS ? Math.min(PING_RETRY_MS * 2 ** attempt, PING_RETRY_MAX_MS) : PING_SLOW_MS;
+            round(attempt + 1, wait + Math.random() * PING_JITTER_MS);
+          },
+          delay + PINGS * PING_GAP_MS + MAX_CLOCK_RTT_MS,
+        );
+        pingTimers.current.push(...timers, check);
+      };
+      // A random start: phones that got the click together don't all ping at once.
+      round(0, Math.random() * PING_JITTER_MS);
     },
-    [clientId],
+    [clientId, isLeader],
   );
 
   const receiveClick = useCallback(
@@ -462,6 +531,92 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
     channelRef.current = channel;
+    /**
+     * Pongs sent per phone lately, and in all: a flood of pings gets a few answers, not one each.
+     * Per claimed name, not per account: a Realtime broadcast carries no
+     * verified sender, so one member writing pings in 40 names can use up the
+     * overall cap for 2 s (the click keeps its last measure meanwhile). An
+     * admin's copy on the stage topic is the same ping (`seen`) and counts once.
+     */
+    const answered = new Map<string, number[]>();
+    let allAnswered: number[] = [];
+    /** Pings answered lately, by name and t0: an admin's copy on the other topic isn't answered twice. */
+    const seen = new Map<string, number>();
+    /**
+     * Names in Stage (the stage topic's presence): their pings are answered
+     * even when made-up names used up the overall cap (Claude on #283), each
+     * still within its own cap. Presence can be claimed too, but each name
+     * there takes a join of its own (a band member's), not one message.
+     */
+    const present = new Set<string>();
+    /**
+     * A bandmate measuring our clock: answer straight away with our time, on
+     * the stage topic (admins only), so nobody else can pose as the leader's clock.
+     */
+    const answerPing = (raw: unknown, fromAdmin: boolean) => {
+      const p = raw as { from?: unknown; to?: unknown; t0?: unknown } | undefined;
+      if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
+      // Answers go on the stage topic: not joined (Realtime reconnecting), supabase-js would post
+      // them over HTTP. None is sent, and none counts against the caps (Claude on #283).
+      if (!stageJoined.current) return;
+      const now = nowMs();
+      const ping = `${p.from}|${p.t0}`;
+      if (seen.has(ping)) return;
+      if (seen.size > 4 * ALL_PONGS_PER_WINDOW) for (const [k, t] of seen) if (now - t >= PONG_WINDOW_MS) seen.delete(k);
+      allAnswered = allAnswered.filter((t) => now - t < PONG_WINDOW_MS);
+      // The overall cap is for the clock topic, which any member may write; the
+      // stage topic is admins only (their pings still count per name).
+      const inStage = present.has(p.from);
+      if (!fromAdmin && !inStage && allAnswered.length >= ALL_PONGS_PER_WINDOW) return;
+      // Names nobody answered lately are forgotten (at most ALL_PONGS_PER_WINDOW stay).
+      if (answered.size > ALL_PONGS_PER_WINDOW)
+        for (const [name, times] of answered) if (!times.some((t) => now - t < PONG_WINDOW_MS)) answered.delete(name);
+      const recent = (answered.get(p.from) ?? []).filter((t) => now - t < PONG_WINDOW_MS);
+      if (recent.length >= PONGS_PER_WINDOW) return;
+      recent.push(now);
+      answered.set(p.from, recent);
+      seen.set(ping, now);
+      if (!fromAdmin && !inStage) allAnswered.push(now);
+      // A member's ping (clock topic) gets the new answer: released apps would take a click-pong in their name.
+      void channel.send({ type: 'broadcast', event: fromAdmin ? PONG_EVENT : CLOCK_PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
+    };
+    /** The leader's answer to one of this phone's pings (either event). */
+    const takePong = (raw: unknown) => {
+      const p = raw as { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } | undefined;
+      if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
+      const book = samplesRef.current;
+      if (book.peer !== p.from) return;
+      // An answer to a ping this phone sent, once: not one written in our name, nor a replay.
+      const asked = book.sent.indexOf(p.t0);
+      const t2 = nowMs();
+      if (asked < 0 || p.t0 > t2 || !Number.isFinite(p.t1)) return;
+      book.sent.splice(asked, 1);
+      // Older than any answer worth waiting for (PING_FORGET_MS): no time can be told by it, whatever
+      // else came back (Codex on #283). Slower ones under it stay: see below.
+      if (t2 - p.t0 > PING_FORGET_MS) return;
+      // Slow ones are kept: bestSample prefers answers under MAX_CLOCK_RTT_MS (a late
+      // one may be our old ping re-sent by someone else) and takes the fastest slow
+      // one only when several came back slow (a slow network).
+      book.samples.push(clockSample(p.t0, p.t1, t2));
+      const best = bestSample(book.samples);
+      if (best) setRtClock({ from: p.from, sample: best });
+    };
+    // Members' pings (migration 191): everyone in the band may write this topic.
+    const clock = supabase.channel(stageClockTopic(eventId), { config: { private: true, broadcast: { self: false } } });
+    clockRef.current = clock;
+    clock
+      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, false))
+      .subscribe((status: string) => {
+        clockJoined.current = status === 'SUBSCRIBED';
+        // Joined (or back after a reconnect) with a leader's click running and no
+        // measure yet: the pings sent meanwhile went nowhere, measure again.
+        const running = clickRef.current;
+        if (status !== 'SUBSCRIBED' || !running?.on || running.from === clientId) return;
+        const book = samplesRef.current;
+        if (book.peer === running.from && bestSample(book.samples)) return;
+        samplesRef.current = { peer: '', at: 0, samples: [], sent: [] };
+        syncWith(running.from);
+      });
     channel
       .on('broadcast', { event: 'state' }, (msg: { payload?: unknown }) => {
         const state = parseStageState(msg?.payload);
@@ -477,21 +632,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const state = parseClickState(msg?.payload);
         if (state) receiveClick(state);
       })
-      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown } }) => {
-        // A bandmate measuring our clock: answer straight away with our time.
-        const p = msg?.payload;
-        if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
-        void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: nowMs() } });
-      })
-      .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } }) => {
-        const p = msg?.payload;
-        if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
-        const book = samplesRef.current;
-        if (book.peer !== p.from) return;
-        book.samples.push(clockSample(p.t0, p.t1, nowMs()));
-        const best = bestSample(book.samples);
-        if (best) setRtClock({ from: p.from, sample: best });
-      })
+      // An admin's ping (an older app pings here; admins may broadcast on this topic).
+      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, true))
+      .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
+      .on('broadcast', { event: CLOCK_PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
       .on('broadcast', { event: LEAD_BEAT_EVENT }, (msg: { payload?: { from?: unknown; seq?: unknown } }) => {
         // Only admins can send here: a leader still leading online.
         const from = msg?.payload?.from;
@@ -512,9 +656,27 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
           receiveRef.current(held, 'realtime');
         }
       })
+      // The server's word that the band key changed (191: someone left, a gig moved or was hidden).
+      // Only a hint: Bluetooth fetches the key again and restarts if it really changed.
+      .on('broadcast', { event: STAGE_KEY_BROADCAST }, (msg: { payload?: unknown }) => {
+        const p = msg?.payload as { event_id?: unknown } | undefined;
+        if (p?.event_id !== eventId || typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
+      })
       .on('presence', { event: 'join' }, (msg: { key?: string }) => {
         if (msg?.key === clientId) return;
+        if (msg?.key) present.add(msg.key);
         // (A reopened leader's next state is taken by receive: a leader not heard before.)
+        // The click's leader (re)joined while this phone has no measure of its clock (its
+        // clock channel late, say): ping now, not at the next, backed-off, retry.
+        const clickNow = clickRef.current;
+        if (clickNow?.on && clickNow.from !== clientId && clickNow.from === msg?.key) {
+          const book = samplesRef.current;
+          if (!(book.peer === clickNow.from && bestSample(book.samples))) {
+            samplesRef.current = { peer: '', at: 0, samples: [], sent: [] };
+            syncWith(clickNow.from);
+          }
+        }
         // A running click of ours reaches late arrivals too.
         if (clickRef.current?.from === clientId && clickRef.current.on && isLeader) {
           void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickRef.current });
@@ -530,6 +692,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         void channel.send({ type: 'broadcast', event: 'state', payload: lastRef.current });
       })
       .on('presence', { event: 'leave' }, (msg: { key?: string }) => {
+        if (msg?.key) present.delete(msg.key);
         if (msg?.key && msg.key !== clientId) regiaRef.current?.current.left?.(msg.key);
         // The click's leader left (closed Stage mode or lost the network): stop showing its click.
         const running = clickRef.current;
@@ -540,6 +703,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       .subscribe((status: string) => {
         setConnected(status === 'SUBSCRIBED');
         joined = status === 'SUBSCRIBED';
+        stageJoined.current = status === 'SUBSCRIBED';
         // Off the channel: no leader reaches this phone online, Bluetooth takes over at once.
         if (status !== 'SUBSCRIBED') {
           liveLeadRef.current.clear();
@@ -572,10 +736,14 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       liveLeadRef.current.clear();
       refusedRef.current.clear();
       heldBleRef.current = null;
+      clockRef.current = null;
+      clockJoined.current = false;
+      stageJoined.current = false;
       setConnected(false);
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(clock);
     };
-  }, [live, eventId, clientId, isLeader, receive, receiveClick]);
+  }, [live, eventId, clientId, isLeader, receive, receiveClick, syncWith]);
 
   /**
    * Save the pending order now. `closing`: Stage mode is closing, so only the

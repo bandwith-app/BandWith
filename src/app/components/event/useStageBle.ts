@@ -2,7 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BleClient, BluetoothLe, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { StageBle, fetchVerifyKey, forgetStageKeys, keptVerifyKey, previousStageKey, signerRefused, stageBleAvailable, stageKey, stageSigner } from '@/lib/stageBleNative';
+import {
+  STAGE_KEY_EVENT,
+  StageBle,
+  fetchVerifyKey,
+  forgetStageKeys,
+  keptVerifyKey,
+  previousStageKey,
+  signerRefused,
+  stageBleAvailable,
+  stageKey,
+  stageSigner,
+} from '@/lib/stageBleNative';
 import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
@@ -199,6 +210,11 @@ async function calibrateClock(): Promise<number | null> {
  * has no clock characteristic: the song still syncs, `clock` stays null.
  * Bluetooth turned off stops the reads at once (no crash, the clock is kept).
  */
+/** While Stage is open, the band key is asked for again this often (191 changes it when someone may no longer see the gig). */
+export const KEY_RECHECK_MS = 60_000;
+/** And this often while there is none yet (a first fetch answered late, or offline). */
+export const KEY_WAIT_MS = 5_000;
+
 export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
   const [clock, setClockState] = useState<PeerClock | null>(null);
@@ -229,6 +245,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   savedRef.current = savedIds;
   const keyRef = useRef<string | null>(null);
   const signerRef = useRef<StageSigner | null>(null);
+  /** The band key Bluetooth runs with now (leader or member; null: none yet). */
+  const inUseKeyRef = useRef<string | null>(null);
   const startedRef = useRef(false);
   const pendingRef = useRef<StageLiveState | null>(null);
   /** Leader: the last state served this Stage session (null: none yet), served again when Stage starts again (a new pair). */
@@ -303,7 +321,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     };
     (async () => {
       const key = await stageKey(eventId);
-      if (cancelled || !key) return;
+      if (cancelled) return;
+      inUseKeyRef.current = key;
+      // No key yet: the key watch below starts again once there is one.
+      if (!key) return;
       // No key pair on this phone (offline before it was made): it leads as
       // older apps do, members on this app show the "update" line.
       const fetched = await stageSigner(eventId);
@@ -1191,8 +1212,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     // Bluetooth off or the key not fetched yet: try again a little later.
     const boot = async () => {
       if (cancelled) return;
-      const k = key || (await stageKey(eventId));
+      // The server's key first (it changes when someone may no longer see the gig, 191); the pack's offline.
+      const k = (await stageKey(eventId)) || key;
       if (cancelled) return;
+      inUseKeyRef.current = k || null;
       if (!k) {
         retry = setTimeout(() => void boot(), 15000);
         return;
@@ -1322,6 +1345,51 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     };
     // A reloaded setlist doesn't drop the link: reads use savedRef.
   }, [active, isLeader, eventId, attempt]);
+
+  // The band key changed on the server (191: someone may no longer see the
+  // gig): start again with the new one, so the leader stops serving the old
+  // key's service and members search under the new one (Codex + Claude on
+  // 642676fc). Asked when Realtime says so (STAGE_KEY_EVENT), back online,
+  // every minute, and every few seconds while there is none yet.
+  useEffect(() => {
+    if (!active || !eventId) return;
+    let gone = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let asking = false;
+    const check = async () => {
+      if (asking) return;
+      asking = true;
+      try {
+        const now = await stageKey(eventId);
+        if (!gone && now && now !== inUseKeyRef.current) setAttempt((n) => n + 1);
+      } finally {
+        asking = false;
+      }
+    };
+    const schedule = () => {
+      timer = setTimeout(
+        () => {
+          void check().then(() => {
+            if (!gone) schedule();
+          });
+        },
+        inUseKeyRef.current ? KEY_RECHECK_MS : KEY_WAIT_MS,
+      );
+    };
+    schedule();
+    const onKey = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === eventId) void check();
+    };
+    const onOnline = () => void check();
+    window.addEventListener(STAGE_KEY_EVENT, onKey);
+    window.addEventListener('online', onOnline);
+    return () => {
+      gone = true;
+      clearTimeout(timer);
+      window.removeEventListener(STAGE_KEY_EVENT, onKey);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [active, eventId, attempt]);
 
   // Back from Settings (sent by the button): start again by itself. Not on any
   // resume: closing the system permission dialog resumes the app too, and

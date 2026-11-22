@@ -141,6 +141,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
 }));
 
 vi.mock('@/lib/stageBleNative', () => ({
+  STAGE_KEY_EVENT: 'bw:stage-key',
   StageBle: {},
   stageBleAvailable: () => true,
   stageKey: async () => KEY,

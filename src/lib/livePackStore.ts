@@ -36,7 +36,7 @@ import { anyPackAllowed, packAllowed, readChoice } from './livePackConsent';
 import { downloadPackFile, packFilesAvailable, removePackFiles } from './livePackFiles';
 import { fetchOccurrenceNotes, fetchOpenBandNotes } from './services/rehearsalNotes';
 import type { RehearsalNote } from './rehearsalNotes';
-import { forgetStageKeys, stageBleAvailable, stageKey } from './stageBleNative';
+import { fetchStageKey, forgetStageKeys, stageBleAvailable } from './stageBleNative';
 import { forgetSignedMemory } from './stageSignedMemory';
 
 export const LIVE_PACK_CHANGED = 'bw:live-pack-changed';
@@ -329,13 +329,16 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   }
 
   let key = prev?.stageKey ?? null;
-  if (!key) {
-    try {
-      // Inside the try: a partial client mock (tests) has no isDemoMode.
-      if (!isDemoMode && stageBleAvailable()) key = await stageKey(event.id);
-    } catch {
-      /* no key: Bluetooth just needs internet the first time */
+  try {
+    // Asked again each time: the key changes when someone may no longer see the gig (191).
+    // Inside the try: a partial client mock (tests) has no isDemoMode.
+    // A no from the server (may no longer see the gig) drops the pack's copy too.
+    if (!isDemoMode && stageBleAvailable()) {
+      const answer = await fetchStageKey(event.id);
+      key = answer.denied ? null : (answer.key ?? key);
     }
+  } catch {
+    /* no key: Bluetooth just needs internet the first time */
   }
 
   const pack: LivePack = {

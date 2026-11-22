@@ -15,6 +15,14 @@
 export const CLICK_EVENT = 'click';
 export const PING_EVENT = 'click-ping';
 export const PONG_EVENT = 'click-pong';
+/**
+ * Answers to members' pings from the clock topic (migration 191), which any
+ * band member may write, in anyone's name. Released apps take any PONG_EVENT
+ * addressed to them, ping sent or not, so these go out under a name they
+ * don't listen to (Codex on #283). Pings from the admins-only stage topic are
+ * still answered with PONG_EVENT, as older apps expect.
+ */
+export const CLOCK_PONG_EVENT = 'click-pong-2';
 
 export interface ClickState {
   /** Lamport clock, as for the stage state. */
@@ -71,9 +79,32 @@ export interface ClockSample {
 
 export const clockSample = (t0: number, t1: number, t2: number): ClockSample => ({ offset: t1 - (t0 + t2) / 2, rtt: Math.max(0, t2 - t0) });
 
-/** The sample with the shortest round trip is the least distorted by the network. */
-export const bestSample = (samples: ClockSample[]): ClockSample | null =>
-  samples.reduce<ClockSample | null>((best, s) => (!best || s.rtt < best.rtt ? s : best), null);
+/**
+ * The slowest round trip a clock sample may take. A slower one is too vague to
+ * keep a click in time, and may be someone answering an old ping late: a
+ * bandmate re-sending this phone's ping seconds later would shift its clock.
+ */
+export const MAX_CLOCK_RTT_MS = 500;
+
+/** Bluetooth reads have a ceiling of their own: a slow link answers within the read's 2 s timeout. */
+export const BLE_MAX_CLOCK_RTT_MS = 2_000;
+/**
+ * With nothing under the ceiling, this many samples make the fastest one
+ * usable: a slow network answers every ping slowly, a late replay is one
+ * answer. Better than no measure at all (the click then runs on this phone's
+ * own clock).
+ */
+export const SLOW_SAMPLES_MIN = 3;
+
+const fastest = (samples: ClockSample[]) => samples.reduce<ClockSample | null>((best, s) => (!best || s.rtt < best.rtt ? s : best), null);
+
+/**
+ * The sample with the shortest round trip is the least distorted by the
+ * network: the fastest under `maxRtt`, else (SLOW_SAMPLES_MIN or more) the
+ * fastest of all.
+ */
+export const bestSample = (samples: ClockSample[], maxRtt: number = MAX_CLOCK_RTT_MS): ClockSample | null =>
+  fastest(samples.filter((s) => s.rtt <= maxRtt)) ?? (samples.length >= SLOW_SAMPLES_MIN ? fastest(samples) : null);
 
 /** A clock measured against one leader (their clientId), over one path (Realtime or Bluetooth). */
 export interface PeerClock {

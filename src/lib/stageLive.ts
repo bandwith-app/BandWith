@@ -11,6 +11,11 @@
 
 /** Realtime topic of a gig's Stage mode channel (see migration 085). */
 export const stageTopic = (eventId: string) => `stage:event:${eventId}`;
+/**
+ * The gig's clock topic (migration 191): every band member may broadcast here,
+ * so a member's clock pings reach the leader (the stage topic is admin-only).
+ */
+export const stageClockTopic = (eventId: string) => `stage-clock:event:${eventId}`;
 
 export interface StageLiveState {
   /** Lamport clock: one more than the highest seq the sender had seen. */
