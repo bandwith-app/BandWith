@@ -265,6 +265,17 @@ export async function unlinkDeputy(deputyId: string) {
   return { data: (data as 'unlinked' | 'revoked' | 'not_linked' | null) ?? null, error };
 }
 
+/**
+ * Admin: "Revoke sent links" for a deputy with no account (182). New reply
+ * and calendar links for every request; never unlinks anyone. 'linked':
+ * they joined from the app meanwhile, nothing changed (Codex review #285
+ * round 5).
+ */
+export async function revokeDeputyLinks(deputyId: string) {
+  const { data, error } = await supabase.rpc('bw_deputy_revoke_links', { p_deputy_id: deputyId });
+  return { data: (data as 'revoked' | 'linked' | null) ?? null, error };
+}
+
 export type DeputyClaimStatus = 'linked' | 'already' | 'taken' | 'member' | 'not_found';
 export interface DeputyClaimResult {
   status: DeputyClaimStatus;

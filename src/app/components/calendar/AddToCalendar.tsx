@@ -6,7 +6,15 @@ import { cn } from '@/app/components/ui/utils';
 import { getLocale, useT } from '@/lib/i18n';
 import { GIG_LABELS, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
 import { openExternal } from '@/lib/nativeFiles';
-import { memberEventCalendarUrl, myEventCalendarToken, useEventCalendarToken } from '@/lib/memberCalendar';
+import {
+  eventCalendarLinksMissing,
+  memberCalendarUrl,
+  memberEventCalendarUrl,
+  myCalendarToken,
+  myEventCalendarToken,
+  useCalendarToken,
+  useEventCalendarToken,
+} from '@/lib/memberCalendar';
 import { CalendarLinkNotice } from './CalendarLinkNotice';
 
 export interface CalendarEventInfo {
@@ -38,11 +46,16 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
   const t = useT();
   // Opening the event only reads its link; the first tap makes it (Claude
   // review of #285, round 5: an open writes nothing on the server).
-  const { token, loading } = useEventCalendarToken(event.eventId, event.date);
-  const [made, setMade] = React.useState<{ key: string; url: string } | null>(null);
+  // The file is only ever the hook's current link: a link made on a tap
+  // comes back through the hook, and "Make a new link" ends it there (Codex
+  // review #285 round 5).
+  const { token, loading, legacy } = useEventCalendarToken(event.eventId, event.date);
+  // A database without 182 (PGRST202; Claude review #285 r5, M4): the link
+  // of builds before 182, the account token with this event.
+  const { token: accountToken } = useCalendarToken(legacy);
+  const legacyFile = (t: string | null) => (t ? memberCalendarUrl(t, { eventId: event.eventId }) : null);
   const [failed, setFailed] = React.useState(false);
-  const key = `${event.eventId}|${event.date}`;
-  const file = (token ? memberEventCalendarUrl(token) : null) ?? (made?.key === key ? made.url : null);
+  const file = token ? memberEventCalendarUrl(token) : legacy ? legacyFile(accountToken) : null;
   const [making, setMaking] = React.useState(false);
 
   const add = async () => {
@@ -56,14 +69,17 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
     const w = Capacitor.isNativePlatform() ? null : window.open('', '_blank');
     setMaking(true);
     const next = await myEventCalendarToken(event.eventId, event.date, { create: true }).catch(() => null);
+    const url = next
+      ? memberEventCalendarUrl(next)
+      : eventCalendarLinksMissing()
+        ? legacyFile(await myCalendarToken().catch(() => null))
+        : null;
     setMaking(false);
-    const url = next ? memberEventCalendarUrl(next) : null;
     if (!url) {
       w?.close();
       setFailed(true);
       return;
     }
-    setMade({ key, url });
     if (w) {
       try {
         w.opener = null;

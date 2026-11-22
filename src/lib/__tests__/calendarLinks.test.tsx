@@ -11,7 +11,8 @@ const cal = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/lib/nativeFiles')>()), openExternal: cal.openExternal }));
 const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
 
-import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, monthlyDate, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
+import { calendarFile, deputyFeedCalendar, gigEvent, isOccurrence, memberFeedCalendar, monthlyDate, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
+import { RRule } from 'rrule';
 import monthlyVectorsSrc from '../../../supabase/tests/monthly-clamp-vectors.json?raw';
 import { DeputyGigCard } from '@/app/components/deputy/DeputyGigsList';
 import type { DeputyGig } from '../services/deputies';
@@ -222,6 +223,22 @@ describe('series dates the app shows, in external calendars', () => {
     }
   });
 
+  // Claude review #285 r5 (M1): what a calendar does with the RRULE we
+  // write, expanded by a real RFC 5545 engine (rrule, devDependency), gives
+  // the shared vectors exactly.
+  it('the exported RRULE, expanded by rrule, gives every vector date (29th-31st, 2027 and 2028)', () => {
+    const { vectors } = JSON.parse(monthlyVectorsSrc) as { vectors: { start: string; dates: string[] }[] };
+    for (const { start, dates } of vectors) {
+      const rule = recurrenceRule({ frequency: 'monthly' }, start) as string;
+      const [y, m, d] = start.split('-').map(Number);
+      const r = new RRule({ ...RRule.parseString(rule), dtstart: new Date(Date.UTC(y, m - 1, d, 12)), count: dates.length });
+      expect(r.all().map((x) => x.toISOString().slice(0, 10)), `${start} ${rule}`).toEqual(dates);
+    }
+    // A plain monthly rule would skip the short months: the check would see it.
+    const plain = new RRule({ ...RRule.parseString('FREQ=MONTHLY;INTERVAL=1'), dtstart: new Date(Date.UTC(2027, 0, 31, 12)), count: 3 });
+    expect(plain.all().map((x) => x.toISOString().slice(0, 10))).toEqual(['2027-01-31', '2027-03-31', '2027-05-31']);
+  });
+
   // Claude review #285 item 6: the 31st is the month's last day (BYMONTHDAY=-1);
   // the 29th and 30th keep the latest of 28..d.
   it('the RRULE of a series on the 31st is BYMONTHDAY=-1; the 29th and 30th keep 28..d with BYSETPOS=-1', () => {
@@ -242,6 +259,23 @@ describe('series dates the app shows, in external calendars', () => {
     expect(monthlyDate('junk', 1)).toBeNull();
     expect(isOccurrence({ frequency: 'monthly', skip_dates: ['2027-02-28'] }, '2027-01-31', '2027-03-31')).toBe(true);
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-04-03')).toBe(false);
+  });
+});
+
+// Claude review of #285 r5 (M2): a carriage return in a text field (title,
+// band, venue, calendar name) must never start a new property line.
+describe('ICS text: no injected lines', () => {
+  it('\\r, \\r\\n and \\n in every text field are escaped as \\n', () => {
+    const ev = gigEvent(
+      { title: 'Gig\rATTENDEE:mailto:x@example.com', bandName: 'Band\r\nX-INJ:1', date: '2026-12-01', start: '20:00', venue: 'Hall\rX-VENUE:1', city: 'Queens', address: '1 Main St\nX-ADDR:1', role: 'Bass\r', url: 'https://bandwith.fun/x\rX-URL:1' },
+      { loadIn: 'Load-in', soundcheck: 'Soundcheck', show: 'Show', role: 'Role', rehearsal: 'Rehearsal' },
+      'ev-inj\rX-UID:1',
+    );
+    const ics = calendarFile([ev], 'Cal\rX-NAME:1', 'Member');
+    const lines = ics.split(/\r\n|\r|\n/).filter((l) => !l.startsWith(' '));
+    expect(lines.some((l) => /^(ATTENDEE|X-INJ|X-VENUE|X-ADDR|X-NAME|X-URL|X-UID)/.test(l))).toBe(false);
+    expect(ics.replace(/\r\n /g, '')).toContain('SUMMARY:Gig\\nATTENDEE:mailto:x@example.com · Band\\nX-INJ:1');
+    expect(ics.split('\r\n').every((l) => !l.includes('\r'))).toBe(true);
   });
 });
 

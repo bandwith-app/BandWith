@@ -121,6 +121,13 @@ INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role
 `);
 // An account link made before 182 ("Add to calendar" links shared until now carry it).
 await q(`INSERT INTO calendar_feeds (user_id) VALUES ($1)`, [ADMIN]);
+// Claude r5 (M3): a yes withdrawn before 182, its snapshot without a title.
+const [EV_PRE, DEPUTY6, RPRE] = [90, 91, 92].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, venue_name, is_recurring, created_by, fee)
+  VALUES ($1, $2, 'Old Withdrawn Gig', 'gig', 'confirmed', current_date - 400, 'Old Hall', false, $3, 1)`, [EV_PRE, BAND, ADMIN]);
+await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Old', NULL)`, [DEPUTY6, BAND]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, status, answer_snapshot)
+  VALUES ($1, $2, $3, $4, 'Old', 'cancelled', '{"venue":"Old Hall"}')`, [RPRE, BAND, EV_PRE, DEPUTY6]);
 const tok = async (r) => (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [r])).token;
 const [TA, TB, TC] = [await tok(RA), await tok(RB), await tok(RC)];
 
@@ -160,8 +167,20 @@ if (m178) {
 
 // Two runs: the migration is safe to run more than once.
 await db.exec(mig);
+const snapPre = async () => (await one(`SELECT answer_snapshot AS s FROM deputy_requests WHERE id = $1`, [RPRE])).s;
+const firstPre = await snapPre();
+await q(`UPDATE events SET title = 'Renamed Later' WHERE id = $1`, [EV_PRE]);
 await db.exec(mig);
 ok(true, 'migration runs twice');
+{
+  const again = await snapPre();
+  const untouched = (await q(`SELECT id, answer_snapshot AS s FROM deputy_requests WHERE id IN ($1, $2)`, [RA, RC])).rows;
+  ok(firstPre?.title === 'Old Withdrawn Gig' && firstPre.venue === 'Old Hall'
+    && again?.title === 'Old Withdrawn Gig'
+    && untouched.find((r) => r.id === RA)?.s && !('title' in untouched.find((r) => r.id === RA).s)
+    && untouched.find((r) => r.id === RC)?.s === null,
+    'Claude r5 M3: a withdrawn yes saved before 182 gets its title once (a second run keeps it; other rows untouched)');
+}
 
 // Answered through the reply page, then withdrawn by the admin.
 await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status) VALUES
@@ -560,6 +579,41 @@ await check('B1: a token rotated by "Revoke sent links" can no longer link an ac
   const linked2 = (await one(`SELECT user_id FROM band_deputies WHERE id = $1`, [DEPUTY3])).user_id;
   await q(`UPDATE band_deputies SET user_id = NULL WHERE id = $1`, [DEPUTY3]);
   return r1.status === 'not_found' && linked1 === null && r2.status === 'linked' && linked2 === NEWBIE;
+});
+// Codex r5 BLOCKER (DeputiesSection:155): "Revoke sent links" never unlinks.
+// Its own call (bw_deputy_revoke_links) only rotates the links of a deputy
+// with no account; if they joined between the admin's look and the tap, it
+// changes nothing and says 'linked'.
+await check('round 6: revoke rotates the links of a deputy with no account, and only then', async () => {
+  const before = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];
+  await as(ADMIN);
+  const r = (await one(`SELECT public.bw_deputy_revoke_links($1) AS r`, [DEPUTY3])).r;
+  await db.exec('RESET ROLE');
+  const after = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];
+  return r === 'revoked' && before.every((t, i) => t !== after[i]);
+});
+await check('round 6 race: they join between the look and the tap; the revoke leaves the account linked', async () => {
+  // The admin saw no account (getDeputy); the deputy joins with the current link.
+  await as(NEWBIE);
+  const claim = (await one(`SELECT public.bw_deputy_claim($1) AS r`, [await tok(R42)])).r;
+  await db.exec('RESET ROLE');
+  const keys = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];
+  await as(ADMIN);
+  const r = (await one(`SELECT public.bw_deputy_revoke_links($1) AS r`, [DEPUTY3])).r;
+  await db.exec('RESET ROLE');
+  const linked = (await one(`SELECT user_id FROM band_deputies WHERE id = $1`, [DEPUTY3])).user_id;
+  const same = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')].every((t, i) => t === keys[i]);
+  await q(`UPDATE band_deputies SET user_id = NULL WHERE id = $1`, [DEPUTY3]);
+  return claim.status === 'linked' && r === 'linked' && linked === NEWBIE && same;
+});
+await check('round 6: only a band admin may revoke; grants', async () => {
+  let refused = false;
+  await as(MEM);
+  try { await q(`SELECT public.bw_deputy_revoke_links($1)`, [DEPUTY3]); } catch { refused = true; }
+  await db.exec('RESET ROLE');
+  const g = await one(`SELECT has_function_privilege('anon', 'public.bw_deputy_revoke_links(uuid)', 'EXECUTE') AS a,
+    has_function_privilege('authenticated', 'public.bw_deputy_revoke_links(uuid)', 'EXECUTE') AS b`);
+  return refused && !g.a && g.b;
 });
 await check('Claude: deleting a deputy ends its reply, calendar and gig-file links first', async () => {
   const before = [await tok(R42), await col(R42, 'calendar_token'), await col(R42, 'gig_calendar_token')];

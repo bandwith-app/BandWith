@@ -27,6 +27,17 @@ const eventTokenValues = new Map<string, string>();
 const eventTokensInFlight = new Set<string>();
 /** Mounted one-event buttons: told when every event link has ended (a new account link). */
 const eventTokenListeners = new Set<() => void>();
+/** Mounted one-event buttons: told when a tap made the link of their key (`user|event|date`). */
+const eventTokenMadeListeners = new Set<(key: string, token: string) => void>();
+/**
+ * The database has no one-event links yet (182 not applied: PGRST202, the
+ * function is not found). Claude review #285 r5 (M4): Add to calendar then
+ * uses the link of builds before 182 (memberCalendarUrl with eventId).
+ * Cleared by the first answer from a 182 function.
+ */
+let eventLinksMissing = false;
+/** True once a 182 one-event function was not found on the database. */
+export const eventCalendarLinksMissing = () => eventLinksMissing;
 const endEventTokens = () => {
   eventTokens.clear();
   eventTokenValues.clear();
@@ -164,8 +175,12 @@ export async function myEventCalendarToken(
         (e: unknown) => ({ data: null, error: e }),
       );
       if (eventTokens.get(key) !== run) return (await eventTokens.get(key)) ?? null; // ended meanwhile
+      eventLinksMissing = (error as { code?: string } | null)?.code === 'PGRST202';
       if (!error && typeof data === 'string' && /^[0-9a-f]{64}$/.test(data)) {
         eventTokenValues.set(key, data);
+        // The buttons show this link from now on (only theirs: Codex review
+        // #285 round 5, never a URL kept aside that a new link has ended).
+        if (opts.create) eventTokenMadeListeners.forEach((l) => l(key, data));
         return data;
       }
       if (error && before) return before; // not reached: keep the last link
@@ -188,8 +203,15 @@ const eventTokenKey = (userId: string, eventId: string, day: string | null) => `
  * unavailable). Shows the last known link at once (for the tap), asks the
  * server again on each mount, and follows a new account link.
  */
-export function useEventCalendarToken(eventId: string, date: string | null): { token: string | null; loading: boolean } {
-  const [state, setState] = useState<{ key: string; token: string | null; loading: boolean }>({ key: '', token: null, loading: true });
+export function useEventCalendarToken(
+  eventId: string,
+  date: string | null,
+): { token: string | null; loading: boolean; legacy: boolean } {
+  const [state, setState] = useState<{ key: string; token: string | null; loading: boolean; legacy?: boolean }>({
+    key: '',
+    token: null,
+    loading: true,
+  });
   const [generation, setGeneration] = useState(0);
   const key = `${eventId}|${date ?? ''}`;
   useEffect(() => {
@@ -200,6 +222,19 @@ export function useEventCalendarToken(eventId: string, date: string | null): { t
     };
   }, []);
   useEffect(() => {
+    const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    const made = (k: string, token: string) => {
+      if (!UUID.test(eventId)) return;
+      // This event and date, for the account signed in now (when known).
+      const same = authUserId ? k === eventTokenKey(authUserId, eventId, day) : k.endsWith(eventTokenKey('', eventId, day));
+      if (same) setState({ key, token, loading: false });
+    };
+    eventTokenMadeListeners.add(made);
+    return () => {
+      eventTokenMadeListeners.delete(made);
+    };
+  }, [eventId, date, key]);
+  useEffect(() => {
     let alive = true;
     const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
     // The last link of the account signed in now, never another's.
@@ -207,13 +242,15 @@ export function useEventCalendarToken(eventId: string, date: string | null): { t
     const last = userId && UUID.test(eventId) ? eventTokenValues.get(eventTokenKey(userId, eventId, day)) ?? null : null;
     setState({ key, token: last, loading: !last });
     void myEventCalendarToken(eventId, date, { refresh: true }).then((t) => {
-      if (alive) setState({ key, token: t, loading: false });
+      if (alive) setState({ key, token: t, loading: false, legacy: !t && eventLinksMissing });
     });
     return () => {
       alive = false;
     };
   }, [eventId, date, key, generation]);
-  return state.key === key ? { token: state.token, loading: state.loading } : { token: null, loading: true };
+  return state.key === key
+    ? { token: state.token, loading: state.loading, legacy: !!state.legacy }
+    : { token: null, loading: true, legacy: false };
 }
 
 /** One event as a file to import once (182): no account token in it. */
@@ -342,5 +379,6 @@ export function _resetCalendarTokenCache() {
   eventTokens.clear();
   eventTokenValues.clear();
   eventTokensInFlight.clear();
+  eventLinksMissing = false;
   review = null;
 }

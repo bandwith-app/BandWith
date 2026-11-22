@@ -1451,8 +1451,14 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_deputy_request_ping':
       data = 'sent';
       break;
-    case 'bw_deputy_unlink': {
+    case 'bw_deputy_unlink':
+    case 'bw_deputy_revoke_links': {
       const d = table('band_deputies').find((x) => x.id === args.p_deputy_id);
+      // "Revoke sent links" never unlinks (182, Codex review #285 round 5).
+      if (fn === 'bw_deputy_revoke_links' && d?.user_id) {
+        data = 'linked';
+        break;
+      }
       data = d?.user_id ? 'unlinked' : 'revoked';
       if (d) d.user_id = null;
       // As 182: every request's reply and calendar links change, so an old

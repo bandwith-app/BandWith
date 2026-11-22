@@ -3341,7 +3341,6 @@ const dict: Dictionary = {
   "Could not revoke the links. Try again.": "Revoca dei link non riuscita. Riprova.",
   "Links revoked. The next request you send carries a new one.": "Link revocati. La prossima richiesta che mandi ne avrà uno nuovo.",
   "{name} just joined from the app. Their account is below: choose again.": "{name} è appena entrato dall'app. Il suo account è qui sotto: scegli di nuovo.",
-  "{name} had just joined from the app: their account is unlinked too, and the links are revoked.": "{name} era appena entrato dall'app: anche il suo account è scollegato, e i link sono revocati.",
   // App lock, bands load error
   "Unlock BandWith": "Sblocca BandWith",
   "device passcode": "codice del dispositivo",

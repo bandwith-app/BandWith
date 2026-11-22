@@ -8,6 +8,7 @@ import {
   deputiesUnavailable,
   getDeputy,
   listDeputies,
+  revokeDeputyLinks,
   saveDeputy,
   unlinkDeputy,
   type Deputy,
@@ -130,47 +131,41 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
     void load();
   };
 
-  // A deputy without an account: the same call rotates the reply and
-  // calendar links of every request (182), so a forwarded link stops working.
+  // A deputy without an account: new reply and calendar links for every
+  // request (182), so a forwarded link stops working. Its own call, which
+  // never unlinks anyone (Codex review #285 round 5).
   const revoke = async () => {
     if (!editing || editing === 'new') return;
     setSaving(true);
-    // They may have joined from the app since the sheet opened: the same call
-    // would unlink their account (Codex review #285 round 5). Look again
-    // first; if so, show it and let the admin choose again.
+    const joined = async () => {
+      // They joined from the app since the sheet opened: show their account
+      // and let the admin choose again.
+      const { data: now } = await getDeputy(editing.id);
+      setSaving(false);
+      setEditing(now ? { ...editing, ...now } : editing);
+      setConfirm(null);
+      setNotice(t('{name} just joined from the app. Their account is below: choose again.', { name: now?.name ?? editing.name }));
+      void load();
+    };
+    // A first look, so the usual case asks again before any call.
     const { data: now, error: nowError } = await getDeputy(editing.id);
     if (nowError || !now) {
       setSaving(false);
       setError(t('Could not revoke the links. Try again.'));
       return;
     }
-    if (now.user_id) {
-      setSaving(false);
-      setEditing({ ...editing, ...now });
-      setConfirm(null);
-      setNotice(t('{name} just joined from the app. Their account is below: choose again.', { name: now.name }));
-      void load();
-      return;
-    }
-    const { data, error: e } = await unlinkDeputy(editing.id);
+    if (now.user_id) return joined();
+    // A join between the look and this call: the server answers 'linked'
+    // and changes nothing.
+    const { data, error: e } = await revokeDeputyLinks(editing.id);
+    if (!e && data === 'linked') return joined();
     setSaving(false);
-    // Only 182 rotates the links of a deputy without an account, and says
-    // 'revoked'; a server before it answers 'not_linked' and changes nothing
-    // (Codex review #285 round 4). 'unlinked': they had just joined, and the
-    // same call also ended their links.
-    if (e || (data !== 'revoked' && data !== 'unlinked')) {
+    if (e || data !== 'revoked') {
       setError(t('Could not revoke the links. Try again.'));
       return;
     }
-    if (data === 'unlinked') setEditing({ ...editing, user_id: null });
     setConfirm(null);
-    // 'unlinked': they joined between the look and the call. Said, not hidden.
-    setNotice(
-      data === 'unlinked'
-        ? t('{name} had just joined from the app: their account is unlinked too, and the links are revoked.', { name: editing.name })
-        : t('Links revoked. The next request you send carries a new one.'),
-    );
-    if (data === 'unlinked') void load();
+    setNotice(t('Links revoked. The next request you send carries a new one.'));
   };
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));

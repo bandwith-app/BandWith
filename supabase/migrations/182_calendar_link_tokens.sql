@@ -33,9 +33,12 @@
 --     rules, also takes the calendar token, and returns no token at all, so
 --     the old function writes no credential either.
 --   - bw_deputy_unlink (087) rotates all three keys, also for a deputy with
---     no account ("Revoke sent links"), then answers 'revoked' (087 answered
---     'not_linked' without rotating; older builds only call it for linked
---     deputies, which still get 'unlinked').
+--     no account, then answers 'revoked' (087 answered 'not_linked' without
+--     rotating; older builds only call it for linked deputies, which still
+--     get 'unlinked').
+--   - bw_deputy_revoke_links: "Revoke sent links" for a deputy with no
+--     account. It never unlinks: if they joined meanwhile it changes
+--     nothing and answers 'linked'.
 --   - bw_deputy_claim (086) locks the deputy before it trusts the token, so a
 --     claim waiting on an unlink or a revoke can't link with the old token.
 --   - Deleting a deputy rotates their requests' keys first (trigger; older
@@ -48,7 +51,8 @@
 --     deputy's in-app list (bw_my_deputy_gigs, 086) shows that page.
 --   - A request withdrawn after a yes stays as the deputy last saw it: the
 --     gig of their answer (answer_snapshot, which now keeps the title too),
---     never later changes, no street address (bw_deputy_frozen_gig).
+--     never later changes, no street address (bw_deputy_frozen_gig). Those
+--     withdrawn before 182 get, once, the title their gig has when 182 runs.
 --   Replies on a withdrawn (cancelled) request were already refused (084:
 --   'closed'); unchanged.
 --
@@ -70,7 +74,11 @@
 --     without a date gets its next date from today
 --     (bw_calendar_next_occurrence). "Today" is the earliest date still
 --     current on Earth (bw_calendar_today, UTC-12), never the server's UTC
---     date: events and bands keep no time zone.
+--     date: events and bands keep no time zone. Accepted cost (Claude review
+--     r5): far east of UTC (New Zealand, UTC+13) a date counts as today for
+--     up to a day after it ended locally, so yesterday's link still opens
+--     and a series asked without a date may give yesterday's date until the
+--     day ends at UTC-12. Nothing more is shown than on that date itself.
 --   - bw_member_event_calendar(token): that one event as a single date, never
 --     the series rule or start; NULL once the user no longer sees it or the
 --     date is no longer in the series.
@@ -221,6 +229,19 @@ REVOKE ALL ON FUNCTION public.bw_trg_deputy_request_was_available() FROM PUBLIC,
 DROP TRIGGER IF EXISTS bw_deputy_request_was_available ON public.deputy_requests;
 CREATE TRIGGER bw_deputy_request_was_available BEFORE INSERT OR UPDATE OF status ON public.deputy_requests
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_deputy_request_was_available();
+
+-- Withdrawn before 182 (Claude review #285 round 5, M3): those snapshots have
+-- no title, and the trigger above only sees later withdrawals. Once, now:
+-- the title the gig has today. Rows that have one are left alone, so a
+-- second run changes nothing.
+UPDATE public.deputy_requests r
+   SET answer_snapshot = r.answer_snapshot || jsonb_build_object('title', e.title)
+  FROM public.events e
+ WHERE e.id = r.event_id
+   AND r.status = 'cancelled'
+   AND r.answer_snapshot IS NOT NULL
+   AND jsonb_typeof(r.answer_snapshot) = 'object'
+   AND NOT (r.answer_snapshot ? 'title');
 
 -- A cancelled event, in either spelling and any case (Codex review #285
 -- round 4): every check below goes through this one.
@@ -512,6 +533,38 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_deputy_unlink(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;
+
+-- "Revoke sent links" (a deputy with no account), its own call so it can
+-- never unlink anyone (Codex review of #285, round 5): the deputy row is
+-- locked, as in the claim, so a join either lands first (then this changes
+-- nothing and answers 'linked': the app shows the account and asks again)
+-- or after (then its old link no longer matches and it can't link).
+CREATE OR REPLACE FUNCTION public.bw_deputy_revoke_links(p_deputy_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_dep public.band_deputies;
+BEGIN
+  SELECT * INTO v_dep FROM public.band_deputies d WHERE d.id = p_deputy_id FOR UPDATE;
+  IF v_dep.id IS NULL OR NOT public.bw_is_band_admin(v_dep.band_id) THEN
+    RAISE EXCEPTION 'Not allowed' USING ERRCODE = '42501';
+  END IF;
+  IF v_dep.user_id IS NOT NULL THEN
+    RETURN 'linked';
+  END IF;
+  UPDATE public.deputy_requests r
+     SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+         calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+         gig_calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
+   WHERE r.deputy_id = v_dep.id;
+  RETURN 'revoked';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_revoke_links(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_revoke_links(uuid) TO authenticated;
 
 -- 086's claim, with the lock taken before the token is trusted.
 CREATE OR REPLACE FUNCTION public.bw_deputy_claim(p_token text)

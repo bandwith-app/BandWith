@@ -102,7 +102,11 @@ const details = (g: DeputyGig, l: GigLabels) =>
 /** "Title · Band", or just the title (personal gigs have no band). */
 const summary = (g: DeputyGig) => (g.bandName ? `${g.title} · ${g.bandName}` : g.title);
 
-const icsText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+// Every line break (\r\n, a lone \r, \n) becomes an escaped \n first, so a
+// text field can never start a property line of its own (Claude review of
+// #285 r5, M2).
+const icsText = (s: string) =>
+  s.replace(/\r\n?/g, '\n').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -151,7 +155,7 @@ export function gigEvent(
     : 0;
   return [
     'BEGIN:VEVENT',
-    `UID:${uid}@bandwith`,
+    `UID:${uid.replace(/[\r\n]/g, '')}@bandwith`,
     `DTSTAMP:${utcStamp(opts.now ?? new Date())}`,
     `SEQUENCE:${sequence}`,
     ...when,
@@ -160,7 +164,7 @@ export function gigEvent(
     `SUMMARY:${icsText(summary(g))}`,
     location(g) ? `LOCATION:${icsText(location(g))}` : '',
     `DESCRIPTION:${icsText(details(g, labels))}`,
-    g.url ? `URL:${g.url}` : '',
+    g.url ? `URL:${g.url.replace(/[\r\n]/g, '')}` : '',
     `STATUS:${opts.cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
     'END:VEVENT',
   ].filter(Boolean);

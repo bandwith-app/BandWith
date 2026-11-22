@@ -9,11 +9,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const list = vi.fn();
 const unlink = vi.fn();
+const revoke = vi.fn();
 const getOne = vi.fn();
 vi.mock('@/lib/services/deputies', () => ({
   listDeputies: (...a: unknown[]) => list(...a),
   getDeputy: (...a: unknown[]) => getOne(...a),
   unlinkDeputy: (...a: unknown[]) => unlink(...a),
+  revokeDeputyLinks: (...a: unknown[]) => revoke(...a),
   saveDeputy: vi.fn(),
   deleteDeputy: vi.fn(),
   deputiesUnavailable: () => false,
@@ -27,6 +29,7 @@ describe('DeputiesSection: revoke sent links', () => {
   beforeEach(() => {
     list.mockReset();
     unlink.mockReset();
+    revoke.mockReset();
     getOne.mockReset();
     // By default the deputy is as the list showed them.
     getOne.mockImplementation(async (id: string) => {
@@ -37,14 +40,15 @@ describe('DeputiesSection: revoke sent links', () => {
 
   it('offers to revoke the links of a deputy without an account', async () => {
     list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
-    unlink.mockResolvedValue({ data: 'revoked', error: null });
+    revoke.mockResolvedValue({ data: 'revoked', error: null });
     render(<DeputiesSection bandId="b1" />);
     fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
     expect(screen.queryByRole('button', { name: 'Unlink account' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
     expect(screen.getByText('Revoke sent links?')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
-    await waitFor(() => expect(unlink).toHaveBeenCalledWith('d1'));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('d1'));
+    expect(unlink).not.toHaveBeenCalled();
     expect(await screen.findByText('Links revoked. The next request you send carries a new one.')).toBeTruthy();
   });
 
@@ -60,12 +64,12 @@ describe('DeputiesSection: revoke sent links', () => {
   // and rotates nothing; without the function at all it errors. Neither is
   // a success.
   it.each([
-    ['a server before 182', { data: 'not_linked', error: null }],
-    ['no such function', { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.bw_deputy_unlink' } }],
+    ['a server before 182', { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.bw_deputy_revoke_links' } }],
+    ['an unknown answer', { data: 'not_linked', error: null }],
     ['an empty answer', { data: null, error: null }],
   ])('%s: an error, never "Links revoked"', async (_name, answer) => {
     list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
-    unlink.mockResolvedValue(answer);
+    revoke.mockResolvedValue(answer);
     render(<DeputiesSection bandId="b1" />);
     fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
@@ -91,20 +95,28 @@ describe('DeputiesSection: revoke sent links', () => {
     expect(screen.queryByRole('button', { name: 'Revoke sent links' })).toBeNull();
   });
 
-  it('joined in the last moment (the server unlinked too): the sheet says so', async () => {
+  // Codex review #285 round 5, BLOCKER: they join between the look
+  // (getDeputy) and the call. "Revoke sent links" never unlinks: the server
+  // answers 'linked', nothing changed, and the sheet asks again.
+  it('they join between the look and the tap: the account stays linked, the sheet asks again', async () => {
     list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
-    unlink.mockResolvedValue({ data: 'unlinked', error: null });
+    revoke.mockResolvedValue({ data: 'linked', error: null });
     render(<DeputiesSection bandId="b1" />);
     fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
+    list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: 'u9' }], error: null });
+    getOne.mockResolvedValueOnce({ data: { ...base, id: 'd1', name: 'Sam Rivera', user_id: null }, error: null }); // the look: no account yet
+    getOne.mockResolvedValue({ data: { ...base, id: 'd1', name: 'Sam Rivera', user_id: 'u9' }, error: null });
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
-    expect(await screen.findByText('Sam Rivera had just joined from the app: their account is unlinked too, and the links are revoked.')).toBeTruthy();
+    expect(await screen.findByText('Sam Rivera just joined from the app. Their account is below: choose again.')).toBeTruthy();
+    expect(unlink).not.toHaveBeenCalled();
     expect(screen.queryByText('Links revoked. The next request you send carries a new one.')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Unlink account' })).toBeTruthy();
   });
 
   it('says so when revoking fails', async () => {
     list.mockResolvedValue({ data: [{ ...base, id: 'd1', name: 'Sam Rivera', user_id: null }], error: null });
-    unlink.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    revoke.mockResolvedValue({ data: null, error: { message: 'boom' } });
     render(<DeputiesSection bandId="b1" />);
     fireEvent.click(await screen.findByRole('button', { name: /Sam Rivera/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Revoke sent links' }));
