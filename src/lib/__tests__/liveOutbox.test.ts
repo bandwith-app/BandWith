@@ -110,6 +110,31 @@ describe('flushLiveOutbox', () => {
     expect(r.left).toBe(2);
   });
 
+  // A passing server problem is not a refusal: the change stays for the next try.
+  for (const [what, res] of [
+    ['503 Service Unavailable', { error: { message: 'Service Unavailable' }, status: 503 }],
+    ['500 on a PostgREST error', { error: { message: 'upstream error', code: '' }, status: 500 }],
+    ['429 Too Many Requests', { error: { message: 'Too Many Requests' }, status: 429 }],
+    ['408 Request Timeout', { error: { message: 'Request Timeout' }, status: 408 }],
+    ['401 expired session', { error: { message: 'JWT expired', code: 'PGRST301' }, status: 401 }],
+    ['a statement timeout', { error: { message: 'canceling statement due to statement timeout', code: '57014' } }],
+    ['a request that timed out', { error: { message: 'The request timed out.' } }],
+  ] as const) {
+    it(`server busy or down (${what}): stops and keeps every change`, async () => {
+      queueLiveOp(me, note('n1', 'a', true));
+      queueLiveOp(me, note('n2', 'b', true));
+      const r = await flushLiveOutbox(me, api({ note: async () => res }));
+      expect(r).toEqual({ sent: 0, dropped: 0, left: 2 });
+      expect(readLiveOutbox(me).map((o) => (o as { id: string }).id)).toEqual(['n1', 'n2']);
+    });
+  }
+
+  it('a 403 is a refusal, not a passing problem: dropped', async () => {
+    queueLiveOp(me, note('n1', 'a', true));
+    const r = await flushLiveOutbox(me, api({ note: async () => ({ error: { message: 'Forbidden' }, status: 403 }) }));
+    expect(r).toEqual({ sent: 0, dropped: 1, left: 0 });
+  });
+
   it('refused by the server (no longer allowed, song gone): dropped, the rest goes', async () => {
     queueLiveOp(me, note('n1', 'a', true));
     queueLiveOp(me, note('n2', 'b', true));

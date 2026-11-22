@@ -721,14 +721,15 @@ export const replaceSetlistSongs = async (
  */
 export const saveSetlistOrder = async (
   rows: { id: string; setlist_id: string; song_id: string; position: number; set_number: number }[]
-): Promise<{ error: Error | null }> => {
+): Promise<{ error: Error | null; status?: number }> => {
   if (rows.length === 0) return { error: null };
   try {
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from('setlist_songs')
       .upsert(rows, { onConflict: 'id', defaultToNull: false })
       .select('id');
-    if (error) throw error;
+    // The HTTP status too: a 503 is worth trying again, a refusal is not (live outbox).
+    if (error) return { error, status };
     if (!data || data.length !== rows.length) {
       throw permissionError('The new order could not be saved. You may not have permission.');
     }

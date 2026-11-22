@@ -102,7 +102,27 @@ export const WAITING_EVENTS = [LIVE_OUTBOX_EVENT, OUTBOX_EVENT] as const;
 
 // -------------------------------------------------------------- replay --
 
-type Res = Promise<{ error: unknown }>;
+/**
+ * Worth sending again later, not a refusal: no signal, the server busy or
+ * down (5xx, 408, 425, 429, a timeout), an expired session (it is renewed).
+ * Anything else (not allowed, the song gone, invalid) is final.
+ * Same rule as isRetryableWriteError in rehearsalNotesOutbox.ts (#296):
+ * use that one once it is on main.
+ */
+function isRetryableWriteError(error: unknown, status?: number): boolean {
+  if (isOfflineError(error)) return true;
+  const e = (error && typeof error === 'object' ? error : {}) as { status?: unknown; code?: unknown; message?: unknown };
+  const http = Number(status ?? e.status);
+  if (http === 401 || http === 408 || http === 425 || http === 429 || http >= 500) return true;
+  const code = e.code == null ? '' : String(e.code);
+  // SQLSTATE: connection, rollback (serialization, deadlock), resources, operator intervention (timeouts).
+  if (code === 'PGRST301' || /^(08|40|53|57)[0-9A-Z]{3}$/.test(code)) return true;
+  const msg = String(e.message ?? '').toLowerCase();
+  return msg.includes('jwt expired') || msg.includes('timed out') || msg.includes('timeout');
+}
+
+/** `status`: the HTTP status of the failed call, when known (a 503 is not a refusal). */
+type Res = Promise<{ error: unknown; status?: number }>;
 export interface LiveOutboxApi {
   note: (op: Extract<LiveOp, { kind: 'note' }>) => Res;
   noteDelete: (op: Extract<LiveOp, { kind: 'noteDelete' }>) => Res;
@@ -126,9 +146,11 @@ const send = (api: LiveOutboxApi, op: LiveOp): Res => {
 let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
 
 /**
- * Send the waiting changes in order. Still no signal: stop and keep the rest.
- * Refused by the server (no longer allowed, song gone, setlist changed by
- * someone else): dropped, so one bad change never blocks the others.
+ * Send the waiting changes in order. Still no signal or a passing server
+ * problem (busy, down, a timeout, an expired session): stop and keep the
+ * rest, tried again later. Refused by the server (no longer allowed, song
+ * gone, setlist changed by someone else): dropped, so one bad change never
+ * blocks the others.
  */
 export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
   if (flushing) return flushing;
@@ -136,8 +158,8 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
     let sent = 0;
     let dropped = 0;
     for (let op = readLiveOutbox(userId)[0], n = 0; op && n < 500; op = readLiveOutbox(userId)[0], n++) {
-      const { error } = await send(api, op);
-      if (error && isOfflineError(error)) break;
+      const { error, status } = await send(api, op);
+      if (error && isRetryableWriteError(error, status)) break;
       if (error) dropped++;
       else sent++;
       const same = JSON.stringify(op);

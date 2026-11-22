@@ -23,22 +23,22 @@ export const liveOutboxApi: LiveOutboxApi = {
     const row = { song_id: op.songId, anchor: op.anchor, body: op.body };
     // Written offline: create it with its own id (again is harmless). An
     // edit: only if the note is still there (deleted on another device: nothing).
-    const { error } = op.isNew
+    const { error, status } = op.isNew
       ? await supabase.from('song_personal_notes').upsert({ id: op.id, ...row }, { onConflict: 'id' })
       : await supabase.from('song_personal_notes').update({ body: op.body, anchor: op.anchor }).eq('id', op.id);
     if (!error) notifyPersonalChanged(op.songId);
-    return { error };
+    return { error, status };
   },
 
   async noteDelete(op) {
-    const { error } = await supabase.from('song_personal_notes').delete().eq('id', op.id);
+    const { error, status } = await supabase.from('song_personal_notes').delete().eq('id', op.id);
     if (!error) notifyPersonalChanged(op.songId);
-    return { error };
+    return { error, status };
   },
 
   async suggestion(op) {
-    const { error } = await supabase.from('song_suggestions').insert({ id: op.id, ...op.row });
-    if (error && !isDuplicate(error)) return { error };
+    const { error, status } = await supabase.from('song_suggestions').insert({ id: op.id, ...op.row });
+    if (error && !isDuplicate(error)) return { error, status };
     notifySuggestionsChanged();
     return { error: null };
   },
@@ -46,8 +46,8 @@ export const liveOutboxApi: LiveOutboxApi = {
   async order(op: Extract<LiveOp, { kind: 'order' }>) {
     // Someone changed the setlist meanwhile (added or removed songs): this
     // order no longer fits it and would bring removed songs back.
-    const { data, error } = await supabase.from('setlist_songs').select('id').eq('setlist_id', op.setlistId);
-    if (error) return { error };
+    const { data, error, status } = await supabase.from('setlist_songs').select('id').eq('setlist_id', op.setlistId);
+    if (error) return { error, status };
     const now = new Set(((data as { id: string }[] | null) ?? []).map((r) => r.id));
     if (now.size !== op.rows.length || op.rows.some((r) => !now.has(r.id))) {
       return { error: new Error('The setlist changed meanwhile.') };
