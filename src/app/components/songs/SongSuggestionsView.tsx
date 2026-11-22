@@ -13,6 +13,7 @@ import { useSystemBack } from '@/lib/backStack';
 import { supabase } from '@/lib/supabase';
 import { intlLocale, useT } from '@/lib/i18n';
 import { personName } from '@/lib/personName';
+import { authorName } from '@/lib/formerMember';
 import { userMessage } from '@/lib/userError';
 import type { Song } from '@/lib/services/songs';
 import {
@@ -191,7 +192,7 @@ export const SongSuggestionsView: React.FC = () => {
                     key={s.id}
                     icon={KIND_ICON[s.kind]}
                     title={s.song_title || t('Song')}
-                    subtitle={[kindLabel(s.kind, t), isAdmin ? personName(s.author || {}, t('Member')) : null, shortDate(s.created_at)].filter(Boolean).join(' · ')}
+                    subtitle={[kindLabel(s.kind, t), isAdmin ? authorName(s.created_by, s.author, t('Member'), t('Former member')) : null, shortDate(s.created_at)].filter(Boolean).join(' · ')}
                     trailing={s.status !== 'pending' ? <StatusTag status={s.status} /> : undefined}
                     onClick={() => setSelectedId(s.id)}
                   />
@@ -252,7 +253,7 @@ const SuggestionDetail: React.FC<{
 
   const pending = s.status === 'pending';
   const canReview = isAdmin && pending;
-  const author = personName(s.author || {}, t('Member'));
+  const author = authorName(s.created_by, s.author, t('Member'), t('Former member'));
   const changedSince = pending && songChangedSince(s, song);
 
   // What the song has now, and what it would have.

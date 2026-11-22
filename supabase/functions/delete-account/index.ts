@@ -1,17 +1,23 @@
 // Deletes the caller's own account (App Store / Play Store requirement).
 //
+// Everything that can refuse is decided before anything is erased (Codex
+// review #282):
 // 1. Refuses (409) if the caller is the only admin of a band with other members.
-// 2. bw_account_deletion_begin (180): the same check under a lock, then a
-//    pending deletion. While it is pending a co-admin can't step down, so the
-//    check can't change once files start going (Codex review #282). It also
-//    notes the bands that go with the account.
+// 2. bw_account_deletion_begin (180): the same check under the band locks
+//    (a co-admin deleting their own account counts as gone), then a pending
+//    deletion. While it is pending no membership change that would make a
+//    later step refuse goes through (a co-admin stepping down, someone
+//    joining a band that goes, the last member leaving a band that stays).
+//    It also notes the bands that go with the account.
 // 3. Storage, before any data is deleted: personal files and the profile
 //    photo go, the files that stay with their bands are released
 //    (bw_account_storage_release). If a personal file or the photo is still
 //    there it stops (503, nothing deleted).
-// 4. bw_prepare_account_deletion(): removes solo bands (noting them too) and
-//    clears references.
-// 5. Removes the files of the noted bands that are really gone. A failed
+// 4. bw_prepare_account_deletion(): removes solo bands (noting them too),
+//    keeps band and event chat messages as a former member's, clears
+//    references. Its last-admin check refusing is a 409 too.
+// 5. Removes the files of the noted bands that are really gone (old quote
+//    PDFs in avatars/quotes/<band> too). A failed
 //    lookup or cleanup stops (503) before the account goes, so a retry still
 //    finds them (a lookup that failed must never erase a band that goes on).
 // 6. auth.admin.deleteUser() — profiles cascade from auth.users, the pending
@@ -30,9 +36,11 @@ import {
   requireCaller,
 } from "../_shared/auth.ts";
 import {
+  bandFolders,
   bandsToClean,
   beginOutcome,
   type FolderStore,
+  prepareOutcome,
   removeFolder,
   storageReady,
 } from "../_shared/account-deletion.ts";
@@ -79,6 +87,9 @@ serve(async (req) => {
     if (begin.kind === "blocked") {
       return json({ success: false, code: "account_has_bands", bands: begin.bands }, 409);
     }
+    if (begin.kind === "busy") {
+      return json({ success: false, code: "account_deletion_in_progress", error: "Someone else in your band is deleting their account. Try again in a few minutes." }, 409);
+    }
     if (begin.kind === "not_ready") return notReady("begin", beginError?.message ?? beginData);
 
     // Storage: personal files and the photo go, the rest stays with the
@@ -89,6 +100,12 @@ serve(async (req) => {
     if (!storageReady(release, releaseError)) return notReady("storage", releaseError?.message ?? release);
 
     const { error: prepError } = await admin.rpc("bw_prepare_account_deletion", { p_uid: caller.id });
+    const prepare = prepareOutcome(prepError);
+    if (prepare.kind === "blocked") {
+      const { data: still } = await admin.rpc("bw_account_deletion_blockers", { p_uid: caller.id });
+      const bands = Array.isArray(still) ? still.map((b: { band_name: string }) => b.band_name) : [];
+      return json({ success: false, code: "account_has_bands", bands }, 409);
+    }
     if (prepError) throw prepError;
 
     // Every band noted as going with the account (begin and prepare), also
@@ -106,9 +123,9 @@ serve(async (req) => {
       if (toClean === null) return notReady("band lookup", stillThere.error);
       let cleaned = true;
       for (const bandId of toClean) {
-        cleaned = (await removeFolder(bucketStore(admin, "song-files"), bandId)) && cleaned;
-        cleaned = (await removeFolder(bucketStore(admin, "band-branding"), bandId)) && cleaned;
-        cleaned = (await removeFolder(bucketStore(admin, "quotes"), `quotes/${bandId}`)) && cleaned;
+        for (const { bucket, prefix } of bandFolders(bandId)) {
+          cleaned = (await removeFolder(bucketStore(admin, bucket), prefix)) && cleaned;
+        }
       }
       if (!cleaned) return notReady("band files", toClean);
     }

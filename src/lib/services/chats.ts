@@ -57,7 +57,8 @@ export interface ChatParticipant {
 export interface Message {
   id: string;
   chat_id: string;
-  sender_id: string;
+  /** NULL: a former member (account deleted, migration 180). */
+  sender_id: string | null;
   content: string;
   message_type: string;
   attachments?: unknown[];
@@ -1355,7 +1356,7 @@ export const searchChatsAndMessages = async (
           chat_type: chatInfo?.type as ChatType,
           message_id: msg.id,
           message_content: msg.content,
-          message_sender: msg.sender_id === user.id ? t('You') : (msg.sender_id && senders.get(msg.sender_id)) || t('Unknown'),
+          message_sender: msg.sender_id === user.id ? t('You') : !msg.sender_id ? t('Former member') : senders.get(msg.sender_id) || t('Unknown'),
           message_date: msg.created_at,
           match_text: msg.content,
         });

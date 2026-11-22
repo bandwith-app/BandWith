@@ -54,6 +54,7 @@ const hideChatKeyboard = () => {
   }
 };
 import { personName } from '@/lib/personName';
+import { authorName } from '@/lib/formerMember';
 
 interface ChatDetailModalProps {
   chat: {
@@ -922,8 +923,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                       )}>
                         {!isMe && (chatType === 'band' || chatType === 'event') && (
                           <p className="bw-label-xs text-muted-foreground">
-                            {personName(message.sender, t('Member'))}
-                            {bandAdminIds.has(message.sender_id) ? ' · ' + t('Admin') : ''}
+                            {authorName(message.sender_id, message.sender, t('Member'), t('Former member'))}
+                            {message.sender_id && bandAdminIds.has(message.sender_id) ? ' · ' + t('Admin') : ''}
                           </p>
                         )}
 
@@ -936,7 +937,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                           {replyTo && message.reply_to_id && replyTo.content && (
                             <div className="flex flex-col gap-1 px-3 py-2 rounded-[20px] bg-black text-white min-w-0">
                               <p className="bw-label-xs text-accent truncate">
-                                {personName(replyTo.sender, t('Unknown'))}
+                                {authorName(replyTo.sender_id, replyTo.sender, t('Unknown'), t('Former member'))}
                               </p>
                               <p className="bw-body-sm text-white line-clamp-1">
                                 {replyTo.content}
@@ -998,7 +999,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                     <span className="w-[3px] h-7 rounded-full bg-accent shrink-0" aria-hidden="true" />
                     <div className="flex-1 min-w-0 flex flex-col">
                       <span className="bw-label-sm text-foreground truncate">
-                        {t('Replying to {name}', { name: personName(replyingTo.sender, t('Message')) })}
+                        {t('Replying to {name}', { name: authorName(replyingTo.sender_id, replyingTo.sender, t('Message'), t('Former member')) })}
                       </span>
                       <p className="bw-body-sm text-muted-foreground line-clamp-1">{replyingTo.content}</p>
                     </div>

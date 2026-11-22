@@ -604,7 +604,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="bw-h2 text-destructive">{t('Delete account')}</span>
         </div>
         <p className="bw-body-md text-foreground">
-          {t('Permanently removes your profile, personal gigs and messages. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
+          {t('Permanently removes your profile, personal gigs and direct messages. Your messages in band and gig chats stay, shown as from a former member. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
         </p>
         <PillButton
           variant="danger"

@@ -99,3 +99,43 @@ describe('delete-account: Codex review #282', () => {
     expect(fn).not.toMatch(/async function removeFolder/);
   });
 });
+
+import * as deletion from '../../../supabase/functions/_shared/account-deletion';
+
+// Codex review #282, round 2.
+describe('delete-account: round 2', () => {
+  // B5: older builds saved quote PDFs to avatars/quotes/<bandId>/ when the
+  // quotes bucket failed. A band that goes with the account loses those too.
+  it("cleans every folder of a band that goes, old quote PDFs in avatars too", () => {
+    const folders = (deletion as any).bandFolders?.('b1');
+    expect(folders).toEqual(expect.arrayContaining([
+      { bucket: 'song-files', prefix: 'b1' },
+      { bucket: 'band-branding', prefix: 'b1' },
+      { bucket: 'quotes', prefix: 'quotes/b1' },
+      { bucket: 'avatars', prefix: 'quotes/b1' },
+    ]));
+  });
+
+  it('the function cleans the folders bandFolders lists', () => {
+    expect(fn).toMatch(/for \(const \{ bucket, prefix \} of bandFolders\(bandId\)\)/);
+  });
+
+  // Coordinator (Claude review): prepare refusing must answer 409 with the
+  // bands, not a generic error.
+  it('reads the prepare answer', () => {
+    const prepareOutcome = (deletion as any).prepareOutcome;
+    expect(prepareOutcome?.(null)).toEqual({ kind: 'ok' });
+    expect(prepareOutcome?.({ message: 'account_has_bands', code: 'P0001' })).toEqual({ kind: 'blocked' });
+    expect(prepareOutcome?.({ message: 'canceling statement due to statement timeout' })).toEqual({ kind: 'error' });
+  });
+
+  it('the function answers 409 when prepare refuses', () => {
+    expect(fn).toMatch(/prepare\.kind === "blocked"[\s\S]{0,400}409/);
+  });
+
+  // Everyone else in a band deleting at once: wait, never a generic 500.
+  it('reads a begin that waits for another deletion', () => {
+    expect(beginOutcome({ ok: false, code: 'deletion_in_progress', bands: [] } as any, null)).toEqual({ kind: 'busy' });
+    expect(fn).toMatch(/begin\.kind === "busy"[\s\S]{0,200}409/);
+  });
+});
