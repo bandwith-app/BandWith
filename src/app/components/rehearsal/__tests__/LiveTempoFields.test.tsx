@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
 import { LIVE_TEMPO_DEFAULTS, LiveTempoFields, type LiveTempoValues } from '../LiveTempoFields';
 
@@ -45,22 +45,31 @@ describe('LiveTempoFields (song form, 171)', () => {
     const onChange = setup({ timeSignature: '3/4', pickupBeats: 2 });
     fireEvent.click(screen.getByRole('button', { name: '2 bars' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ countInBars: 2 }));
-    expect(screen.getByText('Starts 2 beats early')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'One beat more' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'One beat less' }));
+    // In the band's words: the beat the song comes in on, not "pickup".
+    expect(screen.getByRole('group', { name: 'Where the song starts' })).toHaveTextContent('Starts on beat 2');
+    expect(screen.getByRole('button', { name: 'One beat earlier' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'One beat later' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pickupBeats: 1 }));
     fireEvent.click(screen.getByRole('switch', { name: 'Played with a backing track' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ backingTrack: true }));
   });
 });
 
-describe('LiveTempoFields: pickup', () => {
-  it('says "1 beat" for one', () => {
-    setup({ timeSignature: '4/4', pickupBeats: 1 });
-    expect(screen.getByText('Starts 1 beat early')).toBeInTheDocument();
+describe('LiveTempoFields: where the song starts', () => {
+  it('on beat 1 by default; in 6/8 the beats are the two dotted ones', () => {
+    setup({ timeSignature: '4/4' });
+    expect(screen.getByText('Starts on beat 1')).toBeInTheDocument();
+    cleanup();
+    const onChange = setup({ timeSignature: '6/8', pickupBeats: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'One beat earlier' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ pickupBeats: 1 }));
+    cleanup();
+    setup({ timeSignature: '6/8', pickupBeats: 1 });
+    expect(screen.getByText('Starts on beat 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'One beat earlier' })).toBeDisabled();
   });
 
-  it('a shorter bar picked: the pickup is cut to fit it', () => {
+  it('a shorter bar picked: the start is moved to fit it', () => {
     const onChange = setup({ timeSignature: '4/4', pickupBeats: 3 });
     fireEvent.click(screen.getByRole('button', { name: 'Time signature 2/4' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ timeSignature: '2/4', pickupBeats: 1 }));
