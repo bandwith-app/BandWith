@@ -37,6 +37,11 @@ const JAVA_FRAME =
   '030210534f5fb0d27e6d83a753f490d3f8cbff1a63534a6b8eeb945eeed2cb249974b711b43ccbc09abc8735587bb4eafc267ae1e334e6af6065e4193a0e3a5c7be905c6f7d14642';
 
 describe('stageBleSync clock frame', () => {
+  it('the signed clock has a characteristic of its own: builds that read the band-key clock (b7d50002, never released) find none', () => {
+    // Those builds (main after #265) expect 16 bytes there: they get "no clock" (their older-leader path), never a frame to misread.
+    expect(STAGE_BLE_CLOCK_CHARACTERISTIC).toBe('b7d50005-5b1e-4c6a-9b3d-6e0a2f7c1d42');
+  });
+
   it('is a new frame version on characteristics of its own (older apps never read them)', () => {
     expect(STAGE_BLE_SYNC_VERSION).toBeGreaterThan(STAGE_BLE_VERSION);
     const chars = new Set([STAGE_BLE_CHARACTERISTIC, STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC]);

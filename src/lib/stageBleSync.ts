@@ -29,8 +29,14 @@ import { SIGNATURE_BYTES, signBytes, verifyBytes } from './stageSign';
 import { bestSample, clockSample, type ClockSample } from './stageClick';
 
 export const STAGE_BLE_SYNC_VERSION = 3;
-/** The leader's clock, one fresh signed reading per read (same for every gig). */
-export const STAGE_BLE_CLOCK_CHARACTERISTIC = 'b7d50002-5b1e-4c6a-9b3d-6e0a2f7c1d42';
+/**
+ * The leader's clock, one fresh signed reading per read (same for every gig).
+ * Not b7d50002: builds from main between #265 and #288 (never released) read
+ * a 16-byte band-key clock there. Nothing is served on it now, so such a
+ * build sees a leader with no clock (the song still syncs) and can't be fed
+ * a member's clock.
+ */
+export const STAGE_BLE_CLOCK_CHARACTERISTIC = 'b7d50005-5b1e-4c6a-9b3d-6e0a2f7c1d42';
 /** The live frame (click, count-in, playhead): read + notify, filled in B3. */
 export const STAGE_BLE_LIVE_CHARACTERISTIC = 'b7d50003-5b1e-4c6a-9b3d-6e0a2f7c1d42';
 

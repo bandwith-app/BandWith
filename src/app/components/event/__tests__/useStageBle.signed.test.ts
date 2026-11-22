@@ -213,7 +213,10 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     air.signer = { ...admins, version: 1 };
     const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
     await waitFor(() => expect(air.started.length).toBe(1));
+    // Nothing is served on b7d50002 (the band-key clock builds from before #288 read).
+    expect(Object.values(air.started[0])).not.toContain('b7d50002-5b1e-4c6a-9b3d-6e0a2f7c1d42');
     expect(air.started[0]).toMatchObject({
+      clockUuid: 'b7d50005-5b1e-4c6a-9b3d-6e0a2f7c1d42',
       characteristicUuid: STAGE_BLE_CHARACTERISTIC,
       signedUuid: STAGE_BLE_SIGNED_CHARACTERISTIC,
       signKey: admins.private,
