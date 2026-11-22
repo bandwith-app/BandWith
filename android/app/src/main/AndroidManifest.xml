@@ -45,6 +45,15 @@
 
         </activity>
 
+        <!-- Pushes tagged with an account show only when that account is signed in
+             here (BwMessagingService, #287 round 5); it replaces the plugin's service. -->
+        <service android:name=".BwMessagingService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
+
         <!-- Firebase push: status-bar icon and tint for notifications sent while the app is closed -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"

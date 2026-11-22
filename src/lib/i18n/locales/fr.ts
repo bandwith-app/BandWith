@@ -2085,6 +2085,7 @@ const dict: Dictionary = {
   "Sign-in didn’t complete": "Connexion non aboutie",
   "Link expired": "Lien expiré",
   "Open the reset link in the same browser where you asked for it. Ask for a new link and open it there.": "Ouvre le lien de réinitialisation dans le navigateur où tu l’as demandé. Demande un nouveau lien et ouvre-le là.",
+  "This reset link can no longer change your password. Ask for a new link and open it on this device.": "Ce lien de réinitialisation ne peut plus changer ton mot de passe. Demande un nouveau lien et ouvre-le sur cet appareil.",
   "This reset link has expired or was already used. Some email apps open links before you do, and that uses them up. Ask for a new link and open it straight away.": "Ce lien de réinitialisation a expiré ou a déjà été utilisé. Certaines applis de messagerie ouvrent les liens avant toi, ce qui les consomme. Demande un nouveau lien et ouvre-le tout de suite.",
   "Google or Apple sign-in was cancelled, or this link is no longer valid. Sign in again.": "La connexion avec Google ou Apple a été annulée, ou ce lien n’est plus valide. Reconnecte-toi.",
   "Send a new link": "Envoyer un nouveau lien",

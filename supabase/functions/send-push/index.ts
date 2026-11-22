@@ -1,4 +1,5 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
+import { accountTagged, clientPushData, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { callerDeletionRefusal, pushActorBeingDeleted } from '../_shared/deletion-gate.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
@@ -186,6 +187,8 @@ async function sendToAPNs(
   collapseId?: string,
   silent = false
 ): Promise<{ success: boolean; error?: string }> {
+  // The caller's data never carries `aps` or the server's keys (round 7).
+  data = clientPushData(data);
   try {
     let jwt = await generateAPNsJWT();
     const quiet = silent ? silentApns(data ?? {}) : null;
@@ -340,7 +343,11 @@ async function getFCMAccessToken(): Promise<string | null> {
   }
 }
 
-async function sendToFCM(
+type FcmRest = Parameters<typeof sendFcmMessage> extends [unknown, string, ...infer R] ? R : never;
+
+/** gateUid: the account the push is for, on a token that checks it on the phone (184). */
+async function sendFcmMessage(
+  gateUid: string | undefined,
   deviceToken: string,
   title: string,
   subtitle: string | undefined,
@@ -351,6 +358,8 @@ async function sendToFCM(
   collapseId?: string,
   silent = false
 ): Promise<{ success: boolean; error?: string }> {
+  // The keys only the server sets never come from the caller (#287 round 6).
+  data = clientPushData(data);
   if (!FCM_PROJECT_ID) return { success: false, error: 'FCM not configured' };
   const accessToken = await getFCMAccessToken();
   if (!accessToken) return { success: false, error: 'Could not get FCM access token' };
@@ -375,7 +384,11 @@ async function sendToFCM(
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(silent ? { message: silentFcmMessage(deviceToken, data ?? {}) } : {
+        body: JSON.stringify(silent ? {
+          message: silentFcmMessage(deviceToken, gateUid ? accountTagged(data, gateUid) : data ?? {}),
+        } : gateUid ? {
+          message: gatedFcmMessage(deviceToken, gateUid, { displayTitle, title, subtitle, body, data, channelId, tag, collapseId }),
+        } : {
           message: {
             token: deviceToken,
             notification: { title: displayTitle, body },
@@ -946,6 +959,10 @@ Deno.serve(async (req: Request) => {
     // Per recipient: the icon badge is their own unread count (a band message
     // used to set everyone's to 1), and the subtitle label is in their language.
     const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
+    // Android tokens that check the signed-in account on the phone (184) get
+    // a data-only push tagged with its recipient (Codex review #287 round 5).
+    const fcmGates = fcmAccountGates(tokens);
+    const sendToFCM = (deviceToken: string, ...rest: FcmRest) => sendFcmMessage(fcmGates.get(deviceToken), deviceToken, ...rest);
     const badgeByUser = new Map<string, number>();
     if (badge === undefined && !silent) {
       await Promise.all(tokenUserIds.map(async (uid) => {

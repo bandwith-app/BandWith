@@ -3,6 +3,7 @@ import { planAwareFetch } from './planLimit';
 import { Capacitor } from '@capacitor/core';
 import { createDemoClient } from './demo/demoClient';
 import { isOfflineAuthError, parseStoredSession } from './authSession';
+import { noteRecovery, passwordUpdateWithToken, recoveryExchangeFetch } from './recoveryProof';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 // Publishable key (sb_publishable_…): safe to ship in the app, RLS applies.
@@ -72,9 +73,22 @@ export const supabase = isDemoMode
         : undefined, // Use default browser localStorage for web
     },
     // Paid plans P3b: a refusal over the band's plan opens its prompt, from any screen.
-    global: { fetch: planAwareFetch(fetch.bind(globalThis)) },
+    // Audit 04 #2: this tab's own reset-link exchange is noted (recoveryProof.ts).
+    global: { fetch: planAwareFetch(recoveryExchangeFetch(fetch.bind(globalThis))) },
   }
 );
+
+// Audit 04 #2: only a reset link that really signed this account in may open
+// the new-password screen. Subscribed here, before the client handles the
+// link at start, so the event is never missed. The same event broadcast from
+// another tab records nothing: noteRecovery needs this tab's own exchange.
+try {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') noteRecovery(session?.user?.id, undefined, undefined, session?.access_token);
+  });
+} catch {
+  /* demo / test clients without auth events */
+}
 
 // Auth helpers
 export const signUp = async (
@@ -229,6 +243,13 @@ export const updatePassword = async (password: string) => {
   const { data, error } = await supabase.auth.updateUser({ password });
   return { data, error };
 };
+
+/**
+ * The reset form's change (Codex review #287 round 4): with the access token
+ * of the session the reset link signed in, not the shared session another
+ * tab may have switched (recoveryProof.ts).
+ */
+export const updatePasswordWithToken = passwordUpdateWithToken(supabaseUrl || 'https://placeholder.supabase.co', supabasePublishableKey || 'placeholder-key');
 
 // Offline-safe getUser wrapper: resolves from persisted local session first
 // so offline operations never fail with "Not authenticated" when a session exists.
