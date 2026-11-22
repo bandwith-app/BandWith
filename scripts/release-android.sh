@@ -56,14 +56,13 @@ fi
 # A prerelease is never "latest": the updater and releases/latest/download skip it.
 # A stable release is latest only above the current latest (a hotfix for an
 # older line must not take the fixed link back): scripts/android-latest-flag.sh.
+# The lookup fails closed (network, auth: no guess), here before the build and
+# again right before publishing (another release may have gone out meanwhile).
 if [ -n "$PRERELEASE" ]; then
   RELEASE_FLAGS=(--prerelease --latest=false)
-else
-  CURRENT_LATEST=""
-  if [ "$PUBLISH" = "--publish" ]; then
-    CURRENT_LATEST="$(gh release view --repo bandwith-app/BandWith --json tagName -q .tagName 2>/dev/null || true)"
-  fi
-  RELEASE_FLAGS=("$(scripts/android-latest-flag.sh "$VERSION" "$CURRENT_LATEST")")
+elif [ "$PUBLISH" = "--publish" ]; then
+  LATEST_FLAG="$(scripts/android-latest-flag.sh --lookup "$VERSION")"
+  RELEASE_FLAGS=("$LATEST_FLAG")
 fi
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
 TAG="android-v$VERSION"
@@ -128,6 +127,10 @@ cp "$APK" dist-android/BandWith.apk
 echo "Built dist-android/BandWith.apk: version $VERSION (code $BW_ANDROID_VERSION_CODE)"
 
 if [ "$PUBLISH" = "--publish" ]; then
+  if [ -z "$PRERELEASE" ]; then
+    LATEST_FLAG="$(scripts/android-latest-flag.sh --lookup "$VERSION")"
+    RELEASE_FLAGS=("$LATEST_FLAG")
+  fi
   gh release create "$TAG" dist-android/BandWith.apk \
     --repo bandwith-app/BandWith \
     --target "$(git rev-parse HEAD)" \
@@ -137,6 +140,7 @@ if [ "$PUBLISH" = "--publish" ]; then
   if [ -n "$PRERELEASE" ]; then
     echo "Prerelease $TAG: only testers with its link get it. Link:"
     echo "  https://github.com/bandwith-app/BandWith/releases/download/$TAG/BandWith.apk"
-    echo "Everyone (in-app update + latest link): gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false --latest"
+    echo "Everyone (in-app update + latest link; latest only if it is the highest version):"
+    echo "  gh release edit $TAG --repo bandwith-app/BandWith --prerelease=false \"\$(scripts/android-latest-flag.sh --lookup $VERSION)\""
   fi
 fi

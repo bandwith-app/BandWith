@@ -31,6 +31,7 @@ The web app and the database reach everyone at once. That is why they get the mo
   - The `--duo-ok` run is the sign-off after checking every Duo posture.
   - `deploy-web.sh` and `release-android.sh --publish` refuse a commit without it.
 - [ ] **170 is not applied anywhere yet**: `supabase_migrations.schema_migrations` has no `170` on prod, and no other database got it. 170 was edited in place on 11-22, so a copy applied before that is the old version.
+- [ ] **172 is already live in prod** (applied before this release): `supabase_migrations.schema_migrations` has a `172` row, and a quick `SELECT` on what it added works. It is not applied again.
 - [ ] Each new migration was dry-run against prod and rolled back:
   - first strip the migration's own `BEGIN;` / `COMMIT;`, or it commits for real;
   - afterwards, check that its objects are **absent**.
@@ -74,14 +75,17 @@ Do it in this order, so every build in use keeps working at every step:
      ```
    - Then check the function's logs in the Supabase dashboard for the first calls.
 2. **Additive migrations**
-   - Apply them with the service role, one at a time, **kill switches first**, then in number order. For the live release:
+   - Migrations run as the **database owner** (`postgres`), not the service role: from `~/Developer/BandWith-main` with `npx supabase db query --remote --yes -f <file>` (BEGIN/COMMIT kept), or pasted in the dashboard's SQL editor.
+   - One at a time, **kill switches first**, then in number order. For the live release:
      1. `173_app_flags`;
      2. turn the live pack **off**, before 170 starts its invites:
         ```sql
         UPDATE public.app_flags SET enabled = false, updated_at = now() WHERE key = 'live_pack';
         ```
      3. `170_live_pack`;
-     4. `174_client_errors`, then 175–189, then 190 and 191, in number order. All of them are additive.
+     4. `171`, `174_client_errors`, 175, 176, 178–189, then 190 and 191, in number order. All of them are additive.
+     - **Not 172**: already live (section 1).
+     - **Not 177** (quotes bucket private): it goes in **stage 3, after the web deploy**. Before it, the new quote page and the quote functions must be live, or people who got a quote can't download its PDF.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
    - 174 schedules one pg_cron job, `bw-prune-client-errors` (hourly, minute 7). Check it shows in `cron.job`.
@@ -132,17 +136,19 @@ Do it in this order, so every build in use keeps working at every step:
      scripts/deploy-web.sh
      ```
    - Note the deployment URL it prints: you need it to roll back.
-4. **Product site** (only if `site/` changed):
+4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, and check the same link again.
+5. **Product site** (only if `site/` changed):
    ```sh
    scripts/deploy-site.sh --prod
    scripts/indexnow.sh
    ```
-5. **Turn the live pack on**, now that the new builds are out to everyone:
+6. **Turn the live pack on**, now that the new builds are out to everyone:
    ```sql
    UPDATE public.app_flags SET enabled = true, updated_at = now() WHERE key = 'live_pack';
    ```
-6. **Tell the admins** what changed. This release, also: once 177 makes the quotes bucket private, quote PDF links shared before stop working. Line for admins: "Re-send the quote from the app to get a fresh link."
-7. Watch the crash reports for the first hours, then the next morning.
+   - **Trade-off: stragglers get invites they can't use.** The switch is server-wide, and the server doesn't know which app version each member runs (no last-seen version is recorded; `min_app_version` only hides things inside the app). So members still on APK 1.0.13 or an older TestFlight build also get the "ready without signal" push for gigs in the next days; their app opens the inbox but has no live pack to download. To keep it small, wait a few days after the APK promote and the Amici build (the in-app update reaches Android in up to 6 hours), or raise `min_version` first (section 4) so old builds must update. A per-version filter in 170's invites would need the app to record its version (follow-up).
+7. **Tell the admins** what changed. This release, also: once 177 makes the quotes bucket private, quote PDF links shared before stop working. Line for admins: "Re-send the quote from the app to get a fresh link."
+8. Watch the crash reports for the first hours, then the next morning.
 
 ## 4 · When something goes wrong
 
@@ -150,7 +156,7 @@ Pick the smallest fix that stops the harm, then ship a real fix through the stag
 
 ### A feature misbehaves: turn its flag off (seconds, every build)
 
-Prod SQL editor, service role:
+Prod SQL editor (it runs as the database owner, `postgres`), or `npx supabase db query --remote --yes`:
 
 ```sql
 UPDATE public.app_flags SET enabled = false, updated_at = now() WHERE key = 'live_pack';
@@ -278,7 +284,7 @@ Go on when the new version shows nothing that the previous one didn't.
 
 - [ ] All surfaces are on the release, and the APK release is marked **Latest**.
 - [ ] "Later" migrations scheduled, if any (section 2, step 5).
-- [ ] Release notes for testers: `scripts/android-release-notes.md`, and the TestFlight "What to Test". Put in any line the admins need (stage 3, step 6), e.g. for 177: "Re-send the quote from the app to get a fresh link."
+- [ ] Release notes for testers: `scripts/android-release-notes.md`, and the TestFlight "What to Test". Put in any line the admins need (stage 3, step 7), e.g. for 177: "Re-send the quote from the app to get a fresh link."
 
 ### Sunset list: when `min_version` is raised past this release
 
