@@ -1645,6 +1645,7 @@ const dict: Dictionary = {
   "Save to your computer": "Salva sul computer",
   "Copied!": "Copiato!",
   "Copy text & link": "Copia testo e link",
+  "Copy summary": "Copia riepilogo",
   "Paste anywhere": "Incolla dove vuoi",
   "Quote PDF ready": "PDF del preventivo pronto",
   "Official quote": "Preventivo ufficiale",

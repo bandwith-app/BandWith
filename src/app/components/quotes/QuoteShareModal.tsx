@@ -36,7 +36,6 @@ import { parseLocalDate } from '@/lib/dates';
 import { DEFAULT_VAT_RATE, formatQuoteMoney } from '@/lib/services/quoteMath';
 import { currencySymbol } from '@/lib/currency';
 import { isUuid, sendQuote } from '@/lib/services/quotes';
-import { quotePdfGateUrl } from '@/lib/quotePdfLink';
 import { shareFile, saveFile, openExternal } from '@/lib/nativeFiles';
 import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
@@ -405,16 +404,11 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     setDocLang(l);
   };
 
-  // 176/177: messages never carry the PDF's storage URL (it outlived "Turn
-  // off link"). With a live client link they carry the gated PDF link, which
-  // the server checks each time; otherwise the PDF goes as a file.
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const textPdfUrl =
-    uploadedUrl && link && !link.revoked && link.status !== 'draft' && supabaseUrl
-      ? quotePdfGateUrl(supabaseUrl, link.token)
-      : null;
-
-  const buildShareText = (pdfUrl?: string | null) => {
+  // 176/177: PDF messages carry no link. The storage URL outlived "Turn off
+  // link", and a link built on the client's token would hand whoever gets the
+  // PDF the client page too (Accept, Decline, messages). The PDF goes as a
+  // file; the client's own link goes only through "Send to client".
+  const buildShareText = () => {
     const eventLabel = tr(getEventTypeLabel((quote.eventType as any) || 'wedding'));
     const eventDateStr = quote.eventDate
       ? parseLocalDate(quote.eventDate).toLocaleDateString(intlLocale('en-GB', docLang), {
@@ -463,7 +457,6 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
           })
         : null,
       tr('• Valid Until: {date}', { date: validUntilStr }),
-      pdfUrl ? `\n${tr('📄 View / Download Full PDF Quote:')}\n${pdfUrl}` : null,
       ``,
       tr('Please let us know if you have any questions or would like to tailor the package!'),
       tr('Best regards,'),
@@ -481,7 +474,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     try {
       const result = await shareFile(pdfResult.pdfBlob, pdfResult.fileName, {
         title: shareTitle,
-        text: opts.withText ? buildShareText(textPdfUrl) : undefined,
+        text: opts.withText ? buildShareText() : undefined,
       });
       if (result === 'cancelled') return;
       if (result === 'downloaded') flash(t('PDF downloaded'));
@@ -509,42 +502,12 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     }
   };
 
-  const handleWhatsAppShare = () => {
-    if (!pdfResult) return;
-    if (!textPdfUrl) {
-      // No live link: send the file itself, WhatsApp is in the sheet.
-      void sharePdf({ markAsSent: true, withText: true });
-      return;
-    }
-    const text = buildShareText(textPdfUrl);
-    const cleanPhone = (quote.clientPhone || '').replace(/[^0-9+]/g, '').replace(/^\+/, '');
-    const waUrl = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    void openExternal(waUrl);
-    void markSent();
-  };
-
-  const handleEmailShare = () => {
-    if (!pdfResult) return;
-    if (!textPdfUrl) {
-      // No link to put in the mail: share the PDF as an attachment instead.
-      void sharePdf({ markAsSent: true, withText: true });
-      return;
-    }
-    const subject = tr('{band} — Event Quote {ref} ({event})', {
-      band: bandName.toUpperCase(),
-      ref: quote.quoteNumber || '',
-      event: quote.eventName || quote.eventTitle || tr('Proposal'),
-    });
-    const body = buildShareText(textPdfUrl);
-    const mailto = `mailto:${encodeURIComponent(quote.clientEmail || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    void openExternal(mailto);
-    void markSent();
-  };
+  // WhatsApp and Mail are in the system sheet, with the file attached.
+  const handleWhatsAppShare = () => void sharePdf({ markAsSent: true, withText: true });
+  const handleEmailShare = () => void sharePdf({ markAsSent: true, withText: true });
 
   const handleCopySummary = () => {
-    const text = buildShareText(textPdfUrl);
+    const text = buildShareText();
     const done = () => {
       setCopiedSummary(true);
       setTimeout(() => setCopiedSummary(false), 2500);
@@ -583,7 +546,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     {
       key: 'whatsapp',
       title: 'WhatsApp',
-      subtitle: textPdfUrl ? t('Pre-filled message + PDF link') : t('Send the PDF file'),
+      subtitle: t('Send the PDF file'),
       icon: isUploading ? <Loader2 className="animate-spin" /> : <MessageCircle />,
       onClick: handleWhatsAppShare,
       disabled: isGenerating || isUploading || !pdfResult,
@@ -591,7 +554,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     {
       key: 'email',
       title: t('Email client'),
-      subtitle: textPdfUrl ? t('Formal proposal + PDF link') : t('PDF as attachment'),
+      subtitle: t('PDF as attachment'),
       icon: isUploading ? <Loader2 className="animate-spin" /> : <Mail />,
       onClick: handleEmailShare,
       disabled: isGenerating || isUploading || !pdfResult,
@@ -606,7 +569,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     },
     {
       key: 'copy',
-      title: copiedSummary ? t('Copied!') : t('Copy text & link'),
+      title: copiedSummary ? t('Copied!') : t('Copy summary'),
       subtitle: t('Paste anywhere'),
       icon: copiedSummary ? <Check className="text-success" /> : <Copy />,
       onClick: handleCopySummary,

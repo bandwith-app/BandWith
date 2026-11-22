@@ -52,13 +52,18 @@ DROP POLICY IF EXISTS "Users can accept own invitations" ON public.band_invitati
 CREATE OR REPLACE FUNCTION public.bw_chats_immutable_keys()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
   IF NEW.type IS DISTINCT FROM OLD.type
      OR NEW.band_id IS DISTINCT FROM OLD.band_id
      OR NEW.event_id IS DISTINCT FROM OLD.event_id
-     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     -- created_by may only go to NULL, and only because that profile is gone
+     -- (the FK's ON DELETE SET NULL when an account is deleted).
+     OR (NEW.created_by IS DISTINCT FROM OLD.created_by
+         AND NOT (NEW.created_by IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = OLD.created_by)))
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'chats: type, band_id, event_id, created_by and created_at cannot change'
       USING ERRCODE = '42501';
@@ -187,6 +192,78 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_chat_recipient_ids(uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_chat_recipient_ids(uuid, uuid) TO service_role;
 
+-- Joining a band or gig chat takes the same rule (an INSERT that would put a
+-- former member back, e.g. still on a gig's lineup, is refused), and the
+-- chat list RPC lists only chats the caller can still read: get_user_chats
+-- returned rosters and read times straight from chat_participants.
+CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok_for(p_chat_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT coalesce((SELECT public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, p_user_id)
+                     FROM chats c WHERE c.id = p_chat_id), false);
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) TO authenticated;
+
+DROP POLICY IF EXISTS chat_participants_insert ON public.chat_participants;
+CREATE POLICY chat_participants_insert ON public.chat_participants
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (public.bw_can_add_chat_participant(chat_id, user_id)
+              AND public.bw_chat_scope_ok_for(chat_id, user_id));
+
+-- 042's body; only the chat filter changes (bw_my_chat_ids, scope-checked).
+CREATE OR REPLACE FUNCTION public.get_user_chats(p_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  result JSONB;
+BEGIN
+  IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'not allowed' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT JSONB_AGG(
+    JSONB_BUILD_OBJECT(
+      'id', c.id,
+      'band_id', c.band_id,
+      'event_id', c.event_id,
+      'type', c.type,
+      'name', c.name,
+      'created_by', c.created_by,
+      'created_at', c.created_at,
+      'updated_at', c.updated_at,
+      'participants', (
+        SELECT JSONB_AGG(
+          JSONB_BUILD_OBJECT(
+            'id', cp.id,
+            'chat_id', cp.chat_id,
+            'user_id', cp.user_id,
+            'last_read_at', cp.last_read_at,
+            'muted', cp.muted,
+            'joined_at', cp.joined_at
+          )
+        )
+        FROM chat_participants cp
+        WHERE cp.chat_id = c.id
+      )
+    )
+    ORDER BY c.updated_at DESC NULLS LAST
+  ) INTO result
+  FROM chats c
+  WHERE c.id = ANY (public.bw_my_chat_ids());
+
+  RETURN COALESCE(result, '[]'::JSONB);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_user_chats(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_user_chats(uuid) TO authenticated;
+
 -- chats: read through the same rule.
 DROP POLICY IF EXISTS chats_select_participant ON public.chats;
 CREATE POLICY chats_select_participant ON public.chats
@@ -236,6 +313,23 @@ CREATE TABLE IF NOT EXISTS public.chat_participants_removed_175 (
   row_data jsonb NOT NULL,
   removed_at timestamptz NOT NULL DEFAULT now()
 );
+-- Gone with the account (and with the chat).
+DELETE FROM public.chat_participants_removed_175 r
+ WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = r.user_id)
+    OR NOT EXISTS (SELECT 1 FROM public.chats c WHERE c.id = r.chat_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chat_participants_removed_175_user_fkey') THEN
+    ALTER TABLE public.chat_participants_removed_175
+      ADD CONSTRAINT chat_participants_removed_175_user_fkey
+      FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chat_participants_removed_175_chat_fkey') THEN
+    ALTER TABLE public.chat_participants_removed_175
+      ADD CONSTRAINT chat_participants_removed_175_chat_fkey
+      FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 ALTER TABLE public.chat_participants_removed_175 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.chat_participants_removed_175 FROM PUBLIC, anon, authenticated;
 

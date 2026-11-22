@@ -8,6 +8,7 @@
 //   node quote_pdf_gate.pglite.mjs <repo> /dev/null /dev/null   # before: FAILs expected
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const REPO = process.argv[2];
 const M176 = process.argv[3] ?? `${REPO}/supabase/migrations/176_quote_pdf_gate.sql`;
@@ -53,8 +54,10 @@ const pub = (await db.query(`SELECT id, public FROM storage.buckets ORDER BY id`
 ok(pub.find((b) => b.id === 'quotes')?.public === false, 'quotes bucket is private');
 ok(pub.find((b) => b.id === 'avatars')?.public === true, 'other buckets untouched');
 
-const path = async (t, k = 'doc') => {
-  try { return (await db.query(`SELECT public.bw_quote_link_pdf_path($1, $2) AS p`, [t, k])).rows[0].p; }
+// The gate takes sha256(token), never the token itself.
+const keyOf = (t) => createHash('sha256').update(t).digest('hex');
+const path = async (t, k = 'doc', raw = false) => {
+  try { return (await db.query(`SELECT public.bw_quote_link_pdf_path($1, $2) AS p`, [raw ? t : keyOf(t), k])).rows[0].p; }
   catch (e) { return `ERR ${e.message}`; }
 };
 ok(await path(tok('a')) === `quotes/${BAND}/Q-1_ab12_Quote_Hudson_Horns_Client.pdf`, 'active link: its PDF');
@@ -65,7 +68,8 @@ await db.exec(`UPDATE events SET status = 'cancelled' WHERE id = '${GIG}'`);
 ok(await path(tok('c'), 'balance') === null, 'balance PDF hidden once the gig is cancelled');
 ok(await path(tok('d')) === null, "a URL pointing at another band's folder is refused");
 ok(await path(tok('e')) === null, 'unknown token: nothing');
-ok(await path('not-a-token') === null, 'malformed token: nothing');
+ok(await path('not-a-token', 'doc', true) === null, 'malformed key: nothing');
+ok(await path(tok('a'), 'doc', true) === null, 'the token itself is not a PDF key (a PDF link never carries it)');
 await db.exec(`UPDATE quote_links SET version = 3 WHERE token = '${tok('a')}'`);
 ok(await path(tok('a')) === null, 'PDF of an older version is not served');
 

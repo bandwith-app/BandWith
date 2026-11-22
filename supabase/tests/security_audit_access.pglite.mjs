@@ -58,22 +58,23 @@ CREATE TYPE user_role AS ENUM ('admin', 'member');
 
 CREATE TABLE public.profiles (id uuid PRIMARY KEY, email text, full_name text, instrument text, user_mode text, preferred_language text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
-CREATE TABLE public.band_members (band_id uuid, user_id uuid, role user_role, is_active boolean DEFAULT true,
+CREATE TABLE public.band_members (band_id uuid, user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, role user_role, is_active boolean DEFAULT true,
   left_at timestamptz, instrument text, UNIQUE (band_id, user_id));
 CREATE TABLE public.band_invitations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, email text, role text,
   status text DEFAULT 'pending', token uuid DEFAULT gen_random_uuid(), invited_by uuid, expires_at timestamptz,
   accepted_at timestamptz, accepted_by uuid, created_at timestamptz DEFAULT now(), email_sent_at timestamptz,
   expiry_notified_at timestamptz, reminder_sent_at timestamptz);
 CREATE TABLE public.chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type text, name text, band_id uuid, event_id uuid,
-  created_by uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
-CREATE TABLE public.chat_participants (chat_id uuid, user_id uuid, cleared_at timestamptz, last_read_at timestamptz,
-  UNIQUE (chat_id, user_id));
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
+CREATE TABLE public.chat_participants (id uuid DEFAULT gen_random_uuid(), chat_id uuid,
+  user_id uuid CONSTRAINT cp_user_fk REFERENCES public.profiles(id) ON DELETE CASCADE, cleared_at timestamptz,
+  last_read_at timestamptz, muted boolean DEFAULT false, joined_at timestamptz DEFAULT now(), UNIQUE (chat_id, user_id));
 CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid, sender_id uuid, content text,
   created_at timestamptz DEFAULT now());
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, title text, status text, event_type text,
   quote_id uuid, created_by uuid, event_date date, start_time time, end_time time, load_in_time time, soundcheck_time time,
   venue_name text, venue_address text, venue_city text, setlist_id uuid);
-CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text);
+CREATE TABLE public.event_members (event_id uuid, user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, status text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean, reference_id uuid, reference_type text, created_at timestamptz DEFAULT now());
 CREATE TABLE public.quotes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, created_by uuid, client_name text, total numeric);
@@ -115,6 +116,7 @@ await db.exec(migFile('067_delete_chat_history.sql'));
 await db.exec(migFile('104_direct_chat_two_people.sql'));
 await db.exec(migFile('111_quote_events_private.sql'));
 await db.exec(lines('044_band_invite_acceptance.sql', 252, 272));
+await db.exec(lines('042_security_hardening.sql', 225, 273)); // get_user_chats as live
 // bw_accept_invitation as live (verify-fn.txt), and the 046 event triggers.
 await db.exec(`
 CREATE OR REPLACE FUNCTION public.bw_accept_invitation(p_token uuid DEFAULT NULL::uuid, p_invitation_id uuid DEFAULT NULL::uuid)
@@ -271,6 +273,38 @@ r = await as(LINE, `SELECT id FROM quotes WHERE id = '${QUOTE}'`);
 ok(r.rows.length === 1, 'active admin reads the quote');
 r = await as(MEM2, `SELECT id FROM quotes WHERE id = '${QUOTE}'`);
 ok(r.rows.length === 0, `quote creator no longer an admin cannot read it (${r.rows.length})`);
+
+// ── 7. Review fixes (Codex #281)
+// MEM left the band but is still on GIG's lineup (confirmed).
+await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM}'`);
+r = await as(MEM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM}')`);
+ok(!!r.error, `former member kept on the lineup can't join the gig chat again (${r.error ? 'refused' : 'joined'})`);
+await db.exec(`INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM}') ON CONFLICT DO NOTHING`);
+r = await as(MEM, `SELECT public.get_user_chats('${MEM}') AS j`);
+const listed = (r.rows[0]?.j ?? []).map((c) => c.id);
+ok(!r.error && !listed.includes(EVCHAT) && !listed.includes(BANDCHAT), `chat list hides band and gig chats of a former member (${r.error ?? listed.length})`);
+ok(listed.includes(GROUP), 'their own group chat is still listed');
+// Worst cascade order for account deletion: the chat rows are still there
+// when the band and lineup removal triggers run (prod's order isn't fixed).
+await db.exec(`ALTER TABLE chat_participants DROP CONSTRAINT cp_user_fk`);
+let delErr = null;
+try { await db.exec(`DELETE FROM profiles WHERE id = '${MEM}'`); } catch (e) { delErr = e.message; }
+ok(!delErr, `a person who created chats can delete their account (${delErr ?? 'ok'})`);
+const orphan = (await db.query(`SELECT created_by FROM chats WHERE id = '${FAKEDM}'`)).rows[0];
+ok(orphan && orphan.created_by === null, 'their chats stay, without author');
+r = await as(LINE, `UPDATE chats SET created_by = NULL WHERE id = '${GROUP}'`);
+ok(!!r.error || r.n === 0, 'a user still cannot change who created a chat');
+await db.exec(`DELETE FROM profiles WHERE id = '${OUT}'`).catch(() => {});
+const arch = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE user_id = '${OUT}'`)).rows[0].n;
+ok(arch === 0, `archived chat rows go with the account (${arch})`);
+// Deleting an account cascades through band_members / event_members, whose
+// removal triggers archive chat rows: they must not archive for a profile
+// that is going away (its FK would refuse the whole deletion).
+await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed') ON CONFLICT DO NOTHING;
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}'),('${BANDCHAT}','${LINE}') ON CONFLICT DO NOTHING`);
+delErr = null;
+try { await db.exec(`DELETE FROM profiles WHERE id = '${LINE}'`); } catch (e) { delErr = e.message; }
+ok(!delErr, `an active member on a gig lineup can delete their account (${delErr ?? 'ok'})`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

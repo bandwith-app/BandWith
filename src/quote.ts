@@ -15,13 +15,15 @@
 
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
-import { clientQuotePdfUrl } from './lib/quotePdfLink';
+import { clientQuotePdfUrl, quotePdfKey } from './lib/quotePdfLink';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 const params = new URL(window.location.href).searchParams;
 const token = (params.get('t') ?? '').toLowerCase();
+// PDF links carry sha256(token), never the token (a copied PDF link opens the PDF only).
+let pdfKey: string | null = null;
 const preview = params.get('preview') === '1';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
@@ -284,7 +286,7 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   // 176/177: the PDF only through the link (checked by the server each time).
   const storedPdf = b?.pdfUrl || v.pdf_url;
   const pdf =
-    clientQuotePdfUrl(storedPdf, SUPABASE_URL, token, b?.pdfUrl ? 'balance' : 'doc') ??
+    clientQuotePdfUrl(storedPdf, SUPABASE_URL, pdfKey, b?.pdfUrl ? 'balance' : 'doc') ??
     (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
@@ -668,6 +670,7 @@ async function load() {
   }
   app.replaceChildren(simpleCard('BandWith', S.loading, '', false));
   offline = false;
+  if (!pdfKey) pdfKey = quotePdfKey(token);
   let next: QuoteLinkView | null = null;
   try {
     next = await (preview ? api.view() : api.seen());

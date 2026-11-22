@@ -27,6 +27,7 @@ import {
   type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
+import { quoteStoragePath } from "../_shared/quote-pdf-path.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain
@@ -432,7 +433,9 @@ async function signedQuotePdf(admin: SupabaseClient, raw: string | null, bandId:
   const checked = quotePdfUrl(raw, bandId);
   if (!checked) return null;
   const marker = "/storage/v1/object/public/quotes/";
-  const path = decodeURIComponent(new URL(checked).pathname.slice(marker.length));
+  // Decoded first, then checked (an encoded "/" or ".." can't leave the band's folder).
+  const path = quoteStoragePath(new URL(checked).pathname.slice(marker.length), bandId);
+  if (!path) return null;
   const { data, error } = await admin.storage.from("quotes").createSignedUrl(path, 600);
   if (error || !data?.signedUrl) {
     console.warn("Quote PDF: could not sign the attachment URL", error?.message);
