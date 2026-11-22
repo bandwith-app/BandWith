@@ -34,7 +34,9 @@
 --        being an admin takes the person out of the chats the rule now
 --        refuses. Round 4: their participant row is KEPT (a record goes to
 --        chat_participants_removed_175) and the rule refuses it everywhere:
---        reads, roster and own row (chat_participants read policies),
+--        reads, roster and own row (chat_participants read policies, plus
+--        one RESTRICTIVE guard on the rule that every read policy, current
+--        or future, is ANDed with: old builds and Realtime included),
 --        receipts, push (send-push via bw_chat_recipient_ids),
 --        "shares a chat" (bw_shares_chat), "delete chat". Coming back, the
 --        same row works again: same chat, cleared_at and read times as they
@@ -584,6 +586,22 @@ DROP POLICY IF EXISTS chat_participants_select_own ON public.chat_participants;
 CREATE POLICY chat_participants_select_own ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO public
   USING (user_id = auth.uid() AND public.bw_chat_scope_ok_for(chat_id, user_id));
+-- The central guard: permissive read policies are ORed, so any other one
+-- (made by hand on prod, or by a later migration) would show kept rows
+-- again. A RESTRICTIVE policy is ANDed with all of them. Both functions are
+-- SECURITY DEFINER (they read chat_participants as the owner: no RLS, no
+-- recursion). An UPDATE or DELETE that filters rows (every app build does,
+-- by chat_id / user_id) goes through the read policies too, so a kept row
+-- can't be changed or removed by its former owner either.
+DROP POLICY IF EXISTS chat_participants_scope_guard ON public.chat_participants;
+CREATE POLICY chat_participants_scope_guard ON public.chat_participants
+  AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (public.bw_chat_scope_ok_for(chat_id, user_id));
+-- Exact duplicates on prod (073): "Users can update own chat participation"
+-- and "Users can delete own chat participation" have the same rule
+-- (user_id = auth.uid()) and stay.
+DROP POLICY IF EXISTS cp_update ON public.chat_participants;
+DROP POLICY IF EXISTS cp_delete ON public.chat_participants;
 
 -- "Shares a chat" (042: profiles read policy, chat notices): a band or gig
 -- chat counts only while both may still use it (a former member's kept row

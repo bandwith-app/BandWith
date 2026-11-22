@@ -165,6 +165,8 @@ CREATE POLICY chat_participants_select_own ON public.chat_participants FOR SELEC
 CREATE POLICY chat_participants_select_same_chat ON public.chat_participants FOR SELECT TO authenticated USING (chat_id = ANY (bw_my_chat_ids()));
 CREATE POLICY cp_update ON public.chat_participants FOR UPDATE USING (user_id = auth.uid());
 CREATE POLICY cp_delete ON public.chat_participants FOR DELETE USING (user_id = auth.uid());
+CREATE POLICY "Users can update own chat participation" ON public.chat_participants FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own chat participation" ON public.chat_participants FOR DELETE USING (auth.uid() = user_id);
 CREATE POLICY chats_insert ON public.chats FOR INSERT TO authenticated WITH CHECK ((created_by = auth.uid()) AND ((band_id IS NULL) OR bw_is_band_member(band_id)));
 CREATE POLICY chats_select_creator ON public.chats FOR SELECT TO authenticated USING (created_by = auth.uid());
 CREATE POLICY chats_select_participant ON public.chats FOR SELECT USING (id IN (SELECT chat_participants.chat_id FROM chat_participants WHERE chat_participants.user_id = auth.uid()));
@@ -629,6 +631,55 @@ ok(!r.error && r.rows[0]?.a === true && r.rows[0]?.b === true && r.rows[0]?.c ==
   `bw_group_chat_exists: the band chat and a gig chat exist, a gig without chat not (${r.error ?? JSON.stringify(r.rows[0])})`);
 r = await as(EXM, `SELECT public.bw_group_chat_exists('band', '${BAND}', NULL) AS a`);
 ok(!r.error && r.rows[0]?.a === false, `bw_group_chat_exists: nothing for someone outside the band (${r.error ?? r.rows[0]?.a})`);
+// ── R4b. Central guard (main, after 11229d9c): kept rows are hidden by one
+// RESTRICTIVE policy, whatever permissive read policy an old build hits.
+const cpPolicies = async () => (await db.query(`SELECT policyname, cmd, permissive, roles::text AS roles, qual
+  FROM pg_policies WHERE schemaname = 'public' AND tablename = 'chat_participants' ORDER BY policyname`)).rows;
+let pols = await cpPolicies();
+const polNames = pols.map((x) => `${x.policyname}:${x.cmd}:${x.permissive}`).sort();
+const wantPols = ['Users can delete own chat participation:DELETE:PERMISSIVE', 'Users can update own chat participation:UPDATE:PERMISSIVE',
+  'chat_participants_insert:INSERT:PERMISSIVE', 'chat_participants_scope_guard:SELECT:RESTRICTIVE',
+  'chat_participants_select_own:SELECT:PERMISSIVE', 'chat_participants_select_same_chat:SELECT:PERMISSIVE'].sort();
+ok(JSON.stringify(polNames) === JSON.stringify(wantPols), `chat_participants policies after 175: ${polNames.join(', ')}`);
+ok(pols.filter((x) => x.cmd === 'SELECT').every((x) => /bw_chat_scope_ok_for/.test(x.qual)), 'every read policy on chat_participants applies the rule');
+r = (await db.query(`SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('bw_chat_scope_ok_for','bw_chat_scope_ok','bw_my_chat_ids') AND pronamespace = 'public'::regnamespace`)).rows;
+ok(r.length === 3 && r.every((x) => x.prosecdef), `the guard's functions are SECURITY DEFINER: no RLS inside, no recursion (${JSON.stringify(r)})`);
+// Any other permissive read policy (hand-made on prod, a later migration) is ANDed with the guard.
+await db.exec(`CREATE POLICY zz_handmade_read_all ON public.chat_participants FOR SELECT USING (true)`);
+r = await as(staleUsers.LEFT, `SELECT chat_id FROM chat_participants WHERE user_id = '${staleUsers.LEFT}'`);
+ok(!r.error && r.rows.length === 0, `with another permissive read policy, a kept row stays hidden from its owner (${r.error ?? r.rows.length})`);
+r = await as(NEWM, `SELECT count(*)::int AS n, count(*) FILTER (WHERE user_id IN ('${staleUsers.LEFT}','${staleUsers.DEACT}'))::int AS gone
+  FROM chat_participants WHERE chat_id IN ('${BANDCHAT}','${EVCHAT3}')`);
+ok(!r.error && r.rows[0].n > 0 && r.rows[0].gone === 0, `... and from the band's roster and counts (${r.error ?? JSON.stringify(r.rows[0])})`);
+await db.exec(`DROP POLICY zz_handmade_read_all ON public.chat_participants`);
+// Old builds (383f15b) with their own row hidden: every path ends without an
+// error UI it can't show, and without a second row or chat.
+const keptRow = async (c, u) => (await db.query(`SELECT count(*)::int AS n, max(cleared_at) AS c, max(last_read_at) AS r
+  FROM chat_participants WHERE chat_id = '${c}' AND user_id = '${u}'`)).rows[0];
+const k0 = await keptRow(BANDCHAT, staleUsers.LEFT);
+// createChat / sendMessage "ensure I'm in it" and "delete chat" (upsert, DO UPDATE).
+r = await as(staleUsers.LEFT, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${staleUsers.LEFT}')
+  ON CONFLICT (chat_id, user_id) DO UPDATE SET chat_id = excluded.chat_id, user_id = excluded.user_id`);
+const r2 = await as(staleUsers.LEFT, `INSERT INTO chat_participants (chat_id, user_id, cleared_at) VALUES ('${BANDCHAT}','${staleUsers.LEFT}', now())
+  ON CONFLICT (chat_id, user_id) DO UPDATE SET cleared_at = excluded.cleared_at`);
+let k1 = await keptRow(BANDCHAT, staleUsers.LEFT);
+ok(!r.error && !r2.error && k1.n === 1 && String(k1.c) === String(k0.c), `old build upserts its hidden row: no error, no second row, nothing changed (${r.error ?? r2.error ?? JSON.stringify(k1)})`);
+// markChatAsRead fallback (direct update) and leaving (delete): no row matches.
+r = await as(staleUsers.LEFT, `UPDATE chat_participants SET last_read_at = now() WHERE chat_id = '${BANDCHAT}' AND user_id = '${staleUsers.LEFT}'`);
+const r3 = await as(staleUsers.LEFT, `DELETE FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${staleUsers.LEFT}'`);
+k1 = await keptRow(BANDCHAT, staleUsers.LEFT);
+ok(!r.error && !r3.error && r.n === 0 && r3.n === 0 && k1.n === 1 && String(k1.r) === String(k0.r),
+  `old build updates or deletes its hidden row: 0 rows, the kept row stays as it was (${r.error ?? r3.error ?? JSON.stringify(k1)})`);
+// sendMessage "restore missing participants" (whole lineup, ignoreDuplicates) by a booked musician.
+r = await as(NEWM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT5}','${DROP}'), ('${EVCHAT5}','${REMOVED}'), ('${EVCHAT5}','${NEWM}')
+  ON CONFLICT (chat_id, user_id) DO NOTHING`);
+const dupes = (await db.query(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${EVCHAT5}' GROUP BY user_id HAVING count(*) > 1`)).rows.length;
+const r4 = await as(NEWM, `SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT5}'`);
+ok(!r.error && dupes === 0 && !r4.rows.some((x) => [DROP, REMOVED].includes(x.user_id)), `old build restores the lineup: no error, no duplicate, kept rows still hidden (${r.error ?? r4.rows.length})`);
+// getChats / getMessages (own rows, cleared_at): the chat isn't listed.
+r = await as(DROP, `SELECT chat_id FROM chat_participants WHERE user_id = '${DROP}'`);
+ok(!r.error && !r.rows.some((x) => x.chat_id === EVCHAT5), `dropped out: the gig chat isn't in their own rows (${r.error ?? r.rows.length})`);
+
 // Marker for later migrations that keep a live definition (178, 181).
 const defR4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
 ok(defR4.includes('-- bw:175-r4'), 'bw_chat_scope_ok carries the marker bw:175-r4');
