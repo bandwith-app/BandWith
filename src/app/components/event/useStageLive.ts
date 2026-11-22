@@ -15,6 +15,7 @@ import {
   parseStageState,
   reorderRows,
   sameOrder,
+  stageClockTopic,
   stageTopic,
   stepOver,
   type StageLiveState,
@@ -40,6 +41,9 @@ const PINGS = 6;
 const PING_GAP_MS = 200;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
+/** The leader answers at most this many pings per phone per window (a burst is 6). */
+const PONGS_PER_WINDOW = 12;
+const PONG_WINDOW_MS = 2_000;
 
 /** A setlist song as Stage mode gets it (setlist_songs row id, song id, set). */
 export interface LiveSongRef {
@@ -150,6 +154,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   }, []);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+  /** The clock topic: members' pings (the stage topic only takes the admins' broadcasts). */
+  const clockRef = useRef<RealtimeChannel | null>(null);
   /** Newest state applied or sent (Lamport clock + what it said). */
   const lastRef = useRef<StageLiveState | null>(null);
   /** Newest leader state received, kept while not following. */
@@ -242,7 +248,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       pingTimers.current.forEach(clearTimeout);
       pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
         setTimeout(() => {
-          void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload: { from: clientId, to: peer, t0: nowMs() } });
+          void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload: { from: clientId, to: peer, t0: nowMs() } });
         }, i * PING_GAP_MS),
       );
     },
@@ -272,6 +278,26 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
     channelRef.current = channel;
+    /** Pongs sent per phone lately: a flood of pings gets a few answers, not one each. */
+    const answered = new Map<string, number[]>();
+    /**
+     * A bandmate measuring our clock: answer straight away with our time, on
+     * the stage topic (admins only), so nobody else can pose as the leader's clock.
+     */
+    const answerPing = (raw: unknown) => {
+      const p = raw as { from?: unknown; to?: unknown; t0?: unknown } | undefined;
+      if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
+      const now = nowMs();
+      const recent = (answered.get(p.from) ?? []).filter((t) => now - t < PONG_WINDOW_MS);
+      if (recent.length >= PONGS_PER_WINDOW) return;
+      recent.push(now);
+      answered.set(p.from, recent);
+      void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: now } });
+    };
+    // Members' pings (migration 191): everyone in the band may write this topic.
+    const clock = supabase.channel(stageClockTopic(eventId), { config: { private: true, broadcast: { self: false } } });
+    clockRef.current = clock;
+    clock.on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload)).subscribe(() => {});
     channel
       .on('broadcast', { event: 'state' }, (msg: { payload?: unknown }) => {
         const state = parseStageState(msg?.payload);
@@ -287,12 +313,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const state = parseClickState(msg?.payload);
         if (state) receiveClick(state);
       })
-      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown } }) => {
-        // A bandmate measuring our clock: answer straight away with our time.
-        const p = msg?.payload;
-        if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
-        void channel.send({ type: 'broadcast', event: PONG_EVENT, payload: { from: clientId, to: p.from, t0: p.t0, t1: nowMs() } });
-      })
+      // An admin's ping (an older app pings here; admins may broadcast on this topic).
+      .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload))
       .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown; t1?: unknown } }) => {
         const p = msg?.payload;
         if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number' || typeof p.t1 !== 'number') return;
@@ -344,8 +366,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: off });
       }
       channelRef.current = null;
+      clockRef.current = null;
       setConnected(false);
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(clock);
     };
   }, [live, eventId, clientId, isLeader, receive, receiveClick]);
 
