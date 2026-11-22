@@ -77,8 +77,11 @@ BEGIN
     RETURN NULL;
   END IF;
   SELECT s.sign_public, s.sign_version INTO k, ver FROM public.stage_keys s WHERE s.event_id = p_event_id;
+  -- No pair made yet: an answer (version 0), not a no. SQL NULL is only ever
+  -- the server's no, and the phone then drops every key it kept for the gig
+  -- (Codex on #288).
   IF ver IS NULL OR (k IS NULL AND ver <= 1) THEN
-    RETURN NULL;
+    RETURN jsonb_build_object('public', NULL, 'version', 0);
   END IF;
   -- k NULL past version 1: rotated, the new pair not made yet ("pending").
   RETURN jsonb_build_object('public', k, 'version', ver);
@@ -154,6 +157,15 @@ BEGIN
      OR length(priv_bytes) < 60 OR length(priv_bytes) > 200 THEN
     RAISE EXCEPTION 'bad stage key' USING ERRCODE = '22023';
   END IF;
+  -- First the band's row, FOR KEY SHARE: a band being deleted holds it FOR
+  -- UPDATE and then locks its members' rows (the cascade), so this waits for
+  -- that before it locks an admin row, and the two can't deadlock. A
+  -- demotion's FOR NO KEY UPDATE on it doesn't conflict, so that order
+  -- (below) stays as it was (Claude on #288).
+  PERFORM 1 FROM public.bands b WHERE b.id = band FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
   -- Lock the caller's admin row, so this serialises with a demotion or a
   -- removal (bw_stage_rotate_signer). One that commits first: the locked
   -- re-check finds no admin row (READ COMMITTED re-reads it) and nothing is
@@ -177,8 +189,10 @@ BEGIN
   -- bw_stage_event_moved) locks for update before it looks at the pairs: a
   -- pair stored while another admin is demoted can't slip past it unseen
   -- (READ COMMITTED skips a row whose committed pair is still empty). This
-  -- order (admin row, gig row, band row) can't deadlock: a demotion holds the
-  -- admin row then wants the band's; a move holds the gig's then the band's.
+  -- order (band KEY SHARE, admin row, gig row, band row) can't deadlock: a
+  -- demotion holds the admin row then wants the band's (NO KEY UPDATE, which
+  -- KEY SHARE lets through); a move holds the gig's then the band's; a band
+  -- delete holds the band's first, which KEY SHARE waits for.
   PERFORM 1 FROM public.bands b WHERE b.id = band FOR SHARE;
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);

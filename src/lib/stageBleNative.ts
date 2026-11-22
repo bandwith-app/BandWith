@@ -185,6 +185,18 @@ const kept = <T>(k: string | null, as: (v: unknown) => T | null): T | null => {
     return null;
   }
 };
+/**
+ * Kept only if not older than what's kept (by version; at one version a key
+ * beats "pending"): two fetches that overlap land in any order, and the
+ * older answer never replaces the newer one (Codex on #288). The kept one
+ * is returned when it wins.
+ */
+const keepNewest = <T extends { public: string | null; version: number }>(k: string | null, v: T, as: (x: unknown) => T | null): T => {
+  const had = kept(k, as);
+  if (had && (had.version > v.version || (had.version === v.version && had.public !== null && v.public === null))) return had;
+  keep(k, JSON.stringify(v));
+  return v;
+};
 const forget = (k: string | null) => {
   if (!k) return;
   try {
@@ -193,6 +205,26 @@ const forget = (k: string | null) => {
     /* storage not available */
   }
 };
+
+/**
+ * The key a change replaced, kept for the gig day: a phone that missed the
+ * change still links under it, and only signed states count there (#288).
+ * Same prefix as the keys, so sign-out clears it too. (Kept by #283's key
+ * fetch; nothing kept until it's in.)
+ */
+const PREV_PREFIX = KEY_PREFIX + 'prev:';
+export const PREV_KEY_MS = 36 * 3600_000;
+
+export function previousStageKey(eventId: string): string | null {
+  try {
+    const kept = JSON.parse(localStorage.getItem(PREV_PREFIX + eventId) || 'null') as { key?: unknown; until?: unknown } | null;
+    if (kept && typeof kept.key === 'string' && kept.key && typeof kept.until === 'number' && kept.until > Date.now())
+      return kept.key;
+  } catch {
+    /* nothing kept */
+  }
+  return null;
+}
 
 /** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
 export const KEY_FETCH_TIMEOUT_MS = 4_000;
@@ -224,6 +256,11 @@ async function ask(fn: string, args: Record<string, string>): Promise<unknown> {
  * first one stored). Null for members, and the kept copy goes when the
  * server says no (an admin no longer); the kept copy offline.
  */
+/** Gigs whose server said this account isn't an admin of the band (any more): the leader is told (Claude on #288). */
+const refusedSigner = new Set<string>();
+/** The server's last answer for this gig's pair was its no: no longer an admin. Not set offline. */
+export const signerRefused = (eventId: string) => refusedSigner.has(eventId);
+
 export async function stageSigner(eventId: string): Promise<StageSigner | null> {
   const key = mine(SIGNER_PREFIX, eventId);
   const tag = tagFetch();
@@ -257,6 +294,8 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
     });
     if (!stillOurs(tag)) return null;
     if (data === OFFLINE) return null;
+    // The server's no: this account isn't an admin of the gig's band.
+    if (data === null) refusedSigner.add(eventId);
     signer = asSigner(data);
     // Still the broken one (someone else's call won meanwhile with it): not used.
     if (signer && broken && signer.public === broken) signer = null;
@@ -268,31 +307,46 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
   }
   // Signed out (or another account) while the pair was checked: nothing is kept.
   if (!stillOurs(tag)) return null;
-  keep(key, JSON.stringify(signer));
-  keep(mine(VERIFY_PREFIX, eventId), JSON.stringify({ public: signer.public, version: signer.version }));
-  return signer;
+  refusedSigner.delete(eventId);
+  const newest = keepNewest(key, signer, asSigner);
+  keepNewest(mine(VERIFY_PREFIX, eventId), { public: newest.public, version: newest.version }, asVerify);
+  return newest;
 }
+
+/** Per gig, the newest public-key ask whose answer was taken: an older one answering later changes nothing. */
+const verifyKept = new Map<string, number>();
+let verifyAsks = 0;
 
 /**
  * Members: the gig's public key and its version, to check the leader's
  * signature: fetched first, the kept copy offline. `server`: the server
- * answered (a null answer then is its no: no pair made yet, or this account
- * may no longer see the gig); false: offline (no answer in time, an error),
- * the answer is the kept copy.
+ * answered; false: offline (no answer in time, an error), the answer is the
+ * kept copy. The server's answers (190): a key, "pending" (rotated), "no pair
+ * yet" (version 0: answer null, nothing kept goes), or its no (SQL NULL:
+ * `denied`, this account may no longer see the gig, and every key kept for
+ * it goes: the band key, the public key, the private key; Codex on #288).
  */
-export async function fetchVerifyKey(eventId: string): Promise<{ answer: StageVerifyAnswer | null; server: boolean }> {
+export async function fetchVerifyKey(eventId: string): Promise<{ answer: StageVerifyAnswer | null; server: boolean; denied: boolean }> {
   const key = mine(VERIFY_PREFIX, eventId);
   const tag = tagFetch();
+  const n = ++verifyAsks;
   const data = await ask('bw_stage_verify_key', { p_event_id: eventId });
-  if (!stillOurs(tag)) return { answer: null, server: false };
-  if (data === OFFLINE) return { answer: kept(key, asVerify), server: false };
+  if (!stillOurs(tag)) return { answer: null, server: false, denied: false };
+  if (data === OFFLINE) return { answer: kept(key, asVerify), server: false, denied: false };
+  // Overtaken by a later ask's answer: what that one kept stands.
+  if (n < (verifyKept.get(eventId) ?? 0)) return { answer: kept(key, asVerify), server: true, denied: false };
+  verifyKept.set(eventId, n);
+  if (data === null) {
+    forgetStageKeys(eventId);
+    return { answer: null, server: true, denied: true };
+  }
   const verify = asVerify(data);
   if (!verify) {
+    // No pair made yet (version 0), or nothing usable: no key to check with, nothing else changes.
     forget(key);
-    return { answer: null, server: true };
+    return { answer: null, server: true, denied: false };
   }
-  keep(key, JSON.stringify(verify));
-  return { answer: verify, server: true };
+  return { answer: keepNewest(key, verify, asVerify), server: true, denied: false };
 }
 
 /** The same, the answer only. Null before any admin made the pair (or for a gig the server no longer shows this account). */
@@ -303,6 +357,7 @@ export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer
 /** This account lost the gig (the server said no to a phone holding its key): every key kept for it goes. */
 export function forgetStageKeys(eventId: string) {
   forget(KEY_PREFIX + eventId);
+  forget(PREV_PREFIX + eventId);
   forget(mine(VERIFY_PREFIX, eventId));
   forget(mine(SIGNER_PREFIX, eventId));
 }
@@ -335,6 +390,7 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
  */
 export function clearStageCache() {
   cacheGeneration++;
+  refusedSigner.clear();
   cacheUser = null;
   setSignedMemoryUser(null);
   void removeAllPackFiles().catch(() => undefined);

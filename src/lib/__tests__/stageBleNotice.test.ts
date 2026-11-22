@@ -25,6 +25,12 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(stageBleNotice(member({ status: 'searching' }))).toEqual({ tone: 'warn', text: 'Not connected: ask the leader to open Stage' });
   });
 
+  it("a demoted admin still leading: told another admin needs to lead, online or not (Claude on #288)", () => {
+    const line = { tone: 'warn', text: "You're no longer an admin for this band: another admin needs to lead." };
+    expect(stageBleNotice(leader({ status: 'not-admin' }))).toEqual(line);
+    expect(stageBleNotice(leader({ status: 'not-admin', online: true, followers: 2 }))).toEqual(line);
+  });
+
   it('leader offline: how many phones follow', () => {
     expect(stageBleNotice(leader({ followers: 0 }))).toEqual({ tone: 'warn', text: 'No phones connected yet: ask the band to open Stage' });
     expect(stageBleNotice(leader({ followers: 1 }))).toEqual({ tone: 'ok', text: '1 phone connected to you' });

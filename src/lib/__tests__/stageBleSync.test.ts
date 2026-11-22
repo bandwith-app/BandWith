@@ -127,6 +127,15 @@ describe('BleClockBook', () => {
 });
 
 describe('pickClock', () => {
+  it('slow round trips never widen "agree" past 80 ms: two measures 100 ms apart disagree, the online one is used (Claude on #288)', () => {
+    const realtime = { from: 'lead', sample: { offset: 500, rtt: 400 } };
+    const ble = { from: 'lead', sample: { offset: 600, rtt: 300 } };
+    expect(pickClock('lead', realtime, ble)).toEqual({ offset: 500, rtt: 400 });
+    // Within 80 ms they agree, and the faster (Bluetooth) one is used.
+    const close = { from: 'lead', sample: { offset: 570, rtt: 300 } };
+    expect(pickClock('lead', realtime, close)).toEqual({ offset: 570, rtt: 300 });
+  });
+
   it('uses the path with the fastest round trip for the same leader, when the two agree', () => {
     const realtime = { from: 'lead', sample: { offset: 480, rtt: 120 } };
     const ble = { from: 'lead', sample: { offset: 505, rtt: 30 } };

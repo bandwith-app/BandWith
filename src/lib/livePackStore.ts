@@ -36,7 +36,7 @@ import { anyPackAllowed, packAllowed, readChoice } from './livePackConsent';
 import { downloadPackFile, packFilesAvailable, removePackFiles } from './livePackFiles';
 import { fetchOccurrenceNotes, fetchOpenBandNotes } from './services/rehearsalNotes';
 import type { RehearsalNote } from './rehearsalNotes';
-import { stageBleAvailable, stageKey } from './stageBleNative';
+import { forgetStageKeys, stageBleAvailable, stageKey } from './stageBleNative';
 import { forgetSignedMemory } from './stageSignedMemory';
 
 export const LIVE_PACK_CHANGED = 'bw:live-pack-changed';
@@ -127,11 +127,8 @@ async function dropPack(key: string, pack: LivePack | null) {
   await removeOfflineItem(key);
   if (pack) {
     await removePackFiles(Object.values(pack.personal ?? {}).flatMap((p) => p.files));
-    try {
-      localStorage.removeItem(`bw-stage-key:${pack.eventId}`);
-    } catch {
-      /* storage blocked */
-    }
+    // The gig's kept keys: the band key, the public key and an admin's private signing key (Codex on #288).
+    forgetStageKeys(pack.eventId);
     // And what this phone remembers of the gig's signed leaders (useStageBle).
     forgetSignedMemory(pack.userId, pack.eventId);
     // Admins' "N of M ready" no longer counts this device.

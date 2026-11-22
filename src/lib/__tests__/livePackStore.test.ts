@@ -38,7 +38,12 @@ vi.mock('../supabase', () => ({
 }));
 // The native apps fetch the gig's Bluetooth key (087).
 const signedForgot = vi.hoisted(() => [] as string[]);
-vi.mock('../stageBleNative', () => ({ stageBleAvailable: () => true, stageKey: async () => 'KEY-1' }));
+const keysForgot = vi.hoisted(() => [] as string[]);
+vi.mock('../stageBleNative', () => ({
+  stageBleAvailable: () => true,
+  stageKey: async () => 'KEY-1',
+  forgetStageKeys: (e: string) => void keysForgot.push(e),
+}));
 vi.mock('../stageSignedMemory', () => ({ forgetSignedMemory: (u: string, e: string) => void signedForgot.push(`${u}:${e}`) }));
 // What the band's admins see (migration 170).
 const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
@@ -50,6 +55,8 @@ vi.mock('../livePackStatus', () => ({
 
 import { getCacheKey, getOfflineItem, setOfflineItem, syncCachedRoles, clearOfflineCache } from '../offline/storage';
 import {
+  deleteAllPacks,
+  deletePack,
   fetchSetlistRows,
   findPack,
   listPacks,
@@ -141,6 +148,18 @@ describe('removal', () => {
     await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
     await sweepPacks(me, ['b2']);
     expect(signedForgot).toEqual([`${me}:e1`]);
+  });
+
+  it('"Delete all" and deleting one take along the gig\'s kept keys, the private signing key included (Codex on #288)', async () => {
+    keysForgot.length = 0;
+    await savePackSongs({ userId: me, event: gig(), songs });
+    await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
+    await deletePack(me, 'b1', 'e1');
+    expect(keysForgot).toEqual(['e1']);
+    await savePackSongs({ userId: me, event: gig(), songs });
+    keysForgot.length = 0;
+    await deleteAllPacks(me);
+    expect(keysForgot.sort()).toEqual(['e1', 'e2']);
   });
 
   it('goes when my role changes, and at sign-out', async () => {

@@ -1382,6 +1382,7 @@ const music: AreaModule = {
             "If a line says **Leader not verified yet: connect to the internet once to check it.**, you are following, but your phone can't yet check that the leader is a band admin: go online once (Wi-Fi or mobile data) with Stage open.",
             "If a line says **Leader not verified yet: ask the leader to connect to the internet once.**, you are following, but the leader's phone hasn't been online since Stage got its new security: the leader goes online once with Stage open.",
             "If you lead and a line says **Phones on the latest app can't check you yet: connect to the internet once with Stage open.**, only phones on older versions of BandWith can follow you offline: go online once (Wi-Fi or mobile data) with Stage open, and the band's phones can check it's you.",
+            "If you lead and a line says **You're no longer an admin for this band: another admin needs to lead.**, your role in the band changed: phones on the latest version of BandWith don't follow you. Ask an admin to open Stage and lead.",
             "**Older app versions:** after an admin's role changes (made a member, or removed from the band), a gig whose leaders were already checked waits until an admin on the latest version opens it online once. Until then, phones on the latest version show **The band changed who can lead: connect to the internet once to follow the leader.** for that gig and don't follow anyone offline. Gigs no one led on the latest version yet are not affected.",
           ],
         },

@@ -8,6 +8,7 @@ import {
   encodeSignedState,
   encodeStageState,
   fromBase64,
+  stageServiceUuid,
   toBase64,
 } from '@/lib/stageBle';
 import { STAGE_BLE_LIVE_CHARACTERISTIC } from '@/lib/stageBleSync';
@@ -62,21 +63,39 @@ const air = vi.hoisted(() => ({
   goodbyes: new Map<string, () => void>(),
   /** The change-notice callback of each linked phone (fire it: the leader moved). */
   notify: new Map<string, (v: DataView) => void>(),
-  /** Online, the server answered "nothing for you" (not offline): what fetchVerifyKey tells apart. */
+  /** Online, the server's no (SQL NULL from 190): what fetchVerifyKey tells apart from offline. */
   verifyDenied: false,
+  /** Online, the server's "no pair made yet" (version 0): an answer, not a no. */
+  noPair: false,
+  /** The server said this account is no longer an admin of the gig's band (signerRefused). */
+  notAdmin: false,
+  /** No network: fetchVerifyKey answers with the kept copy, server false. */
+  offline: false,
+  /** Signed reads wait for this (a read still on its way). */
+  readGate: null as Promise<void> | null,
+  /** Band-key decodes since the test reset it (signed bytes must never go there). */
+  bandKeyDecodes: 0,
   /** Gigs whose kept keys the hook dropped. */
   forgotten: [] as string[],
   /** The band key the server hands out now (stageKey). */
   bandKey: '' as string,
+  /** The key a change replaced, kept for the gig day (previousStageKey, #283). */
+  prevKey: null as string | null,
+  /** The service a phone advertises, when the test sets one (else any scan finds it). */
+  serviceOf: new Map<string, string>(),
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
   BleClient: {
     initialize: vi.fn(async () => {}),
     isEnabled: vi.fn(async () => true),
-    requestLEScan: vi.fn(async (_o: unknown, cb: (r: { device: { deviceId: string } }) => void) => {
+    requestLEScan: vi.fn(async (o: { services?: string[] }, cb: (r: { device: { deviceId: string } }) => void) => {
       let i = 0;
-      for (const id of air.devices.keys()) setTimeout(() => cb({ device: { deviceId: id } }), 5 * ++i);
+      for (const id of air.devices.keys()) {
+        const svc = air.serviceOf.get(id);
+        if (svc && !(o?.services ?? []).includes(svc)) continue;
+        setTimeout(() => cb({ device: { deviceId: id } }), 5 * ++i);
+      }
     }),
     stopLEScan: vi.fn(async () => {}),
     connect: vi.fn(async (id: string, cb: () => void) => {
@@ -98,13 +117,15 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
           : d?.kind === 'nopair'
             ? [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC]
             : [STAGE_BLE_CHARACTERISTIC];
-      return [{ uuid: 'any', characteristics: chars.map((uuid) => ({ uuid, properties: {}, descriptors: [] })) }];
+      return [{ uuid: air.serviceOf.get(id) ?? 'any', characteristics: chars.map((uuid) => ({ uuid, properties: {}, descriptors: [] })) }];
     }),
-    startNotifications: vi.fn(async (id: string, _s: string, char: string, cb: (v: DataView) => void) => {
+    startNotifications: vi.fn(async (id: string, s: string, char: string, cb: (v: DataView) => void) => {
+      if (air.serviceOf.has(id) && s !== air.serviceOf.get(id)) throw new Error('Service not found.');
       if (char === STAGE_BLE_SIGNED_CHARACTERISTIC && air.devices.get(id)?.kind !== 'new') throw new Error('Characteristic not found.');
       air.notify.set(id, cb);
     }),
-    read: vi.fn(async (id: string, _s: string, char: string) => {
+    read: vi.fn(async (id: string, s: string, char: string) => {
+      if (air.serviceOf.has(id) && s !== air.serviceOf.get(id)) throw new Error('Service not found.');
       air.reads.push(`${id}:${char.slice(0, 8)}`);
       const d = air.devices.get(id)!;
       const st = d.state as StageLiveState | null;
@@ -114,6 +135,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         return new DataView((await encodeStageState(st, IDS, KEY))!.buffer);
       }
       if (char === STAGE_BLE_SIGNED_CHARACTERISTIC && d.kind === 'new') {
+        if (air.readGate) await air.readGate;
         if (!st || !d.signer) return new DataView(new ArrayBuffer(0));
         const frame = (await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1))!;
         if (d.corrupt && d.corrupt-- > 0) frame[frame.length - 1] ^= 0xff;
@@ -151,12 +173,26 @@ vi.mock('@/lib/stageBleNative', () => ({
   // A null answer is "offline" unless the test says the server answered it.
   fetchVerifyKey: async () => {
     air.verifyCalls++;
-    return { answer: air.verify, server: air.verify !== null || air.verifyDenied };
+    if (air.offline) return { answer: air.kept, server: false, denied: false };
+    return { answer: air.verify, server: air.verify !== null || air.verifyDenied || air.noPair, denied: air.verifyDenied };
   },
   forgetStageKeys: (id: string) => void air.forgotten.push(id),
+  signerRefused: () => air.notAdmin,
+  previousStageKey: () => air.prevKey,
   keptVerifyKey: () => air.kept,
   stageSigner: async () => air.signer,
 }));
+
+vi.mock('@/lib/stageBle', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/stageBle')>();
+  return {
+    ...real,
+    decodeStageState: (...a: Parameters<typeof real.decodeStageState>) => {
+      air.bandKeyDecodes++;
+      return real.decodeStageState(...a);
+    },
+  };
+});
 
 const stageBleHook = await import('../useStageBle');
 const { useStageBle, LEADER_CHECK_MS, SIGNER_RECHECK_MS } = stageBleHook;
@@ -178,6 +214,11 @@ beforeEach(async () => {
   air.connects = [];
   air.connected.clear();
   air.reads = [];
+  air.readGate = null;
+  air.offline = false;
+  air.notAdmin = false;
+  air.prevKey = null;
+  air.serviceOf.clear();
   air.verify = { public: admins.public, version: 1 };
   air.kept = air.verify;
   air.signer = null;
@@ -189,6 +230,7 @@ beforeEach(async () => {
   air.verifyCalls = 0;
   air.notify.clear();
   air.verifyDenied = false;
+  air.noPair = false;
   air.forgotten = [];
   air.bandKey = '';
   (stageBleHook as { forgetSignedLeaders?: () => void }).forgetSignedLeaders?.();
@@ -357,6 +399,21 @@ describe("useStageBle: the leader re-checks it may sign (Claude on #288)", () =>
     unmount();
   });
 
+  it("demoted while leading: the line says another admin needs to lead (Claude on #288)", async () => {
+    air.signer = { ...admins, version: 1 };
+    const { result, unmount } = leader();
+    await waitFor(() => expect(result.current.status).toBe('leading'));
+    air.signer = null;
+    air.notAdmin = true;
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(result.current.status).toBe('not-admin'), { timeout: 5000 });
+    unmount();
+    // Opened again after it (leading with the band key): told too.
+    const again = leader();
+    await waitFor(() => expect(again.result.current.status).toBe('not-admin'));
+    again.unmount();
+  });
+
   it('the same pair at the next check: Stage keeps running as it is', async () => {
     air.signer = { ...admins, version: 1 };
     const { unmount } = leader();
@@ -465,10 +522,11 @@ describe('useStageBle: the pair rotated after an admin stopped being one (Codex 
     hook.unmount();
   });
 
-  it('offline with the old key: the leader is not followed, with no "band changed" line (anyone can claim a newer pair); online, the new key and the member follows at once (Claude on #288)', async () => {
+  it('offline with the old key: the leader is not followed, and after a few "newer pair" failures with no server to ask the line asks for one trip online; online, the new key and the member follows at once (Claude on #288)', async () => {
     const before = await generateSigner();
     air.kept = { public: before.public, version: 1 };
-    air.verify = air.kept; // offline: the kept copy
+    air.verify = air.kept;
+    air.offline = true;
     put('admin', 'new', lead('a', 5, 'b2'), admins, 2);
     const { onState, hook } = member();
     const seen: string[] = [];
@@ -476,9 +534,13 @@ describe('useStageBle: the pair rotated after an admin stopped being one (Codex 
       await vi.advanceTimersByTimeAsync(2_000);
       seen.push(hook.result.current.status);
     }
-    expect(seen).not.toContain('stale-key');
+    // Not at the first failure (a read caught mid-change), but once it keeps happening
+    // with no server to ask, the line asks for one trip online (Claude on #288).
+    expect(seen.slice(0, 1)).not.toContain('stale-key');
+    expect(seen).toContain('stale-key');
     expect(onState).not.toHaveBeenCalled();
     // Back online: the new key (asked for at once), and the member follows without waiting out the skip.
+    air.offline = false;
     air.verify = { public: admins.public, version: 2 };
     window.dispatchEvent(new Event('online'));
     await vi.advanceTimersByTimeAsync(8_000);
@@ -600,10 +662,10 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     hook.unmount();
   }, 20_000);
 
-  it('the server says no with no key on this phone (no pair made yet): nothing changes, the leader with no pair is followed (Codex on #288)', async () => {
+  it('the server says "no pair made yet" (version 0) with no key on this phone: nothing changes, the leader with no pair is followed (Codex on #288)', async () => {
     air.verify = null;
     air.kept = null;
-    air.verifyDenied = true;
+    air.noPair = true;
     put('admin', 'nopair', lead('a', 9, 'c3'));
     const { onState, hook } = member();
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'c3' })));
@@ -611,6 +673,62 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     expect(hook.result.current.status).not.toBe('off');
     hook.unmount();
   });
+
+  it("the server's no with no key on this phone (190: NULL is only ever a no): it stops, its kept keys go (Codex on #288)", async () => {
+    air.verify = null;
+    air.kept = null;
+    air.verifyDenied = true;
+    put('admin', 'nopair', lead('a', 9, 'c3'));
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('off'), { timeout: 5000 });
+    expect(air.forgotten).toContain('gig');
+    expect(onState).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('a rotation learnt while linked to a signed leader: the link is dropped, never read as a band-key one (Codex on #288)', async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins, 1);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    const links = air.connects.length;
+    const from = air.reads.length;
+    // Back online: the server says the pair rotated ("pending", no new key yet).
+    air.verify = { public: null, version: 2 };
+    online();
+    await waitFor(() => expect(air.connected.has('admin')).toBe(false), { timeout: 5000 });
+    // The same phone's band-key state is never read meanwhile, nor anything followed.
+    air.notify.get('admin')?.(new DataView(new ArrayBuffer(4)));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(air.reads.slice(from).filter((r) => r.endsWith(':b7d50001'))).toEqual([]);
+    expect(onState).toHaveBeenCalledTimes(1);
+    expect(air.connects.length).toBeGreaterThanOrEqual(links);
+    hook.unmount();
+  }, 20_000);
+
+  it("a rotation learnt while a signed read is on its way: those bytes are never read as a band-key state, the link is dropped (Codex on #288)", async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins, 1);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    let open = () => {};
+    air.readGate = new Promise<void>((r) => (open = r));
+    put('admin', 'new', lead('a', 10, 'b2'), admins, 1);
+    const reads = air.reads.length;
+    air.notify.get('admin')!(new DataView(new ArrayBuffer(4)));
+    await waitFor(() => expect(air.reads.length).toBeGreaterThan(reads));
+    // Meanwhile the phone learns of a rotation.
+    air.verify = { public: null, version: 2 };
+    online();
+    await waitFor(() => expect(air.verifyCalls).toBeGreaterThan(0));
+    await vi.advanceTimersByTimeAsync(200);
+    air.bandKeyDecodes = 0;
+    air.readGate = null;
+    open();
+    await vi.advanceTimersByTimeAsync(1000);
+    await waitFor(() => expect(air.connected.has('admin')).toBe(false), { timeout: 5000 });
+    expect(air.bandKeyDecodes).toBe(0);
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ songId: 'b2' }), expect.anything());
+    hook.unmount();
+  }, 20_000);
 
   it('a rotation learnt mid-link ("pending" from a newer-pair claim): the signed state is no longer read with no key to check it (Codex on #288)', async () => {
     put('admin', 'new', lead('a', 9, 'c3'), admins, 1);
@@ -629,6 +747,40 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     await new Promise((r) => setTimeout(r, 1500));
     expect(air.reads.slice(from).filter((r) => r.endsWith(':b7d50004'))).toEqual([]);
     expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ songId: 'b2' }), expect.anything());
+    hook.unmount();
+  }, 20_000);
+
+  it("a leader that missed the band key change (still on the previous key): on the gig day the member finds it and follows it signed (Claude on #288)", async () => {
+    const NEW = 'bmV3LWJhbmQta2V5LTMyLWJ5dGVzLWxvbmctZm9yLXRlc3Q=';
+    air.bandKey = NEW;
+    air.prevKey = KEY;
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    air.serviceOf.set('admin', await stageServiceUuid(KEY));
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true), { timeout: 5000 });
+    hook.unmount();
+  }, 20_000);
+
+  it('under the previous key a band-key state is never followed (the one who left may know that key) (Claude on #288)', async () => {
+    air.bandKey = 'bmV3LWJhbmQta2V5LTMyLWJ5dGVzLWxvbmctZm9yLXRlc3Q=';
+    air.prevKey = KEY;
+    put('old-phone', 'old', lead('x', 9, 'c3'));
+    air.serviceOf.set('old-phone', await stageServiceUuid(KEY));
+    const { onState, hook } = member();
+    await vi.advanceTimersByTimeAsync(8000);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(onState).not.toHaveBeenCalled();
+    hook.unmount();
+  }, 20_000);
+
+  it('no previous key kept: a phone on another key is never found', async () => {
+    air.bandKey = 'bmV3LWJhbmQta2V5LTMyLWJ5dGVzLWxvbmctZm9yLXRlc3Q=';
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    air.serviceOf.set('admin', await stageServiceUuid(KEY));
+    const { onState, hook } = member();
+    await vi.advanceTimersByTimeAsync(8000);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(onState).not.toHaveBeenCalled();
     hook.unmount();
   }, 20_000);
 

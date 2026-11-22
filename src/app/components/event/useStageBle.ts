@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BleClient, BluetoothLe, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { StageBle, fetchVerifyKey, forgetStageKeys, keptVerifyKey, stageBleAvailable, stageKey, stageSigner } from '@/lib/stageBleNative';
+import { StageBle, fetchVerifyKey, forgetStageKeys, keptVerifyKey, previousStageKey, signerRefused, stageBleAvailable, stageKey, stageSigner } from '@/lib/stageBleNative';
 import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
@@ -58,6 +58,8 @@ const RETRY_MS = 2000;
  */
 export const LEADER_CHECK_MS = 30_000;
 export const IDLE_LEADER_CHECK_MS = 4_000;
+/** "Newer pair" failures in a row, offline, before the line asks for one trip online. */
+export const NEWER_FAILS_STALE = 3;
 /** How long a leader's first state waits for its clock to be measured (then the 5-minute rule). */
 export const CLOCK_HOLD_MS = 3_000;
 /** Another address of the linked leader's phone is skipped this long, then probed again. */
@@ -140,6 +142,16 @@ export const isChangeNotice = (v: DataView | undefined) => v?.byteLength === 4;
  * can't be listed (a dropped packet): unknown, never "none signed", or the
  * phone would be followed as a band-key leader.
  */
+/** Which of these services a linked phone serves (the first found), or null when it can't tell. */
+async function servedService(id: string, services: string[]): Promise<string | null> {
+  try {
+    const found = (await BleClient.getServices(id)).map((s) => s.uuid.toLowerCase());
+    return services.find((s) => found.includes(s.toLowerCase())) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function servedBy(id: string): Promise<string[] | null> {
   try {
     const services = await BleClient.getServices(id);
@@ -298,12 +310,19 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       // A pair whose private key doesn't match its public one would sign frames nobody accepts.
       const signer = fetched && (await pairMatches(fetched)) ? fetched : null;
       if (cancelled) return;
+      // The server said this account is no longer an admin: it still serves (older apps may follow),
+      // and is told another admin needs to lead (Claude on #288).
+      const notAdmin = !fetched && signerRefused(eventId);
+      const asLeader = (state: string): StageBleStatus => {
+        const st = leaderStatus(state);
+        return notAdmin && st === 'leading' ? 'not-admin' : st;
+      };
       keyRef.current = key;
       signerRef.current = signer;
       setUnsigned(!signer);
       const serviceUuid = await stageServiceUuid(key);
       const handle = await StageBle.addListener('stateChange', ({ state, subscribers }) => {
-        setStatus(leaderStatus(state));
+        setStatus(asLeader(state));
         setFollowers(state === 'on' ? subscribers ?? 0 : 0);
       });
       // Closed while the listener was being added: the cleanup has already run.
@@ -331,7 +350,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         });
         if (cancelled) return;
         startedRef.current = true;
-        setStatus(leaderStatus(state));
+        setStatus(asLeader(state));
         // "Here" at once: the current state, or leading nothing (a move waiting goes out below instead).
         if (!pendingRef.current) void sayHere();
         // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
@@ -347,6 +366,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             if (
               (fresh?.public ?? null) !== (fetched?.public ?? null) ||
               (fresh?.version ?? null) !== (fetched?.version ?? null) ||
+              (!fresh && signerRefused(eventId)) !== notAdmin ||
               nowKey !== key
             )
               setAttempt((n) => n + 1);
@@ -389,6 +409,25 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let deviceId: string | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let serviceUuid = '';
+    /**
+     * The service of the key a change replaced (#283 keeps it for the gig day):
+     * a leader that missed the change still advertises under it. Found and
+     * followed, signed states only (the one who left may know that key).
+     */
+    let prevService = '';
+    /** The service each phone linked or probed serves (the previous key's, or this one's). */
+    const serviceOf = new Map<string, string>();
+    const svcOf = (id: string) => serviceOf.get(id) ?? serviceUuid;
+    const scanFor = () => (prevService ? [serviceUuid, prevService] : [serviceUuid]);
+    /** On the previous key's service: only a signed state may be followed. */
+    const onPrevKey = (id: string) => !!prevService && serviceOf.get(id) === prevService;
+    /** With a previous key kept, which one this phone serves (asked once per link or probe). */
+    const learnService = async (id: string) => {
+      if (!prevService) return;
+      const svc = await servedService(id, [serviceUuid, prevService]);
+      if (svc) serviceOf.set(id, svc);
+      else serviceOf.delete(id);
+    };
     let key = '';
     /** The gig's public key and its version (null: none made yet when this phone was online). */
     let verify: StageVerifyKey | null = null;
@@ -409,10 +448,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (answer.public === null) {
         // Older than the key this phone checks with: nothing new.
         if (!verify || verify.version < answer.version) {
-          // No key to check the signed state with: the link isn't a signed one any more (Codex on #288).
+          // No key to check the signed state with: a signed link is never read as a band-key one,
+          // it's left and found again (refused while the rotation is pending) (Codex on #288).
+          const linked = signedLink ? deviceId : null;
           verify = null;
           signedLink = false;
           pending = answer.version;
+          if (linked) queueMicrotask(() => {
+            if (!cancelled && deviceId === linked) dropLink(linked, 0);
+          });
         }
       } else if (answer.version >= Math.max(verify?.version ?? 0, pending ?? 0)) {
         // Never below the key or the "pending" version this phone knows: a slow answer from
@@ -424,10 +468,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       // Another key: the phones skipped for the old one are tried again now.
       for (const id of keySkips) distrusted.delete(id);
       keySkips.clear();
+      newerFails = 0;
       refusedStreak = 0;
       staleStreak = 0;
     };
     let verifyAskedAt = -Infinity;
+    /** The last ask for the key reached the server (false: offline, the kept copy). */
+    let verifyReached = true;
+    /** "Newer pair" claims in a row the kept key couldn't check (reset by a good read or a new key). */
+    let newerFails = 0;
     let verifyAsks = 0;
     let verifyTaken = 0;
     /** The server's public key (online), or the kept copy (offline); `force`: even if asked lately. */
@@ -436,13 +485,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       verifyAskedAt = nowMs();
       // Numbered: an answer that arrives after a later one's is dropped (Codex on #288).
       const n = ++verifyAsks;
-      const { answer, server } = await fetchVerifyKey(gig);
+      const { answer, denied, server } = await fetchVerifyKey(gig);
       if (cancelled || n < verifyTaken) return;
       verifyTaken = n;
-      // The server's no while this phone holds the key, or waits for a rotation's
-      // (which always answers "pending", never no): this account lost the gig.
-      // Only offline keeps the copy (Codex on #288).
-      if (server && !answer && (verify || pending !== null)) {
+      verifyReached = server;
+      // The server's no (190: SQL NULL is only ever a no; "no pair yet" is version 0): this
+      // account lost the gig, its kept keys are gone (fetchVerifyKey), nothing more is followed.
+      // Offline keeps the copy (Codex on #288).
+      if (denied) {
         lose();
         return;
       }
@@ -575,7 +625,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       let view: DataView;
       try {
         reads++;
-        view = await BleClient.read(id, serviceUuid, STAGE_BLE_CLOCK_CHARACTERISTIC);
+        view = await BleClient.read(id, svcOf(id), STAGE_BLE_CLOCK_CHARACTERISTIC);
       } catch (e) {
         // A dropped link is handled by onDisconnect; a missing characteristic is an older leader.
         const older = /not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
@@ -642,15 +692,23 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     /** A phone's state: the signed one if it serves it (and this phone can check it), else the band-key one. */
     const readState = async (id: string, signed: boolean, timeout?: number) => {
+      // The key this read is checked with, taken now: a rotation learnt meanwhile fails it closed.
+      const checkWith = verify;
+      if (signed && !checkWith) return { ok: false as const, reason: 'rotated' as const };
+      // Under the previous key, a band-key state is never read (only signed ones count there).
+      if (!signed && onPrevKey(id)) return { ok: false as const, reason: 'auth' as const };
       const view = await BleClient.read(
         id,
-        serviceUuid,
+        svcOf(id),
         signed ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC,
         timeout ? { timeout } : undefined,
       );
       const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-      if (!signed || !verify) return decodeStageState(bytes, savedRef.current, key);
-      const result = await decodeSignedState(bytes, savedRef.current, verify.public, verify.version);
+      if (!signed) return decodeStageState(bytes, savedRef.current, key);
+      // Signed bytes are never read as a band-key state (Codex on #288).
+      if (!checkWith || verify !== checkWith) return { ok: false as const, reason: 'rotated' as const };
+      const result = await decodeSignedState(bytes, savedRef.current, checkWith.public, checkWith.version);
+      if (verify !== checkWith) return { ok: false as const, reason: 'rotated' as const };
       if (!result.ok && result.reason !== 'setlist') return result;
       // Stage closed meanwhile (a look's read finishing late): nothing is noted for the next opening.
       if (cancelled) return result;
@@ -755,6 +813,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           reads--;
         }
         if (cancelled || deviceId !== id) return;
+        // The key changed during the read (a rotation, say): this link is left and found again
+        // under what the phone knows now (Codex on #288).
+        if (!result.ok && result.reason === 'rotated') {
+          dropLink(id, 0);
+          return;
+        }
         if (!result.ok && result.reason === 'auth' && result.newer) {
           // Maybe a newer pair than this phone's (an admin stopped being one since), maybe made up: only the server can tell.
           const had = verify?.version;
@@ -765,9 +829,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             void readNow();
             return;
           }
-          // Nothing newer on the server (or offline): a failed check like any other, and no "the band changed" line
-          // (that one only when the server says so: "pending"), since anyone can write a version number.
-          // Skipped for the key: tried again at once if a newer key arrives.
+          // Nothing newer on the server (or offline): a failed check like any other. Online, no "the band
+          // changed" line (that one only when the server says so: "pending"), since anyone can write a
+          // version number. Offline, after a few in a row, the line asks for one trip online: only the
+          // server can tell (Claude on #288). Skipped for the key: tried again at once if a newer key arrives.
+          if (++newerFails >= NEWER_FAILS_STALE && !verifyReached) {
+            staleKey = true;
+            setStatus(linkedStatus());
+          }
           keySkips.add(id);
         }
         if (!result.ok && result.reason === 'auth') {
@@ -821,6 +890,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (result.ok) {
           authFails = [];
           staleKey = false;
+          newerFails = 0;
           refusedStreak = 0;
           staleStreak = 0;
           if (!linkState || isNewer(result.state, linkState)) linkState = result.state;
@@ -851,6 +921,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (leaderLinks.has(id)) return null;
       try {
         await BleClient.connect(id, () => {}, { timeout: PROBE_TIMEOUT_MS });
+        await learnService(id);
         const served = verify ? await servedBy(id) : [];
         // Not listed: unknown, not ranked (a band-key guess could put it above the leader).
         if (!served) return null;
@@ -905,7 +976,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       try {
         lookScanning = true;
         scanStarts.push(Date.now());
-        await BleClient.requestLEScan({ services: [serviceUuid] }, (r) => {
+        await BleClient.requestLEScan({ services: scanFor() }, (r) => {
           const id = r.device.deviceId;
           if (id !== current && trusted(id) && !knownSame(id) && !found.includes(id)) found.push(id);
         });
@@ -1015,7 +1086,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           return;
         }
         scanStarts.push(Date.now());
-        await BleClient.requestLEScan({ services: [serviceUuid] }, (result) => {
+        await BleClient.requestLEScan({ services: scanFor() }, (result) => {
           if (deviceId || cancelled || !trusted(result.device.deviceId)) return;
           linkTo(result.device.deviceId);
         });
@@ -1073,6 +1144,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           });
           // The public key, if this phone has none yet (online now, say).
           if (!verify) await refreshVerify(true);
+          await learnService(id);
           const served = await servedBy(id);
           if (cancelled || gen !== link) return;
           // Not listed (a dropped packet): try again, never guess "an older app" and follow its band-key state.
@@ -1089,14 +1161,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             : served.includes(STAGE_BLE_LIVE_CHARACTERISTIC)
               ? 'no-pair'
               : 'old';
-          // Once the admins signed, a band-key phone isn't followed (see SIGNED_TRUST_MS).
-          if (!signedLink && legacyRefused()) {
+          // Once the admins signed, a band-key phone isn't followed (see SIGNED_TRUST_MS); nor is one
+          // under the previous key, ever (the one who left may know it).
+          if (!signedLink && (legacyRefused() || onPrevKey(id))) {
             refuse(id);
             return;
           }
           // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
           // hands every read's value to this callback, which would read forever.
-          await BleClient.startNotifications(id, serviceUuid, signedLink ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC, (v) => {
+          await BleClient.startNotifications(id, svcOf(id), signedLink ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC, (v) => {
             if (isChangeNotice(v)) void readNow();
           });
           // Closed, or Bluetooth went off meanwhile (that link is already dropped).
@@ -1133,6 +1206,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
       if (cancelled) return;
       serviceUuid = await stageServiceUuid(k);
+      // The key a change replaced, kept for the gig day (Claude on #288).
+      const prev = previousStageKey(gig);
+      prevService = prev && prev !== k ? await stageServiceUuid(prev) : '';
       try {
         // Asks for Bluetooth the first time; Android 12+ never uses it for location.
         await BleClient.initialize({ androidNeverForLocation: true });

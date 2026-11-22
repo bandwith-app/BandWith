@@ -26,12 +26,15 @@ import { t } from '@/lib/i18n';
  *   leader's signature yet (it wasn't online since the pair was made).
  * - leader-unverified: linked and following an admin on this app who has no
  *   key pair yet (offline since before one was made): it can't sign.
+ * - not-admin: this phone leads, but the server says its account is no
+ *   longer an admin of the band: phones on this app won't follow it.
  * - clock-off: linked, but the leader's band-key state is far ahead of this
  *   phone's time, with no clock measured to explain it: not followed.
  */
 export type StageBleStatus =
   | 'off'
   | 'leading'
+  | 'not-admin'
   | 'searching'
   | 'connected'
   | 'old-leader'
@@ -80,6 +83,8 @@ export function stageBleNotice({ status, online, isLeader, followers, unsigned, 
   }
   // Worth fixing before the internet drops, so shown with it up too.
   if (status === 'old-leader') return { tone: 'warn', text: t("The leader's app is out of date: ask them to update") };
+  // Online or not: the band won't follow this phone.
+  if (status === 'not-admin') return { tone: 'warn', text: t("You're no longer an admin for this band: another admin needs to lead.") };
   // With the internet up, the band is in sync anyway: nothing to say.
   if (online) return null;
   switch (status) {

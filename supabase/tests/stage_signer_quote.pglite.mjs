@@ -84,13 +84,14 @@ CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   is_active boolean DEFAULT true, left_at timestamptz);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY, band_id uuid, created_by uuid, client_name text, total numeric,
   status text DEFAULT 'draft', valid_until date, converted_to_event_id uuid, quote_number text,
-  event_date date, event_time_start time, event_time_end time, created_at timestamptz DEFAULT now());
+  event_date date, event_time_start time, event_time_end time, created_at timestamptz DEFAULT now(),
+  venue_name text, venue_address text, venue_city text);
 CREATE TABLE public.quote_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid, band_id uuid, status text DEFAULT 'draft');
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, title text, status text, event_type text,
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
   soundcheck_time time, venue text, venue_name text, venue_address text, venue_city text, setlist_id uuid,
   fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now(),
-  "time" time, duration_hours numeric, recurrence_rule jsonb);
+  "time" time, duration_hours numeric, recurrence_rule jsonb, is_recurring boolean DEFAULT false);
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric, paid_at timestamptz, role text, notes text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
@@ -283,7 +284,9 @@ INSERT INTO event_members (event_id, user_id, status) VALUES ('${G2}','${M2}','c
   ok((await as(A4, `SELECT (public.bw_stage_key('${G2}') IS NOT NULL)::text`)).v === 'true', 'old-app band: the band key is made (no pair)');
   await db.exec(`UPDATE band_members SET role = 'member' WHERE user_id = '${A5}'`);
   const v = json(await as(M2, verify(G2)));
-  ok(v === null, `old-app band, a demotion: members get no "pending" (still no pair, follow the band key), got ${JSON.stringify(v)}`);
+  ok(v && v.public === null && v.version === 0, `old-app band, a demotion: members get "no pair yet" ({public: null, version 0}), not "pending" nor a no, got ${JSON.stringify(v)}`);
+  // SQL NULL is only the server's no (Codex on #288): someone outside the band.
+  ok(json(await as(EX, verify(G2))) === null, 'old-app band: someone outside the band gets a no (NULL)');
   const ver = (await db.query(`SELECT sign_version FROM stage_keys WHERE event_id = '${G2}'`)).rows[0]?.sign_version;
   ok(ver === 1, `old-app band: the version stays 1, got ${ver}`);
   // The first pair made there afterwards is version 1, and a demotion after that does rotate.

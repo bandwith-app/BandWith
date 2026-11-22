@@ -89,6 +89,8 @@ export interface PeerClock {
  * replayed that way, so it wins. Within it, the faster round trip is used.
  */
 export const BLE_CLOCK_AGREE_MS = 30;
+/** However slow the round trips, two measures further apart than this don't agree (Claude on #288). */
+export const BLE_CLOCK_AGREE_MAX_MS = 80;
 
 /**
  * The offset to use for `leader`'s click: the clock measured against that
@@ -101,8 +103,9 @@ export const pickClock = (leader: string | null, realtime: PeerClock | null | un
   const rt = realtime?.from === leader ? realtime.sample : null;
   const bt = bluetooth?.from === leader ? bluetooth.sample : null;
   if (rt && bt) {
-    // Each measure may be off by up to half its round trip: they agree within the sum of those (Claude on #288).
-    const agree = Math.max(BLE_CLOCK_AGREE_MS, rt.rtt / 2 + bt.rtt / 2);
+    // Each measure may be off by up to half its round trip: they agree within the sum of those
+    // (Claude on #288), never more than BLE_CLOCK_AGREE_MAX_MS (a slow link can't make any two agree).
+    const agree = Math.min(BLE_CLOCK_AGREE_MAX_MS, Math.max(BLE_CLOCK_AGREE_MS, rt.rtt / 2 + bt.rtt / 2));
     return Math.abs(bt.offset - rt.offset) > agree || rt.rtt <= bt.rtt ? rt : bt;
   }
   return rt ?? bt;

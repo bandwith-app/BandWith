@@ -64,7 +64,7 @@ vi.mock('@/lib/stageBleNative', () => ({
   fetchVerifyKey: async () => ({ answer: null, server: false }),
   forgetStageKeys: () => {},
   keptVerifyKey: () => null,
-  stageSigner: async () => null,
+  stageSigner: async () => null, signerRefused: () => false, previousStageKey: () => null,
 }));
 
 const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');

@@ -86,9 +86,24 @@ describe('190 the stage signing keys', () => {
     expect(sql).toMatch(/DROP FUNCTION IF EXISTS public\.bw_stage_verify_key\(uuid\);/);
   });
 
+  it("set_signer takes the band row FOR KEY SHARE before any other lock: a band being deleted can't deadlock with it, a demotion still can't (Claude on #288)", () => {
+    const f = fn('bw_stage_set_signer');
+    const at = (re: RegExp) => f.search(re);
+    const keyShare = at(/FROM public\.bands b WHERE b\.id = band FOR KEY SHARE;/);
+    const admin = at(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
+    const gig = at(/e\.band_id = band FOR UPDATE;/);
+    const bandShare = at(/FROM public\.bands b WHERE b\.id = band FOR SHARE;/);
+    expect(keyShare).toBeGreaterThan(0);
+    expect(keyShare).toBeLessThan(admin);
+    expect(admin).toBeLessThan(gig);
+    expect(gig).toBeLessThan(bandShare);
+  });
+
   it('after a rotation members are told "pending" (the version, no public key), never "no pair" (rule C)', () => {
     const f = fn('bw_stage_verify_key');
-    expect(f).toMatch(/IF ver IS NULL OR \(k IS NULL AND ver <= 1\) THEN\s+RETURN NULL;/);
+    // No pair yet: version 0, an answer; SQL NULL is only the server's no (Codex on #288).
+    expect(f).toMatch(/IF ver IS NULL OR \(k IS NULL AND ver <= 1\) THEN\s+RETURN jsonb_build_object\('public', NULL, 'version', 0\);/);
+    expect(f.match(/RETURN NULL;/g)).toHaveLength(2);
     expect(f).toMatch(/RETURN jsonb_build_object\('public', k, 'version', ver\);/);
   });
 
