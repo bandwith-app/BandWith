@@ -350,6 +350,46 @@ await db.exec(`INSERT INTO rehearsal_polls (id, band_id, created_by, creator_rol
 const wholePoll = await db.query(`DELETE FROM rehearsal_polls WHERE id = $1`, [id(52)]).then(() => 'deleted', (e) => e.message);
 ok(wholePoll === 'deleted' && (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_options WHERE poll_id = $1`, [id(52)])).rows[0].n === 0, `deleting a voted poll still removes its options (${wholePoll})`);
 
+// ---- Codex round 11-22: "None of these work" is an answer too. It lives in
+// rehearsal_poll_unavailable (102), not in the votes, so a poll whose only
+// answers are "none" was still open to an older build's stale publish.
+// id(55): INVITED answered "none"; id(56): nobody answered yet.
+await db.exec(`INSERT INTO rehearsal_polls (id, band_id, created_by, creator_role, title, status, invited_user_ids, vote_by, vote_by_time) VALUES
+    ('${id(55)}','${BAND_A}','${ADMIN}','admin','Horn section','polling', ARRAY['${INVITED}','${ADMIN}']::uuid[], '2099-12-18', '18:00'),
+    ('${id(56)}','${BAND_A}','${ADMIN}','admin','Rhythm section','polling', ARRAY['${INVITED}','${ADMIN}']::uuid[], '2099-12-18', '18:00');
+  INSERT INTO rehearsal_poll_options (poll_id, proposed_date, start_time) VALUES ('${id(55)}','2099-12-21','19:00'), ('${id(56)}','2099-12-21','19:00');
+  INSERT INTO rehearsal_poll_unavailable (poll_id, user_id) VALUES ('${id(55)}','${INVITED}');`);
+const nonePollRow = async (poll) => (await db.query(`SELECT title, invited_user_ids::text[] AS i, vote_by::text AS v, vote_by_time::text AS t FROM rehearsal_polls WHERE id = $1`, [poll])).rows[0];
+const nonePollDates = async (poll) => (await db.query(`SELECT proposed_date::text AS d FROM rehearsal_poll_options WHERE poll_id = $1 ORDER BY 1`, [poll])).rows.map((r) => r.d);
+// The older build's stale publish, in its own order: the poll, then its dates out, then its own dates in.
+const staleForm = async (poll) => {
+  const out = {};
+  out.upd = await asCommit(ADMIN2, () => db.query(`UPDATE rehearsal_polls SET title = 'Stale form', invited_user_ids = ARRAY['${ADMIN2}']::uuid[], vote_by = '2099-12-30', vote_by_time = '09:00', status = 'polling' WHERE id = $1`, [poll])).then(() => 'updated', (e) => e.message);
+  out.del = await asCommit(ADMIN2, () => db.query(`DELETE FROM rehearsal_poll_options WHERE poll_id = $1`, [poll])).then(() => 'deleted', (e) => e.message);
+  out.ins = await asCommit(ADMIN2, () => db.query(`INSERT INTO rehearsal_poll_options (poll_id, proposed_date, start_time) VALUES ($1, '2099-12-28', '19:00')`, [poll])).then(() => 'inserted', (e) => e.message);
+  return out;
+};
+const noneBefore = await nonePollRow(id(55));
+const noneStale = await staleForm(id(55));
+const noneDates = await nonePollDates(id(55));
+const noneLeft = (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_unavailable WHERE poll_id = $1`, [id(55)])).rows[0].n;
+ok(/already has votes/.test(noneStale.del) && /already has votes/.test(noneStale.ins) && JSON.stringify(noneDates) === '["2099-12-21"]' && noneLeft === 1,
+  `Codex 11-22: an old build cannot replace the dates of a poll whose only answers are "none of these work" (${JSON.stringify(noneStale)}, dates ${JSON.stringify(noneDates)}, ${noneLeft} answer)`);
+const noneAfter = await nonePollRow(id(55));
+ok(JSON.stringify(noneAfter) === JSON.stringify(noneBefore),
+  `Codex 11-22: nor its invitees, title or vote-by (${JSON.stringify(noneAfter)})`);
+const emptyStale = await staleForm(id(56));
+const emptyDates = await nonePollDates(id(56));
+ok(emptyStale.del === 'deleted' && emptyStale.ins === 'inserted' && JSON.stringify(emptyDates) === '["2099-12-28"]',
+  `Codex 11-22: a poll with no answers at all still takes new dates (${JSON.stringify(emptyStale)}, dates ${JSON.stringify(emptyDates)})`);
+const emptyAfter = await nonePollRow(id(56));
+ok(emptyStale.upd === 'updated' && emptyAfter.title === 'Stale form' && JSON.stringify(emptyAfter.i) === JSON.stringify([ADMIN2]) && emptyAfter.v === '2099-12-30',
+  `Codex 11-22: and new invitees, title and vote-by (${JSON.stringify(emptyAfter)})`);
+// Deleting the whole poll still removes it with its dates and its "none" answer.
+const noneGone = await db.query(`DELETE FROM rehearsal_polls WHERE id = $1`, [id(55)]).then(() => 'deleted', (e) => e.message);
+const noneRest = (await db.query(`SELECT (SELECT count(*) FROM rehearsal_poll_options WHERE poll_id = $1)::int AS o, (SELECT count(*) FROM rehearsal_poll_unavailable WHERE poll_id = $1)::int AS u`, [id(55)])).rows[0];
+ok(noneGone === 'deleted' && noneRest.o === 0 && noneRest.u === 0, `Codex 11-22: deleting such a poll still removes its dates and answers (${noneGone}, ${JSON.stringify(noneRest)})`);
+
 
 // Not an admin of the proposal's band.
 await db.exec(`UPDATE rehearsal_polls SET status = 'proposed' WHERE id = '${PROPOSAL_B}'`);

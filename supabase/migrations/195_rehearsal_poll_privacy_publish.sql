@@ -43,7 +43,8 @@
 --                    app tells only the invitees (minor 8).
 --
 -- #8  bw_rehearsal_polls_keep_open_fields (BEFORE UPDATE): while a poll is
---     open ('polling') and has votes, the title, the invite list and the
+--     open ('polling') and has votes (or a "None of these work" answer,
+--     102; Codex 11-22), the title, the invite list and the
 --     vote-by date and time keep their stored values, unless the write comes
 --     from the publish above (transaction-local flag bw.poll_publish). A
 --     stale form of an older build can no longer rename the poll or change
@@ -511,6 +512,8 @@ COMMENT ON FUNCTION public.bw_skip_rehearsal_date(uuid, date, text) IS
 -- While a poll is open with votes, its options can be neither removed nor
 -- added; that build then shows the insert's message. Deleting the poll
 -- itself still removes everything (the cascade runs once the poll is gone).
+-- "None of these work" (rehearsal_poll_unavailable, 102) is an answer too:
+-- a poll whose only answers are that one is kept the same way (Codex 11-22).
 CREATE OR REPLACE FUNCTION public.bw_trg_poll_options_keep_voted()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -521,7 +524,8 @@ DECLARE
   v_poll uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.poll_id ELSE NEW.poll_id END;
 BEGIN
   IF EXISTS (SELECT 1 FROM public.rehearsal_polls rp WHERE rp.id = v_poll AND rp.status = 'polling')
-     AND EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = v_poll) THEN
+     AND (EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = v_poll)
+          OR EXISTS (SELECT 1 FROM public.rehearsal_poll_unavailable u WHERE u.poll_id = v_poll)) THEN
     RAISE EXCEPTION 'This poll already has votes, so its dates can''t be changed. Close and reopen it to see the votes.'
       USING ERRCODE = 'P0001';
   END IF;
@@ -542,7 +546,8 @@ CREATE TRIGGER bw_poll_options_keep_voted
 -- bw.poll_publish, set by it alone) writes them. Status changes (lock in,
 -- close, cancel) and every other column go through as before. No current
 -- build writes these columns on an open poll (checked in src: only the
--- publish of a proposal, while it is still 'proposed').
+-- publish of a proposal, while it is still 'proposed'). An answer is a vote
+-- for a date or "None of these work" (102), as above (Codex 11-22).
 CREATE OR REPLACE FUNCTION public.bw_trg_polls_keep_open_fields()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -556,7 +561,8 @@ BEGIN
           OR NEW.invited_user_ids IS DISTINCT FROM OLD.invited_user_ids
           OR NEW.vote_by IS DISTINCT FROM OLD.vote_by
           OR NEW.vote_by_time IS DISTINCT FROM OLD.vote_by_time)
-     AND EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = OLD.id) THEN
+     AND (EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = OLD.id)
+          OR EXISTS (SELECT 1 FROM public.rehearsal_poll_unavailable u WHERE u.poll_id = OLD.id)) THEN
     NEW.title := OLD.title;
     NEW.invited_user_ids := OLD.invited_user_ids;
     NEW.vote_by := OLD.vote_by;
