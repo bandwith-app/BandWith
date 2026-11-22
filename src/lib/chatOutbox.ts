@@ -54,7 +54,8 @@ const valid = (x: unknown): x is ChatOutboxItem => {
 // decision on #292 Claude r5 M3: localStorage and IndexedDB). Until #292's
 // helper block lands (a byte-identical copy goes into storage.ts here), these
 // two bodies are the stand-in; then they become calls to #292's read and
-// write helpers and nothing else in this file changes.
+// write helpers and nothing else in this file changes. Hard order: #292
+// merges before #291 (#291 stays stacked on #284, not on #292).
 // ---------------------------------------------------------------------------
 async function loadStoredOutbox(userId: string): Promise<unknown[]> {
   try {
