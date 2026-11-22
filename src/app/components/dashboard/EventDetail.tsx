@@ -924,6 +924,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Reverting a gig to a quote asks first. Declared before the early return
   // below: every hook must run on every render.
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+  // "Restore" in progress on a deleted date (Claude #297 r5 minor 5).
+  const [restoringDate, setRestoringDate] = useState<string | null>(null);
 
   if (!isAdmin && !isPersonalGig && (eventType === 'quote' || userResponse === 'declined')) {
     return null;
@@ -1062,7 +1064,6 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     isRehearsal && !!event.is_recurring && isAdmin && !!onRestoreDate
       ? Array.from(skippedDates(event.recurrence_rule)).filter((d) => d >= todayYmd && d !== occurrenceDate(event.date)).sort()
       : [];
-  const [restoringDate, setRestoringDate] = useState<string | null>(null);
   const restoreDate = async (day: string) => {
     if (!onRestoreDate || restoringDate) return;
     setRestoringDate(day);
