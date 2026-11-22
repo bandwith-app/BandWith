@@ -10,6 +10,7 @@ import {
   chatPreviewIn,
   NEW_MESSAGE,
   storedAnnouncement,
+  retypedNotices,
   chooseUnannounced,
   findAnnouncedCandidates,
   isUuid,
@@ -322,3 +323,31 @@ describe('round 8: the push says what the inbox says', () => {
   });
 });
 
+
+// Claude delta review of #284 9338ea61 / #291 18912dd5 (round 9, NIT-3).
+describe('round 9: the inbox type follows the stored message too', () => {
+  it('an edit that removes "@Ana" makes her notice a plain message again; one that adds it, a mention', () => {
+    const written = [
+      { user_id: 'ana', type: 'chat_mention' },
+      { user_id: 'bo', type: 'chat_message' },
+      { user_id: 'cy', type: 'chat_message' },
+    ];
+    const claimed = [
+      { id: 'n-ana', user_id: 'ana' },
+      { id: 'n-bo', user_id: 'bo' },
+    ];
+    // Stored text: "@Bo see you" (Ana removed, Bo added; Cy not claimed here).
+    const typeFor = (uid: string) => (uid === 'bo' || uid === 'cy' ? 'chat_mention' : 'chat_message') as 'chat_message' | 'chat_mention';
+    const titleFor = (uid: string) => (typeFor(uid) === 'chat_mention' ? 'Mia mentioned you' : 'Mia') + ` (${uid})`;
+    expect(retypedNotices(written, claimed, typeFor, titleFor)).toEqual([
+      { id: 'n-ana', type: 'chat_message', title: 'Mia (ana)' },
+      { id: 'n-bo', type: 'chat_mention', title: 'Mia mentioned you (bo)' },
+    ]);
+  });
+
+  it('nothing changed: nothing to update', () => {
+    const typeFor = () => 'chat_message' as const;
+    expect(retypedNotices([{ user_id: 'ana', type: 'chat_message' }], [{ id: 'n1', user_id: 'ana' }], typeFor, () => 'Mia')).toEqual([]);
+    expect(retypedNotices([], [], typeFor, () => 'Mia')).toEqual([]);
+  });
+});

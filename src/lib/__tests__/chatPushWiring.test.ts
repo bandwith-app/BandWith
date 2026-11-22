@@ -198,3 +198,22 @@ describe('send-push wiring, round 8', () => {
   });
 });
 
+
+// Claude delta review of #284 9338ea61 / #291 18912dd5 (round 9).
+describe('send-push wiring, round 9', () => {
+  it('NIT-3: after the stored announce, notice rows whose type changed get the type and title of the push', () => {
+    const after = sendPush.slice(sendPush.indexOf('pushBodyByUser = stored.previewByUser;'));
+    expect(after).toMatch(/^pushBodyByUser = stored\.previewByUser;\s*for \(const r of retypedNotices\(notifications, claimed, typeFor, titleFor\)\) \{\s*const \{ error: retypeError \} = await supabase\s*\.from\('notifications'\)\s*\.update\(\{ type: r\.type, title: r\.title \}\)\s*\.eq\('id', r\.id\)/);
+  });
+
+  it('MINOR-2: a push-only call rings the message as read after its claim, not verifyChatPush\'s read', () => {
+    const po = sendPush.slice(sendPush.indexOf("if (create_in_app === false) {"), sendPush.indexOf('const notifications = noticeRows();'));
+    const claim = po.indexOf("rpc('bw_claim_chat_push_only'");
+    const reread = po.search(/from\('messages'\)\s*\.select\('\*'\)\s*\.eq\('id', current\.id\)\s*\.maybeSingle\(\)/);
+    expect(claim).toBeGreaterThan(0);
+    expect(reread).toBeGreaterThan(claim);
+    expect(po).toMatch(/announce\(\{ id: current\.id, content: String\(\(nowRow as \{ content\?: unknown \}\)\.content \?\? ''\) \}, targetUserIds\);/);
+    // Gone or deleted since: the claims go back and nobody rings.
+    expect(po).toMatch(/await settlePushOnly\(\[\], \[\.\.\.got\]\);\s*ringIds = \[\];/);
+  });
+});

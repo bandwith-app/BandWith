@@ -296,5 +296,34 @@ const del = await db.exec(`DELETE FROM profiles WHERE id = '${CAROL}'`).then(() 
 const left = await db.query(`SELECT count(*)::int AS n FROM chat_push_only_log WHERE user_id = '${CAROL}'`).then((r) => r.rows[0].n, () => -1);
 ok(del === 'ok' && left === 0, `push only: deleting the account deletes its log rows (${del}, ${left} left)`);
 
+// Round 9 (Claude delta review, MINOR-1): 192 redefines bw_write_chat_notices
+// and bw_claim_chat_push_only with lines ending "-- 192: may still read".
+// 194 run again after that keeps them (it used to put its own body back).
+{
+  const MARK = '-- 192: may still read';
+  const marked = [
+    ['bw_write_chat_notices(uuid, jsonb)', "   WHERE r.user_id IS NOT NULL AND r.type IN ('chat_message', 'chat_mention')\n"],
+    ['bw_claim_chat_push_only(uuid, uuid[])', '     AND EXISTS (SELECT 1 FROM profiles p WHERE p.id = u)\n'],
+  ];
+  const hasMark = (sig) => db.query(`SELECT position('${MARK}' IN prosrc) > 0 AS m FROM pg_proc WHERE oid = to_regprocedure('public.${sig}')`)
+    .then((r) => r.rows[0]?.m === true, () => false);
+  for (const [sig, at] of marked) {
+    const def = await db.query(`SELECT pg_get_functiondef(to_regprocedure('public.${sig}')) AS d`).then((r) => r.rows[0]?.d ?? null, () => null);
+    ok(!!def && def.includes(at), `${sig}: the line to mark is there`);
+    if (!def) continue;
+    await db.exec(def.replace(at, `${at}     AND true ${MARK}\n`)).catch(() => {});
+    ok(await hasMark(sig), `${sig}: marked as 192 would`);
+  }
+  const rerun = await db.exec(readFileSync(MIG, 'utf8')).then(() => 'ok', (e) => e.message);
+  ok(rerun === 'ok', `194 runs again after 192 (${rerun})`);
+  for (const [sig] of marked) ok(await hasMark(sig), `194 run again after 192 keeps 192's ${sig}`);
+  const still = await db.query(`SELECT u::text AS u FROM public.bw_claim_chat_push_only('${id(907)}', $1::uuid[]) u`, [[MEM2]])
+    .then((r) => r.rows.map((x) => x.u), (e) => 'ERROR ' + e.message);
+  ok(JSON.stringify(still) === JSON.stringify([MEM2]), `the kept push-only claim still works (${JSON.stringify(still)})`);
+  const grants = await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_write_chat_notices(uuid, jsonb)', 'EXECUTE') AS a,
+      has_function_privilege('service_role', 'public.bw_claim_chat_push_only(uuid, uuid[])', 'EXECUTE') AS s`).then((r) => r.rows[0], () => ({}));
+  ok(grants.a === false && grants.s === true, `grants unchanged after the re-run (${JSON.stringify(grants)})`);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

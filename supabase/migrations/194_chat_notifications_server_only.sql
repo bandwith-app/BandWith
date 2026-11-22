@@ -66,7 +66,11 @@
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
 -- to a plain insert while the function is missing).
 --
--- Older builds: nothing they do changes. Idempotent.
+-- Older builds: nothing they do changes. Idempotent, also after 192: 192
+-- redefines bw_write_chat_notices and bw_claim_chat_push_only with its read
+-- check (lines ending "-- 192: may still read"); with that check live, 194
+-- run again leaves those two functions as they are (NOTICE) instead of
+-- putting its own bodies back (round 9, Claude delta review MINOR-1).
 -- ============================================================================
 
 BEGIN;
@@ -267,6 +271,16 @@ BEGIN
   END IF;
 END
 $$;
+-- 192's version (its read check) stays when it is live: see the header.
+DO $create$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc
+              WHERE oid = to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)')
+                AND position('-- 192: may still read' IN prosrc) > 0) THEN
+    RAISE NOTICE '194: public.bw_write_chat_notices(uuid, jsonb) has 192''s read check; left as it is';
+    RETURN;
+  END IF;
+  EXECUTE $sql$
 CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
 RETURNS TABLE (id uuid, user_id uuid, preview text, content text)
 LANGUAGE plpgsql
@@ -329,6 +343,9 @@ BEGIN
             v_content;
 END;
 $function$;
+$sql$;
+END
+$create$;
 REVOKE ALL ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;
 
@@ -400,6 +417,16 @@ GRANT ALL ON public.chat_push_only_log TO service_role;
 -- nobody else is pushing it (bw_chat_push_claim_free: a claim older than
 -- 7 minutes has lapsed).
 -- Nothing for a message that is gone or marked deleted.
+-- 192's version (its read check) stays when it is live: see the header.
+DO $create$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc
+              WHERE oid = to_regprocedure('public.bw_claim_chat_push_only(uuid, uuid[])')
+                AND position('-- 192: may still read' IN prosrc) > 0) THEN
+    RAISE NOTICE '194: public.bw_claim_chat_push_only(uuid, uuid[]) has 192''s read check; left as it is';
+    RETURN;
+  END IF;
+  EXECUTE $sql$
 CREATE OR REPLACE FUNCTION public.bw_claim_chat_push_only(p_message_id uuid, p_user_ids uuid[])
 RETURNS SETOF uuid
 LANGUAGE plpgsql
@@ -433,6 +460,9 @@ BEGIN
   RETURNING l.user_id;
 END;
 $function$;
+$sql$;
+END
+$create$;
 REVOKE ALL ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) TO service_role;
 

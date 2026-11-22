@@ -22,6 +22,7 @@ import {
   resolveChatId,
   senderDisplayName,
   storedAnnouncement,
+  retypedNotices,
 } from '../_shared/chat-push.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
@@ -802,6 +803,25 @@ Deno.serve(async (req: Request) => {
             const got = new Set(((mine || []) as unknown[]).map((x) => String(typeof x === 'object' && x !== null ? Object.values(x)[0] : x)));
             if (got.size === 0) continue; // pushed, or another call is pushing it
             pushOnlyMessage = current.id;
+            // The message as it is after the claim (round 9, Claude delta
+            // review MINOR-2; the claim keeps its SETOF uuid result for older
+            // builds): an edit after verifyChatPush is what rings, and
+            // @mentions are found in it. Gone or deleted since: nobody rings.
+            const { data: nowRow, error: nowError } = await supabase
+              .from('messages')
+              .select('*')
+              .eq('id', current.id)
+              .maybeSingle();
+            if (nowError) {
+              console.warn('Push-only re-read failed, ringing the checked text:', nowError.message);
+            } else if (!nowRow || (nowRow as { deleted?: unknown }).deleted === true) {
+              await settlePushOnly([], [...got]);
+              ringIds = [];
+              done = true;
+              break;
+            } else {
+              announce({ id: current.id, content: String((nowRow as { content?: unknown }).content ?? '') }, targetUserIds);
+            }
             ringIds = targetUserIds.filter((uid) => got.has(uid));
             done = true;
             break;
@@ -844,6 +864,14 @@ Deno.serve(async (req: Request) => {
             if (stored) {
               announce({ id: current.id, content: stored.content }, targetUserIds);
               pushBodyByUser = stored.previewByUser;
+              for (const r of retypedNotices(notifications, claimed, typeFor, titleFor)) {
+                const { error: retypeError } = await supabase
+                  .from('notifications')
+                  .update({ type: r.type, title: r.title })
+                  .eq('id', r.id)
+                  .in('type', ['chat_message', 'chat_mention']);
+                if (retypeError) console.warn('Notice type update failed:', retypeError.message);
+              }
             }
             const toPush = new Set(claimed.map((r) => String(r.user_id)));
             ringIds = targetUserIds.filter((id) => toPush.has(id));

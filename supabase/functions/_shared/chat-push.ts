@@ -75,6 +75,28 @@ export function storedAnnouncement(
 }
 
 /**
+ * Notices this call claimed whose type the stored message changes (round 9,
+ * Claude delta review NIT-3): an edit between verifyChatPush and the write
+ * added or removed an @mention. Each gets the type and title its push has
+ * (typeFor / titleFor after announcing the stored content).
+ */
+export function retypedNotices(
+  written: { user_id: string; type: string }[],
+  claimed: { id: string; user_id: string }[],
+  typeFor: (uid: string) => 'chat_message' | 'chat_mention',
+  titleFor: (uid: string) => string,
+): { id: string; type: 'chat_message' | 'chat_mention'; title: string }[] {
+  const wrote = new Map(written.map((r) => [String(r.user_id), r.type]));
+  const out: { id: string; type: 'chat_message' | 'chat_mention'; title: string }[] = [];
+  for (const c of claimed) {
+    const uid = String(c.user_id);
+    const type = typeFor(uid);
+    if (wrote.has(uid) && wrote.get(uid) !== type) out.push({ id: String(c.id), type, title: titleFor(uid) });
+  }
+  return out;
+}
+
+/**
  * A message older than this can't be announced any more. Well past a lapsed
  * claim (PUSH_CLAIM_MS): a call that took the claim and crashed is retried
  * by a later call, still inside the window (Claude #284 r5).
