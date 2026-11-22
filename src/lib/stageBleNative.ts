@@ -80,7 +80,11 @@ const OWNER_KEY = 'bw-stage-owner';
  */
 export function setStageCacheUser(id: string | null | undefined) {
   if (!id) return;
-  if (cacheUser && cacheUser !== id) cacheGeneration++;
+  if (cacheUser && cacheUser !== id) {
+    cacheGeneration++;
+    // The server's no was the last account's.
+    keyRefused.clear();
+  }
   let owner: string | null = null;
   try {
     owner = localStorage.getItem(OWNER_KEY);
@@ -90,6 +94,7 @@ export function setStageCacheUser(id: string | null | undefined) {
   if (owner !== id) {
     if (owner) {
       cacheGeneration++;
+      keyRefused.clear();
       removeKeptKeys();
     }
     try {
@@ -123,7 +128,18 @@ let keyAsks = 0;
 /** The newest ask whose answer was kept, per gig: an older answer arriving later writes nothing. */
 const keyKept = new Map<string, number>();
 
-/** A window event (detail: the gig's id): its band key changed, Stage asks for it again (useStageBle). */
+/**
+ * Gigs whose last answer kept was the server's no. An ask with no answer in
+ * time (or offline) then still says no, so a no that came late stops a Stage
+ * already running (Claude round 10 on #283). Until a key is kept again, or
+ * sign-out; not kept across restarts (the key itself is gone by then).
+ */
+const keyRefused = new Set<string>();
+/** What stands for a gig when an ask brought nothing newer: the server's no, or the kept key. */
+const keptAnswer = (eventId: string): { key: string | null; denied: boolean } =>
+  keyRefused.has(eventId) ? { key: null, denied: true } : { key: cachedKey(eventId), denied: false };
+
+/** A window event (detail: the gig's id): its band key changed (or was refused), Stage asks for it again (useStageBle). */
 export const STAGE_KEY_EVENT = 'bw:stage-key';
 
 /**
@@ -132,8 +148,9 @@ export const STAGE_KEY_EVENT = 'bw:stage-key';
  * (no answer in KEY_FETCH_TIMEOUT_MS; an answer that comes later is still
  * kept, unless the account changed meanwhile). A no from the server deletes
  * it and every other key kept for the gig (`denied`: the caller drops any
- * copy of its own too). Null for people
- * outside the band, or offline before the first fetch.
+ * copy of its own too), and stands until a key comes again, also for asks
+ * that get no answer. Null for people outside the band, or offline before
+ * the first fetch.
  */
 export async function fetchStageKey(eventId: string): Promise<{ key: string | null; denied: boolean }> {
   const tag = tagFetch();
@@ -143,6 +160,9 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
     if (!stillOurs(tag) || n < (keyKept.get(eventId) ?? 0)) return;
     keyKept.set(eventId, n);
     const before = cachedKey(eventId);
+    const isKey = typeof data === 'string' && !!data;
+    if (isKey) keyRefused.delete(eventId);
+    else keyRefused.add(eventId);
     try {
       if (typeof data === 'string' && data) {
         localStorage.setItem(KEY_PREFIX + eventId, data);
@@ -154,9 +174,10 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
       /* kept for this session only */
     }
     // The server's no: every key kept for the gig goes, the public and the private one too (Claude round 8 on #288).
-    if (!(typeof data === 'string' && data)) forgetStageKeys(eventId);
-    // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc).
-    if (late() && typeof data === 'string' && data && data !== before && typeof window !== 'undefined')
+    if (!isKey) forgetStageKeys(eventId);
+    // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc),
+    // a late no included (it asks again and is told no: Claude round 10 on #283).
+    if (late() && (isKey ? data !== before : true) && typeof window !== 'undefined')
       window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -186,9 +207,10 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
     clearTimeout(timer);
   }
   if (!stillOurs(tag)) return { key: null, denied: false };
-  if (!answer || answer.error) return { key: cachedKey(eventId), denied: false };
+  // No answer (offline, or not in time): what's kept stands, the server's last no included.
+  if (!answer || answer.error) return keptAnswer(eventId);
   // A newer ask's answer was kept first: what's kept stands, not this older answer (Claude on #283).
-  if (n < (keyKept.get(eventId) ?? 0)) return { key: cachedKey(eventId), denied: false };
+  if (n < (keyKept.get(eventId) ?? 0)) return keptAnswer(eventId);
   const key = typeof answer.data === 'string' && answer.data ? answer.data : null;
   return { key, denied: key === null };
 }
@@ -284,24 +306,33 @@ export function previousStageKey(eventId: string): string | null {
 /** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
 export const KEY_FETCH_TIMEOUT_MS = 4_000;
 const OFFLINE = Symbol('offline');
+/** The server asked to try again (40001: the band's keys are changing right now, migration 190): how often, how far apart. */
+const BUSY_RETRIES = 2;
+const BUSY_WAIT_MS = 250;
+
 /**
  * The server's answer, or OFFLINE (no network, no answer in time, or an
  * error): the server first, so a rotated pair or a lost admin role counts
- * as soon as the phone is online; the kept copy only when it isn't.
+ * as soon as the phone is online; the kept copy only when it isn't. A
+ * "try again" from the server is asked again a couple of times first.
  */
 async function ask(fn: string, args: Record<string, string>): Promise<unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const answer = await Promise.race([
-      Promise.resolve(supabase.rpc(fn, args)),
-      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
-    ]);
-    if (!answer || answer.error) return OFFLINE;
-    return answer.data;
-  } catch {
-    return OFFLINE;
-  } finally {
-    clearTimeout(timer);
+  for (let tries = 0; ; tries++) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const answer = await Promise.race([
+        Promise.resolve(supabase.rpc(fn, args)),
+        new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
+      ]);
+      if (answer && !answer.error) return answer.data;
+      const busy = !!answer && (answer.error as { code?: string } | null)?.code === '40001';
+      if (!busy || tries >= BUSY_RETRIES) return OFFLINE;
+    } catch {
+      return OFFLINE;
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((resolve) => setTimeout(resolve, BUSY_WAIT_MS));
   }
 }
 
@@ -453,6 +484,7 @@ export function clearStageCache() {
   cacheGeneration++;
   keyKept.clear();
   refusedSigner.clear();
+  keyRefused.clear();
   cacheUser = null;
   setSignedMemoryUser(null);
   void removeAllPackFiles().catch(() => undefined);

@@ -113,6 +113,57 @@ describe('stageKey: the server first, the kept copy offline', () => {
     expect(await stageKey('e1')).toBe('a2V5Mg==');
   });
 
+  it("a no that arrives after the wait still stops Stage: Stage is told, and asks with no answer say no until a key comes again (Claude round 10 on #283)", async () => {
+    expect(await stageKey('e1')).toBe('a2V5MQ==');
+    vi.useFakeTimers();
+    Object.assign(db, { slow: true, key: null });
+    const answer = fetchStageKey('e1');
+    await vi.advanceTimersByTimeAsync(4_000);
+    // Nothing heard yet: the kept key, as offline.
+    expect(await answer).toEqual({ key: 'a2V5MQ==', denied: false });
+    const heard: string[] = [];
+    const onKey = (e: Event) => heard.push((e as CustomEvent<string>).detail);
+    window.addEventListener('bw:stage-key', onKey);
+    db.held.forEach((go) => go());
+    await vi.advanceTimersByTimeAsync(0);
+    window.removeEventListener('bw:stage-key', onKey);
+    expect(heard).toEqual(['e1']);
+    // The next asks get no answer in time (the same slow network), or none at all: still the server's no.
+    Object.assign(db, { slow: false, hang: true });
+    const again = fetchStageKey('e1');
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(await again).toEqual({ key: null, denied: true });
+    Object.assign(db, { hang: false, offline: true });
+    expect(await fetchStageKey('e1')).toEqual({ key: null, denied: true });
+    // Another gig isn't touched.
+    expect(await fetchStageKey('e2')).toEqual({ key: null, denied: false });
+    // Back in the band: a key from the server ends it.
+    Object.assign(db, { offline: false, key: 'a2V5Mw==' });
+    expect(await fetchStageKey('e1')).toEqual({ key: 'a2V5Mw==', denied: false });
+    db.offline = true;
+    expect(await fetchStageKey('e1')).toEqual({ key: 'a2V5Mw==', denied: false });
+  });
+
+  it("the server's no is forgotten at sign-out: the next account on this phone isn't told no for it (Claude round 10 on #283)", async () => {
+    db.key = null;
+    expect(await fetchStageKey('e1')).toEqual({ key: null, denied: true });
+    db.offline = true;
+    expect(await fetchStageKey('e1')).toEqual({ key: null, denied: true });
+    clearStageCache();
+    expect(await fetchStageKey('e1')).toEqual({ key: null, denied: false });
+  });
+
+  it("an older key answered after a newer no was kept: still the no (Claude round 10 on #283)", async () => {
+    db.slow = true;
+    const older = fetchStageKey('e1');
+    db.key = null;
+    const newer = fetchStageKey('e1');
+    db.held[1]();
+    expect(await newer).toEqual({ key: null, denied: true });
+    db.held[0]();
+    expect(await older).toEqual({ key: null, denied: true });
+  });
+
   it('a late answer after sign-out, or one older than an answer already kept, writes nothing', async () => {
     expect(await stageKey('e1')).toBe('a2V5MQ==');
     vi.useFakeTimers();

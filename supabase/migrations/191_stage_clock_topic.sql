@@ -123,6 +123,18 @@ BEGIN
   END IF;
   SELECT s.key INTO k FROM public.stage_keys s WHERE s.event_id = p_event_id;
   IF k IS NULL THEN
+    -- First use: the band's advisory lock (shared), then the same check again,
+    -- in a new statement. Someone being removed right now passes the check
+    -- above (the removal isn't committed yet) while the removal's trigger
+    -- (bw_stage_member_left and the others below, exclusive lock) finds no
+    -- key row to change: without this the first key would be made for them
+    -- after the scan, and stay valid (Claude round 10). With the lock, either
+    -- this commits first and the trigger changes the new row, or the removal
+    -- commits first and the check below says no.
+    PERFORM pg_advisory_xact_lock_shared(hashtextextended('bw-stage-band:' || band::text, 0));
+    IF NOT public.bw_is_band_member(band) OR NOT public.bw_can_view_event(p_event_id) THEN
+      RETURN NULL;
+    END IF;
     -- Two v4 UUIDs: 244 random bits, no extension needed.
     INSERT INTO public.stage_keys (event_id, key)
     VALUES (
@@ -194,8 +206,10 @@ $do$;
 -- only these changes, from then on.
 -- Apps on this version ask for the key whenever online (stageBleNative.ts),
 -- so the band's phones pick up the new one. Released apps keep theirs: for a
--- gig whose key changed, they need signing out and in once (noted in the PR).
--- A gig with no key yet gets one on first use, as before.
+-- gig whose key changed, they need the update, then the gig opened once
+-- while online (noted in the PR).
+-- A gig with no key yet gets one on first use (under the band's lock, see
+-- bw_stage_key).
 -- Is this gig a quote some members may not see? 111's rule; with 178 applied
 -- first, 178's bw_event_quote_private (a cancelled quote stays private only if
 -- it never became a gig), set just below (Claude on #283). Triggers only.
@@ -358,8 +372,8 @@ REVOKE EXECUTE ON FUNCTION public.bw_stage_gig_coming(date, boolean, jsonb) FROM
 -- gigs keep theirs. An admin made a member stays in the band but no longer
 -- sees its quotes (111: off their lineup; 178: at all): the coming quote gigs
 -- change key (their signing pair is 190's). Released apps (383f15b) keep the copy
--- they have and don't ask again: for those gigs they need signing out and in
--- once (in the PR's release notes).
+-- they have and don't ask again: for those gigs they need the update, then
+-- the gig opened once while online (in the PR's release notes).
 CREATE OR REPLACE FUNCTION public.bw_stage_member_left()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -367,14 +381,32 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  -- Before any key row changes, the band's advisory lock (exclusive). 190's
-  -- bw_stage_set_signer takes it shared before the gig's key row, so an admin
-  -- leaving while another stores a key pair waits instead of deadlocking
-  -- (190's own trigger takes it next; a second take in one transaction is
-  -- free). Not the band's row (Claude round 8): a band being deleted holds
-  -- that row and then cascades into the rows these triggers fire on, so a
-  -- trigger waiting for it while holding one of them is a cycle. No delete
-  -- takes the advisory lock. Taken only when keys change.
+  -- The band itself going (its members go with it, ON DELETE CASCADE): its
+  -- gigs and their keys go too, nothing to change and no lock to take.
+  IF NOT EXISTS (SELECT 1 FROM public.bands b WHERE b.id = OLD.band_id) THEN
+    RETURN NULL;
+  END IF;
+  -- Before any key row changes, the band's advisory lock (exclusive), taken
+  -- only when keys change. bw_stage_key (first use) and 190's
+  -- bw_stage_set_signer take it shared before they write a key row, so a
+  -- member leaving while a key is made waits for it, and changes it.
+  -- Not the band's row (Claude round 8): a band being deleted holds that row
+  -- and then cascades into the rows these triggers fire on.
+  -- The order of locks, so that no two of these wait for each other:
+  --   - a trigger holds its own row (member, lineup or gig) first, then the
+  --     advisory lock, then key rows;
+  --   - a band or gig being deleted takes no advisory lock (this check, and
+  --     the same in bw_stage_lineup_left), and locks the rows those triggers
+  --     start from before it deletes anything: the band's member rows
+  --     (bw_stage_band_going) and the gig's lineup rows (bw_stage_event_going).
+  --     So a member leaving and a band delete meet at the member's row, with
+  --     nothing else held by the one that waits (Claude round 10);
+  --   - 190's bw_stage_set_signer never waits for the advisory lock (it
+  --     tries, and asks the app to retry).
+  -- A transaction that makes several of these changes at once (an account
+  -- being deleted: memberships, then lineups) can still cross with a single
+  -- removal of the same person's row by an admin: the database stops one of
+  -- the two and it is tried again (known limit in the PR).
   IF COALESCE(OLD.is_active, true)
      AND (TG_OP = 'DELETE'
           OR NOT COALESCE(NEW.is_active, true)
@@ -405,3 +437,48 @@ DROP TRIGGER IF EXISTS bw_stage_member_left ON public.band_members;
 CREATE TRIGGER bw_stage_member_left
   AFTER UPDATE OF is_active, role, band_id, user_id OR DELETE ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_member_left();
+
+-- A band being deleted: its members' rows are locked first, before the
+-- cascade deletes gigs and their keys. A member leaving at the same moment
+-- holds their own row and then changes key rows (bw_stage_member_left); the
+-- cascade would hold those key rows and then wait for that member's row.
+-- With this, the band delete waits for the member's row while it holds
+-- nothing the trigger needs (Claude round 10).
+CREATE OR REPLACE FUNCTION public.bw_stage_band_going()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  PERFORM 1 FROM public.band_members m WHERE m.band_id = OLD.id ORDER BY m.id FOR UPDATE;
+  RETURN OLD;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_band_going() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_band_going ON public.bands;
+CREATE TRIGGER bw_stage_band_going
+  BEFORE DELETE ON public.bands
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_band_going();
+
+-- The same for a gig being deleted (by itself or with its band) and its
+-- lineup rows: someone taken off the lineup at the same moment holds their
+-- lineup row and then changes the gig's key row (bw_stage_lineup_left).
+CREATE OR REPLACE FUNCTION public.bw_stage_event_going()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  PERFORM 1 FROM public.event_members m WHERE m.event_id = OLD.id ORDER BY m.id FOR UPDATE;
+  RETURN OLD;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_event_going() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_event_going ON public.events;
+CREATE TRIGGER bw_stage_event_going
+  BEFORE DELETE ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_event_going();

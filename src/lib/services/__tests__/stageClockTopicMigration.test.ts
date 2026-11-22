@@ -58,8 +58,12 @@ describe('191 the stage clock topic', () => {
     expect(stage).toMatch(/RETURN public\.bw_is_band_member\(band\) AND public\.bw_can_view_event\(ev::uuid\);/);
     const key = fn(sql191, 'bw_stage_key');
     expect(key).toMatch(/IF band IS NULL OR NOT public\.bw_is_band_member\(band\) OR NOT public\.bw_can_view_event\(p_event_id\) THEN\s+RETURN NULL;/);
-    // 087's function otherwise, same signature (released apps call it as before).
-    expect(key.replace(' OR NOT public.bw_can_view_event(p_event_id)', '')).toBe(fn(sql087, 'bw_stage_key'));
+    // 087's function otherwise, same signature (released apps call it as before): the view check,
+    // and before the first key is made, the band's lock and the check again (Claude round 10).
+    const firstUse =
+      /\s+PERFORM pg_advisory_xact_lock_shared\([^;]*;\s+IF NOT public\.bw_is_band_member\(band\) OR NOT public\.bw_can_view_event\(p_event_id\) THEN\s+RETURN NULL;\s+END IF;/;
+    expect(key).toMatch(firstUse);
+    expect(key.replace(firstUse, '').replace(' OR NOT public.bw_can_view_event(p_event_id)', '')).toBe(fn(sql087, 'bw_stage_key'));
     expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_key\(uuid\) FROM PUBLIC, anon;/);
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_key\(uuid\) TO authenticated;/);
   });
@@ -117,6 +121,38 @@ describe('191 the stage clock topic', () => {
     expect(firstIf).toBeGreaterThan(-1);
     expect(lock).toBeGreaterThan(firstIf);
     expect((f.match(new RegExp(BAND_LOCK.source, 'g')) ?? []).length).toBe(2);
+  });
+
+  it("the first key of a gig is made under the band's lock (shared), after who asks is checked again (Claude round 10; behaviour: stage_topic_quote.pglite.mjs)", () => {
+    const f = fn(sql, 'bw_stage_key');
+    const check = 'OR NOT public.bw_can_view_event(p_event_id) THEN';
+    const first = f.indexOf(check);
+    const lock = f.search(/PERFORM pg_advisory_xact_lock_shared\(hashtextextended\('bw-stage-band:' \|\| band::text, 0\)\);/);
+    const again = f.indexOf('IF NOT public.bw_is_band_member(band) OR NOT public.bw_can_view_event(p_event_id) THEN', lock);
+    const insert = f.indexOf('INSERT INTO public.stage_keys');
+    expect(first).toBeGreaterThan(0);
+    expect(lock).toBeGreaterThan(first);
+    expect(again).toBeGreaterThan(lock);
+    expect(insert).toBeGreaterThan(again);
+    // 178's rewrite replaces this text wherever it is: both checks get its rule.
+    expect(f.split(check).length - 1).toBe(2);
+  });
+
+  it('a band or a gig being deleted takes no advisory lock, and locks member and lineup rows before it deletes (Claude round 10)', () => {
+    const left = fn(sql, 'bw_stage_member_left');
+    const gone = left.search(/IF NOT EXISTS \(SELECT 1 FROM public\.bands b WHERE b\.id = OLD\.band_id\) THEN\s+RETURN NULL;/);
+    expect(gone).toBeGreaterThan(0);
+    expect(left.search(BAND_LOCK)).toBeGreaterThan(gone);
+    const band = fn(sql, 'bw_stage_band_going');
+    expect(band).toMatch(/FROM public\.band_members m WHERE m\.band_id = OLD\.id ORDER BY m\.id FOR UPDATE;\s+RETURN OLD;/);
+    expect(band).not.toMatch(/advisory/);
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_band_going\s+BEFORE DELETE ON public\.bands\s+FOR EACH ROW EXECUTE FUNCTION public\.bw_stage_band_going\(\);/);
+    const gig = fn(sql, 'bw_stage_event_going');
+    expect(gig).toMatch(/FROM public\.event_members m WHERE m\.event_id = OLD\.id ORDER BY m\.id FOR UPDATE;\s+RETURN OLD;/);
+    expect(gig).not.toMatch(/advisory/);
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_event_going\s+BEFORE DELETE ON public\.events\s+FOR EACH ROW EXECUTE FUNCTION public\.bw_stage_event_going\(\);/);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_band_going\(\) FROM PUBLIC, anon, authenticated;/);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_event_going\(\) FROM PUBLIC, anon, authenticated;/);
   });
 
   it('"coming" counts tonight in New York (a day of slack on UTC) and a series by its last occurrence (Claude + Codex on 642676fc)', () => {
