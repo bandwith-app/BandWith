@@ -257,6 +257,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let burstUntil = 0;
     /** Other addresses of the linked leader's phone (Android rotates them), when seen: not probed again for a while. */
     let sameLeader = new Map<string, number>();
+    /** Phones a probe let go of whose let-go timed out (maybe still connected). */
+    const letGoPending = new Set<string>();
     const knownSame = (id: string) => Date.now() - (sameLeader.get(id) ?? -Infinity) < SAME_LEADER_FORGET_MS;
     /** The linked phone's last state was dropped for a seq ahead of this phone's clock: read again once its clock is measured. */
     let clockDropped = false;
@@ -429,7 +431,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       } finally {
         // Let go fully before anything links to it, unless something linked to it meanwhile (that link stays).
         // Through the plugin itself, with a short timeout: its queue (the leader's reads) never waits on a phone gone out of range.
-        if (!leaderLinks.has(id)) await BluetoothLe.disconnect({ deviceId: id, timeout: PROBE_LET_GO_MS } as { deviceId: string }).catch(() => {});
+        // Timed out: still connected, maybe ending later (its end would then drop a link made to it since): see linkTo.
+        if (!leaderLinks.has(id))
+          await BluetoothLe.disconnect({ deviceId: id, timeout: PROBE_LET_GO_MS } as { deviceId: string }).catch(() => {
+            letGoPending.add(id);
+          });
       }
     };
 
@@ -592,6 +598,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       void (async () => {
         try {
           await BleClient.stopLEScan();
+          // A probe's let-go that timed out: end it fully first, so its late end can't drop this link.
+          if (letGoPending.delete(id)) await BleClient.disconnect(id).catch(() => {});
+          if (cancelled || gen !== link) return;
           await BleClient.connect(id, () => onDisconnect(gen), {
             timeout: 10000,
           });

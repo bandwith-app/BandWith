@@ -36,7 +36,18 @@ const air = vi.hoisted(() => ({
   clockReadsAt: [] as number[],
   connectsAt: [] as { id: string; at: number }[],
   scansAt: [] as number[],
+  /** Phones whose let-go times out: the link really ends later, when this timer runs (or a full disconnect). */
+  slowLetGo: new Set<string>(),
+  lateGoodbye: new Map<string, ReturnType<typeof setTimeout>>(),
 }));
+/** The plugin keeps one disconnect callback per phone (the last connect's): a late end fires that one. */
+const endLate = (id: string) => {
+  clearTimeout(air.lateGoodbye.get(id));
+  air.lateGoodbye.delete(id);
+  air.connected.delete(id);
+  air.log.push(`late-goodbye:${id}`);
+  air.goodbyes.get(id)?.();
+};
 
 const goodbye = async (id: string) => {
   air.log.push(`disconnect:${id}`);
@@ -78,7 +89,11 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       air.connectTimeouts.push(o?.timeout ?? 0);
       air.connected.add(id);
     }),
-    disconnect: vi.fn(async (id: string) => goodbye(id)),
+    disconnect: vi.fn(async (id: string) => {
+      // A let-go still under way ends now, with its goodbye, before this one returns.
+      if (air.lateGoodbye.has(id)) endLate(id);
+      return goodbye(id);
+    }),
     requestConnectionPriority: vi.fn(async () => {}),
     startNotifications: vi.fn(async () => {}),
     read: vi.fn(async (id: string, _s: string, char: string) => {
@@ -105,6 +120,10 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
   BluetoothLe: {
     disconnect: vi.fn(async ({ deviceId, timeout }: { deviceId: string; timeout?: number }) => {
       air.letGoTimeouts.push({ id: deviceId, timeout });
+      if (air.slowLetGo.has(deviceId)) {
+        air.lateGoodbye.set(deviceId, setTimeout(() => endLate(deviceId), 2_000));
+        throw new Error('Disconnect timeout.');
+      }
       await goodbye(deviceId);
     }),
   },
@@ -128,6 +147,9 @@ beforeEach(() => {
   air.devices.clear();
   air.scanCb = null;
   air.log = [];
+  air.slowLetGo.clear();
+  air.lateGoodbye.forEach(clearTimeout);
+  air.lateGoodbye.clear();
   air.connected.clear();
   air.connectTimeouts = [];
   air.pendingReads = 0;
@@ -491,6 +513,23 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(m.result.current.status).toBe('clock-off'));
     await new Promise((r) => setTimeout(r, 300));
     expect(onState).not.toHaveBeenCalled();
+    m.unmount();
+  });
+
+  it("a probe's let-go timing out (still connected): its late end never drops the link made to that phone after it (Codex on #280)", async () => {
+    appear('admin-b', lead('b', 3, 'a1'));
+    const m = member();
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    air.slowLetGo.add('admin-a');
+    appear('admin-a', lead('a', 9, 'c3'));
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    // Crypto runs in real time: wait for the probe, then its late end (2 s).
+    await waitFor(() => expect(air.log).toContain('late-goodbye:admin-a'), { timeout: 6000 });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(air.connected).toEqual(new Set(['admin-a']));
+    // The old link ended before the new one began, not after.
+    const a = air.log.filter((l) => l.endsWith(':admin-a'));
+    expect(a.indexOf('late-goodbye:admin-a')).toBeLessThan(a.lastIndexOf('connect:admin-a'));
     m.unmount();
   });
 });
