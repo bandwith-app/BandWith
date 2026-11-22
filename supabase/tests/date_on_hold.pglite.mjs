@@ -1047,5 +1047,52 @@ if (M175 && M181) {
   console.log('skip: cross-PR 175 + 181 (+ 193) (set MIG_175, MIG_181, MIG_193)');
 }
 
+// ── 178's bw_chat_scope_ok has not drifted from 175's ───────────────────────
+// Main's rule: 178's own definition is 175's body plus the quote rule. Text
+// check, no database: 175's body from origin/fix/security-audit (or the repo
+// file once merged; SCOPE_175=<file> to point at another copy), 178's from
+// MIG; comments, whitespace, 175's quote placeholder (%s) and 178's quote
+// line removed, the rest must be identical. Fails as soon as #281 changes the
+// function and 178 hasn't followed.
+{
+  const { execFileSync } = await import('node:child_process');
+  let src175 = null;
+  let from = '';
+  if (process.env.SCOPE_175) {
+    src175 = readFileSync(process.env.SCOPE_175, 'utf8');
+    from = process.env.SCOPE_175;
+  } else {
+    try {
+      src175 = execFileSync('git', ['-C', REPO, 'show', 'origin/fix/security-audit:supabase/migrations/175_security_audit_access.sql'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      from = 'origin/fix/security-audit';
+    } catch { /* branch gone (merged) or no git */ }
+    if (!src175) {
+      try { src175 = migFile('175_security_audit_access.sql'); from = 'repo file'; } catch { /* not merged yet */ }
+    }
+  }
+  const body = (sql) => {
+    const a = sql ? sql.indexOf('CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(') : -1;
+    const b = a < 0 ? -1 : sql.indexOf('$f$;', a);
+    return b < 0 ? null : sql.slice(a, b);
+  };
+  const norm = (t) => t.replace(/--[^\n]*/g, '')
+    .replace('AND NOT public.bw_event_quote_hidden(e.id, w.u)', '')
+    .replace('%s', '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([(),])\s*/g, '$1')
+    .trim();
+  const b175 = body(src175);
+  if (!b175) {
+    console.log(`WARN skip: 178 vs 175 bw_chat_scope_ok (no 175 found: origin/fix/security-audit or the repo file)`);
+  } else {
+    const b178 = body(readFileSync(MIG, 'utf8'));
+    const [x, y] = [norm(b175), b178 ? norm(b178) : ''];
+    let at = 0;
+    while (at < x.length && x[at] === y[at]) at++;
+    ok(!!b178 && x === y, `178's bw_chat_scope_ok = 175's (${from}) + the quote rule${x === y ? '' : `; first difference at ${at}: 175 "${x.slice(at, at + 60)}" vs 178 "${y.slice(at, at + 60)}"`}`);
+  }
+}
+
 console.log(fails ? `\n${passes} passed, ${fails} FAILED` : `\n${passes} passed, ALL OK`);
 process.exit(fails ? 1 : 0);
