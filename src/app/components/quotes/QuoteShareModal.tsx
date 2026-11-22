@@ -205,8 +205,9 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     }
   }, [isOpen, loadAndGenerate]);
 
-  // The link's token, so every channel can open synchronously inside the tap.
-  // A quote without a link gets one now (still a draft: nothing is sent).
+  // Reads the link as saved (token, version), so every channel can open
+  // synchronously inside the tap. Opening publishes nothing: a quote without
+  // a link gets one only when Send or Copy is tapped (publishForSend).
   useEffect(() => {
     if (!isOpen || !canLink) return;
     let cancelled = false;
