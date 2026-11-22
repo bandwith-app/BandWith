@@ -84,7 +84,7 @@ check (`app.check`) on each screen it reaches.
 | Offline consent: "Not now" downloads nothing and is remembered | `live-pack-consent` | full |
 | Offline readiness (admin): "Offline: N of M members ready", the not-ready list, Remind sends one push | `live-pack-consent` | all |
 | Settings › Offline & live: automatic on/off, Wi-Fi only, space used, Delete all with a confirm | `live-pack-consent` | all |
-| No signal: a personal note written in Stage is kept on the phone ("Note saved on this phone…", "1 change waiting for signal") and sent by itself when the signal is back (member) | `live-outbox` | all (laptop skipped: Stage controls on the Deck) |
+| No signal: a personal note written in Stage is kept on the phone ("Note saved on this phone…", "1 change waiting for signal") and sent by itself when the signal is back: nothing left "waiting" (for signal or to send) and nothing under "wasn’t saved" (member) | `live-outbox` | all (laptop skipped: Stage controls on the Deck) |
 | No signal: a "Note for the band" from Stage says "Saved on this phone. It goes to the admin…" and reaches the admin when back online | `live-outbox` | all but Book / laptop |
 | Urgent pop-up waits for an open sheet: hidden while the sheet is open, back when it closes | `urgent-yields` | all |
 | System Back with the urgent pop-up waiting closes the open sheet (New chat), not the hidden pop-up; the pop-up comes back | `urgent-yields` | all |

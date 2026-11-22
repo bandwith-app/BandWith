@@ -19,14 +19,26 @@ export interface OrderRow {
   set_number: number;
 }
 
-export type LiveOp =
+/**
+ * Server problems met so far by a waiting change (no signal doesn't count):
+ * how many tries failed, since when. A newer version of the change starts
+ * again from zero.
+ */
+interface LiveOpTries {
+  failedTries?: number;
+  firstFailedAt?: string;
+}
+
+export type LiveOp = (
   /** A personal note written or edited; `isNew`: not on the server yet. */
   | { kind: 'note'; id: string; songId: string; anchor: NoteAnchor; body: string; isNew?: boolean }
   | { kind: 'noteDelete'; id: string; songId: string }
   /** A suggestion to the band (song_suggestions row, with its own id). */
   | { kind: 'suggestion'; id: string; row: Record<string, unknown> }
   /** The leader's new order; `before`: the order the server had (for the band's summary push). */
-  | { kind: 'order'; setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number }[] };
+  | { kind: 'order'; setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number }[] }
+) &
+  LiveOpTries;
 
 const keyOfOp = (op: LiveOp): string => {
   switch (op.kind) {
@@ -41,7 +53,9 @@ const keyOfOp = (op: LiveOp): string => {
 };
 
 /** Queue a change: it replaces a waiting one for the same thing. */
-export function addLiveOp(ops: LiveOp[], op: LiveOp): LiveOp[] {
+export function addLiveOp(ops: LiveOp[], next: LiveOp): LiveOp[] {
+  // A newer version: its own tries, none yet.
+  const { failedTries: _tries, firstFailedAt: _since, ...op } = next;
   const key = keyOfOp(op);
   const prev = ops.find((o) => keyOfOp(o) === key);
   const kept = ops.filter((o) => keyOfOp(o) !== key);
@@ -109,7 +123,7 @@ export const WAITING_EVENTS = [LIVE_OUTBOX_EVENT, OUTBOX_EVENT] as const;
  * Same rule as isRetryableWriteError in rehearsalNotesOutbox.ts (#296):
  * use that one once it is on main.
  */
-function isRetryableWriteError(error: unknown, status?: number): boolean {
+export function isRetryableWriteError(error: unknown, status?: number): boolean {
   if (isOfflineError(error)) return true;
   const e = (error && typeof error === 'object' ? error : {}) as { status?: unknown; code?: unknown; message?: unknown };
   const http = Number(status ?? e.status);
@@ -143,14 +157,71 @@ const send = (api: LiveOutboxApi, op: LiveOp): Res => {
   }
 };
 
+// ------------------------------------------------------------ refused --
+
+/**
+ * A change the server refused for good (no longer allowed, the song gone,
+ * the setlist changed meanwhile) or never took (still failing after many
+ * tries): kept on this phone, never lost silently, so its words can be
+ * copied. Removed when the person dismisses it.
+ */
+export interface LiveRefused {
+  key: string;
+  op: LiveOp;
+  at: string;
+  /** `refused`: the server said no. `stuck`: it kept failing. */
+  why: 'refused' | 'stuck';
+}
+
+const REFUSED_PREFIX = 'bw:live_refused:';
+const MAX_REFUSED = 50;
+/** Set aside after this many failed tries, at least this long after the first… */
+const MAX_TRIES = 10;
+const MIN_STUCK_MS = 15 * 60_000;
+/** …or after a day of failures, however few the tries. */
+const MAX_STUCK_MS = 24 * 60 * 60_000;
+
+export function readLiveRefused(userId: string | null | undefined): LiveRefused[] {
+  if (!userId) return [];
+  try {
+    const v = JSON.parse(localStorage.getItem(`${REFUSED_PREFIX}${userId}`) || '[]');
+    return Array.isArray(v) ? (v as LiveRefused[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLiveRefused(userId: string, items: LiveRefused[]) {
+  try {
+    if (items.length) localStorage.setItem(`${REFUSED_PREFIX}${userId}`, JSON.stringify(items.slice(-MAX_REFUSED)));
+    else localStorage.removeItem(`${REFUSED_PREFIX}${userId}`);
+  } catch {
+    /* storage blocked */
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_OUTBOX_EVENT, { detail: { userId } }));
+}
+
+export function dismissLiveRefused(userId: string, key: string) {
+  writeLiveRefused(userId, readLiveRefused(userId).filter((r) => r.key !== key));
+}
+
+/** A deleted note refused (not mine, already gone) loses nothing: not kept. */
+function setAside(userId: string, op: LiveOp, why: LiveRefused['why']) {
+  if (op.kind === 'noteDelete') return;
+  const { failedTries: _tries, firstFailedAt: _since, ...clean } = op;
+  const key = `${keyOfOp(clean as LiveOp)}:${Date.now()}`;
+  writeLiveRefused(userId, [...readLiveRefused(userId), { key, op: clean as LiveOp, at: new Date().toISOString(), why }]);
+}
+
 let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
 
 /**
  * Send the waiting changes in order. Still no signal or a passing server
  * problem (busy, down, a timeout, an expired session): stop and keep the
  * rest, tried again later. Refused by the server (no longer allowed, song
- * gone, setlist changed by someone else): dropped, so one bad change never
- * blocks the others.
+ * gone, setlist changed by someone else), or still failing after 10 tries
+ * over a quarter of an hour or after a day: set aside (readLiveRefused), so
+ * one bad change never blocks the others and none is lost silently.
  */
 export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
   if (flushing) return flushing;
@@ -159,10 +230,24 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
     let dropped = 0;
     for (let op = readLiveOutbox(userId)[0], n = 0; op && n < 500; op = readLiveOutbox(userId)[0], n++) {
       const { error, status } = await send(api, op);
-      if (error && isRetryableWriteError(error, status)) break;
-      if (error) dropped++;
-      else sent++;
       const same = JSON.stringify(op);
+      if (error && isOfflineError(error)) break;
+      if (error && isRetryableWriteError(error, status)) {
+        const now = Date.now();
+        const tries = (op.failedTries ?? 0) + 1;
+        const since = op.firstFailedAt ?? new Date(now).toISOString();
+        const age = now - Date.parse(since);
+        if (!((tries >= MAX_TRIES && age >= MIN_STUCK_MS) || age >= MAX_STUCK_MS)) {
+          // Counted on the change itself, unless a newer version replaced it meanwhile.
+          writeLiveOutbox(userId, readLiveOutbox(userId).map((o) => (JSON.stringify(o) === same ? { ...o, failedTries: tries, firstFailedAt: since } : o)));
+          break;
+        }
+        setAside(userId, op, 'stuck');
+        dropped++;
+      } else if (error) {
+        setAside(userId, op, 'refused');
+        dropped++;
+      } else sent++;
       writeLiveOutbox(userId, readLiveOutbox(userId).filter((o) => JSON.stringify(o) !== same));
     }
     return { sent, dropped, left: readLiveOutbox(userId).length };

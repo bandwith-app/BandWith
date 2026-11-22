@@ -3879,6 +3879,18 @@ const dict: Dictionary = {
   "Saved on this phone": "Auf diesem Handy gespeichert",
   "Saved on this phone. It goes to the admin when you’re back online.": "Auf diesem Handy gespeichert. Geht an den Admin, sobald du wieder online bist.",
   "Note saved on this phone. It reaches your account when you’re back online.": "Notiz auf diesem Handy gespeichert. Sie kommt in dein Konto, sobald du wieder online bist.",
+  // Live outbox: waiting with full signal, changes the server did not take
+  "1 change waiting to send": "1 Änderung wartet auf das Senden",
+  "{n} changes waiting to send": "{n} Änderungen warten auf das Senden",
+  "Saved on this phone, sent as soon as the server answers.": "Auf diesem Handy gespeichert, wird gesendet, sobald der Server antwortet.",
+  "1 change wasn’t saved": "1 Änderung nicht gespeichert",
+  "{n} changes weren’t saved": "{n} Änderungen nicht gespeichert",
+  "These changes couldn’t be saved. Copy what you need, then remove them.": "Diese Änderungen konnten nicht gespeichert werden. Kopiere, was du brauchst, und entferne sie dann.",
+  "Your note": "Deine Notiz",
+  "Suggestion to the band": "Vorschlag an die Band",
+  "New song order": "Neue Songreihenfolge",
+  "The server didn’t accept it.": "Der Server hat sie nicht angenommen.",
+  "The server didn’t answer for too long.": "Der Server hat zu lange nicht geantwortet.",
   // Live pack consent, readiness, Settings › Offline & live (plan §3.3–3.4)
   "Offline & live": "Offline & live",
   "Have the setlist with you, even without signal.": "Die Setlist dabei, auch ohne Empfang.",

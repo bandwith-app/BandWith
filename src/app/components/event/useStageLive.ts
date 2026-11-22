@@ -368,7 +368,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         return;
       }
       const rows = reorderRows(list, saved, inOrder);
-      const { error } = await saveSetlistOrder(rows);
+      const { error, status } = await saveSetlistOrder(rows);
       // The gig open behind Stage mode reloads its setlist in the new order.
       if (!error) {
         // The same one summary push as a save in the gig overview (107), to
@@ -390,9 +390,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (error) {
         const before = saved.map((s) => ({ songId: s.songId, setNumber: s.setNumber }));
         const eventIdNow = saveCtx.current.eventId;
-        // No signal at the venue: the new order stands (on screen, over
-        // Bluetooth) and is saved when back online (plan §3.5).
-        if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before })) {
+        // No signal at the venue, or the server busy for a moment: the new
+        // order stands (on screen, over Bluetooth) and is saved as soon as
+        // the server answers (plan §3.5).
+        if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before }, status)) {
           if (!closing) setSaveState('waiting');
           return;
         }
