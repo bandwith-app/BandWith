@@ -7,6 +7,7 @@
 // on `Authorization`, a secret key on `apikey`, or a database-generated
 // dispatch secret (pg_net triggers).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isMissingRpc } from "./rpc-missing.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -179,12 +180,18 @@ export async function chatRecipients(
 ): Promise<string[]> {
   if (typeof chatId !== "string" || chatId.length === 0) return [];
   // 175: band and event chats count only people still in the band. Falls
-  // back to the participant list until the migration is applied.
+  // back to the participant list only while the migration is not applied:
+  // any other error sends nothing (fail closed, Codex #289 r2).
   const { data: allowed, error: rpcError } = await admin.rpc("bw_chat_recipient_ids", {
     p_chat_id: chatId,
     p_sender: callerId,
   });
-  if (!rpcError && Array.isArray(allowed)) {
+  if (rpcError && !isMissingRpc(rpcError)) {
+    console.error("chatRecipients: bw_chat_recipient_ids failed", rpcError.message);
+    return [];
+  }
+  if (!rpcError) {
+    if (!Array.isArray(allowed)) return [];
     const ok = new Set(allowed as string[]);
     return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
   }

@@ -27,7 +27,7 @@ import {
   type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
-import { quoteStoragePath } from "../_shared/quote-pdf-path.ts";
+import { signQuotePdf } from "../_shared/quote-pdf-path.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain
@@ -428,20 +428,18 @@ function quotePdfUrl(raw: string | null, bandId: string): string | null {
 /**
  * 176/177: the quotes bucket is private. Resend fetches the attachment from
  * a URL signed for a few minutes, never from the public storage URL.
+ * `failed`: there is a PDF but it could not be signed (round 2: the email
+ * must not go out without it while the app is told it was sent).
  */
-async function signedQuotePdf(admin: SupabaseClient, raw: string | null, bandId: string): Promise<string | null> {
+async function signedQuotePdf(admin: SupabaseClient, raw: string | null, bandId: string): Promise<{ url: string | null; failed: boolean }> {
   const checked = quotePdfUrl(raw, bandId);
-  if (!checked) return null;
-  const marker = "/storage/v1/object/public/quotes/";
   // Decoded first, then checked (an encoded "/" or ".." can't leave the band's folder).
-  const path = quoteStoragePath(new URL(checked).pathname.slice(marker.length), bandId);
-  if (!path) return null;
-  const { data, error } = await admin.storage.from("quotes").createSignedUrl(path, 600);
-  if (error || !data?.signedUrl) {
-    console.warn("Quote PDF: could not sign the attachment URL", error?.message);
-    return null;
-  }
-  return data.signedUrl;
+  const out = await signQuotePdf(async (path) => {
+    const { data, error } = await admin.storage.from("quotes").createSignedUrl(path, 600);
+    return { url: data?.signedUrl ?? null, error: error?.message ?? null };
+  }, checked, bandId);
+  if (out.failed) console.warn("Quote PDF: could not sign the attachment URL");
+  return out;
 }
 
 /** The snapshot's deposit in the client's language ("" when the quote asks none). */
@@ -510,7 +508,13 @@ async function sendQuoteClientEmail(
   const lang = pickQuoteEmailLang(link.lang);
   const snap = link.snapshot ?? {};
   const ref = clean(snap.ref ?? quote.quote_number, "");
-  const pdf = kind === "reply" || link.pdf_version !== link.version ? null : await signedQuotePdf(admin, link.pdf_url, link.band_id);
+  const signed = kind === "reply" || link.pdf_version !== link.version
+    ? { url: null, failed: false }
+    : await signedQuotePdf(admin, link.pdf_url, link.band_id);
+  if (signed.failed) {
+    return jsonResponse({ success: false, code: "pdf_unavailable", error: "The quote PDF could not be attached. Try again." }, 503);
+  }
+  const pdf = signed.url;
   const vars = {
     ...quoteEmailVars({
       kind,

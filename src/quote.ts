@@ -15,15 +15,16 @@
 
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
-import { clientQuotePdfUrl, quotePdfKey } from './lib/quotePdfLink';
+import { clientQuotePdfUrl, type QuotePdfKeys } from './lib/quotePdfLink';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 const params = new URL(window.location.href).searchParams;
 const token = (params.get('t') ?? '').toLowerCase();
-// PDF links carry sha256(token), never the token (a copied PDF link opens the PDF only).
-let pdfKey: string | null = null;
+// 176: each PDF has its own key (bw_quote_link_pdf_keys), never the token:
+// a copied PDF link opens that one PDF only, not a later one or the page.
+let pdfKeys: QuotePdfKeys = {};
 const preview = params.get('preview') === '1';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
@@ -164,6 +165,8 @@ async function act(run: () => Promise<QuoteLinkView | null>, focus?: string) {
     } else {
       applyView(next);
       if (focus === 'sent') draft.message = '';
+      // Accepting changes the PDF shown (the accepted one): its own key.
+      await refreshPdfKeys();
     }
   } catch (e) {
     failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
@@ -286,7 +289,7 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   // 176/177: the PDF only through the link (checked by the server each time).
   const storedPdf = b?.pdfUrl || v.pdf_url;
   const pdf =
-    clientQuotePdfUrl(storedPdf, SUPABASE_URL, pdfKey, b?.pdfUrl ? 'balance' : 'doc') ??
+    clientQuotePdfUrl(storedPdf, SUPABASE_URL, b?.pdfUrl ? pdfKeys.balance : pdfKeys.doc, b?.pdfUrl ? 'balance' : 'doc', lang) ??
     (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
@@ -643,6 +646,16 @@ function render() {
 
 // New band replies while the page stays open.
 let polling = false;
+/** The PDF keys of what the page shows now (none for the demo, or offline). */
+async function refreshPdfKeys() {
+  if (!/^[0-9a-f]{64}$/.test(token)) return;
+  try {
+    pdfKeys = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
+  } catch {
+    /* keep the last keys: the gate checks them anyway */
+  }
+}
+
 function poll() {
   window.setInterval(async () => {
     if (document.hidden || busy || !view) return;
@@ -653,6 +666,7 @@ function poll() {
       if (next && changed(next, view)) {
         readFields();
         applyView({ ...next, stale });
+        await refreshPdfKeys();
         render();
       }
     } catch {
@@ -670,7 +684,6 @@ async function load() {
   }
   app.replaceChildren(simpleCard('BandWith', S.loading, '', false));
   offline = false;
-  if (!pdfKey) pdfKey = quotePdfKey(token);
   let next: QuoteLinkView | null = null;
   try {
     next = await (preview ? api.view() : api.seen());
@@ -678,6 +691,7 @@ async function load() {
     offline = true;
   }
   // NULL: an unknown, replaced or turned-off link.
+  if (next) await refreshPdfKeys();
   if (next) applyView(next);
   else view = null;
   const kicker = view && balanceOf(view) ? S.balanceKicker : S.kicker;

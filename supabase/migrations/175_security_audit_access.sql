@@ -39,8 +39,23 @@
 --    no band, if any exists, stays readable by its creator).
 --
 -- Older app builds: nothing they call changes shape. Chat rename keeps
--- working (name, updated_at), invitations already use the RPCs.
--- Idempotent; safe to re-run.
+-- working (name, updated_at), invitations already use the RPCs. Their
+-- batch inserts of a gig's lineup into its chat keep working: a former
+-- member in the batch is skipped, not refused (round 2).
+--
+-- chats.type is the chat_type enum on databases built from 002 (text on
+-- others): every call passes type::text. Legacy 'group' chats tied to a
+-- band follow the band rule (prod has none).
+--
+-- Duplicate band / gig chats: a former member who comes back has no
+-- participant row, so on a database with only 175 an old build's
+-- "does the chat exist?" lookup can miss it. 193 (bw_open_group_chat,
+-- chats_select_joinable, one chat per band / gig) closes that; 175 is
+-- compatible with it (checked with 175 + 181 + 193 loaded).
+--
+-- Idempotent; safe to re-run, also after 178 or 181: a stronger
+-- bw_chat_scope_ok already live (it calls bw_is_event_participant or
+-- bw_event_quote_hidden) is kept.
 -- ============================================================================
 
 BEGIN;
@@ -132,14 +147,26 @@ GRANT EXECUTE ON FUNCTION public.bw_delete_chat_history(uuid) TO authenticated;
 -- May p_user_id use a chat of this kind? Band chats and band event chats:
 -- only while an active member of the band. Direct and other chats: yes
 -- (being a participant is checked by the caller).
+-- 178 and 181 replace it with stricter rules (quote events, the lineup):
+-- when one of those is live, re-running 175 keeps it.
+DO $do$
+BEGIN
+  IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NOT NULL THEN
+    IF pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)')) LIKE '%bw_is_event_participant%'
+       OR pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)')) LIKE '%bw_event_quote_hidden%' THEN
+      RETURN;
+    END IF;
+  END IF;
+  EXECUTE $sql$
 CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
-AS $$
+AS $f$
   SELECT CASE
-    WHEN p_type = 'band' THEN
+    -- 'group' with a band: legacy, same rule as the band chat.
+    WHEN p_type IN ('band', 'group') THEN
       p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
     WHEN p_type = 'event' THEN
       (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
@@ -149,7 +176,10 @@ AS $$
       ), true)
     ELSE true
   END;
-$$;
+$f$;
+  $sql$;
+END
+$do$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 -- The chats read policy calls it (same exposure as bw_is_band_member).
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
@@ -164,7 +194,7 @@ AS $$
     FROM chat_participants cp
     JOIN chats c ON c.id = cp.chat_id
    WHERE cp.user_id = auth.uid()
-     AND public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, cp.user_id);
+     AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id);
 $$;
 REVOKE ALL ON FUNCTION public.bw_my_chat_ids() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_my_chat_ids() TO authenticated;
@@ -183,7 +213,7 @@ AS $$
     SELECT cp.user_id
       FROM chat_participants cp, c
      WHERE cp.chat_id = p_chat_id
-       AND public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, cp.user_id)
+       AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
   )
   SELECT CASE WHEN EXISTS (SELECT 1 FROM ok WHERE user_id = p_sender)
     THEN coalesce((SELECT array_agg(DISTINCT user_id) FROM ok WHERE user_id <> p_sender), '{}')
@@ -202,7 +232,7 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT coalesce((SELECT public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, p_user_id)
+  SELECT coalesce((SELECT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, p_user_id)
                      FROM chats c WHERE c.id = p_chat_id), false);
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok_for(uuid, uuid) FROM PUBLIC, anon;
@@ -213,6 +243,31 @@ CREATE POLICY chat_participants_insert ON public.chat_participants
   AS PERMISSIVE FOR INSERT TO authenticated
   WITH CHECK (public.bw_can_add_chat_participant(chat_id, user_id)
               AND public.bw_chat_scope_ok_for(chat_id, user_id));
+
+-- Round 2: a row the rule refuses is skipped, not an error. Apps add a gig's
+-- whole lineup in one insert (createChat, sendMessage, older builds too):
+-- one former member still on the lineup made the policy refuse the whole
+-- batch, so nobody (not even the creator) joined the new chat. The policy
+-- above stays as the backstop.
+CREATE OR REPLACE FUNCTION public.bw_trg_chat_participant_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM chats c WHERE c.id = NEW.chat_id)
+     AND NOT public.bw_chat_scope_ok_for(NEW.chat_id, NEW.user_id) THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_chat_participant_scope() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_chat_participant_scope ON public.chat_participants;
+CREATE TRIGGER bw_chat_participant_scope
+  BEFORE INSERT ON public.chat_participants
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_chat_participant_scope();
 
 -- 042's body; only the chat filter changes (bw_my_chat_ids, scope-checked).
 CREATE OR REPLACE FUNCTION public.get_user_chats(p_user_id UUID)
@@ -273,7 +328,7 @@ CREATE POLICY chats_select_participant ON public.chats
 DROP POLICY IF EXISTS chats_select_creator ON public.chats;
 CREATE POLICY chats_select_creator ON public.chats
   FOR SELECT TO authenticated
-  USING (created_by = auth.uid() AND public.bw_chat_scope_ok(type, band_id, event_id, auth.uid()));
+  USING (created_by = auth.uid() AND public.bw_chat_scope_ok(type::text, band_id, event_id, auth.uid()));
 
 -- Leaving the band: out of its band chat and its events' chats.
 CREATE OR REPLACE FUNCTION public.bw_trg_band_member_left_chats()
@@ -291,8 +346,8 @@ BEGIN
    WHERE cp.chat_id = c.id
      AND cp.user_id = OLD.user_id
      AND (
-       (c.type = 'band' AND c.band_id = OLD.band_id)
-       OR (c.type = 'event' AND (
+       (c.type::text IN ('band', 'group') AND c.band_id = OLD.band_id)
+       OR (c.type::text = 'event' AND (
              c.band_id = OLD.band_id
              OR c.event_id IN (SELECT e.id FROM events e WHERE e.band_id = OLD.band_id)))
      );
@@ -337,8 +392,10 @@ WITH stale AS (
   SELECT cp.chat_id, cp.user_id, to_jsonb(cp) AS row_data
     FROM chat_participants cp
     JOIN chats c ON c.id = cp.chat_id
-   WHERE c.type IN ('band', 'event')
-     AND NOT public.bw_chat_scope_ok(c.type, c.band_id, c.event_id, cp.user_id)
+   WHERE c.type::text IN ('band', 'group', 'event')
+     AND NOT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
+     -- (a row whose profile is gone can't be archived: its FK would refuse it)
+     AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id)
 ), saved AS (
   INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
   SELECT chat_id, user_id, row_data FROM stale
@@ -364,7 +421,14 @@ BEGIN
     AND coalesce(status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
     AND (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, user_id));
 
-  IF coalesce(array_length(v_ids, 1), 0) = 0 AND p_band_id IS NOT NULL THEN
+  -- The whole band only when the gig has no lineup at all (round 2): a
+  -- lineup whose musicians all left the band tells nobody, not members who
+  -- were never booked.
+  IF p_band_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.event_members
+     WHERE event_id = p_event_id
+       AND coalesce(status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
+  ) THEN
     v_ids := public.bw_active_band_member_ids(p_band_id, coalesce(p_private, false));
   END IF;
   RETURN v_ids;

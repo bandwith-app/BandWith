@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clientQuotePdfUrl, isQuoteStoragePdf, quotePdfGateUrl, quotePdfKey } from '../quotePdfLink';
+import { clientQuotePdfUrl, isQuoteStoragePdf, quotePdfGateUrl } from '../quotePdfLink';
 import shareModal from '../../app/components/quotes/QuoteShareModal.tsx?raw';
 
 // 176/177: a client never gets the storage URL of a quote PDF (it outlived
@@ -8,7 +8,7 @@ const SB = 'https://elvlzpowkohjbhxjasvd.supabase.co';
 const BAND = '11111111-2222-3333-4444-555555555555';
 const STORED = `${SB}/storage/v1/object/public/quotes/quotes/${BAND}/Q-2026-014_ab12cd34_Quote_Hudson_Horns_Client.pdf`;
 const TOKEN = 'a'.repeat(64);
-// sha256('a' x 64): the PDF-only key, so a forwarded PDF link is not the client page.
+// A document's own key (bw_quote_link_pdf_keys, 176), random on the server.
 const KEY = 'ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb';
 
 describe('quote PDF link', () => {
@@ -38,11 +38,18 @@ describe('quote PDF link', () => {
     expect(clientQuotePdfUrl('https://elsewhere.example/file.pdf', SB, KEY)).toBeNull();
   });
 
-  it('the PDF key is sha256 of the token, never the token', () => {
-    expect(quotePdfKey(TOKEN)).toBe(KEY);
-    expect(quotePdfKey('0123456789abcdef'.repeat(4))).toBe('a8ae6e6ee929abea3afcfc5258c8ccd6f85273e0d4626d26c7279f3250f77c8e');
-    expect(quotePdfKey('demo')).toBeNull();
-    expect(quotePdfKey(null)).toBeNull();
+  it('passes the page language to the gate', () => {
+    expect(clientQuotePdfUrl(STORED, SB, KEY, 'doc', 'it')).toBe(`${SB}/functions/v1/quote-pdf?p=${KEY}&l=it`);
+    expect(clientQuotePdfUrl(STORED, SB, KEY, 'balance', 'pt')).toBe(`${SB}/functions/v1/quote-pdf?p=${KEY}&k=balance&l=pt`);
+    expect(clientQuotePdfUrl(STORED, SB, KEY, 'doc', 'x&y')).toBe(`${SB}/functions/v1/quote-pdf?p=${KEY}`);
+  });
+
+  // Round 2: one key per document, from the server (no key from the token).
+  it('the page takes its keys from bw_quote_link_pdf_keys', async () => {
+    const page = (await import('../../quote.ts?raw')).default as string;
+    expect(page).toMatch(/bw_quote_link_pdf_keys/);
+    expect(page).toMatch(/pdfKeys\.balance : pdfKeys\.doc/);
+    expect(page).not.toMatch(/quotePdfKey/);
   });
 
   // Codex review #281: "PDF only" shares put the client's token link in the text.

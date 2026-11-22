@@ -10,6 +10,9 @@
 //   mkdir -p /tmp/pg175 && cd /tmp/pg175 && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/security_audit_access.pglite.mjs . && node security_audit_access.pglite.mjs <repo>
 //   node security_audit_access.pglite.mjs <repo> /dev/null     # before: FAILs expected
+// chats.type is the chat_type enum here, as on a database built from 002.
+// CHAT_TYPE=text runs it with a text column (to see the round-2 checks fail
+// on the older 175, which could not even be created on the enum).
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
@@ -26,6 +29,10 @@ const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND, OTHERBAND, ADMIN, MEM, MEM2, LINE, INVITEE, OUT] = [1, 2, 3, 4, 5, 6, 7, 8].map(id);
 const [BANDCHAT, GROUP, EVCHAT, FAKEDM] = [20, 21, 22, 23].map(id);
 const [GIG, INV, QUOTE] = [30, 31, 32].map(id);
+// Round 2: an active member, a former one, and their chats and gigs.
+const [NEWM, EXM] = [9, 10].map(id);
+const [GROUPB, EVCHAT3] = [24, 25].map(id);
+const [GIG3, GIG4] = [33, 34].map(id);
 
 // Run `sql` as `uid` (authenticated) in a transaction; returns rows or the error.
 async function as(uid, sql) {
@@ -42,7 +49,9 @@ async function as(uid, sql) {
 const emails = {
   [ADMIN]: 'admin@example.invalid', [MEM]: 'mem@example.invalid', [MEM2]: 'mem2@example.invalid',
   [LINE]: 'line@example.invalid', [INVITEE]: 'invitee@example.invalid', [OUT]: 'out@example.invalid',
+  [NEWM]: 'newm@example.invalid', [EXM]: 'exm@example.invalid',
 };
+const CHAT_TYPE = process.env.CHAT_TYPE === 'text' ? 'text' : 'chat_type';
 
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
@@ -55,6 +64,7 @@ CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
   SELECT coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
 GRANT EXECUTE ON FUNCTION auth.uid(), auth.jwt() TO authenticated, anon;
 CREATE TYPE user_role AS ENUM ('admin', 'member');
+CREATE TYPE chat_type AS ENUM ('direct', 'group', 'band', 'event');
 
 CREATE TABLE public.profiles (id uuid PRIMARY KEY, email text, full_name text, instrument text, user_mode text, preferred_language text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
@@ -64,7 +74,7 @@ CREATE TABLE public.band_invitations (id uuid PRIMARY KEY DEFAULT gen_random_uui
   status text DEFAULT 'pending', token uuid DEFAULT gen_random_uuid(), invited_by uuid, expires_at timestamptz,
   accepted_at timestamptz, accepted_by uuid, created_at timestamptz DEFAULT now(), email_sent_at timestamptz,
   expiry_notified_at timestamptz, reminder_sent_at timestamptz);
-CREATE TABLE public.chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type text, name text, band_id uuid, event_id uuid,
+CREATE TABLE public.chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type ${CHAT_TYPE}, name text, band_id uuid, event_id uuid,
   created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
 CREATE TABLE public.chat_participants (id uuid DEFAULT gen_random_uuid(), chat_id uuid,
   user_id uuid CONSTRAINT cp_user_fk REFERENCES public.profiles(id) ON DELETE CASCADE, cleared_at timestamptz,
@@ -191,6 +201,15 @@ INSERT INTO messages (chat_id, sender_id, content) VALUES
   ('${GROUP}','${MEM2}','from mem2'),('${GROUP}','${LINE}','from line'),('${GROUP}','${MEM}','from mem'),
   ('${FAKEDM}','${MEM2}','dm mem2'),('${FAKEDM}','${LINE}','dm line'),('${FAKEDM}','${MEM}','dm mem');
 INSERT INTO quotes (id, band_id, created_by, client_name, total) VALUES ('${QUOTE}','${BAND}','${MEM2}','Client', 4200);
+-- Round 2: NEWM is in the band; EXM left before 175 (no band_members row).
+INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${NEWM}','member');
+INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, venue_name) VALUES
+  ('${GIG3}','${BAND}','Harbor Lights','confirmed','gig','${ADMIN}', current_date + 20, 'Pier 17, Manhattan'),
+  ('${GIG4}','${BAND}','Garden Party','confirmed','gig','${ADMIN}', current_date + 30, 'Hoboken');
+INSERT INTO event_members VALUES ('${GIG3}','${NEWM}','confirmed'), ('${GIG3}','${EXM}','confirmed'), ('${GIG4}','${EXM}','confirmed');
+INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${GROUPB}','group','Horns (legacy)','${BAND}',NULL,'${ADMIN}');
+INSERT INTO chat_participants (chat_id, user_id) VALUES ('${GROUPB}','${ADMIN}'),('${GROUPB}','${NEWM}'),('${GROUPB}','${EXM}');
+INSERT INTO messages (chat_id, sender_id, content) VALUES ('${GROUPB}','${ADMIN}','legacy group');
 `);
 // (OUT: left the band earlier, still has a band chat row. MEM2 created a quote while admin.)
 
@@ -278,7 +297,8 @@ ok(r.rows.length === 0, `quote creator no longer an admin cannot read it (${r.ro
 // MEM left the band but is still on GIG's lineup (confirmed).
 await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM}'`);
 r = await as(MEM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM}')`);
-ok(!!r.error, `former member kept on the lineup can't join the gig chat again (${r.error ? 'refused' : 'joined'})`);
+const back = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM}'`)).rows.length;
+ok(back === 0, `former member kept on the lineup can't join the gig chat again (${r.error ? 'refused' : back ? 'joined' : 'skipped'})`);
 await db.exec(`INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM}') ON CONFLICT DO NOTHING`);
 r = await as(MEM, `SELECT public.get_user_chats('${MEM}') AS j`);
 const listed = (r.rows[0]?.j ?? []).map((c) => c.id);
@@ -305,6 +325,61 @@ await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed')
 delErr = null;
 try { await db.exec(`DELETE FROM profiles WHERE id = '${LINE}'`); } catch (e) { delErr = e.message; }
 ok(!delErr, `an active member on a gig lineup can delete their account (${delErr ?? 'ok'})`);
+
+// ── 8. Round 2 (Codex #281 r2, Claude r2)
+// A legacy 'group' chat tied to the band follows the band rule.
+r = await as(EXM, `SELECT id FROM messages WHERE chat_id = '${GROUPB}'`);
+ok(r.rows.length === 0, `former member reads no legacy band group chat (${r.rows.length})`);
+r = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${GROUPB}'`);
+ok(r.rows.length === 1, `active member still reads it (${r.rows.length})`);
+// One insert with the whole lineup, a former member in it (createChat,
+// sendMessage and older builds all do this).
+await as(ADMIN, `INSERT INTO chats (id, type, name, band_id, event_id, created_by)
+  VALUES ('${EVCHAT3}','event','Harbor Lights','${BAND}','${GIG3}','${ADMIN}')`);
+r = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id, cleared_at)
+  VALUES ('${EVCHAT3}','${ADMIN}',NULL),('${EVCHAT3}','${NEWM}',NULL),('${EVCHAT3}','${EXM}',NULL)`);
+let inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
+ok(!r.error && inChat.includes(ADMIN) && inChat.includes(NEWM) && !inChat.includes(EXM),
+  `new gig chat: the batch joins everyone still in the band, skips the former member (${r.error ?? JSON.stringify(inChat.length)})`);
+await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${NEWM}'`);
+r = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${EXM}'),('${EVCHAT3}','${NEWM}')
+  ON CONFLICT (chat_id, user_id) DO NOTHING`);
+inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
+ok(!r.error && inChat.includes(NEWM) && !inChat.includes(EXM), `sendMessage's lineup upsert still adds the new musician (${r.error ?? 'ok'})`);
+r = await as(NEWM, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT3}','${NEWM}','see you at 6')`);
+ok(!r.error, `and they can post in it (${r.error ?? 'ok'})`);
+// A gig whose whole lineup left the band: nobody else is told.
+await db.exec(`DELETE FROM notifications; BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}"}', true);
+  UPDATE events SET event_date = event_date + 1 WHERE id = '${GIG4}'; COMMIT;`);
+const told4 = (await db.query(`SELECT user_id FROM notifications WHERE type = 'event_update'`)).rows.map((x) => x.user_id);
+ok(told4.length === 0, `lineup of former members only: the rest of the band is not told (${told4.length} notices)`);
+// Re-running 175 after a stricter rule went live (181 / 178) keeps it.
+await db.exec(`CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT CASE WHEN p_type = 'event' THEN public.bw_is_event_participant(p_event_id, p_user_id) ELSE true END $f$`);
+await db.exec(readFileSync(MIG, 'utf8'));
+const def = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+ok(def.includes('bw_is_event_participant'), 're-running 175 keeps a stricter bw_chat_scope_ok already live');
+
+// ── 9. With 193 (#291: one chat per band / gig, bw_open_group_chat), when
+// M193=<path to 193_one_chat_per_gig.sql> is set. A member who left has no
+// participant row any more; back in the band, the app must find the same
+// band chat, not make a second one (Codex #281 r2, 175:289).
+if (process.env.M193) {
+  await db.exec(readFileSync(process.env.M193, 'utf8'));
+  await db.exec(`UPDATE band_members SET is_active = true WHERE band_id = '${BAND}' AND user_id = '${MEM2}'`);
+  r = await as(MEM2, `SELECT id FROM chats WHERE type = 'band' AND band_id = '${BAND}'`);
+  ok(r.rows.length === 1 && r.rows[0].id === BANDCHAT, `193: back in the band, an old build's lookup finds the band chat (${r.rows.length})`);
+  r = await as(MEM2, `SELECT public.bw_open_group_chat('band', '${BAND}', NULL, 'Hudson Horns') AS j`);
+  ok(!r.error && r.rows[0]?.j?.id === BANDCHAT && r.rows[0]?.j?.created === false, `193: bw_open_group_chat rejoins the same chat (${r.error ?? r.rows[0]?.j?.id})`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${BANDCHAT}'`);
+  ok(r.rows.length > 0, `193: and reads it again (${r.rows.length})`);
+  r = await as(MEM2, `INSERT INTO chats (type, name, band_id, created_by) VALUES ('band','Hudson Horns','${BAND}','${MEM2}')`);
+  ok(!!r.error, '193: a second band chat is refused');
+  r = await as(EXM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
+  ok(!!r.error && !inChat.includes(EXM), `193: a former member on the lineup can't open the gig chat (${r.error ? 'refused' : 'opened'})`);
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

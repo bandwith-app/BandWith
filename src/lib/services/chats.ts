@@ -498,6 +498,40 @@ const findExistingDirectChat = async (userId1: string, userId2: string): Promise
   }
 };
 
+// Lineup answers that take a musician off a gig (as the server's notices, 046).
+const OFF_THE_GIG = new Set(['declined', 'dropped_out', 'removed']);
+
+/**
+ * Of `userIds`, the active members of the band. Band and gig chats are for
+ * the band's current members (175): anyone else is skipped by the server,
+ * and older servers refused the whole insert because of them.
+ */
+const stillInBand = async (bandId: string | null | undefined, userIds: string[]): Promise<string[]> => {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!bandId || ids.length === 0) return ids;
+  const { data, error } = await supabase
+    .from('band_members')
+    .select('user_id')
+    .eq('band_id', bandId)
+    .eq('is_active', true)
+    .in('user_id', ids);
+  if (error) {
+    // The server applies the same rule: better a list it trims than none.
+    console.warn('[chats] Could not check band membership:', error.message);
+    return ids;
+  }
+  const active = new Set((data || []).map((m: { user_id: string }) => m.user_id));
+  return ids.filter((id) => active.has(id));
+};
+
+/** The band of a gig chat: the chat's own, else its event's. */
+const gigBandId = async (eventId: string | null | undefined, bandId: string | null | undefined): Promise<string | null> => {
+  if (bandId) return bandId;
+  if (!eventId) return null;
+  const { data } = await supabase.from('events').select('band_id').eq('id', eventId).maybeSingle();
+  return (data as { band_id?: string | null } | null)?.band_id ?? null;
+};
+
 export const createChat = async (
   data: {
     type: ChatType;
@@ -664,19 +698,29 @@ export const createChat = async (
 
     if (chatError) throw chatError;
 
-    // Add participants (including creator) - non-critical, don't block
-    const participantInserts = allParticipants.map(userId => ({
-      chat_id: chat.id,
-      user_id: userId,
-      cleared_at: null,
-    }));
-
-    const { error: partError } = await supabase
+    // The creator first, on their own: without that row nobody can use the
+    // new chat (one former member in a single insert of the whole lineup
+    // used to make it fail, Codex #281 r2). Then the others, for band and
+    // gig chats only those still in the band.
+    const { error: selfError } = await supabase
       .from('chat_participants')
-      .insert(participantInserts);
+      .insert([{ chat_id: chat.id, user_id: user.id, cleared_at: null }]);
+    if (selfError) {
+      console.warn('[createChat] Could not join the new chat:', selfError.message);
+      return { data: null, error: new Error(selfError.message) };
+    }
 
-    if (partError) {
-      console.warn('[createChat] Participant insert warning:', partError.message);
+    let others = allParticipants.filter((id) => id !== user.id);
+    if (data.type === 'band' || data.type === 'event') {
+      others = await stillInBand(data.type === 'event' ? await gigBandId(data.event_id, data.band_id) : data.band_id, others);
+    }
+    if (others.length > 0) {
+      const { error: partError } = await supabase
+        .from('chat_participants')
+        .insert(others.map((userId) => ({ chat_id: chat.id, user_id: userId, cleared_at: null })));
+      if (partError) {
+        console.warn('[createChat] Could not add the other participants:', partError.message);
+      }
     }
 
     return { data: chat, error: null };
@@ -807,26 +851,34 @@ export const sendMessage = async (
         .eq('band_id', chat.band_id)
         .eq('is_active', true);
       if (bMembers && bMembers.length > 0) {
-        await supabase
+        const { error: addError } = await supabase
           .from('chat_participants')
           .upsert(
             bMembers.map(bm => ({ chat_id: chatId, user_id: bm.user_id })),
             { onConflict: 'chat_id,user_id', ignoreDuplicates: true }
           );
+        if (addError) console.warn('[sendMessage] Could not add the band to its chat:', addError.message);
       }
     } else if (chat.type === 'event' && chat.event_id) {
-      const { data: eMembers } = await supabase
+      // The gig's lineup: still on the gig and still in the band (a lineup
+      // row outlives leaving the band; 175 / 181).
+      const { data: eMembers, error: lineupError } = await supabase
         .from('event_members')
-        .select('user_id')
-        .eq('event_id', chat.event_id)
-        .neq('status', 'declined');
-      if (eMembers && eMembers.length > 0) {
-        await supabase
+        .select('user_id, status')
+        .eq('event_id', chat.event_id);
+      if (lineupError) console.warn('[sendMessage] Could not read the lineup:', lineupError.message);
+      const onGig = ((eMembers || []) as { user_id: string | null; status: string | null }[])
+        .filter((em) => !!em.user_id && !OFF_THE_GIG.has(em.status ?? ''))
+        .map((em) => em.user_id as string);
+      const lineup = await stillInBand(await gigBandId(chat.event_id, chat.band_id), onGig);
+      if (lineup.length > 0) {
+        const { error: addError } = await supabase
           .from('chat_participants')
           .upsert(
-            eMembers.map(em => ({ chat_id: chatId, user_id: em.user_id })),
+            lineup.map((userId) => ({ chat_id: chatId, user_id: userId })),
             { onConflict: 'chat_id,user_id', ignoreDuplicates: true }
           );
+        if (addError) console.warn('[sendMessage] Could not add the lineup to the gig chat:', addError.message);
       }
     } else if (chat.type === 'direct') {
       const otherParticipant = (participants || []).find((p: any) => p.user_id !== user.id);

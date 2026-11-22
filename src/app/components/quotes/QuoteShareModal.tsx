@@ -468,8 +468,24 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   const shareTitle = tr('{band} — Quote {ref}', { band: bandName, ref: quote.quoteNumber || '' }).trim();
 
-  /** System share sheet with the PDF attached (Mail, WhatsApp, Files, AirDrop…). */
-  const sharePdf = async (opts: { markAsSent: boolean; withText: boolean }) => {
+  /** WhatsApp or the mail app with the message, to the client when known. */
+  const openComposer = (channel: 'whatsapp' | 'email') => {
+    const text = buildShareText();
+    if (channel === 'whatsapp') {
+      const phone = (quote.clientPhone || '').replace(/[^0-9+]/g, '').replace(/^\+/, '');
+      void openExternal(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`);
+    } else {
+      void openExternal(`mailto:${encodeURIComponent(quote.clientEmail || '')}?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(text)}`);
+    }
+  };
+
+  /**
+   * System share sheet with the PDF attached (Mail, WhatsApp, Files, AirDrop…).
+   * `channel`: where the user asked to send it. Without file sharing (a
+   * desktop browser) the PDF is downloaded and that channel opens with the
+   * message, to attach the file there (Codex #281 r2).
+   */
+  const sharePdf = async (opts: { markAsSent: boolean; withText: boolean; channel?: 'whatsapp' | 'email' }) => {
     if (!pdfResult) return;
     try {
       const result = await shareFile(pdfResult.pdfBlob, pdfResult.fileName, {
@@ -477,7 +493,10 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         text: opts.withText ? buildShareText() : undefined,
       });
       if (result === 'cancelled') return;
-      if (result === 'downloaded') flash(t('PDF downloaded'));
+      if (result === 'downloaded' && opts.channel) {
+        openComposer(opts.channel);
+        flash(t('PDF downloaded. Attach it to your message.'));
+      } else if (result === 'downloaded') flash(t('PDF downloaded'));
       else flash(opts.markAsSent ? t('Quote shared') : t('PDF ready'));
       if (opts.markAsSent) void markSent();
     } catch (err) {
@@ -503,8 +522,8 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   };
 
   // WhatsApp and Mail are in the system sheet, with the file attached.
-  const handleWhatsAppShare = () => void sharePdf({ markAsSent: true, withText: true });
-  const handleEmailShare = () => void sharePdf({ markAsSent: true, withText: true });
+  const handleWhatsAppShare = () => void sharePdf({ markAsSent: true, withText: true, channel: 'whatsapp' });
+  const handleEmailShare = () => void sharePdf({ markAsSent: true, withText: true, channel: 'email' });
 
   const handleCopySummary = () => {
     const text = buildShareText();

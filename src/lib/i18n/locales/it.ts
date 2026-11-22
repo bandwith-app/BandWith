@@ -1627,6 +1627,7 @@ const dict: Dictionary = {
   "Duplicate": "Duplica",
   "Delete this quote": "Elimina questo preventivo",
   "PDF downloaded": "PDF scaricato",
+  "PDF downloaded. Attach it to your message.": "PDF scaricato. Allegalo al messaggio.",
   "Quote shared": "Preventivo condiviso",
   "PDF ready": "PDF pronto",
   "Could not share the PDF. Try again.": "Impossibile condividere il PDF. Riprova.",
