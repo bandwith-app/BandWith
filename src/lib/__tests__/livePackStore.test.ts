@@ -48,11 +48,11 @@ vi.mock('../livePackStatus', () => ({
 }));
 
 // My files on the device (native): off in jsdom unless a test turns it on.
-const files = vi.hoisted(() => ({ available: false, local: null as { path: string; directory: string } | null }));
+const files = vi.hoisted(() => ({ available: false, local: null as { path: string; directory: string } | null, downloads: 0 }));
 vi.mock('../livePackFiles', async (orig) => ({
   ...(await orig<typeof import('../livePackFiles')>()),
   packFilesAvailable: () => files.available,
-  downloadPackFile: async () => files.local,
+  downloadPackFile: async () => (files.downloads++, files.local),
   removePackFiles: async () => undefined,
 }));
 
@@ -72,8 +72,9 @@ import {
   savePackSongs,
   sweepPacks,
   packOpenedEvent,
+  deleteAllPacks,
 } from '../livePackStore';
-import { isPackReady } from '../livePack';
+import { isPackReady, unavailablePackFiles } from '../livePack';
 import { writeChoice } from '../livePackConsent';
 
 const me = 'u1';
@@ -113,6 +114,9 @@ beforeEach(() => {
   status.forgotten.length = 0;
   files.available = false;
   files.local = null;
+  files.downloads = 0;
+  // The events exist and are on, unless a test says otherwise (the privacy sweep reads them).
+  answers.events = (q) => ({ data: ((q.filters.find((f) => f[1] === 'id')?.[2] as string[]) ?? []).map((id) => ({ id, status: 'confirmed' })), error: null });
 });
 
 describe('savePackSongs', () => {
@@ -603,5 +607,106 @@ describe('round 6 (review #273)', () => {
     await refreshPack({ userId: me, event: gig() });
     await packOpenedEvent({ userId: me, event: gig(), songs: [...songs, newSongs[0]], livePackOn: true, fullDue: false, allowFiles: true });
     expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+  });
+});
+
+// Review #273 round 7 (Claude).
+describe('round 7 (review #273)', () => {
+  const ev = (over: Record<string, unknown> = {}) => ({ eventId: 'e1', bandId: 'b1', date: inDays(3), eventType: 'gig', setlistId: 's1', row: gig(over) });
+  const pdf = { id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 };
+  const held = async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    expect(await readPack(me, 'b1', 'e1')).not.toBeNull();
+  };
+
+  for (const downloads of [true, false]) {
+    describe(`privacy: a pack goes at once, not 24 h after (live_pack ${downloads ? 'on' : 'off'})`, () => {
+      it('the event was cancelled', async () => {
+        await held();
+        answers.events = () => ({ data: [{ id: 'e1', status: 'cancelled' }], error: null });
+        await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads });
+        expect(await readPack(me, 'b1', 'e1')).toBeNull();
+        expect(status.forgotten).toContain('e1');
+      });
+
+      it('the event was deleted', async () => {
+        await held();
+        answers.events = () => ({ data: [], error: null });
+        await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [], online: true, downloads });
+        expect(await readPack(me, 'b1', 'e1')).toBeNull();
+      });
+
+      it('I declined it', async () => {
+        await held();
+        answers.event_members = () => ({ data: [{ event_id: 'e1', status: 'declined' }], error: null });
+        await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads });
+        expect(await readPack(me, 'b1', 'e1')).toBeNull();
+      });
+    });
+  }
+
+  it('no answer from the server (offline, an error): nothing is removed on a guess', async () => {
+    await held();
+    answers.events = () => ({ data: null, error: { message: 'Failed to fetch' } });
+    answers.event_members = () => ({ data: null, error: { message: 'Failed to fetch' } });
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: true });
+    expect(await readPack(me, 'b1', 'e1')).not.toBeNull();
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: false, downloads: true });
+    expect(await readPack(me, 'b1', 'e1')).not.toBeNull();
+  });
+
+  it('Delete all while a refresh is running: the refresh saves nothing and reports nothing', async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    answers.setlist_songs = () => gate.then(() => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null })) as never;
+    const run = refreshPack({ userId: me, event: gig() });
+    await new Promise((r) => setTimeout(r, 0));
+    await deleteAllPacks(me);
+    open();
+    expect(await run).toBeNull();
+    expect(await readPack(me, 'b1', 'e1')).toBeNull();
+    expect(status.reported).toEqual([]);
+  });
+
+  it('a file of mine whose link is dead: after 3 tries it is marked unavailable, the pack is ready except it, and it is not tried again', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    for (let i = 0; i < 2; i++) await refreshPack({ userId: me, event: gig(), withFiles: true });
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBeUndefined();
+    expect(isPackReady(p)).toBe(true);
+    expect(unavailablePackFiles(p).map((f) => f.name)).toEqual(['chart.pdf']);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(status.reported[status.reported.length - 1]).not.toMatch(/:partial$/);
+    const tries = files.downloads;
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    expect(files.downloads).toBe(tries);
+  });
+
+  it('a file replaced (new link) is tried again', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    for (let i = 0; i < 3; i++) await refreshPack({ userId: me, event: gig(), withFiles: true });
+    answers.song_personal_files = () => ({ data: [{ ...pdf, ref: 'r2' }], error: null });
+    files.local = { path: 'live-pack/u1/f1-chart.pdf', directory: 'LIBRARY_NO_CLOUD' };
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(unavailablePackFiles(p)).toEqual([]);
+    expect(p?.personal.song1.files[0].local?.path).toBe('live-pack/u1/f1-chart.pdf');
+  });
+
+  it('offline (my files could not be listed): a failed download is not counted as a try', async () => {
+    files.available = true;
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_files = () => ({ data: [{ ...pdf }], error: null });
+    await refreshPack({ userId: me, event: gig(), withFiles: true });
+    answers.song_personal_files = () => ({ data: null, error: { message: 'Failed to fetch' } });
+    for (let i = 0; i < 4; i++) await refreshPack({ userId: me, event: gig(), withFiles: true });
+    expect(unavailablePackFiles(await readPack(me, 'b1', 'e1'))).toEqual([]);
   });
 });

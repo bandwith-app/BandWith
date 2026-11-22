@@ -193,6 +193,13 @@ export interface LivePackFile {
   size?: number | null;
   created_at?: string;
   local?: { path: string; directory: string };
+  /** Downloads that failed while online (the link may be gone). */
+  tries?: number;
+  /**
+   * Given up after MAX_FILE_TRIES (a dead link): not asked for again until the
+   * file changes, and the pack is ready without it ("except 1 file").
+   */
+  unavailable?: boolean;
 }
 
 export interface LivePackPersonal {
@@ -226,6 +233,10 @@ export interface LivePack {
    */
   partial?: boolean;
 }
+
+/** My files the pack gave up on (dead links): listed under "Offline ready". */
+export const unavailablePackFiles = (p: LivePack | null | undefined): LivePackFile[] =>
+  Object.values(p?.personal ?? {}).flatMap((x) => x.files.filter((f) => f.unavailable));
 
 /** Complete and on the device: "Offline ready", and counts for "N of M members ready". */
 export const isPackReady = (p: LivePack | null | undefined): boolean => !!p && !p.partial && p.songs.length > 0;

@@ -1,18 +1,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const calls = vi.hoisted(() => ({ log: [] as Array<{ table?: string; fn?: string; op: string; args: unknown[] }>, rows: [] as unknown[], native: true }));
+const calls = vi.hoisted(() => ({
+  log: [] as Array<{ table?: string; fn?: string; op: string; args: unknown[] }>,
+  rows: [] as unknown[],
+  native: true,
+  /** What an upsert … select() returns: the row written ([] when the server dropped it). */
+  upserted: null as unknown[] | null,
+  /** The stored row a re-read returns. */
+  current: null as unknown,
+  /** Held upserts: each waits for its gate. */
+  gates: [] as Array<Promise<void>>,
+  settled: [] as string[],
+}));
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => calls.native } }));
 vi.mock('../supabase', () => {
   const query = (table: string) => {
     const q: any = {};
+    let first = '';
+    let single = false;
     for (const op of ['upsert', 'delete', 'update', 'select', 'eq', 'in', 'maybeSingle']) {
       q[op] = (...args: unknown[]) => {
         calls.log.push({ table, op, args });
+        first ||= op;
+        if (op === 'maybeSingle') single = true;
         return q;
       };
     }
-    q.then = (res: (v: unknown) => void) => res({ data: calls.rows, error: null });
+    q.then = (res: (v: unknown) => void) => {
+      const gate = first === 'upsert' ? calls.gates.shift() : undefined;
+      return Promise.resolve(gate).then(() => {
+        calls.settled.push(first);
+        if (first === 'upsert') return res({ data: calls.upserted ?? [{}], error: null });
+        if (first === 'select' && single) return res({ data: calls.current, error: null });
+        return res({ data: calls.rows, error: null });
+      });
+    };
     return q;
   };
   return {
@@ -39,6 +62,10 @@ import {
 beforeEach(() => {
   calls.log = [];
   calls.rows = [];
+  calls.upserted = null;
+  calls.current = null;
+  calls.gates = [];
+  calls.settled = [];
   calls.native = true;
   localStorage.clear();
 });
@@ -112,5 +139,48 @@ describe('live pack status', () => {
     const up = calls.log.find((c) => c.op === 'update');
     expect(up?.table).toBe('profiles');
     expect(up?.args[0]).toEqual({ live_pack_auto: true, live_pack_asked_at: '2026-11-21T20:00:00.000Z' });
+  });
+});
+
+describe('round 7 (review #273, Claude)', () => {
+  const stamps = () => calls.log.filter((c) => c.op === 'upsert').map((c) => (c.args[0] as { downloaded_at: string }).downloaded_at);
+
+  it('Delete all waits for a write already in flight, so it cannot bring the row back', async () => {
+    let open!: () => void;
+    calls.gates.push(new Promise<void>((r) => (open = r)));
+    const writing = reportPackStatus(pack);
+    const forgetting = forgetPackStatus('u-1');
+    await Promise.resolve();
+    open();
+    await Promise.all([writing, forgetting]);
+    expect(calls.settled.filter((op) => op === 'upsert' || op === 'delete')).toEqual(['upsert', 'delete']);
+  });
+
+  it('a write after Delete all waits for the delete', async () => {
+    let open!: () => void;
+    calls.gates.push(new Promise<void>((r) => (open = r)));
+    const first = reportPackStatus(pack);
+    const forgetting = forgetPackStatus('u-1', ['ev-1']);
+    const again = reportPackStatus({ ...pack, version: 'v2', savedAt: '2026-11-21T20:05:00.000Z' });
+    open();
+    await Promise.all([first, forgetting, again]);
+    expect(calls.settled.filter((op) => op === 'upsert' || op === 'delete')).toEqual(['upsert', 'delete', 'upsert']);
+  });
+
+  it('the device clock went back: the stamp still moves forward', async () => {
+    await reportPackStatus(pack);
+    await reportPackStatus({ ...pack, version: 'v2', savedAt: '2026-11-21T19:00:00.000Z' });
+    const [a, b] = stamps();
+    expect(Date.parse(b)).toBeGreaterThan(Date.parse(a));
+  });
+
+  it('the server dropped the save (its stamp is newer): sent again just above it', async () => {
+    calls.upserted = [];
+    calls.current = { downloaded_at: '2027-01-01T00:00:00.000Z' };
+    await reportPackStatus(pack);
+    const sent = stamps();
+    expect(sent).toHaveLength(2);
+    expect(Date.parse(sent[1])).toBeGreaterThan(Date.parse('2027-01-01T00:00:00.000Z'));
+    expect(calls.log.some((c) => c.op === 'select' && c.args[0] === 'downloaded_at')).toBe(true);
   });
 });

@@ -233,6 +233,15 @@ ok(kept.version === 'v2' && kept.partial === false, `older status ignored: ${JSO
 await q(`UPDATE live_pack_status SET version = 'v3', downloaded_at = '2026-11-23T10:01:00Z', partial = true WHERE event_id = $1 AND user_id = $2`, [EV, MEM]);
 ok((await q(`SELECT version FROM live_pack_status WHERE event_id = $1 AND user_id = $2`, [EV, MEM])).rows[0].version === 'v3', 'a newer status still lands');
 
+// ---- bw_live_pack_can_hold asks only about the caller, or, for a band admin,
+// about a member (round 7): nobody else can probe who takes part.
+const canHold = (as_, ev, user) => as(as_, () => q(`SELECT public.bw_live_pack_can_hold($1, $2) r`, [ev, user]).then((r) => r.rows[0].r, (e) => e.message));
+ok((await canHold(MEM, EV, MEM)) === true, 'a member asks about themself');
+ok((await canHold(MEM, EV, ADMIN)) === false, 'a member cannot ask about someone else');
+ok((await canHold(OTHER, EV, MEM)) === false, 'a stranger cannot ask about a member');
+ok((await canHold(ADMIN, EV, MEM)) === true, 'a band admin asks about a member');
+ok((await q(`SELECT has_function_privilege('anon', 'public.bw_live_pack_can_hold(uuid, uuid)', 'EXECUTE') r`)).rows[0].r === false, 'anon cannot call it');
+
 ok((await q(`SELECT count(*)::int n FROM cron.job WHERE jobname LIKE 'bw-live-pack-%'`)).rows[0].n === 2, 'two cron jobs scheduled');
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

@@ -92,7 +92,7 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
       <p className="bw-body-sm text-muted-foreground px-1">
         {livePackOn
           ? t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')
-          : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until you delete it.')}
+          : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until 24 hours after its gig, or until you delete it.')}
       </p>
 
       {livePackOn && (
@@ -110,12 +110,15 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
       </div>
       )}
 
-      {livePackOn && (
+      {/* Switched off too: it still decides when kept setlists are brought up to date (the tidy-up). */}
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Wifi />
         </Tile>
-        <Text title={t('Wi-Fi only')} hint={t('Automatic downloads wait for Wi-Fi on this device')} />
+        <Text
+          title={t('Wi-Fi only')}
+          hint={livePackOn ? t('Automatic downloads wait for Wi-Fi on this device') : t('Updates to what is kept wait for Wi-Fi on this device')}
+        />
         <Toggle
           checked={choice.wifiOnly}
           disabled={!userId}
@@ -123,7 +126,6 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
           aria-label={t('Wi-Fi only')}
         />
       </div>
-      )}
 
       <div className={cn(CARD, 'p-4 flex flex-col gap-3')}>
         <div className="flex items-center gap-3">

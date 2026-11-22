@@ -6,7 +6,9 @@
 --    pack it holds. A member writes and reads their own rows; band admins
 --    read the rows of their band's events ("Offline: 4 of 5 members ready").
 --    Only active band members taking part in the event (not declined) can
---    write a row: deputies and declined members cannot. `partial`: the pack
+--    write a row: deputies and declined members cannot.
+--    bw_live_pack_can_hold(event, user) answers only about the caller, or,
+--    for an admin of the event's band, about a member (Remind). `partial`: the pack
 --    is held but not complete (live_pack off, or a part not loaded yet): not
 --    counted as ready, not "already on their device" for invites and Remind,
 --    still a holder for the silent refresh (so it is kept current while off).
@@ -80,6 +82,8 @@ REVOKE ALL ON TABLE public.live_pack_status FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.live_pack_status TO authenticated;
 
 -- An active member of the event's band, taking part in it (not declined).
+-- Only about the caller, or, for an admin of the event's band, about one of
+-- its members (Remind): nobody else can ask who takes part in an event.
 CREATE OR REPLACE FUNCTION public.bw_live_pack_can_hold(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -91,6 +95,7 @@ AS $$
     SELECT 1 FROM public.events e
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
+       AND (p_user_id = auth.uid() OR public.bw_is_band_admin(e.band_id))
        AND public.bw_is_band_member(e.band_id, p_user_id)
        AND public.bw_is_event_participant(e.id, p_user_id)
   );

@@ -61,17 +61,21 @@ const writeReported = (r: Reported) => {
 };
 
 /**
- * This device holds this version of the event's pack. Sent once per version.
- * `partial`: held, but not complete (live_pack off, or a part not loaded yet):
- * the admins don't count it as ready, the server still keeps it current.
+ * reportPackStatus: this device holds this version of the event's pack. Sent
+ * once per version. `partial`: held, but not complete (live_pack off, or a
+ * part not loaded yet): the admins don't count it as ready, the server still
+ * keeps it current.
  */
-/** One write at a time per event, in order (the server also drops an older one: 170). */
+/**
+ * One write at a time per event, in order: reports and the forgetting of a
+ * pack ("Delete all", expiry) queue behind each other, so a write already in
+ * flight can't bring a row back after it was deleted. The server also drops
+ * a write older than its row (170).
+ */
 const writing = new Map<string, Promise<void>>();
 
-export function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string; partial?: boolean }): Promise<void> {
-  if (!canReport() || !p.eventId || !p.userId || !p.version) return Promise.resolve();
-  const key = `${p.userId}:${p.eventId}`;
-  const next = (writing.get(key) ?? Promise.resolve()).then(() => writeStatus(key, p));
+function enqueue(key: string, job: () => Promise<void>): Promise<void> {
+  const next = (writing.get(key) ?? Promise.resolve()).then(job, job);
   writing.set(key, next);
   void next.finally(() => {
     if (writing.get(key) === next) writing.delete(key);
@@ -79,34 +83,102 @@ export function reportPackStatus(p: { eventId: string; userId: string; version: 
   return next;
 }
 
+export function reportPackStatus(p: { eventId: string; userId: string; version: string; savedAt: string; partial?: boolean }): Promise<void> {
+  if (!canReport() || !p.eventId || !p.userId || !p.version) return Promise.resolve();
+  const key = `${p.userId}:${p.eventId}`;
+  return enqueue(key, () => writeStatus(key, p));
+}
+
+/**
+ * The stamp the server orders a device's writes by (170 keeps the newest).
+ * The pack's save time, but never at or below the last one this device sent
+ * for the event: a clock set back must not make the next save look older.
+ */
+const STAMPS_KEY = 'bw-live-pack-stamps';
+const readStamps = (): Record<string, number> => {
+  try {
+    const v = JSON.parse(localStorage.getItem(STAMPS_KEY) || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+};
+const saveStamp = (key: string, ms: number | null) => {
+  try {
+    const all = readStamps();
+    if (ms === null) delete all[key];
+    else all[key] = ms;
+    localStorage.setItem(STAMPS_KEY, JSON.stringify(all));
+  } catch {
+    /* the server's re-read below covers it */
+  }
+};
+const msOf = (iso: unknown) => {
+  const ms = Date.parse(String(iso ?? ''));
+  return Number.isFinite(ms) ? ms : 0;
+};
+
 async function writeStatus(key: string, p: Parameters<typeof reportPackStatus>[0]): Promise<void> {
   const reported = readReported();
   const stamp = p.partial ? `${p.version}|partial` : p.version;
   if (reported[key] === stamp) return;
+  const row = (ms: number) => ({
+    event_id: p.eventId,
+    user_id: p.userId,
+    device_id: deviceId(),
+    version: p.version.slice(0, 64),
+    downloaded_at: new Date(ms).toISOString(),
+    partial: !!p.partial,
+  });
+  const send = (ms: number) =>
+    supabase.from('live_pack_status').upsert(row(ms), { onConflict: 'event_id,user_id,device_id' }).select('downloaded_at');
   try {
-    const { error } = await supabase.from('live_pack_status').upsert(
-      {
-        event_id: p.eventId,
-        user_id: p.userId,
-        device_id: deviceId(),
-        version: p.version.slice(0, 64),
-        downloaded_at: p.savedAt,
-        partial: !!p.partial,
-      },
-      { onConflict: 'event_id,user_id,device_id' },
-    );
-    if (!error) writeReported({ ...reported, [key]: stamp });
+    let ms = Math.max(msOf(p.savedAt), (readStamps()[key] ?? 0) + 1);
+    let { data, error } = await send(ms);
+    // No row back: the server kept a newer stamp (this device's clock, or a
+    // stamp list cleared with the storage). Sent once more, just above it.
+    if (!error && Array.isArray(data) && data.length === 0) {
+      const cur = await supabase
+        .from('live_pack_status')
+        .select('downloaded_at')
+        .eq('event_id', p.eventId)
+        .eq('user_id', p.userId)
+        .eq('device_id', deviceId())
+        .maybeSingle();
+      ms = Math.max(Date.now(), msOf((cur.data as { downloaded_at?: unknown } | null)?.downloaded_at) + 1, ms + 1);
+      ({ data, error } = await send(ms));
+      if (!error && Array.isArray(data) && data.length === 0) return;
+    }
+    if (!error) {
+      saveStamp(key, ms);
+      writeReported({ ...readReported(), [key]: stamp });
+    }
   } catch {
     /* next save tries again */
   }
 }
 
 /** The pack left this device (expired, band left, deleted in Settings). */
-export async function forgetPackStatus(userId: string, eventIds?: string[]): Promise<void> {
+export function forgetPackStatus(userId: string, eventIds?: string[]): Promise<void> {
+  const mine = (k: string) => k.startsWith(`${userId}:`) && (!eventIds || eventIds.includes(k.slice(userId.length + 1)));
+  // After every write already queued for these events (all of them for "Delete all").
+  const keys = new Set([...writing.keys()].filter(mine));
+  for (const id of eventIds ?? []) keys.add(`${userId}:${id}`);
+  const before = Promise.all([...keys].map((k) => (writing.get(k) ?? Promise.resolve()).catch(() => undefined)));
+  const done = before.then(() => forgetNow(userId, eventIds, mine));
+  // And the next writes for them wait for the delete.
+  for (const k of keys) {
+    writing.set(k, done);
+    void done.finally(() => {
+      if (writing.get(k) === done) writing.delete(k);
+    });
+  }
+  return done;
+}
+
+async function forgetNow(userId: string, eventIds: string[] | undefined, mine: (k: string) => boolean): Promise<void> {
   const reported = readReported();
-  const keys = Object.keys(reported).filter(
-    (k) => k.startsWith(`${userId}:`) && (!eventIds || eventIds.includes(k.slice(userId.length + 1))),
-  );
+  const keys = Object.keys(reported).filter(mine);
   if (keys.length) {
     for (const k of keys) delete reported[k];
     writeReported(reported);

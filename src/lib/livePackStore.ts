@@ -138,9 +138,19 @@ async function dropPack(key: string, pack: LivePack | null) {
   }
 }
 
-export async function savePack(pack: LivePack): Promise<void> {
+/**
+ * "Delete all" moves the person's generation on: a refresh or a save that
+ * started before it saves nothing afterwards (it would bring a pack back).
+ */
+const generations = new Map<string, number>();
+const generationOf = (userId: string) => generations.get(userId) ?? 0;
+
+/** Saves the pack; refused (false) when "Delete all" ran since `generation` was read. */
+export async function savePack(pack: LivePack, generation?: number): Promise<boolean> {
+  if (generation !== undefined && generation !== generationOf(pack.userId)) return false;
   await setOfflineItem(packKey(pack.userId, pack.bandId, pack.eventId), pack);
   changed(pack.eventId);
+  return true;
 }
 
 export async function deletePack(userId: string, bandId: string, eventId: string) {
@@ -150,6 +160,8 @@ export async function deletePack(userId: string, bandId: string, eventId: string
 
 /** Every pack of this user ("Delete all", Settings → Offline & live). */
 export async function deleteAllPacks(userId: string) {
+  generations.set(userId, generationOf(userId) + 1);
+  inflight.clear(); // a refresh still running ends without saving; the next one starts fresh
   for (const k of (await listOfflineKeys(`bw:${userId}:`)).filter(isPackKey)) await dropPack(k, await getOfflineItem<LivePack>(k));
 }
 
@@ -184,6 +196,7 @@ export async function savePackSongs(args: {
   /** live_pack off: the pack stays partial (see LivePack.partial). */
   partial?: boolean;
 }): Promise<LivePack | null> {
+  const generation = generationOf(args.userId);
   const event = occurrenceEvent(packEventFrom(args.event), args.occurrenceDate);
   if (!event.id || !event.band_id || !event.setlist_id || !event.event_date) return null;
   const prev = await readPack(args.userId, event.band_id, event.id);
@@ -205,7 +218,7 @@ export async function savePackSongs(args: {
     // Partial until a full refresh with the switch on completes it.
     ...(args.partial || prev?.partial ? { partial: true } : {}),
   };
-  await savePack(pack);
+  if (!(await savePack(pack, generation))) return null;
   if (pack.partial) reportPartial(pack);
   return pack;
 }
@@ -321,7 +334,11 @@ export function refreshPack(args: {
   return run;
 }
 
+/** Downloads of one of my files that fail while online before it counts as gone (a dead link). */
+const MAX_FILE_TRIES = 3;
+
 async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<LivePack | null> {
+  const generation = generationOf(args.userId);
   const event = occurrenceEvent(packEventFrom(args.event), args.occurrenceDate);
   if (!event.id || !event.band_id || !event.setlist_id || !event.event_date) return null;
   const prev = await readPack(args.userId, event.band_id, event.id);
@@ -351,16 +368,43 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   const filesWanted = !!args.withFiles && !args.partial && packFilesAvailable();
   // A file that should be on the device and isn't: the pack is not complete.
   let fileMissing = false;
+  // Online (my files were listed just now): a failed download counts as a try.
+  const counting = fetched !== null;
+  const added: LivePackFile[] = [];
   for (const p of Object.values(personal)) {
     for (const f of p.files) {
-      const had = prevFiles.get(f.id)?.local;
-      if (had) f.local = had;
-      if (!f.local && filesWanted) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
+      const before = prevFiles.get(f.id);
+      const same = !!before && before.ref === f.ref;
+      if (before?.local) f.local = before.local;
+      // A dead link given up on: not tried again until the file changes.
+      if (!f.local && same && before!.unavailable) {
+        f.tries = before!.tries;
+        f.unavailable = true;
+        continue;
+      }
+      const tries = same ? (before!.tries ?? 0) : 0;
+      if (tries) f.tries = tries;
+      if (!f.local && filesWanted) {
+        f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
+        if (f.local) {
+          added.push(f);
+          delete f.tries;
+        } else if (counting) {
+          f.tries = tries + 1;
+          if (f.tries >= MAX_FILE_TRIES) f.unavailable = true;
+        }
+      }
       if (f.local) kept.add(f.id);
       // On a phone, a file of mine not here (no download yes yet, or it
-      // failed) means not complete: never "Offline ready" without it.
-      else if (packFilesAvailable()) fileMissing = true;
+      // failed) means not complete: never "Offline ready" without it, unless
+      // its link is gone (then: ready, except that file).
+      else if (packFilesAvailable() && !f.unavailable) fileMissing = true;
     }
+  }
+  if (generation !== generationOf(args.userId)) {
+    // "Delete all" ran meanwhile: what this run downloaded goes too.
+    await removePackFiles(added);
+    return null;
   }
   await removePackFiles([...prevFiles.values()].filter((f) => !kept.has(f.id)));
 
@@ -415,7 +459,10 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     // there offline).
     ...(args.partial || fileMissing || (!complete && (!prev || prev.partial)) ? { partial: true } : {}),
   };
-  await savePack(pack);
+  if (!(await savePack(pack, generation))) {
+    await removePackFiles(added);
+    return null;
+  }
   // The full pack is on this device: tell the band's admins (native only).
   if (pack.partial) reportPartial(pack);
   else void reportPackStatus(pack);
@@ -498,6 +545,41 @@ export async function migrateLegacySetlists(
   }
 }
 
+/**
+ * Packs of events that are cancelled, deleted (or no longer visible to me)
+ * or that I declined go at once, not 24 h after the event. Only on a clear
+ * answer from the server: offline or an error removes nothing.
+ */
+export async function sweepGonePacks(userId: string): Promise<number> {
+  const packs = await listPacks(userId);
+  if (!packs.length) return 0;
+  const ids = [...new Set(packs.map((p) => p.eventId))];
+  let removed = 0;
+  try {
+    if (isDemoMode) return 0;
+    const [ev, mine] = await Promise.all([
+      supabase.from('events').select('id, status').in('id', ids),
+      supabase.from('event_members').select('event_id, status').eq('user_id', userId).in('event_id', ids),
+    ]);
+    const gone = new Set<string>();
+    if (ev && !ev.error && Array.isArray(ev.data)) {
+      const found = new Map((ev.data as Array<{ id: string; status?: string }>).map((r) => [r.id, r.status]));
+      for (const id of ids) if (!found.has(id) || found.get(id) === 'cancelled') gone.add(id);
+    }
+    if (mine && !mine.error && Array.isArray(mine.data)) {
+      for (const m of mine.data as Array<{ event_id: string; status?: string }>) if (m.status === 'declined') gone.add(m.event_id);
+    }
+    for (const p of packs) {
+      if (!gone.has(p.eventId)) continue;
+      await deletePack(userId, p.bandId, p.eventId);
+      removed++;
+    }
+  } catch {
+    /* no answer: nothing removed on a guess */
+  }
+  return removed;
+}
+
 /** Fresh enough: not downloaded again within this time unless something changed. */
 const FRESH_MS = 30 * 60 * 1000;
 
@@ -555,6 +637,8 @@ async function prefetchOnce({
   const rows = new Map(events.map((e) => [e.eventId, e.row]));
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
+  // Privacy, switch on or off: a cancelled or deleted event, or one I declined, loses its pack now.
+  if (online) await sweepGonePacks(userId);
   const choice = readChoice(userId);
   if (!downloads || !keepGoing()) {
     // Switched off: the packs already on this device are still brought up to
