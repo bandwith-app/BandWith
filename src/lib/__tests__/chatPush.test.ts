@@ -11,6 +11,7 @@ import {
   NEW_MESSAGE,
   storedAnnouncement,
   retypedNotices,
+  pushOnlyReread,
   chooseUnannounced,
   findAnnouncedCandidates,
   isUuid,
@@ -349,5 +350,29 @@ describe('round 9: the inbox type follows the stored message too', () => {
     const typeFor = () => 'chat_message' as const;
     expect(retypedNotices([{ user_id: 'ana', type: 'chat_message' }], [{ id: 'n1', user_id: 'ana' }], typeFor, () => 'Mia')).toEqual([]);
     expect(retypedNotices([], [], typeFor, () => 'Mia')).toEqual([]);
+  });
+});
+
+// Second review of #291 bd2c8866 (MINOR 2): create_in_app: false rang
+// verifyChatPush's read. After the claim the message is read again.
+describe('round 9: a push-only call rings the message as it is after its claim', () => {
+  it('an edit between verify and claim rings with the new text and its @mentions', () => {
+    const roster = [{ id: 'ana', name: 'Ana' }, { id: 'bo', name: 'Bo' }];
+    const verified = 'door code 4412 @Ana';
+    const after = pushOnlyReread({ id: 'm1', content: 'see you @Bo', deleted: false, edited_at: '2026-11-22T20:00:05Z' }, null);
+    expect(after).toEqual({ content: 'see you @Bo' });
+    const content = after && after !== 'gone' ? after.content : verified;
+    expect(chatPreviewIn(content, 'en')).toBe('see you @Bo');
+    expect(mentionsAmong(content, roster, ['ana', 'bo'], 'mia')).toEqual(['bo']);
+  });
+
+  it('deleted or gone since the check: nothing rings', () => {
+    expect(pushOnlyReread({ id: 'm1', content: 'door code 4412', deleted: true }, null)).toBe('gone');
+    expect(pushOnlyReread(null, null)).toBe('gone');
+  });
+
+  it('the read failed: the checked text (null), an edit to empty reads "New message"', () => {
+    expect(pushOnlyReread(null, { message: 'Failed to fetch' })).toBeNull();
+    expect(pushOnlyReread({ id: 'm1', content: null }, null)).toEqual({ content: '' });
   });
 });

@@ -75,6 +75,21 @@ export function storedAnnouncement(
 }
 
 /**
+ * A push-only call's message as read again after its claim (round 9, review
+ * MINOR-2; bw_claim_chat_push_only keeps its SETOF uuid result for older
+ * callers): its text now, edited or not; 'gone' when it was deleted or
+ * removed since (nothing rings); null when the read failed (ring the text
+ * verifyChatPush checked).
+ */
+export function pushOnlyReread(row: unknown, error: unknown): { content: string } | 'gone' | null {
+  if (error) return null;
+  if (!row || typeof row !== 'object') return 'gone';
+  const r = row as { content?: unknown; deleted?: unknown };
+  if (r.deleted === true) return 'gone';
+  return { content: typeof r.content === 'string' ? r.content : '' };
+}
+
+/**
  * Notices this call claimed whose type the stored message changes (round 9,
  * Claude delta review NIT-3): an edit between verifyChatPush and the write
  * added or removed an @mention. Each gets the type and title its push has

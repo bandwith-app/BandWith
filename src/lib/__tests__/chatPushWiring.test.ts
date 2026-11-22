@@ -212,8 +212,11 @@ describe('send-push wiring, round 9', () => {
     const reread = po.search(/from\('messages'\)\s*\.select\('\*'\)\s*\.eq\('id', current\.id\)\s*\.maybeSingle\(\)/);
     expect(claim).toBeGreaterThan(0);
     expect(reread).toBeGreaterThan(claim);
-    expect(po).toMatch(/announce\(\{ id: current\.id, content: String\(\(nowRow as \{ content\?: unknown \}\)\.content \?\? ''\) \}, targetUserIds\);/);
+    expect(po).toMatch(/const reread = pushOnlyReread\(nowRow, nowError\);/);
+    expect(po).toMatch(/if \(reread && reread !== 'gone'\) announce\(\{ id: current\.id, content: reread\.content \}, targetUserIds\);/);
     // Gone or deleted since: the claims go back and nobody rings.
-    expect(po).toMatch(/await settlePushOnly\(\[\], \[\.\.\.got\]\);\s*ringIds = \[\];/);
+    expect(po).toMatch(/if \(reread === 'gone'\) \{\s*await settlePushOnly\(\[\], \[\.\.\.got\]\);\s*ringIds = \[\];/);
+    // The text and @mentions come from that read before anything rings.
+    expect(po.indexOf('announce({ id: current.id, content: reread.content }')).toBeLessThan(po.indexOf('ringIds = targetUserIds.filter((uid) => got.has(uid));'));
   });
 });

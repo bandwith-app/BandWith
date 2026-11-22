@@ -23,6 +23,7 @@ import {
   senderDisplayName,
   storedAnnouncement,
   retypedNotices,
+  pushOnlyReread,
 } from '../_shared/chat-push.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
@@ -812,16 +813,15 @@ Deno.serve(async (req: Request) => {
               .select('*')
               .eq('id', current.id)
               .maybeSingle();
-            if (nowError) {
-              console.warn('Push-only re-read failed, ringing the checked text:', nowError.message);
-            } else if (!nowRow || (nowRow as { deleted?: unknown }).deleted === true) {
+            const reread = pushOnlyReread(nowRow, nowError);
+            if (nowError) console.warn('Push-only re-read failed, ringing the checked text:', nowError.message);
+            if (reread === 'gone') {
               await settlePushOnly([], [...got]);
               ringIds = [];
               done = true;
               break;
-            } else {
-              announce({ id: current.id, content: String((nowRow as { content?: unknown }).content ?? '') }, targetUserIds);
             }
+            if (reread && reread !== 'gone') announce({ id: current.id, content: reread.content }, targetUserIds);
             ringIds = targetUserIds.filter((uid) => got.has(uid));
             done = true;
             break;
