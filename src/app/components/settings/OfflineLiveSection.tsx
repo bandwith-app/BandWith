@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { RefusedLiveChanges } from './RefusedLiveChanges';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
@@ -88,6 +89,7 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
       <p className="bw-body-sm text-muted-foreground px-1">
         {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
       </p>
+      <RefusedLiveChanges userId={userId} />
 
       <div className={cn(CARD, ROW)}>
         <Tile>

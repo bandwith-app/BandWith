@@ -104,12 +104,23 @@ export function readRefusedLiveOps(userId: string | null | undefined): LiveOp[] 
     return [];
   }
 }
-function keepRefused(userId: string, op: LiveOp) {
+/** The refused list changed (Settings › Offline & live shows it). */
+export const LIVE_REFUSED_EVENT = 'bw:live-refused';
+function writeRefused(userId: string, ops: LiveOp[]) {
   try {
-    localStorage.setItem(`${REFUSED_PREFIX}${userId}`, JSON.stringify([...readRefusedLiveOps(userId), op].slice(-100)));
+    if (ops.length) localStorage.setItem(`${REFUSED_PREFIX}${userId}`, JSON.stringify(ops.slice(-100)));
+    else localStorage.removeItem(`${REFUSED_PREFIX}${userId}`);
   } catch {
     /* storage full or blocked */
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId } }));
+}
+function keepRefused(userId: string, op: LiveOp) {
+  writeRefused(userId, [...readRefusedLiveOps(userId), op]);
+}
+/** The person copied what they needed: this one goes (the `index`-th of the list). */
+export function removeRefusedLiveOp(userId: string, index: number) {
+  writeRefused(userId, readRefusedLiveOps(userId).filter((_, i) => i !== index));
 }
 
 export function queueLiveOp(userId: string, op: LiveOp) {

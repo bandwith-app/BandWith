@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures';
 import { DEMO_USER_ID } from '../fixtures';
 import { escapeRe } from '../support/flows';
-import { openHub } from '../support/hub';
+import { openHub, openHubPage } from '../support/hub';
 
 /**
  * Signing out with changes made on this phone that haven't reached the band
@@ -54,3 +54,50 @@ test('@smoke signing out with an unsent change asks first, and closing keeps me 
   // Not sent behind the sheet's back: the demo note doesn't exist (song e2e-song), so clean up.
   await app.page.evaluate((id) => localStorage.removeItem(`bw:live_outbox:${id}`), DEMO_USER_ID);
 });
+
+/**
+ * Changes the band refused (the note was gone, the setlist changed
+ * meanwhile) are kept on the phone and shown in Settings › Offline & live:
+ * copy what you need, then remove them. Never lost unseen.
+ */
+test('@smoke refused changes show in Offline & live, with Copy and Remove', async ({ app }) => {
+  await app.page.evaluate((id) => {
+    localStorage.setItem(
+      `bw:live_refused:${id}`,
+      JSON.stringify([
+        { kind: 'note', id: 'e2e-n1', songId: 'e2e-song', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge' },
+        { kind: 'suggestion', id: 'e2e-g1', row: { band_id: 'b', song_id: 'e2e-song', kind: 'note', proposed: { note: 'Slower intro on Empire State' } } },
+      ]),
+    );
+  }, DEMO_USER_ID);
+  await openHubPage(app, 'Settings & account');
+  const section = app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Offline & live'))}`) }).filter({ visible: true }).first();
+  await section.scrollIntoViewIfNeeded();
+  await section.click();
+  await app.settle();
+
+  const list = app.page.getByRole('region', { name: app.t('Not sent'), exact: true }).filter({ visible: true }).first();
+  await list.scrollIntoViewIfNeeded();
+  await expect(list.getByText('Watch the drummer before the bridge')).toBeVisible();
+  await expect(list.getByText('Slower intro on Empire State')).toBeVisible();
+  const viewport = app.page.viewportSize()!;
+  const copy = list.getByRole('button', { name: app.t('Copy change: {change}', { change: 'Watch the drummer before the bridge' }), exact: true });
+  const remove = list.getByRole('button', { name: app.t('Remove change: {change}', { change: 'Watch the drummer before the bridge' }), exact: true });
+  for (const b of [copy, remove]) {
+    const box = (await b.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+  }
+  await app.check('refused changes in Offline & live');
+
+  // Copied, or (clipboard blocked here) said so: never silent.
+  await copy.click();
+  await expect(
+    list.getByText(app.t('Copied'), { exact: true }).or(list.getByText(app.t('Couldn’t copy this change. Select the text and copy it yourself.'))).first(),
+  ).toBeVisible();
+  await remove.click();
+  await expect(list.getByText('Watch the drummer before the bridge')).toHaveCount(0);
+  await list.getByRole('button', { name: app.t('Remove change: {change}', { change: 'Slower intro on Empire State' }), exact: true }).click();
+  await expect(app.page.getByRole('region', { name: app.t('Not sent'), exact: true })).toHaveCount(0);
+});
+
