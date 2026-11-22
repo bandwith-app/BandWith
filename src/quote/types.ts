@@ -19,6 +19,14 @@ export interface ClientQuoteOption {
 
 export interface ClientQuoteSnapshot {
   v: 1;
+  /** Round 4 (183): the same in every language; the server keeps the version when only the language changed. */
+  contentKey?: string;
+  /**
+   * Round 6: who this summary is for (the quote's client when it was built).
+   * The server checks it against the quote at publish and never stores it
+   * (the page never gets it).
+   */
+  client?: { name: string; email: string };
   ref: string;
   title: string;
   eventType?: string | null;
@@ -137,6 +145,10 @@ export interface QuoteLinkView {
   balance_paid_at?: string | null;
   /** 168: the band recorded the deposit as received (accepted quotes only). */
   deposit_paid?: boolean;
+  /** 183: the amount the band recorded as received (absent before 183 or when not recorded). */
+  deposit_paid_amount?: number | null;
+  /** 183: its currency (the gig's), when it differs from the quote's it is shown in it. */
+  deposit_paid_currency?: string | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
 }

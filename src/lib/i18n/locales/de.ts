@@ -3752,6 +3752,12 @@ const dict: Dictionary = {
   "New link created": "Neuer Link erstellt",
   "Link turned off": "Link deaktiviert",
   "Your reply was not sent. Try again.": "Deine Antwort wurde nicht gesendet. Versuche es erneut.",
+  "The recipient changed: this draft was for the previous client.": "Der Empfänger hat sich geändert: Dieser Entwurf war für den vorherigen Kunden.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Dieses Gespräch ist jetzt mit {name}. Prüfe deine Antwort, bevor du sie sendest.",
+  "Write to {name}": "An {name} schreiben",
+  "Could not copy the text.": "Der Text konnte nicht kopiert werden.",
+  "From here: {name}": "Ab hier: {name}",
+  "You’re writing to {name}": "Du schreibst an {name}",
   "Reply sent. The client also got it by email.": "Antwort gesendet. Der Kunde hat sie auch per E-Mail erhalten.",
   "Reply sent. It shows on the client’s page.": "Antwort gesendet. Sie erscheint auf der Kundenseite.",
   "Could not create a new link. Try again.": "Es konnte kein neuer Link erstellt werden. Versuche es erneut.",
@@ -3887,6 +3893,9 @@ const dict: Dictionary = {
   "Could not confirm the quote. Check your connection and try again.": "Das Angebot konnte nicht bestätigt werden. Prüf deine Verbindung und versuch es noch einmal.",
   "Could not turn it back into a quote. Check your connection and try again.": "Es konnte nicht wieder zum Angebot werden. Prüf deine Verbindung und versuch es noch einmal.",
   "Quote not saved. Check your connection and try again.": "Angebot nicht gespeichert. Prüf deine Verbindung und versuch es noch einmal.",
+  "This quote has been accepted: to send it to someone else, duplicate it.": "Dieses Angebot wurde angenommen: Um es jemand anderem zu schicken, dupliziere es.",
+  "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Für dieses Angebot sind Zahlungen in {currency} erfasst: Die Währung lässt sich nicht ändern.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Dieses Angebot wurde angenommen: Du kannst die Kundendaten korrigieren (ein Tippfehler im Namen, die Telefonnummer anders geschrieben, ein Tippfehler in der E-Mail, bis du den Restbetrag anforderst), aber um es jemand anderem zu schicken, dupliziere es.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Erlaube Bluetooth, damit die Band dir folgt, wenn das Internet ausfällt.",
@@ -4768,6 +4777,13 @@ const dict: Dictionary = {
   "Repeating {section}": "{section} wiederholt sich",
   "Repeating this section": "Dieser Teil wiederholt sich",
   "Until the leader lets go": "Bis der Leader loslässt",
+  "New client, new link: the old one no longer works. Send the quote to the new client.": "Neuer Kunde, neuer Link: Der alte funktioniert nicht mehr. Sende das Angebot an den neuen Kunden.",
+  "New link for the new client": "Neuer Link für den neuen Kunden",
+  "Previous client": "Vorheriger Kunde",
+  "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Dieses Angebot hat sich inzwischen geändert (anderer Kunde oder anderer Admin). Schließe das Angebot und öffne es erneut.",
+  "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Dieses Angebot geht jetzt an {name}. Es wurde nichts gesendet: Schließe dies und öffne das Angebot erneut.",
+  "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Das Angebot hat sich inzwischen geändert, daher wurde dieser Versand nicht erfasst. Schließe das Angebot und öffne es erneut.",
+  "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Der Kundenlink hat sich inzwischen geändert. Deine Antwort wurde nicht gesendet: Prüfe sie und sende sie erneut.",
 };
 
 export default dict;

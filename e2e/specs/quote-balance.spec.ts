@@ -197,6 +197,9 @@ test.describe('The client page and the deposit (168)', () => {
     await app.page.goto('/quote.html?t=demo&state=deposit_paid&l=it');
     const main = app.page.locator('main');
     await expect(main.getByRole('heading', { name: 'Acconto ricevuto. Grazie!' })).toBeVisible();
+    // 183: the amount the band recorded (1,500 on a 1,720.20 deposit), not the one asked.
+    await expect(main.getByTestId('deposit-paid')).toContainText(/1\.?500\s?€/);
+    await expect(main.getByTestId('deposit-paid')).not.toContainText('1720');
     await expect(main.getByTestId('deposit-pay')).toHaveCount(0);
   });
 });

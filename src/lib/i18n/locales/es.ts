@@ -3752,6 +3752,12 @@ const dict: Dictionary = {
   "New link created": "Nuevo enlace creado",
   "Link turned off": "Enlace desactivado",
   "Your reply was not sent. Try again.": "Tu respuesta no se envió. Vuelve a intentarlo.",
+  "The recipient changed: this draft was for the previous client.": "El destinatario ha cambiado: este borrador era para el cliente anterior.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Esta conversación ahora es con {name}. Revisa tu respuesta antes de enviarla.",
+  "Write to {name}": "Escribir a {name}",
+  "Could not copy the text.": "No se pudo copiar el texto.",
+  "From here: {name}": "Desde aquí: {name}",
+  "You’re writing to {name}": "Le escribes a {name}",
   "Reply sent. The client also got it by email.": "Respuesta enviada. El cliente también la recibió por email.",
   "Reply sent. It shows on the client’s page.": "Respuesta enviada. Aparece en la página del cliente.",
   "Could not create a new link. Try again.": "No se pudo crear un enlace nuevo. Vuelve a intentarlo.",
@@ -3887,6 +3893,9 @@ const dict: Dictionary = {
   "Could not confirm the quote. Check your connection and try again.": "No se ha podido confirmar el presupuesto. Revisa tu conexión e inténtalo de nuevo.",
   "Could not turn it back into a quote. Check your connection and try again.": "No se ha podido volver a convertir en presupuesto. Revisa tu conexión e inténtalo de nuevo.",
   "Quote not saved. Check your connection and try again.": "Presupuesto no guardado. Revisa tu conexión e inténtalo de nuevo.",
+  "This quote has been accepted: to send it to someone else, duplicate it.": "Este presupuesto ya fue aceptado: para enviarlo a otra persona, duplícalo.",
+  "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Este presupuesto tiene pagos registrados en {currency}: no se puede cambiar su moneda.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Este presupuesto ya fue aceptado: puedes corregir los datos del cliente (una errata en el nombre, el teléfono escrito de otra forma, una errata en el email hasta que pidas el saldo), pero para enviarlo a otra persona, duplícalo.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Permite el Bluetooth para que la banda te siga cuando se caiga internet.",
@@ -4768,6 +4777,13 @@ const dict: Dictionary = {
   "Repeating {section}": "Se repite {section}",
   "Repeating this section": "Se repite esta sección",
   "Until the leader lets go": "Hasta que el líder suelte",
+  "New client, new link: the old one no longer works. Send the quote to the new client.": "Nuevo cliente, nuevo enlace: el anterior ya no funciona. Envía el presupuesto al nuevo cliente.",
+  "New link for the new client": "Nuevo enlace para el nuevo cliente",
+  "Previous client": "Cliente anterior",
+  "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Mientras tanto, este presupuesto cambió (otro cliente u otro administrador). Cierra y vuelve a abrir el presupuesto.",
+  "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Este presupuesto ahora va a {name}. No se envió nada: ciérralo y vuelve a abrir el presupuesto.",
+  "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Mientras tanto, el presupuesto cambió, así que este envío no se registró. Cierra y vuelve a abrir el presupuesto.",
+  "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "El enlace del cliente cambió mientras tanto. Tu respuesta no se envió: revísala y vuelve a enviarla.",
 };
 
 export default dict;

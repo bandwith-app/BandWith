@@ -3752,6 +3752,12 @@ const dict: Dictionary = {
   "New link created": "Nouveau lien créé",
   "Link turned off": "Lien désactivé",
   "Your reply was not sent. Try again.": "Ta réponse n’a pas été envoyée. Réessaie.",
+  "The recipient changed: this draft was for the previous client.": "Le destinataire a changé : ce brouillon était pour le client précédent.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Cette conversation est maintenant avec {name}. Vérifie ta réponse avant de l’envoyer.",
+  "Write to {name}": "Écrire à {name}",
+  "Could not copy the text.": "Impossible de copier le texte.",
+  "From here: {name}": "À partir d’ici : {name}",
+  "You’re writing to {name}": "Tu écris à {name}",
   "Reply sent. The client also got it by email.": "Réponse envoyée. Le client l’a aussi reçue par e-mail.",
   "Reply sent. It shows on the client’s page.": "Réponse envoyée. Elle apparaît sur la page du client.",
   "Could not create a new link. Try again.": "Impossible de créer un nouveau lien. Réessaie.",
@@ -3887,6 +3893,9 @@ const dict: Dictionary = {
   "Could not confirm the quote. Check your connection and try again.": "Impossible de confirmer le devis. Vérifie ta connexion et réessaie.",
   "Could not turn it back into a quote. Check your connection and try again.": "Impossible de le repasser en devis. Vérifie ta connexion et réessaie.",
   "Quote not saved. Check your connection and try again.": "Devis non enregistré. Vérifie ta connexion et réessaie.",
+  "This quote has been accepted: to send it to someone else, duplicate it.": "Ce devis a été accepté : pour l’envoyer à quelqu’un d’autre, duplique-le.",
+  "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Ce devis a des paiements enregistrés en {currency} : sa devise ne peut pas être changée.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Ce devis a été accepté : tu peux corriger les coordonnées du client (une faute dans le nom, le téléphone écrit autrement, une faute dans l’e-mail tant que tu n’as pas demandé le solde), mais pour l’envoyer à quelqu’un d’autre, duplique-le.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Autorise le Bluetooth pour que le groupe te suive quand internet coupe.",
@@ -4768,6 +4777,13 @@ const dict: Dictionary = {
   "Repeating {section}": "{section} se répète",
   "Repeating this section": "Cette section se répète",
   "Until the leader lets go": "Jusqu’à ce que le leader relâche",
+  "New client, new link: the old one no longer works. Send the quote to the new client.": "Nouveau client, nouveau lien : l’ancien ne fonctionne plus. Envoie le devis au nouveau client.",
+  "New link for the new client": "Nouveau lien pour le nouveau client",
+  "Previous client": "Client précédent",
+  "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Entre-temps, ce devis a changé (un autre client ou un autre admin). Ferme et rouvre le devis.",
+  "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Ce devis va maintenant à {name}. Rien n’a été envoyé : ferme ceci et rouvre le devis.",
+  "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Entre-temps, le devis a changé : cet envoi n’a donc pas été enregistré. Ferme et rouvre le devis.",
+  "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Le lien du client a changé entre-temps. Ta réponse n’a pas été envoyée : vérifie-la et renvoie-la.",
 };
 
 export default dict;

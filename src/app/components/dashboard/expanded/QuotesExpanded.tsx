@@ -38,6 +38,7 @@ import {
   acceptQuote as acceptQuoteDB,
   declineQuote as declineQuoteDB,
   appQuoteToDbRecord,
+  quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
   isUuid,
@@ -50,6 +51,7 @@ import { getActiveSymbol as sym, useCurrency, currencySymbol } from '@/lib/curre
 import { formatQuoteMoney } from '@/lib/services/quoteMath';
 import { useT, intlLocale, localDecimal } from '@/lib/i18n';
 import { shownQuoteStatus } from '@/lib/quoteExpiry';
+import { quoteErrorText } from '@/lib/quoteSaveError';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
@@ -142,7 +144,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   // Translated text only: the server's own message goes to the console.
   const errorText = (err: unknown, fallback: string) => {
     console.warn(`[quotes] ${fallback}:`, err);
-    return `${fallback}. ${t('Check your connection and try again.')}`;
+    return quoteErrorText(err, fallback, t);
   };
   // A quote's own currency, cents only when it has them.
   const quoteMoney = (q: Pick<Quote, 'total' | 'currency'>) =>
@@ -198,7 +200,12 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         const optimistic = { ...existing, ...quoteData, quoteNumber: existing.quoteNumber } as MockQuote;
         setQuotes(prev => prev.map(q => (q.id === existing.id ? optimistic : q)));
 
-        const { band_id: _bandId, ...updates } = record;
+        // Only what changed, never the status the wizard was opened with (183).
+        // Round 5: the quote as the wizard opened it, never the list as it
+        // reloaded since: its read time (updated_at) is what the server's
+        // stale-edit check compares with a change of client.
+        const baseline = editingQuote && editingQuote.id === existing.id ? editingQuote : existing;
+        const updates = quoteUpdateRecord(quoteData, currentBandId, baseline);
         const { data, error } = await updateQuoteDB(existing.id, updates);
         if (error || !data) {
           setQuotes(previous);
@@ -214,8 +221,9 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         onQuotesChanged?.();
         if (opts?.share) setSharingQuote(saved);
         // Already sent with the client link: the page shows the new version.
-        republishClientQuote(saved, currentBandId, selectedBand?.name || 'Band').then(({ data: version, error: pubError }) => {
+        republishClientQuote(saved, currentBandId, selectedBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {
           if (pubError) notify(t('The client page could not be updated. Try again.'), 'error');
+          else if (newRecipient) notify(t('New client, new link: the old one no longer works. Send the quote to the new client.'), 'success');
           else if (version && version > 1) notify(t('The client’s page now shows version {n}.', { n: version }), 'success');
         });
         return;

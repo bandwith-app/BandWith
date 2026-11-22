@@ -22,8 +22,9 @@ export interface Quote {
   
   // Client Info
   client_name: string;
-  client_email?: string;
-  client_phone?: string;
+  /** null clears it (183: an UPDATE drops undefined, so the old client's address stayed). */
+  client_email?: string | null;
+  client_phone?: string | null;
   client_company?: string;
   
   // Event Info
@@ -121,6 +122,8 @@ export interface Quote {
   created_by?: string;
   created_at: string;
   updated_at: string;
+  /** Write-only (183 round 4): when the editing screen read the quote; the server clears it. */
+  edit_base_at?: string | null;
 }
 
 export interface QuoteMusician {
@@ -312,12 +315,15 @@ export const updateQuote = async (
   updates: Partial<Quote>
 ): Promise<{ data: Quote | null; error: Error | null }> => {
   try {
-    const { data, error } = await supabase
-      .from('quotes')
-      .update(updates)
-      .eq('id', quoteId)
-      .select()
-      .single();
+    const run = (u: Partial<Quote>) => supabase.from('quotes').update(u).eq('id', quoteId).select().single();
+    let { data, error } = await run(updates);
+    // A database before 183 has no edit_base_at: the same edit without it.
+    // Round 6: and with the totals the app worked out (that database has no
+    // bw_quote_totals trigger, so it would keep the old ones).
+    if (error && updates.edit_base_at && /edit_base_at/.test(error.message || '')) {
+      const { edit_base_at: _base, ...rest } = updates;
+      ({ data, error } = await run({ ...rest, ...(compatTotals.get(updates) || {}) }));
+    }
 
     if (error) throw error;
 
@@ -800,6 +806,8 @@ export const isUuid = (value: unknown): value is string => typeof value === 'str
 const DB_STATUSES: QuoteStatus[] = ['draft', 'sent', 'viewed', 'accepted', 'declined', 'expired', 'negotiating', 'archived'];
 
 const textOrUndefined = (v?: string | null): string | undefined => (v && String(v).trim() ? String(v) : undefined);
+/** A field the wizard can clear: null, so an UPDATE clears it too (supabase-js drops undefined). */
+const textOrNull = (v?: string | null): string | null => textOrUndefined(v) ?? null;
 const intOrUndefined = (v?: number | null): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined;
 const num = (v?: number | null): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -830,8 +838,9 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     band_id: bandId,
     status: dbStatus,
     client_name: textOrUndefined(q.clientName) || 'Client',
-    client_email: textOrUndefined(q.clientEmail),
-    client_phone: textOrUndefined(q.clientPhone),
+    // Who the quote goes to: a cleared contact must reach the database (183).
+    client_email: textOrNull(q.clientEmail),
+    client_phone: textOrNull(q.clientPhone),
     client_company: textOrUndefined(q.clientCompany),
     event_name: textOrUndefined(q.eventName || q.eventTitle),
     event_type: textOrUndefined(q.eventType),
@@ -895,7 +904,8 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     cancellation_policy: textOrUndefined(q.cancellationPolicy),
     cancellation_terms: textOrUndefined(q.cancellationTerms),
     internal_notes: textOrUndefined(q.internalNotes),
-    client_notes: textOrUndefined(q.clientNotes || q.notes),
+    // Round 5: a cleared note is cleared (never the old `notes` copy back).
+    client_notes: textOrUndefined('clientNotes' in q ? q.clientNotes : q.notes),
     special_terms: textOrUndefined(q.specialTerms),
     deposit_amount: q.depositRequired === false
       ? 0
@@ -905,6 +915,71 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     sent_at: dbStatus === 'sent' ? q.sentAt || new Date().toISOString() : undefined,
   };
 };
+
+/**
+ * The columns an edit of an existing quote writes (round 4): only those
+ * whose value changed from `original`, the quote as the screen read it.
+ * A field the user cleared goes out as null (undefined would be left out of
+ * the UPDATE by supabase-js, and the old value, maybe the previous client's
+ * company or notes, would stay); a field the edit does not carry (not in
+ * `q`) keeps what the quote has. Never the band, the status or the send
+ * time: the wizard only echoes the status it was opened with, and writing
+ * it back could restore the old client's status after the server moved the
+ * quote on (183: new recipient). `edit_base_at`: when the screen read the
+ * quote, so the server refuses any edit made on a copy older than a change
+ * of client (183; Codex 11-22: notes or fees alone too, not only a contact).
+ */
+export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original: Partial<AppQuote>): Partial<Quote> => {
+  const strip = (r: Partial<Quote>) => {
+    const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = r;
+    return rest as Record<string, unknown>;
+  };
+  const before = strip(appQuoteToDbRecord(original, bandId));
+  // Round 5: a key the edit has is one it carries, also when its value is
+  // undefined (the wizard sends a cleared phone, company or note that way):
+  // cleared, it goes out as null. Only a key it doesn't have keeps the
+  // quote's value.
+  const after = strip(appQuoteToDbRecord({ ...original, ...q }, bandId));
+  // Without the time the screen read the quote (never for a quote loaded
+  // from the database) the whole form goes out, as before round 4: the
+  // server then treats it as a full save.
+  const full = !original.updatedAt;
+  const out: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    // Round 5: the totals are the server's (183, from the stored parts in
+    // the same UPDATE), so two admins' fee edits both count.
+    if (!full && SERVER_TOTALS.has(key)) continue;
+    if (!full && JSON.stringify(after[key] ?? null) === JSON.stringify(before[key] ?? null)) continue;
+    if (after[key] === undefined && KEEP_WHEN_UNSET.has(key)) continue;
+    out[key] = after[key] === undefined ? null : after[key];
+  }
+  if (!full) {
+    out.edit_base_at = original.updatedAt;
+    // Round 6: kept aside for a database before 183 (updateQuote's retry).
+    const totals: Record<string, unknown> = {};
+    for (const key of SERVER_TOTALS) {
+      if (key in after && JSON.stringify(after[key] ?? null) !== JSON.stringify(before[key] ?? null)) totals[key] = after[key] ?? null;
+    }
+    if (Object.keys(totals).length > 0) compatTotals.set(out, totals);
+  }
+  return out as Partial<Quote>;
+};
+
+/**
+ * Round 6: the totals an edit would have sent before 183 (worked out by the
+ * app), by the edit they belong to. Sent only when the database has no
+ * edit_base_at (no server totals): never to a database that computes them.
+ */
+const compatTotals = new WeakMap<object, Record<string, unknown>>();
+
+/** Computed by the database on an edit (183 round 5): never sent with one. */
+const SERVER_TOTALS = new Set(['subtotal', 'discount_amount', 'net_amount', 'vat_amount', 'total', 'deposit_amount']);
+
+/** Flags with a meaning of their own when unset (the column default), never cleared to null by an edit. */
+const KEEP_WHEN_UNSET = new Set([
+  'travel_included', 'accommodation_needed', 'meals_included', 'sound_included', 'lights_included',
+  'backline_included', 'deposit_required',
+]);
 
 /** Maps the wizard's musicians to `quote_musicians` rows (user_id only when it is a real profile id). */
 export const appMusiciansToDb = (
@@ -932,7 +1007,7 @@ export const dbQuoteToAppQuote = (q: Quote & { musicians?: QuoteMusician[] }): A
   status: (q.status?.toUpperCase() || 'DRAFT') as AppQuoteStatus,
   clientName: q.client_name,
   clientEmail: q.client_email || '',
-  clientPhone: q.client_phone,
+  clientPhone: q.client_phone ?? undefined,
   clientCompany: q.client_company,
   eventName: q.event_name || '',
   eventType: (q.event_type || 'other') as AppQuote['eventType'],

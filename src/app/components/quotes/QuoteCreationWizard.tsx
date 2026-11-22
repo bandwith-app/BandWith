@@ -487,6 +487,13 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   );
 
   const isEditing = Boolean(initialData?.id || initialData?.quoteNumber);
+  // 183 round 4: an accepted quote keeps its client (the server refuses another one).
+  const acceptedNote =
+    isEditing && String(initialData?.status || '').toUpperCase() === 'ACCEPTED' ? (
+      <p className="bw-body-sm text-muted-foreground" data-testid="quote-accepted-client-note">
+        {t('This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.')}
+      </p>
+    ) : null;
   // Ask the lineup for availability now (RSVP), before the client accepts.
 
   // Accordion state for Edit mode (all 5 sections)
@@ -1857,6 +1864,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   // ── STEP 01: EVENT, LINEUP & EXTRA SETS ─────────────────────
   const renderStep1 = () => (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300 pb-2">
+      {acceptedNote}
       <PillField
         label={t('Client name')}
         icon={<User className="w-5 h-5" />}
@@ -2810,6 +2818,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
               </Chip>
             ))}
           </div>
+          {acceptedNote}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <PillField label={t('Client name')} icon={<User className="w-5 h-5" />} value={clientName} onChange={e => setClientName(e.target.value)} />
             <PillField label={t('Event title')} value={eventName} onChange={e => setEventName(e.target.value)} placeholder={getEffectiveTitle()} />
@@ -3255,6 +3264,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
     const clientCard = (
       <ComposerCard n={1} title={t('Client & event')} done={doneClient}>
+        {acceptedNote}
         <div className="flex flex-wrap gap-2" role="group" aria-label={t('Event type')}>
           {EVENT_TYPE_OPTIONS.map(opt => (
             <Chip key={opt.value} size="md" selected={eventType === opt.value} title={opt.subtitle} onClick={() => setEventType(opt.value)}>

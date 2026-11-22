@@ -22,6 +22,8 @@ import type { Quote } from '@/app/data/quotes';
 import {
   getQuoteLinkState,
   quoteLinkUrl,
+  isLinkChangedError,
+  recipientChangedAt,
   replyToQuoteClient,
   revokeQuoteLink,
   rotateQuoteLink,
@@ -77,6 +79,14 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
   const [activity, setActivity] = useState<QuoteActivity[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState('');
+  // Round 4: the link (client) a draft reply was started on. It is sent on
+  // that link only: if the quote goes to another client meanwhile, the
+  // draft is never sent to them.
+  const [draftLink, setDraftLink] = useState<{ id?: string; token: string } | null>(null);
+  // Round 5: who the draft was written to (the loaded conversation's
+  // client). The same link written to someone else since (a corrected
+  // name or email): a banner, and no send until the admin confirms.
+  const [draftTo, setDraftTo] = useState<string | null>(null);
   const [replying, setReplying] = useState(false);
   const [confirm, setConfirm] = useState<'rotate' | 'revoke' | null>(null);
   const [copied, setCopied] = useState(false);
@@ -116,6 +126,10 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     new Date(iso).toLocaleString(intlLocale('en-GB'), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
   const messages = useMemo(() => activity.filter((a) => a.kind === 'client_message' || a.kind === 'band_reply'), [activity]);
+  const changedAt = useMemo(() => recipientChangedAt(activity), [activity]);
+  // 183: written on another link (the quote's previous client).
+  const fromPrevious = (m: QuoteActivity) => (m.link_id && link?.id ? m.link_id !== link.id : !!changedAt && m.created_at < changedAt);
+  const hadPrevious = !!changedAt || messages.some(fromPrevious);
   const timeline = useMemo(() => activity.filter((a) => a.kind !== 'client_message' && a.kind !== 'band_reply').slice().reverse(), [activity]);
 
   // An edit the client hasn't been told about: the last "updated" after the last send.
@@ -160,7 +174,8 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
       case 'declined':
         return a.body ? t('Declined: “{reason}”', { reason: a.body }) : t('Declined');
       case 'link_rotated':
-        return t('New link created');
+        // 183: the client changed, the old client's link stopped working.
+        return a.body === 'recipient_changed' ? t('New link for the new client') : t('New link created');
       case 'link_revoked':
         return t('Link turned off');
       case 'balance_requested':
@@ -186,19 +201,96 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     }
   };
 
+  // Round 5: the client of the loaded conversation (the link's recipient
+  // as published), else the quote's contact (before 183's first publish).
+  const recipientName = (link?.recipient_name ?? '').trim() || quote.clientName || t('Client');
+  const recipientEmail = link && link.recipient_email !== undefined ? link.recipient_email || '' : quote.clientEmail || '';
+  const recipientKey = `${recipientName.toLowerCase()}|${recipientEmail.toLowerCase()}`;
+  const editReply = (value: string) => {
+    setReply(value);
+    if (!value.trim()) {
+      setDraftLink(null);
+      setDraftTo(null);
+    } else {
+      if (!draftLink && link) setDraftLink({ id: link.id, token: link.token });
+      if (draftTo === null) setDraftTo(recipientKey);
+    }
+  };
+  // Round 4: the quote went to another client since this draft was started.
+  const draftOrphaned =
+    !!reply.trim() && !!draftLink && (!link || (draftLink.id && link.id ? draftLink.id !== link.id : draftLink.token !== link.token));
+  // Round 5: same link, another recipient than when the draft started.
+  const draftReaddressed = !!reply.trim() && !draftOrphaned && draftTo !== null && draftTo !== recipientKey;
+  const discardDraft = () => {
+    setReply('');
+    setDraftLink(null);
+    setDraftTo(null);
+  };
+  const copyDraft = () => {
+    try {
+      navigator.clipboard.writeText(reply).then(
+        () => notify?.(t('Copied')),
+        () => notify?.(t('Could not copy the text.'), 'error'),
+      );
+    } catch {
+      notify?.(t('Could not copy the text.'), 'error');
+    }
+  };
+
+  // Shown wherever the panel is (the new client's link starts as a draft):
+  // the text is the admin's, never sent to the new client.
+  const orphanNotice = draftOrphaned ? (
+    <div role="alert" className="flex flex-col gap-2 rounded-[20px] border border-border p-4">
+      <p className="bw-body-sm">{t('The recipient changed: this draft was for the previous client.')}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <PillButton size="md" variant="outline" icon={<Copy className="w-4 h-4" />} onClick={copyDraft}>
+          {t('Copy')}
+        </PillButton>
+        <PillButton size="md" variant="outline" onClick={discardDraft}>
+          {t('Discard')}
+        </PillButton>
+      </div>
+    </div>
+  ) : null;
+
+  const readdressNotice = draftReaddressed ? (
+    <div role="alert" data-testid="quote-reply-readdressed" className="flex flex-col gap-2 rounded-[20px] border border-border p-4">
+      <p className="bw-body-sm">{t('This conversation is now with {name}. Check your reply before you send it.', { name: [recipientName, recipientEmail].filter(Boolean).join(' · ') })}</p>
+      <PillButton size="md" variant="outline" onClick={() => setDraftTo(recipientKey)}>
+        {t('Write to {name}', { name: recipientName })}
+      </PillButton>
+    </div>
+  ) : null;
+
   const sendReply = async () => {
     const body = reply.trim();
-    if (!body || replying) return;
+    if (!body || replying || draftOrphaned || draftReaddressed) return;
+    // Round 6: the same link renewed since the draft started ("New link",
+    // same client): the draft follows it to the new token. Another link (a
+    // new client) never gets it: draftOrphaned above.
+    const on = draftLink && link && draftLink.id && draftLink.id === link.id
+      ? { id: link.id, token: link.token }
+      : draftLink ?? (link ? { id: link.id, token: link.token } : null);
     setReplying(true);
-    const { error } = await replyToQuoteClient(quote.id, body);
+    // 183: on the link the draft was written on; if the quote went to
+    // another client since, nothing is written (it never reaches them).
+    const { error } = await replyToQuoteClient(quote.id, body, on?.token);
     if (error) {
       setReplying(false);
-      notify?.(t('Your reply was not sent. Try again.'), 'error');
+      if (isLinkChangedError(error)) {
+        // The draft stays; the panel reloads the link: renewed, it follows
+        // it; another client's, the draft shows Copy / Discard.
+        notify?.(t('The client link changed meanwhile. Your reply was not sent: check it and send it again.'), 'error');
+        void load();
+      } else notify?.(t('Your reply was not sent. Try again.'), 'error');
       return;
     }
     setReply('');
+    setDraftLink(null);
+    setDraftTo(null);
     let emailed = false;
-    if (quote.clientEmail) emailed = (await sendQuoteEmail(quote.id, 'reply')).ok;
+    // Round 4: the email of that same link (the server sends nothing if it was replaced).
+    if (recipientEmail) emailed = (await sendQuoteEmail(quote.id, 'reply', on?.id)).ok;
     setReplying(false);
     notify?.(emailed ? t('Reply sent. The client also got it by email.') : t('Reply sent. It shows on the client’s page.'));
     void load();
@@ -279,6 +371,7 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     return (
       <section className="flex flex-col gap-4">
         <h2 className="bw-h1">{t('Client confirmation')}</h2>
+        {orphanNotice}
         <Card>
           <p className="bw-body-md">
             {t('Send the quote with a personal link: the client accepts it, declines it or asks you questions without an account, and you see it here.')}
@@ -417,9 +510,17 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
           <p className="bw-body-sm text-muted-foreground">{t('No messages yet. The client can write to you from the quote page.')}</p>
         ) : (
           <ol className="flex flex-col gap-2" aria-live="polite">
-            {messages.map((m) => (
+            {messages.map((m, i) => (
+              <React.Fragment key={m.id}>
+              {/* Round 4: where the conversation with the current client starts. */}
+              {i > 0 && fromPrevious(messages[i - 1]) && !fromPrevious(m) && (
+                <li role="separator" className="self-stretch flex items-center gap-2 bw-label-xs text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  {t('From here: {name}', { name: recipientName })}
+                  <span className="h-px flex-1 bg-border" />
+                </li>
+              )}
               <li
-                key={m.id}
                 className={cn(
                   'max-w-[88%] rounded-[18px] px-4 py-3 bw-body-md whitespace-pre-wrap [overflow-wrap:anywhere]',
                   m.kind === 'band_reply' ? 'self-end bg-surface-inverse text-surface-inverse-foreground rounded-br-[6px]' : 'self-start bg-foreground/[0.06] rounded-bl-[6px]',
@@ -427,9 +528,16 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
               >
                 {m.body}
                 <span className="block mt-1 bw-label-xs opacity-60">
-                  {(m.kind === 'band_reply' ? t('You') : quote.clientName || t('Client')) + ' · ' + when(m.created_at)}
+                  {(m.kind === 'band_reply'
+                    ? t('You')
+                    : fromPrevious(m)
+                      ? t('Previous client')
+                      : recipientName) +
+                    ' · ' +
+                    when(m.created_at)}
                 </span>
               </li>
+              </React.Fragment>
             ))}
           </ol>
         )}
@@ -441,18 +549,23 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
             <textarea
               id={`quote-reply-${quote.id}`}
               value={reply}
-              onChange={(e) => setReply(e.target.value)}
+              onChange={(e) => editReply(e.target.value)}
               maxLength={2000}
               rows={3}
               placeholder={t('e.g. Sure, I added the DJ set: the quote is updated.')}
               className="w-full rounded-[20px] bg-field border border-border p-4 bw-body-md text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-foreground resize-none"
             />
-            <PillButton size="md" loading={replying} disabled={!reply.trim()} icon={<Send className="w-4 h-4" />} onClick={() => void sendReply()}>
+            {orphanNotice}
+            {readdressNotice}
+            <PillButton size="md" loading={replying} disabled={!reply.trim() || draftOrphaned || draftReaddressed} icon={<Send className="w-4 h-4" />} onClick={() => void sendReply()}>
               {t('Send reply')}
             </PillButton>
+            {hadPrevious && !draftOrphaned && (
+              <p className="bw-body-sm">{t('You’re writing to {name}', { name: recipientName })}</p>
+            )}
             <p className="bw-body-sm text-muted-foreground">
-              {quote.clientEmail
-                ? t('Your reply shows on the client’s page, and {email} gets it by email.', { email: quote.clientEmail })
+              {recipientEmail
+                ? t('Your reply shows on the client’s page, and {email} gets it by email.', { email: recipientEmail })
                 : t('Your reply shows on the client’s page.')}
             </p>
           </div>

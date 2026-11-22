@@ -16,6 +16,7 @@
 import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
+import { rememberFocus, restoreFocus } from './quote/focus';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -69,11 +70,12 @@ const stampTime = (iso: string) =>
 const stamp = (iso: string) =>
   new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 let currency = 'EUR';
-const money = (n: number) => {
+/** `cur`: another currency than the quote's (183: the deposit in the gig's currency). */
+const money = (n: number, cur = currency) => {
   try {
-    return new Intl.NumberFormat(lang, { style: 'currency', currency, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
+    return new Intl.NumberFormat(lang, { style: 'currency', currency: cur, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
   } catch {
-    return `${n} ${currency}`;
+    return `${n} ${cur}`;
   }
 };
 
@@ -139,10 +141,19 @@ function readFields() {
   if (box) draft.checked = box.checked;
 }
 
-function applyView(next: QuoteLinkView | null) {
+/**
+ * Show a view from the server. `keepStale` (the poll): a notice already on
+ * screen stays. A different version of a quote not yet accepted is a new
+ * quote for the client: the "I accept" box ticked for the old one is
+ * cleared (the typed name stays) and the page says it was updated, so an
+ * acceptance is always given on the version on screen.
+ */
+function applyView(next: QuoteLinkView | null, keepStale = false) {
   if (!next) return;
+  const revised = !!view && next.status !== 'accepted' && next.version !== view.version;
+  if (revised) draft.checked = false;
   view = next;
-  stale = !!next.stale;
+  stale = !!next.stale || revised || (keepStale && stale);
   currency = next.quote?.currency || 'EUR';
   if (!forcedLang && next.lang && next.lang in QUOTE_STRINGS && next.lang !== lang) {
     lang = next.lang as QuoteLang;
@@ -466,12 +477,17 @@ function depositCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   const amount = money(q.deposit.amount);
   const kicker = h('div', { class: 'kicker' }, `${v.band_name} · ${S.depositKicker}${q.ref ? ` ${q.ref}` : ''}`);
   if (v.deposit_paid) {
+    // 183: what the band recorded, in the gig's currency ($300 on a €500
+    // deposit says $300). No amount recorded (or a server before 183): no
+    // amount, never the one asked.
+    const cur = v.deposit_paid_currency && /^[A-Z]{3}$/.test(v.deposit_paid_currency) ? v.deposit_paid_currency : currency;
+    const got = v.deposit_paid_amount != null && v.deposit_paid_amount > 0 ? money(v.deposit_paid_amount, cur) : null;
     return h(
       'section',
       { class: 'card', role: 'status', 'data-testid': 'deposit-paid' },
       kicker,
       h('h2', { style: 'margin-top:12px' }, S.depositPaidTitle),
-      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount })),
+      h('p', {}, got ? fill(S.depositPaidBody, { ...vars(v), amount: got }) : fill(S.depositPaidBodyNoAmount, vars(v))),
     );
   }
   const pay = q.pay;
@@ -517,7 +533,8 @@ function statusCard(v: QuoteLinkView) {
     );
   }
   if (stale) {
-    return h('section', { class: 'card ink', role: 'alert' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
+    // Round 4: a polite status: it arrives on a refresh, while the client may be typing.
+    return h('section', { class: 'card ink', role: 'status' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
   }
   if (v.status === 'declined') {
     return h(
@@ -733,12 +750,17 @@ function poll() {
     if (document.hidden || busy || !view) return;
     try {
       const next = await api.view();
+      // A new version counts too, with or without a message (183).
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
-        JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
+        JSON.stringify([a.version, a.messages, a.balance, a.balance_paid, a.deposit_paid, a.deposit_paid_amount, a.deposit_paid_currency]) !==
+        JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount, b.deposit_paid_currency]);
       if (next && changed(next, view)) {
         readFields();
-        applyView({ ...next, stale });
+        // Round 4: the field the client is typing in stays focused, caret and all.
+        const mark = rememberFocus();
+        applyView(next, true);
         render();
+        restoreFocus(mark);
       }
     } catch {
       /* try again next time */

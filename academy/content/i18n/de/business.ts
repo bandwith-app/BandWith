@@ -390,7 +390,7 @@ const business: AreaText = {
         },
         { type: "p", text: "Admins bekommen eine Push- und eine In-App-Mitteilung, wenn der Kunde das Angebot zum ersten Mal öffnet, es annimmt, ablehnt oder schreibt." },
         { type: "note", tone: "warning", text: "**Neuer Link** und **Link deaktivieren** fragen vorher nach, weil der aktuelle Link des Kunden sofort aufhört zu funktionieren." },
-        { type: "p", text: "Ein nie verschicktes Angebot zeigt hier stattdessen **An Kunden senden**." },
+        { type: "p", text: "Ein nie verschicktes Angebot zeigt hier stattdessen **An Kunden senden**. Ebenso ein verschicktes Angebot, das du einem anderen Kunden gibst (E-Mail oder Telefon ersetzt oder entfernt, oder ein neuer Name mit neuem Kontakt): Der alte Link funktioniert nicht mehr, und sobald du es sendest, sieht der neue Kunde nur seine eigene Unterhaltung. Ein **angenommenes** Angebot behält seinen Kunden, denn die Annahme, die Anzahlung und der Restbetrag gehören zu ihm: Seine Angaben kannst du weiter korrigieren (ein Tippfehler im Namen, die Telefonnummer mit Ländervorwahl, ein Tippfehler in der E-Mail, bis du den Restbetrag anforderst), aber um es jemand anderem zu schicken, nutze **Duplizieren**." },
       ],
     },
     {

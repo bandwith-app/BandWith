@@ -3752,6 +3752,12 @@ const dict: Dictionary = {
   "New link created": "Nuovo link creato",
   "Link turned off": "Link disattivato",
   "Your reply was not sent. Try again.": "La risposta non è stata inviata. Riprova.",
+  "The recipient changed: this draft was for the previous client.": "Il destinatario è cambiato: questa bozza era per il cliente precedente.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Questa conversazione ora è con {name}. Controlla la risposta prima di inviarla.",
+  "Write to {name}": "Scrivi a {name}",
+  "Could not copy the text.": "Impossibile copiare il testo.",
+  "From here: {name}": "Da qui: {name}",
+  "You’re writing to {name}": "Stai scrivendo a {name}",
   "Reply sent. The client also got it by email.": "Risposta inviata. Il cliente l’ha ricevuta anche via email.",
   "Reply sent. It shows on the client’s page.": "Risposta inviata. Compare sulla pagina del cliente.",
   "Could not create a new link. Try again.": "Impossibile creare un nuovo link. Riprova.",
@@ -3887,6 +3893,9 @@ const dict: Dictionary = {
   "Could not confirm the quote. Check your connection and try again.": "Impossibile confermare il preventivo. Controlla la connessione e riprova.",
   "Could not turn it back into a quote. Check your connection and try again.": "Impossibile riportarlo a preventivo. Controlla la connessione e riprova.",
   "Quote not saved. Check your connection and try again.": "Preventivo non salvato. Controlla la connessione e riprova.",
+  "This quote has been accepted: to send it to someone else, duplicate it.": "Questo preventivo è stato accettato: per mandarlo a qualcun altro, duplicalo.",
+  "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Su questo preventivo ci sono pagamenti registrati in {currency}: la valuta non si può cambiare.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Questo preventivo è stato accettato: puoi correggere i dati del cliente (un refuso nel nome, il telefono scritto in un altro modo, un refuso nell’email finché non chiedi il saldo), ma per mandarlo a qualcun altro duplicalo.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Consenti il Bluetooth così la band ti segue anche quando cade internet.",
@@ -4768,6 +4777,13 @@ const dict: Dictionary = {
   "Repeating {section}": "Si ripete {section}",
   "Repeating this section": "Si ripete questa sezione",
   "Until the leader lets go": "Finché il leader non lascia",
+  "New client, new link: the old one no longer works. Send the quote to the new client.": "Nuovo cliente, nuovo link: quello vecchio non funziona più. Invia il preventivo al nuovo cliente.",
+  "New link for the new client": "Nuovo link per il nuovo cliente",
+  "Previous client": "Cliente precedente",
+  "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Nel frattempo questo preventivo è cambiato (un altro cliente o un altro admin). Chiudi e riapri il preventivo.",
+  "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Questo preventivo ora va a {name}. Non è stato inviato nulla: chiudi e riapri il preventivo.",
+  "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Nel frattempo il preventivo è cambiato, quindi questo invio non è stato registrato. Chiudi e riapri il preventivo.",
+  "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Nel frattempo il link del cliente è cambiato. La tua risposta non è stata inviata: controllala e inviala di nuovo.",
 };
 
 export default dict;

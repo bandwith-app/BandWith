@@ -145,7 +145,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -2781,26 +2781,30 @@ export default function AuthenticatedApp() {
     if (!editing || quoteSaveRunningRef.current) return;
     quoteSaveRunningRef.current = true;
     try {
-      const { band_id: _bandId, ...updates } = appQuoteToDbRecord(q, editing.bandId);
+      // Only what changed, never the status the wizard was opened with (183).
+      const updates = quoteUpdateRecord(q, editing.bandId, editing.quote);
       const { data, error } = await updateQuoteDB(editing.quote.id, updates);
       if (error || !data) {
         // The wizard stays open with what was typed.
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
       }
-      // The event shows the quote's date, time, place, client and fee.
+      // The event shows the quote's date, time, place, client and fee, as
+      // saved (round 6: the row the database returns, with its own totals
+      // and another admin's changes; never the wizard's copy).
+      const merged = { ...q, ...dbQuoteToAppQuote(data as any) } as AppQuote;
       const { error: eventErr } = await updateEvent(editing.eventId, {
-        title: q.eventName || q.clientName || t('Quote Event'),
-        event_date: q.eventDate,
-        start_time: q.eventTimeStart || '20:00',
-        end_time: q.eventTimeEnd || null,
-        venue_name: q.venueName || null,
-        venue: q.venueName || null,
-        venue_city: q.venueCity || null,
-        venue_address: q.venueAddress || null,
-        indoor_outdoor: q.indoorOutdoor || null,
-        fee: q.total || 0,
-        client_name: q.clientName || null,
+        title: merged.eventName || merged.clientName || t('Quote Event'),
+        event_date: merged.eventDate,
+        start_time: merged.eventTimeStart || '20:00',
+        end_time: merged.eventTimeEnd || null,
+        venue_name: merged.venueName || null,
+        venue: merged.venueName || null,
+        venue_city: merged.venueCity || null,
+        venue_address: merged.venueAddress || null,
+        indoor_outdoor: merged.indoorOutdoor || null,
+        fee: Number((data as any)?.total) || 0,
+        client_name: merged.clientName || null,
       } as any);
       const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: q.musicians || editing.quote.musicians } as AppQuote;
       setEditingLinkedQuote(null);
@@ -2809,8 +2813,9 @@ export default function AuthenticatedApp() {
         : { message: t('Quote updated'), type: 'success' });
       if (opts?.share) setSharingQuote(saved);
       // Already sent with the client link: the page shows the new version.
-      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError }) => {
+      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {
         if (pubError) setSaveToast({ message: t('The client page could not be updated. Try again.'), type: 'error' });
+        else if (newRecipient) setSaveToast({ message: t('New client, new link: the old one no longer works. Send the quote to the new client.'), type: 'success' });
         else if (version && version > 1) setSaveToast({ message: t('The client’s page now shows version {n}.', { n: version }), type: 'success' });
       });
       refetchExpandedQuotes();
