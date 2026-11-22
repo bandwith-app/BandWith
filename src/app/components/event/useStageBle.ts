@@ -78,12 +78,6 @@ export const DISTRUST_MS = 60_000;
  * pair refuse it, see migration 190's rotation).
  */
 export const SIGNER_RECHECK_MS = 5 * 60_000;
-/**
- * A signing leader signs its state again this often (no change notice), so
- * a member reading it gets a fresh one; one signed more than SIGNED_FRESH_MS
- * ago (stageBle.ts) is a recording and not followed.
- */
-export const SIGNED_RESIGN_MS = 60_000;
 /** What a signing leader serves before its first move: "here, leading nothing" (seq 0, signed only). */
 const IDLE_STATE: StageLiveState = { seq: 0, from: '-', songId: null, order: null };
 /** Seq 0: a leader saying it's there, leading nothing (its signature still counts). */
@@ -112,8 +106,17 @@ const leaderRank = (leads: boolean, signed: boolean) => (leads ? (signed ? 3 : 2
 export const SIGNED_TRUST_MS = 10 * 60_000;
 /** When this phone last checked a signed state, per gig (kept across closing Stage). */
 const signedSeen = new Map<string, number>();
+/**
+ * The highest signed seq followed per gig and signer (its leader id): a
+ * signed state below it is a recording played back (rule B, no clock check
+ * on signed states). Kept across closing and reopening Stage.
+ */
+const signedSeqs = new Map<string, number>();
 /** Tests: start with no signed leader seen. */
-export const forgetSignedLeaders = () => signedSeen.clear();
+export const forgetSignedLeaders = () => {
+  signedSeen.clear();
+  signedSeqs.clear();
+};
 /**
  * Android stops scanning without a word after 5 starts in 30 s: every path
  * that starts a scan (search, restart, retry, leader look) shares this budget.
@@ -213,7 +216,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const signerRef = useRef<StageSigner | null>(null);
   const startedRef = useRef(false);
   const pendingRef = useRef<StageLiveState | null>(null);
-  /** Leader: the last state served, signed again every SIGNED_RESIGN_MS (null: none yet, the idle one). */
+  /** Leader: the last state served this Stage session (null: none yet), served again when Stage starts again (a new pair). */
   const lastPushedRef = useRef<StageLiveState | null>(null);
 
   const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
@@ -238,18 +241,25 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     }
   }, []);
 
-  /** Leader: the last state (or "here, leading nothing") signed afresh, with no change notice. */
-  const resign = useCallback(async () => {
+  /**
+   * Leader, as Stage (re)starts: the last state served (Stage starting again
+   * with a new pair, or after a role check), signed with the pair it has now
+   * and on the band-key state too, with a change notice; before any move,
+   * "here, leading nothing", signed only (members then refuse band-key phones).
+   */
+  const sayHere = useCallback(async () => {
+    const last = lastPushedRef.current;
+    if (last) return push(last);
     const signer = signerRef.current;
     if (!signer || !startedRef.current) return;
-    const signed = await encodeSignedState(lastPushedRef.current ?? IDLE_STATE, savedRef.current, signer.private, signer.version);
+    const signed = await encodeSignedState(IDLE_STATE, savedRef.current, signer.private, signer.version);
     if (!signed || !startedRef.current || signerRef.current !== signer) return;
     try {
       await StageBle.updateSigned({ value: toBase64(signed), notify: '' });
     } catch {
-      /* Bluetooth off: signed again at the next round */
+      /* Bluetooth off: the first move serves the state */
     }
-  }, []);
+  }, [push]);
 
   /** Leader: serve this state over Bluetooth too. */
   const publish = useCallback(
@@ -267,7 +277,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let listener: PluginListenerHandle | null = null;
     let recalibrate: ReturnType<typeof setInterval> | undefined;
     let recheck: ReturnType<typeof setInterval> | undefined;
-    let resigning: ReturnType<typeof setInterval> | undefined;
     let onOnline: (() => void) | null = null;
     const calibrate = async () => {
       try {
@@ -319,11 +328,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (cancelled) return;
         startedRef.current = true;
         setStatus(leaderStatus(state));
-        // Signing: "here" at once (members then refuse band-key phones), and signed afresh every minute.
-        if (signer) {
-          void resign();
-          resigning = setInterval(() => void resign(), SIGNED_RESIGN_MS);
-        }
+        // "Here" at once: the current state, or leading nothing (a move waiting goes out below instead).
+        if (!pendingRef.current) void sayHere();
         // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
         await calibrate();
         if (cancelled) return;
@@ -350,7 +356,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       cancelled = true;
       clearInterval(recalibrate);
       clearInterval(recheck);
-      clearInterval(resigning);
       if (onOnline) window.removeEventListener('online', onOnline);
       setFollowers(0);
       startedRef.current = false;
@@ -359,7 +364,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       void StageBle.stop().catch(() => {});
       setStatus('off');
     };
-  }, [active, isLeader, eventId, push, resign, attempt]);
+  }, [active, isLeader, eventId, push, sayHere, attempt]);
+
+  // Stage closed: the next session starts with nothing served.
+  useEffect(() => {
+    if (!active) lastPushedRef.current = null;
+  }, [active]);
 
   // Member: find the leader, subscribe, read on every change.
   useEffect(() => {
@@ -533,8 +543,18 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
       if (!signed || !verify) return decodeStageState(bytes, savedRef.current, key);
       const result = await decodeSignedState(bytes, savedRef.current, verify.public, verify.version);
+      if (!result.ok && result.reason !== 'setlist') return result;
+      // Below a seq already followed from this signer: a recording played back, not the leader now.
+      const seq = result.ok ? result.state.seq : result.seq;
+      const from = result.ok ? result.state.from : result.from;
+      if (!leadsNothing(seq)) {
+        const signerKey = `${gig}|${from}`;
+        const highest = signedSeqs.get(signerKey);
+        if (highest !== undefined && seq < highest) return { ok: false as const, reason: 'replay' as const };
+        signedSeqs.set(signerKey, seq);
+      }
       // The admins' signature checked (a setlist this phone lacks included): band-key states are refused for a while.
-      if (result.ok || result.reason === 'setlist') signedSeen.set(gig, Date.now());
+      signedSeen.set(gig, Date.now());
       return result;
     };
 
@@ -616,8 +636,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           dropLink(id, DISTRUST_MS);
           return;
         }
-        // Signed too long ago (or ahead) to follow: maybe a recording played back. Not distrusted: the real leader signs afresh.
-        if (!result.ok && result.reason === 'expired') return;
+        // A recording played back (below a seq this signer was followed at): not the leader, leave it.
+        if (!result.ok && result.reason === 'replay') {
+          dropLink(id, DISTRUST_MS);
+          return;
+        }
         // A band-key state once the admins signed: not followed (see SIGNED_TRUST_MS).
         if (!signedLink && legacyRefused()) {
           dropLink(id, REFUSED_SKIP_MS);
@@ -630,10 +653,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           setStatus(linkedStatus());
           return;
         }
-        // Far ahead of the leader's clock: made up (anyone with the band key can), never followed.
-        // Not silently "connected": the clocks may just be far apart.
+        // A band-key seq far ahead of the leader's clock: made up (anyone with the band key can), never followed.
+        // Not silently "connected": the clocks may just be far apart. (Signed ones need no clock: only admins sign.)
         const seq = result.ok ? result.state.seq : result.reason === 'setlist' ? result.seq : null;
-        if (seq !== null && !plausibleFrom(seq, id)) {
+        if (!signedLink && seq !== null && !plausibleFrom(seq, id)) {
           clockDropped = true;
           setStatus('clock-off');
           return;
@@ -680,10 +703,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
         // Leading nothing (seq 0): not a leader to move to (its signature was still noted, readState).
-        if (result.ok) return plausibleFrom(result.state.seq, id) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
+        // A band-key seq is judged with the clock; a signed one needs none (only admins sign).
+        const plausible = (seq: number) => signed || plausibleFrom(seq, id);
+        if (result.ok) return plausible(result.state.seq) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
         if (result.reason === 'stale') void refreshVerify();
-        if (result.reason === 'setlist' && plausibleFrom(result.seq, id) && !leadsNothing(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
+        if (result.reason === 'setlist' && plausible(result.seq) && !leadsNothing(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
         return null;
       } catch {
         return null;

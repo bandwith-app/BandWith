@@ -211,10 +211,10 @@ describe("useStageLive: the admins' signed Bluetooth states (Claude on #288)", (
     expect(m.result.current.currentId).toBe('row-2');
   });
 
-  it('a signed state far ahead of the clock is dropped too', () => {
+  it("a signed state is taken whatever this phone's clock says: only admins can sign (Codex on #288, rule B)", () => {
     const m = phone();
-    signed({ seq: 0xffffffff, from: 'admin', songId: 'row-3', order: null });
-    expect(m.result.current.currentId).not.toBe('row-3');
+    signed({ seq: nextSeq(null, Date.now() + 60 * 60_000), from: 'admin', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-3');
   });
 
   it('signed states are taken while a leader leads on the live channel (band-key ones are not)', () => {

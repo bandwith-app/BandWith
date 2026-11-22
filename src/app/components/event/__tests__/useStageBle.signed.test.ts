@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
@@ -12,7 +12,7 @@ import {
 } from '@/lib/stageBle';
 import { STAGE_BLE_LIVE_CHARACTERISTIC } from '@/lib/stageBleSync';
 import { generateSigner, type StageKeyPair } from '@/lib/stageSign';
-import type { StageLiveState } from '@/lib/stageLive';
+import { nextSeq, type StageLiveState } from '@/lib/stageLive';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
 const nodeCrypto = 'node:crypto';
@@ -43,8 +43,6 @@ const air = vi.hoisted(() => ({
       signer?: { private: string; public: string };
       version?: number;
       corrupt?: number;
-      /** When its signed state was signed (a recording played back later). */
-      at?: number;
     }
   >(),
   /** This many service listings fail (discovery caught by a dropped packet). */
@@ -108,7 +106,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       }
       if (char === STAGE_BLE_SIGNED_CHARACTERISTIC && d.kind === 'new') {
         if (!st || !d.signer) return new DataView(new ArrayBuffer(0));
-        const frame = (await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1, d.at ?? Date.now()))!;
+        const frame = (await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1))!;
         if (d.corrupt && d.corrupt-- > 0) frame[frame.length - 1] ^= 0xff;
         return new DataView(frame.buffer);
       }
@@ -147,7 +145,6 @@ vi.mock('@/lib/stageBleNative', () => ({
 
 const stageBleHook = await import('../useStageBle');
 const { useStageBle, LEADER_CHECK_MS, SIGNER_RECHECK_MS } = stageBleHook;
-const SIGNED_RESIGN_MS = (stageBleHook as { SIGNED_RESIGN_MS?: number }).SIGNED_RESIGN_MS ?? 60_000;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
 /** An admin's phone in Stage, leading nothing yet: its signed "here" (seq 0). */
@@ -527,7 +524,26 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     unmount();
   });
 
-  it('a signing leader says it is there (signed, leading nothing) as soon as Stage opens, and signs again every minute', async () => {
+  it('Stage starting again with a new pair (a rotation) serves the current state at once, signed with the new pair and on the band-key state too, not an empty one (Codex on #288)', async () => {
+    air.signer = { ...admins, version: 1 };
+    const { result, unmount } = leader();
+    await waitFor(() => expect(air.signedUpdates.length).toBe(1));
+    result.current.publish(lead('a', 7, 'c3'));
+    await waitFor(() => expect(air.updates.length).toBe(1));
+    const next = await generateSigner();
+    air.signer = { ...next, version: 2 };
+    online();
+    await waitFor(() => expect(air.started.length).toBe(2));
+    await waitFor(() => expect(air.updates.length).toBe(2));
+    const signedNow = air.signedUpdates[air.signedUpdates.length - 1];
+    expect(await decodeSignedState(fromBase64(signedNow.value), IDS, next.public, 2)).toMatchObject({ ok: true, state: { seq: 7, songId: 'c3' } });
+    expect(await decodeStageState(fromBase64(air.updates[1].value), IDS, KEY)).toMatchObject({ ok: true, state: { seq: 7 } });
+    // A change notice: members linked meanwhile read it.
+    expect(signedNow.notify).not.toBe('');
+    unmount();
+  });
+
+  it('a signing leader says it is there (signed, leading nothing) as soon as Stage opens; nothing is signed again on a timer (no time in the frame, rule B)', async () => {
     air.signer = { ...admins, version: 1 };
     const { result, unmount } = leader();
     await waitFor(() => expect(air.signedUpdates.length).toBe(1));
@@ -537,12 +553,9 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     expect(air.updates.length).toBe(0);
     result.current.publish(lead('a', 7, 'c3'));
     await waitFor(() => expect(air.signedUpdates.length).toBe(2));
-    await vi.advanceTimersByTimeAsync(SIGNED_RESIGN_MS + 100);
-    await waitFor(() => expect(air.signedUpdates.length).toBe(3));
-    const again = air.signedUpdates[2];
-    // The same state, signed afresh, with no change notice (members don't read it again for nothing).
-    expect(again.notify).toBe('');
-    expect(await decodeSignedState(fromBase64(again.value), IDS, admins.public, 1)).toMatchObject({ ok: true, state: { seq: 7, songId: 'c3' } });
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(air.signedUpdates.length).toBe(2);
     unmount();
   });
 
@@ -566,14 +579,26 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     hook.unmount();
   });
 
-  it('a signed state recorded long ago (played back out of range) is not followed, and the phone is not taken for a forger', async () => {
-    put('admin', 'new', lead('a', 5, 'b2'), admins, 1, 0);
-    air.devices.get('admin')!.at = Date.now() - 11 * 60_000;
+  it("a signed state older than one already followed from the same signer (a recording played back) isn't followed, and that phone is left (Codex on #288, rule B)", async () => {
+    put('admin', 'new', lead('a', 9, 'b2'), admins);
     const { onState, hook } = member();
-    await waitFor(() => expect(air.connects).toContain('admin'));
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(onState).not.toHaveBeenCalled();
-    expect(air.connected.has('admin')).toBe(true);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', seq: 9 }), true));
+    // The admin walks out of range; a phone nearby plays back a state it recorded earlier.
+    air.devices.delete('admin');
+    put('replayer', 'new', lead('a', 5, 'c3'), admins);
+    act(() => air.goodbyes.get('admin')!());
+    await waitFor(() => expect(air.connects).toContain('replayer'), { timeout: 8000 });
+    await waitFor(() => expect(air.connected.has('replayer')).toBe(false), { timeout: 3000 });
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ seq: 5 }), expect.anything());
+    expect(hook.result.current.status).not.toBe('connected');
+    hook.unmount();
+  }, 20_000);
+
+  it("a signed state is followed whatever this phone's clock says: no time check on signed states (Codex on #288, rule B)", async () => {
+    put('admin', 'new', lead('a', nextSeq(null, Date.now() + 60 * 60_000), 'b2'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'b2' }), true), { timeout: 3000 });
+    expect(hook.result.current.status).toBe('connected');
     hook.unmount();
   });
 

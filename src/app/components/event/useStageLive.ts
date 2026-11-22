@@ -213,7 +213,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
    * - one never holds back a trusted state (Realtime, or Bluetooth signed by the
    *   admins): one newer than the last trusted state applies even when a
    *   band-key one had a higher seq;
-   * - a seq far ahead of that leader's clock is dropped (useStageBle drops them too).
+   * - a band-key seq far ahead of that leader's clock is dropped (useStageBle
+   *   drops them too); signed ones are judged by their signature alone.
    * A live leader not heard before, once the one followed has gone quiet
    * (Stage reopened, maybe on a phone with an earlier clock), is taken
    * whatever its seq.
@@ -224,8 +225,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       const bluetooth = source === 'bluetooth';
       const at = Date.now();
       const realtime = source === 'realtime';
-      // Judged with that leader's clock, when one was measured (a phone set an hour ahead still leads).
-      if (!realtime && !seqPlausible(state.seq, at + leaderOffsetRef.current(state.from))) return;
+      // A band-key seq is judged with that leader's clock, when one was measured (a phone set an
+      // hour ahead still leads); a signed one needs no clock (only admins sign, rule B).
+      if (bluetooth && !seqPlausible(state.seq, at + leaderOffsetRef.current(state.from))) return;
       if (bluetooth && leadingOnline(at)) {
         if (isNewer(state, heldBleRef.current)) heldBleRef.current = state;
         return;

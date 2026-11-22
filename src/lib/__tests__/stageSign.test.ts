@@ -4,7 +4,6 @@ import {
   STAGE_BLE_CHARACTERISTIC,
   STAGE_BLE_SIGNED_CHARACTERISTIC,
   STAGE_BLE_SIGNED_VERSION,
-  SIGNED_FRESH_MS,
   STALE_VERSION_MAX,
   decodeSignedState,
   decodeStageState,
@@ -133,16 +132,11 @@ describe('the leader signs, members only check (audit #1)', () => {
     expect(await decodeSignedState(near, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'stale' });
   });
 
-  it('signed states carry when they were signed: an old recording (or one from the future) is not followed (Claude on #288)', async () => {
+  it("no time in a signed state (Codex on #288, rule B): it reads back whatever the member's clock says, the seq right after the pair's version", async () => {
     const leader = await generateSigner();
-    const at = Date.UTC(2026, 10, 22, 21, 0, 0);
-    const bytes = (await encodeSignedState(state, IDS, leader.private, 1, at))!;
-    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at + 5 * 60_000)).toEqual({ ok: true, state });
-    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at + SIGNED_FRESH_MS + 60_000)).toEqual({ ok: false, reason: 'expired' });
-    expect(await decodeSignedState(bytes, IDS, leader.public, 1, at - SIGNED_FRESH_MS - 60_000)).toEqual({ ok: false, reason: 'expired' });
-    // The time is signed: moving it forward breaks the signature.
-    const moved = bytes.slice();
-    moved[6] ^= 0x01;
-    expect(await decodeSignedState(moved, IDS, leader.public, 1, at)).toEqual({ ok: false, reason: 'auth' });
+    const state = { seq: 123456, from: 'lead', songId: 'b2', order: null };
+    const bytes = (await encodeSignedState(state, IDS, leader.private, 1))!;
+    expect(new DataView(bytes.buffer).getUint32(3)).toBe(123456);
+    expect(await decodeSignedState(bytes, IDS, leader.public, 1)).toMatchObject({ ok: true, state: { seq: 123456 } });
   });
 });
