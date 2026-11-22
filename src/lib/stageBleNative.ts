@@ -14,23 +14,25 @@ export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unk
 
 interface StageBlePlugin {
   /**
-   * `syncUuid` + `key`: also serve the sync characteristic (stageBleSync.ts):
-   * the plugin answers members' clock pings itself, signed with the key.
+   * `clockUuid` + `key`: also serve the clock characteristic (stageBleSync.ts):
+   * the plugin answers every read itself with its clock, signed with the key.
+   * `liveUuid`: the live characteristic (read + notify, filled in B3).
    */
   start(options: {
     serviceUuid: string;
     characteristicUuid: string;
     value: string;
     notify: string;
-    syncUuid?: string;
+    clockUuid?: string;
+    liveUuid?: string;
     key?: string;
   }): Promise<{ state: StageBleState }>;
   update(options: { value: string; notify: string }): Promise<void>;
-  /** Sync characteristic: the value reads get, and a notice for its subscribers ('' = none). */
-  updateSync(options: { value: string; notify: string }): Promise<void>;
+  /** Live characteristic: the value reads get, and a notice for its subscribers ('' = none). */
+  updateLive(options: { value: string; notify: string }): Promise<void>;
   /** The plugin's own clock (monotonic, ms). */
   now(): Promise<{ now: number }>;
-  /** The app's clock minus the plugin's: pongs then carry the app's clock. */
+  /** The app's clock minus the plugin's: clock reads then carry the app's clock. */
   setClock(options: { offset: number }): Promise<void>;
   stop(): Promise<void>;
   addListener(

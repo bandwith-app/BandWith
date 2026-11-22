@@ -13,19 +13,22 @@ import CryptoKit
 ///
 /// Members' phones use @capacitor-community/bluetooth-le (central role).
 ///
-/// A second characteristic, "sync" (read + write + notify, optional: only
-/// when `syncUuid` and `key` are given), carries the leader's clock for
-/// members with no internet (`src/lib/stageBleSync.ts`, frame version 3):
-/// a member writes a 4-byte ping, and this phone answers that member at once
-/// with an 18-byte signed pong holding its clock when the ping arrived. Apps
-/// from before it never look at this characteristic.
+/// Two more characteristics, for members with no internet
+/// (`src/lib/stageBleSync.ts`, frame version 3), only when `key` is given:
+/// - clock (read only, `clockUuid`): every read is answered at once with
+///   this phone's clock at that moment, 16 bytes signed with the key;
+/// - live (read + notify, `liveUuid`): the click and the playhead (B3).
+/// Reads, not writes: a member's write in flight can crash its app on Android
+/// when Bluetooth turns off; reads fail cleanly. Apps from before them never
+/// look at these characteristics.
 ///
 /// JS: `StageBle.start({ serviceUuid, characteristicUuid, value, notify,
-/// syncUuid?, key? })`, `update({ value, notify })`, `updateSync({ value,
-/// notify })`, `now()` → `{ now }` (this plugin's clock, ms), `setClock({
-/// offset })` (the app's clock minus this plugin's, so pongs carry the app's
-/// clock), `stop()` (values base64), and the `stateChange` event `{ state,
-/// subscribers }` with state on | off | unauthorized | unsupported | unknown.
+/// clockUuid?, liveUuid?, key? })`, `update({ value, notify })`,
+/// `updateLive({ value, notify })`, `now()` → `{ now }` (this plugin's clock,
+/// ms), `setClock({ offset })` (the app's clock minus this plugin's, so clock
+/// reads carry the app's clock), `stop()` (values base64), and the
+/// `stateChange` event `{ state, subscribers }` with state on | off |
+/// unauthorized | unsupported | unknown.
 @objc(StageBlePlugin)
 public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDelegate {
     public let identifier = "StageBlePlugin"
@@ -34,7 +37,7 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "updateSync", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateLive", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "now", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setClock", returnType: CAPPluginReturnPromise),
     ]
@@ -49,14 +52,17 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     private var subscribers: [CBCentral] = []
     private var notifyPending = false
 
-    // Sync characteristic (clock, frame version 3).
-    private var syncUUID: CBUUID?
-    private var syncCharacteristic: CBMutableCharacteristic?
+    // Clock and live characteristics (frame version 3).
+    private var clockUUID: CBUUID?
+    private var liveUUID: CBUUID?
+    private var liveCharacteristic: CBMutableCharacteristic?
     private var key = Data()
-    private var syncValue = Data()
-    private var syncSubscribers: [CBCentral] = []
-    /// Notifications iOS couldn't queue yet (sent again when it's ready).
-    private var syncQueue: [(Data, [CBCentral]?)] = []
+    /// The last clock answer, for a read continued at an offset (never past 22 bytes in practice).
+    private var lastClock = Data()
+    private var liveValue = Data()
+    private var liveNotifyValue = Data()
+    private var liveSubscribers: [CBCentral] = []
+    private var livePending = false
     /// The app's clock minus `clockMs()` (set by the app, see `setClock`).
     private var clockOffset: Double = 0
 
@@ -75,10 +81,12 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             self.characteristicUUID = CBUUID(string: char)
             self.value = value
             self.notifyValue = notify
-            if let sync = call.getString("syncUuid"), let key = Data(base64Encoded: call.getString("key") ?? ""), !key.isEmpty {
-                let newSync = CBUUID(string: sync)
-                if self.syncUUID != newSync && self.serviceAdded { self.teardown() }
-                self.syncUUID = newSync
+            if let key = Data(base64Encoded: call.getString("key") ?? ""), !key.isEmpty {
+                let newClock = call.getString("clockUuid").map { CBUUID(string: $0) }
+                let newLive = call.getString("liveUuid").map { CBUUID(string: $0) }
+                if (self.clockUUID != newClock || self.liveUUID != newLive) && self.serviceAdded { self.teardown() }
+                self.clockUUID = newClock
+                self.liveUUID = newLive
                 self.key = key
             }
             if self.manager == nil {
@@ -110,15 +118,18 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         DispatchQueue.main.async {
             self.teardown()
             self.serviceUUID = nil
-            self.syncUUID = nil
+            self.clockUUID = nil
+            self.liveUUID = nil
             self.key = Data()
-            self.syncValue = Data()
+            self.lastClock = Data()
+            self.liveValue = Data()
+            self.liveNotifyValue = Data()
             call.resolve()
         }
     }
 
-    /// Sync characteristic: the value reads get, and a notice for its subscribers (empty: none).
-    @objc func updateSync(_ call: CAPPluginCall) {
+    /// Live characteristic: the value reads get, and a notice for its subscribers (empty: none).
+    @objc func updateLive(_ call: CAPPluginCall) {
         guard let value = Data(base64Encoded: call.getString("value") ?? ""),
               let notify = Data(base64Encoded: call.getString("notify") ?? "")
         else {
@@ -126,8 +137,9 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             return
         }
         DispatchQueue.main.async {
-            self.syncValue = value
-            if !notify.isEmpty { self.sendSync(notify, to: nil) }
+            self.liveValue = value
+            self.liveNotifyValue = notify
+            if !notify.isEmpty { self.sendLive() }
             call.resolve()
         }
     }
@@ -154,11 +166,11 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1_000_000
     }
 
-    /// Pong for ping `nonce`, stamped `t1` (the app's clock, ms): see stageBleSync.ts.
-    /// Test vector: nonce 0x1234, t1 1795000000123.4, the test key → 0302123410534f5fb0d2879d96279f5e7feb.
-    static func pong(nonce: UInt16, t1: Double, key: Data) -> Data {
+    /// Clock answer stamped `t1` (the app's clock, ms): see stageBleSync.ts.
+    /// Test vector: t1 1795000000123.4, the test key → 030210534f5fb0d28cb51b043ea1b037.
+    static func clockFrame(t1: Double, key: Data) -> Data {
         let ticks = UInt64((t1 * 10).rounded())
-        var body = Data([3, 2, UInt8(nonce >> 8), UInt8(nonce & 0xff)])
+        var body = Data([3, 2])
         body.append(UInt8((ticks >> 40) & 0xff))
         body.append(UInt8((ticks >> 32) & 0xff))
         body.append(UInt8((ticks >> 24) & 0xff))
@@ -190,12 +202,12 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         manager?.stopAdvertising()
         manager?.removeAllServices()
         characteristic = nil
-        syncCharacteristic = nil
+        liveCharacteristic = nil
         serviceAdded = false
         subscribers.removeAll()
-        syncSubscribers.removeAll()
-        syncQueue.removeAll()
+        liveSubscribers.removeAll()
         notifyPending = false
+        livePending = false
     }
 
     private func setUpIfReady() {
@@ -206,23 +218,25 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         let char = CBMutableCharacteristic(type: characteristicUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
         let service = CBMutableService(type: serviceUUID, primary: true)
         service.characteristics = [char]
-        if let syncUUID = syncUUID, !key.isEmpty {
-            let sync = CBMutableCharacteristic(type: syncUUID, properties: [.read, .write, .notify], value: nil, permissions: [.readable, .writeable])
-            service.characteristics?.append(sync)
-            syncCharacteristic = sync
+        if !key.isEmpty {
+            if let clockUUID = clockUUID {
+                // Value nil: every read comes to the delegate, stamped there.
+                service.characteristics?.append(CBMutableCharacteristic(type: clockUUID, properties: [.read], value: nil, permissions: [.readable]))
+            }
+            if let liveUUID = liveUUID {
+                let live = CBMutableCharacteristic(type: liveUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
+                service.characteristics?.append(live)
+                liveCharacteristic = live
+            }
         }
         characteristic = char
         serviceAdded = true
         manager.add(service)
     }
 
-    private func sendSync(_ data: Data, to centrals: [CBCentral]?) {
-        guard let manager = manager, let char = syncCharacteristic, !syncSubscribers.isEmpty else { return }
-        if !syncQueue.isEmpty || !manager.updateValue(data, for: char, onSubscribedCentrals: centrals) {
-            // A late pong only gives a slow sample (the app keeps the fastest); keep the queue short.
-            if syncQueue.count >= 8 { syncQueue.removeFirst() }
-            syncQueue.append((data, centrals))
-        }
+    private func sendLive() {
+        guard let manager = manager, let char = liveCharacteristic, !liveSubscribers.isEmpty, !liveNotifyValue.isEmpty else { return }
+        livePending = !manager.updateValue(liveNotifyValue, for: char, onSubscribedCentrals: nil)
     }
 
     private func sendNotify() {
@@ -237,10 +251,9 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             // Services are dropped when Bluetooth goes off; add them again when it's back.
             serviceAdded = false
             characteristic = nil
-            syncCharacteristic = nil
+            liveCharacteristic = nil
             subscribers.removeAll()
-            syncSubscribers.removeAll()
-            syncQueue.removeAll()
+            liveSubscribers.removeAll()
         }
         emitState()
     }
@@ -257,11 +270,16 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        // Stamped first, before any other work: the member's round trip brackets this moment.
+        let t1 = StageBlePlugin.clockMs() + clockOffset
         let current: Data
         if request.characteristic.uuid == characteristicUUID {
             current = value
-        } else if let syncUUID = syncUUID, request.characteristic.uuid == syncUUID {
-            current = syncValue
+        } else if let clockUUID = clockUUID, request.characteristic.uuid == clockUUID, !key.isEmpty {
+            if request.offset == 0 { lastClock = StageBlePlugin.clockFrame(t1: t1, key: key) }
+            current = lastClock
+        } else if let liveUUID = liveUUID, request.characteristic.uuid == liveUUID {
+            current = liveValue
         } else {
             peripheral.respond(to: request, withResult: .attributeNotFound)
             return
@@ -274,26 +292,10 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         peripheral.respond(to: request, withResult: .success)
     }
 
-    /// A member's ping: answered at once, to that member only, with this phone's clock.
-    public func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
-        // Stamped first, before any other work.
-        let t1 = StageBlePlugin.clockMs() + clockOffset
-        guard let first = requests.first else { return }
-        guard let syncUUID = syncUUID, requests.allSatisfy({ $0.characteristic.uuid == syncUUID }) else {
-            peripheral.respond(to: first, withResult: .writeNotPermitted)
-            return
-        }
-        peripheral.respond(to: first, withResult: .success)
-        for request in requests {
-            guard let v = request.value, v.count == 4, v[v.startIndex] == 3, v[v.startIndex + 1] == 1, !key.isEmpty else { continue }
-            let nonce = UInt16(v[v.startIndex + 2]) << 8 | UInt16(v[v.startIndex + 3])
-            sendSync(StageBlePlugin.pong(nonce: nonce, t1: t1, key: key), to: [request.central])
-        }
-    }
-
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-        if let syncUUID = syncUUID, characteristic.uuid == syncUUID {
-            if !syncSubscribers.contains(where: { $0.identifier == central.identifier }) { syncSubscribers.append(central) }
+        if let liveUUID = liveUUID, characteristic.uuid == liveUUID {
+            if !liveSubscribers.contains(where: { $0.identifier == central.identifier }) { liveSubscribers.append(central) }
+            sendLive()
             return
         }
         if !subscribers.contains(where: { $0.identifier == central.identifier }) { subscribers.append(central) }
@@ -302,8 +304,8 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
-        if let syncUUID = syncUUID, characteristic.uuid == syncUUID {
-            syncSubscribers.removeAll { $0.identifier == central.identifier }
+        if let liveUUID = liveUUID, characteristic.uuid == liveUUID {
+            liveSubscribers.removeAll { $0.identifier == central.identifier }
             return
         }
         subscribers.removeAll { $0.identifier == central.identifier }
@@ -312,10 +314,6 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
 
     public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
         if notifyPending { sendNotify() }
-        guard let char = syncCharacteristic else { return }
-        while let (data, centrals) = syncQueue.first {
-            if !peripheral.updateValue(data, for: char, onSubscribedCentrals: centrals) { break }
-            syncQueue.removeFirst()
-        }
+        if livePending { sendLive() }
     }
 }

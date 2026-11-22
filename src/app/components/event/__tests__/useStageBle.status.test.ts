@@ -44,6 +44,8 @@ const ble = vi.hoisted(() => ({
     env.enabled = true;
   }),
   openAppSettings: vi.fn(async () => {}),
+  startEnabledNotifications: vi.fn(async () => {}),
+  stopEnabledNotifications: vi.fn(async () => {}),
   requestLEScan: vi.fn(async () => {}),
   stopLEScan: vi.fn(async () => {}),
   disconnect: vi.fn(async () => {}),

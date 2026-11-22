@@ -41,6 +41,7 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -52,14 +53,16 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * read = full state (by offset), notify = short value (subscribers then read).
  * No encryption, so members connect without pairing.
  *
- * A second characteristic, "sync" (read + write + notify, only when
- * `syncUuid` and `key` are given), carries the leader's clock for members
- * with no internet (src/lib/stageBleSync.ts, frame version 3): a member
- * writes a 4-byte ping and this phone answers that member at once with an
- * 18-byte signed pong holding its clock when the ping arrived. Apps from
- * before it never look at it. JS also gets `updateSync({ value, notify })`,
- * `now()` (this plugin's clock, ms) and `setClock({ offset })` (the app's
- * clock minus this plugin's, so pongs carry the app's clock).
+ * Two more characteristics for members with no internet (src/lib/stageBleSync.ts,
+ * frame version 3), only when `key` is given:
+ * - clock (read only, `clockUuid`): every read is answered at once with this
+ *   phone's clock at that moment, 16 bytes signed with the key;
+ * - live (read + notify, `liveUuid`): the click and the playhead (B3).
+ * Reads, not writes: a member's write in flight can crash its app when
+ * Bluetooth turns off; reads fail cleanly. Apps from before them never look at
+ * them. JS also gets `updateLive({ value, notify })`, `now()` (this plugin's
+ * clock, ms) and `setClock({ offset })` (the app's clock minus this plugin's,
+ * so clock reads carry the app's clock).
  */
 @CapacitorPlugin(
     name = "StageBle",
@@ -82,12 +85,16 @@ public class StageBlePlugin extends Plugin {
     private volatile byte[] notifyValue = new byte[0];
     private final Set<BluetoothDevice> subscribers = new CopyOnWriteArraySet<>();
 
-    // Sync characteristic (clock, frame version 3).
-    private BluetoothGattCharacteristic syncCharacteristic;
-    private UUID syncUuid;
+    // Clock and live characteristics (frame version 3).
+    private BluetoothGattCharacteristic liveCharacteristic;
+    private UUID clockUuid;
+    private UUID liveUuid;
     private volatile byte[] key = new byte[0];
-    private volatile byte[] syncValue = new byte[0];
-    private final Set<BluetoothDevice> syncSubscribers = new CopyOnWriteArraySet<>();
+    /** The last clock answer, for a read continued at an offset (never past 22 bytes in practice). */
+    private volatile byte[] lastClock = new byte[0];
+    private volatile byte[] liveValue = new byte[0];
+    private volatile byte[] liveNotifyValue = new byte[0];
+    private final Set<BluetoothDevice> liveSubscribers = new CopyOnWriteArraySet<>();
     /** The app's clock minus clockMs() (set by the app, see setClock). */
     private volatile double clockOffset = 0;
     private String state = "unknown";
@@ -163,15 +170,18 @@ public class StageBlePlugin extends Plugin {
             characteristicUuid = UUID.fromString(call.getString("characteristicUuid"));
             value = Base64.decode(call.getString("value"), Base64.NO_WRAP);
             notifyValue = Base64.decode(call.getString("notify"), Base64.NO_WRAP);
-            String sync = call.getString("syncUuid");
             String k = call.getString("key");
-            UUID newSync = sync != null && k != null ? UUID.fromString(sync) : null;
             byte[] newKey = k != null ? Base64.decode(k, Base64.NO_WRAP) : new byte[0];
-            boolean syncChanged = newSync != null && newKey.length > 0 && !newSync.equals(syncUuid);
-            if (!newService.equals(serviceUuid) || syncChanged) teardown();
+            String clock = call.getString("clockUuid");
+            String live = call.getString("liveUuid");
+            UUID newClock = clock != null && newKey.length > 0 ? UUID.fromString(clock) : null;
+            UUID newLive = live != null && newKey.length > 0 ? UUID.fromString(live) : null;
+            boolean extraChanged = newKey.length > 0 && (!Objects.equals(newClock, clockUuid) || !Objects.equals(newLive, liveUuid));
+            if (!newService.equals(serviceUuid) || extraChanged) teardown();
             serviceUuid = newService;
-            if (newSync != null && newKey.length > 0) {
-                syncUuid = newSync;
+            if (newKey.length > 0) {
+                clockUuid = newClock;
+                liveUuid = newLive;
                 key = newKey;
             }
         } catch (IllegalArgumentException e) {
@@ -212,16 +222,19 @@ public class StageBlePlugin extends Plugin {
                     CCCD, BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE));
                 BluetoothGattService svc = new BluetoothGattService(serviceUuid, BluetoothGattService.SERVICE_TYPE_PRIMARY);
                 svc.addCharacteristic(characteristic);
-                if (syncUuid != null && key.length > 0) {
-                    syncCharacteristic = new BluetoothGattCharacteristic(
-                        syncUuid,
-                        BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_WRITE
-                            | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                        BluetoothGattCharacteristic.PERMISSION_READ | BluetoothGattCharacteristic.PERMISSION_WRITE
+                if (clockUuid != null && key.length > 0) {
+                    svc.addCharacteristic(new BluetoothGattCharacteristic(
+                        clockUuid, BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ));
+                }
+                if (liveUuid != null && key.length > 0) {
+                    liveCharacteristic = new BluetoothGattCharacteristic(
+                        liveUuid,
+                        BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+                        BluetoothGattCharacteristic.PERMISSION_READ
                     );
-                    syncCharacteristic.addDescriptor(new BluetoothGattDescriptor(
+                    liveCharacteristic.addDescriptor(new BluetoothGattDescriptor(
                         CCCD, BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE));
-                    svc.addCharacteristic(syncCharacteristic);
+                    svc.addCharacteristic(liveCharacteristic);
                 }
                 server.addService(svc); // advertising starts in onServiceAdded
                 setState("on");
@@ -250,25 +263,28 @@ public class StageBlePlugin extends Plugin {
         watchAdapter(false);
         teardown();
         serviceUuid = null;
-        syncUuid = null;
+        clockUuid = null;
+        liveUuid = null;
         key = new byte[0];
-        syncValue = new byte[0];
+        lastClock = new byte[0];
+        liveValue = new byte[0];
+        liveNotifyValue = new byte[0];
         call.resolve();
     }
 
-    /** Sync characteristic: the value reads get, and a notice for its subscribers (empty: none). */
+    /** Live characteristic: the value reads get, and a notice for its subscribers (empty: none). */
     @PluginMethod
-    public void updateSync(PluginCall call) {
+    public void updateLive(PluginCall call) {
         String v = call.getString("value");
         String n = call.getString("notify");
         if (v == null || n == null) {
             call.reject("value and notify are required");
             return;
         }
-        syncValue = Base64.decode(v, Base64.NO_WRAP);
-        byte[] notice = Base64.decode(n, Base64.NO_WRAP);
-        if (notice.length > 0) {
-            for (BluetoothDevice device : syncSubscribers) sendSync(device, notice);
+        liveValue = Base64.decode(v, Base64.NO_WRAP);
+        liveNotifyValue = Base64.decode(n, Base64.NO_WRAP);
+        if (liveNotifyValue.length > 0) {
+            for (BluetoothDevice device : liveSubscribers) sendLive(device, liveNotifyValue);
         }
         call.resolve();
     }
@@ -297,22 +313,20 @@ public class StageBlePlugin extends Plugin {
     }
 
     /**
-     * Pong for ping `nonce`, stamped `t1` (the app's clock, ms): see stageBleSync.ts.
-     * Test vector: nonce 0x1234, t1 1795000000123.4, the test key → 0302123410534f5fb0d2879d96279f5e7feb.
+     * Clock answer stamped `t1` (the app's clock, ms): see stageBleSync.ts.
+     * Test vector: t1 1795000000123.4, the test key → 030210534f5fb0d28cb51b043ea1b037.
      */
-    static byte[] pong(int nonce, double t1, byte[] key) {
+    static byte[] clockFrame(double t1, byte[] key) {
         long ticks = Math.round(t1 * 10);
-        byte[] out = new byte[18];
+        byte[] out = new byte[16];
         out[0] = 3;
         out[1] = 2;
-        out[2] = (byte) ((nonce >> 8) & 0xff);
-        out[3] = (byte) (nonce & 0xff);
-        for (int i = 0; i < 6; i++) out[4 + i] = (byte) ((ticks >> (8 * (5 - i))) & 0xff);
+        for (int i = 0; i < 6; i++) out[2 + i] = (byte) ((ticks >> (8 * (5 - i))) & 0xff);
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(key, "HmacSHA256"));
-            mac.update(out, 0, 10);
-            System.arraycopy(mac.doFinal(), 0, out, 10, 8);
+            mac.update(out, 0, 8);
+            System.arraycopy(mac.doFinal(), 0, out, 8, 8);
         } catch (Exception e) {
             return null;
         }
@@ -320,9 +334,9 @@ public class StageBlePlugin extends Plugin {
     }
 
     @SuppressLint("MissingPermission")
-    private void sendSync(BluetoothDevice device, byte[] data) {
+    private void sendLive(BluetoothDevice device, byte[] data) {
         BluetoothGattServer s = server;
-        BluetoothGattCharacteristic c = syncCharacteristic;
+        BluetoothGattCharacteristic c = liveCharacteristic;
         if (s == null || c == null || data == null) return;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -332,7 +346,7 @@ public class StageBlePlugin extends Plugin {
                 s.notifyCharacteristicChanged(device, c, false);
             }
         } catch (Exception ignored) {
-            syncSubscribers.remove(device);
+            liveSubscribers.remove(device);
         }
     }
 
@@ -357,9 +371,9 @@ public class StageBlePlugin extends Plugin {
         advertiser = null;
         server = null;
         characteristic = null;
-        syncCharacteristic = null;
+        liveCharacteristic = null;
         subscribers.clear();
-        syncSubscribers.clear();
+        liveSubscribers.clear();
     }
 
     @SuppressLint("MissingPermission")
@@ -426,7 +440,7 @@ public class StageBlePlugin extends Plugin {
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 subscribers.remove(device);
-                syncSubscribers.remove(device);
+                liveSubscribers.remove(device);
                 setState(state);
             }
         }
@@ -434,36 +448,31 @@ public class StageBlePlugin extends Plugin {
         @SuppressLint("MissingPermission")
         @Override
         public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic c) {
+            // Stamped first, before any other work: the member's round trip brackets this moment.
+            double t1 = clockMs() + clockOffset;
             BluetoothGattServer s = server;
             if (s == null) return;
-            boolean isSync = syncUuid != null && syncUuid.equals(c.getUuid());
-            byte[] v = isSync ? syncValue : value;
-            if (!isSync && (characteristicUuid == null || !characteristicUuid.equals(c.getUuid()))) {
+            UUID id = c.getUuid();
+            byte[] v;
+            if (characteristicUuid != null && characteristicUuid.equals(id)) {
+                v = value;
+            } else if (clockUuid != null && clockUuid.equals(id) && key.length > 0) {
+                if (offset == 0) {
+                    byte[] frame = clockFrame(t1, key);
+                    lastClock = frame != null ? frame : new byte[0];
+                }
+                v = lastClock;
+            } else if (liveUuid != null && liveUuid.equals(id)) {
+                v = liveValue;
+            } else {
                 s.sendResponse(device, requestId, BluetoothGatt.GATT_READ_NOT_PERMITTED, offset, null);
-            } else if (offset > v.length) {
+                return;
+            }
+            if (offset > v.length) {
                 s.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null);
             } else {
                 s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, Arrays.copyOfRange(v, offset, v.length));
             }
-        }
-
-        /** A member's ping: answered at once, to that member only, with this phone's clock. */
-        @SuppressLint("MissingPermission")
-        @Override
-        public void onCharacteristicWriteRequest(BluetoothDevice device, int requestId, BluetoothGattCharacteristic c,
-                                                 boolean preparedWrite, boolean responseNeeded, int offset, byte[] v) {
-            // Stamped first, before any other work.
-            double t1 = clockMs() + clockOffset;
-            BluetoothGattServer s = server;
-            if (s == null) return;
-            boolean isSync = syncUuid != null && syncUuid.equals(c.getUuid());
-            if (responseNeeded) {
-                s.sendResponse(device, requestId, isSync ? BluetoothGatt.GATT_SUCCESS : BluetoothGatt.GATT_WRITE_NOT_PERMITTED, 0, null);
-            }
-            if (!isSync || preparedWrite || offset != 0 || v == null || v.length != 4 || v[0] != 3 || v[1] != 1) return;
-            byte[] k = key;
-            if (k.length == 0) return;
-            sendSync(device, pong(((v[2] & 0xff) << 8) | (v[3] & 0xff), t1, k));
         }
 
         @SuppressLint("MissingPermission")
@@ -471,9 +480,9 @@ public class StageBlePlugin extends Plugin {
         public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattDescriptor descriptor) {
             BluetoothGattServer s = server;
             if (s == null) return;
-            boolean isSync = syncUuid != null && descriptor.getCharacteristic() != null
-                && syncUuid.equals(descriptor.getCharacteristic().getUuid());
-            byte[] v = (isSync ? syncSubscribers : subscribers).contains(device)
+            boolean isLive = liveUuid != null && descriptor.getCharacteristic() != null
+                && liveUuid.equals(descriptor.getCharacteristic().getUuid());
+            byte[] v = (isLive ? liveSubscribers : subscribers).contains(device)
                 ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                 : BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE;
             s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, v);
@@ -483,20 +492,20 @@ public class StageBlePlugin extends Plugin {
         @Override
         public void onDescriptorWriteRequest(BluetoothDevice device, int requestId, BluetoothGattDescriptor descriptor,
                                              boolean preparedWrite, boolean responseNeeded, int offset, byte[] v) {
-            boolean isSync = syncUuid != null && descriptor.getCharacteristic() != null
-                && syncUuid.equals(descriptor.getCharacteristic().getUuid());
+            boolean isLive = liveUuid != null && descriptor.getCharacteristic() != null
+                && liveUuid.equals(descriptor.getCharacteristic().getUuid());
             if (CCCD.equals(descriptor.getUuid())) {
-                Set<BluetoothDevice> set = isSync ? syncSubscribers : subscribers;
+                Set<BluetoothDevice> set = isLive ? liveSubscribers : subscribers;
                 if (v != null && Arrays.equals(v, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
                     set.add(device);
                 } else {
                     set.remove(device);
                 }
-                if (!isSync) setState(state);
+                if (!isLive) setState(state);
             }
             BluetoothGattServer s = server;
             if (responseNeeded && s != null) s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
-            if (!isSync && subscribers.contains(device)) sendNotify();
+            if (!isLive && subscribers.contains(device)) sendNotify();
         }
     };
 }
