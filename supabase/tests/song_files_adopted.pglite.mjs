@@ -84,6 +84,8 @@ await db.exec(m108.slice(rpcStart, rpcEnd).join('\n'));
 // the check below proves 197 keeps 180's fix.
 const M180 = 'supabase/migrations/180_account_deletion_safety.sql';
 const src180 = (() => {
+  // BW_180_FILE: a local 180 to check against (e.g. #282's next round before it is pushed).
+  if (process.env.BW_180_FILE) return readFileSync(process.env.BW_180_FILE, 'utf8');
   try {
     return execFileSync('git', ['-C', REPO, 'show', `origin/fix/account-deletion:${M180}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch {
@@ -99,8 +101,13 @@ const fnFrom = (sql, name) => {
   return sql.slice(a, end + 1) + grants;
 };
 const w180 = src180 && fnFrom(src180, 'bw_withdraw_song_suggestion');
-ok(!!w180 && /created_by IS DISTINCT FROM v_uid/.test(w180), '180’s real bw_withdraw_song_suggestion loaded (NULL-safe author check)');
-if (w180) await db.exec(w180);
+if (!w180) {
+  // No 180 here and no fix/account-deletion branch: the cross-PR guard can't run.
+  console.warn('SKIP 180 guard: no 180_account_deletion_safety.sql (main or origin/fix/account-deletion)');
+} else {
+  ok(/created_by IS DISTINCT FROM v_uid/.test(w180), '180’s real bw_withdraw_song_suggestion loaded (NULL-safe author check)');
+  await db.exec(w180);
+}
 
 const mig = readFileSync(MIG, 'utf8');
 await db.exec(mig);
@@ -311,13 +318,130 @@ ok(String(wdNull).includes('Not your suggestion'), `nobody withdraws a former me
 ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id = '${id(27)}'`)).rows[0].n === 1, 'and its song stays');
 ok(String(await repoint(ADMIN, SONG, '', DEST)).includes('Bad source'), 'an empty source is refused (no NULL slip-through)');
 
-// What the app may remove (deleting a song, replacing a file).
-const unused = (user, refs) => rpc(user, `SELECT public.bw_song_files_unused($1) AS v`, [refs]);
-const u1 = await unused(ADMIN, [`sb://song-files/${O}`, `sb://song-files/${U}`, `sb://song-files/${OTHER_BAND}/audio/z.mp3`, 'https://example.com/x.mp3']);
-ok(Array.isArray(u1) && u1.length === 1 && u1[0] === `sb://song-files/${U}`, `unused: only files nothing uses, of the caller's bands (${JSON.stringify(u1)})`);
-ok(JSON.stringify(await unused(STRANGER, [`sb://song-files/${U}`])) === '[]', 'unused: nothing of another band');
+// Reads that report a missing object as no rows (so a FAIL is counted, not a crash).
+const qs = (sql, p) => q(sql, p).catch(() => ({ rows: [] }));
+// What the app may remove (deleting a song, replacing a file): only through
+// a claim (Codex review of 02405d5c, blocker 2). The old check-then-delete
+// function is gone.
+ok((await qs(`SELECT to_regprocedure('public.bw_song_files_unused(text[])') IS NULL AS v`)).rows[0].v === true, 'no check-only "unused" function');
+const claimDel = (user, refs) => asCommit(user, `SELECT public.bw_song_files_claim_delete($1) AS v`, [refs]);
+const removedDone = (user, refs) => asCommit(user, `SELECT public.bw_song_files_removed($1) AS v`, [refs]);
+ok((rej2?.files ?? []).length === 1 && (await qs(`SELECT claimed_by FROM song_file_removals WHERE path = $1`, [U])).rows[0]?.claimed_by === ADMIN,
+  'reject claims the files it returns (old builds delete them right after)');
+const linkU = await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(40)}','${BAND}','Relink U','ready','sb://song-files/${U}',NULL) RETURNING 1 AS v`);
+ok(String(linkU).includes('BW_FILE_REMOVED'), `a claimed file can't be linked meanwhile (${linkU})`);
+const W = `${BAND}/audio/w-replaced.mp3`;
+const c1d = await claimDel(ADMIN, [`sb://song-files/${O}`, `sb://song-files/${U}`, `sb://song-files/${W}`, `sb://song-files/${OTHER_BAND}/audio/z.mp3`, 'https://example.com/x.mp3']);
+ok(Array.isArray(c1d) && c1d.length === 2 && c1d.includes(`sb://song-files/${U}`) && c1d.includes(`sb://song-files/${W}`) && !c1d.includes(`sb://song-files/${O}`),
+  `claim: only files nothing uses, of the caller's band (${JSON.stringify(c1d)})`);
+ok(JSON.stringify(await claimDel(ADMIN2, [`sb://song-files/${W}`])) === '[]', 'claim: another admin meanwhile gets nothing');
+ok(JSON.stringify(await claimDel(STRANGER, [`sb://song-files/${U}`])) === '[]', 'claim: nothing of another band');
+ok(JSON.stringify(await claimDel(MEM2, [`sb://song-files/${BAND}/audio/v.mp3`])) === '[]', 'claim: a member only for their own suggestion files');
+const ownMem = `${BAND}/suggestions/${MEM2}/audio/own.mp3`;
+ok(JSON.stringify(await claimDel(MEM2, [`sb://song-files/${ownMem}`])) === JSON.stringify([`sb://song-files/${ownMem}`]), 'claim: a member for their own suggestion file');
+ok((await removedDone(ADMIN, [`sb://song-files/${W}`])) === 1 && (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [W])).rows.length === 0, 'removed: the claim is closed');
+// A failed delete: the claim lapses after 10 minutes, links work again.
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '11 minutes' WHERE path = '${U}'`).catch(() => undefined);
+ok(JSON.stringify(await claimDel(ADMIN2, [`sb://song-files/${U}`])) === JSON.stringify([`sb://song-files/${U}`]), 'a lapsed claim can be claimed again');
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '11 minutes' WHERE path = '${U}'`).catch(() => undefined);
+ok((await as(ADMIN, () => q(`INSERT INTO songs VALUES ('${id(41)}','${BAND}','Relink U later','ready','sb://song-files/${U}',NULL)`).then(() => 1, (e) => e.message))) === 1,
+  'after the lapse the file can be linked again');
 await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${U}`]);
-ok(JSON.stringify(await unused(ADMIN, [`sb://song-files/${U}`])) === '[]', 'unused: a file a suggestion mentions is kept');
+ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${U}`])) === '[]', 'claim: a file a suggestion mentions is kept');
+await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
+
+// ---- Round 5 (Codex review of 02405d5c)
+// Blocker 1: a link and a claim on the same file are ordered by one lock:
+// every link takes a shared transaction lock on the file's key, every claim
+// (sweep or delete) the exclusive one on the same key. PGlite is a single
+// connection, so the race is shown through pg_locks inside a transaction
+// plus both sequential orders.
+const def = async (sig) => (await qs(`SELECT pg_get_functiondef($1::regprocedure) AS v`, [sig])).rows[0].v;
+const trgDef = await def('public.bw_trg_song_file_not_removed()').catch(() => '');
+const sweepDef = await def('public.bw_song_file_sweep_claim(uuid, text)').catch(() => '');
+const delDef = (await def('public.bw_song_files_claim_delete(text[])').catch(() => '')).includes('bw_song_files_claim_for(')
+  ? await def('public.bw_song_files_claim_for(text[], uuid, boolean)').catch(() => '')
+  : '';
+const SHARED = 'pg_advisory_xact_lock_shared(public.bw_song_file_lock_key(';
+const EXCL = 'pg_advisory_xact_lock(public.bw_song_file_lock_key(';
+ok(trgDef.includes(SHARED), 'the link trigger takes the shared lock on the file key');
+ok(sweepDef.includes(EXCL) && delDef.includes(EXCL), 'the sweep claim and the delete claim take the exclusive lock on the same key');
+// The key is computed up front (app users can't call the key function).
+const keyOf = async (path) => (await qs(`SELECT public.bw_song_file_lock_key($1)::text AS k`, [path])).rows[0]?.k ?? null;
+const keyHeld = (k, mode) => k == null ? Promise.resolve(-1) : q(`SELECT count(*)::int AS n FROM pg_locks l
+  WHERE l.locktype = 'advisory' AND l.mode = $2 AND l.granted AND l.objsubid = 1
+    AND l.classid = (($1::bigint >> 32) & 4294967295)::oid AND l.objid = ($1::bigint & 4294967295)::oid`, [k, mode]).then((r) => r.rows[0].n, () => -1);
+const C = sug(MEM, 'audio/r5-copying.mp3');
+await db.exec(`INSERT INTO songs VALUES ('${id(50)}','${BAND}','R5 accepted','learning','sb://song-files/${C}',NULL)`);
+// A transaction that links C holds the shared key until it ends, also while
+// the adoption is still 'copying' (no record row to lock yet).
+await asCommit(ADMIN, `SELECT public.bw_song_file_adopt_begin($1, 'audio_url') AS v`, [id(50)]);
+ok((await qs(`SELECT state FROM song_file_adoptions WHERE from_path = $1`, [C])).rows[0]?.state === 'copying', 'adoption of C is copying');
+const keyC = await keyOf(C);
+const heldShared = await as(ADMIN, async () => {
+  await q(`INSERT INTO songs VALUES ('${id(51)}','${BAND}','Links C while copying','suggested','sb://song-files/${C}',NULL)`).catch(() => undefined);
+  return keyHeld(keyC, 'ShareLock');
+}).catch(() => -1);
+ok(heldShared === 1, `a link transaction holds the shared lock on C's key until commit (${heldShared})`);
+const C2 = sug(MEM, 'audio/r5-free.mp3');
+const keyC2 = await keyOf(C2);
+const heldExcl = await as(ADMIN, async () => {
+  await q(`SELECT public.bw_song_files_claim_delete($1)`, [[`sb://song-files/${C2}`]]).catch(() => undefined);
+  return keyHeld(keyC2, 'ExclusiveLock');
+}).catch(() => -1);
+ok(heldExcl === 1, `a claim holds the exclusive lock on the same key (${heldExcl})`);
+// Order 1: link (while copying) commits, then the adoption and the sweep claim: claim refused.
+const DC = `${BAND}/audio/${id(50)}-r5-copying.mp3`;
+ok((await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(52)}','${BAND}','Links C first','ready','sb://song-files/${C}',NULL) RETURNING 1 AS v`)) === 1, 'order 1: a song links C while copying');
+await asCommit(ADMIN, `SELECT public.bw_song_file_adopt_repoint($1, 'audio_url', $2, $3) AS v`, [id(50), C, DC]);
+ok((await claim(ADMIN, C)).reason === 'referenced', 'order 1: then the sweep claim is refused');
+// Order 2: the claim first, then a link: link refused.
+await db.exec(`DELETE FROM songs WHERE id = '${id(52)}'`);
+ok((await claim(ADMIN, C)).ok === true, 'order 2: the sweep claims C');
+ok(String(await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(53)}','${BAND}','Links C late','ready','sb://song-files/${C}',NULL) RETURNING 1 AS v`)).includes('BW_FILE_REMOVED'),
+  'order 2: then the link is refused');
+// Blocker 3: BW_FILE_IN_USE only within the caller's band; another band's
+// file gets the generic permission error, used or not.
+const XO = `${OTHER_BAND}/audio/x-used.mp3`;
+await db.exec(`INSERT INTO songs VALUES ('${id(54)}','${OTHER_BAND}','Other band song','ready','sb://song-files/${XO}',NULL)`);
+const crossUsed = await asCommit(MEM, `INSERT INTO songs VALUES ('${id(55)}','${BAND}','Cross used','suggested','sb://song-files/${XO}',NULL) RETURNING 1 AS v`);
+const crossFree = await asCommit(MEM, `INSERT INTO songs VALUES ('${id(56)}','${BAND}','Cross free','suggested','sb://song-files/${OTHER_BAND}/audio/x-free.mp3',NULL) RETURNING 1 AS v`);
+ok(String(crossUsed).startsWith('error') && !String(crossUsed).includes('BW_FILE_IN_USE'), `another band's used file: no BW_FILE_IN_USE (${crossUsed})`);
+ok(String(crossUsed) === String(crossFree), 'used or not, the same answer');
+
+// Claude review of 02405d5c: own SQLSTATEs (55000 is "already reviewed").
+async function codeOf(user, sql) {
+  await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${user}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+  try { await q(sql); return 'ok'; } catch (e) { return e.code; } finally { await db.exec('ROLLBACK'); }
+}
+ok((await codeOf(MEM, `INSERT INTO songs VALUES ('${id(60)}','${BAND}','Reuse O again','suggested','sb://song-files/${O}',NULL)`)) === 'BWF01', 'BW_FILE_IN_USE has SQLSTATE BWF01');
+ok((await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(61)}','${BAND}','Link C late again','ready','sb://song-files/${C}',NULL)`)) === 'BWF02', 'BW_FILE_REMOVED has SQLSTATE BWF02');
+// The suggestion scan reads only the file's band (no leak, no scan of every band).
+const Y = `${BAND}/audio/y-mentioned.mp3`;
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [OTHER_BAND, `sb://song-files/${Y}`]);
+ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === JSON.stringify([`sb://song-files/${Y}`]), 'another band’s suggestion mentioning the path does not count');
+await removedDone(ADMIN, [`sb://song-files/${Y}`]);
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${Y}`]);
+ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === '[]', 'its own band’s suggestion does');
+await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
+
+// Apply order the other way (197, then 180's real withdraw): it must still
+// filter files in use. #282 is making 180 call bw_song_files_left_unused when
+// it exists; until it pushes that, this case is pending.
+if (!w180) {
+  console.warn('SKIP 197→180 order: no 180 available');
+} else if (!w180.includes('bw_song_files_left_unused')) {
+  console.warn('SKIP (pending #282) 197→180 order: 180’s withdraw does not call bw_song_files_left_unused yet');
+} else {
+  await db.exec(w180);
+  await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+    INSERT INTO songs VALUES ('${id(62)}','${BAND}','S5 on O','suggested','sb://song-files/${O}',NULL);
+    ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed;
+    INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES ('${id(63)}','${BAND}','${id(62)}','new_song','${MEM}')`);
+  const wd180 = await withdraw(MEM, id(63));
+  ok(wd180 && Array.isArray(wd180.files) && wd180.files.length === 0, `197→180: withdraw keeps a file another song uses (${JSON.stringify(wd180?.files ?? wd180)})`);
+  ok(String(await withdraw(MEM2, id(33))).includes('Not your suggestion'), '197→180: and still refuses a former member’s suggestion');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

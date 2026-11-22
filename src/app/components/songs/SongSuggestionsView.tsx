@@ -95,11 +95,20 @@ export const SongSuggestionsView: React.FC = () => {
   const loadSongs = React.useCallback(async (list: SongSuggestion[]) => {
     const ids = [...new Set(list.map((s) => s.song_id).filter((id): id is string => !!id))];
     if (!ids.length) return;
-    const { data: rows } = await supabase
-      .from('songs')
-      .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
-      .in('id', ids);
-    setSongs((prev) => ({ ...prev, ...Object.fromEntries(((rows || []) as SongRow[]).map((r) => [r.id, r])) }));
+    // A request per 100 ids: every page of a long list in one `in.(...)`
+    // would pass the URL length the server accepts.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += SONG_CHUNK) chunks.push(ids.slice(i, i + SONG_CHUNK));
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from('songs')
+          .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
+          .in('id', chunk),
+      ),
+    );
+    const rows = results.flatMap((r) => ((r.data || []) as SongRow[]));
+    setSongs((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.id, r])) }));
   }, []);
 
   /** One tab from the newest, page by page, down to `through` (what was shown before a refresh). */
@@ -190,8 +199,15 @@ export const SongSuggestionsView: React.FC = () => {
 
   const items = React.useMemo(() => {
     if (!loadedFor) return null;
-    const all = [...pages.pending, ...pages.reviewed];
-    return extra && !all.some((s) => s.id === extra.id) ? [...all, extra] : all;
+    // One row per suggestion: a page loaded later can hold one already shown
+    // in the other tab (reviewed meanwhile). Its latest status wins: a
+    // review only ever moves it out of pending.
+    const byId = new Map<string, SongSuggestion>();
+    for (const s of [...pages.pending, ...pages.reviewed, ...(extra ? [extra] : [])]) {
+      const seen = byId.get(s.id);
+      if (!seen || (seen.status === 'pending' && s.status !== 'pending')) byId.set(s.id, s);
+    }
+    return [...byId.values()];
   }, [pages, extra, loadedFor]);
 
   React.useEffect(() => {
@@ -327,6 +343,8 @@ export const SongSuggestionsView: React.FC = () => {
 
 /** Suggestions per page, in each tab. */
 const PAGE = 100;
+/** Song ids per request (URL length). */
+const SONG_CHUNK = 100;
 type Tab = 'pending' | 'reviewed';
 const STATUS: Record<Tab, SuggestionStatus | SuggestionStatus[]> = {
   pending: 'pending',

@@ -230,7 +230,7 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
   const bucket = client.storage.from(SONG_FILES_BUCKET);
   const { data: claim, error: claimError } = await client.rpc('bw_song_file_adopt_begin', { p_song_id: songId, p_field: field });
   if (claimError) return { error: asError(claimError, 'Could not move the files') };
-  const c = (claim || {}) as { won?: boolean; from?: string; to?: string; reason?: string };
+  const c = (claim || {}) as { won?: boolean; from?: string; to?: string; reason?: string; ref?: string | null };
   // Another admin is moving it right now: wait for their repoint and report
   // the copy the song then uses (not the original this screen still shows).
   if (c.reason === 'busy') {
@@ -242,6 +242,9 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
     }
     return {};
   }
+  // Nothing to move: maybe another device already finished. Then the song
+  // links its own copy (the server's current reference): report that one.
+  if (c.reason === 'nothing' && isOwnCopy(c.ref, songId)) return { ref: c.ref };
   // Waiting for review or nothing to move.
   if (!c.won || !c.from || !c.to) return {};
 
@@ -367,15 +370,19 @@ export const removeSongFiles = async (refs: Array<string | null | undefined>): P
   const stored = [...new Set(refs.filter(isStoredSongFile))];
   if (stored.length === 0) return;
   try {
-    // Only files nothing uses any more: another song (or a suggestion) can
-    // link the same file (197). If the server can't say, keep them all: a
-    // leftover file costs space, a missing one loses a band's recording.
-    const { data, error } = await supabase.rpc('bw_song_files_unused', { p_refs: stored });
+    // Only through a claim (197): the server returns the files nothing uses
+    // and, until we close the claim (or 10 minutes pass), refuses any new
+    // link to them, so nothing can link a file between the check and the
+    // delete. If it can't claim, keep them all: a leftover file costs space,
+    // a missing one loses a band's recording.
+    const { data, error } = await supabase.rpc('bw_song_files_claim_delete', { p_refs: stored });
     if (error || !Array.isArray(data)) return;
-    const unused = new Set(data as string[]);
-    const paths = stored.filter((r) => unused.has(r)).map((r) => r.slice(REF_PREFIX.length));
-    if (paths.length === 0) return;
-    await supabase.storage.from(SONG_FILES_BUCKET).remove(paths);
+    const claimed = stored.filter((r) => (data as string[]).includes(r));
+    if (claimed.length === 0) return;
+    const { error: removeError } = await supabase.storage.from(SONG_FILES_BUCKET).remove(claimed.map((r) => r.slice(REF_PREFIX.length)));
+    // A failed delete keeps the claim: it lapses, and the files stay.
+    if (removeError) return;
+    await supabase.rpc('bw_song_files_removed', { p_refs: claimed });
   } catch {
     /* kept */
   }

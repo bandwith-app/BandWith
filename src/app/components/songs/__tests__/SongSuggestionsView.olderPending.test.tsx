@@ -8,7 +8,7 @@ import { render, screen, cleanup, act, fireEvent, within } from '@testing-librar
 // open it. Now each tab asks the server for its own status, a page at a time,
 // and a notification's suggestion is fetched by id.
 type Row = Record<string, unknown>;
-const db = vi.hoisted(() => ({ rows: [] as Row[], holdKeyset: null as Promise<void> | null, band: 'band-1' }));
+const db = vi.hoisted(() => ({ rows: [] as Row[], holdKeyset: null as Promise<void> | null, band: 'band-1', inSizes: [] as number[] }));
 
 vi.mock('@/lib/supabase', () => {
   const query = (table: string) => {
@@ -37,7 +37,7 @@ vi.mock('@/lib/supabase', () => {
     const b: Record<string, unknown> = {
       select: (_c?: string, o?: { head?: boolean }) => ((head = !!o?.head), b),
       eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), b),
-      in: (k: string, v: unknown[]) => (filters.push((r) => v.includes(r[k])), b),
+      in: (k: string, v: unknown[]) => (k === 'id' && db.inSizes.push(v.length), filters.push((r) => v.includes(r[k])), b),
       order: (col: string, o?: { ascending?: boolean }) => (orders.push({ col, asc: o?.ascending !== false }), b),
       // Keyset cursor: created_at.lt."T",and(created_at.eq."T",id.lt."I")
       or: (expr: string) => {
@@ -187,5 +187,41 @@ describe('Suggestions: an older pending one stays reachable', () => {
     await screen.findByText('Reviewed 130');
     expect(tabs().getByRole('button', { name: /^Reviewed/ }).textContent).toBe('Reviewed230');
     expect(tabs().getByRole('button', { name: /^Waiting/ }).textContent).toBe('Waiting1');
+  });
+
+  it('songs of many suggestions are read in chunks the URL can carry (Codex review of 02405d5c)', { timeout: 60_000 }, async () => {
+    seed();
+    db.rows.forEach((r, i) => (r.song_id = `song-${i}`));
+    db.inSizes = [];
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    fireEvent.click(await screen.findByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 230');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    await screen.findByText('Reviewed 130');
+    // A refresh reads every page shown again.
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    await screen.findByText('Reviewed 130');
+    expect(db.inSizes.length).toBeGreaterThan(0);
+    expect(Math.max(...db.inSizes)).toBeLessThanOrEqual(100);
+  });
+
+  it('a suggestion reviewed meanwhile shows once, with its latest status (Codex review of 02405d5c)', { timeout: 60_000 }, async () => {
+    seed();
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    await screen.findByText('Old correction · Harlem Nocturne');
+    // Reviewed elsewhere; no refresh reaches this screen.
+    db.rows[0].status = 'accepted';
+    const tabs = () => within(screen.getByRole('group', { name: 'Suggestions' }));
+    fireEvent.click(tabs().getByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 230');
+    for (let n = 0; n < 4 && screen.queryByRole('button', { name: 'Load older suggestions' }); n++) {
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    }
+    await screen.findByText('Reviewed 1');
+    expect(within(screen.getByRole('dialog')).getAllByText('Old correction · Harlem Nocturne')).toHaveLength(1);
+    fireEvent.click(tabs().getByRole('button', { name: /^Waiting/ }));
+    expect(within(screen.getByRole('dialog')).queryByText('Old correction · Harlem Nocturne')).toBeNull();
   });
 });

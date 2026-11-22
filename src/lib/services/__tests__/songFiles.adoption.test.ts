@@ -312,6 +312,16 @@ describe('two runs at once (phone + iPad, or two admins)', () => {
     finished();
   });
 
+  it('the other device already finished: its copy is reported, not dropped (Codex review of 02405d5c)', async () => {
+    await adopt(A);
+    finished();
+    const other = fake.actor('admin-2');
+    // This screen still shows the original.
+    const out = await adopt(other, { ...song(), audio_url: ref(ORIG) });
+    expect(out.refs).toEqual({ audio_url: ref(DEST) });
+    expect(other.log.filter((l) => l.startsWith('copy') || l.startsWith('remove'))).toEqual([]);
+  });
+
   it('another admin busy with the same file: the second waits (does nothing)', async () => {
     const other = fake.actor('admin-2');
     const aRe = A.pause('repoint');

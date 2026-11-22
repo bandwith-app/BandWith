@@ -30,13 +30,13 @@
 --        the recorded originals nothing references any more (checked across
 --        all songs and member suggestions).
 --      bw_song_file_sweep_claim(band, path)
---        right before each delete, the record row locked: re-checks that no
+--        right before each delete, the file key locked: re-checks that no
 --        song and no member suggestion links the path, then marks it
 --        'deleting' ({ok: true}); else {ok: false, reason: 'referenced' |
 --        'busy' | 'gone'} and the app skips it. While a path is 'deleting'
 --        (or removed), triggers on songs and song_suggestions refuse to link
---        it (BW_FILE_REMOVED); their row lock makes a link and a claim wait
---        for each other, so one always sees the other.
+--        it (BW_FILE_REMOVED, SQLSTATE BWF02); their lock makes a link and a
+--        claim wait for each other, so one always sees the other.
 --      bw_song_file_sweep_done(band, paths)
 --        after the Storage delete: claimed rows marked 'cleaned'. A delete
 --        that failed leaves the claim, which lapses after 10 minutes: the
@@ -48,10 +48,16 @@
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
 --    unchanged; withdraw as 180 lines 751-786 on fix/account-deletion at
 --    b91fd064, with IS DISTINCT FROM for a NULL author) return only the
---    files nothing else uses, and the app asks
---    bw_song_files_unused before removing any (deleting a song, replacing a
---    file). A member's song can't link a file another song uses
---    (BW_FILE_IN_USE).
+--    files nothing else uses, already claimed for deletion. The app deletes
+--    only through a claim: bw_song_files_claim_delete (under the file keys'
+--    exclusive locks; claimed files can't be linked), the Storage delete,
+--    then bw_song_files_removed; a failed delete lapses after 10 minutes.
+--    A member's song can't link a file another song of the band uses
+--    (BW_FILE_IN_USE, SQLSTATE BWF01) nor another band's file (42501).
+--
+-- Links and deletes of one file are ordered by one advisory lock on the
+-- file's key (shared to link, exclusive to claim), so a link can't slip in
+-- between a delete's check and the delete, whatever state its record is in.
 --
 -- Older builds keep working: same policies' names and folders, the review
 -- and withdraw RPCs keep their arguments and result (the files list can only
@@ -123,20 +129,25 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_json_needle(text) FROM PUBLIC, anon, authenticated;
 
--- A member suggestion (any band, any column that can hold text) mentions
--- this file, as a reference or a bare path.
+-- A member suggestion of the file's band (any column that can hold text)
+-- mentions this file, as a reference or a bare path. Only that band: its
+-- files are its members' (no other band's rows are read or scanned).
 CREATE OR REPLACE FUNCTION public.bw_song_file_in_suggestion(p_path text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT EXISTS (SELECT 1 FROM public.song_suggestions g
-                  WHERE strpos(g.proposed::text, public.bw_song_file_json_needle(p_path)) > 0
+                  WHERE g.band_id = CASE WHEN split_part(p_path, '/', 1)
+                                               ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                                         THEN split_part(p_path, '/', 1)::uuid END
+                    AND (strpos(g.proposed::text, public.bw_song_file_json_needle(p_path)) > 0
                      OR strpos(g.original::text, public.bw_song_file_json_needle(p_path)) > 0
                      OR strpos(coalesce(g.applied::text, ''), public.bw_song_file_json_needle(p_path)) > 0
                      OR strpos(coalesce(g.message, ''), p_path) > 0
-                     OR strpos(coalesce(g.reason, ''), p_path) > 0);
+                     OR strpos(coalesce(g.reason, ''), p_path) > 0));
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_in_suggestion(text) FROM PUBLIC, anon, authenticated;
 
--- Anything links to this file: a song (of any band) or a member suggestion.
+-- Anything links to this file: a song (of any band) or a member suggestion
+-- of its band.
 CREATE OR REPLACE FUNCTION public.bw_song_file_in_use(p_path text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT EXISTS (SELECT 1 FROM public.songs s
@@ -144,6 +155,48 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
       OR public.bw_song_file_in_suggestion(p_path);
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_in_use(text) FROM PUBLIC, anon, authenticated;
+
+-- One lock orders every link and every delete of a file: a link takes the
+-- file key's shared transaction lock (songs trigger), a delete claim (sweep
+-- or delete) the exclusive one. Either the link commits first and the
+-- claim's re-check sees it, or the claim commits first and the link sees the
+-- file being removed. It works with or without a record row (a file still
+-- 'copying', or one never adopted). Member suggestions mention files as
+-- text: they take the band key (shared) and claims take it too (exclusive).
+-- Claims lock their file keys (sorted) before the band key; links only ever
+-- take one kind, in sorted order, so the two can't deadlock.
+CREATE OR REPLACE FUNCTION public.bw_song_file_lock_key(p_path text)
+RETURNS bigint LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $$
+  SELECT hashtextextended('bw:song-file:' || coalesce(p_path, ''), 0);
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_lock_key(text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_song_file_band_key(p_band_id uuid)
+RETURNS bigint LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $$
+  SELECT hashtextextended('bw:song-file-band:' || coalesce(p_band_id::text, ''), 0);
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_band_key(uuid) FROM PUBLIC, anon, authenticated;
+
+-- Delete claims outside the sweep (deleting a song, replacing a file,
+-- rejecting / withdrawing a suggested song): the file is being removed
+-- until the app says it is gone, or for 10 minutes (a delete that failed).
+CREATE TABLE IF NOT EXISTS public.song_file_removals (
+  path text PRIMARY KEY,
+  band_id uuid NOT NULL,
+  claimed_by uuid,
+  claimed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS song_file_removals_band_idx ON public.song_file_removals (band_id);
+ALTER TABLE public.song_file_removals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.song_file_removals FROM PUBLIC, anon, authenticated;
+
+-- The file is being deleted, or was (no new link to it).
+CREATE OR REPLACE FUNCTION public.bw_song_file_being_removed(p_path text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+  SELECT EXISTS (SELECT 1 FROM public.song_file_adoptions a WHERE a.from_path = p_path AND a.state IN ('deleting', 'cleaned'))
+      OR EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = p_path AND r.claimed_at >= now() - interval '10 minutes');
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_being_removed(text) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.bw_song_file_adopt_begin(p_song_id uuid, p_field text)
 RETURNS jsonb
@@ -284,9 +337,9 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_sweep_list(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_sweep_list(uuid) TO authenticated;
 
--- Right before deleting one original: under the record's row lock, no song
--- may link it; then it is 'deleting' (a lapsed claim, 10 minutes, counts as
--- pending again).
+-- Right before deleting one original: under the file key's exclusive lock
+-- (and the record's row lock), nothing may link it; then it is 'deleting'
+-- (a lapsed claim, 10 minutes, counts as pending again).
 CREATE OR REPLACE FUNCTION public.bw_song_file_sweep_claim(p_band_id uuid, p_path text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -299,6 +352,9 @@ BEGIN
   IF auth.uid() IS NULL OR NOT public.bw_is_band_admin(p_band_id, auth.uid()) THEN
     RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
   END IF;
+  -- Waits for any link of this file (or suggestion of this band) in progress.
+  PERFORM pg_advisory_xact_lock(public.bw_song_file_lock_key(p_path));
+  PERFORM pg_advisory_xact_lock(public.bw_song_file_band_key(p_band_id));
   SELECT * INTO a FROM public.song_file_adoptions
    WHERE band_id = p_band_id AND from_path = p_path AND state IN ('repointed', 'deleting')
      AND from_path LIKE p_band_id::text || '/suggestions/%'
@@ -346,11 +402,12 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_sweep_done(uuid, text[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_sweep_done(uuid, text[]) TO authenticated;
 
--- A member's song never links a file another song uses (BW_FILE_IN_USE).
--- No song links a file being deleted (or already removed). The FOR SHARE
--- lock waits for a claim in progress, and a claim waits for this.
--- Older builds never link these paths: they only upload new files and keep
--- the ones a song has (an unchanged field is not checked).
+-- A member's song links only files of its band, never one another song of
+-- the band uses (BW_FILE_IN_USE; another band's file: the generic refusal,
+-- so nothing tells whether another band uses it). No song links a file being
+-- deleted or removed (BW_FILE_REMOVED), under the file key's shared lock.
+-- Older builds never hit either: they link only files they just uploaded
+-- and keep the ones a song has (an unchanged field is not checked).
 CREATE OR REPLACE FUNCTION public.bw_trg_song_file_not_removed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -360,30 +417,37 @@ AS $$
 DECLARE
   v_ref text;
   v_path text;
-  v_state text;
+  v_paths text[] := '{}';
 BEGIN
   FOREACH v_ref IN ARRAY ARRAY[NEW.audio_url, NEW.chart_url] LOOP
     CONTINUE WHEN v_ref IS NULL OR v_ref NOT LIKE 'sb://song-files/%';
     IF TG_OP = 'UPDATE' AND (v_ref IS NOT DISTINCT FROM OLD.audio_url OR v_ref IS NOT DISTINCT FROM OLD.chart_url) THEN
       CONTINUE;
     END IF;
-    -- A member links only their own new uploads, never a file another song
-    -- uses (rejecting their song would then remove it).
-    IF auth.uid() IS NOT NULL AND NOT public.bw_is_band_admin(NEW.band_id, auth.uid())
-       AND EXISTS (SELECT 1 FROM public.songs o WHERE o.id IS DISTINCT FROM NEW.id AND (o.audio_url = v_ref OR o.chart_url = v_ref)) THEN
-      RAISE EXCEPTION 'BW_FILE_IN_USE: this file belongs to another song; upload it again'
-        USING ERRCODE = '55000';
-    END IF;
-    CONTINUE WHEN v_ref NOT LIKE 'sb://song-files/%/suggestions/%';
     v_path := substr(v_ref, length('sb://song-files/') + 1);
-    FOR v_state IN
-      SELECT state FROM public.song_file_adoptions WHERE from_path = v_path AND state IN ('repointed', 'deleting', 'cleaned') FOR SHARE
-    LOOP
-      IF v_state IN ('deleting', 'cleaned') THEN
-        RAISE EXCEPTION 'BW_FILE_REMOVED: this file was moved into the band''s songs; upload it again'
-          USING ERRCODE = '55000';
+    IF auth.uid() IS NOT NULL AND NOT public.bw_is_band_admin(NEW.band_id, auth.uid()) THEN
+      IF split_part(v_path, '/', 1) IS DISTINCT FROM NEW.band_id::text THEN
+        RAISE EXCEPTION 'Not allowed to link this file' USING ERRCODE = '42501';
       END IF;
-    END LOOP;
+      -- (rejecting their song would then remove a file the band uses)
+      IF EXISTS (SELECT 1 FROM public.songs o
+                  WHERE o.band_id = NEW.band_id AND o.id IS DISTINCT FROM NEW.id
+                    AND (o.audio_url = v_ref OR o.chart_url = v_ref)) THEN
+        RAISE EXCEPTION 'BW_FILE_IN_USE: this file belongs to another song; upload it again'
+          USING ERRCODE = 'BWF01';
+      END IF;
+    END IF;
+    v_paths := v_paths || v_path;
+  END LOOP;
+  FOR v_path IN SELECT DISTINCT p FROM unnest(v_paths) p ORDER BY 1 LOOP
+    PERFORM pg_advisory_xact_lock_shared(public.bw_song_file_lock_key(v_path));
+  END LOOP;
+  -- New statements: they see a claim that committed while we waited.
+  FOREACH v_path IN ARRAY v_paths LOOP
+    IF public.bw_song_file_being_removed(v_path) THEN
+      RAISE EXCEPTION 'BW_FILE_REMOVED: this file is being removed; upload it again'
+        USING ERRCODE = 'BWF02';
+    END IF;
   END LOOP;
   RETURN NEW;
 END;
@@ -395,9 +459,9 @@ CREATE TRIGGER songs_file_not_removed
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_song_file_not_removed();
 
 -- The same for member suggestions: one that mentions a file of its band
--- being deleted (or removed) is refused; FOR SHARE on the band's pending
--- and deleting rows interlocks with the claim. Older builds only put lyrics,
--- chords and notes here, never a file path.
+-- being deleted (or removed) is refused, under the band key's shared lock
+-- (claims take it exclusive). Older builds only put lyrics, chords and notes
+-- here, never a file path.
 CREATE OR REPLACE FUNCTION public.bw_trg_song_suggestion_file_not_removed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -407,25 +471,23 @@ AS $$
 DECLARE
   v_json text;
   v_text text;
-  v_state text;
 BEGIN
   v_json := NEW.proposed::text || ' ' || NEW.original::text || ' ' || coalesce(NEW.applied::text, '');
   v_text := coalesce(NEW.message, '') || ' ' || coalesce(NEW.reason, '');
-  -- Nothing that looks like a suggestions path: nothing to check.
-  IF strpos(v_json, '/suggestions/') = 0 AND strpos(v_text, '/suggestions/') = 0 THEN
+  -- Band files start with the band id: no id, no file of the band.
+  IF NEW.band_id IS NULL OR (strpos(v_json, NEW.band_id::text) = 0 AND strpos(v_text, NEW.band_id::text) = 0) THEN
     RETURN NEW;
   END IF;
-  FOR v_state IN
-    SELECT a.state FROM public.song_file_adoptions a
-     WHERE a.band_id = NEW.band_id AND a.state IN ('repointed', 'deleting', 'cleaned')
-       AND (strpos(v_json, public.bw_song_file_json_needle(a.from_path)) > 0 OR strpos(v_text, a.from_path) > 0)
-     FOR SHARE
-  LOOP
-    IF v_state IN ('deleting', 'cleaned') THEN
-      RAISE EXCEPTION 'BW_FILE_REMOVED: this file was moved into the band''s songs; upload it again'
-        USING ERRCODE = '55000';
-    END IF;
-  END LOOP;
+  PERFORM pg_advisory_xact_lock_shared(public.bw_song_file_band_key(NEW.band_id));
+  IF EXISTS (SELECT 1 FROM public.song_file_adoptions a
+              WHERE a.band_id = NEW.band_id AND a.state IN ('deleting', 'cleaned')
+                AND (strpos(v_json, public.bw_song_file_json_needle(a.from_path)) > 0 OR strpos(v_text, a.from_path) > 0))
+     OR EXISTS (SELECT 1 FROM public.song_file_removals r
+              WHERE r.band_id = NEW.band_id AND r.claimed_at >= now() - interval '10 minutes'
+                AND (strpos(v_json, public.bw_song_file_json_needle(r.path)) > 0 OR strpos(v_text, r.path) > 0)) THEN
+    RAISE EXCEPTION 'BW_FILE_REMOVED: this file is being removed; upload it again'
+      USING ERRCODE = 'BWF02';
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -444,40 +506,122 @@ CREATE TRIGGER song_suggestions_fill_then_file_check
 -- member could insert a suggested song pointing at a band song's recording
 -- through the API; rejecting it deleted the band's file). Now:
 --   bw_review_song_suggestion / bw_withdraw_song_suggestion return only the
---     files nothing else uses (same shape; older builds remove that list).
---   bw_song_files_unused(refs) the refs, of the caller's bands, that nothing
---     uses: the app removes only those (deleting a song, replacing a file).
+--     files nothing else uses, claimed for deletion (same shape; older
+--     builds remove that list; their claim lapses after 10 minutes).
+--   bw_song_files_claim_delete(refs) claims the refs the user may delete
+--     that nothing uses; the app removes only those, then
+--     bw_song_files_removed(refs). (No check-only function: a separate
+--     check and delete would let a link slip in between.)
 --   A member can't insert (or update) a song pointing at a file another
---     song uses (BW_FILE_IN_USE): the songs trigger below. Older builds only
---     link files they just uploaded, so they never hit it.
+--     song of the band uses (BW_FILE_IN_USE), nor another band's file: the
+--     songs trigger above. Older builds only link files they just uploaded,
+--     so they never hit it.
 
--- Of these refs, the stored files no song and no suggestion uses (jsonb array).
-CREATE OR REPLACE FUNCTION public.bw_song_files_left_unused(p_refs text[])
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
-  SELECT coalesce(jsonb_agg(DISTINCT r), '[]'::jsonb)
-    FROM unnest(coalesce(p_refs, '{}'::text[])) r
-   WHERE r LIKE 'sb://song-files/%'
-     AND NOT public.bw_song_file_in_use(substr(r, length('sb://song-files/') + 1));
-$$;
-REVOKE ALL ON FUNCTION public.bw_song_files_left_unused(text[]) FROM PUBLIC, anon, authenticated;
+DROP FUNCTION IF EXISTS public.bw_song_files_unused(text[]);
 
--- For the app: which of these refs (files of the caller's bands) it may remove.
-CREATE OR REPLACE FUNCTION public.bw_song_files_unused(p_refs text[])
+-- Of these refs, claims for deletion the stored files nothing uses, under
+-- the file keys' exclusive locks (then the band keys'): each one returned is
+-- 'being removed' (no new link) until bw_song_files_removed or 10 minutes.
+-- p_check: only files the user may delete (an admin: the band's; a member:
+-- their own suggestion files). Never says "unused" without a claim.
+CREATE OR REPLACE FUNCTION public.bw_song_files_claim_for(p_refs text[], p_uid uuid, p_check boolean)
 RETURNS text[]
-LANGUAGE sql
-STABLE
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT coalesce(array_agg(DISTINCT r), '{}'::text[])
-    FROM unnest(coalesce(p_refs, '{}'::text[])) r
-   WHERE auth.uid() IS NOT NULL
-     AND r LIKE 'sb://song-files/%'
-     AND split_part(substr(r, length('sb://song-files/') + 1), '/', 1) = ANY (public.bw_my_band_ids())
-     AND NOT public.bw_song_file_in_use(substr(r, length('sb://song-files/') + 1));
+DECLARE
+  v_paths text[];
+  v_path text;
+  v_band text;
+  r record;
+  v_out text[] := '{}';
+BEGIN
+  IF p_uid IS NULL THEN
+    RETURN v_out;
+  END IF;
+  v_paths := ARRAY(
+    SELECT DISTINCT substr(x, length('sb://song-files/') + 1) AS p
+      FROM unnest(coalesce(p_refs, '{}'::text[])) x
+     WHERE x LIKE 'sb://song-files/%'
+       AND split_part(substr(x, length('sb://song-files/') + 1), '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       AND (NOT p_check
+            OR public.bw_is_band_admin(split_part(substr(x, length('sb://song-files/') + 1), '/', 1)::uuid, p_uid)
+            OR (split_part(substr(x, length('sb://song-files/') + 1), '/', 1) = ANY (public.bw_my_band_ids())
+                AND split_part(substr(x, length('sb://song-files/') + 1), '/', 2) = 'suggestions'
+                AND split_part(substr(x, length('sb://song-files/') + 1), '/', 3) = p_uid::text))
+     ORDER BY 1);
+  FOREACH v_path IN ARRAY v_paths LOOP
+    PERFORM pg_advisory_xact_lock(public.bw_song_file_lock_key(v_path));
+  END LOOP;
+  FOR v_band IN SELECT DISTINCT split_part(p, '/', 1) FROM unnest(v_paths) p ORDER BY 1 LOOP
+    PERFORM pg_advisory_xact_lock(public.bw_song_file_band_key(v_band::uuid));
+  END LOOP;
+  -- New statements: they see every link committed while we waited.
+  FOREACH v_path IN ARRAY v_paths LOOP
+    CONTINUE WHEN public.bw_song_file_in_use(v_path);
+    SELECT * INTO r FROM public.song_file_removals WHERE path = v_path;
+    CONTINUE WHEN r.path IS NOT NULL AND r.claimed_by IS DISTINCT FROM p_uid AND r.claimed_at >= now() - interval '10 minutes';
+    CONTINUE WHEN EXISTS (SELECT 1 FROM public.song_file_adoptions a
+                           WHERE a.from_path = v_path AND a.state = 'deleting' AND a.deleting_at >= now() - interval '10 minutes');
+    INSERT INTO public.song_file_removals (path, band_id, claimed_by, claimed_at)
+    VALUES (v_path, split_part(v_path, '/', 1)::uuid, p_uid, now())
+    ON CONFLICT (path) DO UPDATE SET claimed_by = EXCLUDED.claimed_by, claimed_at = EXCLUDED.claimed_at;
+    v_out := v_out || ('sb://song-files/' || v_path);
+  END LOOP;
+  RETURN v_out;
+END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_song_files_unused(text[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_song_files_unused(text[]) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_song_files_claim_for(text[], uuid, boolean) FROM PUBLIC, anon, authenticated;
+
+-- For the review / withdraw RPCs (also 180's withdraw, when it runs after
+-- this): of a removed song's refs, those nothing else uses, claimed for the
+-- calling user (jsonb array, the RPCs' `files`). Call it after deleting the
+-- song row. Older builds delete the list right away; the claim then lapses.
+CREATE OR REPLACE FUNCTION public.bw_song_files_left_unused(p_refs text[])
+RETURNS jsonb
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT to_jsonb(public.bw_song_files_claim_for(p_refs, auth.uid(), false));
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_files_left_unused(text[]) FROM PUBLIC, anon, authenticated;
+
+-- For the app: claim, delete from Storage only what this returned, then
+-- bw_song_files_removed. A delete that fails leaves the claim to lapse.
+CREATE OR REPLACE FUNCTION public.bw_song_files_claim_delete(p_refs text[])
+RETURNS text[]
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT public.bw_song_files_claim_for(p_refs, auth.uid(), true);
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_files_claim_delete(text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_song_files_claim_delete(text[]) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_song_files_removed(p_refs text[])
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  n integer;
+BEGIN
+  DELETE FROM public.song_file_removals
+   WHERE claimed_by = auth.uid()
+     AND path = ANY (ARRAY(SELECT substr(x, length('sb://song-files/') + 1) FROM unnest(coalesce(p_refs, '{}'::text[])) x
+                            WHERE x LIKE 'sb://song-files/%'));
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_files_removed(text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_song_files_removed(text[]) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.bw_review_song_suggestion(
   p_id uuid,
@@ -526,7 +670,8 @@ BEGIN
      WHERE id = g.id;
     IF g.kind = 'new_song' AND s.id IS NOT NULL AND s.status = 'suggested' THEN
       DELETE FROM public.songs WHERE id = s.id;
-      -- Only files nothing else uses (197): another song may link the same one.
+      -- Only files nothing else uses (197), claimed for the app to delete:
+      -- another song may link the same one.
       v_files := public.bw_song_files_left_unused(ARRAY[s.audio_url, s.chart_url]);
     END IF;
   ELSE

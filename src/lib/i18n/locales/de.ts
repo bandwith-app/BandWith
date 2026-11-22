@@ -3380,6 +3380,8 @@ const dict: Dictionary = {
   "Could not open the forum. Try again.": "Das Forum konnte nicht geöffnet werden. Versuch es noch einmal.",
   "This file is not MusicXML.": "Diese Datei ist kein MusicXML.",
   "This file is too large.": "Diese Datei ist zu groß.",
+  "This file is no longer available: upload it again.": "Diese Datei ist nicht mehr verfügbar: Lade sie erneut hoch.",
+  "This file belongs to another song: upload it again.": "Diese Datei gehört zu einem anderen Song: Lade sie erneut hoch.",
   "From the forum": "Aus dem Forum",
   "From file": "Aus einer Datei",
   "Browse the iReal Pro forum and tap a song or a playlist: its chords come straight here.": "Durchsuche das iReal Pro Forum und tippe auf einen Song oder eine Playlist: Die Akkorde kommen direkt hierher.",

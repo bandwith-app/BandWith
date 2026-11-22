@@ -28,6 +28,13 @@ export function userMessage(error: unknown, fallback: string): string {
   if (/BW_PLAN_LIMIT:/.test(msg)) {
     return `${fallback} ${t('Your band’s plan has no room for this.')}`;
   }
+  // Song files (197): no retry helps, the file has to be uploaded again.
+  if (code === 'BWF02' || /BW_FILE_REMOVED:/.test(msg)) {
+    return `${fallback} ${t('This file is no longer available: upload it again.')}`;
+  }
+  if (code === 'BWF01' || /BW_FILE_IN_USE:/.test(msg)) {
+    return `${fallback} ${t('This file belongs to another song: upload it again.')}`;
+  }
   if (/failed to fetch|networkerror|network request failed|load failed|timeout|offline/i.test(msg)) {
     return `${fallback} ${t('Check your connection and try again.')}`;
   }
