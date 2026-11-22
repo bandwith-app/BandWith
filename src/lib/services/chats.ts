@@ -992,6 +992,8 @@ export const sendMessage = async (
           bandName,
           subtitle,
           channel_id: 'bandwith_messages',
+          // The server checks this is our own new message (audit 02 #7).
+          message_id: data?.id,
         };
 
         // Send push notification (Edge Function also creates in-app notifications)
