@@ -7,6 +7,7 @@ import { cn } from '@/app/components/ui/utils';
 import { formatClock } from '@/lib/rehearsalSession';
 import { sectionLabel } from '@/lib/songFormat';
 import { voiceClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
+import { isFlagOn, useFlag } from '@/lib/appFlags';
 import {
   MAX_BODY,
   assigneesAllowed,
@@ -56,10 +57,10 @@ export const presetLabel = (p: NotePreset, t: T) =>
 /**
  * Where in the song: "Chorus · “Lanterns in the rain”" (empty for the whole
  * song). With the song's lyrics, a line sung by a part says so: "Chorus ·
- * Backing · line 2 · “(ooh, yeah)”".
+ * Backing · line 2 · “(ooh, yeah)”" (not with voice_parts switched off, docs/flags.md).
  */
 export function noteWhere(n: Pick<RehearsalNote, 'section' | 'line'>, t: T, lyrics?: string | null): string {
-  const part = n.line ? linePart(lyrics, n.section, n.line) : null;
+  const part = n.line && isFlagOn('voice_parts') ? linePart(lyrics, n.section, n.line) : null;
   return [
     n.section ? sectionLabel(n.section, t) : '',
     part && part.voice !== 'lead' ? `${voicePartLabel(part.voice, t)} · ${t('line {n}', { n: part.index })}` : '',
@@ -110,6 +111,8 @@ export const NoteEditorSheet: React.FC<{
   const t = useT();
   const [draft, setDraft] = useState<RehearsalNote | null>(note);
   const [tried, setTried] = useState(false);
+  // Kill switch voice_parts (docs/flags.md): off, the line picker shows plain lines.
+  const voicesOn = useFlag('voice_parts');
   useEffect(() => {
     if (open) {
       setDraft(note);
@@ -269,7 +272,7 @@ export const NoteEditorSheet: React.FC<{
                     )}
                   >
                     {(() => {
-                      const part = linePart(lyrics, draft.section, l);
+                      const part = voicesOn ? linePart(lyrics, draft.section, l) : null;
                       return part && part.voice !== 'lead' ? (
                         <span className="flex flex-col">
                           <span className="bw-label-xs opacity-70">{voicePartLabel(part.voice, t)}</span>
@@ -342,6 +345,8 @@ export const NoteItem: React.FC<{
   lyrics?: string | null;
 }> = ({ note, controls, members, onEdit, dark, lyrics }) => {
   const t = useT();
+  // The headline names the line's part only with voice_parts on: redraw when it flips.
+  useFlag('voice_parts');
   const me = controls.userId;
   const mine = note.assignees.some((a) => a.userId === me);
   const state = myNoteState(note, me);

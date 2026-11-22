@@ -40,7 +40,8 @@ import { personName } from '@/lib/personName';
 import { notifySongAdded } from '@/lib/services/notifications';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
 import { normalizeLyrics } from '@/lib/songFormat';
-import { applyVoiceSuggestions, suggestVoiceParts } from '@/lib/voiceParts';
+import { applyVoiceSuggestions } from '@/lib/voiceParts';
+import { useVoiceSuggestions } from '@/app/components/songs/useVoiceSuggestions';
 import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
 import { useT } from '@/lib/i18n';
@@ -108,7 +109,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [lyricsImportOpen, setLyricsImportOpen] = useState(false);
   // Voice parts proposed from a paste or an import: applied only on a tap ("Not now" hides it).
   const [voiceHintOff, setVoiceHintOff] = useState(false);
-  const voiceHints = useMemo(() => (voiceHintOff ? [] : suggestVoiceParts(lyrics)), [lyrics, voiceHintOff]);
+  // None while voice_parts is switched off (docs/flags.md).
+  const voiceHints = useVoiceSuggestions(lyrics, voiceHintOff);
   // The box shows the words without the part markers; the parts stay with their lines.
   const lyricsField = useVoiceSafeText(lyrics, setLyrics);
   // Chord chart pasted from iReal Pro (songs.chord_chart); saved only when changed here.

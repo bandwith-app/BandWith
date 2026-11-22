@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { CheckCircle2, Download } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { WaitingChangesTag } from './WaitingChangesTag';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
-import type { LivePack } from '@/lib/livePack';
+import { isPackReady, type LivePack } from '@/lib/livePack';
 import { chooseThisEvent, hasAnswered, readChoice } from '@/lib/livePackConsent';
 import { downloadPackNow } from './LivePackConsentSheet';
 
@@ -31,7 +32,7 @@ export function packSavedLabel(savedAt: string, t: T, now: Date = new Date()): s
  * Download opens the consent sheet (onAsk); after that it is the person's yes
  * for this event (livePackConsent).
  */
-export const OfflineReadyRow: React.FC<{
+const OfflineReadyRowInner: React.FC<{
   pack: LivePack | null;
   userId?: string;
   event: Record<string, unknown>;
@@ -46,7 +47,9 @@ export const OfflineReadyRow: React.FC<{
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const ready = !!pack && pack.songs.length > 0;
+  // A pack kept while live_pack was off is partial, and so is one missing a
+  // file of mine: not ready until completed.
+  const ready = isPackReady(pack);
   React.useEffect(() => {
     if (!pending) return;
     let alive = true;
@@ -115,3 +118,26 @@ export const OfflineReadyRow: React.FC<{
     </div>
   );
 };
+
+/**
+ * Switched off (app_flags live_pack, docs/flags.md): no download row and
+ * nothing runs, but changes saved with no signal still show while they wait
+ * (notes can still be queued; they are not the live pack's).
+ */
+export const OfflineReadyRow: React.FC<{
+  pack: LivePack | null;
+  userId?: string;
+  event: Record<string, unknown>;
+  occurrenceDate?: string;
+  online: boolean;
+  className?: string;
+  /** Not answered yet: open the consent sheet instead of downloading. */
+  onAsk?: () => void;
+  /** A download the sheet started: show it here. */
+  pending?: Promise<boolean> | null;
+}> = (props) =>
+  useFlag('live_pack') ? (
+    <OfflineReadyRowInner {...props} />
+  ) : (
+    <WaitingChangesTag userId={props.userId} className={props.className} />
+  );

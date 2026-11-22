@@ -16,7 +16,7 @@ vi.mock('@/lib/livePackConsent', () => ({
 }));
 vi.mock('@/lib/haptics', () => ({ haptic: { tap: vi.fn() } }));
 
-import { LivePackConsentSheet } from '../LivePackConsentSheet';
+import { LivePackConsentSheet, downloadPackNow } from '../LivePackConsentSheet';
 
 const songs = [
   { id: 's1', title: 'New York State of Mind', artist: 'Billy Joel', lyrics: 'Some folks like to get away…' },
@@ -76,5 +76,21 @@ describe('LivePackConsentSheet (plan §3.3)', () => {
     render(<LivePackConsentSheet {...props()} rehearsal />);
     expect(screen.getByRole('button', { name: 'Only this rehearsal' })).toBeTruthy();
     expect(screen.getByText(/songs of this rehearsal/)).toBeTruthy();
+  });
+});
+
+describe('downloadPackNow (review #273 round 6)', () => {
+  const args = { userId: 'u-1', event: { id: 'ev-1' }, unknownTitle: 'Unknown Song' };
+  it('a pack that came back partial (a file or a part did not load) is a failed download', async () => {
+    m.refreshPack.mockResolvedValueOnce({ eventId: 'ev-1', partial: true } as never);
+    expect(await downloadPackNow(args)).toBe(false);
+  });
+  it('a complete pack is a success; no pack or an error is a failure', async () => {
+    m.refreshPack.mockResolvedValueOnce({ eventId: 'ev-1' } as never);
+    expect(await downloadPackNow(args)).toBe(true);
+    m.refreshPack.mockResolvedValueOnce(null as never);
+    expect(await downloadPackNow(args)).toBe(false);
+    m.refreshPack.mockRejectedValueOnce(new Error('offline'));
+    expect(await downloadPackNow(args)).toBe(false);
   });
 });

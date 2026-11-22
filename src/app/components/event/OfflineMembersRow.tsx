@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { Bell, ChevronDown, Wifi } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
@@ -23,7 +24,7 @@ export function offlineCounts(members: ResolvedMember[], status: MemberPackStatu
  * member's phone reports the pack it holds (live_pack_status, 170). Tapping
  * it lists who is not ready, each with "Remind" (one push).
  */
-export const OfflineMembersRow: React.FC<{
+const OfflineMembersRowInner: React.FC<{
   eventId: string;
   members: ResolvedMember[];
   online: boolean;
@@ -122,3 +123,14 @@ export const OfflineMembersRow: React.FC<{
     </div>
   );
 };
+
+/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
+export const OfflineMembersRow: React.FC<{
+  eventId: string;
+  members: ResolvedMember[];
+  online: boolean;
+  /** The viewer: never reminded; counted as ready when this device holds the setlist. */
+  currentUserId?: string;
+  selfReady?: boolean;
+  className?: string;
+}> = (props) => (useFlag('live_pack') ? <OfflineMembersRowInner {...props} /> : null);

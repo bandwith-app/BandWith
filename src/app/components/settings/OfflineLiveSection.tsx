@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
@@ -45,6 +46,9 @@ export async function packsSpace(packs: LivePack[]): Promise<number> {
  */
 export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) => {
   const t = useT();
+  // Switched off (app_flags live_pack, docs/flags.md): nothing is downloaded
+  // ahead, but what is on the device stays: its space and "Delete all" remain.
+  const livePackOn = useFlag('live_pack');
   const [choice, setChoice] = useState<LivePackChoice>(() => readChoice(userId));
   const [kept, setKept] = useState<{ count: number; bytes: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -86,9 +90,12 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
   return (
     <div className="flex flex-col gap-3">
       <p className="bw-body-sm text-muted-foreground px-1">
-        {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
+        {livePackOn
+          ? t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')
+          : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until 24 hours after its gig, or until you delete it.')}
       </p>
 
+      {livePackOn && (
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Download />
@@ -101,12 +108,17 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
           aria-label={t('Automatic download')}
         />
       </div>
+      )}
 
+      {/* Switched off too: it still decides when kept setlists are brought up to date (the tidy-up). */}
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Wifi />
         </Tile>
-        <Text title={t('Wi-Fi only')} hint={t('Automatic downloads wait for Wi-Fi on this device')} />
+        <Text
+          title={t('Wi-Fi only')}
+          hint={livePackOn ? t('Automatic downloads wait for Wi-Fi on this device') : t('Updates to what is kept wait for Wi-Fi on this device')}
+        />
         <Toggle
           checked={choice.wifiOnly}
           disabled={!userId}
@@ -145,3 +157,4 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
     </div>
   );
 };
+

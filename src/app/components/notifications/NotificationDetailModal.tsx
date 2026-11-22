@@ -245,14 +245,16 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
     const id = bandNames ? notificationBandId(n) : undefined;
     return (id && bandNames?.[id]) || null;
   };
-  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
+  // The item open in detail, by id: the list can change under it (a refetch, a switched-off
+  // feature's items hidden), and an index would then point at another item or at nothing.
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false);
 
-  // When modal closes or when hub is opened (notification is null), always reset viewingIndex and filter
+  // When modal closes or when hub is opened (notification is null), always reset the open item and filter
   useEffect(() => {
     if (!isOpen || !notification) {
-      setViewingIndex(null);
+      setViewingId(null);
     }
     if (!isOpen) {
       setFilter('all');
@@ -264,6 +266,12 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
 
   const allNotifications =
     notifications.length > 0 ? notifications : notification ? [notification] : [];
+  const viewed = viewingId ? allNotifications.find((n) => n.id === viewingId) ?? null : null;
+  // The open item left the list: back to the list (never a blank detail).
+  useEffect(() => {
+    if (viewingId && !viewed) setViewingId(null);
+  }, [viewingId, viewed]);
+  const viewingIndex = viewed ? allNotifications.indexOf(viewed) : null;
   const isListView = viewingIndex === null && !notification;
 
   // iPhone Duo open (Figma "Open · Notifications / Activity | Notifications /
@@ -285,8 +293,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const autoIndex = split && viewingIndex === null && firstDetail ? allNotifications.indexOf(firstDetail) : null;
 
   // Determine which notification to show in detail view
-  const detailNotif = viewingIndex !== null
-    ? allNotifications[viewingIndex]
+  const detailNotif = viewed
+    ? viewed
     : autoIndex !== null
       ? allNotifications[autoIndex]
       : notification;
@@ -306,24 +314,26 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   }, [isOpen, autoIndex, detailNotif?.id, detailNotif?.read, onMarkAsRead]);
 
   const handleClose = () => {
-    setViewingIndex(null);
+    setViewingId(null);
     setFilter('all');
     onClose();
   };
 
-  const backToList = () => setViewingIndex(null);
+  const backToList = () => setViewingId(null);
   // Android Back and Escape from an opened item return to the list, like its
   // Back button (two pages show both, so there it closes the inbox).
   useSystemBack(isOpen && viewingIndex !== null && !split, backToList);
 
   const handleAction = (action: string, notificationId?: string) => {
-    setViewingIndex(null);
+    setViewingId(null);
     onAction?.(action, notificationId || detailNotif?.id);
   };
 
   const handleDelete = (id?: string) => {
-    setViewingIndex(null);
-    onDelete?.(id || detailNotif?.id);
+    const target = id || detailNotif?.id;
+    setViewingId(null);
+    // Never "delete without an id": that must not mean all of them.
+    if (target) onDelete?.(target);
   };
 
   const handleAddToCalendar = async () => {
@@ -452,8 +462,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                     </div>
                   ) : (
                     <ul className="flex flex-col gap-3">
-                      {displayedNotifications.map((notif, i) => {
-                        const originalIndex = allNotifications.findIndex(n => n.id === notif.id);
+                      {displayedNotifications.map((notif) => {
                         const isRead = notif.read;
                         const meta = getNotificationMeta(notif.type, notif.data);
                         const IconComponent = meta.icon;
@@ -477,7 +486,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                                   onNavigate(notif);
                                   return;
                                 }
-                                setViewingIndex(originalIndex >= 0 ? originalIndex : i);
+                                setViewingId(notif.id);
                               }}
                               className={cn(
                                 'w-full text-left p-4 rounded-[24px] flex items-start gap-3 active:scale-[0.99] transition-transform',

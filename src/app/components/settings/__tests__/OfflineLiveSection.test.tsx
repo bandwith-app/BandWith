@@ -63,3 +63,28 @@ describe('Settings › Offline & live', () => {
     await waitFor(() => expect(screen.getByText('Nothing kept on this device')).toBeTruthy());
   });
 });
+
+// live_pack switched off (docs/flags.md): setlists may still be on the device,
+// so the space they take and "Delete all" stay; downloading choices go.
+describe('Settings › Offline & live with live_pack off', () => {
+  it('the space used, Delete all and Wi-Fi only (it still holds for the tidy-up), with a short note', async () => {
+    const { __setAppFlagsForTest, __resetAppFlagsForTest } = await import('@/lib/appFlags');
+    __resetAppFlagsForTest(null);
+    __setAppFlagsForTest({ live_pack: false });
+    render(<OfflineLiveSection userId="u-1" />);
+    expect(await screen.findByText(/2 setlists · 0[.,]3 MB/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delete all' })).toBeTruthy();
+    expect(screen.queryByRole('switch', { name: 'Automatic download' })).toBeNull();
+    // Review #273 round 7: Wi-Fi only still decides when kept setlists are brought up to date.
+    expect(screen.getByRole('switch', { name: 'Wi-Fi only' })).toBeTruthy();
+    expect(screen.getByText('Updates to what is kept wait for Wi-Fi on this device')).toBeTruthy();
+    // Packs go 24 h after their gig, not only when deleted.
+    expect(
+      screen.getByText('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until 24 hours after its gig, or until you delete it.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete all' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete all' })[0]);
+    await waitFor(() => expect(m.deleteAllPacks).toHaveBeenCalledWith('u-1'));
+    __resetAppFlagsForTest(null);
+  });
+});

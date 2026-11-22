@@ -23,6 +23,7 @@ import {
   useEvents,
   useUpcomingEvents,
   useNotifications,
+  useSwitchedOffHidden,
   useQuotes,
   useDashboardData,
   useExpandedFinanceData,
@@ -111,6 +112,8 @@ const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerVie
 const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
 const AnalyticsView = lazyLayer(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
 const InventoryView = lazyLayer(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
+/** One empty list for the inbox filter (same array every render). */
+const NO_NOTIFICATIONS: never[] = [];
 const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
 import type { ContractPrefill } from "@/app/views/ContractsView";
 const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
@@ -179,6 +182,7 @@ import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsen
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
+import { isFlagOn, startAppFlags } from "@/lib/appFlags";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
@@ -200,7 +204,8 @@ const eventToEventItem = (event: Event): EventItem => {
     eventId: event.id,
     title: event.title || t("Untitled Event"),
     status,
-    date: event.event_date || new Date().toISOString().split("T")[0],
+    // As the server reads it: coalesce(event_date, date).
+    date: event.event_date || event.date || new Date().toISOString().split("T")[0],
     time: event.start_time || "19:00",
     timeSet: !!event.start_time,
     location: event.venue_name || event.venue_city || "TBD",
@@ -829,6 +834,8 @@ export default function AuthenticatedApp() {
   // Live packs (plan §3.2): tidied on open/resume, downloaded ahead once agreed.
   const myBandIds = useMemo(() => (bandsLoading ? null : (realBands ?? []).map((b) => b.id)), [bandsLoading, realBands]);
   useLivePackPrefetch(events, user?.id, myBandIds);
+  // Remote kill switches (app_flags, docs/flags.md): read at start, on resume and back online.
+  useEffect(() => startAppFlags(), []);
 
   // Calendar band filter: offered from two bands on (plus Personal when there
   // are personal gigs). A choice that is no longer offered goes back to All,
@@ -1344,7 +1351,7 @@ export default function AuthenticatedApp() {
           setSelectedChat(known ? { ...known, unread: 0 } : { id: Date.now(), uuid: d.chatId, type: "direct", name: t("Chat"), initials: "CH", lastMessage: "", time: "now", unread: 0, status: "received" });
         }, 100);
       } else if (d.screen === "event" && d.eventId) {
-        if (d.livePack) {
+        if (d.livePack && isFlagOn("live_pack")) {
           const id = String(d.eventId);
           setLivePackOnOpen(id);
           window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);
@@ -1648,6 +1655,9 @@ export default function AuthenticatedApp() {
   // can show "No notifications yet" instead of not opening at all.
   const [inboxOpen, setInboxOpen] = useState(false);
   const isNotificationsOpen = inboxOpen || !!selectedNotification || selectedNotifications.length > 0;
+  // Kill switch live_pack off: its prompts leave the open inbox too (it shows a snapshot).
+  const shownSelectedNotifications = useSwitchedOffHidden(selectedNotifications);
+  const shownSelectedNotification = useSwitchedOffHidden(selectedNotification ? [selectedNotification] : NO_NOTIFICATIONS)[0] ?? null;
 
   /** Deletes notifications for good (list, badge and other devices). */
   const removeNotifications = useCallback((ids: string[]) => {
@@ -4678,8 +4688,8 @@ export default function AuthenticatedApp() {
           <NotificationDetailModal key="notification-detail"
             isOpen={isNotificationsOpen}
             onClose={() => { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }}
-            notification={selectedNotification}
-            notifications={selectedNotifications}
+            notification={shownSelectedNotification}
+            notifications={shownSelectedNotifications}
             calendarEvents={events}
             bandNames={(realBands?.length ?? 0) > 1 ? bandLookup : undefined}
             // Opening the action a notification suggests (RSVP, poll, its
@@ -4703,7 +4713,8 @@ export default function AuthenticatedApp() {
               navigateToNotificationTarget(notificationTarget(notif.type, notif.data), notificationBandId(notif), notif.id);
             }}
             onClearAll={() => {
-              const ids = [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
+              // Only what the inbox shows: items hidden by a kill switch stay.
+              const ids = [shownSelectedNotification?.id, ...shownSelectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
               setSelectedNotification(null);
               setSelectedNotifications([]); // the inbox stays open, empty
               removeNotifications(ids);
@@ -4716,13 +4727,12 @@ export default function AuthenticatedApp() {
               markAllNotificationsAsRead().then(() => refetchNotifications?.());
             }}
             onDelete={(id) => {
+              // One notification, by id. No id: nothing (never "all of them"; Clear all is its own button).
+              if (!id) return;
               // Deleted for real (it used to come back on the next refresh).
-              const ids = id
-                ? [id]
-                : [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
-              if (id) setSelectedNotifications((p) => p.filter((n) => n.id !== id));
-              else { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
-              removeNotifications(ids);
+              setSelectedNotifications((p) => p.filter((n) => n.id !== id));
+              if (selectedNotification?.id === id) setSelectedNotification(null);
+              removeNotifications([id]);
             }}
             onAction={async (action, notificationId) => {
               const notif = selectedNotification || selectedNotifications.find((n) => n.id === notificationId);

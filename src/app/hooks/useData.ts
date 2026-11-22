@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
 import { useAuth } from '@/lib/AuthContext';
+import { useFlag } from '@/lib/appFlags';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
 import * as quotesService from '@/lib/services/quotes';
@@ -797,6 +798,9 @@ export const useNotifications = (options?: {
   onNewRehearsalPollRef.current = options?.onNewRehearsalPoll;
   const excludeChatRef = useRef(options?.excludeChat);
   excludeChatRef.current = options?.excludeChat;
+  // Kill switch live_pack (docs/flags.md): flipping it asks the list again
+  // (the service leaves the "keep it offline" prompts out while it's off).
+  const livePackOn = useFlag('live_pack');
 
   const fetchNotifications = useCallback(async (isBackground = false) => {
     if (!isAuthenticated) { setLoading(false); return; }
@@ -812,7 +816,8 @@ export const useNotifications = (options?: {
     }
     setError(error);
     setLoading(false);
-  }, [isAuthenticated, JSON.stringify(options)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- livePackOn: asked again when it flips
+  }, [isAuthenticated, JSON.stringify(options), livePackOn]);
 
   useEffect(() => {
     fetchNotifications();
@@ -862,14 +867,28 @@ export const useNotifications = (options?: {
     return startSafetyNetPoll(() => fetchNotifications(true));
   }, [isAuthenticated, fetchNotifications]);
 
-  return { notifications, loading, error, refetch: fetchNotifications, setNotifications };
+  // Off: out of the list at once, before the new answer comes.
+  const visible = useSwitchedOffHidden(notifications);
+  return { notifications: visible, loading, error, refetch: fetchNotifications, setNotifications };
 };
+
+/**
+ * Kill switch live_pack off (docs/flags.md): its "keep it offline" prompts
+ * leave a list at once, the inbox's or a snapshot of it. The same array until
+ * the list or the switch changes, so effects keyed on it don't run again.
+ */
+export function useSwitchedOffHidden<T extends { type?: unknown }>(list: T[]): T[] {
+  const livePackOn = useFlag('live_pack');
+  return useMemo(() => (livePackOn ? list : list.filter((n) => String(n.type) !== 'live_pack_ready')), [list, livePackOn]);
+}
 
 export const useUnreadCount = () => {
   const { isAuthenticated } = useAuth();
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Kill switch live_pack (docs/flags.md): counted again when it flips.
+  const livePackOn = useFlag('live_pack');
   const fetchCount = useCallback(async () => {
     if (!isAuthenticated) { setLoading(false); return; }
     
@@ -877,7 +896,8 @@ export const useUnreadCount = () => {
     const { data } = await notificationsService.getUnreadCount();
     setCount(data || 0);
     setLoading(false);
-  }, [isAuthenticated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- livePackOn: counted again when it flips
+  }, [isAuthenticated, livePackOn]);
 
   useEffect(() => {
     fetchCount();

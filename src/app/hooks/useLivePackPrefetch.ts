@@ -6,6 +6,7 @@ import { runLivePackPrefetch, type PrefetchEvent } from '@/lib/livePackStore';
 import { LIVE_PACK_CHOICE_EVENT, hasAnswered, readChoice, writeChoice } from '@/lib/livePackConsent';
 import { readProfileAuto } from '@/lib/livePackStatus';
 import { t } from '@/lib/i18n';
+import { isFlagOn, useFlag } from '@/lib/appFlags';
 
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -17,7 +18,8 @@ export const onCellular = (): boolean => {
 
 /**
  * App open, resume and back online (plan §3.2): tidy the live packs (24 h
- * after the event, bands left), then, in the native apps and only after the
+ * after the event, bands left; cancelled, declined, out of the lineup: on the
+ * web too, whenever online), then, in the native apps and only after the
  * person said yes, download the gigs and rehearsals of the next 7 days.
  * A silent push (170) refreshes the event it names at once. "Keep it
  * automatic" chosen on another device (profiles.live_pack_auto) counts here.
@@ -42,9 +44,28 @@ export function useLivePackPrefetch(
         })),
     [events],
   );
-  const key = `${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
+  // Switched off (app_flags live_pack, docs/flags.md): no downloads ahead of
+  // time, a running download stops. The tidy-up (old copies moved in, expired
+  // packs and bands left removed) always runs, and open / resume still brings
+  // a pack already on this phone up to date (partial, no new data). The
+  // server sends no silent push while off (170).
+  const on = useFlag('live_pack');
+  const key = `${on ? 1 : 0}#${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
   const ref = useRef({ list, bandIds });
   ref.current = { list, bandIds };
+  // Online now: navigator.onLine, kept current by the online / offline events.
+  const online = useRef(isOnline());
+  useEffect(() => {
+    const up = () => (online.current = true);
+    const down = () => (online.current = false);
+    online.current = isOnline();
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -53,10 +74,15 @@ export function useLivePackPrefetch(
         userId,
         bandIds: ref.current.bandIds,
         events: ref.current.list,
-        online: Capacitor.isNativePlatform() && isOnline(),
+        online: online.current,
+        // Downloads ahead of time: the native apps only. The web still tidies.
+        ahead: Capacitor.isNativePlatform(),
         onWifi: !onCellular(),
         unknownTitle: t('Unknown Song'),
+        // A silent push (sent only while on) refreshes these at once.
         force,
+        downloads: on,
+        keepGoing: () => isFlagOn('live_pack'),
       }).catch(() => undefined);
     const again = () => run();
     const refresh = (e: Event) => {
@@ -80,7 +106,7 @@ export function useLivePackPrefetch(
 
   // Answered "keep it automatic" on another device: this one follows.
   useEffect(() => {
-    if (!userId || hasAnswered(readChoice(userId))) return;
+    if (!userId || !on || hasAnswered(readChoice(userId))) return;
     let alive = true;
     void readProfileAuto(userId).then((auto) => {
       if (alive && auto && !hasAnswered(readChoice(userId))) writeChoice(userId, { ...readChoice(userId), auto: true });
@@ -88,5 +114,5 @@ export function useLivePackPrefetch(
     return () => {
       alive = false;
     };
-  }, [userId]);
+  }, [userId, on]);
 }

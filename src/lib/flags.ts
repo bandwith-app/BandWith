@@ -11,6 +11,10 @@
  * Both tables are written only with the service role (SQL / a small admin
  * script); the app reads them through `bw_band_features(band)`. The last
  * answer is kept per band on the device, so a flag holds offline.
+ *
+ * NOT the release kill switches: those (live_pack, voice_parts,
+ * follow_tempo, count_in, ble_live) live in `app_flags` (migration 173,
+ * src/lib/appFlags.ts). During an incident, use docs/flags.md.
  */
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';

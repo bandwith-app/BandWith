@@ -151,7 +151,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
     { id: 'calendar', label: t('Calendar sync'), hint: t('Your events in Apple or Google Calendar'), icon: Calendar },
-    { id: 'offline', label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
+    // Stays while live_pack is off: what is on the device can still be seen and deleted.
+    { id: 'offline' as const, label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
     ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
