@@ -223,28 +223,28 @@ INSERT INTO notifications (user_id, band_id, type, title, body, data, reference_
 `);
 
 // The case on prod (main, 11-22): a wedding converted from a draft quote,
-// still tentative (111: a quote), quote_id NULL, three lineup members who
-// already said yes ("confirmed"). Its own band, so the rest of the file's
+// still tentative (111: a quote), quote_id NULL, a lineup of one admin and
+// two members, all "confirmed". Its own band, so the rest of the file's
 // counts don't move.
-const [B2, B2ADM, W1, W2, W3, WED, WQ] = [2210, 2211, 2212, 2213, 2214, 2215, 2216].map(id);
+const [B2, B2ADM, W1, W2, WED, WQ] = [2210, 2211, 2212, 2213, 2215, 2216].map(id);
 await db.exec(`
-INSERT INTO auth.users (id) SELECT unnest(ARRAY['${B2ADM}','${W1}','${W2}','${W3}']::uuid[]);
+INSERT INTO auth.users (id) SELECT unnest(ARRAY['${B2ADM}','${W1}','${W2}']::uuid[]);
 INSERT INTO profiles (id, full_name, preferred_language) VALUES ('${B2ADM}','Rita Lead','en'), ('${W1}','Dan Keys','en'),
-  ('${W2}','Eve Bass','en'), ('${W3}','Tom Drums','en');
+  ('${W2}','Eve Bass','en');
 INSERT INTO bands VALUES ('${B2}', 'Hudson Strings');
 INSERT INTO band_members (band_id, user_id, role) VALUES ('${B2}','${B2ADM}','admin'), ('${B2}','${W1}','member'),
-  ('${B2}','${W2}','member'), ('${B2}','${W3}','member');
+  ('${B2}','${W2}','member');
 INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city, fee, quote_id)
 VALUES ('${WED}','${B2}','Lee Wedding','tentative','gig','${B2ADM}', current_date + 9, '17:00','Hoboken Pier','Hoboken', 5200, NULL);
 INSERT INTO quotes (id, band_id, created_by, client_name, total, status, converted_to_event_id, created_at)
 VALUES ('${WQ}','${B2}','${B2ADM}','Lee', 5200, 'draft', '${WED}', now() - interval '3 days');
-INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${WED}','${W1}','confirmed', 400),
-  ('${WED}','${W2}','confirmed', 400), ('${WED}','${W3}','confirmed', 400);
+INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${WED}','${B2ADM}','confirmed', 400),
+  ('${WED}','${W1}','confirmed', 400), ('${WED}','${W2}','confirmed', 400);
 INSERT INTO notifications (user_id, band_id, type, title, body, data, reference_id, reference_type) VALUES
   ('${W1}','${B2}','event_invite','Availability check: Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), '${WED}', 'event'),
   ('${W2}','${B2}','event_confirmed','You are on Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), '${WED}', 'event'),
-  ('${W3}','${B2}','event_invite','Availability check: Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), NULL, NULL),
-  ('${W3}','${B2}','event_confirmed','You are on Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), '${WED}', 'event');
+  ('${W2}','${B2}','event_invite','Availability check: Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), NULL, NULL),
+  ('${B2ADM}','${B2}','event_confirmed','You are on Lee Wedding','Your fee: $400', jsonb_build_object('event_id','${WED}'), '${WED}', 'event');
 `);
 
 // ── The migration, twice (idempotent) ──────────────────────────────────────
@@ -282,21 +282,25 @@ ok(carried.rows[0]?.answer === 'free', `backfill: the member who said yes to the
 ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${QE0}' AND user_id = '${MEM}'`)).rows.length === 0,
   'backfill: a pending answer stays unanswered');
 
-// The prod case: the hold exists, the three yeses carry over as "free", they
-// aren't asked again (not now, not by the sweep), and their old notices are
-// archived for a rollback.
+// The prod case: the hold exists, the two members' yeses carry over as
+// "free" (admins aren't asked, so no answer row for the admin), nobody is
+// asked again (not now, not by the sweep), and the members' old notices are
+// archived for a rollback; the admin's stays.
 {
-  const W = [W1, W2, W3].map((u) => `'${u}'`).join(',');
+  const W = [W1, W2].map((u) => `'${u}'`).join(',');
   const hold = await tryq(`SELECT announced_at IS NOT NULL a, released_at IS NULL live FROM event_date_holds WHERE event_id = '${WED}'`);
-  const ans = await tryq(`SELECT string_agg(answer, ',' ORDER BY user_id) a FROM event_hold_answers WHERE event_id = '${WED}' AND user_id IN (${W})`);
+  const ans = await tryq(`SELECT string_agg(answer, ',' ORDER BY user_id) a, count(*)::int n, count(*) FILTER (WHERE user_id = '${B2ADM}')::int adm FROM event_hold_answers WHERE event_id = '${WED}'`);
   await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
-  const asked = await tryq(`SELECT count(*)::int n FROM notifications WHERE user_id IN (${W}) AND type LIKE 'date_hold%'`);
+  const asked = await tryq(`SELECT count(*)::int n FROM notifications WHERE user_id IN (${W}, '${B2ADM}') AND type LIKE 'date_hold%'`);
+  const admNote = await tryq(`SELECT count(*)::int n FROM notifications WHERE user_id = '${B2ADM}' AND type = 'event_confirmed'`);
   const left = await tryq(`SELECT count(*)::int n FROM notifications WHERE user_id IN (${W}) AND type IN ('event_invite', 'event_confirmed')`);
   const archived = await tryq(`SELECT count(*)::int n FROM notifications_quote_178 WHERE user_id IN (${W}) AND row_data->>'type' IN ('event_invite', 'event_confirmed')`);
   ok(hold.rows[0]?.a === true && hold.rows[0]?.live === true, `prod case: the converted wedding has a live hold, known (${JSON.stringify(hold.rows[0] || hold.error)})`);
-  ok(ans.rows[0]?.a === 'free,free,free', `prod case: all 3 lineup yeses are "free" (${ans.rows[0]?.a ?? ans.error})`);
+  ok(ans.rows[0]?.n === 2 && ans.rows[0]?.a === 'free,free' && ans.rows[0]?.adm === 0,
+    `prod case: exactly the 2 members' yeses are "free", no answer row for the admin (${JSON.stringify(ans.rows[0] || ans.error)})`);
   ok(asked.rows[0]?.n === 0, `prod case: no hold notice to them, also after the sweep (${asked.rows[0]?.n})`);
-  ok(left.rows[0]?.n === 0 && archived.rows[0]?.n === 4, `prod case: their old invite/confirmed notices archived in notifications_quote_178 (left ${left.rows[0]?.n}, archived ${archived.rows[0]?.n})`);
+  ok(left.rows[0]?.n === 0 && archived.rows[0]?.n === 3 && admNote.rows[0]?.n === 1,
+    `prod case: the members' old invite/confirmed notices archived in notifications_quote_178, the admin's stays (left ${left.rows[0]?.n}, archived ${archived.rows[0]?.n}, admin ${admNote.rows[0]?.n})`);
 }
 
 // ── A new quote: the admin makes it, the band hears about a hold ───────────
