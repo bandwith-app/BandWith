@@ -84,12 +84,9 @@ export function bandFolders(bandId: string): { bucket: string; prefix: string }[
   ];
 }
 
-/** A name (its current file), or one version of it (Storage's { path, versionId }). */
-export type RemoveEntry = string | { path: string; versionId: string };
-
 /** The bit of the Storage API that removeObjects needs (a bucket). */
 export interface ObjectStore {
-  remove(paths: RemoveEntry[]): Promise<{ error: unknown }>;
+  remove(paths: string[]): Promise<{ error: unknown }>;
 }
 
 /** The server side removeObjects reads the names from, and removes them with. */
@@ -113,15 +110,15 @@ const REMOVE_CHUNK = 100;
  */
 export async function removeObjects(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
   const files = await removeCurrentFiles(server, bucket, prefix);
-  // Round 11 (Claude r10 F6): Storage's remove by name deletes only the
-  // current row, never the archived versions or delete markers under it:
-  // those are purged by version. Round 12 (main): defensive only (prod has
-  // no versioned bucket), so a purge that fails, is refused or throws is
-  // logged and never blocks the deletion: only the live files count.
+  // Storage's remove by name deletes only the current row, never archived
+  // versions or delete markers. Round 14 (main): no purge (storage-js
+  // remove() has no versionId); prod has no versioned bucket, and none may
+  // become versioned until a versionId delete is proven for account
+  // deletion. Archived rows left are logged, never a reason to stop.
   try {
-    await purgeOldVersions(server, bucket, prefix);
+    await warnArchivedVersions(server, bucket, prefix);
   } catch (e) {
-    console.warn('account-deletion: old versions not purged', bucket, e);
+    console.warn('account-deletion: archived versions not checked', bucket, e);
   }
   return files;
 }
@@ -151,50 +148,25 @@ async function removeCurrentFiles(server: ObjectServer, bucket: string, prefix: 
 }
 
 /**
- * Archived versions and delete markers under `prefix/`, purged by version
- * through the Storage API (direct deletes on storage.objects are refused,
- * storage.protect_delete). Names and versions from
- * bw_account_storage_versions (180 round 11). A 180 without it (an older
- * deploy order) is skipped quietly; any other failure is logged and the
- * purge stops (round 12: never a reason the deletion is not ready).
+ * Archived versions and delete markers left under `prefix/` (180's
+ * bw_account_storage_versions, service role only): counted and logged,
+ * never deleted. A 180 without it, or a failed lookup, logs nothing more.
  */
-async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: string): Promise<void> {
-  const store = server.store(bucket);
-  let after: { name: string; version: string } | null = null;
-  for (;;) {
-    const { data, error } = await server.rpc('bw_account_storage_versions', {
-      p_bucket: bucket,
-      p_prefix: prefix,
-      p_after_name: after?.name ?? null,
-      p_after_version: after?.version ?? null,
-      p_limit: NAMES_PAGE,
-    });
-    if (error) {
-      const code = (error as { code?: string } | null)?.code ?? '';
-      if (code === 'PGRST202' || code === '42883') return;
-      console.warn('account-deletion: old versions not listed', bucket, error);
-      return;
-    }
-    // No rows: PostgREST answers []; nothing at all is nothing to purge too.
-    if (data == null) return;
-    if (!Array.isArray(data)) {
-      console.warn('account-deletion: old versions listing unreadable', bucket);
-      return;
-    }
-    const rows = (data as { name?: unknown; version?: unknown }[])
-      .filter((r) => typeof r?.name === 'string' && typeof r?.version === 'string')
-      .map((r) => ({ name: r.name as string, version: r.version as string }));
-    for (let i = 0; i < rows.length; i += REMOVE_CHUNK) {
-      const chunk = rows.slice(i, i + REMOVE_CHUNK).map((r) => ({ path: r.name, versionId: r.version }));
-      const { error: removeError } = await store.remove(chunk);
-      if (removeError) {
-        console.warn('account-deletion: old versions not purged', bucket, removeError);
-        return;
-      }
-    }
-    if (rows.length === 0) return;
-    after = rows[rows.length - 1];
+async function warnArchivedVersions(server: ObjectServer, bucket: string, prefix: string): Promise<void> {
+  const { data, error } = await server.rpc('bw_account_storage_versions', {
+    p_bucket: bucket,
+    p_prefix: prefix,
+    p_after_name: null,
+    p_after_version: null,
+    p_limit: NAMES_PAGE,
+  });
+  if (error) {
+    const code = (error as { code?: string } | null)?.code ?? '';
+    if (code !== 'PGRST202' && code !== '42883') console.warn('account-deletion: archived versions not checked', bucket, error);
+    return;
   }
+  const n = Array.isArray(data) ? data.length : 0;
+  if (n > 0) console.warn(`archived versions remain for ${bucket}/${prefix}: ${n >= NAMES_PAGE ? `${n}+` : n}`);
 }
 
 /** What finishCommitted needs from the server (the edge function's admin client). */

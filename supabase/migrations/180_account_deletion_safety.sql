@@ -177,16 +177,18 @@
 --    * A poll keeps only invitees who still have an account, never NULL;
 --      one left with nobody stays with its creator, else the band's admins.
 -- 13. Round 10 (Claude review #282, d8f5861b):
---    * Archived objects and delete markers are removed too (round 11: by
---      version); only the count of files left skips them.
+--    * Archived objects and delete markers don't count as files left
+--      (round 14: they are reported, not removed).
 --    * A poll is never widened to the whole band. A creator whose deletion
 --      is committed is never put back on one.
 -- 14. Round 11 (Claude delta review r10, 837c53f6):
 --    * Storage: remove() by name deletes only the current row, so the
---      files go by name (live rows only) and their archived versions and
---      delete markers are purged by version (bw_account_storage_versions,
---      { path, versionId }); a name with only archived rows is never
---      removed by name.
+--      files go by name (live rows only); a name with only archived rows
+--      is never removed by name. Round 14: archived versions and delete
+--      markers are listed (bw_account_storage_versions) and reported by
+--      delete-account, not removed (no versionId delete in storage-js;
+--      prod has no versioned bucket, and none may become one until such a
+--      delete is proven for account deletion).
 --    * A poll with nobody live to show it to (no other invitee, no live
 --      creator, no live admin) is deleted, never kept with a deleted id,
 --      never '{}' (the whole band, 098) or '{NULL}'.
@@ -2036,8 +2038,8 @@ BEGIN
   -- removed by name. The Storage API's remove by name deletes only the
   -- current row (storage-api deleteObjects: archived_at IS NULL), so their
   -- archived versions and delete markers are listed apart, by version
-  -- (bw_account_storage_versions), and purged by version; a name that is
-  -- only archived rows is never removed by name.
+  -- (bw_account_storage_versions), and reported (round 14); a name that
+  -- is only archived rows is never removed by name.
   RETURN QUERY EXECUTE
     $q$SELECT DISTINCT o.name::text
          FROM storage.objects o
@@ -2054,9 +2056,10 @@ REVOKE ALL ON FUNCTION public.bw_account_storage_names(text, text, text, integer
 GRANT EXECUTE ON FUNCTION public.bw_account_storage_names(text, text, text, integer) TO service_role;
 
 -- Round 11 (privacy): the old versions under a folder, archived objects and
--- delete markers, as (name, version), for delete-account to purge through
--- the Storage API by version ({ path, versionId }): direct deletes on
--- storage.objects are refused (storage.protect_delete). Keyset pages in
+-- delete markers, as (name, version). Round 14: a check only:
+-- delete-account logs how many are left and never deletes them (direct
+-- deletes on storage.objects are refused, storage.protect_delete, and
+-- storage-js remove() has no versionId). Keyset pages in
 -- (name, version) order. Nothing on a setup without versions (no
 -- archived_at / is_delete_marker / version columns: local, PGlite).
 CREATE OR REPLACE FUNCTION public.bw_account_storage_versions(

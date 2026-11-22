@@ -27,7 +27,6 @@ vi.mock('../stageBleNative', () => ({ clearStageCache: h.clearStageCache }));
 import * as signOutOnDeletion from '../deletionSignOut';
 import { clearThisDevice } from '../useDeletionSignOut';
 import * as gate from '../../../supabase/functions/_shared/deletion-gate';
-import { removeObjects, type ObjectServer, type RemoveEntry } from '../../../supabase/functions/_shared/account-deletion';
 import sendPush from '../../../supabase/functions/send-push/index.ts?raw';
 import mig180 from '../../../supabase/migrations/180_account_deletion_safety.sql?raw';
 
@@ -141,50 +140,6 @@ describe('round 11: the failed path clears the device and reloads', () => {
     expect(h.clearOfflineCache).toHaveBeenCalledTimes(1);
     expect(h.clearStageCache).toHaveBeenCalledTimes(1);
     expect(calls).toEqual(['reload']);
-    warn.mockRestore();
-  });
-});
-
-// Claude r10 F6: remove() by name deletes only the current row; old
-// versions and delete markers are purged by version.
-describe('round 11: old versions are purged by version', () => {
-  const server = (versions: { data: unknown; error: unknown }[], removeError: unknown = null) => {
-    const removed: RemoveEntry[][] = [];
-    let page = 0;
-    let vpage = 0;
-    const s: ObjectServer = {
-      rpc: async (fn) => {
-        if (fn === 'bw_account_storage_names') return { data: page++ === 0 ? ['u/live.m4a'] : [], error: null };
-        if (fn === 'bw_account_storage_versions') return versions[vpage++] ?? { data: [], error: null };
-        return { data: null, error: { message: 'unknown' } };
-      },
-      store: () => ({
-        remove: async (paths) => {
-          removed.push(paths);
-          return { error: typeof paths[0] === 'object' ? removeError : null };
-        },
-      }),
-    };
-    return { s, removed };
-  };
-
-  it('the files by name, their archived versions and markers by { path, versionId }', async () => {
-    const { s, removed } = server([{ data: [{ name: 'u/live.m4a', version: 'v0' }, { name: 'u/old.m4a', version: 'v-old' }], error: null }]);
-    expect(await removeObjects(s, 'personal-files', 'u')).toBe(true);
-    expect(removed).toEqual([
-      ['u/live.m4a'],
-      [{ path: 'u/live.m4a', versionId: 'v0' }, { path: 'u/old.m4a', versionId: 'v-old' }],
-    ]);
-    // A name with only archived rows is never removed by name.
-    expect(removed.flat().filter((e) => typeof e === 'string')).not.toContain('u/old.m4a');
-  });
-
-  it('an older 180 without the listing: nothing to purge; a failed purge is logged, never not ready (round 12)', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(await removeObjects(server([{ data: null, error: { code: 'PGRST202' } }]).s, 'avatars', 'u')).toBe(true);
-    expect(warn).not.toHaveBeenCalled();
-    expect(await removeObjects(server([{ data: [{ name: 'u/a', version: 'v' }], error: null }], { message: 'denied' }).s, 'avatars', 'u')).toBe(true);
-    expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
 });

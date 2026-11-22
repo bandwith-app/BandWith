@@ -112,10 +112,14 @@ export interface DeviceClearDeps {
  * the reload that follows drops the in-memory user state.
  */
 export async function clearDeviceSession(deps: DeviceClearDeps): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([deps.signOutLocal(), new Promise((r) => setTimeout(r, 3000))]);
+    await Promise.race([deps.signOutLocal(), new Promise((r) => (timer = setTimeout(r, 3000)))]);
   } catch (e) {
     console.warn('[account] local sign-out failed:', e);
+  } finally {
+    // Round 14 (Claude r11 nit): the 3 s cap never outlives the sign-out.
+    clearTimeout(timer);
   }
   const key = deps.sessionStore?.key;
   if (key) {

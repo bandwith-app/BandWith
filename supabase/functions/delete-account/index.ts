@@ -59,11 +59,9 @@ const notReady = (what: string, detail?: unknown, committed = false) => {
 };
 
 // Names come from storage.objects (bw_account_storage_names, round 8); the
-// Storage API only removes them. Round 11: old versions as { path,
-// versionId } entries (the API's delete takes both; supabase-js sends them
-// as they are, in `prefixes`).
+// Storage API only removes them.
 const bucketStore = (admin: ReturnType<typeof adminClient>, bucket: string): ObjectStore => ({
-  remove: (paths) => admin.storage.from(bucket).remove(paths as string[]),
+  remove: (paths) => admin.storage.from(bucket).remove(paths),
 });
 
 const deletionServer = (admin: ReturnType<typeof adminClient>): DeletionServer => ({

@@ -1278,6 +1278,26 @@ e6 = d.error ? { message: d.error } : await errAs(BB2, `UPDATE rehearsal_polls S
 const p9 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P9}'`)).rows[0];
 ok(e6 === null && JSON.stringify(p9?.i) === JSON.stringify([BB2]),
   `round 10 (Claude r9 3): a co-admin's stale save never gets the committed creator back ("Choose someone else") (${JSON.stringify({ e6, p9 })})`);
+// Round 14 (Claude r11 2): a poll X created that lists [X, G (gone since)]
+// never gets X back from the fallback during prepare: prepare marks the
+// deletion committed (account_deletions_pending.committed_at) before its
+// polls step, and the fallback skips committed accounts. The band's live
+// admin gets it. (Regression guard: no GUC needed.)
+const [XP, P13, P14, GG] = [251, 252, 253, 254].map(id);
+d = await x(`INSERT INTO auth.users VALUES ('${XP}'), ('${GG}'); INSERT INTO profiles (id) VALUES ('${XP}'), ('${GG}');
+  INSERT INTO band_members VALUES ('${WB}','${XP}','member',true);
+  INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+    ('${P13}', '${WB}', '${XP}', 'Rooftop rehearsal?', ARRAY['${XP}', '${GG}']::uuid[], 'polling'),
+    ('${P14}', '${WB}', '${XP}', 'Studio B?', ARRAY['${GG}', '${XP}']::uuid[], 'polling');
+  DELETE FROM auth.users WHERE id = '${GG}'`);
+d = d.error ? d : await q(`SELECT public.bw_prepare_account_deletion('${XP}')`);
+const p1314 = (await qq(`SELECT id::text AS id, invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id IN ('${P13}', '${P14}') ORDER BY id`)).rows;
+ok(!d.error && p1314.length === 2 && p1314.every((r) => !r.i.includes(XP) && r.i.includes(BB2)),
+  `round 14 (Claude r11 2): after prepare, the account being deleted is not on a poll it created (${d.error ?? JSON.stringify(p1314)})`);
+const order = (await qq(`SELECT committed_at IS NOT NULL AS c FROM account_deletions_pending WHERE user_id = '${XP}'`)).rows[0];
+ok(order?.c === true, `round 14: prepare commits the deletion (the fallback reads it) (${JSON.stringify(order)})`);
+await x(`DELETE FROM rehearsal_polls WHERE id IN ('${P13}', '${P14}'); DELETE FROM account_deletions_pending WHERE user_id = '${XP}';
+  DELETE FROM band_members WHERE user_id = '${XP}'`);
 await x(`DELETE FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}', '${P8}', '${P9}', '${P10}', '${P11}', '${P12}'); DELETE FROM account_deletions_pending WHERE user_id = '${Y1}';
   DELETE FROM band_members WHERE band_id = '${NB}'; DELETE FROM bands WHERE id = '${NB}'`);
 
@@ -1323,7 +1343,7 @@ const fn197 = (src, name) => {
   return fnByName(src, name);
 };
 const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_json_paths', 'bw_song_file_in_suggestion',
-  'bw_song_file_stored', 'bw_song_file_copy_ours',
+  'bw_song_file_stored', 'bw_song_file_copy_ours', 'bw_song_file_used_by_song',
   'bw_song_file_in_use', 'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
 const need197 = ['bw_song_file_ref', 'bw_song_file_in_use', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
 const f197 = src197 && need197.every((n) => fn197(src197, n)) ? names197.map((n) => fn197(src197, n)).filter(Boolean) : null;
