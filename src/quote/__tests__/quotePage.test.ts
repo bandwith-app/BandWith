@@ -166,9 +166,19 @@ describe('quote page: the deposit receipt says what was received (#11)', () => {
     expect(pay.textContent).toContain('€500');
   });
 
-  it('a server before 183 (no amount): the receipt falls back to the requested amount', async () => {
-    answers.bw_quote_link_seen = () => accepted({ deposit_paid: true });
+  it('USD 300 recorded on a EUR quote: the receipt says $300, not €300', async () => {
+    answers.bw_quote_link_seen = () => accepted({ deposit_paid: true, deposit_paid_amount: 300, deposit_paid_currency: 'USD' });
     await openPage();
-    expect((app().querySelector('[data-testid="deposit-paid"]') as HTMLElement).textContent).toContain('€500');
+    const receipt = (app().querySelector('[data-testid="deposit-paid"]') as HTMLElement).textContent || '';
+    expect(receipt).toContain('$300');
+    expect(receipt).not.toContain('€');
+  });
+
+  it('recorded without an amount (or a server before 183): no amount, never the one asked', async () => {
+    answers.bw_quote_link_seen = () => accepted({ deposit_paid: true, deposit_paid_amount: null });
+    await openPage();
+    const receipt = (app().querySelector('[data-testid="deposit-paid"]') as HTMLElement).textContent || '';
+    expect(receipt).not.toContain('€500');
+    expect(receipt).toContain(S.depositPaidBodyNoAmount.replace('{band}', 'The Night Shift'));
   });
 });

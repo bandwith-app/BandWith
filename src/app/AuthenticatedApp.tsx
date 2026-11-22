@@ -137,7 +137,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -2688,7 +2688,8 @@ export default function AuthenticatedApp() {
     if (!editing || quoteSaveRunningRef.current) return;
     quoteSaveRunningRef.current = true;
     try {
-      const { band_id: _bandId, ...updates } = appQuoteToDbRecord(q, editing.bandId);
+      // Not the status the wizard was opened with: the server may have moved it on (183).
+      const updates = quoteUpdateRecord(q, editing.bandId);
       const { data, error } = await updateQuoteDB(editing.quote.id, updates);
       if (error || !data) {
         // The wizard stays open with what was typed.

@@ -139,6 +139,8 @@ export interface QuoteLinkView {
   deposit_paid?: boolean;
   /** 183: the amount the band recorded as received (absent before 183 or when not recorded). */
   deposit_paid_amount?: number | null;
+  /** 183: its currency (the gig's), when it differs from the quote's it is shown in it. */
+  deposit_paid_currency?: string | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
 }
