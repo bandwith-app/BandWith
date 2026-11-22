@@ -10,6 +10,9 @@ import type { NoteAnchor, PersonalNote } from '../personalNotes';
 import { classifySongFile, safeName, songFileContentType, validateSongFile, type SongFileKind } from './songFiles';
 import { UserError } from '../userError';
 import { personalFromPacks } from '../livePackStore';
+import { isOfflineError } from '../offline/networkErrors';
+import { applyNoteOps, queueLiveOp, readLiveOutbox } from '../liveOutbox';
+import { newLocalId, sessionUserId } from '../sessionUser';
 import { t } from '@/lib/i18n';
 
 export const PERSONAL_BUCKET = 'personal-files';
@@ -28,6 +31,7 @@ export interface PersonalFile {
 
 // ── changes: every open view of the same song refreshes ──
 export const PERSONAL_CHANGED = 'bw:personal-layer-changed';
+export const notifyPersonalChanged = (songId: string) => changed(songId);
 const changed = (songId: string) => {
   try {
     window.dispatchEvent(new CustomEvent(PERSONAL_CHANGED, { detail: { songId } }));
@@ -62,17 +66,46 @@ export const fetchPersonalLayer = async (songId: string) => {
   };
 };
 
-export const savePersonalNote = async (songId: string, anchor: NoteAnchor, body: string, id?: string) => {
+/** A note written with no signal and not sent yet: it lives only in the outbox. */
+const waitingNew = (me: string | null, id?: string) =>
+  !!me && !!id && readLiveOutbox(me).some((o) => o.kind === 'note' && o.id === id && o.isNew);
+
+/**
+ * Save my note. With no signal it is kept on this phone and sent when back
+ * online (liveOutbox.ts): `queued`.
+ */
+export const savePersonalNote = async (
+  songId: string,
+  anchor: NoteAnchor,
+  body: string,
+  id?: string,
+): Promise<{ error: unknown; queued?: true }> => {
   const text = body.trim().slice(0, 2000);
+  const me = await sessionUserId();
+  const queue = (isNew: boolean) => {
+    queueLiveOp(me!, { kind: 'note', id: id ?? newLocalId(), songId, anchor, body: text, isNew });
+    changed(songId);
+    return { error: null, queued: true as const };
+  };
+  if (waitingNew(me, id)) return queue(true);
   const res = id
     ? await supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id)
     : await supabase.from('song_personal_notes').insert({ song_id: songId, anchor, body: text });
+  if (res.error && me && isOfflineError(res.error)) return queue(!id);
   if (!res.error) changed(songId);
   return { error: res.error };
 };
 
-export const deletePersonalNote = async (songId: string, id: string) => {
+export const deletePersonalNote = async (songId: string, id: string): Promise<{ error: unknown; queued?: true }> => {
+  const me = await sessionUserId();
+  const queue = () => {
+    queueLiveOp(me!, { kind: 'noteDelete', id, songId });
+    changed(songId);
+    return { error: null, queued: true as const };
+  };
+  if (waitingNew(me, id)) return queue();
   const res = await supabase.from('song_personal_notes').delete().eq('id', id);
+  if (res.error && me && isOfflineError(res.error)) return queue();
   if (!res.error) changed(songId);
   return { error: res.error };
 };
@@ -123,13 +156,19 @@ export function usePersonalLayer(songId?: string | null) {
     const load = () =>
       fetchPersonalLayer(songId).then(async (r) => {
         if (!alive) return;
+        // My changes still waiting on this phone show as done (plan §3.5).
+        const me = await sessionUserId();
+        const mine = (notes: PersonalNote[]) => applyNoteOps(notes, readLiveOutbox(me), songId);
         if (!r.error) {
-          setState({ songId, notes: r.notes, files: r.files });
+          if (alive) setState({ songId, notes: mine(r.notes), files: r.files });
           return;
         }
         // No signal: my notes and files kept in a live pack (plan §3.1).
         const kept = await packedLayer(songId);
-        if (alive && kept) setState({ songId, notes: kept.notes as PersonalNote[], files: kept.files as PersonalFile[] });
+        if (alive) {
+          if (kept) setState({ songId, notes: mine(kept.notes as PersonalNote[]), files: kept.files as PersonalFile[] });
+          else setState((prev) => ({ songId, notes: mine(prev.songId === songId ? prev.notes : []), files: prev.songId === songId ? prev.files : [] }));
+        }
       });
     load();
     const on = (e: Event) => {

@@ -148,6 +148,18 @@ describe('notes on a precise point (A–C)', () => {
     expect(await screen.findByText('Note saved on “Lanterns in the rain”')).toBeInTheDocument();
   });
 
+  it('with no signal it says the note is kept on this phone', async () => {
+    savePersonalNote.mockResolvedValue({ error: null, queued: true });
+    renderSong();
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByText('Lanterns in the rain'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Breathe first' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    });
+    expect(await screen.findByText('Note saved on this phone. It reaches your account when you’re back online.')).toBeInTheDocument();
+  });
+
   it('on Stage the button says Note, not just a pencil', () => {
     renderSong({ stage: true });
     const btn = screen.getByRole('button', { name: 'Add note' });

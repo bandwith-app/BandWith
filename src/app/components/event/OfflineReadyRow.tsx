@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Download } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
+import { WaitingChangesTag } from './WaitingChangesTag';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
@@ -95,6 +96,7 @@ export const OfflineReadyRow: React.FC<{
                 ? t('Lyrics, chords and your notes work in live mode without signal.')
                 : t('Download lyrics, chords and your notes to use live mode without signal.')}
           </span>
+          <WaitingChangesTag userId={userId} className="mt-1" />
         </span>
       </span>
       {!ready && online && userId && (

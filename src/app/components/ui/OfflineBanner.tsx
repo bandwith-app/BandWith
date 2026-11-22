@@ -101,7 +101,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
               <span className="flex-1 min-w-0 truncate bw-label-sm">
                 {pendingCount > 0
                   ? t('Back online · {changes} to sync', { changes })
-                  : t('Back online · synced')}
+                  : t('Back online · up to date')}
               </span>
               {pendingCount > 0 && onSyncNow && (
                 <button

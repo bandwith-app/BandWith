@@ -3037,6 +3037,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             songsLoading={setlistLoading}
             songsError={setlistError}
             offlineFrom={songsFromPack ?? (!online && livePack ? livePack.savedAt : undefined)}
+            currentUserId={currentUserId}
             onRetrySongs={() => setSetlistReloadKey((k) => k + 1)}
             live={stageLive}
             session={isRehearsalLive ? rehearsalSession : undefined}

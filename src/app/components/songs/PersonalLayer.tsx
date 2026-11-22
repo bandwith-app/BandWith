@@ -606,14 +606,16 @@ const Sheets: React.FC = () => {
     if (!canSave) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await savePersonalNote(song.id, anchor, body, note?.id);
+    const { error: err, queued } = await savePersonalNote(song.id, anchor, body, note?.id);
     setBusy(false);
     if (err) setError(userMessage(err, t('Couldn’t save the note. Try again.')));
     else {
       setSheet(null);
       haptic.confirm();
       setSaved(
-        anchor.type !== 'song' && line
+        queued
+          ? t('Note saved on this phone. It reaches your account when you’re back online.')
+          : anchor.type !== 'song' && line
           ? t('Note saved on “{line}”', { line: lyricsLineText(line) })
           : t('Note saved on the whole song'),
       );
