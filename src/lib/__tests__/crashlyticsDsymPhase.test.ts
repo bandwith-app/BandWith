@@ -55,3 +55,12 @@ describe('Crash reports dSYM upload phase', () => {
     if (lists.length) expect(release.join('\n')).toMatch(/DWARF_DSYM_FOLDER_PATH/);
   });
 });
+
+describe('simulator builds skip the upload (Claude review of 3b26fc7c)', () => {
+  it('exits before anything else on a simulator SDK', () => {
+    const script = phase.slice(phase.indexOf('shellScript = "'));
+    const sim = script.search(/case \\"\$PLATFORM_NAME\\" in\\n\s*\*simulator\) exit 0 ;;/);
+    expect(sim, 'simulator skip').toBeGreaterThan(-1);
+    expect(sim).toBeLessThan(script.indexOf('GoogleService-Info.plist\\" ]'));
+  });
+});
