@@ -174,8 +174,9 @@ export function gigEvent(
  *
  * Monthly from the 29th-31st (`start`): the app takes the last day of a
  * month without that day (Jan 31 -> Feb 28 -> Mar 31; Jan 30 -> Feb 28 ->
- * Mar 30), where a plain FREQ=MONTHLY skips that month. BYMONTHDAY=28..day
- * with BYSETPOS=-1 is the latest of those days the month has: the day itself,
+ * Mar 30), where a plain FREQ=MONTHLY skips that month. The 31st is
+ * BYMONTHDAY=-1, the month's last day; the 29th and 30th are BYMONTHDAY=28..day
+ * with BYSETPOS=-1, the latest of those days the month has: the day itself,
  * else the month's last day.
  *
  * UNTIL takes DTSTART's value type (RFC 5545 3.3.10; Claude review of #285,
@@ -195,7 +196,10 @@ export function recurrenceRule(rule: unknown, start?: string | null, opts: { tim
     : null;
   if (!parts) return null;
   const day = Number(/^\d{4}-\d{2}-(\d{2})/.exec(start ?? '')?.[1]);
-  if (freq === 'monthly' && day >= 29 && day <= 31) {
+  // The 31st is the month's last day (BYMONTHDAY=-1, Claude review of #285);
+  // the 29th and 30th the latest of 28..day the month has.
+  if (freq === 'monthly' && day === 31) parts.push('BYMONTHDAY=-1');
+  else if (freq === 'monthly' && (day === 29 || day === 30)) {
     parts.push(`BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')}`, 'BYSETPOS=-1');
   }
   const until = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof r.until === 'string' ? r.until : '');

@@ -112,13 +112,30 @@ describe('member calendar: one-event links (182)', () => {
     expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('d'.repeat(64));
     expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('d'.repeat(64));
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenLastCalledWith('bw_my_event_calendar_token', { p_event_id: EV, p_date: '2026-12-08' });
+    expect(rpc).toHaveBeenLastCalledWith('bw_my_event_calendar_link', { p_event_id: EV, p_date: '2026-12-08' });
     expect(await myEventCalendarToken(EV, '2026-12-15')).toBe('e'.repeat(64));
     expect(rpc).toHaveBeenCalledTimes(2);
     // Making a new account link (rotate) also ends the event links.
     rpc.mockResolvedValueOnce({ data: TOKEN, error: null }).mockResolvedValueOnce({ data: 'f'.repeat(64), error: null });
     await myCalendarToken(true);
     expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('f'.repeat(64));
+  });
+
+  // Claude review #285 round 5: opening an event reads only; the tap makes it.
+  it('opening reads the link (bw_my_event_calendar_link); only a tap makes one (bw_my_event_calendar_token)', async () => {
+    const EV = '11111111-2222-4333-8444-555555555555';
+    rpc.mockImplementation(async (fn: string) => ({ data: fn === 'bw_my_event_calendar_token' ? 'd'.repeat(64) : null, error: null }));
+    const { result } = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.token).toBeNull();
+    expect(rpc).toHaveBeenCalledWith('bw_my_event_calendar_link', { p_event_id: EV, p_date: '2026-12-08' });
+    expect(rpc).not.toHaveBeenCalledWith('bw_my_event_calendar_token', expect.anything());
+    expect(await myEventCalendarToken(EV, '2026-12-08', { create: true })).toBe('d'.repeat(64));
+    expect(rpc).toHaveBeenLastCalledWith('bw_my_event_calendar_token', { p_event_id: EV, p_date: '2026-12-08' });
+    rpc.mockClear();
+    // Made: a second tap reuses it.
+    expect(await myEventCalendarToken(EV, '2026-12-08', { create: true })).toBe('d'.repeat(64));
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('null for a draft id, a bad date or no answer from the server', async () => {
@@ -149,7 +166,7 @@ describe('member calendar: links stay current in a session', () => {
   // keep it (it would open a 404).
   it('a mounted Add to calendar picks up the new event link after a rotation', async () => {
     let eventToken = D;
-    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_token' ? { data: eventToken, error: null } : { data: TOKEN, error: null }));
+    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_link' ? { data: eventToken, error: null } : { data: TOKEN, error: null }));
     const { result } = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
     await waitFor(() => expect(result.current.token).toBe(D));
     eventToken = F; // the server ended D with the account link
@@ -237,7 +254,7 @@ describe('member calendar: one device, two accounts', () => {
   });
 
   it("B never sees A's event link, not even while B's own request is on its way", async () => {
-    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_token' ? { data: A_LINK, error: null } : { data: TOKEN, error: null }));
+    rpc.mockImplementation(async (fn: string) => (fn === 'bw_my_event_calendar_link' ? { data: A_LINK, error: null } : { data: TOKEN, error: null }));
     await myCalendarToken(); // A opened Calendar sync
     const a = renderHook(() => useEventCalendarToken(EV, '2026-12-08'));
     await waitFor(() => expect(a.result.current.token).toBe(A_LINK));

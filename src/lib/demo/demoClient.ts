@@ -1097,6 +1097,10 @@ const rpc = (fn: string, args: Row = {}) => {
       data = demoEventCalendarTokens.get(k);
       break;
     }
+    // Opening the event: the link it has, made only by the tap above.
+    case 'bw_my_event_calendar_link':
+      data = demoEventCalendarTokens.get(`${args.p_event_id}|${args.p_date ?? ''}`) ?? null;
+      break;
     // Band members → Invited (166): the demo's own band_invitations rows.
     case 'bw_band_invitations': {
       const now = Date.now();

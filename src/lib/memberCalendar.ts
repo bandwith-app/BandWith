@@ -133,11 +133,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * (one date of a repeating rehearsal); the server keeps it only for a
  * repeating event. `refresh`: ask the server again (it may have ended the
  * link); when that fails (offline) the last link is kept.
+ *
+ * Opening an event only reads the link (bw_my_event_calendar_link: no write
+ * on the server; Claude review #285 round 5). `create`: the tap on Add to
+ * calendar, which makes it if there is none yet (bw_my_event_calendar_token).
  */
 export async function myEventCalendarToken(
   eventId: string,
   date: string | null,
-  opts: { refresh?: boolean } = {},
+  opts: { refresh?: boolean; create?: boolean } = {},
 ): Promise<string | null> {
   if (!UUID.test(eventId)) return null;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
@@ -145,13 +149,18 @@ export async function myEventCalendarToken(
   if (!userId) return null;
   const key = eventTokenKey(userId, eventId, day);
   const known = eventTokens.get(key);
-  if (known && (!opts.refresh || eventTokensInFlight.has(key))) return known;
+  if (known && (!opts.refresh || eventTokensInFlight.has(key))) {
+    if (!opts.create) return known;
+    const have = await known;
+    if (have) return have; // already made
+  }
   const before = eventTokenValues.get(key) ?? null;
+  const fn = opts.create ? 'bw_my_event_calendar_token' : 'bw_my_event_calendar_link';
   // Assigned below; read only after the first await, to tell a stale reply.
   let run!: Promise<string | null>;
   run = (async () => {
     try {
-      const { data, error } = await Promise.resolve(supabase.rpc('bw_my_event_calendar_token', { p_event_id: eventId, p_date: day })).catch(
+      const { data, error } = await Promise.resolve(supabase.rpc(fn, { p_event_id: eventId, p_date: day })).catch(
         (e: unknown) => ({ data: null, error: e }),
       );
       if (eventTokens.get(key) !== run) return (await eventTokens.get(key)) ?? null; // ended meanwhile

@@ -1,11 +1,12 @@
 import React from 'react';
+import { Capacitor } from '@capacitor/core';
 import { CalendarPlus } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
 import { getLocale, useT } from '@/lib/i18n';
 import { GIG_LABELS, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
 import { openExternal } from '@/lib/nativeFiles';
-import { memberEventCalendarUrl, useEventCalendarToken } from '@/lib/memberCalendar';
+import { memberEventCalendarUrl, myEventCalendarToken, useEventCalendarToken } from '@/lib/memberCalendar';
 import { CalendarLinkNotice } from './CalendarLinkNotice';
 
 export interface CalendarEventInfo {
@@ -35,8 +36,43 @@ export interface CalendarEventInfo {
  */
 export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: string }> = ({ event, className }) => {
   const t = useT();
-  const { token } = useEventCalendarToken(event.eventId, event.date);
-  const file = token ? memberEventCalendarUrl(token) : null;
+  // Opening the event only reads its link; the first tap makes it (Claude
+  // review of #285, round 5: an open writes nothing on the server).
+  const { token, loading } = useEventCalendarToken(event.eventId, event.date);
+  const [made, setMade] = React.useState<{ key: string; url: string } | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const key = `${event.eventId}|${event.date}`;
+  const file = (token ? memberEventCalendarUrl(token) : null) ?? (made?.key === key ? made.url : null);
+  const [making, setMaking] = React.useState(false);
+
+  const add = async () => {
+    setFailed(false);
+    if (file) {
+      void openExternal(file);
+      return;
+    }
+    // On the web the window opens in the tap (a window opened after an await
+    // is a blocked pop-up); the app hands the link to the system afterwards.
+    const w = Capacitor.isNativePlatform() ? null : window.open('', '_blank');
+    setMaking(true);
+    const next = await myEventCalendarToken(event.eventId, event.date, { create: true }).catch(() => null);
+    setMaking(false);
+    const url = next ? memberEventCalendarUrl(next) : null;
+    if (!url) {
+      w?.close();
+      setFailed(true);
+      return;
+    }
+    setMade({ key, url });
+    if (w) {
+      try {
+        w.opener = null;
+      } catch {
+        /* cross-origin */
+      }
+      w.location.href = url;
+    } else void openExternal(url);
+  };
   const labels = GIG_LABELS[getLocale()] ?? GIG_LABELS.en;
   const gig: DeputyGig = {
     title: event.title || (event.rehearsal ? t('Rehearsal') : t('Gig')),
@@ -60,9 +96,10 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
           size="sm"
           variant="outline"
           fullWidth={false}
-          disabled={!file}
+          disabled={!file && loading}
+          loading={making}
           icon={<CalendarPlus className="w-4 h-4" aria-hidden />}
-          onClick={() => file && void openExternal(file)}
+          onClick={() => void add()}
         >
           {t('Add to calendar')}
         </PillButton>
@@ -70,6 +107,11 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
           {t('Google Calendar')}
         </PillButton>
       </div>
+      {failed && (
+        <p role="alert" className="bw-body-sm text-destructive">
+          {t('Could not create the link.')}
+        </p>
+      )}
     </div>
   );
 };

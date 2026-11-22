@@ -86,7 +86,8 @@ await db.exec(fn(m087, 'bw_deputy_unlink'));
 await db.exec(`CREATE FUNCTION public.bw_notify(p_users uuid[], p_band uuid, p_type text, p_title text, p_body text, p_data jsonb, p_ref uuid, p_ref_type text)
   RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$;`);
 await db.exec(fn(m086, 'bw_deputy_claim'));
-await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_claim(text) TO authenticated;`);
+await db.exec(fn(m086, 'bw_my_deputy_gigs'));
+await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_claim(text), public.bw_my_deputy_gigs() TO authenticated;`);
 await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_request_view(text), public.bw_deputy_request_reply(text, text, text),
   public.bw_deputy_feed(text) TO anon, authenticated; GRANT EXECUTE ON FUNCTION public.bw_deputy_unlink(uuid) TO authenticated;`);
 
@@ -570,14 +571,22 @@ await check('Claude: deleting a deputy ends its reply, calendar and gig-file lin
 });
 await check('Claude 182:483: a series opened without a date (first date 70 days ago) gets its next date', async () => {
   const t1 = await evTok(MEM, EV_R4OLD, null);
-  const first = (await one(`SELECT (current_date - 70)::text AS d`)).d;
-  const t2 = await evTok(MEM, EV_R4OLD, first);
   const l1 = t1 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t1])).l;
-  const l2 = t2 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t2])).l;
   const today = (await one(`SELECT current_date::text AS d`)).d;
   const next = l1?.event?.event_date;
-  return /^[0-9a-f]{64}$/.test(t1 ?? '') && next >= today && next < (await one(`SELECT (current_date + 7)::text AS d`)).d
-    && l2?.event?.event_date === next;
+  return /^[0-9a-f]{64}$/.test(t1 ?? '') && next >= today && next < (await one(`SELECT (current_date + 7)::text AS d`)).d;
+});
+// Claude review round 5 (182:648): only a missing date is replaced. A first
+// date the user opened stays, also when past (within the 60-day window; a
+// first date 70 days back is outside it, so no link rather than another date).
+await check('round 5: a past first date the user opened stays that date (never moved to the next one)', async () => {
+  const first10 = (await one(`SELECT (current_date - 14)::text AS d`)).d;
+  await q(`UPDATE events SET event_date = $2::date WHERE id = $1`, [EV_R4OLD, first10]);
+  const t = await evTok(MEM, EV_R4OLD, first10);
+  const l = t && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t])).l;
+  await q(`UPDATE events SET event_date = current_date - 70 WHERE id = $1`, [EV_R4OLD]);
+  const far = await evTok(MEM, EV_R4OLD, (await one(`SELECT (current_date - 70)::text AS d`)).d);
+  return l?.event?.event_date === first10 && far === null;
 });
 await check('next date skips a deleted one (skip_dates)', async () => {
   const nxt = (await one(`SELECT public.bw_calendar_next_occurrence('{"frequency":"weekly"}'::jsonb, current_date - 70, current_date)::text AS d`)).d;
@@ -609,6 +618,113 @@ await check('the first date of a series is kept while it is still today somewher
   }
 });
 
+// ---------------------------------------------------- round 5 (Claude) --
+console.log('-- round 5');
+// A: the shared monthly vectors (supabase/tests/monthly-clamp-vectors.json,
+// the same in calendarLinks.test.tsx): 29th-31st, 2027 and 2028, 14 months.
+await check('monthly vectors (29th-31st, 2027 and 2028, 14 months): the SQL next date gives every one, never Mar 28', async () => {
+  const { vectors } = JSON.parse(readFileSync(`${REPO}/supabase/tests/monthly-clamp-vectors.json`, 'utf8'));
+  if (vectors.length !== 6) return false;
+  for (const { start, dates } of vectors) {
+    if (dates.length !== 14) return false;
+    for (let k = 0; k < dates.length; k++) {
+      const from = k === 0 ? start : (await one(`SELECT ($1::date + 1)::text AS d`, [dates[k - 1]])).d;
+      if ((await nextOcc({ frequency: 'monthly' }, start, from)) !== dates[k]) { console.log('   ', start, k, dates[k]); return false; }
+      if ((await one(`SELECT public.bw_calendar_monthly_date($1::date, $2)::text AS d`, [start, k])).d !== dates[k]) return false;
+    }
+    if (!start.endsWith('-29') && (await occ({ frequency: 'monthly' }, start, `${start.slice(0, 4)}-03-28`)) !== false) return false;
+  }
+  return true;
+});
+
+// B3: one event, without the whole feed; opening an event writes nothing.
+await check('the one-event lookup equals the feed, for every account and event', async () => {
+  await q(`INSERT INTO calendar_feeds (user_id) SELECT id FROM auth.users ON CONFLICT (user_id) DO NOTHING`);
+  const r = await one(`SELECT bool_and(
+      coalesce((SELECT x FROM jsonb_array_elements(public.bw_member_calendar_feed(f.token)->'events') x WHERE x->>'id' = e.id::text), 'null'::jsonb)
+      = coalesce(public.bw_member_calendar_event(f.user_id, e.id), 'null'::jsonb)) AS same,
+      count(*) FILTER (WHERE public.bw_member_calendar_event(f.user_id, e.id) IS NOT NULL) AS seen, count(*) AS n
+    FROM calendar_feeds f CROSS JOIN events e`);
+  return r.same === true && Number(r.seen) > 3 && Number(r.n) > 20;
+});
+const EV_OPEN = id(70);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, is_recurring, created_by, fee) VALUES
+  ($1, $2, 'Open mic', 'gig', 'confirmed', current_date + 12, '20:00', 'Cafe', 'Queens', false, $3, 0)`, [EV_OPEN, BAND, ADMIN]);
+await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $2, 'Bass', 'confirmed')`, [EV_OPEN, MEM]);
+const openLink = async (uid, ev, date, fnName = 'bw_my_event_calendar_link') => {
+  await as(uid);
+  await db.exec('BEGIN');
+  try {
+    const t = (await one(`SELECT public.${fnName}($1, $2::date) AS t`, [ev, date])).t;
+    const xid = (await one(`SELECT pg_current_xact_id_if_assigned() AS x`)).x;
+    await db.exec('COMMIT');
+    return { t, wrote: xid !== null };
+  } catch (e) {
+    await db.exec('ROLLBACK');
+    throw e;
+  } finally {
+    await db.exec('RESET ROLE');
+  }
+};
+await check('opening an event with no link yet: nothing is made and nothing is written', async () => {
+  const before = Number((await one(`SELECT count(*) AS n FROM calendar_event_links WHERE event_id = $1`, [EV_OPEN])).n);
+  const r = await openLink(MEM, EV_OPEN, null);
+  const after = Number((await one(`SELECT count(*) AS n FROM calendar_event_links WHERE event_id = $1`, [EV_OPEN])).n);
+  return r.t === null && !r.wrote && before === 0 && after === 0;
+});
+await check('the first tap makes it; later opens read it back without a write (also the tap path)', async () => {
+  const made = await openLink(MEM, EV_OPEN, null, 'bw_my_event_calendar_token');
+  const open = await openLink(MEM, EV_OPEN, null);
+  const tapAgain = await openLink(MEM, EV_OPEN, null, 'bw_my_event_calendar_token');
+  return /^[0-9a-f]{64}$/.test(made.t ?? '') && made.wrote && open.t === made.t && !open.wrote && tapAgain.t === made.t && !tapAgain.wrote;
+});
+await check('the read path follows the same rules: another band, a declined event, nobody signed in', async () => {
+  const other = await openLink(OUT, EV_OPEN, null);
+  await q(`UPDATE event_members SET status = 'declined' WHERE event_id = $1 AND user_id = $2`, [EV_OPEN, MEM]);
+  const declined = await openLink(MEM, EV_OPEN, null);
+  await q(`UPDATE event_members SET status = 'confirmed' WHERE event_id = $1 AND user_id = $2`, [EV_OPEN, MEM]);
+  let refused = false;
+  try { await q(`SET ROLE authenticated`); await q(`SELECT set_config('request.jwt.claims', '', false)`); await q(`SELECT public.bw_my_event_calendar_link($1)`, [EV_OPEN]); }
+  catch { refused = true; }
+  await db.exec('RESET ROLE');
+  return other.t === null && declined.t === null && refused;
+});
+await check('grants: the read path is for signed-in users only', async () => {
+  const r = await one(`SELECT has_function_privilege('anon', 'public.bw_my_event_calendar_link(uuid, date)', 'EXECUTE') AS a,
+    has_function_privilege('authenticated', 'public.bw_my_event_calendar_link(uuid, date)', 'EXECUTE') AS b,
+    has_function_privilege('authenticated', 'public.bw_member_calendar_event(uuid, uuid)', 'EXECUTE') AS c`);
+  return !r.a && r.b && !r.c;
+});
+
+// B5: a withdrawn gig stays as the deputy last saw it.
+const [EV_W, DEPUTY5, RW] = [71, 72, 73].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, end_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
+  ($1, $2, 'Harbor Gala', 'gig', 'confirmed', current_date + 25, '19:00', '23:00', 'Harbor Hall', 'Jersey City', '5 Dock St', false, $3, 1000)`, [EV_W, BAND, ADMIN]);
+await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Nia', NULL)`, [DEPUTY5, BAND]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status) VALUES ($1, $2, $3, $4, 'Nia', 'Drums', 'pending')`, [RW, BAND, EV_W, DEPUTY5]);
+await q(`SELECT public.bw_deputy_request_reply($1, 'available')`, [await tok(RW)]);
+await q(`UPDATE deputy_requests SET status = 'cancelled' WHERE id = $1`, [RW]); // withdrawn
+await q(`UPDATE events SET title = 'Harbor Gala (moved)', start_time = '21:00', venue_name = 'New Hall', venue_city = 'Newark', event_date = current_date + 26 WHERE id = $1`, [EV_W]);
+await check('a withdrawn gig: both calendars and the page keep it as it was, without the address', async () => {
+  const day = (await one(`SELECT (current_date + 25)::text AS d`)).d;
+  const feed = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RW, 'calendar_token')])).f;
+  const file = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS g`, [await col(RW, 'gig_calendar_token')])).g;
+  const view = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RW)])).v;
+  const same = (g) => g && g.cancelled === true && g.event_title === 'Harbor Gala' && g.event_date === day
+    && String(g.start_time).startsWith('19:00') && g.venue_name === 'Harbor Hall' && g.venue_city === 'Jersey City' && g.venue_address === null;
+  return same(feed.gigs.find((g) => g.id === RW)) && same(file.gigs[0])
+    && view.event_title === 'Harbor Gala' && view.event_date === day && view.venue_name === 'Harbor Hall' && view.venue_address === null && view.closed === true;
+});
+await check('withdrawn after an answer saved before 182 (no title in it): the title at withdrawal is kept', async () => {
+  const RW2 = id(74);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status, answer_snapshot) VALUES
+    ($1, $2, $3, $4, 'Nia', 'Drums', 'available', $5::jsonb)`, [RW2, BAND, EV_W, DEPUTY5, JSON.stringify({ date: '2030-01-01', start: '18:00', venue: 'Old Hall', city: 'Hoboken', address: '1 Old St' })]);
+  await q(`UPDATE deputy_requests SET status = 'cancelled' WHERE id = $1`, [RW2]);
+  await q(`UPDATE events SET title = 'Harbor Gala (again)' WHERE id = $1`, [EV_W]);
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RW2)])).v;
+  return v.event_title === 'Harbor Gala (moved)' && v.venue_name === 'Old Hall' && v.event_date === '2030-01-01';
+});
+
 console.log('-- #294: a gig reverted to a private quote (178)');
 const [EV_Q, DEPUTY4, RQ] = [50, 51, 52].map(id);
 await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee) VALUES
@@ -628,6 +744,22 @@ await check('with 178: a gig reverted to a quote is hidden from an existing depu
   return r.view && r.view.closed === true && r.view.event_title === null && r.view.venue_address === null && r.view.event_date === null
     && !r.feed.gigs.some((g) => g.id === RQ) && r.file.gigs.length === 0
     && !r.old.gigs.some((g) => g.event_title === 'Wedding at the Pier');
+});
+// Claude review round 5 (182:259): hidden also means no offer, note or
+// calendar keys, on the page and in the app (bw_my_deputy_gigs, 086).
+await check('with 178: the hidden gig shows no fee, currency, note or calendar keys, on the page and in the app', async () => {
+  const U = id(75);
+  await q(`INSERT INTO auth.users VALUES ($1)`, [U]);
+  await q(`INSERT INTO profiles (id, preferred_language) VALUES ($1, 'en')`, [U]);
+  await q(`UPDATE band_deputies SET user_id = $2 WHERE id = $1`, [DEPUTY4, U]);
+  await q(`UPDATE deputy_requests SET fee_offered = 400, currency = 'USD', reply_note = 'Can do' WHERE id = $1`, [RQ]);
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RQ)])).v;
+  await as(U);
+  const mine = (await one(`SELECT public.bw_my_deputy_gigs() AS g`)).g;
+  await db.exec('RESET ROLE');
+  const g = mine.gigs.find((x) => x.id === RQ);
+  const blank = (o) => o && ['fee', 'currency', 'reply_note', 'calendar_token', 'gig_calendar_token', 'event_title', 'venue_address'].every((k) => o[k] === null) && o.closed === true;
+  return blank(v) && blank(g);
 });
 await check('with 178: confirmed again, it is back', async () => {
   await q(`UPDATE events SET status = 'confirmed' WHERE id = $1`, [EV_Q]);

@@ -12,6 +12,7 @@ vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/
 const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
 
 import { deputyFeedCalendar, isOccurrence, memberFeedCalendar, monthlyDate, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
+import monthlyVectorsSrc from '../../../supabase/tests/monthly-clamp-vectors.json?raw';
 import { DeputyGigCard } from '@/app/components/deputy/DeputyGigsList';
 import type { DeputyGig } from '../services/deputies';
 
@@ -191,19 +192,43 @@ describe('series dates the app shows, in external calendars', () => {
   });
 
   it('monthly on the 29th-31st: the last day of shorter months, as the app', () => {
-    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-31')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-31')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=-1');
     // The 30th stays the 30th in a month that has a 31st (Jan 30 -> Mar 30).
     expect(recurrenceRule({ frequency: 'monthly', interval: 2 }, '2027-01-30')).toBe('FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=28,29,30;BYSETPOS=-1');
     expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-29')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29;BYSETPOS=-1');
     expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-28')).toBe('FREQ=MONTHLY;INTERVAL=1');
     expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-15')).toBe('FREQ=MONTHLY;INTERVAL=1');
     const monthly = { ...weekly, event_date: '2027-01-31', recurrence: { frequency: 'monthly' } };
-    expect(memberFeedCalendar([monthly], { lang: 'en', site: SITE, now: NOW })).toContain('RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1');
+    expect(memberFeedCalendar([monthly], { lang: 'en', site: SITE, now: NOW })).toContain('RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=-1');
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-02-28')).toBe(true);
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-03-31')).toBe(true);
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-31', '2027-03-03')).toBe(false);
     expect(isOccurrence({ frequency: 'monthly' }, '2028-01-31', '2028-02-29')).toBe(true);
     expect(isOccurrence({ frequency: 'monthly' }, '2027-01-30', '2027-03-30')).toBe(true);
+  });
+
+  // Round 5 (coordinator): the shared vectors, identical in PGlite (SQL):
+  // starts on Jan 29, 30 and 31 of 2027 and 2028 (leap year), 14 months each.
+  it('monthly vectors (29th-31st, 2027 and 2028, 14 months): the ICS side gives every date', () => {
+    const { vectors } = JSON.parse(monthlyVectorsSrc) as { vectors: { start: string; dates: string[] }[] };
+    expect(vectors).toHaveLength(6);
+    for (const { start, dates } of vectors) {
+      expect(dates).toHaveLength(14);
+      expect(dates.map((_, k) => monthlyDate(start, k))).toEqual(dates);
+      for (const d of dates) expect(isOccurrence({ frequency: 'monthly' }, start, d), `${start} -> ${d}`).toBe(true);
+      // Never the overflow-carried date (Mar 28 after a February clamp).
+      const y = start.slice(0, 4);
+      if (start.endsWith('-31') || start.endsWith('-30')) expect(isOccurrence({ frequency: 'monthly' }, start, `${y}-03-28`)).toBe(false);
+    }
+  });
+
+  // Claude review #285 item 6: the 31st is the month's last day (BYMONTHDAY=-1);
+  // the 29th and 30th keep the latest of 28..d.
+  it('the RRULE of a series on the 31st is BYMONTHDAY=-1; the 29th and 30th keep 28..d with BYSETPOS=-1', () => {
+    expect(recurrenceRule({ frequency: 'monthly' }, '2028-01-31')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=-1');
+    expect(recurrenceRule({ frequency: 'monthly', interval: 3 }, '2027-03-31', { timed: true })).toBe('FREQ=MONTHLY;INTERVAL=3;BYMONTHDAY=-1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2027-01-30')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30;BYSETPOS=-1');
+    expect(recurrenceRule({ frequency: 'monthly' }, '2028-01-29')).toBe('FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29;BYSETPOS=-1');
   });
 
   // Codex review #285 round 5: one rule for the monthly date, in one helper

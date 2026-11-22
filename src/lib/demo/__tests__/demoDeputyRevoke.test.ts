@@ -19,3 +19,16 @@ describe('demo: revoke sent links', () => {
     for (const k of ['calendar_token', 'gig_calendar_token']) if (was[k]) expect(now[k]).not.toBe(was[k]);
   });
 });
+
+// Claude review of #285 round 5: as 182, opening an event reads its link
+// (none until the first tap), the tap makes it.
+describe('demo: one-event calendar link', () => {
+  it('is read on open, made on the tap', async () => {
+    const c = createDemoClient() as any;
+    const args = { p_event_id: '11111111-2222-4333-8444-555555555555', p_date: '2026-12-08' };
+    expect((await c.rpc('bw_my_event_calendar_link', args)).data).toBeNull();
+    const made = (await c.rpc('bw_my_event_calendar_token', args)).data;
+    expect(made).toMatch(/^[0-9a-f]{64}$/);
+    expect((await c.rpc('bw_my_event_calendar_link', args)).data).toBe(made);
+  });
+});

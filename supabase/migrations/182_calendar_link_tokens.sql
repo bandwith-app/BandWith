@@ -44,7 +44,11 @@
 --     case): bw_event_status_cancelled, used by every check here.
 --   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
 --     out of both calendars and the old feed, and the reply page closed,
---     without detail.
+--     without detail, offer (fee, currency), note or calendar keys; the
+--     deputy's in-app list (bw_my_deputy_gigs, 086) shows that page.
+--   - A request withdrawn after a yes stays as the deputy last saw it: the
+--     gig of their answer (answer_snapshot, which now keeps the title too),
+--     never later changes, no street address (bw_deputy_frozen_gig).
 --   Replies on a withdrawn (cancelled) request were already refused (084:
 --   'closed'); unchanged.
 --
@@ -58,12 +62,15 @@
 --     date must be a real date of the series, from 60 days back to two
 --     years ahead; at most 500 links per account (the oldest go).
 --   - bw_my_event_calendar_token(event, date): the signed-in user's token for
---     one event their calendar shows (same rule as the feed), else NULL. A
---     series asked without a date, or at its first date once that is past,
---     gets its next date from today (bw_calendar_next_occurrence). "Today"
---     is the earliest date still current on Earth (bw_calendar_today,
---     UTC-12), never the server's UTC date: events and bands keep no time
---     zone.
+--     one event their calendar shows (same rule as the feed,
+--     bw_member_calendar_event: that one event, not the whole feed), made on
+--     the first tap, else NULL. bw_my_event_calendar_link(event, date): the
+--     same link if it exists, read only (opening an event writes nothing).
+--     The date the user opened stays, also a past first date; a series asked
+--     without a date gets its next date from today
+--     (bw_calendar_next_occurrence). "Today" is the earliest date still
+--     current on Earth (bw_calendar_today, UTC-12), never the server's UTC
+--     date: events and bands keep no time zone.
 --   - bw_member_event_calendar(token): that one event as a single date, never
 --     the series rule or start; NULL once the user no longer sees it or the
 --     date is no longer in the series.
@@ -72,7 +79,10 @@
 --     offers "Make a new link" or "Keep my link"): every link made before
 --     182, and any served again in the old one-event form (t=&e=, older app
 --     builds; bw_member_calendar_flag_shared, called by member-calendar),
---     unless the owner chose "Keep my link" for it (review_kept).
+--     unless the owner chose "Keep my link" for it (review_kept). 165 keeps
+--     no record of which feeds a calendar fetched, so every account with a
+--     link made before 182 is asked once (accepted: nothing narrower to go
+--     by).
 --   - A date of a series: a deleted date (recurrence_rule.skip_dates) is
 --     none; monthly on the 29th-31st takes the last day of shorter months
 --     (bw_calendar_monthly_date), counted from the first date.
@@ -142,6 +152,32 @@ BEGIN
 END
 $$;
 
+-- 084's snapshot of the gig at the answer, now with its title too: a
+-- withdrawn gig stays in the deputy's calendar as it was (Claude review of
+-- #285, round 5). The keys 084 compares are unchanged.
+CREATE OR REPLACE FUNCTION public.bw_deputy_event_snapshot(p_event_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+           'date', coalesce(e.event_date, e.date),
+           'load_in', left(e.load_in_time::text, 5),
+           'soundcheck', left(e.soundcheck_time::text, 5),
+           'start', left(coalesce(e.start_time, e.time)::text, 5),
+           'end', left(e.end_time::text, 5),
+           'venue', coalesce(e.venue_name, e.venue),
+           'city', e.venue_city,
+           'address', e.venue_address,
+           'title', e.title
+         )
+    FROM public.events e
+   WHERE e.id = p_event_id;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_event_snapshot(uuid) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_trg_deputy_request_was_available()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -152,9 +188,35 @@ BEGIN
     WHEN NEW.status = 'available' THEN true
     WHEN NEW.status = 'cancelled' AND TG_OP = 'UPDATE' THEN coalesce(OLD.was_available, false) OR OLD.status = 'available'
     ELSE false END;
+  -- Withdrawn after an answer saved before 182 (no title in it): keep the
+  -- title it has now, so nothing of the entry follows the gig any more.
+  IF NEW.status = 'cancelled' AND NEW.answer_snapshot IS NOT NULL AND NOT (NEW.answer_snapshot ? 'title') THEN
+    NEW.answer_snapshot := NEW.answer_snapshot
+      || jsonb_build_object('title', (SELECT e.title FROM public.events e WHERE e.id = NEW.event_id));
+  END IF;
   RETURN NEW;
 END;
 $$;
+
+-- A withdrawn request, as the deputy last saw it (Claude review of #285,
+-- round 5): the gig as it was at their answer, never later changes, and no
+-- street address. Merged over the live fields of the reply page and both
+-- calendars.
+CREATE OR REPLACE FUNCTION public.bw_deputy_frozen_gig(p_snap jsonb)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE WHEN p_snap IS NULL OR jsonb_typeof(p_snap) <> 'object' THEN '{}'::jsonb ELSE
+    jsonb_build_object(
+      'event_date', p_snap->'date', 'load_in_time', p_snap->'load_in', 'soundcheck_time', p_snap->'soundcheck',
+      'start_time', p_snap->'start', 'end_time', p_snap->'end', 'venue_name', p_snap->'venue',
+      'venue_city', p_snap->'city', 'venue_address', NULL)
+    || CASE WHEN p_snap ? 'title' THEN jsonb_build_object('event_title', p_snap->'title') ELSE '{}'::jsonb END
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_frozen_gig(jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.bw_trg_deputy_request_was_available() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS bw_deputy_request_was_available ON public.deputy_requests;
 CREATE TRIGGER bw_deputy_request_was_available BEFORE INSERT OR UPDATE OF status ON public.deputy_requests
@@ -257,12 +319,19 @@ BEGIN
     JOIN public.events e ON e.id = r.event_id
     JOIN public.bands b ON b.id = r.band_id
    WHERE r.token = p_token;
-  -- Reverted to a private quote (178): closed, and no detail of the gig.
+  -- Withdrawn after an answer: the gig as it was then, no later change.
+  IF v IS NOT NULL AND v_status = 'cancelled' AND v_snap IS NOT NULL THEN
+    v := v || public.bw_deputy_frozen_gig(v_snap) || jsonb_build_object('event_updated_at', NULL);
+  END IF;
+  -- Reverted to a private quote (178): closed, and no detail of the gig,
+  -- nor the offer or the calendar keys (Claude review of #285, round 5;
+  -- bw_my_deputy_gigs, 086, returns this view).
   IF v IS NOT NULL AND coalesce(v_hidden, false) THEN
     v := v || jsonb_build_object(
       'event_title', NULL, 'event_type', NULL, 'event_date', NULL, 'start_time', NULL, 'end_time', NULL,
       'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
       'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
+      'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'calendar_token', NULL, 'gig_calendar_token', NULL,
       'closed', true);
   END IF;
   RETURN v;
@@ -313,14 +382,17 @@ BEGIN
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
                'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
-               'updated_at', greatest(e.updated_at, r.updated_at)
-             ) ORDER BY coalesce(e.event_date, e.date))
+               'updated_at', CASE WHEN r.status = 'cancelled' THEN r.updated_at ELSE greatest(e.updated_at, r.updated_at) END
+             )
+             -- Withdrawn: the gig as it was at their answer (round 5).
+             || CASE WHEN r.status = 'cancelled' THEN public.bw_deputy_frozen_gig(r.answer_snapshot) ELSE '{}'::jsonb END
+             ORDER BY coalesce(CASE WHEN r.status = 'cancelled' THEN (r.answer_snapshot->>'date')::date END, e.event_date, e.date))
         FROM public.deputy_requests r
         JOIN public.events e ON e.id = r.event_id
        WHERE r.band_id = v_req.band_id
          AND (r.id = v_req.id OR (v_req.deputy_id IS NOT NULL AND r.deputy_id = v_req.deputy_id))
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
-         AND coalesce(e.event_date, e.date) >= current_date - 60
+         AND coalesce(CASE WHEN r.status = 'cancelled' THEN (r.answer_snapshot->>'date')::date END, e.event_date, e.date) >= current_date - 60
          AND NOT public.bw_event_deputy_hidden(e.id)
     ), '[]'::jsonb)
   );
@@ -363,13 +435,15 @@ BEGIN
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
                'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
-               'updated_at', greatest(e.updated_at, r.updated_at)
-             ))
+               'updated_at', CASE WHEN r.status = 'cancelled' THEN r.updated_at ELSE greatest(e.updated_at, r.updated_at) END
+             )
+             -- Withdrawn: the gig as it was at their answer (round 5).
+             || CASE WHEN r.status = 'cancelled' THEN public.bw_deputy_frozen_gig(r.answer_snapshot) ELSE '{}'::jsonb END)
         FROM public.deputy_requests r
         JOIN public.events e ON e.id = r.event_id
        WHERE r.id = v_req.id
          AND (r.status = 'available' OR (r.status = 'cancelled' AND r.was_available))
-         AND coalesce(e.event_date, e.date) >= current_date - 60
+         AND coalesce(CASE WHEN r.status = 'cancelled' THEN (r.answer_snapshot->>'date')::date END, e.event_date, e.date) >= current_date - 60
          AND NOT public.bw_event_deputy_hidden(e.id)
     ), '[]'::jsonb)
   );
@@ -645,6 +719,112 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_calendar_today() FROM PUBLIC, anon, authenticated;
 
+-- One event as the account feed shows it to p_uid (165's
+-- bw_member_calendar_feed: the same rule and the same fields), or NULL. One
+-- row, by its id: opening an event no longer builds the whole feed (Claude
+-- review of #285, round 5). The PGlite check holds it equal to the feed.
+CREATE OR REPLACE FUNCTION public.bw_member_calendar_event(p_uid uuid, p_event_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+           'id', e.id,
+           'type', CASE WHEN lower(coalesce(e.event_type, '')) = 'rehearsal' THEN 'rehearsal'
+                        WHEN e.band_id IS NULL THEN 'personal'
+                        ELSE 'gig' END,
+           'title', e.title,
+           'band_name', b.name,
+           'event_date', coalesce(e.event_date, e.date),
+           'start_time', coalesce(e.start_time, e.time),
+           'end_time', e.end_time,
+           'load_in_time', e.load_in_time,
+           'soundcheck_time', e.soundcheck_time,
+           'venue_name', coalesce(e.venue_name, e.venue),
+           'venue_city', e.venue_city,
+           'venue_address', coalesce(e.venue_address, e.address),
+           'role', em.role,
+           'recurrence', CASE WHEN e.is_recurring THEN e.recurrence_rule END,
+           'updated_at', e.updated_at
+         )
+    FROM public.events e
+    LEFT JOIN public.bands b ON b.id = e.band_id
+    LEFT JOIN public.band_members bm
+      ON bm.band_id = e.band_id AND bm.user_id = p_uid
+     AND coalesce(bm.is_active, true) AND bm.left_at IS NULL
+    LEFT JOIN public.event_members em ON em.event_id = e.id AND em.user_id = p_uid
+   WHERE e.id = p_event_id AND p_uid IS NOT NULL
+     AND coalesce(e.event_date, e.date) IS NOT NULL
+     AND (coalesce(e.event_date, e.date) >= current_date - 60 OR e.is_recurring)
+     AND lower(coalesce(e.status, '')) NOT IN ('cancelled', 'canceled', 'draft', 'pending')
+     AND NOT (
+       (e.quote_id IS NOT NULL OR lower(coalesce(e.event_type, '')) = 'quote'
+         OR lower(coalesce(e.status, '')) IN ('tentative', 'quoted', 'quote'))
+       AND lower(coalesce(e.status, '')) NOT IN ('confirmed', 'completed')
+     )
+     AND (
+       (e.band_id IS NULL AND e.created_by = p_uid)
+       OR (bm.role::text = 'admin' AND coalesce(em.status, '') <> 'declined')
+       OR (bm.id IS NOT NULL AND em.id IS NOT NULL AND coalesce(em.status, '') <> 'declined')
+     )
+   LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION public.bw_member_calendar_event(uuid, uuid) FROM PUBLIC, anon, authenticated;
+
+-- The date a link of that event is for: NULL for a one-off; for a series,
+-- one of its real dates from 60 days back to two years ahead. The date the
+-- user opened stays, also a past first date (Claude review of #285, round
+-- 5); only with no date (a notification, a link) it is the next date from
+-- today. ok = false: no link for that date.
+CREATE OR REPLACE FUNCTION public.bw_calendar_link_date(p_event jsonb, p_date date, OUT ok boolean, OUT occ date)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_today date := public.bw_calendar_today();
+  v_start date;
+BEGIN
+  ok := p_event IS NOT NULL;
+  occ := NULL;
+  IF NOT ok OR jsonb_typeof(p_event->'recurrence') <> 'object' THEN RETURN; END IF;
+  v_start := (p_event->>'event_date')::date;
+  occ := coalesce(p_date, public.bw_calendar_next_occurrence(p_event->'recurrence', v_start, v_today), v_start);
+  ok := occ >= v_today - 60 AND occ <= v_today + 731
+        AND public.bw_calendar_is_occurrence(p_event->'recurrence', v_start, occ);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_calendar_link_date(jsonb, date) FROM PUBLIC, anon, authenticated;
+
+-- Opening an event: the link it already has, or NULL. Reads only (STABLE:
+-- it can't write), so an open costs no write (Claude review of #285, round
+-- 5); the link is made on the first tap (bw_my_event_calendar_token).
+CREATE OR REPLACE FUNCTION public.bw_my_event_calendar_link(p_event_id uuid, p_date date DEFAULT NULL)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_when record;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
+  IF p_event_id IS NULL THEN RETURN NULL; END IF;
+  v_when := public.bw_calendar_link_date(public.bw_member_calendar_event(v_uid, p_event_id), p_date);
+  IF NOT coalesce(v_when.ok, false) THEN RETURN NULL; END IF;
+  RETURN (SELECT l.token FROM public.calendar_event_links l
+           WHERE l.user_id = v_uid AND l.event_id = p_event_id
+             AND coalesce(l.occurrence, 'infinity'::date) = coalesce(v_when.occ, 'infinity'::date));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_my_event_calendar_link(uuid, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_my_event_calendar_link(uuid, date) TO authenticated;
+
+-- The tap: the link of that event (and date), made if it has none.
 CREATE OR REPLACE FUNCTION public.bw_my_event_calendar_token(p_event_id uuid, p_date date DEFAULT NULL)
 RETURNS text
 LANGUAGE plpgsql
@@ -654,48 +834,33 @@ SET search_path = public
 AS $$
 DECLARE
   v_uid uuid := auth.uid();
-  v_feed text;
-  v_event jsonb;
-  v_occ date;
-  v_start date;
+  v_when record;
   v_token text;
-  v_today date := public.bw_calendar_today();
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
   IF p_event_id IS NULL THEN RETURN NULL; END IF;
+  -- Only an event the user's calendar shows (the feed's rule, 165), and
+  -- for a series one of its real dates.
+  v_when := public.bw_calendar_link_date(public.bw_member_calendar_event(v_uid, p_event_id), p_date);
+  IF NOT coalesce(v_when.ok, false) THEN RETURN NULL; END IF;
+
+  -- Already made: nothing to write.
+  SELECT l.token INTO v_token FROM public.calendar_event_links l
+   WHERE l.user_id = v_uid AND l.event_id = p_event_id
+     AND coalesce(l.occurrence, 'infinity'::date) = coalesce(v_when.occ, 'infinity'::date);
+  IF v_token IS NOT NULL THEN RETURN v_token; END IF;
+
   INSERT INTO public.calendar_feeds (user_id) VALUES (v_uid) ON CONFLICT (user_id) DO NOTHING;
   -- Locked: two devices making links at once take turns, so the 500 cap
   -- below holds (review of #285, round 3).
-  SELECT token INTO v_feed FROM public.calendar_feeds WHERE user_id = v_uid FOR UPDATE;
-
-  -- Only an event the user's calendar shows (the feed's rule, 165).
-  SELECT x INTO v_event
-    FROM jsonb_array_elements(coalesce(public.bw_member_calendar_feed(v_feed)->'events', '[]'::jsonb)) x
-   WHERE x->>'id' = p_event_id::text;
-  IF v_event IS NULL THEN RETURN NULL; END IF;
-
-  -- The date matters only for a repeating event: one of its real dates,
-  -- from 60 days back to two years ahead.
-  IF jsonb_typeof(v_event->'recurrence') = 'object' THEN
-    v_start := (v_event->>'event_date')::date;
-    v_occ := p_date;
-    -- Opened without a date (a notification, a link), which shows the
-    -- series at its first date: the next date from today instead, also when
-    -- that first date is long past (Claude review of #285, round 4).
-    IF v_occ IS NULL OR (v_occ = v_start AND v_start < v_today) THEN
-      v_occ := coalesce(public.bw_calendar_next_occurrence(v_event->'recurrence', v_start, v_today), v_start);
-    END IF;
-    IF v_occ < v_today - 60 OR v_occ > v_today + 731
-       OR NOT public.bw_calendar_is_occurrence(v_event->'recurrence', (v_event->>'event_date')::date, v_occ) THEN
-      RETURN NULL;
-    END IF;
-  END IF;
+  PERFORM 1 FROM public.calendar_feeds WHERE user_id = v_uid FOR UPDATE;
 
   INSERT INTO public.calendar_event_links (user_id, event_id, occurrence)
-  VALUES (v_uid, p_event_id, v_occ)
+  VALUES (v_uid, p_event_id, v_when.occ)
   ON CONFLICT (user_id, event_id, coalesce(occurrence, 'infinity'::date)) DO NOTHING;
-  SELECT token INTO v_token FROM public.calendar_event_links
-   WHERE user_id = v_uid AND event_id = p_event_id AND occurrence IS NOT DISTINCT FROM v_occ;
+  SELECT l.token INTO v_token FROM public.calendar_event_links l
+   WHERE l.user_id = v_uid AND l.event_id = p_event_id
+     AND coalesce(l.occurrence, 'infinity'::date) = coalesce(v_when.occ, 'infinity'::date);
 
   -- At most 500 links per account: the oldest go (never this one).
   DELETE FROM public.calendar_event_links l
@@ -724,7 +889,6 @@ SET search_path = public
 AS $$
 DECLARE
   v_link public.calendar_event_links;
-  v_feed jsonb;
   v_event jsonb;
   v_start date;
   v_date date;
@@ -732,10 +896,7 @@ BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT * INTO v_link FROM public.calendar_event_links WHERE token = p_token;
   IF v_link.token IS NULL THEN RETURN NULL; END IF;
-  v_feed := public.bw_member_calendar_feed((SELECT f.token FROM public.calendar_feeds f WHERE f.user_id = v_link.user_id));
-  SELECT x INTO v_event
-    FROM jsonb_array_elements(coalesce(v_feed->'events', '[]'::jsonb)) x
-   WHERE x->>'id' = v_link.event_id::text;
+  v_event := public.bw_member_calendar_event(v_link.user_id, v_link.event_id);
   IF v_event IS NULL THEN RETURN NULL; END IF;
 
   v_start := (v_event->>'event_date')::date;
@@ -753,7 +914,7 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
-    'language', v_feed->'language',
+    'language', (SELECT p.preferred_language FROM public.profiles p WHERE p.id = v_link.user_id),
     'occurrence', v_link.occurrence,
     'event', v_event || jsonb_build_object('event_date', v_date, 'recurrence', NULL)
   );
