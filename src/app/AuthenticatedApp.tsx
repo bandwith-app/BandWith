@@ -1870,12 +1870,15 @@ export default function AuthenticatedApp() {
         if (freq) {
           const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
           const maxCount = rule.count || 24;
-          repeatDates(normDate, rule, until, maxCount).forEach((cursor, generated) => {
+          repeatDates(normDate, rule, until, maxCount).forEach((cursor) => {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
             if (occDate >= todayStr && occDate !== normDate) {
               rehearsals.push({
                 ...e,
-                id: (e.id * 31 + generated) % 2147483647,
+                // Keyed by the date, not its place in the list: deleting one
+                // date leaves the ids of the later ones as they were (Claude
+                // review #285 r8).
+                id: uuidToNumericId(`${e.eventId ?? e.id}-occ-${occDate}`),
                 eventId: e.eventId,
                 date: occDate,
               });
