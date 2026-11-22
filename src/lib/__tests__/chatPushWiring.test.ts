@@ -74,7 +74,28 @@ describe('send-push wiring, round 2', () => {
 
   it('each recipient is told about a message once, and only those whose inbox row was written ring', () => {
     expect(sendPush).toMatch(/chooseUnannounced\(/);
-    expect(sendPush).toMatch(/\.insert\(notifications\)\s*\.select\('user_id'\)/);
+    expect(sendPush).toMatch(/\.rpc\('bw_write_chat_notices'/);
     expect(sendPush).toMatch(/ringIds/);
+  });
+});
+
+// Codex review #284, round 3.
+describe('send-push wiring, round 3', () => {
+  it('notices are written per recipient by the database, for a live message only', () => {
+    expect(sendPush).toMatch(/\.rpc\('bw_write_chat_notices', \{ p_message_id: announced\.id, p_rows: notifications \}\)/);
+    expect(sendPush).not.toMatch(/23505/);
+  });
+
+  it('pushes are marked once attempted, also when nobody has a device', () => {
+    expect(sendPush).toMatch(/\.rpc\('bw_mark_chat_notices_pushed'/);
+    expect((sendPush.match(/await markPushed\(\);/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('"already announced" means pushed (or being pushed), not only written', () => {
+    expect(sendPush).toMatch(/noticeSettled\(/);
+  });
+
+  it('older builds: a wide candidate set', () => {
+    expect(sendPush).toMatch(/\.limit\(named \? 1 : LEGACY_CANDIDATES\)/);
   });
 });

@@ -33,7 +33,8 @@ CREATE FUNCTION public.bw_is_band_admin(b uuid, u uuid DEFAULT auth.uid()) RETUR
   $$ SELECT EXISTS (SELECT 1 FROM public.band_members WHERE band_id = b AND user_id = u AND role = 'admin') $$;
 CREATE FUNCTION public.bw_shares_chat(a uuid, b uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
-  title text, body text, data jsonb);
+  title text, body text, data jsonb, read boolean DEFAULT false, action_url text, created_at timestamptz DEFAULT now());
+CREATE TABLE public.messages (id uuid PRIMARY KEY, chat_id uuid, sender_id uuid, content text, deleted boolean DEFAULT false);
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 GRANT INSERT ON public.notifications TO authenticated, service_role;
 `);
@@ -90,6 +91,45 @@ ok((await serviceInsert(MEM2, 'chat_message', null)) === true && (await serviceI
   'rows without a message id (older ones) never collide');
 ok((await serviceInsert(MEM2, 'event_update', MSG)) === true && (await serviceInsert(MEM2, 'event_update', MSG)) === true,
   'other types are not affected');
+
+// Round 3 (Codex review #284): notices are written per recipient, only for
+// a live message, and claimed for pushing until marked pushed.
+const [ALICE, CAROL] = [10, 11].map(id);
+const [LIVE, GONE, SOFT] = [600, 601, 602].map(id);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content, deleted) VALUES
+  ('${LIVE}', '${id(900)}', '${MEM}', 'see you at 8', false), ('${SOFT}', '${id(900)}', '${MEM}', 'oops', true)`);
+const rowsFor = (...users) => JSON.stringify(users.map((u) => ({ user_id: u, type: 'chat_message', title: 'Mia', body: 'see you at 8',
+  data: { chat_id: id(900), content: 'see you at 8', skip_push: true }, band_id: BAND, action_url: `/chat/${id(900)}` })));
+const write = async (msg, ...users) => {
+  try {
+    const r = await db.query(`SELECT user_id FROM public.bw_write_chat_notices($1, $2::jsonb)`, [msg, rowsFor(...users)]);
+    return r.rows.map((x) => x.user_id).sort();
+  } catch (e) {
+    return 'ERROR ' + e.message;
+  }
+};
+const w1 = await write(LIVE, ALICE, MEM2);
+ok(JSON.stringify(w1) === JSON.stringify([MEM2, ALICE].sort()), `first call writes and claims Alice and Bob (${w1})`);
+const w2 = await write(LIVE, MEM2, CAROL);
+ok(JSON.stringify(w2) === JSON.stringify([CAROL]), `overlapping call [Bob, Carol]: Carol still gets hers, Bob not twice (${w2})`);
+ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${LIVE}'`).then((r) => r.rows[0].n) === 3,
+  'one notice each for Alice, Bob, Carol');
+ok(JSON.stringify(await write(GONE, ALICE)) === '[]', 'a message deleted after verification: nothing written or pushed');
+ok(JSON.stringify(await write(SOFT, ALICE)) === '[]', 'nor for a message marked deleted');
+ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' IN ('${GONE}', '${SOFT}')`).then((r) => r.rows[0].n) === 0,
+  'no inbox row for them');
+// The token lookup failed after the insert: once the claim is old, a retry pushes again.
+ok(JSON.stringify(await write(LIVE, ALICE)) === '[]', 'a retry right away does not push twice (claimed)');
+await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '5 minutes') WHERE user_id = '${ALICE}'`);
+ok(JSON.stringify(await write(LIVE, ALICE)) === JSON.stringify([ALICE]), 'a retry after a lost push pushes again');
+const ids = await db.query(`SELECT id FROM notifications WHERE data->>'message_id' = '${LIVE}'`).then((r) => r.rows.map((x) => x.id));
+await db.query(`SELECT public.bw_mark_chat_notices_pushed($1::uuid[])`, [ids]).catch((e) => console.log('ERROR', e.message));
+await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '5 minutes')`);
+ok(JSON.stringify(await write(LIVE, ALICE, MEM2, CAROL)) === '[]', 'once pushed, never again');
+ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${LIVE}' AND data ? 'pushed_at' AND data->>'message_id' IS NOT NULL`).then((r) => r.rows[0].n) === 3,
+  'marked pushed');
+const asUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_write_chat_notices('${LIVE}', '[]'::jsonb); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
+ok(asUser !== 'ran', `app users cannot call it (${asUser})`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

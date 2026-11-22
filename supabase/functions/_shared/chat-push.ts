@@ -21,9 +21,17 @@ export interface ChatMessageRow {
   created_at: string;
 }
 
-/** What the app put in the body for a message (src/lib/services/notifications.ts). */
+/** Drops half an emoji left at the end by a cut (an unpaired high surrogate). */
+const wholeEnd = (s: string): string => (/[\uD800-\uDBFF]$/.test(s) ? s.slice(0, -1) : s);
+
+/**
+ * The preview of a message: its first 120 UTF-16 units, like the app's
+ * substring(0, 120), but never ending in half an emoji (Postgres refuses an
+ * unpaired surrogate in JSON, so the inbox insert failed and nobody got a
+ * push). Same cut as bw_js_left in 192.
+ */
 export const chatPreview = (content: string | null | undefined): string =>
-  (content ?? '').substring(0, 120) || 'New message';
+  wholeEnd((content ?? '').substring(0, 120)) || 'New message';
 
 /** A message older than this can't be announced any more. */
 export const CHAT_PUSH_WINDOW_MS = 10 * 60 * 1000;
@@ -52,7 +60,8 @@ export function findAnnouncedCandidates(
   if (typeof opts.messageId === 'string' && opts.messageId) {
     return mine.filter((m) => m.id === opts.messageId).slice(0, 1);
   }
-  const body = typeof opts.body === 'string' ? opts.body : '';
+  // An older build's preview may end in half an emoji: compare whole ends.
+  const body = wholeEnd(typeof opts.body === 'string' ? opts.body : '') || 'New message';
   return mine.filter((m) => chatPreview(m.content) === body);
 }
 
@@ -79,6 +88,23 @@ export function legacyContentFilter(body: string): { eq: string } | { like: stri
   if (body.length < 120) return { eq: body };
   const whole = /[\uD800-\uDBFF]$/.test(body) ? body.slice(0, -1) : body;
   return { like: whole.replace(/[\\%_]/g, '\\$&') + '%' };
+}
+
+/** Older builds: how many recent messages with the same preview are candidates. */
+export const LEGACY_CANDIDATES = 500;
+
+/** A push claim (bw_write_chat_notices, 194) lapses after this: the push is retried. */
+export const PUSH_CLAIM_MS = 2 * 60 * 1000;
+
+/**
+ * Whether a chat notice is announced: pushed, or being pushed right now.
+ * Written but never pushed (the token lookup failed after the insert) is
+ * not: a retry pushes it.
+ */
+export function noticeSettled(n: { pushed_at?: string | null; push_claimed_at?: string | null }, now = Date.now()): boolean {
+  if (n.pushed_at) return true;
+  const claimed = n.push_claimed_at ? Date.parse(n.push_claimed_at) : NaN;
+  return Number.isFinite(claimed) && now - claimed < PUSH_CLAIM_MS;
 }
 
 /**

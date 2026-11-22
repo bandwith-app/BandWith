@@ -5,6 +5,8 @@ import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-s
 import {
   CHAT_PUSH_CHANNEL,
   CHAT_PUSH_WINDOW_MS,
+  LEGACY_CANDIDATES,
+  noticeSettled,
   chatPreview,
   chatPushData,
   chatPushSubtitle,
@@ -451,7 +453,9 @@ async function verifyChatPush(
     query = 'eq' in f ? query.eq('content', f.eq) : 'like' in f ? query.like('content', f.like) : query.in('content', f.in);
     query = query.gte('created_at', since);
   }
-  const { data: recent, error } = await query.order('created_at', { ascending: false }).limit(20);
+  // Older builds: every recent message with that preview is a candidate
+  // (20 identical "OK"s within ten minutes left the 21st unannounced).
+  const { data: recent, error } = await query.order('created_at', { ascending: false }).limit(named ? 1 : LEGACY_CANDIDATES);
   if (error) throw error;
   const candidates = findAnnouncedCandidates(recent || [], {
     callerId,
@@ -486,8 +490,10 @@ async function verifyChatPush(
 }
 
 /**
- * Chat notices already written for these messages (Claude review #284):
- * each recipient hears about a message once.
+ * Chat notices already announced for these messages (Claude review #284):
+ * each recipient hears about a message once. Announced = pushed, or being
+ * pushed right now (Codex review #284 r3): a notice written but never
+ * pushed is pushed by a retry.
  */
 async function chatNoticesFor(
   supabase: ReturnType<typeof adminClient>,
@@ -496,12 +502,14 @@ async function chatNoticesFor(
 ): Promise<{ user_id: string; message_id: string | null }[]> {
   const { data, error } = await supabase
     .from('notifications')
-    .select('user_id, message_id:data->>message_id')
+    .select('user_id, message_id:data->>message_id, pushed_at:data->>pushed_at, push_claimed_at:data->>push_claimed_at')
     .in('user_id', userIds)
     .in('type', ['chat_message', 'chat_mention'])
     .in('data->>message_id', messageIds);
   if (error) throw error;
-  return (data || []) as { user_id: string; message_id: string | null }[];
+  const now = Date.now();
+  return ((data || []) as { user_id: string; message_id: string | null; pushed_at?: string | null; push_claimed_at?: string | null }[])
+    .filter((n) => noticeSettled(n, now));
 }
 
 /** Everyone in the chat but the caller, with display names (for @mentions). */
@@ -607,8 +615,13 @@ Deno.serve(async (req: Request) => {
     let announced: { id: string; content: string | null } | null = null;
     let targetUserIds = allowedIds;
     if (chatPush) {
-      const existing = await chatNoticesFor(supabase, allowedIds, chatPush.candidates.map((m) => String(m.id)));
-      const pick = chooseUnannounced(chatPush.candidates, allowedIds, existing);
+      // In chunks: up to LEGACY_CANDIDATES ids don't fit one request URL.
+      let pick: ReturnType<typeof chooseUnannounced> = null;
+      for (let i = 0; i < chatPush.candidates.length && !pick; i += 50) {
+        const chunk = chatPush.candidates.slice(i, i + 50);
+        const existing = await chatNoticesFor(supabase, allowedIds, chunk.map((m) => String(m.id)));
+        pick = chooseUnannounced(chunk, allowedIds, existing);
+      }
       if (!pick) {
         return new Response(
           JSON.stringify({ success: true, sent: 0, message: 'Already announced' }),
@@ -674,9 +687,17 @@ Deno.serve(async (req: Request) => {
     ));
 
     // Devices that may ring. A chat push rings only recipients whose inbox
-    // row was written: that row is what makes it once per message, and a
-    // message deleted meanwhile writes none (192).
+    // row was written and claimed: once per message, and a message deleted
+    // meanwhile writes none (bw_write_chat_notices, 194).
     let ringIds = targetUserIds;
+    // Chat notices this call claimed: marked pushed once the push was tried
+    // (also when nobody has a device), so a retry never pushes them again.
+    let claimedIds: string[] = [];
+    const markPushed = async () => {
+      if (claimedIds.length === 0) return;
+      const { error: markError } = await supabase.rpc('bw_mark_chat_notices_pushed', { p_ids: claimedIds });
+      if (markError) console.warn('Pushed mark failed:', markError.message);
+    };
     // App chat pushes always write the inbox (the app never turns it off).
     if ((create_in_app !== false || chatPush) && !silent) {
       const chatId = requestChat.chatId;
@@ -699,23 +720,27 @@ Deno.serve(async (req: Request) => {
         action_url: chatId ? `/chat/${chatId}` : null,
       }));
 
-      const { data: written, error: writeError } = await supabase
-        .from('notifications')
-        .insert(notifications)
-        .select('user_id');
-      if (chatPush) {
-        // 23505: the same message is being announced right now by another call.
-        if (writeError && writeError.code === '23505') {
-          return new Response(
-            JSON.stringify({ success: true, sent: 0, message: 'Already announced' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+      if (chatPush && announced) {
+        // Per recipient, in the database (194): only for a message still
+        // there and not deleted, ON CONFLICT DO NOTHING (an overlapping call
+        // no longer rolls back the others), and returns who to push now.
+        const { data: claimed, error: writeError } = await supabase
+          .rpc('bw_write_chat_notices', { p_message_id: announced.id, p_rows: notifications });
+        if (writeError && writeError.code === 'PGRST202') {
+          // send-push deployed before 194: write as before.
+          console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);
+          const { error: plainError } = await supabase.from('notifications').insert(notifications);
+          if (plainError) throw plainError;
+        } else {
+          if (writeError) throw writeError;
+          const rows = (claimed || []) as { id: string; user_id: string }[];
+          claimedIds = rows.map((r) => String(r.id));
+          const toPush = new Set(rows.map((r) => String(r.user_id)));
+          ringIds = targetUserIds.filter((id) => toPush.has(id));
         }
-        if (writeError) throw writeError;
-        const wrote = new Set((written || []).map((r: { user_id: string }) => String(r.user_id)));
-        ringIds = targetUserIds.filter((id) => wrote.has(id));
-      } else if (writeError) {
-        console.warn('In-app notification insert failed:', writeError.message);
+      } else {
+        const { error: writeError } = await supabase.from('notifications').insert(notifications);
+        if (writeError) console.warn('In-app notification insert failed:', writeError.message);
       }
     }
     if (ringIds.length === 0) {
@@ -736,6 +761,7 @@ Deno.serve(async (req: Request) => {
     if (tokenError) throw tokenError;
 
     if (!tokens || tokens.length === 0) {
+      await markPushed();
       return new Response(
         JSON.stringify({ success: true, sent: 0, message: 'No active tokens found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -787,6 +813,7 @@ Deno.serve(async (req: Request) => {
       })
     );
 
+    await markPushed();
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;
 
     // A chat push that Apple or Google accepted reached the recipient's phone:

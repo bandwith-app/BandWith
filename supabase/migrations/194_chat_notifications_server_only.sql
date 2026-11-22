@@ -21,6 +21,24 @@
 -- Only rows with data.message_id count: send-push writes it since #284,
 -- nothing wrote it before, so existing rows can't collide.
 --
+-- Round 3 (Codex review #284): send-push writes chat notices through
+-- bw_write_chat_notices (service role only), which
+--   * rechecks the message inside the insert: gone or marked deleted (a
+--     delete after send-push verified it) → nothing written, nothing pushed.
+--     The message row is held FOR SHARE until the notices are in, so a
+--     delete either comes first or after them (its purge, 192, sees them);
+--   * inserts per recipient with ON CONFLICT DO NOTHING: two overlapping
+--     calls ([Alice, Bob] and [Bob, Carol]) no longer roll each other back;
+--   * returns the recipients to push now: their notice is new or was never
+--     pushed, and nobody else is pushing it (data.push_claimed_at, a claim
+--     that lapses after 2 minutes). send-push marks them pushed afterwards
+--     (bw_mark_chat_notices_pushed, data.pushed_at). So a push lost after
+--     the insert (failed token lookup, crash) is retried, and "already
+--     announced" means already pushed, not only written.
+--
+-- Deploy order: apply 194 before deploying send-push (send-push falls back
+-- to a plain insert while the function is missing).
+--
 -- Older builds: nothing they do changes. Idempotent.
 -- ============================================================================
 
@@ -82,5 +100,67 @@ GRANT EXECUTE ON FUNCTION public.bw_can_notify(uuid, uuid, text) TO authenticate
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_chat_message_once
   ON public.notifications (user_id, ((data->>'message_id')))
   WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id';
+
+-- Writes the chat notices of one message and claims those to push now.
+-- p_rows: [{user_id, type, title, body, data, band_id, action_url}].
+CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
+RETURNS TABLE (id uuid, user_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+BEGIN
+  -- The message must still be there, and not marked deleted (read through
+  -- to_jsonb: works with or without messages.deleted).
+  PERFORM 1 FROM messages m
+   WHERE m.id = p_message_id
+     AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+     FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO notifications AS n (user_id, type, title, body, data, read, band_id, action_url)
+  SELECT r.user_id, r.type, r.title, r.body,
+         coalesce(r.data, '{}'::jsonb) || jsonb_build_object('message_id', p_message_id::text),
+         false, r.band_id, r.action_url
+    FROM jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
+         AS r(user_id uuid, type text, title text, body text, data jsonb, band_id uuid, action_url text)
+   WHERE r.user_id IS NOT NULL AND r.type IN ('chat_message', 'chat_mention')
+  ON CONFLICT (user_id, ((data->>'message_id')))
+    WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id'
+    DO NOTHING;
+
+  RETURN QUERY
+  UPDATE notifications n
+     SET data = n.data || jsonb_build_object('push_claimed_at', now())
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ? 'message_id'
+     AND n.data ->> 'message_id' = p_message_id::text
+     AND n.user_id IN (SELECT (e ->> 'user_id')::uuid FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) e)
+     AND NOT n.data ? 'pushed_at'
+     AND (NOT n.data ? 'push_claimed_at'
+          OR (n.data ->> 'push_claimed_at')::timestamptz < now() - interval '2 minutes')
+  RETURNING n.id, n.user_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) TO service_role;
+
+-- After the push attempt: these notices are pushed (never pushed again).
+CREATE OR REPLACE FUNCTION public.bw_mark_chat_notices_pushed(p_ids uuid[])
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  UPDATE notifications n
+     SET data = (n.data - 'push_claimed_at') || jsonb_build_object('pushed_at', now())
+   WHERE n.id = ANY (coalesce(p_ids, '{}'::uuid[]))
+     AND n.type IN ('chat_message', 'chat_mention');
+$function$;
+REVOKE ALL ON FUNCTION public.bw_mark_chat_notices_pushed(uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_mark_chat_notices_pushed(uuid[]) TO service_role;
 
 COMMIT;

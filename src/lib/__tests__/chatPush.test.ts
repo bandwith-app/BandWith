@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CHAT_PUSH_CHANNEL,
+  LEGACY_CANDIDATES,
+  noticeSettled,
   chatPreview,
   chooseUnannounced,
   findAnnouncedCandidates,
@@ -173,5 +175,38 @@ describe('chat push review fixes, round 2', () => {
     ];
     expect(findAnnouncedCandidates(twice, { callerId: BOB, chatId: CHAT, body: 'OK', now: NOW }).map((r) => r.id)).toEqual(['n2', 'n1']);
     expect(findAnnouncedCandidates(twice, { callerId: BOB, chatId: CHAT, messageId: 'n1', now: NOW }).map((r) => r.id)).toEqual(['n1']);
+  });
+});
+
+// Codex review #284, round 3.
+describe('chat push review fixes, round 3', () => {
+  it('the preview never ends in half an emoji (Postgres rejects it in JSON)', () => {
+    const cut = 'a'.repeat(119) + '🎸';
+    expect(chatPreview(cut)).toBe('a'.repeat(119));
+    expect(/[\uD800-\uDBFF]$/.test(chatPreview(cut + ' rest'))).toBe(false);
+    expect(chatPreview('a'.repeat(118) + '🎸x')).toBe('a'.repeat(118) + '🎸');
+    expect(chatPreview('🎸'.repeat(70))).toBe('🎸'.repeat(60));
+  });
+
+  it('an older build’s preview cut through an emoji still matches its message', () => {
+    const content = 'a'.repeat(119) + '🎸 and more';
+    const oldBody = content.substring(0, 120); // what an older build sends
+    const rows: ChatMessageRow[] = [{ id: 'e1', chat_id: CHAT, sender_id: BOB, content, created_at: ago(5) }];
+    expect(findAnnouncedCandidates(rows, { callerId: BOB, chatId: CHAT, body: oldBody, now: NOW }).map((r) => r.id)).toEqual(['e1']);
+  });
+
+  it('a notice counts as announced only once it was pushed, or while someone is pushing it', () => {
+    const t = Date.parse('2026-11-22T20:00:00Z');
+    expect(noticeSettled({ pushed_at: '2026-11-22T19:00:00Z' }, t)).toBe(true);
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T19:59:30Z' }, t)).toBe(true);
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T19:55:00Z' }, t)).toBe(false);
+    expect(noticeSettled({}, t)).toBe(false);
+  });
+
+  it('older builds: far more than 20 identical previews are candidates', () => {
+    expect(LEGACY_CANDIDATES).toBeGreaterThanOrEqual(500);
+    const many: ChatMessageRow[] = Array.from({ length: 25 }, (_, i) => ({ id: `ok${i}`, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5 + i) }));
+    const told = many.slice(0, 24).map((m) => ({ user_id: 'u1', message_id: m.id }));
+    expect(chooseUnannounced(many, ['u1'], told)?.message.id).toBe('ok24');
   });
 });
