@@ -40,6 +40,7 @@ const air = vi.hoisted(() => ({
   started: [] as Record<string, unknown>[],
   updates: [] as { value: string; notify: string }[],
   signedUpdates: [] as { value: string; notify: string }[],
+  goodbyes: new Map<string, () => void>(),
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -51,7 +52,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       for (const id of air.devices.keys()) setTimeout(() => cb({ device: { deviceId: id } }), 5 * ++i);
     }),
     stopLEScan: vi.fn(async () => {}),
-    connect: vi.fn(async (id: string) => {
+    connect: vi.fn(async (id: string, cb: () => void) => {
+      air.goodbyes.set(id, cb);
       air.connects.push(id);
       air.connected.add(id);
     }),
@@ -105,12 +107,12 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageSigner: async () => air.signer,
 }));
 
-const { useStageBle, LEADER_CHECK_MS } = await import('../useStageBle');
+const stageBleHook = await import('../useStageBle');
+const { useStageBle, LEADER_CHECK_MS } = stageBleHook;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
 let admins: StageSigner;
-const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageSigner) =>
-  air.devices.set(id, { kind, state, signer });
+const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageSigner) => air.devices.set(id, { kind, state, signer });
 const member = (onState = vi.fn()) => ({
   onState,
   hook: renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState })),
@@ -127,12 +129,14 @@ beforeEach(async () => {
   air.started = [];
   air.updates = [];
   air.signedUpdates = [];
+  air.goodbyes.clear();
+  (stageBleHook as { forgetSignedLeaders?: () => void }).forgetSignedLeaders?.();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 afterEach(() => vi.useRealTimers());
 
 describe('useStageBle: only an admin can lead (audit #1)', () => {
-  it("new leader + new member: the member follows the signed state, never the band-key one", async () => {
+  it('new leader + new member: the member follows the signed state, never the band-key one', async () => {
     put('admin', 'new', lead('a', 5, 'b2'), admins);
     const { onState, hook } = member();
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'b2' })));
@@ -183,12 +187,13 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'o' })));
     put('admin', 'new', lead('a', 4, 'b2'), admins);
     await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
-    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
+    // Its seq is lower: it applies all the same (a reset).
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
     await waitFor(() => expect(hook.result.current.status).toBe('connected'));
     hook.unmount();
   });
 
-  it("no public key yet on this phone (none made when it was online): it follows the band-key state, no note", async () => {
+  it('no public key yet on this phone (none made when it was online): it follows the band-key state, no note', async () => {
     air.verify = null;
     put('admin', 'new', lead('a', 5, 'b2'), admins);
     const { onState, hook } = member();
@@ -199,9 +204,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
 
   it('new leader + old member: the leader serves the band-key state for older apps and the signed state', async () => {
     air.signer = admins;
-    const { result, unmount } = renderHook(() =>
-      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} })
-    );
+    const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
     await waitFor(() => expect(air.started.length).toBe(1));
     expect(air.started[0]).toMatchObject({
       characteristicUuid: STAGE_BLE_CHARACTERISTIC,
@@ -224,9 +227,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
 
   it('an admin offline before the key pair was made still leads older-style: no signed state, no clock', async () => {
     air.signer = null;
-    const { result, unmount } = renderHook(() =>
-      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} })
-    );
+    const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
     await waitFor(() => expect(air.started.length).toBe(1));
     expect(air.started[0]).not.toHaveProperty('signedUuid');
     expect(air.started[0]).not.toHaveProperty('clockUuid');
@@ -234,5 +235,81 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     await waitFor(() => expect(air.updates.length).toBe(1));
     expect(air.signedUpdates.length).toBe(0);
     unmount();
+  });
+});
+
+/** Real time for WebCrypto (fake timers don't wait for it): long enough for a link and a read. */
+const settle = async () => {
+  await waitFor(() => expect(air.connects).toContain('member-x'));
+  await new Promise((r) => setTimeout(r, 600));
+};
+
+/** A phone walks out of range: its link drops. */
+const gone = (id: string) => {
+  air.devices.delete(id);
+  air.connected.delete(id);
+  air.goodbyes.get(id)?.();
+};
+
+describe('useStageBle: band-key states once the admins signed (Codex on #288)', () => {
+  it('after a signed leader, a band-key phone is refused, even with the admin out of range', async () => {
+    put('admin', 'new', lead('a', 5, 'a1'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
+    gone('admin');
+    put('member-x', 'old', lead('x', 99, 'c3'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    await settle();
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'x' }));
+    expect(hook.result.current.status).toBe('searching');
+    hook.unmount();
+  });
+
+  it('the refusal lasts across closing and opening Stage again', async () => {
+    put('admin', 'new', lead('a', 5, 'a1'), admins);
+    const first = member();
+    await waitFor(() => expect(first.onState).toHaveBeenCalled());
+    first.hook.unmount();
+    gone('admin');
+    put('member-x', 'old', lead('x', 99, 'c3'));
+    const { onState, hook } = member();
+    await settle();
+    expect(onState).not.toHaveBeenCalled();
+    expect(hook.result.current.status).toBe('searching');
+    hook.unmount();
+  });
+
+  it('ten minutes with no signed state: an older-app leader is followed again (with the update note)', async () => {
+    put('admin', 'new', lead('a', 5, 'a1'), admins);
+    const first = member();
+    await waitFor(() => expect(first.onState).toHaveBeenCalled());
+    first.hook.unmount();
+    gone('admin');
+    vi.setSystemTime(Date.now() + stageBleHook.SIGNED_TRUST_MS + 1000);
+    put('old-admin', 'old', lead('o', 99, 'c3'));
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'o' })));
+    await waitFor(() => expect(hook.result.current.status).toBe('old-leader'));
+    hook.unmount();
+  });
+
+  it('moving from a band-key leader to the signed one asks for a reset: the signed song applies with a lower seq', async () => {
+    put('old-admin', 'old', lead('o', 9, 'a1'));
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'o' })));
+    put('admin', 'new', lead('a', 4, 'b2'), admins);
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', seq: 4 }), true));
+    hook.unmount();
+  });
+
+  it('a signed admin who leads nothing does not keep the member from a band-key leader (none signed seen yet)', async () => {
+    put('admin', 'new', null, admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin'])));
+    put('old-admin', 'old', lead('o', 9, 'c3'));
+    await vi.advanceTimersByTimeAsync(20_000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'o' })));
+    hook.unmount();
   });
 });

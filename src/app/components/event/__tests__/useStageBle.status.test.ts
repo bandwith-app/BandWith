@@ -70,12 +70,13 @@ const native = vi.hoisted(() => ({
 
 vi.mock('@/lib/stageBleNative', () => ({ StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY, stageVerifyKey: async () => null, stageSigner: async () => null }));
 
-const { useStageBle } = await import('../useStageBle');
+const { useStageBle, forgetSignedLeaders } = await import('../useStageBle');
 
 const render = (isLeader: boolean) =>
   renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader, onState: () => {} }));
 
 beforeEach(() => {
+  forgetSignedLeaders();
   Object.assign(env, { platform: 'ios', initError: null, enabled: true, startState: 'on', stateCb: null, resumeCb: null });
   vi.clearAllMocks();
 });

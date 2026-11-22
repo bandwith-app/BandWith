@@ -176,12 +176,16 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
   const savedIds = useMemo(() => songs.map((s) => s.id).filter((id): id is string => !!id), [songs]);
 
-  /** A leader's state from either path (Realtime or Bluetooth); the newest wins. */
+  /**
+   * A leader's state from either path (Realtime or Bluetooth); the newest wins.
+   * `reset` (Bluetooth): the admins' signed leader after band-key states, whose
+   * seq may be higher (an older app, or a member posing as one): it applies.
+   */
   const receive = useCallback(
-    (state: StageLiveState) => {
+    (state: StageLiveState, reset = false) => {
       if (state.from === clientId) return;
       // Clock moves on even for states we don't show (Lamport).
-      if (!isNewer(state, lastRef.current)) return;
+      if (!reset && !isNewer(state, lastRef.current)) return;
       lastRef.current = state;
       remoteRef.current = state;
       setLeaderSeen(true);

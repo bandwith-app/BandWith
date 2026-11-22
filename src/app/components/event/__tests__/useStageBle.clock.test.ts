@@ -111,9 +111,10 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageSigner: async () => SIGNER,
 }));
 
-const { useStageBle } = await import('../useStageBle');
+const { useStageBle, forgetSignedLeaders } = await import('../useStageBle');
 
 beforeEach(() => {
+  forgetSignedLeaders();
   ble.oldLeader = false;
   ble.notify.clear();
   ble.clockReads = 0;

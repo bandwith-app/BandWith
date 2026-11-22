@@ -40,8 +40,13 @@ interface Options {
   savedIds: string[];
   open: boolean;
   isLeader: boolean;
-  /** A checked state from the leader (members only). */
-  onState: (state: StageLiveState) => void;
+  /**
+   * A checked state from the leader (members only). `reset`: the first state
+   * from the admins' signed leader after band-key ones; it applies whatever
+   * its seq (a band-key phone, maybe a member posing as an older app, may have
+   * sent a higher one).
+   */
+  onState: (state: StageLiveState, reset?: boolean) => void;
 }
 
 const RETRY_MS = 2000;
@@ -61,6 +66,25 @@ export const PROBE_TIMEOUT_MS = 2_000;
 export const SEARCH_RESTART_MS = 10_000;
 /** A phone whose states aren't the leader's (a failed signature) is skipped this long. */
 export const DISTRUST_MS = 60_000;
+/** A band-key phone refused once the admins signed is skipped this long. */
+const REFUSED_SKIP_MS = 30_000;
+/**
+ * How good a phone is to follow: one that leads (signed above band-key),
+ * then one leading a setlist this phone lacks (the member is told to get it),
+ * then one that leads nothing (signed above band-key). The newer state breaks
+ * a tie between two that lead.
+ */
+const leaderRank = (state: StageLiveState | null, signed: boolean, outdated: boolean) => (state ? (signed ? 4 : 3) : outdated ? 2 : signed ? 1 : 0);
+/**
+ * Band-key states (older apps, and anyone posing as one) are refused this long
+ * after this phone last checked a signed state for the gig: the admins lead
+ * with a signing app, so a band-key "leader" then is a member posing as one.
+ */
+export const SIGNED_TRUST_MS = 10 * 60_000;
+/** When this phone last checked a signed state, per gig (kept across closing Stage). */
+const signedSeen = new Map<string, number>();
+/** Tests: start with no signed leader seen. */
+export const forgetSignedLeaders = () => signedSeen.clear();
 /** A leader's change notice is just the 4-byte seq; full values (a read echoed on iOS) are longer. */
 export const isChangeNotice = (v: DataView | undefined) => v?.byteLength === 4;
 /** The characteristics a leader's phone serves (lower case), or none if they can't be listed. */
@@ -359,9 +383,38 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     /** A phone's state: the signed one if it serves it (and this phone can check it), else the band-key one. */
     const readState = async (id: string, signed: boolean, timeout?: number) => {
-      const view = await BleClient.read(id, serviceUuid, signed ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC, timeout ? { timeout } : undefined);
+      const view = await BleClient.read(
+        id,
+        serviceUuid,
+        signed ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC,
+        timeout ? { timeout } : undefined,
+      );
       const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-      return signed && verify ? decodeSignedState(bytes, savedRef.current, verify) : decodeStageState(bytes, savedRef.current, key);
+      if (!signed || !verify) return decodeStageState(bytes, savedRef.current, key);
+      const result = await decodeSignedState(bytes, savedRef.current, verify);
+      // The admins' signature checked (a setlist this phone lacks included): band-key states are refused for a while.
+      if (result.ok || result.reason === 'setlist') signedSeen.set(gig, Date.now());
+      return result;
+    };
+
+    /** Band-key states are refused: this phone can check signatures and saw the admins sign lately. */
+    const legacyRefused = () => !!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS;
+    /** The last state passed on came from a signed link (null: none yet). */
+    let appliedSigned: boolean | null = null;
+    /** The linked phone leads a setlist this phone doesn't have. */
+    let linkOutdated = false;
+
+    /** Leave the linked phone (its goodbye is ignored), skip it for `skipMs`, and search again. */
+    const dropLink = (id: string, skipMs: number) => {
+      distrusted.set(id, nowMs() + skipMs);
+      link++;
+      deviceId = null;
+      linkState = null;
+      clearTimeout(checkTimer);
+      stopSync();
+      void BleClient.disconnect(id).catch(() => {});
+      setStatus('searching');
+      later();
     };
 
     /** Linked to an older app's leader (no signed state): 'old-leader', the line asks to update it. */
@@ -387,27 +440,30 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             setTimeout(() => void readNow(), 300);
             return;
           }
-          distrusted.set(id, nowMs() + DISTRUST_MS);
-          link++;
-          deviceId = null;
-          linkState = null;
-          clearTimeout(checkTimer);
-          stopSync();
-          void BleClient.disconnect(id).catch(() => {});
-          setStatus('searching');
-          later();
+          dropLink(id, DISTRUST_MS);
+          return;
+        }
+        // A band-key state once the admins signed: not followed (see SIGNED_TRUST_MS).
+        if (!signedLink && legacyRefused()) {
+          dropLink(id, REFUSED_SKIP_MS);
           return;
         }
         if (result.ok) {
           authFails = 0;
+          linkOutdated = false;
           if (!linkState || isNewer(result.state, linkState)) linkState = result.state;
           setStatus(linkedStatus());
           if (result.state.from !== leaderFrom) {
             leaderFrom = result.state.from;
             emitClock();
           }
-          onStateRef.current(result.state);
+          // From band-key states to the admins' signed ones: start the seq afresh.
+          const reset = signedLink && appliedSigned === false;
+          appliedSigned = signedLink;
+          if (reset) onStateRef.current(result.state, true);
+          else onStateRef.current(result.state);
         } else if (result.reason === 'setlist') {
+          linkOutdated = true;
           // Not silently "connected": this phone needs the setlist again (internet).
           setStatus('outdated');
         }
@@ -421,14 +477,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
      * or band-key), or `outdated` (it leads a setlist this phone doesn't have
      * yet), or nothing valid.
      */
-    const probe = async (id: string): Promise<{ state: StageLiveState; signed: boolean } | { outdated: true } | null> => {
+    const probe = async (id: string): Promise<{ state: StageLiveState; signed: boolean } | { outdated: true; signed: boolean } | null> => {
       try {
         await BleClient.connect(id, () => {}, { timeout: PROBE_TIMEOUT_MS });
         const signed = !!verify && (await servedBy(id)).includes(STAGE_BLE_SIGNED_CHARACTERISTIC);
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
         if (result.ok) return { state: result.state, signed };
-        return result.reason === 'setlist' ? { outdated: true } : null;
+        return result.reason === 'setlist' ? { outdated: true, signed } : null;
       } catch {
         return null;
       } finally {
@@ -467,25 +523,35 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         lookScanning = false;
         /* Bluetooth off meanwhile: its own handler takes over */
       }
-      // Every phone found, then the newest of them: not the first one newer than ours.
-      let best: { id: string; state: StageLiveState; signed: boolean } | null = null;
-      let outdated: string | null = null;
+      // Every phone found, then the best of them: not the first one better than ours.
+      const candidates: { id: string; state: StageLiveState | null; signed: boolean }[] = [];
       for (const id of found) {
         // A song read from the leader first (the radio does one thing at a time).
         while (reads > 0 && !cancelled && deviceId === current) await wait(100);
         if (cancelled || deviceId !== current) return;
         const theirs = await probe(id);
         if (cancelled || deviceId !== current) return;
-        // The admins' signed leader always wins over a band-key one (an older
-        // app, or a member posing as one); then the newer state leads.
-        if (theirs && 'state' in theirs && (!best || (theirs.signed !== best.signed ? theirs.signed : isNewer(theirs.state, best.state))))
-          best = { id, ...theirs };
-        else if (theirs && 'outdated' in theirs) outdated ??= id;
+        if (theirs) candidates.push({ id, state: 'state' in theirs ? theirs.state : null, signed: theirs.signed });
       }
-      // An admin leading a setlist this phone lacks beats one who leads nothing:
-      // linked to it, the member is told to get the setlist.
-      const next =
-        best && (best.signed !== signedLink ? best.signed : !linkState || isNewer(best.state, linkState)) ? best.id : !best && !linkState ? outdated : null;
+      // After the probes: one of them may just have shown the admins' signature.
+      const refused = legacyRefused();
+      let best: (typeof candidates)[number] | null = null;
+      let bestRank = -1;
+      for (const c of candidates) {
+        if (!c.signed && refused) continue;
+        const r = leaderRank(c.state, c.signed, !c.state);
+        if (r > bestRank || (r === bestRank && c.state && best?.state && isNewer(c.state, best.state))) {
+          best = c;
+          bestRank = r;
+        }
+      }
+      const ours = !signedLink && refused ? -1 : leaderRank(linkState, signedLink, linkOutdated);
+      const next = best && (bestRank > ours || (bestRank === ours && best.state && linkState && isNewer(best.state, linkState))) ? best.id : null;
+      if (!next && ours < 0) {
+        // Linked to a band-key phone once the admins signed, and no one better: leave it.
+        dropLink(current, REFUSED_SKIP_MS);
+        return;
+      }
       if (next) {
         // Leave the old link quietly (its goodbye is ignored), then follow this one.
         link++;
@@ -567,6 +633,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
       signedLink = false;
       oldLeader = false;
+      linkOutdated = false;
       authFails = 0;
       const gen = ++link;
       void (async () => {
@@ -583,6 +650,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           signedLink = signs && !!verify;
           // An older app's leader (characteristics listed, none signed).
           oldLeader = served.length > 0 && !signs;
+          // Once the admins signed, a band-key phone isn't followed (see SIGNED_TRUST_MS).
+          if (!signedLink && legacyRefused()) {
+            dropLink(id, REFUSED_SKIP_MS);
+            return;
+          }
           // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
           // hands every read's value to this callback, which would read forever.
           await BleClient.startNotifications(id, serviceUuid, signedLink ? STAGE_BLE_SIGNED_CHARACTERISTIC : STAGE_BLE_CHARACTERISTIC, (v) => {

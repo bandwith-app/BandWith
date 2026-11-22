@@ -112,13 +112,14 @@ vi.mock('@/lib/stageBleNative', () => ({
   stageSigner: async () => null,
 }));
 
-const { useStageBle, LEADER_CHECK_MS } = await import('../useStageBle');
+const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, SIGNED_TRUST_MS } = await import('../useStageBle');
 
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
 const member = (onState: (s: StageLiveState) => void = () => {}) =>
   renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }));
 
 beforeEach(() => {
+  forgetSignedLeaders();
   air.devices.clear();
   air.scanCb = null;
   air.log = [];
@@ -230,10 +231,12 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const onState = vi.fn();
     const m = member(onState);
     await waitFor(() => expect(m.result.current.clock?.from).toBe('b'));
-    // Admin B walks out of range; admin A leads on an older app (no clock characteristic).
+    // Admin B walks out of range; long after, admin A leads on an older app (no
+    // clock characteristic; refused until then, see the signed test).
     air.devices.delete('admin-b');
     air.connected.delete('admin-b');
     air.goodbyes.get('admin-b')!();
+    vi.setSystemTime(Date.now() + SIGNED_TRUST_MS + 1000);
     appear('admin-a', lead('a', 9, 'c3'));
     await vi.advanceTimersByTimeAsync(5000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
