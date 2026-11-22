@@ -12,6 +12,7 @@ vi.mock('../regiaAudio', () => ({
 }));
 
 import { keptOnSignOut, wipeAfterFailedSignOut } from '../signOutWipe';
+import { supabase } from '../supabase';
 import { ANALYTICS_CONSENT_KEY } from '../appAnalytics';
 
 const UID = 'u1';
@@ -56,6 +57,23 @@ describe('a sign-out that failed: wiped, but not what sign-out keeps', () => {
     await wipeAfterFailedSignOut();
     for (const [k, v] of Object.entries(kept)) expect([k, localStorage.getItem(k)]).toEqual([k, k === 'bw-regia-audio:owners' ? expect.any(String) : v]);
     for (const k of wiped) expect([k, localStorage.getItem(k)]).toEqual([k, null]);
+  });
+
+  it('#287 delta review: a step that throws at once (the local sign-out) still leaves a wiped device that keeps the push state', async () => {
+    const out = vi.spyOn(supabase.auth, 'signOut').mockImplementation(() => {
+      throw new TypeError('auth is not there');
+    });
+    localStorage.setItem('bandwith.push-revoke', JSON.stringify([{ token: 't1', userId: UID }]));
+    localStorage.setItem('bandwith.push-delete-pending', '1');
+    localStorage.setItem(`bw:${UID}:band:quotes`, '{"cached":true}');
+    try {
+      await wipeAfterFailedSignOut();
+    } finally {
+      out.mockRestore();
+    }
+    expect(localStorage.getItem(`bw:${UID}:band:quotes`)).toBeNull();
+    expect(localStorage.getItem('bandwith.push-revoke')).toContain(UID);
+    expect(localStorage.getItem('bandwith.push-delete-pending')).toBe('1');
   });
 
   it('keeps #292’s list (copied as data until #292 lands)', () => {

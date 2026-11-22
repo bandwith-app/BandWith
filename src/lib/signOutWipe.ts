@@ -108,17 +108,23 @@ export async function keepingSignOutLists(clear: () => Promise<void>, opts?: { g
   }
 }
 
+/**
+ * One step of the wipe, at most `ms`: whatever it does, throwing at once
+ * included, the wipe goes on (#287 delta review: a step that threw used to
+ * stop it before anything was cleared).
+ */
+const step = (run: () => unknown, ms = 3000): Promise<unknown> =>
+  Promise.race([Promise.resolve().then(run).catch(() => {}), new Promise((r) => setTimeout(r, ms))]);
+
 export async function wipeAfterFailedSignOut(): Promise<void> {
   // This device's session first (Codex r8 B3): the cleanup below must see this account signed out.
-  await Promise.race([supabase.auth.signOut({ scope: 'local' }).catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
-  settleRefusedNotes();
-  await Promise.race([
-    import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {}),
-    new Promise((r) => setTimeout(r, 3000)),
-  ]);
+  await step(() => supabase.auth.signOut({ scope: 'local' }));
+  await step(() => settleRefusedNotes());
+  await step(() => import('./regiaAudio').then((m) => m.clearDownloadedAudio()));
   // Kept entries, read before the offline cache is cleared (before #292 it clears every bw: key).
   const keep = snapshot(kept);
-  await storage.clearOfflineCache().catch(() => {});
+  // Awaited in full, never capped: a clear that ended later could take the entries put back below.
+  await Promise.resolve().then(() => storage.clearOfflineCache()).catch(() => {});
   try {
     const drop: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
