@@ -136,9 +136,11 @@ export const test = base.extend<Options & { app: App }>({
 
     // The urgent pop-up (an unanswered gig invitation) shows up on its own a
     // moment after launch, over whatever the test is doing: close it whenever
-    // it is in the way, like the testers did.
+    // it is in the way, like the testers did. It may also step aside on its
+    // own mid-click (a sheet opened): then there is nothing left to close,
+    // so a short try, not the whole test's time.
     await page.addLocatorHandler(page.getByRole('button', { name: t('Dismiss alert'), exact: true }), async (b) => {
-      await b.click();
+      await b.click({ timeout: 2_000 }).catch(() => undefined);
     });
     await page.addLocatorHandler(page.getByRole('button', { name: t('Close tour'), exact: true }), async (b) => {
       await b.click();

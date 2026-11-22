@@ -68,4 +68,21 @@ describe('is a sheet, modal or Stage open?', () => {
     act(() => d.remove());
     await waitFor(() => expect(result.current).toBe(false));
   });
+  it('watching starts with a sheet already open: the very first answer is "open" (no flash of the pop-up over it)', () => {
+    const seen: boolean[] = [];
+    const { rerender } = renderHook(({ watch }) => {
+      const open = useLayerOpen(watch);
+      seen.push(open);
+      return open;
+    }, { initialProps: { watch: false } });
+    // A sheet opens while nothing waits (nobody watches)…
+    act(() => {
+      addDialog();
+    });
+    // …then an urgent item arrives: every render from now on says "open".
+    const from = seen.length;
+    rerender({ watch: true });
+    expect(seen.slice(from).length).toBeGreaterThan(0);
+    expect(seen.slice(from)).not.toContain(false);
+  });
 });

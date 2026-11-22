@@ -103,6 +103,53 @@ for (const w of [
   });
 }
 
+test('@smoke an urgent item that arrives while a sheet is open never flashes over it', async ({ app }) => {
+  await app.page.removeLocatorHandler(app.page.getByRole('button', { name: app.t('Dismiss alert'), exact: true }));
+  // Next launch: a sheet opens before the urgent item arrives (a slow phone:
+  // the push opened it first). The page counts every pop-up card
+  // added while it is open: not one may show, even for a frame.
+  await app.page.addInitScript(() => {
+    const w = window as unknown as { __urgentOverSheet: number };
+    w.__urgentOverSheet = 0;
+    // Opened once the app is on screen (its Home button), before the urgent
+    // item has loaded.
+    const put = () => {
+      if (!document.body || document.getElementById('e2e-sheet')) return;
+      const home = Array.from(document.querySelectorAll('button')).some(
+        (x) => x.getAttribute('aria-label') === 'Home' || x.title === 'Home' || x.textContent?.trim() === 'Home',
+      );
+      if (!home) {
+        requestAnimationFrame(put);
+        return;
+      }
+      const d = document.createElement('div');
+      d.id = 'e2e-sheet';
+      d.setAttribute('role', 'dialog');
+      d.setAttribute('aria-label', 'Sheet open first');
+      document.body.appendChild(d);
+      new MutationObserver((records) => {
+        if (!document.getElementById('e2e-sheet')) return;
+        for (const r of records) {
+          for (const n of Array.from(r.addedNodes)) {
+            if (n instanceof Element && (n.matches('[role="alert"]') || n.querySelector('[role="alert"]'))) w.__urgentOverSheet += 1;
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    };
+    document.addEventListener('DOMContentLoaded', put);
+  });
+  await app.page.reload();
+  await expect(app.page.getByRole('button', { name: app.t('Home'), exact: true }).first()).toBeVisible();
+  await expect(app.page.getByRole('dialog', { name: 'Sheet open first' })).toBeAttached();
+  // Time for the urgent item to load behind the sheet.
+  await app.page.waitForTimeout(3_000);
+  expect(await app.page.evaluate(() => (window as unknown as { __urgentOverSheet: number }).__urgentOverSheet)).toBe(0);
+  await expect(urgent(app)).toHaveCount(0);
+  // The sheet closes: now it shows.
+  await app.page.evaluate(() => document.getElementById('e2e-sheet')?.remove());
+  await expect(urgent(app)).toBeVisible({ timeout: 10_000 });
+});
+
 test('Stage mode keeps the stage: the urgent pop-up waits until Stage closes', async ({ app }) => {
   test.skip(test.info().project.name === 'duo-laptop', 'laptop posture: Stage controls live on the Deck');
   await waitingInvite(app);

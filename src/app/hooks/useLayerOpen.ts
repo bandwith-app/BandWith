@@ -26,15 +26,21 @@ export function anyLayerOpen(root: ParentNode = document): boolean {
  * `watch`: false while nothing needs to know (no DOM watching then).
  */
 export function useLayerOpen(watch = true): boolean {
-  const [open, setOpen] = useState(() => (typeof document === 'undefined' ? false : anyLayerOpen()));
-  // Layout effect: checked before paint when watching starts, so nothing
-  // flashes over a sheet that was already open.
+  const hasDom = typeof document !== 'undefined';
+  const [open, setOpen] = useState(() => (hasDom ? anyLayerOpen() : false));
+  // Has the watcher answered since watching started? Until then `open` may be
+  // stale (a sheet opened while nobody watched): the render that starts
+  // watching reads the page itself, so an urgent pop-up never mounts for one
+  // frame over a sheet that is already open (it would flash and leave).
+  const [synced, setSynced] = useState(false);
+  if (!watch && synced) setSynced(false);
   useLayoutEffect(() => {
-    if (!watch || typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+    if (!watch || !hasDom || typeof MutationObserver === 'undefined') return;
     let queued = false;
     const check = () => {
       queued = false;
       setOpen(anyLayerOpen());
+      setSynced(true);
     };
     const schedule = () => {
       if (queued) return;
@@ -46,6 +52,7 @@ export function useLayerOpen(watch = true): boolean {
     mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: WATCHED });
     check();
     return () => mo.disconnect();
-  }, [watch]);
+  }, [watch, hasDom]);
+  if (watch && !synced) return hasDom ? anyLayerOpen() : false;
   return open;
 }

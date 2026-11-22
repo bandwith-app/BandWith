@@ -90,6 +90,7 @@ check (`app.check`) on each screen it reaches.
 | System Back with the urgent pop-up waiting closes the open sheet (New chat), not the hidden pop-up; the pop-up comes back | `urgent-yields` | all |
 | Urgent pop-up waits while the gig editor or the quote wizard is open (no dialog role: `data-modal-open`), back when it closes | `urgent-yields` | all |
 | Urgent pop-up waits for Stage mode: hidden while Stage is open, back when it closes | `urgent-yields` | all but Book / laptop |
+| An urgent item that arrives while a sheet is already open never flashes over it, not even for a frame; it shows once the sheet closes | `urgent-yields` | all |
 | Rehearsal session: a running session shows its clock in Live mode and on the rehearsal page; members get no controls; before the start only the admin sees Start rehearsal (Duo Laptop: the floor wedge's clock and Pause) | `rehearsal-session` | all |
 | Rehearsal session: start, pause (clock stands), resume, two songs, End asks first, summary (songs played) saved and on the rehearsal page | `rehearsal-session` | full |
 | Rehearsal session survives closing Live mode and restarting the app | `rehearsal-session` | full |
