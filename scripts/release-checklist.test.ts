@@ -115,3 +115,29 @@ describe('release order with 192–197, 177 out of this release (main, 11-22)', 
     expect(checkSql).toMatch(/\('197', to_regclass\('public\.song_file_adoptions'\)/);
   });
 });
+
+describe('edge functions that wait for, or go before, a migration (main, 11-22)', () => {
+  const step1 = section(/^1\. \*\*Edge functions/m, /^2\. \*\*Additive migrations\*\*/m);
+  const waits = section(/^\s+- \*\*Functions that wait for their migration\*\*/m, /^\s+- \*\*Not 172\*\*/m);
+
+  it('member-calendar and deputy-calendar go in step 1, before 182, with a proof', () => {
+    expect(step1).toMatch(/`deputy-calendar` and `member-calendar`[^\n]*before 182/);
+    expect(step1).toMatch(/182's row is still `false`/);
+  });
+
+  it('delete-account and send-push are not deployed in step 1', () => {
+    expect(step1).toMatch(/\*\*Not here\*\*: `delete-account` and `send-push`/);
+    expect(checklist).not.toMatch(/deploying it in step 1 is safe/);
+  });
+
+  it('delete-account right after 180, send-push right after 194, each with its proof, in apply order', () => {
+    const del = waits.indexOf('right after 180');
+    const push = waits.indexOf('right after 194');
+    expect(del).toBeGreaterThan(-1);
+    expect(push).toBeGreaterThan(del);
+    expect(waits.slice(del, push)).toMatch(/`delete-account`[\s\S]*180's row is `true`/);
+    expect(waits.slice(push)).toMatch(/`send-push`[\s\S]*194's row is `true`/);
+    expect(waits.slice(push)).toMatch(/emergency net/);
+    expect(waits).toMatch(/supabase functions list/);
+  });
+});

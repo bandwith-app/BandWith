@@ -86,6 +86,8 @@ Do it in this order, so every build in use keeps working at every step:
      supabase functions deploy <name> --no-verify-jwt --project-ref elvlzpowkohjbhxjasvd
      ```
    - Then check the function's logs in the Supabase dashboard for the first calls.
+   - This release: `deputy-calendar` and `member-calendar` (#285) go here, before 182. Proof: `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` shows both with today's update time while 182's row is still `false` in `supabase/checks/release_migrations.sql`. (The new functions work on the feed from before 182; 182 needs them in first.)
+   - **Not here**: `delete-account` and `send-push`. They wait for their migration (step 2, "Functions that wait for their migration").
 2. **Additive migrations**
    - Migrations run as the **database owner** (`postgres`), not the service role: from `~/Developer/BandWith-main` with `npx supabase db query --remote --yes -f <file>` (BEGIN/COMMIT kept), or pasted in the dashboard's SQL editor.
    - One at a time, **kill switches first**, then in number order. For the live release:
@@ -98,8 +100,10 @@ Do it in this order, so every build in use keeps working at every step:
      4. then, one at a time and in this order: 171, 174, 175, 176, 178, 180, 194, 192, 193, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 195, 196, 197.
         - That is number order, except where one needs another first: 175 → 178 → 193 → 181 (181 uses 193's one chat per gig), 194 → 192 → 193 (192 writes chat notices through 194's `bw_write_chat_notices`), 183 → 185 → 186 → 187. There is no 179.
         - 190 and 191 must be in before any new app build ships (stage 1).
-        - 194 and `send-push`: send-push falls back to a plain insert while 194's function is missing, so deploying it in step 1 is safe; check its logs again after 194.
         - All of them are additive.
+     - **Functions that wait for their migration**: deploy each in the same session, right after its migration, before the next one.
+       - right after 180: deploy `delete-account`. Proof: 180's row is `true` before the deploy, then `npx supabase functions list --project-ref elvlzpowkohjbhxjasvd` shows `delete-account` with today's update time. Before 180 it answers 503 (fails safe, but no one can delete their account), so don't deploy it earlier.
+       - right after 194: deploy `send-push`. Proof: 194's row is `true` before the deploy, then `supabase functions list` shows `send-push` with today's update time; check its logs for the first chat push. Its fallback for a missing 194 is an emergency net only, never the plan: on that path a deleted message's text could reach a lock screen.
      - **Not 172**: already live (section 1).
      - **Not 177** (quotes bucket private): not in this release. Builds in the field share the PDF's public storage URL by WhatsApp, email and copied text, and links already sent to clients would stop opening. It waits in the sunset list (section 6) for `min_version`.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
