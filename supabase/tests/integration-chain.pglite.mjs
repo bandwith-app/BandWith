@@ -296,6 +296,9 @@ const bodies = async (d) => {
 const has = (m, f, line) => (m.get(f) ?? []).some((b) => b.includes(line));
 const picks = [];
 
+// The database right before the release, for the combined RLS pass (it must
+// fail there).
+const preRelease = await db.clone();
 for (const s of plan) {
   if (HISTORY) {
     const versions = earlierVersions(s);
@@ -387,4 +390,119 @@ for (const r of await rows(db, RELEASE)) {
   }
 }
 for (const r of await rows(db, REDEF)) ok(r.ok === true, `${r.function}: ${r.final_migration}'s body is live (replaces ${r.replaces})`);
+
+// ── Part 3: combined RLS pass on the one database (Codex review #278, B4) ────
+// Each suite of a release PR (security_audit_access #281, chat_participants_guard
+// #289, date_on_hold #294) checks its own migration on its own database, so a
+// later migration could undo a policy unseen. Here one fixture runs on the
+// database the whole release built: a band with an admin, a member, a former
+// member (their chat rows kept, as 175 keeps them), an outsider, a gig, a quote
+// on hold with its chat. Every check must hold after the release; the ones the
+// release brings (r: true) must fail right before it, so the pass can tell.
+export const rlsPass = async (d) => {
+  const id = (n) => `00000000-0000-0000-0000-0000000c${String(n).padStart(4, '0')}`;
+  const [BAND, ADMIN, MEM, EXM, OUT, GIG, QE, Q, BANDCHAT, QCHAT] = [1, 2, 3, 4, 5, 10, 11, 12, 20, 21].map(id);
+  const claims = (uid) => JSON.stringify({ sub: uid, role: 'authenticated', email: `${uid.slice(-4)}@example.invalid` });
+  const as = async (uid, sql) => {
+    try {
+      await d.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claims', '${claims(uid)}', true);`);
+      const r = await d.query(sql);
+      await d.exec('COMMIT');
+      return { rows: r.rows, n: r.affectedRows ?? r.rows.length };
+    } catch (e) {
+      await d.exec('ROLLBACK');
+      return { error: e.message, rows: [], n: 0 };
+    }
+  };
+  const server = async (sql) => {
+    try {
+      await d.exec(`BEGIN; SELECT set_config('request.jwt.claims', '${claims(ADMIN)}', true); ${sql}; COMMIT;`);
+      return null;
+    } catch (e) {
+      await d.exec('ROLLBACK');
+      return e.message;
+    }
+  };
+  const out = [];
+  const check = (r, name, cond, why = '') => out.push({ r, name, ok: !!cond, why });
+  const seedErr = await server(`
+    INSERT INTO auth.users (id, email) VALUES ${[ADMIN, MEM, EXM, OUT].map((u) => `('${u}', '${u.slice(-4)}@example.invalid')`).join(', ')} ON CONFLICT DO NOTHING;
+    INSERT INTO public.profiles (id, email, full_name) VALUES ('${ADMIN}', 'a@example.invalid', 'Ana Admin'), ('${MEM}', 'm@example.invalid', 'Marta Drums'),
+      ('${EXM}', 'x@example.invalid', 'Ex Member'), ('${OUT}', 'o@example.invalid', 'Otto Outside') ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.bands (id, name, created_by) VALUES ('${BAND}', 'Hudson Horns', '${ADMIN}');
+    INSERT INTO public.band_members (band_id, user_id, role) VALUES ('${BAND}', '${ADMIN}', 'admin'), ('${BAND}', '${MEM}', 'member'), ('${BAND}', '${EXM}', 'member')
+      ON CONFLICT (band_id, user_id) DO NOTHING;
+    INSERT INTO public.events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city)
+      VALUES ('${GIG}', '${BAND}', 'Rooftop gig', 'confirmed', 'gig', '${ADMIN}', current_date + 7, '20:00', 'Rooftop', 'Brooklyn');
+    INSERT INTO public.event_members (event_id, user_id, status, fee) VALUES ('${GIG}', '${MEM}', 'confirmed', 250), ('${GIG}', '${EXM}', 'confirmed', 250);
+    INSERT INTO public.chats (id, type, name, band_id, created_by) VALUES ('${BANDCHAT}', 'band', 'Hudson Horns', '${BAND}', '${ADMIN}');
+    INSERT INTO public.chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}', '${ADMIN}'), ('${BANDCHAT}', '${MEM}'), ('${BANDCHAT}', '${EXM}');
+    INSERT INTO public.messages (chat_id, sender_id, content) VALUES ('${BANDCHAT}', '${ADMIN}', 'Load-in at 6'), ('${BANDCHAT}', '${MEM}', 'See you there')`);
+  check(false, 'fixture: band, gig and band chat seeded', !seedErr, seedErr ?? '');
+  // The former member leaves; their band chat row stays (175 archives it; an
+  // old build or an earlier delete trigger may have left it live).
+  const leaveErr = await server(`
+    UPDATE public.band_members SET is_active = false, left_at = now() WHERE band_id = '${BAND}' AND user_id = '${EXM}';
+    INSERT INTO public.chat_participants (chat_id, user_id) SELECT '${BANDCHAT}', '${EXM}'
+      WHERE NOT EXISTS (SELECT 1 FROM public.chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${EXM}')`);
+  check(false, 'fixture: the former member left the band, their chat row kept', !leaveErr, leaveErr ?? '');
+  // A quote on hold (178: the event of a sent quote, its musicians, its chat).
+  const quoteErr = await server(`
+    INSERT INTO public.events (id, band_id, title, status, event_type, created_by, event_date, start_time, end_time, venue_name, venue_city, fee, client_name, notes)
+      VALUES ('${QE}', '${BAND}', 'Smith Wedding', 'tentative', 'gig', '${ADMIN}', current_date + 10, '20:00', '23:00', 'Blue Note', 'New York', 4200, 'Jane Smith', 'secret notes');
+    INSERT INTO public.event_members (event_id, user_id, status, fee) VALUES ('${QE}', '${MEM}', 'pending', 300);
+    INSERT INTO public.quotes (id, band_id, created_by, client_name, total, status, converted_to_event_id, quote_number)
+      VALUES ('${Q}', '${BAND}', '${ADMIN}', 'Jane Smith', 4200, 'sent', '${QE}', 'Q-2026-0042');
+    INSERT INTO public.quote_musicians (quote_id, user_id, name, fee) VALUES ('${Q}', '${MEM}', 'Marta Drums', 300);
+    INSERT INTO public.chats (id, type, name, band_id, event_id, created_by) VALUES ('${QCHAT}', 'event', 'Smith Wedding', '${BAND}', '${QE}', '${ADMIN}');
+    INSERT INTO public.chat_participants (chat_id, user_id) VALUES ('${QCHAT}', '${ADMIN}'), ('${QCHAT}', '${MEM}');
+    INSERT INTO public.messages (chat_id, sender_id, content) VALUES ('${QCHAT}', '${ADMIN}', 'Jane wants a longer set')`);
+  check(false, 'fixture: a quote on hold with its chat', !quoteErr, quoteErr ?? '');
+
+  // 175 + #289 guard: a former member's kept row shows and opens nothing.
+  let r = await as(EXM, `SELECT id FROM public.messages WHERE chat_id = '${BANDCHAT}'`);
+  check(true, 'former member reads no band chat message', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  r = await as(EXM, `INSERT INTO public.messages (chat_id, sender_id, content) VALUES ('${BANDCHAT}', '${EXM}', 'still here?')`);
+  check(true, 'former member cannot write in the band chat', !!r.error || r.n === 0, r.error ?? `${r.n} rows`);
+  r = await as(EXM, `SELECT user_id FROM public.chat_participants WHERE chat_id = '${BANDCHAT}'`);
+  check(true, 'former member sees no band chat roster', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  r = await as(MEM, `SELECT user_id FROM public.chat_participants WHERE chat_id = '${BANDCHAT}'`);
+  check(true, "active member's roster has no former member", !r.error && r.rows.length > 0 && !r.rows.some((x) => x.user_id === EXM), r.error ?? JSON.stringify(r.rows.map((x) => x.user_id.slice(-4))));
+  r = await as(MEM, `SELECT id FROM public.messages WHERE chat_id = '${BANDCHAT}' AND sender_id IN ('${ADMIN}', '${MEM}')`);
+  check(false, 'active member reads the band chat', !r.error && r.rows.length === 2, r.error ?? `${r.rows.length} rows`);
+  r = await as(OUT, `SELECT id FROM public.messages WHERE chat_id IN ('${BANDCHAT}', '${QCHAT}')`);
+  check(false, 'outsider reads no message', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  r = await d.query(`SELECT public.bw_chat_recipient_ids('${BANDCHAT}', '${ADMIN}') AS ids`).catch((e) => ({ error: e.message, rows: [] }));
+  const ids = r.rows[0]?.ids ?? [];
+  check(true, 'push recipients: active members only', !r.error && ids.includes(MEM) && !ids.includes(EXM) && !ids.includes(ADMIN), r.error ?? JSON.stringify(ids.map((x) => x.slice(-4))));
+  r = await as(EXM, `SELECT public.get_user_chats('${EXM}') AS j`);
+  check(true, "former member's chat list hides the band chat", !r.error && !JSON.stringify(r.rows).includes(BANDCHAT), r.error ?? 'listed');
+  r = await d.query(`SELECT tablename::text t, cmd, permissive, roles::text roles FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('chat_participants', 'messages')`);
+  const restrictive = (t, cmd) => r.rows.some((x) => x.t === t && x.cmd === cmd && x.permissive === 'RESTRICTIVE' && x.roles === '{authenticated}');
+  check(true, 'RESTRICTIVE guards: chat_participants SELECT/UPDATE/DELETE, messages SELECT', ['SELECT', 'UPDATE', 'DELETE'].every((c) => restrictive('chat_participants', c)) && restrictive('messages', 'SELECT'));
+
+  // 178: a quote on hold is the admins' until it is a gig; members see the hold only.
+  r = await as(MEM, `SELECT title FROM public.events WHERE id = '${QE}'`);
+  check(true, 'member cannot read the quote event', !r.error && r.rows.length === 0, r.error ?? JSON.stringify(r.rows));
+  r = await as(MEM, `SELECT user_id FROM public.event_members WHERE event_id = '${QE}'`);
+  check(true, 'member: not even their own lineup row of the quote', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  r = await as(MEM, `SELECT id FROM public.messages WHERE chat_id = '${QCHAT}'`);
+  check(true, 'member reads no message of the quote chat', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  r = await as(MEM, `SELECT title FROM public.events WHERE id = '${GIG}'`);
+  check(false, 'member still reads the confirmed gig', !r.error && r.rows.length === 1, r.error ?? `${r.rows.length} rows`);
+  r = await as(ADMIN, `SELECT (SELECT count(*)::int FROM public.events WHERE id = '${QE}') e, (SELECT count(*)::int FROM public.messages WHERE chat_id = '${QCHAT}') m`);
+  check(false, 'admin reads the quote and its chat', !r.error && r.rows[0]?.e === 1 && r.rows[0]?.m === 1, r.error ?? JSON.stringify(r.rows[0]));
+  r = await as(MEM, `SELECT * FROM public.bw_my_date_holds()`);
+  const hold = r.rows.find((x) => x.event_id === QE);
+  check(true, 'member sees the hold, without title, client, fee or notes', !r.error && !!hold && !/Smith|Jane|4200|secret/.test(JSON.stringify(hold)), r.error ?? JSON.stringify(hold ?? null));
+  r = await as(OUT, `SELECT * FROM public.bw_my_date_holds()`);
+  check(true, 'outsider gets no hold', !r.error && r.rows.length === 0, r.error ?? `${r.rows.length} rows`);
+  return out;
+};
+const after = await rlsPass(db);
+for (const c of after) ok(c.ok, `combined RLS: ${c.name}${c.ok ? '' : ` (${c.why})`}`);
+const before = await rlsPass(preRelease);
+const unchanged = before.filter((c) => c.r && c.ok).map((c) => c.name);
+ok(!unchanged.length, `combined RLS: right before the release, every check the release brings fails (${unchanged.join('; ') || 'all do'})`);
+for (const c of before.filter((x) => !x.r && !x.ok)) ok(false, `combined RLS before the release: ${c.name} (${c.why})`);
 done();

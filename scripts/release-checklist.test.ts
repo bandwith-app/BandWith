@@ -211,6 +211,13 @@ const fnBody = (sql: string, fn: string) => {
   for (const m of noComments(sql).matchAll(re)) body = m[2];
   return body;
 };
+/** The same body with its comments: what pg_get_functiondef shows, so where markers are looked for (B5). */
+const markerBody = (sql: string, fn: string) => {
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:public\\.)?${fn}\\s*\\([\\s\\S]*?\\)\\s*RETURNS[\\s\\S]*?AS\\s+(\\$\\w*\\$)([\\s\\S]*?)\\1`, 'gi');
+  let body: string | null = null;
+  for (const m of sql.matchAll(re)) body = m[2];
+  return body;
+};
 /** What a migration defines, EXECUTE / DO definitions included (scripts/sql-functions.mjs). */
 const definedFns = (sql: string) => definedFunctions(sql) as Map<string, { how: string; conditional: boolean }>;
 const unquote = (s: string) => s.replace(/''/g, "'");
@@ -340,7 +347,7 @@ END $do$;`;
   it('each marker is in the final body and in none of the bodies it replaces (files on main)', () => {
     for (const r of rows) {
       const f = migrationFile(r.final);
-      if (f) expect(fnBody(read(`${MIGRATIONS}/${f}`), r.fn) ?? '', `${r.final} ${r.fn}`).toContain(r.mark);
+      if (f) expect(markerBody(read(`${MIGRATIONS}/${f}`), r.fn) ?? '', `${r.final} ${r.fn}`).toContain(r.mark);
       for (const old of r.replaces) {
         const o = migrationFile(old);
         if (!o) continue;
@@ -354,7 +361,7 @@ END $do$;`;
           if (f) expect(squash(fnBody(read(`${MIGRATIONS}/${f}`), r.fn)), `${r.fn}: ${r.final} = ${old}`).toBe(squash(fnBody(read(`${MIGRATIONS}/${o}`), r.fn)));
           continue;
         }
-        expect(fnBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
+        expect(markerBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
       }
     }
   });
@@ -539,5 +546,45 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
     expect(constraints).toMatch(/`member-calendar` and `deputy-calendar` → 182/);
     expect(constraints).toMatch(/175 → `send-push`/);
     expect(constraints).toMatch(/180 → `delete-account`/);
+  });
+});
+
+// ── Codex review of 72ce8148 (11-22) ────────────────────────────────────────
+describe('Codex review of 72ce8148', () => {
+  const doc = read('docs/release-checklist.md');
+  const section = (title: string) => {
+    const from = doc.indexOf(title);
+    const next = doc.slice(from + title.length).search(/\n#{2,3} /);
+    return from < 0 ? '' : doc.slice(from, next < 0 ? undefined : from + title.length + next);
+  };
+
+  it('B1: rolling send-push back after 175 goes to a post-175 build (bw_chat_recipient_ids), never a pre-175 one', () => {
+    const fn = section('### Edge function: redeploy the previous version');
+    expect(fn).toMatch(/`send-push`[\s\S]*after 175/);
+    expect(fn).toMatch(/bw_chat_recipient_ids/);
+    expect(fn).toMatch(/never[^\n]*before 175/i);
+    // 383f15b is the release on prod today: its send-push reads chat_participants
+    // directly, so a former member would get chat previews again.
+    expect(fn).not.toMatch(/383f15b/);
+  });
+
+  it('B2: the local release run is strict (BW_PGLITE_STRICT=1): a missing piece fails it', () => {
+    expect(section('## 1 · Candidate ready')).toMatch(/BW_PGLITE_STRICT=1 [^\n`]*integration-chain\.pglite\.mjs/);
+  });
+
+  it('B4: the release run has a combined RLS pass on its one database, which must fail right before the release', () => {
+    const chain = read('supabase/tests/integration-chain.pglite.mjs');
+    expect(chain).toMatch(/export const rlsPass = async/);
+    expect(chain).toMatch(/const preRelease = await db\.clone\(\)/);
+    expect(chain).toMatch(/await rlsPass\(preRelease\)/);
+    for (const area of ['former member', 'push recipients', 'RESTRICTIVE', 'quote', 'hold']) expect(chain, area).toMatch(new RegExp(`check\\(true, '[^']*${area}`));
+    expect(section('## 1 · Candidate ready')).toMatch(/combined RLS pass/);
+  });
+
+  it('B5: a marker in a comment line of the body counts (pg_get_functiondef keeps comments)', () => {
+    const sql = `CREATE OR REPLACE FUNCTION public.bw_x(p text) RETURNS boolean LANGUAGE plpgsql AS $$\nBEGIN\n  -- bw:175-r4\n  RETURN true;\nEND;\n$$;`;
+    expect(markerBody(sql, 'bw_x')).toContain('bw:175-r4');
+    // The body comparison of identical copies still ignores comments.
+    expect(squash(fnBody(sql, 'bw_x'))).not.toContain('bw:175-r4');
   });
 });
