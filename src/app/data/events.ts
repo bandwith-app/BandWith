@@ -36,6 +36,10 @@ export interface EventItem {
   quoteId?: string;
   is_recurring?: boolean;
   recurrence_rule?: any;
+  /** Set on one expanded date of a repeating event: the series id. The row
+   *  keeps the series fields (EventDetail reads them), but it is a date, not a
+   *  series, and is never expanded again. */
+  occurrence_of?: string | number;
   /** 'tbd': the fee is still to be discussed (the date is confirmed anyway). */
   paymentStatus?: 'pending' | 'partial' | 'paid' | 'tbd';
   depositAmount?: number;

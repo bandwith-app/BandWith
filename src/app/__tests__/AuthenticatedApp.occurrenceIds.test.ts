@@ -12,6 +12,13 @@ describe('upcoming rehearsals: one id per date, whatever is deleted before it', 
     expect(appSrc).not.toMatch(/\*\s*31\s*\+\s*generated/);
     expect(appSrc).toContain('id: uuidToNumericId(`${e.eventId ?? e.id}-occ-${occDate}`),');
   });
+  // Round 12 NIT: every date AuthenticatedApp expands is marked, so Home
+  // never takes one for a new series (a behavioural test would need the two
+  // builders lifted out of the component; they stay where #285 and #297 see them).
+  it('both builders mark their dates with the series id', () => {
+    expect(appSrc).toMatch(/id: uuidToNumericId\(`\$\{e\.eventId \?\? e\.id\}-occ-\$\{occDate\}`\),\s*eventId: e\.eventId,\s*occurrence_of: e\.eventId \?\? e\.id,/);
+    expect(appSrc).toMatch(/id: `\$\{e\.id\}-occ-\$\{occDate\}`,\s*eventId: e\.id,\s*occurrence_of: e\.id,/);
+  });
   it('the key is stable and differs per date', () => {
     const a = uuidToNumericId('r1-occ-2099-01-14');
     expect(uuidToNumericId('r1-occ-2099-01-14')).toBe(a);
