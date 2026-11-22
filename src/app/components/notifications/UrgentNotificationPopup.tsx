@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, useIsPresent } from 'motion/react';
 import { ArrowUpRight, X } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import type { Notification } from '@/lib/services/notifications';
@@ -14,10 +14,21 @@ interface UrgentNotificationPopupProps {
 
 export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = ({
   notification,
-  onOpen,
-  onDismiss,
+  onOpen: open,
+  onDismiss: dismiss,
 }) => {
   const t = useT();
+  // Leaving (a sheet or Stage opened, or it was answered): for its fade-out
+  // the backdrop and card are still on top. Taps go through to what is below
+  // and never dismiss or open the invitation by mistake.
+  const present = useIsPresent();
+  const onOpen = () => {
+    if (present) open();
+  };
+  const onDismiss = () => {
+    if (present) dismiss();
+  };
+  const leaving: React.CSSProperties | undefined = present ? undefined : { pointerEvents: 'none' };
   const data = (notification.data || {}) as Record<string, unknown>;
   const type = notification.type;
   const isRehearsalPoll = type === 'rehearsal_poll';
@@ -62,6 +73,7 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
       transition={{ duration: 0.2 }}
       onClick={onDismiss}
       className="bw-pane-dialog fixed inset-0 z-[182] bg-black/80"
+      style={leaving}
     />
     <motion.div
       role="alert"
@@ -71,7 +83,7 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
       transition={springs.snappy}
       // Figma: Notifications / Urgent popup — lime card docked under the status bar.
       className="bw-pane-float bg-accent text-accent-foreground fixed left-4 right-4 bw-status-clear-inset mx-auto max-w-[420px] z-[183] rounded-[24px] p-5 flex flex-col gap-3 select-none"
-      style={{ top: 'calc(var(--safe-top) + 4px)' }}
+      style={{ top: 'calc(var(--safe-top) + 4px)', ...leaving }}
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex items-center h-4 px-1.5 rounded-full bg-destructive-solid text-white bw-label-xs shrink-0">{t('Urgent')}</span>

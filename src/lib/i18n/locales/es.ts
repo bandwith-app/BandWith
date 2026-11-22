@@ -1963,6 +1963,7 @@ const dict: Dictionary = {
   "Sync now": "Sincronizar ahora",
   "You’re offline · {changes} waiting for signal": "Sin conexión · {changes} esperando señal",
   "Back online · sending {changes}": "De nuevo en línea · enviando {changes}",
+  "Back online · {changes} will be sent shortly": "De nuevo en línea · envío de {changes} en breve",
   "Send now": "Enviar ahora",
 
   // Onboarding

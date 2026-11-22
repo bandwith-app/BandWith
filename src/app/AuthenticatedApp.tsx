@@ -484,7 +484,7 @@ export default function AuthenticatedApp() {
     }
   }, [androidInstall, androidInstallSource]);
 
-  const { isOnline, wasOffline, pendingSyncCount, triggerSync } = useNetworkStatus((msg) => {
+  const { isOnline, wasOffline, pendingSyncCount, retryLaterCount, triggerSync } = useNetworkStatus((msg) => {
     setSaveToast({ message: msg, type: 'success' });
     refetchEvents();
     if (refetchDashboard) refetchDashboard();
@@ -3959,6 +3959,7 @@ export default function AuthenticatedApp() {
         isOnline={isOnline}
         wasOffline={wasOffline}
         pendingCount={pendingSyncCount}
+        retryLaterCount={retryLaterCount}
         onSyncNow={triggerSync}
       />
       <div className="fixed inset-0 z-0 bg-background" />

@@ -31,6 +31,32 @@ describe('is a sheet, modal or Stage open?', () => {
     expect(anyLayerOpen()).toBe(true);
   });
 
+  it('full-screen editors without a dialog role count too (gig editor, quote wizard: data-modal-open; aria-modal)', () => {
+    const editor = document.createElement('div');
+    editor.setAttribute('data-modal-open', 'true');
+    document.body.appendChild(editor);
+    expect(anyLayerOpen()).toBe(true);
+    editor.remove();
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(modal);
+    expect(anyLayerOpen()).toBe(true);
+    modal.setAttribute('aria-modal', 'false');
+    expect(anyLayerOpen()).toBe(false);
+  });
+
+  it('follows an editor opening and closing', async () => {
+    const { result } = renderHook(() => useLayerOpen());
+    const editor = document.createElement('div');
+    act(() => {
+      document.body.appendChild(editor);
+    });
+    act(() => editor.setAttribute('data-modal-open', 'true'));
+    await waitFor(() => expect(result.current).toBe(true));
+    act(() => editor.setAttribute('data-modal-open', 'false'));
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+
   it('follows sheets opening and closing', async () => {
     const { result } = renderHook(() => useLayerOpen());
     expect(result.current).toBe(false);

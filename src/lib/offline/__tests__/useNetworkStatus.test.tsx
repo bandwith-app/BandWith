@@ -67,4 +67,18 @@ describe('useNetworkStatus', () => {
     await act(async () => {});
     expect(onDropped).toHaveBeenCalledWith(dropped);
   });
+
+  it('knows how many changes wait for their retry time when the connection comes back', async () => {
+    let report: (count: number, retryAt?: number[]) => void = () => {};
+    mocks.subscribeToSyncQueue.mockImplementation((cb: typeof report) => ((report = cb), () => {}));
+    const { result: hook } = renderHook(() => useNetworkStatus());
+    await act(async () => {});
+    const now = Date.now();
+    // Two waiting: one rejected earlier (retry in 2 minutes), one whose retry time has passed.
+    act(() => report(2, [now + 120_000, now - 1_000]));
+    expect(hook.current.pendingSyncCount).toBe(2);
+    expect(hook.current.retryLaterCount).toBe(1);
+    act(() => report(0, []));
+    expect(hook.current.retryLaterCount).toBe(0);
+  });
 });

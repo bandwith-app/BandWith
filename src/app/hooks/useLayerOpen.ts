@@ -1,12 +1,15 @@
 import { useLayoutEffect, useState } from 'react';
 
 /**
- * Is a sheet, a modal or Stage mode open? Every one of them is a
- * `role="dialog"` (BwSheet, Stage, hubs) or `role="alertdialog"`; plain
- * screens have none on any device. Layers that announce themselves (the
- * urgent pop-up, toasts) step aside while one is open.
+ * Is a sheet, a modal, a full-screen editor or Stage mode open? Sheets,
+ * Stage and hubs are a `role="dialog"` or `role="alertdialog"`; the gig
+ * editor and the quote wizard mark themselves `data-modal-open="true"`
+ * (also read by safetyNetPoll), other modals `aria-modal="true"`. Plain
+ * screens have none of these on any device. Layers that announce
+ * themselves (the urgent pop-up, toasts) step aside while one is open.
  */
-const SELECTOR = '[role="dialog"], [role="alertdialog"]';
+const SELECTOR = '[role="dialog"], [role="alertdialog"], [data-modal-open="true"], [aria-modal="true"]';
+const WATCHED = ['role', 'hidden', 'data-modal-open', 'aria-modal'];
 
 const shown = (el: Element): boolean => {
   if (!el.isConnected || el.closest('[hidden]')) return false;
@@ -40,7 +43,7 @@ export function useLayerOpen(watch = true): boolean {
       queueMicrotask(check);
     };
     const mo = new MutationObserver(schedule);
-    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['role', 'hidden'] });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: WATCHED });
     check();
     return () => mo.disconnect();
   }, [watch]);

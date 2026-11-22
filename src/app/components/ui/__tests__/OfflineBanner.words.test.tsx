@@ -35,4 +35,17 @@ describe('changes waiting, in plain words', () => {
     expect(screen.getByRole('button', { name: 'Send now' })).toBeInTheDocument();
     expect(document.body.innerHTML).not.toMatch(/sync/i);
   });
+
+  it('back online: counts only the changes sent now; one waiting for its retry is "sent shortly"', () => {
+    const { rerender } = render(<OfflineBanner isOnline={false} wasOffline={false} pendingCount={1} retryLaterCount={1} onSyncNow={() => {}} />);
+    rerender(<OfflineBanner isOnline wasOffline pendingCount={1} retryLaterCount={1} onSyncNow={() => {}} />);
+    expect(screen.getByText('Back online · 1 change will be sent shortly')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/sending/i);
+    // The button still sends it straight away.
+    expect(screen.getByRole('button', { name: 'Send now' })).toBeInTheDocument();
+    cleanup();
+    const second = render(<OfflineBanner isOnline={false} wasOffline={false} pendingCount={3} retryLaterCount={1} />);
+    second.rerender(<OfflineBanner isOnline wasOffline pendingCount={3} retryLaterCount={1} />);
+    expect(screen.getByText('Back online · sending 2 changes')).toBeInTheDocument();
+  });
 });

@@ -167,13 +167,19 @@ const resolveUser = async (): Promise<string | null> => {
 // Subscribers
 // ---------------------------------------------------------------------------
 
-type SyncCallback = (count: number) => void;
+/**
+ * `count`: changes waiting. `retryAt`: when the ones the server rejected may
+ * go again (automatic passes skip them until then), so "sending" never
+ * counts a change that won't be sent now.
+ */
+type SyncCallback = (count: number, retryAt: number[]) => void;
 const subscribers = new Set<SyncCallback>();
+const retryTimes = (m: OfflineMutation[]): number[] => m.flatMap((x) => (x.nextRetryAt ? [x.nextRetryAt] : []));
 
 const notifySubscribers = async () => {
   try {
     const mutations = await getPendingMutations();
-    subscribers.forEach((cb) => cb(mutations.length));
+    subscribers.forEach((cb) => cb(mutations.length, retryTimes(mutations)));
   } catch {
     // Ignore
   }
@@ -181,7 +187,7 @@ const notifySubscribers = async () => {
 
 export const subscribeToSyncQueue = (cb: SyncCallback): (() => void) => {
   subscribers.add(cb);
-  getPendingMutations().then((m) => cb(m.length)).catch(() => cb(0));
+  getPendingMutations().then((m) => cb(m.length, retryTimes(m))).catch(() => cb(0, []));
   return () => subscribers.delete(cb);
 };
 
