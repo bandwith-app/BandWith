@@ -41,7 +41,7 @@ import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
 import { PillButton, Selector } from '@/app/components/bw/Form';
 import { OnlineDepositLinks } from '@/app/components/quotes/OnlineDeposit';
-import { useT, translate, intlLocale, loadLocale, useLocaleReady, type Locale } from '@/lib/i18n';
+import { useT, translate, intlLocale, useLocaleReady, type Locale } from '@/lib/i18n';
 import { docLanguageFor, rememberDocLanguage } from '@/lib/i18n/docLanguage';
 import { DocLanguagePicker } from '@/app/components/bw/DocLanguagePicker';
 import { fetchBandPlan } from '@/lib/usePlan';
@@ -53,7 +53,7 @@ import {
   getQuoteLinkState,
   isLinkChangedError,
   isVersionChangedError,
-  sameQuoteContact,
+  sameQuoteTerms,
   markQuoteLinkSent,
   publishQuoteLink,
   quoteLinkUrl,
@@ -130,13 +130,14 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   const canUpload = isUuid(bandId);
   // The client's confirmation link: only for a saved quote of a real band.
   const canLink = canUpload && isUuid(quote.id);
-  const [link, setLink] = useState<{ token: string; status: QuoteLinkStatus; revoked: boolean } | null>(null);
+  const [link, setLink] = useState<{ id?: string; token: string; status: QuoteLinkStatus; revoked: boolean; version?: number } | null>(null);
   const [linkError, setLinkError] = useState(false);
-  // 183: the link's channels open only once this sheet's version is
-  // published on that very link (a new client's link is empty until then).
-  const [published, setPublished] = useState<{ token: string; version: number } | null>(null);
-  const [publishFailed, setPublishFailed] = useState(false);
-  const [publishTry, setPublishTry] = useState(0);
+  // Round 4: the link and the saved quote were read (and match this sheet).
+  // Opening the sheet publishes nothing: a send (Copy, WhatsApp, SMS,
+  // email) publishes this sheet's version first, on the version it read,
+  // and goes out only if that worked.
+  const [linkChecked, setLinkChecked] = useState(false);
+  const [sending, setSending] = useState<QuoteChannel | null>(null);
   // 183: the quote this sheet was opened with is not the one saved now (the
   // client changed meanwhile, another admin, another device): nothing is
   // shared from it, the sheet asks to open the quote again.
@@ -211,7 +212,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     let cancelled = false;
     setLinkError(false);
     setStale(false);
-    setPublished(null);
+    setLinkChecked(false);
     (async () => {
       // The link and the client as saved now, never the copy this sheet got.
       const [{ data, error }, contact] = await Promise.all([getQuoteLinkState(String(quote.id)), getQuoteContact(String(quote.id))]);
@@ -220,23 +221,17 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         setLinkError(true);
         return;
       }
-      if (contact.data && !sameQuoteContact(contact.data, quoteRef.current)) {
+      // The client and the price saved now, not the ones of this sheet's copy.
+      if (contact.data && !sameQuoteTerms(contact.data, quoteRef.current)) {
         setStale(true);
         return;
       }
       if (data?.link) {
-        setLink({ token: data.link.token, status: data.link.status, revoked: !!data.link.revoked_at });
+        setLink({ id: data.link.id, token: data.link.token, status: data.link.status, revoked: !!data.link.revoked_at, version: data.link.version });
         // The page and the emails speak the language the client already got.
         if (data.link.status !== 'draft') setDocLang(data.link.lang);
-        return;
-      }
-      const lang = docLanguageFor(clientKey);
-      await loadLocale(lang);
-      if (cancelled) return;
-      const created = await publishQuoteLink(String(quote.id), buildClientQuoteSnapshot(quoteRef.current, lang, DEFAULT_BAND_PRICING), lang);
-      if (cancelled) return;
-      if (created.data) setLink({ token: created.data.token, status: created.data.status, revoked: created.data.revoked });
-      else setLinkError(true);
+      } else setLink(null);
+      setLinkChecked(true);
     })();
     return () => {
       cancelled = true;
@@ -249,29 +244,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   // must still re-render the sheet, or the link would never be published.
   const [uploadTried, setUploadTried] = useState(false);
 
-  // 183: publish this sheet's version on the link as soon as the PDF is up
-  // (or its upload failed), so every channel can still open synchronously
-  // inside the tap, and none of them hands out a link that shows nothing,
-  // or someone else's quote.
   const pdfSettled = !isGenerating && !!pdfResult && !isUploading && (!canUpload || !!uploadedUrl || uploadTried);
-  useEffect(() => {
-    if (!isOpen || !link || link.revoked || stale || !settingsReady || !pdfSettled) return;
-    let cancelled = false;
-    setPublished(null);
-    setPublishFailed(false);
-    (async () => {
-      const id = String(quote.id);
-      const pub = await publishQuoteLink(id, buildClientQuoteSnapshot(quoteRef.current, docLang, settings), docLang, uploadedUrl, link.token);
-      if (cancelled) return;
-      if (pub.data) setPublished({ token: link.token, version: pub.data.version });
-      else if (isLinkChangedError(pub.error)) setStale(true);
-      else setPublishFailed(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, link?.token, link?.revoked, stale, settingsReady, pdfSettled, docLang, uploadedUrl, settings, quoteKey, publishTry]);
   // Upload as soon as the PDF exists, so WhatsApp / copy / email can run
   // synchronously inside the tap (iOS blocks clipboard and popups after an await).
   useEffect(() => {
@@ -297,8 +270,8 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     autoPendingRef.current = false;
     setAutoNote(null);
   }, [isOpen]);
-  const autoSendReady =
-    isOpen && autoSendEmail && !!link && !link.revoked && !stale && published?.token === link.token && pdfSettled;
+  // "Send quote" (an explicit send from the wizard): the email, once ready.
+  const autoSendReady = isOpen && autoSendEmail && linkChecked && !link?.revoked && !stale && settingsReady && pdfSettled;
   useEffect(() => {
     if (!autoSendReady || autoSentRef.current) return;
     autoSentRef.current = true;
@@ -318,14 +291,40 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 183: the version this sheet published is on the link it shows.
-  const canShareLink = !!link && !link.revoked && !stale && published?.token === link.token;
+  // Round 4: what the sheet read matches the saved quote; a send publishes first.
+  const canShareLink = linkChecked && !link?.revoked && !stale && settingsReady && !sending;
 
-  /** Record the send of the version this sheet published, on its link (183). */
-  const publishAndRecord = async (channel: QuoteChannel) => {
+  /**
+   * Publish this sheet's version, on the link and the version it read
+   * (round 4). Another version published meanwhile, or the link replaced
+   * (another client): nothing is written, the sheet asks to open the quote
+   * again. Returns what was published, or null (nothing to send).
+   */
+  const publishForSend = async (): Promise<{ token: string; version: number; linkId?: string } | null> => {
+    const pub = await publishQuoteLink(
+      String(quote.id),
+      buildClientQuoteSnapshot(quoteRef.current, docLang, settings),
+      docLang,
+      uploadedUrl,
+      link?.token ?? null,
+      typeof link?.version === 'number' ? link.version : null,
+    );
+    if (!pub.data) {
+      if (isLinkChangedError(pub.error) || isVersionChangedError(pub.error)) {
+        setStale(true);
+        flash(t('This quote changed meanwhile (another client, or another admin). Close this and open the quote again.'), 'error');
+      } else flash(t('The client page could not be updated. Try again.'), 'error');
+      return null;
+    }
+    const linkId = link?.token === pub.data.token ? link.id : undefined;
+    setLink({ id: linkId, token: pub.data.token, status: pub.data.status, revoked: pub.data.revoked, version: pub.data.version });
+    return { token: pub.data.token, version: pub.data.version, linkId };
+  };
+
+  /** Record the send of the version just published, on its link (183). */
+  const publishAndRecord = async (channel: QuoteChannel, published: { token: string; version: number }) => {
     const id = String(quote.id);
-    if (!published) return false;
-    const sent = await markQuoteLinkSent(id, kind === 'reminder' ? 'reminded' : 'sent', channel, published);
+    const sent = await markQuoteLinkSent(id, kind === 'reminder' ? 'reminded' : 'sent', channel, { token: published.token, version: published.version });
     if (sent.error) {
       if (isLinkChangedError(sent.error) || isVersionChangedError(sent.error)) {
         setStale(true);
@@ -339,12 +338,11 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     return true;
   };
 
-  const linkMessage = () => {
-    if (!link) return '';
+  const linkMessage = (token: string) => {
     const snapshot = buildClientQuoteSnapshot(quoteRef.current, docLang, settings);
     return clientLinkMessage(quoteRef.current, {
       bandName,
-      url: quoteLinkUrl(link.token),
+      url: quoteLinkUrl(token),
       lang: docLang,
       kind,
       total: snapshot.totalLabel,
@@ -355,42 +353,87 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
   const cleanPhone = () => (quote.clientPhone || '').replace(/[^0-9+]/g, '');
 
   const sendLinkVia = (channel: 'whatsapp' | 'sms' | 'copy') => {
-    if (!link || !canShareLink) return;
-    const text = linkMessage();
+    if (!canShareLink) return;
+    setSending(channel);
+    // Started inside the tap: the publish runs first, and the channel gets
+    // the link only once it worked (iOS keeps the clipboard write and the
+    // window open for the tap that started them).
+    const job = publishForSend();
     if (channel === 'copy') {
-      try {
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setCopiedLink(true);
-            setTimeout(() => setCopiedLink(false), 2500);
-            void publishAndRecord('copy');
-          },
-          () => flash(t('Could not copy the link.'), 'error'),
-        );
-      } catch {
-        flash(t('Could not copy the link.'), 'error');
-      }
+      const text = job.then((p) => {
+        if (!p) throw new Error('not published');
+        return linkMessage(p.token);
+      });
+      const copied = (() => {
+        try {
+          if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+            return navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then((v) => new Blob([v], { type: 'text/plain' })) })]);
+          }
+        } catch {
+          /* the fallback below */
+        }
+        return text.then((v) => navigator.clipboard.writeText(v));
+      })();
+      void copied
+        .then(async () => {
+          const p = await job;
+          if (!p) return;
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 2500);
+          await publishAndRecord('copy', p);
+        })
+        .catch(async () => {
+          if (await job) flash(t('Could not copy the link.'), 'error');
+        })
+        .finally(() => setSending(null));
       return;
     }
-    const phone = cleanPhone();
-    const url =
-      channel === 'whatsapp'
-        ? `https://wa.me/${phone.replace(/^\+/, '')}?text=${encodeURIComponent(text)}`
-        : `sms:${phone}${isIOS() ? '&' : '?'}body=${encodeURIComponent(text)}`;
-    void openExternal(url);
-    void publishAndRecord(channel).then((ok) => ok && flash(kind === 'reminder' ? t('Reminder sent') : t('Quote shared')));
+    // WhatsApp on the web: the window opens in the tap and gets its address
+    // after the publish (closed if nothing was published).
+    const pending = channel === 'whatsapp' && !Capacitor.isNativePlatform() ? window.open('', '_blank') : null;
+    void job
+      .then(async (p) => {
+        if (!p) {
+          pending?.close();
+          return;
+        }
+        const phone = cleanPhone();
+        const text = linkMessage(p.token);
+        const url =
+          channel === 'whatsapp'
+            ? `https://wa.me/${phone.replace(/^\+/, '')}?text=${encodeURIComponent(text)}`
+            : `sms:${phone}${isIOS() ? '&' : '?'}body=${encodeURIComponent(text)}`;
+        if (pending) {
+          try {
+            pending.opener = null;
+          } catch {
+            /* cross-origin */
+          }
+          pending.location.href = url;
+        } else await openExternal(url);
+        if (await publishAndRecord(channel, p)) flash(kind === 'reminder' ? t('Reminder sent') : t('Quote shared'));
+      })
+      .finally(() => setSending(null));
   };
 
   const emailLink = async () => {
-    if (!link || !canShareLink || emailing) return;
+    if (!canShareLink || emailing) return;
     if (!quote.clientEmail) {
       flash(t('Add the client’s email to the quote first.'), 'error');
       return;
     }
     setEmailing(true);
+    setSending('email');
     try {
       const id = String(quote.id);
-      const res = await sendQuoteEmail(id, kind);
+      const p = await publishForSend();
+      if (!p) return;
+      const res = await sendQuoteEmail(id, kind, p.linkId);
+      if (!res.ok && res.code === 'link_changed') {
+        setStale(true);
+        flash(t('This quote changed meanwhile (another client, or another admin). Close this and open the quote again.'), 'error');
+        return;
+      }
       if (!res.ok && res.code === 'too_soon') {
         flash(t('An email was just sent. Wait a minute and try again.'), 'error');
         return;
@@ -399,13 +442,14 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
         // The server could not send it (no mail server yet, or offline): hand
         // the same message to the mail app instead.
         const subject = tr('{band} — Quote {ref}', { band: bandName, ref: quote.quoteNumber || '' }).trim();
-        void openExternal(`mailto:${encodeURIComponent(quote.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(linkMessage())}`);
+        void openExternal(`mailto:${encodeURIComponent(quote.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(linkMessage(p.token))}`);
       }
-      if (await publishAndRecord('email')) {
+      if (await publishAndRecord('email', p)) {
         flash(res.ok ? t('Email sent to {email}', { email: quote.clientEmail }) : t('Your mail app opened with the message and the link.'));
       }
     } finally {
       setEmailing(false);
+      setSending(null);
     }
   };
 
@@ -418,8 +462,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
       flash(t('Could not create a new link. Try again.'), 'error');
       return;
     }
-    setPublished(null);
-    setLink((l) => (l ? { ...l, token: data, revoked: false } : l));
+    setLink((l) => (l ? { ...l, id: undefined, token: data, revoked: false } : l));
     onLinkChanged?.();
     flash(t('New link ready. The old one no longer works.'));
   };
@@ -910,17 +953,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
                 ) : linkError ? (
                   <p role="alert" className="bw-body-sm text-destructive">{t('The client link could not be prepared. Check your connection and reopen this screen.')}</p>
                 ) : (
-                  <>
-                    {publishFailed && (
-                      <div className="flex flex-col gap-3 p-4 rounded-[16px] bg-card">
-                        <p role="alert" className="bw-body-sm text-destructive">{t('The client page could not be updated. Try again.')}</p>
-                        <PillButton variant="outline" size="sm" fullWidth={false} icon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => setPublishTry((n) => n + 1)}>
-                          {t('Try again')}
-                        </PillButton>
-                      </div>
-                    )}
-                    {linkChannels.map(renderChannel)}
-                  </>
+                  <>{linkChannels.map(renderChannel)}</>
                 )}
               </section>
               <section className="flex flex-col gap-2">

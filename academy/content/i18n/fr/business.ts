@@ -390,7 +390,7 @@ const business: AreaText = {
         },
         { type: "p", text: "Les admins reçoivent un push et une notification dans l’app quand le client ouvre le devis pour la première fois, l’accepte, le refuse ou écrit." },
         { type: "note", tone: "warning", text: "**Nouveau lien** et **Désactiver le lien** demandent confirmation, car le lien actuel du client cesse de fonctionner aussitôt." },
-        { type: "p", text: "Un devis jamais envoyé affiche ici **Envoyer au client** à la place. De même pour un devis envoyé que tu passes à un autre client (e-mail ou téléphone remplacé ou retiré, ou un nouveau nom avec un nouveau contact) : l’ancien lien ne fonctionne plus et, une fois le devis envoyé, le nouveau client ne voit que sa propre conversation." },
+        { type: "p", text: "Un devis jamais envoyé affiche ici **Envoyer au client** à la place. De même pour un devis envoyé que tu passes à un autre client (e-mail ou téléphone remplacé ou retiré, ou un nouveau nom avec un nouveau contact) : l’ancien lien ne fonctionne plus et, une fois le devis envoyé, le nouveau client ne voit que sa propre conversation. Un devis **accepté** garde son client, car l’acceptation, l’acompte et le solde sont les siens : tu peux encore corriger ses coordonnées (une faute dans le nom, le téléphone écrit avec l’indicatif du pays, l’e-mail en majuscules), mais pour l’envoyer à quelqu’un d’autre, utilise **Dupliquer**." },
       ],
     },
     {

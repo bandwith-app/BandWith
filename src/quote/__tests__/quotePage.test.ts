@@ -182,3 +182,54 @@ describe('quote page: the deposit receipt says what was received (#11)', () => {
     expect(receipt).toContain(S.depositPaidBodyNoAmount.replace('{band}', 'The Night Shift'));
   });
 });
+
+describe('quote page: the 30 s refresh never takes the client’s place (round 4)', () => {
+  it('a band reply arrives while the client types: focus, text and caret stay', async () => {
+    let current = base();
+    answers.bw_quote_link_seen = () => current;
+    answers.bw_quote_link_view = () => current;
+    await openPage();
+    const box = document.getElementById('message') as HTMLTextAreaElement;
+    box.focus();
+    box.value = 'Can we start at 7?';
+    box.setSelectionRange(7, 12);
+
+    current = base({ messages: [{ from: 'band', body: 'Sure, see you there.', at: new Date().toISOString() }] });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(app().textContent).toContain('Sure, see you there.');
+    const now = document.getElementById('message') as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(now);
+    expect(now.value).toBe('Can we start at 7?');
+    expect([now.selectionStart, now.selectionEnd]).toEqual([7, 12]);
+  });
+
+  it('the name field keeps focus and caret when a new version arrives', async () => {
+    let current = base();
+    answers.bw_quote_link_seen = () => current;
+    answers.bw_quote_link_view = () => current;
+    await openPage();
+    const name = document.getElementById('acc-name') as HTMLInputElement;
+    name.focus();
+    name.value = 'Emma Car';
+    name.setSelectionRange(8, 8);
+
+    current = base({ version: 2, quote: { ...base().quote, total: 4800 } });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const now = document.getElementById('acc-name') as HTMLInputElement;
+    expect(document.activeElement).toBe(now);
+    expect(now.selectionStart).toBe(8);
+  });
+
+  it('the "quote updated" notice is a status (polite), not an alert', async () => {
+    let current = base();
+    answers.bw_quote_link_seen = () => current;
+    answers.bw_quote_link_view = () => current;
+    await openPage();
+    current = base({ version: 2, quote: { ...base().quote, total: 4800 } });
+    await vi.advanceTimersByTimeAsync(30_000);
+    const card = [...app().querySelectorAll('section')].find((s) => s.textContent?.includes(S.staleTitle));
+    expect(card?.getAttribute('role')).toBe('status');
+  });
+});

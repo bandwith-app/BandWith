@@ -390,7 +390,7 @@ const business: AreaText = {
         },
         { type: "p", text: "Gli admin ricevono una push e una notifica nell’app quando il cliente apre il preventivo per la prima volta, lo accetta, lo rifiuta o scrive." },
         { type: "note", tone: "warning", text: "**Nuovo link** e **Disattiva link** chiedono conferma, perché il link attuale del cliente smette subito di funzionare." },
-        { type: "p", text: "Un preventivo mai inviato mostra qui **Invia al cliente**. Lo stesso vale per un preventivo inviato che passi a un altro cliente (email o telefono sostituiti o tolti, o un nuovo nome con un nuovo contatto): il vecchio link smette di funzionare e, quando lo invii, il nuovo cliente vede solo la propria conversazione." },
+        { type: "p", text: "Un preventivo mai inviato mostra qui **Invia al cliente**. Lo stesso vale per un preventivo inviato che passi a un altro cliente (email o telefono sostituiti o tolti, o un nuovo nome con un nuovo contatto): il vecchio link smette di funzionare e, quando lo invii, il nuovo cliente vede solo la propria conversazione. Un preventivo **accettato** resta al suo cliente, perché l’accettazione, l’acconto e il saldo sono suoi: puoi ancora correggerne i dati (un refuso nel nome, il telefono scritto con il prefisso internazionale, l’email in maiuscolo), ma per mandarlo a qualcun altro usa **Duplica**." },
       ],
     },
     {

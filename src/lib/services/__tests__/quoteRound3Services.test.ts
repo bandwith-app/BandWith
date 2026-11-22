@@ -82,14 +82,14 @@ describe('sameQuoteContact', () => {
 
 describe('quoteUpdateRecord: an edit clears what the wizard has empty', () => {
   it('writes null (not undefined, which the update would leave out) for a cleared field', () => {
-    const rec = quoteUpdateRecord({ clientName: 'Emma Carter', clientEmail: 'emma.carter@example.com' }, '11111111-1111-4111-8111-111111111111') as Record<string, unknown>;
+    const rec = quoteUpdateRecord({ clientName: 'Emma Carter', clientEmail: 'emma.carter@example.com' }, '11111111-1111-4111-8111-111111111111', {}) as Record<string, unknown>;
     for (const key of ['client_phone', 'client_company', 'client_notes', 'billing_address', 'vat_number']) {
       expect(rec).toHaveProperty(key);
       expect(rec[key]).toBeNull();
     }
   });
   it('keeps the yes/no flags the wizard did not touch (no null for them)', () => {
-    const rec = quoteUpdateRecord({ clientName: 'Emma Carter' }, '11111111-1111-4111-8111-111111111111') as Record<string, unknown>;
+    const rec = quoteUpdateRecord({ clientName: 'Emma Carter' }, '11111111-1111-4111-8111-111111111111', {}) as Record<string, unknown>;
     for (const key of ['travel_included', 'deposit_required']) expect(rec[key]).not.toBeNull();
   });
 });
