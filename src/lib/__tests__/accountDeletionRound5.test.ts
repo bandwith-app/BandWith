@@ -3,6 +3,7 @@ import * as deletion from '../../../supabase/functions/_shared/account-deletion'
 import fn from '../../../supabase/functions/delete-account/index.ts?raw';
 import chatsSource from '../services/chats.ts?raw';
 import chatModalSource from '../../app/components/chat/ChatDetailModal.tsx?raw';
+import { directChatName } from '../formerMember';
 
 // Buckets in memory, read the way the server does (round 8): the names under
 // a prefix straight from storage.objects (bw_account_storage_names, keyset
@@ -199,10 +200,24 @@ describe('round 5: committed before any file goes', () => {
 // Claude minor 1 / Codex B3: notices carry the sender's id and the message's
 // id, so the cleanup never matches by name.
 describe('round 8: the chat header names a direct chat as the list does', () => {
+  // Round 13: behaviour first (the rule the header applies), then the
+  // header's call itself, anchored on directChatName (#291 adds another
+  // `fullChat.type === 'direct'` branch above it, in checkPermission).
+  it('names a direct chat from its creator or last sender, "Former member" only when nobody is there', () => {
+    const base = { storedName: null, fallback: '', former: 'Former member', me: 'me' };
+    expect(directChatName({ ...base, others: [], otherIds: ['them', null] })).toBe('');
+    expect(directChatName({ ...base, others: [], otherIds: [null, 'them'] })).toBe('');
+    expect(directChatName({ ...base, others: [], otherIds: ['me', 'me'] })).toBe('Former member');
+    expect(directChatName({ ...base, others: [{ profile: { full_name: 'Gina Torres' } }], otherIds: [] })).toBe('Gina Torres');
+  });
+
   it('uses directChatName with the creator and the last sender', () => {
-    const header = chatModalSource.slice(chatModalSource.indexOf("if (fullChat.type === 'direct')"), chatModalSource.indexOf("} else if (fullChat.type === 'band'"));
-    expect(header).toMatch(/directChatName\(\{/);
-    expect(header).toMatch(/otherIds: \[\(fullChat as any\)\.created_by, fullChat\.last_message\?\.sender_id\]/);
+    const at = chatModalSource.indexOf('directChatName({');
+    expect(at).toBeGreaterThan(-1);
+    const call = chatModalSource.slice(at, chatModalSource.indexOf('});', at));
+    expect(call).toMatch(/others,/);
+    expect(call).toMatch(/me: user\?\.id,/);
+    expect(call).toMatch(/otherIds: \[\(fullChat as any\)\.created_by, fullChat\.last_message\?\.sender_id\]/);
   });
 });
 
