@@ -132,6 +132,13 @@ vi.mock('../services/songFiles', () => ({
   playableAudioUrl: (u: string) => u.replace('/view', '/direct'),
 }));
 
+/** What this device keeps offline, per key (offline/storage.ts): an account's songs and live packs. */
+const offline = new Map<string, unknown>();
+vi.mock('../offline/storage', () => ({
+  listOfflineKeys: async (prefix: string) => [...offline.keys()].filter((k) => k.startsWith(prefix)),
+  getOfflineItem: async (k: string) => offline.get(k) ?? null,
+}));
+
 import authContext from '../AuthContext.tsx?raw';
 import { audioFailureFor, audioKey, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, legacyAudioSignedIn, looksLikeAudio, playableUrl } from '../regiaAudio';
 
@@ -219,7 +226,23 @@ const mp3 = () => {
   return b;
 };
 
+const SECOND = 'https://drive.google.com/file/d/def987654321/view';
+/** admin-1's songs kept offline here (its songs list and a live pack). */
+const ownSongs = () => {
+  offline.set('bw:admin-1:band-1:songs', [{ id: 's1', title: 'Paper Boats', audio_url: DRIVE }]);
+  offline.set('bw:admin-1:band-1:live_pack:e1', { songs: [{ id: 's2', title: 'Superstition', audio: SECOND }] });
+};
+
+/** Sign-out: the session ends first, then the recordings go (AuthContext); the same account may sign in again after. */
+const signOutHere = async () => {
+  const was = auth.user;
+  auth.user = null;
+  await clearDownloadedAudio();
+  auth.user = was;
+};
+
 beforeEach(() => {
+  offline.clear();
   auth.user = 'admin-1';
   native.on = true;
   native.platform = 'android';
@@ -311,7 +334,7 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
     vi.stubGlobal('fetch', vi.fn(async () => audioResponse()));
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
     expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
-    await clearDownloadedAudio();
+    await signOutHere();
     expect(storedSongs()).toBe(0);
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
     vi.unstubAllGlobals();
@@ -330,7 +353,7 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
     vi.stubGlobal('fetch', fetchMock);
     const run = downloadAudio(DRIVE);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await clearDownloadedAudio();
+    await signOutHere();
     arrive?.();
     expect((await run).ok).toBe(false);
     expect(storedSongs()).toBe(0);
@@ -366,7 +389,7 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
 
   it('phone: the files in the app library go too, and one still downloading is deleted', async () => {
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
-    await clearDownloadedAudio();
+    await signOutHere();
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
     let land!: () => void;
     transfer.mockImplementationOnce(async (o: { url: string; path: string }) => {
@@ -376,7 +399,7 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
     });
     const run = downloadAudio(DRIVE);
     await vi.waitFor(() => expect(transfer).toHaveBeenCalledTimes(2));
-    await clearDownloadedAudio();
+    await signOutHere();
     land();
     expect((await run).ok).toBe(false);
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
@@ -390,7 +413,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     native.platform = 'ios';
     legacy('DOCUMENTS');
     legacy('LIBRARY');
-    await clearDownloadedAudio();
+    await signOutHere();
     expect([...files.keys()].filter((k) => k.includes('regia-audio'))).toEqual([]);
   });
 
@@ -419,7 +442,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     rmdir.mockImplementationOnce(async () => {
       throw new Error('EPERM');
     });
-    await clearDownloadedAudio();
+    await signOutHere();
     expect(files.has('LIBRARY_NO_CLOUD:regia-audio/song')).toBe(true);
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
     await finishPendingAudioCleanup();
@@ -442,7 +465,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
     vi.unstubAllGlobals();
     idb.failDelete = true;
-    await clearDownloadedAudio();
+    await signOutHere();
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
     idb.failDelete = false;
     await finishPendingAudioCleanup();
@@ -464,7 +487,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     })));
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
     idb.failDelete = true;
-    await clearDownloadedAudio();
+    await signOutHere();
     expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toEqual({ users: ['admin-1'], legacy: true });
     // Someone else signs in here and downloads a song (nothing was deleted).
     auth.user = 'member-2';
@@ -506,7 +529,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     rmdir.mockImplementation(async () => {
       throw new Error('EPERM');
     });
-    await clearDownloadedAudio();
+    await signOutHere();
     rmdir.mockReset().mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
       for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
     });
@@ -528,7 +551,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     localStorage.clear();
     files.set(`LIBRARY_NO_CLOUD:regia-audio/${await audioKey(DRIVE)}`, mp3());
     auth.user = null;
-    await clearDownloadedAudio();
+    await signOutHere();
     expect([...files.keys()].filter((f) => f.includes('regia-audio'))).toEqual([]);
   });
 
@@ -547,9 +570,11 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
 
   it('nothing pending: the launch deletes nothing (an older build’s copy is moved, not deleted)', async () => {
     localStorage.clear();
-    files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    ownSongs();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
     await finishPendingAudioCleanup();
-    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/song')).toBe(true);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/${k}`)).toBe(true);
   });
 
   it('every sign-out deletes them (an expired or revoked session too), and the launch finishes a pending one', () => {
@@ -625,6 +650,7 @@ describe('#296 round 6 (Codex r7 B2): a slow sign-out cleanup never takes the ne
 describe('#296 round 6 (Codex r7 B3): after the update, the older build’s songs are still there', () => {
   it('phone: the first launch moves them into the signed-in account’s folder; offline at the gig they are found', async () => {
     localStorage.clear();
+    ownSongs();
     const k = await audioKey(DRIVE);
     files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
     await finishPendingAudioCleanup();
@@ -645,12 +671,14 @@ describe('#296 round 6 (Codex r7 B3): after the update, the older build’s song
     localStorage.clear();
     native.platform = 'ios';
     const k = await audioKey(DRIVE);
+    ownSongs();
+    const k2 = await audioKey(SECOND);
     files.set(`DOCUMENTS:regia-audio/${k}`, mp3());
-    files.set('LIBRARY:regia-audio/other', mp3());
+    files.set(`LIBRARY:regia-audio/${k2}`, mp3());
     await finishPendingAudioCleanup();
-    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect(await cachedAudio([DRIVE, SECOND])).toEqual(new Set([DRIVE, SECOND]));
     expect([...files.keys()].filter((f) => f.includes(':regia-audio/'))).toEqual([]);
-    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/other')).toBe(true);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/${k2}`)).toBe(true);
   });
 
   it('web: the old keys move to the signed-in account', async () => {
@@ -658,6 +686,7 @@ describe('#296 round 6 (Codex r7 B3): after the update, the older build’s song
     localStorage.clear();
     idbData.clear();
     Object.defineProperty(globalThis, 'indexedDB', { value: fakeIndexedDb(), configurable: true, writable: true });
+    ownSongs();
     const k = await audioKey(DRIVE);
     idbData.set('bw-regia-audio', new Map([[k, { type: 'audio/mpeg', data: mp3().buffer }]]));
     await finishPendingAudioCleanup();
@@ -685,15 +714,96 @@ describe('#296 round 6 (Codex r7 B3): after the update, the older build’s song
 
   it('moved once: a later sign-in deletes nothing', async () => {
     localStorage.clear();
-    files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    ownSongs();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
     await finishPendingAudioCleanup();
     await legacyAudioSignedIn();
-    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/song')).toBe(true);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/${k}`)).toBe(true);
   });
 
   it('a sign-in deletes them (AuthContext, SIGNED_IN)', () => {
     const listener = authContext.slice(authContext.indexOf('onAuthStateChange'), authContext.indexOf('Native OAuth'));
     expect(listener).toMatch(/event === 'SIGNED_IN'\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.legacyAudioSignedIn\(\)\)/);
+  });
+});
+
+describe('#296 round 7 (Claude r6): older copies on a shared device, and cleanups that meet a sign-in', () => {
+  it('M1: only the signed-in account’s own songs move; another account’s old copy is deleted, never handed over', async () => {
+    localStorage.clear();
+    ownSongs();
+    const mineK = await audioKey(DRIVE);
+    const theirs = await audioKey('https://drive.google.com/file/d/someone-elses/view');
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${mineK}`, mp3());
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${theirs}`, mp3());
+    await finishPendingAudioCleanup();
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/${mineK}`)).toBe(true);
+    expect([...files.keys()].filter((f) => f.includes(theirs))).toEqual([]);
+  });
+
+  it('M1 web: the same', async () => {
+    native.on = false;
+    localStorage.clear();
+    idbData.clear();
+    Object.defineProperty(globalThis, 'indexedDB', { value: fakeIndexedDb(), configurable: true, writable: true });
+    ownSongs();
+    const mineK = await audioKey(DRIVE);
+    idbData.set('bw-regia-audio', new Map([[mineK, { type: 'audio/mpeg', data: mp3().buffer }], ['0123456789abcdef01234567', { type: 'audio/mpeg', data: mp3().buffer }]]));
+    await finishPendingAudioCleanup();
+    expect([...idbData.get('bw-regia-audio')!.keys()]).toEqual([`admin-1/${mineK}`]);
+  });
+
+  it('M2: left unclaimed, then a launch with a session: deleted, not adopted (that account may be another one)', async () => {
+    localStorage.clear();
+    ownSongs();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
+    auth.user = null;
+    await finishPendingAudioCleanup();
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio/${k}`)).toBe(true);
+    // Someone signs in; the app is closed before anything else runs. Next launch, signed in.
+    auth.user = 'admin-1';
+    await finishPendingAudioCleanup();
+    expect([...files.keys()].filter((f) => f.includes(k))).toEqual([]);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+
+  it('M2: a sign-in over unclaimed copies marks their deletion at once (the app may close before it ends)', async () => {
+    localStorage.clear();
+    files.set('LIBRARY_NO_CLOUD:regia-audio/abc', mp3());
+    auth.user = null;
+    await finishPendingAudioCleanup();
+    let release!: () => void;
+    rmdir.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
+    auth.user = 'member-2';
+    const run = legacyAudioSignedIn();
+    expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toMatchObject({ legacy: true });
+    await vi.waitFor(() => expect(rmdir).toHaveBeenCalled());
+    release();
+    await run;
+  });
+
+  it('M4: a slow sign-out cleanup, and the same account signs in again before it reaches its folder: its files are kept', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    // The older builds' folder goes first, slowly.
+    rmdir.mockImplementationOnce(async () => {
+      await gate;
+    });
+    auth.user = null;
+    const clearing = clearDownloadedAudio();
+    await vi.waitFor(() => expect(rmdir).toHaveBeenCalled());
+    auth.user = 'admin-a';
+    release();
+    await clearing;
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
+    // Still listed: its next sign-out deletes them.
+    await signOutHere();
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
   });
 });
 

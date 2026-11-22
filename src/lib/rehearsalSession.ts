@@ -15,6 +15,13 @@ export interface PlayedSong {
   title: string;
   /** When it was first played (ms). Missing in sessions saved before #296 round 3. */
   at?: number;
+  /**
+   * The latest time any copy played it (ms), when later than `at` (#296
+   * round 7): a merge keeps the earliest `at` and this, so a copy that
+   * played it after the other copy's End or Pause still counts as running
+   * when merged again.
+   */
+  last?: number;
 }
 
 /** A pause that is over: [from, to] in ms. */
@@ -137,7 +144,7 @@ export interface SessionSummary {
 export const buildSummary = (s: SessionState, total: number, now: number): SessionSummary => ({
   v: 1,
   durationS: elapsedSeconds(s, now),
-  played: s.played.map((p) => ({ id: p.id, title: p.title, ...(p.at === undefined ? {} : { at: p.at }) })),
+  played: s.played.map((p) => ({ id: p.id, title: p.title, ...(p.at === undefined ? {} : { at: p.at }), ...(p.last === undefined ? {} : { last: p.last }) })),
   total: Math.max(0, Math.floor(total)),
   pauses: unionSpans(s.pauses ?? []),
 });
@@ -148,7 +155,7 @@ const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isF
 const parsePlayed = (v: unknown): PlayedSong[] =>
   Array.isArray(v)
     ? v.filter((p): p is PlayedSong => isObj(p) && typeof p.id === 'string' && !!p.id && typeof p.title === 'string')
-        .map((p) => ({ id: p.id, title: p.title, ...(isTime(p.at) ? { at: p.at } : {}) }))
+        .map((p) => ({ id: p.id, title: p.title, ...(isTime(p.at) ? { at: p.at } : {}), ...(isTime(p.last) && (!isTime(p.at) || p.last > p.at) ? { last: p.last } : {}) }))
     : [];
 
 const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -231,7 +238,9 @@ const spanMs = (spans: PauseSpan[]) => spans.reduce((n, [a, b]) => n + (b - a), 
 const untimedPauseMs = (s: SessionState) => Math.max(0, s.pausedMs - spanMs(unionSpans(s.pauses ?? [])));
 /** The newest thing that keeps this copy running: its start, a Resume, a song played (a pause doesn't undo an End). */
 const lastRun = (s: SessionState): number =>
-  Math.max(s.startedAt, ...(s.pauses ?? []).map((p) => p[1]), ...s.played.map((p) => p.at ?? -Infinity));
+  Math.max(s.startedAt, ...(s.pauses ?? []).map((p) => p[1]), ...s.played.map(playedLast));
+/** The latest time a song was played on any copy merged into this one. */
+const playedLast = (p: PlayedSong): number => Math.max(p.at ?? -Infinity, p.last ?? -Infinity);
 
 /**
  * Two copies of one occurrence's session: this device's, and the saved one
@@ -384,9 +393,14 @@ const mergePlayed = (first: PlayedSong[], second: PlayedSong[]): PlayedSong[] =>
       prev = key;
       const had = byId.get(p.id);
       if (!had) byId.set(p.id, { song: { ...p }, key, order: order++ });
-      else if (p.at !== undefined && (had.song.at === undefined || p.at < had.song.at)) {
-        had.song.at = p.at;
-        had.key = p.at;
+      else {
+        // The latest play on either copy is kept too (#296 round 7: the merge stays the same when merged again).
+        const latest = Math.max(playedLast(had.song), playedLast(p));
+        if (p.at !== undefined && (had.song.at === undefined || p.at < had.song.at)) {
+          had.song.at = p.at;
+          had.key = p.at;
+        }
+        if (Number.isFinite(latest) && latest > (had.song.at ?? -Infinity)) had.song.last = latest;
       }
     }
   }
@@ -403,7 +417,7 @@ export const sameSession = (a: SessionState | null, b: SessionState | null): boo
     a.pausedAt === b.pausedAt &&
     a.endedAt === b.endedAt &&
     a.played.length === b.played.length &&
-    a.played.every((p, i) => p.id === b.played[i].id && p.at === b.played[i].at) &&
+    a.played.every((p, i) => p.id === b.played[i].id && p.at === b.played[i].at && playedLast(p) === playedLast(b.played[i])) &&
     JSON.stringify(unionSpans(a.pauses ?? [])) === JSON.stringify(unionSpans(b.pauses ?? [])));
 
 /**

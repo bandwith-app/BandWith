@@ -13,6 +13,7 @@ import {
   pauseSession,
   pickSession,
   resumeSession,
+  sameSession,
   sessionStatus,
   spanParts,
   startSession,
@@ -466,5 +467,85 @@ describe('#296 round 6: open pauses and untimed paused time', () => {
     expect(sessionStatus(r)).toBe('live');
     expect(r.pausedMs).toBe(8 * M);
     expect(r.pauses).toEqual([[20 * M, 25 * M], [30 * M, 33 * M]]);
+  });
+});
+
+describe('#296 round 7 (Claude r6 B1): merging again changes nothing', () => {
+  const M = 60_000;
+  const X = { id: 'x', title: 'Paper Boats' };
+
+  it('B ended at 25 after X at 24; A played X at 32: merge(A,B), merge(merge(A,B),B) and merge(B,merge(A,B)) are all live', () => {
+    const base = startSession(0);
+    const b = endSession(markPlayed(base, X, 24 * M), 25 * M);
+    const a = markPlayed(base, X, 32 * M);
+    const ab = mergeSessions(a, b);
+    expect(sessionStatus(ab)).toBe('live');
+    expect(sessionStatus(mergeSessions(ab, b))).toBe('live');
+    expect(sessionStatus(mergeSessions(b, ab))).toBe('live');
+    // Through the saved row too (what A saves and B reads).
+    const CTX7 = { bandId: 'b', eventId: 'e', date: '2026-11-19' };
+    const saved = fromRow(toRow(ab, CTX7, 3, 33 * M))!;
+    expect(sessionStatus(mergeSessions(b, saved))).toBe('live');
+    expect(sessionStatus(mergeSessions(saved, b))).toBe('live');
+    expect(ab.played).toEqual([{ id: 'x', title: 'Paper Boats', at: 24 * M, last: 32 * M }]);
+  });
+
+  it('the same with a Pause: B paused at 28 (X first at 23); A played X at 31: live, whichever way and however often', () => {
+    const base = startSession(0);
+    const b = pauseSession(markPlayed(base, X, 23 * M), 28 * M);
+    const a = markPlayed(base, X, 31 * M);
+    const ab = mergeSessions(a, b);
+    const want = sessionStatus(ab);
+    for (const m of [mergeSessions(ab, b), mergeSessions(b, ab), mergeSessions(mergeSessions(ab, b), b), mergeSessions(ab, a)]) {
+      expect(sessionStatus(m)).toBe(want);
+      expect(m.pausedAt).toBe(ab.pausedAt);
+    }
+  });
+
+  it('fuzz (fixed seed, 3000 pairs, some from older builds): merge is commutative and merging again changes nothing', () => {
+    let seed = 0x296;
+    const rnd = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const songs = ['s1', 's2', 's3', 's4'].map((id) => ({ id, title: id }));
+    const step = (s: SessionState, now: number): SessionState => {
+      const r = rnd();
+      if (r < 0.35) return markPlayed(s, songs[Math.floor(rnd() * songs.length)], now);
+      if (r < 0.55) return pauseSession(s, now);
+      if (r < 0.75) return resumeSession(s, now);
+      return endSession(s, now);
+    };
+    const walk = (s: SessionState, from: number, n: number): [SessionState, number] => {
+      let t = from;
+      for (let i = 0; i < n; i++) {
+        t += Math.floor(rnd() * 5 * M) + Math.floor(rnd() * 1000);
+        s = step(s, t);
+      }
+      return [s, t];
+    };
+    const fails: string[] = [];
+    for (let i = 0; i < 3000 && fails.length < 3; i++) {
+      const [common, t0] = walk(startSession(0), 0, Math.floor(rnd() * 4));
+      const [a] = walk(common, t0, 1 + Math.floor(rnd() * 5));
+      const [b0] = walk(common, t0, 1 + Math.floor(rnd() * 5));
+      // Now and then an older build's copy: no pause times.
+      const b: SessionState = rnd() < 0.2 ? { ...b0, pauses: undefined } : b0;
+      const ab = mergeSessions(a, b);
+      const checks: [string, SessionState][] = [
+        ['merge(b,a)', mergeSessions(b, a)],
+        ['merge(ab,b)', mergeSessions(ab, b)],
+        ['merge(b,ab)', mergeSessions(b, ab)],
+        ['merge(ab,a)', mergeSessions(ab, a)],
+        ['merge(a,ab)', mergeSessions(a, ab)],
+        ['merge(ab,ab)', mergeSessions(ab, ab)],
+      ];
+      for (const [label, m] of checks) {
+        if (!sameSession(m, ab)) fails.push(`${i} ${label}: ${JSON.stringify({ a, b, ab, m })}`);
+      }
+    }
+    expect(fails).toEqual([]);
   });
 });

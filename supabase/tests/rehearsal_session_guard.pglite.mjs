@@ -191,6 +191,34 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   ok(newResume.rows.length === 1 && (await saved()).ended_at === null, "this build's Resume after the End (summary.pauses) goes through");
 }
 
+// #296 round 7: an old leader's End over a row this build wrote keeps the songs it never heard
+// (union by id, saved first); a write with summary.pauses (this build) replaces them as it says.
+{
+  await db.exec(`DELETE FROM rehearsal_sessions`);
+  await upsert(ADMIN_A, { started_at: A_START });
+  const newSongs = [{ id: 's1', title: 'Paper Boats', at: 1 }, { id: 's2', title: 'Superstition', at: 2 }];
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET summary = $1::jsonb WHERE event_id = $2`,
+    [JSON.stringify({ v: 1, durationS: 600, played: newSongs, total: 3, pauses: [] }), EVENT]));
+  const oldEnd = await upsert(ADMIN_B, { started_at: A_START, ended_at: A_END,
+    summary: summary([{ id: 's1', title: 'Paper Boats' }, { id: 's3', title: 'Cissy Strut' }]) });
+  const afterEnd = await saved();
+  ok(oldEnd.ok && afterEnd.ended_at !== null && JSON.stringify(afterEnd.summary.played.map((p) => p.id)) === '["s1","s2","s3"]'
+    && afterEnd.summary.played[0].at === 1,
+    `an old leader's End keeps the songs this build saved and adds its own (${afterEnd.summary.played.map((p) => p.id)})`);
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET summary = $1::jsonb WHERE event_id = $2`,
+    [JSON.stringify({ v: 1, durationS: 600, played: [newSongs[0]], total: 3, pauses: [] }), EVENT]));
+  ok((await saved()).summary.played.length === 1, "this build's write (summary.pauses) sets the songs as it says");
+}
+
+// #296 round 7: an operator's write (no auth.uid(): SQL editor, service_role) is never skipped.
+{
+  const op = await db.query(`UPDATE rehearsal_sessions SET started_at = $1, ended_at = NULL, summary = $2::jsonb WHERE event_id = $3 RETURNING id`,
+    [B_START, summary(PLAYED), EVENT]);
+  const now = await saved();
+  ok(op.rows.length === 1 && new Date(now.started_at).toISOString() === B_START && now.ended_at === null && now.summary.pauses === undefined,
+    "an operator's write goes through as written (start moved, End cleared, summary as given)");
+}
+
 // Members still cannot write.
 const m = await upsert(MEMBER, { started_at: A_START });
 ok(!!m.error, 'a member cannot write');

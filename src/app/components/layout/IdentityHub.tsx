@@ -33,6 +33,7 @@ import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
 import { Band } from '@/app/data/bands';
 import { NotificationItem } from '@/app/data/notifications';
 import { useAuth } from '@/lib/AuthContext';
+import { wipeAfterFailedSignOut } from '@/lib/signOutWipe';
 import { useTheme } from '@/lib/ThemeContext';
 import { useBand } from '@/lib/BandContext';
 import { updateBand } from '@/lib/services/bands';
@@ -296,7 +297,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       window.location.href = '/';
     } catch (e) {
       console.error('Logout failed:', e);
-      localStorage.clear();
+      // Wiped, but not what sign-out keeps (the refused notes, the recordings' cleanup marks, #296 round 7).
+      await wipeAfterFailedSignOut();
       window.location.href = '/';
     }
   };

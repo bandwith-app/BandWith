@@ -20,10 +20,12 @@
  *   accounts that downloaded here go, never the whole place: a slow cleanup
  *   can't take what the next account downloads (#296 round 6), and a new
  *   download waits for a cleanup still running.
- * - Copies of older builds (one shared folder, no owner) move into the folder
- *   of the account signed in at the first launch of this build (the session
- *   they were downloaded under); they are deleted only by a sign-out or a
- *   sign-in of an account that may be another one (#296 round 6).
+ * - Copies of older builds (one shared folder, no owner: any account that
+ *   used the device may have downloaded them) at the first launch of this
+ *   build: those of the signed-in account's own songs (its offline songs and
+ *   live packs on this device) move into its folder, the rest are deleted
+ *   (#296 round 7). With no session they stay until a sign-in or sign-out
+ *   deletes them (#296 round 6).
  */
 import { Capacitor } from '@capacitor/core';
 import { playableAudioUrl, resolveSongFileUrl } from './services/songFiles';
@@ -393,7 +395,14 @@ async function purge({ users, legacy }: Pending, me: string | null): Promise<Pen
       const { Directory } = await fs();
       const legacyLeft = legacy && !(await removeLegacy());
       const left: string[] = [];
-      for (const u of others) if (!(await removeNative(`${ROOT}/${ownerDir(u)}`, Directory.LibraryNoCloud))) left.push(u);
+      for (const u of others) {
+        // Signed in again meanwhile (a slow cleanup): theirs now, kept (#296 round 7).
+        if ((await sessionUserId()) === u) {
+          addOwner(u); // still theirs to delete at their next sign-out
+          continue;
+        }
+        if (!(await removeNative(`${ROOT}/${ownerDir(u)}`, Directory.LibraryNoCloud))) left.push(u);
+      }
       return { users: left, legacy: legacyLeft };
     } catch {
       return { users: others, legacy };
@@ -401,12 +410,16 @@ async function purge({ users, legacy }: Pending, me: string | null): Promise<Pen
   }
   if (typeof indexedDB === 'undefined') return { users: [], legacy: false };
   try {
-    const prefixes = others.map((u) => `${ownerDir(u)}/`);
     const keys = await idb('readonly', (s) => s.getAllKeys());
     for (const k of keys) {
       const key = String(k);
-      // No owner prefix: an older build's copy.
-      if ((legacy && !key.includes('/')) || prefixes.some((p) => key.startsWith(p))) await idb('readwrite', (s) => s.delete(k));
+      // No owner prefix: an older build's copy. Signed in again meanwhile: theirs now, kept (#296 round 7).
+      const owner = others.find((u) => key.startsWith(`${ownerDir(u)}/`));
+      if (owner && (await sessionUserId()) === owner) {
+        addOwner(owner);
+        continue;
+      }
+      if ((legacy && !key.includes('/')) || owner) await idb('readwrite', (s) => s.delete(k));
     }
     return { users: [], legacy: false };
   } catch {
@@ -415,10 +428,37 @@ async function purge({ users, legacy }: Pending, me: string | null): Promise<Pen
 }
 
 /**
- * The older builds' copies go to `me`'s folder (the account their session
- * was, at the first launch of this build). True when nothing is left there.
+ * The song files of `me`'s own songs, as file keys: every `audio_url` (and
+ * a live pack's `audio`) in what this device keeps offline for that account.
+ */
+async function ownKeys(me: string): Promise<Set<string>> {
+  const refs = new Set<string>();
+  const collect = (v: unknown, depth = 0): void => {
+    if (!v || typeof v !== 'object' || depth > 8) return;
+    if (Array.isArray(v)) return v.forEach((x) => collect(x, depth + 1));
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if ((k === 'audio_url' || k === 'audio') && typeof x === 'string' && x) refs.add(x);
+      else collect(x, depth + 1);
+    }
+  };
+  try {
+    const { listOfflineKeys, getOfflineItem } = await import('./offline/storage');
+    for (const k of await listOfflineKeys(`bw:${me}:`)) collect(await getOfflineItem<unknown>(k));
+  } catch {
+    /* nothing cached: none of them is known to be this account's */
+  }
+  return new Set(await Promise.all([...refs].map(audioKey)));
+}
+
+/**
+ * The older builds' copies at the first launch of this build. The folder was
+ * shared by every account that used the device, so the session found here
+ * (the last account signed in) is not proof they are its own: only the files
+ * of its own songs move to its folder, the rest are deleted (#296 round 7,
+ * Claude). True when nothing is left there.
  */
 async function adoptLegacy(me: string): Promise<boolean> {
+  const mine = await ownKeys(me);
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await fs();
     const dir = `${ROOT}/${ownerDir(me)}`;
@@ -430,14 +470,15 @@ async function adoptLegacy(me: string): Promise<boolean> {
       } catch {
         continue; // no such folder
       }
-      if (names.length) {
+      if (names.some((n) => mine.has(n))) {
         await Filesystem.mkdir({ path: dir, directory: Directory.LibraryNoCloud, recursive: true }).catch(() => undefined);
         addOwner(me);
       }
       for (const name of names) {
         const to = { path: `${dir}/${name}`, directory: Directory.LibraryNoCloud };
-        const there = await Filesystem.stat(to).then((st) => st.size > 0, () => false);
+        const there = !mine.has(name) || (await Filesystem.stat(to).then((st) => st.size > 0, () => false));
         try {
+          // Not one of its songs, or already in its folder: deleted.
           if (there) await Filesystem.deleteFile({ path: `${DIR}/${name}`, directory: directory as never });
           else await Filesystem.rename({ from: `${DIR}/${name}`, directory: directory as never, to: to.path, toDirectory: to.directory });
         } catch {
@@ -452,9 +493,9 @@ async function adoptLegacy(me: string): Promise<boolean> {
   if (typeof indexedDB === 'undefined') return true;
   try {
     const keys = (await idb('readonly', (s) => s.getAllKeys())).map(String).filter((k) => !k.includes('/'));
-    if (keys.length) addOwner(me);
+    if (keys.some((k) => mine.has(k))) addOwner(me);
     for (const key of keys) {
-      const v = await idb<StoredAudio | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredAudio | undefined>);
+      const v = mine.has(key) ? await idb<StoredAudio | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredAudio | undefined>) : undefined;
       if (v?.data && !(await idb('readonly', (s) => s.getKey(webKey(me, key))))) {
         await idb('readwrite', (s) => s.put({ ...v, owner: me } satisfies StoredAudio, webKey(me, key)));
       }
@@ -510,9 +551,16 @@ export async function finishPendingAudioCleanup(): Promise<void> {
   await exclusive(async () => {
     const pending = readPending();
     if (pending) settlePending(pending, await purge(pending, me));
-    if (store.get(LEGACY_KEY) === 'done') return;
+    const legacy = store.get(LEGACY_KEY);
+    if (legacy === 'done') return;
     if (!me) {
       store.set(LEGACY_KEY, 'unclaimed');
+      return;
+    }
+    if (legacy === 'unclaimed') {
+      // Left unclaimed at an earlier launch: whoever is signed in now may be another account (#296 round 7).
+      const tried = { users: [], legacy: true };
+      settlePending(tried, await purge(tried, me));
       return;
     }
     if (await adoptLegacy(me).catch(() => false)) store.set(LEGACY_KEY, 'done');
@@ -524,6 +572,8 @@ export async function finishPendingAudioCleanup(): Promise<void> {
  * no session) may be another account's: deleted, never handed to this one.
  */
 export async function legacyAudioSignedIn(): Promise<void> {
+  // Marked at once: the app closed before the deletion ends, the next launch finishes it (#296 round 7).
+  if (store.get(LEGACY_KEY) === 'unclaimed') addPending(null, true);
   await exclusive(async () => {
     if (store.get(LEGACY_KEY) !== 'unclaimed') return;
     const tried = { users: [], legacy: true };

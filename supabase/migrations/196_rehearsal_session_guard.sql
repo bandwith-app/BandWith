@@ -38,6 +38,19 @@
 -- apart from its real Resume here (both clear paused_at, neither has pause
 -- times), so that one is still written; this build's devices merge it.
 --
+-- Songs played (#296 round 7): those builds' leaders don't hear the channel,
+-- so their save (an End, a Resume) carries only the songs they saw; over a
+-- row this build wrote, the saved songs stay and theirs are added (by id).
+--
+-- Only the app's writes are checked (auth.uid() set): an operator's write
+-- (SQL editor, service_role) goes through as written (#296 round 7).
+--
+-- Known limit, accepted as rare: an older build whose clock is behind the
+-- clock of the admin who wrote the End by more than the wait before its
+-- Resume adds no paused time to it (max(0, now - ended_at)), so that Resume
+-- and its saves until its own End are skipped. Phones keep their clocks in
+-- sync; its device shows the saved session at the next open.
+--
 -- Same function as 131 plus these checks. No new columns, grants or
 -- policies. Idempotent.
 
@@ -53,21 +66,39 @@ BEGIN
     NEW.started_by := auth.uid();
     NEW.created_at := now();
   ELSE
-    IF NEW.started_at IS DISTINCT FROM OLD.started_at
-       AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') = 'array', false)) THEN
-      -- Another start over a saved session: skipped, the saved one stays.
-      RETURN NULL;
-    END IF;
-    IF OLD.ended_at IS NOT NULL AND NEW.ended_at IS NULL
-       AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true)
-       AND NEW.paused_ms <= OLD.paused_ms THEN
-      -- An older build that missed the End saving its running copy: skipped, the End stays.
-      RETURN NULL;
-    END IF;
-    IF jsonb_typeof(OLD.summary -> 'pauses') = 'array'
-       AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true) THEN
-      NEW.summary := CASE WHEN jsonb_typeof(NEW.summary) = 'object' THEN NEW.summary ELSE '{}'::jsonb END
-        || jsonb_build_object('pauses', OLD.summary -> 'pauses');
+    -- The app's writes only (a signed-in user): an operator's (SQL editor, service_role: no
+    -- auth.uid()) goes through as written, never skipped quietly (#296 round 7).
+    IF auth.uid() IS NOT NULL THEN
+      IF NEW.started_at IS DISTINCT FROM OLD.started_at
+         AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') = 'array', false)) THEN
+        -- Another start over a saved session: skipped, the saved one stays.
+        RETURN NULL;
+      END IF;
+      IF OLD.ended_at IS NOT NULL AND NEW.ended_at IS NULL
+         AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true)
+         AND NEW.paused_ms <= OLD.paused_ms THEN
+        -- An older build that missed the End saving its running copy: skipped, the End stays.
+        RETURN NULL;
+      END IF;
+      IF jsonb_typeof(OLD.summary -> 'pauses') = 'array'
+         AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true) THEN
+        -- An older build's save over a row this build wrote: the pause times stay, and the
+        -- songs played are the union (saved ones first, then the ones it adds).
+        NEW.summary := CASE WHEN jsonb_typeof(NEW.summary) = 'object' THEN NEW.summary ELSE '{}'::jsonb END
+          || jsonb_build_object(
+            'pauses', OLD.summary -> 'pauses',
+            'played',
+            CASE WHEN jsonb_typeof(OLD.summary -> 'played') = 'array' THEN OLD.summary -> 'played' ELSE '[]'::jsonb END
+              || COALESCE((
+                SELECT jsonb_agg(p ORDER BY ord)
+                FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.summary -> 'played') = 'array' THEN NEW.summary -> 'played' ELSE '[]'::jsonb END)
+                  WITH ORDINALITY AS t(p, ord)
+                WHERE NOT EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(OLD.summary -> 'played') = 'array' THEN OLD.summary -> 'played' ELSE '[]'::jsonb END) AS o(q)
+                  WHERE o.q ->> 'id' = t.p ->> 'id')
+              ), '[]'::jsonb));
+      END IF;
     END IF;
     NEW.started_by := OLD.started_by;
     NEW.created_at := OLD.created_at;
