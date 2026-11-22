@@ -4376,6 +4376,10 @@ const dict: Dictionary = {
   "Making…": "Wird erstellt…",
   "Couldn’t copy the link. Try again.": "Link konnte nicht kopiert werden. Versuche es erneut.",
   "Couldn’t make a new link. Check your connection and try again.": "Neuer Link konnte nicht erstellt werden. Prüfe deine Verbindung und versuche es erneut.",
+  // Calendar links made before 182 (asked once)
+  "Check your calendar link": "Prüfe deinen Kalender-Link",
+  "Until now, “Add to calendar” links had your private calendar link inside. If you sent one to anyone, make a new link: with the old one they can see all your events. If you subscribed in a calendar, add the new link there again.": "Bisher steckte in den Links von „Zum Kalender hinzufügen“ der private Link deines Kalenders. Wenn du einen davon jemandem geschickt hast, erstelle einen neuen Link: Mit dem alten sieht man alle deine Termine. Wenn du den Kalender abonniert hast, füge dort den neuen Link erneut hinzu.",
+  "Keep my link": "Meinen Link behalten",
   // Pending invites (166)
   "Invited": "Eingeladen",
   "Waiting to join. An invite lasts 7 days.": "Noch nicht beigetreten. Eine Einladung gilt 7 Tage.",

@@ -15,7 +15,8 @@
 // That date comes alone, without the series rule.
 //
 // t=<feed token>&e=<event id>: how app builds before 182 asked for one
-// event. Still answered so they keep working.
+// event. Still answered so they keep working; each use marks the account so
+// the app asks once to make a new link (bw_member_calendar_flag_shared).
 //
 // Public by design: the 64-character tokens are the only key, as for
 // deputy-calendar. Uses the publishable key; the RPCs return only what the
@@ -78,6 +79,9 @@ serve(async (req) => {
     language = feed.language;
     feedEvents = feed.events ?? [];
     one = legacyOne || null;
+    // The old one-event link (account token inside, builds before 182) was
+    // used: the app asks its owner once to make a new link.
+    if (one) await rpc("bw_member_calendar_flag_shared", token).catch(() => undefined);
   }
 
   // The link's language, else the account's app language.

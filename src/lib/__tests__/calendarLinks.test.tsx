@@ -18,6 +18,7 @@ import type { DeputyGig } from '../services/deputies';
 const REPLY_A = 'a'.repeat(64);
 const REPLY_B = 'b'.repeat(64);
 const CAL = 'c'.repeat(64);
+const GIGCAL = 'e'.repeat(64);
 const NOW = new Date(Date.UTC(2026, 10, 22, 12));
 const SITE = 'https://app.bandwith.fun';
 
@@ -79,6 +80,14 @@ describe('one occurrence of a recurring rehearsal (02 #11)', () => {
     expect(ics).toContain('UID:event-ev-2@bandwith');
   });
 
+  it('a date the server already resolved (no rule in it) keeps its own UID (review of #285)', () => {
+    const single: MemberFeedEvent = { ...weekly, event_date: '2026-12-08', recurrence: null };
+    const ics = memberFeedCalendar([single], { lang: 'en', site: SITE, one: 'ev-1', occurrence: '2026-12-08', now: NOW }) as string;
+    expect(ics).toContain('DTSTART:20261208T190000');
+    expect(ics).toContain('UID:event-ev-1-20261208@bandwith');
+    expect(ics).not.toContain('RRULE');
+  });
+
   it('the subscription still repeats the series', () => {
     const ics = memberFeedCalendar([weekly], { lang: 'en', site: SITE, now: NOW }) as string;
     expect(ics).toContain('RRULE:FREQ=WEEKLY;INTERVAL=1');
@@ -100,7 +109,7 @@ describe('one occurrence of a recurring rehearsal (02 #11)', () => {
   });
 });
 
-const myGig = (o: Partial<DeputyGig & { calendar_token: string | null }>): DeputyGig => ({
+const myGig = (o: Partial<DeputyGig>): DeputyGig => ({
   id: 'g-1', token: REPLY_A, status: 'available', deputy_name: 'Leo', role: 'Bass', fee: 250, currency: 'USD', reply_note: null,
   responded_at: null, band_name: 'Velvet Static', event_title: 'Rooftop Session', event_type: 'gig', event_date: '2099-12-05',
   start_time: '21:00:00', end_time: null, load_in_time: null, soundcheck_time: null, venue_name: 'The Loft', venue_city: 'Brooklyn',
@@ -108,11 +117,13 @@ const myGig = (o: Partial<DeputyGig & { calendar_token: string | null }>): Deput
 } as DeputyGig);
 
 describe('deputy gigs in the app: calendar links (02 #3)', () => {
-  it('Add to calendar and Subscribe use the read-only calendar token, never the reply token', () => {
-    render(<DeputyGigCard gig={myGig({ calendar_token: CAL })} onChanged={vi.fn()} />);
+  it('Add to calendar uses the one-gig key, Subscribe the calendar key, never the reply token', () => {
+    render(<DeputyGigCard gig={myGig({ calendar_token: CAL, gig_calendar_token: GIGCAL })} onChanged={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Add to calendar' }));
     const file = lastOpened() as string;
-    expect(file).toMatch(new RegExp(`/functions/v1/deputy-calendar\\?t=${CAL}&l=en&one=1$`));
+    // Review of #285 (Codex B1): the file link must not be the subscription key.
+    expect(file).toMatch(new RegExp(`/functions/v1/deputy-calendar\\?g=${GIGCAL}&l=en$`));
+    expect(file).not.toContain(CAL);
     const sub = screen.getAllByRole('button').find((b) => /subscribe/i.test(b.textContent || ''));
     expect(sub).toBeTruthy();
     fireEvent.click(sub as HTMLElement);
@@ -122,7 +133,7 @@ describe('deputy gigs in the app: calendar links (02 #3)', () => {
   });
 
   it('a server without calendar tokens yet: no file or subscription link (Google Calendar stays)', () => {
-    render(<DeputyGigCard gig={myGig({ calendar_token: null })} onChanged={vi.fn()} />);
+    render(<DeputyGigCard gig={myGig({ calendar_token: null, gig_calendar_token: null })} onChanged={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Add to calendar' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Google Calendar' }));
     const google = lastOpened() as string;

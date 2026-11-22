@@ -41,6 +41,7 @@ vi.mock('@/lib/memberCalendar', async (orig) => ({
   // The account's feed token: must never end up in a one-event link.
   useCalendarToken: () => ({ token: 'c'.repeat(64), loading: false }),
   useEventCalendarToken: evLink.hook,
+  useCalendarLinkReview: () => false,
 }));
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), pickUp: vi.fn(), dragTick: vi.fn(), drop: vi.fn() },

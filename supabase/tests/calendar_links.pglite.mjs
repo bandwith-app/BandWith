@@ -85,7 +85,9 @@ await db.exec(`GRANT EXECUTE ON FUNCTION public.bw_deputy_request_view(text), pu
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND, BAND2, ADMIN, MEM, OUT, DEP_USER] = [1, 2, 3, 4, 5, 6].map(id);
 const [EV, EV2, EV_REH, EV_OTHER, EV_DECL] = [10, 11, 12, 13, 14].map(id);
-const [DEPUTY, RA, RB, RC] = [20, 21, 22, 23].map(id);
+const [DEPUTY, RA, RB, RC, RM, RX] = [20, 21, 22, 23, 24, 25].map(id);
+const [DEPUTY2, RD] = [26, 27].map(id);
+const [EV_MAYBE, EV_GONE] = [15, 16].map(id);
 await db.exec(`
 INSERT INTO auth.users SELECT unnest(ARRAY['${ADMIN}','${MEM}','${OUT}','${DEP_USER}']::uuid[]);
 INSERT INTO profiles VALUES ('${ADMIN}','en'),('${MEM}','it'),('${OUT}','en');
@@ -96,15 +98,20 @@ INSERT INTO events (id, band_id, title, event_type, status, event_date, start_ti
   ('${EV2}','${BAND}','Hoboken Pier','gig','confirmed', current_date + 20, '20:00','Pier 13','Hoboken', NULL, false, NULL, '${ADMIN}', 900),
   ('${EV_REH}','${BAND}','Weekly rehearsal','rehearsal','confirmed', current_date + 1, '19:00','Studio B','Queens', NULL, true, '{"frequency":"weekly","interval":1}', '${ADMIN}', 0),
   ('${EV_OTHER}','${BAND2}','Other band gig','gig','confirmed', current_date + 5, '20:00','Elsewhere','Newark', NULL, false, NULL, '${OUT}', 1),
-  ('${EV_DECL}','${BAND}','Declined gig','gig','confirmed', current_date + 7, '20:00','Bar','Queens', NULL, false, NULL, '${ADMIN}', 1);
+  ('${EV_DECL}','${BAND}','Declined gig','gig','confirmed', current_date + 7, '20:00','Bar','Queens', NULL, false, NULL, '${ADMIN}', 1),
+  ('${EV_MAYBE}','${BAND}','Maybe gig','gig','confirmed', current_date + 8, '20:00','Maybe Hall','Queens','7 Secret Ave', false, NULL, '${ADMIN}', 1),
+  ('${EV_GONE}','${BAND}','Gone gig','gig','confirmed', current_date + 9, '20:00','Gone Hall','Queens','9 Gone St', false, NULL, '${ADMIN}', 1);
 INSERT INTO event_members (event_id, user_id, role, status) VALUES
   ('${EV}','${MEM}','Bass','confirmed'),('${EV2}','${MEM}','Bass','confirmed'),('${EV_REH}','${MEM}',NULL,'confirmed'),('${EV_DECL}','${MEM}',NULL,'declined');
-INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ('${DEPUTY}','${BAND}','Leo',NULL);
+INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ('${DEPUTY}','${BAND}','Leo',NULL),('${DEPUTY2}','${BAND}','Ada',NULL);
 INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, status, answer_snapshot) VALUES
   ('${RA}','${BAND}','${EV}','${DEPUTY}','Leo','Bass', 250, 'USD', 'available', '{}'),
   ('${RB}','${BAND}','${EV2}','${DEPUTY}','Leo','Bass', 300, 'USD', 'available', '{}'),
-  ('${RC}','${BAND}','${EV_REH}','${DEPUTY}','Leo','Bass', 50, 'USD', 'cancelled', NULL);
+  ('${RC}','${BAND}','${EV_REH}','${DEPUTY}','Leo','Bass', 50, 'USD', 'cancelled', NULL),
+  ('${RD}','${BAND}','${EV}','${DEPUTY2}','Ada','Keys', 200, 'USD', 'pending', NULL);
 `);
+// An account link made before 182 ("Add to calendar" links shared until now carry it).
+await q(`INSERT INTO calendar_feeds (user_id) VALUES ($1)`, [ADMIN]);
 const tok = async (r) => (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [r])).token;
 const [TA, TB, TC] = [await tok(RA), await tok(RB), await tok(RC)];
 
@@ -113,6 +120,14 @@ const mig = readFileSync(MIG, 'utf8');
 await db.exec(mig);
 await db.exec(mig);
 ok(true, 'migration runs twice');
+
+// Answered through the reply page, then withdrawn by the admin.
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status) VALUES
+  ($1, $3, $4, $6, 'Leo', 'Bass', 'pending'), ($2, $3, $5, $6, 'Leo', 'Bass', 'pending')`, [RM, RX, BAND, EV_MAYBE, EV_GONE, DEPUTY]);
+const [TM, TX] = [await tok(RM), await tok(RX)];
+await q(`SELECT public.bw_deputy_request_reply($1, 'maybe')`, [TM]);
+await q(`SELECT public.bw_deputy_request_reply($1, 'available')`, [TX]);
+await q(`UPDATE deputy_requests SET status = 'cancelled' WHERE id IN ($1, $2)`, [RM, RX]);
 
 // ------------------------------------------------------------- deputies --
 console.log('-- deputies (02 #3 / 03 #2)');
@@ -137,12 +152,13 @@ await check('calendar feed by calendar token: the deputy\'s gigs, no token of an
   const s = JSON.stringify(f);
   const ids = f.gigs.map((g) => g.id).sort();
   const leaks = [TA, TB, TC, await cal(RA), await cal(RB)].filter((t) => s.includes(t));
-  return ids.join() === [RA, RB].sort().join() && leaks.length === 0 && !s.includes('"fee') && f.gigs.find((g) => g.id === RA).mine === true
+  // RX: said yes, then withdrawn (shown cancelled). Never RM (only "maybe").
+  return ids.join() === [RA, RB, RX].sort().join() && leaks.length === 0 && !s.includes('"fee') && f.gigs.find((g) => g.id === RA).mine === true
     && f.gigs.find((g) => g.id === RB).mine === false;
 });
 await check('old subscriptions (reply token in the URL) keep working, without tokens', async () => {
   const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [TA])).f;
-  return f.gigs.length === 2 && !JSON.stringify(f).includes(TB);
+  return f.gigs.length === 3 && !JSON.stringify(f).includes(TB);
 });
 await check('a calendar token opens no reply page and changes no answer', async () => {
   const c = await cal(RA);
@@ -165,6 +181,43 @@ await check('unlinking the deputy ends the calendar tokens too', async () => {
   await db.exec('RESET ROLE');
   const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [old])).f;
   return f === null && (await cal(RA)) !== old;
+});
+
+
+console.log('-- review fixes (PR #285)');
+const col = async (r, c) => (await one(`SELECT ${c} AS v FROM deputy_requests WHERE id = $1`, [r])).v;
+await check('Codex B1: the one-gig file has its own key, which opens that gig only and no feed', async () => {
+  const g = await col(RA, 'gig_calendar_token');
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RA)])).v;
+  const file = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS f`, [g])).f;
+  const feed = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [g])).f;
+  return /^[0-9a-f]{64}$/.test(g) && g !== await col(RA, 'calendar_token') && v.gig_calendar_token === g
+    && file.gigs.length === 1 && file.gigs[0].id === RA && file.gigs[0].mine === true && feed === null
+    && !JSON.stringify(file).includes(await tok(RA));
+});
+await check('Codex B3: "Maybe" then withdrawn is not in the calendar (no address either)', async () => {
+  const f = JSON.stringify((await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f);
+  const legacy = JSON.stringify((await one(`SELECT public.bw_deputy_feed($1) AS f`, [await tok(RA)])).f);
+  return !f.includes('Maybe gig') && !f.includes('7 Secret Ave') && !legacy.includes('7 Secret Ave');
+});
+await check('Codex B3: a yes then withdrawn shows as cancelled, without the street address', async () => {
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
+  const g = f.gigs.find((x) => x.id === RX);
+  return g && g.cancelled === true && g.venue_address === null && g.venue_name === 'Gone Hall';
+});
+await check('Claude #4: the 084 feed (old function) takes a calendar token and writes no token at all', async () => {
+  const f = (await one(`SELECT public.bw_deputy_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
+  const all = (await q(`SELECT token, calendar_token, gig_calendar_token FROM deputy_requests`)).rows.flatMap((r) => Object.values(r));
+  const s = JSON.stringify(f);
+  return f && f.gigs.length >= 2 && f.gigs.every((g) => g.token === null) && all.every((t) => !s.includes(t));
+});
+await check('Claude #1: unlink of a deputy with no account still rotates every key', async () => {
+  const before = [await tok(RD), await col(RD, 'calendar_token'), await col(RD, 'gig_calendar_token')];
+  await as(ADMIN);
+  const r = (await one(`SELECT public.bw_deputy_unlink($1) AS r`, [DEPUTY2])).r;
+  await db.exec('RESET ROLE');
+  const after = [await tok(RD), await col(RD, 'calendar_token'), await col(RD, 'gig_calendar_token')];
+  return r === 'not_linked' && before.every((t, i) => t !== after[i]);
 });
 
 // -------------------------------------------------------------- members --
@@ -203,7 +256,7 @@ await check('same event: same token; one date of a repeating rehearsal: its own 
   const l2 = (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [r2])).l;
   const start = (await one(`SELECT (current_date + 1)::text AS d`)).d;
   return again === T1 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [T1])).l.occurrence === null
-    && r1 !== r2 && l1.occurrence === start && l2.occurrence === occ && l2.event.recurrence.frequency === 'weekly';
+    && r1 !== r2 && l1.occurrence === start && l2.occurrence === occ;
 });
 await check('the link stops when the member declines the event', async () => {
   const t2 = await evTok(MEM, EV2, null);
@@ -217,6 +270,68 @@ await check('"Make a new link" also ends the one-event links', async () => {
   await q(`SELECT public.bw_my_calendar_token(true)`);
   await db.exec('RESET ROLE');
   return (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [T1])).l === null && (await evTok(MEM, EV, null)) !== T1;
+});
+await check('Codex B2: an occurrence link gives that date only, never the series rule or start', async () => {
+  const occ = (await one(`SELECT (current_date + 15)::text AS d`)).d;
+  const t = await evTok(MEM, EV_REH, occ);
+  const l = (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t])).l;
+  return l.event.recurrence === null && l.event.event_date === occ && l.occurrence === occ;
+});
+await check('Codex B2: after a schedule change that drops the date, the link shows nothing', async () => {
+  const occ = (await one(`SELECT (current_date + 8)::text AS d`)).d;
+  const t = await evTok(MEM, EV_REH, occ);
+  await q(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","interval":2}' WHERE id = $1`, [EV_REH]);
+  const l = (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t])).l;
+  await q(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","interval":1}' WHERE id = $1`, [EV_REH]);
+  return l === null;
+});
+await check('Codex minor: a one-off turned weekly gives its date only; weekly turned one-off drops other dates', async () => {
+  const t1 = await evTok(MEM, EV2, null);
+  await q(`UPDATE events SET is_recurring = true, recurrence_rule = '{"frequency":"weekly"}' WHERE id = $1`, [EV2]);
+  const a = (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t1])).l;
+  await q(`UPDATE events SET is_recurring = false, recurrence_rule = NULL WHERE id = $1`, [EV2]);
+  const occ = (await one(`SELECT (current_date + 8)::text AS d`)).d;
+  const t2 = await evTok(MEM, EV_REH, occ);
+  await q(`UPDATE events SET is_recurring = false WHERE id = $1`, [EV_REH]);
+  const b = (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t2])).l;
+  await q(`UPDATE events SET is_recurring = true WHERE id = $1`, [EV_REH]);
+  const d20 = (await one(`SELECT (current_date + 20)::text AS d`)).d;
+  return a && a.event.recurrence === null && a.event.event_date === d20 && b === null;
+});
+await check('Claude #2: a date that is not an occurrence, or years away, gets no token', async () => {
+  const bad = (await one(`SELECT (current_date + 9)::text AS d`)).d;
+  const far = (await one(`SELECT (current_date + 1 + 7 * 200)::text AS d`)).d;
+  return (await evTok(MEM, EV_REH, bad)) === null && (await evTok(MEM, EV_REH, far)) === null;
+});
+await check('Claude #2: at most 500 links per account (the oldest go)', async () => {
+  await q(`INSERT INTO calendar_event_links (user_id, event_id, occurrence, created_at)
+           SELECT $1, $2, current_date + 1 + 7 * g, now() - interval '1 day' FROM generate_series(1, 520) g
+           ON CONFLICT DO NOTHING`, [MEM, EV_REH]);
+  const occ = (await one(`SELECT (current_date + 29)::text AS d`)).d;
+  await q(`DELETE FROM calendar_event_links WHERE user_id = $1 AND occurrence = $2::date`, [MEM, occ]);
+  const t = await evTok(MEM, EV_REH, occ);
+  const n = (await one(`SELECT count(*)::int AS n FROM calendar_event_links WHERE user_id = $1`, [MEM])).n;
+  return /^[0-9a-f]{64}$/.test(t) && n === 500 && (await one(`SELECT public.bw_member_event_calendar($1) AS l`, [t])).l !== null;
+});
+await check('Claude #3: a link made before 182 asks once to be replaced; keep or new link ends it', async () => {
+  await as(ADMIN);
+  const a = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await q(`SELECT public.bw_my_calendar_link_keep()`);
+  const b = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await as(MEM);
+  const c = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await db.exec('RESET ROLE');
+  // An older build served a one-event link (t=&e=): ask again.
+  const t = (await one(`SELECT token FROM calendar_feeds WHERE user_id = $1`, [ADMIN])).token;
+  await db.exec('SET ROLE anon');
+  await q(`SELECT public.bw_member_calendar_flag_shared($1)`, [t]);
+  await db.exec('RESET ROLE');
+  await as(ADMIN);
+  const d = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await q(`SELECT public.bw_my_calendar_token(true)`);
+  const e = (await one(`SELECT public.bw_my_calendar_link_review() AS r`)).r;
+  await db.exec('RESET ROLE');
+  return a === true && b === false && c === false && d === true && e === false;
 });
 await check('grants: anon reads a link, only signed-in users make one, nobody reads the table', async () => {
   const r = await one(`SELECT has_function_privilege('anon', 'public.bw_member_event_calendar(text)', 'EXECUTE') AS a,

@@ -1,11 +1,17 @@
 // Calendar subscription for a deputy (no BandWith account).
 //
-// GET /functions/v1/deputy-calendar?t=<calendar token>&l=<language>[&one=1]
-// Returns the deputy's confirmed gigs with that band as an .ics feed
-// (one=1: only the gig of the link, as a file to import once)
-// (bw_deputy_calendar_feed, migration 182). Calendars poll it, so changes to
-// times or venue and cancellations reach the deputy's own calendar by
-// themselves.
+// GET /functions/v1/deputy-calendar?t=<calendar token>&l=<language>
+// The subscription: the deputy's confirmed gigs with that band as an .ics
+// feed (bw_deputy_calendar_feed, migration 182). Calendars poll it, so
+// changes to times or venue and cancellations reach the deputy's own
+// calendar by themselves.
+//
+// GET /functions/v1/deputy-calendar?g=<gig calendar token>&l=<language>
+// "Add to calendar": the file of that one gig (bw_deputy_gig_calendar). Its
+// own key, so a forwarded file link opens that gig only, not the
+// subscription.
+//
+// t=<token>&one=1: the file as links before 182 asked for it (still served).
 // Public by design: the 64-character token is the only key. Since 182 it is
 // the request's read-only calendar token, not its reply token: the reply
 // token (/deputy.html) shows the fee and changes the answer, and a calendar
@@ -36,15 +42,16 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
   const url = new URL(req.url);
-  const token = (url.searchParams.get("t") ?? "").toLowerCase();
+  const gigToken = (url.searchParams.get("g") ?? "").toLowerCase();
+  const token = gigToken || (url.searchParams.get("t") ?? "").toLowerCase();
   const lang = (url.searchParams.get("l") ?? "en").slice(0, 2).toLowerCase();
-  const one = url.searchParams.get("one") === "1";
+  const one = !!gigToken || url.searchParams.get("one") === "1";
   if (!/^[0-9a-f]{64}$/.test(token)) return new Response("Not found", { status: 404 });
 
-  let res = await rpc("bw_deputy_calendar_feed", token);
+  let res = await rpc(gigToken ? "bw_deputy_gig_calendar" : "bw_deputy_calendar_feed", token);
   // Before migration 182 (the function deployed first): the 084 feed. Its
   // reply tokens are never written into the calendar.
-  if (res.status === 404) res = await rpc("bw_deputy_feed", token);
+  if (res.status === 404 && !gigToken) res = await rpc("bw_deputy_feed", token);
   if (!res.ok) return new Response("Unavailable", { status: 503 });
   const feed = await res.json() as { band_name?: string; gigs?: DeputyFeedGig[] } | null;
   if (!feed) return new Response("Not found", { status: 404 });

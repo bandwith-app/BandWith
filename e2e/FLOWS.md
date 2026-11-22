@@ -20,6 +20,7 @@ check (`app.check`) on each screen it reaches.
 | Calendar: filters All / Gigs / Rehearsals / Quotes | `home-calendar` | full |
 | Calendar: search by venue, close search | `home-calendar` | full |
 | Calendar: open a gig, rehearsal, quote, personal gig, and back | `home-calendar` | full |
+| Calendar link made before 182: asked once in the event (Keep my link) and in Settings → Calendar sync (Make a new link) | `calendar-link-review` | all |
 | Home in Spanish and German: translated, fits | `i18n` | all |
 | Calendar, a gig and the Account hub in Spanish and German | `i18n` | full |
 

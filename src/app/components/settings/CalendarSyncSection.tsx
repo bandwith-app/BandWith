@@ -4,6 +4,7 @@ import { PillButton } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { openExternal } from '@/lib/nativeFiles';
+import { CalendarLinkNotice } from '@/app/components/calendar/CalendarLinkNotice';
 import { googleSubscribeUrl, memberCalendarUrl, myCalendarToken, useCalendarToken, webcalUrl } from '@/lib/memberCalendar';
 
 const CARD = 'bg-card text-card-foreground rounded-[24px]';
@@ -71,6 +72,7 @@ export const CalendarSyncSection: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-sync">
+      <CalendarLinkNotice />
       <div className={cn(CARD, 'p-4 flex items-start gap-3')}>
         <Tile>
           <Calendar />

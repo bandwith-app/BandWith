@@ -38,12 +38,14 @@ describe('Settings → Calendar sync', () => {
   });
 
   it('makes a new link only after confirming', async () => {
-    rpc.mockResolvedValueOnce({ data: A, error: null }).mockResolvedValueOnce({ data: B, error: null });
+    // By function: the section also asks whether to check an old link (182).
+    rpc.mockImplementation(async (fn: string, args?: { p_rotate?: boolean }) =>
+      fn === 'bw_my_calendar_token' ? { data: args?.p_rotate ? B : A, error: null } : { data: false, error: null });
     render(<CalendarSyncSection />);
     const make = await screen.findByRole('button', { name: /Make a new link/ });
     await waitFor(() => expect(make).not.toBeDisabled());
     fireEvent.click(make);
-    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls.filter(([fn]) => fn === 'bw_my_calendar_token')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Make a new link' }));
     await screen.findByText('New link ready');
     expect(rpc).toHaveBeenLastCalledWith('bw_my_calendar_token', { p_rotate: true });

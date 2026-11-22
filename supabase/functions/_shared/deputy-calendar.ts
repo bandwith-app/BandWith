@@ -342,8 +342,9 @@ export function isOccurrence(rule: unknown, start: string, date: string): boolea
 /**
  * The member's calendar, or one event as a file to import once (`one` =
  * its id). One date of a repeating rehearsal (`occurrence`) is that date
- * alone, without the series rule, under its own UID. Null when that event
- * (or that date of it) is not in the feed.
+ * alone, without the series rule, under its own UID (also when the server
+ * already resolved it: bw_member_event_calendar sends that date without
+ * the rule). Null when that event (or that date of it) is not in the feed.
  */
 export function memberFeedCalendar(
   feedEvents: MemberFeedEvent[],
@@ -356,8 +357,14 @@ export function memberFeedCalendar(
   const events: string[][] = [];
   for (const e of chosen) {
     const rrule = recurrenceRule(e.recurrence);
-    const occ = one && rrule && opts.occurrence ? opts.occurrence : null;
-    if (occ && !isOccurrence(e.recurrence, e.event_date as string, occ)) return null;
+    let occ = one && opts.occurrence ? opts.occurrence : null;
+    if (occ && rrule) {
+      if (!isOccurrence(e.recurrence, e.event_date as string, occ)) return null;
+    } else if (occ && occ !== e.event_date) {
+      // A one-off: a date that is not its own is ignored. (The server sends
+      // an occurrence already resolved to the event's date, rule removed.)
+      occ = null;
+    }
     events.push(gigEvent(
       {
         title: e.title || (e.type === "rehearsal" ? labels.rehearsal : labels.gig) || "Gig",

@@ -135,6 +135,63 @@ export function memberEventCalendarUrl(eventToken: string, lang?: string): strin
   return `${base}/functions/v1/member-calendar?${q.toString()}`;
 }
 
+// ------------------------------------------- links shared before 182 --
+// "Add to calendar" links made before 182 carry the account token; the app
+// asks once to make a new link (bw_my_calendar_link_review).
+
+let review: { userId: string; value: Promise<boolean> } | null = null;
+const reviewListeners = new Set<(v: boolean) => void>();
+const setReview = (userId: string, v: boolean) => {
+  review = { userId, value: Promise.resolve(v) };
+  reviewListeners.forEach((l) => l(v));
+};
+
+/** Whether to ask the signed-in user to replace their calendar link. */
+export async function myCalendarLinkReview(): Promise<boolean> {
+  const userId = await currentUserId();
+  if (!userId) return false;
+  if (review?.userId === userId) return review.value;
+  const value = (async () => {
+    const { data, error } = await supabase.rpc('bw_my_calendar_link_review');
+    return !error && data === true;
+  })();
+  review = { userId, value };
+  return value;
+}
+
+/** "Keep my link": don't ask again. */
+export async function keepMyCalendarLink(): Promise<boolean> {
+  const userId = await currentUserId();
+  if (!userId) return false;
+  const { error } = await supabase.rpc('bw_my_calendar_link_keep');
+  if (error) return false;
+  setReview(userId, false);
+  return true;
+}
+
+/** A new account link: the old one (and every link made with it) stops. */
+export async function replaceMyCalendarLink(): Promise<boolean> {
+  const next = await myCalendarToken(true);
+  const userId = await currentUserId();
+  if (next && userId) setReview(userId, false);
+  return !!next;
+}
+
+export function useCalendarLinkReview(): boolean {
+  const [needs, setNeeds] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const l = (v: boolean) => alive && setNeeds(v);
+    reviewListeners.add(l);
+    void myCalendarLinkReview().then(l, () => l(false));
+    return () => {
+      alive = false;
+      reviewListeners.delete(l);
+    };
+  }, []);
+  return needs;
+}
+
 /** Apple Calendar / Outlook subscribe through webcal:. */
 export const webcalUrl = (feedUrl: string) => feedUrl.replace(/^https?:/, 'webcal:');
 
@@ -147,4 +204,5 @@ export function _resetCalendarTokenCache() {
   cached = null;
   pending = null;
   eventTokens.clear();
+  review = null;
 }

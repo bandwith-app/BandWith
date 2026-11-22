@@ -274,8 +274,10 @@ export interface DeputyGig {
   id: string;
   /** The reply token: answers and shows the fee. Never in a calendar. */
   token: string;
-  /** Read-only key of the calendar file / subscription (182); absent before 182. */
+  /** Read-only key of the calendar subscription (182); absent before 182. */
   calendar_token?: string | null;
+  /** Read-only key of this gig's calendar file (182); absent before 182. */
+  gig_calendar_token?: string | null;
   status: DeputyRequestStatus;
   deputy_name: string;
   role: string | null;

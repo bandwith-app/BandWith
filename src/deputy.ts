@@ -41,8 +41,9 @@ interface View {
   changes: ChangeKey[];
   before: Partial<Record<ChangeKey, string | null>>;
   closed: boolean;
-  /** Read-only key of the calendar file / subscription (182). */
+  /** Read-only keys of the calendar subscription and of this gig's file (182). */
   calendar_token?: string | null;
+  gig_calendar_token?: string | null;
 }
 
 const params = new URL(window.location.href).searchParams;
@@ -137,11 +138,11 @@ function simpleCard(kicker: string, title: string, body: string, ink = true) {
   return h('section', { class: `card ${ink ? 'ink' : 'lime'}` }, h('div', { class: 'kicker' }, kicker), h('h1', {}, title), h('p', {}, body));
 }
 
-// The calendar links use the request's read-only calendar token (182), never
-// the reply token of this page: a calendar is easily shared, and this
-// token shows the fee and changes the answer.
+// The calendar links use the request's read-only keys (182), never the reply
+// token of this page: a calendar is easily shared, and this token shows the
+// fee and changes the answer. The file has its own key (this gig only).
 function feedUrl(v: View, one: boolean) {
-  return deputyCalendarUrl(SUPABASE_URL, v.calendar_token, lang, one);
+  return one ? deputyCalendarUrl(SUPABASE_URL, v.gig_calendar_token, lang, 'gig') : deputyCalendarUrl(SUPABASE_URL, v.calendar_token, lang, 'feed');
 }
 
 function detailRows(v: View) {

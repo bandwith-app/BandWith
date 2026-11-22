@@ -1057,9 +1057,35 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_my_calendar_token': {
       if (args.p_rotate || !demoCalendarToken) {
         demoEventCalendarTokens.clear();
+        if (args.p_rotate) {
+          try {
+            localStorage.removeItem('bw-demo-calendar-review');
+          } catch {
+            /* private mode */
+          }
+        }
         demoCalendarToken = Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
       }
       data = demoCalendarToken;
+      break;
+    }
+    // Calendar link made before 182 (asked once): e2e turns it on with
+    // localStorage bw-demo-calendar-review = 1.
+    case 'bw_my_calendar_link_review': {
+      try {
+        data = localStorage.getItem('bw-demo-calendar-review') === '1';
+      } catch {
+        data = false;
+      }
+      break;
+    }
+    case 'bw_my_calendar_link_keep': {
+      try {
+        localStorage.removeItem('bw-demo-calendar-review');
+      } catch {
+        /* private mode */
+      }
+      data = null;
       break;
     }
     // "Add to calendar" (182): a link token per event and date.

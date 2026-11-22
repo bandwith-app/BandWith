@@ -6,6 +6,7 @@ import { getLocale, useT } from '@/lib/i18n';
 import { GIG_LABELS, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
 import { openExternal } from '@/lib/nativeFiles';
 import { memberEventCalendarUrl, useEventCalendarToken } from '@/lib/memberCalendar';
+import { CalendarLinkNotice } from './CalendarLinkNotice';
 
 export interface CalendarEventInfo {
   eventId: string;
@@ -52,20 +53,23 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
   };
 
   return (
-    <div className={cn('flex flex-wrap gap-2', className)} data-testid="add-to-calendar">
-      <PillButton
-        size="sm"
-        variant="outline"
-        fullWidth={false}
-        disabled={!file}
-        icon={<CalendarPlus className="w-4 h-4" aria-hidden />}
-        onClick={() => file && void openExternal(file)}
-      >
-        {t('Add to calendar')}
-      </PillButton>
-      <PillButton size="sm" variant="ghost" fullWidth={false} onClick={() => void openExternal(googleCalendarUrl(gig, labels))}>
-        {t('Google Calendar')}
-      </PillButton>
+    <div className={cn('flex flex-col gap-3 min-w-0', className)} data-testid="add-to-calendar">
+      <CalendarLinkNotice />
+      <div className="flex flex-wrap gap-2">
+        <PillButton
+          size="sm"
+          variant="outline"
+          fullWidth={false}
+          disabled={!file}
+          icon={<CalendarPlus className="w-4 h-4" aria-hidden />}
+          onClick={() => file && void openExternal(file)}
+        >
+          {t('Add to calendar')}
+        </PillButton>
+        <PillButton size="sm" variant="ghost" fullWidth={false} onClick={() => void openExternal(googleCalendarUrl(gig, labels))}>
+          {t('Google Calendar')}
+        </PillButton>
+      </div>
     </div>
   );
 };
