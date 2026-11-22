@@ -646,7 +646,14 @@ const wantPols = ['Users can delete own chat participation:DELETE:PERMISSIVE', '
   'chat_participants_insert:INSERT:PERMISSIVE', 'chat_participants_scope_guard:SELECT:RESTRICTIVE',
   'chat_participants_select_own:SELECT:PERMISSIVE', 'chat_participants_select_same_chat:SELECT:PERMISSIVE'].sort();
 ok(JSON.stringify(polNames) === JSON.stringify(wantPols), `chat_participants policies after 175: ${polNames.join(', ')}`);
-ok(pols.filter((x) => x.cmd === 'SELECT').every((x) => /bw_chat_scope_ok_for/.test(x.qual)), 'every read policy on chat_participants applies the rule');
+ok(pols.filter((x) => x.cmd === 'SELECT').every((x) => /bw_chat_scope_ok_for/.test(x.qual) || x.roles === '{authenticated}'),
+  'every read policy on chat_participants applies the rule, or is for authenticated only (where the guard applies it)');
+// Cost: bw_my_chat_ids() checks the rule per chat now, so policies call it
+// once per query (InitPlan), never per row.
+const perRow = (await db.query(`SELECT tablename || '.' || policyname AS p FROM pg_policies WHERE schemaname = 'public'
+  AND (coalesce(qual, '') || coalesce(with_check, '')) ~ 'bw_my_chat_ids\\(\\)'
+  AND (coalesce(qual, '') || coalesce(with_check, '')) !~ '\\(\\s*SELECT\\s+bw_my_chat_ids\\(\\)'`)).rows.map((x) => x.p);
+ok(perRow.length === 0, `no policy calls bw_my_chat_ids() once per row (${perRow.join(', ') || 'none'})`);
 r = (await db.query(`SELECT proname, prosecdef FROM pg_proc WHERE proname IN ('bw_chat_scope_ok_for','bw_chat_scope_ok','bw_my_chat_ids') AND pronamespace = 'public'::regnamespace`)).rows;
 ok(r.length === 3 && r.every((x) => x.prosecdef), `the guard's functions are SECURITY DEFINER: no RLS inside, no recursion (${JSON.stringify(r)})`);
 // Any other permissive read policy (hand-made on prod, a later migration) is ANDed with the guard.

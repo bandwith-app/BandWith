@@ -405,7 +405,7 @@ BEGIN
     ORDER BY c.updated_at DESC NULLS LAST
   ) INTO result
   FROM chats c
-  WHERE c.id = ANY (public.bw_my_chat_ids());
+  WHERE c.id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]);
 
   RETURN COALESCE(result, '[]'::JSONB);
 END;
@@ -478,10 +478,23 @@ REVOKE ALL ON FUNCTION public.bw_mark_chat_read(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_mark_chat_read(uuid) TO authenticated;
 
 -- chats: read through the same rule.
+-- Round 4 (cost): bw_my_chat_ids() now checks the rule for each of the
+-- caller's chats, so policies call it once per query, as a sub-select
+-- (an InitPlan), never once per row: (SELECT ...)::uuid[]. Same answer.
 DROP POLICY IF EXISTS chats_select_participant ON public.chats;
 CREATE POLICY chats_select_participant ON public.chats
   FOR SELECT TO authenticated
-  USING (id = ANY (public.bw_my_chat_ids()));
+  USING (id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
+
+-- messages (073 policies, same rule, same InitPlan form).
+DROP POLICY IF EXISTS messages_select_participant ON public.messages;
+CREATE POLICY messages_select_participant ON public.messages
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
+DROP POLICY IF EXISTS messages_insert_participant ON public.messages;
+CREATE POLICY messages_insert_participant ON public.messages
+  AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (sender_id = auth.uid() AND chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 
 DROP POLICY IF EXISTS chats_select_creator ON public.chats;
 CREATE POLICY chats_select_creator ON public.chats
@@ -573,15 +586,16 @@ SELECT cp.chat_id, cp.user_id, to_jsonb(cp)
                     WHERE r.chat_id = cp.chat_id AND r.user_id = cp.user_id);
 
 -- Round 4: rows are kept, so everything that reads other people's rows
--- applies the rule too. The roster (chat_participants read policy): only
--- people who can still use the chat.
+-- applies the rule too. The roster (chat_participants read policy): rows of
+-- my chats; only people who can still use the chat, by the guard below
+-- (both are for authenticated, so the rule is checked once per row, there).
 DROP POLICY IF EXISTS chat_participants_select_same_chat ON public.chat_participants;
 CREATE POLICY chat_participants_select_same_chat ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO authenticated
-  USING (chat_id = ANY (public.bw_my_chat_ids())
-         AND public.bw_chat_scope_ok_for(chat_id, user_id));
+  USING (chat_id = ANY ((SELECT public.bw_my_chat_ids())::uuid[]));
 -- And their own kept row: not shown to them either (no chat list, unread
--- count or badge in any app build counts a chat the rule refuses).
+-- count or badge in any app build counts a chat the rule refuses). This one
+-- is for every role (as on prod), so it carries the rule itself as well.
 DROP POLICY IF EXISTS chat_participants_select_own ON public.chat_participants;
 CREATE POLICY chat_participants_select_own ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO public
