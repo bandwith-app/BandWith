@@ -131,6 +131,11 @@ describe('170 frozen, this round in 198', () => {
     expect(createHash('sha256').update(sql170).digest('hex')).toBe('5c1ad237d412ddb42c887a93c160a358a800a6e85e2128e8d4be9aead4cc3914');
   });
 
+  it('198 goes in with 170 in one transaction (170 alone sends invites with the switch off)', () => {
+    expect(sql198).toMatch(/in ONE transaction with 170/);
+    expect(sql198).toMatch(/docs\/release-checklist\.md, section 2, step 3/);
+  });
+
   it('198 needs 170 first and says so', () => {
     expect(s198).toMatch(/to_regclass\('public\.live_pack_status'\) IS NULL/);
     expect(s198).toMatch(/RAISE EXCEPTION '198 needs 170 first/);

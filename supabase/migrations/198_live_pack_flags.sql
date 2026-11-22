@@ -2,8 +2,12 @@
 -- 198: live pack, kill switch and partial packs (review #273, 11-22)
 -- ----------------------------------------------------------------------------
 -- 170 is on main and stays as it is; this round's changes to it live here.
--- Apply right after 170 (it needs 170's table and functions), in the same
--- session: 170's own sweep and flush don't read the switch.
+-- Apply in ONE transaction with 170, right after it (it needs 170's table
+-- and functions): 170's own triggers, sweep and flush don't read the switch,
+-- so 170 alone would send invites with live_pack off. Both files' BEGIN;/
+-- COMMIT; are replaced by one pair, as in
+-- docs/release-checklist.md, section 2, step 3
+-- (supabase/tests/integration-chain.pglite.mjs applies them the same way).
 --
 -- 1. live_pack_status.partial: the pack is held but not complete (live_pack
 --    off, or a part not loaded yet): not counted as ready, not "already on
