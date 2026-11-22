@@ -15,6 +15,7 @@ import {
 } from '@/lib/services/deputies';
 import { useT } from '@/lib/i18n';
 import { deputyCoverage, type CoverageMember, instrumentText } from '@/lib/instruments';
+import { amountField } from '@/lib/amount';
 
 const EMPTY = { name: '', instrument: '', phone: '', email: '', fee: '', notes: '' };
 
@@ -79,8 +80,10 @@ export const DeputiesSection: React.FC<{ bandId: string; bandName?: string; memb
   };
   const close = () => !saving && setEditing(null);
 
-  const fee = form.fee.trim() ? Number(form.fee.replace(',', '.')) : null;
-  const feeInvalid = fee != null && (!Number.isFinite(fee) || fee < 0);
+  // The fee as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+  const feeField = amountField(form.fee);
+  const fee = feeField.value;
+  const feeInvalid = feeField.invalid;
   const emailInvalid = !!form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim());
   const canSave = !!form.name.trim() && !feeInvalid && !emailInvalid && !saving;
 

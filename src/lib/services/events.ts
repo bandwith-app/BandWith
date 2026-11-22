@@ -320,6 +320,9 @@ export const createEvent = async (
       venue_city: eventData.venue_city || null,
       client_name: eventData.client_name || null,
       fee: eventData.fee != null ? eventData.fee : 0,
+      // The fee's currency when the caller names one (a quote's date on
+      // hold: the quote's); otherwise the column default applies (EUR).
+      ...(eventData.currency ? { currency: eventData.currency } : {}),
       price: (eventData as any).price != null ? (eventData as any).price : 0,
       // "Fee TBD" from the wizard; otherwise the column default applies.
       ...(eventData.payment_status ? { payment_status: eventData.payment_status } : {}),

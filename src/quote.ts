@@ -5,7 +5,8 @@
 // conversation. The client accepts (typed name + "I accept", recorded
 // with the time, on the version they saw), declines (optional reason) or
 // writes to the band; the band answers from the app and the reply shows
-// up here. `&preview=1` is the admin's own preview: nothing is recorded.
+// up here. `&preview=1` is the admin's own preview: nothing is recorded
+// (`&k=` adds the draft balance the admin is looking at, 185).
 //
 // 168: once the band asks for the final balance, the same page shows the
 // balance due, by when, and how to pay it (bank details with Copy buttons,
@@ -27,6 +28,8 @@ const token = (params.get('t') ?? '').toLowerCase();
 // a copied PDF link opens that one PDF only, not a later one or the page.
 let pdfKeys: QuotePdfKeys = {};
 const preview = params.get('preview') === '1';
+// 185: the admin's draft balance (Preview in the app), shown only with its key.
+const previewKey = preview && /^[0-9a-f]{64}$/.test(params.get('k') ?? '') ? (params.get('k') as string) : '';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
 let S: QuoteStrings = QUOTE_STRINGS[lang];
@@ -115,7 +118,10 @@ async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T> {
 
 const remoteApi: Api = {
   seen: () => rpc('bw_quote_link_seen', { p_token: token }),
-  view: () => rpc('bw_quote_link_view', { p_token: token }),
+  view: () =>
+    previewKey
+      ? rpc('bw_quote_link_preview', { p_token: token, p_key: previewKey })
+      : rpc('bw_quote_link_view', { p_token: token }),
   respond: (action, name, reason, version) =>
     rpc('bw_quote_link_respond', { p_token: token, p_action: action, p_name: name, p_reason: reason, p_version: version }),
   message: (body) => rpc('bw_quote_link_message', { p_token: token, p_body: body }),
@@ -180,7 +186,12 @@ async function act(run: () => Promise<QuoteLinkView | null>, focus?: string) {
       await refreshPdfKeys();
     }
   } catch (e) {
-    failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    if (e instanceof RpcError && e.code === 'BWQ01' && view) {
+      // 187 round 10: the band cancelled or deleted the date meanwhile; nothing was recorded.
+      view = { ...view, unavailable: true };
+    } else {
+      failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    }
   }
   busy = false;
   render();
@@ -532,6 +543,10 @@ function statusCard(v: QuoteLinkView) {
       h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, S.acceptedLegal),
     );
   }
+  if (v.unavailable) {
+    // 187 round 10: the band cancelled or deleted the date: no accept, the chat stays.
+    return h('section', { class: 'card ink', role: 'status', 'data-testid': 'date-unavailable' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.unavailableTitle), h('p', {}, S.unavailableBody));
+  }
   if (stale) {
     // Round 4: a polite status: it arrives on a refresh, while the client may be typing.
     return h('section', { class: 'card ink', role: 'status' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
@@ -557,7 +572,7 @@ function statusCard(v: QuoteLinkView) {
 }
 
 function answerCard(v: QuoteLinkView) {
-  if (v.status === 'accepted' || v.expired) return null;
+  if (v.status === 'accepted' || v.expired || v.unavailable) return null;
   const err = (field: 'name' | 'check') => (fieldError?.field === field ? h('p', { class: 'err', id: `${field}-err`, role: 'alert' }, fieldError.text) : null);
   const name = h('input', {
     id: 'acc-name',

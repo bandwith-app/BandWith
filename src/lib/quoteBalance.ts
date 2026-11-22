@@ -250,6 +250,7 @@ export function buildClientBalance(
     currency,
     total: roundCents(Math.max(0, num(facts.total))),
     received,
+    other,
     amount: plan.due,
     amountLabel: moneyIn(lang, currency)(plan.due),
     dueDate: facts.dueDate || null,
@@ -261,6 +262,56 @@ export function buildClientBalance(
     ...(opts.pdfUrl ? { pdfUrl: opts.pdfUrl } : {}),
   };
 }
+
+/**
+ * The balance the client has (#293 round 3): the one sent (185's
+ * balance_sent), never one only published (an older build's Preview) or a
+ * later version not sent yet. `balance_sent` null with a send on record
+ * (185's backfill could not tell which version went out) is no balance
+ * either. Before 185 (no balance_sent column, the key is missing) the
+ * published balance, once a send is recorded.
+ */
+export function balanceClientHas(
+  link: { balance?: ClientBalance | null; balance_sent?: ClientBalance | null; balance_sent_at?: string | null } | null | undefined,
+): ClientBalance | null {
+  if (!link) return null;
+  if (link.balance_sent !== undefined) return link.balance_sent ?? null;
+  return link.balance_sent_at ? link.balance ?? null : null;
+}
+
+/**
+ * The other payments a balance already on the client's page counted (not
+ * the deposit), to start the next request from. Balances from 185 on keep
+ * them as `other`; older ones only have the "Already paid" line, in the
+ * page's language. The deposit received since then is not one of them.
+ */
+export function previousOtherReceived(prev: ClientBalance | null | undefined, _lang?: Locale): number {
+  if (!prev) return 0;
+  if (typeof prev.other === 'number' && Number.isFinite(prev.other)) return roundCents(Math.max(0, prev.other));
+  const lines = Array.isArray(prev.received) ? prev.received : [];
+  // Read in every language, not through the dictionary: reopened before the
+  // page's language has loaded, "Acconto ricevuto" was not the deposit and
+  // was counted again as another payment (review of #293).
+  const line =
+    lines.find((r) => LEGACY_ALREADY_PAID.has(String(r?.label ?? ''))) ??
+    (lines.length === 2 ? lines[1] : lines.length === 1 && !LEGACY_DEPOSIT_RECEIVED.has(String(lines[0]?.label ?? '')) ? lines[0] : null);
+  return line ? roundCents(Math.max(0, num(line.amount))) : 0;
+}
+
+/**
+ * The two lines balances before 185 wrote, in each of the page's languages
+ * (frozen: those balances don't change; the i18n test checks them against
+ * the dictionaries).
+ */
+export const LEGACY_DEPOSIT_RECEIVED = new Set([
+  'Deposit received',
+  'Acconto ricevuto',
+  'Anticipo recibido',
+  'Acompte reçu',
+  'Anzahlung erhalten',
+  'Sinal recebido',
+]);
+export const LEGACY_ALREADY_PAID = new Set(['Already paid', 'Già pagato', 'Ya pagado', 'Déjà payé', 'Bereits bezahlt', 'Já pago']);
 
 /** The text that goes with the link (WhatsApp, SMS, copy), in the client's language. */
 export function balanceMessage(o: {

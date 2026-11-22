@@ -204,14 +204,32 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     return () => window.removeEventListener('bw:band-pricing-saved', onPricingSaved);
   }, [isOpen, loadAndGenerate]);
 
+  // 10 #10: the language is picked once per opening (the remembered one,
+  // then the one the client already got on the sent link, unless the admin
+  // picks another). The PDF follows it on its own: regenerating must never
+  // put the language back to the device's.
+  const langPickedRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
-      setUploadedUrl(null);
-      setDocLang(docLanguageFor(clientKey));
-      sentRef.current = false;
-      loadAndGenerate();
-    }
+    if (!isOpen) return;
+    setUploadedUrl(null);
+    setDocLang(docLanguageFor(clientKey));
+    langPickedRef.current = false;
+    sentRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+  useEffect(() => {
+    if (isOpen) loadAndGenerate();
   }, [isOpen, loadAndGenerate]);
+  /** The client's language from their sent link, unless the admin picked one meanwhile. */
+  const docLangRef = useRef(docLang);
+  docLangRef.current = docLang;
+  const applyLinkLang = (l: Locale) => {
+    if (langPickedRef.current || docLangRef.current === l) return;
+    // Nothing in the other language gets uploaded or shared.
+    setPdfResult(null);
+    setUploadedUrl(null);
+    setDocLang(l);
+  };
 
   // Reads the link as saved (token, version), so every channel can open
   // synchronously inside the tap. Opening publishes nothing: a quote without
@@ -238,7 +256,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
       if (data?.link) {
         setLink({ id: data.link.id, token: data.link.token, status: data.link.status, revoked: !!data.link.revoked_at, version: data.link.version });
         // The page and the emails speak the language the client already got.
-        if (data.link.status !== 'draft') setDocLang(data.link.lang);
+        if (data.link.status !== 'draft') applyLinkLang(data.link.lang);
       } else setLink(null);
       setLinkChecked(true);
     })();
@@ -530,6 +548,7 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   const changeDocLang = (l: Locale) => {
     if (l === docLang) return;
+    langPickedRef.current = true;
     rememberDocLanguage(clientKey, l);
     // Drop the old PDF and link so nothing in the previous language gets uploaded or shared.
     setPdfResult(null);

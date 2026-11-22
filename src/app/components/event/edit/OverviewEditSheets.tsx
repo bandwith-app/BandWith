@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, MapPin, Plus, X } from '@/app/components/icons';
 import { BwSheet, IconButton } from '@/app/components/bw/Screen';
 import { FormError, PillButton, PillField, Selector } from '@/app/components/bw/Form';
@@ -545,6 +545,20 @@ const LineupSheet: React.FC<SheetBase & { lineup: ResolvedMember[]; currentUserI
   };
 
   const known = new Set(initial.ids);
+  const feesUnknown = lineup.some((m) => m.feeUnknown);
+  // 05 #5: the real fees came in while the sheet was open (back online):
+  // the musicians already on the lineup start from them, not the zeros shown.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees((prev) => {
+        const next = { ...prev };
+        for (const id of Object.keys(initial.fees)) if (id in next) next[id] = initial.fees[id];
+        return next;
+      });
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
   const feeOf = (id: string) => (kind === 'gig' && tbd ? 0 : amountOf(fees[id]));
   const wanted: LineupRow[] = selected.map((id) => ({
     user_id: id,
@@ -572,10 +586,14 @@ const LineupSheet: React.FC<SheetBase & { lineup: ResolvedMember[]; currentUserI
       title={kind === 'rehearsal' ? t('Band roster') : t('Lineup')}
       dirty={dirty}
       // A rehearsal for nobody isn't one (the Edit page read an empty list as the whole band).
-      canSave={kind === 'gig' || selected.length > 0}
+      // 05 #5: a gig's lineup saves fees: not while the real fees are unknown.
+      canSave={kind === 'gig' ? !feesUnknown : selected.length > 0}
       saving={saving}
-      error={error}
-      onSave={() => run(() => api.saveLineup(wanted, feePatch, tbd))}
+      error={kind === 'gig' && feesUnknown ? t('The fees could not be loaded, so the lineup cannot be saved yet. Try again when you are back online.') : error}
+      onSave={() => {
+        if (kind === 'gig' && feesUnknown) return;
+        run(() => api.saveLineup(wanted, feePatch, tbd));
+      }}
     >
       {kind === 'gig' && rosterIds.length > 1 && (
         <div className="flex flex-col gap-2">
@@ -657,6 +675,7 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
   const { saving, error, setError, run } = useSaving(onClose);
   const pricing = usePricing(event.band_id, open);
   const members = useMemo(() => lineup.filter((m): m is ResolvedMember & { userId: string } => !!m.userId), [lineup]);
+  const feesUnknown = lineup.some((m) => m.feeUnknown);
   const wasTbd = event.paymentStatus === 'tbd';
   const initial = useMemo(() => {
     const fees: Record<string, string> = {};
@@ -675,6 +694,17 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // 05 #5: the real fees came in while the sheet was open: start from them
+  // (and the extra band fee they give), not from the zeros shown before.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees(initial.fees);
+      setExtra(initial.extra);
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
 
   const memberFee = (id: string) => (tbd ? 0 : amountOf(fees[id]));
   const feesChanged = members.some((m) => memberFee(m.userId) !== amountOf(initial.fees[m.userId]));
@@ -703,7 +733,20 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
     );
 
   return (
-    <EditSheet open={open} onClose={onClose} overline={event.title} title={t('Edit fee')} dirty={dirty} saving={saving} error={error} onSave={save}>
+    <EditSheet
+      open={open}
+      onClose={onClose}
+      overline={event.title}
+      title={t('Edit fee')}
+      dirty={dirty}
+      // 05 #5: the fees shown are not the real ones: nothing to save from them.
+      canSave={!feesUnknown}
+      saving={saving}
+      error={feesUnknown ? t('The fees could not be loaded, so they cannot be changed yet. Try again when you are back online.') : error}
+      onSave={() => {
+        if (!feesUnknown) save();
+      }}
+    >
       {kind === 'gig' && (
         <div className="flex flex-col gap-3">
           <Selector selected={tbd} onClick={() => setTbd((v) => !v)}>

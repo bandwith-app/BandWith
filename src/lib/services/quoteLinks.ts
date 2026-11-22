@@ -64,6 +64,8 @@ export interface QuoteLinkRow {
   /** 183 round 5: who the link was published for (null before 183, or before the first publish). */
   recipient_name?: string | null;
   recipient_email?: string | null;
+  /** 185: the balance the client was sent (what their page shows). */
+  balance_sent?: ClientBalance | null;
 }
 
 export type QuoteActivityKind =
@@ -103,9 +105,12 @@ const asError = (e: unknown): Error => planRefusal(e) ?? (e instanceof Error ? e
 
 const isLocale = (v: unknown): v is Locale => LANGUAGES.some((l) => l.id === v);
 
-/** The client's page. `preview` opens it without counting as "viewed". */
-export const quoteLinkUrl = (token: string, opts: { preview?: boolean } = {}) =>
-  `${APP_URL}/quote.html?t=${token}${opts.preview ? '&preview=1' : ''}`;
+/**
+ * The client's page. `preview` opens it without counting as "viewed";
+ * `previewKey` (185) shows the admin's draft balance on it.
+ */
+export const quoteLinkUrl = (token: string, opts: { preview?: boolean; previewKey?: string | null } = {}) =>
+  `${APP_URL}/quote.html?t=${token}${opts.preview ? '&preview=1' : ''}${opts.preview && opts.previewKey ? `&k=${opts.previewKey}` : ''}`;
 
 // ------------------------------------------------------------------ summary
 
@@ -452,6 +457,8 @@ const LINK_COLUMNS =
 const BALANCE_COLUMNS = 'balance, balance_version, balance_at, balance_sent_at, balance_paid_at';
 // 183 round 5: who the link was published for (the conversation's client).
 const RECIPIENT_COLUMNS = 'recipient_name, recipient_email';
+// 185: what the client was sent, read with a fallback before 185 is applied.
+const SENT_COLUMNS = 'balance_sent';
 
 export interface QuoteContact {
   client_name: string | null;
@@ -512,22 +519,30 @@ export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link:
   const activityOf = (columns: string) =>
     supabase.from('quote_activity').select(columns).eq('quote_id', quoteId).order('created_at', { ascending: true });
   const linkOf = (columns: string) => supabase.from('quote_links').select(columns).eq('quote_id', quoteId).maybeSingle();
-  const [firstTry, firstActivity] = await Promise.all([
-    linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}, ${RECIPIENT_COLUMNS}`),
+  const [first, firstActivity] = await Promise.all([
+    linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}, ${SENT_COLUMNS}, ${RECIPIENT_COLUMNS}`),
     activityOf('id, kind, body, channel, version, created_at, link_id'),
   ]);
-  // Before 183 the link has no recipient columns: read it without.
-  const first = firstTry.error && /recipient_/.test(firstTry.error.message || '')
-    ? await linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`)
-    : firstTry;
   // Before 183 the timeline has no link_id: read it without.
   const activity = firstActivity.error && /link_id/.test(firstActivity.error.message || '')
     ? await activityOf('id, kind, body, channel, version, created_at')
     : firstActivity;
-  // Before 168 the balance columns don't exist: read the link without them.
-  const link = first.error && /balance/.test(first.error.message || '')
-    ? await linkOf(LINK_COLUMNS)
-    : first;
+  // Before 183 / 185 / 168 the newer columns don't exist: drop the missing ones and read again.
+  let link = first;
+  let optional = { recipient: true, sent: true, balance: true };
+  for (let i = 0; i < 3 && link.error; i++) {
+    const message = link.error.message || '';
+    if (optional.recipient && /recipient_/.test(message)) optional = { ...optional, recipient: false };
+    else if (optional.sent && /balance_sent/.test(message)) optional = { ...optional, sent: false };
+    else if (optional.balance && /balance/.test(message)) optional = { recipient: optional.recipient, sent: false, balance: false };
+    else break;
+    link = await linkOf([
+      LINK_COLUMNS,
+      optional.balance ? BALANCE_COLUMNS : '',
+      optional.sent ? SENT_COLUMNS : '',
+      optional.recipient ? RECIPIENT_COLUMNS : '',
+    ].filter(Boolean).join(', '));
+  }
   if (link.error) return { data: null, error: asError(link.error) };
   if (activity.error) return { data: null, error: asError(activity.error) };
   const row = link.data as QuoteLinkRow | null;
@@ -572,6 +587,20 @@ export async function sendQuoteEmail(
 // ------------------------------------------------------------------ balance (168)
 
 /** Publish (or change) the balance on the client's page. */
+/**
+ * The admin's preview of a balance (185): kept as a draft, never on the
+ * client's page. Returns the key the preview page opens it with; null on a
+ * database before 185 (the preview then shows what the client has).
+ */
+export async function previewQuoteBalance(quoteId: string, balance: ClientBalance): Promise<Result<string | null>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_preview', { p_quote_id: quoteId, p_balance: balance });
+  if (error && (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message || ''))) {
+    return { data: null, error: null };
+  }
+  if (error) return { data: null, error: asError(error) };
+  return { data: typeof data === 'string' && /^[0-9a-f]{64}$/.test(data) ? data : null, error: null };
+}
+
 export async function publishQuoteBalance(
   quoteId: string,
   balance: ClientBalance,
@@ -584,10 +613,70 @@ export async function publishQuoteBalance(
     : { data: null, error: new Error('No link') };
 }
 
-export async function markQuoteBalanceSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<string>> {
-  const { data, error } = await supabase.rpc('bw_quote_balance_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
-  return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
+/**
+ * #293 round 3 (185): another admin published a different balance between
+ * this send and its record, so the server recorded nothing.
+ */
+export const isBalanceChangedError = (e: unknown): boolean =>
+  /BW_BALANCE_CHANGED/.test(String((e as { message?: string } | null)?.message ?? e ?? ''));
+
+/**
+ * Records a balance send. `balanceVersion`: the balance_version the caller
+ * published and sent (185): a balance replaced meanwhile is refused
+ * (isBalanceChangedError) instead of being recorded as sent. A database
+ * before 185 doesn't know the parameter: recorded without it, as before.
+ */
+export async function markQuoteBalanceSent(
+  quoteId: string,
+  kind: 'sent' | 'reminded',
+  channel: QuoteChannel,
+  balanceVersion?: number | null,
+  /**
+   * #293 round 6 (185): true records an email's send before it goes out (the
+   * page shows this balance at once), false confirms it after. A database
+   * without it: true records the send as before (still ahead of the email)
+   * and `pending` comes back false, so the caller confirms nothing.
+   */
+  pending?: boolean,
+): Promise<Result<string> & { pending?: boolean }> {
+  const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  const missing = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === 'PGRST202' || /could not find the function/i.test(e.message || ''));
+  const withVersion = balanceVersion != null ? { ...args, p_balance_version: balanceVersion } : args;
+  let usedPending = pending != null && balanceVersion != null;
+  let { data, error } = await supabase.rpc(
+    'bw_quote_balance_mark_sent',
+    usedPending ? { ...withVersion, p_pending: pending } : withVersion,
+  );
+  if (error && usedPending && missing(error)) {
+    usedPending = false;
+    if (pending === false) return { data: null, error: null, pending: false };
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', withVersion));
+  }
+  if (error && balanceVersion != null && missing(error)) {
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', args));
+  }
+  return error
+    ? { data: null, error: asError(error) }
+    : { data: data == null ? null : String(data), error: null, ...(pending != null ? { pending: usedPending && pending === true } : {}) };
 }
+
+/**
+ * #293 round 6 (185): the email of a send recorded first did not go out
+ * (the server said so): the client's page shows again what it showed
+ * before. Only that send (its version, still pending); false otherwise.
+ */
+export async function undoQuoteBalanceSend(quoteId: string, balanceVersion: number): Promise<Result<boolean>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_send_failed', { p_quote_id: quoteId, p_balance_version: balanceVersion });
+  return error ? { data: null, error: asError(error) } : { data: data === true, error: null };
+}
+
+/** send-email's codes that mean the email did not go out (a refusal before Resend, or Resend's own). */
+export const BALANCE_EMAIL_NOT_SENT = new Set([
+  'balance_changed', 'email_not_configured', 'too_soon', 'no_client_email', 'no_balance', 'link_changed',
+  // Claude r9: Resend refused it (send-email answers email_refused, 502).
+  'email_refused',
+]);
 
 /** The balance was received (or not after all): the gig made from the quote follows. */
 export async function markQuoteBalancePaid(quoteId: string, paid: boolean): Promise<Result<{ paid: boolean; event_id: string | null }>> {

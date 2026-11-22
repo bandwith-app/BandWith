@@ -3886,6 +3886,8 @@ const dict: Dictionary = {
   "Your votes were cleared.": "Tes votes ont été effacés.",
   "No date works for {names}": "Aucune date ne convient à {names}",
   "Quote updated, but the event was not: {error}": "Devis mis à jour, mais pas l'événement : {error}",
+  "Quote updated, but its calendar event was not. Save the quote again to update it.": "Devis mis à jour, mais pas son événement dans le calendrier. Enregistre à nouveau le devis pour le mettre à jour.",
+  "The gig was confirmed meanwhile: the quote is saved, the gig’s lineup was not changed.": "Le concert a été confirmé entre-temps : le devis est enregistré, la formation du concert n’a pas changé.",
   "Gig for {client}": "Concert pour {client}",
   "You marked this quote as accepted.": "Tu as marqué ce devis comme accepté.",
   "Quote accepted. Open it to create the gig.": "Devis accepté. Ouvre-le pour créer le concert.",
@@ -4556,6 +4558,10 @@ const dict: Dictionary = {
   "The email could not be sent. Share the link instead.": "L’email n’a pas pu être envoyé. Partagez le lien.",
   "Reminder sent to {email}": "Rappel envoyé à {email}",
   "Balance request sent to {email}": "Demande de solde envoyée à {email}",
+  "The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.": "L’e-mail est parti, mais la page du client affiche encore le solde précédent. Utilise Copier le lien pour la mettre à jour.",
+  "The email went out, but someone changed the balance meanwhile, so the client’s page still shows the earlier one. Check the balance and send it again.": "L’e-mail est parti, mais quelqu’un a modifié le solde entre-temps, la page du client affiche donc encore le précédent. Vérifie le solde et envoie-le à nouveau.",
+  "Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.": "Quelqu’un a modifié le solde entre-temps, donc rien n’a été envoyé. Vérifie le solde et envoie-le à nouveau.",
+  "Someone changed the balance meanwhile, so this send was not recorded. Check the balance and send it again.": "Quelqu’un a modifié le solde entre-temps, cet envoi n’a donc pas été enregistré. Vérifie le solde et envoie-le à nouveau.",
   "Balance link copied": "Lien du solde copié",
   "Balance request shared": "Demande de solde partagée",
   "Balance marked as received": "Solde marqué comme reçu",
@@ -4784,6 +4790,16 @@ const dict: Dictionary = {
   "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Ce devis va maintenant à {name}. Rien n’a été envoyé : ferme ceci et rouvre le devis.",
   "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Entre-temps, le devis a changé : cet envoi n’a donc pas été enregistré. Ferme et rouvre le devis.",
   "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Le lien du client a changé entre-temps. Ta réponse n’a pas été envoyée : vérifie-la et renvoie-la.",
+  // Money audit (383f15b)
+  "Quote saved, but the lineup was not": "Devis enregistré, mais pas le line-up",
+  "Quote saved, but the lineup was not: {error}": "Devis enregistré, mais pas le line-up : {error}",
+  "Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.": "Quelqu’un a modifié les musiciens de ce devis entre-temps, donc rien n’a été enregistré. Le devis montre maintenant les musiciens actuels : refais ta modification.",
+  "Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.": "Quelqu’un a modifié les musiciens de ce devis entre-temps, donc rien n’a été enregistré, et le devis n’a pas pu être rechargé. Ferme-le et rouvre-le.",
+  "Not saved. Check your connection and try again.": "Non enregistré. Vérifiez la connexion et réessayez.",
+  "Enter an amount, like {example}.": "Saisissez un montant, par exemple {example}.",
+  "The preview could not be opened. Try again.": "Impossible d’ouvrir l’aperçu. Réessayez.",
+  "The fees could not be loaded, so the lineup cannot be saved yet. Try again when you are back online.": "Les cachets n’ont pas pu être chargés, le line-up ne peut donc pas encore être enregistré. Réessayez une fois de nouveau en ligne.",
+  "The fees could not be loaded, so they cannot be changed yet. Try again when you are back online.": "Les cachets n’ont pas pu être chargés, ils ne peuvent donc pas encore être modifiés. Réessayez une fois de nouveau en ligne.",
 };
 
 export default dict;

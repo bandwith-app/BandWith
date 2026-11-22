@@ -80,6 +80,7 @@ import { BwSheet } from '@/app/components/bw/Screen';
 import { ComposerCard, ComposerPreview, ComposerShell, useComposerLayout } from '@/app/components/composer/Composer';
 import { builtinText } from '@/lib/i18n/builtins';
 import { instrumentText } from '@/lib/instruments';
+import { currencySymbol as symbolOf } from '@/lib/currency';
 
 export interface QuoteBandMember {
   id: string;
@@ -393,7 +394,7 @@ const LedgerRow: React.FC<{ label: string; value: string; tone?: 'success' }> = 
   </div>
 );
 
-interface QuoteCreationWizardProps {
+export interface QuoteCreationWizardProps {
   onClose: () => void;
   /** `share`: the user tapped Share, open the PDF/share sheet after saving. */
   /**
@@ -420,6 +421,18 @@ interface QuoteCreationWizardProps {
   holdsDate?: boolean;
 }
 
+/**
+ * The currency a quote is written in: an existing quote's own (changing the
+ * band's pricing currency must not turn a $1,000 quote into €1,000), the
+ * band's for a new one.
+ */
+export function quoteCurrencyFor(initialData: Partial<Quote> | undefined, bandCurrency: string | null | undefined): string {
+  const own = String(initialData?.currency || '').trim().toUpperCase();
+  const saved = !!(initialData?.id || initialData?.quoteNumber);
+  if (saved && /^[A-Z]{3}$/.test(own)) return own;
+  return String(bandCurrency || '').trim().toUpperCase() || 'EUR';
+}
+
 export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   onClose,
   onCreate,
@@ -440,12 +453,9 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Distances are kept in km; per-distance services are priced and counted in the chosen unit.
   const distanceUnit = useDistanceUnit();
-  const currencySymbol = useMemo(() => {
-    if (pricingSettings.currency === 'USD') return '$';
-    if (pricingSettings.currency === 'GBP') return '£';
-    if (pricingSettings.currency === 'CHF') return 'CHF ';
-    return '€';
-  }, [pricingSettings.currency]);
+  // 08 #9: a saved quote keeps its own currency; the band's is for new quotes.
+  const quoteCurrency = quoteCurrencyFor(initialData, pricingSettings.currency);
+  const currencySymbol = useMemo(() => symbolOf(quoteCurrency), [quoteCurrency]);
 
   const availableMusicians = useMemo<QuoteMusician[]>(() => {
     if (bandMembers && bandMembers.length > 0) {
@@ -1525,7 +1535,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       vatRate,
       vatExempt,
       reverseCharge,
-      currency: pricingSettings.currency || 'EUR',
+      currency: quoteCurrency,
       baseFee: lineupBaseAmount,
       travelIncluded: travelMode !== 'separate',
       travelFee: effectiveTravelFee,

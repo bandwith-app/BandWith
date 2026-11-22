@@ -40,6 +40,7 @@ describe('date on hold, round 3', () => {
   it('Quotes → New quote (no event) does not promise a hold (B3)', () => {
     // The promise shows only when the wizard holds a date (an event exists or will be created).
     expect(wizardSrc).toMatch(/!isEditing && holdsDate && \(/);
-    expect(quotesSrc).toMatch(/holdsDate=\{false\}/);
+    // #293 (option 1, after #294): the hold is promised only where the app's save path holds the date.
+    expect(quotesSrc).toMatch(/holdsDate=\{!!onCreateNew\}/);
   });
 });

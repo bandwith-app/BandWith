@@ -39,4 +39,19 @@ describe('createEvent payload', () => {
     await createEvent({ band_id: 'b1', title: 'Club night' });
     expect(inserts[0]).not.toHaveProperty('payment_status');
   });
+
+  // Codex 11-22: the date on hold made with a USD quote was created in the
+  // column's default (EUR) until the quote was edited: the currency its
+  // caller passes was dropped here.
+  it('sends the currency it is given (a USD quote’s date on hold is in USD)', async () => {
+    await createEvent({ band_id: 'b1', title: 'Rooftop wedding', status: 'tentative', fee: 4200, currency: 'USD' });
+    expect(inserts[0]).toMatchObject({ band_id: 'b1', status: 'tentative', fee: 4200, currency: 'USD' });
+  });
+
+  it('leaves the currency to the column default when not set', async () => {
+    await createEvent({ band_id: 'b1', title: 'Club night' });
+    expect(inserts[0]).not.toHaveProperty('currency');
+    await createEvent({ band_id: 'b1', title: 'Club night', currency: '' });
+    expect(inserts[1]).not.toHaveProperty('currency');
+  });
 });

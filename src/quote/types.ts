@@ -93,6 +93,8 @@ export interface ClientBalance {
   total: number;
   /** Already received: "Deposit received", "Already paid". */
   received: { label: string; amount: number }[];
+  /** Of that, the other payments the admin typed (not the deposit), so the next request starts from them. */
+  other?: number;
   /** What is still due. */
   amount: number;
   amountLabel: string;
@@ -151,4 +153,6 @@ export interface QuoteLinkView {
   deposit_paid_currency?: string | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
+  /** 187 round 10: the quote's event was cancelled or deleted: no accept (absent before 187). */
+  unavailable?: boolean;
 }

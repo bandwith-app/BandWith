@@ -41,6 +41,12 @@ import {
   quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
+  saveQuoteWithLineup,
+  isLineupChangedError,
+  getQuote,
+  type QuoteLineupSaved,
+  changedQuoteLineup,
+  syncQuoteHoldEvent,
   isUuid,
   gigFromAcceptedQuote,
 } from '@/lib/services/quotes';
@@ -80,6 +86,17 @@ interface QuotesExpandedProps {
   /** A quote to open right away (from a notification), then cleared. */
   focusQuoteId?: string | null;
   onFocusConsumed?: () => void;
+  /**
+   * 08 #10: a new quote takes the app's own save path (the tentative event
+   * holding the date, the lineup, the availability request when asked),
+   * as from the calendar. Without it, the quote alone is created here.
+   */
+  onCreateNew?: (
+    quote: Partial<Quote>,
+    opts: { share?: boolean; askAvailability?: boolean; send?: boolean } | undefined,
+    close: () => void,
+    openShare: (quote: Partial<Quote>, autoSend: boolean) => void,
+  ) => Promise<void>;
 }
 
 export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
@@ -95,6 +112,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   onPrepareContract,
   focusQuoteId,
   onFocusConsumed,
+  onCreateNew,
 }) => {
   const t = useT();
   useCurrency(); // re-render money labels when the band currency changes
@@ -154,7 +172,10 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  // Round 6: bumped to open the wizard again on a quote reloaded after a refused save.
+  const [wizardKey, setWizardKey] = useState(0);
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
+  const [sharingAutoSend, setSharingAutoSend] = useState(false);
   
   const [creatingGig, setCreatingGig] = useState(false);
 
@@ -182,7 +203,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const activeQuotes = quotes.filter(q => shownStatus(q) !== 'DECLINED' && shownStatus(q) !== 'EXPIRED');
 
   // Handlers (all persist through src/lib/services/quotes.ts; optimistic changes are reverted on failure)
-  const handleCreateQuote = async (quoteData: Partial<Quote>, opts?: { share?: boolean }) => {
+  const handleCreateQuote = async (quoteData: Partial<Quote>, opts?: { share?: boolean; askAvailability?: boolean; send?: boolean }) => {
     if (isSaving) return;
     if (!currentBandId) {
       notify(t('No band selected — cannot save the quote'), 'error');
@@ -190,6 +211,26 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
     }
 
     const existing = quoteData.id ? quotes.find(q => q.id === quoteData.id) : undefined;
+    if (!existing && onCreateNew) {
+      setIsSaving(true);
+      try {
+        await onCreateNew(
+          quoteData,
+          opts,
+          () => {
+            setIsCreating(false);
+            setEditingQuote(null);
+          },
+          (q, autoSend) => {
+            setSharingAutoSend(autoSend);
+            setSharingQuote(q);
+          },
+        );
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
     const record = appQuoteToDbRecord(quoteData, currentBandId);
     setIsSaving(true);
 
@@ -206,18 +247,70 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         // stale-edit check compares with a change of client.
         const baseline = editingQuote && editingQuote.id === existing.id ? editingQuote : existing;
         const updates = quoteUpdateRecord(quoteData, currentBandId, baseline);
-        const { data, error } = await updateQuoteDB(existing.id, updates);
+        // Round 5: only a lineup changed in the wizard, checked against the
+        // one it opened with: a save of the venue alone never brings back a
+        // musician or a fee someone else changed meanwhile.
+        // Round 6: the quote and that lineup in one call (185): a lineup
+        // changed meanwhile refuses both, so the total never counts it.
+        const lineupEdit = changedQuoteLineup(quoteData.musicians, baseline.musicians);
+        const { data, lineup, error, lineupError } = lineupEdit
+          ? await saveQuoteWithLineup(existing.id, updates, lineupEdit)
+          : { ...(await updateQuoteDB(existing.id, updates)), lineup: null, lineupError: null };
         if (error || !data) {
           setQuotes(previous);
+          if (isLineupChangedError(error)) {
+            // Nothing was saved: the wizard opens again on the quote and lineup as stored now.
+            const fresh = await getQuote(existing.id);
+            if (!fresh.data) {
+              // Not reloaded (r9): the wizard would keep the old lineup, so it closes.
+              setIsCreating(false);
+              setEditingQuote(null);
+              notify(t('Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.'), 'error');
+              return;
+            }
+            const reloaded = dbQuoteToAppQuote(fresh.data) as MockQuote;
+            setQuotes(prev => prev.map(q => (q.id === existing.id ? reloaded : q)));
+            setEditingQuote(reloaded);
+            setWizardKey(k => k + 1);
+            notify(t('Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.'), 'error');
+            return;
+          }
           notify(errorText(error, t('Failed to update quote')), 'error');
           return; // keep the wizard open so nothing is lost
         }
 
-        const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: quoteData.musicians || existing.musicians } as MockQuote;
+        // The lineup is saved with the quote (185): the screens show what is stored.
+        let roster = existing.musicians;
+        let savedLineup: QuoteLineupSaved['musicians'] | null = null;
+        // Round 4: the gig on hold got the lineup with the quote (one transaction).
+        let lineupOnHold = false;
+        let gigConfirmed = false;
+        if (lineupEdit) {
+          if (lineupError || !lineup) {
+            // A database before round 6's 185: the quote was saved alone.
+            setQuotes(prev => prev.map(q => (q.id === existing.id ? ({ ...existing, ...dbQuoteToAppQuote(data), musicians: existing.musicians } as MockQuote) : q)));
+            notify(errorText(lineupError, t('Quote saved, but the lineup was not')), 'error');
+            return; // keep the wizard open: saving again saves the lineup
+          }
+          savedLineup = lineup.musicians;
+          lineupOnHold = lineup.synced;
+          gigConfirmed = lineup.confirmed;
+          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.musicians }).musicians;
+        }
+        const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: roster } as MockQuote;
+        // The date on hold follows the quote (date, place, fee, lineup), so
+        // accepting it confirms the gig as quoted. The quote stays saved.
+        const hold = gigConfirmed
+          ? { data: null, error: null, confirmed: true }
+          : await syncQuoteHoldEvent(existing.id, saved, lineupOnHold ? null : savedLineup, (baseline.musicians || []).map((m) => m.userId));
         setQuotes(prev => prev.map(q => (q.id === existing.id ? saved : q)));
         setIsCreating(false);
         setEditingQuote(null);
-        notify(t('Quote updated'), 'success');
+        if (hold.error) {
+          console.warn('[quotes] date on hold not updated:', hold.error);
+          notify(t('Quote updated, but its calendar event was not. Save the quote again to update it.'), 'error');
+        } else if (hold.confirmed) notify(t('The gig was confirmed meanwhile: the quote is saved, the gig’s lineup was not changed.'), 'success');
+        else notify(t('Quote updated'), 'success');
         onQuotesChanged?.();
         if (opts?.share) setSharingQuote(saved);
         // Already sent with the client link: the page shows the new version.
@@ -613,6 +706,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
           <AnimatePresence>
             {isCreating && (
               <QuoteCreationWizard
+                key={`quote-wizard-${wizardKey}`}
                 onClose={() => {
                   setIsCreating(false);
                   setEditingQuote(null);
@@ -620,7 +714,9 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                 onCreate={handleCreateQuote}
                 initialData={editingQuote || undefined}
                 initialClientName={editingQuote?.clientName}
-                holdsDate={false}
+                // A new quote saved through the app (onCreateNew) holds its
+                // date with a tentative event; the bare create does not.
+                holdsDate={!!onCreateNew}
               />
             )}
           </AnimatePresence>
@@ -668,8 +764,12 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
             {sharingQuote && (
               <QuoteShareModal
                 isOpen={!!sharingQuote}
-                onClose={() => setSharingQuote(null)}
+                onClose={() => {
+                  setSharingQuote(null);
+                  setSharingAutoSend(false);
+                }}
                 quote={sharingQuote}
+                autoSendEmail={sharingAutoSend}
                 bandId={currentBandId || bandId || 'default'}
                 bandName={selectedBand?.name || 'Band'}
                 onOpenBandSettings={onOpenBandSettings}
