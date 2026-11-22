@@ -932,7 +932,7 @@ const basics: AreaText = {
       keywords: ["Konto löschen", "Konto schließen", "Konto entfernen", "Daten löschen"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Direktnachrichten werden gelöscht. Deine Nachrichten in Band- und Gig-Chats bleiben und erscheinen als **Ehemaliges Mitglied**. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
+        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Direktnachrichten werden gelöscht. Deine Nachrichten in Band-, Gig- und Gruppenchats bleiben und erscheinen als **Ehemaliges Mitglied**. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
         {
           type: "steps",
           items: [

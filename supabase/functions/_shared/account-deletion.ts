@@ -115,3 +115,15 @@ export async function removeFolder(store: FolderStore, prefix: string, depth = 0
   }
   return false;
 }
+
+/**
+ * Runs an RPC once more when Postgres aborted it as a deadlock victim
+ * (40P01, Claude review #282 round 4). Each RPC is one transaction that the
+ * abort rolled back whole, so running it again is safe. Only once: a second
+ * deadlock is returned to the caller.
+ */
+export async function retryOnDeadlock<T extends { error: unknown }>(call: () => PromiseLike<T>): Promise<T> {
+  const first = await call();
+  const code = (first.error as { code?: string } | null | undefined)?.code;
+  return code === '40P01' ? await call() : first;
+}

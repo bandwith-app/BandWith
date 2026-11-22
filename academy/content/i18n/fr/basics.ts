@@ -932,7 +932,7 @@ const basics: AreaText = {
       keywords: ["supprimer le compte", "fermer le compte", "effacer le compte", "effacer"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "C’est irréversible. Ton profil, tes concerts perso et tes messages privés sont supprimés. Tes messages dans les discussions du groupe et des concerts restent, signés **Ancien membre**. Exporte d’abord tes données si tu veux en garder une copie." },
+        { type: "note", tone: "warning", text: "C’est irréversible. Ton profil, tes concerts perso et tes messages privés sont supprimés. Tes messages dans les discussions du groupe, des concerts et à plusieurs restent, signés **Ancien membre**. Exporte d’abord tes données si tu veux en garder une copie." },
         {
           type: "steps",
           items: [

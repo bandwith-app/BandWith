@@ -2,9 +2,11 @@
 //
 // Everything that can refuse is decided before anything is erased (Codex
 // review #282):
-// 1. Refuses (409) if the caller is the only admin of a band with other members.
-// 2. bw_account_deletion_begin (180): the same check under the band locks
-//    (a co-admin deleting their own account counts as gone), then a pending
+// 1-2. bw_account_deletion_begin (180): refuses (409) if the caller is the
+//    only admin of a band with other members, under the band locks (a
+//    co-admin deleting their own account counts as gone; then it is 409
+//    account_deletion_in_progress: wait). A retry after prepare skips the
+//    check and only finishes the job. Otherwise it records a pending
 //    deletion. While it is pending no membership change that would make a
 //    later step refuse goes through (a co-admin stepping down, someone
 //    joining a band that goes, the last member leaving a band that stays).
@@ -20,12 +22,15 @@
 //    PDFs in avatars/quotes/<band> too). A failed
 //    lookup or cleanup stops (503) before the account goes, so a retry still
 //    finds them (a lookup that failed must never erase a band that goes on).
-// 6. bw_account_deletion_finish(): their messages once more (a direct
-//    message sent from another device while prepare ran; after prepare no
-//    new message from them gets in).
+// 6. bw_account_deletion_finish(): after the personal folders are emptied
+//    again, re-checks Storage (uploads are blocked while the deletion holds,
+//    but one may have started before), then their notifications and
+//    messages once more. A personal file still there is a 503.
 // 7. auth.admin.deleteUser() — profiles cascade from auth.users, the pending
 //    deletion with them.
-// Every step can run again, so a failed attempt can simply be retried.
+// Every step can run again, so a failed attempt can simply be retried. Each
+// RPC is retried once on a deadlock (40P01): it is one transaction, and the
+// abort rolled it back whole.
 //
 // The caller can only ever delete themselves: the user id comes from the JWT.
 
@@ -45,6 +50,7 @@ import {
   type FolderStore,
   prepareOutcome,
   removeFolder,
+  retryOnDeadlock,
   storageReady,
 } from "../_shared/account-deletion.ts";
 
@@ -71,27 +77,15 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (body?.confirm !== "DELETE") throw new HttpError(400, "Missing confirmation");
 
-    const { data: blockers, error: blockersError } = await admin.rpc(
-      "bw_account_deletion_blockers",
-      { p_uid: caller.id },
-    );
-    if (blockersError) throw blockersError;
-    if (Array.isArray(blockers) && blockers.length > 0) {
-      return json({
-        success: false,
-        code: "account_has_bands",
-        bands: blockers.map((b: { band_name: string }) => b.band_name),
-      }, 409);
-    }
-
-    // The band check, held until the account is gone.
-    const { data: beginData, error: beginError } = await admin.rpc('bw_account_deletion_begin', { p_uid: caller.id });
+    // The band check, held until the account is gone. A retry after prepare
+    // skips it (begin answers prepared): part of the account is already gone.
+    const { data: beginData, error: beginError } = await retryOnDeadlock(() => admin.rpc('bw_account_deletion_begin', { p_uid: caller.id }));
     const begin = beginOutcome(beginData, beginError);
     if (begin.kind === "blocked") {
       return json({ success: false, code: "account_has_bands", bands: begin.bands }, 409);
     }
     if (begin.kind === "busy") {
-      return json({ success: false, code: "account_deletion_in_progress", error: "Someone else in your band is deleting their account. Try again in a few minutes." }, 409);
+      return json({ success: false, code: "account_deletion_in_progress", error: "A bandmate is deleting their account. Try again in a few minutes." }, 409);
     }
     if (begin.kind === "not_ready") return notReady("begin", beginError?.message ?? beginData);
 
@@ -99,10 +93,10 @@ serve(async (req) => {
     // bands but no longer belongs to the account.
     await removeFolder(bucketStore(admin, "personal-files"), caller.id);
     await removeFolder(bucketStore(admin, "avatars"), caller.id);
-    const { data: release, error: releaseError } = await admin.rpc("bw_account_storage_release", { p_uid: caller.id });
+    const { data: release, error: releaseError } = await retryOnDeadlock(() => admin.rpc("bw_account_storage_release", { p_uid: caller.id }));
     if (!storageReady(release, releaseError)) return notReady("storage", releaseError?.message ?? release);
 
-    const { error: prepError } = await admin.rpc("bw_prepare_account_deletion", { p_uid: caller.id });
+    const { error: prepError } = await retryOnDeadlock(() => admin.rpc("bw_prepare_account_deletion", { p_uid: caller.id }));
     const prepare = prepareOutcome(prepError);
     if (prepare.kind === "blocked") {
       const { data: still } = await admin.rpc("bw_account_deletion_blockers", { p_uid: caller.id });
@@ -133,9 +127,12 @@ serve(async (req) => {
       if (!cleaned) return notReady("band files", toClean);
     }
 
-    // Their messages once more: one sent from another device while prepare
-    // ran (after prepare no new one gets in).
-    const { error: finishError } = await admin.rpc("bw_account_deletion_finish", { p_uid: caller.id });
+    // The last step: personal files once more (another device may have
+    // uploaded before uploads were blocked), then notifications and messages
+    // once more. It stops (503) while a personal file is still there.
+    await removeFolder(bucketStore(admin, "personal-files"), caller.id);
+    await removeFolder(bucketStore(admin, "avatars"), caller.id);
+    const { error: finishError } = await retryOnDeadlock(() => admin.rpc("bw_account_deletion_finish", { p_uid: caller.id }));
     if (finishError) return notReady("finish", finishError.message);
 
     const { error: deleteError } = await admin.auth.admin.deleteUser(caller.id);

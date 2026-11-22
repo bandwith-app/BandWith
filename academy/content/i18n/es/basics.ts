@@ -927,7 +927,7 @@ const basics: AreaText = {
       keywords: ["eliminar cuenta", "cerrar cuenta", "borrar cuenta", "darse de baja"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes directos. Tus mensajes en los chats de la banda y de los conciertos se quedan, como de un **Antiguo miembro**. Si quieres una copia, exporta antes tus datos." },
+        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes directos. Tus mensajes en los chats de la banda, de los conciertos y de grupo se quedan, como de un **Antiguo miembro**. Si quieres una copia, exporta antes tus datos." },
         {
           type: "steps",
           items: [

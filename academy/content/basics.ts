@@ -939,7 +939,7 @@ const basics: AreaModule = {
       keywords: ["delete account", "close account", "remove account", "erase"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and direct messages are deleted. Your messages in band and gig chats stay, shown as from a **Former member**. Export your data first if you want a copy." },
+        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and direct messages are deleted. Your messages in band, gig and group chats stay, shown as from a **Former member**. Export your data first if you want a copy." },
         {
           type: "steps",
           items: [

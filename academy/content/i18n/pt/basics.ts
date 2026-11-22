@@ -932,7 +932,7 @@ const basics: AreaText = {
       keywords: ["excluir conta", "encerrar conta", "apagar conta", "remover conta"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Não dá para desfazer. Seu perfil, seus shows pessoais e suas mensagens diretas são excluídos. Suas mensagens nos chats da banda e dos shows ficam, como de um **Antigo membro**. Se quiser uma cópia, exporte seus dados antes." },
+        { type: "note", tone: "warning", text: "Não dá para desfazer. Seu perfil, seus shows pessoais e suas mensagens diretas são excluídos. Suas mensagens nos chats da banda, dos shows e de grupo ficam, como de um **Antigo membro**. Se quiser uma cópia, exporte seus dados antes." },
         {
           type: "steps",
           items: [

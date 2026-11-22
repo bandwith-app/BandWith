@@ -932,7 +932,7 @@ const basics: AreaText = {
       keywords: ["eliminare account", "chiudere account", "rimuovere account", "cancellare"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Non si può annullare. Il tuo profilo, i gig personali e i messaggi privati vengono eliminati. I tuoi messaggi nelle chat della band e dei gig restano, come di un **Ex membro**. Se vuoi una copia, esporta prima i tuoi dati." },
+        { type: "note", tone: "warning", text: "Non si può annullare. Il tuo profilo, i gig personali e i messaggi privati vengono eliminati. I tuoi messaggi nelle chat della band, dei gig e di gruppo restano, come di un **Ex membro**. Se vuoi una copia, esporta prima i tuoi dati." },
         {
           type: "steps",
           items: [

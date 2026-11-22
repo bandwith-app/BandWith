@@ -27,6 +27,15 @@ export async function deleteMyAccount(): Promise<DeleteAccountResult> {
   if (body?.code === 'account_has_bands') {
     return { ok: false, reason: 'admin_of_bands', bands: Array.isArray(body.bands) ? body.bands : [] };
   }
+  // A co-admin (or everyone else in a band) is deleting their account too.
+  if (body?.code === 'account_deletion_in_progress') {
+    return { ok: false, reason: 'error', message: t('A bandmate is deleting their account. Try again in a few minutes.') };
+  }
+  // A step could not finish yet (files still there): nothing more is gone,
+  // and trying again finishes it.
+  if (body?.code === 'storage_not_ready') {
+    return { ok: false, reason: 'error', message: t('We couldn’t finish deleting your account. Try again shortly.') };
+  }
   return {
     ok: false,
     reason: 'error',

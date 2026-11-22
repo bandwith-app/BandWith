@@ -169,9 +169,72 @@ describe('delete-account: round 3', () => {
 
   // B3: the confirmation says what really goes and what stays.
   it('the confirmation says direct messages go and band and gig messages stay', () => {
-    const key = "This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band and gig chats stay, shown as from a former member.";
+    // Round 4 (Claude review): group chats stay too.
+    const key = "This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band, gig and group chats stay, shown as from a former member.";
     expect(settingsSource).toContain(`t(${JSON.stringify(key)})`);
     expect(settingsSource).not.toContain("personal gigs and messages will be deleted.\")");
+    for (const [lang, dict] of Object.entries({ it: itDict, es: esDict, fr: frDict, de: deDict, pt: ptDict })) {
+      expect(dict[key], lang).toBeTruthy();
+    }
+  });
+});
+
+// Claude review #282, round 4.
+describe('delete-account: round 4', () => {
+  // A retry after prepare must not stop at the old band check before begin:
+  // begin is the band check, and it answers "prepared" on a retry.
+  it('the function asks begin first (no separate band check before it)', () => {
+    const begin = fn.indexOf("rpc('bw_account_deletion_begin'");
+    const blockers = fn.indexOf('"bw_account_deletion_blockers"');
+    expect(begin).toBeGreaterThan(0);
+    expect(blockers === -1 || blockers > begin).toBe(true);
+  });
+
+  // A deadlock aborts the whole RPC transaction (rolled back), so the
+  // function tries it once more.
+  it('retries an RPC once on a deadlock', async () => {
+    const retryOnDeadlock = (deletion as any).retryOnDeadlock;
+    expect(typeof retryOnDeadlock).toBe('function');
+    const answers = [{ data: null, error: { code: '40P01', message: 'deadlock detected' } }, { data: 1, error: null }];
+    let calls = 0;
+    expect(await retryOnDeadlock(async () => answers[calls++])).toEqual({ data: 1, error: null });
+    expect(calls).toBe(2);
+    calls = 0;
+    const other = await retryOnDeadlock(async () => { calls++; return { data: null, error: { code: '57014' } }; });
+    expect(calls).toBe(1);
+    expect(other.error.code).toBe('57014');
+    calls = 0;
+    const twice = await retryOnDeadlock(async () => { calls++; return { data: null, error: { code: '40P01' } }; });
+    expect(calls).toBe(2);
+    expect(twice.error.code).toBe('40P01');
+  });
+
+  it('the function retries begin, storage release, prepare and the last step', () => {
+    for (const name of ['bw_account_deletion_begin', 'bw_account_storage_release', 'bw_prepare_account_deletion', 'bw_account_deletion_finish']) {
+      expect(fn, name).toMatch(new RegExp(`retryOnDeadlock\\(\\(\\) => admin\\.rpc\\(["']${name}["']`));
+    }
+  });
+});
+
+// Codex and Claude reviews #282, round 4 (second part).
+describe('delete-account: round 4, files and texts', () => {
+  // B3: another device can upload after the storage step: the personal
+  // folders are emptied again right before the last step, which re-checks.
+  it('empties the personal folders again right before the last step', () => {
+    const prepare = fn.indexOf('"bw_prepare_account_deletion"');
+    const finish = fn.indexOf('"bw_account_deletion_finish"');
+    const between = fn.slice(prepare, finish);
+    expect(between).toMatch(/removeFolder\(bucketStore\(admin, "personal-files"\), caller\.id\)/);
+    expect(between).toMatch(/removeFolder\(bucketStore\(admin, "avatars"\), caller\.id\)/);
+  });
+
+  it('the busy answer is readable for older builds', () => {
+    expect(fn).toMatch(/code: "account_deletion_in_progress", error: "A bandmate is deleting their account\. Try again in a few minutes\."/);
+  });
+
+  it('the Settings description counts group chats among the ones that stay', () => {
+    const key = 'Permanently removes your profile, personal gigs and direct messages. Your messages in band, gig and group chats stay, shown as from a former member. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.';
+    expect(settingsSource).toContain(`t('${key}')`);
     for (const [lang, dict] of Object.entries({ it: itDict, es: esDict, fr: frDict, de: deDict, pt: ptDict })) {
       expect(dict[key], lang).toBeTruthy();
     }

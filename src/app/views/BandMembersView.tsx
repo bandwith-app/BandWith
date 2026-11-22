@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import { usePlan } from '@/lib/usePlan';
 import { limitFor } from '@/lib/plans';
-import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
+import { isDeletionHold, canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -194,9 +194,6 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     setPendingRemoval(member);
   };
 
-  // A co-admin's account deletion holds the band's last-admin check (180).
-  const isDeletionHold = (error: { message?: string } | null | undefined) =>
-    /account_deletion_in_progress/.test(error?.message ?? '');
 
   const confirmRemoveMember = async () => {
     if (!pendingRemoval || removing) return;
