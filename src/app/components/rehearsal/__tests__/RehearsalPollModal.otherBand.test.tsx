@@ -13,6 +13,7 @@ const bandA = {
 };
 const rosterCalls = vi.hoisted(() => [] as string[]);
 const pickerBands = vi.hoisted(() => [] as (string | undefined)[]);
+const roster = vi.hoisted(() => ({ pending: false }));
 
 vi.mock('@/lib/BandContext', () => ({
   useBand: () => ({ selectedBand: bandA, refreshMembers: () => {} }),
@@ -21,6 +22,7 @@ vi.mock('@/lib/services/bands', async (orig) => ({
   ...(await orig<typeof import('@/lib/services/bands')>()),
   getBandRoster: async (bandId: string) => {
     rosterCalls.push(bandId);
+    if (roster.pending) return new Promise(() => {});
     return {
       data: bandId === 'bB'
         ? [{ user_id: 'bob', profile: { full_name: 'Bob Bass' } }, { user_id: 'admin', profile: { full_name: 'Alex Admin' } }]
@@ -68,5 +70,26 @@ describe("an admin opens another band's proposal", () => {
     await act(async () => {});
     fireEvent.click(screen.getAllByRole('button', { name: 'Add' })[0]);
     expect(screen.getByTestId('song-picker').textContent).toBe('bB');
+  });
+});
+
+describe('Publish waits for that band to load (Claude #297 round 3)', () => {
+  const withSlot = { ...proposal, options: [{ id: 'o1', proposed_date: '2099-12-07', start_time: '20:00', end_time: '22:00' }] };
+  const publishButtons = () => screen.getAllByRole('button', { name: /Publish poll/ }) as HTMLButtonElement[];
+
+  it("stays off while band B's members are still loading", async () => {
+    roster.pending = true;
+    render(<RehearsalPollModal isOpen onClose={() => {}} bandId="bB" adminId="admin" initialProposal={withSlot} />);
+    await act(async () => {});
+    expect(publishButtons().length).toBeGreaterThan(0);
+    for (const b of publishButtons()) expect(b.disabled).toBe(true);
+    roster.pending = false;
+  });
+
+  it('turns on once they are in', async () => {
+    roster.pending = false;
+    render(<RehearsalPollModal isOpen onClose={() => {}} bandId="bB" adminId="admin" initialProposal={withSlot} />);
+    await act(async () => {});
+    expect(publishButtons().some((b) => !b.disabled)).toBe(true);
   });
 });

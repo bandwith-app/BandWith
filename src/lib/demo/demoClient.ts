@@ -1176,11 +1176,13 @@ const rpc = (fn: string, args: Row = {}) => {
           return {
             user_id: String(em.user_id), event_id: String(e.id), event_date: String(e.event_date),
             start_time: e.start_time ?? null, end_time: e.end_time ?? null, event_status: e.status, answer: em.status ?? '',
+            skip_dates: Array.isArray(e.recurrence_rule?.skip_dates) ? e.recurrence_rule.skip_dates : null,
           };
         }),
         ...table('events').filter((e) => !e.band_id && e.created_by).map((e) => ({
           user_id: String(e.created_by), event_id: String(e.id), event_date: String(e.event_date),
           start_time: e.start_time ?? null, end_time: e.end_time ?? null, event_status: e.status, answer: null,
+          skip_dates: Array.isArray(e.recurrence_rule?.skip_dates) ? e.recurrence_rule.skip_dates : null,
         })),
         ...table('demo_member_busy').map((b) => ({ ...b, user_id: String(b.user_id), event_date: String(b.event_date), answer: null })),
       ];

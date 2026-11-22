@@ -101,6 +101,7 @@ import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/off
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
 import { deleteRehearsalDate } from "@/lib/services/rehearsalSkip";
 import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
+import { occurrenceStart } from "@/lib/eventOverviewEdit";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -170,7 +171,7 @@ import { MapsChooserHost } from '@/app/components/ui/MapsLink';
 import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
-import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
+import { syncEventTasks, withTaskClientIds, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
 import { newEventInvites } from "@/lib/eventLineup";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
@@ -863,9 +864,10 @@ export default function AuthenticatedApp() {
     const { next, seen } = syncOpenEvent<EventData>(selectedEvent, fresh as Partial<EventData>, track.seen);
     track.seen = seen;
     if (next === selectedEvent) return;
-    // `next.date`: one date of a repeating rehearsal stays on that date.
+    // `next.date` / `next.seriesDate`: one date of a repeating rehearsal stays
+    // on that date, and follows the series when it moves.
     setSelectedEvent(prev =>
-      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>), date: next?.date ?? prev.date } : prev,
+      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>), date: next?.date ?? prev.date, seriesDate: next?.seriesDate ?? prev.seriesDate } : prev,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, openEventKey]);
@@ -3304,8 +3306,7 @@ export default function AuthenticatedApp() {
         title: title || t('Untitled Event'),
         event_type: eventType,
         status: isRehearsalWizard ? (data.status === 'draft' ? 'confirmed' : (data.status || 'confirmed')) : (data.status || 'confirmed'),
-        // One date of a series, its date untouched: the series keeps its start.
-        event_date: editingEventData?.seriesDate && date === editingEventData.date ? editingEventData.seriesDate : date,
+        event_date: date,
         start_time: timeFinal,
         end_time: endTime || null,
         ...(!isRehearsalWizard
@@ -3343,10 +3344,23 @@ export default function AuthenticatedApp() {
           : (data.recurrence_rule || null),
       };
 
+      // One later date of a series edited here: the series start is written
+      // only when the date moved (the whole series, by the same days); a
+      // switch to "once" keeps the date on screen (Codex / Claude #297 round 3).
+      const seriesStart = data._editingEventId
+        ? occurrenceStart(editingEventData, date, !!eventData.is_recurring, 'series')
+        : undefined;
+      if (seriesStart === null) delete eventData.event_date;
+      else if (seriesStart !== undefined) eventData.event_date = seriesStart;
+
       // Event to-dos (create modal, template or rehearsal wizard). Ids count
       // as saved only when the form loaded them from this event.
       const originalTaskIds: string[] = Array.isArray(data._originalTaskIds) ? data._originalTaskIds : [];
-      const taskDrafts = (): EventTaskDraft[] => {
+      // Built once, with the ids of new to-dos: the first try and the
+      // offline queue send the same ones (Codex #297 round 3).
+      let draftsOnce: EventTaskDraft[] | null = null;
+      const taskDrafts = (): EventTaskDraft[] => (draftsOnce ??= withTaskClientIds(buildTaskDrafts()));
+      const buildTaskDrafts = (): EventTaskDraft[] => {
         const knownUserIds = new Set((realBand?.members || []).map((m: any) => m.user_id).filter(Boolean));
         return (Array.isArray(data.tasks) ? data.tasks : []).map((t: any) => {
           const assignees: string[] = Array.isArray(t.assignedTo) ? t.assignedTo : [];

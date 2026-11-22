@@ -25,6 +25,7 @@ vi.mock('@/lib/supabase', () => {
 });
 
 import { syncEventTasks, type EventTaskDraft } from '../eventTasks';
+import appSource from '@/app/AuthenticatedApp.tsx?raw';
 
 beforeEach(() => { db.writes.length = 0; });
 
@@ -47,5 +48,11 @@ describe('new tasks sent twice', () => {
   it('saved tasks (with a real id) are still updated, not re-sent', async () => {
     await syncEventTasks('ev', [{ id: 't1', title: 'Kept' }], '2099-12-01', ['t1']);
     expect(db.writes).toEqual([]);
+  });
+});
+
+describe('the event wizard (Codex #297 round 3)', () => {
+  it('builds its drafts once, with their ids, for the first try and the offline queue', () => {
+    expect(appSource).toMatch(/const taskDrafts = \(\): EventTaskDraft\[\] => \(draftsOnce \?\?= withTaskClientIds\(buildTaskDrafts\(\)\)\)/);
   });
 });

@@ -3,7 +3,7 @@ import { EVENT_MEMBER_COLUMNS, getEventMemberMoney, withMoney } from './eventMem
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate, getEventPrivate, privateFieldsOf } from './eventPrivate';
 import { todayLocal, toLocalDateString } from '../dates';
 import { t } from '@/lib/i18n';
-import { mergeRecurrenceRule } from '../recurrenceSkips';
+import { mergeRecurrenceRule, sameCadence } from '../recurrenceSkips';
 
 // Types
 export type EventType = 'gig' | 'rehearsal' | 'wedding' | 'corporate' | 'private' | 'festival' | 'other';
@@ -401,7 +401,11 @@ export const updateEvent = async (
         .eq('id', eventId)
         .maybeSingle();
       if (readErr) throw readErr;
-      (sanitizedUpdates as any).recurrence_rule = mergeRecurrenceRule((stored as any)?.recurrence_rule, nextRule);
+      const storedRule = (stored as any)?.recurrence_rule;
+      // Same repeat as stored (a rename, a time change): the rule is not
+      // written, so it can never undo a date deleted meanwhile (Codex #297 round 3).
+      if (sameCadence(storedRule, nextRule)) delete (sanitizedUpdates as any).recurrence_rule;
+      else (sanitizedUpdates as any).recurrence_rule = mergeRecurrenceRule(storedRule, nextRule);
     }
 
     const { data, error } = await supabase

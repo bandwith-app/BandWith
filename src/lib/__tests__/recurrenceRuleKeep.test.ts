@@ -55,9 +55,9 @@ describe('mergeRecurrenceRule', () => {
 
 describe('saving a repeating rehearsal keeps its deleted dates', () => {
   it('updateEvent merges the stored rule (wizard, overview card, offline replay)', async () => {
-    const { error } = await updateEvent('ev', { title: 'Weekly jam', recurrence_rule: { frequency: 'weekly', interval: 1 } } as any);
+    const { error } = await updateEvent('ev', { title: 'Weekly jam', recurrence_rule: { frequency: 'weekly', interval: 2 } } as any);
     expect(error).toBeNull();
-    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08'], custom: 'keep me' });
+    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08'], custom: 'keep me' });
     expect(db.updates[0].title).toBe('Weekly jam');
   });
 
@@ -79,5 +79,26 @@ describe('saving a repeating rehearsal keeps its deleted dates', () => {
     const start = appSrc.indexOf('recurrence_rule: (data.recurrence && data.recurrence !==');
     const near = appSrc.slice(Math.max(0, start - 200), start + 400);
     expect(near).toMatch(/mergeRecurrenceRule\(/);
+  });
+});
+
+describe('a queued edit never overrides fresher deleted dates (Codex #297 round 3 B1)', () => {
+  it('stale skip_dates in the payload are unioned with the stored ones', async () => {
+    db.stored = { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08', '2099-12-15'] };
+    // Queued before the other admin deleted Dec 15; changes the cadence.
+    await updateEvent('ev', { recurrence_rule: { frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-22'] } } as any);
+    expect(db.updates[0].recurrence_rule).toEqual({ frequency: 'weekly', interval: 2, skip_dates: ['2099-12-08', '2099-12-15', '2099-12-22'] });
+  });
+
+  it('same cadence: the rule is not written at all (a rename never races a delete)', async () => {
+    db.stored = { freq: 'weekly', skip_dates: ['2099-12-15'] };
+    await updateEvent('ev', { title: 'Renamed', recurrence_rule: { frequency: 'weekly', interval: 1, skip_dates: [] } } as any);
+    expect(db.updates[0]).not.toHaveProperty('recurrence_rule');
+    expect(db.updates[0].title).toBe('Renamed');
+  });
+
+  it('mergeRecurrenceRule unions skip_dates', () => {
+    expect(mergeRecurrenceRule({ frequency: 'weekly', skip_dates: ['2099-12-15'] }, { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08'] }))
+      .toEqual({ frequency: 'weekly', interval: 1, skip_dates: ['2099-12-08', '2099-12-15'] });
   });
 });

@@ -90,3 +90,19 @@ describe('helpers', () => {
     expect(heatLevel(null)).toBe(0);
   });
 });
+
+describe('a deleted date of a repeating rehearsal (Codex #297 round 3)', () => {
+  it('does not make anyone busy on that date', () => {
+    const rows = freeSlotsFromRows(M, [c({ user_id: 'a', event_id: 's', event_date: '2099-11-24', skip_dates: ['2099-11-24'] })], {
+      from: '2099-11-24', to: '2099-11-24',
+    });
+    expect(rows[0]).toMatchObject({ free: 5, total: 5 });
+  });
+
+  it('a date not deleted still counts', () => {
+    const rows = freeSlotsFromRows(M, [c({ user_id: 'a', event_id: 's', event_date: '2099-11-24', skip_dates: ['2099-12-01'] })], {
+      from: '2099-11-24', to: '2099-11-24',
+    });
+    expect(rows[0]).toMatchObject({ free: 4, total: 5 });
+  });
+});

@@ -445,9 +445,11 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
       if (titleMatch || locMatch || clientMatch || notesMatch) {
         seen.add(key);
-        // A repeating rehearsal whose first date was deleted: its next date
-        // still on; none left, no result (Codex #297).
-        const live = isSkippedOccurrence(e as any, e.date) ? occurrenceOn(e as any, null) as EventData | null : e;
+        // A repeating rehearsal: its next date still on from today (a
+        // started series is not a past result); none left, its last state:
+        // the first date, unless that was deleted (Codex / Claude #297).
+        const next = (e as any).is_recurring ? (occurrenceOn(e as any, null, todayStr) as EventData | null) : e;
+        const live = next ?? (isSkippedOccurrence(e as any, e.date) ? null : e);
         if (live) matches.push(live);
       }
     });

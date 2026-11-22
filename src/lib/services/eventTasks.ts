@@ -42,6 +42,16 @@ const newId = (): string =>
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
       });
 
+/**
+ * Gives every new draft its id, on the drafts themselves, before the first
+ * try or the queue (Codex #297 round 3): the queue stores it, and every
+ * later replay sends the same one.
+ */
+export function withTaskClientIds<T extends EventTaskDraft>(drafts: T[]): T[] {
+  for (const d of drafts) if (!d.id && !d.clientId) d.clientId = newId();
+  return drafts;
+}
+
 const COLUMNS = 'id, event_id, title, is_completed, due_date, assigned_to, notes';
 
 const asError = (err: unknown, fallback: string) => {
@@ -89,8 +99,9 @@ export async function syncEventTasks(
   eventDate: string | null | undefined,
   originalIds: string[] = [],
 ): Promise<{ error: Error | null }> {
-  // On the drafts themselves: the caller (or the queue) retries with the same ids.
-  for (const d of drafts) if (!d.id && !d.clientId) d.clientId = newId();
+  // Normally chosen already (withTaskClientIds); a queue item from an older
+  // build gets them here.
+  withTaskClientIds(drafts);
   const clean = drafts
     .map((t) => ({ ...t, title: (t.title || '').trim() }))
     .filter((t) => t.title);

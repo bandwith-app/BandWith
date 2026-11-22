@@ -195,17 +195,25 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
   const { saving, error, setError, run } = useSaving(onClose);
   const [v, setV] = useState<EventCardValues>(() => eventCardValues(event));
   const [initial, setInitial] = useState(v);
+  // A new date for one later date of a series: that date only, or the whole
+  // series (Claude #297 round 3). Asked before Save.
+  const [moveScope, setMoveScope] = useState<'date' | 'series' | null>(null);
   useEffect(() => {
     if (!open) return;
     const now = eventCardValues(event);
     setV(now);
     setInitial(now);
+    setMoveScope(null);
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const set = (p: Partial<EventCardValues>) => setV((prev) => ({ ...prev, ...p }));
   // Only what the admin changed (a gig with no start time yet opens on 20:00).
-  const patch = JSON.stringify(v) !== JSON.stringify(initial) ? changedPatch(event, eventCardPatch(kind, v, event)) : null;
+  const askMove = kind === 'rehearsal' && !!event.seriesDate && v.recurrence !== 'once' && !!v.date && v.date !== initial.date;
+  const patch = JSON.stringify(v) !== JSON.stringify(initial)
+    ? changedPatch(event, eventCardPatch(kind, v, event, askMove ? moveScope ?? undefined : undefined))
+    : null;
+  const moveOnly = askMove && moveScope === 'date';
   const accent = kind === 'rehearsal' ? 'var(--accent-rehearsal)' : 'var(--accent-gig)';
   const overline = timeOverlineOf(t, kind, v.date);
   const pickerEvents = useMemo(() => toDatePickerEvents(allEvents, event.eventId), [allEvents, event.eventId]);
@@ -230,11 +238,19 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
       onClose={onClose}
       overline={event.title}
       title={t('Title, date & times')}
-      dirty={!!patch}
-      canSave={!!v.title.trim() && !!v.date}
+      dirty={!!patch || askMove}
+      canSave={!!v.title.trim() && !!v.date && (!askMove || !!moveScope)}
       saving={saving}
       error={error}
-      onSave={() => run(() => api.saveFields(patch))}
+      onSave={() =>
+        run(() =>
+          moveOnly
+            ? api.moveDateOnly
+              ? api.moveDateOnly({ title: v.title, date: v.date, startTime: v.startTime, endTime: v.endTime })
+              : Promise.resolve(t('Could not save the event. Please try again.'))
+            : api.saveFields(patch),
+        )
+      }
     >
       <PillField
         label={kind === 'rehearsal' ? t('Session title') : t('Event title')}
@@ -272,6 +288,21 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
           availability={{ bandId: event.band_id, start: v.startTime, end: v.endTime, excludeEventId: event.eventId }}
         />
       </div>
+      {askMove && (
+        <div className="flex flex-col gap-2">
+          <Label>{t('Move which dates?')}</Label>
+          <Segmented<'date' | 'series' | ''>
+            label={t('Move which dates?')}
+            value={moveScope ?? ''}
+            options={[
+              { value: 'date', label: t('Only this date') },
+              { value: 'series', label: t('The whole series') },
+            ]}
+            onChange={(s) => setMoveScope(s === '' ? null : s)}
+            size="sm"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <Label htmlFor="ovw-start">{t('Start time')}</Label>

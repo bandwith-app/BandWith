@@ -142,24 +142,31 @@ export function eventCardValues(ev: EditableEvent): EventCardValues {
 /**
  * `saved`: the event as opened. A rehearsal's rule changes only its
  * cadence: deleted dates (skip_dates) and other keys stay (Codex #297 B2).
- * Opened on a later date of the series (`seriesDate`), the series keeps
- * its first date unless the date itself was changed.
+ * Opened on a later date of the series (`seriesDate`), the series start is
+ * not written unless the whole series moves (`moveScope` 'series'); switched
+ * to "once", the event keeps the date on screen.
  */
 export function eventCardPatch(
   kind: EditKind,
   v: EventCardValues,
   saved?: Partial<Pick<EditableEvent, 'recurrence_rule' | 'date' | 'seriesDate'>>,
+  /** A new date for one date of a series: that date only, or the whole series. */
+  moveScope?: 'date' | 'series',
 ): Record<string, unknown> {
-  // One date of a series, its date untouched: the series keeps its start.
-  const keepStart = !!saved?.seriesDate && v.date === saved.date;
   const base: Record<string, unknown> = {
     title: v.title.trim(),
-    event_date: keepStart ? saved!.seriesDate : v.date,
+    event_date: v.date,
     start_time: v.startTime || '20:00',
     end_time: v.endTime || null,
   };
   if (kind === 'rehearsal') {
     const r = recurrencePatch(v.recurrence);
+    // One later date of a series that still repeats: the series start is
+    // written only when the whole series moves on purpose (Codex #297 round 3).
+    // Switched to "once", it keeps the date on screen.
+    const start = occurrenceStart(saved, v.date, v.recurrence !== 'once', moveScope);
+    if (start === null) delete base.event_date;
+    else if (start !== undefined) base.event_date = start;
     return { ...base, ...r, recurrence_rule: mergeRecurrenceRule(saved?.recurrence_rule, r.recurrence_rule) };
   }
   return {
@@ -169,6 +176,34 @@ export function eventCardPatch(
     soundcheck_time: v.soundcheckTime || null,
   };
 }
+
+/**
+ * The series start to save when one later date of it (`saved.seriesDate`)
+ * was edited and it still repeats: null (not written: the date was left
+ * alone, or moved for this date only), the start moved by the same days
+ * (the whole series), or undefined (not such a date: save the date as is).
+ */
+export function occurrenceStart(
+  saved: { date?: string; seriesDate?: string } | null | undefined,
+  newDate: string,
+  repeating: boolean,
+  moveScope?: 'date' | 'series',
+): string | null | undefined {
+  if (!saved?.seriesDate || !saved.date || !repeating) return undefined;
+  if (newDate !== saved.date && moveScope === 'series') return shiftDay(saved.seriesDate, daysApart(saved.date, newDate));
+  return null;
+}
+
+const noonOf = (ymd: string) => {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d, 12);
+};
+const daysApart = (a: string, b: string) => Math.round((noonOf(b).getTime() - noonOf(a).getTime()) / 86_400_000);
+const shiftDay = (ymd: string, n: number) => {
+  const t = noonOf(ymd);
+  t.setDate(t.getDate() + n);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+};
 
 /* ─── "Venue" card ─── */
 

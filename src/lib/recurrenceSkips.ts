@@ -12,6 +12,8 @@
  * new grant is needed; older builds ignore the key and still show the date.
  */
 
+import { repeatDates } from '@/lib/recurrence';
+
 type RuleLike = { skip_dates?: unknown } | null | undefined;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -75,23 +77,13 @@ export function occurrenceOn<T extends Repeating>(event: T, date?: string | null
   if (picked) return picked === base || !DAY.test(picked) ? event : { ...event, date: picked, seriesDate: base };
 
   const start = dayOf(from);
-  const freq = String(rule.freq || rule.frequency || '').toLowerCase();
   const skips = skippedDates(rule);
-  const until = typeof rule.until === 'string' ? dayOf(rule.until) : '';
-  const after = Number(rule.count) > 0 ? Number(rule.count) : Infinity;
-  const step = Math.max(1, Number(rule.interval) || 1);
+  const after = Number(rule.count) > 0 ? Number(rule.count) : 1100;
   const [y, m, d] = base.split('-').map(Number);
-  const cursor = new Date(y, m - 1, d);
-  // A bounded walk: a weekly series 20 years out at most.
-  for (let n = 0; n <= Math.min(after, 1100); n++) {
-    if (n > 0) {
-      if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * step);
-      else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-      else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + step);
-      else break;
-    }
-    const day = ymd(cursor);
-    if (until && day > until) break;
+  // The same dates as every list (lib/recurrence: local noon, months counted
+  // from the first date), up to `until` and `count` dates after the first.
+  const days = [base, ...repeatDates(base, rule, new Date(y + 30, m - 1, d), after).map(ymd)];
+  for (const day of days) {
     if ((start && day < start) || skips.has(day)) continue;
     return day === base ? event : { ...event, date: day, seriesDate: base };
   }
@@ -111,7 +103,26 @@ export function mergeRecurrenceRule<T extends Record<string, unknown>>(
   if (!next) return null;
   if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return next;
   const { freq: _f, frequency: _fr, interval: _i, ...rest } = stored as Record<string, unknown>;
-  return { ...rest, ...next };
+  const merged: Record<string, unknown> = { ...rest, ...next };
+  // Deleted dates only add up: a stale copy (an edit queued offline) never
+  // brings back a date deleted since (Codex #297 round 3).
+  const all = new Set([...skippedDates(stored), ...skippedDates(next)]);
+  if (all.size > 0) merged.skip_dates = Array.from(all).sort();
+  return merged as T & Record<string, unknown>;
+}
+
+/** weekly ×1, weekly ×2 (= biweekly), monthly ×n: the repeat a rule describes. */
+const cadenceOf = (rule: unknown): string => {
+  const r = (rule && typeof rule === 'object' ? rule : {}) as Record<string, unknown>;
+  let freq = String(r.freq || r.frequency || '').toLowerCase();
+  let every = Number(r.interval) >= 1 ? Math.floor(Number(r.interval)) : 1;
+  if (freq === 'biweekly') { freq = 'weekly'; every = 2; }
+  return `${freq}/${every}`;
+};
+
+/** True when both rules repeat the same way (deleted dates and other keys aside). */
+export function sameCadence(a: unknown, b: unknown): boolean {
+  return !!a && !!b && cadenceOf(a) === cadenceOf(b);
 }
 
 /**

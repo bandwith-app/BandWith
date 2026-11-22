@@ -65,10 +65,10 @@ describe('editing one date of a series', () => {
   it('the overview Event card keeps the series start unless the date was changed', () => {
     const ev = { title: 'Weekly', eventType: 'rehearsal', time: '19:00', ...occurrenceOn(series, '2099-12-08')! } as any;
     const renamed = changedPatch(ev, eventCardPatch('rehearsal', { ...eventCardValues(ev), title: 'Weekly jam' }, ev));
-    expect(renamed?.event_date).toBe('2099-12-01');
-    expect(eventDataPatch(renamed!, ev).date).toBe('2099-12-08');
-    const moved = changedPatch(ev, eventCardPatch('rehearsal', { ...eventCardValues(ev), date: '2099-12-09' }, ev));
-    expect(moved?.event_date).toBe('2099-12-09');
+    expect(renamed).not.toHaveProperty("event_date");
+    expect(eventDataPatch(renamed!, ev).date).toBeUndefined(); // the date on screen stays
+    const moved = changedPatch(ev, eventCardPatch('rehearsal', { ...eventCardValues(ev), date: '2099-12-09' }, ev, 'series'));
+    expect(moved?.event_date).toBe('2099-12-02');
     expect(changedPatch(ev, eventCardPatch('rehearsal', eventCardValues(ev), ev))).toBeNull();
   });
 });
@@ -78,6 +78,32 @@ import appSrc from '@/app/AuthenticatedApp.tsx?raw';
 describe('the app', () => {
   it('a Calendar date of a series opens knowing the series start; the wizard keeps it', () => {
     expect(appSrc).toMatch(/seriesDate: series\.date/);
-    expect(appSrc).toMatch(/event_date: editingEventData\?\.seriesDate && date === editingEventData\.date \? editingEventData\.seriesDate : date/);
+    expect(appSrc).toMatch(/occurrenceStart\(editingEventData, date, !!eventData\.is_recurring, 'series'\)/);
+  });
+});
+
+/** Codex #297 round 3 B3 and Claude's occurrence-edit minors. */
+describe('the Event card on one date of a series', () => {
+  const at = { title: 'Weekly', eventType: 'rehearsal', time: '19:00', ...occurrenceOn(series, '2099-12-08')! } as any;
+
+  it('a rename never writes the series start', () => {
+    const patch = changedPatch(at, eventCardPatch('rehearsal', { ...eventCardValues(at), title: 'Weekly jam' }, at));
+    expect(patch).not.toHaveProperty('event_date');
+    expect(patch?.title).toBe('Weekly jam');
+  });
+
+  it('switched to "once", it keeps the date it shows', () => {
+    const patch = changedPatch(at, eventCardPatch('rehearsal', { ...eventCardValues(at), recurrence: 'once' }, at));
+    expect(patch).toMatchObject({ event_date: '2099-12-08', is_recurring: false, recurrence_rule: null });
+  });
+
+  it('a new date for the whole series moves its start by the same days', () => {
+    const v = { ...eventCardValues(at), date: '2099-12-10' };
+    expect(eventCardPatch('rehearsal', v, at, 'series').event_date).toBe('2099-12-03');
+  });
+
+  it('a new date for this date only leaves the series start alone', () => {
+    const v = { ...eventCardValues(at), date: '2099-12-10' };
+    expect(eventCardPatch('rehearsal', v, at, 'date')).not.toHaveProperty('event_date');
   });
 });

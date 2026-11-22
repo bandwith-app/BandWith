@@ -59,7 +59,10 @@ CREATE FUNCTION public.bw_is_band_member(p_band_id uuid, p_user_id uuid DEFAULT 
   SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND COALESCE(is_active, true)); $f$;
 
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, event_date date, is_recurring boolean DEFAULT false,
-  recurrence_rule jsonb, updated_at timestamptz DEFAULT now());
+  recurrence_rule jsonb, updated_at timestamptz DEFAULT now(),
+  status text, start_time time, "time" time, end_time time, duration_hours numeric, created_by uuid);
+ALTER TABLE public.band_members ADD COLUMN left_at timestamptz;
+CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text);
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "events_select" ON public.events FOR SELECT TO authenticated USING (bw_is_band_member(band_id));
 CREATE POLICY "events_update" ON public.events FOR UPDATE TO authenticated USING (bw_is_band_admin(band_id)) WITH CHECK (bw_is_band_admin(band_id));
@@ -91,6 +94,8 @@ GRANT SELECT ON public.band_members, public.profiles TO authenticated;
 // 114 (room cost RPC) and 117 (vote deadline + vote policies), as they are live.
 await db.exec(readFileSync(`${REPO}/supabase/migrations/114_poll_room_cost_rpc.sql`, 'utf8'));
 await db.exec(readFileSync(`${REPO}/supabase/migrations/117_poll_vote_deadline.sql`, 'utf8'));
+// 095 (free-slot heatmap), as it is live.
+await db.exec(readFileSync(`${REPO}/supabase/migrations/095_band_free_slots.sql`, 'utf8'));
 
 await db.exec(`
 INSERT INTO profiles VALUES ('${ADMIN}','America/New_York'), ('${INVITED}','Europe/London'), ('${OUTSIDER}','America/New_York');
@@ -112,6 +117,8 @@ INSERT INTO rehearsal_poll_unavailable (poll_id, user_id) VALUES ('${POLL_PRIV}'
 INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule) VALUES
   ('${SERIES}','${BAND_A}','Weekly rehearsal','2099-11-24', true, '{"frequency":"weekly","interval":1,"custom":"keep me","skip_dates":["2099-12-01"]}'),
   ('${ONCE}','${BAND_A}','One-off','2099-11-25', false, NULL);
+-- INVITED plays both.
+INSERT INTO event_members (event_id, user_id, status) VALUES ('${SERIES}','${INVITED}','confirmed'), ('${ONCE}','${INVITED}','confirmed');
 `);
 
 async function as(user, fn) {
@@ -257,6 +264,16 @@ ok(anonSkip === false, 'anon cannot call the skip function');
 
 const anonCan = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_publish_rehearsal_proposal(uuid, jsonb, jsonb)', 'EXECUTE') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(anonCan === false, 'anon cannot call the publish function');
+
+// Codex #297 round 3: free-slot counts and a deleted date. Not changed in
+// 195: #294 (178) redefines bw_band_free_slots, so the skip guard lands on
+// 178's body once both are in (follow-up). Shown here, not checked.
+const free = async (day) => (await as(ADMIN, () => db.query(`SELECT free_count, total_count FROM public.bw_band_free_slots($1, $2::date, $2::date)`, [BAND_A, day]))).rows[0];
+console.log(`info: free on the deleted first date ${JSON.stringify(await free('2099-11-24'))}, on the one-off ${JSON.stringify(await free('2099-11-25'))}`);
+
+// Claude #297 round 3: the votes policy is for signed-in users, as in 118.
+const voteRoles = (await db.query(`SELECT roles::text AS r FROM pg_policies WHERE tablename = 'rehearsal_poll_votes' AND policyname = 'band_members_can_select_votes'`)).rows[0]?.r;
+ok(voteRoles === '{authenticated}', `the votes policy is TO authenticated (${voteRoles})`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

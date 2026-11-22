@@ -410,23 +410,49 @@ const alreadyPublishedError = () =>
     code: POLL_ALREADY_PUBLISHED,
   });
 
+type Slot = { proposed_date: string; start_time: string; end_time?: string | null };
+const slotKey = (o: { proposed_date?: unknown; start_time?: unknown; end_time?: unknown }) =>
+  `${String(o.proposed_date ?? '').slice(0, 10)}|${String(o.start_time ?? '').slice(0, 5)}|${o.end_time ? String(o.end_time).slice(0, 5) : ''}`;
+
 /**
- * A poll published by a try that was cut off before its options were saved
- * (a database before 195 publishes step by step): polling, with no option.
+ * A proposal that is already a poll, seen by a publish retry (Codex B4 +
+ * Claude, #297 round 3). It is this admin's own publish when:
+ * - it has no option yet (a try before 195 cut off after the status change): add them;
+ * - its options are exactly the ones being published (the answer was lost): just notify;
+ * - its only options are the proposal's suggestions, older than the status
+ *   change and with no vote (a try before 195 cut off before it cleared
+ *   them): clear them, then add the poll's.
+ * Anything else is another admin's poll: null.
  */
-async function unfinishedPublish(pollId: string): Promise<{ band_id?: string } | null> {
+async function resumePublish(
+  pollId: string,
+  slots: Slot[],
+): Promise<{ band_id?: string; insert: boolean; clear: boolean } | null> {
   const { data: poll } = await supabase
     .from('rehearsal_polls')
-    .select('id, band_id, status')
+    .select('id, band_id, status, updated_at')
     .eq('id', pollId)
     .maybeSingle();
-  if (!poll || (poll as { status?: string }).status !== 'polling') return null;
-  const { count, error } = await supabase
+  const row = poll as { band_id?: string; status?: string; updated_at?: string } | null;
+  if (!row || row.status !== 'polling') return null;
+  const { data: options, error } = await supabase
     .from('rehearsal_poll_options')
+    .select('proposed_date, start_time, end_time, created_at')
+    .eq('poll_id', pollId);
+  if (error) return null;
+  const list = (options ?? []) as Array<{ proposed_date?: string; start_time?: string; end_time?: string | null; created_at?: string }>;
+  if (list.length === 0) return { band_id: row.band_id, insert: true, clear: false };
+  const want = slots.map(slotKey).sort().join(',');
+  if (list.map(slotKey).sort().join(',') === want) return { band_id: row.band_id, insert: false, clear: false };
+  const changedAt = row.updated_at ? Date.parse(row.updated_at) : NaN;
+  const allOlder = list.every((o) => o.created_at && Date.parse(o.created_at) < changedAt);
+  if (!allOlder) return null;
+  const { count, error: votesError } = await supabase
+    .from('rehearsal_poll_votes')
     .select('id', { count: 'exact', head: true })
     .eq('poll_id', pollId);
-  if (error || count !== 0) return null;
-  return poll as { band_id?: string };
+  if (votesError || count !== 0) return null;
+  return { band_id: row.band_id, insert: true, clear: true };
 }
 
 /**
@@ -507,9 +533,19 @@ export const createOrPublishAdminPoll = async ({
       if (res?.error && !isMissingRpc(res.error)) throw res.error;
       const out = (res?.error ? null : res?.data) as { published?: boolean; band_id?: string } | null;
       if (out && typeof out.published === 'boolean') {
-        if (!out.published) throw alreadyPublishedError();
-        if (out.band_id) notifyBandId = out.band_id;
-        optionsSaved = true;
+        if (out.published) {
+          if (out.band_id) notifyBandId = out.band_id;
+          optionsSaved = true;
+        } else {
+          // Already a poll: this admin's own publish whose answer was lost,
+          // or one a try before 195 left half-way, is finished; any other
+          // admin's poll stays as it is.
+          const mine = await resumePublish(pollId, timeSlots);
+          if (!mine) throw alreadyPublishedError();
+          if (mine.band_id) notifyBandId = mine.band_id;
+          if (mine.clear) await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+          optionsSaved = !mine.insert;
+        }
       } else {
         // Database before 195: the step-by-step publish, still only while it is a proposal.
         const { data: updated, error: updateError } = await supabase
@@ -525,12 +561,13 @@ export const createOrPublishAdminPoll = async ({
           // Clean up the proposal's own suggestions (nobody votes on a proposal).
           await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
         } else {
-          // Not a proposal any more. A try cut off after the status change
-          // but before its options went in left a poll with none: finish it
-          // (Codex #297). Any other poll: another admin published it.
-          const unfinished = await unfinishedPublish(pollId);
-          if (!unfinished) throw alreadyPublishedError();
-          if (unfinished.band_id) notifyBandId = unfinished.band_id;
+          // Not a proposal any more: finish this admin's own cut-off or
+          // lost publish (Codex #297); any other poll: another admin's.
+          const mine = await resumePublish(pollId, timeSlots);
+          if (!mine) throw alreadyPublishedError();
+          if (mine.band_id) notifyBandId = mine.band_id;
+          if (mine.clear) await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+          optionsSaved = !mine.insert;
         }
       }
       activePollId = pollId;

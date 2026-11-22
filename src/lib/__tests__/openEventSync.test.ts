@@ -54,3 +54,20 @@ describe('one date of a repeating rehearsal (Codex #297 B1)', () => {
     expect(next?.date).toBe('2099-12-01');
   });
 });
+
+describe('the series moved while one of its dates is open (Codex #297 round 3 B3)', () => {
+  const base = { eventId: 'r1', title: 'Weekly', date: '2099-12-01', is_recurring: true, recurrence_rule: { frequency: 'weekly' } as { frequency: string } | null };
+  const open = { ...base, date: '2099-12-08', seriesDate: '2099-12-01' };
+
+  it('the open date and the series start move with it', () => {
+    const first = syncOpenEvent(open, base, null);
+    const { next } = syncOpenEvent(open, { ...base, date: '2099-12-02' }, first.seen);
+    expect(next).toMatchObject({ date: '2099-12-09', seriesDate: '2099-12-02' });
+  });
+
+  it('a rename keeps both', () => {
+    const first = syncOpenEvent(open, base, null);
+    const { next } = syncOpenEvent(open, { ...base, title: 'Weekly jam' }, first.seen);
+    expect(next).toMatchObject({ title: 'Weekly jam', date: '2099-12-08', seriesDate: '2099-12-01' });
+  });
+});

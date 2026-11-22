@@ -112,3 +112,51 @@ test.describe('a deleted date on Home @smoke', () => {
     await expect(tile(shift(tomorrow, 7)), 'the deleted date is not').toHaveCount(0);
   });
 });
+
+/**
+ * Codex #297 round 3 B2: west of Greenwich a series' first date read as UTC
+ * midnight was the evening before, so every later date fell a day early
+ * (a Monday rehearsal on Sunday) and "Delete this date" took out the wrong day.
+ */
+test.describe('a repeating rehearsal in New York @smoke', () => {
+  test.use({ timezoneId: 'America/New_York' });
+  let tomorrow = '';
+  test.beforeEach(async ({ app }) => {
+    await app.editDb((db) => {
+      const events = db.events as Record<string, any>[];
+      const ev = events.find((e) => e.title === SEED.rehearsalTomorrow);
+      if (!ev) return;
+      tomorrow = String(ev.event_date).slice(0, 10);
+      for (const other of events) {
+        const day = String(other.event_date || '').slice(0, 10);
+        if (other !== ev && day >= shift(tomorrow, -1) && day <= shift(tomorrow, 14)) {
+          other.event_date = String(other.event_date).replace(day, shift(day, 30));
+        }
+      }
+      ev.event_date = String(ev.event_date).replace(tomorrow, shift(tomorrow, -7));
+      ev.is_recurring = true;
+      ev.recurrence_rule = { frequency: 'weekly', interval: 1 };
+    });
+  });
+
+  test('keeps its weekday on Home, and Delete this date takes out that day', async ({ app }) => {
+    expect(tomorrow).not.toBe('');
+    await app.tab('Home');
+    const tile = (day: string) => {
+      const [y, m, d] = day.split('-').map(Number);
+      const mon = new Date(y, m - 1, d).toLocaleString('en-US', { month: 'short' });
+      return app.page.getByRole('button', { name: new RegExp(`^${d} ${mon}\\b.*${SEED.rehearsalTomorrow}`, 'i') }).filter({ visible: true });
+    };
+    await expect(tile(shift(tomorrow, -1)), 'no rehearsal the day before').toHaveCount(0);
+    await expect(tile(tomorrow), 'on its weekday').toHaveCount(1);
+    await tile(tomorrow).click();
+    await app.settle();
+    const detail = eventDetail(app);
+    await detail.getByRole('button', { name: app.t('DELETE THIS REHEARSAL') }).filter({ visible: true }).first().click();
+    await detail.getByRole('group', { name: app.t('Delete which dates?') }).getByRole('button', { name: app.t('Delete this date') }).click();
+    await app.settle();
+    const db = await app.readDb();
+    const ev = (db.events as Record<string, any>[]).find((e) => e.title === SEED.rehearsalTomorrow);
+    expect(ev?.recurrence_rule?.skip_dates).toEqual([tomorrow]);
+  });
+});

@@ -76,4 +76,18 @@ describe('Calendar search and deleted rehearsal dates', () => {
     search('Groove');
     expect(within(results()).queryByRole('button', { name: /Weekly Groove Session/ })).toBeNull();
   });
+
+  it('a series that started in the past opens on its next date from today (Claude #297)', () => {
+    const onEventClick = vi.fn();
+    const old = { ...series, date: '2020-01-06', recurrence_rule: { frequency: 'weekly', interval: 1 } } as unknown as EventData;
+    render(<Calendar events={[old]} onEventClick={onEventClick} />);
+    search('Groove');
+    fireEvent.click(within(results()).getByRole('button', { name: /Weekly Groove Session/ }));
+    const opened = onEventClick.mock.calls[0][0].date as string;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    expect(opened >= today).toBe(true);
+    const [y, m, d] = opened.split('-').map(Number);
+    expect(new Date(y, m - 1, d).getDay()).toBe(1); // still a Monday
+  });
 });

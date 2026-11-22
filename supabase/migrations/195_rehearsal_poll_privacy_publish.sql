@@ -101,8 +101,9 @@ CREATE POLICY "rehearsal_poll_options_select" ON public.rehearsal_poll_options
   USING (public.bw_can_see_rehearsal_poll(poll_id));
 
 DROP POLICY IF EXISTS "band_members_can_select_votes" ON public.rehearsal_poll_votes;
+-- TO authenticated, as in 118 (Claude #297 round 3).
 CREATE POLICY "band_members_can_select_votes" ON public.rehearsal_poll_votes
-  AS PERMISSIVE FOR SELECT TO public
+  AS PERMISSIVE FOR SELECT TO authenticated
   USING (public.bw_can_see_rehearsal_poll(poll_id));
 
 DROP POLICY IF EXISTS "band_members_can_select_unavailable" ON public.rehearsal_poll_unavailable;

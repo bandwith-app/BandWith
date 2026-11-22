@@ -110,6 +110,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i),
     [selectedBand, otherBand, otherMembers]
   );
+  // Who votes is band B's: publishing before its roster is in would send an
+  // empty or wrong invite list (Claude #297 round 3).
+  const rosterLoading = otherBand && otherMembers === null;
   const invitedIds = excluded.length === 0 ? [] : roster.filter((m) => !excluded.includes(m.id)).map((m) => m.id);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -360,6 +363,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   };
 
   const handlePublish = async () => {
+    if (rosterLoading) return;
     if (!title.trim()) {
       setError(t('Please give your poll a title.'));
       return;
@@ -837,7 +841,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         size="lg"
         onClick={handlePublish}
         loading={submitting}
-        disabled={timeSlots.length === 0 || !title.trim() || (!!voteBy && !voteByOk)}
+        disabled={rosterLoading || timeSlots.length === 0 || !title.trim() || (!!voteBy && !voteByOk)}
         icon={<Send className="w-5 h-5" />}
         style={{ backgroundColor: 'var(--accent-gig)', color: 'var(--accent-gig-fg)' }}
       >
@@ -1287,7 +1291,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
             <PillButton
               onClick={handlePublish}
               loading={submitting}
-              disabled={timeSlots.length === 0}
+              disabled={rosterLoading || timeSlots.length === 0}
               icon={<Send className="w-[18px] h-[18px]" />}
             >
               {submitting ? t('Publishing…') : t('Publish poll')}

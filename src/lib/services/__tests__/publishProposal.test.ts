@@ -12,8 +12,9 @@ const db = vi.hoisted(() => ({
   updatedRows: [{ id: 'p1', band_id: 'band-B' }] as unknown[],
   members: { 'band-A': ['a-admin', 'a-member'], 'band-B': ['a-admin', 'b-member'] } as Record<string, string[]>,
   // The stored poll, for the "cut off half-way" check (Codex #297).
-  pollRow: null as null | { id: string; band_id: string; status: string },
-  optionCount: 1,
+  pollRow: null as null | { id: string; band_id: string; status: string; updated_at?: string },
+  options: [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }] as Record<string, unknown>[],
+  voteCount: 0,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -27,7 +28,8 @@ vi.mock('@/lib/supabase', () => {
             db.calls.push(`${table}.${op}${Object.keys(filters).length ? ':' + Object.entries(filters).map(([k, v]) => `${k}=${v}`).join(',') : ''}`);
             if (table === 'band_members') return res({ data: (db.members[filters.band_id as string] || []).map((user_id) => ({ user_id })), error: null });
             if (table === 'rehearsal_polls' && op === 'update') return res({ data: db.updatedRows, error: null });
-            if (table === 'rehearsal_poll_options' && op === 'select') return res({ data: [], count: db.optionCount, error: null });
+            if (table === 'rehearsal_poll_options' && op === 'select') return res({ data: db.options, count: db.options.length, error: null });
+            if (table === 'rehearsal_poll_votes' && op === 'select') return res({ data: [], count: db.voteCount, error: null });
             return res({ data: [], error: null });
           };
         }
@@ -79,7 +81,8 @@ beforeEach(() => {
   db.calls.length = 0;
   db.updatedRows = [{ id: 'p1', band_id: 'band-B' }];
   db.pollRow = null;
-  db.optionCount = 1;
+  db.options = [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }];
+  db.voteCount = 0;
   notify.mockClear();
 });
 
@@ -129,8 +132,8 @@ describe('publishing a proposal (audit 05 #1 #8)', () => {
 describe('a publish cut off half-way on a database before 195 (Codex #297)', () => {
   it('a poll left with no options is finished on retry, not reported as already published', async () => {
     db.updatedRows = []; // no longer 'proposed': the first try changed the status
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
-    db.optionCount = 0;
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
+    db.options = [];
     const { error } = await createOrPublishAdminPoll(args as any);
     expect(error).toBeNull();
     expect(db.calls).toContain('rehearsal_poll_options.insert');
@@ -140,10 +143,38 @@ describe('a publish cut off half-way on a database before 195 (Codex #297)', () 
 
   it('a poll that has its options is still "already published"', async () => {
     db.updatedRows = [];
-    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling' };
-    db.optionCount = 2;
+    // Another admin's poll: its own options, added after it was published, with votes.
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
+    db.options = [{ proposed_date: '2099-12-20', start_time: '19:00:00', end_time: null, created_at: '2099-01-03T00:00:01Z' }];
+    db.voteCount = 2;
     const { error } = await createOrPublishAdminPoll(args as any);
     expect((error as any)?.code ?? (error as any)?.message).toMatch(/poll_already_published|already/i);
     expect(db.calls).not.toContain('rehearsal_poll_options.insert');
+  });
+});
+
+describe('a publish whose answer was lost (Codex / Claude #297 round 3)', () => {
+  it('195: the retry sees its own poll (same options), notifies, and does not say "Another admin"', async () => {
+    db.rpc = { data: { published: false, poll_id: 'p1', band_id: 'band-B', status: 'polling' }, error: null };
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
+    db.options = [{ proposed_date: '2099-12-07', start_time: '20:00:00', end_time: '22:00:00', created_at: '2099-01-03T00:00:00Z' }];
+    const { error } = await createOrPublishAdminPoll(args as any);
+    expect(error).toBeNull();
+    expect(db.calls).not.toContain('rehearsal_poll_options.insert');
+    expect(notify).toHaveBeenCalled();
+  });
+
+  it("before 195: the proposal's suggestions left behind are cleared and the poll's options go in", async () => {
+    db.updatedRows = [];
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', updated_at: '2099-01-03T00:00:00Z' };
+    // The member's suggestion, from before the status change; nobody voted.
+    db.options = [{ proposed_date: '2099-12-01', start_time: '19:00:00', end_time: null, created_at: '2099-01-02T00:00:00Z' }];
+    const { error } = await createOrPublishAdminPoll(args as any);
+    expect(error).toBeNull();
+    const del = db.calls.findIndex((c) => c.startsWith('rehearsal_poll_options.delete'));
+    const ins = db.calls.indexOf('rehearsal_poll_options.insert');
+    expect(del).toBeGreaterThan(-1);
+    expect(ins).toBeGreaterThan(del);
+    expect(notify).toHaveBeenCalled();
   });
 });

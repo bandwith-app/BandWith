@@ -11,6 +11,7 @@
 import { supabase } from '@/lib/supabase';
 import { t } from '@/lib/i18n';
 import { withSkippedDate } from '@/lib/recurrenceSkips';
+import { createEvent } from './events';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const dayOf = (date: string | null | undefined) => {
@@ -75,4 +76,60 @@ export async function skipRehearsalDate(eventId: string, date: string): Promise<
   if (saveErr) return { error: saveErr as unknown as Error };
   if (!saved?.length) return { error: notAdmin() };
   return { error: null };
+}
+
+/**
+ * A new date for one later date of a series, "Only this date" (Claude #297
+ * round 3): a one-off rehearsal with the series' details and people on the
+ * new date, then the old date taken out of the series. The series row and
+ * its other dates are not touched.
+ */
+export async function moveRehearsalDateOnly(
+  event: { eventId?: string | null; band_id?: string | null; date?: string | null; seriesDate?: string | null },
+  values: { title: string; date: string; startTime: string; endTime: string },
+): Promise<{ error: Error | null }> {
+  const from = dayOf(event.date);
+  const to = dayOf(values.date);
+  if (!event.eventId || !event.band_id || !DAY.test(from) || !DAY.test(to)) {
+    return { error: new Error(t("This date can't be deleted on its own. Reload and try again.")) };
+  }
+  const { data: series, error: readErr } = await supabase
+    .from('events')
+    .select('id, band_id, title, event_type, status, venue, venue_name, venue_address, venue_city, notes, indoor_outdoor, is_recurring, recurrence_rule')
+    .eq('id', event.eventId)
+    .maybeSingle();
+  if (readErr) return { error: readErr as unknown as Error };
+  const row = series as Record<string, any> | null;
+  if (!row?.is_recurring) return { error: notRepeating() };
+  const { data: people, error: peopleErr } = await supabase
+    .from('event_members')
+    .select('user_id, role, status')
+    .eq('event_id', event.eventId);
+  if (peopleErr) return { error: peopleErr as unknown as Error };
+
+  const { error: createErr } = await createEvent(
+    {
+      band_id: row.band_id,
+      title: values.title.trim() || row.title,
+      event_type: 'rehearsal',
+      status: row.status || 'confirmed',
+      event_date: to,
+      start_time: values.startTime || null,
+      end_time: values.endTime || null,
+      venue_name: row.venue_name ?? row.venue ?? null,
+      venue_address: row.venue_address ?? null,
+      venue_city: row.venue_city ?? null,
+      notes: row.notes ?? null,
+      indoor_outdoor: row.indoor_outdoor ?? null,
+      is_recurring: false,
+      recurrence_rule: null,
+    } as any,
+    ((people || []) as { user_id: string; role?: string | null; status?: string | null }[]).map((m) => ({
+      user_id: m.user_id,
+      role: m.role ?? undefined,
+      status: m.status ?? undefined,
+    })),
+  );
+  if (createErr) return { error: createErr };
+  return skipRehearsalDate(event.eventId, from);
 }
