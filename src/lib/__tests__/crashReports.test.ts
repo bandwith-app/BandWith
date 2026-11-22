@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   signals: [] as AbortSignal[],
   consent: null as 'granted' | 'denied' | null,
   consentListeners: [] as Array<(c: 'granted' | 'denied' | null) => void>,
+  screen: 'Stage' as string | null,
 }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -68,7 +69,7 @@ vi.mock('@capacitor-firebase/crashlytics', () => ({
 }));
 vi.mock('@/lib/minVersion', () => ({ currentPlatform: () => (h.native ? 'android' : 'web'), installedVersion: () => h.version() }));
 vi.mock('@/lib/appAnalytics', () => ({
-  currentScreenName: () => 'Stage',
+  currentScreenName: () => h.screen,
   readAnalyticsConsent: () => h.consent,
   readCrashlyticsConsent: () => h.consent === 'granted',
   onAnalyticsConsentChange: (fn: (c: 'granted' | 'denied' | null) => void) => {
@@ -107,6 +108,7 @@ beforeEach(() => {
   h.signals = [];
   h.consent = null;
   h.consentListeners = [];
+  h.screen = 'Stage';
   vi.unstubAllGlobals();
   __resetCrashReportsForTest();
 });
@@ -120,7 +122,7 @@ const gate = () => {
 describe('scrubbing: no personal data, no user content', () => {
   it('removes emails, ids, numbers, tokens, quoted text and URL queries', () => {
     const m = scrubMessage(
-      'Failed for leo@brooklynband.com on 3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f: "Hudson Line lyrics…" is not valid JSON, call +1 718 555 0199 at https://app.bandwith.fun/x?token=abc#frag eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl',
+      'Failed for leo@brooklynband.com on 3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f: "Hudson Line lyrics…" was not found, call +1 718 555 0199 at https://app.bandwith.fun/x?token=abc#frag eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl',
     );
     expect(m).not.toMatch(/leo@|brooklynband|3f2b8c1e|Hudson|718|555|token=abc|#frag|eyJ/);
     expect(m).toContain('<email>');
@@ -132,8 +134,9 @@ describe('scrubbing: no personal data, no user content', () => {
     expect(scrubMessage("TypeError: Cannot read properties of undefined (reading 'map')")).toBe(
       "TypeError: Cannot read properties of undefined (reading '…')",
     );
+    // A JSON error: everything from the first quote goes (round 5).
     expect(scrubMessage('SyntaxError: Unexpected token \'Y\', "Yesterday" is not valid JSON')).toBe(
-      'SyntaxError: Unexpected token \'…\', "…" is not valid JSON',
+      'SyntaxError: Unexpected token … is not valid JSON',
     );
   });
 
@@ -170,7 +173,7 @@ describe('scrubbing: no personal data, no user content', () => {
 describe('scrubbing: quotes and links (review #277)', () => {
   it('an apostrophe inside quoted text does not end it', () => {
     expect(scrubMessage(`SyntaxError: Unexpected token 'D', "Don't Stop Me Now" is not valid JSON`)).toBe(
-      `SyntaxError: Unexpected token '…', "…" is not valid JSON`,
+      `SyntaxError: Unexpected token … is not valid JSON`,
     );
     expect(scrubMessage(`Error: no song 'Don't Stop Me Now' in set`)).toBe(`Error: no song '…' in set`);
     expect(scrubMessage(`Error: can't open 'Ain’t No Sunshine'`)).toBe(`Error: can't open '…'`);
@@ -574,5 +577,43 @@ describe('Postgres key details, any shape (review #277, Claude r4)', () => {
     expect(ex).not.toMatch(/Studio|Mary|Jo|Lee/);
     expect(ex).toBe('Key (room, during)=(…) conflicts with existing key (room, during)=(…).');
     expect(scrubMessage('Key (email)=(mary smith')).toBe('Key (email)=(…)');
+  });
+});
+
+describe('round 5 (review #277)', () => {
+  it('a JSON parse error never keeps the input it quotes', () => {
+    const cases: Array<[string, string]> = [
+      ['SyntaxError: Unexpected token \'n\', "[ "Lola", no ]" is not valid JSON', 'SyntaxError: Unexpected token … is not valid JSON'],
+      ['SyntaxError: Unexpected token \'L\', "Lola Smith" is not valid JSON', 'SyntaxError: Unexpected token … is not valid JSON'],
+      ['SyntaxError: Expected \',\' or \']\' after array element in JSON at position 10 (line 1 column 11)', 'SyntaxError: Expected … in JSON at position 10 (line 1 column 11)'],
+      ['SyntaxError: JSON Parse error: Unexpected identifier "Lola"', 'SyntaxError: JSON Parse error: Unexpected identifier …'],
+      ['SyntaxError: Invalid regular expression: /Lola Smith(/: Unterminated group', 'SyntaxError: Invalid regular expression: …'],
+    ];
+    for (const [raw, want] of cases) {
+      expect(scrubMessage(raw), raw).toBe(want);
+      expect(scrubMessage(raw), raw).not.toMatch(/Lola|Smith/);
+    }
+    // The same in a stack's first line.
+    expect(scrubStack('SyntaxError: Unexpected token \'n\', "[ "Lola", no ]" is not valid JSON\n    at JSON.parse (<anonymous>)')).not.toMatch(/Lola/);
+  });
+
+  it('http(s) links with brackets in the path or the query go whole', () => {
+    expect(scrubMessage('Error: failed https://localhost/_capacitor_file_/Chart(Private%20Gig).pdf now')).toBe('Error: failed https://localhost/… now');
+    const m = scrubMessage('Error: 403 https://xyz.supabase.co/storage/v1/object/sign/audio/Yesterday (Live) Mary.mp3 now');
+    expect(m).not.toMatch(/Yesterday|Live|Mary|mp3/);
+    expect(scrubMessage('Error: at /quote.html?t=ab(cd)ef now')).toBe('Error: at /quote.html now');
+    // A frame's own closing bracket stays, and the app's own file keeps its name.
+    expect(scrubStack('Error: x\n    at f (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)')).toContain(
+      '(https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+    );
+  });
+
+  it('the screen is the one in view when the error happened, not after the version lookup', async () => {
+    h.version = async () => {
+      h.screen = 'Home';
+      return '1.0.14';
+    };
+    await reportClientError('error', new Error('on stage'));
+    expect(h.rpc[0]?.args.p_route).toBe('Stage');
   });
 });

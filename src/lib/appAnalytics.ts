@@ -115,8 +115,10 @@ export const initAppAnalytics = async (): Promise<void> => {
 
 const save = (consent: AnalyticsConsent): boolean => {
   try {
-    localStorage.setItem(ANALYTICS_CONSENT_VERSION_KEY, String(ANALYTICS_CONSENT_VERSION));
+    // The answer first, then its version: if the second write fails and the
+    // app closes, a no is still a no, and a yes without the version is asked again.
     localStorage.setItem(ANALYTICS_CONSENT_KEY, consent);
+    localStorage.setItem(ANALYTICS_CONSENT_VERSION_KEY, String(ANALYTICS_CONSENT_VERSION));
     return true;
   } catch {
     return false;

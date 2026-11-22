@@ -13,7 +13,7 @@ We learn about errors before users report them.
 - Collection off from the very first launch: `FirebaseCrashlyticsCollectionEnabled` = false in `Info.plist`, `firebase_crashlytics_collection_enabled` = false in the Android manifest. So nothing is **uploaded** before the app has asked. Something is still **created on the device**: see "Before the yes" below.
 - On only when **both** are true: the user said yes to **Anonymous usage statistics** under the current wording (the same question and Settings row as analytics, #238; its copy says crash details are included), and **Send crash reports** is on.
 - **The wording is versioned** (`bw.analytics.consent_version` = 2). A yes given in an older build, before the question named crash details, still covers usage statistics but never Crashlytics, and the question is asked once more. An older no stays a no.
-- **A no always wins**: if the device can read storage but not write it, the no holds in memory for the run (over the yes still on disk), and the write is tried again (1 s, 5 s, 15 s, 1 min, 5 min).
+- **A no always wins**: if the device can read storage but not write it, the no holds in memory for the run (over the yes still on disk), and the write is tried again (1 s, 5 s, 15 s, 1 min, 5 min). The answer is written before its version: if only the first write lands and the app closes, a no is still a no, and a yes is asked again.
 - While it is off, crash reports Crashlytics kept but hasn't sent are deleted at every start and at every change.
 
 **Before the yes: what Crashlytics creates on the device** (read in the SDK source, FirebaseCrashlytics 12.19; not measured on a device). Nothing of it leaves the phone while collection is off.
@@ -32,6 +32,7 @@ Switching **Send crash reports** off:
 - reports waiting on the device are dropped, and requests already out are aborted, even one still waiting for a session refresh;
 - on the web the choice is shared by every tab: an opt-out in one tab wins over another tab that still had it on;
 - if the device's storage is blocked, an opt-out still holds until the app is closed (it can only turn reports off, never back on);
+- the switch survives the storage clear a failed sign-out does (`src/lib/privacyChoices.ts` keeps it, and the analytics answer with its version): a missing key means on, which only a new install should get;
 - if storage stops answering, the last answer this run saw holds; with none (unreadable from the start), reports are off: it fails closed.
 
 ## What is sent (and what never is)
@@ -55,9 +56,10 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 | Postgres details, any shape: `Key (email)=(mary@x.com)`, expression keys (`Key (lower(name::text))=(mary smith)`), brackets in the value, every kind (already exists, is not present, is still referenced, conflicts with), a message cut short | `Key (email)=(…)`, `Key (lower(name::text))=(…)` |
 | `file://` paths, whole: brackets and percent-encoding in a name too (`chart%20(Private%20Gig).pdf`), and the words after them up to a file extension. Only a file of the app's own bundle (`…/App.app/public/…`, `file:///android_asset/public/…`) keeps its name, with a frame's line and column | `file://…`, `file://…/index-B4xK9q1a.js:1:2` |
 | NUL and other control characters | removed |
+| A JSON parse error or another `SyntaxError` that quotes or echoes what it read (`"[ "Lola", no ]" is not valid JSON`, `/Mary Smith(/`): everything from the first quote or the echoed `/…/`, whatever the nesting. The engine's own words at the end stay | `Unexpected token … is not valid JSON` |
 | Numbers of 7+ digits (phone numbers, ids) | `<n>` |
 | Query strings on any link, relative ones too (`/deputy.html?deputy=…`, `/quote.html?t=…`), and fragments after a path | removed |
-| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too | `https://xyz.supabase.co/…` |
+| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too, with brackets in the path or the query (`Chart(Private%20Gig).pdf`, `?t=ab(cd)`) | `https://xyz.supabase.co/…` |
 | Random-looking strings: 16+ characters with a digit, or 40+ of anything (the app's own bundle names under `/assets/` stay) | `<token>` |
 | **All** quoted text, even one word (a song called "Yesterday"). Each opening quote with its own closing one, typographic ones too (`“ ” ‘ ’ „ ‚ « » ‹ ›`); double quotes first, so an apostrophe inside ("Don't Stop Me Now") is just text; a quote left open hides the rest of the line. The message is made one line first, so a quote across a line break (a lyric) still goes, in the stack's first lines too | `"…"` (so `(reading 'map')` is sent as `(reading '…')`: the stack's file, line and column still point at the code) |
 

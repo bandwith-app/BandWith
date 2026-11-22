@@ -162,7 +162,7 @@ const JWT = /\beyJ[\w-]{6,}(?:\.[\w-]*)*/g;
 /** Random-looking: 16+ characters with a digit, or 40+ of anything (long function names stay). */
 const LONG_TOKEN = /\b(?:(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{16,}|[A-Za-z0-9_-]{40,})\b/g;
 /** Any query string, on full and relative links alike (/deputy.html?deputy=…, /quote.html?t=…). */
-const QUERY = /\?[^\s'"`()]+/g;
+const QUERY = /\?(?:[^\s'"`()<>]|\([^\s'"`()<>]*\)?)+/g;
 /** A fragment after a path (#418 in "Minified React error #418" stays). */
 const FRAGMENT = /(\/[^\s#'"`()]*)#[^\s'"`()]+/g;
 const PHONE_OR_NUMBER = /\+?\d[\d\s().-]{5,}\d/g;
@@ -175,10 +175,12 @@ const POSITION = /:\d+:\d+\)?$/;
  * person or a file (/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3),
  * so the words after it up to a file extension go too.
  */
-const LINK_CHARS = `[^\\s'"\`()<>]`;
+// A path segment: its characters, and brackets inside it (Chart(Private%20Gig).pdf);
+// a frame's own closing bracket "(…/a.js:1:2)" is not part of it.
+const SEGMENT = `(?:[^\\s'"\`()<>/]|\\([^\\s'"\`()<>/]*\\)?)+`;
 const ORIGIN = `[a-z][a-z0-9+.-]*:\\/\\/[^\\s/'"\`()<>]+`;
 const LINK = new RegExp(
-  `(${ORIGIN})?((?:\\/${LINK_CHARS.replace(']', '/]')}+)+\\/?)((?:\\s+[^\\s/'"\`()<>]+)*?\\.[A-Za-z0-9]{2,5}\\b)?`,
+  `(${ORIGIN})?((?:\\/${SEGMENT})+\\/?)((?:\\s+[^\\s/'"\`<>]+)*?\\.[A-Za-z0-9]{2,5}\\b\\)?)?`,
   'gi',
 );
 const APP_FILE = /^\/(?:assets\/[^\s/]+(?:\/[^\s/]+)*|[\w.-]+\.(?:html|js))$/;
@@ -258,9 +260,29 @@ function scrubQuotes(s: string): string {
   return out.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => done[Number(i)]);
 }
 
+/**
+ * A JSON parse error or another SyntaxError can quote the text it read
+ * ('[ "Lola", no ]' is not valid JSON) or echo it (/Mary Smith(/ in a bad
+ * regular expression), with quotes inside quotes that no pairing can follow.
+ * On such a line everything from the first quote (or the echoed /…/) goes;
+ * the engine's own words at the end stay (is not valid JSON, in JSON at position 10).
+ */
+const ECHOING = /JSON|SyntaxError/;
+const ECHO_START = /["'`“”‘’„‚«»‹›]|: \//;
+const ECHO_TAIL = /\s(?:is not valid JSON|in JSON at position \d+(?: \(line \d+ column \d+\))?)\s*$/;
+
+function scrubEchoes(line: string): string {
+  if (!ECHOING.test(line)) return line;
+  const at = line.search(ECHO_START);
+  if (at === -1) return line;
+  const cut = line[at] === ':' ? at + 1 : at;
+  const tail = ECHO_TAIL.exec(line.slice(cut))?.[0] ?? '';
+  return `${line.slice(0, cut).trimEnd()} …${tail}`;
+}
+
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  const out = scrubFileLinks(scrubLinks(scrubKeyDetails(s).replace(QUERY, '').replace(FRAGMENT, '$1')))
+  const out = scrubFileLinks(scrubLinks(scrubKeyDetails(scrubEchoes(s)).replace(QUERY, '').replace(FRAGMENT, '$1')))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
     .replace(JWT, '<token>')
@@ -391,13 +413,15 @@ export async function reportClientError(kind: ClientErrorKind, err: unknown): Pr
     if (!message || seen.has(signature) || sent >= MAX_PER_SESSION) return;
     seen.add(signature);
     sent++;
+    // The screen in view now, before any wait (navigating meanwhile would name the next one).
+    const route = currentScreenName()?.slice(0, 60) ?? null;
     const args = {
       p_kind: kind,
       p_message: message,
       p_stack: stack,
       p_app_version: await installedVersion().catch(() => null),
       p_platform: currentPlatform(),
-      p_route: currentScreenName()?.slice(0, 60) ?? null,
+      p_route: route,
     };
     // Switched off while the version was read: not sent, not kept.
     if (!readCrashReportsEnabled()) return;

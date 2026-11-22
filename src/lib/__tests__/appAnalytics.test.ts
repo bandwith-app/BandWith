@@ -215,3 +215,43 @@ describe('a no always wins (review #277)', () => {
     }
   });
 });
+
+describe('round 5 (review #277)', () => {
+  it('declining over an old yes: the second write fails and the app closes, Crashlytics stays off', async () => {
+    // Every order of the two writes is tried: only the first one lands.
+    const disk = new Map<string, string>([[ANALYTICS_CONSENT_KEY, 'granted'], [ANALYTICS_CONSENT_VERSION_KEY, '1']]);
+    let writes = 0;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => disk.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        if (writes++ >= 1) throw new DOMException('full', 'QuotaExceededError');
+        disk.set(k, v);
+      },
+      removeItem: (k: string) => disk.delete(k),
+      clear: () => disk.clear(),
+    });
+    await setAnalyticsConsent('denied');
+    // The app closes: what is in memory goes, only the disk is left.
+    resetAppAnalyticsForTests();
+    expect(readCrashlyticsConsent()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('saying yes: the second write fails and the app closes, no Crashlytics without the current wording', async () => {
+    const disk = new Map<string, string>();
+    let writes = 0;
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => disk.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        if (writes++ >= 1) throw new DOMException('full', 'QuotaExceededError');
+        disk.set(k, v);
+      },
+      removeItem: (k: string) => disk.delete(k),
+      clear: () => disk.clear(),
+    });
+    await setAnalyticsConsent('granted');
+    resetAppAnalyticsForTests();
+    expect(readCrashlyticsConsent()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
