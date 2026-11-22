@@ -153,7 +153,9 @@ export const SongSuggestionsView: React.FC = () => {
     if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
     if (p.error || r.error || !p.data || !r.data) {
       setLoadError(userMessage(p.error || r.error, t('Could not load the suggestions.')));
-      setLoadedFor({ focus: focusId });
+      // Not loaded for the notification target: it stays selected until a
+      // load succeeds (the next refresh, or reopening), then opens.
+      setLoadedFor((prev) => prev ?? { focus: undefined });
       return;
     }
     let one: SongSuggestion | null = null;
@@ -183,7 +185,8 @@ export const SongSuggestionsView: React.FC = () => {
     // A failed fetch keeps what was shown for the target.
     setExtra((prev) => one ?? (oneFailed && prev?.id === focusId ? prev : null));
     setTotals({ pending: nPending, reviewed: nReviewed });
-    setLoadedFor({ focus: focusId });
+    // A target that failed to load is not "loaded": it stays selected.
+    setLoadedFor({ focus: oneFailed ? undefined : focusId });
     await loadSongs([...p.data, ...r.data, ...(one ? [one] : [])]);
   }, [bandId, user?.id, t, focusId, fetchTab, loadSongs, scope, mine]);
 

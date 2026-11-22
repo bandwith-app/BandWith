@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type Song = { id: string; band_id: string; status: string; audio_url: string | null; chart_url: string | null };
 type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'deleting' | 'cleaned'; by: string | null; deletingAt?: number; deletingBy?: string };
-type Step = 'begin' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread' | 'claim_delete' | 'removed';
+type Step = 'begin' | 'reserve' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread' | 'claim_delete' | 'removed';
 
 const fake = vi.hoisted(() => {
   const REF = 'sb://song-files/';
@@ -17,6 +17,8 @@ const fake = vi.hoisted(() => {
   let adoptions: Adoption[] = [];
   // Delete claims outside the sweep (197: bw_song_files_claim_delete).
   const removals = new Map<string, { by: string; at: number }>();
+  // Copies registered before they are made (197: bw_song_file_copy_reserve).
+  const copies = new Map<string, { at: number }>();
   let failRemove = 0;
   const clock = { now: 0 };
   const LAPSE = 10 * 60_000;
@@ -42,6 +44,15 @@ const fake = vi.hoisted(() => {
       else adoptions.push({ song_id: s.id, field: a.p_field, from, to, state: 'copying', by: uid });
       return { data: { won: true, from, to } };
     },
+    bw_song_file_copy_reserve: (uid: string, a: { p_song_id: string; p_field: string; p_from: string; p_to: string }) => {
+      const s = songs.get(a.p_song_id);
+      if (!s || !admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
+      const kind = a.p_from.split('/')[3];
+      const prefix = `${s.band_id}/${kind}/${s.id}-`;
+      if (!a.p_to.startsWith(prefix) || a.p_to.slice(prefix.length).includes('/')) return { error: { message: 'Bad destination', code: '22023' } };
+      copies.set(a.p_to, { at: clock.now });
+      return { data: true };
+    },
     bw_song_file_adopt_repoint: (uid: string, a: { p_song_id: string; p_field: 'audio_url' | 'chart_url'; p_from: string; p_to: string }) => {
       const s = songs.get(a.p_song_id);
       if (!s || !admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
@@ -54,6 +65,7 @@ const fake = vi.hoisted(() => {
         return { data: { won: false, ref: s[a.p_field], to_referenced: inUse(a.p_to) } };
       }
       s[a.p_field] = REF + a.p_to;
+      copies.delete(a.p_to);
       if (row) Object.assign(row, { to: a.p_to, state: 'repointed', by: null });
       else adoptions.push({ song_id: s.id, field: a.p_field, from: a.p_from, to: a.p_to, state: 'repointed', by: null });
       return { data: { won: true, ref: REF + a.p_to, to_referenced: true } };
@@ -63,12 +75,23 @@ const fake = vi.hoisted(() => {
       const paths = adoptions
         .filter((r) => (r.state === 'repointed' || lapsed(r)) && r.from.startsWith(`${a.p_band_id}/suggestions/`) && !inUse(r.from))
         .map((r) => r.from);
+      // Lapsed delete claims and stale copies of the band, any folder.
+      for (const [p, c] of removals) if (p.startsWith(`${a.p_band_id}/`) && clock.now - c.at > LAPSE && !inUse(p)) paths.push(p);
+      for (const [p, c] of copies) if (p.startsWith(`${a.p_band_id}/`) && clock.now - c.at > LAPSE && !inUse(p)) paths.push(p);
       return { data: [...new Set(paths)] };
     },
     bw_song_file_sweep_claim: (uid: string, a: { p_band_id: string; p_path: string }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
       const r = adoptions.find((x) => x.from === a.p_path && (x.state === 'repointed' || x.state === 'deleting'));
-      if (!r) return { data: { ok: false, reason: 'gone' } };
+      if (!r) {
+        if (!removals.has(a.p_path) && !copies.has(a.p_path)) return { data: { ok: false, reason: 'gone' } };
+        if (inUse(a.p_path)) return { data: { ok: false, reason: 'referenced' } };
+        const c = removals.get(a.p_path);
+        if (c && c.by !== uid && clock.now - c.at <= LAPSE) return { data: { ok: false, reason: 'busy' } };
+        removals.set(a.p_path, { by: uid, at: clock.now });
+        copies.delete(a.p_path);
+        return { data: { ok: true } };
+      }
       if (r.state === 'deleting' && !lapsed(r)) return { data: { ok: false, reason: 'busy' } };
       if (inUse(a.p_path)) {
         r.state = 'repointed';
@@ -91,13 +114,14 @@ const fake = vi.hoisted(() => {
     },
     bw_song_files_removed: (uid: string, a: { p_refs: string[] }) => {
       let n = 0;
-      for (const r of a.p_refs || []) if (removals.get(r.slice(REF.length))?.by === uid) (removals.delete(r.slice(REF.length)), n++);
+      for (const r of a.p_refs || []) if (removals.get(r.slice(REF.length))?.by === uid) (removals.delete(r.slice(REF.length)), copies.delete(r.slice(REF.length)), n++);
       return { data: n };
     },
     bw_song_file_sweep_done: (uid: string, a: { p_band_id: string; p_paths: string[] }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
       let n = 0;
       for (const r of adoptions) if (r.state === 'deleting' && a.p_paths.includes(r.from)) (r.state = 'cleaned'), n++;
+      for (const p of a.p_paths) if (removals.get(p)?.by === uid) (removals.delete(p), copies.delete(p), n++);
       return { data: n };
     },
   } as Record<string, (uid: string, a: any) => { data?: unknown; error?: unknown }>;
@@ -121,7 +145,7 @@ const fake = vi.hoisted(() => {
     };
     const STEP: Record<string, Step> = {
       bw_song_file_adopt_begin: 'begin', bw_song_file_adopt_repoint: 'repoint', bw_song_file_sweep_list: 'sweep_list', bw_song_file_sweep_claim: 'sweep_claim', bw_song_file_sweep_done: 'sweep_done',
-      bw_song_files_claim_delete: 'claim_delete', bw_song_files_removed: 'removed',
+      bw_song_files_claim_delete: 'claim_delete', bw_song_files_removed: 'removed', bw_song_file_copy_reserve: 'reserve',
     };
     const client = {
       rpc: async (fn: string, args: unknown) => {
@@ -197,6 +221,7 @@ const fake = vi.hoisted(() => {
     songs.clear();
     adoptions = [];
     removals.clear();
+    copies.clear();
     failRemove = 0;
     clock.now = 0;
     admins.clear();
@@ -207,6 +232,7 @@ const fake = vi.hoisted(() => {
     lapse: () => void (clock.now += LAPSE + 1),
     adoptions: () => adoptions,
     removals: () => removals,
+    copies: () => copies,
     failNextRemove: () => void failRemove++,
     put: (path: string, body: string) => store.set(path, { body, etag: etag(body) }),
   };
@@ -529,5 +555,48 @@ describe('what is left behind', () => {
     expect(song().audio_url).toBe(ref(ORIG));
     expect(fake.store.has(ORIG)).toBe(true);
     expect(old.log).toEqual([]);
+  });
+
+  it('an expired delete claim in the band’s audio folder is deleted by the sweep (Codex review of 220767ca)', async () => {
+    const OLD = `${BAND}/audio/old-take.mp3`;
+    fake.put(OLD, 'old take');
+    fake.removals().set(OLD, { by: 'admin-2', at: fake.clock.now });
+    fake.lapse();
+    const out = await sweepAdoptedFiles(BAND, { client: A.client as never });
+    expect(out.error).toBeNull();
+    expect(fake.store.has(OLD)).toBe(false);
+    expect(fake.removals().has(OLD)).toBe(false);
+  });
+
+  it('a song deleted between copy and repoint: the copy is registered first and deleted (Codex review of 220767ca)', async () => {
+    const aRe = A.pause('repoint');
+    const pa = adopt(A);
+    await aRe.reached;
+    fake.songs.delete(SONG);
+    aRe.release();
+    const out = await pa;
+    expect(out.error).toBeTruthy();
+    const reserved = A.log.indexOf('bw_song_file_copy_reserve');
+    expect(reserved).toBeGreaterThanOrEqual(0);
+    expect(A.log.findIndex((l) => l.startsWith('copy '))).toBeGreaterThan(reserved);
+    expect(fake.store.has(DEST)).toBe(false);
+    expect(fake.store.has(ORIG)).toBe(true);
+  });
+
+  it('a song deleted between copy and repoint, and the delete fails too: the sweep removes the copy (Codex review of 220767ca)', async () => {
+    const aRe = A.pause('repoint');
+    const pa = adopt(A);
+    await aRe.reached;
+    fake.songs.delete(SONG);
+    fake.failNextRemove();
+    aRe.release();
+    await pa;
+    expect(fake.store.has(DEST)).toBe(true);
+    fake.lapse();
+    const out = await sweepAdoptedFiles(BAND, { client: A.client as never });
+    expect(out.error).toBeNull();
+    expect(fake.store.has(DEST)).toBe(false);
+    expect(fake.copies().size).toBe(0);
+    expect(fake.removals().size).toBe(0);
   });
 });

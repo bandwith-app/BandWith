@@ -14,6 +14,8 @@ const db = vi.hoisted(() => ({
   holdList: null as Promise<void> | null,
   // The next fetch by id fails this many times.
   failOne: 0,
+  // The next list requests fail this many times.
+  failList: 0,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -63,6 +65,10 @@ vi.mock('@/lib/supabase', () => {
           return Promise.resolve({ data: null, error: { message: 'Network request failed' } }).then(res, rej);
         }
         const list = table === 'song_suggestions' && !keyset && !head && !one;
+        if (list && db.failList > 0) {
+          db.failList--;
+          return Promise.resolve({ data: null, error: { message: 'upstream timeout', code: 'XX000' } }).then(res, rej);
+        }
         const hold = keyset ? db.holdKeyset : list ? db.holdList : null;
         if (hold && keyset) db.holdKeyset = null;
         if (hold && list) db.holdList = null;
@@ -100,6 +106,7 @@ afterEach(() => {
   db.holdKeyset = null;
   db.holdList = null;
   db.failOne = 0;
+  db.failList = 0;
 });
 
 describe('Suggestions: an older pending one stays reachable', () => {
@@ -274,5 +281,27 @@ describe('Suggestions: an older pending one stays reachable', () => {
     expect(screen.getByText('Reviewed 130')).toBeTruthy();
     expect(screen.getByText('Reviewed 31')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Load older suggestions' })).toBeTruthy();
+  });
+
+  it('a failed load does not mark the notification target as loaded: it opens once a load succeeds (Codex review of 220767ca)', { timeout: 30_000 }, async () => {
+    seed();
+    db.rows.push(row(-5, 'accepted', 'Very old reviewed · Brooklyn Bridge'));
+    db.failList = 2;
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions({ suggestionId: 'sg--5' }));
+    expect(await screen.findByText(/^Could not load the suggestions\./)).toBeTruthy();
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    expect(await screen.findByRole('heading', { name: 'Very old reviewed · Brooklyn Bridge' })).toBeTruthy();
+  });
+
+  it('the target fetch fails, then a refresh succeeds: the suggestion opens (Codex review of 220767ca)', { timeout: 30_000 }, async () => {
+    seed();
+    db.rows.push(row(-5, 'accepted', 'Very old reviewed · Brooklyn Bridge'));
+    db.failOne = 1;
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions({ suggestionId: 'sg--5' }));
+    expect(await screen.findByText('Could not load this suggestion.')).toBeTruthy();
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    expect(await screen.findByRole('heading', { name: 'Very old reviewed · Brooklyn Bridge' })).toBeTruthy();
   });
 });

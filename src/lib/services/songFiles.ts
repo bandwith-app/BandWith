@@ -253,6 +253,15 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
   let created = false;
   for (let attempt = 0; attempt < 3 && !to; attempt++) {
     const candidate = attempt === 0 ? c.to : withTag(c.to, songId);
+    // Registered before it exists: if this run stops (or the song goes)
+    // before the repoint, the sweep deletes the copy no song uses.
+    const { error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
+      p_song_id: songId,
+      p_field: field,
+      p_from: c.from,
+      p_to: candidate,
+    });
+    if (reserveError) return { error: asError(reserveError, 'Could not move the files') };
     const { error: copyError } = await bucket.copy(c.from, candidate);
     if (!copyError) {
       to = candidate;
@@ -274,10 +283,13 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
   });
   const res = data as { won?: boolean; ref?: string | null; to_referenced?: boolean } | null;
   if (repointError || !res) {
-    // Lost response: it may have been saved. Re-read; delete nothing either way
-    // (an unused copy is picked up again by the next run).
+    // Lost response: it may have been saved. Re-read: the song on the copy is
+    // done; otherwise this run's copy goes, through a claim (refused while
+    // any song links it). If that fails too, the sweep finds it registered.
     const now = await currentRef(client, songId, field);
-    return now === `${REF_PREFIX}${to}` ? { ref: now } : { error: asError(repointError, 'Could not move the files') };
+    if (now === `${REF_PREFIX}${to}`) return { ref: now };
+    if (created) await removeClaimed(client, [`${REF_PREFIX}${to}`]);
+    return { error: asError(repointError, 'Could not move the files') };
   }
   if (res.won) return { ref: `${REF_PREFIX}${to}` };
   // Another run finished first: the song already links to a copy.
@@ -334,7 +346,9 @@ export const sweepAdoptedFiles = async (bandId: string, opts?: { client?: AdoptC
   try {
     const { data, error } = await client.rpc('bw_song_file_sweep_list', { p_band_id: bandId });
     if (error) return { error: asError(error, 'Could not tidy the song files') };
-    const paths = ((data as string[] | null) || []).filter((p) => typeof p === 'string' && p.startsWith(`${bandId}/suggestions/`));
+    // Everything the server lists for this band (originals, lapsed delete
+    // claims, unused copies: it checked each one), in any of its folders.
+    const paths = ((data as string[] | null) || []).filter((p) => typeof p === 'string' && p.startsWith(`${bandId}/`));
     for (const path of paths) {
       const { data: claim, error: claimError } = await client.rpc('bw_song_file_sweep_claim', { p_band_id: bandId, p_path: path });
       if (claimError) {
