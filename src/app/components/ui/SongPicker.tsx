@@ -39,6 +39,13 @@ interface SongPickerProps {
   onRemoveSelected?: (ids: string[]) => void;
   /** Stacking; above 110 when opened from a higher layer (poll builder, z 120). */
   zIndex?: number;
+  /**
+   * The band whose library to show, when it is not the selected band (an
+   * admin publishing another band's proposal, Codex #297 B4).
+   */
+  bandId?: string;
+  /** Admin of `bandId` (the selected band's role does not apply to it). */
+  bandAdmin?: boolean;
 }
 
 type Tab = 'library' | 'add';
@@ -65,9 +72,13 @@ export const SongPicker: React.FC<SongPickerProps> = ({
   overline,
   onRemoveSelected,
   zIndex = 110,
+  bandId: bandIdProp,
+  bandAdmin,
 }) => {
   const t = useT();
-  const { selectedBand, isAdmin } = useBand();
+  const { selectedBand, isAdmin: selectedIsAdmin } = useBand();
+  const bandId = bandIdProp || selectedBand?.id;
+  const isAdmin = bandIdProp && bandIdProp !== selectedBand?.id ? !!bandAdmin : selectedIsAdmin;
   const [tab, setTab] = useState<Tab>('library');
   const [search, setSearch] = useState('');
   const [songs, setSongs] = useState<Song[]>([]);
@@ -86,12 +97,12 @@ export const SongPicker: React.FC<SongPickerProps> = ({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !selectedBand?.id) return;
+    if (!isOpen || !bandId) return;
     let cancelled = false;
     const fetchSongs = async () => {
       setLoading(true);
       setLoadError(null);
-      const { data, error } = await getSongs(selectedBand.id, { columns: 'list' });
+      const { data, error } = await getSongs(bandId, { columns: 'list' });
       if (cancelled) return;
       if (error) setLoadError(userMessage(error, t("Couldn't load your song library.")));
       else if (data) setSongs(data);
@@ -99,7 +110,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
     };
     fetchSongs();
     return () => { cancelled = true; };
-  }, [isOpen, selectedBand?.id, reloadKey]);
+  }, [isOpen, bandId, reloadKey]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return songs;
@@ -160,13 +171,13 @@ export const SongPicker: React.FC<SongPickerProps> = ({
   }, [multiSelected, unselected, songs, onSelectMultiple, onRemoveSelected, onClose]);
 
   const handleAddSong = useCallback(async () => {
-    if (!newTitle.trim() || !selectedBand?.id) return;
+    if (!newTitle.trim() || !bandId) return;
     setSaving(true);
     setSaveError(null);
 
     const urlFields = newUrl.trim() ? detectUrlType(newUrl.trim()) : {};
     const songData: Partial<Song> = {
-      band_id: selectedBand.id,
+      band_id: bandId,
       title: newTitle.trim(),
       artist: newArtist.trim() || undefined,
       // Members can only suggest songs (108): an admin reviews them.
@@ -198,7 +209,7 @@ export const SongPicker: React.FC<SongPickerProps> = ({
       setNewUrl('');
       setTab('library');
     }
-  }, [newTitle, newArtist, newUrl, selectedBand?.id, isAdmin, onSelect, t]);
+  }, [newTitle, newArtist, newUrl, bandId, isAdmin, onSelect, t]);
 
   // Laptop pose: the sheet only has the Deck, so search and filters share one row.
   const laptop = useLaptopPose();

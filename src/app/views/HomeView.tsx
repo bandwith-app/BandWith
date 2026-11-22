@@ -30,6 +30,7 @@ import { repeatDates } from '@/lib/recurrence';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
+import { isSkippedOccurrence } from '@/lib/recurrenceSkips';
 import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
 import { PlanEndingCard } from '@/app/components/plans/PlanEndingCard';
 import { DateHoldCard, DateHoldList } from '@/app/components/dashboard/DateHoldCard';
@@ -80,7 +81,8 @@ interface HomeViewProps {
   onQuickAction?: (action: string) => void;
   onViewChange?: (tab: string) => void;
   onFilterEvents?: (filter: string) => void;
-  onSelectEvent?: (eventId: string) => void;
+  /** date: the date tapped, for one date of a repeating rehearsal (Codex #297 B1). */
+  onSelectEvent?: (eventId: string, date?: string) => void;
   /** "Go live" on the next gig: opens it in Stage mode. */
   onGoLive?: (eventId: string) => void;
   isAdmin?: boolean;
@@ -358,7 +360,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       const isRecurring = Boolean(e.is_recurring || e.recurrence_rule || (e.recurrence && e.recurrence !== 'once'));
 
       // If base event date is today or future, add it
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e, d)) {
         expandedList.push(e);
       }
 
@@ -374,7 +376,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         const maxCount = rule.count || 24;
         for (const cursor of repeatDates(d, { ...rule, frequency: freq }, until, maxCount)) {
           const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-          if (occDate >= todayStr && occDate !== d) {
+          if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e, occDate)) {
             expandedList.push({
               ...e,
               id: `${e.id || e.eventId}-occ-${occDate}`,
@@ -579,7 +581,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             .join(' · '),
           kind: (e.event_type || e.eventType) === 'rehearsal' ? 'rehearsal' : 'gig',
           urgent: true,
-          onSelect: onSelectEvent ? () => onSelectEvent(id) : undefined,
+          onSelect: onSelectEvent ? () => onSelectEvent(id, raw || undefined) : undefined,
         });
       }
     }
@@ -888,7 +890,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               if (mapQuery) {
                 openMaps(mapQuery);
               } else if (nextMemberGig && onSelectEvent) {
-                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id);
+                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id, nextMemberGig.event_date || nextMemberGig.date || undefined);
               } else {
                 onViewChange?.('Events');
               }
@@ -963,7 +965,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               const valid = d && !isNaN(d.getTime());
               const eventId: string | undefined = event.eventId || event.id;
               const open = () => {
-                if (onSelectEvent && eventId) onSelectEvent(eventId);
+                if (onSelectEvent && eventId) onSelectEvent(eventId, rawDate || undefined);
                 else onViewChange?.('Events');
               };
               const row = (

@@ -29,7 +29,10 @@ vi.mock('../notifications', () => ({
   notifyEventMembersRemoved: (...a: unknown[]) => notifyEventMembersRemoved(...a),
 }));
 const syncEventTasks = vi.fn(async (..._a: unknown[]) => ({ error: null as unknown }));
-vi.mock('../eventTasks', () => ({ syncEventTasks: (...a: unknown[]) => syncEventTasks(...a) }));
+vi.mock('../eventTasks', async (orig) => ({
+  ...(await orig<typeof import('../eventTasks')>()),
+  syncEventTasks: (...a: unknown[]) => syncEventTasks(...a),
+}));
 const enqueueMutation = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('@/lib/offline/syncQueue', () => ({ enqueueMutation: (...a: unknown[]) => enqueueMutation(...a) }));
 
@@ -170,7 +173,31 @@ describe('saveTasksEdit', () => {
     expect(enqueueMutation).toHaveBeenCalledWith('update_event', {
       eventId: 'e1',
       updates: { title: 'Wedding', _isPendingSync: true },
-      extras: { tasks: { drafts: [{ title: 'Book van' }], originalIds: [], eventDate: '2026-12-05' } },
+      extras: { tasks: { drafts: [{ title: 'Book van', clientId: expect.any(String) }], originalIds: [], eventDate: '2026-12-05' } },
     });
+  });
+
+  // Codex #297 round 3: the id of a new to-do is chosen when it is queued and
+  // stored with the queue, so every replay sends the same one.
+  it('a new to-do is queued with its id already chosen', async () => {
+    setOnline(false);
+    await saveTasksEdit('e1', [{ title: 'Book van' }, { id: 't1', title: 'Kept' }], '2026-12-05', ['t1'], 'Wedding');
+    const payload = enqueueMutation.mock.calls[0][1] as any;
+    const [fresh, kept] = payload.extras.tasks.drafts;
+    expect(typeof fresh.clientId).toBe('string');
+    expect(fresh.clientId.length).toBeGreaterThan(0);
+    expect(kept.clientId).toBeUndefined();
+  });
+
+  it('a try that goes offline half-way queues the ids it already sent', async () => {
+    let sent: any[] = [];
+    syncEventTasks.mockImplementationOnce(async (...a: unknown[]) => {
+      sent = (a[1] as any[]).map((d) => d.clientId);
+      return { error: Object.assign(new TypeError('Failed to fetch'), {}) };
+    });
+    await saveTasksEdit('e1', [{ title: 'Book van' }], '2026-12-05', [], 'Wedding');
+    const payload = enqueueMutation.mock.calls[0][1] as any;
+    expect(sent[0]).toBeTruthy();
+    expect(payload.extras.tasks.drafts[0].clientId).toBe(sent[0]);
   });
 });

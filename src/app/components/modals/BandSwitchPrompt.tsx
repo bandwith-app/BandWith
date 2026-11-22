@@ -35,6 +35,10 @@ const switchSentence = (t: ReturnType<typeof useT>, action: string, band: string
       return t('To edit this event, switch to {band} first.', { band });
     case 'delete this event':
       return t('To delete this event, switch to {band} first.', { band });
+    case 'restore this date':
+      return t('To restore this date, switch to {band} first.', { band });
+    case 'prepare a contract':
+      return t('To prepare a contract, switch to {band} first.', { band });
     case 'confirm this quote':
       return t('To confirm this quote, switch to {band} first.', { band });
     case 'change this quote':

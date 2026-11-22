@@ -7,6 +7,8 @@
  * before (bw_trg_event_changed: date, time, load-in / soundcheck, venue).
  */
 import { addressWithoutCity } from '@/lib/eventAddress';
+import { mergeRecurrenceRule } from '@/lib/recurrenceSkips';
+import { monthlyOccurrence } from '@/lib/recurrence';
 
 export type EditKind = 'gig' | 'rehearsal';
 
@@ -69,6 +71,8 @@ export interface EditableEvent {
   title: string;
   eventType?: string;
   date: string;
+  /** Opened on a later date of a repeating rehearsal: the series' first date. */
+  seriesDate?: string;
   time: string;
   timeSet?: boolean;
   endTime?: string;
@@ -84,7 +88,7 @@ export interface EditableEvent {
   price?: string;
   paymentStatus?: string;
   is_recurring?: boolean;
-  recurrence_rule?: { freq?: string; frequency?: string; interval?: number } | null;
+  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; skip_dates?: string[]; [key: string]: unknown } | null;
 }
 
 export type Recurrence = 'once' | 'weekly' | 'biweekly' | 'monthly';
@@ -136,14 +140,36 @@ export function eventCardValues(ev: EditableEvent): EventCardValues {
   };
 }
 
-export function eventCardPatch(kind: EditKind, v: EventCardValues): Record<string, unknown> {
+/**
+ * `saved`: the event as opened. A rehearsal's rule changes only its
+ * cadence: deleted dates (skip_dates) and other keys stay (Codex #297 B2).
+ * Opened on a later date of the series (`seriesDate`), the series start is
+ * not written unless the whole series moves (`moveScope` 'series'); switched
+ * to "once", the event keeps the date on screen.
+ */
+export function eventCardPatch(
+  kind: EditKind,
+  v: EventCardValues,
+  saved?: Partial<Pick<EditableEvent, 'recurrence_rule' | 'date' | 'seriesDate'>>,
+  /** A new date for one date of a series: that date only, or the whole series. */
+  moveScope?: 'date' | 'series',
+): Record<string, unknown> {
   const base: Record<string, unknown> = {
     title: v.title.trim(),
     event_date: v.date,
     start_time: v.startTime || '20:00',
     end_time: v.endTime || null,
   };
-  if (kind === 'rehearsal') return { ...base, ...recurrencePatch(v.recurrence) };
+  if (kind === 'rehearsal') {
+    const r = recurrencePatch(v.recurrence);
+    // One later date of a series that still repeats: the series start is
+    // written only when the whole series moves on purpose (Codex #297 round 3).
+    // Switched to "once", it keeps the date on screen.
+    const start = occurrenceStart(saved, v.date, v.recurrence !== 'once', moveScope);
+    if (start === null) delete base.event_date;
+    else if (start !== undefined) base.event_date = start;
+    return { ...base, ...r, recurrence_rule: mergeRecurrenceRule(saved?.recurrence_rule, r.recurrence_rule) };
+  }
   return {
     ...base,
     ...(v.eventType ? { event_type: v.eventType } : {}),
@@ -151,6 +177,69 @@ export function eventCardPatch(kind: EditKind, v: EventCardValues): Record<strin
     soundcheck_time: v.soundcheckTime || null,
   };
 }
+
+/**
+ * The series start to save when one later date of it (`saved.seriesDate`)
+ * was edited and it still repeats: null (not written: the date was left
+ * alone, or moved for this date only), the new start (the whole series), or
+ * undefined (not such a date: save the date as is).
+ *
+ * The whole series: weekly moves by the same days; monthly takes its day of
+ * the month from the new date, as many months back as that date is from the
+ * start (#298's monthlyOccurrence), so a date shown clamped (Apr 30 of a
+ * series on the 31st) moved to the 29th makes a series on the 29th, not on
+ * the 30th (Claude #297 round 4).
+ */
+export function occurrenceStart(
+  saved: { date?: string; seriesDate?: string; recurrence_rule?: unknown } | null | undefined,
+  newDate: string,
+  repeating: boolean,
+  moveScope?: 'date' | 'series',
+): string | null | undefined {
+  if (!saved?.seriesDate || !saved.date || !repeating) return undefined;
+  if (newDate !== saved.date && moveScope === 'series') {
+    if (isMonthly(saved.recurrence_rule)) {
+      // Anchored on the moved date's day, clamped in each month (Codex #297
+      // r7 M1). The rule repeats its start's day, so a start month too short
+      // for it (Feb 28 for the 31st) would keep the series on the 28th: the
+      // series then starts at its first month that has the day, and the
+      // clamped date before it leaves the series.
+      const day = Number(newDate.slice(8, 10));
+      const step = monthlyInterval(saved.recurrence_rule);
+      for (let back = monthIndex(saved.date) - monthIndex(saved.seriesDate); back > 0; back -= step) {
+        const start = monthlyOccurrence(newDate, -back);
+        if (!start) return saved.seriesDate;
+        if (Number(start.slice(8, 10)) === day) return start;
+      }
+      return newDate;
+    }
+    return shiftDay(saved.seriesDate, daysApart(saved.date, newDate));
+  }
+  return null;
+}
+
+const isMonthly = (rule: unknown): boolean => {
+  const r = (rule && typeof rule === 'object' ? rule : {}) as { freq?: unknown; frequency?: unknown };
+  return String(r.freq || r.frequency || '').toLowerCase() === 'monthly';
+};
+/** The rule's month step, as lib/recurrence reads it: 1-52, else 1. */
+const monthlyInterval = (rule: unknown): number => {
+  const n = Number((rule && typeof rule === 'object' ? (rule as { interval?: unknown }).interval : undefined));
+  return Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
+};
+/** Months since year 0 (YYYY-MM-DD). */
+export const monthIndex = (ymd: string): number => Number(ymd.slice(0, 4)) * 12 + Number(ymd.slice(5, 7)) - 1;
+
+const noonOf = (ymd: string) => {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d, 12);
+};
+const daysApart = (a: string, b: string) => Math.round((noonOf(b).getTime() - noonOf(a).getTime()) / 86_400_000);
+const shiftDay = (ymd: string, n: number) => {
+  const t = noonOf(ymd);
+  t.setDate(t.getDate() + n);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+};
 
 /* ─── "Venue" card ─── */
 
@@ -255,7 +344,7 @@ export function savedValue(ev: EditableEvent, column: string): unknown {
     case 'event_type':
       return (ev.eventType || '').toLowerCase();
     case 'event_date':
-      return ev.date;
+      return ev.seriesDate || ev.date;
     case 'start_time':
       return ev.timeSet === false ? '' : hhmm(ev.time);
     case 'end_time':
@@ -285,7 +374,7 @@ export function savedValue(ev: EditableEvent, column: string): unknown {
       return !!ev.is_recurring;
     case 'recurrence_rule': {
       const r = recurrenceOf(ev.is_recurring, ev.recurrence_rule);
-      return recurrencePatch(r).recurrence_rule;
+      return mergeRecurrenceRule(ev.recurrence_rule, recurrencePatch(r).recurrence_rule);
     }
     default:
       return undefined;
@@ -322,7 +411,8 @@ export function eventDataPatch(patch: Record<string, unknown>, ev: EditableEvent
         out.eventType = str(value);
         break;
       case 'event_date':
-        out.date = String(value ?? '');
+        // The series start kept under one date of it: that date stays on screen.
+        out.date = ev.seriesDate && value === ev.seriesDate ? ev.date : String(value ?? '');
         break;
       case 'start_time':
         out.time = String(value || '20:00');

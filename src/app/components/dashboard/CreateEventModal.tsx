@@ -1236,6 +1236,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         existingEvents={existingEvents}
         draft={draft}
         initialTasks={initialTasks}
+        initialDate={initialDate}
       />
     );
   }

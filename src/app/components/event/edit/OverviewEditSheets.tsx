@@ -41,6 +41,7 @@ import {
   type VenueCardValues,
 } from '@/lib/eventOverviewEdit';
 import type { OverviewEditApi } from './useOverviewEdit';
+import { newUuid } from '@/lib/uuid';
 
 /**
  * The editors behind the overview's EDIT actions (one sheet per card), so a
@@ -84,11 +85,14 @@ const EditSheet: React.FC<{
   overline: string;
   dirty: boolean;
   canSave?: boolean;
+  /** Why Save is off, shown under the buttons and tied to Save (aria-describedby). */
+  saveHint?: string | null;
   saving: boolean;
   error: string | null;
   onSave: () => void;
   children: React.ReactNode;
-}> = ({ open, onClose, title, overline, dirty, canSave = true, saving, error, onSave, children }) => {
+}> = ({ open, onClose, title, overline, dirty, canSave = true, saveHint, saving, error, onSave, children }) => {
+  const hintId = React.useId();
   const t = useT();
   // Leaving with edits (closing, or opening another card's editor) asks
   // first: Save changes / Discard / Keep editing.
@@ -129,10 +133,22 @@ const EditSheet: React.FC<{
             <PillButton variant="outline" size="lg" onClick={requestClose} disabled={saving}>
               {t('Cancel')}
             </PillButton>
-            <PillButton variant="primary" size="lg" onClick={onSave} loading={saving} disabled={!dirty || !canSave}>
+            <PillButton
+              variant="primary"
+              size="lg"
+              onClick={onSave}
+              loading={saving}
+              disabled={!dirty || !canSave}
+              aria-describedby={saveHint && dirty && !canSave ? hintId : undefined}
+            >
               {t('Save')}
             </PillButton>
           </div>
+          {saveHint && dirty && !canSave && (
+            <p id={hintId} className="text-sm text-muted-foreground text-center">
+              {saveHint}
+            </p>
+          )}
         </div>
       }
     >
@@ -195,17 +211,28 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
   const { saving, error, setError, run } = useSaving(onClose);
   const [v, setV] = useState<EventCardValues>(() => eventCardValues(event));
   const [initial, setInitial] = useState(v);
+  // A new date for one date of a series (the first one too): that date only,
+  // or the whole series (Claude #297 round 3). Asked before Save.
+  const [moveScope, setMoveScope] = useState<'date' | 'series' | null>(null);
+  // One request id per opening: a retry of "Only this date" creates nothing more.
+  const moveRequest = React.useRef('');
   useEffect(() => {
     if (!open) return;
     const now = eventCardValues(event);
     setV(now);
     setInitial(now);
+    setMoveScope(null);
+    moveRequest.current = newUuid(); // a real uuid on every browser (Codex #297 r7 M3)
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const set = (p: Partial<EventCardValues>) => setV((prev) => ({ ...prev, ...p }));
   // Only what the admin changed (a gig with no start time yet opens on 20:00).
-  const patch = JSON.stringify(v) !== JSON.stringify(initial) ? changedPatch(event, eventCardPatch(kind, v)) : null;
+  const askMove = kind === 'rehearsal' && initial.recurrence !== 'once' && v.recurrence !== 'once' && !!v.date && v.date !== initial.date;
+  const patch = JSON.stringify(v) !== JSON.stringify(initial)
+    ? changedPatch(event, eventCardPatch(kind, v, event, askMove ? moveScope ?? undefined : undefined))
+    : null;
+  const moveOnly = askMove && moveScope === 'date';
   const accent = kind === 'rehearsal' ? 'var(--accent-rehearsal)' : 'var(--accent-gig)';
   const overline = timeOverlineOf(t, kind, v.date);
   const pickerEvents = useMemo(() => toDatePickerEvents(allEvents, event.eventId), [allEvents, event.eventId]);
@@ -230,11 +257,20 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
       onClose={onClose}
       overline={event.title}
       title={t('Title, date & times')}
-      dirty={!!patch}
-      canSave={!!v.title.trim() && !!v.date}
+      dirty={!!patch || askMove}
+      canSave={!!v.title.trim() && !!v.date && (!askMove || !!moveScope)}
+      saveHint={askMove && !moveScope ? t('Choose which dates to move to save.') : null}
       saving={saving}
       error={error}
-      onSave={() => run(() => api.saveFields(patch))}
+      onSave={() =>
+        run(() =>
+          moveOnly
+            ? api.moveDateOnly
+              ? api.moveDateOnly({ title: v.title, date: v.date, startTime: v.startTime, endTime: v.endTime, clientId: moveRequest.current })
+              : Promise.resolve(t('Could not save the event. Please try again.'))
+            : api.saveFields(patch),
+        )
+      }
     >
       <PillField
         label={kind === 'rehearsal' ? t('Session title') : t('Event title')}
@@ -272,6 +308,21 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
           availability={{ bandId: event.band_id, start: v.startTime, end: v.endTime, excludeEventId: event.eventId }}
         />
       </div>
+      {askMove && (
+        <div className="flex flex-col gap-2">
+          <Label>{t('Move which dates?')}</Label>
+          <Segmented<'date' | 'series' | ''>
+            label={t('Move which dates?')}
+            value={moveScope ?? ''}
+            options={[
+              { value: 'date', label: t('Only this date') },
+              { value: 'series', label: t('The whole series') },
+            ]}
+            onChange={(s) => setMoveScope(s === '' ? null : s)}
+            size="sm"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <Label htmlFor="ovw-start">{t('Start time')}</Label>

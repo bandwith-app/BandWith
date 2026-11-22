@@ -47,6 +47,17 @@ describe('server language for pushes', () => {
     expect(update).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for the profile: no write while it loads (Claude #297 review), one after, none when it matches', () => {
+    const { rerender } = renderHook(({ lang }) => useServerLocaleSync('u1', lang), { initialProps: { lang: undefined as string | null | undefined } });
+    expect(update).not.toHaveBeenCalled();
+    rerender({ lang: 'en' });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith({ preferred_language: 'it' });
+    const other = renderHook(({ lang }) => useServerLocaleSync('u2', lang), { initialProps: { lang: undefined as string | null | undefined } });
+    other.rerender({ lang: 'it' });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it('does nothing signed out or when it already matches', () => {
     renderHook(() => useServerLocaleSync(null, 'en'));
     renderHook(() => useServerLocaleSync('u1', 'it'));

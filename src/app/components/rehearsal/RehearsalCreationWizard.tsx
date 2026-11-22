@@ -8,7 +8,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { getRehearsalAccentColor } from '@/app/components/ui/WizardAccentRail';
-import { Card, IconButton, NavBackButton, PillButton, PillField, Selector, Tag } from '@/app/components/bw';
+import { BwSheet, Card, IconButton, NavBackButton, PillButton, PillField, Selector, Tag } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
 import { PeekingScrollContainer } from '@/app/components/ui/PeekingScrollContainer';
 import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
@@ -51,6 +51,7 @@ import { FreeDots, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { sessionAudience } from '@/lib/sessionRoster';
 import { memberInstrument } from '@/lib/bandMembership';
 import { useFocusSuggestions } from './useFocusSuggestions';
+import { newUuid } from '@/lib/uuid';
 
 interface TaskTemplateDB {
   id: string;
@@ -137,6 +138,8 @@ interface Props {
   draft?: EventDraft | null;
   /** To-dos to start with (a to-do list template). */
   initialTasks?: { title: string; templateId?: string; dueOffset?: number }[];
+  /** The day picked in Calendar ("Add rehearsal" on an empty date), YYYY-MM-DD (audit 05 #12). */
+  initialDate?: string;
 }
 
 type PickerSourceEvents = Parameters<typeof toDatePickerEvents>[0];
@@ -338,7 +341,7 @@ const RehearsalAccordionCard: React.FC<{
   </div>
 );
 
-export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, editingEvent, onOpenPollBuilder, existingEvents, draft, initialTasks }) => {
+export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, editingEvent, onOpenPollBuilder, existingEvents, draft, initialTasks, initialDate }) => {
   const t = useT();
   const pickerEvents = useMemo(
     () => toDatePickerEvents(existingEvents, editingEvent?.eventId),
@@ -454,7 +457,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     title: editingEvent?.title || '',
     location: editingEvent?.location || '',
     address: editingEvent?.venueAddress || '',
-    date: editingEvent?.date || toLocalDateString(new Date(Date.now() + 86400000)),
+    date: editingEvent?.date || initialDate || toLocalDateString(new Date(Date.now() + 86400000)),
     time: editingEvent?.time?.slice(0, 5) || '20:00',
     duration: '2h',
     recurrence: initialRecurrence,
@@ -512,9 +515,22 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     return opt ? t('{type} Rehearsal', { type: getLocale() === 'en' ? opt.label : t(opt.label) }) : t('Rehearsal');
   }, [data.title, data.type]);
 
-  // Navigation
-  const handleSubmit = async () => {
+  // One date of a repeating rehearsal given a new date: only this date, or
+  // the whole series? Asked on the first date too (Claude #297 round 4).
+  const askMoveScope = isEditing && !!editingEvent?.eventId && initialRecurrence !== 'once'
+    && data.recurrence !== 'once' && !!data.date && data.date !== (editingEvent?.date || '').slice(0, 10);
+  const [scopeAskOpen, setScopeAskOpen] = useState(false);
+  // One request id per wizard: a retry of "Only this date" creates nothing more.
+  const moveRequestRef = useRef<string>(newUuid()); // a real uuid on every browser (Codex #297 r7 M3)
+
+  // Navigation (the buttons pass their click event: only a scope string counts).
+  const handleSubmit = async (scopeArg?: unknown) => {
     if (isSubmitting) return;
+    const scope = scopeArg === 'date' || scopeArg === 'series' ? scopeArg : undefined;
+    if (askMoveScope && !scope) {
+      setScopeAskOpen(true);
+      return;
+    }
     setIsSubmitting(true);
     const finalTitle = getEffectiveTitle();
     const submitData = {
@@ -527,6 +543,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
         _editingLocalId: editingEvent.id,
         _originalEventType: editingEvent.eventType || 'rehearsal',
       } : {}),
+      ...(askMoveScope && scope ? { _moveScope: scope, _moveClientId: moveRequestRef.current } : {}),
     };
     let saved: boolean | void;
     try {
@@ -570,7 +587,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     if (!draftIdRef.current) draftIdRef.current = newDraftId();
     // The date counts once the user picked it (or saw it on step 2):
     // otherwise it is only tomorrow's default and the draft stays undated.
-    const dated = !!data.date && (data.date !== initialDateRef.current || step >= 1 || !!ds?.dated);
+    const dated = !!data.date && (data.date !== initialDateRef.current || step >= 1 || !!ds?.dated || !!initialDate);
     saveEventDraft({
       id: draftIdRef.current,
       userId: currentUserId,
@@ -1797,6 +1814,24 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
 
   const modals = (
     <>
+      <BwSheet
+        open={scopeAskOpen}
+        onClose={() => setScopeAskOpen(false)}
+        overline={t('Recurrence')}
+        title={t('Move which dates?')}
+        closeLabel={t('Keep editing')}
+        tone="light"
+        zIndex={170}
+        portal
+        footer={
+          <div className="flex flex-col gap-2">
+            <PillButton onClick={() => { setScopeAskOpen(false); void handleSubmit('date'); }}>{t('Only this date')}</PillButton>
+            <PillButton variant="outline" onClick={() => { setScopeAskOpen(false); void handleSubmit('series'); }}>{t('The whole series')}</PillButton>
+          </div>
+        }
+      >
+        <p className="bw-body text-muted-foreground">{t('Only this date leaves the series as a one-off; the other dates stay as they are.')}</p>
+      </BwSheet>
       <RehearsalAddTaskModal
         isOpen={isAddTaskModalOpen}
         onClose={() => setIsAddTaskModalOpen(false)}

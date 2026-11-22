@@ -38,7 +38,9 @@ export interface EventData {
   quoteId?: string;
   quoteStatus?: string;
   is_recurring?: boolean;
-  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; until?: string; count?: number };
+  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; until?: string; count?: number; skip_dates?: string[]; [key: string]: unknown };
+  /** Opened on a later date of a repeating rehearsal: the series' first date (Codex #297). */
+  seriesDate?: string;
   memberUserIds?: string[];
   memberFeeMap?: Record<string, string>;
   /** DB financial/contact fields (events table) */

@@ -71,3 +71,12 @@ describe('notificationBandId', () => {
     expect(notificationBandId({ data: {} })).toBeUndefined();
   });
 });
+
+describe('a rehearsal date (Codex #297 B1)', () => {
+  it('a session summary opens the rehearsal on the date it was about', () => {
+    expect(notificationTarget('rehearsal_notes_added', { kind: 'summary', event_id: 'r1', occurrence_date: '2099-12-08' }))
+      .toEqual({ screen: 'event', eventId: 'r1', date: '2099-12-08' });
+    expect(notificationTarget('rehearsal_reminder', { eventId: 'r1', occurrenceDate: '2099-12-08' }))
+      .toEqual({ screen: 'event', eventId: 'r1', date: '2099-12-08' });
+  });
+});

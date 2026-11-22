@@ -43,6 +43,8 @@ export interface MemberCommitment {
   event_status?: string | null;
   /** event_members.status (null for a personal event). */
   answer?: string | null;
+  /** recurrence_rule.skip_dates: dates of a repeating rehearsal deleted on their own (#297). */
+  skip_dates?: string[] | null;
 }
 
 const NOT_BUSY_EVENT = new Set(['cancelled', 'canceled', 'quote', 'quoted']);
@@ -97,6 +99,7 @@ export function freeSlotsFromRows(
     .filter(c => inBand.has(c.user_id))
     .filter(c => c.event_date >= q.from && c.event_date <= q.to)
     .filter(c => !q.excludeEventId || c.event_id !== q.excludeEventId)
+    .filter(c => !c.skip_dates?.includes(c.event_date))
     .filter(c => !NOT_BUSY_EVENT.has(lower(c.event_status)))
     .filter(c => c.answer == null || !NOT_BUSY_ANSWER.has(lower(c.answer)))
     .map(c => {

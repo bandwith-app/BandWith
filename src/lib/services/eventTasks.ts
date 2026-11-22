@@ -27,6 +27,30 @@ export interface EventTaskDraft {
   dueOffset?: number;
   assignedTo?: string | null;
   notes?: string | null;
+  /**
+   * A new task's id, chosen the first time it is sent and kept with the
+   * draft (also in the offline queue), so a retry after a lost answer does
+   * not add it twice (Codex #297).
+   */
+  clientId?: string;
+}
+
+const newId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      });
+
+/**
+ * Gives every new draft its id, on the drafts themselves, before the first
+ * try or the queue (Codex #297 round 3): the queue stores it, and every
+ * later replay sends the same one.
+ */
+export function withTaskClientIds<T extends EventTaskDraft>(drafts: T[]): T[] {
+  for (const d of drafts) if (!d.id && !d.clientId) d.clientId = newId();
+  return drafts;
 }
 
 const COLUMNS = 'id, event_id, title, is_completed, due_date, assigned_to, notes';
@@ -76,6 +100,9 @@ export async function syncEventTasks(
   eventDate: string | null | undefined,
   originalIds: string[] = [],
 ): Promise<{ error: Error | null }> {
+  // Normally chosen already (withTaskClientIds); a queue item from an older
+  // build gets them here.
+  withTaskClientIds(drafts);
   const clean = drafts
     .map((t) => ({ ...t, title: (t.title || '').trim() }))
     .filter((t) => t.title);
@@ -92,8 +119,10 @@ export async function syncEventTasks(
   }
   const added = clean.filter((t) => !t.id);
   if (added.length > 0) {
-    const { error } = await supabase.from('rehearsal_tasks').insert(
+    // Rows already saved by a try whose answer was lost are left as they are.
+    const { error } = await supabase.from('rehearsal_tasks').upsert(
       added.map((t) => ({
+        id: t.clientId,
         event_id: eventId,
         title: t.title,
         is_completed: false,
@@ -101,6 +130,7 @@ export async function syncEventTasks(
         assigned_to: t.assignedTo || null,
         notes: t.notes?.trim() || null,
       })),
+      { onConflict: 'id', ignoreDuplicates: true },
     );
     if (error) return { error: asError(error, t('Could not save the tasks.')) };
   }

@@ -108,6 +108,10 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
+import { deleteRehearsalDate, moveRehearsalDateOnly, restoreRehearsalDate } from "@/lib/services/rehearsalSkip";
+import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
+import { occurrenceStart } from "@/lib/eventOverviewEdit";
+import { newUuid } from "@/lib/uuid";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -184,7 +188,7 @@ import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
 import { directChatName } from "@/lib/formerMember";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
-import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
+import { syncEventTasks, withTaskClientIds, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
 import { newEventInvites } from "@/lib/eventLineup";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
@@ -920,8 +924,10 @@ export default function AuthenticatedApp() {
     const { next, seen } = syncOpenEvent<EventData>(selectedEvent, fresh as Partial<EventData>, track.seen);
     track.seen = seen;
     if (next === selectedEvent) return;
+    // `next.date` / `next.seriesDate`: one date of a repeating rehearsal stays
+    // on that date, and follows the series when it moves.
     setSelectedEvent(prev =>
-      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>) } : prev,
+      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>), date: next?.date ?? prev.date, seriesDate: next?.seriesDate ?? prev.seriesDate } : prev,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, openEventKey]);
@@ -1168,7 +1174,7 @@ export default function AuthenticatedApp() {
   const missingCtxRef = useRef({ userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup });
   missingCtxRef.current = { userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup };
   /** Works out why an event isn't in the list, or opens it when it can. */
-  const explainMissingEvent = useCallback(async (eventDbId: string) => {
+  const explainMissingEvent = useCallback(async (eventDbId: string, openAt?: (item: EventData) => void) => {
     const { userId, isAdminOfBand: adminOf, eventMembersMap: membersMap, bandLookup: bands } = missingCtxRef.current;
     const { data: publicRow, error } = await supabase.from('events').select(EVENT_PUBLIC_COLUMNS).eq('id', eventDbId).maybeSingle();
     if (error) {
@@ -1255,9 +1261,29 @@ export default function AuthenticatedApp() {
     const item = eventToEventItem(row as Event);
     item.band_id = row.band_id || undefined;
     item.band_name = row.band_id ? bands[row.band_id] : t('Personal');
-    handleEventCardClickRef.current(item);
+    (openAt ?? handleEventCardClickRef.current)(item);
   }, []);
-  const navigateToEvent = useCallback(async (eventDbId: string) => {
+  // The date being edited in the wizard. The form's close handlers reopen
+  // the event by id only: they run before this clears, so cancelling an
+  // edit of one date of a series reopens that date (Codex #297 round 3).
+  const editReturnRef = useRef<{ eventId: string; date: string } | null>(null);
+  useEffect(() => {
+    if (editingEventData?.eventId && editingEventData.date) {
+      editReturnRef.current = { eventId: editingEventData.eventId, date: editingEventData.date };
+    } else if (!isCreateEventOpen) editReturnRef.current = null;
+  }, [editingEventData, isCreateEventOpen]);
+  /**
+   * Opens an event by id. `date`: the date of a repeating rehearsal the user
+   * picked (Home's list, a session summary). With none, a series opens on its
+   * next date still on, never on a deleted or long-past first date, so
+   * "Delete this date" deletes the date on screen (Codex #297 B1).
+   */
+  const navigateToEvent = useCallback(async (eventDbId: string, asked?: string | null) => {
+    const date = openDateFor(eventDbId, asked, editReturnRef.current);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const openAt = (item: EventData) =>
+      handleEventCardClickRef.current((date ? occurrenceOn(item, date) : occurrenceOn(item, null, today)) ?? item);
     // One pane: closing the gig goes back to the tab it was opened from
     // (Home's "Review payouts", a notification) instead of the calendar.
     const from = activeTabRef.current;
@@ -1268,7 +1294,7 @@ export default function AuthenticatedApp() {
     setTimeout(async () => {
       const ev = eventsRef.current.find(e => e.eventId === eventDbId);
       if (ev) {
-        handleEventCardClickRef.current(ev);
+        openAt(ev);
       } else {
         // No signal ("Go live" at a venue): open the event from its live
         // pack instead of fetching the list (plan §3.4).
@@ -1278,7 +1304,7 @@ export default function AuthenticatedApp() {
           const item = eventToEventItem(pack.event as unknown as Event);
           item.band_id = pack.bandId;
           item.band_name = bandsByIdRef.current[pack.bandId];
-          handleEventCardClickRef.current(item);
+          openAt(item);
           return true;
         };
         if (typeof navigator !== 'undefined' && navigator.onLine === false && (await fromPack())) return;
@@ -1291,9 +1317,9 @@ export default function AuthenticatedApp() {
         }
         setTimeout(() => {
           const evRetry = eventsRef.current.find(e => e.eventId === eventDbId);
-          if (evRetry) handleEventCardClickRef.current(evRetry);
+          if (evRetry) openAt(evRetry);
           else
-            void explainMissingEvent(eventDbId).catch((err: any) =>
+            void explainMissingEvent(eventDbId, openAt).catch((err: any) =>
               setEventLoadError({ id: eventDbId, kind: 'error', message: err?.message }),
             );
         }, 500);
@@ -1455,7 +1481,7 @@ export default function AuthenticatedApp() {
           window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);
         }
         // After it: a deleted event is named from this notification.
-        await navigateToEvent(d.eventId);
+        await navigateToEvent(d.eventId, typeof d.date === 'string' ? d.date : null);
       } else if (d.screen === "poll" && d.pollId) {
         setVotePollId(String(d.pollId));
       } else if (d.screen === "event") {
@@ -1983,7 +2009,7 @@ export default function AuthenticatedApp() {
       if (realBand?.id && e.band_id && e.band_id !== realBand.id) return;
       const normDate = (e.date || '').includes('T') ? e.date.split('T')[0] : (e.date || '');
 
-      if (!normDate || normDate >= todayStr) {
+      if ((!normDate || normDate >= todayStr) && !isSkippedOccurrence(e, normDate)) {
         rehearsals.push(e);
       }
 
@@ -1995,7 +2021,7 @@ export default function AuthenticatedApp() {
           const maxCount = rule.count || 24;
           repeatDates(normDate, rule, until, maxCount).forEach((cursor) => {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== normDate) {
+            if (occDate >= todayStr && occDate !== normDate && !isSkippedOccurrence(e, occDate)) {
               rehearsals.push({
                 ...e,
                 // Keyed by the date, not its place in the list: deleting one
@@ -2332,7 +2358,8 @@ export default function AuthenticatedApp() {
     const realNotifNav = realId ? realNotifications?.find((rn) => rn.id === realId) : null;
     const navEventId = (realNotifNav?.data as any)?.event_id;
     if (navEventId && (actionType === "NAV_EVENTS" || actionType === "NAV_EVENTS_CONFIRMED")) {
-      setTimeout(() => navigateToEvent(navEventId), 300);
+      const navDate = (realNotifNav?.data as any)?.occurrence_date;
+      setTimeout(() => navigateToEvent(navEventId, typeof navDate === 'string' ? navDate : null), 300);
       return;
     }
 
@@ -3061,10 +3088,50 @@ export default function AuthenticatedApp() {
     }
   };
 
-  const handleEventDelete = async () => {
+  // A date deleted on its own back in the series (undo toast, the cancelled
+  // date's banner, "Deleted dates"; Claude #297 r5 minor 5).
+  const handleRestoreDate = async (date: string | null | undefined, eventId?: string | null) => {
+    const id = eventId ?? selectedEvent?.eventId;
+    const { error, skipDates } = await restoreRehearsalDate(id, date);
+    if (error) {
+      setSaveToast({ message: error.message, type: 'error' });
+      return;
+    }
+    // The open detail shows the date as on again at once.
+    if (skipDates) {
+      setSelectedEvent((prev: any) => prev && prev.eventId === id && prev.recurrence_rule
+        ? { ...prev, recurrence_rule: { ...prev.recurrence_rule, skip_dates: skipDates }, skippedOccurrence: undefined }
+        : prev);
+    }
+    setSaveToast({ message: t('Rehearsal date restored'), type: 'success' });
+    refetchEvents();
+    refetchDashboard?.();
+  };
+
+  const handleEventDelete = async (scope?: 'date' | 'series') => {
     if (!selectedEvent?.eventId) return;
     haptic.delete();
     try {
+      if (scope === 'date') {
+        // One date of a repeating rehearsal: the series and its notes stay (audit 05 #4).
+        // No band or no date: refused with a message, never the whole series.
+        const { error } = await deleteRehearsalDate(selectedEvent);
+        if (error) throw error;
+        // Undo right away (Claude #297 r5 minor 5); later, Restore in the
+        // series' "Deleted dates".
+        const seriesId = selectedEvent.eventId;
+        const deletedDay = selectedEvent.date;
+        setSaveToast({
+          message: t('Rehearsal date deleted'),
+          type: 'success',
+          action: { label: t('Undo'), onClick: () => handleRestoreDate(deletedDay, seriesId) },
+        });
+        refetchEvents();
+        refetchDashboard?.();
+        setSelectedEvent(null);
+        setSelectedEventMembership(null);
+        return;
+      }
       if (!selectedEvent.band_id) {
         const { error } = await deletePersonalGig(selectedEvent.eventId, user?.id);
         if (error) throw error;
@@ -3313,6 +3380,12 @@ export default function AuthenticatedApp() {
         return; // Member is not added to this event
       }
     }
+    // A later date of a series (Calendar, Home): remember where the series
+    // starts, so editing that date does not move it (Codex #297).
+    const series = event.eventId && !event.seriesDate && event.is_recurring
+      ? eventsRef.current.find((e) => e.eventId === event.eventId)
+      : undefined;
+    if (series?.date && series.date !== event.date) event = { ...event, seriesDate: series.date };
     setSelectedEvent(event);
     setSelectedEventMembership(null);
     const key = eventKeyOf(event);
@@ -3630,15 +3703,61 @@ export default function AuthenticatedApp() {
         is_recurring: isRehearsalWizard
           ? Boolean(data.recurrence && data.recurrence !== 'once')
           : Boolean(data.is_recurring || (data.recurrence && data.recurrence !== 'once')),
+        // On top of the rule it edits: dates deleted on their own stay deleted
+        // (Codex #297 B2; updateEvent merges the stored rule too).
         recurrence_rule: (data.recurrence && data.recurrence !== 'once')
-          ? { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 }
+          ? mergeRecurrenceRule(
+              data._editingEventId ? (editingEventData?.recurrence_rule ?? data.recurrence_rule) : null,
+              { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 },
+            )
           : (data.recurrence_rule || null),
       };
+
+      // One later date of a series edited here: the series start is written
+      // only when the date moved (the whole series, by the same days); a
+      // switch to "once" keeps the date on screen (Codex / Claude #297 round 3).
+      const moveOnly = !!(data._editing && data._editingEventId && data._moveScope === 'date');
+      const seriesStart = data._editingEventId && !moveOnly
+        ? occurrenceStart(editingEventData, date, !!eventData.is_recurring, 'series')
+        : undefined;
+      if (seriesStart === null) delete eventData.event_date;
+      else if (seriesStart !== undefined) eventData.event_date = seriesStart;
+
+      // "Only this date" (Claude #297 round 4): the date leaves the series as
+      // a one-off in one transaction (bw_move_rehearsal_date: every column,
+      // lineup, rider & stage, its own copy of the setlist), with the edits
+      // made here in the same write, so one notice lists what changed and no
+      // second update follows (r5 minors 1 and 2). The lineup, to-dos and
+      // setlist are then saved on that one-off. Its to-dos are new ones there.
+      let movedHere = false;
+      if (moveOnly) {
+        if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          setSaveToast({ message: t('Moving one date needs a connection. Try again when you are online.'), type: 'error' });
+          return false;
+        }
+        const moved = await moveRehearsalDateOnly(
+          { eventId: data._editingEventId, band_id: realBand.id, date: editingEventData?.date ?? null, seriesDate: editingEventData?.seriesDate ?? null },
+          { title: title || '', date, startTime: timeFinal, endTime: endTime || '', clientId: data._moveClientId, fields: eventData },
+        );
+        if (moved.error || !moved.eventId) {
+          setSaveToast({ message: t('Save failed: {error}', { error: moved.error?.message || '' }), type: 'error' });
+          return false;
+        }
+        data = { ...data, _editingEventId: moved.eventId, _originalTaskIds: [], _moveScope: undefined };
+        movedHere = true;
+        eventData.event_date = date;
+        eventData.is_recurring = false;
+        eventData.recurrence_rule = null;
+      }
 
       // Event to-dos (create modal, template or rehearsal wizard). Ids count
       // as saved only when the form loaded them from this event.
       const originalTaskIds: string[] = Array.isArray(data._originalTaskIds) ? data._originalTaskIds : [];
-      const taskDrafts = (): EventTaskDraft[] => {
+      // Built once, with the ids of new to-dos: the first try and the
+      // offline queue send the same ones (Codex #297 round 3).
+      let draftsOnce: EventTaskDraft[] | null = null;
+      const taskDrafts = (): EventTaskDraft[] => (draftsOnce ??= withTaskClientIds(buildTaskDrafts()));
+      const buildTaskDrafts = (): EventTaskDraft[] => {
         const knownUserIds = new Set((realBand?.members || []).map((m: any) => m.user_id).filter(Boolean));
         return (Array.isArray(data.tasks) ? data.tasks : []).map((t: any) => {
           const assignees: string[] = Array.isArray(t.assignedTo) ? t.assignedTo : [];
@@ -3803,13 +3922,7 @@ export default function AuthenticatedApp() {
 
       // One id for every attempt: a create that times out on the client but
       // lands on the server is recognised when the offline queue replays it.
-      const newEventId: string =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-              const r = (Math.random() * 16) | 0;
-              return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-            });
+      const newEventId: string = newUuid();
       const queuedMembers = (data.members || [])
         .filter((m: any) => !(isRehearsalWizard && data.audienceIds?.length > 0) || data.audienceIds.includes(m.id))
         .map((m: any) => ({
@@ -3919,7 +4032,11 @@ export default function AuthenticatedApp() {
       }
 
       if (data._editing && data._editingEventId) {
-        const { error } = await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
+        // A date just moved on its own has its edits saved: only a setlist
+        // made now is linked (no date/time/venue change, so no second notice).
+        const { error } = movedHere
+          ? (setlistId ? await withFastTimeout(updateEvent(data._editingEventId, { setlist_id: setlistId }), 4500) : { error: null })
+          : await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
         if (!error) {
           closeWizard();
           const memberResult = await persistMembers(data._editingEventId, true);
@@ -4173,7 +4290,7 @@ export default function AuthenticatedApp() {
         return;
       }
 
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e as any, d)) {
         liveUpcomingEvents.push(e);
       }
 
@@ -4186,7 +4303,7 @@ export default function AuthenticatedApp() {
           const maxCount = rule.count || 24;
           for (const cursor of repeatDates(d, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== d) {
+            if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e as any, occDate)) {
               liveUpcomingEvents.push({
                 ...e,
                 id: `${e.id}-occ-${occDate}`,
@@ -4790,7 +4907,8 @@ export default function AuthenticatedApp() {
                 setShowRehearsalPollModal(false);
                 setPollModalInitialProposal(null);
               }}
-              bandId={realBand.id}
+              // A proposal opened from a notification may be another band's (audit 05 #1).
+              bandId={pollModalInitialProposal?.band_id || realBand.id}
               adminId={user.id}
               initialProposal={pollModalInitialProposal}
               onSuccess={() => {
@@ -5071,7 +5189,8 @@ export default function AuthenticatedApp() {
             onEventUpdated={() => { refetchEvents(); if (refetchDashboard) refetchDashboard().catch(() => {}); }}
             onToast={(message, type) => setSaveToast({ message, type })}
             onEdit={() => inItemBand(selectedEvent.band_id, "edit this event", handleEventEdit)}
-            onDelete={() => inItemBand(selectedEvent.band_id, "delete this event", handleEventDelete)}
+            onDelete={(scope) => inItemBand(selectedEvent.band_id, "delete this event", () => handleEventDelete(scope))}
+            onRestoreDate={(day) => inItemBand(selectedEvent.band_id, "restore this date", () => handleRestoreDate(day))}
             onChat={handleEventChat}
             onConfirmQuote={(ev) => inItemBand(ev.band_id, "confirm this quote", () => handleConfirmQuote(ev))}
             onRevertQuote={(ev) => inItemBand(ev.band_id, "change this quote", () => handleRevertQuote(ev))}
