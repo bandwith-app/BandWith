@@ -3,12 +3,11 @@ import { decodeStageState, encodeStageState, toBase64 } from '../stageBle';
 import {
   BleClockBook,
   CLOCK_MAX_AGE_MS,
-  STAGE_BLE_SYNC_CHARACTERISTIC,
+  STAGE_BLE_CLOCK_CHARACTERISTIC,
+  STAGE_BLE_LIVE_CHARACTERISTIC,
   STAGE_BLE_SYNC_VERSION,
-  decodePong,
-  encodePing,
-  encodePong,
-  parsePing,
+  decodeClock,
+  encodeClock,
 } from '../stageBleSync';
 import { STAGE_BLE_CHARACTERISTIC, STAGE_BLE_VERSION } from '../stageBle';
 import { bestSample, clockSample, pickClock } from '../stageClick';
@@ -24,107 +23,83 @@ const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 7));
 const OTHER_KEY = toBase64(new Uint8Array(32).map((_, i) => 255 - i));
 const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
 
-describe('stageBleSync frames', () => {
-  it('is a new frame version on its own characteristic (older apps never read it)', () => {
+describe('stageBleSync clock frame', () => {
+  it('is a new frame version on characteristics of its own (older apps never read them)', () => {
     expect(STAGE_BLE_SYNC_VERSION).toBeGreaterThan(STAGE_BLE_VERSION);
-    expect(STAGE_BLE_SYNC_CHARACTERISTIC).not.toBe(STAGE_BLE_CHARACTERISTIC);
-    expect(STAGE_BLE_SYNC_CHARACTERISTIC).toMatch(/^[0-9a-f]{8}-5b1e-4c6a-9b3d-6e0a2f7c1d42$/);
+    const chars = new Set([STAGE_BLE_CHARACTERISTIC, STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC]);
+    expect(chars.size).toBe(3);
+    for (const c of chars) expect(c).toMatch(/^[0-9a-f]{8}-5b1e-4c6a-9b3d-6e0a2f7c1d42$/);
   });
 
-  it('pings are 4 bytes: version, type, nonce', () => {
-    const ping = encodePing(0xbeef);
-    expect([...ping]).toEqual([STAGE_BLE_SYNC_VERSION, 1, 0xbe, 0xef]);
-    expect(parsePing(ping)).toBe(0xbeef);
-    expect(parsePing(new Uint8Array([2, 1, 0, 1]))).toBeNull();
-    expect(parsePing(new Uint8Array([STAGE_BLE_SYNC_VERSION, 2, 0, 1]))).toBeNull();
-    expect(parsePing(new Uint8Array([STAGE_BLE_SYNC_VERSION, 1, 0]))).toBeNull();
-  });
-
-  it('pongs fit one notification at the default MTU (20 bytes) and keep 0.1 ms', async () => {
+  it('fits one read before any MTU is negotiated (22 bytes) and keeps 0.1 ms', async () => {
     const t1 = 1_795_000_000_123.4;
-    const pong = await encodePong(0x1234, t1, KEY);
-    expect(pong.length).toBeLessThanOrEqual(20);
-    expect(await decodePong(pong, KEY)).toEqual({ nonce: 0x1234, t1 });
+    const frame = await encodeClock(t1, KEY);
+    expect(frame.length).toBeLessThanOrEqual(22);
+    expect(await decodeClock(frame, KEY)).toBe(t1);
   });
 
   it('matches the native encoders byte for byte (test vector for Swift and Java)', async () => {
     // StageBlePlugin.swift and StageBlePlugin.java build this same frame.
-    const pong = await encodePong(0x1234, 1_795_000_000_123.4, KEY);
-    expect(hex(pong)).toBe(PONG_VECTOR);
+    expect(hex(await encodeClock(1_795_000_000_123.4, KEY))).toBe(CLOCK_VECTOR);
   });
 
-  it('rejects pongs signed with another key, tampered, or of another version', async () => {
-    const pong = await encodePong(7, 1_000_000, KEY);
-    expect(await decodePong(pong, OTHER_KEY)).toBeNull();
-    const tampered = pong.slice();
+  it('rejects frames signed with another key, tampered, or of another version', async () => {
+    const frame = await encodeClock(1_000_000, KEY);
+    expect(await decodeClock(frame, OTHER_KEY)).toBeNull();
+    const tampered = frame.slice();
     tampered[5] ^= 1;
-    expect(await decodePong(tampered, KEY)).toBeNull();
-    const old = pong.slice();
+    expect(await decodeClock(tampered, KEY)).toBeNull();
+    const old = frame.slice();
     old[0] = STAGE_BLE_VERSION;
-    expect(await decodePong(old, KEY)).toBeNull();
-    expect(await decodePong(new Uint8Array([STAGE_BLE_SYNC_VERSION, 2, 0]), KEY)).toBeNull();
+    expect(await decodeClock(old, KEY)).toBeNull();
+    expect(await decodeClock(new Uint8Array(0), KEY)).toBeNull();
   });
 
-  it('a sync frame on the state characteristic is ignored by the state decoder (old and new apps)', async () => {
-    const pong = await encodePong(7, 1_000_000, KEY);
-    expect(await decodeStageState(pong, ['a1'], KEY)).toEqual({ ok: false, reason: 'format' });
-    // …and the state frame itself is unchanged (version 2), so older leaders and members keep working.
+  it('a clock frame read as a state is ignored, and the state frame is unchanged (version 2)', async () => {
+    const frame = await encodeClock(1_000_000, KEY);
+    expect(await decodeStageState(frame, ['a1'], KEY)).toEqual({ ok: false, reason: 'format' });
     const state = await encodeStageState({ seq: 1, from: 'lead', songId: 'a1', order: null }, ['a1'], KEY);
     expect(state![0]).toBe(2);
   });
 });
 
 describe('BleClockBook', () => {
-  it('turns a ping and its pong into the same sample as the Realtime clock', () => {
+  it('turns a read (sent t0, stamped t1, back t2) into the same sample as the Realtime clock', () => {
     const book = new BleClockBook();
-    const { nonce } = book.ping(1000);
-    const sample = book.pong(nonce, 1530, 1040);
-    expect(sample).toEqual(clockSample(1000, 1530, 1040));
-    expect(sample).toEqual({ offset: 510, rtt: 40 });
+    expect(book.add(1000, 1530, 1040)).toEqual(clockSample(1000, 1530, 1040));
+    expect(book.best(1100)).toEqual({ offset: 510, rtt: 40 });
   });
 
   it('keeps the fastest round trip, like bestSample', () => {
     const book = new BleClockBook();
-    const a = book.ping(0);
-    const b = book.ping(100);
-    const c = book.ping(200);
-    book.pong(a.nonce, 530, 60); // rtt 60
-    book.pong(b.nonce, 620, 120); // rtt 20 → offset 510
-    book.pong(c.nonce, 750, 290); // rtt 90
+    book.add(0, 530, 60); // rtt 60
+    book.add(100, 620, 120); // rtt 20 → offset 510
+    book.add(200, 750, 290); // rtt 90
     expect(book.best(300)).toEqual({ offset: 510, rtt: 20 });
     expect(book.best(300)).toEqual(bestSample(book.samples(300)));
   });
 
-  it('ignores unknown, repeated and late pongs', () => {
+  it('ignores reads that took too long', () => {
     const book = new BleClockBook();
-    const { nonce } = book.ping(0);
-    expect(book.pong((nonce + 1) & 0xffff, 500, 20)).toBeNull();
-    expect(book.pong(nonce, 500, 20)).not.toBeNull();
-    // A replayed pong for the same ping is not a second sample.
-    expect(book.pong(nonce, 500, 25)).toBeNull();
-    const late = book.ping(1000);
-    expect(book.pong(late.nonce, 1500, 1000 + 5000)).toBeNull();
+    expect(book.add(0, 500, 5000)).toBeNull();
+    expect(book.best(5000)).toBeNull();
+  });
+
+  it('a replayed old answer (fast, but far from the others) is not used', () => {
+    const book = new BleClockBook();
+    book.add(0, 530, 50);
+    book.add(200, 735, 260);
+    book.add(400, 935, 460);
+    // A captured frame from 10 minutes ago, injected as a very fast answer.
+    book.add(600, 630 - 600_000, 610);
+    expect(Math.abs(book.best(700)!.offset - 510)).toBeLessThan(10);
   });
 
   it('forgets samples older than the window, so drift does not stick', () => {
     const book = new BleClockBook();
-    const old = book.ping(0);
-    book.pong(old.nonce, 500, 10); // rtt 10, the best… but old
-    const fresh = book.ping(CLOCK_MAX_AGE_MS + 1000);
-    book.pong(fresh.nonce, CLOCK_MAX_AGE_MS + 1530, CLOCK_MAX_AGE_MS + 1040);
+    book.add(0, 500, 10); // rtt 10, the best… but old
+    book.add(CLOCK_MAX_AGE_MS + 1000, CLOCK_MAX_AGE_MS + 1530, CLOCK_MAX_AGE_MS + 1040);
     expect(book.best(CLOCK_MAX_AGE_MS + 1100)).toEqual({ offset: 510, rtt: 40 });
-  });
-
-  it('every ping has its own nonce', () => {
-    const book = new BleClockBook();
-    const seen = new Set(Array.from({ length: 50 }, (_, i) => book.ping(i).nonce));
-    expect(seen.size).toBe(50);
-  });
-
-  it('frames the ping it hands out', () => {
-    const book = new BleClockBook();
-    const { nonce, bytes } = book.ping(0);
-    expect(parsePing(bytes)).toBe(nonce);
   });
 });
 
@@ -144,4 +119,4 @@ describe('pickClock', () => {
 });
 
 // Computed once from the JS encoder; the native plugins must produce exactly this.
-const PONG_VECTOR = '0302123410534f5fb0d2879d96279f5e7feb';
+const CLOCK_VECTOR = '030210534f5fb0d28cb51b043ea1b037';

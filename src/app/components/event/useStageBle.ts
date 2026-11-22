@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BleClient, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { StageBle, stageBleAvailable, stageKey } from '@/lib/stageBleNative';
 import { STAGE_BLE_CHARACTERISTIC, decodeStageState, encodeStageState, seqBytes, stageServiceUuid, toBase64 } from '@/lib/stageBle';
 import {
   BURST_GAP_MS,
-  BURST_PINGS,
+  BURST_READS,
   BleClockBook,
   CLOCK_RESYNC_MS,
-  STAGE_BLE_SYNC_CHARACTERISTIC,
-  SYNC_PONG,
-  decodePong,
+  STAGE_BLE_CLOCK_CHARACTERISTIC,
+  STAGE_BLE_LIVE_CHARACTERISTIC,
+  decodeClock,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import type { StageLiveState } from '@/lib/stageLive';
+import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
-/**
- * - off: not running (web, demo, closed, no key);
- * - leading: the admin's phone is advertising;
- * - searching / connected: a member's phone looking for / linked to the leader;
- * - unavailable: Bluetooth off, not allowed, or not supported;
- * - outdated: linked, but the leader's setlist has other songs than the one
- *   on this phone (songs added or removed while it was offline).
- */
-export type StageBleStatus = 'off' | 'leading' | 'searching' | 'connected' | 'unavailable' | 'outdated';
+export type { StageBleStatus };
+
+/** The leader plugin's state, as a status. */
+const leaderStatus = (state: string): StageBleStatus =>
+  state === 'on' ? 'leading' : state === 'off' ? 'bt-off' : state === 'unauthorized' ? 'denied' : state === 'unsupported' ? 'unsupported' : 'off';
 
 interface Options {
   eventId?: string;
@@ -39,7 +37,7 @@ const RETRY_MS = 2000;
 /** Calls to the plugin's clock when the leader sets its offset (the fastest wins). */
 const CALIBRATE_CALLS = 3;
 
-/** Leader: how far the app's clock is from the plugin's, so pongs carry the app's clock. */
+/** Leader: how far the app's clock is from the plugin's, so clock reads carry the app's clock. */
 async function calibrateClock(): Promise<number | null> {
   const samples: ClockSample[] = [];
   for (let i = 0; i < CALIBRATE_CALLS; i++) {
@@ -59,16 +57,27 @@ async function calibrateClock(): Promise<number | null> {
  * and read. Every state is checked with the gig's key (migration 087).
  *
  * Members also measure the leader's clock over the link (stageBleSync.ts):
- * a burst of pings on connecting, again every 30 s and on demand (`burst`,
- * e.g. when a click or a count-in starts). `clock` is the best measure,
- * tied to the leader's id from its states. A leader on an older app has no
- * sync characteristic: the song still syncs, `clock` stays null.
+ * a burst of clock reads on connecting, again every 30 s and on demand
+ * (`burst`, e.g. when a click or a count-in starts). `clock` is the best
+ * measure, tied to the leader's id from its states. A leader on an older app
+ * has no clock characteristic: the song still syncs, `clock` stays null.
+ * Bluetooth turned off stops the reads at once (no crash, the clock is kept).
  */
 export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
   const [clock, setClock] = useState<PeerClock | null>(null);
+  /** Leader: phones linked to it. */
+  const [followers, setFollowers] = useState(0);
+  /** Bumped to start Bluetooth again (permission granted, Bluetooth turned on). */
+  const [attempt, setAttempt] = useState(0);
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  /** Android: the permission was asked again once from the button; next time, open Settings. */
+  const askedAgainRef = useRef(false);
+  /** The button sent the user to Settings: check again when they're back. */
+  const toSettingsRef = useRef(false);
   const burstRef = useRef<() => void>(() => {});
-  /** Member: measure the leader's clock again now (a burst of pings). */
+  /** Member: measure the leader's clock again now (a burst of reads). */
   const burst = useCallback(() => burstRef.current(), []);
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
@@ -115,7 +124,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         const offset = await calibrateClock();
         if (offset !== null && !cancelled) await StageBle.setClock({ offset });
       } catch {
-        /* the members' pongs then carry the plugin's clock: they keep their last measure */
+        /* the clock reads then carry the plugin's clock: members keep their last measure */
       }
     };
     (async () => {
@@ -123,8 +132,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled || !key) return;
       keyRef.current = key;
       const serviceUuid = await stageServiceUuid(key);
-      const handle = await StageBle.addListener('stateChange', ({ state }) => {
-        setStatus(state === 'on' ? 'leading' : state === 'unknown' ? 'off' : 'unavailable');
+      const handle = await StageBle.addListener('stateChange', ({ state, subscribers }) => {
+        setStatus(leaderStatus(state));
+        setFollowers(state === 'on' ? subscribers ?? 0 : 0);
       });
       // Closed while the listener was being added: the cleanup has already run.
       if (cancelled) {
@@ -139,33 +149,35 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           characteristicUuid: STAGE_BLE_CHARACTERISTIC,
           value: '',
           notify: '',
-          syncUuid: STAGE_BLE_SYNC_CHARACTERISTIC,
+          clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC,
+          liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC,
           key,
         });
         if (cancelled) return;
         startedRef.current = true;
-        // Pongs carry the app's clock (the one `startAt` uses); kept right as the two drift.
+        setStatus(leaderStatus(state));
+        // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
         await calibrate();
         if (cancelled) return;
         recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
-        setStatus(state === 'on' ? 'leading' : state === 'unknown' ? 'off' : 'unavailable');
         const pending = pendingRef.current;
         pendingRef.current = null;
         if (pending) void push(pending);
-      } catch {
-        if (!cancelled) setStatus('unavailable');
+      } catch (e) {
+        if (!cancelled) setStatus(bleProblem(e));
       }
     })();
     return () => {
       cancelled = true;
       clearInterval(recalibrate);
+      setFollowers(0);
       startedRef.current = false;
       pendingRef.current = null;
       void listener?.remove();
       void StageBle.stop().catch(() => {});
       setStatus('off');
     };
-  }, [active, isLeader, eventId, push]);
+  }, [active, isLeader, eventId, push, attempt]);
 
   // Member: find the leader, subscribe, read on every change.
   useEffect(() => {
@@ -183,37 +195,49 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let syncOn = false;
     let burstTimers: ReturnType<typeof setTimeout>[] = [];
     let resync: ReturnType<typeof setInterval> | undefined;
+    let watching = false;
+    /** Bumped for every new link, so a late goodbye from an old one is ignored. */
+    let link = 0;
 
     const emitClock = () => {
       const sample = book.best(nowMs());
       if (sample) setClock({ from: leaderFrom, sample });
     };
 
-    const onSync = (view: DataView) => {
-      const t2 = nowMs();
-      const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice();
-      if (bytes[1] !== SYNC_PONG) return;
-      void decodePong(bytes, key).then((pong) => {
-        if (!pong || cancelled) return;
-        if (book.pong(pong.nonce, pong.t1, t2)) emitClock();
-      });
+    const stopSync = () => {
+      syncOn = false;
+      clearInterval(resync);
+      burstTimers.forEach(clearTimeout);
+      burstTimers = [];
     };
 
-    const pingOnce = async () => {
+    /** One reading of the leader's clock; false if the leader has none (older app). */
+    const readClockOnce = async (): Promise<boolean> => {
       const id = deviceId;
-      if (!id || !syncOn || cancelled) return;
-      const { bytes } = book.ping(nowMs());
+      if (!id || cancelled) return true;
+      const t0 = nowMs();
+      let view: DataView;
       try {
-        await BleClient.write(id, serviceUuid, STAGE_BLE_SYNC_CHARACTERISTIC, new DataView(bytes.buffer));
-      } catch {
-        /* a dropped link is handled by onDisconnect */
+        view = await BleClient.read(id, serviceUuid, STAGE_BLE_CLOCK_CHARACTERISTIC);
+      } catch (e) {
+        // A dropped link is handled by onDisconnect; a missing characteristic is an older leader.
+        return !/not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
       }
+      const t2 = nowMs();
+      const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), key);
+      if (t1 === null || cancelled || deviceId !== id) return true;
+      if (book.add(t0, t1, t2)) emitClock();
+      return true;
     };
 
     const runBurst = () => {
       if (!syncOn || cancelled) return;
       burstTimers.forEach(clearTimeout);
-      burstTimers = Array.from({ length: BURST_PINGS }, (_, i) => setTimeout(() => void pingOnce(), i * BURST_GAP_MS));
+      burstTimers = Array.from({ length: BURST_READS }, (_, i) =>
+        setTimeout(() => {
+          if (syncOn) void readClockOnce();
+        }, i * BURST_GAP_MS),
+      );
     };
     burstRef.current = runBurst;
 
@@ -222,15 +246,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         book.clear();
         bookDevice = id;
       }
-      try {
-        await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_SYNC_CHARACTERISTIC, onSync);
-      } catch {
+      // The first reading tells whether the leader's app has the clock at all.
+      syncOn = true;
+      if (!(await readClockOnce())) {
         // A leader on an older app: no clock over Bluetooth, the song still syncs.
         syncOn = false;
         return;
       }
-      if (cancelled) return;
-      syncOn = true;
+      if (cancelled || !syncOn) return;
       if (Capacitor.getPlatform() === 'android') {
         // Shorter connection interval: tighter round trips, a better clock.
         await BleClient.requestConnectionPriority(id, ConnectionPriority.CONNECTION_PRIORITY_HIGH).catch(() => {});
@@ -268,11 +291,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (!cancelled) retry = setTimeout(() => void scan(), RETRY_MS);
     };
 
-    const onDisconnect = () => {
+    const onDisconnect = (gen: number) => {
+      if (gen !== link) return;
+      link++;
       deviceId = null;
-      syncOn = false;
-      clearInterval(resync);
-      burstTimers.forEach(clearTimeout);
+      stopSync();
       if (cancelled) return;
       setStatus('searching');
       later();
@@ -286,24 +309,28 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           if (deviceId || cancelled) return;
           const id = result.device.deviceId;
           deviceId = id;
+          const gen = ++link;
           void (async () => {
             try {
               await BleClient.stopLEScan();
-              await BleClient.connect(id, onDisconnect, { timeout: 10000 });
+              await BleClient.connect(id, () => onDisconnect(gen), { timeout: 10000 });
               await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, () => void readNow());
-              if (cancelled) return;
+              // Closed, or Bluetooth went off meanwhile (that link is already dropped).
+              if (cancelled || gen !== link) return;
               setStatus('connected');
               await readNow();
-              await startSync(id);
+              if (gen === link) await startSync(id);
             } catch {
+              if (gen !== link) return;
+              link++;
               deviceId = null;
               void BleClient.disconnect(id).catch(() => {});
               later();
             }
           })();
         });
-      } catch {
-        if (!cancelled) setStatus('unavailable');
+      } catch (e) {
+        if (!cancelled) setStatus(bleProblem(e) === 'unsupported' ? 'unsupported' : 'bt-off');
       }
     };
 
@@ -321,10 +348,35 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       try {
         // Asks for Bluetooth the first time; Android 12+ never uses it for location.
         await BleClient.initialize({ androidNeverForLocation: true });
-      } catch {
-        // Not allowed or not supported: don't ask again while Stage mode is open.
-        if (!cancelled) setStatus('unavailable');
+      } catch (e) {
+        // Not allowed or not supported: wait for the button (or a return from Settings).
+        if (!cancelled) setStatus(bleProblem(e));
         return;
+      }
+      if (!watching) {
+        watching = true;
+        // Bluetooth turned off mid-song: stop talking to the radio at once (on
+        // Android a call in flight then can take the app down), keep the clock.
+        try {
+          await BleClient.startEnabledNotifications((on) => {
+            if (cancelled) return;
+            clearTimeout(retry);
+            if (!on) {
+              // The link is gone with the radio (Android often never calls back): drop it here.
+              const id = deviceId;
+              link++;
+              deviceId = null;
+              stopSync();
+              if (id) void BleClient.disconnect(id).catch(() => {});
+              setStatus('bt-off');
+            } else if (!deviceId) {
+              void boot();
+            }
+          });
+        } catch {
+          /* not available: Bluetooth off is still seen by the next scan */
+        }
+        if (cancelled) return;
       }
       let enabled = false;
       try {
@@ -335,7 +387,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled) return;
       if (!enabled) {
         // Bluetooth off: look again in a moment (turning it on needs no prompt).
-        setStatus('unavailable');
+        setStatus('bt-off');
         retry = setTimeout(() => void boot(), 5000);
         return;
       }
@@ -350,12 +402,62 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       burstTimers.forEach(clearTimeout);
       burstRef.current = () => {};
       setClock(null);
+      if (watching) void BleClient.stopEnabledNotifications().catch(() => {});
       void BleClient.stopLEScan().catch(() => {});
       if (deviceId) void BleClient.disconnect(deviceId).catch(() => {});
       setStatus('off');
     };
     // A reloaded setlist doesn't drop the link: reads use savedRef.
-  }, [active, isLeader, eventId]);
+  }, [active, isLeader, eventId, attempt]);
 
-  return { status, publish, clock, burst };
+  // Back from Settings (sent by the button): start again by itself. Not on any
+  // resume: closing the system permission dialog resumes the app too, and
+  // asking again then would show the dialog twice.
+  useEffect(() => {
+    if (!active) return;
+    let handle: PluginListenerHandle | null = null;
+    let gone = false;
+    void App.addListener('resume', () => {
+      if (!toSettingsRef.current) return;
+      toSettingsRef.current = false;
+      if (statusRef.current === 'denied' || statusRef.current === 'bt-off') setAttempt((n) => n + 1);
+    })
+      .then((h) => {
+        if (gone) void h.remove();
+        else handle = h;
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      void handle?.remove();
+    };
+  }, [active]);
+
+  /**
+   * The one button of the status line: allow Bluetooth (asked again on
+   * Android, else the app's Settings) or turn it on (Android).
+   */
+  const fix = useCallback(async () => {
+    const android = Capacitor.getPlatform() === 'android';
+    try {
+      if (statusRef.current === 'bt-off') {
+        if (android) await BleClient.requestEnable();
+      } else if (statusRef.current === 'denied') {
+        if (!android || askedAgainRef.current) {
+          toSettingsRef.current = true;
+          await BleClient.openAppSettings();
+          return;
+        }
+        askedAgainRef.current = true;
+      } else {
+        return;
+      }
+    } catch {
+      /* declined: the line stays */
+      return;
+    }
+    setAttempt((n) => n + 1);
+  }, []);
+
+  return { status, publish, clock, burst, followers, fix };
 }

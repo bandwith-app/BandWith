@@ -28,6 +28,7 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
+import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './RehearsalSession';
@@ -83,6 +84,10 @@ export interface StageLiveControls {
   connected: boolean;
   /** Bluetooth link in the native apps (offline on stage). */
   bluetooth?: StageBleStatus;
+  /** Leader: phones linked over Bluetooth. */
+  bluetoothFollowers?: number;
+  /** Allow Bluetooth / turn it on. */
+  fixBluetooth?: () => void | Promise<void>;
   isLeader: boolean;
   canReorder: boolean;
   move: (from: number, to: number) => void;
@@ -736,11 +741,9 @@ export const StageMode: React.FC<StageModeProps> = ({
                     label={
                       showSave
                         ? saveLabel(live.saveState, t)
-                        : live.connected
-                          ? `${t('Live')}${live.bluetooth === 'leading' ? ' · BT' : ''}`
-                          : live.bluetooth === 'leading'
-                            ? t('Bluetooth')
-                            : t('Offline')
+                        : live.connected || live.bluetooth === 'leading'
+                          ? t('Live')
+                          : t('Offline')
                     }
                     hint={live.connected ? t('Band follows you') : undefined}
                     accentColor={accentColor}
@@ -765,17 +768,22 @@ export const StageMode: React.FC<StageModeProps> = ({
                     />
                     <span className="truncate">
                       {followLabel(live, t)}
-                      {live.bluetooth === 'connected' ? ' · BT' : ''}
                     </span>
                   </button>
                 )}
               </span>
             )}
           </div>
-          {live && songs.length > 0 && bluetoothHint(live, t) && (
-            <p className="bw-body-sm text-white/70 shrink-0 pb-2" role="status">
-              {bluetoothHint(live, t)}
-            </p>
+          {live && songs.length > 0 && (
+            <StageBleNoticeLine
+              className="shrink-0 pb-2"
+              status={live.bluetooth}
+              online={live.connected}
+              isLeader={live.isLeader}
+              followers={live.bluetoothFollowers}
+              onFix={live.fixBluetooth}
+              accentColor={accentColor}
+            />
           )}
           {showLyrics && lyricsSong ? (
             <div className={cn('flex flex-col flex-1 min-h-0', !split && '[@media(max-height:520px)_and_(min-width:600px)]:flex-none')} role="tabpanel" aria-label={showChords ? t('Chords · {title}', { title: lyricsSong.title }) : t('Lyrics · {title}', { title: lyricsSong.title })}>
@@ -1138,14 +1146,6 @@ const followLabel = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
       : !live.connected && live.bluetooth !== 'connected'
         ? t('Offline')
         : t('Following leader');
-
-/** Why the Bluetooth sync (offline on stage) isn't running, when it matters. */
-const bluetoothHint = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
-  live.bluetooth === 'outdated'
-    ? t('This phone has an older setlist. Connect to the internet once to follow over Bluetooth.')
-    : live.bluetooth === 'unavailable' && !live.connected
-      ? t('Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.')
-      : null;
 
 const saveLabel = (state: StageSaveState, t: ReturnType<typeof useT>) =>
   state === 'saving' ? t('Saving…') : state === 'error' ? t('Not saved') : state === 'saved' ? t('Saved') : t('Live');

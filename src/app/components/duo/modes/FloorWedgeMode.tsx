@@ -19,6 +19,8 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
+import type { StageBleStatus } from '@/lib/stageBleNotice';
+import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
 /**
@@ -72,7 +74,11 @@ export interface FloorWedgeModeProps {
     leaderSeen: boolean;
     connected: boolean;
     /** Bluetooth link (native apps): 'leading' for the admin, 'connected' for a member. */
-    bluetooth?: string;
+    bluetooth?: StageBleStatus;
+    /** Leader: phones linked over Bluetooth. */
+    bluetoothFollowers?: number;
+    /** Allow Bluetooth / turn it on. */
+    fixBluetooth?: () => void | Promise<void>;
     onToggle: (on: boolean) => void;
   };
   /** Visual metronome (useStageLive().click): the button on the Deck, the glow above the wedge. */
@@ -422,8 +428,11 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
                 aria-hidden
                 className={cn('w-2 h-2 rounded-full', follow.connected || follow.bluetooth === 'leading' ? 'bg-accent' : 'border border-white/60')}
               />
-              {follow.connected ? t('Band follows you') : follow.bluetooth === 'leading' ? t('Bluetooth') : t('Offline')}
-              {follow.connected && follow.bluetooth === 'leading' ? ' · BT' : ''}
+              {follow.connected || (follow.bluetooth === 'leading' && (follow.bluetoothFollowers ?? 0) > 0)
+                ? t('Band follows you')
+                : follow.bluetooth === 'leading'
+                  ? t('Live')
+                  : t('Offline')}
             </span>
           ) : (
             <button
@@ -446,7 +455,6 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
                   : !follow.connected && follow.bluetooth !== 'connected'
                     ? t('Offline')
                     : t('Following leader')}
-              {follow.bluetooth === 'connected' ? ' · BT' : ''}
             </button>
           )}
           {ownChrome && (
@@ -479,6 +487,16 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             </span>
           )}
         </div>
+      )}
+      {follow && (
+        <StageBleNoticeLine
+          className="shrink-0"
+          status={follow.bluetooth}
+          online={follow.connected}
+          isLeader={follow.isLeader}
+          followers={follow.bluetoothFollowers}
+          onFix={follow.fixBluetooth}
+        />
       )}
       {showLyrics && (
         <div className="flex flex-col gap-2 shrink-0">

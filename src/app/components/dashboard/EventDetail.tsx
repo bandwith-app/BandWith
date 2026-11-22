@@ -3046,6 +3046,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             leaderSeen: stageLive.leaderSeen,
             connected: stageLive.connected,
             bluetooth: stageLive.bluetooth,
+            bluetoothFollowers: stageLive.bluetoothFollowers,
+            fixBluetooth: stageLive.fixBluetooth,
             onToggle: stageLive.setFollowing,
           }}
           onClose={() => setIsStageOpen(false)}
