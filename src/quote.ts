@@ -664,9 +664,9 @@ function poll() {
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
         JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
       if (next && changed(next, view)) {
+        await refreshPdfKeys();
         readFields();
         applyView({ ...next, stale });
-        await refreshPdfKeys();
         render();
       }
     } catch {
