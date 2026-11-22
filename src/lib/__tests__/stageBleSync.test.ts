@@ -135,13 +135,20 @@ describe('pickClock', () => {
     expect(pickClock('lead', null, ble)).toEqual({ offset: 505, rtt: 30 });
   });
 
-  it(`online, a Bluetooth clock more than ${BLE_CLOCK_AGREE_MS} ms off the Realtime one is dropped: Realtime wins (a delayed replay can't shift the click, Claude on #288)`, () => {
+  it(`online, a Bluetooth clock off the Realtime one by more than the two measures can be (at least ${BLE_CLOCK_AGREE_MS} ms) is dropped: Realtime wins (a delayed replay can't shift the click, Claude on #288)`, () => {
     expect(BLE_CLOCK_AGREE_MS).toBe(30);
     const realtime = { from: 'lead', sample: { offset: 480, rtt: 120 } };
     const delayed = { from: 'lead', sample: { offset: 480 + 400, rtt: 8 } };
     expect(pickClock('lead', realtime, delayed)).toEqual({ offset: 480, rtt: 120 });
-    const justOff = { from: 'lead', sample: { offset: 480 + BLE_CLOCK_AGREE_MS + 1, rtt: 8 } };
+    // Each measure can be off by up to half its round trip: 60 + 4 ms here.
+    const within = { from: 'lead', sample: { offset: 480 + 64, rtt: 8 } };
+    expect(pickClock('lead', realtime, within)).toEqual({ offset: 544, rtt: 8 });
+    const justOff = { from: 'lead', sample: { offset: 480 + 65, rtt: 8 } };
     expect(pickClock('lead', realtime, justOff)).toEqual({ offset: 480, rtt: 120 });
+    // Two fast measures: never closer than BLE_CLOCK_AGREE_MS is asked.
+    const fast = { from: 'lead', sample: { offset: 480, rtt: 10 } };
+    expect(pickClock('lead', fast, { from: 'lead', sample: { offset: 480 + BLE_CLOCK_AGREE_MS, rtt: 6 } })).toEqual({ offset: 510, rtt: 6 });
+    expect(pickClock('lead', fast, { from: 'lead', sample: { offset: 480 + BLE_CLOCK_AGREE_MS + 1, rtt: 6 } })).toEqual({ offset: 480, rtt: 10 });
   });
 
   it('never uses a clock measured against someone else', () => {

@@ -27,6 +27,7 @@ import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from
 import { isNewer, seqPlausible, usableOffset, type StageLiveState } from '@/lib/stageLive';
 import { pairMatches, type StageSigner, type StageVerifyAnswer, type StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
+import { forgetAllSignedMemory, noteSignedSeen, noteSignedTop, signedMemory } from '@/lib/stageSignedMemory';
 
 export type { StageBleStatus };
 
@@ -107,19 +108,8 @@ const leaderRank = (leads: boolean, signed: boolean) => (leads ? (signed ? 3 : 2
  * with a signing app, so a band-key "leader" then is a member posing as one.
  */
 export const SIGNED_TRUST_MS = 10 * 60_000;
-/** When this phone last checked a signed state, per gig (kept across closing Stage). */
-const signedSeen = new Map<string, number>();
-/**
- * The highest signed seq followed per gig and signer (its leader id): a
- * signed state below it is a recording played back (rule B, no clock check
- * on signed states). Kept across closing and reopening Stage.
- */
-const signedSeqs = new Map<string, number>();
-/** Tests: start with no signed leader seen. */
-export const forgetSignedLeaders = () => {
-  signedSeen.clear();
-  signedSeqs.clear();
-};
+/** Tests: start with no signed leader seen (what each gig remembers: src/lib/stageSignedMemory.ts). */
+export const forgetSignedLeaders = () => forgetAllSignedMemory();
 /**
  * Android stops scanning without a word after 5 starts in 30 s: every path
  * that starts a scan (search, restart, retry, leader look) shares this budget.
@@ -206,6 +196,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   }, []);
   /** Leader: phones linked to it. */
   const [followers, setFollowers] = useState(0);
+  /** Leading with no key pair: phones on this app can't check the leader (the notice says so). */
+  const [unsigned, setUnsigned] = useState(false);
   /** Bumped to start Bluetooth again (permission granted, Bluetooth turned on). */
   const [attempt, setAttempt] = useState(0);
   const statusRef = useRef(status);
@@ -306,6 +298,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled) return;
       keyRef.current = key;
       signerRef.current = signer;
+      setUnsigned(!signer);
       const serviceUuid = await stageServiceUuid(key);
       const handle = await StageBle.addListener('stateChange', ({ state, subscribers }) => {
         setStatus(leaderStatus(state));
@@ -411,7 +404,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           verify = null;
           pending = answer.version;
         }
-      } else if (!verify || answer.version >= verify.version) {
+      } else if (answer.version >= Math.max(verify?.version ?? 0, pending ?? 0)) {
+        // Never below the key or the "pending" version this phone knows: a slow answer from
+        // before a rotation would bring back the old pair (Codex + Claude on #288).
         verify = answer;
         if (pending !== null && answer.version >= pending) pending = null;
       }
@@ -423,12 +418,18 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       staleStreak = 0;
     };
     let verifyAskedAt = -Infinity;
+    let verifyAsks = 0;
+    let verifyTaken = 0;
     /** The server's public key (online), or the kept copy (offline); `force`: even if asked lately. */
     const refreshVerify = async (force = false) => {
       if (!force && nowMs() - verifyAskedAt < VERIFY_REFRESH_MS) return;
       verifyAskedAt = nowMs();
+      // Numbered: an answer that arrives after a later one's is dropped (Codex on #288).
+      const n = ++verifyAsks;
       const fresh = await stageVerifyKey(gig);
-      if (!cancelled) take(fresh);
+      if (cancelled || n < verifyTaken) return;
+      verifyTaken = n;
+      take(fresh);
     };
     /** The leader signs with a newer pair than this phone has: it needs one trip online. */
     let staleKey = false;
@@ -601,18 +602,19 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const seq = result.ok ? result.state.seq : result.seq;
       const from = result.ok ? result.state.from : result.from;
       if (!leadsNothing(seq)) {
-        const signerKey = `${gig}|${from}`;
-        const highest = signedSeqs.get(signerKey);
+        const highest = signedMemory(gig).tops[from];
         if (highest !== undefined && seq < highest) return { ok: false as const, reason: 'replay' as const };
-        signedSeqs.set(signerKey, seq);
+        // Only a seq that counts is kept as the highest: one from a clock far off (dropped by the
+        // caller) would make every later real state look like a recording.
+        if (plausibleFrom(seq, id)) noteSignedTop(gig, from, seq);
       }
       // The admins' signature checked (a setlist this phone lacks included): band-key states are refused for a while.
-      signedSeen.set(gig, Date.now());
+      noteSignedSeen(gig);
       return result;
     };
 
     /** Band-key states are refused: a rotation's key is pending, or this phone can check signatures and saw the admins sign lately. */
-    const legacyRefused = () => pending !== null || (!!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS);
+    const legacyRefused = () => pending !== null || (!!verify && Date.now() - (signedMemory(gig).seen || -Infinity) < SIGNED_TRUST_MS);
 
     /** Leave the linked phone (its goodbye is ignored), skip it for `skipMs`, and search again. */
     const dropLink = (id: string, skipMs: number) => {
@@ -1194,5 +1196,5 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     setAttempt((n) => n + 1);
   }, []);
 
-  return { status, publish, clock, clockRef, burst, followers, fix };
+  return { status, publish, clock, clockRef, burst, followers, unsigned: unsigned && isLeader && open, fix };
 }

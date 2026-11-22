@@ -1371,6 +1371,8 @@ const music: AreaText = {
             "Steht dort **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.**, geh einmal online (WLAN oder mobile Daten), während Stage offen ist: Dein Handy holt sich die Änderung und folgt dem Leader wieder.",
             "Steht dort **Leader noch nicht bestätigt: geh einmal online, um ihn zu prüfen.**, folgst du, aber dein Handy kann noch nicht prüfen, ob der Leader Admin der Band ist: geh einmal online (WLAN oder mobile Daten), während Stage offen ist.",
             "Steht dort **Leader noch nicht bestätigt: bitte den Leader, einmal online zu gehen.**, folgst du, aber das Handy des Leaders war seit dem neuen Schutz von Stage nicht online: der Leader geht einmal online, während Stage offen ist.",
+            "Leitest du und dort steht **Handys mit der neuesten App können dich noch nicht bestätigen: geh einmal mit offenem Bühnenmodus online.**, können dir ohne Internet nur Handys mit älteren BandWith-Versionen folgen: geh einmal online (WLAN oder mobile Daten), während Stage offen ist, dann können die Handys der Band prüfen, dass du es bist.",
+            "**Ältere App-Versionen:** Ändert sich die Rolle eines Admins (wird Mitglied oder verlässt die Band), wartet ein Gig, dessen Leader schon geprüft wurden, bis ein Admin mit der neuesten Version ihn einmal online öffnet. Bis dahin zeigen Handys mit der neuesten Version für diesen Gig **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.** und folgen ohne Internet niemandem. Gigs, die noch niemand mit der neuesten Version geleitet hat, ändern sich nicht.",
           ],
         },
       ],

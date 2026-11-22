@@ -3073,6 +3073,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             connected: stageLive.connected,
             bluetooth: stageLive.bluetooth,
             bluetoothFollowers: stageLive.bluetoothFollowers,
+            bluetoothUnsigned: stageLive.bluetoothUnsigned,
             fixBluetooth: stageLive.fixBluetooth,
             onToggle: stageLive.setFollowing,
           }}

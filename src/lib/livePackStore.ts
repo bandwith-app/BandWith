@@ -37,6 +37,7 @@ import { downloadPackFile, packFilesAvailable, removePackFiles } from './livePac
 import { fetchOccurrenceNotes, fetchOpenBandNotes } from './services/rehearsalNotes';
 import type { RehearsalNote } from './rehearsalNotes';
 import { stageBleAvailable, stageKey } from './stageBleNative';
+import { forgetSignedMemory } from './stageSignedMemory';
 
 export const LIVE_PACK_CHANGED = 'bw:live-pack-changed';
 const PACK = 'live_pack:';
@@ -131,6 +132,8 @@ async function dropPack(key: string, pack: LivePack | null) {
     } catch {
       /* storage blocked */
     }
+    // And what this phone remembers of the gig's signed leaders (useStageBle).
+    forgetSignedMemory(pack.userId, pack.eventId);
     // Admins' "N of M ready" no longer counts this device.
     void forgetPackStatus(pack.userId, [pack.eventId]);
     changed(pack.eventId);

@@ -261,14 +261,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const followed = trustedRef.current?.from;
         // This phone leading itself counts as a leader online (its own states are in trustedRef).
         const followedFresh = followed === clientId ? ledRef.current : !!followed && at - (lead.get(followed) ?? -Infinity) < LIVE_LEAD_FRESH_MS;
-        newLeader = !lead.has(state.from) && !followedFresh;
+        // The leader followed, heard now on the live channel (it led this phone over Bluetooth): the
+        // same leader, compared by seq like any of its states (Codex on #288).
+        newLeader = state.from !== followed && !lead.has(state.from) && !followedFresh;
       }
       // Clock moves on even for states we don't show (Lamport).
       // Trusted (Realtime, or signed over Bluetooth) over a band-key state: applies whatever that one's seq.
       const overBluetooth = !bluetooth && lastFromBluetoothRef.current && isNewer(state, trustedRef.current);
       if (!isNewer(state, lastRef.current) && !overBluetooth && !newLeader) return;
       // Taken: only now is its sender a live leader (a refused state marks nothing, Codex on #288).
-      if (!bluetooth) {
+      // Only the live channel says who leads online: a signed Bluetooth state doesn't.
+      if (realtime) {
         liveLeadRef.current.set(state.from, at);
         armQuiet();
       }
@@ -277,6 +280,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       lastRef.current = state;
       lastFromBluetoothRef.current = bluetooth;
       if (!bluetooth) trustedRef.current = state;
+      // A signed leader taken: band-key changes held back meanwhile never apply (Codex on #288).
+      if (source === 'signed') heldBleRef.current = null;
       remoteRef.current = state;
       setLeaderSeen(true);
       // The order and the struck songs are the setlist's: they apply even when not following.
@@ -744,6 +749,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     bluetooth: ble.status,
     /** Leader: phones linked over Bluetooth. */
     bluetoothFollowers: ble.followers,
+    /** Leader: leading over Bluetooth with no key pair (the status line says so). */
+    bluetoothUnsigned: ble.unsigned,
     /** Allow Bluetooth / turn it on (the status line's button). */
     fixBluetooth: ble.fix,
     isLeader,

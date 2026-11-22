@@ -1371,6 +1371,8 @@ const music: AreaText = {
             "Se aparecer **A banda mudou quem pode liderar: conecte-se à internet uma vez para seguir o líder.**, conecte-se uma vez (Wi-Fi ou dados móveis) com o Stage aberto: o celular recebe a mudança e volta a seguir o líder.",
             "Se aparecer **Líder ainda não verificado: conecte-se à internet uma vez para confirmar.**, você está seguindo, mas seu telefone ainda não consegue confirmar que o líder é admin da banda: conecte-se uma vez (Wi-Fi ou dados) com o Stage aberto.",
             "Se aparecer **Líder ainda não verificado: peça ao líder para se conectar à internet uma vez.**, você está seguindo, mas o telefone do líder não ficou online desde a nova proteção do Stage: o líder se conecta uma vez com o Stage aberto.",
+            "Se você lidera e aparecer **Celulares com o app atualizado ainda não conseguem verificar você: conecte-se à internet uma vez com o modo palco aberto.**, sem internet só os celulares com versões anteriores do BandWith podem seguir você: conecte-se uma vez (Wi-Fi ou dados móveis) com o Stage aberto e os celulares da banda vão poder confirmar que é você.",
+            "**Versões anteriores do app:** quando o papel de um admin muda (vira membro ou sai da banda), um show cujos líderes já estavam verificados espera até um admin com a versão mais recente abri-lo online uma vez. Até lá, os celulares com a versão mais recente mostram **A banda mudou quem pode liderar: conecte-se à internet uma vez para seguir o líder.** para esse show e não seguem ninguém sem internet. Shows que ninguém liderou ainda com a versão mais recente não mudam.",
           ],
         },
       ],

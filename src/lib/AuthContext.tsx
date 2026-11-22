@@ -11,7 +11,7 @@ import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHa
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
-import { clearStageCache, setStageCacheUser } from './stageBleNative';
+import { clearStageCache, endStageSession, setStageCacheUser } from './stageBleNative';
 import { unregisterPushToken } from './services/pushNotifications';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
@@ -238,6 +238,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (profileData) {
             setProfile(profileData);
           }
+        } else {
+          // Signed out since the last run (no stored session, even offline): no admin's key stays (Codex on #288).
+          endStageSession();
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -261,6 +264,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setSession(session);
       setUser(session?.user ?? null);
+      // Expired or revoked (not only the sign-out button): the kept Bluetooth keys go too.
+      if (event === 'SIGNED_OUT') endStageSession();
       setStageCacheUser(session?.user?.id);
 
       // Quick sign-in keeps the refresh token, which Supabase rotates.

@@ -302,6 +302,16 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     result.current.publish(lead('a', 7, 'c3'));
     await waitFor(() => expect(air.updates.length).toBe(1));
     expect(air.signedUpdates.length).toBe(0);
+    // The admin is told (Claude on #288): phones on this app can't check it yet.
+    expect(result.current.unsigned).toBe(true);
+    unmount();
+  });
+
+  it('an admin with a key pair leads signed, and is not told anything about it', async () => {
+    air.signer = { ...admins, version: 1 };
+    const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
+    await waitFor(() => expect(result.current.status).toBe('leading'));
+    expect(result.current.unsigned).toBe(false);
     unmount();
   });
 });
@@ -500,6 +510,26 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     hook.unmount();
   });
 
+  it("pending, then an older key comes back (a slow answer from before the rotation): refused, the old pair's states aren't followed (Codex + Claude on #288)", async () => {
+    air.verify = { public: null, version: 2 };
+    air.kept = air.verify;
+    // The demoted admin's phone, still signing with the old pair (version 1).
+    put('demoted', 'new', lead('d', 9, 'c3'), admins, 1);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('stale-key'));
+    air.verify = { public: admins.public, version: 1 };
+    const asked = air.verifyCalls;
+    online();
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 6000);
+    // The signature checks run in real time (WebCrypto).
+    await new Promise((r) => setTimeout(r, 2000));
+    // The old key was answered (before the fix it was taken, and the demoted phone followed).
+    expect(air.verifyCalls).toBeGreaterThan(asked);
+    expect(onState).not.toHaveBeenCalled();
+    expect(hook.result.current.status).toBe('stale-key');
+    hook.unmount();
+  }, 20_000);
+
   it('pending, then the new key arrives (online): the member follows the signed leader right away (Codex on #288, rule C)', async () => {
     const next = await generateSigner();
     air.verify = { public: null, version: 2 };
@@ -659,6 +689,16 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     expect(onState).not.toHaveBeenCalled();
     hook.unmount();
   });
+
+  it("a signed seq far ahead (a clock far off) isn't kept as the highest followed: the same leader's next real state is followed, not taken for a recording (main session's rule)", async () => {
+    put('admin', 'new', lead('a', nextSeq(null, Date.now() + 60 * 60_000), 'b2'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('clock-off'), { timeout: 3000 });
+    put('admin', 'new', lead('a', nextSeq(null, Date.now()), 'c3'), admins);
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 6000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'c3' }), true), { timeout: 8000 });
+    hook.unmount();
+  }, 20_000);
 
   it('a signed state a few minutes ahead of this phone is followed (within the 5-minute limit)', async () => {
     put('admin', 'new', lead('a', nextSeq(null, Date.now() + 4 * 60_000), 'b2'), admins);

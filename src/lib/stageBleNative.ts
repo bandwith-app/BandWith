@@ -10,7 +10,8 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { supabase, isDemoMode } from './supabase';
 import { removeAllPackFiles } from './livePackFiles';
-import { clearSignCaches, generateSigner, isPublicKey, pairMatches, type StageSigner, type StageVerifyAnswer } from './stageSign';
+import { clearSignedMemoryCache, setSignedMemoryUser } from './stageSignedMemory';
+import { clearSignCaches, generateSigner, isPublicKey, pairMatches, type StageKeyPair, type StageSigner, type StageVerifyAnswer } from './stageSign';
 
 export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unknown';
 
@@ -98,10 +99,29 @@ export function setStageCacheUser(id: string | null | undefined) {
     }
   }
   cacheUser = id;
+  setSignedMemoryUser(id);
+}
+/**
+ * A session that ended without the sign-out button (expired or revoked:
+ * SIGNED_OUT from the auth library, or none at start-up): fetches in flight
+ * are dropped and every gig's kept keys go, private ones included, so a
+ * phone left signed out holds no admin's key (Codex on #288).
+ */
+export function endStageSession() {
+  cacheGeneration++;
+  cacheUser = null;
+  setSignedMemoryUser(null);
+  removeKeptKeys();
+  try {
+    localStorage.removeItem(OWNER_KEY);
+  } catch {
+    /* storage not available */
+  }
 }
 /** The kept Bluetooth keys of every gig, and the imported ones in memory. */
 function removeKeptKeys() {
   clearSignCaches();
+  clearSignedMemoryCache();
   try {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -232,8 +252,20 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
   // None yet, or a stored one that doesn't work (its private key doesn't sign
   // for its public one): make one; a broken one is replaced by naming it.
   const broken = signer && !(await pairMatches(signer)) ? signer.public : null;
+  if (!stillOurs(tag)) return null;
   if (!signer || broken) {
-    const fresh = await generateSigner();
+    // The server has no working pair for this account (none yet, rotated, or
+    // not an admin): the kept one goes now, and is never a fallback below,
+    // even if making a new one fails or times out (Codex on #288).
+    forget(key);
+    let fresh: StageKeyPair;
+    try {
+      fresh = await generateSigner();
+    } catch {
+      // No WebCrypto (or it failed): this phone leads with the band key, as an older app does (Claude on #288).
+      return null;
+    }
+    if (!stillOurs(tag)) return null;
     data = await ask('bw_stage_set_signer', {
       p_event_id: eventId,
       p_public: fresh.public,
@@ -241,7 +273,7 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
       ...(broken ? { p_replace_public: broken } : {}),
     });
     if (!stillOurs(tag)) return null;
-    if (data === OFFLINE) return broken ? null : kept(key, asSigner);
+    if (data === OFFLINE) return null;
     signer = asSigner(data);
     // Still the broken one (someone else's call won meanwhile with it): not used.
     if (signer && broken && signer.public === broken) signer = null;
@@ -251,6 +283,8 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
     forget(key);
     return null;
   }
+  // Signed out (or another account) while the pair was checked: nothing is kept.
+  if (!stillOurs(tag)) return null;
   keep(key, JSON.stringify(signer));
   keep(mine(VERIFY_PREFIX, eventId), JSON.stringify({ public: signer.public, version: signer.version }));
   return signer;
@@ -303,6 +337,7 @@ const SETLIST_PREFIX = 'bw-setlist-songs:';
 export function clearStageCache() {
   cacheGeneration++;
   cacheUser = null;
+  setSignedMemoryUser(null);
   void removeAllPackFiles().catch(() => undefined);
   removeKeptKeys();
   try {

@@ -55,6 +55,8 @@ export interface StageBleNoticeInput {
   isLeader: boolean;
   /** Leader: phones linked to it. */
   followers: number;
+  /** Leader: leading with no key pair (offline before one was made, or none could be made): only older apps can check it. */
+  unsigned?: boolean;
   platform: string;
 }
 
@@ -65,7 +67,7 @@ export interface StageBleNotice {
   action?: 'allow' | 'turn-on';
 }
 
-export function stageBleNotice({ status, online, isLeader, followers, platform }: StageBleNoticeInput): StageBleNotice | null {
+export function stageBleNotice({ status, online, isLeader, followers, unsigned, platform }: StageBleNoticeInput): StageBleNotice | null {
   if (status === 'off') return null;
   if (status === 'denied') {
     return {
@@ -86,6 +88,7 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
     case 'searching':
       return { tone: 'warn', text: t('Not connected: ask the leader to open Stage') };
     case 'leading':
+      if (unsigned) return { tone: 'warn', text: t("Phones on the latest app can't check you yet: connect to the internet once with Stage open.") };
       if (followers <= 0) return { tone: 'warn', text: t('No phones connected yet: ask the band to open Stage') };
       return {
         tone: 'ok',

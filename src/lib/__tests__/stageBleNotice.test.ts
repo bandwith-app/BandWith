@@ -124,4 +124,13 @@ describe('bleProblem: what a failed start means', () => {
     expect(bleProblem(new Error('BLE not available.'))).toBe('unsupported');
     expect(bleProblem('weird')).toBe('denied');
   });
+
+  it("an admin leading with no key pair (offline before one was made, or this phone can't make one): told in plain words, offline only (Claude on #288)", () => {
+    expect(stageBleNotice(leader({ followers: 2, unsigned: true }))).toEqual({
+      tone: 'warn',
+      text: "Phones on the latest app can't check you yet: connect to the internet once with Stage open.",
+    });
+    expect(stageBleNotice(leader({ followers: 2, unsigned: true, online: true }))).toBeNull();
+    expect(stageBleNotice(leader({ followers: 2, unsigned: false }))?.text).toBe('2 phones connected to you');
+  });
 });

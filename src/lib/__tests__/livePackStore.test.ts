@@ -37,7 +37,9 @@ vi.mock('../supabase', () => ({
   isDemoMode: false,
 }));
 // The native apps fetch the gig's Bluetooth key (087).
+const signedForgot = vi.hoisted(() => [] as string[]);
 vi.mock('../stageBleNative', () => ({ stageBleAvailable: () => true, stageKey: async () => 'KEY-1' }));
+vi.mock('../stageSignedMemory', () => ({ forgetSignedMemory: (u: string, e: string) => void signedForgot.push(`${u}:${e}`) }));
 // What the band's admins see (migration 170).
 const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
 vi.mock('../livePackStatus', () => ({
@@ -131,6 +133,14 @@ describe('removal', () => {
     await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
     expect(await sweepPacks(me, ['b2'])).toBe(1);
     expect((await listPacks(me)).map((p) => p.eventId)).toEqual(['e2']);
+  });
+
+  it("takes along what this phone remembers of the gig's signed leaders (Claude on #288)", async () => {
+    signedForgot.length = 0;
+    await savePackSongs({ userId: me, event: gig(), songs });
+    await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
+    await sweepPacks(me, ['b2']);
+    expect(signedForgot).toEqual([`${me}:e1`]);
   });
 
   it('goes when my role changes, and at sign-out', async () => {

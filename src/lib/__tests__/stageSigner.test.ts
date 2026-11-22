@@ -22,6 +22,8 @@ const db = vi.hoisted(() => ({
   replaced: [] as Array<string | undefined>,
   /** Calls wait for this (an answer still on its way). */
   gate: null as Promise<void> | null,
+  /** bw_stage_set_signer fails (the network drops between the two calls). */
+  failSet: false,
 }));
 
 vi.mock('../supabase', () => ({
@@ -39,6 +41,7 @@ vi.mock('../supabase', () => ({
       }
       if (fn === 'bw_stage_signer') return { data: db.admin ? withVersion(db.pair) : null, error: null };
       if (fn === 'bw_stage_set_signer') {
+        if (db.failSet) throw new TypeError('Failed to fetch');
         if (!db.admin) return { data: null, error: null };
         db.replaced.push(args.p_replace_public);
         if (db.pair && args.p_replace_public === db.pair.public) {
@@ -60,6 +63,10 @@ const { stageSigner, stageVerifyKey, clearStageCache } = native;
 const KEY_FETCH_TIMEOUT_MS = (native as { KEY_FETCH_TIMEOUT_MS?: number }).KEY_FETCH_TIMEOUT_MS ?? 4000;
 const { generateSigner, signBytes, verifyBytes } = await import('../stageSign');
 
+// The test setup's localStorage is a plain object of methods: Object.keys/values would list those, not what's stored.
+const storedKeys = () => Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!);
+const storedValues = () => storedKeys().map((k) => localStorage.getItem(k));
+
 beforeEach(() => {
   localStorage.clear();
   db.admin = true;
@@ -71,6 +78,7 @@ beforeEach(() => {
   db.pending = false;
   db.replaced = [];
   db.gate = null;
+  db.failSet = false;
   native.setStageCacheUser('u1');
 });
 
@@ -174,7 +182,7 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
       expect(await signer).toBeNull();
       expect(await verify).toBeNull();
       expect(await band).toBeNull();
-      expect(Object.keys(localStorage).filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
+      expect(storedKeys().filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
       db.gate = null;
       native.setStageCacheUser('u1');
     }
@@ -186,7 +194,7 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     db.offline = true;
     expect(await stageSigner('gig')).toBeNull();
     expect(await stageVerifyKey('gig')).toBeNull();
-    expect(Object.values(localStorage).some((v) => String(v).includes(signer!.private))).toBe(false);
+    expect(storedValues().some((v) => String(v).includes(signer!.private))).toBe(false);
     // Nor back to the first account later: it was deleted, not hidden.
     native.setStageCacheUser('u1');
     expect(await stageSigner('gig')).toBeNull();
@@ -231,5 +239,77 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     db.offline = true;
     expect(await stageVerifyKey('gig-1')).toEqual({ public: null, version: 3 });
     expect(native.keptVerifyKey('gig-1')).toEqual({ public: null, version: 3 });
+  });
+
+  it('the server says the pair is gone (rotated) and making a new one fails: the kept private key goes and is never used, not even offline (Codex on #288)', async () => {
+    const old = (await stageSigner('gig'))!;
+    db.pair = null;
+    db.version = 2;
+    db.failSet = true;
+    expect(await stageSigner('gig')).toBeNull();
+    expect(storedValues().some((v) => String(v).includes(old.private))).toBe(false);
+    db.offline = true;
+    expect(await stageSigner('gig')).toBeNull();
+  });
+
+  it("making a pair that throws (WebCrypto missing or failing) gives no pair, not an error: the admin leads with the band key (Claude on #288)", async () => {
+    const spy = vi.spyOn(crypto.subtle, 'generateKey').mockRejectedValueOnce(new Error('NotSupportedError'));
+    await expect(stageSigner('gig')).resolves.toBeNull();
+    spy.mockRestore();
+  });
+
+  it('signed out while a stored pair is being checked: nothing is kept for the old account (Codex on #288)', async () => {
+    db.pair = await generateSigner();
+    const original = crypto.subtle.importKey.bind(crypto.subtle);
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation((async (...args: Parameters<typeof original>) => {
+      await gate;
+      return original(...args);
+    }) as never);
+    const signer = stageSigner('gig');
+    await new Promise((r) => setTimeout(r, 20));
+    clearStageCache();
+    open();
+    expect(await signer).toBeNull();
+    spy.mockRestore();
+    expect(storedKeys().filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
+  });
+
+  it('a session that ends without the sign-out button (expired, or none at start-up) takes the private keys along (Codex on #288)', async () => {
+    const signer = (await stageSigner('gig'))!;
+    expect(native.keptVerifyKey('gig')).not.toBeNull();
+    native.endStageSession();
+    expect(storedValues().some((v) => String(v).includes(signer.private))).toBe(false);
+    expect(storedKeys().filter((k) => k.startsWith('bw-stage-key:'))).toEqual([]);
+    native.setStageCacheUser('u1');
+    db.offline = true;
+    expect(await stageSigner('gig')).toBeNull();
+  });
+
+  it("the signed leaders seen are kept per account and gig across restarts, and go with the account (Claude on #288)", async () => {
+    const mem = await import('../stageSignedMemory');
+    mem.noteSignedSeen('gig', 1000);
+    mem.noteSignedTop('gig', 'leader-a', 42);
+    expect(mem.signedMemory('gig')).toEqual({ seen: 1000, tops: { 'leader-a': 42 } });
+    expect(mem.signedMemory('gig-2')).toEqual({ seen: 0, tops: {} });
+    // An app restart: this run's copy is gone, the stored one is found.
+    mem.setSignedMemoryUser(null);
+    native.setStageCacheUser('u1');
+    expect(mem.signedMemory('gig')).toEqual({ seen: 1000, tops: { 'leader-a': 42 } });
+    // A new leader id every opening: only the latest few are kept.
+    for (let i = 0; i < mem.SIGNED_TOPS_KEPT + 4; i++) mem.noteSignedTop('gig', `open-${i}`, 100 + i);
+    expect(Object.keys(mem.signedMemory('gig').tops)).toHaveLength(mem.SIGNED_TOPS_KEPT);
+    expect(mem.signedMemory('gig').tops[`open-${mem.SIGNED_TOPS_KEPT + 3}`]).toBe(100 + mem.SIGNED_TOPS_KEPT + 3);
+    // The gig's pack goes: so does this.
+    mem.forgetSignedMemory('u1', 'gig');
+    expect(mem.signedMemory('gig')).toEqual({ seen: 0, tops: {} });
+    // Another account signs in: every kept one goes.
+    mem.noteSignedSeen('gig', 2000);
+    native.setStageCacheUser('u2');
+    expect(mem.signedMemory('gig').seen).toBe(0);
+    native.setStageCacheUser('u1');
+    expect(mem.signedMemory('gig').seen).toBe(0);
+    expect(storedKeys().filter((k) => k.startsWith('bw-stage-key:signed:'))).toEqual([]);
   });
 });

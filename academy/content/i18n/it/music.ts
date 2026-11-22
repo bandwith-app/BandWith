@@ -1371,6 +1371,8 @@ const music: AreaText = {
             "Se compare **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.**, collegati una volta (Wi-Fi o dati) con Stage aperto: il telefono riceve la modifica e torna a seguire il leader.",
             "Se compare **Leader non ancora verificato: collegati a internet una volta per controllarlo.**, stai seguendo, ma il tuo telefono non può ancora controllare che il leader sia un admin della band: collegati una volta (Wi-Fi o dati) con Stage aperto.",
             "Se compare **Leader non ancora verificato: chiedi al leader di collegarsi a internet una volta.**, stai seguendo, ma il telefono del leader non è più stato online da quando Stage ha la nuova protezione: il leader si collega una volta con Stage aperto.",
+            "Se guidi tu e compare **I telefoni con l'app aggiornata non possono ancora verificarti: collegati a internet una volta con la modalità palco aperta.**, senza internet ti possono seguire solo i telefoni con versioni precedenti di BandWith: collegati una volta (Wi-Fi o dati) con Stage aperto e i telefoni della band potranno verificare che sei tu.",
+            "**Versioni precedenti dell'app:** quando cambia il ruolo di un admin (diventa membro o lascia la band), un concerto i cui leader erano già verificati aspetta che un admin con l'ultima versione lo apra online una volta. Fino ad allora, i telefoni con l'ultima versione mostrano **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.** per quel concerto e senza internet non seguono nessuno. I concerti che nessuno ha ancora guidato con l'ultima versione non cambiano.",
           ],
         },
       ],

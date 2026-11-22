@@ -304,6 +304,29 @@ describe("useStageLive: the admins' signed Bluetooth states (Claude on #288)", (
     expect(m.result.current.currentId).toBe('row-2');
   });
 
+  it("a band-key change held back while a leader was online is dropped once a signed leader is taken: it never applies later (Codex on #288)", () => {
+    const m = phone();
+    live({ seq: now(), from: 'admin-1', songId: 'row-1', order: null });
+    // Held: a leader is online.
+    bt({ seq: now() + 5000, from: 'x', songId: 'row-3', order: null });
+    signed({ seq: now() + 100, from: 'admin-2', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // The live leader goes quiet: the held band-key state was dropped, not applied.
+    later(LIVE_LEAD_FRESH_MS + 1000);
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it('the same leader heard over Bluetooth (signed) and then the live channel is one leader: an older state from it arriving late is compared by seq, not taken as a new leader (Codex on #288)', () => {
+    const m = phone();
+    signed({ seq: now() + 200, from: 'admin', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    live({ seq: now(), from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // Its newer one applies as usual.
+    live({ seq: now() + 400, from: 'admin', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-3');
+  });
+
   it('signed states are taken while a leader leads on the live channel (band-key ones are not)', () => {
     const m = phone();
     live({ seq: now(), from: 'admin-1', songId: 'row-1', order: null });
