@@ -1369,6 +1369,8 @@ const music: AreaText = {
             "Mitglieder können den Song anderer nicht wechseln und die Reihenfolge nicht ändern.",
             "Steht dort **Die App des Leaders ist veraltet: bitte um ein Update**, folgst du trotzdem: Der Leader braucht nur die neueste Version von BandWith.",
             "Steht dort **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.**, geh einmal online (WLAN oder mobile Daten), während Stage offen ist: Dein Handy holt sich die Änderung und folgt dem Leader wieder.",
+            "Steht dort **Leader noch nicht bestätigt: geh einmal online, um ihn zu prüfen.**, folgst du, aber dein Handy kann noch nicht prüfen, ob der Leader Admin der Band ist: geh einmal online (WLAN oder mobile Daten), während Stage offen ist.",
+            "Steht dort **Leader noch nicht bestätigt: bitte den Leader, einmal online zu gehen.**, folgst du, aber das Handy des Leaders war seit dem neuen Schutz von Stage nicht online: der Leader geht einmal online, während Stage offen ist.",
           ],
         },
       ],

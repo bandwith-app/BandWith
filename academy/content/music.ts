@@ -1379,6 +1379,8 @@ const music: AreaModule = {
             "Members cannot move anyone else's song or change the order.",
             "If a line says **The leader's app is out of date: ask them to update**, you are still following: the leader just needs the latest version of BandWith.",
             "If a line says **The band changed who can lead: connect to the internet once to follow the leader.**, go online once (Wi-Fi or mobile data) with Stage open: your phone picks up the change and follows the leader again.",
+            "If a line says **Leader not verified yet: connect to the internet once to check it.**, you are following, but your phone can't yet check that the leader is a band admin: go online once (Wi-Fi or mobile data) with Stage open.",
+            "If a line says **Leader not verified yet: ask the leader to connect to the internet once.**, you are following, but the leader's phone hasn't been online since Stage got its new security: the leader goes online once with Stage open.",
           ],
         },
       ],

@@ -65,6 +65,9 @@ export const PROBE_TIMEOUT_MS = 2_000;
 export const SEARCH_RESTART_MS = 10_000;
 /** A phone whose states aren't the leader's (a failed signature) is skipped this long. */
 export const DISTRUST_MS = 60_000;
+/** Failed signature checks within AUTH_FAIL_WINDOW_MS that make a phone "not the leader". */
+const AUTH_FAILS_MAX = 3;
+const AUTH_FAIL_WINDOW_MS = 10_000;
 /** A band-key phone refused once the admins signed is skipped this long. */
 const REFUSED_SKIP_MS = 30_000;
 /** A leader signing with a newer pair than this phone's: tried again this often (the key is asked for each time). */
@@ -316,8 +319,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     /** Phones that served a state with a wrong signature, until when they're skipped. */
     const distrusted = new Map<string, number>();
     const trusted = (id: string) => (distrusted.get(id) ?? 0) <= nowMs();
-    /** Failed checks in a row on this link (a read caught mid-change fails once). */
-    let authFails = 0;
+    /** When checks failed on this link lately (a read caught mid-change fails now and then); a good one clears them. */
+    let authFails: number[] = [];
     // Clock over the link: kept across a dropped link (the click keeps its beat
     // meanwhile), started afresh for another leader's phone.
     const book = new BleClockBook();
@@ -464,9 +467,25 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       later();
     };
 
-    /** Linked to an older app's leader (no signed state): 'old-leader', the line asks to update it. */
-    let oldLeader = false;
-    const linkedStatus = (): StageBleStatus => (staleKey ? 'stale-key' : oldLeader ? 'old-leader' : 'connected');
+    /**
+     * What the linked phone's state can be checked against:
+     * - signed: the admins' signature, checked;
+     * - unverified: it signs, but this phone has no key to check it yet;
+     * - no-pair: an admin on this app with no key pair yet (it serves the live
+     *   characteristic, nothing signed);
+     * - old: an older app's leader (before signing): the line asks to update it.
+     */
+    let linkKind: 'signed' | 'unverified' | 'no-pair' | 'old' = 'signed';
+    const linkedStatus = (): StageBleStatus =>
+      staleKey
+        ? 'stale-key'
+        : linkKind === 'old'
+          ? 'old-leader'
+          : linkKind === 'no-pair'
+            ? 'leader-unverified'
+            : linkKind === 'unverified'
+              ? 'unverified'
+              : 'connected';
 
     const readNow = async () => {
       const id = deviceId;
@@ -496,10 +515,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           return;
         }
         if (!result.ok && result.reason === 'auth') {
-          // Once: maybe a read caught mid-change. Twice: not the leader (a
+          // A few: maybe reads caught mid-change (the leader moving fast).
+          // AUTH_FAILS_MAX within AUTH_FAIL_WINDOW_MS: not the leader (a
           // member posing as one): leave it, skip it for a while.
-          if (++authFails < 2) {
-            setTimeout(() => void readNow(), 300);
+          const now = nowMs();
+          authFails = [...authFails.filter((t) => now - t < AUTH_FAIL_WINDOW_MS), now];
+          if (authFails.length < AUTH_FAILS_MAX) {
+            setTimeout(() => void readNow(), 300 * authFails.length);
             return;
           }
           dropLink(id, DISTRUST_MS);
@@ -513,7 +535,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Far ahead of the clock: made up (anyone with the band key can), never followed.
         if (result.ok && !seqPlausible(result.state.seq)) return;
         if (result.ok) {
-          authFails = 0;
+          authFails = [];
           linkOutdated = false;
           staleKey = false;
           if (!linkState || isNewer(result.state, linkState)) linkState = result.state;
@@ -719,9 +741,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         setClock(null);
       }
       signedLink = false;
-      oldLeader = false;
+      linkKind = 'signed';
       linkOutdated = false;
-      authFails = 0;
+      authFails = [];
       const gen = ++link;
       void (async () => {
         try {
@@ -735,8 +757,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           if (cancelled || gen !== link) return;
           const signs = served.includes(STAGE_BLE_SIGNED_CHARACTERISTIC);
           signedLink = signs && !!verify;
-          // An older app's leader (characteristics listed, none signed).
-          oldLeader = served.length > 0 && !signs;
+          // Characteristics listed, none signed: this app with no pair yet (it has the live one), or an older app.
+          linkKind = signs
+            ? verify
+              ? 'signed'
+              : 'unverified'
+            : served.includes(STAGE_BLE_LIVE_CHARACTERISTIC)
+              ? 'no-pair'
+              : served.length > 0
+                ? 'old'
+                : 'signed';
           // Once the admins signed, a band-key phone isn't followed (see SIGNED_TRUST_MS).
           if (!signedLink && legacyRefused()) {
             dropLink(id, REFUSED_SKIP_MS);

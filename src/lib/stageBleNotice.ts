@@ -21,6 +21,10 @@ import { t } from '@/lib/i18n';
  *   signed states (audit #1): it works, the leader should update.
  * - stale-key: the leader signs with a newer key pair than the one on this
  *   phone (an admin stopped being one since, migration 190): one trip online.
+ * - unverified: linked and following, but this phone has no key to check the
+ *   leader's signature yet (it wasn't online since the pair was made).
+ * - leader-unverified: linked and following an admin on this app who has no
+ *   key pair yet (offline since before one was made): it can't sign.
  */
 export type StageBleStatus =
   | 'off'
@@ -29,13 +33,16 @@ export type StageBleStatus =
   | 'connected'
   | 'old-leader'
   | 'stale-key'
+  | 'unverified'
+  | 'leader-unverified'
   | 'denied'
   | 'bt-off'
   | 'unsupported'
   | 'outdated';
 
 /** A member's phone linked to the leader's (and following it). */
-export const bleLinked = (status: StageBleStatus | undefined) => status === 'connected' || status === 'old-leader';
+export const bleLinked = (status: StageBleStatus | undefined) =>
+  status === 'connected' || status === 'old-leader' || status === 'unverified' || status === 'leader-unverified';
 
 export interface StageBleNoticeInput {
   status: StageBleStatus;
@@ -88,6 +95,10 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
       return { tone: 'warn', text: t('This phone has an older setlist: connect to the internet once to follow the leader.') };
     case 'stale-key':
       return { tone: 'warn', text: t('The band changed who can lead: connect to the internet once to follow the leader.') };
+    case 'unverified':
+      return { tone: 'warn', text: t('Leader not verified yet: connect to the internet once to check it.') };
+    case 'leader-unverified':
+      return { tone: 'warn', text: t('Leader not verified yet: ask the leader to connect to the internet once.') };
     case 'unsupported':
       return {
         tone: 'warn',

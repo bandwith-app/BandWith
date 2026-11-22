@@ -1369,6 +1369,8 @@ const music: AreaText = {
             "I membri non possono spostare il brano degli altri né cambiare l’ordine.",
             "Se compare **L’app del leader non è aggiornata: chiedi di aggiornarla**, stai comunque seguendo: al leader basta installare l’ultima versione di BandWith.",
             "Se compare **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.**, collegati una volta (Wi-Fi o dati) con Stage aperto: il telefono riceve la modifica e torna a seguire il leader.",
+            "Se compare **Leader non ancora verificato: collegati a internet una volta per controllarlo.**, stai seguendo, ma il tuo telefono non può ancora controllare che il leader sia un admin della band: collegati una volta (Wi-Fi o dati) con Stage aperto.",
+            "Se compare **Leader non ancora verificato: chiedi al leader di collegarsi a internet una volta.**, stai seguendo, ma il telefono del leader non è più stato online da quando Stage ha la nuova protezione: il leader si collega una volta con Stage aperto.",
           ],
         },
       ],

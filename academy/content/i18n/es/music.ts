@@ -1236,6 +1236,8 @@ const music: AreaText = {
             "Los miembros no pueden mover la canción de nadie más ni cambiar el orden.",
             "Si aparece **La app del líder no está actualizada: pídele que la actualice**, sigues al líder igual: solo le falta la última versión de BandWith.",
             "Si aparece **La banda cambió quién puede dirigir: conéctate a internet una vez para seguir al líder.**, conéctate una vez (Wi-Fi o datos móviles) con Stage abierto: el teléfono recibe el cambio y vuelve a seguir al líder.",
+            "Si aparece **Líder aún sin verificar: conéctate a internet una vez para comprobarlo.**, estás siguiendo, pero tu teléfono aún no puede comprobar que el líder es admin de la banda: conéctate una vez (Wi-Fi o datos) con Stage abierto.",
+            "Si aparece **Líder aún sin verificar: pide al líder que se conecte a internet una vez.**, estás siguiendo, pero el teléfono del líder no se ha conectado desde que Stage tiene la nueva protección: el líder se conecta una vez con Stage abierto.",
           ],
         },
       ],

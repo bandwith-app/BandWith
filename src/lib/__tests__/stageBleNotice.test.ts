@@ -83,8 +83,23 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(bleLinked('stale-key')).toBe(false);
   });
 
+  it("a leader not verified yet: following, one plain line offline, saying who goes online (Claude on #288)", () => {
+    expect(stageBleNotice(member({ status: 'unverified' }))).toEqual({
+      tone: 'warn',
+      text: 'Leader not verified yet: connect to the internet once to check it.',
+    });
+    expect(stageBleNotice(member({ status: 'leader-unverified' }))).toEqual({
+      tone: 'warn',
+      text: 'Leader not verified yet: ask the leader to connect to the internet once.',
+    });
+    expect(stageBleNotice(member({ status: 'unverified', online: true }))).toBeNull();
+    expect(stageBleNotice(member({ status: 'leader-unverified', online: true }))).toBeNull();
+    expect(bleLinked('unverified')).toBe(true);
+    expect(bleLinked('leader-unverified')).toBe(true);
+  });
+
   it('never uses technical words', () => {
-    const all = (['connected', 'old-leader', 'stale-key', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
+    const all = (['connected', 'old-leader', 'stale-key', 'unverified', 'leader-unverified', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
       [false, true].flatMap((isLeader) =>
         (['ios', 'android'] as const).map((platform) => stageBleNotice({ status, online: false, isLeader, followers: 2, platform })?.text ?? ''),
       ),

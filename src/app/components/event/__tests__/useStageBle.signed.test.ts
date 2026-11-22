@@ -10,6 +10,7 @@ import {
   fromBase64,
   toBase64,
 } from '@/lib/stageBle';
+import { STAGE_BLE_LIVE_CHARACTERISTIC } from '@/lib/stageBleSync';
 import { generateSigner, type StageKeyPair } from '@/lib/stageSign';
 import type { StageLiveState } from '@/lib/stageLive';
 
@@ -27,11 +28,17 @@ const IDS = ['a1', 'b2', 'c3'];
  * Phones advertising the gig (audit #1):
  * - 'new': an admin on this app, serving the HMAC state for older apps and the signed state;
  * - 'old': an admin on an app from before signing (HMAC state only);
+ * - 'nopair': an admin on this app with no key pair yet (offline when it would
+ *   have been made): the HMAC state and the live characteristic, nothing signed;
+ * - `corrupt`: this many signed reads come back damaged (a read caught mid-change);
  * - `signer`: whose key signs its signed state (a member's own key = a forgery).
  */
-type Kind = 'new' | 'old';
+type Kind = 'new' | 'old' | 'nopair';
 const air = vi.hoisted(() => ({
-  devices: new Map<string, { kind: 'new' | 'old'; state: unknown; signer?: { private: string; public: string }; version?: number }>(),
+  devices: new Map<
+    string,
+    { kind: 'new' | 'old' | 'nopair'; state: unknown; signer?: { private: string; public: string }; version?: number; corrupt?: number }
+  >(),
   connects: [] as string[],
   connected: new Set<string>(),
   reads: [] as string[],
@@ -64,7 +71,12 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     requestConnectionPriority: vi.fn(async () => {}),
     getServices: vi.fn(async (id: string) => {
       const d = air.devices.get(id);
-      const chars = d?.kind === 'new' ? [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC] : [STAGE_BLE_CHARACTERISTIC];
+      const chars =
+        d?.kind === 'new'
+          ? [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC]
+          : d?.kind === 'nopair'
+            ? [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC]
+            : [STAGE_BLE_CHARACTERISTIC];
       return [{ uuid: 'any', characteristics: chars.map((uuid) => ({ uuid, properties: {}, descriptors: [] })) }];
     }),
     startNotifications: vi.fn(async (id: string, _s: string, char: string) => {
@@ -80,7 +92,9 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       }
       if (char === STAGE_BLE_SIGNED_CHARACTERISTIC && d.kind === 'new') {
         if (!st || !d.signer) return new DataView(new ArrayBuffer(0));
-        return new DataView((await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1))!.buffer);
+        const frame = (await encodeSignedState(st, IDS, d.signer.private, d.version ?? 1))!;
+        if (d.corrupt && d.corrupt-- > 0) frame[frame.length - 1] ^= 0xff;
+        return new DataView(frame.buffer);
       }
       throw new Error('Characteristic not found.');
     }),
@@ -116,8 +130,8 @@ const { useStageBle, LEADER_CHECK_MS } = stageBleHook;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
 let admins: StageKeyPair;
-const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageKeyPair, version = 1) =>
-  air.devices.set(id, { kind, state, signer, version });
+const put = (id: string, kind: Kind, state: StageLiveState | null, signer?: StageKeyPair, version = 1, corrupt = 0) =>
+  air.devices.set(id, { kind, state, signer, version, corrupt });
 const member = (onState = vi.fn()) => ({
   onState,
   hook: renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState })),
@@ -168,7 +182,7 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     const { onState, hook } = member();
     await waitFor(() => expect(air.connects).toContain('member-x'));
     await vi.advanceTimersByTimeAsync(3000);
-    // Its signature fails twice (once could be a read caught mid-change): it is left and skipped.
+    // Its signature fails three times in a few seconds (once or twice could be reads caught mid-change): it is left and skipped.
     await waitFor(() => expect(hook.result.current.status).toBe('searching'));
     await waitFor(() => expect(air.connected.size).toBe(0));
     await vi.advanceTimersByTimeAsync(5000);
@@ -201,13 +215,31 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     hook.unmount();
   });
 
-  it('no public key yet on this phone (none made when it was online): it follows the band-key state, no note', async () => {
+  it("no public key yet on this phone (none made when it was online): it follows the band-key state, and says the leader isn't verified yet (Claude on #288)", async () => {
     air.verify = null;
     air.kept = null;
     put('admin', 'new', lead('a', 5, 'b2'), admins);
     const { onState, hook } = member();
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ songId: 'b2' })));
+    // Never plain "connected": the signed state it serves couldn't be checked.
+    await waitFor(() => expect(hook.result.current.status).toBe('unverified'));
+    hook.unmount();
+  });
+
+  it("an admin on this app with no key pair yet: followed, and the line says the leader isn't verified yet, not 'out of date' (Claude on #288)", async () => {
+    put('admin', 'nopair', lead('a', 5, 'c3'));
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'c3' })));
+    await waitFor(() => expect(hook.result.current.status).toBe('leader-unverified'));
+    hook.unmount();
+  });
+
+  it("two failed checks in a row don't cut off the real leader (reads caught mid-change) (Claude on #288)", async () => {
+    put('admin', 'new', lead('a', 5, 'b2'), admins, 1, 2);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', songId: 'b2' }), true), { timeout: 4000 });
     expect(hook.result.current.status).toBe('connected');
+    expect(air.connects).toEqual(['admin']);
     hook.unmount();
   });
 
