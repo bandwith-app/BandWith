@@ -179,3 +179,83 @@ BEGIN
   EXECUTE v_new;
 END
 $do$;
+
+-- A band key someone had stays on their phone: the app keeps it for offline
+-- and uses it without asking again. So whoever may no longer see a gig gets
+-- it changed, and the key they kept finds nothing (it also makes the
+-- Bluetooth service id). A new key when:
+--   - a tentative quote's lineup loses someone (111: off the lineup, off the quote);
+--   - a gig becomes a quote (members off its lineup, or every member with 178,
+--     no longer see it);
+--   - a gig moves to another band;
+--   - and once now, for every quote gig (keys handed out before this).
+-- Apps on this version ask for the key whenever online (stageBleNative.ts),
+-- so the band's phones pick up the new one. Released apps keep theirs: for a
+-- gig whose key changed, they need signing out and in once (noted in the PR).
+-- A gig with no key yet gets one on first use, as before.
+CREATE OR REPLACE FUNCTION public.bw_stage_new_band_key(p_event_id uuid)
+RETURNS void
+LANGUAGE sql
+VOLATILE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  UPDATE public.stage_keys
+     SET key = encode(
+       decode(replace(gen_random_uuid()::text, '-', ''), 'hex') || decode(replace(gen_random_uuid()::text, '-', ''), 'hex'),
+       'base64')
+   WHERE event_id = p_event_id;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_new_band_key(uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_stage_lineup_left()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.event_id IS NOT DISTINCT FROM OLD.event_id AND NEW.user_id IS NOT DISTINCT FROM OLD.user_id THEN
+    RETURN NULL;
+  END IF;
+  -- The gig itself going (its lineup goes with it, ON DELETE CASCADE): no row, nothing to do.
+  IF EXISTS (SELECT 1 FROM public.events e WHERE e.id = OLD.event_id
+              AND public.bw_event_is_quote(e.status, e.event_type, e.quote_id)) THEN
+    PERFORM public.bw_stage_new_band_key(OLD.event_id);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_lineup_left() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_lineup_left ON public.event_members;
+CREATE TRIGGER bw_stage_lineup_left
+  AFTER UPDATE OF event_id, user_id OR DELETE ON public.event_members
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_lineup_left();
+
+CREATE OR REPLACE FUNCTION public.bw_stage_event_hidden()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.band_id IS DISTINCT FROM OLD.band_id
+     OR (public.bw_event_is_quote(NEW.status, NEW.event_type, NEW.quote_id)
+         AND NOT public.bw_event_is_quote(OLD.status, OLD.event_type, OLD.quote_id)) THEN
+    PERFORM public.bw_stage_new_band_key(NEW.id);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_event_hidden() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_event_hidden ON public.events;
+CREATE TRIGGER bw_stage_event_hidden
+  AFTER UPDATE OF band_id, status, event_type, quote_id ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_event_hidden();
+
+-- Once: the keys of today's quote gigs (a run again changes them again, harmless).
+SELECT public.bw_stage_new_band_key(e.id)
+  FROM public.events e
+  JOIN public.stage_keys s ON s.event_id = e.id
+ WHERE public.bw_event_is_quote(e.status, e.event_type, e.quote_id);

@@ -329,13 +329,12 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
   }
 
   let key = prev?.stageKey ?? null;
-  if (!key) {
-    try {
-      // Inside the try: a partial client mock (tests) has no isDemoMode.
-      if (!isDemoMode && stageBleAvailable()) key = await stageKey(event.id);
-    } catch {
-      /* no key: Bluetooth just needs internet the first time */
-    }
+  try {
+    // Asked again each time: the key changes when someone may no longer see the gig (191).
+    // Inside the try: a partial client mock (tests) has no isDemoMode.
+    if (!isDemoMode && stageBleAvailable()) key = (await stageKey(event.id)) ?? key;
+  } catch {
+    /* no key: Bluetooth just needs internet the first time */
   }
 
   const pack: LivePack = {

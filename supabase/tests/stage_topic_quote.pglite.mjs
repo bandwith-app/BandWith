@@ -204,6 +204,10 @@ INSERT INTO event_members (event_id, user_id, status) VALUES ('${GIG}','${LINEUP
   ('${QUOTE}','${LINEUP}','confirmed');
 `);
 
+// Keys handed out before 191 (kept on phones).
+await db.exec(`INSERT INTO stage_keys (event_id, key) VALUES ('${GIG}', 'old-gig'), ('${QUOTE}', 'old-quote')`);
+const keyOf = async (ev) => (await db.query(`SELECT key FROM stage_keys WHERE event_id = '${ev}'`)).rows[0]?.key;
+
 if (with178) {
   try {
     await db.exec(readFileSync(MIG178, 'utf8'));
@@ -249,6 +253,28 @@ for (const sql of [key(QUOTE), topic(QUOTE), clock(QUOTE)]) {
 
 // Not a UUID: a plain no, not an error.
 await is(ADMIN, `SELECT public.bw_stage_topic_allowed('stage:event:${'-'.repeat(36)}', false)`, false, '36 dashes: a plain no');
+
+// A kept key stops working for whoever may no longer see the gig (Codex):
+// 191 changed the quote's key once, and changes it again on the triggers.
+ok((await keyOf(QUOTE)) !== 'old-quote', "191: a quote gig's key handed out before is changed");
+ok((await keyOf(GIG)) === 'old-gig', "191: a normal gig's key is kept (released apps keep working)");
+let before = await keyOf(QUOTE);
+await db.exec(`DELETE FROM event_members WHERE event_id = '${QUOTE}' AND user_id = '${LINEUP}'`);
+ok((await keyOf(QUOTE)) !== before, "quote: a member taken off the lineup: a new key");
+before = await keyOf(GIG);
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${OFF}'`);
+ok((await keyOf(GIG)) === before, 'gig: a lineup change on a normal gig keeps the key');
+await db.exec(`UPDATE events SET notes = 'load in 6pm' WHERE id = '${GIG}'`);
+ok((await keyOf(GIG)) === before, 'gig: any other edit keeps the key');
+await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${GIG}'`);
+ok((await keyOf(GIG)) !== before, 'gig turned back into a quote: a new key');
+before = await keyOf(GIG);
+await db.exec(`UPDATE events SET status = 'confirmed' WHERE id = '${GIG}'`);
+ok((await keyOf(GIG)) === before, 'quote confirmed: the key is kept');
+await db.exec(`INSERT INTO bands VALUES ('${id(9)}', 'Other band')`);
+await db.exec(`UPDATE events SET band_id = '${id(9)}' WHERE id = '${GIG}'`);
+ok((await keyOf(GIG)) !== before, 'gig moved to another band: a new key');
+await is(ADMIN, `SELECT has_function_privilege('public.bw_stage_new_band_key(uuid)', 'EXECUTE')`, false, 'clients cannot change a key themselves');
 
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.
 if (with178) {

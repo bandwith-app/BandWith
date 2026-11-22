@@ -57,30 +57,42 @@ const cachedKey = (eventId: string): string | null => {
   }
 };
 
+/** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
+export const KEY_FETCH_TIMEOUT_MS = 4_000;
+
 /**
- * The gig's Bluetooth key: from the device, or fetched (and kept) when
- * online. Null for people outside the band, or offline before the first fetch.
+ * The gig's Bluetooth key: asked for whenever online (it changes when someone
+ * may no longer see the gig, migration 191) and kept; the kept copy offline
+ * (no answer in KEY_FETCH_TIMEOUT_MS). A no from the server deletes it.
+ * Null for people outside the band, or offline before the first fetch.
  */
 export async function stageKey(eventId: string): Promise<string | null> {
-  const cached = cachedKey(eventId);
-  if (cached) return cached;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let answer: { data: unknown; error: unknown } | null;
   try {
-    const { data, error } = await supabase.rpc('bw_stage_key', { p_event_id: eventId });
-    if (error || typeof data !== 'string' || !data) return null;
-    try {
-      localStorage.setItem(KEY_PREFIX + eventId, data);
-    } catch {
-      /* kept for this session only */
-    }
-    return data;
+    answer = await Promise.race([
+      Promise.resolve(supabase.rpc('bw_stage_key', { p_event_id: eventId })),
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
+    ]);
   } catch {
-    return null;
+    answer = null;
+  } finally {
+    clearTimeout(timer);
   }
+  if (!answer || answer.error) return cachedKey(eventId);
+  const data = answer.data;
+  try {
+    if (typeof data === 'string' && data) localStorage.setItem(KEY_PREFIX + eventId, data);
+    else localStorage.removeItem(KEY_PREFIX + eventId);
+  } catch {
+    /* kept for this session only */
+  }
+  return typeof data === 'string' && data ? data : null;
 }
 
-/** Fetch the key ahead of the gig (event detail open), so it's there offline. */
+/** Fetch the key ahead of the gig (event detail open), so it's there offline (and a changed one replaces it). */
 export function prefetchStageKey(eventId?: string) {
-  if (!eventId || !stageBleAvailable() || cachedKey(eventId)) return;
+  if (!eventId || !stageBleAvailable()) return;
   void stageKey(eventId);
 }
 

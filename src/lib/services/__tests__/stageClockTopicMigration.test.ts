@@ -72,6 +72,14 @@ describe('191 the stage clock topic', () => {
       expect(sql).toContain(`pg_get_functiondef('public.${f}'::regprocedure)`);
   });
 
+  it('a kept band key stops working for whoever may no longer see the gig: new keys on triggers, none callable by clients (Codex on #283; behaviour: stage_topic_quote.pglite.mjs)', () => {
+    expect(sql).toMatch(/AFTER UPDATE OF event_id, user_id OR DELETE ON public\.event_members/);
+    expect(sql).toMatch(/AFTER UPDATE OF band_id, status, event_type, quote_id ON public\.events/);
+    for (const f of ['bw_stage_new_band_key(uuid)', 'bw_stage_lineup_left()', 'bw_stage_event_hidden()'])
+      expect(sql).toContain(`REVOKE EXECUTE ON FUNCTION public.${f} FROM PUBLIC, anon, authenticated;`);
+    expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_(new_band_key|lineup_left|event_hidden)/);
+  });
+
   it('the strict pattern takes UUIDs and nothing else', () => {
     const re = new RegExp(`^stage-clock:event:(${STRICT_UUID})$`);
     expect(re.test('stage-clock:event:0f8fad5b-d9cb-469f-a165-70867728950e')).toBe(true);

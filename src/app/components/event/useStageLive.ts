@@ -47,6 +47,9 @@ const PING_FORGET_MS = 5_000;
 const PING_RETRY_MS = 1_500;
 const PING_RETRY_MAX_MS = 15_000;
 const PING_JITTER_MS = 500;
+/** After this many rounds with no answer (a leader on an older app never answers), one round a minute. */
+const PING_FAST_ROUNDS = 5;
+const PING_SLOW_MS = 60_000;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
 /** The leader answers at most this many pings per phone per window (a burst is 6). */
@@ -188,6 +191,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   /** The measure of one peer's clock: its samples, and the t0 of each ping still unanswered. */
   const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[]; sent: number[] }>({ peer: '', at: 0, samples: [], sent: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** The clock topic joined: sent to only then (supabase-js would post a ping over HTTP otherwise). */
+  const clockJoined = useRef(false);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -274,7 +279,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
             // Pings older than any answer worth waiting for are of no use any more.
             fresh.sent = fresh.sent.filter((t) => t0 - t <= PING_FORGET_MS);
             const payload = { from: clientId, to: peer, t0 };
-            void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
+            if (clockJoined.current) void clockRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
             // Admins may write the stage topic too: a leader on an older app listens only there.
             if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload });
           }, delay + i * PING_GAP_MS),
@@ -284,7 +289,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
           () => {
             const running = clickRef.current;
             if (samplesRef.current !== fresh || fresh.samples.length || !running?.on || running.from !== peer) return;
-            round(attempt + 1, Math.min(PING_RETRY_MS * 2 ** attempt, PING_RETRY_MAX_MS) + Math.random() * PING_JITTER_MS);
+            // This round's timers have all run: not kept (the list would grow for as long as the click runs).
+            pingTimers.current = [];
+            const wait = attempt + 1 < PING_FAST_ROUNDS ? Math.min(PING_RETRY_MS * 2 ** attempt, PING_RETRY_MAX_MS) : PING_SLOW_MS;
+            round(attempt + 1, wait + Math.random() * PING_JITTER_MS);
           },
           delay + PINGS * PING_GAP_MS + MAX_CLOCK_RTT_MS,
         );
@@ -381,6 +389,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     clock
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, false))
       .subscribe((status: string) => {
+        clockJoined.current = status === 'SUBSCRIBED';
         // Joined (or back after a reconnect) with a leader's click running and no
         // measure yet: the pings sent meanwhile went nowhere, measure again.
         const running = clickRef.current;
@@ -462,6 +471,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
       channelRef.current = null;
       clockRef.current = null;
+      clockJoined.current = false;
       setConnected(false);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(clock);

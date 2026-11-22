@@ -337,7 +337,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     // Bluetooth off or the key not fetched yet: try again a little later.
     const boot = async () => {
       if (cancelled) return;
-      const k = key || (await stageKey(eventId));
+      // The server's key first (it changes when someone may no longer see the gig, 191); the pack's offline.
+      const k = (await stageKey(eventId)) || key;
       if (cancelled) return;
       if (!k) {
         retry = setTimeout(() => void boot(), 15000);

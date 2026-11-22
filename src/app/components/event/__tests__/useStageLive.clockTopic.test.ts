@@ -21,6 +21,10 @@ const net = vi.hoisted(() => ({
   pongDelay: 0,
   /** Added to the leader's time in its answers: the leader's clock runs this much ahead. */
   pongSkew: 0,
+  /** Realtime refuses the clock topic's join (an older server without 191's policy). */
+  refuseClock: false,
+  /** Every send, joined or not (supabase-js posts over HTTP when not joined). */
+  tries: [] as Array<{ topic: string; event: string; from: string }>,
 }));
 const phones: Phone[] = [];
 const joinClocks = () => {
@@ -45,7 +49,8 @@ vi.mock('@/lib/supabase', () => ({
             phone.joined = true;
             cb('SUBSCRIBED');
           };
-          if (net.holdClock && topic.startsWith('stage-clock:')) net.pending.push(join);
+          if (net.refuseClock && topic.startsWith('stage-clock:')) cb('CHANNEL_ERROR');
+          else if (net.holdClock && topic.startsWith('stage-clock:')) net.pending.push(join);
           else join();
           return ch;
         },
@@ -54,6 +59,7 @@ vi.mock('@/lib/supabase', () => ({
         },
         send: async (m: { event: string; payload: { from?: string } }) => {
           const from = m.payload?.from ?? phone.key;
+          net.tries.push({ topic, event: m.event, from });
           if (!phone.joined || !mayBroadcast(topic, from)) return 'error';
           net.log.push({ topic, event: m.event, from, payload: m.payload });
           if (net.dropPingsOf === from && m.event === PING_EVENT) return 'ok';
@@ -103,6 +109,8 @@ beforeEach(() => {
   net.dropPingsOf = '';
   net.pongDelay = 0;
   net.pongSkew = 0;
+  net.refuseClock = false;
+  net.tries = [];
 });
 
 describe("useStageLive: an ordinary member measures the leader's clock (audit #9)", () => {
@@ -329,5 +337,34 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === me)).toBe(true), { timeout: 1500 });
     expect(Date.now() - at).toBeLessThan(1500);
   }, 16_000);
-});
 
+  it("a leader that never answers (an older app's): after five rounds the member pings once a minute, not every 15 s (Claude on #283)", async () => {
+    vi.useFakeTimers();
+    try {
+      const leader = phone(true);
+      const member = phone(false);
+      const me = member.result.current.clientId;
+      net.dropPingsOf = me;
+      act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(180_000);
+      });
+      const rounds = net.log.filter((m) => m.event === PING_EVENT && m.from === me && m.topic.startsWith('stage-clock:')).length / 6;
+      // 5 quick rounds (~25 s), then one a minute: 7 or 8 in three minutes (15 s apart it would be 14).
+      expect(rounds).toBeGreaterThanOrEqual(6);
+      expect(rounds).toBeLessThanOrEqual(8);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the clock topic refused (Realtime said no): nothing is sent there, so nothing goes over HTTP instead (Claude on #283)', async () => {
+    net.refuseClock = true;
+    const leader = phone(true);
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await new Promise((r) => setTimeout(r, 2_500));
+    expect(net.tries.filter((t) => t.from === me && t.topic.startsWith('stage-clock:')).length).toBe(0);
+  });
+});
