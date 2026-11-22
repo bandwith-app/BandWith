@@ -80,7 +80,9 @@ describe('offline event extras', () => {
     mocks.eventSetlistId = 'sl-old';
     await replayEventExtras('e1', { setlist });
     expect(mocks.createSetlist).not.toHaveBeenCalled();
-    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-old', [{ song_id: 's1', set_number: 1 }]);
+    // Name and songs in one call (188): no separate rename that could land alone.
+    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-old', [{ song_id: 's1', set_number: 1 }], { name: 'Gig setlist' });
+    expect(mocks.updateSetlist).not.toHaveBeenCalled();
   });
 
   it('saves to-dos, the lineup and the stage, and reports what failed', async () => {

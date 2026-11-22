@@ -21,7 +21,7 @@ import { IconButton, NavBackButton, PillButton, PillField, Selector, FormError }
 import { useRailAction } from '@/lib/railActions';
 import { cn } from '@/app/components/ui/utils';
 import { createSong, updateSong, type Song } from '@/lib/services/songs';
-import { replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
+import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, savedLyricsLength, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
 import { UserError, userMessage } from '@/lib/userError';
 import {
   SONG_FILE_ACCEPT,
@@ -43,7 +43,7 @@ import { normalizeLyrics } from '@/lib/songFormat';
 import { applyVoiceSuggestions, suggestVoiceParts } from '@/lib/voiceParts';
 import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
-import { useT } from '@/lib/i18n';
+import { intlLocale, useT } from '@/lib/i18n';
 import { asSongChart, keyLabel, type SongChart } from '@/lib/ireal';
 import { IrealImportField } from './IrealImportField';
 import { ChordImportSheet } from './ChordImportSheet';
@@ -253,10 +253,23 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   };
 
+  const lyricsTooLongText = (count: number) =>
+    t('The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.', {
+      count: count.toLocaleString(intlLocale()),
+      max: MAX_LYRICS_LENGTH.toLocaleString(intlLocale()),
+    });
+
   const handleSubmit = async () => {
     if (savingRef.current) return;
     if (!title.trim()) {
       setError(t('Song title is required'));
+      return;
+    }
+    // Never cut on save (audit 09 #7): too long is said here, the whole text stays in the field.
+    const finalLyrics = normalizeLyrics(lyrics);
+    if (lyricsTooLong(finalLyrics)) {
+      setStep('extras');
+      setError(lyricsTooLongText(savedLyricsLength(finalLyrics)));
       return;
     }
 
@@ -769,6 +782,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                   className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[140px] resize-y font-mono text-[15px]"
                 />
                 <span className="bw-body-sm text-muted-foreground">{t('Read them in the app from the song menu or the player.')}</span>
+                {lyricsTooLong(lyrics) && (
+                  <span className="bw-body-sm text-destructive" role="status">
+                    {lyricsTooLongText(savedLyricsLength(lyrics))}
+                  </span>
+                )}
                 <VoicePartsKept lyrics={lyrics} />
               </label>
               {voiceHints.length > 0 && (

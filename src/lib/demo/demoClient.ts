@@ -1714,6 +1714,62 @@ const rpc = (fn: string, args: Row = {}) => {
       data = true;
       break;
     }
+    // A setlist saved in one go (188): rows of songs still there keep their id, notes and voice parts.
+    case 'bw_save_setlist_songs': {
+      const id = args.p_setlist_id;
+      const all = table('setlist_songs');
+      const before = all
+        .filter((r) => r.setlist_id === id)
+        .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
+      const left = [...before];
+      const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
+      const now = new Date().toISOString();
+      const next = list.map((e, i) => {
+        const k = left.findIndex((r) => r.song_id === e.song_id);
+        const old = k >= 0 ? left.splice(k, 1)[0] : null;
+        return {
+          ...(old ?? { id: uuid(), created_at: now, vocal_parts: null }),
+          setlist_id: id,
+          song_id: e.song_id,
+          position: i + 1,
+          set_number: typeof e.set_number === 'number' && e.set_number >= 1 ? Math.floor(e.set_number) : 1,
+          notes: 'notes' in e ? (e.notes ?? null) : (old?.notes ?? null),
+        };
+      });
+      for (let i = all.length - 1; i >= 0; i--) if (all[i].setlist_id === id) all.splice(i, 1);
+      all.push(...next);
+      const s = table('setlists').find((r) => r.id === id);
+      if (s) {
+        s.song_count = next.length;
+        const name = typeof args.p_name === 'string' ? args.p_name.trim() : '';
+        if (name) s.name = name;
+        s.updated_at = now;
+      }
+      persist();
+      data = {
+        song_count: next.length,
+        previous: before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1, position: r.position })),
+      };
+      break;
+    }
+    // Lyrics written only over the version the editor loaded (189).
+    case 'bw_save_song_lyrics': {
+      const song = table('songs').find((r) => r.id === args.p_song_id);
+      if (!song) {
+        error = { code: '42501', message: 'Only band admins can change this song' };
+        break;
+      }
+      const current = song.lyrics ?? null;
+      if (current !== (args.p_expected ?? null)) {
+        data = { saved: false, lyrics: current };
+        break;
+      }
+      song.lyrics = args.p_lyrics;
+      song.updated_at = new Date().toISOString();
+      persist();
+      data = { saved: true, lyrics: args.p_lyrics };
+      break;
+    }
     case 'update_setlist_song_count': {
       const id = args.p_setlist_id ?? args.setlist_id;
       const s = table('setlists').find((r) => r.id === id);

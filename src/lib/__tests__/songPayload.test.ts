@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '../songPayload';
+import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '../songPayload';
 
 const opened: SongFormValues = {
   title: 'Paper Boats',
@@ -73,5 +73,26 @@ describe('songPayload', () => {
   it('spots the same song whatever the case, accents and punctuation', () => {
     expect(songIdentity('Supérstition!', 'Stevie  Wonder')).toBe(songIdentity('superstition', 'stevie wonder'));
     expect(songIdentity('Superstition', 'Stevie Wonder')).not.toBe(songIdentity('Superstition', 'Beck'));
+  });
+});
+
+describe('long lyrics (audit 09 #7)', () => {
+  it('are saved whole, never cut at the limit', () => {
+    const medley = `${'Uptown lights over the river\n'.repeat(800)}The very last line`;
+    expect(medley.length).toBeGreaterThan(MAX_LYRICS_LENGTH);
+    expect(songCreatePayload({ ...opened, lyrics: medley }).lyrics).toBe(medley);
+    expect(songUpdatePayload(opened, { ...opened, lyrics: `${medley}\n\n` }).lyrics).toBe(medley);
+  });
+
+  it('JSON lyrics keep their closing brackets', () => {
+    const json = JSON.stringify({ lines: Array.from({ length: 1200 }, (_, i) => `Line ${i} of the long version`) });
+    expect(json.length).toBeGreaterThan(MAX_LYRICS_LENGTH);
+    expect(() => JSON.parse(songCreatePayload({ ...opened, lyrics: json }).lyrics as string)).not.toThrow();
+  });
+
+  it('too long is known before saving', () => {
+    expect(lyricsTooLong('a'.repeat(MAX_LYRICS_LENGTH))).toBe(false);
+    expect(lyricsTooLong(`${'a'.repeat(MAX_LYRICS_LENGTH)}\n\n  `)).toBe(false);
+    expect(lyricsTooLong('a'.repeat(MAX_LYRICS_LENGTH + 1))).toBe(true);
   });
 });

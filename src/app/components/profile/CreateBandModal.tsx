@@ -11,6 +11,7 @@ import { createBand, type Band as BandRecord } from '@/lib/services/bands';
 import { useBand } from '@/lib/BandContext';
 import { useAuth } from '@/lib/AuthContext';
 import { t, useT } from '@/lib/i18n';
+import { useSystemBack } from '@/lib/backStack';
 
 interface CreateBandModalProps {
   isOpen: boolean;
@@ -49,6 +50,14 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Android Back / Escape close this form first: it can open on top of
+  // another one ("Add personal gig" → "Create a free band"), whose draft must
+  // stay (audit 10 #4). Not while the band is being created.
+  useSystemBack(isOpen, () => {
+    if (!saving) onClose();
+    return true;
+  });
 
   const handleCreate = async () => {
     if (!name.trim()) {

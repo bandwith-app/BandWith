@@ -35,12 +35,54 @@ vi.mock('@/lib/supabase', () => ({
 import { createSetlist, replaceSetlistSongs, addSongToSetlist } from '../songs';
 import { supabase } from '@/lib/supabase';
 
+const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+/** A database without 188: PostgREST can't find the function. */
+const noFunction = () => Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+
 beforeEach(() => {
   calls.length = 0;
   handler = () => ({ data: null, error: null });
+  rpc.mockReset().mockImplementation(noFunction);
 });
 
-describe('replaceSetlistSongs', () => {
+describe('replaceSetlistSongs, one transaction (188, audit 09 #3)', () => {
+  it('saves the name, the songs and the count in one call and never deletes rows itself', async () => {
+    rpc.mockImplementation(() =>
+      Promise.resolve({ data: { song_count: 2, previous: [{ song_id: 'a', set_number: 1, position: 1 }] }, error: null })
+    );
+    const { error, previous } = await replaceSetlistSongs(
+      'sl',
+      [{ song_id: 'a', set_number: 1 }, { song_id: 'b', set_number: 2, notes: null }],
+      { name: ' Rooftop Session ' }
+    );
+    expect(error).toBeNull();
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('bw_save_setlist_songs', {
+      p_setlist_id: 'sl',
+      p_songs: [{ song_id: 'a', set_number: 1 }, { song_id: 'b', set_number: 2, notes: null }],
+      p_name: 'Rooftop Session',
+    });
+    expect(previous).toEqual([{ song_id: 'a', set_number: 1, position: 1 }]);
+    expect(calls.filter((c) => c.table === 'setlist_songs' && c.op !== 'select')).toEqual([]);
+  });
+
+  it('a save that fails on the server leaves the rows alone (no delete from the app)', async () => {
+    rpc.mockImplementation(() => Promise.resolve({ data: null, error: { code: '57014', message: 'canceling statement' } }));
+    const { error } = await replaceSetlistSongs('sl', ['b']);
+    expect(error).toMatchObject({ message: 'canceling statement' });
+    expect(calls.some((c) => c.table === 'setlist_songs' && c.op === 'delete')).toBe(false);
+  });
+
+  it('before 188 is on the server: renames, then the old step-by-step save', async () => {
+    const { error } = await replaceSetlistSongs('sl', ['a'], { name: 'Gig' });
+    expect(error).toBeNull();
+    const writes = calls.filter((c) => c.op !== 'select').map((c) => `${c.table}.${c.op}`);
+    expect(writes).toEqual(['setlists.update', 'setlist_songs.delete', 'setlist_songs.insert', 'setlists.update']);
+    expect(calls.find((c) => c.table === 'setlists' && c.op === 'update')?.payload).toEqual({ name: 'Gig' });
+  });
+});
+
+describe('replaceSetlistSongs, before 188 (step by step)', () => {
   it('keeps set numbers and existing notes, and still accepts plain ids', async () => {
     handler = (c) =>
       c.table === 'setlist_songs' && c.op === 'select'

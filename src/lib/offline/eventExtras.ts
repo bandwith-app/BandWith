@@ -9,7 +9,7 @@
  * duplicate to-dos or a rider).
  */
 import { supabase } from '@/lib/supabase';
-import { createSetlist, replaceSetlistSongs, updateSetlist } from '@/lib/services/songs';
+import { createSetlist, replaceSetlistSongs } from '@/lib/services/songs';
 import { syncEventTasks, type EventTaskDraft } from '@/lib/services/eventTasks';
 import { saveEventLineup, type LineupRow } from '@/lib/services/eventMemberMoney';
 import { persistComposerStage, type ComposerStagePayload } from '@/lib/services/composerStage';
@@ -59,12 +59,13 @@ const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<voi
   const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
   if (existingId) {
     if (setlist.songs.length === 0 && !setlist.cleared) return;
+    // Songs, name and count in one transaction (188).
     const { error } = await replaceSetlistSongs(
       existingId,
       setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
+      { name: setlist.name },
     );
     if (error) throw error;
-    await updateSetlist(existingId, { name: setlist.name, song_count: setlist.songs.length });
     return;
   }
   if (setlist.songs.length === 0) return;

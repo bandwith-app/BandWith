@@ -52,6 +52,8 @@ vi.mock('@/lib/supabase', () => ({
         return { eq: async () => ({ error: null }) };
       },
     }),
+    // A database without 189: the editor compares, then updates.
+    rpc: async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
   },
 }));
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySongUpdated: vi.fn() }));

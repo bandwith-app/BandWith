@@ -4638,6 +4638,12 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} líneas tienen una parte vocal. Se quedan en sus líneas cuando editas la letra.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Toca una palabra para añadir un acorde o marcar quién la canta. Arrastra un acorde para moverlo a otra palabra.",
   "Filled in from each member’s instrument. Change it and save.": "Rellenado según el instrumento de cada miembro. Cámbialo y guarda.",
+  "Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.": "Otra persona ha cambiado esta letra mientras la editabas. Tus cambios siguen aquí, aún sin guardar.",
+  "Load the latest version to see their changes (yours are dropped), or save yours over theirs.": "Carga la última versión para ver sus cambios (los tuyos se descartan), o guarda los tuyos encima de los suyos.",
+  "Load the latest version": "Cargar la última versión",
+  "Save mine instead": "Guardar la mía",
+  "The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.": "La letra es demasiado larga para guardarla: {count} caracteres, el límite es {max}. Acórtala, el texto completo sigue aquí.",
+  "You changed this quote. Save to keep the changes, or discard them.": "Has cambiado este presupuesto. Guarda para conservar los cambios, o descártalos.",
 };
 
 export default dict;

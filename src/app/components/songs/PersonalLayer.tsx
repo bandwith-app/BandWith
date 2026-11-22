@@ -6,6 +6,7 @@ import { FileText, Info, Lock, Music2, Paperclip, Pencil, Send, StickyNote, Tras
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
+import { useOptionalAuth } from '@/lib/AuthContext';
 import { userMessage } from '@/lib/userError';
 import { chordLabel } from '@/lib/ireal';
 import { ChordToken } from '@/app/components/ui/MusicSymbol';
@@ -72,9 +73,16 @@ type SheetState =
   | { kind: 'info'; then?: () => void }
   | null;
 let sheet: SheetState = null;
+// The sheet lives outside React (opened from anywhere) and outlives the
+// signed-in app: it belongs to the account signed in when it opened, and no
+// other account ever sees it (audit 09 #1: after a sign-out and sign-in in
+// another tab, the next account was shown the first one's private note).
+let viewer: string | null = null;
+let sheetOwner: string | null = null;
 const sheetListeners = new Set<() => void>();
 const setSheet = (s: SheetState) => {
   sheet = s;
+  sheetOwner = s ? viewer : null;
   sheetListeners.forEach((l) => l());
 };
 const useSheet = () =>
@@ -447,13 +455,16 @@ const PickingBar: React.FC<{ stage: boolean; onWholeSong: () => void; onCancel: 
 
 /** "Note saved on “…”": where the note went, for a moment. */
 let savedMsg: string | null = null;
+let savedOwner: string | null = null;
 const savedListeners = new Set<() => void>();
 const setSaved = (m: string | null) => {
   savedMsg = m;
+  savedOwner = m ? viewer : null;
   savedListeners.forEach((l) => l());
 };
 const SavedToast: React.FC = () => {
-  const msg = React.useSyncExternalStore(
+  const uid = useOptionalAuth()?.user?.id ?? null;
+  const shown = React.useSyncExternalStore(
     (l) => {
       savedListeners.add(l);
       return () => savedListeners.delete(l);
@@ -461,6 +472,8 @@ const SavedToast: React.FC = () => {
     () => savedMsg,
     () => savedMsg,
   );
+  // It quotes a line of the song: only for the account that saved the note.
+  const msg = shown && savedOwner === uid ? shown : null;
   React.useEffect(() => {
     if (!msg) return;
     const id = window.setTimeout(() => setSaved(null), 3500);
@@ -490,7 +503,14 @@ export const PersonalLayerSheets: React.FC = () => (
 
 const Sheets: React.FC = () => {
   const t = useT();
-  const s = useSheet();
+  const uid = useOptionalAuth()?.user?.id ?? null;
+  viewer = uid;
+  const open = useSheet();
+  // Opened under another account: never shown, and dropped.
+  const s = open && sheetOwner === uid ? open : null;
+  React.useEffect(() => {
+    if (open && sheetOwner !== uid) setSheet(null);
+  }, [open, uid]);
   const [, setShow] = useShowMyNotes();
   const [body, setBody] = React.useState('');
   const [anchor, setAnchor] = React.useState<NoteAnchor>({ type: 'song' });

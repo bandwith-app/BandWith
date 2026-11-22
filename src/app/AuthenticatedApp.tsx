@@ -50,7 +50,7 @@ import {
 } from "@/lib/services/events";
 import type { EventMember, Event } from "@/lib/services/events";
 import { respondToOwnInvite, InviteResponseError, getOwnInviteStatus, inviteSettled } from "@/lib/services/inviteResponse";
-import { createSetlist, deleteSetlist, replaceSetlistSongs, updateSetlist } from "@/lib/services/songs";
+import { createSetlist, deleteSetlist, replaceSetlistSongs } from "@/lib/services/songs";
 import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
 import { notifySetlistSaved } from "@/lib/services/setlistNotify";
 import { receiptFor, deleteChat as deleteChatService, createChat as createChatService, chatErrorMessage } from "@/lib/services/chats";
@@ -2139,7 +2139,7 @@ export default function AuthenticatedApp() {
       setShowPricingModal(true);
     }
     if (item === "AdminTour") setShowAdminTour(true);
-    if (item === "Quote" && isAdmin) { setCreateEventType("quote"); setIsCreateEventOpen(true); }
+    if (item === "Quote" && isAdmin) { setEditingEventData(null); setCreateEventType("quote"); setIsCreateEventOpen(true); }
     if (item === "InviteMember") setShowBandMembers(true);
   };
 
@@ -2248,8 +2248,20 @@ export default function AuthenticatedApp() {
     setIsCreateEventOpen(true);
   };
   useEffect(() => {
-    if (!isCreateEventOpen) setActiveEventDraft(null);
+    if (isCreateEventOpen) return;
+    setActiveEventDraft(null);
+    // Closed by any path (Android Back included): the next "New gig" must
+    // never inherit this edit's event and update it (audit 10 #1).
+    setEditingEventData(null);
   }, [isCreateEventOpen]);
+  // The event form's own close (X, Cancel, Android Back): an edit returns to its event.
+  const closeCreateEventRef = useRef<() => void>(() => {});
+  closeCreateEventRef.current = () => {
+    // Cancelling an edit returns to the event it was opened from (saving has its own path).
+    const back = editingEventData?.eventId;
+    setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
+    if (back) void navigateToEvent(back);
+  };
   const handleCreateEvent = (type: CreateEventType) => {
     if (type === 'personal') {
       setEditingPersonalGig(null);
@@ -2270,6 +2282,7 @@ export default function AuthenticatedApp() {
       setShowProposeRehearsalModal(true);
       return;
     }
+    setEditingEventData(null);
     setCreateEventType(type);
     setIsCreateEventOpen(true);
   };
@@ -2447,7 +2460,7 @@ export default function AuthenticatedApp() {
         return true;
       }
       if (s.isCreateEventOpen) {
-        setIsCreateEventOpen(false);
+        closeCreateEventRef.current();
         return true;
       }
       if (s.showNewChat) {
@@ -3433,9 +3446,11 @@ export default function AuthenticatedApp() {
             .maybeSingle();
           const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
           if (existingId) {
+            // Songs, name and count in one transaction (188).
             const { error: replaceErr, previous } = await replaceSetlistSongs(
               existingId,
-              songs.map(({ song_id, set_number }) => ({ song_id, set_number }))
+              songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
+              { name }
             );
             if (replaceErr) throw replaceErr;
             setlistChange.current = {
@@ -3445,7 +3460,6 @@ export default function AuthenticatedApp() {
                 songs.map(({ song_id, set_number }) => ({ songId: song_id, setNumber: set_number }))
               ),
             };
-            await updateSetlist(existingId, { name, song_count: songs.length });
             return existingId;
           }
         }
@@ -3989,6 +4003,7 @@ export default function AuthenticatedApp() {
               setEditingPersonalGig(null);
               setShowPersonalGigModal(true);
             } else {
+              setEditingEventData(null);
               setCreateEventType(null);
               setIsCreateEventOpen(true);
             }
@@ -4166,13 +4181,13 @@ export default function AuthenticatedApp() {
               <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3">
                 <NavBackButton onClick={() => setExpandedCard(null)} variant="ghost" className="w-10 h-10 bg-white/20 text-white" icon={<ChevronLeft className="w-6 h-6 text-white" />} />
                 <h1 className="text-lg font-bold text-white">{t('My Rehearsals')}</h1>
-                {isAdmin ? <HeaderAction label={t('New rehearsal')} variant="ghost" icon={<Plus />} onClick={() => { setExpandedCard(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="w-10 h-10 bg-white/20 text-white" /> : <div className="w-10" />}
+                {isAdmin ? <HeaderAction label={t('New rehearsal')} variant="ghost" icon={<Plus />} onClick={() => { setExpandedCard(null); setEditingEventData(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="w-10 h-10 bg-white/20 text-white" /> : <div className="w-10" />}
               </div>
               <div className="flex flex-col items-center justify-center flex-1 px-6 py-16">
                 <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6"><Music className="w-10 h-10 text-white" /></div>
                 <h2 className="bw-h2 uppercase text-white mb-2">{t('No Rehearsals')}</h2>
                 <p className="text-white/70 text-center mb-8">{isAdmin ? t('No upcoming rehearsals. Tap + to create one!') : t('No upcoming rehearsals scheduled.')}</p>
-                {isAdmin && <button onClick={() => { setExpandedCard(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="bg-white text-blue-600 px-6 py-3 rounded-full font-bold">{t('Schedule Rehearsal')}</button>}
+                {isAdmin && <button onClick={() => { setExpandedCard(null); setEditingEventData(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="bg-white text-blue-600 px-6 py-3 rounded-full font-bold">{t('Schedule Rehearsal')}</button>}
               </div>
             </ExpandedCardWrapper>
           ) : null}
@@ -4378,12 +4393,7 @@ export default function AuthenticatedApp() {
                 initialType={createEventType as any}
                 initialDate={createEventInitialDate || undefined}
                 layoutId={`create-button-${createEventType}`}
-                onClose={() => {
-                  // Cancelling an edit returns to the event it was opened from (saving has its own path).
-                  const back = editingEventData?.eventId;
-                  setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
-                  if (back) void navigateToEvent(back);
-                }}
+                onClose={() => closeCreateEventRef.current()}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}
                 existingEvents={events}

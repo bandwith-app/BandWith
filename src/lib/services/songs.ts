@@ -623,18 +623,73 @@ export type SetlistSongInput =
   | string
   | { song_id: string; set_number?: number; notes?: string | null };
 
+type PreviousSetlistRow = { song_id: string; set_number: number | null; position: number };
+
+/** The function from 188 isn't on the server yet (older database). */
+const isMissingFunction = (e: unknown) => {
+  const err = e as { code?: string; message?: string } | null;
+  return !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''));
+};
+
+const setlistEntry = (entry: SetlistSongInput) => {
+  const item = typeof entry === 'string' ? { song_id: entry } : entry;
+  const setNumber =
+    typeof item.set_number === 'number' && Number.isFinite(item.set_number) && item.set_number >= 1
+      ? Math.floor(item.set_number)
+      : 1;
+  return {
+    song_id: item.song_id,
+    set_number: setNumber,
+    ...('notes' in item && item.notes !== undefined ? { notes: item.notes } : {}),
+  };
+};
+
 /**
- * Replace a setlist's songs with `songs`, in order.
+ * Replace a setlist's songs with `songs`, in order, and rename it when
+ * `opts.name` is given.
  *
+ * One request, one transaction on the server (bw_save_setlist_songs, 188):
+ * if anything fails, or the app closes half-way, the setlist stays exactly
+ * as it was (audit 09 #3: the old delete + insert could leave it empty).
  * Accepts plain song ids (old callers, everything goes in set 1) or objects
- * carrying `set_number`, so multi-set setlists keep their sets. Notes already
- * stored for a song are kept unless the caller passes new ones. If the insert
- * fails, the previous rows are put back.
+ * carrying `set_number`, so multi-set setlists keep their sets. Notes and
+ * who-sings-what already stored for a song are kept unless the caller passes
+ * new notes. `previous` is the order before the save (setlistChanges.ts).
  */
 export const replaceSetlistSongs = async (
   setlistId: string,
-  songs: SetlistSongInput[]
-): Promise<{ error: Error | null; previous?: { song_id: string; set_number: number | null; position: number }[] }> => {
+  songs: SetlistSongInput[],
+  opts?: { name?: string }
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[] }> => {
+  const entries = songs.map(setlistEntry);
+  const name = opts?.name?.trim() || null;
+  try {
+    const res = await supabase.rpc('bw_save_setlist_songs', {
+      p_setlist_id: setlistId,
+      p_songs: entries,
+      p_name: name,
+    });
+    if (!res?.error) {
+      const out = (res?.data ?? {}) as { previous?: PreviousSetlistRow[] };
+      return { error: null, previous: Array.isArray(out.previous) ? out.previous : [] };
+    }
+    if (!isMissingFunction(res.error)) return { error: res.error as unknown as Error };
+  } catch (error: any) {
+    if (!isMissingFunction(error)) return { error };
+  }
+  // Database without 188 yet: the step-by-step save older builds use.
+  if (name) {
+    const { error: nameError } = await supabase.from('setlists').update({ name }).eq('id', setlistId);
+    if (nameError) return { error: nameError as unknown as Error };
+  }
+  return replaceSetlistSongsStepwise(setlistId, entries);
+};
+
+/** Before 188: read, delete, insert (put the old rows back if that fails), recount. */
+const replaceSetlistSongsStepwise = async (
+  setlistId: string,
+  entries: ReturnType<typeof setlistEntry>[]
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[] }> => {
   try {
     // Read the current rows first so a failed insert can be undone.
     const { data: previous, error: readError } = await supabase
@@ -656,21 +711,13 @@ export const replaceSetlistSongs = async (
       if (!previousNotes.has(r.song_id)) previousNotes.set(r.song_id, r.notes ?? null);
     }
 
-    const rows = songs.map((entry, i) => {
-      const item = typeof entry === 'string' ? { song_id: entry } : entry;
-      const setNumber =
-        typeof item.set_number === 'number' && Number.isFinite(item.set_number) && item.set_number >= 1
-          ? Math.floor(item.set_number)
-          : 1;
-      const notes = 'notes' in item && item.notes !== undefined ? item.notes : previousNotes.get(item.song_id) ?? null;
-      return {
-        setlist_id: setlistId,
-        song_id: item.song_id,
-        position: i + 1,
-        set_number: setNumber,
-        notes,
-      };
-    });
+    const rows = entries.map((item, i) => ({
+      setlist_id: setlistId,
+      song_id: item.song_id,
+      position: i + 1,
+      set_number: item.set_number,
+      notes: 'notes' in item ? (item.notes ?? null) : previousNotes.get(item.song_id) ?? null,
+    }));
 
     const { error: deleteError } = await supabase
       .from('setlist_songs')
@@ -736,4 +783,40 @@ export const saveSetlistOrder = async (
   } catch (error: any) {
     return { error };
   }
+};
+
+/**
+ * Save a song's lyrics only while they are still `expected` (what the editor
+ * loaded), so one admin's chord edit never erases another's new verse
+ * (audit 09 #6). One request, checked on the server (bw_save_song_lyrics,
+ * 189). `conflict` holds the lyrics stored now when they had changed;
+ * nothing was written then.
+ */
+export const saveSongLyricsIfUnchanged = async (
+  songId: string,
+  lyrics: string,
+  expected: string | null
+): Promise<{ error: Error | null; conflict?: string | null }> => {
+  try {
+    const res = await supabase.rpc('bw_save_song_lyrics', {
+      p_song_id: songId,
+      p_lyrics: lyrics,
+      p_expected: expected,
+    });
+    if (!res?.error) {
+      const out = (res?.data ?? {}) as { saved?: boolean; lyrics?: string | null };
+      if (out.saved === false) return { error: null, conflict: out.lyrics ?? null };
+      return { error: null };
+    }
+    if (!isMissingFunction(res.error)) return { error: res.error as unknown as Error };
+  } catch (error: any) {
+    if (!isMissingFunction(error)) return { error };
+  }
+  // Database without 189 yet: compare, then write (a much shorter window than before).
+  const { data: now, error: readError } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
+  if (readError) return { error: readError as unknown as Error };
+  const current = ((now as { lyrics?: string | null } | null)?.lyrics ?? null);
+  if (current !== expected) return { error: null, conflict: current };
+  const { error } = await supabase.from('songs').update({ lyrics }).eq('id', songId);
+  return { error: (error as unknown as Error) ?? null };
 };

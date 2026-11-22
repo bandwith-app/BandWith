@@ -36,6 +36,7 @@ import { HeaderAction, IconButton, NavBackButton, Tag } from '@/app/components/b
 import { RailCover, useRailAction } from '@/lib/railActions';
 import { useSystemBack } from '@/lib/backStack';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { PillButton, PillField } from '@/app/components/bw/Form';
 import {
   Quote,
@@ -1464,8 +1465,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // A save is running: the buttons show a spinner and a second tap does nothing.
   const [submitting, setSubmitting] = useState(false);
-  const handleCreate = (sendImmediately = true, sendToClient = false) => {
-    if (submitting) return;
+  /** The quote as Save would write it now. */
+  const buildQuoteData = (): Partial<Quote> => {
     const finalEventName = getEffectiveTitle();
     const finalClientName = clientName.trim() || 'Client';
 
@@ -1562,6 +1563,12 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       updatedAt: new Date().toISOString(),
       eventTitle: finalEventName,
     };
+    return quoteData;
+  };
+
+  const handleCreate = (sendImmediately = true, sendToClient = false) => {
+    if (submitting) return;
+    const quoteData = buildQuoteData();
     const pending = onCreate(quoteData, {
       share: sendImmediately,
       askAvailability: !isEditing && askAvailability,
@@ -3127,6 +3134,32 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     return true;
   });
 
+  // Editing a saved quote: Back, X and Cancel ask first when something
+  // changed (audit 10 #5: Back went past the editor and dropped the edits).
+  // The baseline follows the quote until the user first touches the form,
+  // so values the form settles on load (pricing, extras) don't count.
+  const editTouchedRef = useRef(false);
+  const editBaselineRef = useRef<string | null>(null);
+  const editSnapshot = isEditing
+    ? (() => {
+        const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData();
+        return JSON.stringify(rest);
+      })()
+    : '';
+  if (isEditing && (!editTouchedRef.current || editBaselineRef.current === null)) editBaselineRef.current = editSnapshot;
+  const editDirty = isEditing && editTouchedRef.current && editSnapshot !== editBaselineRef.current;
+  const markEditTouched = () => {
+    editTouchedRef.current = true;
+  };
+  const [editLeaveOpen, setEditLeaveOpen] = useState(false);
+  const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
+  useSystemBack(isEditing, () => {
+    if (editLeaveOpen) setEditLeaveOpen(false);
+    else if (quoteSheet) setQuoteSheet(null);
+    else requestEditClose();
+    return true;
+  });
+
   const closeInRail = useRailAction(isEditing ? undefined : requestClose, {
     label: t('Close quote wizard'),
     icon: <X />,
@@ -3136,7 +3169,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   if (isEditing) {
     const editActions = (
       <div className="flex gap-2">
-        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={onClose}>
+        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={requestEditClose}>
           {t('Cancel')}
         </PillButton>
         <PillButton variant="outline" fullWidth={false} className="px-4" disabled={submitting} onClick={() => handleCreate(false)}>
@@ -3156,6 +3189,10 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         exit={{ opacity: 0, y: 20 }}
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
         className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
+        onChangeCapture={markEditTouched}
+        onInputCapture={markEditTouched}
+        onClickCapture={markEditTouched}
+        onKeyDownCapture={markEditTouched}
       >
         <header className="shrink-0 px-4 pb-4 bg-background" style={headerPadTop}>
           <div className="max-w-xl mx-auto w-full flex items-start gap-3">
@@ -3173,7 +3210,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
               </span>
             </div>
             <RailCover pane />
-            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={onClose} />
+            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={requestEditClose} />
           </div>
         </header>
 
@@ -3194,6 +3231,21 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             {editActions}
           </>,
         )}
+        <UnsavedChangesSheet
+          open={editLeaveOpen}
+          title={t('Save your changes?')}
+          body={t('You changed this quote. Save to keep the changes, or discard them.')}
+          saving={submitting}
+          onKeepEditing={() => setEditLeaveOpen(false)}
+          onDiscard={() => {
+            setEditLeaveOpen(false);
+            onClose();
+          }}
+          onSave={() => {
+            setEditLeaveOpen(false);
+            handleCreate(false);
+          }}
+        />
       </motion.div>
     );
   }

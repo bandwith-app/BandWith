@@ -6,7 +6,7 @@
  * song's iReal chart and key. Pure: no React, no network.
  */
 import { chordLabel, type ChartSection, type SongChart } from './ireal';
-import { isChordToken, parseLyrics, type LyricsSection } from './lyrics';
+import { isChordToken, parseJsonLyrics, parseLyrics, type LyricsSection } from './lyrics';
 import { foldSemitones, parseKey, pitchClass, transposeLyrics, prefersFlats } from './transpose';
 import { instrumentKeys } from './instruments';
 import { chordTokenSymbol } from './musicSymbols';
@@ -383,6 +383,20 @@ export function applyKeyFix(lyrics: string, fix: KeyCheck): string {
 }
 
 // ── Tidy the whole text ────────────────────────────────────────────────────
+
+/**
+ * JSON lyrics → the same song as text (`# Section` headings, one line per
+ * line), for editors that work line by line: the chord editor placed a chord
+ * on the JSON itself (`[C]{"lines":[…]}`) and the reader then showed the JSON
+ * (audit 09 #8). Null when `raw` is not JSON lyrics.
+ */
+export function jsonLyricsAsText(raw: string | null | undefined): string | null {
+  const sections = parseJsonLyrics(raw);
+  if (!sections) return null;
+  return sections
+    .map((s) => [...(s.name ? [`# ${s.name}`] : []), ...s.lines.map((l) => l.replace(/\s+$/, ''))].join('\n'))
+    .join('\n\n');
+}
 
 /**
  * Any lyrics text → the band's format: section headings as `# Name` with
