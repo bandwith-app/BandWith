@@ -484,7 +484,7 @@ const basics: AreaText = {
             ["Metriche (2 × 2)", "**GIG CONFERMATI**, **PROSSIME PROVE**, **PREVENTIVI ATTIVI**, **INCASSI**", "**GIG CONFERMATI**, **PROSSIME PROVE**, **COMPENSI IN ARRIVO**, **TOTALE GUADAGNATO** (solo i tuoi compensi)"],
             ["**Da gestire**", "**Pagamenti** da fare dopo uno show (ogni musicista) e **Organizzazione prove** (sondaggi e proposte)", "**I tuoi compensi** (solo quanto ti spetta) e i sondaggi sulle prove ancora aperti"],
             ["**Prossimo soundcheck** / **La mia scaletta**", "Non visibile", "Orari del tuo prossimo gig, **Mappa carico**, il numero di brani e **Vedi scaletta**"],
-            ["**In arrivo**", "I prossimi 3 gig e prove; il primo gig mostra **Pronti per lo show** e **Go live**", "I prossimi 3 gig e prove; i gig mostrano **Il tuo compenso**"],
+            ["**In arrivo**", "I prossimi 3 gig e prove; il primo gig mostra **Pronti per lo show** e **In scena**", "I prossimi 3 gig e prove; i gig mostrano **Il tuo compenso**"],
             ["**Bozze**", "I tuoi gig, prove e preventivi non finiti ([[drafts]])", "Solo se hai delle bozze tue"],
             ["**Azioni rapide**", "**Repertorio**, **Membri**, **Strumenti**, **Checklist**, **Contratti**", "**Repertorio**, **Membri**"],
             ["Crescita", "**Gig questo mese**, **Incassi vs mese scorso**, **Vedi calendario**, **Vedi statistiche**", "Non visibile"],
@@ -498,7 +498,7 @@ const basics: AreaText = {
             "**PREVENTIVI ATTIVI** e **INCASSI** (admin) aprono le schede dei preventivi e delle finanze.",
             "**Vedi tutto** accanto a **In arrivo** apre il calendario.",
             "**Rivedi i pagamenti** (admin) apre compenso e pagamenti del gig; **Vedi il compenso** (membro) mostra il tuo.",
-            "Una scheda in **In arrivo** apre l’evento. **Go live** apre il gig in Modalità palco.",
+            "Una scheda in **In arrivo** apre l’evento. **In scena** apre il gig in Modalità palco.",
             "La freccia accanto ad **Azioni rapide** apre tutte le risorse della band.",
           ],
         },
@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "senza connessione", "sincronizzazione", "modalità aereo", "cache", "senza rete"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Band, gig e scalette restano disponibili senza connessione: l’app mostra l’ultima versione caricata su questo dispositivo. Una striscia sotto la barra di stato dice **Sei offline · dati in cache**." },
-        { type: "p", text: "Creare, modificare o eliminare un gig o una prova funziona anche offline. L’app dice **Salvato offline • Si sincronizza appena connesso** e la striscia conta le modifiche in attesa: **Sei offline · 2 modifiche in attesa**." },
-        { type: "p", text: "Quando la connessione torna, le modifiche vengono inviate da sole. La striscia mostra **Di nuovo online · 2 modifiche in attesa** con un pulsante **Sincronizza ora**, poi **Di nuovo online · sincronizzato**." },
+        { type: "p", text: "Creare, modificare o eliminare un gig o una prova funziona anche offline. L’app dice **Salvato offline • Si sincronizza appena connesso** e la striscia conta le modifiche in attesa: **Sei offline · 2 modifiche in attesa di segnale**." },
+        { type: "p", text: "Quando la connessione torna, le modifiche vengono inviate da sole. La striscia mostra **Di nuovo online · invio di 2 modifiche** con un pulsante **Invia ora**, poi **Di nuovo online · tutto aggiornato**. Per la Modalità palco e la Modalità live, vedi [[live-mode-offline]]." },
         {
           type: "list",
           title: "Serve la connessione per",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Accedere per la prima volta su un dispositivo.",
           ],
         },
-        { type: "note", tone: "tip", text: "Uscendo dall’account, prima vengono inviate le modifiche in attesa, e possono servire alcuni secondi. Se vuoi essere sicuro, esci solo quando la striscia dice sincronizzato." },
+        { type: "note", tone: "tip", text: "Uscendo dall’account, prima vengono inviate le modifiche in attesa, e possono servire alcuni secondi. Se vuoi essere sicuro, esci solo quando la striscia dice tutto aggiornato." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["impostazioni", "preferenze", "opzioni", "impostazioni dell’app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Apri il menu (l’ultima scheda), poi tocca **Impostazioni e account**. **Impostazioni** elenca le sezioni:" },
         {
@@ -727,6 +727,7 @@ const basics: AreaText = {
           rows: [
             ["**Notifiche**", "**Notifiche push**, **Notifiche email**, **Novità del prodotto**", "Il tuo account (tutti i dispositivi)"],
             ["**Sincronizza calendario**", "Un link privato ai tuoi eventi per **Calendario Apple**, **Google Calendar** o Outlook ([[calendar-sync]])", "Il tuo account (tutti i dispositivi)"],
+            ["**Offline e live**", "**Download automatico**, **Solo con Wi-Fi**, **Spazio occupato** per le scalette salvate per quando non c’è campo ([[offline-and-live-settings]])", "Dipende: **Download automatico** segue il tuo account, il resto vale per questo dispositivo"],
             ["**Aspetto**", "Tema: **Chiaro**, **Scuro**, **Sistema**", "Questo dispositivo"],
             ["**Unità di misura**", "**Chilometri** o **Miglia**", "Questo dispositivo"],
             ["**Privacy e account**", "**Blocco app**, **Statistiche d’uso anonime**, **Invia segnalazioni di errore**, nascondere i dettagli dei gig personali, **Esporta i miei dati**, Termini, Informativa sulla privacy, **Elimina account**", "Dipende (vedi [[privacy-and-account-settings]])"],
@@ -1052,7 +1053,7 @@ const basics: AreaText = {
             "Controlla che ogni musicista abbia ricevuto un **Invito al gig**. Sul gig, **FORMAZIONE** mostra chi ha risposto; **INVITO IN ATTESA** significa non ancora ([[answer-a-gig-invitation]]).",
             "Apri **CHAT EVENTO** sul gig per parlare di logistica con la formazione ([[event-and-rehearsal-chats]]).",
             "Apri **RIDER & PALCO** per preparare il PDF del rider e condividerlo con il locale ([[rider-and-stage]]).",
-            "Il giorno del concerto, apri il gig dalla Home e tocca **Go live** per la Modalità palco ([[stage-mode]]).",
+            "Il giorno del concerto, apri il gig dalla Home e tocca **In scena** per la Modalità palco ([[stage-mode]]).",
           ],
         },
         { type: "note", tone: "privacy", text: "Ogni musicista vede solo il proprio compenso, nell’invito e sul gig. Nessuno, tranne gli admin, vede gli altri compensi o quanto paga il cliente." },
@@ -1326,7 +1327,7 @@ const basics: AreaText = {
     { term: "Barra laterale", definition: "Su un telefono a doppio schermo, la colonna accanto allo schermo che contiene le schede, Indietro, Cerca e il tuo profilo.", see: "duo-closed" },
     { term: "A libro", definition: "Un telefono a doppio schermo aperto come un libro: due pagine, elenchi a sinistra e dettagli a destra.", see: "duo-book" },
     { term: "Posizione laptop", definition: "Un telefono a doppio schermo appoggiato piegato a metà: la metà alta (Display) per leggere, la metà bassa (Deck) per toccare.", see: "duo-laptop-pose" },
-    { term: "Striscia offline", definition: "La barra sotto la barra di stato che dice che sei offline e quante modifiche verranno sincronizzate.", see: "offline-mode" },
+    { term: "Striscia offline", definition: "La barra sotto la barra di stato che dice che sei offline e quante modifiche sono in attesa di segnale.", see: "offline-mode" },
   ],
 };
 

@@ -484,7 +484,7 @@ const basics: AreaText = {
             ["Chiffres (2 × 2)", "**CONCERTS CONFIRMÉS**, **RÉPÉTITIONS À VENIR**, **DEVIS EN COURS**, **RECETTES**", "**CONCERTS CONFIRMÉS**, **RÉPÉTITIONS À VENIR**, **CACHETS À VENIR**, **TOTAL GAGNÉ** (tes propres cachets uniquement)"],
             ["**À traiter**", "**Paiements** à faire après un concert (chaque musicien) et **Planification des répétitions** (sondages et propositions)", "**Tes cachets** (seulement ce qu’on te doit) et les sondages de répétition ouverts"],
             ["**Prochaine balance** / **Ma setlist**", "Non affiché", "Horaires de ton prochain concert, **Plan d’accès**, le nombre de morceaux et **Voir la setlist**"],
-            ["**À venir**", "Les 3 prochains concerts et répétitions ; le premier concert affiche **Préparation du show** et **Go live**", "Les 3 prochains concerts et répétitions ; les concerts affichent **Ton cachet**"],
+            ["**À venir**", "Les 3 prochains concerts et répétitions ; le premier concert affiche **Préparation du show** et **En scène**", "Les 3 prochains concerts et répétitions ; les concerts affichent **Ton cachet**"],
             ["**Brouillons**", "Tes concerts, répétitions et devis inachevés ([[drafts]])", "Seulement si tu as tes propres brouillons"],
             ["**Raccourcis**", "**Répertoire**, **Membres**, **Matériel**, **Tâches**, **Contrats**", "**Répertoire**, **Membres**"],
             ["Croissance", "**Concerts ce mois-ci**, **Évol. des recettes**, **Voir le calendrier**, **Voir les stats**", "Non affiché"],
@@ -498,7 +498,7 @@ const basics: AreaText = {
             "**DEVIS EN COURS** et **RECETTES** (admins) ouvrent les cartes des devis et des finances.",
             "**Tout voir** à côté de **À venir** ouvre le calendrier.",
             "**Voir les paiements** (admin) ouvre le cachet et les paiements du concert ; **Voir le cachet** (membre) montre le tien.",
-            "Une carte dans **À venir** ouvre l’événement. **Go live** ouvre le concert en mode scène.",
+            "Une carte dans **À venir** ouvre l’événement. **En scène** ouvre le concert en mode scène.",
             "La flèche à côté de **Raccourcis** ouvre toutes les ressources du groupe.",
           ],
         },
@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["hors ligne", "pas de connexion", "synchronisation", "mode avion", "cache"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Tes groupes, concerts et setlists restent disponibles sans connexion : l’app montre ce qu’elle a chargé en dernier sur cet appareil. Un bandeau sous la barre d’état indique **Hors ligne · données en cache**." },
-        { type: "p", text: "Créer, modifier ou supprimer un concert ou une répétition fonctionne hors ligne. L’app indique **Enregistré hors ligne • Synchro dès la connexion** et le bandeau compte les modifications en attente : **Hors ligne · 2 modifications en attente**." },
-        { type: "p", text: "Quand la connexion revient, les modifications partent d’elles-mêmes. Le bandeau affiche **En ligne · 2 modifications à synchroniser** avec un bouton **Synchroniser**, puis **En ligne · synchronisé**." },
+        { type: "p", text: "Créer, modifier ou supprimer un concert ou une répétition fonctionne hors ligne. L’app indique **Enregistré hors ligne • Synchro dès la connexion** et le bandeau compte les modifications en attente : **Hors ligne · 2 modifications en attente de réseau**." },
+        { type: "p", text: "Quand la connexion revient, les modifications partent d’elles-mêmes. Le bandeau affiche **De retour en ligne · envoi de 2 modifications** avec un bouton **Envoyer maintenant**, puis **De retour en ligne · tout est à jour**. Pour le mode scène et le mode live, voir [[live-mode-offline]]." },
         {
           type: "list",
           title: "Il faut une connexion pour",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Se connecter pour la première fois sur un appareil.",
           ],
         },
-        { type: "note", tone: "tip", text: "La déconnexion envoie d’abord les modifications en attente, ce qui peut prendre quelques secondes. Pour être sûr, déconnecte-toi seulement quand le bandeau indique synchronisé." },
+        { type: "note", tone: "tip", text: "La déconnexion envoie d’abord les modifications en attente, ce qui peut prendre quelques secondes. Pour être sûr, déconnecte-toi seulement quand le bandeau indique que tout est à jour." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["réglages", "préférences", "options", "paramètres", "réglages de l’app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Ouvre le menu (le dernier onglet), puis touche **Réglages et compte**. **Réglages** liste les sections :" },
         {
@@ -727,6 +727,7 @@ const basics: AreaText = {
           rows: [
             ["**Notifications**", "**Notifications push**, **Notifications par e-mail**, **Nouveautés**", "Ton compte (tous les appareils)"],
             ["**Synchroniser le calendrier**", "Un lien privé vers tes événements pour **Calendrier Apple**, **Google Agenda** ou Outlook ([[calendar-sync]])", "Ton compte (tous les appareils)"],
+            ["**Hors ligne et live**", "**Téléchargement automatique**, **Wi-Fi uniquement**, **Espace utilisé** pour les setlists gardées pour les endroits sans réseau ([[offline-and-live-settings]])", "Variable : **Téléchargement automatique** suit ton compte, le reste vaut pour cet appareil"],
             ["**Apparence**", "Thème : **Clair**, **Sombre**, **Système**", "Cet appareil"],
             ["**Unités**", "**Kilomètres** ou **Miles**", "Cet appareil"],
             ["**Confidentialité et compte**", "**Verrouillage de l’app**, **Statistiques d’utilisation anonymes**, **Envoyer les rapports d’erreur**, masquer les détails des concerts perso, **Exporter mes données**, conditions, politique de confidentialité, **Supprimer le compte**", "Variable (voir [[privacy-and-account-settings]])"],
@@ -1052,7 +1053,7 @@ const basics: AreaText = {
             "Vérifie que chaque musicien a reçu une **Invitation concert**. Sur le concert, **LINE-UP** montre qui a répondu ; **INVITATION EN ATTENTE** signifie pas encore ([[answer-a-gig-invitation]]).",
             "Ouvre **CHAT ÉVÉNEMENT** sur le concert pour parler logistique avec le line-up ([[event-and-rehearsal-chats]]).",
             "Ouvre **FICHE TECHNIQUE & SCÈNE** pour préparer la fiche technique en PDF et la partager avec la salle ([[rider-and-stage]]).",
-            "Le jour J, ouvre le concert depuis l’accueil et touche **Go live** pour le mode scène ([[stage-mode]]).",
+            "Le jour J, ouvre le concert depuis l’accueil et touche **En scène** pour le mode scène ([[stage-mode]]).",
           ],
         },
         { type: "note", tone: "privacy", text: "Chaque musicien ne voit que son propre cachet sur l’invitation et sur le concert. Personne, à part les admins, ne voit les autres cachets ni ce que paie le client." },
@@ -1326,7 +1327,7 @@ const basics: AreaText = {
     { term: "Rail latéral", definition: "Sur un téléphone double écran, la colonne à côté de l’écran qui contient les onglets, Retour, Recherche et ton profil.", see: "duo-closed" },
     { term: "Livre", definition: "Un téléphone double écran ouvert comme un livre : deux pages, listes à gauche et détails à droite.", see: "duo-book" },
     { term: "Position ordinateur", definition: "Un téléphone double écran posé à moitié plié : la moitié haute (Display) pour lire, la moitié basse (Deck) pour toucher.", see: "duo-laptop-pose" },
-    { term: "Bandeau hors ligne", definition: "La barre sous la barre d’état qui indique que tu es hors ligne et combien de modifications vont se synchroniser.", see: "offline-mode" },
+    { term: "Bandeau hors ligne", definition: "La barre sous la barre d’état qui indique que tu es hors ligne et combien de modifications sont en attente de réseau.", see: "offline-mode" },
   ],
 };
 

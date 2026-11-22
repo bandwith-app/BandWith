@@ -343,8 +343,8 @@
 
   <h3 id="art-offline-mode" data-roles="admin,member,deputy">Using BandWith offline</h3>
   <p>Your bands, gigs and setlists stay available without a connection: the app shows what it last loaded on this device. A strip under the status bar says <b class="ui">You’re offline · showing cached info</b>.</p>
-  <p>Creating, editing or deleting a gig or rehearsal works offline. The app says <b class="ui">Saved offline • Will sync when connected</b> and the strip counts the waiting changes, for example <b class="ui">You’re offline · 2 changes will sync</b>.</p>
-  <p>When the connection comes back, the changes are sent on their own: the strip shows <b class="ui">Back online · 2 changes to sync</b> with a <b class="ui">Sync now</b> button, then <b class="ui">Back online · synced</b>.</p>
+  <p>Creating, editing or deleting a gig or rehearsal works offline. The app says <b class="ui">Saved offline • Will sync when connected</b> and the strip counts the waiting changes, for example <b class="ui">You’re offline · 2 changes waiting for signal</b>.</p>
+  <p>When the connection comes back, the changes are sent on their own: the strip shows <b class="ui">Back online · sending 2 changes</b> with a <b class="ui">Send now</b> button, then <b class="ui">Back online · up to date</b>. For Stage and Live mode, see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>.</p>
   <p class="steps-title">Needs a connection</p>
   <ul>
     <li>Saving a quote (the event is saved offline, the quote itself is not).</li>
@@ -352,7 +352,7 @@
     <li>Answering invites and joining a band.</li>
     <li>Signing in for the first time on a device.</li>
   </ul>
-  <aside class="note tip">Signing out sends waiting changes first, which can take a few seconds. To be sure, sign out only once the strip says synced.</aside>
+  <aside class="note tip">Signing out sends waiting changes first, which can take a few seconds. To be sure, sign out only once the strip says up to date.</aside>
 
   <h2>Profile and settings</h2>
 
@@ -374,6 +374,7 @@
     <tbody>
       <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Your account (all devices)</td></tr>
       <tr><td><b class="ui">Calendar sync</b></td><td>A private link to your events for <b class="ui">Apple Calendar</b>, <b class="ui">Google Calendar</b> or Outlook (<a data-ref="calendar-sync">Sync your events with your calendar</a>)</td><td>Your account (all devices)</td></tr>
+      <tr><td><b class="ui">Offline &amp; live</b></td><td><b class="ui">Automatic download</b>, <b class="ui">Wi-Fi only</b>, <b class="ui">Space used</b> for the setlists kept for no signal (<a data-ref="offline-and-live-settings">Change your offline choice in Settings</a>)</td><td>Mixed: <b class="ui">Automatic download</b> follows your account, the rest is this device</td></tr>
       <tr><td><b class="ui">Appearance</b></td><td>Theme: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>This device</td></tr>
       <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> or <b class="ui">Miles</b></td><td>This device</td></tr>
       <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, <b class="ui">Anonymous usage statistics</b>, <b class="ui">Send crash reports</b>, personal gig privacy, <b class="ui">Export my data</b>, Terms, Privacy Policy, <b class="ui">Delete account</b></td><td>Mixed (see <a data-ref="privacy-and-account-settings">Privacy &amp; account</a>)</td></tr>

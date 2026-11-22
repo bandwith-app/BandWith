@@ -145,6 +145,11 @@ const music: AreaText = {
             ["**Durata**", "Minuti e secondi in due caselle (min : sec). Serve per i totali delle scalette."],
             ["**BPM**", "Il tempo, fino a 3 cifre. Lo usa il click della Modalità palco."],
             ["**Tonalità**", "Testo libero, per esempio Do magg. Compare nell’elenco, sul palco e nel controllo di trasposizione del lettore."],
+            // <draft live-tempo>
+            ["**Tempo (metro)**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8. Lo usano il click e il conteggio. Se non ne scegli uno, vale quello della griglia accordi, altrimenti 4/4. Vedi [[song-live-settings]]."],
+            ["**Conteggio**", "**1 battuta** o **2 battute**, e quanti movimenti prima parte il brano (**Parte sul primo movimento** se nessuno)."],
+            ["**Suonato con una base**", "Il brano non ha conteggio sul palco: è la base a far partire la band."],
+            // </draft>
             ["**Tap**, **BPM dalla registrazione**, ÷2 / ×2", "Strumenti sotto il BPM per trovare il tempo. Vedi [[transpose-and-tempo]]."],
             ["**Trasponi per la band**", "Sposta la tonalità, la griglia accordi e gli accordi del testo per tutti. Compare solo quando c’è qualcosa da trasporre."],
             ["**Genere**", "Etichette da scegliere tra i generi della band, oppure una nuova con il chip tratteggiato **Genere** e poi **Aggiungi genere**. I generi filtrano la libreria quando prepari una scaletta."],
@@ -264,7 +269,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["chordpro", "markdown", "sezioni", "strofa", "ritornello", "accordi in linea", "formato", "json"],
-      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics"],
+      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics", "voice-parts"],
       body: [
         { type: "p", text: "Il testo è semplice testo con pochi segni. Lo stesso testo contiene parole e accordi, così un brano va bene sia per chi canta sia per chi suona." },
         {
@@ -275,6 +280,7 @@ const music: AreaText = {
             "Una riga vuota separa le strofe.",
             "Un accordo va tra parentesi quadre subito prima della parola su cui cade: `[Am]word`. Nel lettore compare sopra quella parola.",
             "`**bold**` e `*italic*` funzionano all’interno di una riga.",
+            "Le parti vocali sono segni intorno alle parole: `{v2}…{/v2}` seconda voce, `{bv}…{/bv}` cori, `{all}…{/all}` tutti, `{sp}…{/sp}` parlato. Vedi [[voice-parts]].",
             "Funziona anche il JSON, per esempio un elenco di righe o un elenco di sezioni con nome e righe.",
           ],
         },
@@ -450,7 +456,7 @@ const music: AreaText = {
       roles: ["admin"],
       kind: "task",
       keywords: ["editor accordi", "modificare accordi", "aggiungere accordo", "spostare accordo", "copiare accordi", "ireal"],
-      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro"],
+      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro", "mark-voice-parts"],
       body: [
         {
           type: "steps",
@@ -459,6 +465,7 @@ const music: AreaText = {
             "Tocca una parola. La barra in basso mostra **Accordo su “…”** e gli accordi che il brano usa già.",
             "Tocca un accordo per metterlo sulla parola, oppure scrivine uno nuovo in **Nuovo accordo, es. F#m7** e tocca **Aggiungi**. Tocca **Nessun accordo** per toglierlo. Tocca **Fatto** per chiudere la barra.",
             "Per spostare un accordo, trascinalo su un’altra parola.",
+            "Per segnare chi canta una riga, usa **Voce** nella stessa barra: vedi [[mark-voice-parts]].",
             "Per riusare gli accordi di una strofa, tocca **Copia accordi da…** sopra una sezione e scegli la sezione da cui copiarli.",
             "Se il brano ha una chart iReal, tocca **Da iReal (…)** sopra una sezione per mettere sulle sue righe gli accordi della sezione corrispondente.",
             "Tocca **Annulla** in alto a destra per tornare indietro di un passo. Quando hai finito, tocca **Salva accordi**.",
@@ -487,6 +494,159 @@ const music: AreaText = {
           rows: [
             { role: "admin", text: "Modifica gli accordi della band per tutti." },
             { role: "member", text: "Non ha l’editor degli accordi. Propone una correzione con **Suggerisci una modifica** (vedi [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    // ───────────────────────────── Voice parts ─────────────────────────────
+    {
+      id: "voice-parts",
+      title: "Le parti vocali nel testo",
+      summary: "Voce principale, seconda voce, cori, tutti insieme e parlato hanno ognuno il suo aspetto, così ogni cantante trova la sua parte.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["voci", "armonia", "cori", "seconda voce", "coro", "parlato", "voce principale", "parti", "bv", "v2", "controcanto", "backing vocals"],
+      related: ["mark-voice-parts", "who-sings-what", "highlight-my-part", "lyrics-and-chords-format", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Quando un brano ha più di una voce, il testo può mostrare chi canta quali parole. Ogni parte ha il suo aspetto, fatto di una forma e di un colore, così si legge su un palco buio, al sole e anche per chi non distingue i colori.",
+        },
+        {
+          type: "table",
+          head: ["Parte", "Come appare"],
+          rows: [
+            ["**Voce principale**", "Testo normale. Le righe senza parte sono della voce principale."],
+            ["**Seconda voce**", "Una linea colorata sotto le parole."],
+            ["**Cori**", "Corsivo e più tenue, con una barra colorata a sinistra."],
+            ["**Tutti**", "Grassetto: cantano tutti."],
+            ["**Parlato**", "Maiuscoletto, in grigio."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Dove le vedi",
+          items: [
+            "Nel lettore del brano, in Modalità palco e Modalità live, in Solo il brano e sulla spia da palco di un dispositivo a doppio schermo.",
+            "Una legenda in cima al brano nomina le parti che usa e chi canta ciascuna, per esempio “Cori · Sam, Alex”. Compare solo se il brano ha delle parti.",
+            "Anche senza campo: le parti viaggiano con la scaletta sul tuo telefono ([[live-mode-offline]]).",
+            "Una nota della prova su una riga nomina la parte, per esempio “Cori · riga 3”.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Come si scrivono",
+          items: [
+            "Non devi scrivere niente: gli admin segnano le parti nell’editor degli accordi ([[mark-voice-parts]]).",
+            "Nel testo, una parte è un breve segno intorno alle parole: `{v2}…{/v2}` seconda voce, `{bv}…{/bv}` cori, `{all}…{/all}` tutti, `{sp}…{/sp}` parlato. La voce principale non ha segno.",
+            "Per esempio `{bv}(ooh, [Am]yeah){/bv}` è una riga di cori con un accordo su “yeah”.",
+            "Una parte copre una riga intera o alcune sue parole, mai più di una riga. L’app sistema i segni quando il brano viene salvato.",
+            "Le tue note e le note della prova restano sulla loro riga quando si aggiungono le parti.",
+          ],
+        },
+        { type: "shot", id: "voice-parts-stage", caption: "Un brano con le parti vocali in Modalità palco: la legenda in alto, le righe dei cori in corsivo con una barra, la seconda voce sottolineata." },
+      ],
+    },
+    {
+      id: "mark-voice-parts",
+      title: "Segna chi canta ogni riga",
+      summary: "Nell’editor degli accordi, tocca una riga o alcune parole e scegli Voce principale, Seconda voce, Cori, Tutti o Parlato.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["scelta voce", "segnare i cori", "armonia", "seconda voce", "modificare le parti", "voce", "parti vocali"],
+      related: ["voice-parts", "chord-editor", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Nel Repertorio, tocca la riga del brano e poi **Modifica accordi**.",
+            "Tocca una parola della riga che vuoi segnare. La barra in basso mostra **Voce** sopra gli accordi.",
+            "Lascia **Tutta la riga** per segnare la riga intera. Per segnare solo alcune parole, tocca **Solo queste parole**, poi tocca le altre parole della stessa riga.",
+            "Tocca una parte: **Voce principale**, **Seconda voce**, **Cori**, **Tutti** o **Parlato**. Le parole prendono subito il suo aspetto.",
+            "Per togliere una parte, tocca una delle sue parole e scegli **Voce principale**.",
+            "Tocca **Salva accordi**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Lascia che te le suggerisca l’app",
+          items: [
+            "Nei testi incollati o importati, una riga tutta tra parentesi, come “(ooh, yeah)”, sembra un coro. Una riga che inizia con “All:” sembra cantata da tutti insieme.",
+            "L’editor degli accordi e il modulo del brano dicono allora, per esempio, “2 righe sembrano cori o parti di tutti.”",
+            "Tocca **Segna le parti vocali** per segnarle. Non cambia niente finché non tocchi.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Segna le parti per tutta la band." },
+            { role: "member", text: "Vede le parti. Per chiedere una modifica, usa **Suggerisci una modifica** (vedi [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+        { type: "shot", id: "voice-picker", caption: "L’editor degli accordi con Voce aperto: Tutta la riga o Solo queste parole, poi le cinque parti." },
+      ],
+    },
+    {
+      id: "who-sings-what",
+      title: "Indica chi canta cosa",
+      summary: "Assegna ogni parte vocale ai membri che la cantano, per tutti i gig o solo per una scaletta.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["assegnare i cantanti", "parti vocali", "coristi", "cantante sostituto", "chi canta", "cantanti", "voci"],
+      related: ["voice-parts", "highlight-my-part", "mark-voice-parts"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Apri un brano che ha le parti vocali: nel lettore del brano, oppure in Modalità palco o Modalità live.",
+            "Nella legenda in cima al testo, tocca **Chi canta cosa**.",
+            "Sotto ogni parte, tocca i membri che la cantano. Tocca di nuovo un nome per toglierlo.",
+            "In un gig, scegli **Ogni gig** per salvarlo sul brano, oppure **Solo questo gig** per questa scaletta, per esempio quando canta un sostituto.",
+            "Tocca **Salva**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "La prima volta, le parti vengono riempite in base allo strumento di ogni membro: “Cori” va a Cori, “Voce principale” a Voce principale. Cambia quello che serve e salva.",
+            "Per tornare alle parti del brano in un gig, apri **Solo questo gig** e tocca **Usa le parti del brano**.",
+            "I nomi compaiono nella legenda, e ogni cantante vede la propria parte evidenziata ([[highlight-my-part]]).",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Indica chi canta cosa, per il brano o per un solo gig." },
+            { role: "member", text: "Vede i nomi nella legenda. Non può cambiarli." },
+          ],
+        },
+        { type: "shot", id: "who-sings-what", caption: "Chi canta cosa in un gig: Ogni gig o Solo questo gig, e i membri sotto ogni parte." },
+      ],
+    },
+    {
+      id: "highlight-my-part",
+      title: "Evidenzia la tua parte",
+      summary: "Tieni accese le righe che canti e attenua un po’ le altre, sul tuo dispositivo.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["la mia parte", "attenuare", "evidenziare", "cantante", "corista", "righe attenuate", "righe sbiadite"],
+      related: ["voice-parts", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Apri un brano con le parti vocali nel lettore, in Modalità palco o in Modalità live.",
+            "**Evidenzia la mia parte** nella legenda è attivo: le tue righe restano accese e le altre sono un po’ attenuate.",
+            "La prima volta, un suggerimento dice “Le righe che non canti sono attenuate.” Tocca **Ho capito**.",
+            "Per vedere tutte le righe uguali, tocca **Evidenzia la mia parte** per spegnerlo. Toccalo di nuovo per riaccenderlo.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "La tua parte viene da **Chi canta cosa**. Se lì non c’è niente, viene dal tuo strumento nella band: con “Cori” vedi evidenziati i Cori.",
+            "Le righe che cantano tutti (**Tutti**) restano sempre accese.",
+            "L’interruttore compare solo se il brano ha una parte per te. Resta salvato su questo dispositivo e vale per tutti i brani.",
           ],
         },
       ],
@@ -1188,14 +1348,14 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["palco", "giorno del gig", "live", "programma della serata", "go live", "modalità concerto", "prova", "modalità live", "prova live", "solo il brano", "solo testo", "vista pulita"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "live-mode-offline", "voice-parts", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
           title: "Aprire la Modalità palco",
           items: [
             "Apri un gig della band in programma e tocca il pulsante **Riproduci** in alto a destra (**Apri modalità palco**). Il giorno del gig è evidenziato.",
-            "Oppure, nella Home, tocca **Go live** sotto il tuo prossimo gig.",
+            "Oppure, nella Home, tocca **In scena** sotto il tuo prossimo gig.",
             "Per uscire, tocca la X (**Esci dalla modalità palco**).",
             "Su una prova della band in programma lo stesso pulsante è **Apri modalità live**. Apre la Modalità live (vedi sotto); per uscire, **Esci dalla modalità live**.",
           ],
@@ -1281,7 +1441,7 @@ const music: AreaText = {
             "Lo schermo resta acceso finché la Modalità palco è aperta.",
             "**Schermo intero** (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. Con testi o griglie in scaletta mostra solo il brano (**Solo il brano**); senza, la scaletta prende tutto lo schermo e **Esci da schermo intero** o Indietro lo chiude.",
             "Senza scaletta, dice “Nessuna scaletta collegata a questo gig.”",
-            "Nelle app per telefono e tablet, la scaletta con testi e spartiti resta salvata sul dispositivo quando apri il gig, così la Modalità palco funziona senza internet. Uscendo dall’account viene cancellata.",
+            "Nelle app per telefono e tablet, le scalette dei tuoi prossimi 7 giorni restano sul dispositivo, così la Modalità palco funziona senza campo. Vedi [[live-mode-offline]].",
             "Senza internet e senza una copia sul dispositivo, dice “Offline: non è stato possibile caricare la scaletta.” con **Riprova**.",
           ],
         },
@@ -1408,7 +1568,9 @@ const music: AreaText = {
           type: "list",
           items: [
             "Il click è solo visivo: non c’è suono. Non blocca i tocchi sullo schermo.",
-            "I battiti per battuta vengono dal tempo in chiave della chart iReal del brano, altrimenti sono 4.",
+            // <draft live-tempo>
+            "I battiti per battuta vengono dal **Tempo (metro)** del brano, altrimenti dalla sua griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per dare il conteggio alla band, vedi [[count-in]].",
+            // </draft>
             "Un brano senza BPM non può avviare il click (**Nessun BPM per questo brano**). Aggiungi il BPM nel modulo del brano.",
             "Passando a un altro brano, il click del brano precedente si nasconde.",
             "I telefoni restano a tempo entro circa 20–40 ms: va bene per un conteggio iniziale e come riferimento di tempo, non come click in cuffia.",
@@ -1417,6 +1579,176 @@ const music: AreaText = {
         },
       ],
     },
+    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
+    {
+      id: "song-live-settings",
+      title: "Prepara un brano per il conteggio",
+      summary: "Dai a un brano il suo tempo (metro), la durata del conteggio, un’anacrusi, e se lo fa partire una base.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["tempo in chiave", "metro", "6/8", "7/8", "conteggio", "anacrusi", "levare", "base", "sequenza", "battute"],
+      related: ["count-in", "follow-the-tempo", "song-fields", "transpose-and-tempo"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Apri il menu del brano e tocca **Modifica**, poi **Avanti** per arrivare a **Dettagli · opzionale**.",
+            "Sotto **BPM** e **Tonalità**, scegli il **Tempo (metro)**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8.",
+            "Sotto **Conteggio**, scegli **1 battuta** o **2 battute**. Due battute vanno bene per i brani lenti: la prima battuta conta a metà tempo.",
+            "Se il brano parte prima del primo movimento della battuta, tocca + finché dice quanti movimenti prima, per esempio **Parte 2 movimenti prima**. Tocca − per tornare a **Parte sul primo movimento**.",
+            "Se è una base a far partire la band, attiva **Suonato con una base**: il brano non ha conteggio sul palco.",
+            "Tocca **Salva ora**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Buono a sapersi",
+          items: [
+            "Se non scegli un tempo, il brano usa quello della sua griglia accordi (il modulo dice **Dalla griglia accordi.**), altrimenti 4/4.",
+            "Il click e il conteggio seguono il tempo: 6/8 e 12/8 si contano in movimenti puntati, come li contano i musicisti.",
+            "Il **BPM** è il movimento che conti: la semiminima in 4/4, 3/4 o 5/8, la semiminima puntata in 6/8, 9/8 e 12/8.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Imposta il tempo, il conteggio e la base per la band." },
+            { role: "member", text: "Vede il risultato sul palco. Non può cambiarlo." },
+          ],
+        },
+        { type: "shot", id: "song-live-fields", caption: "Il modulo del brano sotto BPM e Tonalità: Tempo (metro), Conteggio, l’anacrusi e Suonato con una base." },
+      ],
+    },
+    {
+      id: "count-in",
+      title: "Dai il conteggio alla band",
+      summary: "Il leader tocca Avvia il conteggio e ogni telefono mostra lo stesso conto alla rovescia nel tempo del brano, poi GO dove entra la band.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["conteggio", "conto alla rovescia", "contare", "dare il quattro", "1 2 3 4", "partire insieme", "primo movimento", "vibrazione", "metronomo", "count-in"],
+      related: ["song-live-settings", "follow-the-tempo", "stage-click", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Guida il conteggio",
+          items: [
+            "In Modalità palco o Modalità live, vai al brano.",
+            "Tocca **Avvia il conteggio**.",
+            "Dopo 1,5 secondi, ogni telefono in Modalità palco mostra un conto alla rovescia a tutto schermo nel tempo del brano: un numero grande a ogni movimento e un anello che si riempie battuta dopo battuta.",
+            "La band entra sul **GO**. Il conto alla rovescia sparisce da solo.",
+            "Per fermarlo prima della fine, tocca **Stop**. Si ferma su tutti i telefoni.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Tempo (metro)", "Cosa mostra il conto alla rovescia"],
+          rows: [
+            ["4/4", "4 3 2 1 GO"],
+            ["3/4", "3 2 1 GO"],
+            ["2/4", "2 1 GO"],
+            ["5/4", "5 4 3 2 1 GO"],
+            ["6/8, 12/8", "I movimenti puntati come numeri grandi (2 o 4), le crome come puntini piccoli."],
+            ["5/8, 7/8", "I movimenti raggruppati come nella griglia, per esempio 2+2+3: corto, corto, lungo."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Come conta",
+          items: [
+            "Con **2 battute** impostate sul brano, la prima battuta conta a metà tempo (“1 — 2 —”) e la seconda a tempo.",
+            "Un brano che parte qualche movimento prima chiude il conto alla rovescia con **GO** sulla sua prima nota, non sull’1.",
+            "La band sceglie il verso: un conto alla rovescia (4 3 2 1, quello predefinito) o il conteggio classico (1 2 3 4).",
+            "Se **Segui il tempo** è attivo, il brano inizia a scorrere sul **GO**. Se il click è in corso, continua a tempo.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Sul tuo telefono (facoltativo)",
+          items: [
+            "Una vibrazione a ogni movimento, più forte sul primo: per chi non può guardare lo schermo.",
+            "Un conteggio a voce o un click nelle cuffie. Non suona mai dall’altoparlante del telefono, a meno che tu non lo scelga.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Quando non c’è conteggio",
+          items: [
+            "Un brano impostato come **Suonato con una base** non ha il pulsante **Avvia il conteggio**: è la base a far partire la band. Un admin può comunque avviarne uno dal menu del brano.",
+            "Mentre la regia suona l’audio del brano, il conteggio non è disponibile.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Buono a sapersi",
+          items: [
+            "Un telefono che riceve il messaggio in ritardo si unisce al conto alla rovescia sul movimento giusto.",
+            "Senza campo, il conteggio arriva ai telefoni vicini via Bluetooth.",
+            "I telefoni restano a tempo entro circa 20–40 ms.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Avvia e ferma il conteggio per tutta la band." },
+            { role: "member", text: "Lo vede sul telefono e sceglie vibrazione o cuffie per il proprio dispositivo." },
+          ],
+        },
+        { type: "shot", id: "stage-count-in", caption: "Il conteggio su ogni telefono: il numero del movimento, l’anello e Stop." },
+      ],
+    },
+    {
+      id: "follow-the-tempo",
+      title: "Segui il tempo",
+      summary: "Attivalo e la griglia, la struttura o il testo scorrono con il brano, a tempo con il telefono del leader.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["seguire il tempo", "scorrimento automatico", "battuta corrente", "sezione successiva", "scorrere il testo", "tieni", "vamp", "velocità di prova", "auto scroll"],
+      related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Attivalo",
+          items: [
+            "In Modalità palco o Modalità live, apri le scelte di vista della scheda del brano (dove scegli **Testo e accordi** o **Griglia accordi**).",
+            "Attiva **Segui il tempo**. È spento all’inizio e resta salvato su questo dispositivo.",
+            "Quando il leader avvia il brano con **Avvia il conteggio** o con il click, il tuo schermo si muove con lui.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Vista", "Cosa si muove"],
+          rows: [
+            ["**Griglia accordi**", "La battuta corrente si illumina, e la griglia scorre per tenerla in vista."],
+            ["Struttura", "La sezione corrente è evidenziata. Una striscia in alto dice cosa viene dopo, per esempio “Poi: Bridge tra 4 battute”."],
+            ["**Testo e accordi**, **Testo**, **Solo il brano**", "La riga corrente è evidenziata e il testo scorre fluido. Senza i tempi delle righe, si muove sezione per sezione."],
+            ["Spia da palco", "Un grande conto alla rovescia verso la sezione successiva, per esempio “Ritornello tra 4”."],
+          ],
+        },
+        {
+          type: "steps",
+          title: "Guidalo",
+          items: [
+            "Avvia il brano con **Avvia il conteggio** o con il click. La battuta 1 parte su ogni telefono nello stesso momento.",
+            "Se la band allunga o accorcia una parte, tocca la sezione, la battuta o la riga dove siete: tutti saltano lì.",
+            "Tocca **Tieni** per ripetere la sezione corrente (un vamp, un assolo) finché non lo tocchi di nuovo.",
+            "Tocca **Stop** per finire. Anche passare a un altro brano lo ferma.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Buono a sapersi",
+          items: [
+            "Solo il leader sposta il punto della band. I membri accendono o spengono la vista sul proprio telefono.",
+            "Per seguire un brano serve un BPM. Senza, l’interruttore dice “Aggiungi un BPM per seguire questo brano”.",
+            "Ritornelli, finali, D.C., D.S., segno e coda della griglia vengono suonati in ordine. Una corona aspetta il tocco del leader.",
+            "Per seguire riga per riga, un admin imposta i tempi delle righe nel brano con **Sincronizza le righe**: tocca a tempo con la registrazione, oppure indica le battute di ogni riga.",
+            "A una prova, **Suona all’80%** rallenta insieme il click e lo scorrimento. Il BPM del brano resta lo stesso.",
+          ],
+        },
+        { type: "shot", id: "stage-follow-tempo", caption: "Segui il tempo sulla griglia accordi: la battuta corrente illuminata e la sezione successiva in alto." },
+      ],
+    },
+    // </draft>
     {
       id: "stage-manager",
       title: "Suona l’audio dei brani dalla regia",
@@ -1504,7 +1836,7 @@ const music: AreaText = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["bluetooth", "offline", "senza campo", "senza wifi", "ble", "chiave palco"],
-      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
         {
           type: "p",
@@ -1514,7 +1846,7 @@ const music: AreaText = {
           type: "steps",
           title: "Preparati prima del gig",
           items: [
-            "Ognuno apre il gig una volta mentre è online. L’app salva sul telefono la scaletta (con testi e spartiti) e la chiave Bluetooth del gig.",
+            "Ognuno ha la scaletta sul telefono: di’ sì al download (vedi [[live-mode-offline]]) oppure apri il gig una volta mentre sei online. Insieme arriva la chiave Bluetooth del gig.",
             "Attiva il Bluetooth e consenti a BandWith di usarlo.",
             "Sul palco, tutti aprono la Modalità palco. Il leader mostra **Bluetooth** o **Live · BT**; i membri mostrano **· BT** dopo l’etichetta di chi seguono.",
           ],
@@ -1538,6 +1870,200 @@ const music: AreaText = {
           type: "devices",
           rows: [{ devices: ["web"], text: "Niente sincronizzazione Bluetooth e niente copia della scaletta sul dispositivo: sul web la Modalità palco ha bisogno di internet." }],
         },
+      ],
+    },
+    // ─────────────────────────── Without signal ───────────────────────────
+    {
+      id: "live-mode-offline",
+      title: "Usa la Modalità palco e la Modalità live senza campo",
+      summary: "Il tuo telefono tiene le scalette dei tuoi prossimi 7 giorni, con testi, accordi e le tue note, così la Modalità palco e la Modalità live funzionano senza campo.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["offline", "senza campo", "senza segnale", "senza internet", "download", "scaletta offline", "modalità aereo", "seminterrato", "cantina", "7 giorni", "automatico"],
+      related: ["offline-and-live-settings", "offline-members-ready", "changes-without-signal", "stage-mode", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "p",
+          text: "In molti locali non c’è campo. Nelle app per telefono e tablet, BandWith tiene sul tuo dispositivo le scalette dei tuoi prossimi 7 giorni, così la Modalità palco e la Modalità live si aprono e funzionano senza internet.",
+        },
+        {
+          type: "list",
+          title: "Cosa resta sul tuo dispositivo",
+          items: [
+            "Ogni gig e prova dei prossimi 7 giorni a cui partecipi e che ha una scaletta. I gig che hai rifiutato restano fuori.",
+            "Per ogni brano: titolo, artista, tonalità, BPM, il testo con accordi e parti vocali, la griglia accordi e chi canta cosa.",
+            "Le tue note e i tuoi file su quei brani. Non le note degli altri.",
+            "Mai compensi, contratti o preventivi.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "La prima volta, di’ sì una volta sola",
+          items: [
+            "Circa una settimana prima del gig ricevi una push, per esempio “La scaletta di sabato, pronta anche senza segnale · Scarica testi, accordi e strutture per The Loft, Brooklyn (12 brani). Tocca per vedere cosa include.”",
+            "Toccala. Il gig si apre con un foglio: **La scaletta con te, anche senza campo.** Dice cosa viene salvato, dove, e quanto spazio occupa più o meno.",
+            "Tocca **Scarica e lascia automatico**. Questa scaletta e le prossime si scaricano da sole, senza altre domande.",
+            "Oppure tocca **Solo questa serata** (a una prova, **Solo questa prova**) per tenere solo questa.",
+            "Oppure tocca **Non ora**. Te lo chiede ancora una volta, il giorno prima.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Nella pagina del gig",
+          items: [
+            "Sotto la scaletta, **Pronto offline · aggiornato …** vuol dire che la scaletta è su questo dispositivo ed è aggiornata.",
+            "**Non ancora su questo dispositivo** vuol dire che non è ancora salvata. Tocca **Scarica per l’offline** mentre hai campo. La prima volta, lo stesso foglio ti chiede come la vuoi.",
+            "Se il download non riesce, dice “Download non riuscito. Riprova con internet.”",
+          ],
+        },
+        {
+          type: "list",
+          title: "Sul palco senza campo",
+          items: [
+            "Apri il gig o la prova come sempre e tocca **Apri modalità palco**, oppure **In scena** nella Home. Si apre dalla copia sul tuo dispositivo.",
+            "Un’etichetta in alto dice **Offline · contenuti di …**, con l’ora in cui la copia è stata salvata.",
+            "I cambi di brano del leader ti arrivano comunque via Bluetooth: vedi [[stage-bluetooth-sync]].",
+            "Le note e le modifiche che fai aspettano sul telefono e partono quando torna il campo: vedi [[changes-without-signal]].",
+          ],
+        },
+        {
+          type: "list",
+          title: "Si aggiorna da sola",
+          items: [
+            "Quando un admin cambia la scaletta o uno dei suoi brani, la tua copia si aggiorna quando apri l’app, quando ci torni, e in background quando il telefono lo permette.",
+            "La copia viene cancellata il giorno dopo il gig, quando lasci la band o cambia il tuo ruolo, e quando esci dall’account.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "La copia è solo sul tuo dispositivo e solo per te. Gli admin vedono se il tuo telefono è pronto, mai cosa contiene.",
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Riceve la stessa domanda la prima volta, e vede anche chi nella band è pronto: vedi [[offline-members-ready]]." },
+            { role: "member", text: "Dice sì una volta; dopo, le scalette si scaricano da sole." },
+            { role: "deputy", text: "I sostituti non hanno le scalette della band, quindi per loro non viene salvato niente." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "Sul web l’app ha bisogno di internet per aprirsi, quindi non si può usare senza campo. Sul palco usa l’app per telefono o tablet." }],
+        },
+        { type: "shot", id: "live-pack-consent", caption: "La domanda della prima volta: Scarica e lascia automatico, Solo questa serata o Non ora." },
+        { type: "shot", id: "live-offline-ready", caption: "Sotto la scaletta: Pronto offline e, per gli admin, quanti membri sono pronti." },
+      ],
+    },
+    {
+      id: "offline-and-live-settings",
+      title: "Cambia la tua scelta offline nelle Impostazioni",
+      summary: "Attiva o spegni i download automatici, aspetta il Wi-Fi, guarda lo spazio occupato e cancella ciò che è salvato.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["impostazioni", "offline", "solo wifi", "cancellare offline", "memoria", "spazio", "download automatico", "dati mobili", "giga"],
+      related: ["live-mode-offline", "settings-overview"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Apri il menu, tocca **Impostazioni e account**, poi **Offline e live**.",
+            "Attiva **Download automatico** per ricevere da solo ogni scaletta dei tuoi prossimi 7 giorni. Spegnilo perché te lo chieda per ogni gig.",
+            "Attiva **Solo con Wi-Fi** se su questo dispositivo i download automatici devono aspettare il Wi-Fi.",
+            "**Spazio occupato** mostra quante scalette sono salvate e quanto spazio occupano, per esempio “2 scalette · 1,4 MB”.",
+            "Per liberare lo spazio, tocca **Elimina tutto**, poi di nuovo **Elimina tutto** per confermare. Le scalette tornano quando apri il gig con il campo.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "**Download automatico** segue il tuo account su ogni dispositivo. **Solo con Wi-Fi** e ciò che è salvato valgono solo per questo dispositivo.",
+            "Il testo di una scaletta occupa poco. Sono i tuoi file sui brani a prendere quasi tutto lo spazio.",
+          ],
+        },
+        { type: "shot", id: "settings-offline-live", caption: "Impostazioni › Offline e live: Download automatico, Solo con Wi-Fi e Spazio occupato." },
+      ],
+    },
+    {
+      id: "offline-members-ready",
+      title: "Guarda chi ha la scaletta per quando non c’è campo",
+      summary: "In un gig o in una prova, guarda quanti membri hanno la scaletta sul telefono, e ricordalo agli altri.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["pronti", "pronto offline", "ricorda", "promemoria", "membri pronti", "download", "4 su 5"],
+      related: ["live-mode-offline", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Apri il gig o la prova. Sotto la scaletta, trova **Offline: … membri pronti su …**.",
+            "Se sono tutti pronti, dice “Tutti hanno la scaletta sul telefono.” Non devi fare altro.",
+            "Altrimenti, tocca la riga. Elenca chi non è ancora pronto.",
+            "Tocca **Ricorda** accanto a un nome. Riceve una sola push che gli chiede di scaricarla, e il pulsante dice **Promemoria inviato**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Un membro è pronto quando la sua app per telefono o tablet ha l’ultima versione di questa scaletta. Dopo che cambi la scaletta, torna a contare quando il suo telefono si è aggiornato.",
+            "Ogni membro riceve al massimo un promemoria ogni 6 ore per lo stesso gig.",
+            "I membri che usano solo l’app web non possono essere pronti: la copia per quando non c’è campo è nelle app per telefono e tablet.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "Vedi solo se un telefono è pronto, mai cosa contiene né le note di nessuno.",
+        },
+      ],
+    },
+    {
+      id: "changes-without-signal",
+      title: "Modifiche fatte senza campo",
+      summary: "Le tue note, i suggerimenti e il nuovo ordine del leader aspettano sul telefono e partono da soli quando torna il campo.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["modifiche offline", "in attesa di segnale", "invia ora", "sincronizzazione", "coda", "in sospeso", "da inviare"],
+      related: ["live-mode-offline", "my-notes-and-files", "lead-stage-mode", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "Senza campo puoi continuare a lavorare in Modalità palco e Modalità live. Quello che scrivi viene salvato subito sul telefono e inviato appena torna il campo.",
+        },
+        {
+          type: "list",
+          title: "Cosa aspetta sul telefono",
+          items: [
+            "Le tue note su un brano ([[my-notes-and-files]]).",
+            "Una **Nota per la band** e le modifiche suggerite a un brano.",
+            "Le note e i segni della prova.",
+            "Il nuovo ordine della scaletta del leader in Modalità palco.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Cosa vedi",
+          items: [
+            "Una barra in alto, per esempio **Sei offline · 2 modifiche in attesa di segnale**. Se non c’è niente in attesa dice **Sei offline · dati in cache**.",
+            "Dopo che il leader trascina un brano senza campo, lo stato dice **Salvato su questo telefono**, poi **Salvato** quando arriva alla scaletta della band.",
+            "Quando torna il campo, la barra dice **Di nuovo online · invio di 2 modifiche**, poi **Di nuovo online · tutto aggiornato**.",
+            "Per inviare subito senza aspettare, tocca **Invia ora** nella barra.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Quando parte",
+          items: [
+            "Appena torna il campo, quando riapri l’app, e ogni 30 secondi finché c’è qualcosa in attesa.",
+            "Chiudere l’app non perde ciò che è in attesa. Parte la prossima volta che apri l’app con il campo.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "tip",
+          text: "I membri vicini vedono subito il nuovo ordine del leader via Bluetooth, prima che venga salvato.",
+        },
+        { type: "shot", id: "stage-offline-banner", caption: "La Modalità palco senza campo: l’etichetta dei contenuti e la barra con le modifiche in attesa di segnale." },
       ],
     },
     {
@@ -1597,7 +2123,19 @@ const music: AreaText = {
     },
     {
       q: "La Modalità palco funziona senza internet?",
-      a: "Nelle app per telefono e tablet sì: apri il gig una volta mentre sei online, e il telefono del leader tiene la band sincronizzata via Bluetooth. Sul web la Modalità palco ha bisogno di internet.",
+      a: "Nelle app per telefono e tablet sì. Di’ sì una volta al download e le scalette dei tuoi prossimi 7 giorni restano sul telefono; il telefono del leader tiene la band sullo stesso brano via Bluetooth. Sul web la Modalità palco ha bisogno di internet.",
+    },
+    {
+      q: "Il mio telefono scarica le scalette senza chiedere?",
+      a: "No. La prima volta te lo chiede un foglio. Scegli Scarica e lascia automatico e le scalette successive si scaricano da sole. Puoi cambiarlo quando vuoi in Impostazioni › Offline e live.",
+    },
+    {
+      q: "Le scalette sul mio telefono contengono compensi o contratti?",
+      a: "No. Solo testi, accordi, strutture, parti vocali e le tue note e i tuoi file. Compensi, contratti, preventivi e le note degli altri membri non finiscono mai sul tuo telefono.",
+    },
+    {
+      q: "Perché alcune righe del testo sono attenuate?",
+      a: "È attivo Evidenzia la mia parte: le righe che non canti sono un po’ attenuate. Tocca Evidenzia la mia parte in cima al brano per vederle tutte.",
     },
     {
       q: "Posso sentire il click?",
@@ -1617,6 +2155,12 @@ const music: AreaText = {
       q: "Perché sul web non vedo il forum di iReal Pro dentro l’app?",
       a: "Il forum non si può mostrare dentro una pagina web, quindi si apre in una finestra a parte. Copia lì un link e tocca Incolla link, oppure trascina il link sulla casella.",
     },
+    // <draft live-tempo>
+    {
+      q: "Perché su un brano non c’è il pulsante Avvia il conteggio?",
+      a: "Il brano è impostato come Suonato con una base: è la base a far partire la band. Un admin può comunque avviare un conteggio dal menu del brano.",
+    },
+    // </draft>
   ],
 
   glossary: [
@@ -1641,6 +2185,13 @@ const music: AreaText = {
     { term: "Click", definition: "Il metronomo visivo della Modalità palco: un bagliore a ogni battito, a tempo su tutti i telefoni.", see: "stage-click" },
     { term: "Programma della serata", definition: "Gli orari di Carico, Soundcheck, Show e Fine in cima alla Modalità palco.", see: "stage-mode" },
     { term: "Spia da palco", definition: "La Modalità palco su un dispositivo a doppio schermo in posizione laptop: info sul brano in alto, grandi tasti Indietro / Avanti in basso.", see: "stage-mode-on-devices" },
+    { term: "Scaletta offline", definition: "La copia della scaletta di un gig o di una prova salvata sul tuo telefono per quando non c’è campo: testi, accordi, parti vocali e le tue note.", see: "live-mode-offline" },
+    { term: "Parte vocale", definition: "Chi canta una riga o alcune parole: Voce principale, Seconda voce, Cori, Tutti o Parlato, ognuna con il suo aspetto.", see: "voice-parts" },
+    { term: "Evidenzia la mia parte", definition: "Un interruttore su ogni dispositivo che tiene accese le righe che canti e attenua un po’ le altre.", see: "highlight-my-part" },
+    // <draft live-tempo>
+    { term: "Conteggio", definition: "Il conto alla rovescia su ogni telefono, nel tempo e nel metro del brano, che finisce con GO dove entra la band.", see: "count-in" },
+    { term: "Segui il tempo", definition: "Un interruttore su ogni dispositivo che fa scorrere la griglia, la struttura o il testo con il brano, a tempo con il leader.", see: "follow-the-tempo" },
+    // </draft>
   ],
 };
 

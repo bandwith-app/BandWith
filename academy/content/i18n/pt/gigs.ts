@@ -994,7 +994,7 @@ const gigs: AreaText = {
     {
       id: "gig-on-home",
       title: "Os shows na tela Início",
-      summary: "O próximo show, a preparação, o Go live, os pagamentos pendentes e os rascunhos na tela Início.",
+      summary: "O próximo show, a preparação, o botão Em cena, os pagamentos pendentes e os rascunhos na tela Início.",
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["início", "próximo show", "go live", "pagamentos pendentes", "rascunhos", "painel"],
@@ -1004,7 +1004,7 @@ const gigs: AreaText = {
           type: "list",
           items: [
             "O cartão do próximo show mostra a data, os horários de chegada (montagem, passagem de som), o local, o link da setlist e, para os membros, **Seu cachê**.",
-            "Abaixo dele: **Preparação do show · {done}/{total}** e **Go live**, que abre o show direto no Modo palco.",
+            "Abaixo dele: **Preparação do show · {done}/{total}** e **Em cena**, que abre o show direto no Modo palco.",
             "**Pendências** lista **Pagamentos ({count})** para os admins ou **Seus pagamentos ({count})** para os membros. Veja [[fee-and-payouts-on-a-gig]].",
             "**Rascunhos** (admins): seus shows, ensaios e orçamentos inacabados. **Só você vê.**",
           ],

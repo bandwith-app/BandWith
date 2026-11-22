@@ -73,6 +73,11 @@
       <tr><td><b class="ui">Duration</b></td><td>Minutes and seconds in two boxes (min : sec). Used for setlist totals.</td></tr>
       <tr><td><b class="ui">BPM</b></td><td>Tempo, up to 3 digits. Stage mode's click uses it.</td></tr>
       <tr><td><b class="ui">Key</b></td><td>Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control.</td></tr>
+      <!-- <draft live-tempo> -->
+      <tr><td><b class="ui">Time signature</b></td><td>4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8. The click and the count-in use it. With none picked, the chord chart's, else 4/4 (see <a data-ref="song-live-settings">Set a song up for the count-in</a>).</td></tr>
+      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> or <b class="ui">2 bars</b>, and how many beats early the song starts (<b class="ui">Starts on the downbeat</b> when none).</td></tr>
+      <tr><td><b class="ui">Played with a backing track</b></td><td>The song gets no count-in on stage: the track starts the band.</td></tr>
+      <!-- </draft> -->
       <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Tools under BPM to find the tempo (see <a data-ref="transpose-and-tempo">Transpose a song and find its tempo</a>).</td></tr>
       <tr><td><b class="ui">Transpose for the band</b></td><td>Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose.</td></tr>
       <tr><td><b class="ui">Genre</b></td><td>Tags to pick from the band's genres, or a new one with the dashed <b class="ui">Genre</b> chip, then <b class="ui">Add genre</b>. Genres filter the library when you build a setlist.</td></tr>
@@ -144,6 +149,7 @@
     <li>A blank line separates stanzas.</li>
     <li>A chord goes in brackets right before the word it falls on: <code>[Am]word</code>. In the reader it shows above that word.</li>
     <li><code>**bold**</code> and <code>*italic*</code> work inside a line.</li>
+    <li>Voice parts are marks around the words: <code>{v2}…{/v2}</code> second voice, <code>{bv}…{/bv}</code> backing, <code>{all}…{/all}</code> all, <code>{sp}…{/sp}</code> spoken (see <a data-ref="voice-parts">Voice parts in the lyrics</a>).</li>
     <li>JSON also works, for example a list of lines or a list of sections with a name and lines.</li>
   </ul>
   <p class="steps-title">What the app tidies when the song is saved</p>
@@ -244,6 +250,7 @@
     <li>Tap a word. The bar at the bottom shows <b class="ui">Chord on “…”</b> and the chords the song already uses.</li>
     <li>Tap a chord to put it on the word, or type a new one in <b class="ui">New chord, e.g. F#m7</b> and tap <b class="ui">Add</b>. <b class="ui">No chord</b> removes it, <b class="ui">Done</b> closes the bar.</li>
     <li>To move a chord, drag it onto another word.</li>
+    <li>To mark who sings a line, use <b class="ui">Voice</b> in the same bar (see <a data-ref="mark-voice-parts">Mark who sings which line</a>).</li>
     <li>To reuse a verse's chords, tap <b class="ui">Copy chords from…</b> above a section and pick the section to copy from.</li>
     <li>If the song has an iReal chart, tap <b class="ui">From iReal (…)</b> above a section to lay the matching chart section's chords over its lines.</li>
     <li>Tap <b class="ui">Undo</b> at the top right to step back. When you are done, tap <b class="ui">Save chords</b>.</li>
@@ -260,6 +267,93 @@
     <div data-role="admin">Edits the band's chords for everyone.</div>
     <div data-role="member">Has no chord editor. Suggests a chord correction with <b class="ui">Suggest a change</b> (see <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</div>
   </div>
+
+  <h2>Voice parts</h2>
+
+  <h3 id="art-voice-parts" data-roles="admin,member">Voice parts in the lyrics</h3>
+  <p>When a song has more than one voice, its lyrics can show who sings which words. Each part has its own look, made of a shape and a colour, so it reads on a dark stage, in sunlight and for colour-blind players.</p>
+  <table class="grid">
+    <thead><tr><th>Part</th><th>How it looks</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lead</b></td><td>Plain text. Lines with no part are the lead.</td></tr>
+      <tr><td><b class="ui">2nd voice</b></td><td>A coloured line under the words.</td></tr>
+      <tr><td><b class="ui">Backing</b></td><td>Italic and softer, with a coloured bar on the left.</td></tr>
+      <tr><td><b class="ui">All</b></td><td>Bold: everyone sings.</td></tr>
+      <tr><td><b class="ui">Spoken</b></td><td>Small capitals, in grey.</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Where you see them</p>
+  <ul>
+    <li>In the song reader, in Stage mode and Live mode, in Song only and on the floor wedge of a dual-screen device.</li>
+    <li>A legend at the top of the song names the parts it uses and who sings each one, for example “Backing · Sam, Alex”. It shows only when the song has parts.</li>
+    <li>Without signal too: the parts travel with the setlist on the phone (see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>).</li>
+    <li>A rehearsal note on a line names the part, for example “Backing · line 3”.</li>
+  </ul>
+  <p class="steps-title">How they are written</p>
+  <ul>
+    <li>Nobody needs to type anything: admins mark the parts in the chord editor (see <a data-ref="mark-voice-parts">Mark who sings which line</a>).</li>
+    <li>In the lyrics text, a part is a short mark around the words: <code>{v2}…{/v2}</code> second voice, <code>{bv}…{/bv}</code> backing, <code>{all}…{/all}</code> all, <code>{sp}…{/sp}</code> spoken. The lead has no mark.</li>
+    <li>For example <code>{bv}(ooh, [Am]yeah){/bv}</code> is a backing line with a chord on “yeah”.</li>
+    <li>A part covers a whole line or a few words of it, never more than one line. The app tidies the marks when the song is saved.</li>
+    <li>Personal notes and rehearsal notes stay on their line when parts are added.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: voice-parts-stage@phone (integrated pass) -->
+
+  <h3 id="art-mark-voice-parts" data-roles="admin">Mark who sings which line</h3>
+  <p>In the chord editor, tap a line or a few words and pick Lead, 2nd voice, Backing, All or Spoken.</p>
+  <ol class="steps">
+    <li>In the Repertoire, tap the song row and tap <b class="ui">Edit chords</b>.</li>
+    <li>Tap a word in the line to mark. The bar at the bottom shows <b class="ui">Voice</b> above the chords.</li>
+    <li>Leave <b class="ui">Whole line</b> to mark the whole line. To mark only some words, tap <b class="ui">Just these words</b>, then the other words of the same line.</li>
+    <li>Tap a part: <b class="ui">Lead</b>, <b class="ui">2nd voice</b>, <b class="ui">Backing</b>, <b class="ui">All</b> or <b class="ui">Spoken</b>. The words take its look at once.</li>
+    <li>To remove a part, tap one of its words and pick <b class="ui">Lead</b>.</li>
+    <li>Tap <b class="ui">Save chords</b>.</li>
+  </ol>
+  <p class="steps-title">Let the app suggest them</p>
+  <ul>
+    <li>In pasted or imported lyrics, a line all in brackets, like “(ooh, yeah)”, looks like backing vocals. A line that starts with “All:” looks like everyone together.</li>
+    <li>The chord editor and the song form then say, for example, <b class="ui">“2 lines look like backing vocals or all together.”</b></li>
+    <li><b class="ui">Mark the voice parts</b> marks them. Nothing changes until it is tapped.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Marks the parts for the whole band.</div>
+    <div data-role="member">Sees the parts. To ask for a change, uses <b class="ui">Suggest a change</b> (see <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: voice-picker@phone (integrated pass) -->
+
+  <h3 id="art-who-sings-what" data-roles="admin">Say who sings what</h3>
+  <p>Give each voice part to the members who sing it, for every gig or only for one setlist.</p>
+  <ol class="steps">
+    <li>Open a song that has voice parts: in the song reader, or in Stage or Live mode.</li>
+    <li>In the legend at the top of the lyrics, tap <b class="ui">Who sings what</b>.</li>
+    <li>Under each part, tap the members who sing it. Tap a name again to take it off.</li>
+    <li>On a gig, pick <b class="ui">Every gig</b> to save it on the song, or <b class="ui">This gig only</b> for this setlist, for example when a deputy sings.</li>
+    <li>Tap <b class="ui">Save</b>.</li>
+  </ol>
+  <ul>
+    <li>The first time, the parts are filled in from each member's instrument: “Backing vocals” goes to Backing, “Lead vocals” to Lead.</li>
+    <li>To go back to the song's own parts on a gig, open <b class="ui">This gig only</b> and tap <b class="ui">Use the song’s parts</b>.</li>
+    <li>The names show in the legend, and each singer sees their own part highlighted (see <a data-ref="highlight-my-part">Highlight your own part</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Says who sings what, for the song or for one gig.</div>
+    <div data-role="member">Sees the names in the legend. Can't change them.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: who-sings-what@phone (integrated pass) -->
+
+  <h3 id="art-highlight-my-part" data-roles="admin,member">Highlight your own part</h3>
+  <p>Keep the lines you sing bright and dim the others a little, on your own device.</p>
+  <ol class="steps">
+    <li>Open a song with voice parts in the reader, Stage mode or Live mode.</li>
+    <li><b class="ui">Highlight my part</b> in the legend is on: your lines stay bright and the others are dimmed a little.</li>
+    <li>The first time, a hint says that the lines you don't sing are dimmed. Tap <b class="ui">Got it</b>.</li>
+    <li>To see every line the same, tap <b class="ui">Highlight my part</b> to turn it off; tap it again to turn it back on.</li>
+  </ol>
+  <ul>
+    <li>Your part comes from <b class="ui">Who sings what</b>. If nothing is set there, from your instrument in the band: with “Backing vocals” you see Backing highlighted.</li>
+    <li>Lines everyone sings (<b class="ui">All</b>) always stay bright.</li>
+    <li>The switch shows only when the song has a part for you. It is kept on this device and applies to every song.</li>
+  </ul>
 
   <h2>Import, listen and annotate</h2>
 
@@ -672,7 +766,7 @@
     <li>The screen stays awake while Stage mode is open.</li>
     <li><b class="ui">Full screen</b> (the four-corners button at the top, in the rail on a dual-screen device) hides the app's bars, the side rail and the phone's status bar, and keeps the screen on. With lyrics or charts in the setlist it shows the song alone (<b class="ui">Song only</b>); with none, the setlist gets the whole screen and <b class="ui">Exit full screen</b> or Back leaves it.</li>
     <li>With no setlist, it says <b class="ui">“No setlist attached to this gig.”</b></li>
-    <li>In the phone and tablet apps, the setlist with lyrics and charts is kept on the device when you open the gig, so Stage mode works without internet. Signing out removes it.</li>
+    <li>In the phone and tablet apps, the setlists of the next 7 days stay on the device, so Stage mode works without signal (see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>).</li>
     <li>Without internet and no copy on the device, it says <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> with <b class="ui">Try again</b>.</li>
   </ul>
   <div class="roles">
@@ -741,12 +835,109 @@
   </table>
   <ul>
     <li>The click is visual only: there is no sound. It doesn't block taps on the screen.</li>
-    <li>The beats in a bar come from the time signature of the song's iReal chart, otherwise 4.</li>
+    <!-- <draft live-tempo> -->
+    <li>The beats in a bar come from the song's <b class="ui">Time signature</b>, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see <a data-ref="count-in">Count the band in</a>.</li>
+    <!-- </draft> -->
     <li>A song without a BPM can't start a click (<b class="ui">No BPM for this song</b>). Add the BPM in the song form.</li>
     <li>Moving to another song hides the click for the song before.</li>
     <li>Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.</li>
     <li>The band's click needs the internet: it isn't sent over Bluetooth.</li>
   </ul>
+
+  <!-- <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify against the final UI. -->
+  <h2>Count-in and Follow the tempo</h2>
+
+  <h3 id="art-song-live-settings" data-roles="admin">Set a song up for the count-in</h3>
+  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
+  <p>Give a song its time signature, how long the count-in lasts, a pickup, and whether a backing track starts it.</p>
+  <ol class="steps">
+    <li>Open the song's menu and tap <b class="ui">Edit</b>, then <b class="ui">Next</b> to reach <b class="ui">Details · optional</b>.</li>
+    <li>Under <b class="ui">BPM</b> and <b class="ui">Key</b>, pick the <b class="ui">Time signature</b>: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8.</li>
+    <li>Under <b class="ui">Count-in</b>, pick <b class="ui">1 bar</b> or <b class="ui">2 bars</b>. Two bars suit slow songs: the first bar counts in half time.</li>
+    <li>If the song starts before the first beat of the bar, tap + until it says how many beats early (<b class="ui">Starts 2 beats early</b>); − goes back to <b class="ui">Starts on the downbeat</b>.</li>
+    <li>If a backing track starts the band, turn on <b class="ui">Played with a backing track</b>: the song gets no count-in on stage.</li>
+    <li>Tap <b class="ui">Save now</b>.</li>
+  </ol>
+  <ul>
+    <li>With no time signature picked, the song uses its chord chart's (<b class="ui">From the chord chart.</b>), else 4/4.</li>
+    <li>The click and the count-in follow the time signature: 6/8 and 12/8 are counted in dotted beats, as musicians count them.</li>
+    <li>The <b class="ui">BPM</b> is the beat you count: the quarter note in 4/4, 3/4 or 5/8, the dotted beat in 6/8, 9/8 and 12/8.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Sets the time signature, the count-in and the backing track for the band.</div>
+    <div data-role="member">Sees the result on stage. Can't change it.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: song-live-fields@phone (integrated pass) -->
+
+  <h3 id="art-count-in" data-roles="admin,member">Count the band in</h3>
+  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
+  <p>The leader taps Count in and every phone shows the same countdown in the song's tempo, then GO where the band comes in.</p>
+  <ol class="steps">
+    <li>In Stage mode or Live mode, go to the song.</li>
+    <li>Tap <b class="ui">Count in</b>.</li>
+    <li>After 1.5 seconds every phone in Stage mode shows a full-screen countdown in the song's tempo: a big number on each beat and a ring that fills bar by bar.</li>
+    <li>The band comes in on <b class="ui">GO</b>. The countdown goes away by itself.</li>
+    <li>To stop it before the end, tap <b class="ui">Stop</b>. It stops on every phone.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Time signature</th><th>What the countdown shows</th></tr></thead>
+    <tbody>
+      <tr><td>4/4</td><td>4 3 2 1 GO</td></tr>
+      <tr><td>3/4</td><td>3 2 1 GO</td></tr>
+      <tr><td>2/4</td><td>2 1 GO</td></tr>
+      <tr><td>5/4</td><td>5 4 3 2 1 GO</td></tr>
+      <tr><td>6/8, 12/8</td><td>The dotted beats as big numbers (2 or 4), the eighth notes as small dots.</td></tr>
+      <tr><td>5/8, 7/8</td><td>The beats grouped as in the chart, for example 2+2+3: short, short, long.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>With <b class="ui">2 bars</b> set on the song, the first bar counts in half time (“1 — 2 —”) and the second in time.</li>
+    <li>A song that starts a few beats early ends the countdown with <b class="ui">GO</b> on its first note, not on 1.</li>
+    <li>The band picks the direction: a countdown (4 3 2 1, the default) or the classic count (1 2 3 4).</li>
+    <li>If <b class="ui">Follow the tempo</b> is on, the song starts moving on <b class="ui">GO</b>; a running click goes on in time.</li>
+    <li>Optional on each phone: vibration on every beat (stronger on the first), and a spoken count or click in headphones, never through the phone's speaker unless chosen.</li>
+    <li>A song set as <b class="ui">Played with a backing track</b> has no <b class="ui">Count in</b> button; an admin can still start one from the song's menu. While the stage manager plays the song's audio, the count-in isn't offered.</li>
+    <li>A phone that gets the message late joins on the right beat. With no signal, the count-in reaches phones nearby over Bluetooth. Phones keep in time to about 20–40 ms.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Starts and stops the count-in for the whole band.</div>
+    <div data-role="member">Sees it on their phone and chooses vibration or headphones for their own device.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: stage-count-in@phone (integrated pass) -->
+
+  <h3 id="art-follow-the-tempo" data-roles="admin,member">Follow the tempo</h3>
+  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
+  <p>Turn it on and the chart, the structure or the lyrics move with the song, in time with the leader's phone.</p>
+  <ol class="steps">
+    <li>In Stage mode or Live mode, open the song tab's view choices (where you pick <b class="ui">Lyrics &amp; chords</b> or <b class="ui">Chord chart</b>).</li>
+    <li>Turn on <b class="ui">Follow the tempo</b>. It is off by default and kept on this device.</li>
+    <li>When the leader starts the song with <b class="ui">Count in</b> or the click, the screen moves with it.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>View</th><th>What moves</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Chord chart</b></td><td>The current bar lights up, and the chart scrolls to keep it in view.</td></tr>
+      <tr><td>Structure</td><td>The current section is highlighted; a strip at the top says what comes next (“Next: Bridge in 4 bars”).</td></tr>
+      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b>, <b class="ui">Song only</b></td><td>The current line is highlighted and the text scrolls smoothly. Without line timing, it moves section by section.</td></tr>
+      <tr><td>Floor wedge</td><td>A big countdown to the next section (“Chorus in 4”).</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Lead it</p>
+  <ol class="steps">
+    <li>Start the song with <b class="ui">Count in</b> or the click. Bar 1 starts on every phone at the same moment.</li>
+    <li>If the band plays a part longer or shorter, tap the section, bar or line where you are: everyone jumps there.</li>
+    <li>Tap <b class="ui">Hold</b> to repeat the current section (a vamp, a solo) until you tap it again.</li>
+    <li>Tap <b class="ui">Stop</b> to end it. Moving to another song stops it too.</li>
+  </ol>
+  <ul>
+    <li>Only the leader moves the band's place; members turn the view on or off on their own phone.</li>
+    <li>A song needs a BPM to follow (“Add a BPM to follow this song”).</li>
+    <li>Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order. A fermata waits until the leader taps.</li>
+    <li>To follow line by line, an admin sets the line timing in the song with <b class="ui">Sync lines</b>: tap along with the recording, or set the bars of each line.</li>
+    <li>At a rehearsal, <b class="ui">Play at 80%</b> slows down the click and the follow together; the song's BPM stays the same.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: stage-follow-tempo@phone (integrated pass) -->
+  <!-- </draft> -->
 
   <h3 id="art-stage-manager" data-roles="admin,member">Play the songs' audio from the stage manager device</h3>
   <p>One admin's laptop or tablet, plugged into the mixer, is the stage manager: the only device that plays the songs' audio. When it plays a song, every screen in Stage mode moves to that song, even out of the setlist order. Members' phones never play any sound.</p>
@@ -799,7 +990,7 @@
   <p>In the iPhone, iPad and Android apps, the admin's phone also sends the current song and the order over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.</p>
   <p class="steps-title">Get ready before the gig</p>
   <ol class="steps">
-    <li>Everyone opens the gig once while online. The app keeps the setlist (with lyrics and charts) and the gig's Bluetooth key on the phone.</li>
+    <li>Everyone gets the setlist on their phone: a yes to the download (see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>) or opening the gig once while online. The gig's Bluetooth key comes with it.</li>
     <li>Turn Bluetooth on and allow BandWith to use it.</li>
     <li>On stage, everyone opens Stage mode. The leader shows <b class="ui">Bluetooth</b> or <b class="ui">Live · BT</b>; members show <b class="ui">· BT</b> after their follow label.</li>
   </ol>
@@ -821,6 +1012,106 @@
   <div class="devnote" data-devices="web">Live sync over the internet and the click work. No Bluetooth, and no offline copy of the setlist. Full screen also hides the browser's own bars where the browser allows it.</div>
   <p>Android Back and Escape leave Stage mode first, not the gig underneath.</p>
 
+  <h2>Without signal</h2>
+
+  <h3 id="art-live-mode-offline" data-roles="admin,member">Use Stage and Live mode without signal</h3>
+  <p>Many venues have no signal. In the phone and tablet apps, BandWith keeps the setlists of the next 7 days on the device, so Stage mode and Live mode open and work with no internet.</p>
+  <p class="steps-title">What is kept on the device</p>
+  <ul>
+    <li>Every gig and rehearsal of the next 7 days that the person takes part in and that has a setlist. Declined gigs are left out.</li>
+    <li>For each song: title, artist, key, BPM, the lyrics with chords and voice parts, the chord chart, and who sings what.</li>
+    <li>The person's own notes and files on those songs. Nobody else's notes.</li>
+    <li>Never fees, contracts or quotes.</li>
+  </ul>
+  <p class="steps-title">The first time, say yes once</p>
+  <ol class="steps">
+    <li>About a week before the gig, a push arrives, for example “Saturday's setlist, ready without signal · Download lyrics, chords and structures for The Loft, Brooklyn (12 songs). Tap to see what's included.”</li>
+    <li>Tapping it opens the gig with a sheet: <b class="ui">Have the setlist with you, even without signal.</b> It says what is kept, where, and about how much space it takes.</li>
+    <li><b class="ui">Download and keep it automatic</b>: this setlist and the next ones come down by themselves, with no more questions.</li>
+    <li><b class="ui">Only this gig</b> (at a rehearsal, <b class="ui">Only this rehearsal</b>) keeps just this one.</li>
+    <li><b class="ui">Not now</b>: the app asks once more, the day before.</li>
+  </ol>
+  <p class="steps-title">On the gig's page</p>
+  <ul>
+    <li>Under the setlist, <b class="ui">Offline ready · updated …</b> means the setlist is on this device and up to date.</li>
+    <li><b class="ui">Not on this device yet</b> means it isn't kept yet: <b class="ui">Download for offline</b> gets it while there is signal. The first time, the same sheet asks how.</li>
+    <li>If the download fails: <b class="ui">“Couldn’t download it. Try again with internet.”</b></li>
+  </ul>
+  <p class="steps-title">On stage with no signal</p>
+  <ul>
+    <li>The gig or rehearsal opens as usual, and so do <b class="ui">Open stage mode</b> and <b class="ui">Go live</b> on Home, from the copy on the device.</li>
+    <li>A tag at the top says <b class="ui">Offline · content from …</b>, with the time the copy was saved.</li>
+    <li>The leader's song changes still arrive over Bluetooth (see <a data-ref="stage-bluetooth-sync">Stage mode without internet (Bluetooth)</a>).</li>
+    <li>Notes and changes wait on the phone and go out when the signal is back (see <a data-ref="changes-without-signal">Changes made without signal</a>).</li>
+  </ul>
+  <p class="steps-title">It stays up to date by itself</p>
+  <ul>
+    <li>When an admin changes the setlist or one of its songs, the copy updates when the app opens, when it comes back to the front, and in the background when the phone allows it.</li>
+    <li>The copy is removed the day after the gig, when the person leaves the band or their role changes, and at sign-out.</li>
+  </ul>
+  <aside class="note privacy">The copy is only on the device and only for its owner. Admins see whether a phone is ready, never what is in it.</aside>
+  <div class="roles">
+    <div data-role="admin">Gets the same question the first time, and also sees who in the band is ready (see <a data-ref="offline-members-ready">See who has the setlist for no signal</a>).</div>
+    <div data-role="member">Says yes once; after that the setlists come down by themselves.</div>
+    <div data-role="deputy">Deputies don't get the band's setlists, so nothing is kept for them.</div>
+  </div>
+  <div class="devnote" data-devices="web">On the web the app needs the internet to open, so it can't be used with no signal: on stage, use the phone or tablet app.</div>
+  <!-- SCREENSHOT PLACEHOLDER: live-pack-consent@phone (integrated pass) -->
+  <!-- SCREENSHOT PLACEHOLDER: live-offline-ready@phone (integrated pass) -->
+
+  <h3 id="art-offline-and-live-settings" data-roles="admin,member">Change your offline choice in Settings</h3>
+  <p>Turn automatic downloads on or off, wait for Wi-Fi, see the space used and delete what is kept.</p>
+  <ol class="steps">
+    <li>Open the menu, tap <b class="ui">Settings &amp; account</b>, then <b class="ui">Offline &amp; live</b>.</li>
+    <li><b class="ui">Automatic download</b> on: every setlist of the next 7 days comes down by itself. Off: each gig asks first.</li>
+    <li><b class="ui">Wi-Fi only</b> on: automatic downloads wait for Wi-Fi on this device.</li>
+    <li><b class="ui">Space used</b> shows how many setlists are kept and how much space they take, for example “2 setlists · 1.4 MB”.</li>
+    <li>To free the space, tap <b class="ui">Delete all</b>, then <b class="ui">Delete all</b> again to confirm. The setlists come back when the gig is opened with signal.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">Automatic download</b> follows the account on every device; <b class="ui">Wi-Fi only</b> and what is kept are for this device only.</li>
+    <li>The text of a setlist is small; the person's own files on the songs take most of the space.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: settings-offline-live@phone (integrated pass) -->
+
+  <h3 id="art-offline-members-ready" data-roles="admin">See who has the setlist for no signal</h3>
+  <p>On a gig or rehearsal, see how many members have the setlist on their phone, and remind the others.</p>
+  <ol class="steps">
+    <li>Open the gig or rehearsal. Under the setlist, find <b class="ui">Offline: … of … members ready</b>.</li>
+    <li>If everyone is ready, it says “Everyone has the setlist on their phone.” Nothing else to do.</li>
+    <li>Otherwise, tap the row. It lists who is not ready yet.</li>
+    <li>Tap <b class="ui">Remind</b> next to a name. They get one push asking them to download it, and the button says <b class="ui">Reminded</b>.</li>
+  </ol>
+  <ul>
+    <li>A member is ready when their phone or tablet app holds the latest version of this setlist. After a change to the setlist, phones count again once they have updated.</li>
+    <li>Each member gets at most one reminder every 6 hours for the same gig.</li>
+    <li>Members who only use the web app can't be ready: the copy for no signal is in the phone and tablet apps.</li>
+  </ul>
+  <aside class="note privacy">Admins see only whether a phone is ready, never what is on it or anyone's notes.</aside>
+
+  <h3 id="art-changes-without-signal" data-roles="admin,member">Changes made without signal</h3>
+  <p>With no signal, work goes on in Stage mode and Live mode. What is written is saved on the phone at once and sent as soon as the signal is back.</p>
+  <p class="steps-title">What waits on the phone</p>
+  <ul>
+    <li>Personal notes on a song (see <a data-ref="my-notes-and-files">My notes and files on a song</a>).</li>
+    <li>A <b class="ui">Note for the band</b> and suggested changes to a song.</li>
+    <li>Rehearsal notes and marks.</li>
+    <li>The leader's new setlist order in Stage mode.</li>
+  </ul>
+  <p class="steps-title">What you see</p>
+  <ul>
+    <li>A bar at the top, for example <b class="ui">You’re offline · 2 changes waiting for signal</b>; with nothing waiting, <b class="ui">You’re offline · showing cached info</b>.</li>
+    <li>After the leader drags a song with no signal, the status says <b class="ui">Saved on this phone</b>, then <b class="ui">Saved</b> once it reaches the band's setlist.</li>
+    <li>When the signal is back: <b class="ui">Back online · sending 2 changes</b>, then <b class="ui">Back online · up to date</b>. <b class="ui">Send now</b> in the bar sends at once.</li>
+  </ul>
+  <p class="steps-title">When it is sent</p>
+  <ul>
+    <li>As soon as the signal is back, when the app is opened again, and every 30 seconds while something is waiting.</li>
+    <li>Closing the app keeps what is waiting; it goes the next time the app opens with signal.</li>
+  </ul>
+  <aside class="note tip">Members nearby see the leader's new order at once over Bluetooth, before it is saved.</aside>
+  <!-- SCREENSHOT PLACEHOLDER: stage-offline-banner@phone (integrated pass) -->
+
   <h2>FAQ</h2>
   <dl class="faq">
     <dt>Can members edit songs or setlists?</dt>
@@ -836,7 +1127,13 @@
     <dt>Does the band get a notification for every song I move?</dt>
     <dd>No. Nothing is sent until you save. Then each person gets one push summing up what changed.</dd>
     <dt>Does Stage mode work without internet?</dt>
-    <dd>In the phone and tablet apps, yes: open the gig once while online, and the leader's phone keeps the band in sync over Bluetooth. On the web Stage mode needs the internet.</dd>
+    <dd>In the phone and tablet apps, yes. Say yes once to the download and the setlists of the next 7 days stay on the phone; the leader's phone keeps the band on the same song over Bluetooth. On the web Stage mode needs the internet.</dd>
+    <dt>Does my phone download the setlists without asking?</dt>
+    <dd>No. The first time, a sheet asks. Choose <b class="ui">Download and keep it automatic</b> and the next setlists come down by themselves. It can be changed anytime in Settings › <b class="ui">Offline &amp; live</b>.</dd>
+    <dt>Do the setlists on my phone include fees or contracts?</dt>
+    <dd>No. Only lyrics, chords, structures, voice parts and your own notes and files. Fees, contracts, quotes and other members' notes never go on the phone.</dd>
+    <dt>Why are some lines of the lyrics dimmed?</dt>
+    <dd><b class="ui">Highlight my part</b> is on: the lines you don't sing are dimmed a little. Tap it at the top of the song to see them all.</dd>
     <dt>Can I hear the click?</dt>
     <dd>No. The click is visual: a glow around the screen edge on each beat.</dd>
     <dt>Why does my phone stop following the leader?</dt>
@@ -845,5 +1142,9 @@
     <dd>It is deleted with the files you attached, and you get a push with the admin's reason if they gave one.</dd>
     <dt>Why don't I see the iReal Pro forum inside the app on the web?</dt>
     <dd>The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap <b class="ui">Paste link</b>, or drag the link onto the box.</dd>
+    <!-- <draft live-tempo> -->
+    <dt>Why is there no Count in button on a song?</dt>
+    <dd>The song is set as <b class="ui">Played with a backing track</b>: the track starts the band. An admin can still start a count-in from the song's menu.</dd>
+    <!-- </draft> -->
   </dl>
 </section>

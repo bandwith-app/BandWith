@@ -994,7 +994,7 @@ const gigs: AreaText = {
     {
       id: "gig-on-home",
       title: "Les concerts sur l’accueil",
-      summary: "Le prochain concert, la préparation, Go live, les paiements à faire et les brouillons sur l’écran d’accueil.",
+      summary: "Le prochain concert, la préparation, En scène, les paiements à faire et les brouillons sur l’écran d’accueil.",
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["accueil", "prochain concert", "go live", "paiements à faire", "brouillons", "tableau de bord"],
@@ -1004,7 +1004,7 @@ const gigs: AreaText = {
           type: "list",
           items: [
             "La carte du prochain concert montre sa date, les heures de rendez-vous (arrivée, balance), la salle, le lien vers la setlist et, pour les membres, **Ton cachet**.",
-            "En dessous : **Préparation du show · {done}/{total}** et **Go live**, qui ouvre directement le concert en mode scène.",
+            "En dessous : **Préparation du show · {done}/{total}** et **En scène**, qui ouvre directement le concert en mode scène.",
             "**À traiter** liste **Paiements ({count})** pour les admins ou **Tes cachets ({count})** pour les membres. Voir [[fee-and-payouts-on-a-gig]].",
             "**Brouillons** (admins) : tes concerts, répétitions et devis inachevés. **Toi seul les vois.**",
           ],
