@@ -70,7 +70,7 @@ const now = () => nextSeq(null);
 const live = (state: StageLiveState) => act(() => emit('broadcast', 'state', { payload: state }));
 const bt = (state: StageLiveState) => act(() => ble.onState!(state));
 
-const beat = (from: string) => act(() => emit('broadcast', LEAD_BEAT_EVENT, { payload: { from } }));
+const beat = (from: string, seq?: number) => act(() => emit('broadcast', LEAD_BEAT_EVENT, { payload: seq === undefined ? { from } : { from, seq } }));
 const later = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
 
 beforeEach(() => {
@@ -290,5 +290,101 @@ describe('useStageLive: Bluetooth states never outrank the live channel (review 
     expect(l.result.current.clientId).not.toBe(first);
     act(() => l.result.current.go(2));
     expect(sent()[sent().length - 1].seq).toBeGreaterThan(before);
+  });
+
+  it('with the clock measured, a Bluetooth seq only ~30 s beyond it counts; unmeasured, at most 5 minutes ahead (Claude on #280)', () => {
+    ble.api.clock = { from: 'lead', sample: { offset: 500, rtt: 20 } };
+    ble.api.clockRef.current = ble.api.clock;
+    const m = phone();
+    bt({ seq: nextSeq(null, Date.now() + 60_000), from: 'lead', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).not.toBe('row-3');
+    bt({ seq: nextSeq(null, Date.now() + 10_000), from: 'lead', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // Another phone, its clock not measured: 6 minutes ahead is too far.
+    bt({ seq: nextSeq(null, Date.now() + 6 * 60_000), from: 'other', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it("a missed live update arriving over Bluetooth applies once the leader's beat confirms it (Codex on #280)", () => {
+    const m = phone();
+    const s1 = now();
+    live({ seq: s1, from: 'A', songId: 'row-1', order: null });
+    // A's next state never reached this phone online; its Bluetooth copy did (held: A leads online).
+    bt({ seq: s1 + 50, from: 'A', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-1');
+    // A's beat says it's at that seq: the copy is A's latest, it applies.
+    beat('A', s1 + 50);
+    expect(m.result.current.currentId).toBe('row-3');
+    // A beat naming another seq (or another leader's copy) applies nothing.
+    bt({ seq: s1 + 80, from: 'A', songId: 'row-2', order: null });
+    beat('A', s1 + 90);
+    expect(m.result.current.currentId).toBe('row-3');
+  });
+
+  it('the leader beats with its seq', () => {
+    const l = phone(true);
+    act(() => l.result.current.go(1));
+    later(LIVE_LEAD_FRESH_MS);
+    const last = chan.sent.filter((x) => x.event === 'state').map((x) => x.payload as StageLiveState).pop()!;
+    const beats = chan.sent.filter((s) => s.event === LEAD_BEAT_EVENT).map((s) => s.payload as { from: string; seq: number });
+    expect(beats[beats.length - 1]).toEqual({ from: l.result.current.clientId, seq: last.seq });
+  });
+
+  it("another admin's state refused while the leader led online applies once that leader goes quiet, if that admin still leads (Codex on #280)", () => {
+    const m = phone();
+    live({ seq: now() + 100, from: 'A', songId: 'row-1', order: null });
+    // B's clock is behind A's: its state is older, refused while A leads.
+    live({ seq: now(), from: 'B', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-1');
+    // A goes quiet; B keeps beating (it leads).
+    for (let i = 0; i < 3; i++) {
+      later(4_000);
+      beat('B');
+    }
+    later(LIVE_LEAD_FRESH_MS);
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it("only the followed leader's beat keeps the held Bluetooth state back: another admin's beats don't (Codex on #280)", () => {
+    const m = phone();
+    live({ seq: now(), from: 'A', songId: 'row-1', order: null });
+    live({ seq: now() + 100, from: 'B', songId: 'row-2', order: null });
+    bt({ seq: now() + 200, from: 'B', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // B goes offline; A (no longer leading) keeps beating.
+    for (let i = 0; i < 4; i++) {
+      later(4_000);
+      beat('A');
+    }
+    expect(m.result.current.currentId).toBe('row-3');
+  });
+
+  it('a seq kept from a clock far ahead (since fixed) is dropped on reopening: a new start from now (Codex + Claude on #280)', () => {
+    const real = Date.now();
+    vi.setSystemTime(real + 20 * 60_000);
+    const l = renderHook((p: { open: boolean }) => useStageLive({ eventId: 'gig-2', setlistId: 'list-1', songs: SONGS, open: p.open, isLeader: true }), {
+      initialProps: { open: true },
+    });
+    act(() => l.result.current.go(1));
+    const sent = () => chan.sent.filter((x) => x.event === 'state').map((x) => x.payload as StageLiveState);
+    const ahead = sent()[sent().length - 1].seq;
+    l.rerender({ open: false });
+    vi.setSystemTime(real);
+    l.rerender({ open: true });
+    act(() => l.result.current.go(2));
+    const next = sent()[sent().length - 1].seq;
+    expect(next).toBeLessThan(ahead);
+    expect(Math.abs(next - nextSeq(null))).toBeLessThan(50);
+  });
+
+  it('a live state that arrives after its Bluetooth copy still marks its sender as leading online (Codex on #288)', () => {
+    const m = phone();
+    const s1 = now();
+    bt({ seq: s1, from: 'A', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    live({ seq: s1, from: 'A', songId: 'row-2', order: null });
+    // A leads online now: a Bluetooth state from anyone else is held back.
+    bt({ seq: s1 + 100, from: 'X', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
   });
 });

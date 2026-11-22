@@ -47,15 +47,18 @@ export const MAX_CLOCK_OFFSET_MS = 5 * 60_000;
 /** The offset if it may be used, else null (see MAX_CLOCK_OFFSET_MS). */
 export const usableOffset = (offset: number) => (Math.abs(offset) <= MAX_CLOCK_OFFSET_MS ? offset : null);
 
-/** How far a seq may run ahead of this phone's clock (a leader's clock set a bit ahead): 10 minutes. */
-export const SEQ_AHEAD_MAX = 6_000;
+/** How far a seq may run ahead of this phone's clock (a leader's clock not measured yet): 5 minutes. */
+export const SEQ_AHEAD_MAX = 3_000;
+/** With the leader's clock measured, how far a seq may run beyond it: 30 seconds (Claude on #280). */
+export const SEQ_AHEAD_MEASURED = 300;
 
 /**
  * A seq that could come from a leader's clock. One far ahead (say 0xFFFFFFFF)
  * is made up: it would win over every real state for the rest of the gig.
  * Bluetooth states can be made by anyone with the band key, so they're checked.
  */
-export const seqPlausible = (seq: number, now: number = Date.now()) => seq <= Math.floor((now - SEQ_EPOCH_MS) / 100) + SEQ_AHEAD_MAX;
+export const seqPlausible = (seq: number, now: number = Date.now(), ahead: number = SEQ_AHEAD_MAX) =>
+  seq <= Math.floor((now - SEQ_EPOCH_MS) / 100) + ahead;
 
 /** True when `next` should replace `current` (it is newer). */
 export const isNewer = (next: Pick<StageLiveState, 'seq' | 'from'>, current: Pick<StageLiveState, 'seq' | 'from'> | null) =>
