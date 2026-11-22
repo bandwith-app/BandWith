@@ -12,6 +12,7 @@ vi.mock('../regiaAudio', () => ({
 }));
 
 import { keptOnSignOut, wipeAfterFailedSignOut } from '../signOutWipe';
+import { ANALYTICS_CONSENT_KEY } from '../appAnalytics';
 
 const UID = 'u1';
 
@@ -26,7 +27,9 @@ describe('a sign-out that failed: wiped, but not what sign-out keeps', () => {
     localStorage.setItem(`bw:${UID}:global:songs`, '[]');
     localStorage.setItem(`bw:rehearsal_notes_rejected:${UID}`, JSON.stringify([{ id: 'n1', body: 'Outro: four bars' }]));
     localStorage.setItem('bw-regia-audio:owners', JSON.stringify([UID]));
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'denied');
     await wipeAfterFailedSignOut();
+    expect(localStorage.getItem(ANALYTICS_CONSENT_KEY)).toBe('denied');
     expect(seenAtCleanup).toEqual([JSON.stringify([UID])]);
     expect(localStorage.getItem('sb-project-auth-token')).toBeNull();
     expect(localStorage.getItem(`bw:${UID}:global:songs`)).toBeNull();
