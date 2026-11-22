@@ -180,7 +180,12 @@ async function act(run: () => Promise<QuoteLinkView | null>, focus?: string) {
       if (focus === 'sent') draft.message = '';
     }
   } catch (e) {
-    failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    if (e instanceof RpcError && e.code === 'BWQ01' && view) {
+      // 187 round 10: the band cancelled or deleted the date meanwhile; nothing was recorded.
+      view = { ...view, unavailable: true };
+    } else {
+      failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    }
   }
   busy = false;
   render();
@@ -526,6 +531,10 @@ function statusCard(v: QuoteLinkView) {
       h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, S.acceptedLegal),
     );
   }
+  if (v.unavailable) {
+    // 187 round 10: the band cancelled or deleted the date: no accept, the chat stays.
+    return h('section', { class: 'card ink', role: 'status', 'data-testid': 'date-unavailable' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.unavailableTitle), h('p', {}, S.unavailableBody));
+  }
   if (stale) {
     // Round 4: a polite status: it arrives on a refresh, while the client may be typing.
     return h('section', { class: 'card ink', role: 'status' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
@@ -551,7 +560,7 @@ function statusCard(v: QuoteLinkView) {
 }
 
 function answerCard(v: QuoteLinkView) {
-  if (v.status === 'accepted' || v.expired) return null;
+  if (v.status === 'accepted' || v.expired || v.unavailable) return null;
   const err = (field: 'name' | 'check') => (fieldError?.field === field ? h('p', { class: 'err', id: `${field}-err`, role: 'alert' }, fieldError.text) : null);
   const name = h('input', {
     id: 'acc-name',

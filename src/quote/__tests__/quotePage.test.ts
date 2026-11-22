@@ -233,3 +233,54 @@ describe('quote page: the 30 s refresh never takes the client’s place (round 4
     expect(card?.getAttribute('role')).toBe('status');
   });
 });
+
+describe('quote page: no acceptance once the date is gone (187 round 10, #294 review 1b)', () => {
+  it('the band cancelled or deleted the date: the page says so, no accept form, the chat stays', async () => {
+    answers.bw_quote_link_seen = () => base({ unavailable: true });
+    answers.bw_quote_link_view = () => base({ unavailable: true });
+    await openPage();
+
+    expect(app().textContent).toContain(S.unavailableTitle);
+    expect(app().textContent).toContain(S.unavailableBody);
+    expect(document.getElementById('acc-name')).toBeNull();
+    expect(button(S.accept)).toBeUndefined();
+    expect(button(S.send)).toBeDefined();
+  });
+
+  it('cancelled while the page was open: the refused accept (BWQ01) shows the message, not an error', async () => {
+    answers.bw_quote_link_seen = () => base();
+    answers.bw_quote_link_view = () => base();
+    const plain = globalThis.fetch as unknown as (url: string, init: { body: string }) => Promise<Response>;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: { body: string }) => {
+        if (String(url).endsWith('/rpc/bw_quote_link_respond')) {
+          calls.push({ fn: 'bw_quote_link_respond', body: JSON.parse(init.body) });
+          return { ok: false, status: 400, json: async () => ({ code: 'BWQ01', message: 'This date is no longer available' }) } as Response;
+        }
+        return plain(url, init);
+      }),
+    );
+    await openPage();
+
+    (document.getElementById('acc-name') as HTMLInputElement).value = 'Emma Carter';
+    (document.getElementById('acc-check') as HTMLInputElement).checked = true;
+    button(S.accept).click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(calls.some((c) => c.fn === 'bw_quote_link_respond')).toBe(true);
+    expect(app().textContent).toContain(S.unavailableTitle);
+    expect(app().textContent).not.toContain(S.error);
+    expect(app().textContent).not.toContain(S.acceptedTitle);
+    expect(document.getElementById('acc-name')).toBeNull();
+  });
+
+  it('the message is in every language of the page', () => {
+    for (const [lang, s] of Object.entries(QUOTE_STRINGS)) {
+      expect(s.unavailableTitle, lang).toBeTruthy();
+      expect(s.unavailableBody, lang).toBeTruthy();
+      if (lang !== 'en') expect(s.unavailableTitle, lang).not.toBe(S.unavailableTitle);
+    }
+    expect(S.unavailableTitle + ' ' + S.unavailableBody).toBe('This date is no longer available. Ask the band for a new quote.');
+  });
+});

@@ -20,6 +20,24 @@
 --    lock the link row (after the quote: one lock order, quote -> link ->
 --    event) and check it after the lock: the revoke wins, nothing is
 --    written, the page says the link no longer works.
+-- 3. No acceptance once the date is gone (round 10, #294 review 1b). The
+--    band cancels a quote's event, or deletes it, while the client's link
+--    is still live: an acceptance then flipped the quote to accepted on a
+--    date the band had given up, bw_event_quote_private (178) went false
+--    with no private period, and the members read the negotiation.
+--    bw_quote_link_respond now refuses an accept (SQLSTATE BWQ01, nothing
+--    written) when the quote's event (bw_quote_gig_id) is cancelled, or
+--    when its event was deleted after the version on the link was
+--    published (quote_links.event_removed_at, set by a trigger before an
+--    event is deleted: the FK clears converted_to_event_id, so nothing else
+--    remembers it). A version published after the deletion, or a new event
+--    linked to the quote, can be accepted again. Decline and messages still
+--    work: a no closes nothing the band still has, and the client can ask
+--    for a new quote. The view says so ('unavailable'): the page shows
+--    "This date is no longer available" instead of the accept form. An
+--    older cached page ignores the flag, and its accept gets the generic
+--    "Something went wrong" (it shows any error code that way); nothing is
+--    recorded.
 --
 -- Superset of 183: the three bodies below are 183's as of fix/quote-page
 -- 8f5922d7 (PR #286 round 4: link_id conversations, the deposit receipt in
@@ -55,6 +73,64 @@ BEGIN
   END IF;
 END
 $guard$;
+
+-- --------------------------------------------------------------------
+-- 3. A cancelled or deleted date (round 10; first: the view and respond use it)
+-- --------------------------------------------------------------------
+
+-- When the quote's event was deleted (not accepted links only: an accepted
+-- one has its gig, and its page no longer offers an answer). Written only
+-- by the trigger below (definer); the band's admins read it with the link.
+ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS event_removed_at timestamptz;
+
+-- Before the delete: the FK (ON DELETE SET NULL) still points at the event.
+CREATE OR REPLACE FUNCTION public.bw_trg_quote_link_event_removed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.quote_links l
+     SET event_removed_at = now()
+    FROM public.quotes q
+   WHERE l.quote_id = q.id
+     AND q.band_id IS NOT DISTINCT FROM OLD.band_id
+     AND (q.converted_to_event_id = OLD.id OR q.id = OLD.quote_id)
+     AND l.status <> 'accepted';
+  RETURN OLD;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_quote_link_event_removed() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_quote_link_event_removed ON public.events;
+CREATE TRIGGER bw_quote_link_event_removed
+  BEFORE DELETE ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_link_event_removed();
+
+-- The date is gone: the quote's event is cancelled, or it has none and the
+-- last one was deleted after this version was published. Not callable by
+-- apps (it answers for any quote).
+CREATE OR REPLACE FUNCTION public.bw_quote_date_unavailable(p_quote_id uuid, p_event_removed_at timestamptz, p_version_at timestamptz)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_gig uuid := public.bw_quote_gig_id(p_quote_id);
+  v_status text;
+BEGIN
+  IF v_gig IS NULL THEN
+    RETURN p_event_removed_at IS NOT NULL
+       AND p_event_removed_at > coalesce(p_version_at, '-infinity'::timestamptz);
+  END IF;
+  SELECT lower(coalesce(e.status::text, '')) INTO v_status FROM public.events e WHERE e.id = v_gig;
+  RETURN coalesce(v_status IN ('cancelled', 'canceled'), false);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_date_unavailable(uuid, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 
 -- --------------------------------------------------------------------
 -- 1. The page shows the balance sent, and when (183's view + balance_sent)
@@ -144,6 +220,9 @@ BEGIN
     'decline_reason', CASE WHEN v_link.status = 'declined' THEN v_link.decline_reason END,
     -- A day of slack for time zones.
     'expired', v_link.status <> 'accepted' AND v_valid IS NOT NULL AND v_valid < current_date - 1,
+    -- 187 round 10: the date is gone (event cancelled or deleted): no accept.
+    'unavailable', v_link.status <> 'accepted'
+                   AND public.bw_quote_date_unavailable(v_link.quote_id, v_link.event_removed_at, v_link.version_at),
     -- 183: this link's conversation only (the band keeps all of it): a new
     -- recipient's link never shows the old client's lines.
     'messages', coalesce((
@@ -232,6 +311,12 @@ BEGIN
   SELECT q.client_name INTO v_client FROM public.quotes q WHERE q.id = v_link.quote_id;
 
   IF v_action = 'accept' THEN
+    -- 187 round 10: no acceptance on a date the band gave up (cancelled or
+    -- deleted event). An error, so a page from before this says it did not
+    -- go through; nothing is written. Decline and messages still work.
+    IF (v_view ->> 'unavailable')::boolean THEN
+      RAISE EXCEPTION 'This date is no longer available' USING ERRCODE = 'BWQ01';
+    END IF;
     IF v_name IS NULL OR length(v_name) < 2 THEN
       RAISE EXCEPTION 'Type your name to accept' USING ERRCODE = '22023';
     END IF;

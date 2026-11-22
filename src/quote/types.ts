@@ -153,4 +153,6 @@ export interface QuoteLinkView {
   deposit_paid_currency?: string | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
+  /** 187 round 10: the quote's event was cancelled or deleted: no accept (absent before 187). */
+  unavailable?: boolean;
 }

@@ -23,6 +23,10 @@
 //      it is; members never read the lineup's fees through it;
 //   8b. round 5: a lineup changed meanwhile is refused, the gig loses only
 //      who was on the quote's previous lineup, the message limit is per link;
+//   10. round 10 (#294 review 1b): no acceptance on a cancelled or
+//      deleted date (BWQ01, nothing written); decline and messages still
+//      work; a version published after the deletion, or a new event, can
+//      be accepted; an accepted quote is left as it is;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -638,6 +642,80 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
                               has_function_privilege('authenticated', 'public.bw_quote_balance_send_failed(uuid, int)', 'EXECUTE') u`).then((r) => r.rows[0], (e) => ({ a: true, e: e.message }));
   const memFail = await tryIt(asMember(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2)`, [Q7, v2])));
   ok(!fn.a && fn.u && !!memFail.e, `round 6: put back: admins only (${JSON.stringify(fn)}, member ${memFail.e ? 'refused' : 'allowed'})`);
+}
+
+// ---------------------------------------------------------------- 10. round 10: the date is gone (#294 review 1b)
+{
+  const answer = (T, action, version = 1) =>
+    asAnon(() => q(`SELECT public.bw_quote_link_respond($1, $2, 'Emma Carter', NULL, $3) v`, [T, action, version]).then((r) => r.rows[0].v))
+      .then((r) => ({ r }), (e) => ({ e: e.message, code: e.code }));
+  const state = (Q) => q(`SELECT q.status qs, l.status ls, l.accepted_name,
+      (SELECT count(*)::int FROM quote_activity a WHERE a.quote_id = q.id AND a.kind = 'accepted') acts
+      FROM quotes q JOIN quote_links l ON l.quote_id = q.id WHERE q.id = $1`, [Q]).then((r) => r.rows[0]);
+
+  // a. The band cancels the quote's event; the client accepts the live link: refused, nothing written.
+  const c = await quote();
+  await db.exec(`UPDATE events SET status = 'cancelled' WHERE id = '${c.E}'`);
+  const cv = await view(c.T);
+  const ca = await answer(c.T, 'accept');
+  const cs = await state(c.Q);
+  ok(cv?.unavailable === true, `round 10: the page of a quote whose event is cancelled says the date is gone (${cv?.unavailable})`);
+  ok(ca.code === 'BWQ01' && cs.qs !== 'accepted' && cs.ls !== 'accepted' && !cs.accepted_name && cs.acts === 0,
+    `round 10: accept on a cancelled event is refused (BWQ01), the quote stays unaccepted (${ca.code || ca.e || 'accepted'}, quote ${cs.qs}, link ${cs.ls}, ${cs.acts} accepted rows)`);
+  // A message (to ask for a new quote) and a decline still go through.
+  const cm = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Could we pick another date?') v`, [c.T]).then((r) => r.rows[0].v)));
+  const cd = await answer(c.T, 'decline');
+  const cds = await state(c.Q);
+  ok(!cm.e && cm.r && !cd.e && cd.r?.status === 'declined' && cds.qs === 'declined' && cds.ls === 'declined',
+    `round 10: on a cancelled event, a message and a decline still work (${cm.e || 'sent'}, ${cd.e || cd.r?.status}, quote ${cds.qs})`);
+  // Declined, then a change of mind: still no accept.
+  const ca2 = await answer(c.T, 'accept');
+  ok(ca2.code === 'BWQ01' && (await state(c.Q)).qs === 'declined', `round 10: accept after a decline on a cancelled event: refused (${ca2.code || ca2.e || 'accepted'})`);
+
+  // b. The band deletes the quote's event: refused too.
+  const d = await quote();
+  await db.exec(`DELETE FROM events WHERE id = '${d.E}'`);
+  await db.exec(`UPDATE quotes SET converted_to_event_id = NULL WHERE id = '${d.Q}'`); // the FK's ON DELETE SET NULL
+  const dl = await link(d.Q);
+  const dv = await view(d.T);
+  const da = await answer(d.T, 'accept');
+  const ds = await state(d.Q);
+  ok(dl.event_removed_at !== null && dv?.unavailable === true, `round 10: deleting the quote's event marks the link, the page says the date is gone (${dl.event_removed_at}, ${dv?.unavailable})`);
+  ok(da.code === 'BWQ01' && ds.qs !== 'accepted' && ds.ls !== 'accepted' && ds.acts === 0,
+    `round 10: accept on a deleted event is refused (BWQ01), the quote stays unaccepted (${da.code || da.e || 'accepted'}, quote ${ds.qs}, link ${ds.ls})`);
+  // A version published after the deletion is a new offer: it can be accepted.
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL)`, [d.Q, snap(900)]));
+  const dv2 = await view(d.T);
+  const da2 = await answer(d.T, 'accept', dv2?.version);
+  ok(dv2?.unavailable === false && !da2.e && da2.r?.status === 'accepted', `round 10: a version published after the deletion can be accepted (${dv2?.unavailable}, ${da2.e || da2.r?.status})`);
+
+  // c. Deleted, then a new event linked to the quote: that event decides.
+  const r = await quote();
+  const NEWE = id(n++);
+  await db.exec(`DELETE FROM events WHERE id = '${r.E}'`);
+  await db.exec(`INSERT INTO events (id, band_id, status, payment_status) VALUES ('${NEWE}', '${BAND}', 'tentative', 'pending');
+                 UPDATE quotes SET converted_to_event_id = '${NEWE}' WHERE id = '${r.Q}'`);
+  const ra = await answer(r.T, 'accept');
+  ok(!ra.e && ra.r?.status === 'accepted', `round 10: deleted, then a new event for the quote: accept works (${ra.e || ra.r?.status})`);
+
+  // d. An accepted quote whose gig is deleted afterwards: left as it is.
+  const k = await quote({ accepted: true });
+  await db.exec(`DELETE FROM events WHERE id = '${k.E}'`);
+  const kl = await link(k.Q);
+  const kv = await view(k.T);
+  ok(kl.status === 'accepted' && kl.event_removed_at === null && kv?.status === 'accepted' && kv?.unavailable === false,
+    `round 10: an accepted quote's link is not marked when its gig is deleted (${kl.event_removed_at}, ${kv?.unavailable})`);
+
+  // e. A quote with a live event (and another band's deleted event) still accepts.
+  const l = await quote();
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status) VALUES ('${id(n)}', '${id(99)}', NULL, 'tentative'); DELETE FROM events WHERE id = '${id(n++)}'`);
+  const la = await answer(l.T, 'accept');
+  ok(!la.e && la.r?.status === 'accepted' && la.r?.unavailable === false, `round 10: a live date still accepts (${la.e || la.r?.status})`);
+
+  // f. The marker is not for apps: anon and members cannot call the helper.
+  const h1 = await tryIt(asAnon(() => q(`SELECT public.bw_quote_date_unavailable($1, NULL, NULL)`, [l.Q])));
+  const h2 = await tryIt(asMember(() => q(`SELECT public.bw_quote_date_unavailable($1, NULL, NULL)`, [l.Q])));
+  ok(!!h1.e && !!h2.e, `round 10: bw_quote_date_unavailable is not callable by anon or members (${h1.e ? 'refused' : 'allowed'}, ${h2.e ? 'refused' : 'allowed'})`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)
