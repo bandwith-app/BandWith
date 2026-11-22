@@ -1056,6 +1056,24 @@ r = await asRole('service_role', `UPDATE events SET band_id = '${OTHERBAND}' WHE
 b = await bandOf(id(75));
 ok(!r.error && b.band_id === OTHERBAND, `the service role may still move it (${r.error ?? b.band_id === OTHERBAND})`);
 await asRole('service_role', `UPDATE events SET band_id = '${BAND}' WHERE id = '${id(75)}'`);
+// Main's decision (dry run, 11-22): the change is dropped silently, never an
+// error; who may still move a gig's band: the service role (any gig), and
+// anyone allowed to update a gig that has neither a chat nor a lineup.
+// Here as an authenticated admin (a PostgREST write; no RLS on this stand-in).
+const BARE2 = id(77);
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${BARE2}','${BAND}','Bare 2','confirmed','gig','${ADMIN}', current_date + 95);
+  GRANT UPDATE ON public.events TO authenticated;`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${BARE2}'`);
+ok(!r.error && r.n === 1 && (await bandOf(BARE2)).band_id === OTHERBAND, `an admin moves a gig with no chat and no lineup to another band (${r.error ?? (await bandOf(BARE2)).band_id === OTHERBAND})`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}', title = 'Lineup only (edited)' WHERE id = '${id(75)}'`);
+b = await bandOf(id(75));
+ok(!r.error && r.n === 1 && b.band_id === BAND && b.title === 'Lineup only (edited)', `an admin's edit of a gig with a lineup: no error, band kept, the rest saved (${r.error ?? JSON.stringify(b)})`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${GIG3}'`);
+ok(!r.error && (await bandOf(GIG3)).band_id === BAND, `an admin's edit of a gig with a chat: no error, band kept (${r.error ?? 'ok'})`);
+r = await asRole('service_role', `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${GIG3}'`);
+ok(!r.error && (await bandOf(GIG3)).band_id === OTHERBAND, `a service_role write moves even a gig with a chat and a lineup (${r.error ?? 'ok'})`);
+await asRole('service_role', `UPDATE events SET band_id = '${BAND}' WHERE id IN ('${GIG3}', '${BARE2}')`);
+await db.exec(`REVOKE UPDATE ON public.events FROM authenticated`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -72,7 +72,9 @@ AS $$
 BEGIN
   -- An UPDATE that keeps the gig and the person and doesn't take them off
   -- it changes nothing here. Round 5: a row moved to another gig or person
-  -- takes the old pair off the old gig.
+  -- takes the old pair off the old gig. (051's bw_event_members_immutable_keys
+  -- already refuses that move; kept here as defence in depth, should that
+  -- trigger ever go.)
   IF TG_OP = 'UPDATE'
      AND NEW.event_id IS NOT DISTINCT FROM OLD.event_id
      AND NEW.user_id IS NOT DISTINCT FROM OLD.user_id
@@ -98,6 +100,7 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_trg_event_member_left_chat() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS bw_event_member_left_chat ON public.event_members;
 CREATE TRIGGER bw_event_member_left_chat
+  -- (user_id / event_id: see above, 051 blocks the move today.)
   AFTER UPDATE OF status, user_id, event_id OR DELETE ON public.event_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_member_left_chat();
 
