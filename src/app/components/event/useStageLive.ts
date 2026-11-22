@@ -403,6 +403,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // The channel lives while Stage mode is open.
   useEffect(() => {
     if (!live || !eventId) return;
+    /** This channel joined (SUBSCRIBED); unasked sends wait for it. */
+    let joined = false;
     const channel = supabase.channel(stageTopic(eventId), {
       config: { private: true, broadcast: { self: false }, presence: { key: clientId } },
     });
@@ -471,6 +473,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       .subscribe((status: string) => {
         setConnected(status === 'SUBSCRIBED');
+        joined = status === 'SUBSCRIBED';
         // Off the channel: no leader reaches this phone online, Bluetooth takes over at once.
         if (status !== 'SUBSCRIBED') {
           liveLeadRef.current.clear();
@@ -482,8 +485,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         }
       });
     // Once it has led: "still leading", so members hold Bluetooth states back.
+    // Only while joined: off it, supabase-js would post the beat over HTTP.
     const beat = setInterval(() => {
-      if (ledRef.current) void channel.send({ type: 'broadcast', event: LEAD_BEAT_EVENT, payload: { from: clientId } });
+      if (ledRef.current && joined) void channel.send({ type: 'broadcast', event: LEAD_BEAT_EVENT, payload: { from: clientId } });
     }, LEAD_BEAT_MS);
     return () => {
       // Our running click stops on everyone's phone too.
