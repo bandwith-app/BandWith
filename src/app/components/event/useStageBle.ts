@@ -42,8 +42,12 @@ interface Options {
    * checks it. Called again with the same payloads on every read.
    */
   onLive?: (event: LiveEvent, payload: unknown) => void;
-  /** Leader: the stopped states to send as Stage closes, before Bluetooth stops. */
-  farewell?: () => LiveEvents;
+  /**
+   * Leader: the stopped states to send as the last live frame. 'closing':
+   * Stage closes, before Bluetooth stops. 'off': the click and playhead over
+   * Bluetooth were switched off mid-show (app_flags ble_live) while they run.
+   */
+  farewell?: (why: 'closing' | 'off') => LiveEvents;
 }
 
 const RETRY_MS = 2000;
@@ -121,6 +125,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
    * restarted (that would drop every member's link): it stops recalibrating,
    * and members stop reading the clock (`clock` null, the click uses the
    * Realtime clock). Turned on mid-show: from the next time Stage opens.
+   * The live frame (click, playhead, count-in) follows the switch as it is
+   * now, on both sides: off, the leader sends one last frame saying they
+   * stopped and then serves no more, and a member reads none.
    */
   const bleLive = useFlag('ble_live');
   const bleLiveRef = useRef(bleLive);
@@ -145,9 +152,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
   }, []);
 
   /** Leader: serve the live frame (every event's newest payload); subscribers are told its seq. */
-  const pushLive = useCallback(async (events: LiveEvents = liveRef.current) => {
+  const pushLive = useCallback(async (events: LiveEvents = liveRef.current, lastWords = false) => {
     const key = keyRef.current;
     if (!key || !startedRef.current) return;
+    // Switched off: nothing goes out, but the frame that says it stopped (`lastWords`).
+    if (!bleLiveRef.current && !lastWords) return;
     const seq = ++liveSeqRef.current;
     const bytes = await encodeLive(seq, events, key);
     if (!bytes) return;
@@ -266,7 +275,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
       // stopped, then Bluetooth stops. A restart while Stage stays open says
       // nothing stopped, and serves the same again once it is back.
       const closing = goneRef.current || !openRef.current;
-      const last = closing ? (farewellRef.current?.() ?? {}) : {};
+      // Switched off: the stop went out when it was (below), nothing is served since.
+      const last = closing && bleLiveRef.current ? (farewellRef.current?.('closing') ?? {}) : {};
       const goodbye = Object.keys(last).length > 0 && startedRef.current;
       const sent = goodbye ? pushLive({ ...liveRef.current, ...last }) : Promise.resolve();
       stoppingRef.current = sent
@@ -405,7 +415,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     /** The live frame: the leader's click, playhead and count-in, as they are now. */
     const readLive = async (again = true) => {
       const id = deviceId;
-      if (!id || !liveOn || cancelled) return;
+      // Switched off (ble_live): the click and playhead don't come over Bluetooth, the song still does.
+      if (!id || !liveOn || cancelled || !bleLiveRef.current) return;
       let view: DataView;
       try {
         view = await BleClient.read(id, serviceUuid, STAGE_BLE_LIVE_CHARACTERISTIC);
@@ -413,7 +424,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
         return; /* a dropped link is handled by onDisconnect */
       }
       const frame = await decodeLive(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), key);
-      if (cancelled || deviceId !== id) return;
+      // Switched off while the read was on its way: it brings nothing.
+      if (cancelled || deviceId !== id || !bleLiveRef.current) return;
       if (!frame) {
         // Read while the leader changed it (a long read in two parts): once more.
         if (again) setTimeout(() => void readLive(false), 100);
@@ -483,6 +495,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     syncCtlRef.current = {
       start: () => {
         if (deviceId && !syncOn) void startSync(deviceId);
+        // Back on: where the band is now (frames meanwhile were not read).
+        void readLive();
       },
       stop: () => {
         stopSync();
@@ -575,6 +589,23 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     if (bleLive) syncCtlRef.current?.start();
     else syncCtlRef.current?.stop();
   }, [bleLive, isLeader]);
+
+  // Leader: the switch flipped while serving. Off: one last frame says the click
+  // and the playhead stopped (a phone that still reads them, its own switch not
+  // read yet or with no signal, stops instead of running on what it last got),
+  // then nothing more goes out. Back on: what runs now is served again.
+  const wasLiveRef = useRef(bleLive);
+  useEffect(() => {
+    if (wasLiveRef.current === bleLive) return;
+    wasLiveRef.current = bleLive;
+    if (!isLeader || !startedRef.current) return;
+    if (bleLive) {
+      if (Object.keys(liveRef.current).length) void pushLive();
+      return;
+    }
+    const last = farewellRef.current?.('off') ?? {};
+    if (Object.keys(last).length) void pushLive({ ...liveRef.current, ...last }, true);
+  }, [bleLive, isLeader, pushLive]);
 
   // Back from Settings (sent by the button): start again by itself. Not on any
   // resume: closing the system permission dialog resumes the app too, and

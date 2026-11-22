@@ -59,24 +59,35 @@ const air = vi.hoisted(() => ({
   members: new Set<{ current: OnLive }>(),
   latest: new Map<string, unknown>(),
   bursts: 0,
+  /** The leader's click and playhead over Bluetooth are switched off (app_flags ble_live). */
+  off: false,
+  /** What useStageBle does when that switch goes off mid-show: the leader's last words, then nothing. */
+  switchOff: () => {},
 }));
 vi.mock('../useStageBle', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
   return {
-    useStageBle: (o: { isLeader: boolean; onLive?: OnLive; farewell?: () => Record<string, unknown> }) => {
+    useStageBle: (o: { isLeader: boolean; onLive?: OnLive; farewell?: (why: 'closing' | 'off') => Record<string, unknown> }) => {
       const ref = React.useRef<OnLive>(() => {});
       ref.current = o.onLive ?? (() => {});
       const bye = React.useRef(o.farewell);
       bye.current = o.farewell;
       React.useEffect(() => {
         if (o.isLeader) {
-          // Stopping Bluetooth sends the leader's last words first (useStageBle).
-          return () => {
-            const last = bye.current?.() ?? {};
+          const lastWords = (why: 'closing' | 'off') => {
+            const last = bye.current?.(why) ?? {};
             for (const [e, p] of Object.entries(last)) {
               air.latest.set(e, p);
               if (air.linked) air.members.forEach((m) => m.current(e, p));
             }
+          };
+          air.switchOff = () => {
+            air.off = true;
+            lastWords('off');
+          };
+          // Stopping Bluetooth sends the leader's last words first (useStageBle); switched off, they already went.
+          return () => {
+            if (!air.off) lastWords('closing');
           };
         }
         air.members.add(ref);
@@ -89,7 +100,7 @@ vi.mock('../useStageBle', async () => {
         () => ({
           publish: () => {},
           publishLive: (event: string, payload: unknown) => {
-            if (!o.isLeader) return;
+            if (!o.isLeader || air.off) return;
             air.latest.set(event, payload);
             if (air.linked) air.members.forEach((m) => m.current(event, payload));
           },
@@ -126,6 +137,8 @@ beforeEach(() => {
   air.members.clear();
   air.latest.clear();
   air.bursts = 0;
+  air.off = false;
+  air.switchOff = () => {};
 });
 afterEach(() => vi.useRealTimers());
 
@@ -234,6 +247,38 @@ describe('useStageLive: click and playhead over Bluetooth', () => {
     leader.unmount();
     expect(member.result.current.click.state?.on).toBe(false);
     expect(member.result.current.playhead.state?.on).toBe(false);
+  });
+
+  it('the Bluetooth click switched off mid-show (ble_live): a phone with no internet stops, a phone online keeps the beat it had', () => {
+    const leader = phone(true);
+    const online = phone(false);
+    const startAt = Date.now() - 20_000;
+    act(() => leader.result.current.click.setOn(true, { ...four, startAt }));
+    act(() => leader.result.current.playhead.set(startPlayhead({ from: 'x', songId: 'row-1', bpm: 120, startAt })));
+    expect(online.result.current.click.state).toMatchObject({ on: true, startAt });
+    act(() => air.switchOff());
+    // Told "stopped" over Bluetooth, and "still running" over the channel, newer: the same beat goes on.
+    expect(online.result.current.click.state).toMatchObject({ on: true, bpm: 120, beats: 4, startAt });
+    expect(online.result.current.playhead.state).toMatchObject({ on: true, startAt });
+    expect(leader.result.current.click.state).toMatchObject({ on: true, startAt });
+    expect(leader.result.current.playhead.state).toMatchObject({ on: true, startAt });
+    // From now on only the channel carries it.
+    act(() => leader.result.current.click.setOn(false));
+    expect(online.result.current.click.state?.on).toBe(false);
+  });
+
+  it('the Bluetooth click switched off mid-show, no internet: the member is told it stopped, and the leader keeps its own', () => {
+    net.up = false;
+    const leader = phone(true);
+    const member = phone(false);
+    act(() => leader.result.current.click.setOn(true, four));
+    act(() => leader.result.current.playhead.set(startPlayhead({ from: 'x', songId: 'row-1', bpm: 120, startAt: Date.now() + 1500 })));
+    expect(member.result.current.click.state?.on).toBe(true);
+    act(() => air.switchOff());
+    expect(member.result.current.click.state?.on).toBe(false);
+    expect(member.result.current.playhead.state?.on).toBe(false);
+    expect(leader.result.current.click.state?.on).toBe(true);
+    expect(leader.result.current.playhead.state?.on).toBe(true);
   });
 
   it('a 6/8 at a dotted 120 (360 ticks a minute) starts and stops over Bluetooth like on the channel', () => {
