@@ -399,6 +399,8 @@ const onMutations = (records: MutationRecord[]) => {
     if (!l.auto || l.el.isConnected) continue;
     stack.splice(i, 1);
     const active = document.activeElement;
+    // Only when focus went with it (body, or a node gone with it): `l.el` is
+    // passed for symmetry, it can't hold a text field that still has focus.
     if (!active || active === document.body || !active.isConnected) backToTrap(l.opener, l.el);
   }
   stopIfUnowned();
