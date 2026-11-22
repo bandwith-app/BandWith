@@ -200,7 +200,11 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         setQuotes(prev => prev.map(q => (q.id === existing.id ? optimistic : q)));
 
         // Only what changed, never the status the wizard was opened with (183).
-        const updates = quoteUpdateRecord(quoteData, currentBandId, existing);
+        // Round 5: the quote as the wizard opened it, never the list as it
+        // reloaded since: its read time (updated_at) is what the server's
+        // stale-edit check compares with a change of client.
+        const baseline = editingQuote && editingQuote.id === existing.id ? editingQuote : existing;
+        const updates = quoteUpdateRecord(quoteData, currentBandId, baseline);
         const { data, error } = await updateQuoteDB(existing.id, updates);
         if (error || !data) {
           setQuotes(previous);

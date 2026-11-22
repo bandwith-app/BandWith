@@ -66,11 +66,11 @@ describe('quoteUpdateRecord: only what changed', () => {
     expect(rec).toEqual({ event_date: '2027-05-22', edit_base_at: READ_AT });
     expect(rec).not.toHaveProperty('client_phone');
   });
-  it('a price change sends the fee and the totals it moves, never the status or the send time', () => {
+  it('a price change sends the fee (round 5: the totals are the server\'s), never the status or the send time', () => {
     const rec = quoteUpdateRecord({ ...original, status: 'VIEWED', baseFee: 4500, subtotal: 5100 }, BAND_ID, original) as Record<string, unknown>;
     expect(rec.base_fee).toBe(4500);
-    expect(rec.subtotal).toBe(5100);
-    expect(rec.total).toBe(5100);
+    expect(rec).not.toHaveProperty('subtotal');
+    expect(rec).not.toHaveProperty('total');
     expect(rec).not.toHaveProperty('status');
     expect(rec).not.toHaveProperty('sent_at');
     expect(rec).not.toHaveProperty('band_id');

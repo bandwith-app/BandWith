@@ -900,7 +900,8 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     cancellation_policy: textOrUndefined(q.cancellationPolicy),
     cancellation_terms: textOrUndefined(q.cancellationTerms),
     internal_notes: textOrUndefined(q.internalNotes),
-    client_notes: textOrUndefined(q.clientNotes || q.notes),
+    // Round 5: a cleared note is cleared (never the old `notes` copy back).
+    client_notes: textOrUndefined('clientNotes' in q ? q.clientNotes : q.notes),
     special_terms: textOrUndefined(q.specialTerms),
     deposit_amount: q.depositRequired === false
       ? 0
@@ -930,15 +931,20 @@ export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original
     return rest as Record<string, unknown>;
   };
   const before = strip(appQuoteToDbRecord(original, bandId));
-  // A key the edit leaves undefined is one it does not carry (not one it cleared: '' or null).
-  const carried = Object.fromEntries(Object.entries(q).filter(([, v]) => v !== undefined)) as Partial<AppQuote>;
-  const after = strip(appQuoteToDbRecord({ ...original, ...carried }, bandId));
+  // Round 5: a key the edit has is one it carries, also when its value is
+  // undefined (the wizard sends a cleared phone, company or note that way):
+  // cleared, it goes out as null. Only a key it doesn't have keeps the
+  // quote's value.
+  const after = strip(appQuoteToDbRecord({ ...original, ...q }, bandId));
   // Without the time the screen read the quote (never for a quote loaded
   // from the database) the whole form goes out, as before round 4: the
   // server then treats it as a full save.
   const full = !original.updatedAt;
   const out: Record<string, unknown> = {};
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    // Round 5: the totals are the server's (183, from the stored parts in
+    // the same UPDATE), so two admins' fee edits both count.
+    if (!full && SERVER_TOTALS.has(key)) continue;
     if (!full && JSON.stringify(after[key] ?? null) === JSON.stringify(before[key] ?? null)) continue;
     if (after[key] === undefined && KEEP_WHEN_UNSET.has(key)) continue;
     out[key] = after[key] === undefined ? null : after[key];
@@ -946,6 +952,9 @@ export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original
   if (!full) out.edit_base_at = original.updatedAt;
   return out as Partial<Quote>;
 };
+
+/** Computed by the database on an edit (183 round 5): never sent with one. */
+const SERVER_TOTALS = new Set(['subtotal', 'discount_amount', 'net_amount', 'vat_amount', 'total', 'deposit_amount']);
 
 /** Flags with a meaning of their own when unset (the column default), never cleared to null by an edit. */
 const KEEP_WHEN_UNSET = new Set([

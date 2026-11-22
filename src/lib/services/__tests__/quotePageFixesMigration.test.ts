@@ -80,21 +80,37 @@ describe('183_quote_page_fixes', () => {
     expect(after).not.toContain('ON CONFLICT (quote_id, version)');
     const fresh = ' v_fresh := v_link.recipient_changed_at IS NOT NULL AND v_link.version_at IS NULL;';
     expect(after).toContain(fresh);
+    // Round 5: another token is stale (40001); an older build without one is
+    // judged by its summary's client, never refused for good.
     const token =
-      " IF (p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token) OR (p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL) THEN RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = 'P0001'; END IF;";
+      " IF p_token IS NOT NULL AND v_link.token IS DISTINCT FROM p_token THEN RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was replaced, open the quote again' USING ERRCODE = '40001'; END IF;";
     expect(after).toContain(token);
+    expect(after).toContain("IF p_token IS NULL AND p_version IS NULL AND v_link.recipient_changed_at IS NOT NULL AND NOT public.bw_quote_snapshot_for_client(p_quote_id, p_snapshot, v_pdf) THEN");
+    expect(after).not.toContain('(p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL)');
     // Round 4: the quote locked, and who it is for read under that lock.
     const quoteLock =
       " SELECT nullif(lower(btrim(q.client_email)), ''), nullif(btrim(q.client_name), '') INTO v_email, v_name FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;";
     expect(after).toContain(quoteLock);
     // Round 4: the version the admin sees, and a language-only change is no new version.
     const versionCheck =
-      " IF p_version IS NOT NULL AND v_link.version IS DISTINCT FROM p_version THEN RAISE EXCEPTION 'BW_VERSION_CHANGED: another version was published meanwhile, open the quote again' USING ERRCODE = 'P0001'; END IF;";
+      " IF p_version IS NOT NULL AND p_version <> 0 AND v_link.version IS DISTINCT FROM p_version THEN RAISE EXCEPTION 'BW_VERSION_CHANGED: another version was published meanwhile, open the quote again' USING ERRCODE = '40001'; END IF;";
     expect(after).toContain(versionCheck);
+    // Round 5: coalesce, so the first publish (no summary yet) is a change.
     const sameContent =
-      " AND NOT (v_link.snapshot ? 'contentKey' AND p_snapshot ? 'contentKey' AND v_link.snapshot ->> 'contentKey' = p_snapshot ->> 'contentKey')";
+      " AND NOT coalesce(v_link.snapshot ? 'contentKey' AND p_snapshot ? 'contentKey' AND v_link.snapshot ->> 'contentKey' = p_snapshot ->> 'contentKey', false)";
     expect(after).toContain(sameContent);
+    // Round 5: a screen that saw no link (p_version 0), and an older build's summary for the previous client.
+    const sawNone =
+      " IF p_version = 0 AND v_made IS NULL THEN RAISE EXCEPTION 'BW_LINK_CHANGED: the quote link was made meanwhile, open the quote again' USING ERRCODE = '40001'; END IF;";
+    expect(after).toContain(sawNone);
+    const olderBuild =
+      " IF p_token IS NULL AND p_version IS NULL AND v_link.recipient_changed_at IS NOT NULL AND NOT public.bw_quote_snapshot_for_client(p_quote_id, p_snapshot, v_pdf) THEN RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP'; END IF;";
+    expect(after).toContain(olderBuild);
     const back = after
+      .replace(sawNone, '')
+      .replace(olderBuild, '')
+      .replace(' RETURNING id INTO v_made;', ';')
+      .replace(' v_made uuid;', '')
       .replace(token, '')
       .replace(quoteLock, '')
       .replace(versionCheck, '')
@@ -176,7 +192,9 @@ describe('183_quote_page_fixes', () => {
     const r3 = ms(sql);
     expect(r3).toContain("IF v_link.id IS NULL OR v_link.snapshot IS NULL THEN RAISE EXCEPTION 'Publish the quote first'");
     expect(r3).toContain("RAISE EXCEPTION 'BW_VERSION_CHANGED: the quote was updated after this was sent'");
-    expect(r3).toContain('(p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL)');
+    // Round 5: an older build (no token) once the link is published for its current recipient.
+    expect(r3).toContain('IF p_token IS NULL AND NOT public.bw_quote_link_current(v_link) THEN');
+    expect(r3).not.toContain('(p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL)');
     // The rest of 161's body is there as it was.
     for (const line of [
       "IF v_link.status = 'draft' AND COALESCE(p_kind, 'sent') <> 'reminded' THEN PERFORM public.bw_plan_guard(v_band, 'quotes_sent_month', 1); END IF;",

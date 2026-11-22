@@ -98,7 +98,7 @@ describe('a new client on a sent quote (183)', () => {
 
   it('the share sheet publishes for the token it handed out', () => {
     // Round 4: on Send or Copy only, for the link and the version it shows (QuoteShareModal.newRecipient.test.tsx).
-    expect(shareModalSrc).toMatch(/publishQuoteLink\(\s*String\(quote\.id\),\s*buildClientQuoteSnapshot\(quoteRef\.current, docLang, settings\),\s*docLang,\s*uploadedUrl,\s*link\?\.token \?\? null,\s*typeof link\?\.version === 'number' \? link\.version : null,/);
+    expect(shareModalSrc).toMatch(/publishQuoteLink\(\s*String\(quote\.id\),\s*buildClientQuoteSnapshot\(quoteRef\.current, docLang, settings\),\s*docLang,\s*uploadedUrl,\s*link\?\.token \?\? null,\s*(?:\/\/[^\n]*\n\s*)*link \? \(typeof link\.version === 'number' \? link\.version : null\) : 0,/);
   });
 
   it('client messages before the latest change of client belong to the previous client', () => {

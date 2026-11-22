@@ -3699,6 +3699,8 @@ const dict: Dictionary = {
   "Link turned off": "Link deaktiviert",
   "Your reply was not sent. Try again.": "Deine Antwort wurde nicht gesendet. Versuche es erneut.",
   "The recipient changed: this draft was for the previous client.": "Der Empfänger hat sich geändert: Dieser Entwurf war für den vorherigen Kunden.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Dieses Gespräch ist jetzt mit {name}. Prüfe deine Antwort, bevor du sie sendest.",
+  "Write to {name}": "An {name} schreiben",
   "Could not copy the text.": "Der Text konnte nicht kopiert werden.",
   "From here: {name}": "Ab hier: {name}",
   "You’re writing to {name}": "Du schreibst an {name}",
@@ -3836,7 +3838,7 @@ const dict: Dictionary = {
   "Quote not saved. Check your connection and try again.": "Angebot nicht gespeichert. Prüf deine Verbindung und versuch es noch einmal.",
   "This quote has been accepted: to send it to someone else, duplicate it.": "Dieses Angebot wurde angenommen: Um es jemand anderem zu schicken, dupliziere es.",
   "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Für dieses Angebot sind Zahlungen in {currency} erfasst: Die Währung lässt sich nicht ändern.",
-  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way), but to send it to someone else, duplicate it.": "Dieses Angebot wurde angenommen: Du kannst die Angaben des Kunden korrigieren (ein Tippfehler im Namen, die Telefonnummer anders geschrieben), aber um es jemand anderem zu schicken, dupliziere es.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Dieses Angebot wurde angenommen: Du kannst die Kundendaten korrigieren (ein Tippfehler im Namen, die Telefonnummer anders geschrieben, ein Tippfehler in der E-Mail, bis du den Restbetrag anforderst), aber um es jemand anderem zu schicken, dupliziere es.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Erlaube Bluetooth, damit die Band dir folgt, wenn das Internet ausfällt.",
@@ -4649,6 +4651,8 @@ const dict: Dictionary = {
   "New link for the new client": "Neuer Link für den neuen Kunden",
   "Previous client": "Vorheriger Kunde",
   "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Dieses Angebot hat sich inzwischen geändert (anderer Kunde oder anderer Admin). Schließe das Angebot und öffne es erneut.",
+  "This quote now goes to {name}. Nothing was sent: check the contact and send again.": "Dieses Angebot geht jetzt an {name}. Es wurde nichts gesendet: Prüfe den Kontakt und sende erneut.",
+  "Send to {name}": "An {name} senden",
   "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Das Angebot hat sich inzwischen geändert, daher wurde dieser Versand nicht erfasst. Schließe das Angebot und öffne es erneut.",
   "This conversation was with the previous client. Your reply was not sent: open the quote again to write to the current client.": "Diese Unterhaltung war mit dem vorherigen Kunden. Deine Antwort wurde nicht gesendet: Öffne das Angebot erneut, um dem aktuellen Kunden zu schreiben.",
 };

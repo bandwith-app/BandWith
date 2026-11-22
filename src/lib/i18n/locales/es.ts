@@ -3699,6 +3699,8 @@ const dict: Dictionary = {
   "Link turned off": "Enlace desactivado",
   "Your reply was not sent. Try again.": "Tu respuesta no se envió. Vuelve a intentarlo.",
   "The recipient changed: this draft was for the previous client.": "El destinatario ha cambiado: este borrador era para el cliente anterior.",
+  "This conversation is now with {name}. Check your reply before you send it.": "Esta conversación ahora es con {name}. Revisa tu respuesta antes de enviarla.",
+  "Write to {name}": "Escribir a {name}",
   "Could not copy the text.": "No se pudo copiar el texto.",
   "From here: {name}": "Desde aquí: {name}",
   "You’re writing to {name}": "Le escribes a {name}",
@@ -3836,7 +3838,7 @@ const dict: Dictionary = {
   "Quote not saved. Check your connection and try again.": "Presupuesto no guardado. Revisa tu conexión e inténtalo de nuevo.",
   "This quote has been accepted: to send it to someone else, duplicate it.": "Este presupuesto ya fue aceptado: para enviarlo a otra persona, duplícalo.",
   "This quote has payments recorded in {currency}, so its currency can’t be changed.": "Este presupuesto tiene pagos registrados en {currency}: no se puede cambiar su moneda.",
-  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way), but to send it to someone else, duplicate it.": "Este presupuesto ya fue aceptado: puedes corregir los datos del cliente (una errata en el nombre, el teléfono escrito de otra forma), pero para enviarlo a otra persona, duplícalo.",
+  "This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.": "Este presupuesto ya fue aceptado: puedes corregir los datos del cliente (una errata en el nombre, el teléfono escrito de otra forma, una errata en el email hasta que pidas el saldo), pero para enviarlo a otra persona, duplícalo.",
   // Songs & Stage audit fixes
   "Bluetooth": "Bluetooth",
   "Allow Bluetooth so the band can follow you when the internet drops.": "Permite el Bluetooth para que la banda te siga cuando se caiga internet.",
@@ -4649,6 +4651,8 @@ const dict: Dictionary = {
   "New link for the new client": "Nuevo enlace para el nuevo cliente",
   "Previous client": "Cliente anterior",
   "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Mientras tanto, este presupuesto cambió (otro cliente u otro administrador). Cierra y vuelve a abrir el presupuesto.",
+  "This quote now goes to {name}. Nothing was sent: check the contact and send again.": "Este presupuesto ahora va a {name}. No se envió nada: revisa el contacto y vuelve a enviarlo.",
+  "Send to {name}": "Enviar a {name}",
   "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Mientras tanto, el presupuesto cambió, así que este envío no se registró. Cierra y vuelve a abrir el presupuesto.",
   "This conversation was with the previous client. Your reply was not sent: open the quote again to write to the current client.": "Esta conversación era con el cliente anterior. Tu respuesta no se envió: vuelve a abrir el presupuesto para escribir al cliente actual.",
 };
