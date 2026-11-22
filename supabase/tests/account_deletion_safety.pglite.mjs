@@ -1107,10 +1107,68 @@ try {
   src192 = existsSync(`${REPO}/${P192}`) ? readFileSync(`${REPO}/${P192}`, 'utf8')
     : execFileSync('git', ['-C', REPO, 'show', `origin/fix/chat-audit:${P192}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 } catch { src192 = null; }
+// A migration from another open PR: the repo's copy, else the env ref
+// (BW_<n>_REF), else its branch, else a fixed SHA.
+const otherMigration = (path, envRef, branch, sha) => {
+  if (existsSync(`${REPO}/${path}`)) return { src: readFileSync(`${REPO}/${path}`, 'utf8'), from: 'repo' };
+  for (const ref of [process.env[envRef], `origin/${branch}`, sha].filter(Boolean)) {
+    try {
+      return { src: execFileSync('git', ['-C', REPO, 'show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }), from: ref };
+    } catch { /* next ref */ }
+  }
+  return null;
+};
+const noTx = (src) => src.split('\n').filter((l) => !/^\s*(BEGIN|COMMIT);\s*$/.test(l)).join('\n');
+// One function as its migration wrote it, or its whole DO $do$ block when
+// the migration builds it there (EXECUTE format).
+const fnOrDo = (src, name) => {
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (start < 0) return null;
+  const doAt = src.lastIndexOf('DO $do$', start);
+  if (doAt >= 0 && doAt > src.lastIndexOf('$do$;', start)) {
+    const end = src.indexOf('$do$;', start);
+    return end < 0 ? null : src.slice(doAt, end + '$do$;'.length);
+  }
+  return fnByName(src, name);
+};
+// The whole file (one implicit transaction: all or nothing), else just the
+// functions 192 calls, as that migration wrote them. The stand-in schema
+// lacks some of what the rest of the file touches (175: chats.name).
+const loadForeign = async (m, names) => {
+  const whole = await x(noTx(m.src));
+  m.how = 'whole file';
+  if (!whole.error) return null;
+  m.how = `by name: ${names.join(', ')}`;
+  const parts = names.map((n) => fnOrDo(m.src, n));
+  if (parts.some((p) => !p)) return `${whole.error}; and ${names[parts.indexOf(null)]} not found in it`;
+  const some = await x(`SET check_function_bodies = off;\n${parts.join('\n')}\nRESET check_function_bodies;`);
+  return some.error ? `${whole.error}; by name: ${some.error}` : null;
+};
+// Round 16: 192 (#291, bd2c8866 on) needs 175 (#281) and 194 (#284) first.
+const m175 = otherMigration('supabase/migrations/175_security_audit_access.sql', 'BW_175_REF', 'fix/security-audit', 'a6eb45e1');
+const m194 = otherMigration('supabase/migrations/194_chat_notifications_server_only.sql', 'BW_194_REF', 'fix/push-safety', '9338ea61');
+let pre192 = null;
+if (src192 && /192 needs 175/.test(src192)) {
+  if (!m175) pre192 = '175 (#281) not found: no BW_175_REF, origin/fix/security-audit or a6eb45e1';
+  else {
+    const e = await loadForeign(m175, ['bw_chat_scope_ok', 'bw_chat_scope_ok_for']);
+    if (e) pre192 = `175 (${m175.from}) did not load on the stand-ins (${e})`;
+  }
+}
+if (!pre192 && src192 && /192 needs 194/.test(src192)) {
+  if (!m194) pre192 = '194 (#284) not found: no BW_194_REF, origin/fix/push-safety or 9338ea61';
+  else {
+    const e = await loadForeign(m194, ['bw_js_left', 'bw_chat_preview', 'bw_chat_preview_in', 'bw_write_chat_notices']);
+    if (e) pre192 = `194 (${m194.from}) did not load on the stand-ins (${e})`;
+  }
+}
 if (!src192) {
   console.log(`SKIP 192 guard: ${P192} not in the repo and origin/fix/chat-audit not found`);
+} else if (pre192) {
+  console.log(`SKIP 192 guard: ${pre192}`);
 } else {
-  d = await x(src192.split('\n').filter((l) => !/^\s*(BEGIN|COMMIT);\s*$/.test(l)).join('\n'));
+  for (const [n, m] of [['175', m175], ['194', m194]]) if (m?.how) console.log(`info 192 guard: ${n} from ${m.from} (${m.how})`);
+  d = await x(noTx(src192));
   loaded192 = !d.error;
   if (d.error) {
     console.log(`SKIP 192 guard: 192 did not load on the stand-ins (${d.error})`);
@@ -1333,16 +1391,7 @@ try {
 // load the ones there, require the ones withdraw's path needs.
 // 197 round 10 builds some from the catalog (DO $do$ … EXECUTE format):
 // those load as their whole DO block.
-const fn197 = (src, name) => {
-  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
-  if (start < 0) return null;
-  const doAt = src.lastIndexOf('DO $do$', start);
-  if (doAt >= 0 && doAt > src.lastIndexOf('$do$;', start)) {
-    const end = src.indexOf('$do$;', start);
-    return end < 0 ? null : src.slice(doAt, end + '$do$;'.length);
-  }
-  return fnByName(src, name);
-};
+const fn197 = fnOrDo;
 const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_json_paths', 'bw_song_file_in_suggestion',
   'bw_song_file_stored', 'bw_song_file_copy_ours', 'bw_song_file_used_by_song',
   'bw_song_file_in_use', 'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
