@@ -159,6 +159,11 @@ describe('every layer says what it is to the focus trap', () => {
     expect(inbox.match(/role="dialog"\s+aria-modal="true"/g)).toHaveLength(2);
     expect(inbox).toContain('role="region"');
     expect(inbox).toContain('useFocusTrap(splitRef, isOpen && split)');
+    expect(inbox).toContain('useFocusTrap(pageRef, isOpen && !split)');
+  });
+
+  it('the kit page traps focus on one page only (on two it sits beside the list)', () => {
+    expect(SOURCES['/src/app/components/gear/KitDetail.tsx']).toContain('useFocusTrap(pageRef, !twoPane)');
   });
 
   it('the urgent pop-up is a modal alert dialog marked data-bw-urgent (#271 leaves it out, so it never waits for itself)', () => {
@@ -167,8 +172,9 @@ describe('every layer says what it is to the focus trap', () => {
     );
   });
 
-  it("the Duo rail's actions toolbar (where Close and Back move) is in every trap's Tab cycle", () => {
+  it("the Duo rail's actions toolbar (where Close and Back move) is in every trap's Tab cycle but the urgent pop-up's", () => {
     expect(SOURCES['/src/app/components/layout/DuoRail.tsx']).toMatch(/role="toolbar"[\s\S]{0,300}data-bw-trap-include=""/);
+    expect(SOURCES['/src/app/components/notifications/UrgentNotificationPopup.tsx']).toContain('useFocusTrap(cardRef, !typing, { rail: false })');
   });
 
   it('Create band is a modal dialog (it opens beside the docked band switcher on the Duo)', () => {

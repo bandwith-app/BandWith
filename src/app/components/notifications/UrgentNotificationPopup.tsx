@@ -5,7 +5,8 @@ import { PillButton } from '@/app/components/bw/Form';
 import type { Notification } from '@/lib/services/notifications';
 import { springs } from '@/styles/motion';
 import { useT } from '@/lib/i18n';
-import { useFocusTrap } from '@/lib/focusTrap';
+import { useFocusTrap, useTypingFocus } from '@/lib/focusTrap';
+import { useSystemBack } from '@/lib/backStack';
 
 interface UrgentNotificationPopupProps {
   notification: Notification;
@@ -55,9 +56,16 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
   // A modal alert dialog, above any open sheet: focus moves in, Tab stays in
   // it, and goes back to what had it when it goes. data-bw-urgent: #271's
   // useLayerOpen leaves it out, so the pop-up never waits for itself.
+  // Its own Close is in it: the Duo rail's actions (the sheet's) stay out of
+  // its Tab cycle, and Escape / Back close it, not the sheet beneath.
+  // While a text field has the focus it waits, then shows when the field
+  // lets go: it never takes the focus (and the keyboard) away mid-word.
   const cardRef = React.useRef<HTMLDivElement | null>(null);
   const titleId = React.useId();
-  useFocusTrap(cardRef, true);
+  const typing = useTypingFocus();
+  useFocusTrap(cardRef, !typing, { rail: false });
+  useSystemBack(!typing, onDismiss);
+  if (typing) return null;
 
   return (
     <>
