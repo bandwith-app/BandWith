@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
 import { useAuth } from '@/lib/AuthContext';
@@ -868,9 +868,19 @@ export const useNotifications = (options?: {
   }, [isAuthenticated, fetchNotifications]);
 
   // Off: out of the list at once, before the new answer comes.
-  const visible = livePackOn ? notifications : notifications.filter((n) => String(n.type) !== 'live_pack_ready');
+  const visible = useSwitchedOffHidden(notifications);
   return { notifications: visible, loading, error, refetch: fetchNotifications, setNotifications };
 };
+
+/**
+ * Kill switch live_pack off (docs/flags.md): its "keep it offline" prompts
+ * leave a list at once, the inbox's or a snapshot of it. The same array until
+ * the list or the switch changes, so effects keyed on it don't run again.
+ */
+export function useSwitchedOffHidden<T extends { type?: unknown }>(list: T[]): T[] {
+  const livePackOn = useFlag('live_pack');
+  return useMemo(() => (livePackOn ? list : list.filter((n) => String(n.type) !== 'live_pack_ready')), [list, livePackOn]);
+}
 
 export const useUnreadCount = () => {
   const { isAuthenticated } = useAuth();

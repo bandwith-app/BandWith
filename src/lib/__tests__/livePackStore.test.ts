@@ -348,6 +348,66 @@ describe('packOpenedEvent', () => {
   });
 });
 
+// Review round 3 (#273): switched off, no NEW data comes down (songs only for
+// an event not held yet), but what is already on the phone is kept current
+// and tidied, including by the server's silent refresh.
+describe('live_pack off: nothing new, held data kept current', () => {
+  const ev = (over: Record<string, unknown> = {}) => ({ eventId: 'e1', bandId: 'b1', date: inDays(3), eventType: 'gig', setlistId: 's1', row: gig(over) });
+  const note = (id: string, body: string) => ({ id, song_id: 'song1', anchor: { type: 'song' }, body });
+
+  it('an uncached rehearsal opened while off: songs only, no notes, files, band notes or key', async () => {
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
+    answers.song_personal_files = () => ({ data: [{ id: 'f1', song_id: 'song1', name: 'chart.pdf', kind: 'pdf', ref: 'r', size: 10 }], error: null });
+    answers.rehearsal_notes = () => ({ data: [{ id: 'r1', band_id: 'b1', body: 'tighten the bridge', status: 'open' }], error: null });
+    await packOpenedEvent({ userId: me, event: gig({ event_type: 'rehearsal' }), songs, livePackOn: false, fullDue: true, allowFiles: true });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.songs).toHaveLength(2);
+    expect(p?.personal).toEqual({});
+    expect(p?.bandNotes).toBeUndefined();
+    expect(p?.stageKey).toBeFalsy();
+  });
+
+  it('a held pack opened while off keeps its notes current, gains no new ones', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 3'), note('n2', 'new while off')], error: null });
+    await packOpenedEvent({ userId: me, event: gig(), songs, livePackOn: false, fullDue: true, allowFiles: true });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.personal.song1.notes.map((n) => n.body)).toEqual(['capo 3']);
+  });
+
+  it('a pack that turns partial no longer counts as ready for the admins', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(status.reported).toHaveLength(1);
+    await packOpenedEvent({ userId: me, event: gig(), songs, livePackOn: false, fullDue: false, allowFiles: true });
+    expect(status.forgotten).toEqual(['e1']);
+  });
+
+  it("the server's silent refresh still tidies a held pack while off", async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    answers.song_personal_notes = () => ({ data: [note('n1', 'capo 2')], error: null });
+    await refreshPack({ userId: me, event: gig() });
+    answers.song_personal_notes = () => ({ data: [], error: null });
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: false, force: ['e1'] });
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.personal.song1).toBeUndefined();
+    expect(p?.partial).toBe(true);
+    // Setlist emptied: the pack goes.
+    answers.setlist_songs = () => ({ data: [], error: null });
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: false, force: ['e1'] });
+    expect(await readPack(me, 'b1', 'e1')).toBeNull();
+  });
+
+  it('a silent refresh while off never creates a pack', async () => {
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events: [ev()], online: true, downloads: false, force: ['e1'] });
+    expect(await readPack(me, 'b1', 'e1')).toBeNull();
+  });
+});
+
 describe('migrateLegacySetlists', () => {
   it('moves the old localStorage copy into the pack, then removes it', async () => {
     localStorage.setItem('bw-setlist-songs:s1', JSON.stringify(songs));
@@ -355,6 +415,8 @@ describe('migrateLegacySetlists', () => {
     const events = [{ eventId: 'e1', bandId: 'b1', date: inDays(2), eventType: 'gig', setlistId: 's1' }];
     await migrateLegacySetlists(me, events, new Map([['e1', gig()]]));
     expect((await readPack(me, 'b1', 'e1'))?.songs).toHaveLength(2);
+    // Songs only: partial, never "Offline ready" until a full download.
+    expect((await readPack(me, 'b1', 'e1'))?.partial).toBe(true);
     expect(localStorage.getItem('bw-setlist-songs:s1')).toBeNull();
     expect(localStorage.getItem('bw-setlist-songs:old')).toBeNull();
   });

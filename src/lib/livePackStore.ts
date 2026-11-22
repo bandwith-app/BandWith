@@ -205,7 +205,28 @@ export async function savePackSongs(args: {
     ...(args.partial || prev?.partial ? { partial: true } : {}),
   };
   await savePack(pack);
+  forgetIfNowPartial(prev, pack);
   return pack;
+}
+
+/** A full pack that turns partial: the admins' "N of M ready" stops counting this device. */
+function forgetIfNowPartial(prev: LivePack | null, pack: LivePack) {
+  if (pack.partial && prev && !prev.partial) void forgetPackStatus(pack.userId, [pack.eventId]);
+}
+
+/**
+ * Switched off: only what the pack already holds stays, kept current (an
+ * edited note is updated, a deleted one goes), never anything new.
+ */
+function onlyHeld(fresh: Record<string, LivePackPersonal>, held: Record<string, LivePackPersonal> | undefined): Record<string, LivePackPersonal> {
+  const notes = new Set(Object.values(held ?? {}).flatMap((p) => p.notes.map((n) => n.id)));
+  const files = new Set(Object.values(held ?? {}).flatMap((p) => p.files.map((f) => f.id)));
+  const out: Record<string, LivePackPersonal> = {};
+  for (const [songId, p] of Object.entries(fresh)) {
+    const kept = { notes: p.notes.filter((n) => notes.has(n.id)), files: p.files.filter((f) => files.has(f.id)) };
+    if (kept.notes.length || kept.files.length) out[songId] = kept;
+  }
+  return out;
 }
 
 // ── downloading ───────────────────────────────────────────────────────────
@@ -309,7 +330,10 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     return null;
   }
   const songIds = [...new Set(songs.map((s) => s.songId).filter((x): x is string => !!x))];
-  const personal = (await fetchPersonal(args.userId, songIds).catch(() => null)) ?? (prev?.setlistId === event.setlist_id ? prev.personal : {});
+  const heldPersonal = prev?.setlistId === event.setlist_id ? prev.personal : {};
+  const fetched = await fetchPersonal(args.userId, songIds).catch(() => null);
+  // Switched off: kept current, nothing new (an event not held yet: songs only).
+  const personal = fetched ? (args.partial ? onlyHeld(fetched, heldPersonal) : fetched) : heldPersonal;
   // My files: the copies already on the device stay; new ones come down (native).
   const prevFiles = new Map(Object.values(prev?.personal ?? {}).flatMap((p) => p.files).map((f) => [f.id, f]));
   const kept = new Set<string>();
@@ -317,25 +341,34 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     for (const f of p.files) {
       const had = prevFiles.get(f.id)?.local;
       if (had) f.local = had;
-      if (!f.local && args.withFiles && packFilesAvailable()) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
+      if (!f.local && args.withFiles && !args.partial && packFilesAvailable()) f.local = (await downloadPackFile(args.userId, f)) ?? undefined;
       if (f.local) kept.add(f.id);
     }
   }
   await removePackFiles([...prevFiles.values()].filter((f) => !kept.has(f.id)));
 
   let bandNotes = prev?.bandNotes;
-  if (event.event_type === 'rehearsal') {
+  // A rehearsal's band notes: fetched only when on, or to keep held ones current.
+  if (event.event_type === 'rehearsal' && (!args.partial || prev?.bandNotes)) {
     const [occurrence, open] = await Promise.all([
       fetchOccurrenceNotes(event.id, event.event_date).catch(() => null),
       fetchOpenBandNotes(event.band_id).catch(() => null),
     ]);
     const ids = new Set(songIds);
-    if (occurrence && open)
-      bandNotes = { date: event.event_date, occurrence, open: open.filter((n) => !n.songId || ids.has(n.songId)) };
+    if (occurrence && open) {
+      const fresh = { date: event.event_date, occurrence, open: open.filter((n) => !n.songId || ids.has(n.songId)) };
+      if (!args.partial) bandNotes = fresh;
+      else if (prev?.bandNotes) {
+        // Switched off: the notes already held, kept current; none added.
+        const held = new Set([...prev.bandNotes.occurrence, ...prev.bandNotes.open].map((n) => n.id));
+        bandNotes = { ...fresh, occurrence: fresh.occurrence.filter((n) => held.has(n.id)), open: fresh.open.filter((n) => held.has(n.id)) };
+      }
+    }
   }
 
   let key = prev?.stageKey ?? null;
-  if (!key) {
+  // Switched off: no new Bluetooth key either.
+  if (!key && !args.partial) {
     try {
       // Inside the try: a partial client mock (tests) has no isDemoMode.
       if (!isDemoMode && stageBleAvailable()) key = await stageKey(event.id);
@@ -361,6 +394,7 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     ...(args.partial ? { partial: true } : {}),
   };
   await savePack(pack);
+  forgetIfNowPartial(prev, pack);
   // The full pack is on this device: tell the band's admins (native only).
   if (!pack.partial) void reportPackStatus(pack);
   return pack;
@@ -418,7 +452,8 @@ export async function migrateLegacySetlists(userId: string, events: LivePackCand
     const row = eventRows.get(m.eventId);
     if (!row) continue;
     const date = events.find((e) => e.eventId === m.eventId)?.date;
-    if (!(await readPack(userId, m.bandId, m.eventId))) await savePackSongs({ userId, event: row, occurrenceDate: date, songs: m.songs });
+    // Songs only: partial until a full download completes it.
+    if (!(await readPack(userId, m.bandId, m.eventId))) await savePackSongs({ userId, event: row, occurrenceDate: date, songs: m.songs, partial: true });
   }
   try {
     keys.forEach((k) => localStorage.removeItem(k));
@@ -484,7 +519,20 @@ async function prefetchOnce({
   const rows = new Map(events.map((e) => [e.eventId, e.row]));
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
-  if (!downloads || !keepGoing()) return 0;
+  if (!downloads || !keepGoing()) {
+    // Switched off: the server's silent refresh still brings the packs
+    // already on this device up to date (tidy, partial, no files); it never
+    // creates one.
+    let tidied = 0;
+    if (online) {
+      for (const e of events.filter((x) => force.includes(x.eventId))) {
+        if (!(await readPack(userId, e.bandId, e.eventId))) continue;
+        await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: false, unknownTitle, partial: true });
+        tidied++;
+      }
+    }
+    return tidied;
+  }
   const choice = readChoice(userId);
   if (!online || !anyPackAllowed(choice) || (choice.wifiOnly && !onWifi)) return 0;
   let candidates = prefetchCandidates(events, now).filter((e) => packAllowed(choice, e.eventId));

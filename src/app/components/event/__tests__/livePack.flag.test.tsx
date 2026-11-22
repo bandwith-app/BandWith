@@ -6,7 +6,9 @@ import { render, screen, cleanup, renderHook, act } from '@testing-library/react
 // no consent sheet, no "Download for offline" / ready rows. The tidy-up
 // (old copies moved in, packs of bands left removed) still runs.
 type Run = { force?: string[]; downloads?: boolean; keepGoing?: () => boolean };
-const h = vi.hoisted(() => ({ runs: [] as Run[] }));
+const h = vi.hoisted(() => ({ runs: [] as Run[], waiting: 0 }));
+// Notes saved with no signal, waiting to go (A3 outbox).
+vi.mock('@/app/hooks/useLiveOutbox', () => ({ useWaitingChanges: () => h.waiting }));
 vi.mock('@capacitor/core', async (orig) => ({
   ...(await orig<typeof import('@capacitor/core')>()),
   Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false },
@@ -48,7 +50,7 @@ afterEach(() => {
 });
 
 describe('live_pack off', () => {
-  it('nothing is downloaded ahead of time, a silent push is ignored; the tidy-up still runs', async () => {
+  it('nothing is downloaded ahead of time; a silent push only tidies a pack already here', async () => {
     __setAppFlagsForTest({ live_pack: false });
     renderHook(() => useLivePackPrefetch([], 'u-1', ['b-1']));
     act(() => {
@@ -57,7 +59,9 @@ describe('live_pack off', () => {
     });
     await vi.advanceTimersByTimeAsync(2000);
     expect(h.runs.length).toBeGreaterThan(0);
-    expect(h.runs.every((r) => r.downloads === false && !r.force)).toBe(true);
+    // No downloads in any run; the push's event goes along for the tidy-up.
+    expect(h.runs.every((r) => r.downloads === false)).toBe(true);
+    expect(h.runs.some((r) => r.force?.[0] === 'ev-9')).toBe(true);
   });
 
   it('turned off while the app is open: the next push only tidies up', async () => {
@@ -69,7 +73,7 @@ describe('live_pack off', () => {
     });
     await vi.advanceTimersByTimeAsync(2000);
     expect(h.runs.length).toBeGreaterThan(0);
-    expect(h.runs.every((r) => r.downloads === false && !r.force)).toBe(true);
+    expect(h.runs.every((r) => r.downloads === false)).toBe(true);
   });
 
   it('a download already running stops when it is switched off', () => {
@@ -97,6 +101,15 @@ describe('live_pack off', () => {
     act(() => __setAppFlagsForTest({ live_pack: false }));
     rerender(<OfflineReadyRow pack={null} userId="u-1" event={EVENT} online />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('off: changes still waiting for signal stay in view (notes can still be queued)', () => {
+    h.waiting = 2;
+    __setAppFlagsForTest({ live_pack: false });
+    render(<OfflineReadyRow pack={null} userId="u-1" event={EVENT} online />);
+    expect(screen.getByRole('status').textContent).toMatch(/2 changes waiting for signal/);
+    expect(screen.queryByText('Download for offline')).toBeNull();
+    h.waiting = 0;
   });
 
   it('a pack kept while it was off is partial: on again, the event is not "Offline ready"', () => {

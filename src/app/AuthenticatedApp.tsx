@@ -23,6 +23,7 @@ import {
   useEvents,
   useUpcomingEvents,
   useNotifications,
+  useSwitchedOffHidden,
   useQuotes,
   useDashboardData,
   useExpandedFinanceData,
@@ -111,6 +112,8 @@ const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerVie
 const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
 const AnalyticsView = lazyLayer(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
 const InventoryView = lazyLayer(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
+/** One empty list for the inbox filter (same array every render). */
+const NO_NOTIFICATIONS: never[] = [];
 const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
 import type { ContractPrefill } from "@/app/views/ContractsView";
 const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
@@ -1651,6 +1654,9 @@ export default function AuthenticatedApp() {
   // can show "No notifications yet" instead of not opening at all.
   const [inboxOpen, setInboxOpen] = useState(false);
   const isNotificationsOpen = inboxOpen || !!selectedNotification || selectedNotifications.length > 0;
+  // Kill switch live_pack off: its prompts leave the open inbox too (it shows a snapshot).
+  const shownSelectedNotifications = useSwitchedOffHidden(selectedNotifications);
+  const shownSelectedNotification = useSwitchedOffHidden(selectedNotification ? [selectedNotification] : NO_NOTIFICATIONS)[0] ?? null;
 
   /** Deletes notifications for good (list, badge and other devices). */
   const removeNotifications = useCallback((ids: string[]) => {
@@ -4681,8 +4687,8 @@ export default function AuthenticatedApp() {
           <NotificationDetailModal key="notification-detail"
             isOpen={isNotificationsOpen}
             onClose={() => { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }}
-            notification={selectedNotification}
-            notifications={selectedNotifications}
+            notification={shownSelectedNotification}
+            notifications={shownSelectedNotifications}
             calendarEvents={events}
             bandNames={(realBands?.length ?? 0) > 1 ? bandLookup : undefined}
             // Opening the action a notification suggests (RSVP, poll, its

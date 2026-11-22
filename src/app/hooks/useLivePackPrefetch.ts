@@ -44,8 +44,9 @@ export function useLivePackPrefetch(
     [events],
   );
   // Switched off (app_flags live_pack, docs/flags.md): no downloads ahead of
-  // time, silent pushes ignored, a running download stops. The tidy-up (old
-  // copies moved in, expired packs and bands left removed) always runs.
+  // time, a running download stops. The tidy-up (old copies moved in, expired
+  // packs and bands left removed) always runs, and a silent push still brings
+  // a pack already on this phone up to date (partial, no new data).
   const on = useFlag('live_pack');
   const key = `${on ? 1 : 0}#${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
   const ref = useRef({ list, bandIds });
@@ -61,7 +62,8 @@ export function useLivePackPrefetch(
         online: Capacitor.isNativePlatform() && isOnline(),
         onWifi: !onCellular(),
         unknownTitle: t('Unknown Song'),
-        force: on ? force : undefined,
+        // Off: a silent push still tidies a pack already here (never a new one).
+        force,
         downloads: on,
         keepGoing: () => isFlagOn('live_pack'),
       }).catch(() => undefined);

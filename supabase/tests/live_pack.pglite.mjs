@@ -180,6 +180,14 @@ ok(f === 2 && calls.length === 2, `flush posts one silent push per event, got ${
 ok(gigCall && gigCall.body.silent === true && gigCall.body.data.type === 'live_pack_refresh' && gigCall.url.endsWith('/functions/v1/send-push'), 'silent body');
 ok(gigCall && [...gigCall.body.user_ids].sort().join() === [MEM, AUTO].sort().join(), `targets: pack holders + automatic, got ${gigCall && gigCall.body.user_ids}`);
 ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 0, 'queue emptied');
+// Kill switch off: the silent refresh goes only to people who already hold
+// the pack (it keeps their copy current); "automatic" alone starts no download.
+const targets = async (ev) => [...(await q(`SELECT public.bw_live_pack_refresh_targets($1) t`, [ev])).rows[0].t].sort().join();
+ok((await targets(EV_REH)).includes(AUTO), 'on: an automatic member with no pack is a target');
+await db.exec(`UPDATE public.app_flags SET enabled = false WHERE key = 'live_pack'`);
+ok((await targets(EV_REH)) === '', `off: no pack, no silent push, got ${await targets(EV_REH)}`);
+ok((await targets(EV)) === [MEM, AUTO].sort().join(), 'off: pack holders still get the refresh');
+await db.exec(`UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'`);
 await db.exec(`DELETE FROM live_pack_refresh_queue`);
 await db.exec(`INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES ('${SL}','${SONG}',3)`);
 ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 2, 'setlist change queues');

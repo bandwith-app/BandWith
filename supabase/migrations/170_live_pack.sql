@@ -28,7 +28,8 @@
 --    every 6 hours per member and event).
 -- 6. bw_trg_dispatch_push: as live (133), plus live_pack_ready.
 -- 7. Kill switch: with app_flags live_pack off (173), no invites, no Remind
---    and no new automatic downloads; held packs keep their silent refresh.
+--    and no new automatic downloads: the silent refresh goes only to people
+--    who already hold the pack, and keeps their copy current.
 --
 -- Nothing in the pack itself lives on the server: fees, contracts, quotes and
 -- other members' notes never reach these tables. Safe to run more than once.
@@ -449,7 +450,9 @@ AS $$
     LEFT JOIN public.profiles p ON p.id = m.u
    WHERE e.id = p_event_id
      AND public.bw_is_event_participant(e.id, m.u)
-     AND (coalesce(p.live_pack_auto, false)
+     -- Kill switch off: only people who already hold the pack (their copy is
+     -- kept current); "automatic" alone would start a new download.
+     AND ((coalesce(p.live_pack_auto, false) AND public.bw_live_pack_on())
           OR EXISTS (SELECT 1 FROM public.live_pack_status s WHERE s.event_id = e.id AND s.user_id = m.u));
 $$;
 REVOKE ALL ON FUNCTION public.bw_live_pack_refresh_targets(uuid) FROM PUBLIC, anon, authenticated;

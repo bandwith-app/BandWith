@@ -118,7 +118,11 @@ const OfflineReadyRowInner: React.FC<{
   );
 };
 
-/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
+/**
+ * Switched off (app_flags live_pack, docs/flags.md): no download row and
+ * nothing runs, but changes saved with no signal still show while they wait
+ * (notes can still be queued; they are not the live pack's).
+ */
 export const OfflineReadyRow: React.FC<{
   pack: LivePack | null;
   userId?: string;
@@ -130,4 +134,9 @@ export const OfflineReadyRow: React.FC<{
   onAsk?: () => void;
   /** A download the sheet started: show it here. */
   pending?: Promise<boolean> | null;
-}> = (props) => (useFlag('live_pack') ? <OfflineReadyRowInner {...props} /> : null);
+}> = (props) =>
+  useFlag('live_pack') ? (
+    <OfflineReadyRowInner {...props} />
+  ) : (
+    <WaitingChangesTag userId={props.userId} className={props.className} />
+  );

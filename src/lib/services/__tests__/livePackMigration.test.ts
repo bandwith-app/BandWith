@@ -72,6 +72,7 @@ describe('170 live pack (plan A2)', () => {
       expect(body(fn)).toMatch(/NOT public\.bw_live_pack_on\(\)/);
     }
     // Packs already on a device still get the silent refresh.
+    expect(body('bw_live_pack_refresh_targets')).toMatch(/live_pack_auto, false\) AND public\.bw_live_pack_on\(\)/);
     expect(body('bw_live_pack_refresh_flush')).not.toMatch(/bw_live_pack_on/);
     expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.bw_live_pack_on\(\) FROM PUBLIC, anon, authenticated/);
   });

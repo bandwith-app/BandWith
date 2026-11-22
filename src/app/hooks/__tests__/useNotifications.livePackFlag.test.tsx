@@ -30,7 +30,8 @@ vi.mock('@/lib/offline/storage', () => ({
   onCachedRolesChanged: () => () => {},
 }));
 
-import { useNotifications, useUnreadCount } from '../useData';
+import { useEffect } from 'react';
+import { useNotifications, useUnreadCount, useSwitchedOffHidden } from '../useData';
 import { __resetAppFlagsForTest, __setAppFlagsForTest } from '@/lib/appFlags';
 
 beforeEach(() => {
@@ -54,5 +55,33 @@ describe('inbox while live_pack flips', () => {
     await waitFor(() => expect(h.counts).toBe(1));
     act(() => __setAppFlagsForTest({ live_pack: false }));
     await waitFor(() => expect(h.counts).toBe(2));
+  });
+
+  it('off: the list keeps its identity across renders (the badge effect does not refetch)', async () => {
+    __setAppFlagsForTest({ live_pack: false });
+    let badge = 0;
+    const { result, rerender } = renderHook(() => {
+      const r = useNotifications({ excludeChat: true });
+      // Like AuthenticatedApp's badge: asks the unread count whenever the list changes.
+      useEffect(() => {
+        badge++;
+      }, [r.notifications]);
+      return r;
+    });
+    await waitFor(() => expect(result.current.notifications.map((n) => n.id)).toEqual(['n1']));
+    const after = badge;
+    for (let i = 0; i < 5; i++) rerender();
+    expect(badge).toBe(after);
+  });
+
+  it('a snapshot list (the inbox modal) is filtered when drawn, and stays the same array', () => {
+    const snapshot = ROWS.slice();
+    const { result, rerender } = renderHook(({ list }) => useSwitchedOffHidden(list), { initialProps: { list: snapshot } });
+    expect(result.current).toBe(snapshot);
+    act(() => __setAppFlagsForTest({ live_pack: false }));
+    expect(result.current.map((n) => n.id)).toEqual(['n1']);
+    const first = result.current;
+    rerender({ list: snapshot });
+    expect(result.current).toBe(first);
   });
 });
