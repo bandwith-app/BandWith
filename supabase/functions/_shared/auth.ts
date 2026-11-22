@@ -7,6 +7,7 @@
 // on `Authorization`, a secret key on `apikey`, or a database-generated
 // dispatch secret (pg_net triggers).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { quoteChatReaders } from "./quote-chat.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,7 +172,7 @@ export async function allowedRecipients(
  * Recipients of a chat notice sent by a user: the other participants of
  * `chatId`, and only when the caller is in that chat too.
  */
-export async function chatRecipients(
+async function chatParticipantRecipients(
   admin: SupabaseClient,
   callerId: string,
   chatId: unknown,
@@ -185,6 +186,22 @@ export async function chatRecipients(
   const inChat = new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
   if (!inChat.has(callerId)) return [];
   return [...new Set(targetIds)].filter((id) => id !== callerId && inChat.has(id));
+}
+
+/**
+ * The same, minus the people who may not read the chat any more: the event
+ * chat of a gig that is still a quote is for the band's admins (178), per
+ * recipient, whatever the participant rows say.
+ */
+export async function chatRecipients(
+  admin: SupabaseClient,
+  callerId: string,
+  chatId: unknown,
+  targetIds: string[],
+): Promise<string[]> {
+  const ids = await chatParticipantRecipients(admin, callerId, chatId, targetIds);
+  if (ids.length === 0 || typeof chatId !== "string") return ids;
+  return quoteChatReaders((fn, args) => admin.rpc(fn, args), chatId, ids);
 }
 
 export function errorResponse(error: unknown) {
