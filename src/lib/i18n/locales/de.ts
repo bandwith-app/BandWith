@@ -3586,6 +3586,7 @@ const dict: Dictionary = {
   "Could not load the rider & stage.": "Rider & Bühne konnten nicht geladen werden.",
   "Technical rider · {event}": "Technical Rider · {event}",
   "Could not create the link.": "Link konnte nicht erstellt werden.",
+  "Couldn't make the calendar file. Try again.": "Die Kalenderdatei konnte nicht erstellt werden. Versuch es noch einmal.",
   "Technical rider for {event}: stage plot, input list and who brings what.": "Technical Rider für {event}: Bühnenplan, Kanalliste und wer was mitbringt.",
   "Could not share the link.": "Link konnte nicht geteilt werden.",
   "Could not create the PDF.": "PDF konnte nicht erstellt werden.",

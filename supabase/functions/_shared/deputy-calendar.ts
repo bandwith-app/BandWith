@@ -53,26 +53,29 @@ const hm = (v?: string | null): [number, number] | null => {
   return m ? [Number(m[1]), Number(m[2])] : null;
 };
 const pad = (n: number) => String(n).padStart(2, '0');
-const ymd = (d: Date) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-const stamp = (d: Date) => `${ymd(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-const nextDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+// Floating wall-clock times (no TZID): the Dates here hold them as UTC, so
+// the device's time zone and its DST changes never move an hour (Claude
+// review #285 r7: a phone in New York wrote 0130 where the server wrote 0230).
+const ymd = (d: Date) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+const stamp = (d: Date) => `${ymd(d)}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`;
+const nextDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
 
 /** Start and end of the entry; no times means an all-day entry. */
 export function gigWindow(g: DeputyGig): { allDay: true; day: Date } | { allDay: false; start: Date; end: Date } {
   const [y, mo, d] = g.date.split('-').map(Number);
   const first = hm(g.loadIn) || hm(g.soundcheck) || hm(g.start);
-  if (!first) return { allDay: true, day: new Date(y, mo - 1, d) };
-  const start = new Date(y, mo - 1, d, first[0], first[1]);
+  if (!first) return { allDay: true, day: new Date(Date.UTC(y, mo - 1, d)) };
+  const start = new Date(Date.UTC(y, mo - 1, d, first[0], first[1]));
   const showStart = hm(g.start);
   const endHm = hm(g.end);
   let end: Date;
   if (endHm) {
-    end = new Date(y, mo - 1, d, endHm[0], endHm[1]);
+    end = new Date(Date.UTC(y, mo - 1, d, endHm[0], endHm[1]));
     // Past midnight: the show ends the next day.
-    if (end <= start) end.setDate(end.getDate() + 1);
+    if (end <= start) end.setUTCDate(end.getUTCDate() + 1);
   } else {
-    const base = showStart ? new Date(y, mo - 1, d, showStart[0], showStart[1]) : start;
-    if (base < start) base.setDate(base.getDate() + 1);
+    const base = showStart ? new Date(Date.UTC(y, mo - 1, d, showStart[0], showStart[1])) : new Date(start.getTime());
+    if (base < start) base.setUTCDate(base.getUTCDate() + 1);
     end = new Date(base.getTime() + 3 * 3600 * 1000);
   }
   return { allDay: false, start, end };
@@ -336,7 +339,7 @@ export interface MemberFeedEvent {
   updated_at: string | null;
 }
 
-const ymdStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const ymdStr = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
 /** The dates deleted from a series (recurrence_rule.skip_dates, #297): valid YYYY-MM-DD only. */
 export function skipDates(rule: unknown): string[] {
@@ -356,8 +359,8 @@ export function monthlyDate(start: string, k: number): string | null {
   if (!s || !Number.isInteger(k) || k < 0) return null;
   const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
   // Day 0 of the following month is the last day of this one.
-  const last = new Date(y, m + k + 1, 0, 12, 0, 0).getDate();
-  return ymdStr(new Date(y, m + k, Math.min(day, last), 12, 0, 0));
+  const last = new Date(Date.UTC(y, m + k + 1, 0, 12, 0, 0)).getUTCDate();
+  return ymdStr(new Date(Date.UTC(y, m + k, Math.min(day, last), 12, 0, 0)));
 }
 
 /**
@@ -384,8 +387,8 @@ export function isOccurrence(rule: unknown, start: string, date: string): boolea
   const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
   for (let i = 1; i <= count; i++) {
     const d =
-      freq === "weekly" ? ymdStr(new Date(y, m, day + 7 * every * i, 12, 0, 0))
-      : freq === "biweekly" ? ymdStr(new Date(y, m, day + 14 * i, 12, 0, 0))
+      freq === "weekly" ? ymdStr(new Date(Date.UTC(y, m, day + 7 * every * i, 12, 0, 0)))
+      : freq === "biweekly" ? ymdStr(new Date(Date.UTC(y, m, day + 14 * i, 12, 0, 0)))
       : (monthlyDate(start, every * i) as string);
     if (until && d > until) return false;
     if (d === date) return true;

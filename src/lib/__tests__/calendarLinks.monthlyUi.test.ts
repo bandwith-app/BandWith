@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest';
 import { repeatDates } from '../recurrence';
 import monthlyVectorsSrc from '../../../supabase/tests/monthly-clamp-vectors.json?raw';
 import eventsViewSrc from '../../app/views/EventsView.tsx?raw';
+import homeViewSrc from '../../app/views/HomeView.tsx?raw';
+import appSrc from '../../app/AuthenticatedApp.tsx?raw';
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const { vectors } = JSON.parse(monthlyVectorsSrc) as { vectors: { start: string; dates: string[] }[] };
@@ -31,5 +33,18 @@ describe('the app and 182 give the same monthly dates', () => {
   it('EventsView expands repeats with repeatDates, not setMonth', () => {
     expect(eventsViewSrc).toContain("import { repeatDates } from '@/lib/recurrence';");
     expect(eventsViewSrc).not.toMatch(/cursor\.setMonth\(/);
+  });
+
+  // Codex review @ 0b5765f0 (M1): Calendar showed Feb 28, Home and the
+  // dashboard lists Mar 3. One expander in the app: every surface steps
+  // repeats through repeatDates, so the Jan 31 vector is the same on each.
+  it.each([
+    ['Calendar (EventsView)', eventsViewSrc, 2],
+    ['Home (HomeView)', homeViewSrc, 1],
+    ['dashboard + upcoming rehearsals (AuthenticatedApp)', appSrc, 2],
+  ])('%s: no stepping of its own, repeatDates at every expansion', (_name, src, n) => {
+    expect(src).not.toMatch(/\.setMonth\(\s*cursor\.getMonth\(\)/);
+    expect(src).not.toMatch(/cursor\.setDate\(\s*cursor\.getDate\(\)\s*\+\s*(7|14)/);
+    expect((src.match(/repeatDates\(/g) ?? []).length).toBe(n);
   });
 });

@@ -10,7 +10,7 @@ import { deputyCalendarUrl, googleCalendarUrl } from './lib/deputyCalendar';
 import { addressWithoutCity } from './lib/eventAddress';
 import { APP_URL as WEB_APP_URL } from './lib/appUrl';
 import { instrumentKeys } from './lib/instruments';
-import { DEPUTY_STRINGS, fill, pickDeputyLang, roleLabel, type DeputyStrings } from './deputy/strings';
+import { DEPUTY_STRINGS, closedCopy, fill, pickDeputyLang, roleLabel, type DeputyStrings } from './deputy/strings';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -316,7 +316,7 @@ function render() {
   const street = addressWithoutCity(view.venue_address, view.venue_city);
   const v: View = { ...view, venue_address: street && street.toLocaleLowerCase() !== (view.venue_city ?? '').toLocaleLowerCase() ? street : null };
   if (v.closed) {
-    const [t, b] = v.event_cancelled ? [S.cancelledTitle, S.cancelledBody] : v.status === 'cancelled' ? [S.closedTitle, S.closedBody] : [S.pastTitle, S.pastBody];
+    const [t, b] = closedCopy(v, S);
     app.append(simpleCard(`BandWith · ${v.band_name}`, t, fill(b, vars(v))));
     return;
   }

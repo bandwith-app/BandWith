@@ -917,5 +917,75 @@ await check('Codex r7 M3: a date the user opened still gets its link; a running 
   return /^[0-9a-f]{64}$/.test(opened ?? '') && /^[0-9a-f]{64}$/.test(running ?? '') && r && r.ago <= 0 && r.ago > -7;
 });
 
+// ------------------------------------------- round 8 (Codex @ 0b5765f0) --
+console.log('-- round 8');
+// M4 (182:982): a link made for a one-off (occurrence NULL), then the event
+// repeats and its first date is deleted: the file is the first date still on.
+const [EV_M4] = [100].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, is_recurring, recurrence_rule, created_by, fee)
+  VALUES ($1, $2, 'Became weekly', 'rehearsal', 'confirmed', current_date + 3, '19:00', 'Studio D', false, NULL, $3, 0)`, [EV_M4, BAND, ADMIN]);
+await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $2, NULL, 'confirmed')`, [EV_M4, MEM]);
+let TM4 = null;
+try { TM4 = await evTok(MEM, EV_M4, null); } catch { await db.exec('RESET ROLE').catch(() => {}); } // no 182: none
+const fileOf = async (t) => (await one(`SELECT public.bw_member_event_calendar($1) AS v`, [t])).v;
+await check('Codex r8 M4: one-off link, now weekly with its first date deleted: the file has the first date still on', async () => {
+  const first = (await one(`SELECT (current_date + 3)::text AS d, (current_date + 10)::text AS n`)).d;
+  const next = (await one(`SELECT (current_date + 10)::text AS n`)).n;
+  await q(`UPDATE events SET is_recurring = true, recurrence_rule = jsonb_build_object('frequency', 'weekly', 'interval', 1, 'skip_dates', jsonb_build_array($2::text)) WHERE id = $1`, [EV_M4, first]);
+  const v = await fileOf(TM4);
+  return !!TM4 && v?.event?.event_date === next && v.event.recurrence === null;
+});
+await check('Codex r8 M4: and none left (every date deleted): no file (404)', async () => {
+  const [a, b] = Object.values(await one(`SELECT (current_date + 3)::text AS a, (current_date + 10)::text AS b`));
+  await q(`UPDATE events SET recurrence_rule = jsonb_build_object('frequency', 'weekly', 'interval', 1, 'count', 1, 'skip_dates', jsonb_build_array($2::text, $3::text)) WHERE id = $1`, [EV_M4, a, b]);
+  return (await fileOf(TM4)) === null;
+});
+
+// #297 B4: deleted dates (skip_dates, as #297 stores them: sorted YYYY-MM-DD)
+// and a date moved with "Only this date" (the original deleted, a one-off
+// row on the new date): the member feed keeps both, the series with its
+// deleted dates for the EXDATEs, the one-off as its own event.
+const [EV_SKIP, EV_MOVED] = [101, 102].map(id);
+await check('#297 B4: the member feed gives the series its skip_dates and the moved date as its own event', async () => {
+  const r = await one(`SELECT (current_date + 7)::text AS a, (current_date + 14)::text AS b, (current_date + 15)::text AS c`);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, is_recurring, recurrence_rule, created_by, fee) VALUES
+    ($1, $3, 'Thursday rehearsal', 'rehearsal', 'confirmed', current_date, '19:00', 'Studio E', true,
+     jsonb_build_object('frequency', 'weekly', 'interval', 1, 'skip_dates', jsonb_build_array($4::text, $5::text)), $7, 0),
+    ($2, $3, 'Thursday rehearsal', 'rehearsal', 'confirmed', $6::date, '19:00', 'Studio E', false, NULL, $7, 0)`,
+    [EV_SKIP, EV_MOVED, BAND, r.a, r.b, r.c, ADMIN]);
+  await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $3, NULL, 'confirmed'), ($2, $3, NULL, 'confirmed')`, [EV_SKIP, EV_MOVED, MEM]);
+  const feedTok = (await one(`SELECT token FROM calendar_feeds WHERE user_id = $1`, [MEM])).token;
+  const evs = (await one(`SELECT public.bw_member_calendar_feed($1) AS f`, [feedTok])).f.events;
+  const series = evs.find((e) => e.id === EV_SKIP);
+  const moved = evs.find((e) => e.id === EV_MOVED);
+  return JSON.stringify(series?.recurrence?.skip_dates) === JSON.stringify([r.a, r.b])
+    && moved?.event_date === r.c && moved.recurrence === null;
+});
+await check('#297 B4: a deleted date gets no one-event link; its neighbours do', async () => {
+  const r = await one(`SELECT (current_date + 7)::text AS a, (current_date + 21)::text AS n, (current_date)::text AS p`);
+  return (await evTok(MEM, EV_SKIP, r.a)) === null
+    && /^[0-9a-f]{64}$/.test((await evTok(MEM, EV_SKIP, r.n)) ?? '') && /^[0-9a-f]{64}$/.test((await evTok(MEM, EV_SKIP, r.p)) ?? '');
+});
+
+// The deputy calendars carry one date per request (no RRULE, so no EXDATE):
+// a request on a series' first date, deleted since, is shown cancelled,
+// without the address.
+await check('#297 B4: deputy calendars show a deleted date as cancelled, without the address', async () => {
+  const [EV_DS, RDS] = [103, 104].map(id);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_address, is_recurring, recurrence_rule, created_by, fee)
+    VALUES ($1, $2, 'Deputy rehearsal', 'rehearsal', 'confirmed', current_date + 4, '19:00', 'Studio F', '4 Quiet Ln', true,
+            jsonb_build_object('frequency', 'weekly', 'interval', 1, 'skip_dates', jsonb_build_array(to_char(current_date + 4, 'YYYY-MM-DD'))), $3, 0)`, [EV_DS, BAND, ADMIN]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status, answer_snapshot)
+    VALUES ($1, $2, $3, $4, 'Leo', 'Bass', 'available', '{}')`, [RDS, BAND, EV_DS, DEPUTY]);
+  const cal = await col(RDS, 'calendar_token');
+  const gig = await col(RDS, 'gig_calendar_token');
+  const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [cal])).f.gigs.find((g) => g.id === RDS);
+  const g = (await one(`SELECT public.bw_deputy_gig_calendar($1) AS f`, [gig])).f.gigs[0];
+  const old = (await one(`SELECT public.bw_deputy_feed($1) AS f`, [cal])).f.gigs.find((x) => x.id === RDS);
+  const live = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [cal])).f.gigs.find((x) => x.id === RA);
+  return f?.cancelled === true && f.venue_address == null && g?.cancelled === true && g.venue_address == null
+    && old?.cancelled === true && old.venue_address == null && live?.cancelled === false && live.venue_address === '12 Water St';
+});
+
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

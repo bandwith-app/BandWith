@@ -3586,6 +3586,7 @@ const dict: Dictionary = {
   "Could not load the rider & stage.": "Impossible de charger la fiche technique.",
   "Technical rider · {event}": "Fiche technique · {event}",
   "Could not create the link.": "Impossible de créer le lien.",
+  "Couldn't make the calendar file. Try again.": "Impossible de créer le fichier du calendrier. Réessaie.",
   "Technical rider for {event}: stage plot, input list and who brings what.": "Fiche technique pour {event} : plan de scène, patch et qui apporte quoi.",
   "Could not share the link.": "Impossible de partager le lien.",
   "Could not create the PDF.": "Impossible de créer le PDF.",

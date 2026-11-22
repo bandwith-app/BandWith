@@ -47,6 +47,10 @@
 --     a request with no deputy is closed, without fee, address or keys.
 --   - A cancelled event in either spelling ('cancelled', 'canceled', any
 --     case): bw_event_status_cancelled, used by every check here.
+--   - A date deleted from its series since (skip_dates, #297;
+--     bw_event_date_deleted): both deputy calendars show it cancelled,
+--     without the address. The member feed writes an EXDATE per deleted
+--     date (edge function, from the rule's skip_dates).
 --   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
 --     out of both calendars and the old feed, and the reply page closed,
 --     without detail, offer (fee, currency), note or calendar keys; the
@@ -263,6 +267,21 @@ GRANT EXECUTE ON FUNCTION public.bw_event_status_cancelled(text) TO anon, authen
 -- first). An earlier draft of 182 had a run-time lookup wrapper; never live.
 DROP FUNCTION IF EXISTS public.bw_deputy_gig_hidden(uuid);
 
+-- A date deleted from its series (recurrence_rule.skip_dates, #297, as
+-- YYYY-MM-DD). The deputy calendars carry one date per request (no RRULE,
+-- so no EXDATE): a request on a date deleted since shows as cancelled,
+-- without the address (#297's Codex B4, routed to #285).
+CREATE OR REPLACE FUNCTION public.bw_event_date_deleted(p_rule jsonb, p_date date)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT coalesce(p_date IS NOT NULL AND jsonb_typeof(p_rule) = 'object' AND jsonb_typeof(p_rule->'skip_dates') = 'array'
+                  AND (p_rule->'skip_dates') ? to_char(p_date, 'YYYY-MM-DD'), false);
+$$;
+REVOKE ALL ON FUNCTION public.bw_event_date_deleted(jsonb, date) FROM PUBLIC, anon, authenticated;
+
 -- -------------------------------------------- the reply page (084 + keys) --
 
 CREATE OR REPLACE FUNCTION public.bw_deputy_request_view(p_token text)
@@ -401,7 +420,8 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object(
                'id', r.id,
                'mine', r.id = v_req.id,
-               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text),
+               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text)
+                            OR public.bw_event_date_deleted(e.recurrence_rule, coalesce(e.event_date, e.date)),
                'role', r.role,
                'event_title', e.title,
                'event_date', coalesce(e.event_date, e.date),
@@ -414,7 +434,8 @@ BEGIN
                -- The street address only while they are on it and the gig is
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
-               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
+               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text)
+                                      AND NOT public.bw_event_date_deleted(e.recurrence_rule, coalesce(e.event_date, e.date)) THEN e.venue_address END,
                'updated_at', CASE WHEN r.status = 'cancelled' THEN r.updated_at ELSE greatest(e.updated_at, r.updated_at) END
              )
              -- Withdrawn: the gig as it was at their answer (round 5).
@@ -454,7 +475,8 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object(
                'id', r.id,
                'mine', r.id = v_req.id,
-               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text),
+               'cancelled', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text)
+                            OR public.bw_event_date_deleted(e.recurrence_rule, coalesce(e.event_date, e.date)),
                'role', r.role,
                'event_title', e.title,
                'event_date', coalesce(e.event_date, e.date),
@@ -467,7 +489,8 @@ BEGIN
                -- The street address only while they are on it and the gig is
                -- on (as the page): a band's cancellation leaves the request
                -- 'available' (review of #285, round 2).
-               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
+               'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text)
+                                      AND NOT public.bw_event_date_deleted(e.recurrence_rule, coalesce(e.event_date, e.date)) THEN e.venue_address END,
                'updated_at', CASE WHEN r.status = 'cancelled' THEN r.updated_at ELSE greatest(e.updated_at, r.updated_at) END
              )
              -- Withdrawn: the gig as it was at their answer (round 5).
@@ -955,7 +978,7 @@ GRANT EXECUTE ON FUNCTION public.bw_my_event_calendar_token(uuid, date) TO authe
 -- owner still sees it. Never the series rule or its first date. Called by
 -- the edge function with the publishable key, as the feed.
 --   repeating now, link for a date   that date, if still in the series;
---   repeating now, link for a one-off the event's own (first) date;
+--   repeating now, link for a one-off its first date still on, else none;
 --   one-off now, link for a date      only if it is the event's date.
 CREATE OR REPLACE FUNCTION public.bw_member_event_calendar(p_token text)
 RETURNS jsonb
@@ -979,7 +1002,11 @@ BEGIN
   v_start := (v_event->>'event_date')::date;
   IF jsonb_typeof(v_event->'recurrence') = 'object' THEN
     IF v_link.occurrence IS NULL THEN
-      v_date := v_start;
+      -- A link made while it was a one-off: its first date still on, from
+      -- the first (a deleted first date gives the next one); none left, no
+      -- file (Codex review #285 @ 0b5765f0, M4).
+      v_date := public.bw_calendar_next_occurrence(v_event->'recurrence', v_start, v_start);
+      IF v_date IS NULL THEN RETURN NULL; END IF;
     ELSIF public.bw_calendar_is_occurrence(v_event->'recurrence', v_start, v_link.occurrence) THEN
       v_date := v_link.occurrence;
     ELSE

@@ -7,12 +7,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
-const h = vi.hoisted(() => ({ openExternal: vi.fn(), shareFile: vi.fn(), rpc: vi.fn() }));
+const h = vi.hoisted(() => ({ openExternal: vi.fn(), shareFile: vi.fn(), downloadBlobOnWeb: vi.fn(), rpc: vi.fn(), native: true }));
 vi.mock('@capacitor/core', async (orig) => ({
   ...(await orig<typeof import('@capacitor/core')>()),
-  Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
+  Capacitor: { isNativePlatform: () => h.native, getPlatform: () => (h.native ? 'ios' : 'web') },
 }));
-vi.mock('@/lib/nativeFiles', () => ({ openExternal: h.openExternal, shareFile: h.shareFile }));
+vi.mock('@/lib/nativeFiles', () => ({ openExternal: h.openExternal, shareFile: h.shareFile, downloadBlobOnWeb: h.downloadBlobOnWeb }));
 vi.mock('@/lib/supabase', () => ({
   isDemoMode: false,
   supabase: {
@@ -36,6 +36,8 @@ beforeEach(() => {
   h.openExternal.mockReset();
   h.shareFile.mockReset();
   h.shareFile.mockResolvedValue('shared');
+  h.downloadBlobOnWeb.mockReset();
+  h.native = true;
   h.rpc.mockReset();
 });
 
@@ -84,5 +86,40 @@ describe('Add to calendar before 182 is on the database', () => {
     await screen.findByRole('alert');
     expect(h.openExternal).not.toHaveBeenCalled();
     expect(h.shareFile).not.toHaveBeenCalled();
+  });
+  // Claude r7 (2): on the web the missing functions are found only after the
+  // tap's await, when the tap no longer counts as a user action (Web Share
+  // would throw NotAllowedError): a plain download, and the tab opened for
+  // the link is closed.
+  it('web: the .ics downloads (no share sheet), and the tab opened in the tap closes', async () => {
+    h.native = false;
+    const tab = { close: vi.fn(), opener: null, location: { href: '' } };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    h.rpc.mockImplementation(async (fn: string) =>
+      fn === 'bw_my_event_calendar_link' ? { data: null, error: null } : fn === 'bw_my_event_calendar_token' ? missing : { data: null, error: null },
+    );
+    render(<AddToCalendar event={EV} />);
+    const button = await screen.findByRole('button', { name: 'Add to calendar' });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => expect(h.downloadBlobOnWeb).toHaveBeenCalledTimes(1));
+    expect(h.downloadBlobOnWeb.mock.calls[0][1]).toMatch(/\.ics$/);
+    expect(h.shareFile).not.toHaveBeenCalled();
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.href).toBe('');
+    open.mockRestore();
+  });
+
+  // Claude r7 (3): a file that can't be made says so, not "link".
+  it('a file that cannot be made shows its own message', async () => {
+    h.shareFile.mockRejectedValue(new Error('disk full'));
+    h.rpc.mockImplementation(async (fn: string) =>
+      fn === 'bw_my_event_calendar_link' || fn === 'bw_my_event_calendar_token' ? missing : { data: null, error: null },
+    );
+    render(<AddToCalendar event={EV} />);
+    const button = await screen.findByRole('button', { name: 'Add to calendar' });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't make the calendar file. Try again.");
   });
 });

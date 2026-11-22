@@ -43,6 +43,8 @@ const en = {
   removed: 'removed',
   closedTitle: 'This request is closed.',
   closedBody: '{band} no longer needs a deputy for this gig.',
+  removedTitle: "You're no longer on this gig.",
+  removedBody: "{band} took you off this gig. Nothing else to do.",
   cancelledTitle: 'The gig was cancelled.',
   cancelledBody: '{band} cancelled this gig. Nothing else to do.',
   pastTitle: 'This gig is over.',
@@ -101,6 +103,8 @@ const it: DeputyStrings = {
   removed: 'tolto',
   closedTitle: 'Questa richiesta è chiusa.',
   closedBody: '{band} non ha più bisogno di un sostituto per questa data.',
+  removedTitle: "Non sei più in questa data.",
+  removedBody: "{band} ti ha tolto da questa data. Non devi fare altro.",
   cancelledTitle: 'La data è stata annullata.',
   cancelledBody: '{band} ha annullato questa data. Non devi fare altro.',
   pastTitle: 'Questa data è passata.',
@@ -157,6 +161,8 @@ const es: DeputyStrings = {
   removed: 'eliminado',
   closedTitle: 'Esta solicitud está cerrada.',
   closedBody: '{band} ya no necesita sustituto para esta actuación.',
+  removedTitle: "Ya no estás en esta actuación.",
+  removedBody: "{band} te ha quitado de esta actuación. No tienes que hacer nada más.",
   cancelledTitle: 'La actuación se ha cancelado.',
   cancelledBody: '{band} ha cancelado esta actuación. No tienes que hacer nada más.',
   pastTitle: 'Esta actuación ya pasó.',
@@ -213,6 +219,8 @@ const fr: DeputyStrings = {
   removed: 'supprimé',
   closedTitle: 'Cette demande est close.',
   closedBody: "{band} n'a plus besoin de remplaçant pour cette date.",
+  removedTitle: "Tu n’es plus sur cette date.",
+  removedBody: "{band} t’a retiré de cette date. Rien d’autre à faire.",
   cancelledTitle: 'La date est annulée.',
   cancelledBody: '{band} a annulé cette date. Rien d’autre à faire.',
   pastTitle: 'Cette date est passée.',
@@ -269,6 +277,8 @@ const de: DeputyStrings = {
   removed: 'entfernt',
   closedTitle: 'Diese Anfrage ist geschlossen.',
   closedBody: '{band} braucht für diesen Gig keine Aushilfe mehr.',
+  removedTitle: "Du bist bei diesem Gig nicht mehr dabei.",
+  removedBody: "{band} hat dich von diesem Gig genommen. Du musst nichts weiter tun.",
   cancelledTitle: 'Der Gig wurde abgesagt.',
   cancelledBody: '{band} hat diesen Gig abgesagt. Du musst nichts weiter tun.',
   pastTitle: 'Dieser Gig ist vorbei.',
@@ -325,6 +335,8 @@ const pt: DeputyStrings = {
   removed: 'removido',
   closedTitle: 'Este pedido está fechado.',
   closedBody: '{band} já não precisa de substituto para este show.',
+  removedTitle: "Você não está mais neste show.",
+  removedBody: "{band} tirou você deste show. Não precisa fazer mais nada.",
   cancelledTitle: 'O show foi cancelado.',
   cancelledBody: '{band} cancelou este show. Não precisa fazer mais nada.',
   pastTitle: 'Este show já passou.',
@@ -349,6 +361,22 @@ export function pickDeputyLang(preferred: readonly string[]): DeputyLang {
     if (code in DEPUTY_STRINGS) return code as DeputyLang;
   }
   return 'en';
+}
+
+/**
+ * Title and text of a closed reply page: the band cancelled the gig, the
+ * request was withdrawn, the deputy was removed from the band (182 closes
+ * that page without the offer or the calendar keys; Claude review #285 r7),
+ * or the gig is over.
+ */
+export function closedCopy(
+  v: { event_cancelled: boolean; status: string; fee: number | null; calendar_token?: string | null; gig_calendar_token?: string | null },
+  S: DeputyStrings,
+): [string, string] {
+  if (v.event_cancelled) return [S.cancelledTitle, S.cancelledBody];
+  if (v.status === 'cancelled') return [S.closedTitle, S.closedBody];
+  if (v.fee == null && !v.calendar_token && !v.gig_calendar_token) return [S.removedTitle, S.removedBody];
+  return [S.pastTitle, S.pastBody];
 }
 
 export function fill(template: string, vars: Record<string, string>): string {

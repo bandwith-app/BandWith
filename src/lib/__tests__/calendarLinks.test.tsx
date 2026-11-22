@@ -12,7 +12,7 @@ vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/
 const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
 
 import { calendarFile, deputyFeedCalendar, gigEvent, isOccurrence, memberFeedCalendar, monthlyDate, recurrenceRule, type DeputyFeedGig, type MemberFeedEvent } from '../deputyCalendar';
-import { RRule } from 'rrule';
+import { RRule, rrulestr } from 'rrule';
 import monthlyVectorsSrc from '../../../supabase/tests/monthly-clamp-vectors.json?raw';
 import { DeputyGigCard } from '@/app/components/deputy/DeputyGigsList';
 import type { DeputyGig } from '../services/deputies';
@@ -246,6 +246,54 @@ describe('series dates the app shows, in external calendars', () => {
     // A plain FREQ=MONTHLY (what the app would write without 182's rule) skips it.
     const plain = RRule.fromString('DTSTART:20270131T190000Z\nRRULE:FREQ=MONTHLY;INTERVAL=1');
     expect(plain.between(new Date(Date.UTC(2027, 0, 1)), new Date(Date.UTC(2027, 2, 1))).map((d) => d.toISOString().slice(0, 10))).not.toContain('2027-02-28');
+  });
+
+  // #297's Codex B4 (routed to #285): a deleted date (skip_dates) and a date
+  // moved with "Only this date" (deleted + a one-off row on the new date).
+  // The feed is floating (no TZID: events keep no time zone), so EXDATE takes
+  // DTSTART's form, the local start time; a date after a DST change keeps it.
+  it('member feed: one EXDATE per deleted date, the moved date as its own VEVENT; rrule drops only the deleted dates', () => {
+    const base = {
+      type: 'rehearsal' as const, title: 'Tuesday rehearsal', band_name: 'Velvet Static', start_time: '19:00:00', end_time: '21:00:00',
+      load_in_time: null, soundcheck_time: null, venue_name: 'Studio B', venue_city: 'Queens', venue_address: null, role: null,
+      updated_at: '2026-11-22T10:00:00Z',
+    };
+    // US daylight saving starts Sun 14 Mar 2027 (EU 28 Mar): Mar 16 and 30 are after it.
+    const series: MemberFeedEvent = { ...base, id: 'aaaaaaaa-0000-4000-8000-000000000001', event_date: '2027-03-02',
+      recurrence: { frequency: 'weekly', interval: 1, skip_dates: ['2027-03-16', '2027-03-23'] } };
+    const moved: MemberFeedEvent = { ...base, id: 'aaaaaaaa-0000-4000-8000-000000000002', event_date: '2027-03-24', recurrence: null };
+    const ics = memberFeedCalendar([series, moved], { lang: 'en', site: 'https://app.bandwith.fun', now: new Date(Date.UTC(2026, 10, 22)) })!;
+    const vevents = ics.split('BEGIN:VEVENT').slice(1).map((v) => v.split('\r\n'));
+    const s = vevents.find((v) => v.some((l) => l === `UID:event-${series.id}@bandwith`))!;
+    const m = vevents.find((v) => v.some((l) => l === `UID:event-${moved.id}@bandwith`))!;
+    expect(s.filter((l) => l.startsWith('EXDATE'))).toEqual(['EXDATE:20270316T190000', 'EXDATE:20270323T190000']);
+    expect(s.find((l) => l.startsWith('DTSTART'))).toBe('DTSTART:20270302T190000');
+    // The moved date: its own entry, a single date, not part of the series.
+    expect(m.find((l) => l.startsWith('DTSTART'))).toBe('DTSTART:20270324T190000');
+    expect(m.some((l) => l.startsWith('RRULE') || l.startsWith('EXDATE'))).toBe(false);
+    // What a client sees (rrule 2.8.1 over the served lines).
+    const set = rrulestr(s.filter((l) => /^(DTSTART|RRULE|EXDATE)/.test(l)).join('\n'), { forceset: true });
+    const seen = set.between(new Date(Date.UTC(2027, 2, 1)), new Date(Date.UTC(2027, 3, 1))).map((d) => d.toISOString().slice(0, 16));
+    expect(seen).toEqual(['2027-03-02T19:00', '2027-03-09T19:00', '2027-03-30T19:00']);
+    // The deleted dates are gone, their neighbours stay, at the same local time after DST.
+    expect(seen.some((d) => d.startsWith('2027-03-16') || d.startsWith('2027-03-23'))).toBe(false);
+  });
+
+  it('member feed: an all-day series excludes a deleted date as a DATE', () => {
+    const ev: MemberFeedEvent = {
+      id: 'aaaaaaaa-0000-4000-8000-000000000003', type: 'rehearsal', title: 'Retreat', band_name: null, event_date: '2027-01-31',
+      start_time: null, end_time: null, load_in_time: null, soundcheck_time: null, venue_name: null, venue_city: null, venue_address: null,
+      role: null, recurrence: { frequency: 'monthly', interval: 1, skip_dates: ['2027-02-28'] }, updated_at: null,
+    };
+    const lines = memberFeedCalendar([ev], { lang: 'en', site: 'https://app.bandwith.fun' })!.split('\r\n');
+    expect(lines).toContain('DTSTART;VALUE=DATE:20270131');
+    expect(lines).toContain('EXDATE;VALUE=DATE:20270228');
+    // rrule 2.8.1 doesn't read VALUE=DATE (it takes "now" as the start):
+    // the same dates as midnight date-times for it.
+    const asDateTime = (l: string) => l.replace(/;VALUE=DATE:(\d{8})$/, ':$1T000000Z');
+    const set = rrulestr(lines.filter((l) => /^(DTSTART|RRULE|EXDATE)/.test(l)).map(asDateTime).join('\n'), { forceset: true });
+    const seen = set.between(new Date(Date.UTC(2027, 0, 1)), new Date(Date.UTC(2027, 4, 1)), true).map((d) => d.toISOString().slice(0, 10));
+    expect(seen).toEqual(['2027-01-31', '2027-03-31', '2027-04-30']);
   });
 
   // Claude review #285 r5 (M1): what a calendar does with the RRULE we

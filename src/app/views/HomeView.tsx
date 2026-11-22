@@ -26,6 +26,7 @@ import { useBandNotes } from '@/app/components/event/useBandNotes';
 import { useBandFlag } from '@/lib/flags';
 import { toPractise } from '@/lib/toPractise';
 import { openSongPage } from '@/lib/services/rehearsalNotes';
+import { repeatDates } from '@/lib/recurrence';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
@@ -362,17 +363,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
       if (isRehearsal && isRecurring && d) {
         const rule = e.recurrence_rule || {};
         const freq = (rule.freq || rule.frequency || e.recurrence || 'weekly').toLowerCase();
-        const [y, m, day] = d.split('-').map(Number);
         const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
         const maxCount = rule.count || 24;
-        let cursor = new Date(y, m - 1, day, 12, 0, 0);
-        let generated = 0;
-        while (cursor <= until && generated < maxCount) {
-          if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-          else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-          else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-          else break;
-          if (cursor > until) break;
+        for (const cursor of repeatDates(d, { ...rule, frequency: freq }, until, maxCount)) {
           const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
           if (occDate >= todayStr && occDate !== d) {
             expandedList.push({
@@ -383,7 +376,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
               date: occDate,
             });
           }
-          generated++;
         }
       }
     });

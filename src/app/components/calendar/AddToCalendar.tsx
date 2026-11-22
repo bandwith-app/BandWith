@@ -5,7 +5,7 @@ import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
 import { getLocale, useT } from '@/lib/i18n';
 import { GIG_LABELS, calendarFile, gigEvent, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
-import { openExternal, shareFile } from '@/lib/nativeFiles';
+import { downloadBlobOnWeb, openExternal, shareFile } from '@/lib/nativeFiles';
 import {
   eventCalendarLinksMissing,
   memberEventCalendarUrl,
@@ -47,12 +47,13 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
   // comes back through the hook, and "Make a new link" ends it there (Codex
   // review #285 round 5).
   const { token, loading, legacy } = useEventCalendarToken(event.eventId, event.date);
-  const [failed, setFailed] = React.useState(false);
+  // What went wrong on the last tap: making the link, or the file (Claude r7).
+  const [failed, setFailed] = React.useState<null | 'link' | 'file'>(null);
   const file = token ? memberEventCalendarUrl(token) : null;
   const [making, setMaking] = React.useState(false);
 
   const add = async () => {
-    setFailed(false);
+    setFailed(null);
     if (file) {
       void openExternal(file);
       return;
@@ -75,7 +76,7 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
     }
     if (!url) {
       w?.close();
-      setFailed(true);
+      setFailed('link');
       return;
     }
     if (w) {
@@ -97,10 +98,15 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
       undefined,
       'Member',
     );
+    const blob = new Blob([ics], { type: 'text/calendar' });
     try {
-      await shareFile(new Blob([ics], { type: 'text/calendar' }), 'bandwith-event.ics', { title: gig.title });
+      // The web: a plain download. Found missing only after the tap's await,
+      // the tap no longer counts as a user action and Web Share would refuse
+      // (Claude review #285 r7). The app: the system share sheet.
+      if (Capacitor.isNativePlatform()) await shareFile(blob, 'bandwith-event.ics', { title: gig.title });
+      else downloadBlobOnWeb(blob, 'bandwith-event.ics');
     } catch {
-      setFailed(true);
+      setFailed('file');
     }
   };
   const labels = GIG_LABELS[getLocale()] ?? GIG_LABELS.en;
@@ -139,7 +145,7 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
       </div>
       {failed && (
         <p role="alert" className="bw-body-sm text-destructive">
-          {t('Could not create the link.')}
+          {failed === 'file' ? t("Couldn't make the calendar file. Try again.") : t('Could not create the link.')}
         </p>
       )}
     </div>
