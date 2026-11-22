@@ -210,20 +210,55 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // Click, playhead, count-in over Bluetooth: checked like the channel's, then the same receivers.
   const bleLiveRef = useRef<(event: LiveEvent, payload: unknown) => void>(() => {});
   const onBleLive = useCallback((event: LiveEvent, payload: unknown) => bleLiveRef.current(event, payload), []);
-  /** Leader closing Stage: the stopped click and playhead, for phones linked over Bluetooth. */
-  const bleFarewell = useCallback((): LiveEvents => {
-    const out: LiveEvents = {};
-    const running = clickRef.current;
-    if (isLeader && running?.from === clientId && running.on) out[CLICK_EVENT] = clickWire({ ...running, on: false, seq: nextSeq(running.seq) });
-    const head = playheadRef.current;
-    if (isLeader && head?.from === clientId && head.on) out[PLAYHEAD_EVENT] = stopPlayhead(head);
-    return out;
-  }, [isLeader, clientId]);
+  /**
+   * Leader: the stopped click and playhead, for phones linked over Bluetooth.
+   * 'closing': Stage closes. 'off': the click and playhead over Bluetooth were
+   * switched off mid-show (app_flags ble_live) while they run. A phone with no
+   * internet then stops. A phone online would stop too (the stop is newer than
+   * what the channel told it), so what runs is sent again on the channel,
+   * newer still and with the same start: it keeps the beat it had.
+   */
+  const bleFarewell = useCallback(
+    (why: 'closing' | 'off' = 'closing'): LiveEvents => {
+      const out: LiveEvents = {};
+      const running = clickRef.current;
+      if (isLeader && running?.from === clientId && running.on) {
+        const stopped = { ...running, on: false, seq: nextSeq(running.seq) };
+        out[CLICK_EVENT] = clickWire(stopped);
+        if (why === 'off') {
+          const again: ClickState = { ...running, seq: nextSeq(stopped.seq) };
+          clickRef.current = again;
+          setClick(again);
+          const wire = clickWire(again);
+          void channelRef.current?.send({ type: 'broadcast', event: CLICK_EVENT, payload: wire });
+          // Kept as the newest, served again if the switch comes back on (not sent while off).
+          blePublishLiveRef.current(CLICK_EVENT, wire);
+        }
+      }
+      const head = playheadRef.current;
+      if (isLeader && head?.from === clientId && head.on) {
+        const stopped = stopPlayhead(head);
+        out[PLAYHEAD_EVENT] = stopped;
+        if (why === 'off') {
+          const again: PlayheadState = { ...head, seq: nextSeq(stopped.seq) };
+          playheadRef.current = again;
+          setPlayheadState(again);
+          void channelRef.current?.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: again });
+          blePublishLiveRef.current(PLAYHEAD_EVENT, again);
+        }
+      }
+      return out;
+    },
+    [isLeader, clientId],
+  );
+  /** useStageBle's publishLive, for bleFarewell (made before the hook below returns it). */
+  const blePublishLiveRef = useRef<(event: LiveEvent, payload: unknown) => void>(() => {});
 
   // Offline on stage: the same states over Bluetooth (native apps only).
   const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receive, onLive: onBleLive, farewell: bleFarewell });
   const blePublish = ble.publish;
   const blePublishLive = ble.publishLive;
+  blePublishLiveRef.current = blePublishLive;
   const bleBurst = ble.burst;
   const hasIds = ordered.length > 0 && ordered.every((s) => !!s.id);
   // A song the setlist hasn't caught up with yet (played off the setlist on

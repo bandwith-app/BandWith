@@ -40,7 +40,7 @@ All are **ON** by default (built into the app). The table can only turn things o
 | `voice_parts` | Part colours and styles, the legend and "Highlight my part", Who sings what (nothing fetched), the Voice row and "Mark the voice parts" in the chord editor | Lyrics read as plain lead lines; the `{bv}…{/bv}` markers stay saved in the song and are never shown | yes (#264 #266) |
 | `follow_tempo` | Follow the tempo (playhead) on Stage | Stage, the click | **to do by the live-tempo / live-follow session** (B1 #272, B2) |
 | `count_in` | Count-in before a song | Stage, the click | **to do by the live-tempo session** (D1) |
-| `ble_live` | Leader: the clock and live characteristics over Bluetooth (read when Stage starts). Members: the clock reads over Bluetooth, a read in flight brings no clock back | The song and order over Bluetooth (#93); the click uses the Realtime clock. **Turned off mid-show the leader's Bluetooth is not restarted** (that would drop every member's link): it stops recalibrating, members stop reading the clock. Turned on mid-show: from the next time the leader opens Stage. A restarted leader serves the last song again at once | clock: yes (#265 #268). **B3 (click / playhead / count-in on the live characteristic): to do by the live-bluetooth session** |
+| `ble_live` | Leader: the clock and live characteristics over Bluetooth (read when Stage starts). Members: the clock reads over Bluetooth, a read in flight brings no clock back | The song and order over Bluetooth (#93); the click uses the Realtime clock. **Turned off mid-show the leader's Bluetooth is not restarted** (that would drop every member's link): it stops recalibrating, members stop reading the clock. Turned on mid-show: from the next time the leader opens Stage. A restarted leader serves the last song again at once. **The click and playhead over Bluetooth follow the switch as it is now**: turned off mid-show, the leader sends one last frame saying they stopped and then serves no more, and a member reads none. A phone with no internet stops; a phone online keeps the beat (the leader sends what runs again on the Realtime channel). Back on mid-show, what runs is served again | clock: yes (#265 #268). click / playhead on the live characteristic: yes (#274, `release-fix/ble-live-flag`) |
 
 ## How it works
 
@@ -111,10 +111,11 @@ Where to wrap the parts still to come:
   - the count-in button and `useCountInUi`;
   - the `setCountIn` send, and `receiveCountIn` ignored while off.
   - At GO the click still starts.
-- **`ble_live`** (B3):
-  - publish / receive the click, playhead and count-in on `b7d50003` only while on.
-  - The leader already leaves the characteristic out when off (`useStageBle`).
-  - The member's clock reads already stop.
+- **`ble_live`** (B3), done in `useStageBle` / `useStageLive`:
+  - the click, playhead and count-in are published and read on `b7d50003` only while on, checked at every frame.
+  - Off mid-show: the leader's last frame says they stopped (`farewell('off')`), and it sends what runs again on the Realtime channel with a newer seq, so phones online keep the beat.
+  - The leader leaves the characteristic out when off at start.
+  - The member's clock reads stop.
 - **Server side**: the `live_pack_ready` prompts are written by 170 (the daily sweep, the sweep when a first setlist is attached, and an admin's Remind) and drawn by the phone's system while the app is in the background, so the app alone can't hide that banner. 198 (applied with 170 in one transaction: 170 is on main and stays as it is, and alone it would push with the flag off) makes them read `app_flags.live_pack` (`bw_live_pack_on()`): while it is off nothing is pushed: no invites, no Remind, no silent refresh. The flag is read before every push, also while a job is running (switched off mid-run, the rest of the queue is kept and goes out once it is back on). No table or no row means on, so 173 and 198 work in either order; an unreadable row also means on, with a warning in the database log. Back on, a kept refresh goes out only for events still in the window (apply 173 first anyway, see docs/release-checklist.md). `min_app_version` is not checked there: the server can't tell which version a person runs.
 - **A new feature** adds:
   - its key to `APP_FLAG_DEFAULTS` (`src/lib/appFlags.ts`),

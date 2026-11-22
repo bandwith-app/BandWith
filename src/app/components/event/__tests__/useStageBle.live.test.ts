@@ -94,6 +94,7 @@ vi.mock('@/lib/stageBleNative', () => ({
 }));
 
 const { useStageBle } = await import('../useStageBle');
+const { __resetAppFlagsForTest, __setAppFlagsForTest } = await import('@/lib/appFlags');
 
 const click = { seq: 5, from: 'lead', on: true, bpm: 120, beats: 4, bars: null, startAt: 1_795_000_000_000, songId: 'a1' };
 const head = { seq: 6, from: 'lead', songId: 'a1', on: true, bpm: 120, speed: 1, bar: 8, startAt: 1_795_000_000_000, hold: null };
@@ -105,7 +106,9 @@ const served = async (n = -1) => {
   return { ...(await decodeLive(fromBase64(call.value), KEY))!, notify: fromBase64(call.notify) };
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The test before may still be saying goodbye (its last frame, then Bluetooth stops).
+  await new Promise((r) => setTimeout(r, 50));
   ble.oldLeader = false;
   ble.notify.clear();
   ble.clockReads = 0;
@@ -113,6 +116,7 @@ beforeEach(() => {
   ble.live = { seq: 1, events: {} };
   ble.disconnectCbs = [];
   vi.clearAllMocks();
+  __resetAppFlagsForTest(null);
 });
 
 describe('useStageBle: live frame (click, playhead)', () => {
@@ -199,6 +203,122 @@ describe('useStageBle: live frame (click, playhead)', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(native.updateLive).not.toHaveBeenCalled();
     expect(native.update).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('leader: the switch turned off mid-show (ble_live) sends the stopped click once, then nothing more goes out over Bluetooth; back on, what runs now is served again', async () => {
+    const off = { ...click, on: false, seq: 7 };
+    const farewell = vi.fn((_why?: 'closing' | 'off') => ({ click: off }));
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {}, farewell }),
+    );
+    act(() => result.current.publishLive('click', click));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalledTimes(1));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    // Phones still reading (their switch not read yet, or no signal) are told it stopped.
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalledTimes(2));
+    expect(farewell).toHaveBeenCalledWith('off');
+    expect((await served()).events).toEqual({ click: off });
+    // The click and the playhead from now on: not over Bluetooth.
+    const faster = { ...click, bpm: 140, seq: 9 };
+    act(() => result.current.publishLive('click', faster));
+    act(() => result.current.publishLive('playhead', head));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(native.updateLive).toHaveBeenCalledTimes(2);
+    // The song still goes out.
+    act(() => result.current.publish({ seq: 4, from: 'lead', songId: 'b2', order: null }));
+    await waitFor(() => expect(native.update).toHaveBeenCalled());
+    // Back on: what runs now.
+    act(() => __setAppFlagsForTest({ ble_live: true }));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalledTimes(3));
+    expect((await served()).events).toEqual({ click: faster, playhead: head });
+    unmount();
+  });
+
+  it('leader: with the switch off, closing Stage says nothing over Bluetooth (the stop already went out)', async () => {
+    const off = { ...click, on: false, seq: 7 };
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {}, farewell: () => ({ click: off }) }),
+    );
+    act(() => result.current.publishLive('click', click));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalledTimes(1));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalledTimes(2));
+    unmount();
+    await waitFor(() => expect(native.stop).toHaveBeenCalled());
+    expect(native.updateLive).toHaveBeenCalledTimes(2);
+  });
+
+  it('leader: the switch off with nothing running sends nothing', async () => {
+    const { unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {}, farewell: () => ({}) }),
+    );
+    await waitFor(() => expect(native.start).toHaveBeenCalledTimes(1));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(native.updateLive).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('member: the switch off mid-show: a new live frame is not read and nothing reaches the click; back on, where the band is now is read', async () => {
+    ble.live = { seq: 3, events: { click } };
+    const onLive = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState: () => {}, onLive }),
+    );
+    await waitFor(() => expect(onLive).toHaveBeenCalledWith('click', click));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    const reads = ble.liveReads;
+    const faster = { ...click, bpm: 140, seq: 9 };
+    ble.live = { seq: 4, events: { click: faster } };
+    await act(async () => ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)!(new DataView(new ArrayBuffer(4))));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ble.liveReads).toBe(reads);
+    expect(onLive).not.toHaveBeenCalledWith('click', faster);
+    // The song link stays.
+    expect(result.current.status).toBe('connected');
+    act(() => __setAppFlagsForTest({ ble_live: true }));
+    await waitFor(() => expect(onLive).toHaveBeenCalledWith('click', faster));
+    unmount();
+  });
+
+  it('member: the switch off before linking: the live frame is never read, the song still syncs', async () => {
+    __setAppFlagsForTest({ ble_live: false });
+    ble.live = { seq: 3, events: { click, playhead: head } };
+    const onLive = vi.fn();
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState, onLive }),
+    );
+    await waitFor(() => expect(onState).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 200));
+    expect(result.current.status).toBe('connected');
+    expect(ble.liveReads).toBe(0);
+    expect(onLive).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('member: a read in flight when the switch goes off brings nothing', async () => {
+    ble.live = { seq: 3, events: { click } };
+    const onLive = vi.fn();
+    const { unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState: () => {}, onLive }),
+    );
+    await waitFor(() => expect(onLive).toHaveBeenCalledWith('click', click));
+    const faster = { ...click, bpm: 140, seq: 9 };
+    ble.live = { seq: 4, events: { click: faster } };
+    const { BleClient } = await import('@capacitor-community/bluetooth-le');
+    const real = vi.mocked(BleClient.read).getMockImplementation()!;
+    let release = () => {};
+    vi.mocked(BleClient.read).mockImplementationOnce(async (...args) => {
+      await new Promise<void>((r) => (release = r));
+      return real(...args);
+    });
+    await act(async () => ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)!(new DataView(new ArrayBuffer(4))));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    release();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(onLive).not.toHaveBeenCalledWith('click', faster);
     unmount();
   });
 
