@@ -1192,6 +1192,143 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
     `M4: a hold with only "date": the answer for that day saves, and the hold blocks the day (live ${liveD}, ${ansD.error || ansD.rows[0]?.a}, ${fsH.error || JSON.stringify(fsH.rows[0])})`);
 }
 
+// ── Round 5 (Codex + Claude r4 on 7cb38d0b, main's decisions) ───────────────
+{
+  const readsAs = async (uid, chat) => (await as(uid, `SELECT content FROM messages WHERE chat_id = '${chat}' ORDER BY created_at`)).rows.map((r) => r.content);
+  const say = (chat, text) => db.exec(`INSERT INTO messages (chat_id, sender_id, content) VALUES ('${chat}','${ADMIN}','${text}')`);
+  const myHold = async (uid, ev) => (await as(uid, `SELECT * FROM public.bw_my_date_holds() WHERE event_id = '${ev}'`)).rows[0];
+
+  // B1: confirm, back to a quote, confirm again: the second negotiation stays
+  // with the admins (the cut-off is the latest confirmation).
+  const [C1E, C1C] = [2601, 2602].map(id);
+  await mkQuote(C1E, 'Smith Terrace', `INSERT INTO event_members (event_id, user_id, status) VALUES ('${C1E}','${MEM}','confirmed');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${C1C}','event','Smith Terrace','${BAND}','${C1E}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${C1C}','${ADMIN}');`);
+  await say(C1C, 'First offer 3000');
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${C1E}'`);
+  await asServer(ADMIN, `UPDATE events SET status = 'tentative' WHERE id = '${C1E}'`);
+  await say(C1C, 'Second offer 6100');
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${C1E}'`);
+  await say(C1C, 'See you at 6');
+  const c1 = await readsAs(MEM, C1C);
+  ok(c1.includes('See you at 6') && !c1.includes('Second offer 6100') && !c1.includes('First offer 3000'),
+    `R5 B1: confirm, revert, confirm again: the second negotiation stays hidden (${JSON.stringify(c1)})`);
+
+  // B2: a deputy's reply link, the deputy feed and the member calendar feed
+  // after the gig went back to a quote.
+  await db.exec(`ALTER TABLE deputy_requests ADD COLUMN IF NOT EXISTS answer_snapshot jsonb, ADD COLUMN IF NOT EXISTS reply_note text,
+      ADD COLUMN IF NOT EXISTS responded_at timestamptz;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS is_recurring boolean DEFAULT false, ADD COLUMN IF NOT EXISTS address text;
+    CREATE TABLE IF NOT EXISTS public.calendar_feeds (user_id uuid PRIMARY KEY, token text);`);
+  await db.exec(fnByName('084_deputy_requests.sql', 'bw_deputy_event_snapshot'));
+  // Without 178's versions (an older 178), main's: 084 and 165.
+  for (const [n, f] of [['084_deputy_requests.sql', 'bw_deputy_request_view'], ['084_deputy_requests.sql', 'bw_deputy_feed'], ['165_member_calendar.sql', 'bw_member_calendar_feed']]) {
+    if (!(await tryq(`SELECT to_regprocedure('public.${f}(text)') p`)).rows[0]?.p) await db.exec(fnByName(n, f));
+  }
+  const [DGE, DGR, DGD] = [2603, 2604, 2605].map(id);
+  const TOK = 'a'.repeat(64);
+  const FEED = 'b'.repeat(64);
+  await asServer(ADMIN, `INSERT INTO band_deputies (id, band_id, name) VALUES ('${DGD}','${BAND}','Ray Dep');
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, venue_name, venue_city, created_at)
+    VALUES ('${DGE}','${BAND}','Smith Ballroom','confirmed','gig','${ADMIN}', current_date + 21, '19:00','Webster Hall','New York', now() - interval '1 day');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${DGE}','${MEM}','confirmed');
+    INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, status, token)
+      VALUES ('${DGR}','${BAND}','${DGE}','${DGD}','Ray Dep','available','${TOK}');
+    INSERT INTO calendar_feeds (user_id, token) VALUES ('${MEM}','${FEED}') ON CONFLICT DO NOTHING`);
+  const dv = async () => (await tryq(`SELECT public.bw_deputy_request_view('${TOK}') v`)).rows[0]?.v || {};
+  const df = async () => ((await tryq(`SELECT public.bw_deputy_feed('${TOK}') v`)).rows[0]?.v?.gigs || []).map((g) => g.event_title);
+  const mf = async () => ((await tryq(`SELECT public.bw_member_calendar_feed('${FEED}') v`)).rows[0]?.v?.events || []).map((e) => e.id);
+  const v0 = await dv(); const f0 = await df(); const m0 = await mf();
+  await asServer(ADMIN, `UPDATE events SET status = 'tentative' WHERE id = '${DGE}'`);
+  const v1 = await dv(); const f1 = await df(); const m1 = await mf();
+  ok(v0.event_title === 'Smith Ballroom' && f0.includes('Smith Ballroom') && m0.includes(DGE)
+     && v1.closed === true && v1.event_title == null && v1.venue_name == null && v1.event_date == null && v1.start_time == null
+     && !f1.includes('Smith Ballroom') && !m1.includes(DGE),
+    `R5 B2: back to a quote: the reply link is closed with no title, day, time or place; the deputy and member feeds drop it (before ${v0.event_title}/${f0.length}/${m0.length}, after ${JSON.stringify({ t: v1.event_title, v: v1.venue_name, closed: v1.closed })}, ${JSON.stringify(f1)}, ${m1.includes(DGE)})`);
+  if (!(await tryq(`SELECT to_regprocedure('public.bw_deputy_request_reply(text, text, text)') p`)).rows[0]?.p) {
+    await db.exec(fnByName('084_deputy_requests.sql', 'bw_deputy_request_reply'));
+  }
+  const rep = await tryq(`SELECT public.bw_deputy_request_reply('${TOK}', 'maybe') v`);
+  const st = (await tryq(`SELECT status FROM deputy_requests WHERE id = '${DGR}'`)).rows[0]?.status;
+  ok(!rep.error && rep.rows[0]?.v?.closed === true && rep.rows[0]?.v?.event_title == null && st === 'available',
+    `R5 B2: a reply on the closed link changes nothing and shows nothing (${rep.error || JSON.stringify({ closed: rep.rows[0]?.v?.closed, t: rep.rows[0]?.v?.event_title })}, ${st})`);
+
+  // B3: the admin moves the event, then edits only the venue on the quote:
+  // the event keeps its new day.
+  const [MVE, MVQ] = [2606, 2607].map(id);
+  await mkQuote(MVE, 'Smith Atrium', `INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, created_at, event_date, venue_name, venue_city)
+    VALUES ('${MVQ}','${BAND}','sent', current_date + 30, '${MVE}', now() - interval '1 day', current_date + 12, 'Blue Note', 'New York')`);
+  await asServer(ADMIN, `UPDATE events SET event_date = current_date + 19 WHERE id = '${MVE}'`);
+  await asServer(ADMIN, `UPDATE quotes SET venue_name = 'Pier 40' WHERE id = '${MVQ}'`);
+  const mv = (await tryq(`SELECT event_date - current_date AS d, venue_name FROM events WHERE id = '${MVE}'`)).rows[0] || {};
+  ok(mv.d === 19 && mv.venue_name === 'Pier 40', `R5 B3: a venue edit on the quote keeps the event's own new day (${JSON.stringify(mv)})`);
+
+  // M1: rescheduling takes the hold's lock before it clears the answers.
+  const trg = await fnDef('bw_trg_event_changed');
+  const iLock = trg.indexOf('pg_advisory_xact_lock(178');
+  const iDel = trg.indexOf('DELETE FROM event_hold_answers');
+  ok(iLock > 0 && iDel > 0 && iLock < iDel, `R5 M1: the event trigger locks the hold before deleting its answers (lock at ${iLock}, delete at ${iDel})`);
+
+  // M2: declined, then reopened on the same date: it asks again.
+  const [RPE, RPQ] = [2608, 2609].map(id);
+  await mkQuote(RPE, 'Smith Pavilion', `INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, created_at)
+    VALUES ('${RPQ}','${BAND}','sent', current_date + 30, '${RPE}', now() - interval '1 day')`);
+  await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+  const a1 = await as(MEM, `SELECT public.bw_answer_date_hold('${RPE}', 'free') a`);
+  await asServer(ADMIN, `UPDATE quotes SET status = 'declined' WHERE id = '${RPQ}'`);
+  const gone = await myHold(MEM, RPE);
+  await asServer(ADMIN, `UPDATE quotes SET status = 'sent' WHERE id = '${RPQ}'`);
+  await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+  const back = await myHold(MEM, RPE);
+  ok(a1.rows[0]?.a === 'free' && !gone && back && back.my_answer == null,
+    `R5 M2: reopened after a decline, the hold asks again (answered ${a1.error || a1.rows[0]?.a}, while declined ${!!gone}, reopened ${back ? back.my_answer : 'no hold'})`);
+
+  // M3: an older event with only "time": the card shows it, and the answer
+  // for that time saves.
+  const TME = id(2610);
+  await mkQuote(TME, 'Smith Cellar');
+  await asServer(ADMIN, `UPDATE events SET start_time = NULL, "time" = '19:30' WHERE id = '${TME}'`);
+  const th = await myHold(MEM, TME);
+  const td = (await tryq(`SELECT to_char(coalesce(event_date, date), 'YYYY-MM-DD') d FROM events WHERE id = '${TME}'`)).rows[0]?.d;
+  const ta = await as(MEM, `SELECT public.bw_answer_date_hold('${TME}', 'free', '${td}'::date, '19:30', NULL) a`);
+  ok(String(th?.start_time || '').startsWith('19:30') && ta.rows[0]?.a === 'free',
+    `R5 M3: a hold with only "time" shows 19:30 and takes the answer (${th ? th.start_time : 'no hold'}, ${ta.error || ta.rows[0]?.a})`);
+
+  // Claude 1: quotes are found by their event through an index.
+  const ix = (await tryq(`SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_quotes_converted_to_event_id'`)).rows.length;
+  ok(ix === 1, `R5 C1: idx_quotes_converted_to_event_id exists (${ix})`);
+
+  // Claude 2: an old admin build's "Availability check" to someone outside
+  // the band who is on a quote's lineup is dropped too.
+  const AVE = id(2611);
+  await mkQuote(AVE, 'Smith Garden Party', `INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${AVE}','${OUT}','pending', 300)`);
+  await db.exec(`DELETE FROM notifications`);
+  await asServer(ADMIN, `INSERT INTO notifications (user_id, band_id, type, title, body, data, reference_id, reference_type) VALUES
+    ('${OUT}','${BAND}','event_invite','Availability check: Smith','Your fee: $300', jsonb_build_object('event_id','${AVE}'), '${AVE}', 'event'),
+    ('${ADMIN2}','${BAND}','event_invite','Availability check: Smith','Your fee: $300', jsonb_build_object('event_id','${AVE}'), '${AVE}', 'event')`);
+  const nOut = (await notes(`user_id = '${OUT}'`)).length;
+  const nAdm = (await notes(`user_id = '${ADMIN2}'`)).length;
+  ok(nOut === 0 && nAdm === 1, `R5 C2: a quote notice reaches only the band's admins, not someone outside the band on its lineup (outside ${nOut}, admin ${nAdm})`);
+
+  // Claude 3: the events rule checks the row first, with the same answers.
+  const qual = (await tryq(`SELECT qual FROM pg_policies WHERE tablename = 'events' AND policyname = 'events_select_policy'`)).rows[0]?.qual || '';
+  const both = async (uid) => {
+    await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '${claims(uid)}', true);`);
+    try {
+      return (await db.query(`SELECT id,
+        (band_id IS NOT NULL AND public.bw_is_band_member(band_id) AND NOT public.bw_event_quote_hidden(id)) AS a,
+        (band_id IS NOT NULL AND public.bw_is_band_member(band_id)
+          AND ((NOT public.bw_event_is_quote(status::text, event_type::text, quote_id)
+                AND lower(coalesce(status::text, '')) NOT IN ('cancelled', 'canceled'))
+               OR NOT public.bw_event_quote_hidden(id))) AS b FROM events`)).rows;
+    } catch { return [{ id: 'error', a: true, b: false }]; } finally { await db.exec('COMMIT').catch(() => {}); }
+  };
+  let rows = 0; const diff = [];
+  for (const u of [ADMIN, ADMIN2, MEM, MEM2, OUT]) for (const r of await both(u)) { rows++; if (r.a !== r.b) diff.push(`${u.slice(-2)}:${r.id.slice(-4)}`); }
+  ok(/bw_event_is_quote/.test(qual) && diff.length === 0 && rows > 50,
+    `R5 C3: the events rule checks the row's own columns first, same answer on every event for every account (${rows} pairs, ${diff.length} differ ${diff.slice(0, 5).join(' ')})`);
+}
+
 // ── The 002 shape: enum events.status / event_type / quotes.status ─────────
 // 178 must apply (twice) and work on enum columns as well as text ones: it
 // passes them on as ::text. CHAT_TYPE=text keeps chats.type text here.

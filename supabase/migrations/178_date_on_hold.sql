@@ -240,6 +240,9 @@ GRANT EXECUTE ON FUNCTION public.bw_event_quote_hidden(uuid, uuid) TO authentica
 -- from the caller's rows (their bands as bw_my_band_ids, their chat rows,
 -- the chats they made), never a scan of every event chat. One array per statement.
 CREATE INDEX IF NOT EXISTS idx_chats_created_by ON public.chats (created_by);
+-- bw_event_quote_private (cancelled rows), the backfill and the triggers
+-- look quotes up by their event.
+CREATE INDEX IF NOT EXISTS idx_quotes_converted_to_event_id ON public.quotes (converted_to_event_id);
 CREATE OR REPLACE FUNCTION public.bw_hidden_quote_chat_ids()
 RETURNS uuid[]
 LANGUAGE sql
@@ -366,8 +369,11 @@ CREATE POLICY events_select_policy ON public.events
     band_id IS NOT NULL
     AND public.bw_is_band_member(band_id)
     -- A quote only for its band's admins (bw_event_quote_private is not
-    -- callable by apps).
-    AND NOT public.bw_event_quote_hidden(id)
+    -- callable by apps). The row's own columns first: an event that is not
+    -- a quote and not cancelled is never private (same answer, no lookup).
+    AND ((NOT public.bw_event_is_quote(status::text, event_type::text, quote_id)
+          AND lower(coalesce(status::text, '')) NOT IN ('cancelled', 'canceled'))
+         OR NOT public.bw_event_quote_hidden(id))
   );
 
 CREATE OR REPLACE FUNCTION public.bw_can_view_event(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
@@ -783,6 +789,209 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_deputy_request_ping(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_deputy_request_ping(uuid) TO authenticated;
 
+-- Token and deputy read paths (anon or a deputy's account): nothing of a gig
+-- that is (back to) a private quote. Bodies from 084 (bw_deputy_request_view,
+-- bw_deputy_feed) and 165 (bw_member_calendar_feed), plus the 178 lines;
+-- the check is bw_event_deputy_hidden (not bw_event_quote_hidden: that one
+-- answers false to a signed-in caller outside the band, like a deputy).
+-- 182 (#285) redefines the deputy ones after 178 with the same check.
+CREATE OR REPLACE FUNCTION public.bw_deputy_request_view(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v jsonb;
+  v_snap jsonb;
+  v_now jsonb;
+  v_status text;
+  v_changes jsonb := '[]'::jsonb;
+  v_before jsonb := '{}'::jsonb;
+  v_hidden boolean;
+  k text;
+BEGIN
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
+         public.bw_event_deputy_hidden(r.event_id)
+    INTO v_snap, v_status, v_now, v_hidden
+    FROM public.deputy_requests r WHERE r.token = p_token;
+  -- What changed since the answer. The address counts only once they said
+  -- yes (before that they never saw it).
+  IF v_snap IS NOT NULL AND v_status IN ('available', 'maybe') AND NOT coalesce(v_hidden, false) THEN
+    FOREACH k IN ARRAY ARRAY['date', 'load_in', 'soundcheck', 'start', 'end', 'venue', 'city', 'address'] LOOP
+      CONTINUE WHEN k = 'address' AND v_status <> 'available';
+      IF (v_snap->>k) IS DISTINCT FROM (v_now->>k) THEN
+        v_changes := v_changes || to_jsonb(k);
+        v_before := v_before || jsonb_build_object(k, v_snap->k);
+      END IF;
+    END LOOP;
+  END IF;
+
+  SELECT jsonb_build_object(
+           'status', r.status,
+           'deputy_name', r.deputy_name,
+           'role', r.role,
+           'fee', r.fee_offered,
+           'currency', coalesce(r.currency, e.currency),
+           'reply_note', r.reply_note,
+           'responded_at', r.responded_at,
+           'band_name', b.name,
+           'event_title', e.title,
+           'event_type', e.event_type::text,
+           'event_date', coalesce(e.event_date, e.date),
+           'start_time', coalesce(e.start_time, e.time),
+           'end_time', e.end_time,
+           'load_in_time', e.load_in_time,
+           'soundcheck_time', e.soundcheck_time,
+           'venue_name', coalesce(e.venue_name, e.venue),
+           'venue_city', e.venue_city,
+           -- The street address only after they said yes.
+           'venue_address', CASE WHEN r.status = 'available' THEN e.venue_address END,
+           'event_cancelled', coalesce(e.status::text, '') = 'cancelled',
+           'event_updated_at', e.updated_at,
+           'changes', v_changes,
+           'before', v_before,
+           -- A day of slack for time zones.
+           'closed', r.status = 'cancelled' OR coalesce(e.status::text, '') = 'cancelled'
+                     OR coalesce(e.event_date, e.date) < current_date - 1
+         )
+    INTO v
+    FROM public.deputy_requests r
+    JOIN public.events e ON e.id = r.event_id
+    JOIN public.bands b ON b.id = r.band_id
+   WHERE r.token = p_token;
+  -- 178: back to a private quote: closed, and nothing of the gig (title,
+  -- day, times, place), nor the offer. bw_my_deputy_gigs (086) and
+  -- bw_deputy_request_reply (084) go through this view.
+  IF v IS NOT NULL AND coalesce(v_hidden, false) THEN
+    v := v || jsonb_build_object(
+      'event_title', NULL, 'event_type', NULL, 'event_date', NULL, 'start_time', NULL, 'end_time', NULL,
+      'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
+      'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
+      'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'closed', true);
+  END IF;
+  RETURN v;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_request_view(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_request_view(text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_deputy_feed(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_req public.deputy_requests;
+BEGIN
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  SELECT * INTO v_req FROM public.deputy_requests WHERE token = p_token;
+  IF v_req.id IS NULL THEN RETURN NULL; END IF;
+  RETURN jsonb_build_object(
+    'band_name', (SELECT b.name FROM public.bands b WHERE b.id = v_req.band_id),
+    'deputy_name', v_req.deputy_name,
+    'gigs', coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', r.id,
+               'token', r.token,
+               'cancelled', r.status = 'cancelled' OR coalesce(e.status::text, '') = 'cancelled',
+               'role', r.role,
+               'event_title', e.title,
+               'event_date', coalesce(e.event_date, e.date),
+               'start_time', coalesce(e.start_time, e.time),
+               'end_time', e.end_time,
+               'load_in_time', e.load_in_time,
+               'soundcheck_time', e.soundcheck_time,
+               'venue_name', coalesce(e.venue_name, e.venue),
+               'venue_city', e.venue_city,
+               'venue_address', e.venue_address,
+               'updated_at', greatest(e.updated_at, r.updated_at)
+             ) ORDER BY coalesce(e.event_date, e.date))
+        FROM public.deputy_requests r
+        JOIN public.events e ON e.id = r.event_id
+       WHERE r.band_id = v_req.band_id
+         AND (r.id = v_req.id OR (v_req.deputy_id IS NOT NULL AND r.deputy_id = v_req.deputy_id))
+         AND (r.status = 'available' OR (r.status = 'cancelled' AND r.answer_snapshot IS NOT NULL))
+         AND coalesce(e.event_date, e.date) >= current_date - 60
+         -- 178: not while the gig is (back to) a private quote.
+         AND NOT public.bw_event_deputy_hidden(e.id)
+    ), '[]'::jsonb)
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_feed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_feed(text) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_member_calendar_feed(p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid;
+BEGIN
+  IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  SELECT user_id INTO v_uid FROM public.calendar_feeds WHERE token = p_token;
+  IF v_uid IS NULL THEN RETURN NULL; END IF;
+
+  RETURN jsonb_build_object(
+    'language', (SELECT p.preferred_language FROM public.profiles p WHERE p.id = v_uid),
+    'events', coalesce((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', e.id,
+               'type', CASE WHEN lower(coalesce(e.event_type::text, '')) = 'rehearsal' THEN 'rehearsal'
+                            WHEN e.band_id IS NULL THEN 'personal'
+                            ELSE 'gig' END,
+               'title', e.title,
+               'band_name', b.name,
+               'event_date', coalesce(e.event_date, e.date),
+               'start_time', coalesce(e.start_time, e.time),
+               'end_time', e.end_time,
+               'load_in_time', e.load_in_time,
+               'soundcheck_time', e.soundcheck_time,
+               'venue_name', coalesce(e.venue_name, e.venue),
+               'venue_city', e.venue_city,
+               'venue_address', coalesce(e.venue_address, e.address),
+               'role', em.role,
+               'recurrence', CASE WHEN e.is_recurring THEN e.recurrence_rule END,
+               'updated_at', e.updated_at
+             ) ORDER BY coalesce(e.event_date, e.date))
+        FROM public.events e
+        LEFT JOIN public.bands b ON b.id = e.band_id
+        LEFT JOIN public.band_members bm
+          ON bm.band_id = e.band_id AND bm.user_id = v_uid
+         AND coalesce(bm.is_active, true) AND bm.left_at IS NULL
+        LEFT JOIN public.event_members em ON em.event_id = e.id AND em.user_id = v_uid
+       WHERE coalesce(e.event_date, e.date) IS NOT NULL
+         -- Recurring rehearsals stay while they repeat; one-offs from 60 days back.
+         AND (coalesce(e.event_date, e.date) >= current_date - 60 OR e.is_recurring)
+         -- Never quotes, drafts or cancelled events (AuthenticatedApp isQuote rule).
+         AND lower(coalesce(e.status::text, '')) NOT IN ('cancelled', 'canceled', 'draft', 'pending')
+         AND NOT (
+           (e.quote_id IS NOT NULL OR lower(coalesce(e.event_type::text, '')) = 'quote'
+             OR lower(coalesce(e.status::text, '')) IN ('tentative', 'quoted', 'quote'))
+           AND lower(coalesce(e.status::text, '')) NOT IN ('confirmed', 'completed')
+         )
+         -- 178: nor a gig that is (back to) a private quote.
+         AND (e.band_id IS NULL OR NOT public.bw_event_deputy_hidden(e.id))
+         AND (
+           (e.band_id IS NULL AND e.created_by = v_uid)
+           OR (bm.role::text = 'admin' AND coalesce(em.status::text, '') <> 'declined')
+           OR (bm.id IS NOT NULL AND em.id IS NOT NULL AND coalesce(em.status::text, '') <> 'declined')
+         )
+    ), '[]'::jsonb)
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_member_calendar_feed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_member_calendar_feed(text) TO anon, authenticated;
+
 -- ── 4. The event chat of a quote ────────────────────────────────────────────
 -- RESTRICTIVE: ANDed with whatever read policies these tables have (073 or
 -- 175), so the rule holds in either order. The list is worked out once per
@@ -892,7 +1101,7 @@ REVOKE ALL ON FUNCTION public.bw_quote_chat_prune(uuid) FROM PUBLIC, anon, authe
 
 SELECT public.bw_quote_chat_prune(NULL);
 
--- The quote became a gig: the cut-off time is kept (event_date_holds) and its
+-- The quote became a gig (first time or again): the cut-off moves to now (event_date_holds) and its
 -- lineup goes back in its chat, history cleared up to now (181 may have taken
 -- them out too; either order ends here).
 CREATE OR REPLACE FUNCTION public.bw_quote_event_confirmed(p_event_id uuid)
@@ -914,10 +1123,12 @@ BEGIN
                            THEN event_date_holds.released_at ELSE now() END,
         release_reason = 'confirmed',
         confirmed_once_at = coalesce(event_date_holds.confirmed_once_at, now()),
-        -- A confirmation (again) moves the cut-off forward, never back.
-        history_cutoff_at = CASE WHEN event_date_holds.release_reason = 'confirmed' AND event_date_holds.history_cutoff_at IS NOT NULL
-                                 THEN event_date_holds.history_cutoff_at
-                                 ELSE greatest(coalesce(event_date_holds.history_cutoff_at, now()), now()) END
+        -- Every confirmation (only called when a quote becomes a gig) moves
+        -- the cut-off to now: what was said while it was a quote, also a
+        -- second time after a revert, stays with the admins. Worked out from
+        -- the cut-off alone, never from release_reason (the hold sync sets
+        -- that to 'confirmed' first). Only ever later, never earlier.
+        history_cutoff_at = greatest(coalesce(event_date_holds.history_cutoff_at, now()), now())
   RETURNING history_cutoff_at INTO v_cut;
   INSERT INTO chat_participants (chat_id, user_id, joined_at, cleared_at)
   SELECT DISTINCT c.id, em.user_id, now(), now()
@@ -1505,7 +1716,7 @@ DECLARE
 BEGIN
   PERFORM pg_advisory_xact_lock(178, hashtext(p_event_id::text));
   SELECT e.band_id, e.status::text, e.event_type::text, e.quote_id, coalesce(e.event_date, e.date),
-         e.start_time, e.end_time, coalesce(nullif(btrim(e.venue_name), ''), e.venue), e.venue_city
+         coalesce(e.start_time, e."time"), e.end_time, coalesce(nullif(btrim(e.venue_name), ''), e.venue), e.venue_city
     INTO v_band, v_status, v_type, v_quote, v_date, v_start, v_end, v_venue, v_city
     FROM events e WHERE e.id = p_event_id;
   IF v_band IS NULL THEN RETURN; END IF;
@@ -1516,6 +1727,11 @@ BEGIN
   IF v_live THEN
     IF v_state.event_id IS NULL OR v_state.released_at IS NOT NULL THEN
       IF NOT public.bw_date_hold_ready(p_event_id) THEN RETURN; END IF;
+      -- Open again (declined, expired, reverted, then reopened): it asks
+      -- again; no answer from before comes back.
+      IF v_state.event_id IS NOT NULL THEN
+        DELETE FROM event_hold_answers WHERE event_id = p_event_id;
+      END IF;
       INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason)
       VALUES (p_event_id, v_band, now(), NULL, NULL)
       ON CONFLICT (event_id) DO UPDATE SET announced_at = now(), released_at = NULL, release_reason = NULL, band_id = EXCLUDED.band_id;
@@ -1592,7 +1808,7 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT e.id, e.band_id, b.name::text, coalesce(e.event_date, e.date), e.start_time, e.end_time,
+  SELECT e.id, e.band_id, b.name::text, coalesce(e.event_date, e.date), coalesce(e.start_time, e."time"), e.end_time,
          nullif(nullif(btrim(coalesce(e.venue_name, e.venue, '')), ''), 'TBD'),
          nullif(btrim(coalesce(e.venue_city, '')), ''),
          a.answer, a.answered_at
@@ -1655,7 +1871,7 @@ BEGIN
   IF p_date IS NOT NULL AND EXISTS (
     SELECT 1 FROM events e
      WHERE e.id = p_event_id
-       AND (coalesce(to_char(e.start_time, 'HH24:MI'), '') <> coalesce(left(btrim(p_start_time), 5), '')
+       AND (coalesce(to_char(coalesce(e.start_time, e."time"), 'HH24:MI'), '') <> coalesce(left(btrim(p_start_time), 5), '')
             OR coalesce(to_char(e.end_time, 'HH24:MI'), '') <> coalesce(left(btrim(p_end_time), 5), ''))
   ) THEN
     RAISE EXCEPTION 'The time changed' USING ERRCODE = 'BWD02';
@@ -1760,7 +1976,7 @@ BEGIN
       PERFORM public.bw_notify(public.bw_active_band_member_ids(OLD.band_id, true), OLD.band_id, 'event_cancelled',
         v_label || ' cancelled', OLD.title || ' · ' || v_when || ' was removed from the calendar.',
         v_data || jsonb_build_object('deleted', true), OLD.id, 'event');
-      PERFORM public.bw_date_hold_gone(OLD.id, OLD.band_id, coalesce(OLD.event_date, OLD.date), OLD.start_time,
+      PERFORM public.bw_date_hold_gone(OLD.id, OLD.band_id, coalesce(OLD.event_date, OLD.date), coalesce(OLD.start_time, OLD."time"),
         OLD.end_time, coalesce(nullif(btrim(OLD.venue_name), ''), OLD.venue), OLD.venue_city);
       RETURN OLD;
     END IF;
@@ -1781,6 +1997,9 @@ BEGIN
   IF v_is_quote AND NOT v_was_quote THEN
     UPDATE event_date_holds SET release_reason = 'reverted'
      WHERE event_id = NEW.id AND release_reason = 'confirmed';
+    -- The cut-off is the time of this revert (only ever later).
+    UPDATE event_date_holds SET history_cutoff_at = greatest(history_cutoff_at, now())
+     WHERE event_id = NEW.id AND history_cutoff_at IS NOT NULL;
     PERFORM public.bw_quote_chat_prune(NEW.id);
   END IF;
 
@@ -1856,14 +2075,19 @@ BEGIN
   END IF;
 
   IF v_was_quote OR v_is_quote THEN
-    -- A new day or time: "I'm free" was for the old one.
+    -- A new day or time: "I'm free" was for the old one. The hold's lock
+    -- first (the one bw_answer_date_hold takes), so an answer can't land
+    -- between the clear and the change.
     IF coalesce(NEW.event_date, NEW.date) IS DISTINCT FROM coalesce(OLD.event_date, OLD.date)
-       OR NEW.start_time IS DISTINCT FROM OLD.start_time OR NEW.end_time IS DISTINCT FROM OLD.end_time THEN
+       OR coalesce(NEW.start_time, NEW."time") IS DISTINCT FROM coalesce(OLD.start_time, OLD."time")
+       OR NEW.end_time IS DISTINCT FROM OLD.end_time THEN
+      PERFORM pg_advisory_xact_lock(178, hashtext(NEW.id::text));
       DELETE FROM event_hold_answers WHERE event_id = NEW.id;
     END IF;
     -- What a hold shows: day, start and end time, venue name, city.
     v_hold_changed := coalesce(NEW.event_date, NEW.date) IS DISTINCT FROM coalesce(OLD.event_date, OLD.date)
-      OR NEW.start_time IS DISTINCT FROM OLD.start_time OR NEW.end_time IS DISTINCT FROM OLD.end_time
+      OR coalesce(NEW.start_time, NEW."time") IS DISTINCT FROM coalesce(OLD.start_time, OLD."time")
+      OR NEW.end_time IS DISTINCT FROM OLD.end_time
       OR NEW.venue_name IS DISTINCT FROM OLD.venue_name OR NEW.venue IS DISTINCT FROM OLD.venue
       OR NEW.venue_city IS DISTINCT FROM OLD.venue_city;
     PERFORM public.bw_date_hold_sync(NEW.id, v_hold_changed);
@@ -1977,7 +2201,10 @@ SET search_path TO 'public'
 AS $$
 BEGIN
   UPDATE events e
-     SET event_date = coalesce(NEW.event_date, e.event_date),
+     -- Only what this quote update changed (OLD vs NEW per column): an
+     -- event rescheduled on its own keeps its day when the venue is edited.
+     SET event_date = CASE WHEN NEW.event_date IS DISTINCT FROM OLD.event_date AND NEW.event_date IS NOT NULL
+                           THEN NEW.event_date ELSE e.event_date END,
          start_time = CASE WHEN NEW.event_time_start IS DISTINCT FROM OLD.event_time_start THEN NEW.event_time_start ELSE e.start_time END,
          end_time = CASE WHEN NEW.event_time_end IS DISTINCT FROM OLD.event_time_end THEN NEW.event_time_end ELSE e.end_time END,
          venue_name = CASE WHEN NEW.venue_name IS DISTINCT FROM OLD.venue_name THEN NEW.venue_name ELSE e.venue_name END,
@@ -1987,7 +2214,7 @@ BEGIN
      AND (e.id = NEW.converted_to_event_id OR e.quote_id = NEW.id)
      AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
      AND lower(coalesce(e.status::text, '')) <> 'cancelled'
-     AND (e.event_date IS DISTINCT FROM coalesce(NEW.event_date, e.event_date)
+     AND ((NEW.event_date IS DISTINCT FROM OLD.event_date AND NEW.event_date IS NOT NULL AND e.event_date IS DISTINCT FROM NEW.event_date)
           OR (NEW.event_time_start IS DISTINCT FROM OLD.event_time_start AND e.start_time IS DISTINCT FROM NEW.event_time_start)
           OR (NEW.event_time_end IS DISTINCT FROM OLD.event_time_end AND e.end_time IS DISTINCT FROM NEW.event_time_end)
           OR (NEW.venue_name IS DISTINCT FROM OLD.venue_name AND e.venue_name IS DISTINCT FROM NEW.venue_name)
@@ -2117,10 +2344,9 @@ BEGIN
     SELECT e.band_id INTO v_band FROM events e
      WHERE e.id = v_event AND e.band_id IS NOT NULL
        AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id);
-    -- Members of the band who are not admins: dropped (deputies and others
-    -- outside the band are not concerned).
-    IF v_band IS NOT NULL AND public.bw_is_band_member(v_band, NEW.user_id)
-       AND NOT public.bw_is_band_admin(v_band, NEW.user_id) THEN
+    -- Anyone but the band's admins: dropped (members, former members and
+    -- anyone else on the quote's lineup).
+    IF v_band IS NOT NULL AND NOT public.bw_is_band_admin(v_band, NEW.user_id) THEN
       RETURN NULL;
     END IF;
   END IF;
