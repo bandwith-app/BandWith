@@ -160,6 +160,45 @@ test.describe('Duo Laptop pose: screens off the fold', () => {
     await app.check('song suggestion, scrolled');
   });
 
+  /**
+   * The song form (Edit song, Add song) scrolled its fields across the whole
+   * screen, so a scrolled field rested on the fold: Linux WebKit left Notes
+   * there (y 492–588) once Lyrics was filled, and the health check caught it
+   * while "Saved!" still showed (#298, voice-parts on CI). Like the other
+   * full-screen forms its header holds the Display and the fields scroll on
+   * the Deck: checked at every scroll position.
+   */
+  test('@laptop the song form keeps its fields on the Deck, wherever it is scrolled', async ({ app, duo }) => {
+    const fold = duo!.foldBand!;
+    await openHub(app);
+    await app.page.getByRole('button', { name: new RegExp(`^${app.t('Repertoire')}:`, 'i') }).first().click();
+    await app.settle();
+    await app.page.getByRole('button', { name: 'Actions for Paper Boats' }).first().click();
+    await app.page.getByRole('menuitem', { name: app.t('Edit'), exact: true }).first().click();
+    await app.settle();
+    const lyrics = app.page.locator('label', { hasText: app.t('Lyrics · text, Markdown or JSON') }).locator('textarea');
+    for (let step = 0; step < 3 && !(await lyrics.isVisible()); step++) {
+      await app.page.getByRole('button', { name: app.t('Next') }).filter({ visible: true }).last().click();
+      await app.settle();
+    }
+    // The form's scroller, moved a little at a time from top to bottom.
+    const scrollTo = (top: number) =>
+      lyrics.evaluate((el, top) => {
+        let sc: HTMLElement | null = el.parentElement;
+        while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        if (!sc) return null;
+        sc.scrollTop = top;
+        return { top: sc.getBoundingClientRect().top, at: sc.scrollTop, max: sc.scrollHeight - sc.clientHeight };
+      }, top);
+    const start = await scrollTo(0);
+    expect(start, 'the song form scrolls').not.toBeNull();
+    expect(start!.top, `the fields start on the Deck (fold ${fold.top}–${fold.bottom})`).toBeGreaterThanOrEqual(fold.bottom);
+    for (let top = 0; top <= start!.max + 40; top += 40) {
+      await scrollTo(top);
+      await app.check(`song form, scrolled to ${top}`);
+    }
+  });
+
   test('@laptop Deputy gigs: the reply field is off the fold', async ({ app }) => {
     await leaveBand(app, true);
     await expect(app.page.getByRole('textbox').filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
@@ -253,6 +292,19 @@ test.describe('Duo Laptop pose: the field being typed in stays in sight', () => 
     await expect(fields.first()).toBeVisible();
     await typeOnDeck(app, fields.first(), duo!.foldBand!);
     await app.check('gig wizard after typing');
+  });
+
+  test('@laptop the song form: a field stays on the Deck while typing', async ({ app, duo }) => {
+    await openHub(app);
+    await app.page.getByRole('button', { name: new RegExp(`^${app.t('Repertoire')}:`, 'i') }).first().click();
+    await app.settle();
+    await app.page.getByRole('button', { name: 'Actions for Paper Boats' }).first().click();
+    await app.page.getByRole('menuitem', { name: app.t('Edit'), exact: true }).first().click();
+    await app.settle();
+    const fields = app.page.locator('.bw-fold-form input[type="text"]:visible, .bw-fold-form input:not([type]):visible, .bw-fold-form textarea:visible');
+    await expect(fields.first()).toBeVisible();
+    await typeOnDeck(app, fields.first(), duo!.foldBand!);
+    await app.check('song form after typing');
   });
 
   /**

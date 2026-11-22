@@ -1,6 +1,7 @@
 import { test, expect, type App } from '../fixtures';
 import { isWide, openCreate } from '../support/flows';
-import { openHubPage } from '../support/hub';
+import { openHub, openHubPage } from '../support/hub';
+import { isLaptop } from '../support/live';
 import type { Locator } from '@playwright/test';
 
 /**
@@ -100,15 +101,34 @@ test('@smoke iPad composer: Rider & stage → Edit list from the keyboard opens 
   await cycle(app, editor, 'Shift+Tab', 4);
 });
 
-test('@smoke Create band from the band switcher takes the focus (Duo: beside the docked switcher)', async ({ app }) => {
-  await app.page.getByRole('button', { name: new RegExp(app.t('Switch band')) }).first().click();
-  const switcher = app.page.getByRole('dialog', { name: app.t('Your bands') });
-  await expect(switcher).toBeVisible();
-  const add = switcher.getByRole('button', { name: app.t('Create band') });
+/**
+ * Create band, opened from the keyboard the way the posture offers it: from
+ * the band switcher (the header's "Switch band"), where it docks beside the
+ * switcher on the Duo. In the Duo's Laptop pose the Band desk covers Home and
+ * its header (HomeView: "the Home under it is out of reach"), so the switcher
+ * has no button on screen there: Create band opens from the Account hub's
+ * "New band".
+ */
+async function openCreateBand(app: App): Promise<Locator> {
+  let add: Locator;
+  if (isLaptop()) {
+    await openHub(app);
+    add = app.page.getByRole('button', { name: app.t('New band') }).filter({ visible: true }).first();
+  } else {
+    await app.page.getByRole('button', { name: new RegExp(app.t('Switch band')) }).first().click();
+    const switcher = app.page.getByRole('dialog', { name: app.t('Your bands') });
+    await expect(switcher).toBeVisible();
+    add = switcher.getByRole('button', { name: app.t('Create band') });
+  }
   await add.focus();
   await app.page.keyboard.press('Enter');
   const create = app.page.getByRole('dialog', { name: app.t('Create') }).last();
   await expect(create).toBeVisible();
+  return create;
+}
+
+test('@smoke Create band from the band switcher takes the focus (Duo: beside the docked switcher)', async ({ app }) => {
+  const create = await openCreateBand(app);
   await expect.poll(() => focusInside(create), 'focus moves into Create band').toBe(true);
   // Close is a stop of the cycle: in its header (phone, iPad), or on the Duo
   // in the rail's actions, the last stops (Shift+Tab from the start wraps
@@ -221,13 +241,7 @@ test('@smoke folding the Duo with Edit kit open: focus stays in the editor, abov
 
 
 test("@smoke Duo: Tab and Shift+Tab cross between a layer's last control and the rail's actions", async ({ app }) => {
-  await app.page.getByRole('button', { name: new RegExp(app.t('Switch band')) }).first().click();
-  const switcher = app.page.getByRole('dialog', { name: app.t('Your bands') });
-  await expect(switcher).toBeVisible();
-  await switcher.getByRole('button', { name: app.t('Create band') }).focus();
-  await app.page.keyboard.press('Enter');
-  const create = app.page.getByRole('dialog', { name: app.t('Create') }).last();
-  await expect(create).toBeVisible();
+  const create = await openCreateBand(app);
   const rail = app.page.locator('[data-bw-trap-include]');
   test.skip(!(await rail.isVisible()), "no rail actions: the layer's Close is in its header");
   await expect.poll(() => focusInside(create)).toBe(true);
