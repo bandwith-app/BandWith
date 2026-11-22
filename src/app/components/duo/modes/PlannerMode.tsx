@@ -27,6 +27,8 @@ export interface PlannerEvent {
   fee?: number | null;
   /** A saved draft (only its author sees it): desaturated, not counted. */
   draft?: boolean;
+  /** A date on hold (178): neutral, not counted, but the day is taken. */
+  hold?: boolean;
 }
 
 export interface PlannerModeProps {
@@ -73,9 +75,9 @@ export function monthStats(events: PlannerEvent[], month: Date): MonthStats {
     if (!busy.has(toLocalDateString(day)) && !busy.has(toLocalDateString(sun))) freeWeekends++;
   }
   return {
-    gigs: inMonth.filter((e) => e.kind === 'gig' && !e.draft).length,
+    gigs: inMonth.filter((e) => e.kind === 'gig' && !e.draft && !e.hold).length,
     rehearsals: inMonth.filter((e) => e.kind === 'rehearsal' && !e.draft).length,
-    fees: inMonth.reduce((sum, e) => sum + (e.kind === 'gig' && !e.draft && typeof e.fee === 'number' && Number.isFinite(e.fee) ? e.fee : 0), 0),
+    fees: inMonth.reduce((sum, e) => sum + (e.kind === 'gig' && !e.draft && !e.hold && typeof e.fee === 'number' && Number.isFinite(e.fee) ? e.fee : 0), 0),
     freeWeekends,
   };
 }
@@ -182,7 +184,9 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
               const i = wk * 7 + j;
               if (!d) return <span key={`pad-${i}`} aria-hidden />;
               const list = byDay.get(d) ?? [];
-              const kinds = KIND_ORDER.filter((k) => list.some((e) => e.kind === k)).slice(0, 3);
+              const kinds = KIND_ORDER.filter((k) => list.some((e) => e.kind === k && !e.hold)).slice(0, 3);
+              // A date on hold: a neutral dot (no event colour).
+              const held = kinds.length < 3 && list.some((e) => e.hold);
               const isSel = d === selected;
               const isToday = d === today;
               return (
@@ -203,6 +207,7 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
                     {kinds.map((k) => (
                       <span key={k} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `var(--accent-${k})` }} />
                     ))}
+                    {held && <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />}
                   </span>
                 </button>
               );
@@ -252,18 +257,18 @@ export const PlannerMode: React.FC<PlannerModeProps> = ({
                   }}
                   className="w-full min-h-14 flex items-center gap-3 rounded-[16px] bg-muted px-3 py-2 text-left cursor-pointer disabled:cursor-default"
                 >
-                  <span className={e.draft ? 'saturate-[0.3] opacity-70' : undefined}>
+                  <span className={e.hold ? 'saturate-0 opacity-70' : e.draft ? 'saturate-[0.3] opacity-70' : undefined}>
                     <EventMark kind={e.kind} size={24} />
                   </span>
                   <span className="flex-1 min-w-0 flex flex-col">
                     <span className="bw-body-md font-semibold truncate">{e.title}</span>
-                    {(e.venue || e.time || e.draft) && (
+                    {(e.venue || e.time || e.draft || e.hold) && (
                       <span className="bw-body-sm text-muted-foreground truncate">
-                        {[e.draft ? t('Draft · only you') : null, hhmm(e.time), e.venue].filter(Boolean).join(' · ')}
+                        {[e.hold ? t('Possible gig') : e.draft ? t('Draft · only you') : null, hhmm(e.time), e.venue].filter(Boolean).join(' · ')}
                       </span>
                     )}
                   </span>
-                  {isAdmin && e.kind === 'gig' && !e.draft && typeof e.fee === 'number' && e.fee > 0 && (
+                  {isAdmin && e.kind === 'gig' && !e.draft && !e.hold && typeof e.fee === 'number' && e.fee > 0 && (
                     <span className="bw-label-md shrink-0">{money(e.fee)}</span>
                   )}
                 </button>

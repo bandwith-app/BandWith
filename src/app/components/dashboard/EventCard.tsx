@@ -6,6 +6,7 @@ import { EventMark, type EventKind } from '@/app/components/bw/EventMark';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { useT, dateName } from '@/lib/i18n';
+import type { DateHold } from '@/lib/dateHolds';
 
 export interface EventData {
   id: number;
@@ -55,6 +56,8 @@ export interface EventData {
   draftOf?: 'gig' | 'rehearsal' | 'quote';
   /** lib/wizardDrafts id, for gig and rehearsal drafts. */
   draftId?: string;
+  /** A date on hold (178) in a member's calendar: day, time and place only. */
+  holdOf?: DateHold;
 }
 
 interface EventCardProps {

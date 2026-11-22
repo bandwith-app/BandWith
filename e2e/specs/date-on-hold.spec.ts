@@ -56,6 +56,45 @@ test.describe('member: a possible gig is only a hold card', () => {
     await expect((await holdCard(app)).getByRole('button', { name: app.t("I can't") })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('@smoke the hold is in the calendar too: same neutral card, same answers', async ({ app }) => {
+    await app.tab('Calendar');
+    let card = app.page.getByTestId('date-hold-card').filter({ visible: true }).first();
+    if (test.info().project.name === 'duo-laptop') {
+      // Laptop pose: the Planner. Its day (a neutral dot), then the agenda row opens the hold's sheet.
+      const ev = (await app.readDb()).events.find((e) => e.title === SEED.tentativeGig)!;
+      const [y, m, d] = String(ev.event_date).slice(0, 10).split('-').map(Number);
+      const day = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      await app.page.getByRole('gridcell', { name: new RegExp(`^${day}`) }).filter({ visible: true }).first().click();
+      await app.page.getByRole('button', { name: new RegExp(app.t('Possible gig – keep the date free')) }).filter({ visible: true }).first().click();
+      card = app.page.getByRole('dialog').getByTestId('date-hold-card');
+    }
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toBeVisible();
+    await expect(card.getByText(/22:00–01:00/)).toBeVisible();
+    await expect(card.getByText(/Blue Note, Milano/)).toBeVisible();
+    const text = (await card.innerText()).toLowerCase();
+    for (const s of SECRETS) expect(text, `calendar hold shows ${s}`).not.toContain(s.toLowerCase());
+    await app.check('Calendar with a hold');
+    await card.getByRole('button', { name: app.t("I'm free") }).click();
+    await expect.poll(() => myAnswer(app)).toBe('free');
+  });
+
+  test('@smoke a hold notice opens that hold directly', async ({ app }) => {
+    const db = await app.readDb();
+    const ev = db.events.find((e) => e.title === SEED.tentativeGig)!;
+    await app.tab('Calendar');
+    // A tap on the hold's push (178 sends type event_date_hold + hold_event_id).
+    await app.page.evaluate((id) => {
+      window.dispatchEvent(new CustomEvent('push-navigate', { detail: { screen: 'home', holdEventId: id } }));
+    }, ev.id);
+    const sheet = app.page.getByRole('dialog').filter({ has: app.page.getByTestId('date-hold-card') });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByText(/Blue Note, Milano/)).toBeVisible();
+    await app.check('hold sheet from a notice');
+    await sheet.getByRole('button', { name: app.t("I can't") }).click();
+    await expect.poll(() => myAnswer(app)).toBe('busy');
+  });
+
   test('the quote itself is nowhere: calendar, search, inbox', async ({ app }) => {
     await app.tab('Calendar');
     await app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first().click();

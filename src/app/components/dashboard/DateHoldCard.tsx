@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Check, Clock, MapPin, X } from '@/app/components/icons';
-import { PillButton } from '@/app/components/bw';
+import { BwSheet, PillButton } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { answerDateHold, holdDay, holdPlace, holdTime, type DateHold, type HoldAnswer } from '@/lib/dateHolds';
@@ -130,5 +130,23 @@ export const DateHoldList: React.FC<{
         />
       ))}
     </div>
+  );
+};
+
+/**
+ * One hold in a sheet, over whatever is open: a hold notice or a hold in the
+ * calendar opens it directly (also on the Duo Laptop pose, where Home sits
+ * under the desk).
+ */
+export const DateHoldSheet: React.FC<{
+  hold: DateHold | null;
+  onClose: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+}> = ({ hold, onClose, onShowToast }) => {
+  const t = useT();
+  return (
+    <BwSheet open={!!hold} onClose={onClose} overline={hold?.bandName || undefined} title={t('Possible gig')} portal>
+      {hold && <DateHoldCard hold={hold} onShowToast={onShowToast} onGone={onClose} />}
+    </BwSheet>
   );
 };

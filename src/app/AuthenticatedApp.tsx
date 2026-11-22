@@ -17,6 +17,8 @@ import { syncSystemBarsAppearance } from "@/lib/systemBars";
 import { haptic } from "@/lib/haptics";
 import { deleteEventDraft, useEventDrafts, type EventDraft } from "@/lib/wizardDrafts";
 import { DraftPreviewSheet } from "@/app/components/drafts/DraftPreviewSheet";
+import { DateHoldSheet } from "@/app/components/dashboard/DateHoldCard";
+import { useMyDateHolds } from "@/app/hooks/useDateHolds";
 import { supabase } from "@/lib/supabase";
 import { getPermissions, type UserRole } from "@/lib/permissions";
 import {
@@ -141,7 +143,7 @@ import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToD
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
-import { isQuoteStageEvent } from "@/lib/dateHolds";
+import { DATE_HOLDS_CHANGED, holdPlace, isQuoteStageEvent } from "@/lib/dateHolds";
 
 import { ChatDetailModal, NewChatModal } from "@/app/components/chat";
 import { EditProfileModal, CreateBandModal } from "@/app/components/profile";
@@ -939,6 +941,13 @@ export default function AuthenticatedApp() {
     return result;
   }, [visibleEvents, eventFilter, eventSearch]);
 
+  // ── Dates on hold (178) ─────────────────────────────────────
+  // A member's possible gigs: in the calendar (day, time, place only), and a
+  // hold notice or a tap on one opens its sheet with the answers.
+  const [myDateHolds] = useMyDateHolds(!isSolo);
+  const [holdSheetEventId, setHoldSheetEventId] = useState<string | null>(null);
+  const holdInSheet = holdSheetEventId ? myDateHolds?.find((h) => h.eventId === holdSheetEventId) ?? null : null;
+
   // ── Drafts in the calendar ──────────────────────────────────
   // The admin's saved gig / rehearsal drafts and quotes not shared yet show
   // on their day (desaturated, "only you"); undated ones under Drafts.
@@ -954,7 +963,7 @@ export default function AuthenticatedApp() {
       });
     return ids;
   }, [realQuotes]);
-  const calendarEvents = useMemo(() => {
+  const calendarEventsBase = useMemo(() => {
     if (!isAdmin || selectedBandPill === 'personal') return visuallyFilteredEvents;
     const f = String(eventFilter).toUpperCase();
     const wantDrafts = f === 'DRAFTS' || f === 'DRAFT';
@@ -1017,6 +1026,39 @@ export default function AuthenticatedApp() {
       .filter((e) => matches(e) && matchesBandFilter(e.band_id, selectedBandPill));
     return local.length ? [...base, ...local] : base;
   }, [isAdmin, selectedBandPill, eventFilter, eventSearch, visuallyFilteredEvents, events, draftQuoteIds, myEventDrafts, realQuotes]);
+  // Holds on their day, under All and Gigs: never the quote itself (an admin
+  // of that band already has it).
+  const calendarEvents = useMemo(() => {
+    if (!myDateHolds?.length || selectedBandPill === 'personal') return calendarEventsBase;
+    const f = String(eventFilter).toUpperCase();
+    if (f !== 'ALL' && f !== 'GIGS' && f !== 'CONFIRMED') return calendarEventsBase;
+    const q = eventSearch.trim().toLowerCase();
+    const have = new Set(calendarEventsBase.map((e) => e.eventId).filter(Boolean));
+    const holds = myDateHolds
+      .filter((h) => !have.has(h.eventId) && matchesBandFilter(h.bandId, selectedBandPill))
+      .map((h): EventData => {
+        let n = 11;
+        for (let i = 0; i < h.eventId.length; i++) n = (n * 31 + h.eventId.charCodeAt(i)) | 0;
+        return {
+          id: -Math.abs(n || 1),
+          eventId: `hold:${h.eventId}`,
+          band_id: h.bandId || undefined,
+          band_name: h.bandName || undefined,
+          title: t('Possible gig – keep the date free'),
+          status: 'TENTATIVE',
+          date: h.date,
+          time: h.startTime ? h.startTime.slice(0, 5) : '',
+          endTime: h.endTime ? h.endTime.slice(0, 5) : undefined,
+          location: holdPlace(h) || '',
+          price: '',
+          members: [],
+          color: '',
+          holdOf: h,
+        };
+      })
+      .filter((e) => !q || e.title.toLowerCase().includes(q) || e.location.toLowerCase().includes(q));
+    return holds.length ? [...calendarEventsBase, ...holds] : calendarEventsBase;
+  }, [calendarEventsBase, myDateHolds, selectedBandPill, eventFilter, eventSearch]);
   const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
   const previewDraft = previewDraftId ? myEventDrafts.find((d) => d.id === previewDraftId) || null : null;
 
@@ -1390,10 +1432,13 @@ export default function AuthenticatedApp() {
         window.dispatchEvent(new CustomEvent("bw:refresh-deputy-gigs"));
       } else if (d.screen === "home") {
         setActiveTab("Home");
-        // A date on hold (178): bring its card into view.
+        // A date on hold (178): that hold's sheet, over Home (on the Duo
+        // Laptop pose Home sits under the desk). A hold that just arrived
+        // shows once the list reloads.
         if (d.holdEventId) {
           closeLayersFor("view");
-          window.setTimeout(() => document.querySelector('[data-testid="date-holds"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
+          setHoldSheetEventId(String(d.holdEventId));
+          window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
         }
       }
       done();
@@ -2970,6 +3015,11 @@ export default function AuthenticatedApp() {
     runGuarded(() => void openEventCard(event));
   };
   const openEventCard = async (event: EventData) => {
+    // A date on hold: its sheet (day, time, place and the answers).
+    if (event.holdOf) {
+      setHoldSheetEventId(event.holdOf.eventId);
+      return;
+    }
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -4479,6 +4529,11 @@ export default function AuthenticatedApp() {
               onShowToast={(msg, type) => setSaveToast({ message: msg, type })}
             />
           )}
+          <DateHoldSheet
+            hold={holdInSheet}
+            onClose={() => setHoldSheetEventId(null)}
+            onShowToast={(message, type) => setSaveToast({ message, type })}
+          />
           <DraftPreviewSheet
             draft={previewDraft}
             onClose={() => setPreviewDraftId(null)}
