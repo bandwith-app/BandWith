@@ -1,6 +1,6 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
-import { callerDeletionRefusal } from '../_shared/deletion-gate.ts';
+import { callerDeletionRefusal, senderBeingDeleted } from '../_shared/deletion-gate.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
 
@@ -521,6 +521,14 @@ Deno.serve(async (req: Request) => {
     // Per recipient: the icon badge is their own unread count (a band message
     // used to set everyone's to 1), and the subtitle label is in their language.
     const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
+    // 180 round 10: the sender's deletion committed after the gate (its inbox
+    // rows were dropped by 180's trigger): no lock screen shows it either.
+    if (await senderBeingDeleted(supabase, data?.sender_id || data?.senderId || (caller.kind === 'user' ? caller.id : null))) {
+      return new Response(
+        JSON.stringify({ success: true, sent: 0, message: 'Sender is being deleted' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     const badgeByUser = new Map<string, number>();
     if (badge === undefined && !silent) {
       await Promise.all(tokenUserIds.map(async (uid) => {

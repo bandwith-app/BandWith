@@ -167,13 +167,22 @@
 --    * A notification whose sender (or suggestion actor) is being deleted,
 --      or no longer exists, is never written (trigger on notifications): a
 --      push in flight can't land after the last scrub.
---    * Once committed, their other device deletes nothing either.
+--    * Once committed, their other device deletes nothing either, on the
+--      tables bw_deleting_account_writes guards (the author-column tables,
+--      14 on prod, plus rehearsal_polls): not every table.
 --    * Archived objects and delete markers don't count as files left
 --      (as 197 reads storage.objects).
 --    * Clearing what would stop Auth: one statement per column first, row by
 --      row only if that fails; their own notification logs go.
 --    * A poll keeps only invitees who still have an account, never NULL;
 --      one left with nobody stays with its creator, else the band's admins.
+-- 13. Round 10 (Claude review #282, d8f5861b):
+--    * The listing for removal includes archived objects and delete markers
+--      (old versions of their files go too); only the count of files left
+--      skips them.
+--    * A poll is never widened to the whole band: with no live creator and
+--      no live admin it closes, its list kept. A creator whose deletion is
+--      committed is never put back on one.
 --
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
@@ -706,7 +715,9 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_messages(uuid) FROM PUBLIC, an
 -- Who sees a poll left with no invitee (round 9, Claude): an empty list
 -- would mean the whole band, so its creator, else the band's active admins
 -- (not p_except, nobody whose deletion is committed). Only accounts that
--- still exist.
+-- still exist. Round 10: NULL when there is nobody (the caller closes the
+-- poll instead of widening it), and never a creator whose deletion is
+-- committed (a co-admin's save would hit "Choose someone else").
 CREATE OR REPLACE FUNCTION public.bw_poll_fallback_invitees(p_band uuid, p_creator uuid, p_except uuid)
 RETURNS uuid[]
 LANGUAGE sql
@@ -717,15 +728,17 @@ AS $$
   SELECT CASE
     WHEN p_creator IS NOT NULL AND p_creator IS DISTINCT FROM p_except
          AND EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = p_creator)
+         AND NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                          WHERE d.user_id = p_creator AND d.committed_at IS NOT NULL)
       THEN ARRAY[p_creator]
-    ELSE coalesce((
+    ELSE (
       SELECT array_agg(bm.user_id ORDER BY bm.user_id)
         FROM public.band_members bm
        WHERE bm.band_id = p_band AND bm.role::text = 'admin' AND coalesce(bm.is_active, true)
          AND bm.user_id IS DISTINCT FROM p_except
          AND EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = bm.user_id)
          AND NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
-                          WHERE d.user_id = bm.user_id AND d.committed_at IS NOT NULL)), '{}')
+                          WHERE d.user_id = bm.user_id AND d.committed_at IS NOT NULL))
   END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_poll_fallback_invitees(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
@@ -750,14 +763,18 @@ BEGIN
   DELETE FROM public.rehearsal_polls rp
    WHERE rp.invited_user_ids = ARRAY[p_uid] AND rp.created_by = p_uid;
   -- Round 9 (Claude): never {NULL}. Nobody left: its creator, else
-  -- (creator gone too) the band's admins.
+  -- (creator gone too) the band's admins; round 10: with nobody live at
+  -- all, closed with its list as it was, never widened to the whole band.
   UPDATE public.rehearsal_polls rp
      SET invited_user_ids = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) > 0
                                  THEN array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)
-                                 ELSE public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid) END,
-         status = CASE WHEN cardinality(rp.invited_user_ids) = 1 AND rp.status IN ('proposed', 'polling')
+                                 ELSE coalesce(public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid),
+                                               array_remove(rp.invited_user_ids, NULL)) END,
+         status = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) = 0
+                            AND rp.status IN ('proposed', 'polling')
                        THEN 'cancelled' ELSE rp.status END,
-         updated_at = CASE WHEN cardinality(rp.invited_user_ids) = 1 THEN now() ELSE rp.updated_at END
+         updated_at = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) = 0
+                           THEN now() ELSE rp.updated_at END
    WHERE p_uid = ANY (rp.invited_user_ids);
 END;
 $$;
@@ -1875,7 +1892,7 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_release_refs(uuid) FROM PUBLIC
 --   * nobody else points a row at them (a task assigned, an invite, a poll
 --     they are invited to: rehearsal_polls.invited_user_ids, round 8).
 -- Round 9 (Codex): and their other device deletes nothing (a surviving
--- band's poll).
+-- band's poll) on these tables only (14 on prod).
 -- Only requests from the apps (WHEN auth.uid() IS NOT NULL): the server's
 -- own writes (prepare, Auth's SET NULL, push logs, the probes above) go
 -- through, and the last step clears what they left. AFTER the row is
@@ -2000,14 +2017,16 @@ BEGIN
   IF coalesce(p_bucket, '') = '' OR coalesce(trim(both '/' from p_prefix), '') = '' THEN
     RAISE EXCEPTION 'bucket and prefix are required' USING ERRCODE = '22004';
   END IF;
-  -- Round 9 (Claude): files only, as the release count reads them.
+  -- Round 10 (Claude): every row, archived objects and delete markers too
+  -- (old versions of their files go with them); only the count of files
+  -- left (bw_account_storage_release) skips those.
   RETURN QUERY EXECUTE
-    $q$SELECT o.name::text
+    $q$SELECT DISTINCT o.name::text
          FROM storage.objects o
         WHERE o.bucket_id = $1
           AND o.name LIKE replace(replace(replace(trim(trailing '/' from $2), '\', '\\'), '%', '\%'), '_', '\_') || '/%'
-          AND ($3 IS NULL OR o.name > $3)$q$ || public.bw_storage_live_filter() || $q$
-        ORDER BY o.name
+          AND ($3 IS NULL OR o.name > $3)
+        ORDER BY 1
         LIMIT least(greatest(coalesce($4, 1000), 1), 1000)$q$
     USING p_bucket, p_prefix, p_after, p_limit;
 END;
@@ -2081,8 +2100,24 @@ BEGIN
   IF cardinality(v_live) = cardinality(NEW.invited_user_ids) THEN
     RETURN NEW;
   END IF;
-  NEW.invited_user_ids := CASE WHEN cardinality(v_live) > 0 THEN v_live
-                               ELSE public.bw_poll_fallback_invitees(NEW.band_id, NEW.created_by, NULL) END;
+  IF cardinality(v_live) = 0 THEN
+    v_live := public.bw_poll_fallback_invitees(NEW.band_id, NEW.created_by, NULL);
+  END IF;
+  IF v_live IS NULL THEN
+    -- Round 10: nobody live to show it to: closed, never widened to the
+    -- whole band ('{}'). The list stays as it was (an update), or as given
+    -- without NULLs (an insert).
+    IF TG_OP = 'UPDATE' THEN
+      NEW.invited_user_ids := OLD.invited_user_ids;
+    ELSIF cardinality(array_remove(NEW.invited_user_ids, NULL)) > 0 THEN
+      NEW.invited_user_ids := array_remove(NEW.invited_user_ids, NULL);
+    END IF;
+    IF NEW.status IN ('proposed', 'polling') THEN
+      NEW.status := 'cancelled';
+    END IF;
+    RETURN NEW;
+  END IF;
+  NEW.invited_user_ids := v_live;
   RETURN NEW;
 END;
 $$;

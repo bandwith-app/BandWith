@@ -1157,8 +1157,11 @@ d = await x(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS archived_at ti
     ('personal-files', '${X1}/old.m4a', NULL, NULL, now(), false), ('avatars', '${X1}/me.png', NULL, NULL, NULL, true)`);
 const rel9 = (await q(`SELECT public.bw_account_storage_release('${X1}') AS r`)).rows?.[0]?.r;
 nm = await names8('personal-files', X1);
-ok(!d.error && rel9?.personal_left === 0 && nm.rows?.length === 0,
-  `round 9 (Claude 1): archived rows and delete markers don't count, and aren't listed (${d.error ?? JSON.stringify({ rel9, nm })})`);
+const nmAv = await names8('avatars', X1);
+ok(!d.error && rel9?.personal_left === 0, `round 9 (Claude 1): archived rows and delete markers don't count (${d.error ?? JSON.stringify(rel9)})`);
+// Round 10 (Claude r9 2): skipped in the count only, never in removal.
+ok(!nm.error && nm.rows.map((r) => r.n).includes(`${X1}/old.m4a`) && !nmAv.error && nmAv.rows.map((r) => r.n).includes(`${X1}/me.png`),
+  `round 10 (Claude r9 2): their archived rows and delete markers are listed for removal too (${nm.error ?? nmAv.error ?? JSON.stringify({ nm: nm.rows, nmAv: nmAv.rows })})`);
 d = await q(`SELECT public.bw_account_deletion_finish('${X1}')`);
 ok(!d.error, `round 9 (Claude 1): so the last step isn't stuck on them (${d.error ?? 'ok'})`);
 await x(`DELETE FROM storage.objects WHERE name IN ('${X1}/old.m4a', '${X1}/me.png'); ALTER TABLE storage.objects DROP COLUMN archived_at, DROP COLUMN is_delete_marker`);
@@ -1206,6 +1209,38 @@ ok(!d.error && JSON.stringify(p56.map((r) => r.i)) === JSON.stringify([[BB2], [B
 e6 = await errAs(BB2, `UPDATE rehearsal_polls SET invited_user_ids = ARRAY['${BB2}', '${NOPROF}']::uuid[] WHERE id = '${P5}'`);
 p56 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P5}'`)).rows[0];
 ok(e6 === null && JSON.stringify(p56?.i) === JSON.stringify([BB2]), `round 9 (Claude 5): a stale save drops the deleted account (${JSON.stringify({ e6, p56 })})`);
+
+// ── Claude review #282, round 10 (of d8f5861b) ──────────────────────────────
+// Y1's deletion is committed too; band NB has Y1 as its only admin.
+const Y1 = id(241), NB = id(242), P7 = id(243), P7B = id(244), P8 = id(245), P9 = id(246);
+d = await x(`INSERT INTO auth.users VALUES ('${Y1}'); INSERT INTO profiles (id) VALUES ('${Y1}');
+  INSERT INTO bands VALUES ('${NB}', 'Hoboken Trio'); INSERT INTO band_members VALUES ('${NB}','${Y1}','admin',true), ('${NB}','${X1}','member',true);
+  INSERT INTO account_deletions_pending (user_id, started_at, committed_at) VALUES ('${Y1}', now(), now())`);
+ok(!d.error, `round 10: set-up (${d.error ?? 'ok'})`);
+// Claude r9 3: no live creator, no live admin: closed, never '{}' (the
+// whole band), never a committed creator.
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+  ('${P7}', '${NB}', '${Y1}', 'Friday?', ARRAY['${X1}']::uuid[], 'polling'),
+  ('${P7B}', '${NB}', NULL, 'Saturday?', ARRAY['${X1}']::uuid[], 'polling')`);
+d = d.error ? d : await q(`SELECT public.bw_account_deletion_polls('${X1}')`);
+const p7 = (await qq(`SELECT id::text AS id, invited_user_ids::text[] AS i, status FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}') ORDER BY id`)).rows;
+ok(!d.error && p7.length === 2 && p7.every((r) => Array.isArray(r.i) && r.i.length > 0 && !r.i.includes(Y1) && !r.i.includes(null) && r.status === 'cancelled'),
+  `round 10 (Claude r9 3): with nobody live, the poll closes and keeps its list, never '{}' or a committed creator (${d.error ?? JSON.stringify(p7)})`);
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+  ('${P8}', '${NB}', '${Y1}', 'Sunday?', ARRAY['${NOPROF}']::uuid[], 'polling')`);
+const p8 = (await qq(`SELECT invited_user_ids::text[] AS i, status FROM rehearsal_polls WHERE id = '${P8}'`)).rows[0];
+ok(!d.error && JSON.stringify(p8?.i) === JSON.stringify([NOPROF]) && p8.status === 'cancelled',
+  `round 10 (Claude r9 3): a write listing only gone accounts, nobody live: closed, list kept, never '{}' (${d.error ?? JSON.stringify(p8)})`);
+// A co-admin's stale save on a poll whose creator is committed: no
+// "Choose someone else", the band's live admins get it.
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+  ('${P9}', '${WB}', '${Y1}', 'Monday?', ARRAY['${BB2}', '${NOPROF}']::uuid[], 'polling')`);
+e6 = d.error ? { message: d.error } : await errAs(BB2, `UPDATE rehearsal_polls SET invited_user_ids = ARRAY['${NOPROF}']::uuid[] WHERE id = '${P9}'`);
+const p9 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P9}'`)).rows[0];
+ok(e6 === null && JSON.stringify(p9?.i) === JSON.stringify([BB2]),
+  `round 10 (Claude r9 3): a co-admin's stale save never gets the committed creator back ("Choose someone else") (${JSON.stringify({ e6, p9 })})`);
+await x(`DELETE FROM rehearsal_polls WHERE id IN ('${P7}', '${P7B}', '${P8}', '${P9}'); DELETE FROM account_deletions_pending WHERE user_id = '${Y1}';
+  DELETE FROM band_members WHERE band_id = '${NB}'; DELETE FROM bands WHERE id = '${NB}'`);
 
 // Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
 // authenticated): 180 running after it must not grant it back.

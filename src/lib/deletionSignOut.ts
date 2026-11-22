@@ -51,7 +51,7 @@ export function requestUserId(input: RequestInfo | URL, init?: RequestInit): str
   }
 }
 
-export function deletionAwareFetch(base: typeof fetch, onDeleting: (userId: string | null) => void): typeof fetch {
+export function deletionAwareFetch(base: typeof fetch, onDeleting: (userId: string | null) => void | Promise<void>): typeof fetch {
   return async (input, init) => {
     const userId = requestUserId(input, init);
     const res = await base(input, init);
@@ -60,9 +60,10 @@ export function deletionAwareFetch(base: typeof fetch, onDeleting: (userId: stri
         .clone()
         .text()
         .then((body) => {
-          if (bodySaysAccountBeingDeleted(body)) onDeleting(userId);
+          // Returned, so a failing sign-out is caught below (round 10).
+          if (bodySaysAccountBeingDeleted(body)) return onDeleting(userId);
         })
-        .catch(() => {});
+        .catch((e) => console.warn('[account] deletion sign-out:', e));
     }
     return res;
   };
@@ -70,15 +71,31 @@ export function deletionAwareFetch(base: typeof fetch, onDeleting: (userId: stri
 
 type Handler = (userId: string | null) => void | Promise<void>;
 let handler: Handler | null = null;
+let clearLocal: (() => Promise<void>) | null = null;
 let holds = 0;
 let running = false;
 
 /** The app's sign-out for a refusal (App.tsx, through useDeletionSignOut). */
-export function onAccountBeingDeleted(fn: Handler): () => void {
+export function onAccountBeingDeleted(fn: Handler, clearLocalSession?: () => Promise<void>): () => void {
   handler = fn;
+  clearLocal = clearLocalSession ?? null;
   return () => {
-    if (handler === fn) handler = null;
+    if (handler === fn) {
+      handler = null;
+      clearLocal = null;
+    }
   };
+}
+
+/** This device's session only (round 10): when the app's sign-out failed. */
+async function clearSessionHere(): Promise<void> {
+  try {
+    if (clearLocal) return await clearLocal();
+    const { supabase } = await import('./supabase');
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch (e) {
+    console.warn('[account] local sign-out failed:', e);
+  }
 }
 
 /** This device's own delete flow is running: its refusals sign nothing out. */
@@ -98,6 +115,10 @@ export async function signOutDeletingAccount(userId: string | null): Promise<voi
   running = true;
   try {
     await handler(userId);
+  } catch (e) {
+    // Round 10: never an unhandled rejection; the session still ends here.
+    console.warn('[account] sign-out after a deletion refusal failed:', e);
+    await clearSessionHere();
   } finally {
     running = false;
   }
@@ -107,6 +128,8 @@ export interface DeletionSignOutDeps {
   currentUser(): Promise<{ id: string; email: string | null } | null>;
   forgetQuickSignIn(id: string, email: string | null): Promise<void>;
   signOut(): Promise<{ error: unknown }>;
+  /** This device's session only, when signOut failed (round 10). */
+  clearLocal?(): Promise<void>;
   reload(): void;
 }
 
@@ -127,6 +150,8 @@ export async function deletionSignOutStep(
   const { error } = await deps.signOut();
   if (error) {
     console.warn('[account] sign-out after a deletion refusal failed:', error);
+    await (deps.clearLocal ? deps.clearLocal().catch(() => {}) : clearSessionHere());
+    deps.reload();
     return 'failed';
   }
   deps.reload();
