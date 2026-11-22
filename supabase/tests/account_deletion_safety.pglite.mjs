@@ -36,7 +36,17 @@ CREATE TABLE public.profiles (id uuid PRIMARY KEY REFERENCES auth.users(id) ON D
 -- auth.uid() as the request's user (test.uid).
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, type text, reference_id uuid, read boolean DEFAULT false,
-  title text, body text, data jsonb DEFAULT '{}'::jsonb, band_id uuid, created_at timestamptz DEFAULT now());
+  title text, body text, data jsonb DEFAULT '{}'::jsonb, band_id uuid, created_at timestamptz DEFAULT now(), reference_type text);
+-- pg_cron, pg_net and Vault as stand-ins (round 5: the job).
+CREATE SCHEMA cron; CREATE TABLE cron.job (jobid serial, jobname text, schedule text, command text);
+CREATE FUNCTION cron.schedule(p_name text, p_sched text, p_cmd text) RETURNS bigint LANGUAGE sql AS
+  $f$ INSERT INTO cron.job (jobname, schedule, command) VALUES (p_name, p_sched, p_cmd) RETURNING jobid::bigint $f$;
+CREATE FUNCTION cron.unschedule(p_name text) RETURNS boolean LANGUAGE sql AS $f$ DELETE FROM cron.job WHERE jobname = p_name RETURNING true $f$;
+CREATE SCHEMA net; CREATE TABLE net.calls (url text, headers jsonb, body jsonb);
+CREATE FUNCTION net.http_post(url text, body jsonb DEFAULT '{}', params jsonb DEFAULT '{}', headers jsonb DEFAULT '{}', timeout_milliseconds int DEFAULT 5000)
+  RETURNS bigint LANGUAGE sql AS $f$ INSERT INTO net.calls VALUES (url, headers, body) RETURNING 1::bigint $f$;
+CREATE SCHEMA vault; CREATE TABLE vault.decrypted_secrets (name text, decrypted_secret text);
+INSERT INTO vault.decrypted_secrets VALUES ('bw_project_url', 'https://example.supabase.co'), ('bw_push_dispatch_secret', repeat('a', 64));
 CREATE TABLE public.band_members (band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE,
   user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, role text, is_active boolean DEFAULT true);
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, created_by uuid);
@@ -96,6 +106,23 @@ await db.exec(`REVOKE ALL ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM PU
 await db.exec(lines('108_song_suggestions.sql', 339, 384)); // a suggested song moved on or deleted
 await db.exec(lines('108_song_suggestions.sql', 519, 553)); // the author withdraws
 await db.exec(lines('123_rehearsal_proposal_decline_expiry.sql', 95, 157)); // proposals lapse (Codex round 4)
+// Live by name (round 5): the display name server texts use, and the
+// member joined / left notices (046) with their helpers.
+const fnByName = (src, name) => {
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (start < 0) return null;
+  const tag = src.slice(start).match(/\bAS\s+(\$[A-Za-z_]*\$)/);
+  if (!tag) return null;
+  const bodyStart = start + tag.index + tag[0].length;
+  const end = src.indexOf(tag[1], bodyStart);
+  return end < 0 ? null : src.slice(start, end + tag[1].length) + ';';
+};
+const src046 = readFileSync(`${REPO}/supabase/migrations/046_server_notifications_and_push.sql`, 'utf8');
+const src066 = readFileSync(`${REPO}/supabase/migrations/066_real_names.sql`, 'utf8');
+await db.exec([fnByName(src046, 'bw_notify'), fnByName(src046, 'bw_active_band_member_ids'), fnByName(src066, 'bw_display_name'),
+  fnByName(src046, 'bw_trg_band_member_changed'),
+  `CREATE TRIGGER bw_band_member_changed_notify AFTER INSERT OR UPDATE OF is_active OR DELETE ON public.band_members
+     FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_member_changed();`].join('\n'));
 await db.exec(readFileSync(MIG, 'utf8'));
 await db.exec(readFileSync(MIG, 'utf8')); // idempotent
 ok(true, 'migration runs twice');
@@ -323,9 +350,9 @@ d = await x(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${M
 ok(!!d.error, `after prepare, a new message from them is refused (${d.error ?? 'sent'})`);
 // One that got in anyway (it started before prepare committed): the last
 // step before Auth goes over their messages again.
-const slipIn = async (m, chat, text) => x(`UPDATE account_deletions_pending SET prepared_at = NULL WHERE user_id = '${F}';
+const slipIn = async (m, chat, text) => x(`UPDATE account_deletions_pending SET committed_at = NULL WHERE user_id = '${F}';
   INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${m}','${chat}','${F}','${text}');
-  UPDATE account_deletions_pending SET prepared_at = now() WHERE user_id = '${F}'`);
+  UPDATE account_deletions_pending SET committed_at = now() WHERE user_id = '${F}'`);
 await slipIn(M8, DM, 'sent from the iPad');
 await slipIn(M7, BC, 'one more');
 d = await q(`SELECT public.bw_account_deletion_finish('${F}')`);
@@ -427,7 +454,7 @@ ok((await begin(H))?.ok === true, 'round 4: deletion can begin');
 d = await prepare(H);
 ok(!d.error, `round 4: prepare goes through (${d.error ?? 'ok'})`);
 // The attempt stops here. 20 minutes later:
-await x(`UPDATE account_deletions_pending SET started_at = now() - interval '20 minutes', prepared_at = now() - interval '20 minutes' WHERE user_id = '${H}'`);
+await x(`UPDATE account_deletions_pending SET started_at = now() - interval '20 minutes', committed_at = now() - interval '20 minutes' WHERE user_id = '${H}'`);
 d = await q(`UPDATE band_members SET role = 'member' WHERE band_id = '${T6}' AND user_id = '${K}'`);
 ok(!!d.error, `round 4: after prepare the hold doesn't lapse: the co-admin still can't step down (${d.error ?? 'stepped down'})`);
 await x(`UPDATE band_members SET role = 'admin' WHERE band_id = '${T6}' AND user_id = '${K}'`);
@@ -437,7 +464,7 @@ await x(`DELETE FROM messages WHERE id = '${HM}'`);
 // The retry: begin answers prepared and skips the band checks, prepare skips
 // them too, and the account goes.
 rb = await begin(H);
-ok(rb?.ok === true && rb.prepared === true, `round 4: the retry begins as prepared (${JSON.stringify(rb)})`);
+ok(rb?.ok === true && rb.committed === true, `round 4: the retry begins as prepared (${JSON.stringify(rb)})`);
 d = await prepare(H);
 ok(!d.error, `round 4: prepare runs again (${d.error ?? 'ok'})`);
 d = await q(`SELECT public.bw_account_deletion_finish('${H}')`);
@@ -469,8 +496,8 @@ const setupR = await x(`INSERT INTO auth.users VALUES ('${R}'), ('${G2}'), ('${G
   INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${RM1}','${RB}','${R}','Doors at 7'), ('${RM2}','${RB}','${G2}','ok');
   INSERT INTO song_suggestions (id, band_id, status, created_by, reviewed_by, kind) VALUES ('${SG6}', '${T8}', 'accepted', '${G2}', '${R}', 'note');
   INSERT INTO notifications (id, user_id, type, title, body, data) VALUES
-    ('${N1}', '${G2}', 'chat_message', 'Rosa Diaz', 'Doors at 7', '{"senderName":"Rosa Diaz","chat_id":"${RB}","content":"Doors at 7"}'),
-    ('${N2}', '${G3}', 'chat_mention', 'Rosa Diaz mentioned you', '@Sam Lee bring the stand', '{"senderName":"Rosa Diaz","title":"Rosa Diaz mentioned you","chat_id":"${RB}"}'),
+    ('${N1}', '${G2}', 'chat_message', 'Rosa Diaz', 'Doors at 7', '{"senderName":"Rosa Diaz","sender_id":"${R}","chat_id":"${RB}","content":"Doors at 7"}'),
+    ('${N2}', '${G3}', 'chat_mention', 'Rosa Diaz mentioned you', '@Sam Lee bring the stand', '{"senderName":"Rosa Diaz","sender_id":"${R}","title":"Rosa Diaz mentioned you","chat_id":"${RB}"}'),
     ('${N3}', '${G2}', 'chat_message', 'Rosa Diaz', 'just between us', '{"senderName":"Rosa Diaz","chat_id":"${RD}"}'),
     ('${N4}', '${R}', 'chat_message', 'Gina Torres', 'sure', '{"senderName":"Gina Torres","chat_id":"${RD}"}'),
     ('${N5}', '${G2}', 'song_suggestion', 'Song suggested · Moanin', 'Rosa Diaz suggests adding it to the repertoire.', '{"by":"${R}","tag":"song-suggestion-${R}","suggestion_id":"${SG6}"}'),
@@ -481,6 +508,7 @@ const setupR = await x(`INSERT INTO auth.users VALUES ('${R}'), ('${G2}'), ('${G
   INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids) VALUES
     ('${RP1}', '${T8}', '${R}', 'Room split', ARRAY['${R}','${G2}','${G3}']::uuid[]),
     ('${RP2}', '${T8}', '${G2}', 'Just Rosa', ARRAY['${R}']::uuid[]);
+  UPDATE rehearsal_polls SET status = 'polling' WHERE id IN ('${RP1}', '${RP2}');
   INSERT INTO rehearsal_polls (id, band_id, created_by, title, status, notes, created_at) VALUES
     ('${RP3}', '${T8}', '${R}', 'Proposal', 'proposed', '[Preferred Days: Tue]', '2026-11-16 15:00+00');
   GRANT USAGE ON SCHEMA storage, auth, public TO authenticated;
@@ -524,19 +552,24 @@ let n9 = await note(N9);
 ok(n9?.body === 'Ex membro accepted your suggestion.', `B2: and a review they made (${JSON.stringify(n9)})`);
 let n8 = await note(N8);
 ok(n8 && !JSON.stringify(n8.data).includes(R), `B2: their id goes from other notifications (${JSON.stringify(n8)})`);
-// Minor: a poll's invitees no longer count them (cost split), but never the last one.
-const inv = (await qq(`SELECT id, invited_user_ids FROM rehearsal_polls WHERE id IN ('${RP1}','${RP2}') ORDER BY id`)).rows;
-ok(JSON.stringify(inv.map((r) => r.invited_user_ids)) === JSON.stringify([[G2, G3], [R]]), `minor: out of the invitees, unless the last (${JSON.stringify(inv)})`);
+// Minor: a poll's invitees no longer count them (cost split). Round 5
+// (Claude minor 3): the last one too; that poll closes, with no notice, and
+// stays private to its creator (an empty list would show it to the band).
+const inv = (await qq(`SELECT id, invited_user_ids, status FROM rehearsal_polls WHERE id IN ('${RP1}','${RP2}') ORDER BY id`)).rows;
+ok(JSON.stringify(inv.map((r) => [r.invited_user_ids, r.status])) === JSON.stringify([[[G2, G3], 'polling'], [[G2], 'cancelled']]),
+  `minor: out of the invitees, the last one too: that poll closes, still private (${JSON.stringify(inv)})`);
 // Claude round 4: the hold's error is readable for older builds, code in the hint.
 let held = {};
-try { await db.query(`UPDATE band_members SET role = 'member' WHERE band_id = '${T8}' AND user_id = '${G2}'`); } catch (e) { held = { message: e.message, hint: e.hint }; }
-ok(held.message === 'A bandmate is deleting their account. Try again in a few minutes.' && held.hint === 'account_deletion_in_progress',
+try { await db.query(`UPDATE band_members SET role = 'member' WHERE band_id = '${T8}' AND user_id = '${G2}'`); } catch (e) { held = { message: e.message, hint: e.hint, detail: e.detail }; }
+const heldBy = (() => { try { return JSON.parse(held.detail ?? '{}').by; } catch { return null; } })();
+ok(heldBy === 'admin', `round 5: the detail says an admin is deleting (${held.detail})`);
+ok(held.message === 'An admin of this band is deleting their account. Try again in a few minutes.' && held.hint === 'account_deletion_in_progress',
   `the hold's error reads as English, the code is the hint (${JSON.stringify(held)})`);
 // B1: a direct message that got in between prepare's steps and was made
 // anonymous by them: the last step deletes it by chat.
-await x(`UPDATE account_deletions_pending SET prepared_at = NULL WHERE user_id = '${R}';
+await x(`UPDATE account_deletions_pending SET committed_at = NULL WHERE user_id = '${R}';
   INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${RM3}','${RD}','${R}','from the iPad');
-  UPDATE account_deletions_pending SET prepared_at = now() WHERE user_id = '${R}';
+  UPDATE account_deletions_pending SET committed_at = now() WHERE user_id = '${R}';
   SELECT set_config('bw.account_deletion_uid', '${R}', false);
   UPDATE messages SET sender_id = NULL WHERE id = '${RM3}';
   SELECT set_config('bw.account_deletion_uid', '', false)`);
@@ -571,6 +604,128 @@ const rp3 = (await qq(`SELECT status, created_by, creator_timezone FROM rehearsa
 ok(!d.error && rp3?.status === 'expired', `minor: a deleted creator's Monday proposal for Tuesday lapses in their time zone (${d.error ?? JSON.stringify(rp3)})`);
 await reset();
 
+// ── Codex and Claude reviews #282, round 5 ────────────────────────────────
+const [AA, BB, CC, EE, A2, B2u] = [101, 102, 103, 104, 105, 106].map(id);
+const [T9, T10, QC, LD] = [111, 112, 113, 114].map(id);
+const [QM1, QM2, QM3, QM4] = [121, 122, 123, 124].map(id);
+const [Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8] = [131, 132, 133, 134, 135, 136, 137, 138].map(id);
+const setup5 = await x(`INSERT INTO auth.users VALUES ('${AA}'), ('${BB}'), ('${CC}'), ('${EE}'), ('${A2}'), ('${B2u}');
+  INSERT INTO profiles (id, full_name, email, preferred_language) VALUES
+    ('${AA}', 'Alex', 'alex.kim@example.com', 'en'), ('${BB}', 'Jordan Reyes', 'jordan@example.com', 'de'),
+    ('${CC}', 'Alex', 'alex.park@example.com', 'en'), ('${EE}', NULL, 'pat@example.com', 'en'),
+    ('${A2}', 'Morgan Lee', 'morgan@example.com', 'en'), ('${B2u}', 'Casey Fox', 'casey@example.com', 'en');
+  INSERT INTO bands VALUES ('${T9}', 'Queens Quartet'), ('${T10}', 'Astoria Strings');
+  INSERT INTO band_members VALUES ('${T9}','${AA}','admin',true), ('${T9}','${BB}','admin',true), ('${T9}','${CC}','member',true),
+    ('${T10}','${A2}','admin',true), ('${T10}','${B2u}','admin',true);
+  INSERT INTO chats VALUES ('${QC}', 'band', '${T9}', '${BB}', NULL), ('${LD}', 'direct', NULL, '${CC}', NULL);
+  -- A direct chat CC started; AA's participant row is long gone (legacy).
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${AA}'), ('${QC}','${BB}'), ('${QC}','${CC}'), ('${LD}','${CC}');
+  INSERT INTO messages (id, chat_id, sender_id, content) VALUES
+    ('${QM1}','${QC}','${AA}','Soundcheck moved to 5'), ('${QM2}','${QC}','${AA}','Load in at 4'),
+    ('${QM3}','${QC}','${CC}','Bring the music stands'), ('${QM4}','${LD}','${AA}','call me');
+  INSERT INTO notifications (id, user_id, type, title, body, data) VALUES
+    -- Renamed since (Alexander, now Alex): found by its sender id.
+    ('${Q1}', '${BB}', 'chat_message', 'Alexander', 'See you there', '{"senderName":"Alexander","sender_id":"${AA}","chat_id":"${QC}"}'),
+    -- The other Alex.
+    ('${Q2}', '${BB}', 'chat_message', 'Alex', 'Bring the music stands', '{"senderName":"Alex","sender_id":"${CC}","chat_id":"${QC}"}'),
+    ('${Q3}', '${BB}', 'chat_message', 'Alex', 'Bring the music stands', '{"senderName":"Alex","chat_id":"${QC}","content":"Bring the music stands"}'),
+    -- Old, no ids, one of AA's messages.
+    ('${Q4}', '${BB}', 'chat_message', 'Alex', 'Soundcheck moved to 5', '{"senderName":"Alex","chat_id":"${QC}","content":"Soundcheck moved to 5"}'),
+    ('${Q5}', '${BB}', 'chat_message', 'Alex', 'Load in at 4', '{"senderName":"Alex","message_id":"${QM2}","chat_id":"${QC}"}'),
+    -- The legacy direct chat, both sides.
+    ('${Q6}', '${CC}', 'chat_message', 'Alex', 'call me', '{"senderName":"Alex","chat_id":"${LD}","content":"call me"}'),
+    ('${Q7}', '${AA}', 'chat_message', 'Alex', 'sure', '{"senderName":"Alex","sender_id":"${CC}","chat_id":"${LD}"}'),
+    -- A member with no name: the server wrote the whole email.
+    ('${Q8}', '${BB}', 'song_suggestion', 'Lyrics · Moanin', 'pat@example.com suggests a correction to the lyrics.', '{"by":"${EE}","tag":"song-suggestion-${EE}","suggestion_id":"${SG6}"}');
+  INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES ('avatars', '${AA}/me.png', '${AA}', '${AA}')`);
+ok(!setup5.error, `round 5: setup (${setup5.error ?? 'ok'})`);
+await reset();
+await x(`DELETE FROM net.calls`);
+
+// Claude blocker: begun only (nothing erased) and given up: the hold lapses.
+ok((await begin(B2u))?.ok === true, 'round 5: B begins');
+await x(`UPDATE account_deletions_pending SET started_at = now() - interval '16 minutes' WHERE user_id = '${B2u}'`);
+d = await tryTx(`UPDATE band_members SET is_active = false WHERE band_id = '${T10}' AND user_id = '${A2}'`);
+ok(!d.error, `round 5: after 15 minutes A can leave (${d.error ?? 'ok'})`);
+let ra = await begin(A2);
+ok(ra?.ok === true, `round 5: and A can delete their own account, not "in progress" (${JSON.stringify(ra)})`);
+ok((await qq(`SELECT count(*)::int AS n FROM public.bw_account_deletions_due()`)).rows[0]?.n === 0, 'round 5: the job never takes a deletion that was not committed');
+await reset();
+
+// Codex B1: committed, then a file step fails (the photo) and the user gives up.
+ok((await begin(AA))?.ok === true, 'round 5: deletion can begin');
+d = await prepare(AA);
+ok(!d.error, `round 5: prepare commits (${d.error ?? 'ok'})`);
+ok((await qq(`SELECT committed_at IS NOT NULL AS c FROM account_deletions_pending WHERE user_id = '${AA}'`)).rows[0]?.c === true, 'round 5: committed_at set by prepare');
+d = await q(`SELECT public.bw_account_deletion_finish('${AA}')`);
+ok(!!d.error && /storage_not_ready/.test(d.error), `round 5: the photo still there: not ready, the account stays (${d.error ?? 'ok'})`);
+await x(`UPDATE account_deletions_pending SET started_at = now() - interval '20 minutes', committed_at = now() - interval '20 minutes' WHERE user_id = '${AA}'`);
+d = await q(`UPDATE band_members SET role = 'member' WHERE band_id = '${T9}' AND user_id = '${BB}'`);
+ok(!!d.error, `round 5: the co-admin still can't step down (committed never lapses) (${d.error ?? 'stepped down'})`);
+// The job: due rows only, leased (a second run gets nothing).
+ok((await qq(`SELECT public.bw_finish_account_deletions_dispatch() AS r`)).rows[0]?.r === true, 'round 5: the job calls delete-account when one is due');
+const call = (await qq(`SELECT url, headers, body FROM net.calls`)).rows;
+ok(call.length === 1 && call[0].url === 'https://example.supabase.co/functions/v1/delete-account' && call[0].body.sweep === true
+   && call[0].headers['x-bw-dispatch-secret'] === 'a'.repeat(64), `round 5: with the dispatch secret, as the push triggers (${JSON.stringify(call)})`);
+let due = (await qq(`SELECT u::text AS u FROM public.bw_account_deletions_due() AS u`)).rows.map((r) => r.u);
+ok(JSON.stringify(due) === JSON.stringify([AA]), `round 5: the job gets the committed deletion (${JSON.stringify(due)})`);
+due = (await qq(`SELECT u::text AS u FROM public.bw_account_deletions_due() AS u`)).rows.map((r) => r.u);
+ok(due.length === 0, `round 5: leased: a second run doesn't get it again (${JSON.stringify(due)})`);
+await x(`DELETE FROM net.calls`);
+ok((await qq(`SELECT public.bw_finish_account_deletions_dispatch() AS r`)).rows[0]?.r === false && (await qq(`SELECT 1 FROM net.calls`)).rows.length === 0,
+  'round 5: no call while nothing is due');
+const job = (await qq(`SELECT schedule, command FROM cron.job WHERE jobname = 'bw-finish-account-deletions'`)).rows;
+ok(job.length === 1 && job[0].schedule === '*/5 * * * *' && /bw_finish_account_deletions_dispatch/.test(job[0].command), `round 5: scheduled every 5 minutes, once (${JSON.stringify(job)})`);
+const g5 = (await qq(`SELECT has_function_privilege('authenticated', 'public.bw_account_deletions_due(integer)', 'EXECUTE') AS a,
+  has_function_privilege('service_role', 'public.bw_account_deletions_due(integer)', 'EXECUTE') AS s,
+  has_function_privilege('authenticated', 'public.bw_account_deletion_scrub(uuid)', 'EXECUTE') AS sa,
+  has_function_privilege('service_role', 'public.bw_account_deletion_scrub(uuid)', 'EXECUTE') AS ss`)).rows[0] ?? {};
+ok(g5.a === false && g5.s === true && g5.sa === false && g5.ss === true, `round 5: job and scrub are server only (${JSON.stringify(g5)})`);
+// The retry (or the job): begin answers committed, the photo goes, the rest runs.
+ra = await begin(AA);
+ok(ra?.ok === true && ra.committed === true, `round 5: the retry resumes from committed, no band check (${JSON.stringify(ra)})`);
+await x(`DELETE FROM storage.objects WHERE name = '${AA}/me.png'`); // the function, through the Storage API
+d = await q(`SELECT public.bw_account_deletion_finish('${AA}')`);
+ok(!d.error, `round 5: then the last step runs (${d.error ?? 'ok'})`);
+
+// Notifications (Codex B2, B3, Claude minors 1-2).
+const note5 = async (n) => (await qq(`SELECT title, body, data FROM notifications WHERE id = '${n}'`)).rows[0] ?? null;
+ok(!(await note5(Q6)) && !(await note5(Q7)), 'B2: a direct chat the other person started, their row gone: its notices go, both sides');
+ok((await qq(`SELECT 1 FROM messages WHERE id = '${QM4}'`)).rows.length === 0, 'B2: and their message in it');
+const q1 = await note5(Q1);
+ok(q1?.title === 'Ehemaliges Mitglied' && q1.data.senderName === 'Ehemaliges Mitglied' && !('sender_id' in q1.data),
+  `B3: renamed since: found by sender id, relabelled (${JSON.stringify(q1)})`);
+const [q2, q3] = [await note5(Q2), await note5(Q3)];
+ok(q2?.title === 'Alex' && q2.data.sender_id === CC && q3?.title === 'Alex', `B3: the other Alex keeps their name (${JSON.stringify([q2, q3])})`);
+ok(!(await note5(Q4)), 'B3: an old notice with no ids matching their message goes (never relabelled by name)');
+const q5 = await note5(Q5);
+ok(q5?.title === 'Ehemaliges Mitglied', `B3: found by its message id (${JSON.stringify(q5)})`);
+await x(`SELECT public.bw_account_deletion_notifications('${EE}')`);
+const q8 = await note5(Q8);
+ok(q8?.body === 'Ehemaliges Mitglied suggests a correction to the lyrics.', `minor: no name, the whole email replaced (${JSON.stringify(q8)})`);
+
+// Codex B4: Auth deletes the user; the band_members cascade writes member_left.
+const before = (await qq(`SELECT now() AS t`)).rows[0].t;
+d = await x(`DELETE FROM auth.users WHERE id = '${AA}'`);
+ok(!d.error, `round 5: Auth deletes the account (${d.error ?? 'ok'})`);
+const left = (await qq(`SELECT user_id, title, data FROM notifications WHERE type = 'member_left' AND band_id = '${T9}' ORDER BY user_id`)).rows;
+ok(left.length === 2 && left.every((l) => l.data.member_user_id === null)
+   && left.find((l) => l.user_id === BB)?.data.member_name === 'Ehemaliges Mitglied'
+   && left.find((l) => l.user_id === CC)?.data.member_name === 'Former member',
+  `B4: member_left names a former member, in each one's language, no id (${JSON.stringify(left)})`);
+const leak = (await qq(`SELECT id, type FROM notifications WHERE user_id IS DISTINCT FROM '${AA}'
+  AND (data::text LIKE '%${AA}%' OR coalesce(title, '') LIKE '%${AA}%' OR coalesce(body, '') LIKE '%${AA}%')`)).rows;
+ok(leak.length === 0, `B4: no notification carries their id after the deletion (${JSON.stringify(leak)})`);
+// One written after Auth (another cascade, a late push): the final scrub.
+await x(`INSERT INTO notifications (user_id, type, title, body, data) VALUES ('${BB}', 'event_update', 'Lineup', 'x', '{"removed_by":"${AA}"}')`);
+d = await q(`SELECT public.bw_account_deletion_scrub('${AA}')`);
+ok(!d.error && (await qq(`SELECT 1 FROM notifications WHERE data::text LIKE '%${AA}%' AND user_id IS DISTINCT FROM '${AA}'`)).rows.length === 0,
+  `B4: the final scrub after Auth clears it (${d.error ?? 'ok'})`);
+d = await tryTx(`UPDATE band_members SET is_active = false WHERE band_id = '${T9}' AND user_id = '${BB}'`);
+ok(!d.error, `round 5: once it is done, the others are free (${d.error ?? 'ok'})`);
+void before;
+await reset();
+
 // Cross-PR (#281's 175): read and delivery receipts refuse a stale
 // participant row when 175's bw_chat_scope_ok_for exists, and work without it.
 const [RM4, RM5] = [85, 86].map(id);
@@ -602,15 +757,6 @@ try {
   src175 = existsSync(`${REPO}/${P175}`) ? readFileSync(`${REPO}/${P175}`, 'utf8')
     : execFileSync('git', ['-C', REPO, 'show', `origin/fix/security-audit:${P175}`], { encoding: 'utf8' });
 } catch { src175 = null; }
-const fnByName = (src, name) => {
-  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
-  if (start < 0) return null;
-  const tag = src.slice(start).match(/\bAS\s+(\$[A-Za-z_]*\$)/);
-  if (!tag) return null;
-  const bodyStart = start + tag.index + tag[0].length;
-  const end = src.indexOf(tag[1], bodyStart);
-  return end < 0 ? null : src.slice(start, end + tag[1].length) + ';';
-};
 const f175 = src175 && ['bw_chat_scope_ok_for', 'bw_mark_chats_delivered', 'bw_mark_chat_read'].map((n) => fnByName(src175, n));
 if (!src175) {
   // Neither merged nor on the remote (e.g. CI without the branch): skip,
@@ -657,6 +803,57 @@ await x(`REVOKE EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM auth
 d = await x(readFileSync(MIG, 'utf8'));
 const dlg = (await qq(`SELECT has_function_privilege('authenticated', 'public.bw_poll_vote_deadline(uuid)', 'EXECUTE') AS a`)).rows[0];
 ok(!d.error && dlg?.a === false, `180 again after 195: the deadline stays revoked from clients (${d.error ?? JSON.stringify(dlg)})`);
+
+// Cross-PR (#295's 197, Claude review round 5): 180's withdraw returns only
+// the files no other song uses once 197's bw_song_files_left_unused exists
+// (either apply order), and all of them without it.
+const [SB1, SS1, SS2, SG7, SG8] = [141, 142, 143, 144, 145].map(id);
+const shared = `sb://song-files/${T9}/songs/shared.m4a`;
+const own = (n) => `sb://song-files/${T9}/suggestions/${CC}/${n}.pdf`;
+await x(`INSERT INTO songs (id, band_id, title, status, audio_url, chart_url) VALUES
+    ('${SB1}', '${T9}', 'Take Five', 'active', '${shared}', NULL),
+    ('${SS1}', '${T9}', 'Blue Rondo', 'suggested', '${shared}', '${own('a')}'),
+    ('${SS2}', '${T9}', 'Strange Meadow Lark', 'suggested', '${shared}', '${own('b')}');
+  INSERT INTO song_suggestions (id, band_id, song_id, status, created_by, kind) VALUES
+    ('${SG7}', '${T9}', '${SS1}', 'pending', '${CC}', 'new_song'), ('${SG8}', '${T9}', '${SS2}', 'pending', '${CC}', 'new_song')`);
+let wd = await as(CC, `SELECT public.bw_withdraw_song_suggestion('${SG7}') AS r`);
+ok(JSON.stringify(wd.rows?.[0]?.r?.files) === JSON.stringify([shared, own('a')]), `withdraw without 197: both files, as before (${wd.error ?? JSON.stringify(wd.rows?.[0]?.r)})`);
+const P197 = 'supabase/migrations/197_song_files_adopted.sql';
+let src197 = null;
+try {
+  src197 = existsSync(`${REPO}/${P197}`) ? readFileSync(`${REPO}/${P197}`, 'utf8')
+    : execFileSync('git', ['-C', REPO, 'show', `origin/fix/songs-audit:${P197}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+} catch { src197 = null; }
+const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_in_suggestion', 'bw_song_file_in_use',
+  'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
+const f197 = src197 && names197.map((n) => fnByName(src197, n));
+if (!src197) {
+  console.log(`SKIP 197 guard: ${P197} not in the repo and origin/fix/songs-audit not found`);
+} else {
+  ok(f197.every(Boolean), "197 guard: 197's file functions found by name");
+}
+if (f197 && f197.every(Boolean)) {
+  d = await x(`ALTER TABLE song_suggestions ADD COLUMN IF NOT EXISTS proposed jsonb NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS original jsonb NOT NULL DEFAULT '{}', ADD COLUMN IF NOT EXISTS applied jsonb,
+      ADD COLUMN IF NOT EXISTS message text, ADD COLUMN IF NOT EXISTS reason text;
+    CREATE TABLE IF NOT EXISTS public.song_file_removals (path text PRIMARY KEY, band_id uuid NOT NULL, claimed_by uuid, claimed_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE IF NOT EXISTS public.song_file_adoptions (from_path text, state text, deleting_at timestamptz);
+    CREATE OR REPLACE FUNCTION public.bw_is_band_admin(p_band uuid, p_uid uuid DEFAULT auth.uid()) RETURNS boolean LANGUAGE sql STABLE AS
+      $f$ SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band AND user_id = p_uid AND role = 'admin') $f$;
+    CREATE OR REPLACE FUNCTION public.bw_my_band_ids() RETURNS text[] LANGUAGE sql STABLE AS
+      $f$ SELECT coalesce(array_agg(band_id::text), '{}') FROM band_members WHERE user_id = auth.uid() $f$;
+    ${f197.join('\n')}`);
+  ok(!d.error, `197 guard: 197's functions loaded (${d.error ?? 'ok'})`);
+  d = await x(readFileSync(MIG, 'utf8'));
+  ok(!d.error, `197 guard: then 180 (${d.error ?? 'ok'})`);
+  wd = await as(CC, `SELECT public.bw_withdraw_song_suggestion('${SG8}') AS r`);
+  const files = wd.rows?.[0]?.r?.files;
+  ok(Array.isArray(files) && !files.includes(shared) && files.includes(own('b')),
+    `197 guard: withdraw never returns a file another song uses (${wd.error ?? JSON.stringify(wd.rows?.[0]?.r)})`);
+  ok((await qq(`SELECT 1 FROM songs WHERE id = '${SS2}'`)).rows.length === 0, '197 guard: the suggested song is deleted');
+  ok((await qq(`SELECT path FROM song_file_removals`)).rows.map((r) => r.path).join() === `${T9}/suggestions/${CC}/b.pdf`,
+    '197 guard: and what it returns is claimed, as 197 does');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

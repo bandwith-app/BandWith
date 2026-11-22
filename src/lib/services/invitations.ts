@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { sendOnboardingInviteEmail } from './email';
 import type { InviteData } from '@/app/components/onboarding/JoinerInviteLanding';
 import { t } from '@/lib/i18n';
@@ -86,6 +87,9 @@ function toInviteError(error: { message?: string } | null | undefined): InviteEr
   ];
   const knownCode = known.find((c) => msg.includes(c));
   if (knownCode) return new InviteError(knownCode);
+  // Someone in the band is deleting their account (180): wait a few minutes.
+  const deleting = deletionRefusalMessage(error);
+  if (deleting) return new InviteError('server', deleting);
   // Only a failed request is a connection problem; a database error is not,
   // and calling it one sent people checking their Wi-Fi for a server bug.
   const offline =

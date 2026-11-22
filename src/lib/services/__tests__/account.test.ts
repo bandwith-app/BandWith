@@ -28,6 +28,12 @@ describe('deleteMyAccount', () => {
     expect(await deleteMyAccount()).toEqual({ ok: false, reason: 'error', message: 'We couldn’t finish deleting your account. Try again shortly.' });
   });
 
+  // Round 5: once committed the server job finishes it, retry or not.
+  it('says the account will be gone in a few minutes once the deletion is committed', async () => {
+    invoke.mockResolvedValue(refused(503, { success: false, code: 'storage_not_ready', committed: true }));
+    expect(await deleteMyAccount()).toEqual({ ok: false, reason: 'error', message: 'Your account is being deleted. It will be gone within a few minutes.' });
+  });
+
   it('still lists the bands that need another admin', async () => {
     invoke.mockResolvedValue(refused(409, { success: false, code: 'account_has_bands', bands: ['Hudson Horns'] }));
     expect(await deleteMyAccount()).toEqual({ ok: false, reason: 'admin_of_bands', bands: ['Hudson Horns'] });

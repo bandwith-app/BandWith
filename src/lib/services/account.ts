@@ -31,6 +31,11 @@ export async function deleteMyAccount(): Promise<DeleteAccountResult> {
   if (body?.code === 'account_deletion_in_progress') {
     return { ok: false, reason: 'error', message: t('A bandmate is deleting their account. Try again in a few minutes.') };
   }
+  // Committed (180, round 5): the server finishes it on its own within a
+  // few minutes, even if nobody tries again.
+  if (body?.code === 'storage_not_ready' && body?.committed === true) {
+    return { ok: false, reason: 'error', message: t('Your account is being deleted. It will be gone within a few minutes.') };
+  }
   // A step could not finish yet (files still there): nothing more is gone,
   // and trying again finishes it.
   if (body?.code === 'storage_not_ready') {

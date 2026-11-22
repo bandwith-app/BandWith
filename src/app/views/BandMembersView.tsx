@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import { usePlan } from '@/lib/usePlan';
 import { limitFor } from '@/lib/plans';
-import { isDeletionHold, canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
+import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -194,14 +195,13 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     setPendingRemoval(member);
   };
 
-
   const confirmRemoveMember = async () => {
     if (!pendingRemoval || removing) return;
     setRemoving(true);
     const { error } = await removeMember(pendingRemoval.id);
     setRemoving(false);
     if (error) {
-      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : error.message || t('Could not remove the member. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? (error.message || t('Could not remove the member. Try again.')));
       return;
     }
     // The database notifies the removed member and the band (migration 046).
@@ -233,7 +233,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       setLeaving(false);
       setLeaveOpen(false);
       setDetailId(null);
-      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : t('Could not leave the band. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? t('Could not leave the band. Try again.'));
       return;
     }
     // The database tells the band (046). Back to another band, or to the
@@ -277,7 +277,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     }
     const { error } = await updateMemberRole(member.id, newRole);
     if (error) {
-      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : error.message || t('Could not change the role. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? (error.message || t('Could not change the role. Try again.')));
       return;
     }
     setMembers((prev) =>

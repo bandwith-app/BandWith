@@ -1,38 +1,34 @@
 // Deletes the caller's own account (App Store / Play Store requirement).
 //
-// Everything that can refuse is decided before anything is erased (Codex
-// review #282):
+// Two states (Codex and Claude reviews #282, round 5):
 // 1-2. bw_account_deletion_begin (180): refuses (409) if the caller is the
 //    only admin of a band with other members, under the band locks (a
 //    co-admin deleting their own account counts as gone; then it is 409
-//    account_deletion_in_progress: wait). A retry after prepare skips the
-//    check and only finishes the job. Otherwise it records a pending
-//    deletion. While it is pending no membership change that would make a
-//    later step refuse goes through (a co-admin stepping down, someone
-//    joining a band that goes, the last member leaving a band that stays).
-//    It also notes the bands that go with the account.
-// 3. Storage, before any data is deleted: personal files and the profile
-//    photo go, the files that stay with their bands are released
-//    (bw_account_storage_release). If a personal file or the photo is still
-//    there it stops (503, nothing deleted).
-// 4. bw_prepare_account_deletion(): removes solo bands (noting them too),
-//    keeps band and event chat messages as a former member's, clears
-//    references. Its last-admin check refusing is a 409 too.
-// 5. Removes the files of the noted bands that are really gone (old quote
-//    PDFs in avatars/quotes/<band> too). A failed
-//    lookup or cleanup stops (503) before the account goes, so a retry still
-//    finds them (a lookup that failed must never erase a band that goes on).
-// 6. bw_account_deletion_finish(): after the personal folders are emptied
-//    again, re-checks Storage (uploads are blocked while the deletion holds,
-//    but one may have started before), then their notifications and
-//    messages once more. A personal file still there is a 503.
-// 7. auth.admin.deleteUser() — profiles cascade from auth.users, the pending
-//    deletion with them.
-// Every step can run again, so a failed attempt can simply be retried. Each
-// RPC is retried once on a deadlock (40P01): it is one transaction, and the
-// abort rolled it back whole.
+//    account_deletion_in_progress: wait). Otherwise it records a pending
+//    deletion: begun, nothing erased yet; it lapses after 15 minutes. While
+//    it holds, no membership change that would make a later step refuse
+//    goes through. It also notes the bands that go with the account.
+// 3. bw_prepare_account_deletion(): the point of no return. In one
+//    transaction it re-checks the bands, marks the deletion committed
+//    (committed_at, never lapses) and erases the data: solo bands, personal
+//    gigs, direct messages; band and gig chat messages stay as a former
+//    member's. No file has gone before this.
+// 4. finishCommitted (_shared/account-deletion.ts): personal files and the
+//    photo, the Storage release check, the files of the bands that went,
+//    the personal folders again, bw_account_deletion_finish, Auth, and the
+//    final scrub of notifications. Not ready (503, committed: true) only
+//    means "not yet": nothing can refuse any more.
+// A retry once committed: begin answers committed and skips the band checks,
+// prepare skips them too, and finishCommitted runs again. A committed
+// deletion nobody retries is finished by the server: the job
+// bw-finish-account-deletions (pg_cron, 180) calls this function with the
+// dispatch secret every 5 minutes while one is due (committed and untouched
+// for 5 minutes, leased with SKIP LOCKED). Every step can run twice, also at
+// the same time. Each RPC is retried once on a deadlock (40P01): it is one
+// transaction, and the abort rolled it back whole.
 //
 // The caller can only ever delete themselves: the user id comes from the JWT.
+// The job only finishes deletions already committed by their own user.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
@@ -44,25 +40,53 @@ import {
   requireCaller,
 } from "../_shared/auth.ts";
 import {
-  bandFolders,
-  bandsToClean,
   beginOutcome,
+  type DeletionServer,
+  finishCommitted,
   type FolderStore,
   prepareOutcome,
-  removeFolder,
   retryOnDeadlock,
-  storageReady,
 } from "../_shared/account-deletion.ts";
 
-const notReady = (what: string, detail?: unknown) => {
+const notReady = (what: string, detail?: unknown, committed = false) => {
   console.warn(`delete-account: ${what} not ready`, detail);
-  return json({ success: false, code: "storage_not_ready", error: "Could not remove your files yet. Try again." }, 503);
+  return json({
+    success: false,
+    code: "storage_not_ready",
+    error: "Could not remove your files yet. Try again.",
+    ...(committed ? { committed: true } : {}),
+  }, 503);
 };
 
 const bucketStore = (admin: ReturnType<typeof adminClient>, bucket: string): FolderStore => ({
   list: (prefix, opts) => admin.storage.from(bucket).list(prefix, opts),
   remove: (paths) => admin.storage.from(bucket).remove(paths),
 });
+
+const deletionServer = (admin: ReturnType<typeof adminClient>): DeletionServer => ({
+  rpc: (name, args) => admin.rpc(name, args),
+  store: (bucket) => bucketStore(admin, bucket),
+  pendingBandIds: (uid) => admin.from("account_deletions_pending").select("band_ids").eq("user_id", uid).maybeSingle(),
+  bandsStillThere: (ids) => admin.from("bands").select("id").in("id", ids),
+  deleteUser: (uid) => admin.auth.admin.deleteUser(uid),
+});
+
+// The server job (180's bw-finish-account-deletions): committed deletions
+// nobody finished, a few per run (each one leased for 5 minutes).
+async function sweep(admin: ReturnType<typeof adminClient>) {
+  const { data: due, error } = await admin.rpc("bw_account_deletions_due", { p_limit: 3 });
+  if (error) throw error;
+  const ids = (Array.isArray(due) ? due : []).map((r: unknown) =>
+    typeof r === "string" ? r : String((r as Record<string, unknown>)?.bw_account_deletions_due ?? ""),
+  ).filter(Boolean);
+  let finished = 0;
+  for (const uid of ids) {
+    const result = await finishCommitted(deletionServer(admin), uid);
+    if (result.kind === "done") finished++;
+    else console.warn(`delete-account sweep: ${result.what} not ready`, result.detail);
+  }
+  return json({ success: true, due: ids.length, finished });
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -71,14 +95,25 @@ serve(async (req) => {
 
   try {
     const admin = adminClient();
+
+    const dispatchSecret = req.headers.get("x-bw-dispatch-secret");
+    if (dispatchSecret) {
+      const { data: ok, error } = await admin.rpc("bw_verify_push_dispatch_secret", { p_secret: dispatchSecret });
+      if (error || ok !== true) throw new HttpError(401, "Invalid dispatch secret");
+      const body = await req.json().catch(() => ({}));
+      if (body?.sweep !== true) throw new HttpError(400, "Missing sweep");
+      return await sweep(admin);
+    }
+
     const caller = await requireCaller(req, admin);
     if (caller.kind !== "user") throw new HttpError(403, "Only a signed-in user can delete their account");
 
     const body = await req.json().catch(() => ({}));
     if (body?.confirm !== "DELETE") throw new HttpError(400, "Missing confirmation");
 
-    // The band check, held until the account is gone. A retry after prepare
-    // skips it (begin answers prepared): part of the account is already gone.
+    // The band check, held until the account is gone. A retry once
+    // committed skips it (begin answers committed): part of the account is
+    // already gone.
     const { data: beginData, error: beginError } = await retryOnDeadlock(() => admin.rpc('bw_account_deletion_begin', { p_uid: caller.id }));
     const begin = beginOutcome(beginData, beginError);
     if (begin.kind === "blocked") {
@@ -89,13 +124,7 @@ serve(async (req) => {
     }
     if (begin.kind === "not_ready") return notReady("begin", beginError?.message ?? beginData);
 
-    // Storage: personal files and the photo go, the rest stays with the
-    // bands but no longer belongs to the account.
-    await removeFolder(bucketStore(admin, "personal-files"), caller.id);
-    await removeFolder(bucketStore(admin, "avatars"), caller.id);
-    const { data: release, error: releaseError } = await retryOnDeadlock(() => admin.rpc("bw_account_storage_release", { p_uid: caller.id }));
-    if (!storageReady(release, releaseError)) return notReady("storage", releaseError?.message ?? release);
-
+    // The point of no return, before any file goes: committed, data erased.
     const { error: prepError } = await retryOnDeadlock(() => admin.rpc("bw_prepare_account_deletion", { p_uid: caller.id }));
     const prepare = prepareOutcome(prepError);
     if (prepare.kind === "blocked") {
@@ -105,38 +134,10 @@ serve(async (req) => {
     }
     if (prepError) throw prepError;
 
-    // Every band noted as going with the account (begin and prepare), also
-    // from an earlier attempt that stopped after its bands were deleted.
-    const { data: pending, error: pendingError } = await admin
-      .from("account_deletions_pending")
-      .select("band_ids")
-      .eq("user_id", caller.id)
-      .maybeSingle();
-    if (pendingError) return notReady("pending", pendingError.message);
-    const noted = [...new Set([...begin.bandIds, ...((pending?.band_ids as string[] | null) ?? [])])];
-    if (noted.length > 0) {
-      const stillThere = await admin.from("bands").select("id").in("id", noted);
-      const toClean = bandsToClean(noted, stillThere);
-      if (toClean === null) return notReady("band lookup", stillThere.error);
-      let cleaned = true;
-      for (const bandId of toClean) {
-        for (const { bucket, prefix } of bandFolders(bandId)) {
-          cleaned = (await removeFolder(bucketStore(admin, bucket), prefix)) && cleaned;
-        }
-      }
-      if (!cleaned) return notReady("band files", toClean);
-    }
-
-    // The last step: personal files once more (another device may have
-    // uploaded before uploads were blocked), then notifications and messages
-    // once more. It stops (503) while a personal file is still there.
-    await removeFolder(bucketStore(admin, "personal-files"), caller.id);
-    await removeFolder(bucketStore(admin, "avatars"), caller.id);
-    const { error: finishError } = await retryOnDeadlock(() => admin.rpc("bw_account_deletion_finish", { p_uid: caller.id }));
-    if (finishError) return notReady("finish", finishError.message);
-
-    const { error: deleteError } = await admin.auth.admin.deleteUser(caller.id);
-    if (deleteError) throw deleteError;
+    // Files, the last step, Auth, the final scrub. Not ready is "not yet":
+    // a retry or the job finishes it.
+    const result = await finishCommitted(deletionServer(admin), caller.id, begin.bandIds);
+    if (result.kind === "not_ready") return notReady(result.what, result.detail, true);
 
     return json({ success: true });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { supabase, getSafeUser } from '../supabase';
 import { sendPushToUsers } from './notifications';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { personName } from '@/lib/personName';
 import { isDirectChatBetween, type DirectChatFacts } from '@/lib/directChat';
 import { t, loadLocale, translate } from '@/lib/i18n';
@@ -12,7 +13,7 @@ export class ChatRuleError extends Error {}
 
 /** What to show for a chat error: the rule when one said no, never raw server text. */
 export const chatErrorMessage = (error: unknown, fallback: string): string =>
-  error instanceof ChatRuleError ? error.message : fallback;
+  error instanceof ChatRuleError ? error.message : deletionRefusalMessage(error) ?? fallback;
 
 // ============================================
 // TYPES
@@ -984,7 +985,11 @@ export const sendMessage = async (
           user.id,
         );
         const plain = otherParticipants.filter((id: string) => !mentioned.includes(id));
+        // Who and which message (180, round 5): an account deletion finds
+        // its notices by these ids, never by the sender's name.
+        const ids = { sender_id: user.id, message_id: data?.id };
         const common = {
+          ...ids,
           senderName,
           content: content.substring(0, 120),
           chatId,

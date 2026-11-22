@@ -87,17 +87,26 @@ export interface FolderStore {
 }
 
 const PAGE = 100;
+// Folders nest as deep as people make them (song/take/v2/...): no fixed
+// depth (Codex review #282, round 5: a file 6 folders down was never reached
+// and the deletion stopped with a 503 for good). Only a guard against a
+// listing that never ends, with its own message in the log.
+const MAX_DEPTH = 64;
+const MAX_ROUNDS = 1000;
 
 /**
- * Delete every object under `prefix`. Storage lists one level at a time,
- * 100 entries per call: emptied subfolders disappear, so the same listing is
- * read again until it is empty. True when the folder is empty at the end.
- * (Codex review #282: a page of only folders used to end the loop, so the
- * 101st song folder survived and the deletion stopped with a 503.)
+ * Delete every object under `prefix`, at any depth. Storage lists one level
+ * at a time, 100 entries per call: emptied subfolders disappear, so the same
+ * listing is read again until it is empty. True when the folder is empty at
+ * the end. (Codex review #282: a page of only folders used to end the loop,
+ * so the 101st song folder survived and the deletion stopped with a 503.)
  */
 export async function removeFolder(store: FolderStore, prefix: string, depth = 0): Promise<boolean> {
-  if (depth > 4) return false;
-  for (let round = 0; round < 50; round++) {
+  if (depth > MAX_DEPTH) {
+    console.warn(`removeFolder: more than ${MAX_DEPTH} folders deep under ${prefix.split('/')[0]}`);
+    return false;
+  }
+  for (let round = 0; round < MAX_ROUNDS; round++) {
     const { data: items, error } = await store.list(prefix, { limit: PAGE });
     if (error || !items) return false;
     if (items.length === 0) return true;
@@ -113,7 +122,81 @@ export async function removeFolder(store: FolderStore, prefix: string, depth = 0
     }
     if (!progress) return false;
   }
+  console.warn(`removeFolder: still not empty after ${MAX_ROUNDS} rounds`);
   return false;
+}
+
+/** What finishCommitted needs from the server (the edge function's admin client). */
+export interface DeletionServer {
+  rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
+  store(bucket: string): FolderStore;
+  pendingBandIds(uid: string): PromiseLike<{ data: { band_ids?: string[] | null } | null; error: unknown }>;
+  bandsStillThere(ids: string[]): PromiseLike<BandLookup>;
+  deleteUser(uid: string): PromiseLike<{ error: unknown }>;
+}
+
+export type FinishResult = { kind: 'done' } | { kind: 'not_ready'; what: string; detail?: unknown };
+
+/** Auth no longer has the user: the job and a retry ran at once (round 5). */
+export function userAlreadyGone(error: unknown): boolean {
+  const e = error as { status?: number; code?: string; message?: string } | null | undefined;
+  if (!e) return false;
+  return e.status === 404 || e.code === 'user_not_found' || /user not found/i.test(e.message ?? '');
+}
+
+/**
+ * Everything after the point of no return (round 5): the deletion is
+ * committed (bw_prepare_account_deletion ran), so nothing here refuses, it
+ * can only be not ready yet. Files first, then the last step, Auth and the
+ * final scrub. Run by delete-account for the user, and again by its server
+ * job (bw-finish-account-deletions) for a committed deletion nobody
+ * finished. Every step can run twice, also at the same time.
+ */
+export async function finishCommitted(server: DeletionServer, uid: string, knownBandIds: string[] = []): Promise<FinishResult> {
+  const notReady = (what: string, detail?: unknown): FinishResult => ({ kind: 'not_ready', what, detail });
+
+  // Personal files and the photo go; the band files they uploaded stay with
+  // the bands but no longer belong to the account.
+  await removeFolder(server.store('personal-files'), uid);
+  await removeFolder(server.store('avatars'), uid);
+  const release = await retryOnDeadlock(() => server.rpc('bw_account_storage_release', { p_uid: uid }));
+  if (!storageReady(release.data as StorageRelease | null, release.error)) return notReady('storage', release.error ?? release.data);
+
+  // Every band noted as going with the account (begin and prepare), also
+  // from an earlier attempt. A failed lookup stops: it must never erase a
+  // band that goes on.
+  const pending = await server.pendingBandIds(uid);
+  if (pending.error) return notReady('pending', pending.error);
+  const noted = [...new Set([...knownBandIds, ...((pending.data?.band_ids as string[] | null | undefined) ?? [])])];
+  if (noted.length > 0) {
+    const toClean = bandsToClean(noted, await server.bandsStillThere(noted));
+    if (toClean === null) return notReady('band lookup');
+    let cleaned = true;
+    for (const bandId of toClean) {
+      for (const { bucket, prefix } of bandFolders(bandId)) {
+        cleaned = (await removeFolder(server.store(bucket), prefix)) && cleaned;
+      }
+    }
+    if (!cleaned) return notReady('band files', toClean);
+  }
+
+  // Personal files once more (another device may have uploaded before
+  // uploads were blocked), then the last step: Storage re-checked,
+  // notifications and messages once more.
+  await removeFolder(server.store('personal-files'), uid);
+  await removeFolder(server.store('avatars'), uid);
+  const finish = await retryOnDeadlock(() => server.rpc('bw_account_deletion_finish', { p_uid: uid }));
+  if (finish.error) return notReady('finish', finish.error);
+
+  const { error: deleteError } = await server.deleteUser(uid);
+  if (deleteError && !userAlreadyGone(deleteError)) return notReady('auth', deleteError);
+
+  // The final scrub (Codex B4): notifications the Auth cascade wrote. The
+  // trigger on profiles already ran it inside the delete; a failure here is
+  // only logged.
+  const scrub = await retryOnDeadlock(() => server.rpc('bw_account_deletion_scrub', { p_uid: uid }));
+  if (scrub.error) console.warn('delete-account: final scrub', scrub.error);
+  return { kind: 'done' };
 }
 
 /**

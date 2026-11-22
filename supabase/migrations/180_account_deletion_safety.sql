@@ -27,7 +27,7 @@
 --    security would hide the rows), so a dry run shows it.
 --
 -- 3. bw_account_deletion_begin(uid), before any file goes: records a
---    pending deletion (15 minutes; no limit once prepared, round 4) and the bands that go with the
+--    pending deletion (15 minutes; no limit once committed, round 5) and the bands that go with the
 --    account (no other active member), so their files are cleaned even when a
 --    first attempt fails after the bands are gone. It refuses, recording
 --    nothing, when the person is the last admin of a band with members,
@@ -37,7 +37,7 @@
 --    refuses any band_members change (insert, role, is_active, delete) that
 --    would make prepare or Auth refuse later: demoting or removing the last
 --    other admin (B1), joining or coming back to a band that goes with the
---    account (B3) and, after prepare, the last other member leaving a band
+--    account (B3) and, once committed, the last other member leaving a band
 --    that stays (it would be left with nobody and its files public, B1).
 --    Advisory locks order begin against every membership change, and the
 --    changes in a band with a pending deletion against each other, so two
@@ -68,8 +68,7 @@
 --      read only by bw_poll_vote_deadline), so a closed vote stays closed.
 --
 -- 6. Round 4 (Claude review #282):
---    * A prepared deletion holds until the account is gone (it used to lapse
---      after 15 minutes, so a retry of a half-erased account could get 409).
+--    * A committed deletion holds until the account is gone (round 5 below).
 --      The message refusal follows the same rule. A retry after prepare
 --      skips the band checks in begin and prepare and only finishes the job.
 --    * A co-admin whose only fellow admins are deleting their accounts gets
@@ -86,13 +85,41 @@
 --    * Codex B3: no uploads while their deletion holds (restrictive policies
 --      on storage.objects); the last step re-checks Storage and stops while
 --      a personal file is there.
---    * A poll's invitees no longer count them (never the last one); the
---      proposal-expiry job reads the poll's copy of the time zone.
+--    * A poll's invitees no longer count them (round 5: also the last one);
+--      the proposal-expiry job reads the poll's copy of the time zone.
 --    * Chat receipts (bw_mark_chat_read, bw_mark_chats_delivered) are 175's
 --      bodies (#281, 44cf49fc), with its stale-participant rule called only
 --      when bw_chat_scope_ok_for exists.
 --    * The hold's errors are plain English (older builds show the message
 --      as it is); the code account_deletion_in_progress is the hint.
+--
+-- 7. Round 5 (Codex and Claude reviews #282, da668d13):
+--    * Two states. Begun (account_deletions_pending without committed_at):
+--      nothing is erased yet, the hold lapses after 15 minutes. Committed
+--      (committed_at, set by bw_prepare_account_deletion in the same
+--      transaction as its first erase): the point of no return, before any
+--      file goes (delete-account erases files only after prepare). It never
+--      lapses: the job bw-finish-account-deletions (pg_cron, every 5
+--      minutes) asks delete-account to finish committed deletions nobody
+--      touched for 5 minutes (files, Auth, final scrub), so the others are
+--      held for minutes, not for good. A retry and the job can overlap: every
+--      step can run twice, and the job leases each row (SKIP LOCKED).
+--    * Notifications: direct chats are found by chat type plus creator,
+--      participant row or their messages (a chat the other person started
+--      and they had left); band chat notices only by sender id or message id.
+--      An old notice with neither, matching one of their messages, is
+--      deleted, never relabelled by name. Song suggestions: exactly the name
+--      bw_display_name wrote (the full email when there was no name).
+--    * Leaving the band as Auth deletes the account (band_members cascade):
+--      member_left names a former member, with no id; after the profile goes
+--      their id is scrubbed from notifications once more (trigger on
+--      profiles, and delete-account calls bw_account_deletion_scrub).
+--    * A poll they were the only invitee of closes (cancelled, no notice) and
+--      stays private to its creator (an empty list means the whole band).
+--    * The guard's error names who is deleting (admin or member, DETAIL);
+--      the send refusal has its own hint, account_being_deleted.
+--    * Withdrawing a suggestion returns only files no other song uses, when
+--      #295's bw_song_files_left_unused exists (any order with 197).
 --
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
@@ -210,27 +237,38 @@ CREATE TABLE IF NOT EXISTS public.account_deletions_pending (
   started_at timestamptz NOT NULL DEFAULT now(),
   -- Bands the deletion removes: their files go too, even on a retry.
   band_ids uuid[] NOT NULL DEFAULT '{}',
-  -- Set by prepare: from then on the bands not in band_ids stay, so their
-  -- last other member can't leave them empty.
-  prepared_at timestamptz
+  -- Set by prepare with its first erase (round 5): the point of no return.
+  -- From then on the bands not in band_ids stay, so their last other member
+  -- can't leave them empty, and the job finishes the deletion.
+  committed_at timestamptz
 );
-ALTER TABLE public.account_deletions_pending ADD COLUMN IF NOT EXISTS prepared_at timestamptz;
+-- An earlier draft of this migration called it prepared_at.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+              AND table_name = 'account_deletions_pending' AND column_name = 'prepared_at')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+              AND table_name = 'account_deletions_pending' AND column_name = 'committed_at') THEN
+    ALTER TABLE public.account_deletions_pending RENAME COLUMN prepared_at TO committed_at;
+  END IF;
+END $$;
+ALTER TABLE public.account_deletions_pending ADD COLUMN IF NOT EXISTS committed_at timestamptz;
 ALTER TABLE public.account_deletions_pending ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.account_deletions_pending FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.account_deletions_pending TO service_role;
 
--- Whether a pending deletion still holds (round 4). Before prepare it lapses
--- after 15 minutes (an attempt that stopped before anything was erased).
--- Once prepared, part of the account is already gone: the hold stays until
--- the account is deleted (the row cascades with the profile), so a retry
--- hours later still finds the bands as prepare left them.
-CREATE OR REPLACE FUNCTION public.bw_account_deletion_holds(p_started timestamptz, p_prepared timestamptz)
+-- Whether a pending deletion still holds. Begun only, nothing is erased yet:
+-- it lapses after 15 minutes (an attempt that stopped early). Committed,
+-- part of the account is already gone: it holds until the account is deleted
+-- (the row cascades with the profile), so a retry, or the job a few minutes
+-- later (round 5), still finds the bands as prepare left them.
+CREATE OR REPLACE FUNCTION public.bw_account_deletion_holds(p_started timestamptz, p_committed timestamptz)
 RETURNS boolean
 LANGUAGE sql
 STABLE
 SET search_path TO 'public'
 AS $$
-  SELECT p_prepared IS NOT NULL OR p_started > now() - interval '15 minutes';
+  SELECT p_committed IS NOT NULL OR p_started > now() - interval '15 minutes';
 $$;
 REVOKE ALL ON FUNCTION public.bw_account_deletion_holds(timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 
@@ -258,11 +296,12 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_band_deletion_lock(uuid) FROM PUBLIC, anon, authenticated;
 
 -- Why person p_uid's deletion could no longer finish in band p_band, or NULL.
--- p_noted: the band goes with the account. p_prepared: prepare already ran.
+-- p_noted: the band goes with the account. p_committed: prepare already ran
+-- (the deletion is committed).
 -- A co-admin who is deleting their own account (pending) doesn't count as
 -- staying (round 2, B2).
 CREATE OR REPLACE FUNCTION public.bw_account_deletion_conflict(
-  p_band uuid, p_uid uuid, p_noted boolean, p_prepared boolean)
+  p_band uuid, p_uid uuid, p_noted boolean, p_committed boolean)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -290,13 +329,13 @@ BEGIN
     FROM (SELECT o.role::text = 'admin' AS is_admin,
                  EXISTS (SELECT 1 FROM public.account_deletions_pending d
                           WHERE d.user_id = o.user_id
-                            AND public.bw_account_deletion_holds(d.started_at, d.prepared_at)) AS leaving
+                            AND public.bw_account_deletion_holds(d.started_at, d.committed_at)) AS leaving
             FROM public.band_members o
            WHERE o.band_id = p_band AND o.user_id <> p_uid AND coalesce(o.is_active, true)) x;
 
   IF v_others = 0 THEN
     -- Alone: the band goes with the account, unless prepare already kept it.
-    RETURN CASE WHEN p_noted OR NOT p_prepared THEN NULL ELSE 'band_left_empty' END;
+    RETURN CASE WHEN p_noted OR NOT p_committed THEN NULL ELSE 'band_left_empty' END;
   END IF;
   IF v_admin AND v_staying_admins = 0 THEN
     -- The other admins are deleting their accounts too: wait for them (round
@@ -331,15 +370,16 @@ BEGIN
   -- Exclusive: waits for membership changes in flight, holds new ones.
   PERFORM public.bw_band_deletion_lock(NULL);
 
-  -- A retry after prepare (round 4): part of the account is already gone and
-  -- the hold kept the bands as prepare left them, so the band checks passed
-  -- for good. Only finish the job.
+  -- A retry once committed (round 4, 5): part of the account is already gone
+  -- and the hold kept the bands as prepare left them, so the band checks
+  -- passed for good. Only finish the job (started_at: the job leaves a row
+  -- alone for 5 minutes after this).
   SELECT p.band_ids INTO v_bands
     FROM public.account_deletions_pending p
-   WHERE p.user_id = p_uid AND p.prepared_at IS NOT NULL;
+   WHERE p.user_id = p_uid AND p.committed_at IS NOT NULL;
   IF FOUND THEN
     UPDATE public.account_deletions_pending SET started_at = now() WHERE user_id = p_uid;
-    RETURN jsonb_build_object('ok', true, 'prepared', true, 'band_ids', to_jsonb(v_bands));
+    RETURN jsonb_build_object('ok', true, 'committed', true, 'band_ids', to_jsonb(v_bands));
   END IF;
 
   FOR v_band IN
@@ -504,6 +544,25 @@ BEGIN
   END IF;
 END $$;
 
+-- The person's direct chats (round 5, Codex B2): not a band, gig or group
+-- chat, and they started it, are in it, or wrote in it. Not only by the
+-- participant row: in an old chat the other person started, theirs may be
+-- gone. Read before their messages lose their sender.
+CREATE OR REPLACE FUNCTION public.bw_account_deletion_dm_chats(p_uid uuid)
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT c.id FROM public.chats c
+   WHERE coalesce(c.type::text, '') NOT IN ('band', 'event', 'group')
+     AND (c.created_by = p_uid
+          OR EXISTS (SELECT 1 FROM public.chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = p_uid)
+          OR EXISTS (SELECT 1 FROM public.messages m WHERE m.chat_id = c.id AND m.sender_id = p_uid));
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_deletion_dm_chats(uuid) FROM PUBLIC, anon, authenticated;
+
 -- The person's messages (owner decision 11-22), for prepare and again for
 -- the last step before Auth (round 3, B2: a message sent from another device
 -- while prepare ran).
@@ -517,12 +576,12 @@ DECLARE
   v_col text;
 BEGIN
   -- First the block (round 4, Codex B1). Marking the pending deletion
-  -- prepared holds its row lock to the end of this transaction, and the
+  -- committed holds its row lock to the end of this transaction, and the
   -- messages trigger reads that row FOR SHARE: a message being sent from
   -- another device either commits first (and is handled below) or waits for
   -- this transaction and is refused. Nothing can slip in between the steps.
   UPDATE public.account_deletions_pending
-     SET prepared_at = coalesce(prepared_at, now())
+     SET committed_at = coalesce(committed_at, now())
    WHERE user_id = p_uid;
 
   -- Messages (owner decision 11-22): direct messages, and messages they had
@@ -537,11 +596,7 @@ BEGIN
                OR NOT EXISTS (SELECT 1 FROM public.chats c
                                WHERE c.id = m.chat_id AND c.type::text IN ('band', 'event', 'group'))))
       OR (m.sender_id IS NULL
-          AND m.chat_id IN (SELECT c.id FROM public.chats c
-                             WHERE c.type::text NOT IN ('band', 'event', 'group')
-                               AND (c.created_by = p_uid
-                                    OR EXISTS (SELECT 1 FROM public.chat_participants cp
-                                                WHERE cp.chat_id = c.id AND cp.user_id = p_uid))));
+          AND m.chat_id IN (SELECT public.bw_account_deletion_dm_chats(p_uid)));
   -- Their id out of message metadata and attachments: their own messages,
   -- and mentions in the chats they were in.
   FOREACH v_col IN ARRAY ARRAY['metadata', 'attachments'] LOOP
@@ -602,7 +657,7 @@ BEGIN
   -- A retry after prepare skips the band check: it passed, and the hold has
   -- kept it true since (round 4).
   IF NOT EXISTS (SELECT 1 FROM public.account_deletions_pending p
-                  WHERE p.user_id = p_uid AND p.prepared_at IS NOT NULL)
+                  WHERE p.user_id = p_uid AND p.committed_at IS NOT NULL)
      AND EXISTS (SELECT 1 FROM public.bw_account_deletion_blockers(p_uid)) THEN
     RAISE EXCEPTION 'account_has_bands' USING ERRCODE = 'P0001';
   END IF;
@@ -618,11 +673,11 @@ BEGIN
         WHERE o.band_id = b.id AND o.user_id <> p_uid AND COALESCE(o.is_active, true))
     RETURNING b.id
   )
-  INSERT INTO public.account_deletions_pending AS p (user_id, band_ids, prepared_at)
+  INSERT INTO public.account_deletions_pending AS p (user_id, band_ids, committed_at)
   SELECT p_uid, coalesce(array_agg(id), '{}'), now() FROM gone
   ON CONFLICT (user_id) DO UPDATE
     SET band_ids = ARRAY(SELECT DISTINCT x FROM unnest(p.band_ids || EXCLUDED.band_ids) AS x),
-        prepared_at = now();
+        committed_at = coalesce(p.committed_at, now());
 
   -- Personal gigs are deleted with the account.
   DELETE FROM events WHERE band_id IS NULL AND created_by = p_uid;
@@ -635,11 +690,21 @@ BEGIN
    WHERE pr.id = p_uid AND rp.created_by = p_uid AND nullif(trim(pr.timezone), '') IS NOT NULL;
 
   -- A poll they were invited to vote on no longer counts them (round 4: the
-  -- room cost split among the rest). Never the last invitee: an empty list
-  -- means everyone in the band.
+  -- room cost split among the rest). Round 5 (Claude): the last invitee too.
+  -- Then nobody is left to vote: an open poll closes (cancelled, no notice),
+  -- and it stays private to its creator, since an empty list means the whole
+  -- band. A poll that was only theirs (they made it, only for themselves)
+  -- goes.
+  DELETE FROM public.rehearsal_polls rp
+   WHERE rp.invited_user_ids = ARRAY[p_uid] AND rp.created_by = p_uid;
   UPDATE public.rehearsal_polls rp
-     SET invited_user_ids = array_remove(rp.invited_user_ids, p_uid)
-   WHERE p_uid = ANY (rp.invited_user_ids) AND cardinality(rp.invited_user_ids) > 1;
+     SET invited_user_ids = CASE WHEN cardinality(rp.invited_user_ids) > 1
+                                 THEN array_remove(rp.invited_user_ids, p_uid)
+                                 ELSE ARRAY[rp.created_by] END,
+         status = CASE WHEN cardinality(rp.invited_user_ids) = 1 AND rp.status IN ('proposed', 'polling')
+                       THEN 'cancelled' ELSE rp.status END,
+         updated_at = CASE WHEN cardinality(rp.invited_user_ids) = 1 THEN now() ELSE rp.updated_at END
+   WHERE p_uid = ANY (rp.invited_user_ids);
 
   -- Notifications first: they find the person's chat messages by sender.
   PERFORM public.bw_account_deletion_notifications(p_uid);
@@ -680,7 +745,7 @@ GRANT EXECUTE ON FUNCTION public.bw_prepare_account_deletion(uuid) TO service_ro
 
 
 -- ── 5. Round 3 (Codex review #282) ───────────────────────────────────────
--- B2: once prepare has run, the person sends nothing more (another device
+-- B2: once committed, the person sends nothing more (another device
 -- still signed in; no time limit, like the hold, round 4): a direct message would outlive the deletion with no
 -- sender. One that got in while prepare ran is caught by the last step.
 CREATE OR REPLACE FUNCTION public.bw_trg_messages_deleting_sender()
@@ -690,21 +755,26 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  v_prepared timestamptz;
+  v_committed timestamptz;
 BEGIN
   IF NEW.sender_id IS NULL THEN
     RETURN NEW;
   END IF;
   -- FOR SHARE: waits while prepare is marking this row (round 4, B1), then
-  -- reads what it committed.
-  SELECT p.prepared_at INTO v_prepared
+  -- reads what it committed. Deadlock note (Claude round 5): this row lock
+  -- is taken inside a message insert, after the insert's own locks; prepare
+  -- takes bands and band_members first and this row last. So no AFTER
+  -- trigger on messages may ever lock bands or band_members rows (FOR
+  -- UPDATE / FOR SHARE, or an UPDATE of them): it would wait on prepare
+  -- while prepare waits on this row.
+  SELECT p.committed_at INTO v_committed
     FROM public.account_deletions_pending p
    WHERE p.user_id = NEW.sender_id
      FOR SHARE;
-  IF v_prepared IS NOT NULL THEN
+  IF v_committed IS NOT NULL THEN
     -- Readable as it is (older builds show the message); the code is the hint.
     RAISE EXCEPTION 'Your account is being deleted.'
-      USING ERRCODE = 'P0001', HINT = 'account_deletion_in_progress';
+      USING ERRCODE = 'P0001', HINT = 'account_being_deleted';
   END IF;
   RETURN NEW;
 END;
@@ -750,6 +820,9 @@ GRANT EXECUTE ON FUNCTION public.bw_account_deletion_finish(uuid) TO service_rol
 -- IS DISTINCT FROM. The rest compare with = (NULL denies) and stay.
 
 -- As 108, with IS DISTINCT FROM: nobody withdraws a former member's suggestion.
+-- Round 5 (Claude review of #295): with #295's 197 applied (in either order)
+-- it returns only the files no other song uses, as 197's copy does; without
+-- 197, as before.
 CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion(p_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -766,15 +839,22 @@ BEGIN
   IF v_uid IS NULL OR g.id IS NULL OR g.created_by IS DISTINCT FROM v_uid THEN
     RAISE EXCEPTION 'Not your suggestion' USING ERRCODE = '42501';
   END IF;
-  IF g.status <> 'pending' THEN
+  IF g.status IS DISTINCT FROM 'pending' THEN
     RAISE EXCEPTION 'This suggestion was already reviewed' USING ERRCODE = '55000';
   END IF;
   UPDATE public.song_suggestions SET status = 'withdrawn', reviewed_at = now() WHERE id = g.id;
   IF g.kind = 'new_song' THEN
     SELECT id, status, audio_url, chart_url INTO s FROM public.songs WHERE id = g.song_id;
     IF s.id IS NOT NULL AND s.status = 'suggested' THEN
-      v_files := to_jsonb(array_remove(ARRAY[s.audio_url, s.chart_url], NULL));
       DELETE FROM public.songs WHERE id = s.id;
+      IF to_regprocedure('public.bw_song_files_left_unused(text[])') IS NOT NULL THEN
+        -- 197: after the delete, the files nothing else uses (claimed).
+        EXECUTE 'SELECT public.bw_song_files_left_unused($1)' INTO v_files
+          USING ARRAY[s.audio_url, s.chart_url];
+        v_files := coalesce(v_files, '[]'::jsonb);
+      ELSE
+        v_files := to_jsonb(array_remove(ARRAY[s.audio_url, s.chart_url], NULL));
+      END IF;
     END IF;
   END IF;
   -- The admins' unread notification about it goes away.
@@ -1005,9 +1085,18 @@ REVOKE ALL ON FUNCTION public.bw_text_replace_first(text, text, text) FROM PUBLI
 --   * about their song suggestions: no `by`, no id in the tag, the name in
 --     the text replaced; a review they made: the name replaced;
 --   * their id goes from every other notification's data.
--- A chat notification is theirs by its message (data.message_id) or its
--- sender id when it has one; older ones (sender name only) by that name in a
--- chat they were in.
+-- Round 5 (Codex B2, B3, Claude minors 1-2):
+--   * direct chats are found by chat (bw_account_deletion_dm_chats), not
+--     only by their participant row;
+--   * a chat notification is theirs only by its sender id (data.sender_id,
+--     written since round 5) or its message (data.message_id, #284 / #291).
+--     Never by name: names change, and two members can share one. An older
+--     one with neither id that matches one of their messages in that chat
+--     (same text, sent around then) is deleted, not relabelled;
+--   * suggestions: exactly the text bw_display_name (066) wrote, so the full
+--     email when they had no name, never "Former member@example.com".
+-- Runs again after the profile is gone (bw_account_deletion_scrub): then
+-- only the id parts can still find anything.
 CREATE OR REPLACE FUNCTION public.bw_account_deletion_notifications(p_uid uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -1015,29 +1104,33 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  v_names text[];
   v_who text;
 BEGIN
   IF to_regclass('public.notifications') IS NULL THEN
     RETURN;
   END IF;
-  SELECT array_remove(ARRAY[nullif(btrim(pr.full_name), ''), nullif(btrim(pr.email), ''),
-                            nullif(split_part(btrim(pr.email), '@', 1), '')], NULL),
-         coalesce(nullif(btrim(pr.full_name), ''), nullif(split_part(btrim(pr.email), '@', 1), ''))
-    INTO v_names, v_who
-    FROM public.profiles pr WHERE pr.id = p_uid;
+  -- The name the server texts used, as they wrote it (NULL without profile).
+  v_who := nullif(public.bw_display_name(p_uid), 'A member');
 
   DELETE FROM public.notifications n
    WHERE n.type IN ('chat_message', 'chat_mention')
      AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') IN (
-           SELECT c.id::text FROM public.chats c
-            WHERE c.type::text NOT IN ('band', 'event', 'group')
-              AND (c.created_by = p_uid
-                   OR EXISTS (SELECT 1 FROM public.chat_participants cp
-                               WHERE cp.chat_id = c.id AND cp.user_id = p_uid)));
+           SELECT c::text FROM public.bw_account_deletion_dm_chats(p_uid) AS c);
+
+  -- Older notices with neither id first (the relabel below drops sender_id).
+  DELETE FROM public.notifications n
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.user_id IS DISTINCT FROM p_uid
+     AND NOT n.data ? 'sender_id' AND NOT n.data ? 'message_id'
+     AND EXISTS (SELECT 1 FROM public.messages m
+                  WHERE m.sender_id = p_uid
+                    AND m.chat_id::text = coalesce(n.data ->> 'chat_id', n.data ->> 'chatId')
+                    AND starts_with(coalesce(m.content, ''), coalesce(n.data ->> 'content', n.body, ''))
+                    AND n.created_at BETWEEN m.created_at - interval '1 minute' AND m.created_at + interval '10 minutes');
 
   UPDATE public.notifications n
-     SET title = public.bw_text_replace_first(n.title, x.from_name, x.label),
+     SET title = CASE WHEN n.type = 'chat_message' THEN x.label
+                      ELSE public.bw_text_replace_first(n.title, x.from_name, x.label) END,
          data = (n.data - 'sender_id')
                 || CASE WHEN n.data ? 'senderName' THEN jsonb_build_object('senderName', x.label) ELSE '{}'::jsonb END
                 || CASE WHEN n.data ? 'sender_name' THEN jsonb_build_object('sender_name', x.label) ELSE '{}'::jsonb END
@@ -1045,22 +1138,16 @@ BEGIN
                         THEN jsonb_build_object('title', public.bw_text_replace_first(n.data ->> 'title', x.from_name, x.label))
                         ELSE '{}'::jsonb END
     FROM (SELECT n2.id,
-                 coalesce(n2.data ->> 'sender_name', n2.data ->> 'senderName', v_who) AS from_name,
+                 coalesce(n2.data ->> 'sender_name', n2.data ->> 'senderName') AS from_name,
                  public.bw_former_member_label(
                    (SELECT r.preferred_language FROM public.profiles r WHERE r.id = n2.user_id)) AS label
             FROM public.notifications n2
-            JOIN public.chats c ON c.id::text = coalesce(n2.data ->> 'chat_id', n2.data ->> 'chatId')
            WHERE n2.type IN ('chat_message', 'chat_mention')
              AND n2.user_id IS DISTINCT FROM p_uid
-             AND c.type::text IN ('band', 'event', 'group')
-             AND (EXISTS (SELECT 1 FROM public.chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = p_uid)
-                  OR c.band_id IN (SELECT bm.band_id FROM public.band_members bm WHERE bm.user_id = p_uid))
              AND (n2.data ->> 'sender_id' = p_uid::text
                   OR (n2.data ? 'message_id'
                       AND EXISTS (SELECT 1 FROM public.messages m
-                                   WHERE m.id::text = n2.data ->> 'message_id' AND m.sender_id = p_uid))
-                  OR (NOT n2.data ? 'message_id' AND NOT n2.data ? 'sender_id'
-                      AND coalesce(n2.data ->> 'sender_name', n2.data ->> 'senderName') = ANY (v_names)))) x
+                                   WHERE m.id::text = n2.data ->> 'message_id' AND m.sender_id = p_uid)))) x
    WHERE n.id = x.id;
 
   UPDATE public.notifications n
@@ -1075,7 +1162,7 @@ BEGIN
   UPDATE public.notifications n
      SET body = public.bw_text_replace_first(n.body, v_who,
                   public.bw_former_member_label((SELECT r.preferred_language FROM public.profiles r WHERE r.id = n.user_id)))
-   WHERE n.type = 'song_suggestion_reviewed' AND n.user_id IS DISTINCT FROM p_uid
+   WHERE n.type = 'song_suggestion_reviewed' AND n.user_id IS DISTINCT FROM p_uid AND v_who IS NOT NULL
      AND EXISTS (SELECT 1 FROM public.song_suggestions g
                   WHERE g.id::text = coalesce(n.data ->> 'suggestion_id', n.reference_id::text)
                     AND g.reviewed_by = p_uid);
@@ -1100,7 +1187,7 @@ SET search_path TO 'public'
 AS $$
   SELECT auth.uid() IS NOT NULL AND EXISTS (
     SELECT 1 FROM public.account_deletions_pending p
-     WHERE p.user_id = auth.uid() AND public.bw_account_deletion_holds(p.started_at, p.prepared_at));
+     WHERE p.user_id = auth.uid() AND public.bw_account_deletion_holds(p.started_at, p.committed_at));
 $$;
 REVOKE ALL ON FUNCTION public.bw_my_account_deletion_pending() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_my_account_deletion_pending() TO authenticated;
@@ -1155,6 +1242,7 @@ AS $$
 DECLARE
   v_band uuid;
   v_conflict text;
+  v_by text;
 BEGIN
   FOR v_band IN
     SELECT DISTINCT x
@@ -1169,23 +1257,31 @@ BEGIN
     CONTINUE WHEN NOT EXISTS (
       SELECT 1 FROM public.account_deletions_pending p
         JOIN public.band_members d ON d.band_id = v_band AND d.user_id = p.user_id
-       WHERE public.bw_account_deletion_holds(p.started_at, p.prepared_at));
+       WHERE public.bw_account_deletion_holds(p.started_at, p.committed_at));
     PERFORM public.bw_band_deletion_lock(v_band);
-    SELECT c.conflict INTO v_conflict
+    SELECT c.conflict, CASE WHEN d.role::text = 'admin' THEN 'admin' ELSE 'member' END
+      INTO v_conflict, v_by
       FROM public.account_deletions_pending p
       JOIN public.band_members d
         ON d.band_id = v_band AND d.user_id = p.user_id AND coalesce(d.is_active, true)
       CROSS JOIN LATERAL (SELECT public.bw_account_deletion_conflict(
-                            v_band, p.user_id, v_band = ANY (p.band_ids), p.prepared_at IS NOT NULL) AS conflict) c
-     WHERE public.bw_account_deletion_holds(p.started_at, p.prepared_at)
+                            v_band, p.user_id, v_band = ANY (p.band_ids), p.committed_at IS NOT NULL) AS conflict) c
+     WHERE public.bw_account_deletion_holds(p.started_at, p.committed_at)
        AND c.conflict IS NOT NULL
      LIMIT 1;
     IF v_conflict IS NOT NULL THEN
       -- Older builds show the message as it is (round 4): plain English;
-      -- newer ones read the code from the hint.
-      RAISE EXCEPTION 'A bandmate is deleting their account. Try again in a few minutes.'
+      -- newer ones read the code from the hint and who is deleting (round 5,
+      -- Claude minor 4: an admin, or a member) from the detail.
+      IF v_by = 'admin' THEN
+        RAISE EXCEPTION 'An admin of this band is deleting their account. Try again in a few minutes.'
+          USING ERRCODE = 'P0001',
+                DETAIL = jsonb_build_object('conflict', v_conflict, 'by', v_by)::text,
+                HINT = 'account_deletion_in_progress';
+      END IF;
+      RAISE EXCEPTION 'A member of this band is deleting their account. Try again in a few minutes.'
         USING ERRCODE = 'P0001',
-              DETAIL = v_conflict,
+              DETAIL = jsonb_build_object('conflict', v_conflict, 'by', v_by)::text,
               HINT = 'account_deletion_in_progress';
     END IF;
   END LOOP;
@@ -1197,6 +1293,215 @@ DROP TRIGGER IF EXISTS bw_band_admin_deletion_guard ON public.band_members;
 CREATE TRIGGER bw_band_admin_deletion_guard
   AFTER INSERT OR DELETE OR UPDATE OF role, is_active, band_id, user_id ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_admin_deletion_guard();
+
+-- ── 8. Round 5 (Codex and Claude reviews #282) ────────────────────────────
+-- Codex B4: as 046, plus a member who leaves because their account is being
+-- deleted (committed, or the profile already gone: the band_members cascade
+-- from Auth) is named "Former member" in each recipient's language, with no
+-- id (member_user_id stays as a key, empty, so 089's text trigger still
+-- words it "left"). Nobody gets "an admin removed you" for it.
+CREATE OR REPLACE FUNCTION public.bw_trg_band_member_changed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_band_name text;
+  v_name text;
+  v_others uuid[];
+  r record;
+  v_joined boolean := false;
+  v_left boolean := false;
+  v_to uuid;
+  v_label text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    v_joined := coalesce(NEW.is_active, true);
+  ELSIF TG_OP = 'UPDATE' THEN
+    v_joined := coalesce(NEW.is_active, true) AND NOT coalesce(OLD.is_active, true);
+    v_left := NOT coalesce(NEW.is_active, true) AND coalesce(OLD.is_active, true);
+  ELSE
+    v_left := coalesce(OLD.is_active, true);
+  END IF;
+
+  IF NOT v_joined AND NOT v_left THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+  END IF;
+
+  SELECT name INTO v_band_name FROM public.bands WHERE id = r.band_id;
+  IF v_band_name IS NULL THEN  -- band itself is being deleted
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+  END IF;
+  v_name := coalesce(public.bw_display_name(r.user_id), 'A member');
+  v_others := array_remove(public.bw_active_band_member_ids(r.band_id), r.user_id);
+
+  IF v_left AND (NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = r.user_id)
+                 OR EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                             WHERE d.user_id = r.user_id AND d.committed_at IS NOT NULL)) THEN
+    FOREACH v_to IN ARRAY v_others LOOP
+      v_label := public.bw_former_member_label(
+        (SELECT pr.preferred_language FROM public.profiles pr WHERE pr.id = v_to));
+      PERFORM public.bw_notify(ARRAY[v_to], r.band_id, 'member_left',
+        v_label || ' left ' || v_band_name, v_label || ' left the band.',
+        jsonb_build_object('member_user_id', NULL::text, 'member_name', v_label, 'band_name', v_band_name),
+        r.band_id, 'band');
+    END LOOP;
+  ELSIF v_joined THEN
+    PERFORM public.bw_notify(v_others, r.band_id, 'member_joined',
+      v_name || ' joined ' || v_band_name, 'Say hi and add them to your next lineup.',
+      jsonb_build_object('member_user_id', r.user_id, 'member_name', v_name, 'band_name', v_band_name),
+      r.band_id, 'band');
+  ELSE
+    IF v_actor IS NOT NULL AND v_actor <> r.user_id THEN
+      -- Removed by someone else: tell the person, then the band.
+      PERFORM public.bw_notify(ARRAY[r.user_id], r.band_id, 'member_left',
+        'Removed from ' || v_band_name, 'An admin removed you from ' || v_band_name || '.',
+        jsonb_build_object('removed', true, 'band_name', v_band_name), r.band_id, 'band');
+      PERFORM public.bw_notify(v_others, r.band_id, 'member_left',
+        v_name || ' left ' || v_band_name, v_name || ' is no longer in the band.',
+        jsonb_build_object('member_user_id', r.user_id, 'member_name', v_name, 'band_name', v_band_name, 'removed', true),
+        r.band_id, 'band');
+    ELSE
+      PERFORM public.bw_notify(v_others, r.band_id, 'member_left',
+        v_name || ' left ' || v_band_name, v_name || ' left the band.',
+        jsonb_build_object('member_user_id', r.user_id, 'member_name', v_name, 'band_name', v_band_name),
+        r.band_id, 'band');
+    END IF;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+EXCEPTION WHEN others THEN
+  RAISE WARNING 'bw_trg_band_member_changed: %', SQLERRM;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS bw_band_member_changed_notify ON public.band_members;
+CREATE TRIGGER bw_band_member_changed_notify
+  AFTER INSERT OR UPDATE OF is_active OR DELETE ON public.band_members
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_member_changed();
+
+-- Codex B4: the final scrub, once Auth has deleted the user (their profile
+-- and pending row are gone by then): their id out of every notification
+-- written meanwhile (cascades into memberships, lineups...). delete-account
+-- calls it after Auth; the trigger below runs it inside the Auth delete
+-- itself, after the cascades, so it can't be skipped.
+CREATE OR REPLACE FUNCTION public.bw_account_deletion_scrub(p_uid uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF p_uid IS NULL THEN
+    RAISE EXCEPTION 'p_uid is required' USING ERRCODE = '22004';
+  END IF;
+  PERFORM public.bw_account_deletion_notifications(p_uid);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_deletion_scrub(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_account_deletion_scrub(uuid) TO service_role;
+
+-- AFTER DELETE on profiles: the foreign-key cascades (band_members and the
+-- rest) have run and written their notifications by then. Never stops the
+-- delete: the explicit call after Auth goes over it again.
+CREATE OR REPLACE FUNCTION public.bw_trg_profile_deleted_scrub()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  PERFORM public.bw_account_deletion_notifications(OLD.id);
+  RETURN NULL;
+EXCEPTION WHEN others THEN
+  RAISE WARNING 'bw_trg_profile_deleted_scrub: %', SQLERRM;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_profile_deleted_scrub() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_profile_deleted_scrub ON public.profiles;
+CREATE TRIGGER bw_profile_deleted_scrub
+  AFTER DELETE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_profile_deleted_scrub();
+
+-- Claude B1 + Codex B1: committed deletions nobody is working on get
+-- finished by the server. Committed more than 5 minutes ago and untouched
+-- for 5 minutes (a retry's begin, or an earlier run of the job, sets
+-- started_at): each row returned is leased to the caller for 5 minutes
+-- (SKIP LOCKED: two runs never get the same row at once).
+CREATE OR REPLACE FUNCTION public.bw_account_deletions_due(p_limit integer DEFAULT 3)
+RETURNS SETOF uuid
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  UPDATE public.account_deletions_pending p
+     SET started_at = now()
+   WHERE p.user_id IN (
+           SELECT d.user_id FROM public.account_deletions_pending d
+            WHERE d.committed_at IS NOT NULL
+              AND d.committed_at < now() - interval '5 minutes'
+              AND d.started_at < now() - interval '5 minutes'
+            ORDER BY d.started_at
+            LIMIT greatest(coalesce(p_limit, 3), 1)
+              FOR UPDATE SKIP LOCKED)
+  RETURNING p.user_id;
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_deletions_due(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_account_deletions_due(integer) TO service_role;
+
+-- The job: when something is due, delete-account's sweep (it removes the
+-- files through the Storage API and deletes the user through Auth, which
+-- SQL can't). Same dispatch secret and Vault entries as the push triggers
+-- (048, 170); delete-account checks it with bw_verify_push_dispatch_secret.
+-- Until delete-account with the sweep is deployed the call is a 401: harmless.
+CREATE OR REPLACE FUNCTION public.bw_finish_account_deletions_dispatch()
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_url text;
+  v_secret text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                  WHERE d.committed_at IS NOT NULL
+                    AND d.committed_at < now() - interval '5 minutes'
+                    AND d.started_at < now() - interval '5 minutes') THEN
+    RETURN false;
+  END IF;
+  SELECT decrypted_secret INTO v_url FROM vault.decrypted_secrets WHERE name = 'bw_project_url' LIMIT 1;
+  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'bw_push_dispatch_secret' LIMIT 1;
+  IF v_url IS NULL OR v_secret IS NULL THEN
+    RETURN false;
+  END IF;
+  PERFORM net.http_post(
+    url := rtrim(v_url, '/') || '/functions/v1/delete-account',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-bw-dispatch-secret', v_secret),
+    body := jsonb_build_object('sweep', true),
+    timeout_milliseconds := 120000
+  );
+  RETURN true;
+EXCEPTION WHEN others THEN
+  RAISE WARNING 'bw_finish_account_deletions_dispatch: %', SQLERRM;
+  RETURN false;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_finish_account_deletions_dispatch() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  PERFORM cron.unschedule('bw-finish-account-deletions')
+  WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-finish-account-deletions');
+  PERFORM cron.schedule('bw-finish-account-deletions', '*/5 * * * *', 'SELECT public.bw_finish_account_deletions_dispatch()');
+END;
+$$;
 
 NOTIFY pgrst, 'reload schema';
 

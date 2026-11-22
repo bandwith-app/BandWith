@@ -41,6 +41,9 @@ describe('delete-account: storage first', () => {
 
 import { beginOutcome, removeFolder, type FolderStore } from '../../../supabase/functions/_shared/account-deletion';
 import fn from '../../../supabase/functions/delete-account/index.ts?raw';
+// Round 5: everything after the commit lives in finishCommitted.
+import shared from '../../../supabase/functions/_shared/account-deletion.ts?raw';
+const finishSrc = shared.slice(shared.indexOf('export async function finishCommitted'));
 
 // A Storage bucket in memory: list() shows one level, 100 entries, sorted.
 const bucket = (paths: string[]) => {
@@ -88,14 +91,14 @@ describe('delete-account: Codex review #282', () => {
 
   it('the function: band check held before any file goes, nothing skipped', () => {
     const begin = fn.indexOf("rpc('bw_account_deletion_begin'");
-    const firstRemove = fn.indexOf('removeFolder(');
+    const firstRemove = fn.indexOf('finishCommitted(deletionServer(admin), caller.id');
     expect(begin).toBeGreaterThan(0);
     expect(begin).toBeLessThan(firstRemove);
     // Avatars go through removeFolder and the SQL readiness count (180).
-    expect(fn).toMatch(/removeFolder\(bucketStore\(admin, "avatars"\), caller\.id\)/);
+    expect(finishSrc).toMatch(/removeFolder\(server\.store\('avatars'\), uid\)/);
     // A failed band lookup or band cleanup stops before Auth deletes the user.
-    expect(fn).toMatch(/if \(toClean === null\) return notReady\(/);
-    expect(fn).toMatch(/if \(!cleaned\) return notReady\(/);
+    expect(finishSrc).toMatch(/if \(toClean === null\) return notReady\(/);
+    expect(finishSrc).toMatch(/if \(!cleaned\) return notReady\(/);
     expect(fn).not.toMatch(/async function removeFolder/);
   });
 });
@@ -117,7 +120,7 @@ describe('delete-account: round 2', () => {
   });
 
   it('the function cleans the folders bandFolders lists', () => {
-    expect(fn).toMatch(/for \(const \{ bucket, prefix \} of bandFolders\(bandId\)\)/);
+    expect(finishSrc).toMatch(/for \(const \{ bucket, prefix \} of bandFolders\(bandId\)\)/);
   });
 
   // Coordinator (Claude review): prepare refusing must answer 409 with the
@@ -153,11 +156,11 @@ describe('delete-account: round 3', () => {
   // B2: a direct message sent from another device while prepare ran is
   // handled once more right before Auth deletes the user.
   it('the function runs the last message step right before Auth', () => {
-    const finish = fn.indexOf('rpc("bw_account_deletion_finish"');
-    const auth = fn.indexOf('auth.admin.deleteUser(caller.id)');
+    const finish = finishSrc.indexOf("rpc('bw_account_deletion_finish'");
+    const auth = finishSrc.indexOf('server.deleteUser(uid)');
     expect(finish).toBeGreaterThan(0);
     expect(finish).toBeLessThan(auth);
-    expect(fn).toMatch(/bw_account_deletion_finish"[\s\S]{0,200}return notReady\("finish"/);
+    expect(finishSrc).toMatch(/bw_account_deletion_finish'[\s\S]{0,200}return notReady\('finish'/);
   });
 
   // MINOR 2: a former member's message (sender NULL) counts as unread.
@@ -210,8 +213,11 @@ describe('delete-account: round 4', () => {
   });
 
   it('the function retries begin, storage release, prepare and the last step', () => {
-    for (const name of ['bw_account_deletion_begin', 'bw_account_storage_release', 'bw_prepare_account_deletion', 'bw_account_deletion_finish']) {
+    for (const name of ['bw_account_deletion_begin', 'bw_prepare_account_deletion']) {
       expect(fn, name).toMatch(new RegExp(`retryOnDeadlock\\(\\(\\) => admin\\.rpc\\(["']${name}["']`));
+    }
+    for (const name of ['bw_account_storage_release', 'bw_account_deletion_finish']) {
+      expect(finishSrc, name).toMatch(new RegExp(`retryOnDeadlock\\(\\(\\) => server\\.rpc\\(["']${name}["']`));
     }
   });
 });
@@ -221,11 +227,11 @@ describe('delete-account: round 4, files and texts', () => {
   // B3: another device can upload after the storage step: the personal
   // folders are emptied again right before the last step, which re-checks.
   it('empties the personal folders again right before the last step', () => {
-    const prepare = fn.indexOf('"bw_prepare_account_deletion"');
-    const finish = fn.indexOf('"bw_account_deletion_finish"');
-    const between = fn.slice(prepare, finish);
-    expect(between).toMatch(/removeFolder\(bucketStore\(admin, "personal-files"\), caller\.id\)/);
-    expect(between).toMatch(/removeFolder\(bucketStore\(admin, "avatars"\), caller\.id\)/);
+    const bandFiles = finishSrc.indexOf('bandFolders(bandId)');
+    const finish = finishSrc.indexOf("'bw_account_deletion_finish'");
+    const between = finishSrc.slice(bandFiles, finish);
+    expect(between).toMatch(/removeFolder\(server\.store\('personal-files'\), uid\)/);
+    expect(between).toMatch(/removeFolder\(server\.store\('avatars'\), uid\)/);
   });
 
   it('the busy answer is readable for older builds', () => {
