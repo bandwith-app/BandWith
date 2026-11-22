@@ -86,9 +86,9 @@ describe('the leader signs, members only check (audit #1)', () => {
     const leader = await generateSigner();
     const bytes = (await encodeSignedState(state, IDS, leader.private, 2))!;
     expect(await decodeSignedState(bytes, IDS, leader.public, 2)).toEqual({ ok: true, state });
-    // This phone kept version 1 (the pair from before the rotation): it fetches the new key (not "a forger").
+    // This phone kept version 1 (the pair from before the rotation): not checked, worth asking the server for a newer key.
     const before = await generateSigner();
-    expect(await decodeSignedState(bytes, IDS, before.public, 1)).toEqual({ ok: false, reason: 'stale' });
+    expect(await decodeSignedState(bytes, IDS, before.public, 1)).toEqual({ ok: false, reason: 'auth', newer: true });
     // Signed with a pair from before a rotation (an admin no longer): refused.
     const old = (await encodeSignedState(state, IDS, leader.private, 1))!;
     expect(await decodeSignedState(old, IDS, leader.public, 2)).toEqual({ ok: false, reason: 'auth' });
@@ -129,7 +129,7 @@ describe('the leader signs, members only check (audit #1)', () => {
     const far = (await encodeSignedState(state, IDS, nextPair.private, 1 + STALE_VERSION_MAX + 1))!;
     expect(await decodeSignedState(far, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'auth' });
     const near = (await encodeSignedState(state, IDS, nextPair.private, 1 + STALE_VERSION_MAX))!;
-    expect(await decodeSignedState(near, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'stale' });
+    expect(await decodeSignedState(near, IDS, kept.public, 1)).toEqual({ ok: false, reason: 'auth', newer: true });
   });
 
   it("no time in a signed state (Codex on #288, rule B): it reads back whatever the member's clock says, the seq right after the pair's version", async () => {

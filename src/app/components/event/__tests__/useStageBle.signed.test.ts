@@ -436,26 +436,27 @@ describe('useStageBle: the pair rotated after an admin stopped being one (Codex 
     hook.unmount();
   });
 
-  it('offline with the old key: the leader is not taken for a forger, and one line asks to go online once', async () => {
+  it('offline with the old key: the leader is not followed, with no "band changed" line (anyone can claim a newer pair); online, the new key and the member follows at once (Claude on #288)', async () => {
     const before = await generateSigner();
     air.kept = { public: before.public, version: 1 };
     air.verify = air.kept; // offline: the kept copy
     put('admin', 'new', lead('a', 5, 'b2'), admins, 2);
     const { onState, hook } = member();
-    await waitFor(() => expect(hook.result.current.status).toBe('stale-key'));
-    // It stays (not flashing back to "searching"), and the leader is tried again, not skipped for a minute.
-    await vi.advanceTimersByTimeAsync(12_000);
-    expect(hook.result.current.status).toBe('stale-key');
-    expect(air.connects.filter((c) => c === 'admin').length).toBeGreaterThan(1);
+    const seen: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(2_000);
+      seen.push(hook.result.current.status);
+    }
+    expect(seen).not.toContain('stale-key');
     expect(onState).not.toHaveBeenCalled();
-    // Back online: the new key (asked for at once), and the member follows.
+    // Back online: the new key (asked for at once), and the member follows without waiting out the skip.
     air.verify = { public: admins.public, version: 2 };
     window.dispatchEvent(new Event('online'));
     await vi.advanceTimersByTimeAsync(8_000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
     await waitFor(() => expect(hook.result.current.status).toBe('connected'));
     hook.unmount();
-  });
+  }, 30_000);
 
   it("a demoted admin's phone, signing with the pair from before, is refused by members with the new key", async () => {
     const before = await generateSigner();
@@ -667,4 +668,45 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     expect(onState).not.toHaveBeenCalledWith(expect.anything());
     hook.unmount();
   });
+
+  it('a phone claiming a newer pair with a made-up signature gets no "band changed who can lead" line: only the server says the band changed (Claude on #288)', async () => {
+    const forger = await generateSigner();
+    // Online, the server's key is version 1: nothing newer exists.
+    put('member-x', 'new', lead('x', 9, 'c3'), forger, 2);
+    const { onState, hook } = member();
+    const seen: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(2_000);
+      seen.push(hook.result.current.status);
+    }
+    expect(seen).not.toContain('stale-key');
+    expect(onState).not.toHaveBeenCalled();
+    // It asked the server, which had nothing newer.
+    expect(air.verifyCalls).toBeGreaterThan(0);
+    hook.unmount();
+  }, 30_000);
+
+  it('linked to a signing admin leading nothing: after ten minutes a band-key phone still does not take over (each look reads the linked state again) (Claude on #288)', async () => {
+    put('admin', 'new', idle(), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('connected'));
+    put('member-x', 'old', lead('x', 99, 'c3'));
+    for (let i = 0; i < 24; i++) await vi.advanceTimersByTimeAsync(30_000);
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'x' }));
+    expect(air.connected.has('admin')).toBe(true);
+    hook.unmount();
+  }, 60_000);
+
+  it('linked to a signing admin, a band-key phone in range is not probed on every look: skipped as a refused one (Claude on #288)', async () => {
+    put('admin', 'new', idle(), admins);
+    const { hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('connected'));
+    put('member-x', 'old', lead('x', 99, 'c3'));
+    for (let i = 0; i < 24; i++) await vi.advanceTimersByTimeAsync(30_000);
+    // 12 minutes: a look every LEADER_CHECK_MS would probe it each time; skipped, doubling to a minute, about 12.
+    const probes = air.connects.filter((c) => c === 'member-x').length;
+    expect(probes).toBeLessThanOrEqual(14);
+    expect(probes).toBeGreaterThanOrEqual(1);
+    hook.unmount();
+  }, 60_000);
 });

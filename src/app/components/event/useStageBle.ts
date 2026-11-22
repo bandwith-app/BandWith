@@ -580,6 +580,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (!signed || !verify) return decodeStageState(bytes, savedRef.current, key);
       const result = await decodeSignedState(bytes, savedRef.current, verify.public, verify.version);
       if (!result.ok && result.reason !== 'setlist') return result;
+      // Stage closed meanwhile (a look's read finishing late): nothing is noted for the next opening.
+      if (cancelled) return result;
       // Below a seq already followed from this signer: a recording played back, not the leader now.
       const seq = result.ok ? result.state.seq : result.seq;
       const from = result.ok ? result.state.from : result.from;
@@ -653,8 +655,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           reads--;
         }
         if (cancelled || deviceId !== id) return;
-        if (!result.ok && result.reason === 'stale') {
-          // A newer pair than this phone's (an admin stopped being one since): not a forger. Online, the server has it.
+        if (!result.ok && result.reason === 'auth' && result.newer) {
+          // Maybe a newer pair than this phone's (an admin stopped being one since), maybe made up: only the server can tell.
           const had = verify?.version;
           // At most every VERIFY_REFRESH_MS: a phone claiming newer pairs can't make this one ask on every read.
           await refreshVerify();
@@ -663,11 +665,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             void readNow();
             return;
           }
-          // Offline: say so plainly, and try this phone again shortly.
-          staleKey = true;
+          // Nothing newer on the server (or offline): a failed check like any other, and no "the band changed" line
+          // (that one only when the server says so: "pending"), since anyone can write a version number.
+          // Skipped for the key: tried again at once if a newer key arrives.
           keySkips.add(id);
-          dropLink(id, backoff(STALE_RETRY_MS, staleStreak++));
-          return;
         }
         if (!result.ok && result.reason === 'auth') {
           // A few: maybe reads caught mid-change (the leader moving fast).
@@ -755,7 +756,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         const plausible = (seq: number) => signed || plausibleFrom(seq, id);
         if (result.ok) return plausible(result.state.seq) && !leadsNothing(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
-        if (result.reason === 'stale') void refreshVerify();
+        if (result.reason === 'auth' && result.newer) void refreshVerify();
         if (result.reason === 'setlist' && plausible(result.seq) && !leadsNothing(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
         return null;
       } catch {
@@ -787,6 +788,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         clearTimeout(checkTimer);
         checkTimer = setTimeout(() => void checkLeaders(), scanWaitMs());
         return;
+      }
+      // The linked signed state, read again: an admin leading nothing sends no change notice, and this
+      // keeps "the admins signed lately" fresh (else after SIGNED_TRUST_MS a band-key phone would take over).
+      if (signedLink) {
+        await readNow();
+        if (cancelled || deviceId !== current) return;
       }
       const found: string[] = [];
       try {

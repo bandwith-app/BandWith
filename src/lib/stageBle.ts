@@ -62,8 +62,8 @@ const MAC_BYTES = 8;
 export const MAX_VALUE_BYTES = 512;
 /**
  * A signed state whose pair is newer than this phone's by at most this many
- * versions means "this phone's key is out of date" (each admin who stops
- * being one adds one); further ahead, it's made up.
+ * versions may mean "this phone's key is out of date" (each admin who stops
+ * being one adds one): the server is asked; further ahead, it's made up.
  */
 export const STALE_VERSION_MAX = 16;
 const SIGNED_HEAD = 3;
@@ -203,11 +203,15 @@ async function stateBody(state: StageLiveState, savedIds: string[], version: num
 
 export type DecodeResult =
   | { ok: true; state: StageLiveState }
-  | { ok: false; reason: 'format' | 'auth' }
+  | { ok: false; reason: 'format' }
+  /**
+   * Not checked. `newer`: signed with a pair a few versions newer than this
+   * phone's key, which it can't check: worth asking the server for a newer
+   * key, never more (anyone can write a version number, Claude on #288).
+   */
+  | { ok: false; reason: 'auth'; newer?: true }
   /** A real state for a setlist this phone doesn't have: its seq and sender still tell which leader is newest. */
-  | { ok: false; reason: 'setlist'; seq: number; from: string }
-  /** Signed with a newer pair than this phone's public key: it needs the new one (internet). */
-  | { ok: false; reason: 'stale' };
+  | { ok: false; reason: 'setlist'; seq: number; from: string };
 
 /** Checks and reads a state; `savedIds` is this phone's saved setlist (any order). */
 export async function decodeStageState(bytes: Uint8Array, savedIds: string[], keyB64: string): Promise<DecodeResult> {
@@ -233,8 +237,8 @@ export async function decodeSignedState(
   const body = bytes.slice(0, bytes.length - SIGNATURE_BYTES);
   // The signature first, with this phone's key: only then is the version worth anything.
   if (!(await verifyBytes(publicKey, body, bytes.slice(bytes.length - SIGNATURE_BYTES)))) {
-    // A few versions newer: this phone's key may be out of date (an admin stopped being one), not a forgery as far as it can tell.
-    return theirs > keyVersion && theirs - keyVersion <= STALE_VERSION_MAX ? { ok: false, reason: 'stale' } : { ok: false, reason: 'auth' };
+    // A few versions newer: this phone's key may be out of date (an admin stopped being one), or it's made up: only the server can tell.
+    return theirs > keyVersion && theirs - keyVersion <= STALE_VERSION_MAX ? { ok: false, reason: 'auth', newer: true } : { ok: false, reason: 'auth' };
   }
   // Checked with this phone's pair, so its version is this phone's: anything else (older, or "newer" under the old pair) is refused.
   if (theirs !== keyVersion) return { ok: false, reason: 'auth' };
