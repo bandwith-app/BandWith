@@ -96,6 +96,12 @@ export const RehearsalSessionBar: React.FC<{
               {statusLabel(status, t)}
               {session.unsaved && canControl ? ` · ${t('Saved when back online')}` : ''}
             </span>
+            {status === 'ended' && session.alreadyEnded ? (
+              // A Start here met a rehearsal that had already ended (Claude r8 B1b).
+              <span className="bw-label-xs text-white" role="status">
+                {t('This rehearsal had already ended. Any songs you played were added to it.')}
+              </span>
+            ) : null}
           </span>
           <span className="flex items-center gap-2 ml-auto shrink-0">
             {canControl && confirmEnd ? (

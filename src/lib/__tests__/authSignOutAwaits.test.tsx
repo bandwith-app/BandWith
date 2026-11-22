@@ -10,6 +10,7 @@ import { render, act, waitFor } from '@testing-library/react';
  */
 const U = 'aaaaaaaa-1111-4111-8111-111111111111';
 const LIST = `bw:rehearsal_notes_rejected:${U}`;
+const q = vi.hoisted(() => ({ pending: [] as unknown[], put: [] as string[] }));
 const chain: Record<string, unknown> = {};
 for (const m of ['select', 'eq', 'update', 'insert', 'upsert']) chain[m] = () => chain;
 chain.single = async () => ({ data: { id: U, email: 'a@example.test', full_name: 'A' }, error: null });
@@ -52,7 +53,7 @@ vi.mock('../regiaAudio', () => ({
 }));
 vi.mock('../offline/syncQueue', () => ({
   processSyncQueue: async () => {},
-  getPendingMutations: async () => [],
+  getPendingMutations: async () => q.pending,
   getOfflineQueueKey: (u: string) => `bw:offline_queue:${u}`,
 }));
 /** This build's clear (before #292): every bw: key, a moment later (IndexedDB is async). */
@@ -63,7 +64,9 @@ vi.mock('../offline/storage', () => ({
     for (const k of all) if (k.startsWith('bw:')) localStorage.removeItem(k);
   },
   getOfflineItem: async () => null,
-  setOfflineItem: async () => {},
+  setOfflineItem: async (k: string) => {
+    q.put.push(k);
+  },
   getCacheKey: (u: string, b: string, k: string) => `bw:${u}:${b}:${k}`,
   listOfflineKeys: async () => [],
   // Before #292: no keep list of its own (signOutWipe uses its copy).
@@ -73,7 +76,11 @@ vi.mock('../offline/storage', () => ({
 import { AuthProvider, useAuth } from '../AuthContext';
 
 describe('#296 round 8: sign-out is awaited end to end', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    q.pending = [];
+    q.put = [];
+  });
 
   it('the refused notes are back before signOut() resolves (nothing of the clear runs after it)', async () => {
     localStorage.setItem(LIST, '[{"id":"x"}]');
@@ -118,5 +125,35 @@ describe('#296 round 8: sign-out is awaited end to end', () => {
     });
     expect(localStorage.getItem(LIST)).toBeNull();
     expect(localStorage.getItem(`bw:rehearsal_notes_rejected:${V}`)).toBe('[{"id":"y"}]');
+  });
+
+  it('Claude r8 M2: the offline queue left unsent is put back for its next sign-in, never for a deleted account', async () => {
+    const mount = async () => {
+      let auth!: ReturnType<typeof useAuth>;
+      const Probe = () => {
+        auth = useAuth();
+        return null;
+      };
+      const view = render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitFor(() => expect(auth.user?.id).toBe(U));
+      return { auth: () => auth, view };
+    };
+    q.pending = [{ table: 'events', op: 'update' }];
+    let m = await mount();
+    await act(async () => {
+      await m.auth().signOut();
+    });
+    expect(q.put.filter((k) => k.startsWith('bw:offline_queue:'))).toEqual([`bw:offline_queue:${U}`]);
+    m.view.unmount();
+    q.put = [];
+    m = await mount();
+    await act(async () => {
+      await m.auth().signOut({ discardPendingWrites: true });
+    });
+    expect(q.put.filter((k) => k.startsWith('bw:offline_queue:'))).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@ import {
   sessionStatus,
   startSession,
   toRow,
+  withSongsOf,
   type PlayedSong,
   type SessionRow,
   type SessionState,
@@ -107,6 +108,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const [unsaved, setUnsaved] = useState(false);
   /** The session ended while Live mode was open here: show the summary. */
   const [justEnded, setJustEnded] = useState(false);
+  /** A Start here met a rehearsal that had already ended (Claude r8 B1b): say so. */
+  const [alreadyEnded, setAlreadyEnded] = useState(false);
   const stateRef = useRef<SessionState | null>(null);
   /** Bumped on every change by the leader: a save clears "unsaved" only if nothing changed meanwhile. */
   const versionRef = useRef(0);
@@ -183,18 +186,21 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       revRef.current = saved.rev ?? null;
       const savedEnd = saved.state.endedAt;
       if (unread && mine && savedEnd !== null && savedEnd <= mine.startedAt) {
+        // Its songs go into that rehearsal's log, untimed (they can't reopen it), and it says so (B1b).
+        const kept = withSongsOf(saved.state, mine);
+        const addsSongs = kept !== saved.state;
         versionRef.current += 1;
         clearTimeout(saveTimer.current);
         saveTimer.current = undefined;
-        setState(saved.state);
+        setState(kept);
         // Not "just ended" here: it ended before this device's Start.
         setJustEnded(false);
-        writeLocal(c.key, rowOf(saved.state), false, revRef.current);
-        markUnsaved(false);
-        // The band heard this Start: it hears the saved End again (no save, so no summary push).
-        const back = message(saved.state);
-        if (back) c.send?.(back);
-        return false;
+        setAlreadyEnded(true);
+        writeLocal(c.key, rowOf(kept), addsSongs, revRef.current);
+        markUnsaved(addsSongs);
+        // Nothing was told to the band before a save (commit, below); with songs to add, the save
+        // that follows tells it. Without: nothing to say.
+        return addsSongs;
       }
       // A union of both (#296 round 8): the saved row tells when it was written itself (updated_at).
       const merged = mine ? mergeSessions(mine, saved.state) : saved.state;
@@ -270,7 +276,10 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       setState(next);
       writeLocal(c.key, rowOf(next), true, revRef.current);
       markUnsaved(true);
-      const msg = message(next);
+      // Told to the band only once this copy is based on a read (#296 round 8, Claude B1): a Start
+      // whose first read failed may be over a rehearsal already ended. Its save tells the band
+      // (saveOnce), or the conflict's read decides (resolveConflict).
+      const msg = revRef.current !== undefined ? message(next) : null;
       if (msg) c.send?.(msg);
       clearTimeout(saveTimer.current);
       if (delay > 0) saveTimer.current = setTimeout(() => void flush(), delay);
@@ -340,6 +349,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     setReady(false);
     markUnsaved(false);
     setJustEnded(false);
+    setAlreadyEnded(false);
     if (key) void load();
   }, [key, load]);
 
@@ -407,6 +417,11 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     // Nothing in it is from after it came in: an older build's copy (no log) is known as of now (#296 round 6/8).
     const next: SessionState | null = msg.row ? fromRow(msg.row, receivedAt) : null;
     const mine = stateRef.current;
+    // A copy of this build (its row carries summary.log; older builds' never do) on no saved
+    // revision (rev null: never saved) can't reopen a session known here as ended (Claude r8 B1):
+    // it is ignored until it comes back on a saved revision. Older builds' copies merge as before.
+    const thisBuild = Array.isArray((msg.row?.summary as { log?: unknown } | undefined)?.log);
+    if (mine && next && thisBuild && msg.rev == null && sessionStatus(mine) === 'ended' && sessionStatus(mergeSessions(mine, next)) !== 'ended') return;
     const show = (s: SessionState | null) => setState(s);
     /**
      * Merged with what this message brings: a union (#296 round 8), where an
@@ -457,7 +472,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       if (!unsavedRef.current) void loadRef.current();
     }, REFRESH_AFTER_MS);
   };
-  bridge.current.latest = () => (ctxRef.current.isLeader && stateRef.current ? message(stateRef.current) : null);
+  bridge.current.latest = () =>
+    ctxRef.current.isLeader && stateRef.current && revRef.current !== undefined ? message(stateRef.current) : null;
 
   const start = useCallback(() => {
     // Not before the saved session has been read (audit 06 #4): a fresh
@@ -488,6 +504,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     unsaved,
     /** Ended while Live mode was open here: the summary is up. */
     justEnded,
+    /** Started here over a rehearsal that had already ended: its songs went into that one (Claude r8 B1b). */
+    alreadyEnded,
     dismissSummary,
     /** This user runs the session (band admin). */
     canControl: isLeader && !!key,

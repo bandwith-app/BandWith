@@ -12,7 +12,11 @@
  *   changes, unsent chat messages): KEEP_ON_SIGN_OUT_PREFIXES from
  *   offline/storage.ts (PR #292); until #292 is on this build, the same list
  *   copied as data from fix/data-loss-audit 661bd1b9;
- * - the device's privacy choices (the analytics answer).
+ * - the device's privacy choices (the analytics answer);
+ * - the push queue, `bandwith.push-*` (#287: a revocation or a token
+ *   deletion still waiting);
+ * - the changes still waiting to be sent (offline queue, rehearsal notes and
+ *   Stage outboxes), per account, sent at its next sign-in.
  */
 import * as storage from './offline/storage';
 import { ANALYTICS_CONSENT_KEY } from './appAnalytics';
@@ -23,9 +27,28 @@ const KEEP_COPY_292 = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', 'bw:c
 export const keptOnSignOut = (): readonly string[] =>
   (storage as { KEEP_ON_SIGN_OUT_PREFIXES?: readonly string[] }).KEEP_ON_SIGN_OUT_PREFIXES ?? KEEP_COPY_292;
 const AUDIO_KEYS = 'bw-regia-audio:';
+/**
+ * The push queue (#287): a revocation and a token deletion still waiting
+ * (`bandwith.push-revoke`, `bandwith.push-delete-pending`). Wiped, the
+ * server would keep sending this account's previews here (#287 r9; the same
+ * rule as IdentityHub's).
+ */
+const PUSH_KEYS = 'bandwith.push-';
+/**
+ * Changes still waiting to be sent, per account: the offline queue, the
+ * rehearsal notes outbox and the Stage outbox (#291 review: IdentityHub's
+ * wipe erased them). The same list as #287's PENDING_WRITE_PREFIXES, which
+ * lands after this (merge order #292 → #296 → #287), so copied as data.
+ */
+const PENDING_KEYS = ['bw:offline_queue:', 'bw:rehearsal_notes_outbox:', 'bw:live_outbox:'] as const;
 /** The device's privacy choices stay too (an analytics answer is never lost by a failed sign-out). */
 const PRIVACY_KEYS = [ANALYTICS_CONSENT_KEY];
-const kept = (k: string) => k.startsWith(AUDIO_KEYS) || PRIVACY_KEYS.includes(k) || keptOnSignOut().some((p) => k.startsWith(p));
+const kept = (k: string) =>
+  k.startsWith(AUDIO_KEYS) ||
+  k.startsWith(PUSH_KEYS) ||
+  PRIVACY_KEYS.includes(k) ||
+  PENDING_KEYS.some((p) => k.startsWith(p)) ||
+  keptOnSignOut().some((p) => k.startsWith(p));
 
 /** The entries sign-out keeps (localStorage), read now. */
 const snapshot = (keep: (k: string) => boolean): [string, string][] => {

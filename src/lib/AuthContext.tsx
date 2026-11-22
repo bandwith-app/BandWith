@@ -88,6 +88,22 @@ export const useAuth = () => {
 export const useOptionalAuth = (): AuthContextType | undefined => useContext(AuthContext);
 
 /**
+ * A deleted account's own keys left on this device (its refused changes and
+ * unsent messages, which sign-out keeps): removed. The fallback when
+ * signOutWipe can't load (Claude r8 M2); other accounts' keys stay.
+ */
+const dropAccountLists = (gone: string | null) => {
+  if (!gone) return;
+  const end = `:${gone.toLowerCase()}`;
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+    for (const k of keys) if (k.startsWith('bw:') && k.toLowerCase().endsWith(end)) localStorage.removeItem(k);
+  } catch {
+    /* storage blocked */
+  }
+};
+
+/**
  * Sends the signed-in user's queued offline edits (a few seconds at most) and
  * returns whatever is still queued, to be stored again after sign-out.
  */
@@ -450,11 +466,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Refused notes stay for this account (#296 round 8): read before the clear, put back after.
       // Awaited, every step (main, three-way sign-out with #287/#292): nothing of it runs after this
       // returns, so what follows (a deleted account's discardAccountWrites) always comes last.
+      // A deleted account (Claude r8 M2): nothing of it is kept or put back, deletion always wins.
+      const gone = opts?.discardPendingWrites ? user?.id ?? null : null;
       await import('./signOutWipe')
-        // Its chunk not there (offline, an old cache): the clear still runs.
-        // A deleted account's lists are not kept (Claude r8 M2): deletion always wins.
-        .then((m) => m.keepingSignOutLists(() => clearOfflineCache(), { gone: opts?.discardPendingWrites ? user?.id ?? null : null }), () => clearOfflineCache())
-        .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
+        .then(
+          (m) => m.keepingSignOutLists(() => clearOfflineCache(), { gone }),
+          // Its chunk not there (offline, an old cache): the clear still runs, a deleted account's lists still go.
+          () => clearOfflineCache().then(() => dropAccountLists(gone)),
+        )
+        .then(() => (pendingQueue && !gone ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }
     return { error };

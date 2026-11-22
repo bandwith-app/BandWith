@@ -124,6 +124,17 @@ export const markPlayed = (s: SessionState, song: PlayedSong, now?: number): Ses
   return { ...s, played: [...s.played, { id: song.id, title: song.title, ...(at === undefined ? {} : { at }) }] };
 };
 
+/**
+ * `saved` with the songs `other` played that it doesn't have, without their
+ * times (#296 round 8, Claude B1b): a device that started over a rehearsal
+ * that had already ended adds its songs to its log, and they can never
+ * reopen it (a timed song after an End would).
+ */
+export const withSongsOf = (saved: SessionState, other: SessionState): SessionState => {
+  const extra = other.played.filter((p) => p.id && !saved.played.some((q) => q.id === p.id)).map((p) => ({ id: p.id, title: p.title }));
+  return extra.length ? { ...saved, played: [...saved.played, ...extra] } : saved;
+};
+
 /** "47:23", or "1:05:09" past an hour. */
 export const formatClock = (sec: number): string => {
   const total = Math.max(0, Math.floor(sec));

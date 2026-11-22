@@ -57,7 +57,7 @@ const controls = (): RehearsalNotesControls => ({
 
 const session: RehearsalSessionControls = {
   enabled: true, ready: true, state: startSession(Date.now() - 60_000), status: sessionStatus(startSession(Date.now() - 60_000)),
-  unsaved: false, justEnded: false, dismissSummary: vi.fn(), canControl: true,
+  unsaved: false, justEnded: false, alreadyEnded: false, dismissSummary: vi.fn(), canControl: true,
   start: vi.fn(), pause: vi.fn(), resume: vi.fn(), end: vi.fn(),
 };
 

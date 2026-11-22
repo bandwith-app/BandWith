@@ -42,6 +42,7 @@ const songs: StageSong[] = [
 const session = (state: SessionState | null, over: Partial<RehearsalSessionControls> = {}): RehearsalSessionControls => ({
   enabled: true,
   ready: true,
+  alreadyEnded: false,
   state,
   status: sessionStatus(state),
   unsaved: false,
@@ -150,6 +151,16 @@ describe('Live mode on a rehearsal: the session timer (A1b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     // Fades out, then is gone.
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Rehearsal summary' })).toBeNull());
+  });
+
+  it('Claude review of 5d858fe2 B1b: a Start on a rehearsal that had already ended says so', () => {
+    const st = markPlayed(endSession(startSession(T0), T0 + 30 * 60_000), { id: 's2', title: 'Superstition' });
+    renderLive(session(st, { alreadyEnded: true }));
+    const notice = screen.getByText('This rehearsal had already ended. Any songs you played were added to it.');
+    expect(notice).toHaveAttribute('role', 'status');
+    cleanup();
+    renderLive(session(st));
+    expect(screen.queryByText(/had already ended/)).toBeNull();
   });
 
   it('switched off (flag) or on a gig: no timer', () => {

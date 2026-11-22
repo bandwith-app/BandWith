@@ -37,6 +37,27 @@ describe('a sign-out that failed: wiped, but not what sign-out keeps', () => {
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
   });
 
+  it('#287 r9 / #291 review: every kept prefix survives a failed sign-out, everything else goes', async () => {
+    const kept: Record<string, string> = {
+      'bandwith.push-revoke': JSON.stringify([{ token: 't1', tries: 0 }]),
+      'bandwith.push-delete-pending': '1',
+      [ANALYTICS_CONSENT_KEY]: 'granted',
+      'bw-regia-audio:owners': JSON.stringify([UID]),
+      [`bw:live_refused:${UID}`]: '[1]',
+      [`bw:rehearsal_notes_rejected:${UID}`]: '[2]',
+      [`bw:chat_outbox:${UID}`]: '[3]',
+      [`bw:rehearsal_notes_outbox:${UID}`]: '[4]',
+      [`bw:live_outbox:${UID}`]: '[5]',
+      [`bw:offline_queue:${UID}`]: '[6]',
+    };
+    const wiped = ['sb-project-auth-token', `bw:${UID}:global:songs`, `bw:${UID}:b1:events`, 'bandwith.theme', 'random-key'];
+    for (const [k, v] of Object.entries(kept)) localStorage.setItem(k, v);
+    for (const k of wiped) localStorage.setItem(k, 'x');
+    await wipeAfterFailedSignOut();
+    for (const [k, v] of Object.entries(kept)) expect([k, localStorage.getItem(k)]).toEqual([k, k === 'bw-regia-audio:owners' ? expect.any(String) : v]);
+    for (const k of wiped) expect([k, localStorage.getItem(k)]).toEqual([k, null]);
+  });
+
   it('keeps #292’s list (copied as data until #292 lands)', () => {
     expect(keptOnSignOut()).toEqual(expect.arrayContaining(['bw:live_refused:', 'bw:rehearsal_notes_rejected:', 'bw:chat_outbox:']));
   });

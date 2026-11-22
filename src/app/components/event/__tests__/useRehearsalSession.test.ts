@@ -10,7 +10,7 @@ vi.mock('@/lib/services/rehearsalSessions', () => ({
 
 import { useRehearsalSession } from '../useRehearsalSession';
 import type { StageSessionBridge } from '../useStageLive';
-import { endSession, fromRow, markPlayed, startSession, toRow, type SessionRow } from '@/lib/rehearsalSession';
+import { endSession, fromRow, markPlayed, sessionStatus, startSession, toRow, type SessionRow } from '@/lib/rehearsalSession';
 
 const CTX = { bandId: 'band-1', eventId: 'event-1', date: '2026-11-19' };
 
@@ -310,8 +310,8 @@ describe('#296 round 2: offline, upgrades and lost answers never drop a session 
     expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
     expect(result.current.state?.endedAt).toBe(ended.endedAt);
     expect(result.current.justEnded).toBe(false);
-    // The band heard the Start: it hears the saved End again.
-    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: new Date(ended.endedAt!).toISOString() }) }));
+    // The band never heard that Start (nothing is sent before a save: Claude review of 5d858fe2).
+    expect(send.mock.calls.some((c) => (c[0] as { row: SessionRow | null }).row?.ended_at === null)).toBe(false);
   });
 });
 
@@ -438,7 +438,8 @@ describe('#296 round 5: an older build’s Resume on the channel', () => {
   /** What builds up to 383f15b send: no rev, no pause times. */
   const oldMsg = (state: Parameters<typeof toRow>[0]) => {
     const row = toRow(state, CTX, 3, Date.now());
-    const { pauses: _drop, ...summary } = row.summary;
+    // As builds up to 383f15b send it: no pause times, no log (#296 round 8).
+    const { pauses: _drop, log: _log, untimed: _u, ...summary } = row.summary as typeof row.summary & { log?: unknown; untimed?: unknown };
     return { v: 1, eventId: 'event-1', date: '2026-11-19', row: { ...row, summary } };
   };
 
@@ -484,7 +485,8 @@ describe('#296 round 6: End on the channel, older builds’ pauses', () => {
   const M = 60_000;
   const oldMsg = (state: Parameters<typeof toRow>[0]) => {
     const row = toRow(state, CTX, 3, Date.now());
-    const { pauses: _drop, ...summary } = row.summary;
+    // As builds up to 383f15b send it: no pause times, no log (#296 round 8).
+    const { pauses: _drop, log: _log, untimed: _u, ...summary } = row.summary as typeof row.summary & { log?: unknown; untimed?: unknown };
     return { v: 1, eventId: 'event-1', date: '2026-11-19', row: { ...row, summary } };
   };
   const newMsg = (state: Parameters<typeof toRow>[0], rev: string) => ({ v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(state, CTX, 3, Date.now()), rev });
@@ -568,5 +570,72 @@ describe('main after the 2385ce12 dry run: the 2-minute match is for older build
     expect((last[0] as SessionRow).ended_at).toBeNull();
     expect((last[0] as SessionRow).paused_ms).toBe(30_000);
     expect(result.current.status).toBe('live');
+  });
+});
+
+describe('Claude review of 5d858fe2: a Start over an ended rehearsal never reaches the band as running', () => {
+  const M = 60_000;
+
+  it('B1: B’s read failed, B taps Start 30 min after the End: nothing goes to the band before the save; a member and admin A that get such a copy (rev null) stay ended', async () => {
+    const T = Date.now();
+    const ended = endSession(startSession(T - 90 * M), T - 30 * M);
+    // A member and admin A know the saved End.
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    const member = setup({ isLeader: false, currentSong: null });
+    const adminA = setup({ currentSong: { id: 's5', title: 'Superstition' } });
+    await waitFor(() => expect(member.result.current.status).toBe('ended'));
+    await waitFor(() => expect(adminA.result.current.status).toBe('ended'));
+    // What B's build used to send at Start: its running copy, on no saved revision.
+    const bCopy = { v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(startSession(T), CTX, 3, T), rev: null };
+    act(() => member.bridge.current.receive?.(bCopy));
+    act(() => adminA.bridge.current.receive?.(bCopy));
+    expect(member.result.current.status).toBe('ended');
+    expect(adminA.result.current.status).toBe('ended');
+    // Admin A's current song changes: still ended, nothing saved over the End.
+    adminA.rerender({ currentSong: { id: 's6', title: 'Cissy Strut' } });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(saveMock).not.toHaveBeenCalled();
+    member.unmount();
+    adminA.unmount();
+    // B is another device: nothing of A's on it.
+    localStorage.clear();
+
+    // B: the read fails, Start, the insert finds the ended rehearsal.
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValue({ error: null, conflict: true });
+    const b = setup({ currentSong: null });
+    await waitFor(() => expect(b.result.current.ready).toBe(true));
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => b.result.current.start());
+    // Not told to the band before a save: never a running copy on the channel.
+    expect(b.send).not.toHaveBeenCalled();
+    expect(b.bridge.current.latest?.()).toBeNull();
+    await waitFor(() => expect(b.result.current.status).toBe('ended'));
+    expect(b.send.mock.calls.every((c) => (c[0] as { row: SessionRow | null }).row?.ended_at !== null)).toBe(true);
+  });
+
+  it('B1b: B played a song before it knew: the song goes into the ended rehearsal’s log (untimed), it stays ended, and B is told', async () => {
+    const T = Date.now();
+    const ended = { ...endSession(startSession(T - 90 * M), T - 30 * M), played: [{ id: 's1', title: 'Paper Boats', at: T - 80 * M }] };
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: 'r3' });
+    const b = setup({ currentSong: { id: 's9', title: 'Cissy Strut' } });
+    await waitFor(() => expect(b.result.current.ready).toBe(true));
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
+    act(() => b.result.current.start());
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(b.result.current.unsaved).toBe(false));
+    expect(b.result.current.status).toBe('ended');
+    expect(b.result.current.alreadyEnded).toBe(true);
+    expect(b.result.current.state?.played.map((p) => p.id)).toEqual(['s1', 's9']);
+    expect(b.result.current.state?.played[1].at).toBeUndefined();
+    // Saved on top of the read revision, still ended (no reopen, so no second summary push).
+    expect(saveMock.mock.calls[1][1]).toBe('r2');
+    const row = saveMock.mock.calls[1][0] as SessionRow;
+    expect(row.ended_at).toBe(new Date(ended.endedAt!).toISOString());
+    expect((row.summary.played as { id: string }[]).map((p) => p.id)).toEqual(['s1', 's9']);
+    // And it reads ended back from that row.
+    expect(sessionStatus(fromRow({ ...row, updated_at: 'r3' } as SessionRow))).toBe('ended');
+    expect(b.send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: row.ended_at }) }));
   });
 });

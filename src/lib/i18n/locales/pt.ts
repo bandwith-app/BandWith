@@ -4222,6 +4222,7 @@ const dict: Dictionary = {
   "Resume": "Retomar",
   "Resume rehearsal": "Retomar o ensaio",
   "Saved when back online": "Salvo quando você voltar a ficar online",
+  "This rehearsal had already ended. Any songs you played were added to it.": "Este ensaio já tinha terminado. As músicas que você tocou foram adicionadas a ele.",
   "A note wasn't saved": "Uma nota não foi salva",
   "These notes weren't saved. Copy what you need, then remove them.": "Estas notas não foram salvas. Copie o que precisar e depois remova-as.",
   "Copy note: {note}": "Copiar nota: {note}",

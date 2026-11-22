@@ -77,6 +77,7 @@ const session = (state: SessionState | null, over: Partial<RehearsalSessionContr
   status: sessionStatus(state),
   unsaved: false,
   justEnded: false,
+  alreadyEnded: false,
   dismissSummary: vi.fn(),
   canControl: true,
   start: vi.fn(),
