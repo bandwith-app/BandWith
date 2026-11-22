@@ -23,7 +23,12 @@
 --     app's lineup restore re-added ex-members still on a lineup).
 --   * bw_open_group_chat(type, band, event, name): the app's get-or-join, in
 --     one transaction under a lock. It finds the chat (or creates it), adds
---     the caller and returns the row plus "created".
+--     the caller and returns the row plus "created". With 175 applied it also
+--     passes 175's rule (bw_chat_scope_ok_for, round 4: 175 keeps a removed
+--     person's row, and its rule is the stricter one).
+--   * Reading chat_participants (round 4, 175 keeps ex-members' rows): the
+--     trigger reads only chats; bw_open_group_chat writes the caller's own
+--     row after both rules said yes; nothing here counts participants.
 --   * a unique index allows one band chat per band and one chat per gig.
 --     Prod has no duplicates (checked 11-22: 2 band chats, 5 event chats, a
 --     dry run found nothing to merge), so there is no merge: if duplicates
@@ -37,7 +42,8 @@
 -- and inserts one: instead of a raw unique-index error they get a clear
 -- message in their language ("This gig already has a chat...", still 23505).
 --
--- Independent of 175/181 (uses only 073 helpers). Idempotent; one transaction.
+-- Independent of 175/181 (uses only 073 helpers; 175's bw_chat_scope_ok_for
+-- only when it exists, through EXECUTE). Idempotent; one transaction.
 -- ============================================================================
 
 BEGIN;
@@ -222,6 +228,7 @@ DECLARE
   v_band uuid;
   v_chat chats%ROWTYPE;
   v_created boolean := false;
+  v_scope_ok boolean;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
@@ -277,6 +284,19 @@ BEGIN
        ORDER BY c.created_at, c.id
        LIMIT 1;
     END;
+  END IF;
+
+  -- 175 r4 (#281): a removed person's row is kept and its rule refuses it
+  -- everywhere. That rule is the stricter one (lineup statuses in any case:
+  -- 'Dropped_Out' is off the gig), so opening must pass it too, or someone
+  -- would "open" a chat they can't read. Called only when 175 is there
+  -- (EXECUTE: this file never depends on it). A chat created just now goes
+  -- back with the refusal.
+  IF to_regprocedure('public.bw_chat_scope_ok_for(uuid, uuid)') IS NOT NULL THEN
+    EXECUTE 'SELECT coalesce(public.bw_chat_scope_ok_for($1, $2), false)' INTO v_scope_ok USING v_chat.id, v_uid;
+    IF NOT v_scope_ok THEN
+      RAISE EXCEPTION 'Not allowed to open this chat' USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   -- Join, keeping cleared_at: deleted history stays deleted.

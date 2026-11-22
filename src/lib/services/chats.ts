@@ -76,6 +76,10 @@ export interface Message {
   reply_to?: Message; // The quoted message
   /** This device only: sending it failed; the bubble offers Try again. */
   failed?: boolean;
+  /** This device only: no connection; sent by itself once back online. */
+  queued?: boolean;
+  /** This device only: why the server refused it (shown with "Not sent"). */
+  fail_reason?: string;
   /** This device only: came by Realtime; no page has confirmed what came before it. */
   live?: boolean;
   /** Set by the sending device (192): Try again never saves a second copy. */
@@ -987,11 +991,14 @@ export const sendMessage = async (
     if (chat.type === 'direct') {
       const otherParticipant = (participants || []).find((p: any) => p.user_id !== user.id);
       if (otherParticipant) {
-        const { data: sharedMemberships } = await supabase
+        const { data: sharedMemberships, error: sharedError } = await supabase
           .from('band_members')
           .select('band_id, role, user_id')
           .in('user_id', [user.id, otherParticipant.user_id])
           .eq('is_active', true);
+        // Not checked (no connection) is not a no: the send fails as a
+        // network error and waits, it never says "only with admins".
+        if (sharedError) throw sharedError;
 
         const userBands = new Map<string, string>();
         const otherBands = new Map<string, string>();
@@ -1014,13 +1021,14 @@ export const sendMessage = async (
         }
       }
     } else if (chat.type === 'band' && chat.band_id) {
-      const { data: bm } = await supabase
+      const { data: bm, error: bmError } = await supabase
         .from('band_members')
         .select('id')
         .eq('band_id', chat.band_id)
         .eq('user_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
+      if (bmError) throw bmError;
 
       if (!bm) {
         return { data: null, error: new ChatRuleError(t('You can only message in bands you are an active member of.')) };
@@ -1028,22 +1036,24 @@ export const sendMessage = async (
     } else if (chat.type === 'event' && chat.event_id) {
       let allowed = false;
       if (chat.band_id) {
-        const { data: bm } = await supabase
+        const { data: bm, error: bmError } = await supabase
           .from('band_members')
           .select('role')
           .eq('band_id', chat.band_id)
           .eq('user_id', user.id)
           .eq('is_active', true)
           .maybeSingle();
+        if (bmError) throw bmError;
         if (bm?.role === 'admin') allowed = true;
       }
       if (!allowed) {
-        const { data: em } = await supabase
+        const { data: em, error: emError } = await supabase
           .from('event_members')
           .select('id, status')
           .eq('event_id', chat.event_id)
           .eq('user_id', user.id)
           .maybeSingle();
+        if (emError) throw emError;
         if (em && em.status !== 'declined') allowed = true;
       }
       if (!allowed) {

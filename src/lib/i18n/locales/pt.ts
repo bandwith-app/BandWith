@@ -1723,6 +1723,7 @@ const dict: Dictionary = {
   "No messages yet": "Nenhuma mensagem ainda",
   "Load earlier messages": "Carregar mensagens anteriores",
   "Not sent": "Não enviada",
+  "Waiting for connection": "Aguardando conexão",
   "Try again: {text}": "Tentar de novo: {text}",
   "Delete unsent message: {text}": "Apagar mensagem não enviada: {text}",
   "Someone": "Alguém",
@@ -3806,6 +3807,7 @@ const dict: Dictionary = {
   // Chat thread: load and send errors, lost access
   "Could not load the messages": "Não foi possível carregar as mensagens",
   "Message not sent. Check your connection and try again.": "Mensagem não enviada. Verifique sua conexão e tente de novo.",
+  "No connection. It’s sent when you’re back online, as long as this chat stays open.": "Sem conexão. Ela é enviada quando você voltar a ficar online, se este chat continuar aberto.",
   "Message not sent. Try again.": "Mensagem não enviada. Tente de novo.",
   "You no longer have access to this chat.": "Você não tem mais acesso a esta conversa.",
   // RSVP from a notification: removed from the event

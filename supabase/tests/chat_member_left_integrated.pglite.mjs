@@ -9,14 +9,20 @@
 // 175 and 178 are large: only the chat functions, policies and triggers are
 // taken, by name (never by line). 194, 192, 193 and 181 are loaded whole.
 //
-// After removal (deactivated, or the band_members row deleted), a new message:
-// the former member reads nothing, is no push recipient
-// (bw_chat_recipient_ids, which #281's send-push chatRecipients calls), is
-// not in get_user_chats, and cannot join again. A row left behind anyway
-// (written with triggers off) still gives no access.
+// After removal (deactivated, or the band_members row deleted), a new message.
+// 175 round 4 KEEPS their chat_participants row (archived in
+// chat_participants_removed_175) and refuses it everywhere, so: the former
+// member reads nothing, is no push recipient (bw_chat_recipient_ids, which
+// #281's send-push chatRecipients calls), is not in get_user_chats, is hidden
+// from the other members' roster (chat_participants read policy), and cannot
+// open or rejoin the chat. A row left behind anyway (written with triggers
+// off) still gives no access. Round 4: someone off the gig in another case
+// ('Dropped_Out': 175 compares lower(), 178 does not) cannot open it either.
 //
 //   cd <dir with @electric-sql/pglite@0.5.15> && node chat_member_left_integrated.pglite.mjs <repo> [193-file]
-//   Refs: BW_175_REF (default 44cf49fc), BW_178_REF (origin/feat/date-on-hold), BW_181_REF (7713af1a).
+//   Refs (first one found): BW_175_REF, origin/fix/security-audit, d9971705;
+//   BW_178_REF, origin/feat/date-on-hold; BW_181_REF, origin/fix/event-chat-lineup,
+//   0437db39. None found for one of them: SKIP (exit 0, with a warning).
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -25,10 +31,23 @@ const REPO = process.argv[2];
 const MIG193 = process.argv[3] ?? `${REPO}/supabase/migrations/193_one_chat_per_gig.sql`;
 const MIG192 = `${REPO}/supabase/migrations/192_chat_notification_purge.sql`;
 const MIG194 = `${REPO}/supabase/migrations/194_chat_notifications_server_only.sql`;
-const show = (ref, path) => execFileSync('git', ['-C', REPO, 'show', `${ref}:${path}`], { encoding: 'utf8' });
-const M175 = show(process.env.BW_175_REF ?? '44cf49fc', 'supabase/migrations/175_security_audit_access.sql');
-const M178 = show(process.env.BW_178_REF ?? 'origin/feat/date-on-hold', 'supabase/migrations/178_date_on_hold.sql');
-const M181 = show(process.env.BW_181_REF ?? '7713af1a', 'supabase/migrations/181_event_chat_lineup.sql');
+const show = (ref, path) => execFileSync('git', ['-C', REPO, 'show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+// The first ref that has the file; none: SKIP with a warning (a clone
+// without those branches can't run the chain).
+function load(label, path, refs) {
+  for (const ref of refs.filter(Boolean)) {
+    try {
+      const sql = show(ref, path);
+      console.log(`using ${label} from ${ref}`);
+      return sql;
+    } catch { /* next */ }
+  }
+  console.log(`SKIP: ${label} not found at ${refs.filter(Boolean).join(', ')} (fetch the branch or set the env ref)`);
+  process.exit(0);
+}
+const M175 = load('175', 'supabase/migrations/175_security_audit_access.sql', [process.env.BW_175_REF, 'origin/fix/security-audit', 'd9971705']);
+const M178 = load('178', 'supabase/migrations/178_date_on_hold.sql', [process.env.BW_178_REF, 'origin/feat/date-on-hold']);
+const M181 = load('181', 'supabase/migrations/181_event_chat_lineup.sql', [process.env.BW_181_REF, 'origin/fix/event-chat-lineup', '0437db39']);
 
 // ── Extract by name ─────────────────────────────────────────────────────────
 // A function: its CREATE statement (or the DO block that writes it) and the
@@ -76,7 +95,7 @@ process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); proce
 let fails = 0;
 const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const [BAND, ADMIN, LINE, LEFT, GONE, STALE] = [1, 2, 3, 4, 5, 6].map(id);
+const [BAND, ADMIN, LINE, LEFT, GONE, STALE, DROP] = [1, 2, 3, 4, 5, 6, 7].map(id);
 const [BANDCHAT, EVCHAT] = [20, 21].map(id);
 const GIG = id(30);
 
@@ -160,12 +179,13 @@ await db.exec(`CREATE POLICY chat_participants_insert ON public.chat_participant
 // Data: Lia (LEFT) and Gus (GONE) are in the band chat and on the gig's
 // lineup; Sam (STALE) too.
 await db.exec(`
-INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${LEFT}','Lia Left'),('${GONE}','Gus Gone'),('${STALE}','Sam Stale');
+INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${LEFT}','Lia Left'),('${GONE}','Gus Gone'),('${STALE}','Sam Stale'),('${DROP}','Dee Dropped');
 INSERT INTO bands VALUES ('${BAND}','Hudson Horns');
 INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'),('${BAND}','${LINE}','member'),
-  ('${BAND}','${LEFT}','member'),('${BAND}','${GONE}','member'),('${BAND}','${STALE}','member');
+  ('${BAND}','${LEFT}','member'),('${BAND}','${GONE}','member'),('${BAND}','${STALE}','member'),('${BAND}','${DROP}','member');
 INSERT INTO events (id, band_id, title, created_by, status, event_type) VALUES ('${GIG}','${BAND}','Rooftop Session','${ADMIN}','confirmed','gig');
-INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed'),('${GIG}','${LEFT}','confirmed'),('${GIG}','${GONE}','confirmed'),('${GIG}','${STALE}','confirmed');
+INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed'),('${GIG}','${LEFT}','confirmed'),('${GIG}','${GONE}','confirmed'),('${GIG}','${STALE}','confirmed'),
+  ('${GIG}','${DROP}','Dropped_Out');
 INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES
   ('${BANDCHAT}','band','Hudson Horns','${BAND}',NULL,'${ADMIN}'),
   ('${EVCHAT}','event','Rooftop Session','${BAND}','${GIG}','${ADMIN}');
@@ -187,6 +207,7 @@ const parts175 = [
   fn(M175, 'get_user_chats'),
   stmt(M175, 'CREATE POLICY chats_select_participant', 'DROP POLICY IF EXISTS chats_select_participant'),
   stmt(M175, 'CREATE POLICY chats_select_creator', 'DROP POLICY IF EXISTS chats_select_creator'),
+  stmt(M175, 'CREATE POLICY chat_participants_select_same_chat', 'DROP POLICY IF EXISTS chat_participants_select_same_chat'),
   fn(M175, 'bw_trg_band_member_left_chats'),
   stmt(M175, 'CREATE TRIGGER bw_band_member_left_chats', 'DROP TRIGGER IF EXISTS bw_band_member_left_chats'),
 ];
@@ -219,9 +240,14 @@ ok(true, '181 runs after 193');
 // ── Removed from the band, already in the chats ────────────────────────────
 await db.exec(`UPDATE band_members SET is_active = false WHERE user_id = '${LEFT}'`);
 await db.exec(`DELETE FROM band_members WHERE user_id = '${GONE}'`);
+// 175 r4: the rows stay (same chat when they come back), with a record in
+// the archive; the rule refuses them everywhere.
+const roster = async (viewer) => (await as(viewer, `SELECT user_id FROM chat_participants WHERE chat_id IN ('${BANDCHAT}','${EVCHAT}')`)).rows.map((x) => x.user_id);
 for (const [who, label] of [[LEFT, 'deactivated'], [GONE, 'row deleted']]) {
-  ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE user_id = '${who}'`) === 0,
-    `${label}: out of the band chat and the gig chat`);
+  ok(await count(`SELECT count(DISTINCT chat_id)::int AS n FROM chat_participants_removed_175 WHERE user_id = '${who}'`) === 2,
+    `${label}: archived from the band chat and the gig chat (chat_participants_removed_175)`);
+  const seen = await roster(LINE);
+  ok(!seen.includes(who) && seen.includes(ADMIN), `${label}: hidden from the other members' roster (${seen.length} visible)`);
 }
 let r = await as(ADMIN, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT}','${ADMIN}','after: set list changed'), ('${BANDCHAT}','${ADMIN}','after: new rehearsal')`);
 ok(!r.error, `the admin posts in both chats (${r.error ?? 'ok'})`);
@@ -241,7 +267,10 @@ ok(!pushTo.includes(LEFT) && !pushTo.includes(GONE) && pushTo.includes(LINE),
 r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}'),('${EVCHAT}','${LEFT}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
 ok(!r.error, `lineup restore with a former member does not fail (${r.error ?? 'ok'})`);
 r = await as(LEFT, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LEFT}'),('${BANDCHAT}','${LEFT}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
-ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE user_id = '${LEFT}'`) === 0, 'nobody puts them back');
+r = await as(LEFT, `SELECT content FROM messages`);
+const pushAgain = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS e`)).rows[0].e;
+ok(r.rows.length === 0 && !pushAgain.includes(LEFT) && !(await roster(LINE)).includes(LEFT),
+  `nobody puts them back: still no read, no push, not in the roster (${r.rows.length} read)`);
 r = await as(LEFT, `SELECT public.bw_open_group_chat('event', '${BAND}', '${GIG}', 'x') AS c`);
 ok(!!r.error, `and they cannot open the gig chat (${r.error ? 'refused' : 'opened'})`);
 
@@ -259,6 +288,18 @@ r = await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}')
 ok(!r.rows[0].e.includes(STALE), 'stale row: no push');
 r = await as(STALE, `SELECT public.get_user_chats('${STALE}') AS c`);
 ok(JSON.stringify(r.rows[0]?.c) === '[]', 'stale row: no chat listed');
+
+// Off the gig in another case ('Dropped_Out'): 193's own rule (178's
+// bw_is_event_participant, case-sensitive) said yes, 175's says no. Opening
+// must not hand them a chat they can't read (round 4).
+r = await as(DROP, `SELECT public.bw_open_group_chat('event', '${BAND}', '${GIG}', 'x') AS c`);
+ok(!!r.error, `'Dropped_Out' on the lineup: bw_open_group_chat refuses (${r.error ? 'refused' : 'opened'})`);
+r = await as(DROP, `SELECT content FROM messages`);
+ok(r.rows.length === 0, `'Dropped_Out': reads nothing (${r.rows.length})`);
+r = await as(LINE, `SELECT (public.bw_open_group_chat('event', '${BAND}', '${GIG}', 'x'))->>'id' AS c`);
+ok(!r.error && r.rows[0]?.c === EVCHAT, `a lineup member still opens the gig chat (${r.error ?? r.rows[0]?.c})`);
+r = await as(ADMIN, `SELECT (public.bw_open_group_chat('band', '${BAND}', NULL, 'x'))->>'id' AS c`);
+ok(!r.error && r.rows[0]?.c === BANDCHAT, `the admin still opens the band chat (${r.error ?? r.rows[0]?.c})`);
 
 // Still in the band: nothing changed for them.
 r = await as(LINE, `SELECT content FROM messages WHERE chat_id = '${EVCHAT}' ORDER BY created_at`);

@@ -37,8 +37,9 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, queuedToSend, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
+import { offlinePermission, readChatPermission, saveChatPermission, type ChatPermission } from '@/lib/chatPermission';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -340,9 +341,29 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       if (!live()) return;
       // Not found for this user (left the band, dropped from the gig, another
       // account's push): say so instead of a composer that can't send.
+      const uid = user?.id;
+      const apply = (p: ChatPermission) => {
+        setCanText(p.permitted);
+        setRestrictionReason(p.reason ? t(p.reason) : '');
+      };
+      // Online, the server's answer wins and is kept for next time. No answer
+      // (offline): the last one kept for this chat and account, or open; the
+      // server still decides when the message goes out (main, #291 r4).
+      const answered = (p: ChatPermission) => {
+        apply(p);
+        void saveChatPermission(uid, id, p);
+      };
+      const unanswered = async () => {
+        const cached = await readChatPermission(uid, id);
+        if (!live()) return;
+        apply(offlinePermission(cached));
+      };
       if (!fullChat && (chatError as { code?: string } | null)?.code === 'PGRST116') {
-        setCanText(false);
-        setRestrictionReason(t('You no longer have access to this chat.'));
+        answered({ permitted: false, reason: 'You no longer have access to this chat.' });
+        return;
+      }
+      if (!fullChat) {
+        await unanswered();
         return;
       }
       if (fullChat) {
@@ -412,15 +433,18 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         if (user) {
           let permitted = true;
           let reason = '';
+          // A lookup that failed is no answer (offline), never a no.
+          let unknown = false;
 
           if (fullChat.type === 'direct') {
             const other = fullChat.participants.find(p => p.user_id !== user.id);
             if (other) {
-              const { data: sharedMemberships } = await supabase
+              const { data: sharedMemberships, error: sharedError } = await supabase
                 .from('band_members')
                 .select('band_id, role, user_id')
                 .in('user_id', [user.id, other.user_id])
                 .eq('is_active', true);
+              if (sharedError) unknown = true;
 
               const userBands = new Map<string, string>();
               const otherBands = new Map<string, string>();
@@ -440,52 +464,56 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
 
               if (!hasAdmin) {
                 permitted = false;
-                reason = t('Direct messaging is only available with band admins.');
+                reason = 'Direct messaging is only available with band admins.';
               }
             }
           } else if (fullChat.type === 'band' && fullChat.band_id) {
-            const { data: bm } = await supabase
+            const { data: bm, error: bmError } = await supabase
               .from('band_members')
               .select('id')
               .eq('band_id', fullChat.band_id)
               .eq('user_id', user.id)
               .eq('is_active', true)
               .maybeSingle();
+            if (bmError) unknown = true;
 
             if (!bm) {
               permitted = false;
-              reason = t('You can only message in bands you are an active member of.');
+              reason = 'You can only message in bands you are an active member of.';
             }
           } else if (fullChat.type === 'event' && fullChat.event_id) {
             let hasAccess = false;
             if (fullChat.band_id) {
-              const { data: bm } = await supabase
+              const { data: bm, error: bmError } = await supabase
                 .from('band_members')
                 .select('role')
                 .eq('band_id', fullChat.band_id)
                 .eq('user_id', user.id)
                 .eq('is_active', true)
                 .maybeSingle();
+              if (bmError) unknown = true;
               if (bm?.role === 'admin') hasAccess = true;
             }
             if (!hasAccess) {
-              const { data: em } = await supabase
+              const { data: em, error: emError } = await supabase
                 .from('event_members')
                 .select('id, status')
                 .eq('event_id', fullChat.event_id)
                 .eq('user_id', user.id)
                 .maybeSingle();
+              if (emError) unknown = true;
               if (em && em.status !== 'declined') hasAccess = true;
             }
             if (!hasAccess) {
               permitted = false;
-              reason = t('You can only message in events you are participating in.');
+              reason = 'You can only message in events you are participating in.';
             }
           }
 
           if (!live()) return;
-          setCanText(permitted);
-          setRestrictionReason(reason);
+          // A yes found is a yes; a no is only a no when every lookup answered.
+          if (permitted || !unknown) answered({ permitted, reason });
+          else await unanswered();
         }
       }
     })();
@@ -528,6 +556,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         }
       }
       loadParticipants();
+      // The server answered: bubbles that waited for the network go now
+      // (the 'online' event alone misses a connection that came back quietly).
+      if (data) void flushRef.current();
     };
     const sync = createChatSync(refreshLatest);
     const offResume = onAppResume(() => sync.catchUp());
@@ -602,8 +633,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     setMessages(prev => prependOlder(prev, data));
   };
 
-  // Sends a bubble already on screen (new, or Try again on a failed one).
-  const deliver = async (pending: Message) => {
+  // Sends a bubble already on screen (new, Try again, or one that waited for
+  // the network: `fromQueue`). Says how it went.
+  const deliver = async (pending: Message, opts: { fromQueue?: boolean } = {}): Promise<'sent' | 'queued' | 'failed'> => {
     const sentFrom = pending.chat_id;
     setSending(true);
     setSendError('');
@@ -611,12 +643,28 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     // Another chat is on screen now: its composer is not this one.
     if (chatIdRef.current !== sentFrom) {
       setSending(false);
-      return;
+      return error ? 'failed' : 'sent';
     }
 
+    let outcome: 'sent' | 'queued' | 'failed' = 'sent';
     if (error) {
       const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
-      setSendError(offline ? t('Message not sent. Check your connection and try again.') : chatErrorMessage(error, t('Message not sent. Try again.')));
+      const refused = chatErrorMessage(error, '');
+      if (offline) {
+        // No connection: the bubble waits and goes out by itself when the
+        // network is back, with the same client id (main, #291 r4).
+        outcome = 'queued';
+        setSendError(t('No connection. It’s sent when you’re back online, as long as this chat stays open.'));
+        setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+      } else if (opts.fromQueue) {
+        // It waited, and the server said no: "Not sent" with the reason;
+        // the text stays in its bubble.
+        outcome = 'failed';
+        setSendError(refused || t('Message not sent. Try again.'));
+        setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
+      } else {
+      outcome = 'failed';
+      setSendError(refused || t('Message not sent. Try again.'));
       if (!draftRef.current.trim() && !replyingToRef.current) {
         // Nothing new typed: the text goes back into the composer.
         setMessages(prev => prev.filter(m => m.id !== pending.id));
@@ -628,7 +676,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       } else {
         // A new draft is in the composer: never overwrite it (07 #5). The
         // message stays as a "Not sent" bubble with Try again.
-        setMessages(prev => markSendFailed(prev, pending.id));
+        setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
+      }
       }
     } else if (data) {
       // Keep the quote on screen if the saved row came back without it.
@@ -637,8 +686,34 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     }
 
     setSending(false);
-    inputRef.current?.focus();
+    if (!opts.fromQueue) inputRef.current?.focus();
+    return outcome;
   };
+
+  // Back online: the bubbles that waited go out, oldest first. Still no
+  // connection: stop, they keep waiting.
+  const flushingRef = useRef(false);
+  const flushQueued = async () => {
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    try {
+      for (const m of queuedToSend(messagesRef.current, chatIdRef.current)) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+        const again = { ...m, failed: false, queued: false, fail_reason: undefined };
+        setMessages(prev => prev.map(x => x.id === m.id ? again : x));
+        if ((await deliver(again, { fromQueue: true })) === 'queued') break;
+      }
+    } finally {
+      flushingRef.current = false;
+    }
+  };
+  const flushRef = useRef(flushQueued);
+  flushRef.current = flushQueued;
+  useEffect(() => {
+    const onOnline = () => void flushRef.current();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
 
   const handleSend = async () => {
     if (!canText) return;
@@ -677,7 +752,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
 
   const retrySend = (message: Message) => {
     if (sending || !canText) return;
-    const again = { ...message, failed: false };
+    const again = { ...message, failed: false, queued: false, fail_reason: undefined };
     setMessages(prev => prev.map(m => m.id === message.id ? again : m));
     void deliver(again);
   };
@@ -1014,7 +1089,12 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                         {/* Not sent: Try again / Delete are 44 px touch targets (Claude review #291 r4). */}
                         {message.failed ? (
                           <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
-                            <span role="status" aria-live="polite" className="bw-label-xs text-destructive">{t('Not sent')}</span>
+                            <span role="status" aria-live="polite" className={cn("bw-label-xs", message.queued ? "text-muted-foreground" : "text-destructive")}>
+                              {message.queued ? t('Waiting for connection') : t('Not sent')}
+                            </span>
+                            {message.fail_reason && (
+                              <span className="basis-full text-right bw-label-xs text-muted-foreground">{message.fail_reason}</span>
+                            )}
                             <button
                               type="button"
                               aria-label={t('Try again: {text}', { text: firstWords(message.content) })}

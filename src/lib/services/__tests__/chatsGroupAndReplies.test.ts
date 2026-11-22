@@ -272,3 +272,37 @@ describe('reply quotes (07 #11)', () => {
     expect(got[0]?.reply_to?.content).toBe('Can you bring the long XLR?');
   });
 });
+
+// Main (#291 r4, offline fails open): a membership lookup that failed is no
+// answer, never a no. The send fails as a network error (the bubble waits),
+// not as "You can only message in bands…".
+describe('a membership check that could not run is not a refusal', () => {
+  it('band chat, lookup fails offline: a network error, no rule message', async () => {
+    h.resolve = (table, calls) => {
+      const has = (m: string) => calls.some(([c]) => c === m);
+      if (table === 'chats' && has('single')) {
+        return { data: { band_id: 'band-1', type: 'band', event_id: null, name: 'Velvet Static', created_by: 'me' }, error: null };
+      }
+      if (table === 'band_members' && has('maybeSingle')) return { data: null, error: new Error('Failed to fetch') };
+      return { data: null, error: null };
+    };
+    const { data, error } = await sendMessage('band-chat', 'hi');
+    expect(data).toBeNull();
+    expect(error).not.toBeInstanceOf(ChatRuleError);
+    expect(String(error?.message)).toMatch(/Failed to fetch/);
+  });
+
+  it('gig chat, lineup lookup fails: a network error, no rule message', async () => {
+    h.resolve = (table, calls) => {
+      const has = (m: string) => calls.some(([c]) => c === m);
+      if (table === 'chats' && has('single')) {
+        return { data: { band_id: 'band-1', type: 'event', event_id: 'gig-1', name: 'Rooftop Session', created_by: 'me' }, error: null };
+      }
+      if (table === 'band_members' && has('maybeSingle')) return { data: { role: 'member' }, error: null };
+      if (table === 'event_members' && has('maybeSingle')) return { data: null, error: new Error('Failed to fetch') };
+      return { data: null, error: null };
+    };
+    const { error } = await sendMessage('ev-chat', 'hi');
+    expect(error).not.toBeInstanceOf(ChatRuleError);
+  });
+});

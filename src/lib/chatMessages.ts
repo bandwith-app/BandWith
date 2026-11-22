@@ -252,6 +252,20 @@ export const firstWords = (content: string, max = 40): string => {
   return `${(out || text.slice(0, max)).replace(/[\s.,;:!?]+$/, '')}…`;
 };
 
-/** A bubble whose send failed: kept, marked, ready for Try again (07 #5). */
-export const markSendFailed = (prev: Message[], tempId: string): Message[] =>
-  prev.map((m) => (m.id === tempId ? { ...m, failed: true } : m));
+/**
+ * A bubble whose send failed: kept, marked, ready for Try again (07 #5).
+ * `queued`: no connection, it goes out by itself once back online. `reason`:
+ * what the server said no with (shown next to "Not sent").
+ */
+export const markSendFailed = (
+  prev: Message[],
+  tempId: string,
+  opts: { queued?: boolean; reason?: string } = {},
+): Message[] =>
+  prev.map((m) =>
+    m.id === tempId ? { ...m, failed: true, queued: !!opts.queued, fail_reason: opts.reason || undefined } : m,
+  );
+
+/** Bubbles waiting for the network, oldest first (they go out in that order). */
+export const queuedToSend = (list: Message[], chatId: string): Message[] =>
+  list.filter((m) => m.queued && m.chat_id === chatId);

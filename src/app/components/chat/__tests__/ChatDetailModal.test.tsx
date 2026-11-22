@@ -6,6 +6,9 @@ const rt = vi.hoisted(() => ({
   onMessage: null as null | ((m: any) => void),
   opts: null as null | { onStatus?: (s: string) => void },
 }));
+// What every direct supabase query in the modal resolves to (band checks).
+const sb = vi.hoisted(() => ({ result: { data: null, error: null } as { data: unknown; error: unknown } }));
+const rule = vi.hoisted(() => ({ Err: class ChatRuleError extends Error {} }));
 const svc = vi.hoisted(() => ({
   getMessages: vi.fn(),
   getChat: vi.fn(),
@@ -27,13 +30,13 @@ vi.mock('@/lib/services/chats', () => ({
   subscribeToReceipts: () => () => {},
   deleteChat: vi.fn(async () => ({ error: null })),
   receiptFor: () => 'sent',
-  chatErrorMessage: (_e: unknown, fallback: string) => fallback,
+  chatErrorMessage: (e: unknown, fallback: string) => (e instanceof rule.Err ? e.message : fallback),
 }));
 vi.mock('@/lib/supabase', () => {
   const b: any = new Proxy(function () {}, {
     get: (_t, prop) => {
       if (prop === 'then') {
-        const p = Promise.resolve({ data: null, error: null });
+        const p = Promise.resolve(sb.result);
         return p.then.bind(p);
       }
       return b;
@@ -92,6 +95,8 @@ beforeEach(() => {
   svc.getChatParticipants.mockReset().mockResolvedValue({ data: [participant('me', 'Me'), participant('u1', 'Leo M.')] });
   svc.sendMessage.mockReset().mockResolvedValue({ data: null, error: null });
   scrollSpy.mockReset();
+  sb.result = { data: null, error: null };
+  try { localStorage.clear(); } catch { /* none */ }
   rt.onMessage = null;
   rt.opts = null;
   Element.prototype.scrollIntoView = scrollSpy;
@@ -213,7 +218,7 @@ describe('ChatDetailModal', () => {
   // timeout; sending it again must not make a second copy.
   it('resending the same text from the composer reuses its client id', async () => {
     openComposer();
-    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('upstream request timeout') });
     render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
     await settle();
     const input = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
@@ -252,7 +257,7 @@ describe('ChatDetailModal', () => {
     expect(screen.getByText('hello')).toBeTruthy();
     expect(replies()).toBe(saved);
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'new draft' } });
-    await act(async () => { fail({ data: null, error: new Error('Failed to fetch') }); });
+    await act(async () => { fail({ data: null, error: new Error('upstream request timeout') }); });
     await settle();
     expect(screen.getByText('Not sent')).toBeTruthy();
     expect(replies()).toBe(saved);
@@ -271,7 +276,7 @@ describe('ChatDetailModal', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     await settle();
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'new draft' } });
-    await act(async () => { fail({ data: null, error: new Error('Failed to fetch') }); });
+    await act(async () => { fail({ data: null, error: new Error('upstream request timeout') }); });
     await settle();
     const status = screen.getAllByRole('status').find((el) => el.textContent?.includes('Not sent'));
     expect(status?.getAttribute('aria-live')).toBe('polite');
@@ -361,7 +366,7 @@ describe('ChatDetailModal', () => {
       fireEvent.keyDown(input(), { key: 'Enter' });
       await settle();
       fireEvent.change(input(), { target: { value: 'message B, half typed' } });
-      await act(async () => { first.resolve({ data: null, error: new Error('Failed to fetch') }); });
+      await act(async () => { first.resolve({ data: null, error: new Error('upstream request timeout') }); });
       await settle();
       expect(input().value).toBe('message B, half typed');
       expect(screen.getByText('message A')).toBeTruthy();
@@ -437,5 +442,112 @@ describe('ChatDetailModal', () => {
     // The quote box (black) inside the saved bubble.
     const quotes = [...document.querySelectorAll('.bg-black')].map((el) => el.textContent);
     expect(quotes.some((q) => q?.includes('message 0'))).toBe(true);
+  });
+});
+
+// Main's decision (#291 r4): offline the chat fails open. The last answer
+// kept for this chat and account decides; with none the composer shows and
+// the message waits; the server has the last word when it goes out.
+describe('ChatDetailModal offline: who may write', () => {
+  const bandProp = { id: 'c1', type: 'band' as const, name: 'Velvet Static', initials: 'VS', unread: 0 };
+  const bandChat = () =>
+    svc.getChat.mockResolvedValue({
+      data: { id: 'c1', type: 'band', band_id: 'b1', name: 'Velvet Static', participants: [participant('me', 'Me')] },
+      error: null,
+    });
+  const offline = () => { sb.result = { data: null, error: new Error('Failed to fetch') }; };
+  const composer = () => screen.queryByRole('textbox', { name: 'Message' }) as HTMLInputElement | null;
+  const bandRule = 'You can only message in bands you are an active member of.';
+
+  it('offline with a kept "yes": the composer shows', async () => {
+    const { saveChatPermission } = await import('@/lib/chatPermission');
+    await saveChatPermission('me', 'c1', { permitted: true, reason: '' });
+    bandChat();
+    offline();
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(composer()).toBeTruthy();
+    expect(screen.queryByText(bandRule)).toBeNull();
+  });
+
+  it('offline with a kept "no": the composer stays locked with its reason', async () => {
+    const { saveChatPermission } = await import('@/lib/chatPermission');
+    await saveChatPermission('me', 'c1', { permitted: false, reason: bandRule });
+    bandChat();
+    offline();
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText(bandRule)).toBeTruthy();
+  });
+
+  it('offline with nothing kept: the composer shows, the message waits, the server says no later', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    const input = composer();
+    expect(input).toBeTruthy();
+    fireEvent.change(input!, { target: { value: 'Soundcheck at 6' } });
+    fireEvent.keyDown(input!, { key: 'Enter' });
+    await settle();
+    // Queued: a bubble that waits, never back in the composer.
+    expect(screen.getByText('Soundcheck at 6')).toBeTruthy();
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+    expect(composer()!.value).toBe('');
+
+    // Back online: it goes out by itself, same client id; the server refuses.
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Err(bandRule) });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    const calls = svc.sendMessage.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][4]).toBe(calls[0][4]);
+    expect(screen.getByText('Not sent')).toBeTruthy();
+    expect(screen.getAllByText(bandRule).length).toBeGreaterThan(0);
+    expect(screen.getByText('Soundcheck at 6')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Try again: Soundcheck at 6/ })).toBeTruthy();
+  });
+
+  it('a waiting message that the server takes is sent once', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'On my way' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    svc.sendMessage.mockResolvedValueOnce({ data: { ...msg(300, 'me'), content: 'On my way' }, error: null });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    expect(svc.sendMessage).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Waiting for connection')).toBeNull();
+    expect(screen.getAllByText('On my way')).toHaveLength(1);
+  });
+
+  it('online, the server\'s "no" replaces a kept "yes"', async () => {
+    const { saveChatPermission, readChatPermission } = await import('@/lib/chatPermission');
+    await saveChatPermission('me', 'c1', { permitted: true, reason: '' });
+    bandChat();
+    sb.result = { data: null, error: null };
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText(bandRule)).toBeTruthy();
+    expect(await readChatPermission('me', 'c1')).toEqual({ permitted: false, reason: bandRule });
+  });
+
+  it('online, the server\'s "yes" is kept for next time', async () => {
+    const { readChatPermission } = await import('@/lib/chatPermission');
+    bandChat();
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(composer()).toBeTruthy();
+    expect(await readChatPermission('me', 'c1')).toEqual({ permitted: true, reason: '' });
   });
 });
