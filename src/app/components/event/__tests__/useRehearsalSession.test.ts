@@ -245,4 +245,41 @@ describe('#296 round 2: offline, upgrades and lost answers never drop a session 
     expect(last[0].ended_at).not.toBeNull();
     expect(result.current.status).toBe('ended');
   });
+
+  it('Claude B2: a song save went through but its answer was lost; End then finds a newer revision and is kept', async () => {
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
+    const { result, rerender } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    // The song change is saved on the server (r2), the answer never arrives.
+    saveMock.mockResolvedValueOnce({ error: { message: 'Failed to fetch' } });
+    rerender({ currentSong: { id: 's1', title: 'Paper Boats' } });
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    fetchMock.mockResolvedValue({ state: { ...live, played: [{ id: 's1', title: 'Paper Boats' }] }, summary: null, rev: 'r2' });
+    saveMock.mockImplementation(async (_row: SessionRow, rev?: string | null) => (rev === 'r2' ? { error: null, rev: 'r3' } : { error: null, conflict: true }));
+    act(() => result.current.end());
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    const last = saveMock.mock.calls[saveMock.mock.calls.length - 1];
+    expect(last[1]).toBe('r2');
+    expect(last[0].ended_at).not.toBeNull();
+    expect(result.current.status).toBe('ended');
+  });
+
+  it('Claude minor: a first read that hangs (weak signal) frees Start after about 4 s; it starts as a new row only', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchMock.mockImplementation(() => new Promise(() => {}));
+      const { result } = setup({ currentSong: null });
+      expect(result.current.ready).toBe(false);
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      expect(result.current.ready).toBe(true);
+      act(() => result.current.start());
+      expect(result.current.status).toBe('live');
+      await waitFor(() => expect(saveMock).toHaveBeenCalled());
+      expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

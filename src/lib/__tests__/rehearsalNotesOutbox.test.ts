@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addOp, applyOps, dismissRejected, flushOutbox, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
+import { addOp, applyOps, clearNoteBackoff, dismissRejected, flushOutbox, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
 import type { RehearsalNote } from '../rehearsalNotes';
 
 const ME = 'user-me';
@@ -119,7 +119,10 @@ describe('rehearsal notes outbox: replay', () => {
 });
 
 describe('audit 06 #5: a server error never throws a note away', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    clearNoteBackoff();
+  });
   const apiWith = (save: (n: RehearsalNote) => Promise<{ error: unknown; status?: number }>) => ({
     save: vi.fn(save),
     remove: vi.fn(async () => ({ error: null })),
@@ -144,6 +147,7 @@ describe('audit 06 #5: a server error never throws a note away', () => {
       { error: { message: 'Bad Gateway', status: 502 } },
     ]) {
       localStorage.clear();
+      clearNoteBackoff();
       writeOutbox(ME, [{ kind: 'save', note: note('n1'), before: [] }]);
       expect(await flushOutbox(ME, apiWith(async () => res))).toEqual({ sent: 0, dropped: 0, left: 1 });
     }
@@ -159,5 +163,37 @@ describe('audit 06 #5: a server error never throws a note away', () => {
     expect(readRejected(ME).map((n) => [n.id, n.body])).toEqual([['bad', 'Count the outro in four']]);
     dismissRejected(ME, 'bad');
     expect(readRejected(ME)).toEqual([]);
+  });
+
+  it('Claude minor: one note that keeps failing (5xx) waits on its own; the others still go, and it is tried again later', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    writeOutbox(ME, [
+      { kind: 'save', note: note('stuck'), before: [] },
+      { kind: 'ok', id: 'stuck', value: true },
+      { kind: 'save', note: note('n2'), before: [] },
+    ]);
+    const api = apiWith(async (n) => (n.id === 'stuck' ? { error: { message: 'Internal Server Error' }, status: 500 } : { error: null }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 1, dropped: 0, left: 2 });
+    // Its later change waits behind it, in order.
+    expect(api.ok).not.toHaveBeenCalled();
+    expect(readOutbox(ME).map((o) => o.kind)).toEqual(['save', 'ok']);
+    // Right away again: not hammered.
+    await flushOutbox(ME, api);
+    expect(api.save.mock.calls.filter(([n]) => n.id === 'stuck')).toHaveLength(1);
+    // Later: tried again; now it goes, and its OK after it.
+    now.mockReturnValue(1_000_000 + 10 * 60_000);
+    api.save.mockImplementation(async () => ({ error: null }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 2, dropped: 0, left: 0 });
+    now.mockRestore();
+  });
+
+  it('no signal still stops the whole pass (everything would fail)', async () => {
+    writeOutbox(ME, [
+      { kind: 'save', note: note('a'), before: [] },
+      { kind: 'save', note: note('b'), before: [] },
+    ]);
+    const api = apiWith(async () => ({ error: { message: 'Failed to fetch' } }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 0, dropped: 0, left: 2 });
+    expect(api.save).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,9 +6,14 @@
 -- the app saves only on top of the revision it read (updated_at) or as a new
 -- row (src/lib/services/rehearsalSessions.ts); this guard covers the builds
 -- already in the field, which upsert: a write that changes started_at of a
--- saved session is refused ('rehearsal_session_conflict'). Pause, resume,
--- end, resume after the end and the songs played keep started_at, so they
--- are unaffected. To really start an occurrence again, delete its row first.
+-- saved session is skipped (the row stays as it is, 0 rows written). Not an
+-- error on purpose (PR #296 review): those builds keep a refused save as
+-- "unsaved" on the device and retry it forever, so an error would trap them;
+-- a skipped write reads as saved, their device copy turns clean and the next
+-- open shows the saved session. This build sees 0 rows as a conflict and
+-- merges. Pause, resume, end, resume after the end and the songs played keep
+-- started_at, so they are unaffected. To really start an occurrence again,
+-- delete its row first.
 --
 -- Same function as 131 plus that one check. No new columns, grants or
 -- policies. Idempotent.
@@ -26,8 +31,8 @@ BEGIN
     NEW.created_at := now();
   ELSE
     IF NEW.started_at IS DISTINCT FROM OLD.started_at THEN
-      RAISE EXCEPTION 'rehearsal_session_conflict: this rehearsal already has a saved session'
-        USING ERRCODE = 'P0001', HINT = 'Read the saved session again.';
+      -- Another start over a saved session: skipped, the saved one stays.
+      RETURN NULL;
     END IF;
     NEW.started_by := OLD.started_by;
     NEW.created_at := OLD.created_at;

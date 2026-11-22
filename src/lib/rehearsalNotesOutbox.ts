@@ -154,6 +154,24 @@ const send = (api: OutboxApi, op: NoteOp): Res => {
 let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = null;
 
 /**
+ * A note the server keeps failing (5xx and the like) waits on its own, longer
+ * each time (20 s, 40 s… up to 10 min), so the other notes still go (PR #296
+ * review). In memory: a restart tries it again at once.
+ */
+const BACKOFF_FIRST_MS = 20_000;
+const BACKOFF_MAX_MS = 10 * 60_000;
+const backoff = new Map<string, { attempts: number; until: number }>();
+const backoffKey = (userId: string, id: string) => `${userId}:${id}`;
+const waitingOut = (userId: string, id: string) => (backoff.get(backoffKey(userId, id))?.until ?? 0) > Date.now();
+const failedAgain = (userId: string, id: string) => {
+  const k = backoffKey(userId, id);
+  const attempts = (backoff.get(k)?.attempts ?? 0) + 1;
+  backoff.set(k, { attempts, until: Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_FIRST_MS * 2 ** (attempts - 1)) });
+};
+/** Tests: forget every note's wait. */
+export const clearNoteBackoff = () => backoff.clear();
+
+/**
  * Send the waiting changes in order. Offline or a passing server problem:
  * stop and keep the rest (tried again later). Refused for good (no longer
  * allowed, note gone): dropped, so one bad change never blocks the others,
@@ -165,11 +183,28 @@ export function flushOutbox(userId: string, api: OutboxApi) {
   flushing = (async () => {
     let sent = 0;
     let dropped = 0;
+    // Notes passed over in this pass (failing now, or waiting out a failure):
+    // their later changes wait behind them, in order.
+    const held = new Set<string>();
     // Changes queued while sending go in the same pass (a mark, then its preset).
     // (Bounded: storage that can't be written would hand back the same change.)
-    for (let op = readOutbox(userId)[0], n = 0; op && n < 500; op = readOutbox(userId)[0], n++) {
+    for (let n = 0; n < 500; n++) {
+      const op = readOutbox(userId).find((o) => !held.has(opId(o)));
+      if (!op) break;
+      const id = opId(op);
+      if (waitingOut(userId, id)) {
+        held.add(id);
+        continue;
+      }
       const { error, status } = await send(api, op);
-      if (error && isRetryableWriteError(error, status)) break;
+      // No signal: everything would fail, stop here.
+      if (error && isOfflineError(error)) break;
+      if (error && isRetryableWriteError(error, status)) {
+        failedAgain(userId, id);
+        held.add(id);
+        continue;
+      }
+      backoff.delete(backoffKey(userId, id));
       if (error) {
         dropped++;
         if (op.kind === 'save') writeRejected(userId, [...readRejected(userId).filter((n) => n.id !== op.note.id), op.note]);

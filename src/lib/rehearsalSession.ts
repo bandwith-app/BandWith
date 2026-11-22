@@ -182,20 +182,23 @@ export const fromRow = (row: unknown): SessionState | null => {
 /**
  * Two copies of one occurrence's session: this device's, and the saved one
  * that moved on meanwhile (another admin, a Start whose answer was lost, an
- * edit kept by an older version). Nothing is lost (#296): the saved start
- * stays (196 refuses another), every song played on either is kept (the
- * saved order first), an end on either stays (the later one), and this
- * device's pause counts only for the same session still running.
+ * edit kept by an older version). Nothing is lost (#296): every song played
+ * on either is kept (the saved order first). The same start (our own row):
+ * an end on either stays (the later one), and this device's pause counts
+ * while it still runs. A different start (started here unread): the saved
+ * session's times stay as they are (196 skips another start), only the
+ * songs are added.
  */
 export const mergeSessions = (mine: SessionState, saved: SessionState): SessionState => {
   const same = mine.startedAt === saved.startedAt;
   const played = [...saved.played, ...mine.played.filter((p) => !saved.played.some((q) => q.id === p.id))];
+  if (!same) return { ...saved, played };
   const ends = [mine.endedAt, saved.endedAt].filter((e): e is number => e !== null);
   const endedAt = ends.length ? Math.max(saved.startedAt, ...ends) : null;
-  const pausedMs = same ? Math.max(mine.pausedMs, saved.pausedMs) : saved.pausedMs;
+  const pausedMs = Math.max(mine.pausedMs, saved.pausedMs);
   let pausedAt: number | null = null;
   if (endedAt === null) {
-    if (!same || saved.pausedMs > mine.pausedMs) pausedAt = saved.pausedAt;
+    if (saved.pausedMs > mine.pausedMs) pausedAt = saved.pausedAt;
     else if (mine.pausedMs > saved.pausedMs) pausedAt = mine.pausedAt;
     else pausedAt = mine.pausedAt ?? saved.pausedAt;
   }

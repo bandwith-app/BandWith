@@ -32,7 +32,7 @@ vi.mock('@/lib/services/rehearsalNotes', () => ({
 }));
 
 import { useRehearsalNotes } from '../useRehearsalNotes';
-import { readOutbox } from '@/lib/rehearsalNotesOutbox';
+import { clearNoteBackoff, readOutbox } from '@/lib/rehearsalNotesOutbox';
 
 const opts = { enabled: true, bandId: 'b', eventId: 'e', date: '2026-11-19', userId: 'u1', isAdmin: true };
 
@@ -91,6 +91,7 @@ describe('useRehearsalNotes (A2)', () => {
     expect(result.current.rejected).toEqual([]);
     // Now the server refuses it for good: not waiting any more, but its text is still here.
     answer = { error: { code: '42501', message: 'denied' }, status: 403 };
+    clearNoteBackoff(); // its wait after the 503 is over
     act(() => {
       window.dispatchEvent(new Event('online'));
     });

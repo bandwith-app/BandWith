@@ -226,12 +226,14 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
     expect(mergeSessions(endSession(live, T0 + 30 * MIN), endSession(live, T0 + 50 * MIN)).endedAt).toBe(T0 + 50 * MIN);
   });
 
-  it('a different start (started unread on another device): the saved start stays, songs and the end are kept', () => {
+  it('a different start (started unread on another device): the saved times stay, its songs are added', () => {
     const mine = endSession({ ...startSession(T0 + 5 * MIN), played: [B] }, T0 + 45 * MIN);
     const m = mergeSessions(mine, live);
     expect(m.startedAt).toBe(T0);
     expect(m.played.map((p) => p.id)).toEqual(['s1', 's2']);
-    expect(m.endedAt).toBe(T0 + 45 * MIN);
+    expect(m.endedAt).toBeNull();
+    const savedEnd = endSession(live, T0 + 30 * MIN);
+    expect(mergeSessions(mine, savedEnd).endedAt).toBe(T0 + 30 * MIN);
   });
 
   it('nothing new on this device: the saved one as it is', () => {

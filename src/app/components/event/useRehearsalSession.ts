@@ -76,6 +76,8 @@ const SONG_SAVE_DELAY_MS = 1500;
 const RETRY_MS = 20_000;
 /** Another admin's change arrived: read its new revision once it is saved. */
 const REFRESH_AFTER_MS = 2500;
+/** A first read still not back (weak signal): Start is allowed anyway, as a new row only. */
+const FIRST_READ_MS = 4000;
 
 /**
  * A rehearsal's session in Live mode (plan A1b, migration 131): the leader
@@ -249,7 +251,13 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       // Changes made here (offline too) are saved on top of the revision this copy was read at.
       if (revRef.current === undefined) revRef.current = local.rev;
     }
+    const slow = setTimeout(() => {
+      if (ctxRef.current.key !== c.key || readyRef.current) return;
+      readyRef.current = true;
+      setReady(true);
+    }, FIRST_READ_MS);
     const saved = await fetchRehearsalSession(c.eventId, c.date);
+    clearTimeout(slow);
     if (ctxRef.current.key !== c.key) return;
     readyRef.current = true;
     setReady(true);

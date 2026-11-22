@@ -43,7 +43,7 @@ export interface SaveSessionResult {
   rev?: string | null;
 }
 
-/** Refused because the saved session moved on: 23505 (already there) or the 196 guard. */
+/** Refused because the saved session moved on: 23505 (already there); an error from the first 196 draft too. */
 const isConflict = (e: unknown) => {
   const err = (e ?? {}) as { code?: unknown; message?: unknown };
   return err.code === '23505' || String(err.message ?? '').includes('rehearsal_session_conflict');
@@ -53,7 +53,8 @@ const isConflict = (e: unknown) => {
  * Save the whole session, never over a newer one (audit 06 #3/#4): with the
  * revision it was read at, only if the row is still at that revision; with
  * none (`null`: nothing saved, or never read), only as a new row. Otherwise
- * `conflict`: the saved session wins and the caller reads it again.
+ * (0 rows: moved on, gone, or another start skipped by 196) `conflict`: the
+ * caller reads the saved session and merges into it.
  */
 export async function saveRehearsalSession(row: SessionRow, rev?: string | null): Promise<SaveSessionResult> {
   const res = rev

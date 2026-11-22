@@ -84,18 +84,34 @@ ok((await upsert(ADMIN_A, { started_at: A_START, paused_at: '2026-11-19T19:10:00
 ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 60000 })).ok, 'A resumes');
 ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 60000, ended_at: A_END, summary: summary(PLAYED) })).ok, 'A ends it with the songs played');
 
-// B (missed the end, or a fresh device that tapped Start early) starts over it: refused, nothing changes.
+// B (missed the end, or a fresh device that tapped Start early) starts over it: skipped, nothing changes.
 const before = await saved();
 const b = await upsert(ADMIN_B, { started_at: B_START });
-ok(/rehearsal_session_conflict/.test(b.error ?? ''), `B's new start over the saved session is refused (${b.error ?? 'written'})`);
 const after = await saved();
 ok(after.ended_at !== null && after.summary.played.length === 2, 'the ended rehearsal and its songs played are intact');
 ok(String(after.started_at) === String(before.started_at), 'its start time is intact');
+// Not an error: the builds in the field retry an error forever (PR #296 review).
+ok(b.ok === true, `the old build's upsert gets no error, so it stops retrying (${b.error ?? 'ok'})`);
 
-// The same through a plain UPDATE (what any client could send).
-const u = await as(ADMIN_B, () => db.query(`UPDATE rehearsal_sessions SET started_at = $1, ended_at = NULL WHERE event_id = $2`, [B_START, EVENT]))
-  .then(() => ({ ok: true }), (e) => ({ error: e.message }));
-ok(/rehearsal_session_conflict/.test(u.error ?? ''), 'a plain update of started_at is refused too');
+// The old build's whole loop (origin/main useRehearsalSession + saveRehearsalSession):
+// dirty copy -> upsert -> no error -> copy clean -> next open reads the saved row.
+{
+  const device = { row: { started_at: B_START, ended_at: null }, dirty: true };
+  let tries = 0;
+  while (device.dirty && tries < 5) {
+    tries++;
+    const r = await upsert(ADMIN_B, device.row);
+    if (!r.error) device.dirty = false; // `if (error) markUnsaved(true); else writeLocal(key, row, false)`
+  }
+  ok(!device.dirty && tries === 1, `old build: one try, then its copy is clean (tries: ${tries})`);
+  // Next open: a clean copy loses to the saved row (pickSession).
+  const shown = device.dirty ? device.row : await saved();
+  ok(shown.ended_at !== null, 'old build: reopening shows the saved, ended rehearsal');
+}
+
+// The same through a plain UPDATE (what any client could send): 0 rows, nothing written.
+const u = await as(ADMIN_B, () => db.query(`UPDATE rehearsal_sessions SET started_at = $1, ended_at = NULL WHERE event_id = $2 RETURNING id`, [B_START, EVENT]));
+ok(u.rows.length === 0 && (await saved()).ended_at !== null, 'a plain update of started_at writes nothing (0 rows: a conflict for this build)');
 
 // Resuming after the end keeps the start: still allowed.
 ok((await upsert(ADMIN_A, { started_at: A_START, paused_ms: 120000, ended_at: null, summary: summary(PLAYED) })).ok, 'resume after the end is still allowed');
