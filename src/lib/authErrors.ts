@@ -37,6 +37,9 @@ export function authErrorKind(error: unknown): AuthErrorKind {
   switch (code) {
     case 'recovery_not_verified':
       return 'recovery_refused';
+    // passwordUpdateWithToken: the request never got an answer.
+    case 'network':
+      return 'network';
     case 'invalid_credentials':
       return 'invalid_credentials';
     case 'email_not_confirmed':
@@ -70,6 +73,9 @@ export function authErrorKind(error: unknown): AuthErrorKind {
   if (message.includes('database error saving new user')) return 'beta_full';
   if (name === 'AuthRetryableFetchError' || e.status === 0) return 'network';
   if (/failed to fetch|load failed|network ?error|networkerror|fetch failed|offline/.test(message)) return 'network';
+  // A server or gateway error (502, 503, 504...) is passing: try again, like
+  // a lost connection (Codex review #287 round 8, M1).
+  if (typeof e.status === 'number' && e.status >= 500 && e.status <= 599) return 'network';
   if (message.includes('invalid login credentials')) return 'invalid_credentials';
   if (message.includes('email not confirmed')) return 'email_not_confirmed';
   if (message.includes('already registered')) return 'already_registered';

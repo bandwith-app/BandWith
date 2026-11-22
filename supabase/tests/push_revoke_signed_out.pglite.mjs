@@ -69,8 +69,9 @@ const S1 = 'a'.repeat(20) + '1'.repeat(44), S2 = 'b'.repeat(20) + '2'.repeat(44)
 // and a stamp are not enough: only the secret the registration stored.
 const REG = '2026-11-20T10:00:00Z';
 ok(await revoke3(null, TOK, ALICE, '2026-11-20T10:00:00.000001Z') === false && await active(TOK) === true, 'anon with a stamp one microsecond off: refused');
-// C2 (round 7): nothing of Bob's is on for TOK, so "done", but Alice's row stays on.
-ok(await revoke3(null, TOK, BOB, REG) === true && await active(TOK) === true, "anon with the stamp but another account: Alice's row untouched");
+// Codex round 8 (B1): no matching credential, so false: the answer never
+// says whether Bob (or Alice) is on this device.
+ok(await revoke3(null, TOK, BOB, REG) === false && await active(TOK) === true, "anon with the stamp but another account: false, Alice's row untouched");
 ok(await revoke3(null, TOK, ALICE, null) === false && await active(TOK) === true, 'anon with no stamp and no secret: refused');
 ok(await revoke(null, TOK, ALICE, null, S1) === false && await active(TOK) === true, 'anon with a secret the row never stored: refused');
 // Signed in as the owner: the own token, with or without its stamp.
@@ -85,8 +86,8 @@ await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE t
 {
   ok(await revoke3(null, TOK, ALICE, REG) === true, 'switched off once');
   const after = (await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at;
-  ok(await revoke3(null, TOK, ALICE, REG) === true && new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at).getTime() === new Date(after).getTime(),
-    'replayed: done (nothing on any more), and nothing written');
+  ok(await revoke3(null, TOK, ALICE, REG) === false && new Date((await db.query(`SELECT updated_at AS at FROM push_tokens WHERE token = $1`, [TOK])).rows[0].at).getTime() === new Date(after).getTime(),
+    'replayed by stamp: the switch-off changed the stamp, false, nothing written');
 }
 await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
 ok(await revoke(ALICE, TOK, ALICE, null, null) === true && await active(TOK) === false, 'owner without a stamp switches the own token off');
@@ -98,9 +99,9 @@ ok(typeof r1?.registered_at === 'string', `the save returns a stamp: ${JSON.stri
 const row = (await db.query(`SELECT user_id, is_active, updated_at AS at, revoke_secret_hash AS h FROM push_tokens WHERE token = $1`, [TOK3])).rows[0];
 ok(row?.user_id === ALICE && row?.is_active === true && new Date(row.at).getTime() === new Date(r1.registered_at).getTime(), 'it is exactly the row the save wrote');
 ok(typeof row?.h === 'string' && row.h.length === 64 && !row.h.includes(S1), 'only a hash of the secret is stored');
-ok(await revoke(null, TOK3, BOB, null, S1) === true && await active(TOK3) === true, "anon: the secret doesn't work for another account (nothing of Bob's to switch off)");
+ok(await revoke(null, TOK3, BOB, null, S1) === false && await active(TOK3) === true, "anon: the secret doesn't work for another account (false)");
 ok(await revoke(null, TOK3, ALICE, null, S1) === true && await active(TOK3) === false, 'anon with the secret switches exactly that registration off');
-ok(await revoke(null, TOK3, ALICE, null, S1) === true && await active(TOK3) === false, 'replayed: done, nothing more to do');
+ok(await revoke(null, TOK3, ALICE, null, S1) === true && await active(TOK3) === false, 'replayed with the secret: the row is off, the credential still matches: true');
 // Re-registering rotates the secret: a replay of the old one fails.
 await register(ALICE, TOK3, S2);
 ok(await revoke(null, TOK3, ALICE, null, S1) === false && await active(TOK3) === true, 'after a new registration the old secret is refused');
@@ -108,7 +109,7 @@ ok(await revoke(null, TOK3, ALICE, null, S1) === false && await active(TOK3) ===
 ok((await db.query(`SELECT to_regprocedure('public.bw_push_token_registered(text,uuid)') AS a, to_regprocedure('public.bw_push_token_registered(text,uuid,text)') AS b`)).rows.every((r) => r.a === null && r.b === null), 'no bw_push_token_registered: nobody can ask by token');
 // The device moves to Bob: Alice's secrets are useless, and Bob's row is his.
 await register(BOB, TOK3, S1);
-ok(await revoke(null, TOK3, ALICE, null, S2) === true && await revoke(null, TOK3, ALICE, null, S1) === true && await active(TOK3) === true, "Alice's secrets can't touch Bob's registration (hers is gone: done)");
+ok(await revoke(null, TOK3, ALICE, null, S2) === false && await revoke(null, TOK3, ALICE, null, S1) === false && await active(TOK3) === true, "Alice's secrets can't touch Bob's registration (false)");
 // Any other re-save (046, an older build) clears the secret: no replay.
 await db.exec(`CREATE OR REPLACE FUNCTION public.bw_register_push_token(p_token text, p_platform text) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
   INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at) VALUES (auth.uid(), p_token, p_platform, true, now())
@@ -160,9 +161,32 @@ ok(await revoke(null, 'short', ALICE, null, S1) === false, 'malformed token: not
   const T410 = 'feedface'.repeat(8);
   await register(ALICE, T410, S1);
   await db.query(`UPDATE push_tokens SET is_active = false WHERE token = $1`, [T410]); // send-push after a 410
-  ok(await revoke(null, T410, ALICE, null, S2) === true, 'switched off by send-push (APNs 410): done');
+  ok(await revoke(null, T410, ALICE, null, S1) === true && await active(T410) === false, 'switched off by send-push (APNs 410), the matching secret: true');
+  ok(await revoke(null, T410, ALICE, null, S2) === false, 'switched off, a secret it never had: false');
+  ok(await revoke(null, T410, BOB, null, null) === false && await revoke(null, T410, BOB, null, S1) === false, "a bandmate's id on an inactive row, no matching credential: false");
+  ok(await revoke(ALICE, T410, ALICE, null, null) === true, 'the signed-in owner: nothing of hers on: true');
   await db.query(`DELETE FROM push_tokens WHERE token = $1`, [T410]); // the account's rows cascade
-  ok(await revoke(null, T410, ALICE, null, null) === true, 'the account was deleted (no row left): done');
+  ok(await revoke(null, T410, ALICE, null, S1) === false && await revoke(null, T410, BOB, null, null) === false, 'no row left: false for anyone signed out');
+  ok(await revoke(ALICE, T410, ALICE, null, null) === true, 'no row left, the signed-in owner: true');
+  // A bandmate's id with nothing matching: false whether the row is on, off or absent.
+  const TB = 'beadbead'.repeat(8);
+  await register(BOB, TB, S2);
+  const asked = async () => revoke(null, TB, BOB, null, S1);
+  const on = await asked();
+  await db.query(`UPDATE push_tokens SET is_active = false WHERE token = $1`, [TB]);
+  const off = await asked();
+  await db.query(`DELETE FROM push_tokens WHERE token = $1`, [TB]);
+  const absent = await asked();
+  ok(on === false && off === false && absent === false, `no credential match: the same false on, off and absent (${on}/${off}/${absent})`);
+}
+// A row switched back on by a plain save loses the kept secret.
+{
+  const TR = 'abcdabcd'.repeat(8);
+  const hashOf = async (tok) => (await db.query(`SELECT revoke_secret_hash AS h FROM push_tokens WHERE token = $1`, [tok])).rows[0]?.h;
+  await register(ALICE, TR, S1);
+  ok(await revoke(null, TR, ALICE, null, S1) === true && await hashOf(TR) !== null, 'switched off by the revocation: the secret stays');
+  await as(ALICE, () => db.query(`SELECT public.bw_register_push_token($1, 'ios')`, [TR]));
+  ok(await hashOf(TR) === null && await revoke(null, TR, ALICE, null, S1) === false && await active(TR) === true, 'back on through 046: the secret is gone, the old one refused');
 }
 ok(await active(TOK2) === true, "Bob's other token untouched throughout");
 

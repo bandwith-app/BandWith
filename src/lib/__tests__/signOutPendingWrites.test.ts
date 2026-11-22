@@ -37,7 +37,9 @@ describe('sign-out and unsent changes', () => {
   });
 
   it('sign-out keeps them, account deletion drops only its own', () => {
-    expect(ctx).toMatch(/clearOfflineCache\('bw:', \{\s*keepPendingWrites: true,\s*discardPendingWritesOf: opts\?\.discardPendingWrites \? user\?\.id \?\? null : null,\s*\}\)/);
+    // The sign-out's own clear (shadowing the import, so #296's wrapper keeps the options).
+    expect(ctx).toMatch(/const clearOfflineCache = \(\) =>\s*clearOfflineCacheOf\('bw:', \{\s*keepPendingWrites: true,\s*discardPendingWritesOf: opts\?\.discardPendingWrites \? user\?\.id \?\? null : null,\s*\}\)/);
+    expect(ctx).toMatch(/clearStageCache\(\);\s*clearOfflineCache\(\)/);
     expect(settings).toMatch(/signOut\(\{ discardPendingWrites: true \}\)/);
   });
 });

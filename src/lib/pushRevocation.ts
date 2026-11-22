@@ -35,11 +35,17 @@
 export const PUSH_REVOKE_KEY = 'bandwith.push-revoke';
 export const PUSH_TOKEN_KEY = 'bandwith.push-token';
 /**
- * At most this many wait on one device (the oldest go first). Age alone never
- * drops one unsent (Codex review #287 round 2): the server registration has
- * no expiry, and its exact-stamp match makes a late call harmless.
+ * At most this many wait on one device (the oldest go first).
  */
 export const PUSH_REVOKE_MAX_QUEUED = 20;
+/**
+ * Signed out, the server answers true only for a credential that matches
+ * (Codex review #287 round 8, B1), so a revocation whose registration was
+ * replaced or cleared is refused for good: it is dropped 30 days after it
+ * was queued, or as soon as this device's token is another one (the old
+ * token no longer delivers here).
+ */
+export const PUSH_REVOKE_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 /** The first retry of a refused revocation; each refusal doubles it. */
 export const REVOKE_RETRY_BASE_MS = 30_000;
 /** The longest wait between two tries of one revocation. */
@@ -334,6 +340,8 @@ export interface FlushDeps {
   now?: () => number;
   /** The network just came back: what waits only after a network error is tried now. */
   online?: boolean;
+  /** This device's current token, when known: a revocation for another token is dropped. */
+  currentToken?: string | null;
 }
 
 /** The wait after the n-th refusal (n >= 1). */
@@ -348,10 +356,11 @@ export function nextRevocationRetry(store: Store | null): number | null {
 
 /**
  * Sends the waiting revocations (main's decision on #287 round 5: no lookup
- * by token). Done only when the server switched it off. Refused: kept, and
- * tried again after a backoff that doubles with every refusal (main's
- * decision, round 6: never dropped); only a save of the token the server
- * confirmed clears it (forgetRevocation). Offline or an error: kept, with
+ * by token). Done when the server took it (its credential matched). Refused:
+ * kept, and tried again after a backoff that doubles with every refusal
+ * (main's decision, round 6), until a save of the token the server confirmed
+ * clears it (forgetRevocation), or it is 30 days old, or this device's token
+ * changed (round 8, B1). Offline or an error: kept, with
  * the same backoff (not counted as a refusal); the 'online' event tries it
  * at once.
  */
@@ -373,6 +382,11 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
   };
   for (const p of list) {
     if (deps.alive && !deps.alive()) break;
+    const queuedAt = Date.parse(p.at);
+    if ((Number.isFinite(queuedAt) && now - queuedAt > PUSH_REVOKE_MAX_AGE_MS) || (deps.currentToken && p.token !== deps.currentToken)) {
+      done.add(keyOf(p));
+      continue;
+    }
     if (p.retryAt !== null && p.retryAt > now && !(deps.online && p.fails > 0)) continue;
     const secrets = candidateSecrets(p);
     let failed = false;

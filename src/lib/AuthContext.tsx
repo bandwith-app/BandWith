@@ -10,7 +10,7 @@ import { supabase, getSafeUser, getSessionOfflineSafe, signIn, signUp, signOut, 
 import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHandled, recoveryRefusedText, wasLaunchUrlHandled } from './authCallback';
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
-import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
+import { clearOfflineCache as clearOfflineCacheOf, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { clearStageCache } from './stageBleNative';
 import { flushQueuedPushRevocations, forgetPushAccount, subscribeToPush, unregisterPushToken } from './services/pushNotifications';
 import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
@@ -436,6 +436,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // (its own queue key) and syncs at its next sign-in, instead of being
     // wiped with the offline cache below.
     const pendingQueue = opts?.discardPendingWrites ? null : await takeUnsyncedQueue(user?.id);
+    // After the sign-out, read caches go; each account's unsent changes stay
+    // for its next sign-in (audit 04 #9). A deleted account drops only its
+    // own: other people's notes on a shared tablet stay (Codex review #287).
+    const clearOfflineCache = () =>
+      clearOfflineCacheOf('bw:', {
+        keepPendingWrites: true,
+        discardPendingWritesOf: opts?.discardPendingWrites ? user?.id ?? null : null,
+      });
     // Before the session ends: this device must stop receiving this account's
     // pushes (offline: on the device now, on the server once online). A
     // deleted account's token row is gone: the device only (#287 r8, M2).
@@ -458,16 +466,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!error) {
       setUser(null);
       setProfile(null);
+      clearRecoveryProof();
       setSession(null);
       clearStageCache();
-      clearRecoveryProof();
-      // Read caches go; each account's unsent changes stay for its next
-      // sign-in (audit 04 #9). A deleted account drops only its own: other
-      // people's notes on a shared tablet stay (Codex review #287).
-      clearOfflineCache('bw:', {
-        keepPendingWrites: true,
-        discardPendingWritesOf: opts?.discardPendingWrites ? user?.id ?? null : null,
-      })
+      clearOfflineCache()
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     } else if (user?.id) {

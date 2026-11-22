@@ -20,8 +20,10 @@
 --     shared iPad holds the token and a bandmate's id, but not the stamp of
 --     the bandmate's own save; a NULL stamp is never enough. Every new registration
 --     rotates the secret; any other change of the registration (a re-save by
---     046, a move to another account, a switch off) clears it (trigger), so
---     a replayed call never undoes a newer registration.
+--     046, a move to another account, a switch back on) clears it (trigger),
+--     so a replayed call never undoes a newer registration. Signed out, the
+--     answer says only whether the credential matched that registration (on
+--     or already off), never whether the account is on the device (round 8).
 --   * signed in as the row's owner: the own token, with the row's stamp
 --     (push_tokens.updated_at, returned by the save) or without one.
 -- It can only switch a token off, never on, and returns whether it did.
@@ -70,8 +72,10 @@ ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS uid_gated boolean NOT NU
 -- (a client can't set it: PostgREST runs no SET, and set_config isn't
 -- exposed). Any other write keeps them as they were (Claude review #287
 -- round 5: the owner can update its own rows through RLS), and any other
--- change of the registration (a re-save by 046, a move, a switch-off) clears
--- them. An insert by anything else starts with neither.
+-- change of the registration (a re-save by 046, a move, a switch-off)
+-- clears them, except that a switch-off alone keeps the secret (round 8).
+-- An insert by
+-- anything else starts with neither.
 CREATE OR REPLACE FUNCTION public.bw_push_tokens_secret_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -92,8 +96,16 @@ BEGIN
      OR NEW.token IS DISTINCT FROM OLD.token
      OR NEW.is_active IS DISTINCT FROM OLD.is_active
      OR NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
-    NEW.revoke_secret_hash := NULL;
     NEW.uid_gated := false;
+    -- A switch-off alone (send-push after an APNs 410, a revocation) keeps
+    -- the secret: that registration delivers nothing, and a late revocation
+    -- with its secret still gets its true (Codex review #287 round 8, B1).
+    -- Anything that leaves the row on again, or moves it, clears it.
+    IF NEW.user_id IS DISTINCT FROM OLD.user_id
+       OR NEW.token IS DISTINCT FROM OLD.token
+       OR coalesce(NEW.is_active, true) THEN
+      NEW.revoke_secret_hash := NULL;
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -122,6 +134,7 @@ AS $$
 DECLARE
   v_uid uuid := auth.uid();
   v_count integer;
+  v_hash text;
 BEGIN
   -- The same token lengths the save takes (10+, Claude review #287 r7 C4).
   IF p_token IS NULL OR length(p_token) < 10 OR length(p_token) > 4096
@@ -129,57 +142,68 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Nothing of that account's is on for this token any more (switched off
-  -- after an APNs 410 or an earlier revocation, or gone with a deleted
-  -- account): the revocation has nothing left to do, so it is done
-  -- (Claude review #287 round 7, C2; Codex M2). Never a write.
-  IF NOT EXISTS (
-    SELECT 1 FROM public.push_tokens
-     WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)
-  ) THEN
-    RETURN true;
-  END IF;
-
   IF v_uid IS NOT NULL AND v_uid = p_user_id AND p_secret IS NULL THEN
-    -- The owner, signed in: the own token, at that stamp or any.
+    -- The owner, signed in: nothing of the own account is on for this token
+    -- any more (switched off after an APNs 410 or an earlier revocation, or
+    -- the rows went with the account): done (Claude review #287 round 7, C2).
+    -- Only here: the owner may know about the own rows.
+    IF NOT EXISTS (
+      SELECT 1 FROM public.push_tokens
+       WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)
+    ) THEN
+      RETURN true;
+    END IF;
+    -- The own token, at that stamp or any.
     UPDATE public.push_tokens
        SET is_active = false, updated_at = now()
      WHERE token = p_token
        AND user_id = p_user_id
        AND coalesce(is_active, true)
        AND (p_registered_at IS NULL OR updated_at = p_registered_at);
-  ELSE
-    -- Anyone else (signed out included): the registration's own secret.
-    IF p_secret IS NOT NULL AND length(p_secret) BETWEEN 32 AND 256 THEN
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count > 0;
+  END IF;
+
+  -- Anyone else, signed out included (Codex review #287 round 8, B1): the
+  -- answer says only whether the credential given matches a registration of
+  -- (token, account), on or already off. Without a matching credential it is
+  -- always false, whether that account's row is on, off or absent, so the
+  -- token and a bandmate's id never tell whether that bandmate uses this
+  -- device. A revocation that can't match any more (its row cleared or
+  -- gone) is dropped by the device after 30 days, or once its token changed.
+  IF p_secret IS NOT NULL AND length(p_secret) BETWEEN 32 AND 256 THEN
+    v_hash := encode(sha256(convert_to(p_secret, 'UTF8')), 'hex');
+    IF EXISTS (
+      SELECT 1 FROM public.push_tokens
+       WHERE token = p_token AND user_id = p_user_id
+         AND revoke_secret_hash IS NOT NULL AND revoke_secret_hash = v_hash
+    ) THEN
+      -- The switch-off keeps the secret (the guard keeps it on a row that
+      -- goes off), so a replay still answers true; any new registration
+      -- replaces or clears it.
       UPDATE public.push_tokens
          SET is_active = false, updated_at = now()
-       WHERE token = p_token
-         AND user_id = p_user_id
-         AND coalesce(is_active, true)
-         AND revoke_secret_hash IS NOT NULL
-         AND revoke_secret_hash = encode(sha256(convert_to(p_secret, 'UTF8')), 'hex');
-      GET DIAGNOSTICS v_count = ROW_COUNT;
-      IF v_count > 0 THEN
-        RETURN true;
-      END IF;
+       WHERE token = p_token AND user_id = p_user_id
+         AND coalesce(is_active, true) AND revoke_secret_hash = v_hash;
+      RETURN true;
     END IF;
-    -- No secret matched (a registration by an older build or a database
-    -- without 184 has none; a lost answer left the device unsure): exactly
-    -- the registration the device saved, by token, account and the stamp the
-    -- save returned (main's decision on #287 round 6). Any later save
-    -- changes the stamp, so a replay never undoes a newer registration.
-    IF p_registered_at IS NULL THEN
-      RETURN false;
-    END IF;
+  END IF;
+  -- No secret matched (a registration by an older build or a database
+  -- without 184 has none; a lost answer left the device unsure): exactly
+  -- the registration the device saved, by token, account and the stamp the
+  -- save returned (main's decision on #287 round 6). Any later save
+  -- changes the stamp, so a replay never undoes a newer registration.
+  IF p_registered_at IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.push_tokens
+     WHERE token = p_token AND user_id = p_user_id AND updated_at = p_registered_at
+  ) THEN
     UPDATE public.push_tokens
        SET is_active = false, updated_at = now()
-     WHERE token = p_token
-       AND user_id = p_user_id
-       AND coalesce(is_active, true)
-       AND updated_at = p_registered_at;
+     WHERE token = p_token AND user_id = p_user_id
+       AND coalesce(is_active, true) AND updated_at = p_registered_at;
+    RETURN true;
   END IF;
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  RETURN v_count > 0;
+  RETURN false;
 END;
 $$;
 

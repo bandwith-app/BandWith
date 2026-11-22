@@ -11,6 +11,7 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
+import { sessionUserId } from '@/lib/sessionUser';
 import {
   beginPushSave,
   confirmPushSave,
@@ -173,6 +174,50 @@ let deviceStop: Promise<void> | null = null;
 let pendingDelete: Promise<void> | null = null;
 /** How long a new registration waits for that deletion before it is put off. */
 export const PENDING_DELETE_WAIT_MS = 15_000;
+/**
+ * Set while FCM deletes the token, cleared once it did (Codex review #287
+ * round 8, B3): a reload in the middle forgets the promise, so the next start
+ * deletes again (idempotent) and waits for it before any registration.
+ */
+export const PUSH_DELETE_PENDING_KEY = 'bandwith.push-delete-pending';
+const deletionMarked = (): boolean => {
+  try {
+    return revokeStore()?.getItem(PUSH_DELETE_PENDING_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const markDeletion = (on: boolean) => {
+  try {
+    if (on) revokeStore()?.setItem(PUSH_DELETE_PENDING_KEY, '1');
+    else revokeStore()?.removeItem(PUSH_DELETE_PENDING_KEY);
+  } catch {
+    /* storage blocked: the in-memory promise still holds */
+  }
+};
+
+/** FCM deletes this device's token; tracked (memory and storage) until it ends. */
+const trackDeletion = (): Promise<'done' | 'failed'> => {
+  markDeletion(true);
+  const deletion = pushIdentity.deleteToken().then(
+    () => 'done' as const,
+    () => 'failed' as const,
+  );
+  const tracked = deletion.then((outcome) => {
+    if (pendingDelete === tracked) pendingDelete = null;
+    // Not deleted: the next start tries again.
+    if (outcome === 'done') markDeletion(false);
+    // A token reported while it was deleting is the old one: fetch a fresh one.
+    cachedToken = null;
+  });
+  pendingDelete = tracked;
+  return deletion;
+};
+
+/** A deletion a reload interrupted: started again, so a registration waits for it. */
+const resumePendingDeletion = () => {
+  if (!pendingDelete && deletionMarked() && checksAccountNatively()) void trackDeletion();
+};
 
 /**
  * Stops delivery on the device: on the new Android builds, waits (at most
@@ -200,16 +245,7 @@ const stopDevicePushOnce = async (gen: number): Promise<void> => {
   cachedToken = null;
   if (checksAccountNatively()) {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const deletion = pushIdentity.deleteToken().then(
-      () => 'done' as const,
-      () => 'failed' as const,
-    );
-    const tracked = deletion.then(() => {
-      if (pendingDelete === tracked) pendingDelete = null;
-      // A token reported while it was deleting is the old one: fetch a fresh one.
-      cachedToken = null;
-    });
-    pendingDelete = tracked;
+    const deletion = trackDeletion();
     const outcome = await Promise.race([
       deletion,
       new Promise<'late'>((resolve) => {
@@ -224,6 +260,13 @@ const stopDevicePushOnce = async (gen: number): Promise<void> => {
   await PushNotifications.unregister();
 };
 
+/** This push session is still the one asked for, and the saved session is still that account's. */
+const stillSignedIn = async (userId: string, session: number): Promise<boolean> => {
+  if (session !== pushSession) return false;
+  const uid = await sessionUserId();
+  return session === pushSession && uid === userId;
+};
+
 /** A registration put off while FCM was deleting: on the next resume, 'online', or once the deletion ends. */
 let laterUser: { userId: string; session: number } | null = null;
 let laterWatch = false;
@@ -231,7 +274,7 @@ const subscribeLater = (userId: string, session: number) => {
   laterUser = { userId, session };
   const retry = () => {
     const next = laterUser;
-    if (!next || pendingDelete || next.session !== pushSession || pushUserId !== next.userId) return;
+    if (!next || pendingDelete || next.session !== pushSession) return;
     laterUser = null;
     void subscribeToPush(next.userId).catch(() => undefined);
   };
@@ -253,6 +296,9 @@ const watchTokenChanges = () => {
   if (tokenWatch) return;
   tokenWatch = true;
   PushNotifications.addListener('registration', (token) => {
+    // While FCM deletes the old token, a late answer carries that old token:
+    // never kept, never saved (Claude review #287 round 8).
+    if (pendingDelete) return;
     cachedToken = token.value;
     if (pushUserId && token.value !== savedToken) void saveTokenToDatabase(pushUserId, token.value, pushSession);
   }).catch(() => {
@@ -336,9 +382,10 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
     return { success: false, error: new Error('Push not configured') };
   }
 
-  pushUserId = userId;
   const session = pushSession;
   registrationGen += 1;
+  // A deletion a reload interrupted runs again first (round 8, B3).
+  resumePendingDeletion();
   // A device stop from the sign-out before still running finishes first,
   // so it can't take the new registration's token with it (round 7, B3).
   if (deviceStop) await untilDeadline(deviceStop, Date.now() + DEVICE_PUSH_STOP_WAIT_MS);
@@ -359,6 +406,11 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
       return { success: false, error: new Error('Device push still stopping') };
     }
   }
+  // Signed out (or someone else signed in) during the wait: nothing is
+  // written for this account, natively or on the server (round 8, B4).
+  if (!(await stillSignedIn(userId, session))) return { success: false, error: new Error('Signed out') };
+  // Only now: a registration answering during the wait saved nothing for it.
+  pushUserId = userId;
   // The same account back on a token it had queued a revocation for (iOS
   // keeps the token): that revocation must not switch it off (round 7, C3).
   for (const t of new Set([cachedToken, rememberedPushToken(revokeStore(), userId)?.token])) {
@@ -504,6 +556,9 @@ const saveTokenToDatabase = (userId: string, token: string, session = pushSessio
   exclusive(async () => {
     // Signed out (or someone else signed in) since this save was asked for.
     if (session !== pushSession || pushUserId !== userId) return { success: false, error: new Error('Signed out') };
+    // The native account below is written only for the account still signed
+    // in on the saved session (round 8, B4); nothing awaits between here and it.
+    if (!(await stillSignedIn(userId, session)) || pushUserId !== userId) return { success: false, error: new Error('Signed out') };
     const platform = Capacitor.getPlatform();
     // The secret is kept before it goes out: if the answer is lost, the
     // server may hold it (Codex review #287 round 4).
@@ -764,6 +819,8 @@ export const flushQueuedPushRevocations = async (opts: { online?: boolean } = {}
       // A sign-out waiting behind the flush: stop between entries.
       alive: () => session === pushSession,
       online: opts.online,
+      // A revocation for a token this device no longer has is moot (round 8, B1).
+      currentToken: cachedToken,
     }),
   );
   flushing = run;
@@ -781,7 +838,8 @@ const scheduleRevocationRetry = () => {
   if (retryTimer) clearTimeout(retryTimer);
   retryTimer = null;
   const due = nextRevocationRetry(revokeStore());
-  // Only refused ones wait on a timer: an offline one waits for 'online'.
+  // The earliest backoff (a refusal or a network error) sets the timer;
+  // 'online' still tries the ones that failed on the network at once.
   if (due === null) return;
   retryTimer = setTimeout(() => {
     retryTimer = null;
