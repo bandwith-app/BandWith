@@ -32,7 +32,7 @@ export async function openEvent(app: App, title: string) {
   // Duo Laptop pose shows the Planner (month grid + one day's agenda): an
   // event on another day is not on screen there, so find it like a user,
   // with Search.
-  const reachable = await card.click({ trial: true, timeout: 2500 }).then(() => true, () => false);
+  const reachable = await canBeTapped(card, 2500);
   if (!reachable) {
     await app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first().click();
     await app.page.getByPlaceholder(app.t('Search title, venue, city, client…')).filter({ visible: true }).first().fill(title);
@@ -43,6 +43,38 @@ export async function openEvent(app: App, title: string) {
     return;
   }
   await openEventHere(app, title);
+}
+
+/**
+ * Could a tap land on `target` within `timeout`? On screen (scrolled into
+ * view), enabled, and the topmost element at its centre: what a trial click
+ * checks, without ever pressing. A trial click (Playwright 1.65.1) can press
+ * for real when its timeout cuts it short, which opened the event under the
+ * helper and sent it to Search (member-readonly, duo-open and phone-portrait).
+ */
+async function canBeTapped(target: Locator, timeout: number): Promise<boolean> {
+  const until = Date.now() + timeout;
+  for (;;) {
+    const ok = await target
+      .evaluate((el) => {
+        if (!(el instanceof HTMLElement) || !el.isConnected) return false;
+        if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return false;
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return false;
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+        const top = document.elementFromPoint(x, y);
+        return !!top && (top === el || el.contains(top));
+      }, undefined, { timeout: Math.max(1, until - Date.now()) })
+      .catch(() => false);
+    if (ok) return true;
+    if (Date.now() >= until) return false;
+    await new Promise((r) => setTimeout(r, 100));
+  }
 }
 
 async function expectEventOpen(app: App, title: string) {
