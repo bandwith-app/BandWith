@@ -103,19 +103,22 @@ export const WAITING_EVENTS = [LIVE_OUTBOX_EVENT, OUTBOX_EVENT] as const;
 // -------------------------------------------------------------- replay --
 
 type Res = Promise<{ error: unknown }>;
+/** `userId`: whose outbox it is (the change is written as that account only). */
 export interface LiveOutboxApi {
-  note: (op: Extract<LiveOp, { kind: 'note' }>) => Res;
-  noteDelete: (op: Extract<LiveOp, { kind: 'noteDelete' }>) => Res;
+  note: (op: Extract<LiveOp, { kind: 'note' }>, userId: string) => Res;
+  noteDelete: (op: Extract<LiveOp, { kind: 'noteDelete' }>, userId: string) => Res;
   suggestion: (op: Extract<LiveOp, { kind: 'suggestion' }>) => Res;
   order: (op: Extract<LiveOp, { kind: 'order' }>) => Res;
+  /** Is `userId` the account signed in now? Not: the flush stops, the change waits. */
+  isSessionUser?: (userId: string) => Promise<boolean>;
 }
 
-const send = (api: LiveOutboxApi, op: LiveOp): Res => {
+const send = (api: LiveOutboxApi, op: LiveOp, userId: string): Res => {
   switch (op.kind) {
     case 'note':
-      return api.note(op);
+      return api.note(op, userId);
     case 'noteDelete':
-      return api.noteDelete(op);
+      return api.noteDelete(op, userId);
     case 'suggestion':
       return api.suggestion(op);
     case 'order':
@@ -135,9 +138,14 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
   flushing = (async () => {
     let sent = 0;
     let dropped = 0;
+    // Another account signed in on this device: its session never sends this outbox.
+    const notMine = async () => !!api.isSessionUser && !(await api.isSessionUser(userId));
     for (let op = readLiveOutbox(userId)[0], n = 0; op && n < 500; op = readLiveOutbox(userId)[0], n++) {
-      const { error } = await send(api, op);
+      if (await notMine()) break;
+      const { error } = await send(api, op, userId);
       if (error && isOfflineError(error)) break;
+      // Refused because the session changed meanwhile: kept for its account, not dropped.
+      if (error && (await notMine())) break;
       if (error) dropped++;
       else sent++;
       const same = JSON.stringify(op);

@@ -19,19 +19,25 @@ const SETLIST_ORDER_SAVED = 'bw:setlist-order-saved';
 const isDuplicate = (e: unknown) => (e as { code?: string } | null)?.code === '23505';
 
 export const liveOutboxApi: LiveOutboxApi = {
-  async note(op) {
-    const row = { song_id: op.songId, anchor: op.anchor, body: op.body };
+  // A note is the outbox owner's: named in the row (RLS user_id = auth.uid()
+  // refuses any other session), and edits and deletes match only their notes.
+  async isSessionUser(userId) {
+    return (await sessionUserId()) === userId;
+  },
+
+  async note(op, userId) {
+    const row = { song_id: op.songId, anchor: op.anchor, body: op.body, user_id: userId };
     // Written offline: create it with its own id (again is harmless). An
     // edit: only if the note is still there (deleted on another device: nothing).
     const { error } = op.isNew
       ? await supabase.from('song_personal_notes').upsert({ id: op.id, ...row }, { onConflict: 'id' })
-      : await supabase.from('song_personal_notes').update({ body: op.body, anchor: op.anchor }).eq('id', op.id);
+      : await supabase.from('song_personal_notes').update({ body: op.body, anchor: op.anchor }).eq('id', op.id).eq('user_id', userId);
     if (!error) notifyPersonalChanged(op.songId);
     return { error };
   },
 
-  async noteDelete(op) {
-    const { error } = await supabase.from('song_personal_notes').delete().eq('id', op.id);
+  async noteDelete(op, userId) {
+    const { error } = await supabase.from('song_personal_notes').delete().eq('id', op.id).eq('user_id', userId);
     if (!error) notifyPersonalChanged(op.songId);
     return { error };
   },
