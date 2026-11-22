@@ -15,9 +15,10 @@ vi.mock('@/lib/regiaAudio', async () => ({
 }));
 const addMock = vi.fn();
 const saveOrderMock = vi.fn();
-vi.mock('@/lib/services/songs', () => ({
+vi.mock('@/lib/services/songs', async () => ({
   addSongToSetlist: (...a: unknown[]) => addMock(...a),
-  saveSetlistOrder: (...a: unknown[]) => saveOrderMock(...a),
+  saveStageOrder: (...a: unknown[]) => saveOrderMock(...a),
+  setlistOrder: (await vi.importActual<typeof import('@/lib/services/songs')>('@/lib/services/songs')).setlistOrder,
 }));
 const outputMock = vi.fn();
 const playbackMock = vi.fn();
@@ -321,11 +322,19 @@ describe('useStageRegia (stage manager mode)', () => {
     });
     expect(addMock).toHaveBeenCalledWith('list-1', 's9', 4, 1);
     expect(jumpTo).toHaveBeenCalledWith('r9', ['r1', 'r9', 'r2', 'r3']);
-    expect(saveOrderMock.mock.calls[0][0].map((r: { id: string; set_number: number }) => [r.id, r.set_number])).toEqual([
+    expect(saveOrderMock.mock.calls[0][0]).toBe('list-1');
+    expect(saveOrderMock.mock.calls[0][1].map((r: { id: string; set_number: number }) => [r.id, r.set_number])).toEqual([
       ['r1', 1],
       ['r9', 1],
       ['r2', 1],
       ['r3', 2],
+    ]);
+    // Over the setlist as the server has it after the insert (the new row at the end of set 1).
+    expect(saveOrderMock.mock.calls[0][2]).toEqual([
+      { songId: 's1', setNumber: 1 },
+      { songId: 's2', setNumber: 1 },
+      { songId: 's9', setNumber: 1 },
+      { songId: 's3', setNumber: 2 },
     ]);
     expect(players[0].loaded).toEqual(['local:sb://song-files/b/audio/9.mp3']);
   });

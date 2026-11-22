@@ -263,3 +263,63 @@ describe('data errors', () => {
   });
 });
 
+
+// Round 6 (#287 Codex B1, deferred to #292): one flush per account. Alice's
+// flush in flight never sends with Bob's session, and never stands in for
+// Bob's own flush.
+describe('flushes across an account switch', () => {
+  const ALICE = 'u-alice';
+  const BOB = 'u-bob';
+  const switching = () => {
+    let session = ALICE;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const sent: { user: string; id: string }[] = [];
+    const api: LiveOutboxApi = {
+      isSessionUser: async (u) => u === session,
+      // Like RLS on the owner column: a note goes only with its owner's session.
+      note: async (op, owner) => {
+        if (op.id === 'a1') await gate; // Alice's first note is on its way
+        if (owner !== session) return { error: { code: '42501', message: 'new row violates row-level security policy' } };
+        sent.push({ user: session, id: op.id });
+        return { error: null };
+      },
+      noteDelete: async () => ({ error: null }),
+      suggestion: async () => ({ error: null }),
+      order: async () => ({ error: null }),
+    };
+    return { api, sent, release, signInBob: () => (session = BOB) };
+  };
+
+  it('Alice’s flush in flight, Bob signs in: none of Alice’s ops go with Bob’s session, the rest stay in her outbox', async () => {
+    queueLiveOp(ALICE, note('a1', 'Watch the bridge'));
+    queueLiveOp(ALICE, note('a2', 'Capo 2 on Empire State'));
+    const s = switching();
+    const alice = flushLiveOutbox(ALICE, s.api, { force: true });
+    await new Promise((r) => setTimeout(r, 10));
+    s.signInBob();
+    s.release();
+    await alice;
+    expect(s.sent).toEqual([]);
+    // Refused only because the session changed: kept for Alice, not moved to the refused list.
+    expect(readLiveOutbox(ALICE).map((o) => (o as { id: string }).id)).toEqual(['a1', 'a2']);
+    expect(readRefusedLiveOps(ALICE)).toEqual([]);
+  });
+
+  it('Bob’s flush while Alice’s is in flight runs Bob’s outbox and returns Bob’s result', async () => {
+    queueLiveOp(ALICE, note('a1', 'Watch the bridge'));
+    queueLiveOp(BOB, note('b1', 'Slower intro in Queens'));
+    const s = switching();
+    const alice = flushLiveOutbox(ALICE, s.api, { force: true });
+    await new Promise((r) => setTimeout(r, 10));
+    s.signInBob();
+    const bob = await flushLiveOutbox(BOB, s.api, { force: true });
+    expect(bob).toMatchObject({ sent: 1, left: 0 });
+    expect(s.sent).toEqual([{ user: BOB, id: 'b1' }]);
+    expect(readLiveOutbox(BOB)).toEqual([]);
+    s.release();
+    await alice;
+    expect(readLiveOutbox(ALICE).map((o) => (o as { id: string }).id)).toEqual(['a1']);
+    expect(s.sent).toEqual([{ user: BOB, id: 'b1' }]);
+  });
+});

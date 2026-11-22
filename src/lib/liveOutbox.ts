@@ -241,7 +241,11 @@ const send = (api: LiveOutboxApi, op: LiveOp, userId: string): Res => {
 
 /** `busy`: another tab is sending this account's changes right now; nothing sent from here. */
 type FlushResult = { sent: number; dropped: number; left: number; busy?: boolean };
-let flushing: Promise<FlushResult> | null = null;
+/**
+ * The flush in flight, per account: another account's flush (signed in
+ * meanwhile) runs its own outbox, never waits on or returns this one's.
+ */
+const flushing = new Map<string, Promise<FlushResult>>();
 
 /**
  * Refused for good, never better on a retry: not allowed (42501), matched no
@@ -310,11 +314,12 @@ async function inOneTab(userId: string, run: () => Promise<FlushResult>, busy: (
  * is signed in: kept in the queue. `force`: "Send now", no waiting.
  */
 export function flushLiveOutbox(userId: string, api: LiveOutboxApi, opts?: { force?: boolean }) {
-  if (flushing) return flushing;
+  const inFlight = flushing.get(userId);
+  if (inFlight) return inFlight;
   const idle = (): FlushResult => ({ sent: 0, dropped: 0, left: readLiveOutbox(userId).length });
   const wait = retryAfter.get(userId);
   if (!opts?.force && wait && wait.at > Date.now()) return Promise.resolve(idle());
-  flushing = inOneTab(
+  const run: Promise<FlushResult> = inOneTab(
     userId,
     async () => {
       let sent = 0;
@@ -344,7 +349,8 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi, opts?: { for
     },
     () => ({ ...idle(), busy: true }),
   ).finally(() => {
-    flushing = null;
+    if (flushing.get(userId) === run) flushing.delete(userId);
   });
-  return flushing;
+  flushing.set(userId, run);
+  return run;
 }

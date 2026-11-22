@@ -19,7 +19,7 @@ import {
 } from '@/lib/regiaAudio';
 import { stopPlayer } from '@/lib/audioPlayer';
 import { currentAudioOutput, onAudioOutputChange, outputWarning, setPlaybackSession, type AudioOutput } from '@/lib/audioOutput';
-import { addSongToSetlist, saveSetlistOrder } from '@/lib/services/songs';
+import { addSongToSetlist, saveStageOrder, setlistOrder } from '@/lib/services/songs';
 import { SETLIST_ORDER_SAVED, type StageRegiaBridge } from './useStageLive';
 import { useAudioDownloads, type SongAudio } from './useAudioDownloads';
 
@@ -414,7 +414,17 @@ export function useStageRegia({
       const rows = rowsWithInserted(list, saved, order, cur, { id: data.id, songId: song.id });
       const liveOrder = rows ? rows.map((r) => r.id) : [...order, data.id];
       jump(data.id, liveOrder);
-      if (rows) void saveSetlistOrder(rows);
+      if (rows) {
+        // The setlist as the server has it now, if nobody changed it meanwhile:
+        // ours, with the new row at the end of its set. One guarded save (188,
+        // row ids): changed meanwhile, only the added song is written; a song
+        // another admin removed never comes back.
+        const afterInsert = setlistOrder([
+          ...saved.map((s, i) => ({ id: s.id, song_id: s.songId, position: i + 1, set_number: s.setNumber ?? 1 })),
+          { id: data.id, song_id: song.id, position: saved.length + 1, set_number: saved[at]?.setNumber ?? 1 },
+        ]);
+        void saveStageOrder(list, rows, afterInsert.map((r) => ({ songId: r.song_id, setNumber: r.set_number })));
+      }
       try {
         window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
       } catch {
