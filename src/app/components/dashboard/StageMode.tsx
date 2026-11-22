@@ -835,7 +835,8 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <FollowTempoSwitch follow={follow} accent={accentColor} />
                 {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
               </div>
-              <FollowStrip follow={follow} accent={accentColor} className="pb-2" />
+              {/* Sticky: where the whole column scrolls (a phone on its side), following the line keeps it in view. */}
+              <FollowStrip follow={follow} accent={accentColor} className="pb-2 sticky top-0 z-[1] bg-black" />
               <PersonalLayerScope
                 song={mine}
                 stage

@@ -412,7 +412,8 @@ export const FollowStrip: React.FC<{ follow: FollowTempo; accent: string; classN
   const frame = useFrame(follow);
   if (!follow.shown) return null;
   const text = follow.active && frame ? statusText(frame.status, t) : follow.leader ? t('The band follows when you start') : t('Starts when the leader starts the song');
-  const hint = follow.leader && follow.active && frame && frame.status.kind !== 'waiting' && frame.status.kind !== 'end';
+  // How to re-align, said while bar 1 is coming (then the song needs the room).
+  const hint = follow.leader && follow.active && frame?.status.kind === 'starting';
   return (
     <div className={cn('flex flex-col gap-1 shrink-0', className)} data-follow-strip>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-h-11">

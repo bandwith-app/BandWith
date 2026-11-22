@@ -220,13 +220,16 @@ describe('Follow the tempo: the leader', () => {
     expect(sent[0]).toMatchObject({ on: true, songId: 'r1', bpm: 120, bar: 0, hold: null });
     expect(sent[0].startAt).toBeGreaterThanOrEqual(before + 700 + 2_000);
     expect(screen.getByText('Starting…')).toBeInTheDocument();
+    // How to re-align, said while bar 1 is coming.
+    expect(screen.getByText('Tap a bar, line or section to move everyone there.')).toBeInTheDocument();
   });
 
   it('Hold repeats the section until Let go; Stop ends it', () => {
     const sent: PlayheadState[] = [];
     render(<LeaderStage initial={playing(2_500, { from: 'leader-phone' })} onSet={(s) => sent.push(s)} />);
     openSong();
-    expect(screen.getByText('Tap a bar, line or section to move everyone there.')).toBeInTheDocument();
+    // In the song, the hint gives the room back.
+    expect(screen.queryByText('Tap a bar, line or section to move everyone there.')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Hold' }));
     expect(sent[sent.length - 1]?.hold).toEqual([0, 3]);
     expect(screen.getByText('Repeating Verse until the leader lets go')).toBeInTheDocument();
