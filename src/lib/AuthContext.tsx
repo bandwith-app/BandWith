@@ -12,7 +12,8 @@ import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { clearStageCache } from './stageBleNative';
-import { unregisterPushToken } from './services/pushNotifications';
+import { flushQueuedPushRevocations, unregisterPushToken } from './services/pushNotifications';
+import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
 
@@ -60,7 +61,8 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null; session: Session | null; existing: boolean }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signInWithApple: () => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  /** `discardPendingWrites`: the account is gone (deleted), drop its unsent changes too. */
+  signOut: (opts?: { discardPendingWrites?: boolean }) => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   /** True after the user opened a password-reset link: the app must ask for a new password. */
   isPasswordRecovery: boolean;
@@ -116,9 +118,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  // The flag alone is not enough (audit 04 #2): the reset link must have
+  // signed this account in here (recoveryProof.ts).
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
     try {
-      return new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
+      return new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1' && hasAnyRecoveryProof();
     } catch {
       return false;
     }
@@ -216,6 +220,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: err };
     }
   };
+
+  // Push revocations left by an offline sign-out (audit 04 #6): now, and
+  // whenever the network comes back.
+  useEffect(() => {
+    const flush = () => {
+      void flushQueuedPushRevocations().catch(() => {});
+    };
+    flush();
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, []);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -403,14 +418,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (opts?: { discardPendingWrites?: boolean }) => {
     // Offline edits not sent yet: try now, while the session is still valid.
     // What still can't be sent is kept on this device for this account only
     // (its own queue key) and syncs at its next sign-in, instead of being
     // wiped with the offline cache below.
-    const pendingQueue = await takeUnsyncedQueue(user?.id);
-    // Before the session ends: this device must stop receiving this account's pushes.
-    await unregisterPushToken();
+    const pendingQueue = opts?.discardPendingWrites ? null : await takeUnsyncedQueue(user?.id);
+    // Before the session ends: this device must stop receiving this account's
+    // pushes (offline: on the device now, on the server once online).
+    await unregisterPushToken(user?.id);
     // The next person on this device must not see this account's badge or
     // message previews in Notification Center (0 also clears delivered ones).
     syncAppBadge(0);
@@ -431,7 +447,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setProfile(null);
       setSession(null);
       clearStageCache();
-      clearOfflineCache()
+      clearRecoveryProof();
+      // Read caches go; each account's unsent changes stay for its next
+      // sign-in (audit 04 #9), unless the account itself is gone.
+      clearOfflineCache('bw:', { keepPendingWrites: !opts?.discardPendingWrites })
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }
@@ -456,6 +475,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // The flag stays on until "Continue", so the "Password updated" screen shows.
   const completePasswordRecovery = async (newPassword: string) => {
+    // Only the account the reset link signed in (audit 04 #2).
+    if (!hasRecoveryProof(user?.id)) {
+      return { error: new AuthError(callbackProblemText('other_browser', true).body, 403, 'recovery_not_verified') };
+    }
     const { error } = await updatePassword(newPassword);
     if (!error) stripRecoveryFlag();
     return { error };
@@ -463,6 +486,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const dismissPasswordRecovery = () => {
     stripRecoveryFlag();
+    clearRecoveryProof();
     setIsPasswordRecovery(false);
   };
 
@@ -497,7 +521,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithApple: handleSignInWithApple,
     signOut: handleSignOut,
     resetPassword: handleResetPassword,
-    isPasswordRecovery,
+    isPasswordRecovery: isPasswordRecovery && (user ? hasRecoveryProof(user.id) : hasAnyRecoveryProof()),
     completePasswordRecovery,
     dismissPasswordRecovery,
     refreshProfile,

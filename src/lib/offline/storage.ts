@@ -250,12 +250,28 @@ const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<
  * mutation queue (`bw:offline_queue:<userId>`) and the legacy un-prefixed
  * queue key, so one user's unsynced edits can never replay for the next user.
  */
-export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> => {
+export const clearOfflineCache = async (
+  prefix: string = 'bw:',
+  opts?: { keepPendingWrites?: boolean },
+): Promise<void> => {
   if (prefix === 'bw:') {
     await removeOfflineItem(LEGACY_MUTATION_QUEUE_KEY);
   }
-  await removeOfflineItemsWhere((k) => k.startsWith(prefix));
+  const keep = opts?.keepPendingWrites === true;
+  await removeOfflineItemsWhere((k) => k.startsWith(prefix) && !(keep && isPendingWriteKey(k)));
 };
+
+/**
+ * Changes still waiting to be sent, one key per account (offline gig edits,
+ * rehearsal notes, Stage notes). Sign-out keeps them (audit 04 #9): they are
+ * sent at that account's next sign-in, and only for it. Read caches go;
+ * queues without an account (legacy, `anonymous`) go too, since the next
+ * account to sign in would adopt them.
+ */
+export const PENDING_WRITE_PREFIXES = ['bw:offline_queue:', 'bw:rehearsal_notes_outbox:', 'bw:live_outbox:'] as const;
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isPendingWriteKey = (key: string): boolean =>
+  PENDING_WRITE_PREFIXES.some((p) => key.startsWith(p) && ACCOUNT_ID.test(key.slice(p.length)));
 
 // ─── Cached data and the role it was read for ───────────────────────────────
 

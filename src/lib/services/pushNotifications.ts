@@ -11,6 +11,15 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
+import { flushPushRevocations, forgetRevocation, revokeOnSignOut } from '@/lib/pushRevocation';
+
+const revokeStore = (): Storage | null => {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+};
 
 // Cache the token to avoid re-registration issues
 let cachedToken: string | null = null;
@@ -238,6 +247,7 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
     }
     savedToken = token;
     savedAt = Date.now();
+    forgetRevocation(revokeStore(), token);
     return { success: true, error: null };
   } catch (err: any) {
     console.error('[Push] Save error:', err);
@@ -249,18 +259,39 @@ const saveTokenToDatabase = async (userId: string, token: string): Promise<{ suc
  * Stop pushes to this device for the account that is signing out. Call it
  * BEFORE the session ends (the RPC needs the user's JWT).
  */
-export const unregisterPushToken = async (): Promise<void> => {
+export const unregisterPushToken = async (userId?: string | null): Promise<void> => {
+  const owner = userId ?? pushUserId;
   pushUserId = null;
   savedToken = null;
   if (!isNative() || !cachedToken) return;
-  try {
-    const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: cachedToken });
-    if (error) {
-      await supabase.from('push_tokens').update({ is_active: false }).eq('token', cachedToken);
-    }
-  } catch {
-    /* best effort: never block sign-out */
-  }
+  const token = cachedToken;
+  const outcome = await revokeOnSignOut(token, owner ?? '', {
+    store: owner ? revokeStore() : null,
+    revokeOnServer: async () => {
+      const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
+      if (!error) return true;
+      const { error: updateError } = await supabase.from('push_tokens').update({ is_active: false }).eq('token', token);
+      return !updateError;
+    },
+    // Offline (audit 04 #6): stop delivery on the phone itself; the next
+    // sign-in registers again.
+    unregisterDevice: async () => {
+      cachedToken = null;
+      await PushNotifications.unregister();
+    },
+  });
+  if (outcome === 'queued') console.warn('[Push] Server not reached: device unregistered, revocation queued');
+};
+
+/**
+ * Revocations queued by an offline sign-out (audit 04 #6), sent once online.
+ * Works signed out: migration 184 needs only the token and its account.
+ */
+export const flushQueuedPushRevocations = async (): Promise<number> => {
+  if (!isNative()) return 0;
+  return flushPushRevocations(revokeStore(), (p) =>
+    supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_signed_out_at: p.at }),
+  );
 };
 
 /**
