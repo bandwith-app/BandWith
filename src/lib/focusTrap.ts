@@ -198,6 +198,17 @@ const onKeyDown = (e: KeyboardEvent) => {
     wrapInto(root, e.shiftKey);
     return;
   }
+  // The Duo rail's actions come after the layer's own stops in the cycle, but
+  // sit elsewhere on the page: cross between them here, not in page order.
+  const own = tabbables(root);
+  const rail = items.slice(own.length);
+  if (rail.length && own.length) {
+    const cross = e.shiftKey ? active === rail[0] && [...own].reverse() : active === own[own.length - 1] && rail;
+    if (cross && focusFirstOf(cross)) {
+      e.preventDefault();
+      return;
+    }
+  }
   // Otherwise the browser moves focus. Its tab order can differ from ours
   // (Safari skips buttons unless the user turned that on): if focus lands
   // outside the layer, onFocusIn wraps it.
@@ -265,10 +276,13 @@ const restore = (opener: HTMLElement | null) => {
 };
 
 /** A layer closed: focus back to what opened it, or else into the layer now on top. */
-const backToTrap = (opener: HTMLElement | null) => {
-  // The user tapped into a text field meanwhile (a field on the other Duo
-  // page): focus and the keyboard stay there.
-  if (isTextEntry(document.activeElement)) return;
+const backToTrap = (opener: HTMLElement | null, closing?: HTMLElement) => {
+  // The user tapped into a text field outside the closing layer meanwhile (a
+  // field on the other Duo page): focus and the keyboard stay there. A field
+  // in the closing layer itself (Enter or Escape typed in it; a sheet stays on
+  // the page for its exit) gives the focus back as usual.
+  const a = document.activeElement;
+  if (isTextEntry(a) && !closing?.contains(a)) return;
   restore(opener);
   const root = top();
   if (root && root.isConnected && !root.contains(document.activeElement)) {
@@ -385,7 +399,7 @@ const onMutations = (records: MutationRecord[]) => {
     if (!l.auto || l.el.isConnected) continue;
     stack.splice(i, 1);
     const active = document.activeElement;
-    if (!active || active === document.body || !active.isConnected) backToTrap(l.opener);
+    if (!active || active === document.body || !active.isConnected) backToTrap(l.opener, l.el);
   }
   stopIfUnowned();
 };
@@ -428,13 +442,13 @@ const stop = () => {
  * behind it on the way.
  */
 let handover: { opener: HTMLElement | null } | null = null;
-const handBack = (opener: HTMLElement | null) => {
+const handBack = (opener: HTMLElement | null, closing: HTMLElement) => {
   const mine = { opener };
   handover = mine;
   queueMicrotask(() => {
     if (handover !== mine) return;
     handover = null;
-    backToTrap(opener);
+    backToTrap(opener, closing);
   });
 };
 
@@ -502,7 +516,7 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
       const active = document.activeElement;
       const heldFocus = !active || active === document.body || !active.isConnected || layer.el.contains(active);
       remove(layer);
-      if (wasTop || heldFocus) handBack(layer.opener);
+      if (wasTop || heldFocus) handBack(layer.opener, layer.el);
     };
   }, [active, ref, noRail]);
 }

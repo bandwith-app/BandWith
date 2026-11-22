@@ -219,3 +219,32 @@ test('@smoke folding the Duo with Edit kit open: focus stays in the editor, abov
   await cycle(app, editor, 'Shift+Tab', 6);
 });
 
+
+test("@smoke Duo: Tab and Shift+Tab cross between a layer's last control and the rail's actions", async ({ app }) => {
+  await app.page.getByRole('button', { name: new RegExp(app.t('Switch band')) }).first().click();
+  const switcher = app.page.getByRole('dialog', { name: app.t('Your bands') });
+  await expect(switcher).toBeVisible();
+  await switcher.getByRole('button', { name: app.t('Create band') }).focus();
+  await app.page.keyboard.press('Enter');
+  const create = app.page.getByRole('dialog', { name: app.t('Create') }).last();
+  await expect(create).toBeVisible();
+  const rail = app.page.locator('[data-bw-trap-include]');
+  test.skip(!(await rail.isVisible()), "no rail actions: the layer's Close is in its header");
+  await expect.poll(() => focusInside(create)).toBe(true);
+  const ends = await create.evaluate((el) => {
+    const sel = 'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])';
+    const own = Array.from(el.querySelectorAll<HTMLElement>(sel)).filter((c) => c.getClientRects().length > 0);
+    const railStops = Array.from(document.querySelectorAll<HTMLElement>(`[data-bw-trap-include] :is(${sel})`)).filter((c) => c.getClientRects().length > 0);
+    own[own.length - 1].setAttribute('data-e2e-last', '');
+    railStops[0].setAttribute('data-e2e-rail-first', '');
+    return { own: own.length, rail: railStops.length };
+  });
+  expect(ends.rail).toBeGreaterThan(0);
+  // From the rail's first action, Shift+Tab goes back to the layer's last control.
+  await app.page.locator('[data-e2e-rail-first]').focus();
+  await app.page.keyboard.press('Shift+Tab');
+  expect(await app.page.evaluate(() => document.activeElement?.hasAttribute('data-e2e-last')), 'Shift+Tab: back to the last control').toBe(true);
+  // And Tab from there goes on to the rail's first action.
+  await app.page.keyboard.press('Tab');
+  expect(await app.page.evaluate(() => document.activeElement?.hasAttribute('data-e2e-rail-first')), 'Tab: on to the rail').toBe(true);
+});

@@ -7,13 +7,14 @@
  * - from inside (Safari's Tab skipping buttons), past the end goes to the
  *   first stop and before the start to the last;
  * - on the Duo, past the layer's own stops Tab goes on to the rail's Close
- *   and Back before it wraps, and back the other way.
+ *   and Back before it wraps, and back the other way (from a guard, and from
+ *   the keys themselves: the rail sits elsewhere on the page).
  * Not aria-hidden (like Radix's guards): a focusable element must not be
  * hidden from screen readers.
  */
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen, waitFor } from '@testing-library/react';
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -86,6 +87,16 @@ describe('focus guards', () => {
     end.focus();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Rail back' }));
     start.focus();
+    expect(document.activeElement).toBe(stops[stops.length - 1]);
+  });
+
+  it("Tab from the layer's last control goes to the rail's first action; Shift+Tab from it comes back", async () => {
+    const { stops } = await setup(true);
+    const railFirst = screen.getByRole('button', { name: 'Rail back' });
+    stops[stops.length - 1].focus();
+    expect(fireEvent.keyDown(document.activeElement!, { key: 'Tab' })).toBe(false);
+    expect(document.activeElement).toBe(railFirst);
+    expect(fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })).toBe(false);
     expect(document.activeElement).toBe(stops[stops.length - 1]);
   });
 });
