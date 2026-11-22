@@ -21,18 +21,17 @@
 -- Round 2 (Codex + Claude review #291):
 --   * a message marked deleted (messages.deleted = true, deleteMessage in
 --     chats.ts) takes its notices too, not only a real DELETE;
---   * a chat notice for a message that is gone or marked deleted is not
---     written at all: send-push verifies the message, then writes the
---     notices, and a delete in between used to leave the text in the inbox.
---     The check locks the message row (FOR SHARE) until the notice is
---     written, so a delete either comes first (no notice) or after (its
---     purge sees the notice). send-push rings only the notices written;
+--   * (a chat notice for a message deleted before it is written: send-push
+--     writes notices through 194's bw_write_chat_notices, which rechecks
+--     the message and holds it FOR SHARE until the notices are in, so a
+--     delete either comes first or its purge here sees them);
 --   * the preview is cut like the app's JS substring: 120 UTF-16 units, not
 --     120 characters (an emoji is 2 units), so long messages with emoji are
 --     matched and the backfill keeps their valid notices;
---   * an older notice (no message_id) belongs to the newest message with
---     that preview sent before it: deleting the first of two "OK"s no longer
---     takes the second one's notice.
+--   * an older notice (no message_id) belongs to one message only: the newest
+--     with that preview sent at or before it, else (clock skew) the oldest
+--     sent within the minute after it. Deleting either of two "OK"s, even
+--     seconds apart, takes only its own notice.
 --
 -- Older app builds: nothing they call changes. Idempotent; one transaction.
 -- Independent of 175/181 (uses no function they redefine).
@@ -103,6 +102,23 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_chat_notice_shows(text, jsonb, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_notice_shows(text, jsonb, text) TO authenticated, service_role;
 
+-- Whether message a (sent at p_a) owns an older notice (written at p_n)
+-- rather than message b: the newest sent at or before the notice, else the
+-- oldest sent after it (clock skew); ties by id.
+CREATE OR REPLACE FUNCTION public.bw_chat_notice_closer(p_n timestamptz, p_a timestamptz, p_a_id uuid, p_b timestamptz, p_b_id uuid)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  SELECT CASE
+    WHEN p_a <= p_n THEN p_b > p_n OR p_a > p_b OR (p_a = p_b AND p_a_id > p_b_id)
+    ELSE p_b > p_n AND (p_a < p_b OR (p_a = p_b AND p_a_id < p_b_id))
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_notice_closer(timestamptz, timestamptz, uuid, timestamptz, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_notice_closer(timestamptz, timestamptz, uuid, timestamptz, uuid) TO authenticated, service_role;
+
 -- Deletes the chat notices of these messages (gone, or marked deleted):
 -- [{id, chat_id, content, created_at}]. messages.deleted is read through
 -- to_jsonb so this works with or without that column.
@@ -123,8 +139,10 @@ BEGIN
    WHERE n.type IN ('chat_message', 'chat_mention')
      AND n.data ->> 'message_id' = g.id::text;
 
-  -- Older rows without message_id: same chat, same preview, written after
-  -- it, and no later live message with that preview sent before the row.
+  -- Older rows without message_id: same chat, same preview, around the same
+  -- time, and no live message with that preview owns the row instead
+  -- (bw_chat_notice_closer). Other messages deleted in the same statement
+  -- don't matter: their own pass deletes what they own.
   DELETE FROM notifications n
    USING jsonb_to_recordset(p_gone) AS g(id uuid, chat_id uuid, content text, created_at timestamptz)
    WHERE n.type IN ('chat_message', 'chat_mention')
@@ -137,10 +155,11 @@ BEGIN
        SELECT 1 FROM messages m2
         WHERE m2.chat_id = g.chat_id
           AND m2.id <> g.id
-          AND m2.created_at > g.created_at
           AND m2.created_at <= n.created_at + interval '1 minute'
+          AND m2.created_at > n.created_at - interval '1 hour'
           AND NOT coalesce((to_jsonb(m2) ->> 'deleted')::boolean, false)
           AND public.bw_chat_notice_shows(n.body, n.data, m2.content)
+          AND public.bw_chat_notice_closer(n.created_at, m2.created_at, m2.id, g.created_at, g.id)
      );
 END;
 $$;
@@ -195,40 +214,10 @@ BEGIN
 END;
 $$;
 
--- No chat notice for a message that is gone or marked deleted (a delete
--- between send-push's check and its insert). FOR SHARE holds off a delete
--- until this notice is in, so the delete's purge then removes it.
-CREATE OR REPLACE FUNCTION public.bw_trg_notifications_chat_message_live()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_id text := NEW.data ->> 'message_id';
-  v_row jsonb;
-BEGIN
-  IF v_id IS NULL OR NEW.type NOT IN ('chat_message', 'chat_mention') THEN
-    RETURN NEW;
-  END IF;
-  IF v_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
-    RETURN NULL;
-  END IF;
-  SELECT to_jsonb(m) INTO v_row FROM messages m WHERE m.id = v_id::uuid FOR SHARE;
-  IF v_row IS NULL OR coalesce((v_row ->> 'deleted')::boolean, false) THEN
-    RETURN NULL;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_trg_notifications_chat_message_live() FROM PUBLIC, anon, authenticated;
-
+-- Round 2 wrote this guard as a trigger here; 194's bw_write_chat_notices
+-- does it now.
 DROP TRIGGER IF EXISTS bw_notifications_chat_message_live ON public.notifications;
-CREATE TRIGGER bw_notifications_chat_message_live
-  BEFORE INSERT ON public.notifications
-  FOR EACH ROW
-  WHEN (NEW.type IN ('chat_message', 'chat_mention'))
-  EXECUTE FUNCTION public.bw_trg_notifications_chat_message_live();
+DROP FUNCTION IF EXISTS public.bw_trg_notifications_chat_message_live();
 
 -- Previews of messages deleted (or marked deleted) before this migration.
 DELETE FROM public.notifications n

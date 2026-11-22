@@ -30,7 +30,7 @@ const [BAND, OTHERBAND, ADMIN, LINE, MEM, OUT, FAN, EX] = [1, 2, 3, 4, 5, 6, 7, 
 const [DM, BANDCHAT, EVCHAT, DUP_OLD, DUP_NEW, OTHERCHAT, TWINCHAT] = [20, 21, 22, 23, 24, 25, 26].map(id);
 const [GIG, GIG2] = [30, 31].map(id);
 const [M_SHORT, M_LONG, M_BAND_LINE, M_BAND_MEM, M_OTHER, M_GONE, M_DUP_OLD, M_DUP_NEW] = [40, 41, 42, 43, 44, 45, 46, 47].map(id);
-const [M_OK1, M_OK2, M_EMOJI, M_SOFT, M_LIVE] = [48, 49, 50, 51, 52].map(id);
+const [M_OK1, M_OK2, M_EMOJI, M_SOFT, M_LIVE, M_YES1, M_YES2] = [48, 49, 50, 51, 52, 53, 54].map(id);
 
 async function as(uid, sql) {
   try {
@@ -154,7 +154,10 @@ INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES
   ('${M_OK2}','${TWINCHAT}','${MEM}','OK', now() - interval '40 minutes'),
   ('${M_EMOJI}','${TWINCHAT}','${MEM}',$t$${EMOJI}$t$, now() - interval '30 minutes'),
   ('${M_SOFT}','${TWINCHAT}','${MEM}','delete me softly', now() - interval '20 minutes'),
-  ('${M_LIVE}','${TWINCHAT}','${MEM}','still here', now() - interval '10 minutes');
+  ('${M_LIVE}','${TWINCHAT}','${MEM}','still here', now() - interval '10 minutes'),
+  -- Two "Yes"s three seconds apart.
+  ('${M_YES1}','${TWINCHAT}','${MEM}','Yes', now() - interval '8 minutes'),
+  ('${M_YES2}','${TWINCHAT}','${MEM}','Yes', now() - interval '8 minutes' + interval '3 seconds');
 -- Notifications: with message_id (send-push from #284), and older ones without.
 INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
   ('${LINE}','chat_message','Ava Admin','see you at 8',
@@ -179,8 +182,25 @@ INSERT INTO notifications (user_id, type, title, body, data, action_url, created
   ('${ADMIN}','chat_message','Mia Member','OK', jsonb_build_object('chat_id','${TWINCHAT}','content','OK','tag','ok-1'), '/chat/${TWINCHAT}', now() - interval '50 minutes' + interval '5 seconds'),
   ('${ADMIN}','chat_message','Mia Member','OK', jsonb_build_object('chat_id','${TWINCHAT}','content','OK','tag','ok-2'), '/chat/${TWINCHAT}', now() - interval '40 minutes' + interval '5 seconds'),
   ('${ADMIN}','chat_message','Mia Member',$t$${preview(EMOJI)}$t$, jsonb_build_object('chat_id','${TWINCHAT}','content',$t$${preview(EMOJI)}$t$), '/chat/${TWINCHAT}', now() - interval '30 minutes' + interval '5 seconds'),
-  ('${ADMIN}','chat_message','Mia Member','delete me softly', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_SOFT}','content','delete me softly'), '/chat/${TWINCHAT}', now() - interval '20 minutes');
+  ('${ADMIN}','chat_message','Mia Member','delete me softly', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_SOFT}','content','delete me softly'), '/chat/${TWINCHAT}', now() - interval '20 minutes'),
+  ('${ADMIN}','chat_message','Mia Member','Yes', jsonb_build_object('chat_id','${TWINCHAT}','content','Yes','tag','yes-1'), '/chat/${TWINCHAT}', now() - interval '8 minutes' + interval '1 second'),
+  ('${ADMIN}','chat_message','Mia Member','Yes', jsonb_build_object('chat_id','${TWINCHAT}','content','Yes','tag','yes-2'), '/chat/${TWINCHAT}', now() - interval '8 minutes' + interval '4 seconds');
 `);
+
+// ── 193 · main's decision (round 3): no merge. With duplicates it stops and
+// lists them; prod has none (2 band chats, 5 event chats).
+const mig193 = MIGS.find((m) => m.includes('193')) ?? MIGS[0];
+let dupErr = null;
+try {
+  await db.exec(readFileSync(mig193, 'utf8'));
+} catch (e) {
+  dupErr = e.message;
+  await db.exec('ROLLBACK');
+}
+ok(!!dupErr && dupErr.includes(DUP_NEW) && dupErr.includes(DUP_OLD) && dupErr.includes(OTHERBAND),
+  `193 refuses to run with duplicates and lists them (${dupErr ?? 'ran'})`);
+ok(await count(`SELECT count(*)::int AS n FROM chats WHERE id IN ('${DUP_OLD}','${DUP_NEW}')`) === 2, 'and changes nothing');
+await db.exec(`DELETE FROM chats WHERE id = '${DUP_NEW}'`);
 
 for (const m of MIGS) {
   await db.exec(readFileSync(m, 'utf8'));
@@ -227,39 +247,11 @@ ok(r.rows.length === 1 && r.rows[0].tag === 'ok-2', `deleting the first "OK" kee
 await db.exec(`UPDATE messages SET deleted = true, deleted_at = now() WHERE id = '${M_SOFT}'`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_SOFT}'`) === 0,
   'a message marked deleted takes its notice with it');
-const notice = async (msgId) => db.query(`INSERT INTO notifications (user_id, type, title, body, data) VALUES ('${ADMIN}', 'chat_message', 'Mia Member', 'x',
-  jsonb_build_object('chat_id', '${TWINCHAT}', 'message_id', '${msgId}')) RETURNING id`).then((x) => x.rows.length, (e) => e.message);
-ok((await notice(M_OK1)) === 0, 'a notice for a message deleted before it was written is not stored');
-ok((await notice(M_SOFT)) === 0, 'nor for a message marked deleted');
-ok((await notice(M_LIVE)) === 1, 'a notice for a live message is stored');
-
-// ── 193 · duplicates from before are merged into the oldest chat
-ok(await count(`SELECT count(*)::int AS n FROM chats WHERE type = 'band' AND band_id = '${OTHERBAND}'`) === 1,
-  'one band chat left for the band that had two');
-ok(await count(`SELECT count(*)::int AS n FROM messages WHERE chat_id = '${DUP_OLD}'`) === 2,
-  'messages of the newer chat moved into the oldest one');
-r = await db.query(`SELECT user_id, cleared_at FROM chat_participants WHERE chat_id = '${DUP_OLD}' ORDER BY user_id`);
-ok(r.rows.length === 2 && r.rows.some((x) => x.user_id === LINE) && r.rows.some((x) => x.user_id === MEM),
-  `participants merged (${JSON.stringify(r.rows.map((x) => x.user_id))})`);
-// Codex #291 B3 / Claude: clearing the duplicate must not hide what Mia kept in the keeper.
-ok(r.rows.find((x) => x.user_id === MEM)?.cleared_at === null,
-  `the keeper's cleared_at is kept, so messages kept there stay visible (${r.rows.find((x) => x.user_id === MEM)?.cleared_at})`);
-// Codex #291 B1: Eli left the band; his row in the duplicate does not get him into the keeper.
-ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${DUP_OLD}' AND user_id = '${EX}'`) === 0,
-  'a former member in the duplicate is not added to the keeper');
-r = await as(EX, `SELECT id FROM messages WHERE chat_id = '${DUP_OLD}'`);
-ok(r.rows.length === 0, `and cannot read the keeper's history (${r.rows.length})`);
-ok(await count(`SELECT count(*)::int AS n FROM chat_merges_193 WHERE dup_chat_id = '${DUP_NEW}'
-    AND participant_rows @> '[{"user_id":"${EX}"}]' AND keeper_participant_rows @> '[{"user_id":"${MEM}","cleared_at":null}]'`) === 1,
-  "the archive keeps the duplicate's and the keeper's participant rows (undo)");
-ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${DUP_OLD}' AND action_url = '/chat/${DUP_OLD}'`) === 1,
-  'its notifications open the merged chat');
-ok(await count(`SELECT count(*)::int AS n FROM chat_merges_193 WHERE dup_chat_id = '${DUP_NEW}' AND '${M_DUP_NEW}' = ANY (message_ids)`) === 1,
-  'merged chat archived (admin only) for a rollback');
-r = await as(MEM, `SELECT count(*)::int AS n FROM chat_merges_193`);
-ok(!!r.error, 'archive not readable by app users');
-r = await db.query(`UPDATE messages SET chat_id = '${BANDCHAT}' WHERE id = '${M_DUP_OLD}'`).catch((e) => ({ error: e.message }));
-ok(!!r.error, 'messages still cannot move chat after the merge (trigger back on)');
+// Codex #291 r3: two "Yes"s seconds apart; deleting the second keeps the first one's notice.
+await db.exec(`DELETE FROM messages WHERE id = '${M_YES2}'`);
+r = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body = 'Yes'`);
+ok(r.rows.length === 1 && r.rows[0].tag === 'yes-1', `deleting the second "Yes" keeps the first one's notice (${JSON.stringify(r.rows)})`);
+// (A notice for a message deleted before it is written: 194's bw_write_chat_notices, tested with 194.)
 
 // ── 193 · a band admin outside the lineup finds the gig chat
 r = await as(LINE, `INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHAT}','event','Rooftop Session','${BAND}','${GIG}','${LINE}')`);
@@ -283,11 +275,6 @@ ok(!!r.error && /already has a chat/.test(r.error), `older build, duplicate gig 
 await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${EX}'`);
 r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
 ok(!!r.error && /ha già una chat/.test(r.error), `in their language (${r.error})`);
-// An older build's outbox sends into the merged duplicate: it lands in the keeper.
-r = await as(LINE, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${DUP_NEW}','${LINE}','from the outbox') RETURNING chat_id`);
-ok(!r.error && r.rows[0]?.chat_id === DUP_OLD, `outbox message to a merged chat goes to the keeper (${r.error ?? r.rows[0]?.chat_id})`);
-r = await as(EX, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${DUP_NEW}','${EX}','sneaky')`);
-ok(!!r.error, 'not for someone who is not in the keeper');
 
 // Not on the lineup, not an admin: cannot see or open it.
 r = await as(MEM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);

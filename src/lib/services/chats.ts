@@ -744,17 +744,18 @@ const withReplies = async (chatId: string, rows: Message[], clearedAt?: string |
   try {
     let cut = clearedAt;
     if (cut === undefined) {
+      // Fail closed (Codex review #291 r3): without the reader's cut-off a
+      // quote from before they deleted the chat could show. No quotes then.
       const { data: { user } } = await getSafeUser();
-      cut = null;
-      if (user) {
-        const { data: mine } = await supabase
-          .from('chat_participants')
-          .select('cleared_at')
-          .eq('chat_id', chatId)
-          .eq('user_id', user.id)
-          .maybeSingle();
-        cut = (mine as { cleared_at?: string | null } | null)?.cleared_at ?? null;
-      }
+      if (!user) return rows;
+      const { data: mine, error: cutError } = await supabase
+        .from('chat_participants')
+        .select('cleared_at')
+        .eq('chat_id', chatId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (cutError) return rows;
+      cut = (mine as { cleared_at?: string | null } | null)?.cleared_at ?? null;
     }
     const { data: quoted } = await supabase
       .from('messages')
@@ -794,12 +795,14 @@ export const getMessages = async (
     // Check if current user previously cleared / deleted this chat
     let clearedAt: string | null = null;
     if (user) {
-      const { data: myPart } = await supabase
+      const { data: myPart, error: cutError } = await supabase
         .from('chat_participants')
         .select('cleared_at')
         .eq('chat_id', chatId)
         .eq('user_id', user.id)
         .maybeSingle();
+      // Unknown cut-off: show nothing rather than history the reader deleted.
+      if (cutError) throw cutError;
       if (myPart?.cleared_at) clearedAt = myPart.cleared_at;
     }
     

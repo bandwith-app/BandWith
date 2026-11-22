@@ -156,6 +156,29 @@ describe('reply quotes (07 #11)', () => {
     expect((data || []).find((x) => x.id === 'm2')?.reply_to).toBeUndefined();
   });
 
+  // Codex review #291 r3: the reader's cut-off could not be read, and the
+  // quote from before they deleted the chat was shown anyway.
+  const noCutoff = (): Resolver => {
+    const base = db(at(2));
+    return (table, calls) => (table === 'chat_participants' ? { data: null, error: { code: '57014', message: 'timeout' } } : base(table, calls));
+  };
+
+  it('cut-off unknown: a Realtime reply comes without its quote', async () => {
+    h.resolve = noCutoff();
+    const got: Message[] = [];
+    subscribeToChat('c1', (m) => got.push(m));
+    await h.onInsert?.({ new: { id: 'm2' } });
+    expect(got[0]?.id).toBe('m2');
+    expect(got[0]?.reply_to).toBeUndefined();
+  });
+
+  it('cut-off unknown: the messages are not shown (could be from before the delete)', async () => {
+    h.resolve = noCutoff();
+    const { data, error } = await getMessages('c1', { limit: 50 });
+    expect(data).toBeNull();
+    expect(error).toBeTruthy();
+  });
+
   it('a reply from Realtime carries the quote for the recipient', async () => {
     h.resolve = db(null);
     const got: Message[] = [];
