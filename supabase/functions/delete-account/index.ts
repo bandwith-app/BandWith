@@ -20,7 +20,10 @@
 //    PDFs in avatars/quotes/<band> too). A failed
 //    lookup or cleanup stops (503) before the account goes, so a retry still
 //    finds them (a lookup that failed must never erase a band that goes on).
-// 6. auth.admin.deleteUser() — profiles cascade from auth.users, the pending
+// 6. bw_account_deletion_finish(): their messages once more (a direct
+//    message sent from another device while prepare ran; after prepare no
+//    new message from them gets in).
+// 7. auth.admin.deleteUser() — profiles cascade from auth.users, the pending
 //    deletion with them.
 // Every step can run again, so a failed attempt can simply be retried.
 //
@@ -129,6 +132,11 @@ serve(async (req) => {
       }
       if (!cleaned) return notReady("band files", toClean);
     }
+
+    // Their messages once more: one sent from another device while prepare
+    // ran (after prepare no new one gets in).
+    const { error: finishError } = await admin.rpc("bw_account_deletion_finish", { p_uid: caller.id });
+    if (finishError) return notReady("finish", finishError.message);
 
     const { error: deleteError } = await admin.auth.admin.deleteUser(caller.id);
     if (deleteError) throw deleteError;

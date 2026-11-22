@@ -877,7 +877,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('Delete account?')}
               </h2>
               <p id="delete-account-desc" className="bw-body-md text-muted-foreground">
-                {t("This can't be undone. Your profile, personal gigs and messages will be deleted.")}
+                {t("This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band and gig chats stay, shown as from a former member.")}
               </p>
               <div className="flex flex-col gap-2">
                 <label htmlFor="delete-account-confirm" className="bw-label-sm text-muted-foreground">

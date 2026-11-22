@@ -319,7 +319,8 @@ export const getChats = async (
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('chat_id', chat.id)
-          .neq('sender_id', user.id);
+          // A former member's message has no sender and is still unread.
+          .or(`sender_id.is.null,sender_id.neq.${user.id}`);
 
         if (lastReadAt && clearedAt) {
           const cutOff = new Date(lastReadAt) > new Date(clearedAt) ? lastReadAt : clearedAt;

@@ -67,7 +67,7 @@ const dict: Dictionary = {
   "Some screens, notifications and emails are still in English while translations are being added.": "Certains écrans, notifications et e-mails restent en anglais le temps d’ajouter les traductions.",
   "Switch layouts when the phone is half open on a table": "Change la mise en page quand le téléphone est à moitié ouvert sur une table",
   "Delete account?": "Supprimer le compte ?",
-  "This can't be undone. Your profile, personal gigs and messages will be deleted.": "Action irréversible. Votre profil, vos concerts perso et vos messages seront supprimés.",
+  "This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band and gig chats stay, shown as from a former member.": "Action irréversible. Votre profil, vos dates perso et vos messages privés seront supprimés. Vos messages dans les discussions du groupe et des dates restent, comme ceux d’un ancien membre.",
   "Type DELETE to confirm": "Tapez DELETE pour confirmer",
   "Cancel": "Annuler",
   "Deleting…": "Suppression…",

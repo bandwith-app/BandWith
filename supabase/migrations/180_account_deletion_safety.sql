@@ -52,6 +52,19 @@
 --    DELETE SET NULL, same constraint name: older builds embed the author
 --    through it).
 --
+-- 5. Round 3 (Codex review #282):
+--    * B1: authors and senders can be NULL now, so every live check that
+--      compares one with a user by <> uses IS DISTINCT FROM (withdrawing a
+--      suggestion, the suggested-song close trigger, marking chats read or
+--      delivered); the rest compare with = and deny on NULL.
+--    * B2: after prepare the person can't send messages (trigger
+--      bw_messages_deleting_sender), and bw_account_deletion_finish(uid),
+--      called by delete-account right before Auth, handles their messages
+--      once more (a direct message that got in while prepare ran).
+--    * B4: prepare takes the guard's locks in the guard's order.
+--    * A poll keeps its creator's time zone (rehearsal_polls.creator_timezone,
+--      read only by bw_poll_vote_deadline), so a closed vote stays closed.
+--
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
 -- ============================================================================
@@ -432,9 +445,54 @@ BEGIN
   END IF;
 END $$;
 
+-- The person's messages (owner decision 11-22), for prepare and again for
+-- the last step before Auth (round 3, B2: a message sent from another device
+-- while prepare ran).
+CREATE OR REPLACE FUNCTION public.bw_account_deletion_messages(p_uid uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_col text;
+BEGIN
+  -- Messages (owner decision 11-22): direct messages, and messages they had
+  -- already deleted, go; band and event chat messages stay, as a former
+  -- member's (sender_id NULL, the immutable-keys trigger allows it here).
+  PERFORM set_config('bw.account_deletion_uid', p_uid::text, true);
+  DELETE FROM public.messages m
+   WHERE m.sender_id = p_uid
+     AND (coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+          OR NOT EXISTS (SELECT 1 FROM public.chats c
+                          WHERE c.id = m.chat_id AND c.type::text IN ('band', 'event', 'group')));
+  -- Their id out of message metadata and attachments: their own messages,
+  -- and mentions in the chats they were in.
+  FOREACH v_col IN ARRAY ARRAY['metadata', 'attachments'] LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'messages'
+                  AND column_name = v_col AND data_type = 'jsonb') THEN
+      EXECUTE format($f$
+        UPDATE public.messages m
+           SET %1$I = public.bw_jsonb_without_person(m.%1$I, $1::text)
+         WHERE (m.sender_id = $1
+                OR m.chat_id IN (SELECT cp.chat_id FROM public.chat_participants cp WHERE cp.user_id = $1)
+                OR m.chat_id IN (SELECT c.id FROM public.chats c
+                                   JOIN public.band_members bm ON bm.band_id = c.band_id
+                                  WHERE bm.user_id = $1))
+           AND strpos(m.%1$I::text, $1::text) > 0$f$, v_col)
+      USING p_uid;
+    END IF;
+  END LOOP;
+  UPDATE public.messages SET sender_id = NULL WHERE sender_id = p_uid;
+  PERFORM set_config('bw.account_deletion_uid', '', true);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_deletion_messages(uuid) FROM PUBLIC, anon, authenticated;
+
 -- As 059, plus: the bands it deletes are noted with the pending deletion
--- (prepared from then on), and band and event chat messages stay without
--- author instead of being deleted.
+-- (prepared from then on), band and event chat messages stay without author
+-- instead of being deleted, and its band check takes the guard's locks.
 CREATE OR REPLACE FUNCTION public.bw_prepare_account_deletion(p_uid uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -443,8 +501,28 @@ SET search_path = public
 AS $$
 DECLARE
   fk record;
-  v_col text;
+  v_band uuid;
 BEGIN
+  -- The guard's locks, in its order (round 3, B4). A membership change holds
+  -- its row (and a new member its band, through the FK) before the guard
+  -- takes the deletion lock shared and then the band's lock, so prepare
+  -- takes them the same way: the bands and their member rows first, then
+  -- the deletion lock shared, then each band's lock by id. A co-admin leaving
+  -- at the same moment either commits first (prepare then sees it) or waits
+  -- and sees the deletion prepared; neither side can wait on the other.
+  PERFORM 1 FROM public.bands b
+   WHERE b.id IN (SELECT bm.band_id FROM public.band_members bm WHERE bm.user_id = p_uid)
+   ORDER BY b.id FOR UPDATE;
+  PERFORM 1 FROM public.band_members bm
+   WHERE bm.band_id IN (SELECT me.band_id FROM public.band_members me WHERE me.user_id = p_uid)
+   ORDER BY bm.band_id, bm.user_id FOR UPDATE;
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('bw_account_deletion', 0));
+  FOR v_band IN
+    SELECT DISTINCT bm.band_id FROM public.band_members bm WHERE bm.user_id = p_uid ORDER BY bm.band_id
+  LOOP
+    PERFORM public.bw_band_deletion_lock(v_band);
+  END LOOP;
+
   IF EXISTS (SELECT 1 FROM public.bw_account_deletion_blockers(p_uid)) THEN
     RAISE EXCEPTION 'account_has_bands' USING ERRCODE = 'P0001';
   END IF;
@@ -469,35 +547,14 @@ BEGIN
   -- Personal gigs are deleted with the account.
   DELETE FROM events WHERE band_id IS NULL AND created_by = p_uid;
 
-  -- Messages (owner decision 11-22): direct messages, and messages they had
-  -- already deleted, go; band and event chat messages stay, as a former
-  -- member's (sender_id NULL, the immutable-keys trigger allows it here).
-  PERFORM set_config('bw.account_deletion_uid', p_uid::text, true);
-  DELETE FROM messages m
-   WHERE m.sender_id = p_uid
-     AND (coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
-          OR NOT EXISTS (SELECT 1 FROM chats c
-                          WHERE c.id = m.chat_id AND c.type::text IN ('band', 'event', 'group')));
-  -- Their id out of message metadata and attachments: their own messages,
-  -- and mentions in the chats they were in.
-  FOREACH v_col IN ARRAY ARRAY['metadata', 'attachments'] LOOP
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'messages'
-                  AND column_name = v_col AND data_type = 'jsonb') THEN
-      EXECUTE format($f$
-        UPDATE public.messages m
-           SET %1$I = public.bw_jsonb_without_person(m.%1$I, $1::text)
-         WHERE (m.sender_id = $1
-                OR m.chat_id IN (SELECT cp.chat_id FROM public.chat_participants cp WHERE cp.user_id = $1)
-                OR m.chat_id IN (SELECT c.id FROM public.chats c
-                                   JOIN public.band_members bm ON bm.band_id = c.band_id
-                                  WHERE bm.user_id = $1))
-           AND strpos(m.%1$I::text, $1::text) > 0$f$, v_col)
-      USING p_uid;
-    END IF;
-  END LOOP;
-  UPDATE messages SET sender_id = NULL WHERE sender_id = p_uid;
-  PERFORM set_config('bw.account_deletion_uid', '', true);
+  -- Their polls keep the time zone their vote-by deadline is read in
+  -- (round 3: without it a closed New York poll reopened under UTC-12).
+  UPDATE public.rehearsal_polls rp
+     SET creator_timezone = nullif(trim(pr.timezone), '')
+    FROM public.profiles pr
+   WHERE pr.id = p_uid AND rp.created_by = p_uid AND nullif(trim(pr.timezone), '') IS NOT NULL;
+
+  PERFORM public.bw_account_deletion_messages(p_uid);
 
   -- Remaining single-column FKs to profiles(id) / auth.users(id) that would
   -- block the delete: NO ACTION / RESTRICT, or SET NULL on a NOT NULL column.
@@ -531,6 +588,258 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_prepare_account_deletion(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_prepare_account_deletion(uuid) TO service_role;
+
+
+-- ── 5. Round 3 (Codex review #282) ───────────────────────────────────────
+-- B2: once prepare has run, the person sends nothing more (another device
+-- still signed in): a direct message would outlive the deletion with no
+-- sender. One that got in while prepare ran is caught by the last step.
+CREATE OR REPLACE FUNCTION public.bw_trg_messages_deleting_sender()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.sender_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.account_deletions_pending p
+     WHERE p.user_id = NEW.sender_id AND p.prepared_at IS NOT NULL
+       AND p.started_at > now() - interval '15 minutes'
+  ) THEN
+    RAISE EXCEPTION 'account_deletion_in_progress' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_messages_deleting_sender() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_messages_deleting_sender ON public.messages;
+CREATE TRIGGER bw_messages_deleting_sender
+  BEFORE INSERT ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_messages_deleting_sender();
+
+-- The last step before Auth deletes the user (delete-account): their
+-- messages once more.
+CREATE OR REPLACE FUNCTION public.bw_account_deletion_finish(p_uid uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF p_uid IS NULL THEN
+    RAISE EXCEPTION 'p_uid is required' USING ERRCODE = '22004';
+  END IF;
+  PERFORM public.bw_account_deletion_messages(p_uid);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_account_deletion_finish(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_account_deletion_finish(uuid) TO service_role;
+
+-- B1: authors and senders can now be NULL. A check like "created_by <> me"
+-- is then NULL and lets anyone through, so every live definition that
+-- compares one with a user (grep of all migrations, round 3) now uses
+-- IS DISTINCT FROM. The rest compare with = (NULL denies) and stay.
+
+-- As 108, with IS DISTINCT FROM: nobody withdraws a former member's suggestion.
+CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion(p_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  g record;
+  s record;
+  v_files jsonb := '[]'::jsonb;
+BEGIN
+  SELECT * INTO g FROM public.song_suggestions WHERE id = p_id FOR UPDATE;
+  IF v_uid IS NULL OR g.id IS NULL OR g.created_by IS DISTINCT FROM v_uid THEN
+    RAISE EXCEPTION 'Not your suggestion' USING ERRCODE = '42501';
+  END IF;
+  IF g.status <> 'pending' THEN
+    RAISE EXCEPTION 'This suggestion was already reviewed' USING ERRCODE = '55000';
+  END IF;
+  UPDATE public.song_suggestions SET status = 'withdrawn', reviewed_at = now() WHERE id = g.id;
+  IF g.kind = 'new_song' THEN
+    SELECT id, status, audio_url, chart_url INTO s FROM public.songs WHERE id = g.song_id;
+    IF s.id IS NOT NULL AND s.status = 'suggested' THEN
+      v_files := to_jsonb(array_remove(ARRAY[s.audio_url, s.chart_url], NULL));
+      DELETE FROM public.songs WHERE id = s.id;
+    END IF;
+  END IF;
+  -- The admins' unread notification about it goes away.
+  DELETE FROM public.notifications
+   WHERE type = 'song_suggestion' AND reference_id = g.id AND NOT coalesce(read, false);
+  RETURN jsonb_build_object('status', 'withdrawn', 'files', v_files);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_withdraw_song_suggestion(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_withdraw_song_suggestion(uuid) TO authenticated;
+
+-- As 108, with IS DISTINCT FROM: an admin deleting a former member's
+-- suggested song rejects the suggestion (it was left to "withdrawn").
+CREATE OR REPLACE FUNCTION public.bw_trg_song_suggestion_close()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_id uuid;
+  v_status text;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NOT (OLD.status = 'suggested' AND NEW.status IS DISTINCT FROM 'suggested') THEN RETURN NEW; END IF;
+    v_status := 'accepted';
+  ELSE
+    IF OLD.status IS DISTINCT FROM 'suggested' THEN RETURN OLD; END IF;
+    v_status := 'rejected';
+  END IF;
+  FOR v_id IN
+    UPDATE public.song_suggestions
+       SET status = v_status, reviewed_by = auth.uid(), reviewed_at = now()
+     WHERE song_id = OLD.id AND kind = 'new_song' AND status = 'pending'
+       -- The author withdrawing their own song: no notification.
+       AND (auth.uid() IS NULL OR created_by IS DISTINCT FROM auth.uid() OR v_status = 'accepted')
+    RETURNING id
+  LOOP
+    PERFORM public.bw_notify_song_suggestion_outcome(v_id);
+  END LOOP;
+  -- Corrections still waiting for a deleted song can't be applied any more.
+  IF TG_OP = 'DELETE' THEN
+    UPDATE public.song_suggestions SET status = 'withdrawn', reviewed_at = now()
+     WHERE song_id = OLD.id AND status = 'pending';
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_song_suggestion_close() FROM PUBLIC, anon, authenticated;
+
+-- As 049 / 122, with IS DISTINCT FROM: a former member's message counts as
+-- someone else's, so opening the chat marks it read and delivered.
+CREATE OR REPLACE FUNCTION public.bw_mark_chats_delivered()
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN 0; END IF;
+  UPDATE chat_participants cp
+     SET last_delivered_at = now()
+   WHERE cp.user_id = auth.uid()
+     AND EXISTS (
+       SELECT 1 FROM messages m
+        WHERE m.chat_id = cp.chat_id
+          AND m.sender_id IS DISTINCT FROM auth.uid()
+          AND m.created_at > coalesce(cp.last_delivered_at, '-infinity'::timestamptz)
+     );
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_mark_chats_delivered() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_mark_chats_delivered() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_mark_chat_read(p_chat_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN false; END IF;
+  UPDATE chat_participants cp
+     SET last_read_at = now(),
+         last_delivered_at = now()
+   WHERE cp.chat_id = p_chat_id
+     AND cp.user_id = auth.uid()
+     AND (
+       cp.last_read_at IS NULL
+       OR EXISTS (
+         SELECT 1 FROM messages m
+          WHERE m.chat_id = cp.chat_id
+            AND m.sender_id IS DISTINCT FROM auth.uid()
+            AND m.created_at > cp.last_read_at
+       )
+     );
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count > 0;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_mark_chat_read(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_mark_chat_read(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_mark_chat_delivered_by_push(p_chat_id uuid, p_user_ids uuid[])
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_chat_id IS NULL OR p_user_ids IS NULL OR cardinality(p_user_ids) = 0 THEN RETURN 0; END IF;
+  UPDATE chat_participants cp
+     SET last_delivered_at = now()
+   WHERE cp.chat_id = p_chat_id
+     AND cp.user_id = ANY (p_user_ids)
+     AND EXISTS (
+       SELECT 1 FROM messages m
+        WHERE m.chat_id = cp.chat_id
+          AND m.sender_id IS DISTINCT FROM cp.user_id
+          AND m.created_at > coalesce(cp.last_delivered_at, '-infinity'::timestamptz)
+     );
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bw_mark_chat_delivered_by_push(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_mark_chat_delivered_by_push(uuid, uuid[]) TO service_role;
+
+-- The poll keeps the creator's time zone once the creator is gone (above).
+ALTER TABLE public.rehearsal_polls ADD COLUMN IF NOT EXISTS creator_timezone text;
+
+-- As 117, plus the poll's own copy of the time zone (#297's
+-- bw_poll_vote_deadlines reads this function, so it follows).
+CREATE OR REPLACE FUNCTION public.bw_poll_vote_deadline(p_poll_id uuid)
+RETURNS timestamptz
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_by date;
+  v_time time;
+  v_tz text;
+  v_local timestamp;
+BEGIN
+  SELECT rp.vote_by, rp.vote_by_time, coalesce(nullif(trim(p.timezone), ''), nullif(trim(rp.creator_timezone), ''))
+    INTO v_by, v_time, v_tz
+  FROM rehearsal_polls rp
+  LEFT JOIN profiles p ON p.id = rp.created_by
+  WHERE rp.id = p_poll_id;
+  IF v_by IS NULL THEN
+    RETURN NULL;
+  END IF;
+  v_local := v_by + coalesce(v_time, time '23:59:59');
+  IF v_tz IS NOT NULL THEN
+    BEGIN
+      RETURN v_local AT TIME ZONE v_tz;
+    EXCEPTION WHEN invalid_parameter_value OR data_exception THEN
+      NULL; -- unknown zone name: fall through
+    END;
+  END IF;
+  RETURN v_local AT TIME ZONE 'Etc/GMT+12';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) TO authenticated;
 
 -- While a deletion is pending, no membership change may make it refuse
 -- later (round 2, B1-B4): checked on the band as it is after the change,

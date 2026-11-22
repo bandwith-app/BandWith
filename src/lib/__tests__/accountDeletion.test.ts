@@ -139,3 +139,41 @@ describe('delete-account: round 2', () => {
     expect(fn).toMatch(/begin\.kind === "busy"[\s\S]{0,200}409/);
   });
 });
+
+import chatsSource from '../services/chats.ts?raw';
+import settingsSource from '../../app/views/SettingsView.tsx?raw';
+import itDict from '../i18n/locales/it';
+import esDict from '../i18n/locales/es';
+import frDict from '../i18n/locales/fr';
+import deDict from '../i18n/locales/de';
+import ptDict from '../i18n/locales/pt';
+
+// Codex review #282, round 3.
+describe('delete-account: round 3', () => {
+  // B2: a direct message sent from another device while prepare ran is
+  // handled once more right before Auth deletes the user.
+  it('the function runs the last message step right before Auth', () => {
+    const finish = fn.indexOf('rpc("bw_account_deletion_finish"');
+    const auth = fn.indexOf('auth.admin.deleteUser(caller.id)');
+    expect(finish).toBeGreaterThan(0);
+    expect(finish).toBeLessThan(auth);
+    expect(fn).toMatch(/bw_account_deletion_finish"[\s\S]{0,200}return notReady\("finish"/);
+  });
+
+  // MINOR 2: a former member's message (sender NULL) counts as unread.
+  it("the chat list counts a former member's messages as unread", () => {
+    const unread = chatsSource.slice(chatsSource.indexOf('let unreadQuery'), chatsSource.indexOf('let unreadQuery') + 300);
+    expect(unread).not.toMatch(/\.neq\('sender_id', user\.id\)/);
+    expect(unread).toMatch(/\.or\(`sender_id\.is\.null,sender_id\.neq\.\$\{user\.id\}`\)/);
+  });
+
+  // B3: the confirmation says what really goes and what stays.
+  it('the confirmation says direct messages go and band and gig messages stay', () => {
+    const key = "This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band and gig chats stay, shown as from a former member.";
+    expect(settingsSource).toContain(`t(${JSON.stringify(key)})`);
+    expect(settingsSource).not.toContain("personal gigs and messages will be deleted.\")");
+    for (const [lang, dict] of Object.entries({ it: itDict, es: esDict, fr: frDict, de: deDict, pt: ptDict })) {
+      expect(dict[key], lang).toBeTruthy();
+    }
+  });
+});

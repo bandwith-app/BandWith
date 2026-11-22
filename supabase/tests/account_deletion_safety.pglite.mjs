@@ -28,7 +28,10 @@ CREATE TABLE auth.users (id uuid PRIMARY KEY);
 CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text, name text,
   owner uuid REFERENCES auth.users(id), owner_id text);
 CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
-CREATE TABLE public.profiles (id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, timezone text);
+-- auth.uid() as the request's user (test.uid).
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
+CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, type text, reference_id uuid, read boolean DEFAULT false);
 CREATE TABLE public.band_members (band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE,
   user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, role text, is_active boolean DEFAULT true);
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, created_by uuid);
@@ -37,21 +40,23 @@ CREATE TYPE public.chat_type AS ENUM ('direct', 'group', 'band', 'event');
 CREATE TABLE public.chats (id uuid PRIMARY KEY, type public.chat_type NOT NULL, band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE,
   created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL);
 CREATE TABLE public.chat_participants (chat_id uuid REFERENCES public.chats(id) ON DELETE CASCADE,
-  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE);
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, last_read_at timestamptz, last_delivered_at timestamptz);
 CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   chat_id uuid REFERENCES public.chats(id) ON DELETE CASCADE,
   sender_id uuid NOT NULL CONSTRAINT messages_sender_id_fkey REFERENCES public.profiles(id) ON DELETE SET NULL,
   content text, metadata jsonb DEFAULT '{}'::jsonb, attachments jsonb DEFAULT '[]'::jsonb, deleted boolean DEFAULT false,
   reply_to_id uuid REFERENCES public.messages(id) ON DELETE SET NULL, created_at timestamptz DEFAULT now());
 -- Songs and suggestions as 108 created them (created_by ON DELETE CASCADE).
-CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE, title text);
+CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE, title text,
+  status text DEFAULT 'active', audio_url text, chart_url text);
 CREATE TABLE public.song_suggestions (id uuid PRIMARY KEY, band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE,
   song_id uuid REFERENCES public.songs(id) ON DELETE SET NULL, status text NOT NULL DEFAULT 'pending',
   created_by uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  reviewed_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL);
+  reviewed_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL, kind text NOT NULL DEFAULT 'note', reviewed_at timestamptz);
+CREATE FUNCTION public.bw_notify_song_suggestion_outcome(p_id uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
 -- As 038 created them.
 CREATE TABLE public.rehearsal_polls (id uuid PRIMARY KEY, band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE,
-  created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, title text);
+  created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, title text, vote_by date, vote_by_time time);
 CREATE TABLE public.rehearsal_poll_options (id uuid PRIMARY KEY, poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE);
 CREATE TABLE public.rehearsal_poll_votes (poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE,
   option_id uuid NOT NULL REFERENCES public.rehearsal_poll_options(id) ON DELETE CASCADE,
@@ -62,7 +67,8 @@ INSERT INTO profiles VALUES ('${ADMIN1}'), ('${ADMIN2}'), ('${MEM}');
 INSERT INTO bands VALUES ('${BAND}', 'Hudson Horns'), ('${SOLO}', 'Solo project');
 INSERT INTO band_members VALUES ('${BAND}','${ADMIN1}','admin',true), ('${BAND}','${ADMIN2}','admin',true),
   ('${BAND}','${MEM}','member',true), ('${SOLO}','${ADMIN1}','admin',true);
-INSERT INTO rehearsal_polls VALUES ('${POLL}', '${BAND}', '${ADMIN1}', 'Thursday or Friday?');
+INSERT INTO rehearsal_polls VALUES ('${POLL}', '${BAND}', '${ADMIN1}', 'Thursday or Friday?', '2026-11-20', '18:00');
+UPDATE profiles SET timezone = 'America/New_York' WHERE id = '${ADMIN1}';
 INSERT INTO rehearsal_poll_options VALUES ('${OPT}', '${POLL}');
 INSERT INTO rehearsal_poll_votes VALUES ('${POLL}', '${OPT}', '${ADMIN2}'), ('${POLL}', '${OPT}', '${MEM}'), ('${POLL}', '${OPT}', '${ADMIN1}');
 INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES
@@ -76,6 +82,12 @@ const lines = (file, from, to) => readFileSync(`${REPO}/supabase/migrations/${fi
 await db.exec(lines('045_account_deletion.sql', 18, 38)); // bw_account_deletion_blockers as live
 await db.exec(lines('050_chat_and_profile_privacy.sql', 63, 80)); // messages: sender_id can't change
 await db.exec(readFileSync(`${REPO}/supabase/migrations/059_account_deletion_personal_data.sql`, 'utf8')); // prepare as live
+// Live definitions that compare an author or sender with a user (Codex round 3).
+await db.exec(lines('049_chat_participants_and_receipts.sql', 36, 90)); // mark delivered / read
+await db.exec(lines('122_chat_delivered_by_push.sql', 18, 44));
+await db.exec(lines('117_poll_vote_deadline.sql', 23, 53)); // vote deadline in the creator's time zone
+await db.exec(lines('108_song_suggestions.sql', 339, 384)); // a suggested song moved on or deleted
+await db.exec(lines('108_song_suggestions.sql', 519, 553)); // the author withdraws
 await db.exec(readFileSync(MIG, 'utf8'));
 await db.exec(readFileSync(MIG, 'utf8')); // idempotent
 ok(true, 'migration runs twice');
@@ -172,6 +184,10 @@ ok(!blocked, `no Storage object blocks the deletion (${blocked ?? 'ok'})`);
 await x(`DELETE FROM storage.objects WHERE owner = '${ADMIN1}'; DELETE FROM auth.users WHERE id = '${ADMIN1}'`);
 const poll = (await qq(`SELECT created_by FROM rehearsal_polls WHERE id = '${POLL}'`)).rows;
 ok(poll.length === 1 && poll[0].created_by === null, `the band's poll stays, without author (${JSON.stringify(poll)})`);
+// Round 3 (MINOR): its vote-by deadline stays in the creator's time zone,
+// not the UTC-12 fallback (a closed New York poll would reopen).
+const dl = (await qq(`SELECT public.bw_poll_vote_deadline('${POLL}') = timestamptz '2026-11-20 23:00:00+00' AS same, public.bw_poll_vote_deadline('${POLL}')::text AS at`)).rows[0];
+ok(dl?.same === true, `the poll's vote deadline keeps the creator's time zone (${JSON.stringify(dl)})`);
 const votes = (await qq(`SELECT user_id FROM rehearsal_poll_votes`)).rows.map((v) => v.user_id).sort();
 ok(votes.length === 2 && votes.includes(ADMIN2) && votes.includes(MEM), `the others' votes stay (${votes.length})`);
 
@@ -263,8 +279,9 @@ await x(`DELETE FROM band_members WHERE band_id = '${T4}'`);
 // ── Owner decision 11-22: band chat history stays, as a former member ──────
 const [F, G] = [40, 41].map(id);
 const FB = id(42), BC = id(43), EC = id(44), DM = id(45), S1 = id(46), SG1 = id(47), SG2 = id(48);
+const S2 = id(60), S3 = id(61), SG3 = id(62), SG4 = id(63), M8 = id(58), M9 = id(59);
 const [M1, M2, M3, M4, M5, M6, M7] = [51, 52, 53, 54, 55, 56, 57].map(id);
-await x(`INSERT INTO auth.users VALUES ('${F}'), ('${G}'); INSERT INTO profiles VALUES ('${F}'), ('${G}');
+const setupFM = await x(`INSERT INTO auth.users VALUES ('${F}'), ('${G}'); INSERT INTO profiles VALUES ('${F}'), ('${G}');
   INSERT INTO bands VALUES ('${FB}', 'Hoboken Hot Club');
   INSERT INTO band_members VALUES ('${FB}','${G}','admin',true), ('${FB}','${F}','member',true);
   INSERT INTO chats VALUES ('${BC}','band','${FB}','${G}'), ('${EC}','event','${FB}','${G}'), ('${DM}','direct',NULL,'${F}');
@@ -276,21 +293,38 @@ await x(`INSERT INTO auth.users VALUES ('${F}'), ('${G}'); INSERT INTO profiles 
     ('${M4}','${DM}','${F}','just between us', '{}', false, NULL),
     ('${M5}','${DM}','${G}','ok', '{}', false, NULL),
     ('${M6}','${BC}','${F}','oops', '{}', true, NULL);
-  INSERT INTO songs VALUES ('${S1}','${FB}','Minor Swing');
-  INSERT INTO song_suggestions VALUES ('${SG1}','${FB}','${S1}','accepted','${F}','${G}'), ('${SG2}','${FB}','${S1}','pending','${F}',NULL)`);
+  INSERT INTO songs VALUES ('${S1}','${FB}','Minor Swing','active'), ('${S2}','${FB}','Nuages','suggested'), ('${S3}','${FB}','Djangology','suggested');
+  INSERT INTO song_suggestions VALUES ('${SG1}','${FB}','${S1}','accepted','${F}','${G}','lyrics'), ('${SG2}','${FB}','${S1}','pending','${F}',NULL,'note'),
+    ('${SG3}','${FB}','${S2}','pending','${F}',NULL,'new_song'), ('${SG4}','${FB}','${S3}','pending','${F}',NULL,'new_song');
+  UPDATE chat_participants SET last_read_at = '2000-01-01', last_delivered_at = '2000-01-01' WHERE user_id = '${G}'`);
+ok(!setupFM.error, `former member: setup (${setupFM.error ?? 'ok'})`);
 await reset();
 ok((await begin(F))?.ok === true, 'former member: deletion can begin');
 d = await prepare(F);
 ok(!d.error, `former member: prepare goes through (${d.error ?? 'ok'})`);
-// A message sent in the second between prepare and Auth deleting the user.
-await x(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${M7}','${BC}','${F}','one more')`);
+// Round 3 B2: after prepare, the person can't send anything (another
+// device): a direct message would outlive the deletion with no sender.
+d = await x(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${M8}','${DM}','${F}','sent from the iPad')`);
+ok(!!d.error, `after prepare, a new message from them is refused (${d.error ?? 'sent'})`);
+// One that got in anyway (it started before prepare committed): the last
+// step before Auth goes over their messages again.
+const slipIn = async (m, chat, text) => x(`UPDATE account_deletions_pending SET prepared_at = NULL WHERE user_id = '${F}';
+  INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${m}','${chat}','${F}','${text}');
+  UPDATE account_deletions_pending SET prepared_at = now() WHERE user_id = '${F}'`);
+await slipIn(M8, DM, 'sent from the iPad');
+await slipIn(M7, BC, 'one more');
+d = await q(`SELECT public.bw_account_deletion_finish('${F}')`);
+ok(!d.error, `the last step runs (${d.error ?? 'ok'})`);
+ok((await qq(`SELECT 1 FROM messages WHERE id = '${M8}'`)).rows.length === 0, 'a direct message that slipped in after prepare is deleted');
+// And one in the second between that step and Auth: Auth still goes through.
+await slipIn(M9, BC, 'last word');
 d = await x(`DELETE FROM auth.users WHERE id = '${F}'`);
 ok(!d.error, `former member: Auth can delete the account (${d.error ?? 'ok'})`);
 const msg = async (m) => (await qq(`SELECT sender_id, content, metadata FROM messages WHERE id = '${m}'`)).rows[0] ?? null;
-let m1 = await msg(M1), m3 = await msg(M3), m7 = await msg(M7);
+let m1 = await msg(M1), m3 = await msg(M3), m7 = await msg(M7), m9 = await msg(M9);
 ok(m1?.content === 'See you at 8' && m1.sender_id === null, `the band chat message stays, without author (${JSON.stringify(m1)})`);
 ok(m3?.content === 'Running late' && m3.sender_id === null && !JSON.stringify(m3.metadata).includes(F), `the event chat message stays, author and metadata gone (${JSON.stringify(m3)})`);
-ok(m7?.sender_id === null, `a message sent after prepare doesn't stop Auth and stays anonymous (${JSON.stringify(m7)})`);
+ok(m7?.sender_id === null && m9?.sender_id === null, `band messages that slipped in stay anonymous and don't stop Auth (${JSON.stringify([m7, m9])})`);
 ok(JSON.stringify(m1?.metadata) === JSON.stringify({ client: 'ios', mentions: [G] }), `other people in its metadata stay (${JSON.stringify(m1?.metadata)})`);
 const m2 = await msg(M2);
 ok(m2 && !JSON.stringify(m2.metadata).includes(F) && m2.metadata.client === 'web' && Array.isArray(m2.metadata.mentions),
@@ -299,13 +333,54 @@ ok((await msg(M6)) === null, 'a message they had deleted goes for good');
 ok((await msg(M4)) === null, 'their direct messages go');
 ok((await msg(M5))?.content === 'ok', "the other person's direct messages stay");
 const sg = (await qq(`SELECT id, created_by FROM song_suggestions ORDER BY id`)).rows;
-ok(sg.length === 2 && sg.every((r) => r.created_by === null), `their song suggestions stay with the band, without author (${JSON.stringify(sg)})`);
+ok(sg.length === 4 && sg.every((r) => r.created_by === null), `their song suggestions stay with the band, without author (${JSON.stringify(sg)})`);
 const fkn = (await qq(`SELECT conname, confdeltype FROM pg_constraint WHERE conrelid = 'public.song_suggestions'::regclass AND contype = 'f'
   AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'public.song_suggestions'::regclass AND attname = 'created_by')]`)).rows;
 ok(fkn.length === 1 && fkn[0].conname === 'song_suggestions_created_by_fkey' && fkn[0].confdeltype === 'n',
   `same FK name (older builds embed author via it), now SET NULL (${JSON.stringify(fkn)})`);
 d = await q(`UPDATE messages SET sender_id = NULL WHERE id = '${M5}'`);
 ok(!!d.error, `nobody else can make a message anonymous (${d.error ?? 'nulled'})`);
+
+// ── Codex review #282, round 3 ─────────────────────────────────────────────
+// B1: an author check against NULL is NULL, so "not yours" was skipped.
+const as = async (u, sql) => { await x(`SELECT set_config('test.uid', '${u ?? ''}', false)`); const r = await q(sql); await x(`SELECT set_config('test.uid', '', false)`); return r; };
+const withdraw = await as(M, `SELECT public.bw_withdraw_song_suggestion('${SG3}') AS r`);
+ok(!!withdraw.error, `B1: nobody can withdraw a former member's suggestion (${withdraw.error ?? JSON.stringify(withdraw.rows)})`);
+ok((await qq(`SELECT 1 FROM songs WHERE id = '${S2}'`)).rows.length === 1, "B1: and the suggested song isn't deleted");
+// An admin deleting a former member's suggested song rejects it (the author
+// check skipped the row, so it ended up "withdrawn").
+await x(`SELECT set_config('test.uid', '${G}', false); DELETE FROM songs WHERE id = '${S3}'; SELECT set_config('test.uid', '', false)`);
+const sg4 = (await qq(`SELECT status FROM song_suggestions WHERE id = '${SG4}'`)).rows[0];
+ok(sg4?.status === 'rejected', `B1: an admin deleting the song rejects the suggestion (${JSON.stringify(sg4)})`);
+await x(`SELECT set_config('test.uid', '', false)`);
+// MINOR: a former member's message is unread for the others, and opening
+// the chat marks it read (sender_id <> me was NULL, so it never counted).
+await x(`SELECT set_config('test.uid', '${G}', false)`);
+const read = await q(`SELECT public.bw_mark_chat_read('${BC}') AS r`);
+const delivered = await q(`SELECT public.bw_mark_chats_delivered() AS r`);
+await x(`SELECT set_config('test.uid', '', false)`);
+ok(read.rows?.[0]?.r === true, `opening the chat marks a former member's message read (${read.error ?? JSON.stringify(read.rows)})`);
+ok(delivered.rows?.[0]?.r > 0, `and delivered (${delivered.error ?? JSON.stringify(delivered.rows)})`);
+await x(`UPDATE chat_participants SET last_delivered_at = '2000-01-01' WHERE user_id = '${G}' AND chat_id = '${EC}'`);
+const pushed = await q(`SELECT public.bw_mark_chat_delivered_by_push('${EC}', ARRAY['${G}']::uuid[]) AS r`);
+ok(pushed.rows?.[0]?.r === 1, `delivered by push too (${pushed.error ?? JSON.stringify(pushed.rows)})`);
+
+// B4: prepare takes the guard's locks (deletion lock shared, then the
+// bands' locks), so a co-admin leaving at the same time is ordered with it.
+const [T5, U1, U2] = [35, 36, 37].map(id);
+await x(`INSERT INTO auth.users VALUES ('${U1}'), ('${U2}'); INSERT INTO profiles VALUES ('${U1}'), ('${U2}');
+  INSERT INTO bands VALUES ('${T5}', 'Last two'); INSERT INTO band_members VALUES ('${T5}','${U1}','admin',true), ('${T5}','${U2}','admin',true)`);
+await reset();
+ok((await begin(U1))?.ok === true, 'B4: deletion can begin');
+try {
+  await db.exec('BEGIN');
+  await db.exec(`SELECT public.bw_prepare_account_deletion('${U1}')`);
+  lk = await q(`SELECT count(*) FILTER (WHERE mode = 'ShareLock')::int AS shared, count(*) FILTER (WHERE mode = 'ExclusiveLock')::int AS band
+    FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()`);
+  await db.exec('ROLLBACK');
+} catch (e) { await db.exec('ROLLBACK').catch(() => {}); lk = { error: e.message }; }
+ok(lk.rows?.[0]?.shared >= 1 && lk.rows[0].band >= 1, `B4: prepare holds the deletion lock and the band's lock (${lk.error ?? JSON.stringify(lk.rows?.[0])})`);
+await reset();
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
