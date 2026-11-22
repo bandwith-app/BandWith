@@ -253,8 +253,8 @@ ok(cS && cS.ok === false && cS.reason === 'referenced', `claim refused: a sugges
 ok(!(await sweep(ADMIN)).includes(P.learning), 'and the sweep does not list it');
 await db.exec(`DELETE FROM song_suggestions`);
 await db.exec(`INSERT INTO song_suggestions (band_id, song_id, kind, original) VALUES ('${BAND}','${id(11)}','note',
-  jsonb_build_object('chart', jsonb_build_array('sb://song-files/${P.learning}')))`);
-ok((await claim(ADMIN, P.learning)).reason === 'referenced', 'a ref in original (nested) counts too');
+  jsonb_build_object('files', jsonb_build_array(jsonb_build_object('chart_url', 'sb://song-files/${P.learning}'))))`);
+ok((await claim(ADMIN, P.learning)).reason === 'referenced', 'a chart_url in original (nested) counts too');
 await db.exec(`DELETE FROM song_suggestions`);
 // jsonb escapes quotes and backslashes: a hostile name is still found.
 const HOSTILE = `${BAND}/suggestions/${MEM}/audio/q"u\\o.mp3`;
@@ -377,8 +377,8 @@ const relinkGone = await q(`INSERT INTO songs VALUES ('${id(42)}','${BAND}','Rel
   .then(() => 'linked', (e) => e.code ?? e.message);
 await db.exec('ROLLBACK');
 ok(relinkGone === 'BWF02', `after the lapse a file really deleted is refused, BWF02 (${relinkGone})`);
-await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${U}`]);
-ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${U}`])) === '[]', 'claim: a file a suggestion mentions is kept');
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('audio_url', $2::text))`, [BAND, `sb://song-files/${U}`]);
+ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${U}`])) === '[]', 'claim: a file a suggestion links is kept');
 await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
 
 // ---- Round 5 (Codex review of 02405d5c)
@@ -451,10 +451,10 @@ ok((await codeOf(MEM, `INSERT INTO songs VALUES ('${id(60)}','${BAND}','Reuse O 
 ok((await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(61)}','${BAND}','Link C late again','ready','sb://song-files/${C}',NULL)`)) === 'BWF02', 'BW_FILE_REMOVED has SQLSTATE BWF02');
 // The suggestion scan reads only the file's band (no leak, no scan of every band).
 const Y = `${BAND}/audio/y-mentioned.mp3`;
-await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [OTHER_BAND, `sb://song-files/${Y}`]);
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('audio_url', $2::text))`, [OTHER_BAND, `sb://song-files/${Y}`]);
 ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === JSON.stringify([`sb://song-files/${Y}`]), 'another band’s suggestion mentioning the path does not count');
 await removedDone(ADMIN, [`sb://song-files/${Y}`]);
-await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${Y}`]);
+await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('audio_url', $2::text))`, [BAND, `sb://song-files/${Y}`]);
 ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === '[]', 'its own band’s suggestion does');
 await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
 
@@ -631,8 +631,8 @@ await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note';
     ('${BAND}','note', jsonb_build_object('audio_url','${R(P7)}x'), 'rejected')`);
 const inUseQ = async (p) => (await qs(`SELECT public.bw_song_file_in_use($1) AS v`, [p])).rows[0]?.v;
 ok((await inUseQ(P7)) === false && (await inUseQ(`${P7}x`)) === false, 'free text and non-pending suggestions do not keep a file');
-await db.exec(`INSERT INTO song_suggestions (band_id, kind, proposed, status) VALUES ('${BAND}','note', jsonb_build_object('chord_chart', jsonb_build_object('file','${R(P7)}')), 'pending')`);
-ok((await inUseQ(P7)) === true, 'a pending suggestion with the ref as a JSON value keeps it (any depth)');
+await db.exec(`INSERT INTO song_suggestions (band_id, kind, proposed, status) VALUES ('${BAND}','note', jsonb_build_object('song', jsonb_build_object('audio_url','${R(P7)}')), 'pending')`);
+ok((await inUseQ(P7)) === true, 'a pending suggestion with the ref under audio_url keeps it (any depth)');
 await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
 
 // Claude M2: sweep_done marks only the caller's own sweep claims.
@@ -740,6 +740,66 @@ const notes = (await qs(`SELECT type FROM notifications WHERE reference_id = $1`
 ok(rejN && !String(rejN).startsWith('error'), `a reason naming the song's file does not block the reject (${typeof rejN === 'string' ? rejN : 'ok'})`);
 ok(notes.length === 1 && notes[0].type === `outcome:${reason}`, `the author gets exactly one notice, with the reason (${JSON.stringify(notes)})`);
 ok(JSON.stringify(rejN?.files) === JSON.stringify([R(NF)]), `and the song's file is still claimed for deletion (${JSON.stringify(rejN?.files)})`);
+
+// ---- Round 8: Claude review of ed7ec29f
+// 1: bw_song_files_removed releases only the copies this call released (its
+// own claims), of the caller's admin bands.
+const RCS = id(120), RCF = sug(MEM, 'audio/r8-copy.mp3'), RCT = `${BAND}/audio/${RCS}-r8-copy.mp3`;
+await putObj(RCF, 'song-files', MEM);
+await db.exec(`INSERT INTO songs VALUES ('${RCS}','${BAND}','R8 copy','learning','${R(RCF)}',NULL)`);
+await reserve(ADMIN, RCS, RCF, RCT);
+await removedDone(STRANGER, [R(RCT)]);
+await removedDone(ADMIN2, [R(RCT)]);
+ok((await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [RCT])).rows.length === 1,
+  'removed() without its own claim (another band’s admin, or one of this band) leaves a registered copy for the sweep');
+await claimDel(ADMIN, [R(RCT)]);
+await removedDone(ADMIN, [R(RCT)]);
+ok((await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [RCT])).rows.length === 0, 'its own released claim closes the registration');
+
+// 2: only file-holding keys (audio_url / chart_url) pin a file; the trigger
+// and the in-use check agree.
+const LX = `${BAND}/audio/r8-lyrics-ref.mp3`;
+await putObj(LX);
+await db.exec(`INSERT INTO song_suggestions (band_id, song_id, kind, proposed, status) VALUES ('${BAND}','${S1}','lyrics', jsonb_build_object('lyrics','${R(LX)}'), 'pending')`);
+ok((await inUseQ(LX)) === false && JSON.stringify(await claimDel(ADMIN, [R(LX)])) === JSON.stringify([R(LX)]),
+  'a lyrics correction whose text is exactly a ref does not pin the file');
+await db.exec(`DELETE FROM song_suggestions WHERE kind = 'lyrics'`);
+const NX = `${BAND}/audio/r8-notes-ref.mp3`;
+await putObj(NX);
+await claimDel(ADMIN, [R(NX)]);
+await db.exec(`INSERT INTO song_suggestions (id, band_id, song_id, kind, proposed, created_by) VALUES ('${id(121)}','${BAND}','${S1}','note', '{"note":"x"}', '${MEM}')`);
+const accN = await asCommit(ADMIN, `SELECT public.bw_review_song_suggestion($1, 'accept', NULL, $2::jsonb) AS v`, [id(121), JSON.stringify({ notes: R(NX) })]);
+ok(accN && !String(accN).startsWith('error'), `accepting notes whose text is exactly a claimed ref works (${typeof accN === 'string' ? accN : 'ok'})`);
+const LX2 = `${BAND}/chart/r8-chart-ref.pdf`;
+await db.exec(`INSERT INTO song_suggestions (band_id, kind, proposed, status) VALUES ('${BAND}','note', jsonb_build_object('chart_url','${R(LX2)}'), 'pending')`);
+ok((await inUseQ(LX2)) === true, 'a chart_url value still pins a file');
+await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
+
+// 3: rolling backfill: old band objects that nothing uses and nothing
+// records are swept too (older builds' refused rollback deletes).
+const RB = `${BAND}/audio/r8-rollback.mp3`, RBU = `${BAND}/audio/r8-rollback-used.mp3`, RBN = `${BAND}/audio/r8-rollback-new.mp3`;
+const RBC = `${BAND}/audio/${id(122)}-r8-recorded.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES
+  ('song-files','${RB}','${ADMIN}', now() - interval '2 days'), ('song-files','${RBU}','${ADMIN}', now() - interval '2 days'),
+  ('song-files','${RBN}','${ADMIN}', now() - interval '1 hour'), ('song-files','${RBC}','${ADMIN}', now() - interval '2 days');
+  INSERT INTO songs VALUES ('${id(123)}','${BAND}','Uses RBU','ready','${R(RBU)}',NULL);
+  INSERT INTO song_file_copies (path, band_id, song_id, made_at) VALUES ('${RBC}','${BAND}','${id(122)}', now())`);
+const list8 = await sweep(ADMIN);
+ok(Array.isArray(list8) && list8.includes(RB) && !list8.includes(RBU) && !list8.includes(RBN) && !list8.includes(RBC),
+  `the sweep lists an old object nothing uses or records; not a used, recent or recorded one (${Array.isArray(list8) ? list8.filter((p) => p.includes('r8-rollback') || p.includes('r8-recorded')).join(' ') : list8})`);
+const cRB = await claim(ADMIN, RB);
+ok(cRB?.ok === true && (await delObj(ADMIN, RB)) === 1 && (await doneSweep(ADMIN, [RB])) >= 1
+  && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [RB])).rows.length === 0, `and deletes it (${JSON.stringify(cRB)})`);
+ok((await claim(ADMIN, RBU))?.ok !== true, 'a used old object is not claimed');
+
+// 4: a lapsed claim of a file another song uses is cleared on the sweep's visit.
+const LU = `${BAND}/audio/r8-lapsed-used.mp3`;
+await putObj(LU);
+await db.exec(`INSERT INTO songs VALUES ('${id(124)}','${BAND}','Uses LU','ready','${R(LU)}',NULL);
+  INSERT INTO song_file_removals (path, band_id, claimed_by, claimed_at) VALUES ('${LU}','${BAND}',NULL, now() - interval '16 minutes')`);
+await sweep(ADMIN).catch(() => undefined);
+await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+ok((await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [LU])).rows.length === 0, 'a lapsed claim of a used file is cleared');
 
 // ---- Main (after the prod dry run of 220767ca): prod storage.objects has
 // archived_at / is_delete_marker; an archived object or a delete marker is not

@@ -33,9 +33,11 @@
 --      bw_song_file_sweep_list(band)
 --        the recorded originals nothing references any more (checked across
 --        all songs and pending member suggestions), lapsed delete claims of
---        the band and stale registered copies nothing uses (claimed again by
---        bw_song_file_sweep_claim, closed by bw_song_file_sweep_done, which
---        closes only the caller's claims), so no file stays orphaned.
+--        the band and stale registered copies nothing uses, and band objects
+--        older than a day nothing uses or records (rolling backfill), all
+--        claimed again by bw_song_file_sweep_claim under the file lock and
+--        closed by bw_song_file_sweep_done (only the caller's claims), so no
+--        file stays orphaned. Lapsed claims of used files are cleared.
 --      bw_song_file_sweep_claim(band, path)
 --        right before each delete, the file key locked: re-checks that no
 --        song and no member suggestion links the path, then marks it
@@ -51,8 +53,8 @@
 --    song_file_adoptions: that record. No access for anon / authenticated
 --    (RLS on, no grants): only these functions (and the service role).
 --
--- 3. A file another song (or a pending suggestion: its ref as a JSON value,
---    not free text) uses is never removed:
+-- 3. A file another song (or a pending suggestion: its ref as the value of
+--    an audio_url / chart_url key, not text) uses is never removed:
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
 --    unchanged; withdraw identical to 180's on fix/account-deletion,
 --    d468b10b / 19db3f54) return only the files of the song's band nothing
@@ -87,7 +89,10 @@
 --    lapsed delete claim (songs_file_left, AFTER DELETE / UPDATE OF
 --    audio_url, chart_url); the sweep re-checks and deletes it. Once, here,
 --    stored song-files objects older than a day that nothing uses get the
---    same lapsed claim (nothing is deleted by the migration).
+--    same lapsed claim (nothing is deleted by the migration); after that the
+--    sweep keeps finding such objects itself (bw_song_file_orphans: e.g. an
+--    older build's refused rollback of a fresh upload, which nothing
+--    records).
 --
 -- Links and deletes of one file are ordered by one advisory lock on the
 -- file's key (shared to link, exclusive to claim), so a link can't slip in
@@ -156,21 +161,31 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_ref(text) FROM PUBLIC, anon, authenticated;
 
--- The song-file paths a jsonb value links: string values (at any depth)
--- that are exactly a ref of this band, 'sb://song-files/<band>/...'. Free
--- text that merely names a file (a note, a message, a reason) is no link.
+-- The song-file paths a jsonb value links: the string values of its
+-- file-holding keys (audio_url, chart_url, at any depth) that are a ref of
+-- this band, 'sb://song-files/<band>/...'. Nothing else counts: lyrics,
+-- notes, a message or a reason that happen to hold a ref are text.
+-- The suggestion trigger and the in-use check both read it, so they agree.
 CREATE OR REPLACE FUNCTION public.bw_song_file_json_paths(p_json jsonb, p_band_id uuid)
 RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $$
-  SELECT coalesce(array_agg(DISTINCT substr(v #>> '{}', length('sb://song-files/') + 1) ORDER BY substr(v #>> '{}', length('sb://song-files/') + 1)), '{}'::text[])
-    FROM jsonb_path_query(coalesce(p_json, 'null'::jsonb), '$.** ? (@.type() == "string" && @ starts with $p)',
-                          jsonb_build_object('p', 'sb://song-files/' || p_band_id::text || '/')) v
+  SELECT coalesce(array_agg(DISTINCT x.p ORDER BY x.p), '{}'::text[])
+    FROM (SELECT substr(v #>> '{}', length('sb://song-files/') + 1) AS p
+            FROM jsonb_path_query(coalesce(p_json, 'null'::jsonb),
+                                  '$.**.audio_url ? (@.type() == "string" && @ starts with $p)',
+                                  jsonb_build_object('p', 'sb://song-files/' || p_band_id::text || '/')) v
+          UNION ALL
+          SELECT substr(v #>> '{}', length('sb://song-files/') + 1)
+            FROM jsonb_path_query(coalesce(p_json, 'null'::jsonb),
+                                  '$.**.chart_url ? (@.type() == "string" && @ starts with $p)',
+                                  jsonb_build_object('p', 'sb://song-files/' || p_band_id::text || '/')) v) x
    WHERE p_band_id IS NOT NULL;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_json_paths(jsonb, uuid) FROM PUBLIC, anon, authenticated;
 DROP FUNCTION IF EXISTS public.bw_song_file_json_needle(text);
 
 -- A pending member suggestion of the file's band links this file: its ref
--- is a value in proposed / original / applied. Only that band (its files
+-- is the value of a file key (audio_url / chart_url) in proposed /
+-- original / applied (bw_song_file_json_paths). Only that band (its files
 -- are its members'; no other band's rows are read). Reviewed, withdrawn or
 -- rejected suggestions, and free text, keep no file.
 CREATE OR REPLACE FUNCTION public.bw_song_file_in_suggestion(p_path text)
@@ -180,9 +195,9 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
                                                ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
                                          THEN split_part(p_path, '/', 1)::uuid END
                     AND g.status = 'pending'
-                    AND (jsonb_path_exists(g.proposed, '$.** ? (@ == $r)', jsonb_build_object('r', 'sb://song-files/' || p_path))
-                     OR jsonb_path_exists(g.original, '$.** ? (@ == $r)', jsonb_build_object('r', 'sb://song-files/' || p_path))
-                     OR jsonb_path_exists(coalesce(g.applied, 'null'::jsonb), '$.** ? (@ == $r)', jsonb_build_object('r', 'sb://song-files/' || p_path))));
+                    AND p_path = ANY (public.bw_song_file_json_paths(g.proposed, g.band_id)
+                                      || public.bw_song_file_json_paths(g.original, g.band_id)
+                                      || public.bw_song_file_json_paths(g.applied, g.band_id)));
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_in_suggestion(text) FROM PUBLIC, anon, authenticated;
 
@@ -465,11 +480,46 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text) TO authenticated;
 
+-- Rolling backfill: band objects older than a day that nothing uses and
+-- nothing records (no claim, no registered copy, no move in progress):
+-- older builds' refused deletes (a failed save's rollback of its fresh
+-- upload) and other leftovers. At most 200 per call; with p_path, that one.
+-- Built from the columns storage.objects has (created_at; without it, none).
+DO $do$
+DECLARE
+  v_age text := 'false';
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'created_at' AND attnum > 0 AND NOT attisdropped) THEN
+    v_age := $a$o.created_at < now() - interval '24 hours'$a$;
+  END IF;
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.bw_song_file_orphans(p_band_id uuid, p_path text DEFAULT NULL)
+    RETURNS SETOF text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $b$
+      SELECT o.name FROM storage.objects o
+       WHERE o.bucket_id = 'song-files'
+         AND left(o.name, 37) = p_band_id::text || '/'
+         AND (p_path IS NULL OR o.name = p_path)
+         AND %s
+         AND public.bw_song_file_stored(o.name)
+         AND NOT public.bw_song_file_in_use(o.name)
+         AND NOT EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = o.name)
+         AND NOT EXISTS (SELECT 1 FROM public.song_file_copies c WHERE c.path = o.name)
+         AND NOT EXISTS (SELECT 1 FROM public.song_file_adoptions a
+                          WHERE (a.from_path = o.name OR a.to_path = o.name) AND a.state IN ('copying', 'repointed', 'deleting'))
+       ORDER BY o.name
+       LIMIT 200;
+    $b$;
+  $f$, v_age);
+END;
+$do$;
+REVOKE ALL ON FUNCTION public.bw_song_file_orphans(uuid, text) FROM PUBLIC, anon, authenticated;
+
 -- Originals of moved files that no song links to any more: safe to delete.
 CREATE OR REPLACE FUNCTION public.bw_song_file_sweep_list(p_band_id uuid)
 RETURNS text[]
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
@@ -477,6 +527,11 @@ BEGIN
   IF auth.uid() IS NULL OR NOT public.bw_is_band_admin(p_band_id, auth.uid()) THEN
     RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
   END IF;
+  -- Lapsed claims of files another song (or a pending suggestion) uses:
+  -- nothing to delete, so they go (no re-check on every visit).
+  DELETE FROM public.song_file_removals r
+   WHERE r.band_id = p_band_id AND r.claimed_at < now() - interval '15 minutes'
+     AND public.bw_song_file_in_use(r.path);
   RETURN coalesce((
     SELECT array_agg(DISTINCT x.p ORDER BY x.p) FROM (
       SELECT a.from_path AS p
@@ -499,7 +554,9 @@ BEGIN
         FROM public.song_file_copies c
        WHERE c.band_id = p_band_id
          AND c.made_at < now() - interval '10 minutes'
-         AND c.path LIKE p_band_id::text || '/%') x
+         AND c.path LIKE p_band_id::text || '/%'
+      UNION
+      SELECT o FROM public.bw_song_file_orphans(p_band_id) o) x
      WHERE NOT public.bw_song_file_in_use(x.p)), '{}'::text[]);
 END;
 $$;
@@ -535,7 +592,8 @@ BEGIN
                 WHERE r.path = p_path AND r.band_id = p_band_id AND r.path LIKE p_band_id::text || '/%')
        OR EXISTS (SELECT 1 FROM public.song_file_copies c
                    WHERE c.path = p_path AND c.band_id = p_band_id AND c.made_at < now() - interval '10 minutes'
-                     AND c.path LIKE p_band_id::text || '/%') THEN
+                     AND c.path LIKE p_band_id::text || '/%')
+       OR EXISTS (SELECT 1 FROM public.bw_song_file_orphans(p_band_id, p_path)) THEN
       IF cardinality(public.bw_song_files_claim_for(ARRAY[public.bw_song_file_ref(p_path)], auth.uid(), true)) > 0 THEN
         DELETE FROM public.song_file_copies WHERE path = p_path;
         RETURN jsonb_build_object('ok', true);
@@ -586,9 +644,6 @@ BEGIN
    WHERE band_id = p_band_id AND (claimed_by = auth.uid() OR claimed_by IS NULL)
      AND path = ANY (coalesce(p_paths, '{}'::text[]));
   GET DIAGNOSTICS m = ROW_COUNT;
-  DELETE FROM public.song_file_copies
-   WHERE band_id = p_band_id AND path = ANY (coalesce(p_paths, '{}'::text[]))
-     AND NOT EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = song_file_copies.path);
   RETURN n + m;
 END;
 $$;
@@ -873,16 +928,22 @@ AS $$
 DECLARE
   n integer;
 BEGIN
-  DELETE FROM public.song_file_removals
-   WHERE claimed_by = auth.uid()
-     AND path = ANY (ARRAY(SELECT substr(x, length('sb://song-files/') + 1) FROM unnest(coalesce(p_refs, '{}'::text[])) x
-                            WHERE x LIKE 'sb://song-files/%'));
-  GET DIAGNOSTICS n = ROW_COUNT;
-  -- A registered copy that is now deleted is no leftover.
-  DELETE FROM public.song_file_copies c
-   WHERE c.path = ANY (ARRAY(SELECT substr(x, length('sb://song-files/') + 1) FROM unnest(coalesce(p_refs, '{}'::text[])) x
+  -- The caller's own claims of these files; a registered copy among them
+  -- is no leftover any more (only those this call released, and only in
+  -- bands the caller is an admin of).
+  WITH released AS (
+    DELETE FROM public.song_file_removals
+     WHERE claimed_by = auth.uid()
+       AND path = ANY (ARRAY(SELECT substr(x, length('sb://song-files/') + 1) FROM unnest(coalesce(p_refs, '{}'::text[])) x
                               WHERE x LIKE 'sb://song-files/%'))
-     AND NOT EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = c.path);
+    RETURNING path, band_id
+  ), unregistered AS (
+    DELETE FROM public.song_file_copies c
+     USING released r
+     WHERE c.path = r.path AND c.band_id::text = ANY (public.bw_my_admin_band_ids())
+    RETURNING c.path
+  )
+  SELECT count(*) INTO n FROM released;
   RETURN n;
 END;
 $$;
