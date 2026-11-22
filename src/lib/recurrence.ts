@@ -15,6 +15,8 @@ export interface RepeatRule {
   interval?: number;
   /** Last day (YYYY-MM-DD), included. */
   until?: string | null;
+  /** Dates deleted on their own (YYYY-MM-DD, #297): left out. */
+  skip_dates?: unknown;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -57,7 +59,8 @@ export function repeatDates(startYmd: string, rule: RepeatRule, until: Date, max
   const day = Number(m[3]);
   const freq = String(rule?.freq || rule?.frequency || '').toLowerCase();
   const n = Number(rule?.interval);
-  const every = Number.isInteger(n) && n >= 1 ? n : 1;
+  // 1-52, else 1: the same cap as the calendar file and 182's SQL.
+  const every = Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
 
   const nth = (k: number): Date | null => {
     if (freq === 'weekly') return new Date(year, month, day + 7 * every * k, 12, 0, 0);
@@ -81,11 +84,19 @@ export function repeatDates(startYmd: string, rule: RepeatRule, until: Date, max
   if (!day0) return [];
   const endOfDay = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate(), 23, 59, 59, 999);
 
+  // Dates deleted on their own (recurrence_rule.skip_dates, #297) are left
+  // out but still counted, as 182's SQL and the calendar file (COUNT with
+  // EXDATE) do, so a deleted date can't be opened or added to a calendar.
+  const skipList = rule?.skip_dates;
+  const skip = new Set(
+    Array.isArray(skipList) ? skipList.filter((x): x is string => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)) : [],
+  );
   const out: Date[] = [];
-  for (let k = 1; out.length < maxCount; k++) {
+  for (let k = 1, made = 0; made < maxCount; k++) {
     const d = nth(k);
     if (!d || d > endOfDay) break;
-    out.push(d);
+    made++;
+    if (!skip.has(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)) out.push(d);
   }
   return out;
 }
