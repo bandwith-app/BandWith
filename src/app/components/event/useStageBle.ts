@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BleClient, ConnectionPriority } from '@capacitor-community/bluetooth-le';
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import { StageBle, stageBleAvailable, stageKey } from '@/lib/stageBleNative';
-import { STAGE_BLE_CHARACTERISTIC, decodeStageState, encodeStageState, seqBytes, stageServiceUuid, toBase64 } from '@/lib/stageBle';
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  BleClient,
+  ConnectionPriority,
+} from "@capacitor-community/bluetooth-le";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { App } from "@capacitor/app";
+import { StageBle, stageBleAvailable, stageKey } from "@/lib/stageBleNative";
+import {
+  STAGE_BLE_CHARACTERISTIC,
+  decodeStageState,
+  encodeStageState,
+  seqBytes,
+  stageServiceUuid,
+  toBase64,
+} from "@/lib/stageBle";
 import {
   BURST_GAP_MS,
   BURST_READS,
@@ -12,16 +22,30 @@ import {
   STAGE_BLE_CLOCK_CHARACTERISTIC,
   STAGE_BLE_LIVE_CHARACTERISTIC,
   decodeClock,
-} from '@/lib/stageBleSync';
-import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
-import type { StageLiveState } from '@/lib/stageLive';
-import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
+} from "@/lib/stageBleSync";
+import {
+  bestSample,
+  clockSample,
+  nowMs,
+  type ClockSample,
+  type PeerClock,
+} from "@/lib/stageClick";
+import { isNewer, type StageLiveState } from "@/lib/stageLive";
+import { bleProblem, type StageBleStatus } from "@/lib/stageBleNotice";
 
 export type { StageBleStatus };
 
 /** The leader plugin's state, as a status. */
 const leaderStatus = (state: string): StageBleStatus =>
-  state === 'on' ? 'leading' : state === 'off' ? 'bt-off' : state === 'unauthorized' ? 'denied' : state === 'unsupported' ? 'unsupported' : 'off';
+  state === "on"
+    ? "leading"
+    : state === "off"
+    ? "bt-off"
+    : state === "unauthorized"
+    ? "denied"
+    : state === "unsupported"
+    ? "unsupported"
+    : "off";
 
 interface Options {
   eventId?: string;
@@ -34,6 +58,16 @@ interface Options {
 }
 
 const RETRY_MS = 2000;
+/**
+ * Members linked to a leader look this often for another admin's phone
+ * advertising the same gig (two admins with Stage open): the one with the
+ * newer state leads (seqs are time based). Sooner while the linked phone
+ * has served nothing yet (an admin who opened Stage and never led).
+ */
+export const LEADER_CHECK_MS = 30_000;
+export const IDLE_LEADER_CHECK_MS = 4_000;
+/** How long such a look scans. */
+const LEADER_SCAN_MS = 2_000;
 /** A leader's change notice is just the 4-byte seq; full values (a read echoed on iOS) are longer. */
 export const isChangeNotice = (v: DataView | undefined) => v?.byteLength === 4;
 /** Calls to the plugin's clock when the leader sets its offset (the fastest wins). */
@@ -65,8 +99,14 @@ async function calibrateClock(): Promise<number | null> {
  * has no clock characteristic: the song still syncs, `clock` stays null.
  * Bluetooth turned off stops the reads at once (no crash, the clock is kept).
  */
-export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
-  const [status, setStatus] = useState<StageBleStatus>('off');
+export function useStageBle({
+  eventId,
+  savedIds,
+  open,
+  isLeader,
+  onState,
+}: Options) {
+  const [status, setStatus] = useState<StageBleStatus>("off");
   const [clock, setClock] = useState<PeerClock | null>(null);
   /** Leader: phones linked to it. */
   const [followers, setFollowers] = useState(0);
@@ -89,7 +129,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const startedRef = useRef(false);
   const pendingRef = useRef<StageLiveState | null>(null);
 
-  const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
+  const active =
+    open && !!eventId && stageBleAvailable() && savedIds.length > 0;
 
   const push = useCallback(async (state: StageLiveState) => {
     const key = keyRef.current;
@@ -100,7 +141,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     const bytes = await encodeStageState(state, savedRef.current, key);
     if (!bytes) return;
     try {
-      await StageBle.update({ value: toBase64(bytes), notify: toBase64(seqBytes(state.seq)) });
+      await StageBle.update({
+        value: toBase64(bytes),
+        notify: toBase64(seqBytes(state.seq)),
+      });
     } catch {
       /* Bluetooth off: the next state goes out when it's back */
     }
@@ -112,7 +156,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (!isLeader) return;
       void push(state);
     },
-    [isLeader, push],
+    [isLeader, push]
   );
 
   // Leader: advertise while Stage mode is open.
@@ -134,10 +178,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled || !key) return;
       keyRef.current = key;
       const serviceUuid = await stageServiceUuid(key);
-      const handle = await StageBle.addListener('stateChange', ({ state, subscribers }) => {
-        setStatus(leaderStatus(state));
-        setFollowers(state === 'on' ? subscribers ?? 0 : 0);
-      });
+      const handle = await StageBle.addListener(
+        "stateChange",
+        ({ state, subscribers }) => {
+          setStatus(leaderStatus(state));
+          setFollowers(state === "on" ? subscribers ?? 0 : 0);
+        }
+      );
       // Closed while the listener was being added: the cleanup has already run.
       if (cancelled) {
         void handle.remove();
@@ -149,8 +196,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         const { state } = await StageBle.start({
           serviceUuid,
           characteristicUuid: STAGE_BLE_CHARACTERISTIC,
-          value: '',
-          notify: '',
+          value: "",
+          notify: "",
           clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC,
           liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC,
           key,
@@ -177,7 +224,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       pendingRef.current = null;
       void listener?.remove();
       void StageBle.stop().catch(() => {});
-      setStatus('off');
+      setStatus("off");
     };
   }, [active, isLeader, eventId, push, attempt]);
 
@@ -187,8 +234,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let cancelled = false;
     let deviceId: string | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    let serviceUuid = '';
-    let key = '';
+    let serviceUuid = "";
+    let key = "";
     // Clock over the link: kept across a dropped link (the click keeps its beat
     // meanwhile), started afresh for another leader's phone.
     const book = new BleClockBook();
@@ -200,6 +247,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let watching = false;
     /** Bumped for every new link, so a late goodbye from an old one is ignored. */
     let link = 0;
+    /** The newest valid state from the linked phone (null: it has served none). */
+    let linkState: StageLiveState | null = null;
+    let checkTimer: ReturnType<typeof setTimeout> | undefined;
 
     const emitClock = () => {
       const sample = book.best(nowMs());
@@ -220,13 +270,22 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const t0 = nowMs();
       let view: DataView;
       try {
-        view = await BleClient.read(id, serviceUuid, STAGE_BLE_CLOCK_CHARACTERISTIC);
+        view = await BleClient.read(
+          id,
+          serviceUuid,
+          STAGE_BLE_CLOCK_CHARACTERISTIC
+        );
       } catch (e) {
         // A dropped link is handled by onDisconnect; a missing characteristic is an older leader.
-        return !/not found|no such|unknown characteristic/i.test(String((e as { message?: unknown })?.message ?? e));
+        return !/not found|no such|unknown characteristic/i.test(
+          String((e as { message?: unknown })?.message ?? e)
+        );
       }
       const t2 = nowMs();
-      const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), key);
+      const t1 = await decodeClock(
+        new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(),
+        key
+      );
       if (t1 === null || cancelled || deviceId !== id) return true;
       if (book.add(t0, t1, t2)) emitClock();
       return true;
@@ -238,7 +297,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       burstTimers = Array.from({ length: BURST_READS }, (_, i) =>
         setTimeout(() => {
           if (syncOn) void readClockOnce();
-        }, i * BURST_GAP_MS),
+        }, i * BURST_GAP_MS)
       );
     };
     burstRef.current = runBurst;
@@ -256,9 +315,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         return;
       }
       if (cancelled || !syncOn) return;
-      if (Capacitor.getPlatform() === 'android') {
+      if (Capacitor.getPlatform() === "android") {
         // Shorter connection interval: tighter round trips, a better clock.
-        await BleClient.requestConnectionPriority(id, ConnectionPriority.CONNECTION_PRIORITY_HIGH).catch(() => {});
+        await BleClient.requestConnectionPriority(
+          id,
+          ConnectionPriority.CONNECTION_PRIORITY_HIGH
+        ).catch(() => {});
       }
       runBurst();
       clearInterval(resync);
@@ -269,23 +331,100 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const id = deviceId;
       if (!id) return;
       try {
-        const view = await BleClient.read(id, serviceUuid, STAGE_BLE_CHARACTERISTIC);
-        const result = await decodeStageState(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), savedRef.current, key);
+        const view = await BleClient.read(
+          id,
+          serviceUuid,
+          STAGE_BLE_CHARACTERISTIC
+        );
+        const result = await decodeStageState(
+          new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+          savedRef.current,
+          key
+        );
         if (cancelled) return;
         if (result.ok) {
-          setStatus('connected');
+          if (
+            deviceId === id &&
+            (!linkState || isNewer(result.state, linkState))
+          )
+            linkState = result.state;
+          setStatus("connected");
           if (result.state.from !== leaderFrom) {
             leaderFrom = result.state.from;
             emitClock();
           }
           onStateRef.current(result.state);
-        } else if (result.reason === 'setlist') {
+        } else if (result.reason === "setlist") {
           // Not silently "connected": this phone needs the setlist again (internet).
-          setStatus('outdated');
+          setStatus("outdated");
         }
       } catch {
         /* a dropped link is handled by onDisconnect */
       }
+    };
+
+    /** Another phone advertising the gig: its state, read over a short link (null: none valid). */
+    const probe = async (id: string): Promise<StageLiveState | null> => {
+      try {
+        await BleClient.connect(id, () => {}, { timeout: 5000 });
+        const view = await BleClient.read(
+          id,
+          serviceUuid,
+          STAGE_BLE_CHARACTERISTIC
+        );
+        const result = await decodeStageState(
+          new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+          savedRef.current,
+          key
+        );
+        return result.ok ? result.state : null;
+      } catch {
+        return null;
+      } finally {
+        void BleClient.disconnect(id).catch(() => {});
+      }
+    };
+
+    const scheduleCheck = () => {
+      clearTimeout(checkTimer);
+      if (!cancelled && deviceId)
+        checkTimer = setTimeout(
+          () => void checkLeaders(),
+          linkState ? LEADER_CHECK_MS : IDLE_LEADER_CHECK_MS
+        );
+    };
+
+    /** Two admins in Stage: follow the one that leads (the newer state), not the first one found. */
+    const checkLeaders = async () => {
+      const current = deviceId;
+      if (cancelled || !current) return;
+      const found: string[] = [];
+      try {
+        await BleClient.requestLEScan({ services: [serviceUuid] }, (r) => {
+          const id = r.device.deviceId;
+          if (id !== current && !found.includes(id)) found.push(id);
+        });
+        await new Promise((r) => setTimeout(r, LEADER_SCAN_MS));
+        await BleClient.stopLEScan();
+      } catch {
+        /* Bluetooth off meanwhile: its own handler takes over */
+      }
+      for (const id of found) {
+        if (cancelled || deviceId !== current) return;
+        const theirs = await probe(id);
+        if (cancelled || deviceId !== current) return;
+        if (theirs && (!linkState || isNewer(theirs, linkState))) {
+          // Leave the old link quietly (its goodbye is ignored), then follow this one.
+          link++;
+          deviceId = null;
+          linkState = null;
+          stopSync();
+          void BleClient.disconnect(current).catch(() => {});
+          linkTo(id);
+          return;
+        }
+      }
+      scheduleCheck();
     };
 
     const later = () => {
@@ -297,48 +436,64 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (gen !== link) return;
       link++;
       deviceId = null;
+      linkState = null;
+      clearTimeout(checkTimer);
       stopSync();
       if (cancelled) return;
-      setStatus('searching');
+      setStatus("searching");
       later();
     };
 
     const scan = async () => {
       if (cancelled) return;
-      setStatus('searching');
+      setStatus("searching");
       try {
         await BleClient.requestLEScan({ services: [serviceUuid] }, (result) => {
           if (deviceId || cancelled) return;
-          const id = result.device.deviceId;
-          deviceId = id;
-          const gen = ++link;
-          void (async () => {
-            try {
-              await BleClient.stopLEScan();
-              await BleClient.connect(id, () => onDisconnect(gen), { timeout: 10000 });
-              // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
-              // hands every read's value to this callback, which would read forever.
-              await BleClient.startNotifications(id, serviceUuid, STAGE_BLE_CHARACTERISTIC, (v) => {
-                if (isChangeNotice(v)) void readNow();
-              });
-              // Closed, or Bluetooth went off meanwhile (that link is already dropped).
-              if (cancelled || gen !== link) return;
-              setStatus('connected');
-              await readNow();
-              if (gen === link) await startSync(id);
-            } catch {
-              if (gen !== link) return;
-              link++;
-              deviceId = null;
-              void BleClient.disconnect(id).catch(() => {});
-              later();
-            }
-          })();
+          linkTo(result.device.deviceId);
         });
       } catch (e) {
-        if (!cancelled) setStatus(bleProblem(e) === 'unsupported' ? 'unsupported' : 'bt-off');
+        if (!cancelled)
+          setStatus(bleProblem(e) === "unsupported" ? "unsupported" : "bt-off");
       }
     };
+
+    /** Link to this leader's phone: subscribe, read, measure its clock, keep an eye out for another admin. */
+    function linkTo(id: string) {
+      deviceId = id;
+      linkState = null;
+      const gen = ++link;
+      void (async () => {
+        try {
+          await BleClient.stopLEScan();
+          await BleClient.connect(id, () => onDisconnect(gen), {
+            timeout: 10000,
+          });
+          // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
+          // hands every read's value to this callback, which would read forever.
+          await BleClient.startNotifications(
+            id,
+            serviceUuid,
+            STAGE_BLE_CHARACTERISTIC,
+            (v) => {
+              if (isChangeNotice(v)) void readNow();
+            }
+          );
+          // Closed, or Bluetooth went off meanwhile (that link is already dropped).
+          if (cancelled || gen !== link) return;
+          setStatus("connected");
+          await readNow();
+          if (gen === link) scheduleCheck();
+          if (gen === link) await startSync(id);
+        } catch {
+          if (gen !== link) return;
+          link++;
+          deviceId = null;
+          void BleClient.disconnect(id).catch(() => {});
+          later();
+        }
+      })();
+    }
 
     // Bluetooth off or the key not fetched yet: try again a little later.
     const boot = async () => {
@@ -372,9 +527,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               const id = deviceId;
               link++;
               deviceId = null;
+              linkState = null;
+              clearTimeout(checkTimer);
               stopSync();
               if (id) void BleClient.disconnect(id).catch(() => {});
-              setStatus('bt-off');
+              setStatus("bt-off");
             } else if (!deviceId) {
               void boot();
             }
@@ -393,7 +550,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled) return;
       if (!enabled) {
         // Bluetooth off: look again in a moment (turning it on needs no prompt).
-        setStatus('bt-off');
+        setStatus("bt-off");
         retry = setTimeout(() => void boot(), 5000);
         return;
       }
@@ -404,6 +561,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     return () => {
       cancelled = true;
       clearTimeout(retry);
+      clearTimeout(checkTimer);
       clearInterval(resync);
       burstTimers.forEach(clearTimeout);
       burstRef.current = () => {};
@@ -411,7 +569,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (watching) void BleClient.stopEnabledNotifications().catch(() => {});
       void BleClient.stopLEScan().catch(() => {});
       if (deviceId) void BleClient.disconnect(deviceId).catch(() => {});
-      setStatus('off');
+      setStatus("off");
     };
     // A reloaded setlist doesn't drop the link: reads use savedRef.
   }, [active, isLeader, eventId, attempt]);
@@ -423,10 +581,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     if (!active) return;
     let handle: PluginListenerHandle | null = null;
     let gone = false;
-    void App.addListener('resume', () => {
+    void App.addListener("resume", () => {
       if (!toSettingsRef.current) return;
       toSettingsRef.current = false;
-      if (statusRef.current === 'denied' || statusRef.current === 'bt-off') setAttempt((n) => n + 1);
+      if (statusRef.current === "denied" || statusRef.current === "bt-off")
+        setAttempt((n) => n + 1);
     })
       .then((h) => {
         if (gone) void h.remove();
@@ -444,11 +603,11 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
    * Android, else the app's Settings) or turn it on (Android).
    */
   const fix = useCallback(async () => {
-    const android = Capacitor.getPlatform() === 'android';
+    const android = Capacitor.getPlatform() === "android";
     try {
-      if (statusRef.current === 'bt-off') {
+      if (statusRef.current === "bt-off") {
         if (android) await BleClient.requestEnable();
-      } else if (statusRef.current === 'denied') {
+      } else if (statusRef.current === "denied") {
         if (!android || askedAgainRef.current) {
           toSettingsRef.current = true;
           await BleClient.openAppSettings();
