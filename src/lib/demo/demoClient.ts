@@ -1727,6 +1727,8 @@ const rpc = (fn: string, args: Row = {}) => {
       const kind = args.p_kind === 'reminded' && l.balance_sent_at ? 'balance_reminded' : 'balance_requested';
       table('quote_activity').push({ id: uuid(), quote_id: l.quote_id, band_id: l.band_id, kind, channel: args.p_channel ?? null, version: l.balance_version, body: String(l.balance.amountLabel || '').slice(0, 60), created_at: now });
       l.balance_sent_at ||= now;
+      // 185: what the client has now is the balance just sent.
+      l.balance_sent = l.balance;
       l.updated_at = now;
       persist();
       data = kind;

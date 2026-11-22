@@ -28,6 +28,8 @@ vi.mock('@/lib/services/quoteLinks', async (orig) => ({
     data: { link: { token: 'c'.repeat(64), status: 'sent', lang: 'fr', revoked_at: null }, activity: [] },
     error: null,
   })),
+  // 183: the sheet checks the client saved now (here: the same one).
+  getQuoteContact: vi.fn(async () => ({ data: { client_name: 'Camille Martin', client_email: 'camille@example.com', client_phone: null }, error: null })),
   publishQuoteLink: mocks.publish,
   sendQuoteEmail: vi.fn(async () => ({ ok: true })),
   markQuoteLinkSent: vi.fn(async () => ({ data: 'sent', error: null })),

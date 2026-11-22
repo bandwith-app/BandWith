@@ -17,7 +17,12 @@
 //   accepted by phone, and the one-time copy of the balance sent;
 //   6. round 3: a send recorded for a balance another admin replaced is
 //      refused (BW_BALANCE_CHANGED), and every balance function locks the
-//      quote before the link and the link before the gig (pageinspect).
+//      quote before the link and the link before the gig (pageinspect);
+//   7. 187 is a superset of 183 round 3 (the receipt in the quote's
+//      currency, deposit received locks the link before the gig, one
+//      conversation per link, a new client's old link takes nothing), the
+//      page says when the balance shown was sent, 183 refuses to run after
+//      187, and 187 refuses to run before 183 and 185.
 //
 //   mkdir -p /tmp/pgM && cd /tmp/pgM && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/money_fixes.pglite.mjs . && node money_fixes.pglite.mjs <repo>
@@ -427,6 +432,86 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   ok(await probe('mark_sent_reopen', () => asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q])), ['quote_links', 'events']),
     'lock order: a send that reopens "paid" locks the quote, then the link, then the gig');
   await db.exec(`DROP TRIGGER test_lock_probe ON quote_links; DROP TRIGGER test_lock_probe ON events;`);
+}
+
+// ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)
+{
+  // 183's round 3 still holds with 187's bodies on top.
+  // a. The receipt is in the quote's currency: a USD quote on a gig kept in EUR.
+  const { Q, E, T } = await quote({ accepted: true });
+  await db.exec(`UPDATE events SET currency = 'EUR' WHERE id = '${E}'`);
+  const rec = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 300, true)`, [Q])));
+  const v = await view(T);
+  ok(!rec.e && v?.deposit_paid_amount == 300 && v?.deposit_paid_currency === 'USD',
+    `187 keeps 183: the deposit receipt is in the quote's currency (${rec.e || `${v?.deposit_paid_amount} ${v?.deposit_paid_currency}`})`);
+
+  // b. deposit received: the quote, then the link, then the gig (pageinspect, as section 6).
+  await db.exec(`
+    CREATE TRIGGER test_lock_probe BEFORE UPDATE ON quote_links FOR EACH ROW EXECUTE FUNCTION test_lock_probe();
+    CREATE TRIGGER test_lock_probe BEFORE UPDATE ON events FOR EACH ROW EXECUTE FUNCTION test_lock_probe();
+    DELETE FROM lock_log;`);
+  const { Q: Q2 } = await quote({ accepted: true });
+  await db.exec(`SELECT set_config('test.fn', 'deposit', false)`);
+  const dep = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 250, true)`, [Q2])));
+  const logged = (await q(`SELECT tbl, ok FROM lock_log`)).rows;
+  ok(!dep.e && logged.some((x) => x.tbl === 'events') && logged.every((x) => x.ok),
+    `187 keeps 183: deposit received locks the quote, then the link, then the gig (${dep.e || JSON.stringify(logged)})`);
+  await db.exec(`DROP TRIGGER test_lock_probe ON quote_links; DROP TRIGGER test_lock_probe ON events;`);
+
+  // c. The page shows this link's conversation only (183's link_id).
+  await asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Is parking included?')`, [T]));
+  await db.exec(`INSERT INTO quote_activity (quote_id, band_id, kind, body, version, link_id)
+                 VALUES ('${Q}', '${BAND}', 'client_message', 'Written to the previous client', 1, gen_random_uuid())`);
+  const msgs = ((await view(T))?.messages || []).map((m) => m.body);
+  ok(msgs.includes('Is parking included?') && !msgs.includes('Written to the previous client'),
+    `187 keeps 183: the page shows only this link's messages (${JSON.stringify(msgs)})`);
+  const mine = (await q(`SELECT count(*)::int c FROM quote_activity WHERE quote_id = $1 AND body = 'Is parking included?' AND link_id = (SELECT id FROM quote_links WHERE quote_id = $1)`, [Q])).rows[0].c;
+  ok(mine === 1, `187 keeps 183: a client's message is filed on its link (${mine})`);
+
+  // d. "Requested on": when the balance shown was sent, not its last publish.
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(700)]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q]));
+  await db.exec(`UPDATE quote_activity SET created_at = '2099-01-10T12:00:00Z' WHERE quote_id = '${Q}' AND kind = 'balance_requested'`);
+  await db.exec(`UPDATE quote_links SET balance_at = '2099-01-11T12:00:00Z' WHERE quote_id = '${Q}'`);
+  // An older build's Preview: a publish of a trial amount, never sent.
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(650, 'trial')]));
+  const b = await view(T);
+  ok(b?.balance?.amount === 700 && new Date(b?.balance_at).toISOString() === '2099-01-10T12:00:00.000Z',
+    `187: the page shows the balance sent and when it was sent (${b?.balance?.amount} at ${b?.balance_at})`);
+  // A changed balance sent later: its own send time.
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q]));
+  const b2 = await view(T);
+  ok(b2?.balance?.amount === 650 && new Date(b2?.balance_at).getTime() > Date.now() - 60_000,
+    `187: a changed balance, once sent, shows its own send time (${b2?.balance?.amount} at ${b2?.balance_at})`);
+
+  // e. A new client: the old link opens nothing, and the client can neither accept nor write on it.
+  const { Q: Q3, T: T3 } = await quote();
+  await asAdmin(() => q(`UPDATE quotes SET client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example' WHERE id = $1`, [Q3]));
+  const old = await view(T3);
+  const said = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Still on?') v`, [T3]).then((r) => r.rows[0].v)));
+  const took = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1) v`, [T3]).then((r) => r.rows[0].v)));
+  const fresh = await link(Q3);
+  ok(old === null && !said.e && said.r === null && !took.e && took.r === null && fresh.token !== T3 && fresh.snapshot === null && fresh.status === 'draft',
+    `187 keeps 183: a new client's quote: the old link opens nothing, takes no message or acceptance (${said.e || said.r}, ${took.e || took.r}, new link ${fresh.status})`);
+
+  // f. 183 again after 187: refused (it would put back the page without balance_sent).
+  const again = await tryIt(db.exec(mig('183_quote_page_fixes.sql')));
+  await db.exec('ROLLBACK').catch(() => {});
+  const stillSent = (await q(`SELECT prosrc LIKE '%balance_sent%' s FROM pg_proc WHERE proname = 'bw_quote_link_view'`)).rows[0].s;
+  ok(!!again.e && /do not run 183 again/.test(again.e) && stillSent, `183 after 187 is refused, 187's page stays (${again.e})`);
+}
+{
+  // g. 187 on a database without 183 or 185: refused at once.
+  const bare = new PGlite();
+  await bare.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE TABLE public.quote_links (id uuid, balance_sent jsonb); CREATE TABLE public.quote_activity (id uuid);`);
+  const r = await bare.exec(mig('187_quote_page_lock_balance_sent.sql')).then(() => null, (e) => e.message);
+  ok(!!r && /187 needs 183/.test(r), `187 without 183 first: refused (${r})`);
+  const bare2 = new PGlite();
+  await bare2.exec(`CREATE ROLE anon; CREATE ROLE authenticated;
+    CREATE TABLE public.quote_links (id uuid, recipient_changed_at timestamptz, deposit_received_amount numeric); CREATE TABLE public.quote_activity (id uuid, link_id uuid);
+    CREATE FUNCTION public.bw_quote_lock_for_token(text) RETURNS void LANGUAGE sql AS $f$ SELECT $f$;`);
+  const r2 = await bare2.exec(mig('187_quote_page_lock_balance_sent.sql')).then(() => null, (e) => e.message);
+  ok(!!r2 && /187 needs 185/.test(r2), `187 without 185 first: refused (${r2})`);
 }
 
 console.log(fails ? `\n${fails} check(s) failed` : '\nall checks passed');

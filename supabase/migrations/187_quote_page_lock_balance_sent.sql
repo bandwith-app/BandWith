@@ -6,27 +6,54 @@
 --    (bw_quote_link_view) read quote_links.balance, which the app's
 --    Preview also wrote: a trial amount or note the admin never sent was
 --    on the client's page at the next refresh. It now reads balance_sent
---    (185: set when a send or reminder is recorded). Older builds keep
---    working: they publish, then record the send, as before.
+--    (185: set when a send or reminder is recorded), and "requested on"
+--    is when that balance was first sent (the send after its last change),
+--    not when it was last published or previewed. Older builds keep
+--    working: they publish, then record the send, as before (their
+--    Preview no longer reaches the client; a sent balance shows).
 -- 2. Acceptance and messages after the link is turned off (public #8).
 --    bw_quote_link_respond and bw_quote_link_message checked the link
 --    (through the view), then waited for the row lock. An admin turning
 --    the link off (or making a new one) in between committed first, and
 --    the client's acceptance or message was then written on the revoked
 --    link, while the client was told the link no longer works. Both now
---    lock the link row first and check it after the lock: the revoke
---    wins, nothing is written, the page says the link no longer works.
+--    lock the link row (after the quote: one lock order, quote -> link ->
+--    event) and check it after the lock: the revoke wins, nothing is
+--    written, the page says the link no longer works.
 --
--- Bodies: bw_quote_link_view and bw_quote_link_respond are 183's (open
--- PR #286, fix/quote-page) with the changes above; bw_quote_link_message
--- is 183's (099's plus the quote locked first). Same signatures and grants (anon keeps EXECUTE on the page
--- RPCs it had). Apply after 183 and 185. Safe to run more than once.
+-- Superset of 183: the three bodies below are 183's as of fix/quote-page
+-- f733c588 (PR #286 round 3: link_id conversations, the quote's currency
+-- on the deposit receipt, the quote locked first) plus the changes above.
+-- 183 must not be run again after this one (183 refuses: its guard sees
+-- balance_sent in the view). Same signatures and grants (anon keeps
+-- EXECUTE on the page RPCs it had). Apply after 183 and 185 (this
+-- migration refuses to run without them). Safe to run more than once.
 -- ====================================================================
 
 BEGIN;
 
+-- 183 and 185 first: without them the bodies below would fail at the
+-- first call, not here.
+DO $guard$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'quote_links' AND column_name = 'recipient_changed_at')
+     OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'quote_links' AND column_name = 'deposit_received_amount')
+     OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'quote_activity' AND column_name = 'link_id')
+     OR to_regprocedure('public.bw_quote_lock_for_token(text)') IS NULL THEN
+    RAISE EXCEPTION '187 needs 183 (quote page fixes) applied first';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'quote_links' AND column_name = 'balance_sent') THEN
+    RAISE EXCEPTION '187 needs 185 (quote money fixes) applied first';
+  END IF;
+END
+$guard$;
+
 -- --------------------------------------------------------------------
--- 1. The page shows the balance sent (183's view + balance_sent)
+-- 1. The page shows the balance sent, and when (183's view + balance_sent)
 -- --------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.bw_quote_link_view(p_token text)
@@ -49,11 +76,13 @@ DECLARE
   v_show_balance boolean;
   v_show_deposit boolean;
   v_signer boolean;
+  v_currency text;
+  v_balance_sent_at timestamptz;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token;
   IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL OR v_link.snapshot IS NULL THEN RETURN NULL; END IF;
-  SELECT b.name, q.client_name INTO v_band, v_client
+  SELECT b.name, q.client_name, upper(nullif(btrim(q.currency), '')) INTO v_band, v_client, v_currency
     FROM public.quotes q JOIN public.bands b ON b.id = q.band_id WHERE q.id = v_link.quote_id;
   -- Accepted: what the client accepted, whatever was edited afterwards.
   v_snap := CASE WHEN v_link.status = 'accepted' THEN coalesce(v_link.accepted_snapshot, v_link.snapshot) ELSE v_link.snapshot END;
@@ -72,6 +101,18 @@ BEGIN
               AND (v_link.recipient_changed_at IS NULL OR v_link.recipient_changed_at <= v_link.responded_at);
   -- 187: only a balance that was sent (185 balance_sent); a published or previewed one is not.
   v_show_balance := v_link.status = 'accepted' AND v_link.balance_sent IS NOT NULL AND coalesce(v_gig_status, '') <> 'cancelled';
+  -- 187: and when it was sent: the first send of the balance shown (after the
+  -- last change sent, 185 balance_updated), not the last publish or preview.
+  IF v_show_balance THEN
+    SELECT min(a.created_at) INTO v_balance_sent_at
+      FROM public.quote_activity a
+     WHERE a.quote_id = v_link.quote_id AND a.link_id = v_link.id
+       AND a.kind IN ('balance_requested', 'balance_reminded')
+       AND a.created_at >= coalesce((SELECT max(u.created_at) FROM public.quote_activity u
+                                      WHERE u.quote_id = v_link.quote_id AND u.link_id = v_link.id
+                                        AND u.kind = 'balance_updated'), '-infinity'::timestamptz);
+    v_balance_sent_at := coalesce(v_balance_sent_at, v_link.balance_sent_at);
+  END IF;
   v_show_deposit := v_link.status = 'accepted' AND coalesce(v_gig_deposit, false)
                     AND v_link.deposit_received_amount > 0 AND v_gig_deposit_amount = v_link.deposit_received_amount;
 
@@ -99,7 +140,8 @@ BEGIN
     'decline_reason', CASE WHEN v_link.status = 'declined' THEN v_link.decline_reason END,
     -- A day of slack for time zones.
     'expired', v_link.status <> 'accepted' AND v_valid IS NOT NULL AND v_valid < current_date - 1,
-    -- 183: the current recipient's conversation only (the band keeps all of it).
+    -- 183: this link's conversation only (the band keeps all of it): a new
+    -- recipient's link never shows the old client's lines.
     'messages', coalesce((
       SELECT jsonb_agg(jsonb_build_object(
                'from', CASE a.kind WHEN 'client_message' THEN 'client' ELSE 'band' END,
@@ -108,22 +150,23 @@ BEGIN
              ) ORDER BY a.created_at)
         FROM public.quote_activity a
        WHERE a.quote_id = v_link.quote_id AND a.kind IN ('client_message', 'band_reply')
-         AND (v_link.recipient_changed_at IS NULL OR a.created_at >= v_link.recipient_changed_at)
+         AND a.link_id = v_link.id
     ), '[]'::jsonb),
     -- 163: the "Made with BandWith" mark, decided here (paid plans §4.3).
     'made_with', public.bw_band_shows_mark(v_link.band_id),
     -- 168: the balance request and whether it was received.
+    -- 187: the balance sent, and when it was sent.
     'balance', CASE WHEN v_show_balance THEN v_link.balance_sent END,
-    'balance_at', CASE WHEN v_show_balance THEN v_link.balance_at END,
+    'balance_at', CASE WHEN v_show_balance THEN v_balance_sent_at END,
     'balance_paid', v_show_balance AND (v_link.balance_paid_at IS NOT NULL OR v_gig_paid = 'paid'),
     'balance_paid_at', CASE WHEN v_show_balance THEN v_link.balance_paid_at END,
     -- 168: the band recorded the deposit as received.
     'deposit_paid', v_link.status = 'accepted' AND coalesce(v_gig_deposit, false),
-    -- 183: and how much it recorded, in the gig's currency (the receipt says
-    -- this, not the amount asked). Only while the gig still has the deposit
-    -- paid at that amount (changed in the gig itself: no amount).
+    -- 183: and how much it recorded, in the quote's currency (the receipt
+    -- says this, not the amount asked). Only while the gig still has the
+    -- deposit paid at that amount (changed in the gig itself: no amount).
     'deposit_paid_amount', CASE WHEN v_show_deposit THEN v_link.deposit_received_amount END,
-    'deposit_paid_currency', CASE WHEN v_show_deposit THEN v_link.deposit_received_currency END
+    'deposit_paid_currency', CASE WHEN v_show_deposit THEN coalesce(v_currency, v_link.deposit_received_currency) END
   );
 END;
 $$;
@@ -162,8 +205,8 @@ BEGIN
   IF v_action = 'accept' AND p_version IS NULL THEN
     RAISE EXCEPTION 'The version shown is needed to accept' USING ERRCODE = '22023';
   END IF;
-  -- 187: the link row first, locked, then the checks: a revoke or a new
-  -- link that commits while this waits is seen here, and nothing is written.
+  -- 187: the link row locked, then the checks: a revoke or a new link
+  -- that commits while this waits is seen here, and nothing is written.
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   -- 183: the quote first, then the link (the order of a save of the quote: no deadlock).
   PERFORM public.bw_quote_lock_for_token(p_token);
@@ -228,7 +271,7 @@ REVOKE ALL ON FUNCTION public.bw_quote_link_respond(text, text, text, text, int)
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_respond(text, text, text, text, int) TO anon, authenticated;
 
 -- --------------------------------------------------------------------
--- 3. A message: lock, then check (099's message)
+-- 3. A message: lock, then check (183's message)
 -- --------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.bw_quote_link_message(p_token text, p_body text)
@@ -245,7 +288,7 @@ DECLARE
   v_client text;
 BEGIN
   IF v_body IS NULL THEN RAISE EXCEPTION 'Empty message' USING ERRCODE = '22023'; END IF;
-  -- 187: the link row first, locked, then the checks (as respond).
+  -- 187: the link row locked, then the checks (as respond).
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   -- 183: the quote first, then the link (the order of a save of the quote: no deadlock).
   PERFORM public.bw_quote_lock_for_token(p_token);
@@ -258,8 +301,8 @@ BEGIN
     RAISE EXCEPTION 'Too many messages, try again later' USING ERRCODE = '54000';
   END IF;
 
-  INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version)
-  VALUES (v_link.quote_id, v_link.band_id, 'client_message', v_body, v_link.version);
+  INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, link_id)
+  VALUES (v_link.quote_id, v_link.band_id, 'client_message', v_body, v_link.version, v_link.id);
   IF v_link.status IN ('draft', 'sent', 'viewed', 'declined') THEN
     UPDATE public.quote_links l SET status = 'discussing', updated_at = now() WHERE l.id = v_link.id;
     UPDATE public.quotes q SET status = 'negotiating', updated_at = now()
@@ -278,5 +321,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_message(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_message(text, text) TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
