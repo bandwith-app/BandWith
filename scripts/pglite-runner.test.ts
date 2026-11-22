@@ -121,6 +121,10 @@ describe('strict mode accepts reads pinned to an exact commit (PINNED)', () => {
     const warn = 'PINNED 175\nWARN 175: 1a2b3c4d differs from 5e6f7a8b, where its proofs were checked\nok  a\nALL OK';
     expect(verdict(out(warn), { pending: [], strict: true })).toMatchObject({ status: 'fail', why: expect.stringContaining('175') });
     expect(verdict(out(warn), { pending: [], strict: false }).status).toBe('pass');
+    // A verified SHA that is gone (force-push): the proofs were not compared, so strict fails too.
+    const gone = 'PINNED 175\nWARN 175: its verified SHA 5e6f7a8b is not reachable here; its proofs were checked on a file not compared\nALL OK';
+    expect(verdict(out(gone), { pending: [], strict: true })).toMatchObject({ status: 'fail', why: expect.stringContaining('175') });
+    expect(verdict(out(gone), { pending: [], strict: false }).status).toBe('pass');
   });
   it('the release run prints PINNED for an exact SHA (BW_RELEASE_HEADS or BW_RELEASE_AT=verified), PENDING for a branch', async () => {
     const proc = (globalThis as unknown as { process: { cwd(): string } }).process;

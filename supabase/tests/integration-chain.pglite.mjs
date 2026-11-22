@@ -309,6 +309,20 @@ const joined = new Set();
 const rowOf = async (d, n) => (await rows(d, RELEASE)).find((r) => r.migration === n);
 let earlierChecked = 0;
 const notApplied = [];
+const sameAsHead = [];
+// What a version leaves live in public: function definitions, columns,
+// policies, triggers and indexes. Equal to the head's = indistinguishable.
+export const SCHEMA_SQL = `
+  SELECT 'f ' || pg_get_functiondef(p.oid) AS x FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.prokind IN ('f', 'p')
+  UNION ALL SELECT 'c ' || table_name || '.' || column_name || ' ' || data_type || ' ' || coalesce(column_default, '') || ' ' || is_nullable
+    FROM information_schema.columns WHERE table_schema = 'public'
+  UNION ALL SELECT 'p ' || tablename || '.' || policyname || ' ' || cmd || ' ' || permissive || ' ' || roles::text || ' ' || coalesce(qual, '') || ' ' || coalesce(with_check, '')
+    FROM pg_policies WHERE schemaname = 'public'
+  UNION ALL SELECT 't ' || pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class r ON r.oid = t.tgrelid
+    WHERE r.relnamespace = 'public'::regnamespace AND NOT t.tgisinternal
+  UNION ALL SELECT 'i ' || indexdef FROM pg_indexes WHERE schemaname = 'public'
+  ORDER BY 1`;
+const schemaOf = async (d) => (await d.query(SCHEMA_SQL)).rows.map((r) => r.x).join('\n');
 // BW_CHAIN_PICK=1: also propose markers (PICK lines) that tell the final
 // version from every earlier one still reading as in; main re-runs it on the
 // frozen heads before the merge.
@@ -330,18 +344,25 @@ for (const s of plan) {
     if (versions.length) {
       const snap = await db.clone();
       const pick = PICK ? { n: s.n, before: await bodies(snap), head: null, passing: [] } : null;
-      if (pick) {
-        const h = await snap.clone();
-        await h.exec(stripExtensions(s.sql));
-        pick.head = await bodies(h);
-        await h.close();
-      }
+      const h = await snap.clone();
+      await h.exec(stripExtensions(s.sql));
+      if (pick) pick.head = await bodies(h);
+      const headSchema = await schemaOf(h);
+      await h.close();
       for (const v of versions) {
         const c = await snap.clone();
         try {
           await c.exec(stripExtensions(v.sql));
         } catch (e) {
           notApplied.push(`${s.n}@${v.commit} (${String(e.message).slice(0, 60)})`);
+          await c.close();
+          continue;
+        }
+        // Same live database as the head (a guard-only or comment-only round:
+        // the DO block skips, the bodies it makes are the head's): no check
+        // can tell them apart, and none needs to. Reported, not counted.
+        if ((await schemaOf(c)) === headSchema) {
+          sameAsHead.push(`${s.n}@${v.commit}`);
           await c.close();
           continue;
         }
@@ -367,6 +388,7 @@ for (const s of plan) {
 
 if (HISTORY) {
   console.log(`ok   ${earlierChecked} earlier versions checked`);
+  if (sameAsHead.length) console.log(`     same live database as the head, not distinguishable (not counted): ${sameAsHead.join(', ')}`);
   if (notApplied.length) console.log(`     not applicable where they would run (not counted): ${notApplied.join('; ')}`);
 }
 if (picks.length) {

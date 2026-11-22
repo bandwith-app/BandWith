@@ -25,7 +25,7 @@
 -- it has no row here.
 --
 -- Orders these rows depend on (docs/release-checklist.md, "Constraints").
--- Hard (the later migration raises without the earlier one): 170 → 198,
+-- Hard (the later migration raises without the earlier one): 170 → 198, 170 → 171,
 -- 178 → 182, 175 → 193, 175 → 181, 193 → 181, 183 → 187, 185 → 187,
 -- 175 → 192, 194 → 192.
 -- Soft (no raise; a wrong order leaves a wrong body, which a row here

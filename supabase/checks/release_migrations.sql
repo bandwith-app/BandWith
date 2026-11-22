@@ -39,7 +39,7 @@
 --
 -- Apply order (docs/release-checklist.md, "Constraints").
 -- Hard (the later one raises without the earlier): 170 → 198 (and they go
--- in one transaction), 178 → 182, 175 → 193, 175 → 181, 193 → 181,
+-- in one transaction), 170 → 171, 178 → 182, 175 → 193, 175 → 181, 193 → 181,
 -- 183 → 187, 185 → 187, 175 → 192, 194 → 192.
 -- Soft (no raise): 180 → 197, 192 → 193, 183 → 185 → 186 → 187,
 -- 175 → 178 → 193, 178 → 191. A row can be true out of order;

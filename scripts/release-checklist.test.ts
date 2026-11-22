@@ -524,10 +524,13 @@ describe('constraints: stated once, kept by the order and by the SQL checks (mai
     .map((l) => [...l.replace(/\(.*?\)/g, '').matchAll(/\b(1\d\d)\b/g)].map((m) => m[1]))
     .filter((c) => c.length >= 2);
 
-  const HARD = ['178 → 182', '175 → 193', '175 → 181', '193 → 181', '183 → 187', '185 → 187', '175 → 192', '194 → 192', '170 → 198'];
+  const HARD = ['178 → 182', '175 → 193', '175 → 181', '193 → 181', '183 → 187', '185 → 187', '175 → 192', '194 → 192', '170 → 198', '170 → 171'];
   it('lists every order the release depends on, the hard ones marked as such', () => {
     expect(constraints).not.toBe('');
-    for (const want of ['178 → 182', '175 → 193', '180 → 197', '194 → 192 → 193', '183 → 185 → 186 → 187', '175 → 178 → 193 → 181', '178 → 191'])
+    // The soft chains read word for word as on the Soft line of release_migrations.sql (Claude review of 046e2af8).
+    const soft = check.match(/^-- Soft[^:]*:([\s\S]*?)(?=\n-- [A-Z]|\n[A-Z])/m)?.[1].replace(/\n-- /g, ' ') ?? '';
+    for (const chain of soft.replace(/\.[\s\S]*$/, '').split(',').map((x) => x.trim()).filter(Boolean)) expect(constraints, chain).toContain(`**${chain}**`);
+    for (const want of ['178 → 182', '175 → 193', '180 → 197', '192 → 193', '183 → 185 → 186 → 187', '175 → 178 → 193', '178 → 191'])
       expect(constraints, want).toContain(want);
     // Hard = the later migration raises without the earlier one (Claude review
     // of 8a83933e: 178 → 191 and 180 → 197 don't raise, they are soft).
@@ -632,5 +635,28 @@ describe('history check: versions told apart like the markers are (Claude review
     expect(fn).toMatch(/rawKey\(/);
     expect(fn).not.toMatch(/const k = code\(/);
     expect(fn).toMatch(/commentMarkers/);
+  });
+});
+
+describe('the history check skips what no check can tell apart (Claude review of 046e2af8)', () => {
+  it('an earlier version leaving the same live database as the head is reported, not counted', () => {
+    const chain = read('supabase/tests/integration-chain.pglite.mjs');
+    expect(chain).toMatch(/if \(\(await schemaOf\(c\)\) === headSchema\)/);
+    // The comparison covers more than function bodies: columns, policies, triggers, indexes.
+    for (const k of ["'f ' || pg_get_functiondef", "'c ' || table_name", "'p ' || tablename", "'t ' || pg_get_triggerdef", "'i ' || indexdef"]) expect(chain, k).toContain(k);
+    expect(chain).toMatch(/same live database as the head, not distinguishable/);
+  });
+});
+
+describe('a row that replaces a body on main (099 → 183, bw_quote_link_rotate)', () => {
+  it("099 defines it, and the row's marker is not in 099's body", () => {
+    const redef = read('supabase/checks/redefined_functions.sql');
+    const row = redef.match(/\('bw_quote_link_rotate', '183', '099', '((?:[^']|'')*)'\)/);
+    expect(row, 'row').not.toBeNull();
+    const f099 = migrationFile('099');
+    expect(f099).toBeDefined();
+    const body = markerBody(read(`${MIGRATIONS}/${f099}`), 'bw_quote_link_rotate');
+    expect(body, '099 defines bw_quote_link_rotate').not.toBeNull();
+    expect(body).not.toContain(unquote(row![1]));
   });
 });

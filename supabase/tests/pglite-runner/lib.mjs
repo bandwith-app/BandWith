@@ -47,14 +47,15 @@ export function verdict({ code, out }, { pending, strict }) {
   const pinned = new Set([...out.matchAll(/^PINNED ((?:\d{3}\s*)+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
   pending = [...new Set([...pending, ...named.filter((n) => !pinned.has(n))])];
   // A head whose file differs from the SHA its proofs were checked at.
-  const drifted = [...out.matchAll(/^WARN (\d{3}): .* differs from /gm)].map((m) => m[1]);
+  // Or whose verified SHA is gone (force-push): its proofs were not compared.
+  const drifted = [...out.matchAll(/^WARN (\d{3}): (?:.* differs from |its verified SHA \S+ is not reachable)/gm)].map((m) => m[1]);
   const failed = code !== 0 || /^\s*(FAIL|ERROR)\b/m.test(out);
   const skipped = /^\s*SKIP\b/m.test(out);
   if (failed) {
     if (pending.length && !strict) return { status: 'warn', why: `failed while ${pending.join(', ')} is not merged (read from its branch)` };
     return { status: 'fail', why: code !== 0 ? `exit ${code}` : 'FAIL/ERROR line' };
   }
-  if (drifted.length && strict) return { status: 'fail', why: `${drifted.join(', ')} differs from its verified SHA in a strict run (refresh column 4 of release-sources.txt)` };
+  if (drifted.length && strict) return { status: 'fail', why: `${drifted.join(', ')} differs from its verified SHA, or that SHA is gone, in a strict run (refresh column 4 of release-sources.txt)` };
   if (skipped) return strict ? { status: 'fail', why: 'SKIP in a strict run' } : { status: 'warn', why: 'SKIP lines' };
   if (pending.length && strict) return { status: 'fail', why: `reads ${pending.join(', ')} from a branch in a strict run` };
   return { status: 'pass', why: '' };
