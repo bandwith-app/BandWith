@@ -41,9 +41,28 @@ GRANT INSERT ON public.notifications TO authenticated, service_role;
 await db.exec(lines('073_baseline_live_policies.sql', 87, 129));
 await db.exec(`CREATE POLICY notifications_insert ON public.notifications FOR INSERT TO authenticated
   WITH CHECK (public.bw_can_notify(user_id, band_id, type));`);
-await db.exec(readFileSync(MIG, 'utf8'));
-await db.exec(readFileSync(MIG, 'utf8'));
-ok(true, 'migration runs twice');
+// Round 4 (Codex #284 B2): duplicates from before (send-push deployed ahead
+// of 194) must not stop the unique index: the oldest per recipient and
+// message stays. Prod has none today.
+const DUPMSG = id(700);
+await db.exec(`INSERT INTO notifications (user_id, type, title, body, data, created_at) VALUES
+  ('${MEM2}', 'chat_message', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"oldest"}', now() - interval '3 minutes'),
+  ('${MEM2}', 'chat_message', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"newer"}', now() - interval '2 minutes'),
+  ('${MEM2}', 'chat_mention', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"newest"}', now() - interval '1 minute'),
+  ('${ADMIN}', 'chat_message', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"admin"}', now() - interval '1 minute'),
+  ('${MEM2}', 'event_update', 'Gig', 'x', '{"message_id":"${DUPMSG}","tag":"other-type"}', now())`);
+let migErr = null;
+try {
+  await db.exec(readFileSync(MIG, 'utf8'));
+  await db.exec(readFileSync(MIG, 'utf8'));
+} catch (e) {
+  migErr = e.message;
+  await db.exec('ROLLBACK').catch(() => {});
+}
+ok(!migErr, `migration runs twice, with duplicates from before (${migErr ?? 'ok'})`);
+const kept = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'message_id' = '${DUPMSG}' ORDER BY 1`).then((r) => r.rows.map((x) => x.tag));
+ok(JSON.stringify(kept) === JSON.stringify(['admin', 'oldest', 'other-type']), `the oldest per recipient and message stays (${kept})`);
+if (migErr) { console.log(`\n${fails} FAILED`); process.exit(1); }
 
 const insertAs = async (actor, to, band, type) => {
   try {
@@ -120,11 +139,14 @@ ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'me
   'no inbox row for them');
 // The token lookup failed after the insert: once the claim is old, a retry pushes again.
 ok(JSON.stringify(await write(LIVE, ALICE)) === '[]', 'a retry right away does not push twice (claimed)');
+// Claude review r4: a call can run up to 400 s; a 5-minute-old claim still holds.
 await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '5 minutes') WHERE user_id = '${ALICE}'`);
+ok(JSON.stringify(await write(LIVE, ALICE)) === '[]', 'a claim still holds while a long call may be running (5 min)');
+await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '11 minutes') WHERE user_id = '${ALICE}'`);
 ok(JSON.stringify(await write(LIVE, ALICE)) === JSON.stringify([ALICE]), 'a retry after a lost push pushes again');
 const ids = await db.query(`SELECT id FROM notifications WHERE data->>'message_id' = '${LIVE}'`).then((r) => r.rows.map((x) => x.id));
 await db.query(`SELECT public.bw_mark_chat_notices_pushed($1::uuid[])`, [ids]).catch((e) => console.log('ERROR', e.message));
-await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '5 minutes')`);
+await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_claimed_at', now() - interval '11 minutes')`);
 ok(JSON.stringify(await write(LIVE, ALICE, MEM2, CAROL)) === '[]', 'once pushed, never again');
 ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${LIVE}' AND data ? 'pushed_at' AND data->>'message_id' IS NOT NULL`).then((r) => r.rows[0].n) === 3,
   'marked pushed');
@@ -137,6 +159,22 @@ await db.exec(`UPDATE notifications SET data = data || '{"push_claimed_at":"not 
 await db.exec(`UPDATE notifications SET data = data || '{"push_claimed_at":"2026-13-45T99:00:00Z"}'::jsonb WHERE user_id = '${CAROL}' AND data->>'message_id' = '${MSG3}'`);
 const w3 = await write(MSG3, ALICE, CAROL, MEM2);
 ok(JSON.stringify(w3) === JSON.stringify([MEM2, ALICE, CAROL].sort()), `malformed claims count as unclaimed, nothing aborts (${w3})`);
+
+// Round 4 (Codex #284): the token lookup failed after the claim: the claim
+// is released so a retry right away delivers.
+const MSG4 = id(604);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG4}', '${id(900)}', '${MEM}', 'fourth')`);
+const w4 = await db.query(`SELECT id, user_id FROM public.bw_write_chat_notices($1, $2::jsonb)`, [MSG4, rowsFor(ALICE, CAROL)]).then((r) => r.rows, (e) => 'ERROR ' + e.message);
+const rel = await db.query(`SELECT public.bw_release_chat_notice_claims($1::uuid[])`, [Array.isArray(w4) ? w4.filter((x) => x.user_id === ALICE).map((x) => x.id) : []])
+  .then(() => 'ok', (e) => e.message);
+ok(rel === 'ok', `claims can be released (${rel})`);
+ok(JSON.stringify(await write(MSG4, ALICE, CAROL)) === JSON.stringify([ALICE]), 'a retry right away delivers the released one (Carol still claimed)');
+const pushedIds = await db.query(`SELECT id FROM notifications WHERE data->>'message_id' = '${MSG4}'`).then((r) => r.rows.map((x) => x.id));
+await db.query(`SELECT public.bw_mark_chat_notices_pushed($1::uuid[])`, [pushedIds]);
+await db.query(`SELECT public.bw_release_chat_notice_claims($1::uuid[])`, [pushedIds]).catch(() => {});
+ok(JSON.stringify(await write(MSG4, ALICE, CAROL)) === '[]', 'releasing never un-pushes');
+const relAsUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_release_chat_notice_claims('{}'::uuid[]); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
+ok(relAsUser !== 'ran', `app users cannot release claims (${relAsUser})`);
 
 // Claude review: one lock order for overlapping calls (no 40P01).
 const def = await db.query(`SELECT pg_get_functiondef('public.bw_write_chat_notices(uuid, jsonb)'::regprocedure) AS d`).then((r) => r.rows[0].d, () => '');

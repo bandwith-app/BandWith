@@ -51,17 +51,19 @@ export function findAnnouncedCandidates(
   opts: { callerId: string; chatId: string; messageId?: unknown; body?: unknown; now?: number },
 ): ChatMessageRow[] {
   const now = opts.now ?? Date.now();
+  // UUIDs compare in lower case: an app may send them in capitals (Codex r4).
+  const same = (a: unknown, b: unknown) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
   const mine = recent.filter(
     (m) =>
       m.deleted !== true &&
-      m.sender_id === opts.callerId &&
-      m.chat_id === opts.chatId &&
+      same(m.sender_id, opts.callerId) &&
+      same(m.chat_id, opts.chatId) &&
       now - Date.parse(m.created_at) <= CHAT_PUSH_WINDOW_MS &&
       // Inserts may carry their own created_at: a future one isn't new forever.
       Date.parse(m.created_at) - now <= CHAT_PUSH_FUTURE_SKEW_MS,
   );
   if (typeof opts.messageId === 'string' && opts.messageId) {
-    return mine.filter((m) => m.id === opts.messageId).slice(0, 1);
+    return mine.filter((m) => same(m.id, opts.messageId)).slice(0, 1);
   }
   // An older build's preview may end in half an emoji: compare whole ends.
   const body = wholeEnd(typeof opts.body === 'string' ? opts.body : '') || 'New message';
@@ -96,8 +98,14 @@ export function legacyContentFilter(body: string): { eq: string } | { like: stri
 /** Older builds: how many recent messages with the same preview are candidates. */
 export const LEGACY_CANDIDATES = 500;
 
-/** A push claim (bw_write_chat_notices, 194) lapses after this: the push is retried. */
-export const PUSH_CLAIM_MS = 2 * 60 * 1000;
+/**
+ * A push claim (bw_write_chat_notices, 194) lapses after this: the push is
+ * retried. Longer than the longest send-push call (Edge Function wall clock:
+ * 150 s Free, 400 s paid) plus a margin, so a slow call is never pushed
+ * twice (Claude review #284 r4). A call that can't push releases its claim
+ * at once (bw_release_chat_notice_claims).
+ */
+export const PUSH_CLAIM_MS = 10 * 60 * 1000;
 
 /**
  * Whether a chat notice is announced: pushed, or being pushed right now.

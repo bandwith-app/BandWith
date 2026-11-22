@@ -129,3 +129,29 @@ describe('send-push wiring, round 3b', () => {
     expect(sendPush).toMatch(/\.range\(from, from \+ NOTICE_PAGE - 1\)/);
   });
 });
+
+describe('send-push wiring, round 4', () => {
+  const verify = sendPush.slice(sendPush.indexOf('async function verifyChatPush'), sendPush.indexOf('const NOTICE_PAGE'));
+  it('the band name is used only when the sender is in that band', () => {
+    expect(verify).toMatch(/\.from\('band_members'\)[\s\S]*\.eq\('band_id', chat\.band_id\)[\s\S]*\.eq\('user_id', callerId\)/);
+    expect(verify).toMatch(/const pushBandId = inBand \? chat\.band_id : null;/);
+    expect(verify).toMatch(/bandId: pushBandId,/);
+  });
+
+  it('without 194, the fallback skips recipients who already have the notice', () => {
+    const fallback = sendPush.slice(sendPush.indexOf("writeError.code === 'PGRST202'"), sendPush.indexOf('if (writeError) throw writeError;'));
+    expect(fallback).toMatch(/chatNoticesFor\(supabase, targetUserIds, \[current\.id\], \{ settledOnly: false \}\)/);
+    expect(fallback).toMatch(/\.insert\(fresh\)/);
+    expect(fallback).not.toMatch(/\.insert\(notifications\)/);
+  });
+
+  it('a failed token lookup releases the claims, so a retry delivers', () => {
+    expect(sendPush).toMatch(/if \(tokenError\) \{\s*await releaseClaims\(\);\s*throw tokenError;/);
+    expect(sendPush).toMatch(/rpc\('bw_release_chat_notice_claims', \{ p_ids: /);
+  });
+
+  it('create_in_app: false pushes only, with no inbox row', () => {
+    const loop = sendPush.slice(sendPush.indexOf('for (const p of pendingAnnouncements('), sendPush.indexOf("rpc('bw_write_chat_notices'"));
+    expect(loop).toMatch(/if \(create_in_app === false\) \{[\s\S]*ringIds = targetUserIds;[\s\S]*done = true;[\s\S]*break;/);
+  });
+});

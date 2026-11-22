@@ -33,12 +33,18 @@
 --     them in one order (no 40P01); send-push retries a deadlock anyway;
 --   * returns the recipients to push now: their notice is new or was never
 --     pushed, and nobody else is pushing it (data.push_claimed_at, a claim
---     that lapses after 2 minutes). send-push marks them pushed afterwards
+--     that lapses after 10 minutes: longer than any send-push call, round 4).
+--     send-push marks them pushed afterwards
 --     (bw_mark_chat_notices_pushed, data.pushed_at) once a device took it
 --     or there was nothing to deliver to. A malformed claim (data is
 --     writable by the recipient) counts as none. So a push lost after
 --     the insert (failed token lookup, crash) is retried, and "already
 --     announced" means already pushed, not only written.
+--
+-- Round 4 (Codex review #284): duplicates from before the index are
+-- removed first (the oldest per recipient and message stays); a claim
+-- whose push could not be attempted is released
+-- (bw_release_chat_notice_claims), so a retry delivers at once.
 --
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
 -- to a plain insert while the function is missing).
@@ -99,6 +105,17 @@ $function$;
 
 REVOKE EXECUTE ON FUNCTION public.bw_can_notify(uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_can_notify(uuid, uuid, text) TO authenticated;
+
+-- Duplicates from before the index (send-push deployed ahead of 194) would
+-- stop it: the oldest per recipient and message stays (round 4; prod has
+-- none today).
+DELETE FROM public.notifications n
+ USING public.notifications o
+ WHERE n.type IN ('chat_message', 'chat_mention') AND n.data ? 'message_id'
+   AND o.type IN ('chat_message', 'chat_mention') AND o.data ? 'message_id'
+   AND o.user_id = n.user_id
+   AND o.data ->> 'message_id' = n.data ->> 'message_id'
+   AND (o.created_at < n.created_at OR (o.created_at = n.created_at AND o.id < n.id));
 
 -- One notice per recipient per chat message (also serves send-push's lookup).
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_chat_message_once
@@ -174,7 +191,8 @@ BEGIN
      AND NOT n.data ? 'pushed_at'
      -- Missing or malformed claim = unclaimed.
      AND coalesce(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'), '-infinity'::timestamptz)
-         < now() - interval '2 minutes'
+         -- 10 min: longer than any send-push call (wall clock 150 s / 400 s).
+         < now() - interval '10 minutes'
   RETURNING n.id, n.user_id;
 END;
 $function$;
@@ -195,5 +213,23 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.bw_mark_chat_notices_pushed(uuid[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_mark_chat_notices_pushed(uuid[]) TO service_role;
+
+-- The push could not be attempted (token lookup failed): drop the claim so
+-- a retry right away delivers (round 4). A pushed notice stays pushed.
+CREATE OR REPLACE FUNCTION public.bw_release_chat_notice_claims(p_ids uuid[])
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  UPDATE notifications n
+     SET data = n.data - 'push_claimed_at'
+   WHERE n.id = ANY (coalesce(p_ids, '{}'::uuid[]))
+     AND n.type IN ('chat_message', 'chat_mention')
+     AND NOT n.data ? 'pushed_at'
+     AND n.data ? 'push_claimed_at';
+$function$;
+REVOKE ALL ON FUNCTION public.bw_release_chat_notice_claims(uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_release_chat_notice_claims(uuid[]) TO service_role;
 
 COMMIT;

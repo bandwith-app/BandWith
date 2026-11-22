@@ -476,9 +476,25 @@ async function verifyChatPush(
   if (chatError) throw chatError;
   if (senderError) throw senderError;
   if (!chat) return null;
+  // The chat's band labels the push only if the sender is in that band
+  // (Codex review #284 r4: chats.band_id is the creator's to change until
+  // 175's bw_chats_immutable_keys; never another band's name on a lock screen).
   let bandName: string | null = null;
+  let inBand = false;
   if (chat.band_id) {
-    const { data: band, error: bandError } = await supabase.from('bands').select('name').eq('id', chat.band_id).maybeSingle();
+    const { data: membership, error: memberError } = await supabase
+      .from('band_members')
+      .select('user_id')
+      .eq('band_id', chat.band_id)
+      .eq('user_id', callerId)
+      .or('is_active.is.null,is_active.eq.true')
+      .limit(1);
+    if (memberError) throw memberError;
+    inBand = (membership || []).length > 0;
+  }
+  const pushBandId = inBand ? chat.band_id : null;
+  if (pushBandId) {
+    const { data: band, error: bandError } = await supabase.from('bands').select('name').eq('id', pushBandId).maybeSingle();
     if (bandError) throw bandError;
     bandName = band?.name ?? null;
   }
@@ -486,7 +502,7 @@ async function verifyChatPush(
     candidates,
     senderName: senderDisplayName(sender?.full_name, sender?.email),
     subtitle: chatPushSubtitle(chat.type ?? null, bandName, chat.name ?? null),
-    bandId: chat.band_id ?? null,
+    bandId: pushBandId,
     bandName,
     chatType: chat.type ?? null,
   };
@@ -504,6 +520,7 @@ async function chatNoticesFor(
   supabase: ReturnType<typeof adminClient>,
   userIds: string[],
   messageIds: string[],
+  opts: { settledOnly?: boolean } = {},
 ): Promise<{ user_id: string; message_id: string | null }[]> {
   type Row = { user_id: string; message_id: string | null; pushed_at?: string | null; push_claimed_at?: string | null };
   // Page by page: PostgREST returns at most 1000 rows per request.
@@ -521,6 +538,7 @@ async function chatNoticesFor(
     all.push(...((data || []) as Row[]));
     if (!data || data.length < NOTICE_PAGE) break;
   }
+  if (opts.settledOnly === false) return all;
   const now = Date.now();
   return all.filter((n) => noticeSettled(n, now));
 }
@@ -723,6 +741,12 @@ Deno.serve(async (req: Request) => {
       const { error: markError } = await supabase.rpc('bw_mark_chat_notices_pushed', { p_ids: ids });
       if (markError) console.warn('Pushed mark failed:', markError.message);
     };
+    // The push could not be attempted: give the claims back (Codex r4).
+    const releaseClaims = async () => {
+      if (claimed.length === 0) return;
+      const { error: releaseError } = await supabase.rpc('bw_release_chat_notice_claims', { p_ids: claimed.map((c) => String(c.id)) });
+      if (releaseError) console.warn('Claim release failed:', releaseError.message);
+    };
 
     if (chatPush) {
       // One message rings each recipient once (Claude review #284). Older
@@ -735,6 +759,12 @@ Deno.serve(async (req: Request) => {
         const existing = await chatNoticesFor(supabase, allowedIds, chunk.map((m) => String(m.id)));
         for (const p of pendingAnnouncements(chunk, allowedIds, existing)) {
           const current = announce(p.message, p.recipients);
+          if (create_in_app === false) {
+            // Push only, no inbox row (Codex review #284 r4).
+            ringIds = targetUserIds;
+            done = true;
+            break;
+          }
           const notifications = noticeRows();
           // Per recipient, in the database (194): only for a message still
           // there and not deleted, ON CONFLICT DO NOTHING (an overlapping
@@ -750,9 +780,16 @@ Deno.serve(async (req: Request) => {
             // send-push deployed before 194: write as before (the message
             // was read whole above, so a deleted one never gets here).
             console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);
-            const { error: plainError } = await supabase.from('notifications').insert(notifications);
-            if (plainError) throw plainError;
-            ringIds = targetUserIds;
+            // No unique index either: skip whoever already has this
+            // message's notice, written or not yet pushed (Codex r4).
+            const have = new Set((await chatNoticesFor(supabase, targetUserIds, [current.id], { settledOnly: false }))
+              .map((n) => String(n.user_id)));
+            const fresh = notifications.filter((r) => !have.has(String(r.user_id)));
+            if (fresh.length > 0) {
+              const { error: plainError } = await supabase.from('notifications').insert(fresh);
+              if (plainError) throw plainError;
+            }
+            ringIds = targetUserIds.filter((uid) => !have.has(uid));
             done = true;
             break;
           }
@@ -793,7 +830,10 @@ Deno.serve(async (req: Request) => {
       .in('user_id', silent ? ringIds : pushAllowed(ringIds, peopleRows))
       .eq('is_active', true);
 
-    if (tokenError) throw tokenError;
+    if (tokenError) {
+      await releaseClaims();
+      throw tokenError;
+    }
 
     if (!tokens || tokens.length === 0) {
       // Nobody to deliver to (no device, push off): nothing to retry.

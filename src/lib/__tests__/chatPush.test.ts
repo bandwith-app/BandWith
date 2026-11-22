@@ -5,6 +5,7 @@ import {
   pushSettledUsers,
   LEGACY_CANDIDATES,
   noticeSettled,
+  PUSH_CLAIM_MS,
   chatPreview,
   chooseUnannounced,
   findAnnouncedCandidates,
@@ -201,8 +202,16 @@ describe('chat push review fixes, round 3', () => {
     const t = Date.parse('2026-11-22T20:00:00Z');
     expect(noticeSettled({ pushed_at: '2026-11-22T19:00:00Z' }, t)).toBe(true);
     expect(noticeSettled({ push_claimed_at: '2026-11-22T19:59:30Z' }, t)).toBe(true);
-    expect(noticeSettled({ push_claimed_at: '2026-11-22T19:55:00Z' }, t)).toBe(false);
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T19:45:00Z' }, t)).toBe(false);
     expect(noticeSettled({}, t)).toBe(false);
+  });
+
+  // Claude review #284 r4: a call can run past 2 minutes (Edge Function wall
+  // clock up to 400 s); its claim must hold until the call is surely over.
+  it('a claim holds longer than the longest send-push call', () => {
+    const t = Date.parse('2026-11-22T20:00:00Z');
+    expect(PUSH_CLAIM_MS).toBeGreaterThan(400_000);
+    expect(noticeSettled({ push_claimed_at: '2026-11-22T19:55:00Z' }, t)).toBe(true);
   });
 
   it('older builds: far more than 20 identical previews are candidates', () => {
@@ -240,5 +249,14 @@ describe('chat push review fixes, round 3b', () => {
     const m = (id: string): ChatMessageRow => ({ id, chat_id: CHAT, sender_id: BOB, content: 'OK', created_at: ago(5) });
     const got = pendingAnnouncements([m('m2'), m('m1'), m('m0')], ['u1'], [{ user_id: 'u1', message_id: 'm1' }]);
     expect(got.map((p) => p.message.id)).toEqual(['m2', 'm0']);
+  });
+});
+
+// Codex review #284 r4: an app may send the message id in capitals.
+describe('message id case', () => {
+  it('a UUID in capitals names the same message', () => {
+    const uid = '8f14e45f-ceea-467a-9b1e-0c4d2a1b3c4d';
+    const rows: ChatMessageRow[] = [{ id: uid, chat_id: CHAT, sender_id: BOB, content: 'Load-in at 6', created_at: ago(5) }];
+    expect(findAnnouncedCandidates(rows, { callerId: BOB, chatId: CHAT, messageId: uid.toUpperCase(), now: NOW }).map((r) => r.id)).toEqual([uid]);
   });
 });
