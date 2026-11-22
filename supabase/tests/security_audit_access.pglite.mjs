@@ -404,7 +404,7 @@ ok(archivedGig >= 2, `removed gig chat rows archived, not lost (${archivedGig})`
 // as for the server's notices (046).
 // Round 4: also in mixed case ('Declined' is declined, 181:57-58).
 const arch181 = async () => (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows[0].n;
-for (const st of ['dropped_out', 'removed', 'Declined']) {
+for (const st of ['dropped_out', 'removed', 'Declined', 'Dropped_Out ']) { // ('Dropped_Out ': trailing space, #294's btrim rule)
   const archBefore = await arch181();
   await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
     INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT DO NOTHING`);

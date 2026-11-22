@@ -6,7 +6,7 @@
 WITH p AS (
   SELECT cp.chat_id, cp.user_id, c.type::text AS chat_type, c.band_id AS chat_band,
          e.id AS gig, e.band_id AS gig_band, e.created_by,
-         em.event_id IS NOT NULL AS on_lineup, lower(coalesce(em.status::text, '')) AS lineup_status
+         em.event_id IS NOT NULL AS on_lineup, lower(btrim(coalesce(em.status::text, ''))) AS lineup_status
     FROM public.chat_participants cp
     JOIN public.chats c ON c.id = cp.chat_id
     LEFT JOIN public.events e ON e.id = c.event_id

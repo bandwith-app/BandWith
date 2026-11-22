@@ -22,7 +22,7 @@
 --     and mute as they were, and no app can miss the chat and start a
 --     second one;
 --   * rows already stale today are kept the same way (archived once).
--- Lineup statuses are compared with lower() ('Declined' is declined).
+-- Lineup statuses are compared with lower(btrim()) ('Declined', 'Dropped_Out ').
 --
 -- Prerequisites and order: 175 -> 178 -> 193 -> 181 (tested in that order).
 -- 193 (#291: bw_open_group_chat, chats_select_joinable, one chat per gig) is
@@ -64,8 +64,8 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
-  IF TG_OP = 'UPDATE' AND NOT (lower(coalesce(NEW.status::text, '')) IN ('declined', 'dropped_out', 'removed')
-                                AND lower(coalesce(OLD.status::text, '')) NOT IN ('declined', 'dropped_out', 'removed')) THEN
+  IF TG_OP = 'UPDATE' AND NOT (lower(btrim(coalesce(NEW.status::text, ''))) IN ('declined', 'dropped_out', 'removed')
+                                AND lower(btrim(coalesce(OLD.status::text, ''))) NOT IN ('declined', 'dropped_out', 'removed')) THEN
     RETURN NEW;
   END IF;
   INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
