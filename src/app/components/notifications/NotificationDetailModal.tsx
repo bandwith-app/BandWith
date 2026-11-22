@@ -169,6 +169,10 @@ function getNotificationMeta(type: string, data?: Record<string, unknown>): Noti
       onDark: true,
     };
   }
+  // A possible gig to keep free (178): no title, client or fee in it.
+  if (kind.startsWith('date_hold')) {
+    return { label: t('Possible gig'), icon: Calendar, fill: 'bg-accent-gig text-accent-gig-foreground', onDark: false };
+  }
   if (kind === 'event_invite') {
     return { label: t('Gig invitation'), icon: Music, fill: 'bg-accent-gig text-accent-gig-foreground', onDark: false };
   }

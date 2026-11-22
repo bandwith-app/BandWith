@@ -11,6 +11,7 @@ import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 import { computeEntitlements, limitFor, type BandPlanRow, type Entitlements, type LimitKey } from '@/lib/plans';
 import { reportPlanLimit } from '@/lib/planLimit';
+import { isDateHoldType, isQuoteStageEvent } from '@/lib/dateHoldRules';
 
 // v5: song suggestions (108) refer to seed songs added with them.
 const DB_KEY = 'bw-demo-db-v6';
@@ -497,7 +498,9 @@ class DemoQuery implements PromiseLike<Result> {
   overrideTypes() { return this; }
 
   private matches(): Row[] {
-    return table(this.name).filter((r) => this.preds.every((p) => p(r)));
+    const rows = table(this.name).filter((r) => this.preds.every((p) => p(r)));
+    // Reads follow the date-on-hold rules (178): quotes stay with the admins.
+    return this.op === 'select' ? rows.filter((r) => demoReadable(this.name, r)) : rows;
   }
 
   private shape(rows: Row[]): Result {
@@ -828,6 +831,62 @@ const demoUid = (): string => DEMO_USER.id;
 const isDemoAdmin = (bandId: string, uid = demoUid()) =>
   table('band_members').some((m) => m.band_id === bandId && m.user_id === uid && m.role === 'admin' && m.is_active !== false);
 
+// ------------------------------------------------------ date on hold (178) --
+
+/** A band event still at quote stage that the demo user doesn't administer. */
+const demoQuoteHidden = (eventId: unknown): boolean => {
+  const ev = table('events').find((e) => e.id === eventId);
+  return !!ev && !!ev.band_id && isQuoteStageEvent(ev) && !isDemoAdmin(ev.band_id);
+};
+
+/** What the database lets the demo user read, as 178 has it. */
+function demoReadable(name: string, r: Row): boolean {
+  switch (name) {
+    case 'events':
+      return !(r.band_id && isQuoteStageEvent(r) && !isDemoAdmin(r.band_id));
+    case 'event_members':
+    case 'event_stage':
+    case 'event_gear_kits':
+      return !demoQuoteHidden(r.event_id);
+    case 'chats':
+      return !(r.type === 'event' && demoQuoteHidden(r.event_id));
+    case 'notifications':
+      // Hold notices go to members only; other notices about a quote, to admins only.
+      if (isDateHoldType(r.type)) return !r.band_id || !isDemoAdmin(r.band_id);
+      return !demoQuoteHidden(r.data?.event_id ?? (r.reference_type === 'event' ? r.reference_id : null));
+    default:
+      return true;
+  }
+}
+
+/** Live holds for the demo user: quote-stage band gigs from today on, in bands they don't run. */
+function demoDateHolds(): Row[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const mine = table('band_members').filter((m) => m.user_id === demoUid() && m.is_active !== false && m.role !== 'admin');
+  const bandIds = new Set(mine.map((m) => m.band_id));
+  const closed = (ev: Row) =>
+    table('quotes').some(
+      (q) => (q.id === ev.quote_id || q.converted_to_event_id === ev.id) && ['declined', 'rejected', 'expired', 'archived', 'cancelled'].includes(String(q.status).toLowerCase()),
+    );
+  return table('events')
+    .filter((e) => bandIds.has(e.band_id) && isQuoteStageEvent(e) && !['cancelled', 'canceled', 'draft'].includes(String(e.status)) && String(e.event_date || e.date || '') >= today && !closed(e))
+    .map((e) => {
+      const a = table('event_hold_answers').find((x) => x.event_id === e.id && x.user_id === demoUid());
+      return {
+        event_id: e.id,
+        band_id: e.band_id,
+        band_name: table('bands').find((b) => b.id === e.band_id)?.name ?? '',
+        event_date: e.event_date || e.date,
+        start_time: e.start_time ?? null,
+        end_time: e.end_time ?? null,
+        venue_name: e.venue_name ?? null,
+        venue_city: e.venue_city ?? null,
+        my_answer: a?.answer ?? null,
+        answered_at: a?.answered_at ?? null,
+      };
+    });
+}
+
 /** BEFORE INSERT: the server-side copy of the song, a pending row. */
 function fillSuggestion(row: Row) {
   const song = table('songs').find((s) => s.id === row.song_id);
@@ -1047,6 +1106,46 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'generate_quote_number': {
       const n = table('quotes').length + 1;
       data = `Q-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
+      break;
+    }
+    case 'bw_my_date_holds':
+      data = demoDateHolds();
+      break;
+    case 'bw_answer_date_hold': {
+      if (args.p_answer !== 'free' && args.p_answer !== 'busy') {
+        error = { code: '22023', message: 'Answer free or busy' };
+        break;
+      }
+      if (!demoDateHolds().some((h) => h.event_id === args.p_event_id)) {
+        error = { code: 'P0002', message: 'This date is free again' };
+        break;
+      }
+      const rows = table('event_hold_answers');
+      const at = new Date().toISOString();
+      const row = rows.find((x) => x.event_id === args.p_event_id && x.user_id === demoUid());
+      if (row) Object.assign(row, { answer: args.p_answer, answered_at: at });
+      else rows.push({ event_id: args.p_event_id, user_id: demoUid(), answer: args.p_answer, answered_at: at });
+      persist();
+      break;
+    }
+    case 'bw_date_hold_answers': {
+      const ev = table('events').find((e) => e.id === args.p_event_id);
+      if (!ev?.band_id || !isDemoAdmin(ev.band_id)) {
+        error = { code: '42501', message: 'Only band admins see the answers' };
+        break;
+      }
+      const people = table('band_members').filter((m) => m.band_id === ev.band_id && m.is_active !== false && m.role !== 'admin');
+      data = people.map((m) => {
+        const a = table('event_hold_answers').find((x) => x.event_id === ev.id && x.user_id === m.user_id);
+        const p = table('profiles').find((x) => x.id === m.user_id);
+        return {
+          user_id: m.user_id,
+          name: p?.full_name || p?.email || '',
+          answer: a?.answer ?? null,
+          answered_at: a?.answered_at ?? null,
+          on_lineup: table('event_members').some((em) => em.event_id === ev.id && em.user_id === m.user_id && !['declined', 'dropped_out', 'removed'].includes(String(em.status))),
+        };
+      });
       break;
     }
     case 'bw_my_pending_invitations':

@@ -405,6 +405,7 @@ interface QuoteCreationWizardProps {
     quote: Partial<Quote>,
     opts?: {
       share?: boolean;
+      /** Unused since 178: every member gets the hold card from the server. */
       askAvailability?: boolean;
       /** "Send quote" (iPad composer): also email the client's link once it is ready. */
       send?: boolean;
@@ -484,7 +485,6 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   const isEditing = Boolean(initialData?.id || initialData?.quoteNumber);
   // Ask the lineup for availability now (RSVP), before the client accepts.
-  const [askAvailability, setAskAvailability] = useState(false);
 
   // Accordion state for Edit mode (all 5 sections)
   const [expandedEditSections, setExpandedEditSections] = useState<Record<string, boolean>>({
@@ -1564,7 +1564,6 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     };
     const pending = onCreate(quoteData, {
       share: sendImmediately,
-      askAvailability: !isEditing && askAvailability,
       ...(sendToClient ? { send: true } : {}),
     });
     if (pending && typeof (pending as Promise<void>).then === 'function') {
@@ -2779,28 +2778,11 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       {renderReviewDrawer('logistics', t('Production & travel'), logisticsSummary, renderLogisticsAndCustomItemsControls())}
       {renderReviewDrawer('proposal_terms', t('Multi-option proposal & terms'), proposalSummary, renderProposalAndTermsControls())}
 
-      {!isEditing && allMusicians.length > 0 && (
-        <section className="rounded-[16px] bg-card p-4 flex flex-col gap-3">
-          <div
-            onClick={() => setAskAvailability(v => !v)}
-            className="flex items-center justify-between gap-3 cursor-pointer"
-          >
-            <span className="flex flex-col gap-1 min-w-0">
-              <span className="bw-label-sm text-muted-foreground">{t('Lineup availability')}</span>
-              <span className="bw-label-md">{t('Ask the lineup now')}</span>
-            </span>
-            <Toggle
-              checked={askAvailability}
-              onCheckedChange={() => setAskAvailability(v => !v)}
-              onClick={e => e.stopPropagation()}
-              aria-label={t('Ask the lineup for availability now')}
-            />
-          </div>
-          <span className="bw-body-sm text-muted-foreground">
-            {askAvailability
-              ? t('As soon as the quote is saved (shared, or kept as a draft from ✕), the musicians get an availability check (RSVP) for this date, marked as not confirmed yet.')
-              : t('Musicians are asked once the client accepts. Turn this on to check their availability now.')}
-          </span>
+      {/* Date on hold (178): every member gets a hold card, no toggle. */}
+      {!isEditing && (
+        <section className="rounded-[16px] bg-card p-4 flex flex-col gap-1">
+          <span className="bw-label-sm text-muted-foreground">{t('Lineup availability')}</span>
+          <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>
         </section>
       )}
     </div>
@@ -3493,18 +3475,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             setDocLang(l);
           }}
         />
-        {allMusicians.length > 0 && (
-          <div className="flex items-center gap-3">
-            <Toggle
-              checked={askAvailability}
-              onCheckedChange={() => setAskAvailability(v => !v)}
-              aria-label={t('Ask the lineup for availability now')}
-            />
-            <span className="flex flex-col gap-0.5 min-w-0">
-              <span className="bw-label-md">{t('Ask the lineup now')}</span>
-              <span className="bw-body-sm text-muted-foreground">{t('Check who is free before you send')}</span>
-            </span>
-          </div>
+        {!isEditing && (
+          <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>
         )}
       </ComposerPreview>
     );
@@ -3578,9 +3550,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
           open={leaveOpen}
           what="quote"
           draftHint={
-            askAvailability
-              ? t('Saved as a draft quote, not sent to the client. The musicians still get the availability check. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
-              : t("Saved as a draft quote that members can't see. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.")
+            t('Saved as a draft quote, not sent to the client. Members see only a hold card with the day, time and place. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
           }
           onSaveDraft={() => {
             setLeaveOpen(false);
@@ -3695,9 +3665,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         open={leaveOpen}
         what="quote"
         draftHint={
-          askAvailability
-            ? t('Saved as a draft quote, not sent to the client. The musicians still get the availability check. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
-            : t("Saved as a draft quote that members can't see. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.")
+          t('Saved as a draft quote, not sent to the client. Members see only a hold card with the day, time and place. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
         }
         onSaveDraft={() => {
           setLeaveOpen(false);

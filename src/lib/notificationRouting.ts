@@ -19,7 +19,9 @@ export type NotificationTarget =
   // A member's suggestion for a song (admins review it; the author sees the outcome, 108).
   | { screen: 'songSuggestions'; suggestionId?: string }
   // The account's requests as a deputy for other bands (migration 086).
-  | { screen: 'deputyGigs'; requestId?: string };
+  | { screen: 'deputyGigs'; requestId?: string }
+  // A date on hold (178): its card on Home, where the member answers.
+  | { screen: 'home'; holdEventId?: string };
 
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : undefined;
@@ -34,6 +36,12 @@ export function notificationTarget(
   const chatId = str(d.chatId) || str(d.chat_id);
   const eventId = str(d.eventId) || str(d.event_id);
 
+  // A possible gig to keep free (178): the hold card on Home. Once the date
+  // is free again there's nothing to open.
+  if (kind === 'date_hold' || kind === 'date_hold_changed') {
+    return eventId ? { screen: 'home', holdEventId: eventId } : { screen: 'home' };
+  }
+  if (kind === 'date_hold_released') return null;
   // Pushes to a deputy: not their band, so they open their deputy gigs.
   if (kind === 'deputy_request' || kind === 'deputy_gig_changed') {
     const requestId = str(d.deputy_request_id) || str(d.deputyRequestId);
@@ -106,6 +114,8 @@ export function notificationTargetLabel(target: NotificationTarget): string {
       return t('Open suggestion');
     case 'deputyGigs':
       return t('Open deputy gigs');
+    case 'home':
+      return t('Answer on Home');
   }
 }
 

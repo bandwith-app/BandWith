@@ -21,6 +21,7 @@ import { builtinText } from '@/lib/i18n/builtins';
 import { isUuid } from '@/lib/services/quotes';
 import { clientQuoteItems, type QuoteMessageKind } from '@/lib/services/quoteLinks';
 import { QuoteClientLink } from './QuoteClientLink';
+import { DateHoldAnswers } from '@/app/components/dashboard/DateHoldAnswers';
 
 interface QuoteDetailModalProps {
   quote: Quote;
@@ -320,6 +321,11 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 ))}
               </Card>
             </section>
+
+            {/* Who can keep the date free (178): the members' answers to the hold. */}
+            {quote.convertedToEventId && isUuid(quote.convertedToEventId) && !['DECLINED', 'EXPIRED'].includes(String(quote.status)) && (
+              <DateHoldAnswers eventId={quote.convertedToEventId} />
+            )}
 
             {/* The client's confirmation link (099) */}
             {isUuid(quote.id) && (

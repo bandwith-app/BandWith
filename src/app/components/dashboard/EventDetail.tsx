@@ -112,6 +112,7 @@ import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { OverviewEditSheets } from '@/app/components/event/edit/OverviewEditSheets';
 import { useOverviewEdit, type OverviewToast } from '@/app/components/event/edit/useOverviewEdit';
 import type { EditCard, EditKind } from '@/lib/eventOverviewEdit';
+import { DateHoldAnswers } from '@/app/components/dashboard/DateHoldAnswers';
 
 interface EventDetailProps {
   event: EventData;
@@ -1125,25 +1126,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const quoteGuide = (() => {
     if (!isQuote || !isAdmin || isPast) return null;
     const qs = String(linkedQuote?.status || event.quoteStatus || 'draft').toLowerCase();
-    const answered = resolvedMembers.filter((m) => m.status !== 'pending').length;
-    const free = resolvedMembers.filter((m) => m.status === 'confirmed').length;
-    const lineup =
-      memberCount > 0
-        ? ` ${
-            answered < memberCount
-              ? t('Availability: {free} of {total} free, {pending} still to answer (see below).', {
-                  free,
-                  total: memberCount,
-                  pending: memberCount - answered,
-                })
-              : t('Availability: {free} of {total} free (see below).', { free, total: memberCount })
-          }`
-        : '';
+    // Members only see a hold card (day, time, place) and answer it: their
+    // answers are under "Who's free" (178).
+    const lineup = ` ${t("Members were asked to keep the date free: they see only the day, time and place.")}`;
     if (qs === 'draft')
       return {
         icon: <EyeOff className="w-5 h-5" />,
         title: t('Draft · not sent to the client'),
-        body: `${memberCount > 0 ? t('The lineup only got an availability check.') : t("Only admins see it: the band isn't told yet.")} ${t("Share quote sends it to the client (it becomes Sent). When they say yes, Confirm as gig puts it on everyone's calendar.")}${lineup}`,
+        body: `${t("Only admins see the quote.")} ${t("Share quote sends it to the client (it becomes Sent). When they say yes, Confirm as gig puts it on everyone's calendar.")}${lineup}`,
       };
     if (qs === 'accepted')
       return {
@@ -1155,7 +1145,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       return {
         icon: <XCircle className="w-5 h-5" />,
         title: qs === 'expired' ? t('The quote expired') : t('The client said no'),
-        body: `${t('Edit it and share a new version, or delete the quote to free the date.')}${lineup}`,
+        body: t('Members were told the date is free again. Edit it and share a new version, or delete the quote.'),
       };
     return {
       icon: <Send className="w-5 h-5" />,
@@ -1870,6 +1860,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       </span>
                     </section>
                   )}
+                  {/* Who can keep the date free (178): admins only. */}
+                  {isAdmin && !isPast && event.eventId && (
+                    <DateHoldAnswers eventId={event.eventId} />
+                  )}
                   <QuoteSummaryCard
                     quote={linkedQuote}
                     loading={quoteLoading}
@@ -1882,15 +1876,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     fallback={{ company: event.clientCompany, contact: event.clientName, guests: event.guests }}
                     notes={event.notes}
                   />
-                  {/* Availability check sent with the quote: who is free. */}
+                  {/* The planned lineup (admins; members don't see quotes, 178). */}
                   {!isPersonalGig && (memberCount > 0 || (membersLoading && !dbMembers)) && (
                     <section className="flex flex-col gap-6" aria-label={t('Lineup availability')}>
                       <SectionTitle
-                        title={
-                          memberCount > 0
-                            ? t('AVAILABILITY · {confirmed}/{total} FREE', { confirmed: confirmedExact, total: memberCount })
-                            : t('AVAILABILITY')
-                        }
+                        title={t('LINEUP')}
                         actionLabel={memberCount > 0 ? t('DETAILS') : undefined}
                         onAction={memberCount > 0 ? () => setActiveSheet('lineup') : undefined}
                       />

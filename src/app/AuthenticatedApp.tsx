@@ -141,6 +141,7 @@ import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToD
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
+import { isQuoteStageEvent } from "@/lib/dateHolds";
 
 import { ChatDetailModal, NewChatModal } from "@/app/components/chat";
 import { EditProfileModal, CreateBandModal } from "@/app/components/profile";
@@ -1387,7 +1388,14 @@ export default function AuthenticatedApp() {
         setDeputyGigsFocus(d.requestId ?? null);
         setShowDeputyGigs(true);
         window.dispatchEvent(new CustomEvent("bw:refresh-deputy-gigs"));
-      } else if (d.screen === "home") setActiveTab("Home");
+      } else if (d.screen === "home") {
+        setActiveTab("Home");
+        // A date on hold (178): bring its card into view.
+        if (d.holdEventId) {
+          closeLayersFor("view");
+          window.setTimeout(() => document.querySelector('[data-testid="date-holds"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
+        }
+      }
       done();
     };
     window.addEventListener("push-navigate", handler);
@@ -2793,9 +2801,12 @@ export default function AuthenticatedApp() {
       setSaveToast({ message: t('Event chats are available for band events.'), type: 'info' });
       return;
     }
-    const lineup = (eventMembersMap[ev.eventId] || [])
-      .map((m: any) => m.userId)
-      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    // Still a quote: the chat stays with the admins (members only get the hold card, 178).
+    const lineup = isQuoteStageEvent(ev as any)
+      ? []
+      : (eventMembersMap[ev.eventId] || [])
+          .map((m: any) => m.userId)
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
     const { data: chat, error } = await createChatService({
       type: 'event',
       name: ev.title,
@@ -4606,29 +4617,8 @@ export default function AuthenticatedApp() {
                     );
                     if (taskErr) setSaveToast({ message: t('Quote saved, but the to-do list was not added: {error}', { error: taskErr.message }), type: 'error' });
                   }
-                  // Quote-stage RSVP: ask the lineup before the client confirms.
-                  if (opts?.askAvailability && createdEventId && user?.id) {
-                    const feeByUser: Record<string, number> = {};
-                    const invited = (Array.isArray(q.musicians) ? q.musicians : [])
-                      .map((m: any) => {
-                        const bm = realBand.members?.find((x: any) => x.id === m.id || x.user_id === m.id);
-                        const uid = bm?.user_id || m.user_id || null;
-                        if (uid) feeByUser[uid] = quoteMusicianFee(m);
-                        return uid;
-                      })
-                      .filter((uid: string | null): uid is string => !!uid && uid !== user.id);
-                    if (invited.length > 0) {
-                      const creatorName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Someone");
-                      const { error: rsvpErr } = await notifyEventMembersCreated(
-                        realBand.id, createdEventId, q.eventName || q.clientName || 'Quote', q.eventDate || todayLocal(),
-                        q.eventTimeStart || '20:00', q.eventType || 'other', user.id, creatorName, invited,
-                        { venue: q.venueName, memberFees: feeByUser, tentative: true }
-                      );
-                      setSaveToast(rsvpErr
-                        ? { message: t("Quote {number} saved, but the availability check wasn't sent.", { number: savedQuote.quote_number }), type: 'error' }
-                        : { message: t('Quote {number} saved · availability asked to {count}', { number: savedQuote.quote_number, count: invited.length }), type: 'success' });
-                    }
-                  }
+                  // Members get the hold card from the server (178): day, time
+                  // and place only, never the client or the fee.
                   if (wantsShare) {
                     setSharingAutoSend(!!opts?.send);
                     setSharingQuote({ ...q, id: savedQuote.id, quoteNumber: savedQuote.quote_number, status: 'DRAFT' });

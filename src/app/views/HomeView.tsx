@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowUpRight, EyeOff, MapPin } from '@/app/components/icons';
-import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card } from '@/app/components/bw';
+import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card, BwSheet } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { HomeSkeleton } from '@/app/components/ui/HomeSkeleton';
 import { dashboardContainerVariants, dashboardItemVariants } from '@/styles/motion';
@@ -31,6 +31,9 @@ import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
 import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
 import { PlanEndingCard } from '@/app/components/plans/PlanEndingCard';
+import { DateHoldCard, DateHoldList } from '@/app/components/dashboard/DateHoldCard';
+import { useMyDateHolds } from '@/app/hooks/useDateHolds';
+import { DATE_HOLDS_CHANGED, holdDay, holdPlace, holdTime } from '@/lib/dateHolds';
 
 /** Pill in a half-width slot: one line when it fits, else the label wraps
  *  inside it instead of running out ("Mapa de montaje", "Kalender ansehen"). */
@@ -453,6 +456,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setPractisedHere((s) => (s.has(id) ? s : new Set(s).add(id)));
     bandNotes.practised(id, value);
   };
+  // Possible gigs still at quote stage (178): members keep the date free.
+  const [dateHolds] = useMyDateHolds(!isSolo);
+  // Duo Laptop pose: Home sits under the desk, so a hold opens in a sheet.
+  const [holdSheetId, setHoldSheetId] = useState<string | null>(null);
+  const holdInSheet = dateHolds?.find((h) => h.eventId === holdSheetId) ?? null;
   const payoutsDueRaw = usePayoutsDue(isSolo ? null : contextBand?.id, currentUserId, !!isAdmin);
   const payoutGigs = useMemo(() => payoutsDueRaw ?? [], [payoutsDueRaw]);
   const payoutPeople = useMemo(() => {
@@ -528,6 +536,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onSelect: onOpenPoll ? () => onOpenPoll(p) : undefined,
       });
     }
+    // Possible gigs to keep free (178): day · time · place, nothing else.
+    for (const h of dateHolds || []) {
+      items.push({
+        id: `hold-${h.eventId}`,
+        title: t('Possible gig – keep the date free'),
+        detail: [holdDay(h.date), holdTime(h), holdPlace(h)].filter(Boolean).join(' · '),
+        kind: 'gig',
+        urgent: !h.myAnswer,
+        onSelect: () => setHoldSheetId(h.eventId),
+      });
+    }
     // Payouts due after a show (admin: the musicians; member: their own fee).
     for (const g of payoutGigs) {
       items.push({
@@ -573,10 +592,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
       });
     }
     return items;
-  }, [activePolls, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t, practiseGroups, contextBand?.id]);
+  }, [activePolls, dateHolds, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t, practiseGroups, contextBand?.id]);
 
   // Each create button shows only when the host passes its handler (role rules live there).
   const bandDesk = (
+    <>
+    <BwSheet
+      open={!!holdInSheet}
+      onClose={() => setHoldSheetId(null)}
+      overline={holdInSheet?.bandName || undefined}
+      title={t('Possible gig')}
+      portal
+    >
+      {holdInSheet && <DateHoldCard hold={holdInSheet} onShowToast={onShowToast} onGone={() => setHoldSheetId(null)} />}
+    </BwSheet>
     <BandDeskMode
       nextGig={deskNextGig}
       isAdmin={!!isAdmin}
@@ -589,6 +618,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       onCreateTask={onCreateTask}
       onOpenAnalytics={isAdmin && onQuickAction ? () => onQuickAction('View Analytics') : undefined}
     />
+    </>
   );
 
   if (dashboardLoading && !dashboardData?.eventStats && !dashboardData?.memberStats) {
@@ -766,6 +796,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <motion.div variants={dashboardItemVariants}>
           <LaunchNoticeCard bandId={contextBand.id} onOpenPlan={onOpenPlan} />
           <PlanEndingCard bandId={contextBand.id} onOpenPlan={onOpenPlan} />
+        </motion.div>
+      )}
+
+      {/* ═══ DATES ON HOLD (178): a possible gig, day · time · place only ═══ */}
+      {dateHolds && dateHolds.length > 0 && (
+        <motion.div variants={dashboardItemVariants} className="flex flex-col gap-3" data-testid="date-holds">
+          <SectionHeader title={t('Possible gigs')} />
+          <DateHoldList holds={dateHolds} activeBandId={contextBand?.id} onShowToast={onShowToast} onChanged={() => window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED))} />
         </motion.div>
       )}
 
