@@ -123,6 +123,15 @@ describe('appendIncoming (realtime)', () => {
     expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-2' }))).toEqual(['m0', 'm1', 'temp-1']);
   });
 
+  // Claude #291 r5: client ids are unique per sender; another account's row
+  // with the same client id is not my message.
+  it("another sender's row with my client id confirms nothing", () => {
+    const mine = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const theirs = msg(1, { content: 'hi', sender_id: 'u1', client_id: 'cid-1' });
+    expect(ids(appendIncoming([msg(0), mine], theirs))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(mergeLatestPage([msg(0), mine], [msg(0), theirs]))).toEqual(['m0', 'm1', 'temp-1']);
+  });
+
   it('a row with the same text and no client id confirms nothing waiting', () => {
     const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
     const legacy = msg(1, { content: 'OK', sender_id: 'me' });

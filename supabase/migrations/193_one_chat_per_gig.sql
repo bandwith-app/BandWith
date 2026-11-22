@@ -70,6 +70,11 @@ $$;
 -- ── Who may join a band or gig chat ─────────────────────────────────────────
 -- The rule itself, about anyone: for 193's own trigger and get-or-join
 -- (security definer), never callable by the app.
+-- Off the gig is 175's set (bw_chat_scope_ok, Claude #291 r5): declined,
+-- dropped_out or removed, trimmed and in any case (178's
+-- bw_is_event_participant compares 'declined' exactly, so 'Dropped_Out' or
+-- ' Declined' passed it). The gig's creator and the band's admins stay in,
+-- as in 175.
 CREATE OR REPLACE FUNCTION public.bw_chat_joinable_rule(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -84,7 +89,13 @@ AS $$
       AND public.bw_is_event_participant(p_event_id, p_user_id)
       AND (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
       AND coalesce((
-        SELECT e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id)
+        SELECT (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
+               AND (coalesce(e.created_by = p_user_id, false)
+                    OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, p_user_id))
+                    OR NOT EXISTS (
+                      SELECT 1 FROM event_members em
+                       WHERE em.event_id = e.id AND em.user_id = p_user_id
+                         AND lower(btrim(coalesce(em.status::text, ''))) IN ('declined', 'dropped_out', 'removed')))
           FROM events e WHERE e.id = p_event_id
       ), false)
     ELSE false
@@ -156,6 +167,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS chats_one_per_band
 -- An older build of someone who may not join finds no chat and inserts one:
 -- the unique index refused it with a raw error. Same refusal (23505, so
 -- bw_open_group_chat's retry still works), in words, in their language.
+-- Only for someone in the band (or, for a gig with no band, on the gig):
+-- anyone else learns nothing about the chat; RLS and the index refuse them
+-- as before (Claude #291 r5).
 CREATE OR REPLACE FUNCTION public.bw_trg_chats_one_group_chat()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -172,6 +186,15 @@ BEGIN
        AND ((NEW.type::text = 'event' AND c.event_id = NEW.event_id)
          OR (NEW.type::text = 'band' AND c.band_id = NEW.band_id))
   ) THEN
+    RETURN NEW;
+  END IF;
+  IF NOT coalesce(CASE
+       WHEN NEW.type::text = 'band' THEN
+         NEW.band_id IS NOT NULL AND public.bw_is_band_member(NEW.band_id, auth.uid())
+       ELSE (SELECT CASE WHEN e.band_id IS NOT NULL THEN public.bw_is_band_member(e.band_id, auth.uid())
+                         ELSE public.bw_is_event_participant(e.id, auth.uid()) END
+               FROM events e WHERE e.id = NEW.event_id)
+     END, false) THEN
     RETURN NEW;
   END IF;
   SELECT lower(left(coalesce(to_jsonb(p) ->> 'preferred_language', 'en'), 2)) INTO v_lang

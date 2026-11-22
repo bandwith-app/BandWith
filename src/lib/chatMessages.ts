@@ -22,8 +22,12 @@ const isTemp = (m: Message) => m.id.startsWith('temp-');
  * stands in for a bubble still being sent, by sender and text (Claude r5),
  * and never confirms a bubble that failed or waits (queued).
  */
+const sameId = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
 export const isServerCopyOf = (row: Message, bubble: Message): boolean => {
-  if (row.client_id && bubble.client_id) return row.client_id === bubble.client_id;
+  // Same sender too (Claude #291 r5): client ids are unique per sender only
+  // (192's (sender_id, client_id)), never across accounts.
+  if (row.client_id && bubble.client_id) return row.client_id === bubble.client_id && sameId(row.sender_id, bubble.sender_id);
   if (row.client_id || bubble.failed || bubble.queued) return false;
   return row.sender_id === bubble.sender_id && row.content === bubble.content;
 };

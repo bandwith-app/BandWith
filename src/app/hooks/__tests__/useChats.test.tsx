@@ -28,6 +28,7 @@ const chat = (id: string) => ({ id, type: 'direct', participants: [] }) as any;
 
 beforeEach(() => {
   store.clear();
+  try { localStorage.clear(); } catch { /* none */ }
   getChats.mockReset();
   rt.onStatus = null;
 });
@@ -48,6 +49,28 @@ describe('useChats', () => {
     getChats.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
     const { result } = renderHook(() => useChats());
     await waitFor(() => expect(result.current.chats.map((c) => c.id)).toEqual(['c9']));
+  });
+
+  // Claude #291 r5 (4): a "Not sent" chat message for a chat that is no
+  // longer in the list can't be tried again: it goes; a waiting one stays.
+  it('the list loaded without a chat: its refused messages leave the outbox', async () => {
+    const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
+    await putChatOutbox('me', { chatId: 'gone', clientId: 'r1', body: 'Not sent one', createdAt: '2026-11-22T10:00:00.000Z', refused: '' });
+    await putChatOutbox('me', { chatId: 'gone', clientId: 'w1', body: 'Waiting one', createdAt: '2026-11-22T10:01:00.000Z' });
+    getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => expect(result.current.chats).toHaveLength(1));
+    await waitFor(async () => expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['w1']));
+  });
+
+  it('a band-filtered list never drops anything', async () => {
+    const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
+    await putChatOutbox('me', { chatId: 'other-band-chat', clientId: 'r2', body: 'Not sent', createdAt: '2026-11-22T10:00:00.000Z', refused: '' });
+    getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+    const { result } = renderHook(() => useChats('band-1'));
+    await waitFor(() => expect(result.current.chats).toHaveLength(1));
+    await act(async () => {});
+    expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['r2']);
   });
 
   // Audit 07 #8: Realtime down while HTTP works, a DM arrives. The list and

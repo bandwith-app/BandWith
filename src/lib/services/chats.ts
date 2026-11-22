@@ -8,12 +8,41 @@ import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
 import { attachReplies, replyTargetIds, type ReplyTarget } from '@/lib/chatMessages';
 
-/** The database has no such function yet (migration not applied): use the older path. */
-const isMissingFunction = (error: { code?: string; message?: string } | null | undefined): boolean =>
-  !!error && (error.code === 'PGRST202' || error.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(error.message || ''));
+/**
+ * The database has no such function yet (migration not applied): use the
+ * older path. Only when the error names `fn` (#281 r4): an unrelated
+ * PGRST202 / 42883 (a function `fn` itself calls) is a real error.
+ */
+const isMissingFunction = (
+  error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined,
+  fn: string,
+): boolean =>
+  !!error &&
+  (error.code === 'PGRST202' || error.code === '42883') &&
+  `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.includes(fn);
+
+// Lineup answers that take a musician off a gig (as the server's notices, 046).
+const OFF_THE_GIG = new Set(['declined', 'dropped_out', 'removed']);
+
+/**
+ * Off the gig: 175's / 181's set, trimmed and in any case (#281, #289;
+ * 'Dropped_Out' or ' Declined' is off too). Same name as #289's set.
+ */
+export const isOffTheGig = (status: string | null | undefined): boolean =>
+  OFF_THE_GIG.has((status ?? '').trim().toLowerCase());
+
+/** PostgREST filter: a band membership with is_active NULL counts as active (coalesce(is_active, true)). */
+export const ACTIVE_MEMBER = 'is_active.is.null,is_active.eq.true';
 
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
+
+/** Another account is signed in than the one that wrote the message: not sent, it waits for its writer. */
+export class ChatSenderChangedError extends Error {
+  constructor() {
+    super('Signed in as someone else');
+  }
+}
 
 /** What to show for a chat error: the rule when one said no, never raw server text. */
 export const chatErrorMessage = (error: unknown, fallback: string): string =>
@@ -240,7 +269,7 @@ export const getChats = async (
       .eq('user_id', user.id);
     const myEventIds = new Set(
       (myEventMemberships || [])
-        .filter((m: any) => m.status !== 'declined')
+        .filter((m: any) => !isOffTheGig(m.status))
         .map((m: any) => m.event_id)
     );
 
@@ -592,7 +621,7 @@ export const createChat = async (
           .eq('event_id', data.event_id)
           .eq('user_id', user.id)
           .maybeSingle();
-        if (em && em.status !== 'declined') allowed = true;
+        if (em && !isOffTheGig(em.status)) allowed = true;
       }
       if (!allowed) {
         return { data: null, error: new ChatRuleError(t('You can only message in events you are participating in.')) };
@@ -641,7 +670,7 @@ export const createChat = async (
         }
         return { data: chat as Chat, error: null };
       }
-      if (openError && !isMissingFunction(openError)) {
+      if (openError && !isMissingFunction(openError, 'bw_open_group_chat')) {
         if ((openError as { code?: string }).code === '42501') {
           return {
             data: null,
@@ -891,10 +920,14 @@ export const sendMessage = async (
   messageType: string = 'text',
   replyToId?: string, // Optional: ID of message being replied to
   clientId?: string, // This bubble's id on the device: Try again never saves a second copy
+  expectedSenderId?: string, // Who wrote it: never sent as anyone else (Claude #291 r5)
 ): Promise<{ data: Message | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
+    if (expectedSenderId && user.id.toLowerCase() !== expectedSenderId.toLowerCase()) {
+      return { data: null, error: new ChatSenderChangedError() };
+    }
 
     // Get chat to find band_id, type, event_id, name, created_by
     const { data: chat, error: chatError } = await supabase
@@ -903,6 +936,11 @@ export const sendMessage = async (
       .eq('id', chatId)
       .single();
 
+ // The chat is not there for this account (gone, or no longer theirs):
+    // a no, so the composer locks (Claude #291 r5), not a hiccup.
+    if (chatError && (chatError as { code?: string }).code === 'PGRST116') {
+      return { data: null, error: new ChatRuleError(t('You no longer have access to this chat.')) };
+    }
     if (chatError) throw chatError;
     
     // Ensure the sender is an active participant (keeping cleared_at: older
@@ -930,7 +968,7 @@ export const sendMessage = async (
         .from('band_members')
         .select('user_id')
         .eq('band_id', chat.band_id)
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
       if (bMembers && bMembers.length > 0) {
         await supabase
           .from('chat_participants')
@@ -940,21 +978,25 @@ export const sendMessage = async (
           );
       }
     } else if (chat.type === 'event' && chat.event_id) {
-      const { data: eMembers } = await supabase
+      // Still on the gig (OFF_THE_GIG, trimmed and in any case, as #289 and
+      // the server) and still in the band: someone who left the band can
+      // still be on the lineup (Codex review #291 r3; the server skips them
+      // too, 193). Lineup or membership unknown: nobody is restored.
+      const { data: eMembers, error: lineupError } = await supabase
         .from('event_members')
-        .select('user_id')
-        .eq('event_id', chat.event_id)
-        .neq('status', 'declined');
-      // Only active members of the gig's band: someone who left the band
-      // can still be on the lineup (Codex review #291 r3; the server skips
-      // them too, 193). Membership unknown: nobody is restored.
-      let lineup = (eMembers || []).map((em) => em.user_id as string);
+        .select('user_id, status')
+        .eq('event_id', chat.event_id);
+      let lineup = lineupError
+        ? []
+        : ((eMembers || []) as { user_id: string | null; status: string | null }[])
+            .filter((em) => !!em.user_id && !isOffTheGig(em.status))
+            .map((em) => em.user_id as string);
       if (chat.band_id && lineup.length > 0) {
         const { data: active, error: activeError } = await supabase
           .from('band_members')
           .select('user_id')
           .eq('band_id', chat.band_id)
-          .eq('is_active', true)
+          .or(ACTIVE_MEMBER)
           .in('user_id', lineup);
         const activeIds = new Set(((active || []) as { user_id: string }[]).map((m) => m.user_id));
         lineup = activeError ? [] : lineup.filter((id) => activeIds.has(id));
@@ -995,7 +1037,7 @@ export const sendMessage = async (
           .from('band_members')
           .select('band_id, role, user_id')
           .in('user_id', [user.id, otherParticipant.user_id])
-          .eq('is_active', true);
+          .or(ACTIVE_MEMBER);
         // Not checked (no connection) is not a no: the send fails as a
         // network error and waits, it never says "only with admins".
         if (sharedError) throw sharedError;
@@ -1026,7 +1068,7 @@ export const sendMessage = async (
         .select('id')
         .eq('band_id', chat.band_id)
         .eq('user_id', user.id)
-        .eq('is_active', true)
+        .or(ACTIVE_MEMBER)
         .maybeSingle();
       if (bmError) throw bmError;
 
@@ -1041,7 +1083,7 @@ export const sendMessage = async (
           .select('role')
           .eq('band_id', chat.band_id)
           .eq('user_id', user.id)
-          .eq('is_active', true)
+          .or(ACTIVE_MEMBER)
           .maybeSingle();
         if (bmError) throw bmError;
         if (bm?.role === 'admin') allowed = true;
@@ -1054,7 +1096,7 @@ export const sendMessage = async (
           .eq('user_id', user.id)
           .maybeSingle();
         if (emError) throw emError;
-        if (em && em.status !== 'declined') allowed = true;
+        if (em && !isOffTheGig(em.status)) allowed = true;
       }
       if (!allowed) {
         return { data: null, error: new ChatRuleError(t('You can only message in events you are participating in.')) };

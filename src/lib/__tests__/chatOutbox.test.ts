@@ -15,7 +15,7 @@ vi.mock('@/lib/services/chats', () => ({
 }));
 vi.mock('@/lib/supabase', () => ({ getSafeUser: async () => ({ data: { user: h.uid ? { id: h.uid } : null } }) }));
 
-import { CHAT_OUTBOX_PREFIX, beginChatSend, chatOutboxKey, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
+import { CHAT_OUTBOX_PREFIX, beginChatSend, dropRefusedOutsideChats, chatOutboxKey, flushChatOutbox, putChatOutbox, listChatOutbox, dropChatOutbox, CHAT_OUTBOX_EVENT } from '../chatOutbox';
 import { useChatOutboxFlush } from '@/app/hooks/useChatOutbox';
 
 const item = (n: number, chatId = 'c1') => ({ chatId, clientId: `cid-${n}`, body: `message ${n}`, createdAt: `2026-11-22T10:0${n}:00.000Z` });
@@ -51,7 +51,7 @@ describe('chat outbox', () => {
     await act(async () => { window.dispatchEvent(new Event('online')); });
     await act(async () => {});
     expect(h.send).toHaveBeenCalledTimes(1);
-    expect(h.send).toHaveBeenCalledWith('c1', 'message 1', 'text', undefined, 'cid-1');
+    expect(h.send).toHaveBeenCalledWith('c1', 'message 1', 'text', undefined, 'cid-1', 'u-a');
     expect(await listChatOutbox('u-a')).toEqual([]);
   });
 
@@ -147,5 +147,23 @@ describe('chat outbox', () => {
       .replace(/async function saveStoredOutbox[\s\S]*?\n}\n/, '')
       .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
     expect(outside).not.toMatch(/localStorage|indexedDB/);
+  });
+  // Claude #291 r5 (5): the writer goes to sendMessage, which refuses to
+  // send as anyone else.
+  it('each send names its writer', async () => {
+    await putChatOutbox('u-a', item(1));
+    h.send.mockResolvedValue(saved(1));
+    await flushChatOutbox('u-a');
+    expect(h.send.mock.calls[0][5]).toBe('u-a');
+  });
+
+  // Claude #291 r5 (4): a "Not sent" message for a chat that is no longer
+  // in the list goes; a waiting one stays, whatever its chat.
+  it('the chat list without a chat: its refused messages go, waiting ones stay', async () => {
+    await putChatOutbox('u-a', { ...item(1, 'gone'), refused: 'You no longer have access to this chat.' });
+    await putChatOutbox('u-a', item(2, 'gone'));
+    await putChatOutbox('u-a', { ...item(3, 'c1'), refused: '' });
+    await dropRefusedOutsideChats('u-a', ['c1']);
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-2', 'cid-3']);
   });
 });

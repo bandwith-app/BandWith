@@ -56,7 +56,7 @@ vi.mock('@/lib/supabase', () => {
 });
 vi.mock('../notifications', () => ({ sendPushToUsers: vi.fn() }));
 
-import { createChat, getMessages, sendMessage, subscribeToChat, ChatRuleError } from '../chats';
+import { createChat, getMessages, sendMessage, subscribeToChat, ChatRuleError, ChatSenderChangedError } from '../chats';
 import type { Message } from '../chats';
 
 const called = (table: string, method: string) =>
@@ -111,7 +111,7 @@ describe('opening a gig or band chat (07 #6)', () => {
   });
 
   it('a database without 193 keeps the older lookup', async () => {
-    h.rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+    h.rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.bw_open_group_chat(p_band_id, p_event_id, p_name, p_type) in the schema cache' } });
     h.resolve = (table, calls) =>
       table === 'band_members'
         ? { data: { role: 'admin' }, error: null }
@@ -121,6 +121,19 @@ describe('opening a gig or band chat (07 #6)', () => {
     const { data } = await openGig();
     expect(data?.id).toBe('found');
     expect(called('chats', 'insert')).toBe(false);
+  });
+});
+
+// #281 r4: only a missing bw_open_group_chat means "older database"; a
+// missing function it calls is a real error, never the older lookup.
+describe('a missing function is the one named', () => {
+  it('another function missing (42883 inside the RPC): an error, no second chat', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { code: '42883', message: 'function public.bw_chat_scope_ok_for(uuid, uuid) does not exist' } });
+    const { data, error } = await createChat({ type: 'event', name: 'Rooftop Session', band_id: 'band-1', event_id: 'gig-1', participant_ids: [] });
+    expect(data).toBeNull();
+    expect(error).toBeTruthy();
+    expect(called('chats', 'insert')).toBe(false);
+    expect(called('chats', 'maybeSingle')).toBe(false);
   });
 });
 
@@ -148,6 +161,84 @@ describe('sending to a gig chat restores the lineup', () => {
       .flatMap((rows) => (Array.isArray(rows) ? rows : [rows])) as { user_id: string }[];
     expect(restored.map((r) => r.user_id)).toContain('line-1');
     expect(restored.map((r) => r.user_id)).not.toContain('ex-1');
+  });
+
+  // Claude #291 r5 / #281 r4: off the gig is OFF_THE_GIG trimmed and in any
+  // case (as #289 and the server), is_active NULL is active, and with the
+  // membership unknown nobody is restored.
+  const gigSend = (lineup: { user_id: string; status: string | null }[], members: () => { data: unknown; error: unknown }) => {
+    h.resolve = (table, calls) => {
+      const has = (m: string) => calls.some(([c]) => c === m);
+      if (table === 'chats' && has('single')) {
+        return { data: { band_id: 'band-1', type: 'event', event_id: 'gig-1', name: 'Rooftop Session', created_by: 'me' }, error: null };
+      }
+      if (table === 'event_members' && !has('maybeSingle')) return { data: lineup, error: null };
+      if (table === 'band_members') return has('in') ? members() : { data: { role: 'admin' }, error: null };
+      if (table === 'messages' && has('single')) return { data: { id: 'm9', chat_id: 'ev-chat', sender_id: 'me', content: 'hi' }, error: null };
+      return { data: null, error: null };
+    };
+    return sendMessage('ev-chat', 'hi');
+  };
+  const restoredIds = () =>
+    (h.chains
+      .filter((c) => c.table === 'chat_participants')
+      .flatMap((c) => c.calls.filter(([m]) => m === 'upsert').map(([, rows]) => rows))
+      .flatMap((rows) => (Array.isArray(rows) ? rows : [rows])) as { user_id: string }[])
+      .map((r) => r.user_id)
+      .filter((id) => id !== 'me');
+
+  it("'Dropped_Out', ' Declined' and 'removed' are off the gig", async () => {
+    const lineup = [
+      { user_id: 'on-1', status: 'confirmed' },
+      { user_id: 'drop-1', status: 'Dropped_Out' },
+      { user_id: 'dec-1', status: ' Declined' },
+      { user_id: 'rem-1', status: 'REMOVED ' },
+    ];
+    await gigSend(lineup, () => ({ data: lineup.map((l) => ({ user_id: l.user_id })), error: null }));
+    expect(restoredIds()).toEqual(['on-1']);
+    const asked = h.chains.find((c) => c.table === 'band_members' && c.calls.some(([m]) => m === 'in'));
+    expect(asked?.calls.map(([, ...a]) => a).flat(2)).not.toContain('dec-1');
+    expect(asked?.calls.map(([, ...a]) => a).flat(2)).toContain('on-1');
+  });
+
+  it('a band membership with is_active NULL counts as active', async () => {
+    await gigSend([{ user_id: 'on-1', status: 'confirmed' }], () => ({ data: [{ user_id: 'on-1' }], error: null }));
+    const asked = h.chains.find((c) => c.table === 'band_members' && c.calls.some(([m]) => m === 'in'));
+    expect(asked?.calls).toContainEqual(['or', 'is_active.is.null,is_active.eq.true']);
+    expect(asked?.calls.some(([m, col, v]) => m === 'eq' && col === 'is_active' && v === true)).toBe(false);
+  });
+
+  it('membership unknown: nobody is restored', async () => {
+    await gigSend([{ user_id: 'on-1', status: 'confirmed' }], () => ({ data: null, error: new Error('Failed to fetch') }));
+    expect(restoredIds()).toEqual([]);
+  });
+});
+
+// Claude #291 r5: the chat isn't there for this account any more (PGRST116
+// from the chat select): a no that locks the composer, not a hiccup.
+describe('a chat that is gone for this account', () => {
+  it('is a rule refusal with a clear message', async () => {
+    h.resolve = (table, calls) =>
+      table === 'chats' && calls.some(([c]) => c === 'single')
+        ? { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } }
+        : { data: null, error: null };
+    const { data, error } = await sendMessage('gone-chat', 'hi');
+    expect(data).toBeNull();
+    expect(error).toBeInstanceOf(ChatRuleError);
+    expect(error?.message).toBe('You no longer have access to this chat.');
+  });
+});
+
+// Claude #291 r5: the writer is passed; signed in as someone else, nothing
+// is written.
+describe('sending as the writer only', () => {
+  it('another account signed in: not sent', async () => {
+    const { data, error } = await sendMessage('dm', 'hi', 'text', undefined, 'cid-1', 'someone-else');
+    expect(data).toBeNull();
+    expect(error).toBeInstanceOf(ChatSenderChangedError);
+    expect(called('messages', 'upsert')).toBe(false);
+    expect(called('messages', 'insert')).toBe(false);
+    expect(called('chat_participants', 'upsert')).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@ import { supabase, getSafeUser } from '@/lib/supabase';
 import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
 import { getPendingMutations } from '@/lib/offline/syncQueue';
 import { getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
+import { dropRefusedOutsideChats } from '@/lib/chatOutbox';
 
 // ============================================
 // CACHE RULES
@@ -1502,10 +1503,13 @@ export const useChats = (bandId?: string) => {
     if (data) {
       setChats(data);
       setOfflineItem(cacheKey, data).catch(() => {});
+      // Every chat of this account (no band filter): "Not sent" messages
+      // for a chat no longer in it go (Claude #291 r5; waiting ones stay).
+      if (!bandId && user?.id) void dropRefusedOutsideChats(user.id, data.map((c) => c.id));
     }
     setError(error);
     setLoading(false);
-  }, [isAuthenticated, bandId, cacheKey]);
+  }, [isAuthenticated, bandId, cacheKey, user?.id]);
 
   useEffect(() => {
     fetchChats();

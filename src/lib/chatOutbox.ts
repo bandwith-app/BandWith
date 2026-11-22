@@ -115,6 +115,22 @@ export function dropChatOutbox(userId: string | null | undefined, clientId: stri
   });
 }
 
+/**
+ * The chat list loaded (all of this account's chats): a "Not sent" message
+ * for a chat no longer in it can't be tried again or seen, so it goes
+ * (Claude #291 r5, main's split: #292's sign-out sheet shows the rest).
+ * Refused ones only; a waiting one is never dropped.
+ */
+export function dropRefusedOutsideChats(userId: string | null | undefined, chatIds: readonly string[]): Promise<void> {
+  if (!userId) return Promise.resolve();
+  const present = new Set(chatIds.map((id) => id.toLowerCase()));
+  return inOrder(async () => {
+    const list = await readValid(userId);
+    const rest = list.filter((x) => x.refused === undefined || present.has(x.chatId.toLowerCase()));
+    if (rest.length !== list.length) await saveStoredOutbox(userId, rest);
+  });
+}
+
 /** The server said no: an answer, not a lost connection or a hiccup. */
 export function isRefusal(error: unknown): boolean {
   if (!error || isOfflineError(error)) return false;
@@ -211,7 +227,8 @@ export function flushChatOutbox(
       // Still waiting? (Try again or Delete may have handled it meanwhile.)
       const now = (await listChatOutbox(uid)).find((x) => x.clientId === item.clientId);
       if (!now || now.refused !== undefined) continue;
-      const { data, error } = await sendMessage(item.chatId, item.body, 'text', item.replyToId ?? undefined, item.clientId);
+      // The writer is passed on too: sendMessage refuses to send as anyone else.
+      const { data, error } = await sendMessage(item.chatId, item.body, 'text', item.replyToId ?? undefined, item.clientId, uid);
       if (!error && data) {
         await dropChatOutbox(uid, item.clientId);
         result.sent.push({ chatId: item.chatId, clientId: item.clientId, message: data });

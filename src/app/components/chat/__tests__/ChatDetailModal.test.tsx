@@ -8,7 +8,7 @@ const rt = vi.hoisted(() => ({
 }));
 // What every direct supabase query in the modal resolves to (band checks).
 const sb = vi.hoisted(() => ({ result: { data: null, error: null } as { data: unknown; error: unknown } }));
-const rule = vi.hoisted(() => ({ Err: class ChatRuleError extends Error {} }));
+const rule = vi.hoisted(() => ({ Err: class ChatRuleError extends Error {}, Sender: class ChatSenderChangedError extends Error {} }));
 // Who the session says is signed in (getSafeUser).
 const who = vi.hoisted(() => ({ id: 'me' as string | null }));
 const svc = vi.hoisted(() => ({
@@ -33,6 +33,9 @@ vi.mock('@/lib/services/chats', () => ({
   deleteChat: vi.fn(async () => ({ error: null })),
   receiptFor: () => 'sent',
   chatErrorMessage: (e: unknown, fallback: string) => (e instanceof rule.Err ? e.message : fallback),
+  isOffTheGig: (s: string | null | undefined) => ['declined', 'dropped_out', 'removed'].includes((s ?? '').trim().toLowerCase()),
+  ACTIVE_MEMBER: 'is_active.is.null,is_active.eq.true',
+  ChatSenderChangedError: rule.Sender,
 }));
 vi.mock('@/lib/supabase', () => {
   const b: any = new Proxy(function () {}, {
@@ -379,7 +382,7 @@ describe('ChatDetailModal', () => {
       svc.sendMessage.mockResolvedValueOnce({ data: saved, error: null });
       fireEvent.click(screen.getByRole('button', { name: /^Try again: / }));
       await settle();
-      expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined, expect.any(String));
+      expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined, expect.any(String), 'me');
       // Claude review #291 r4: the insert may have landed before the timeout;
       // Try again sends the same client id, so the server keeps one copy.
       const calls = svc.sendMessage.mock.calls;
@@ -749,5 +752,69 @@ describe('ChatDetailModal offline: who may write', () => {
     await settle();
     expect(composer()).toBeNull();
     expect(screen.getByText(bandRule)).toBeTruthy();
+  });
+  // Claude #291 r5 (1): the client's off-the-gig set is the server's
+  // (trimmed, any case): 'Dropped_Out' never gets a composer the server
+  // then refuses (no flip-flop).
+  it("'Dropped_Out' on the lineup: the composer stays locked", async () => {
+    const evProp = { id: 'c1', type: 'event' as const, name: 'Rooftop Session', initials: 'RS', unread: 0 };
+    svc.getChat.mockResolvedValue({
+      data: { id: 'c1', type: 'event', band_id: 'b1', event_id: 'g1', name: 'Rooftop Session', participants: [participant('me', 'Me')] },
+      error: null,
+    });
+    // One answer for every lookup: a list (admins) that is also the member's row.
+    sb.result = { data: Object.assign([{ user_id: 'u9' }], { role: 'member', status: 'Dropped_Out' }), error: null };
+    render(<ChatDetailModal chat={evProp} onClose={() => {}} />);
+    await settle();
+    expect(composer()).toBeNull();
+    expect(screen.getByText('You can only message in events you are participating in.')).toBeTruthy();
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await settle();
+    expect(composer()).toBeNull();
+  });
+
+  // Claude #291 r5 (5): the writer goes to sendMessage; if it says someone
+  // else is signed in, the message waits for its writer.
+  it('the send names its writer; signed in as someone else, it waits', async () => {
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Sender('Signed in as someone else') });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Parking is on 5th' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(svc.sendMessage.mock.calls[0][5]).toBe('me');
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+    const { listChatOutbox } = await import('@/lib/chatOutbox');
+    expect((await listChatOutbox('me')).map((x) => x.body)).toEqual(['Parking is on 5th']);
+  });
+
+  // Claude #291 r5 (7): the channel joining is a sign the network is back.
+  it('Realtime joins: what waits in the outbox goes, without an online event', async () => {
+    const { putChatOutbox } = await import('@/lib/chatOutbox');
+    await putChatOutbox('me', { chatId: 'c1', clientId: 'cid-w', body: 'Doors at 7', createdAt: '2026-11-22T10:00:00.000Z' });
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    svc.getMessages.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    svc.sendMessage.mockResolvedValue({ data: { ...msg(700, 'me'), content: 'Doors at 7', client_id: 'cid-w' }, error: null });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    expect(svc.sendMessage).not.toHaveBeenCalled();
+    await act(async () => { rt.opts?.onStatus?.('SUBSCRIBED'); });
+    await settle();
+    expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+    expect(svc.sendMessage.mock.calls[0][4]).toBe('cid-w');
+  });
+  // Claude #291 r5 (6): another account's row with the same client id is
+  // not this account's message: the waiting one stays.
+  it("someone else's saved row with my client id: my waiting message stays", async () => {
+    const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
+    await putChatOutbox('me', { chatId: 'c1', clientId: 'cid-x', body: 'Bring the capo', createdAt: '2026-11-22T10:00:00.000Z' });
+    latest = [...range(0, 3), { ...msg(800, 'u1'), content: 'Bring the capo', client_id: 'cid-x' }];
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+    expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['cid-x']);
   });
 });

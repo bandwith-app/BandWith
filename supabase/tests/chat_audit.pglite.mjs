@@ -386,13 +386,23 @@ r = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('$
 ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${EX}'`) === 0,
   'band chat: a former member is not restored either');
 
-// Claude review #291: an older build of someone who may not join (Eli left
-// the band) finds nothing and inserts: a clear refusal, not a raw 23505.
-r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
+// Claude review #291: an older build of someone in the band who may not
+// join this gig's chat (not on the lineup) finds nothing and inserts: a
+// clear refusal, not a raw 23505.
+r = await as(MEM, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${MEM}')`);
 ok(!!r.error && /already has a chat/.test(r.error), `older build, duplicate gig chat: clear message (${r.error})`);
-await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${EX}'`);
-r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
+await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${MEM}'`);
+r = await as(MEM, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${MEM}')`);
 ok(!!r.error && /ha già una chat/.test(r.error), `in their language (${r.error})`);
+await db.exec(`UPDATE profiles SET preferred_language = NULL WHERE id = '${MEM}'`);
+// Claude review #291 r5: someone outside the band (Eli left it; a fan) is
+// still refused, but learns nothing about the chat: no friendly message.
+for (const [who, label] of [[EX, 'a former member'], [FAN, 'an outsider']]) {
+  r = await as(who, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${who}')`);
+  ok(!!r.error && !/already has a chat|già una chat/.test(r.error), `${label}: refused, without the friendly message (${r.error})`);
+  r = await as(who, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('band','Hudson Horns','${BAND}',NULL,'${who}')`);
+  ok(!!r.error && !/already has a chat|già una chat/.test(r.error), `${label}, band chat: refused, without the friendly message (${r.error})`);
+}
 
 // Claude review #291 r4: bw_chat_joinable answers about others only for the
 // band's admins (it must not tell a member who may join which gig chat).
@@ -420,6 +430,20 @@ ok(!r.error && r.rows[0].j === false, `nor about band B's chat (${r.error ?? r.r
 r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', NULL, '${GIG}', '${LINE}') AS j`);
 ok(!r.error && r.rows[0].j === true, `their own band's gig, without a band: still answered (${r.error ?? r.rows[0].j})`);
 await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG3}'; DELETE FROM events WHERE id = '${GIG3}';`);
+
+// Claude review #291 r5: off the gig is 175's set (declined, dropped_out,
+// removed, trimmed, any case), whatever bw_is_event_participant compares
+// (prod's before 178 compares 'declined' exactly, as here).
+const [DROPU, DECU] = [id(60), id(61)];
+await db.exec(`INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${DROPU}','member'),('${BAND}','${DECU}','member');
+  INSERT INTO event_members VALUES ('${GIG}','${DROPU}','dropped_out'),('${GIG}','${DECU}',' Declined');`);
+for (const [who, label] of [[DROPU, "'dropped_out'"], [DECU, "' Declined'"]]) {
+  r = await as(who, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${who}') AS j`);
+  ok(!r.error && r.rows[0].j === false, `${label} on the lineup: not joinable (${r.error ?? r.rows[0].j})`);
+  r = await as(who, `SELECT (public.bw_open_group_chat('event', '${BAND}', '${GIG}', 'x'))->>'id' AS c`);
+  ok(!!r.error, `${label}: bw_open_group_chat refuses (${r.error ? 'refused' : r.rows[0]?.c})`);
+}
+await db.exec(`DELETE FROM event_members WHERE user_id IN ('${DROPU}','${DECU}'); DELETE FROM band_members WHERE user_id IN ('${DROPU}','${DECU}');`);
 
 // Not on the lineup, not an admin: cannot see or open it.
 r = await as(MEM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);

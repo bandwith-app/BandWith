@@ -100,7 +100,7 @@ process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); proce
 let fails = 0;
 const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const [BAND, ADMIN, LINE, LEFT, GONE, STALE, DROP] = [1, 2, 3, 4, 5, 6, 7].map(id);
+const [BAND, ADMIN, LINE, LEFT, GONE, STALE, DROP, DEC] = [1, 2, 3, 4, 5, 6, 7, 8].map(id);
 const [BANDCHAT, EVCHAT] = [20, 21].map(id);
 const GIG = id(30);
 
@@ -184,13 +184,13 @@ await db.exec(`CREATE POLICY chat_participants_insert ON public.chat_participant
 // Data: Lia (LEFT) and Gus (GONE) are in the band chat and on the gig's
 // lineup; Sam (STALE) too.
 await db.exec(`
-INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${LEFT}','Lia Left'),('${GONE}','Gus Gone'),('${STALE}','Sam Stale'),('${DROP}','Dee Dropped');
+INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Ava Admin'),('${LINE}','Leo Line'),('${LEFT}','Lia Left'),('${GONE}','Gus Gone'),('${STALE}','Sam Stale'),('${DROP}','Dee Dropped'),('${DEC}','Dan Declined');
 INSERT INTO bands VALUES ('${BAND}','Hudson Horns');
 INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'),('${BAND}','${LINE}','member'),
-  ('${BAND}','${LEFT}','member'),('${BAND}','${GONE}','member'),('${BAND}','${STALE}','member'),('${BAND}','${DROP}','member');
+  ('${BAND}','${LEFT}','member'),('${BAND}','${GONE}','member'),('${BAND}','${STALE}','member'),('${BAND}','${DROP}','member'),('${BAND}','${DEC}','member');
 INSERT INTO events (id, band_id, title, created_by, status, event_type) VALUES ('${GIG}','${BAND}','Rooftop Session','${ADMIN}','confirmed','gig');
 INSERT INTO event_members VALUES ('${GIG}','${LINE}','confirmed'),('${GIG}','${LEFT}','confirmed'),('${GIG}','${GONE}','confirmed'),('${GIG}','${STALE}','confirmed'),
-  ('${GIG}','${DROP}','Dropped_Out');
+  ('${GIG}','${DROP}','Dropped_Out'),('${GIG}','${DEC}',' Declined');
 INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES
   ('${BANDCHAT}','band','Hudson Horns','${BAND}',NULL,'${ADMIN}'),
   ('${EVCHAT}','event','Rooftop Session','${BAND}','${GIG}','${ADMIN}');
@@ -308,6 +308,18 @@ r = await as(DROP, `SELECT public.bw_open_group_chat('event', '${BAND}', '${GIG}
 ok(!!r.error, `'Dropped_Out' on the lineup: bw_open_group_chat refuses (${r.error ? 'refused' : 'opened'})`);
 r = await as(DROP, `SELECT content FROM messages`);
 ok(r.rows.length === 0, `'Dropped_Out': reads nothing (${r.rows.length})`);
+// Claude #291 r5: 193's own rule uses 175's off-the-gig set too (trimmed,
+// any case), so joinable says no and nobody's composer flip-flops.
+for (const [who, label] of [[DROP, "'dropped_out'"], [DEC, "' Declined'"]]) {
+  r = await as(who, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${who}') AS j`);
+  ok(r.rows[0]?.j === false, `${label}: bw_chat_joinable is false (${r.error ?? r.rows[0]?.j})`);
+  r = await db.query(`SELECT public.bw_chat_joinable_rule('event', '${BAND}', '${GIG}', '${who}') AS j`);
+  ok(r.rows[0]?.j === false, `${label}: the rule itself is false (${r.rows[0]?.j})`);
+  r = await as(who, `SELECT id FROM chats WHERE id = '${EVCHAT}'`);
+  ok(r.rows.length === 0, `${label}: does not see the gig chat row (${r.rows.length})`);
+}
+r = await as(LINE, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${LINE}') AS j`);
+ok(r.rows[0]?.j === true, `a confirmed lineup member is joinable (${r.error ?? r.rows[0]?.j})`);
 r = await as(LINE, `SELECT (public.bw_open_group_chat('event', '${BAND}', '${GIG}', 'x'))->>'id' AS c`);
 ok(!r.error && r.rows[0]?.c === EVCHAT, `a lineup member still opens the gig chat (${r.error ?? r.rows[0]?.c})`);
 r = await as(ADMIN, `SELECT (public.bw_open_group_chat('band', '${BAND}', NULL, 'x'))->>'id' AS c`);

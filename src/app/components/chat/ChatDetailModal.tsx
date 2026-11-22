@@ -21,7 +21,7 @@ import { eventKindOf, type EventKind, HeaderAction, IconButton, NavBackButton, T
 import { supabase } from '@/lib/supabase';
 import { createChatSync } from '@/lib/chatSync';
 import { onAppResume } from '@/lib/appResume';
-import { getMessages, sendMessage, markChatAsRead, subscribeToChat, subscribeToReceipts, getChatParticipants, deleteChat, getChat, receiptFor, chatErrorMessage } from '@/lib/services/chats';
+import { getMessages, sendMessage, markChatAsRead, subscribeToChat, subscribeToReceipts, getChatParticipants, deleteChat, getChat, receiptFor, chatErrorMessage, isOffTheGig, ACTIVE_MEMBER, ChatSenderChangedError } from '@/lib/services/chats';
 import type { Message, ChatParticipant, ReceiptStatus } from '@/lib/services/chats';
 import { ReceiptTicks } from '@/app/components/chat/ReceiptTicks';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
@@ -371,7 +371,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
               .from('band_members')
               .select('band_id, role, user_id')
               .in('user_id', [user.id, other.user_id])
-              .eq('is_active', true);
+              .or(ACTIVE_MEMBER);
             if (sharedError) unknown = true;
 
             const userBands = new Map<string, string>();
@@ -401,7 +401,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
             .select('id')
             .eq('band_id', fullChat.band_id)
             .eq('user_id', user.id)
-            .eq('is_active', true)
+            .or(ACTIVE_MEMBER)
             .maybeSingle();
           if (bmError) unknown = true;
 
@@ -417,7 +417,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
               .select('role')
               .eq('band_id', fullChat.band_id)
               .eq('user_id', user.id)
-              .eq('is_active', true)
+              .or(ACTIVE_MEMBER)
               .maybeSingle();
             if (bmError) unknown = true;
             if (bm?.role === 'admin') hasAccess = true;
@@ -430,7 +430,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
               .eq('user_id', user.id)
               .maybeSingle();
             if (emError) unknown = true;
-            if (em && em.status !== 'declined') hasAccess = true;
+            if (em && !isOffTheGig(em.status)) hasAccess = true;
           }
           if (!hasAccess) {
             permitted = false;
@@ -529,7 +529,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
             .select('user_id')
             .eq('band_id', fullChat.band_id)
             .eq('role', 'admin')
-            .eq('is_active', true);
+            .or(ACTIVE_MEMBER);
           if (!live()) return;
           setBandAdminIds(new Set((admins || []).map((a: { user_id: string }) => a.user_id)));
         }
@@ -594,6 +594,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         if (status !== 'SUBSCRIBED') return;
         if (joinedOnce) void recheck();
         joinedOnce = true;
+        // Connected again: what waits in the outbox goes now (Claude #291 r5),
+        // also when 'online' never fired (the connection came back quietly).
+        void flushRef.current();
       },
     });
 
@@ -641,13 +644,15 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   const withOutbox = (list: Message[], outbox: ChatOutboxItem[], chatId: string): Message[] => {
     const uid = user?.id;
     if (!uid) return list;
-    const onScreen = new Set(list.map((m) => m.client_id).filter(Boolean) as string[]);
+    // Only this account's rows stand for its outbox items (Claude #291 r5).
+    const mine = (m: Message) => !!m.sender_id && m.sender_id.toLowerCase() === uid.toLowerCase();
+    const onScreen = new Set(list.filter(mine).map((m) => m.client_id).filter(Boolean) as string[]);
     const bubbles: Message[] = [];
     for (const o of outbox) {
       if (o.chatId !== chatId) continue;
       // Saved already (a reply that was lost): nothing waits any more.
       if (onScreen.has(o.clientId)) {
-        if (list.some((m) => m.client_id === o.clientId && !m.id.startsWith('temp-'))) void dropChatOutbox(uid, o.clientId);
+        if (list.some((m) => mine(m) && m.client_id === o.clientId && !m.id.startsWith('temp-'))) void dropChatOutbox(uid, o.clientId);
         continue;
       }
       bubbles.push({
@@ -738,7 +743,22 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         }
         return 'queued';
       }
-      const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id, pending.client_id ?? undefined);
+      const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id, pending.client_id ?? undefined, author);
+      // Someone else signed in between the check above and the send: it was
+      // not sent; it waits in its writer's outbox.
+      if (error instanceof ChatSenderChangedError) {
+        if (pending.client_id && author) {
+          await putChatOutbox(author, {
+            chatId: sentFrom,
+            clientId: pending.client_id,
+            body: pending.content,
+            createdAt: pending.created_at,
+            replyToId: pending.reply_to_id ?? null,
+          });
+        }
+        if (chatIdRef.current === sentFrom) setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        return 'queued';
+      }
       if (isDenied(error)) lockChat(sentFrom, chatErrorMessage(error, ''));
       // Another chat is on screen now: its composer is not this one.
       if (chatIdRef.current !== sentFrom) {
