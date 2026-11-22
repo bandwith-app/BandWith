@@ -75,8 +75,8 @@ describe('mergeLatestPage (3 s poll)', () => {
 
   it('hides only the server copy of a pending message, not older messages with the same text', () => {
     const old = msg(0, { content: 'ok', sender_id: 'me' });
-    const temp = msg(99, { id: 'temp-1', content: 'ok', sender_id: 'me' });
-    const copy = msg(2, { content: 'ok', sender_id: 'me' });
+    const temp = msg(99, { id: 'temp-1', content: 'ok', sender_id: 'me', client_id: 'cid-1' });
+    const copy = msg(2, { content: 'ok', sender_id: 'me', client_id: 'cid-1' });
     const next = mergeLatestPage([old, msg(1), temp], [old, msg(1), copy]);
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
   });
@@ -96,10 +96,27 @@ describe('appendIncoming (realtime)', () => {
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
   });
 
-  it('replaces the pending bubble with its server copy', () => {
-    const temp = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me' });
-    const next = appendIncoming([msg(0), temp], msg(1, { content: 'hi', sender_id: 'me' }));
+  it('replaces the pending bubble with its server copy (same client id)', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const next = appendIncoming([msg(0), temp], msg(1, { content: 'hi', sender_id: 'me', client_id: 'cid-1' }));
     expect(ids(next)).toEqual(['m0', 'm1']);
+  });
+
+  // Codex #291 r4 (B4): same sender and text is no proof of delivery.
+  it('two identical "OK"s waiting: the one delivered (client id) goes, the other stays', () => {
+    const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
+    const b = msg(99, { id: 'temp-b', content: 'OK', sender_id: 'me', client_id: 'cid-b', failed: true, queued: true });
+    const next = appendIncoming([msg(0), a, b], msg(1, { content: 'OK', sender_id: 'me', client_id: 'cid-b' }));
+    expect(ids(next)).toEqual(['m0', 'm1', 'temp-a']);
+    const page = mergeLatestPage([msg(0), a, b], [msg(0), msg(2, { content: 'OK', sender_id: 'me', client_id: 'cid-a' })]);
+    expect(ids(page)).toEqual(['m0', 'm2', 'temp-b']);
+  });
+
+  it('a row with the same text and no client id confirms nothing waiting', () => {
+    const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
+    const legacy = msg(1, { content: 'OK', sender_id: 'me' });
+    expect(ids(appendIncoming([msg(0), a], legacy))).toEqual(['m0', 'm1', 'temp-a']);
+    expect(ids(mergeLatestPage([msg(0), a], [msg(0), legacy]))).toEqual(['m0', 'm1', 'temp-a']);
   });
 
   it('ignores a message already in the list', () => {
@@ -227,8 +244,8 @@ describe('failed sends', () => {
   });
 
   it('it gives way to its server copy if the message got through after all', () => {
-    const prev = markSendFailed([...range(0, 3), temp()], 'temp-1');
-    const server = msg(4, { content: 'message A' });
+    const prev = markSendFailed([...range(0, 3), temp({ client_id: 'cid-a' })], 'temp-1');
+    const server = msg(4, { content: 'message A', client_id: 'cid-a' });
     expect(ids(mergeLatestPage(prev, [...range(0, 3), server]))).toEqual(['m0', 'm1', 'm2', 'm4']);
   });
 });

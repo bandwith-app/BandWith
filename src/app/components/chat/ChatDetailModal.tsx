@@ -735,7 +735,11 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       dropChatOutbox(user?.id, pending.client_id);
       // Keep the quote on screen if the saved row came back without it.
       const saved = data.reply_to_id && !data.reply_to?.content && pending.reply_to ? { ...data, reply_to: pending.reply_to } : data;
-      setMessages(prev => prev.map(m => m.id === pending.id ? saved : m));
+      // Realtime may have brought it first (a database without client_id:
+      // nothing matched the bubble): one row, never two.
+      setMessages(prev => prev.some(m => m.id === saved.id)
+        ? prev.filter(m => m.id !== pending.id)
+        : prev.map(m => m.id === pending.id ? saved : m));
     }
 
     setSending(false);
@@ -805,7 +809,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       ? back.clientId
       : newClientId();
     const optimisticMessage: Message = {
-      id: `temp-${Date.now()}`,
+      // Unique per bubble (two sends in one millisecond), and the same id the
+      // bubble gets back from the outbox when the chat is opened again.
+      id: `temp-${clientId}`,
       client_id: clientId,
       chat_id: chat.id,
       sender_id: user?.id || '',

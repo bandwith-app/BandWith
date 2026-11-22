@@ -615,4 +615,57 @@ describe('ChatDetailModal offline: who may write', () => {
     // Not sent again by itself.
     expect(svc.sendMessage).toHaveBeenCalledTimes(2);
   });
+
+  // Codex #291 (B3, ChatDetailModal:700): the loop sent from a snapshot, so a
+  // message deleted while the first one was sending still went out.
+  it('two waiting messages: the one deleted while the first is sending never goes out', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    for (const text of ['First: load-in at 5', 'Second: never mind']) {
+      fireEvent.change(composer()!, { target: { value: text } });
+      fireEvent.keyDown(composer()!, { key: 'Enter' });
+      await settle();
+    }
+    expect(screen.getAllByText('Waiting for connection')).toHaveLength(2);
+    const secondId = svc.sendMessage.mock.calls[1][4];
+
+    let land: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementationOnce(() => new Promise((res) => { land = res; }));
+    svc.sendMessage.mockResolvedValue({ data: { ...msg(501, 'me'), content: 'Second: never mind' }, error: null });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    expect(svc.sendMessage).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: /^Delete unsent message: Second/ }));
+    const first = { ...msg(500, 'me'), content: 'First: load-in at 5' };
+    latest = [...latest, first]; // the server's page has it from now on
+    await act(async () => { land({ data: first, error: null }); });
+    await settle();
+    await settle();
+    const flushed = svc.sendMessage.mock.calls.slice(2).map((c) => c[4]);
+    expect(flushed).not.toContain(secondId);
+    expect(screen.queryByText('Second: never mind')).toBeNull();
+    expect(screen.getAllByText('First: load-in at 5')).toHaveLength(1);
+  });
+
+  // Codex #291 r4 (B4): with delivery confirmed by client id only, a row
+  // from Realtime without one (database before 192) must not show twice.
+  it('a saved message that Realtime brought first shows once', async () => {
+    svc.getChat.mockResolvedValue({ data: { id: 'c1', type: 'direct', participants: [participant('me', 'Me')] }, error: null });
+    let land: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementationOnce(() => new Promise((res) => { land = res; }));
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'See you at 8' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    const saved = { ...msg(600, 'me'), content: 'See you at 8' };
+    await act(async () => { rt.onMessage?.(saved); });
+    await act(async () => { land({ data: saved, error: null }); });
+    await settle();
+    expect(screen.getAllByText('See you at 8')).toHaveLength(1);
+  });
 });

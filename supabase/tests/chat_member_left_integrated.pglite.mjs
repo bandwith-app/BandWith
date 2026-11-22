@@ -196,6 +196,8 @@ INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${EVCHAT
 
 // ── 175 (by name), 178 (by name), 193 (whole), 181 (whole) ─────────────────
 const parts175 = [
+  fn(M175, 'bw_chats_immutable_keys'),
+  stmt(M175, 'CREATE TRIGGER bw_chats_immutable_keys', 'DROP TRIGGER IF EXISTS bw_chats_immutable_keys'),
   fn(M175, 'bw_chat_scope_ok'),
   fn(M175, 'bw_my_chat_ids'),
   fn(M175, 'bw_chat_recipient_ids'),
@@ -232,10 +234,11 @@ ok(true, '175 and 178 chat rules loaded from their branch heads');
 await db.exec(readFileSync(MIG194, 'utf8'));
 await db.exec(readFileSync(MIG192, 'utf8'));
 ok(true, '194 and 192 run after 178');
-await db.exec(readFileSync(MIG193, 'utf8'));
-ok(true, '193 runs after 192');
-await db.exec(M181);
-ok(true, '181 runs after 193');
+const loads = async (label, sql) => {
+  try { await db.exec(sql); ok(true, label); } catch (e) { await db.exec('ROLLBACK').catch(() => {}); ok(false, `${label} (${e.message})`); }
+};
+await loads('193 runs after 192', readFileSync(MIG193, 'utf8'));
+await loads('181 runs after 193', M181);
 
 // ── Removed from the band, already in the chats ────────────────────────────
 await db.exec(`UPDATE band_members SET is_active = false WHERE user_id = '${LEFT}'`);
@@ -300,6 +303,30 @@ r = await as(LINE, `SELECT (public.bw_open_group_chat('event', '${BAND}', '${GIG
 ok(!r.error && r.rows[0]?.c === EVCHAT, `a lineup member still opens the gig chat (${r.error ?? r.rows[0]?.c})`);
 r = await as(ADMIN, `SELECT (public.bw_open_group_chat('band', '${BAND}', NULL, 'x'))->>'id' AS c`);
 ok(!r.error && r.rows[0]?.c === BANDCHAT, `the admin still opens the band chat (${r.error ?? r.rows[0]?.c})`);
+
+// Codex #291 r4 (B2): a chat's creator moves it to another band: refused
+// (175's bw_chats_immutable_keys, which 193 requires).
+await db.exec(`INSERT INTO bands VALUES ('${id(9)}','Other Band')`);
+r = await as(ADMIN, `UPDATE chats SET band_id = '${id(9)}' WHERE id = '${BANDCHAT}'`);
+let moved = null;
+try { await db.exec(`UPDATE chats SET band_id = '${id(9)}' WHERE id = '${BANDCHAT}'`); } catch (e) { moved = e.message; }
+ok(!!moved && (await db.query(`SELECT band_id FROM chats WHERE id = '${BANDCHAT}'`)).rows[0].band_id === BAND,
+  `changing a chat's band_id is refused (${moved ?? 'changed'})`);
+
+// Codex #291 r4 (B1/B2), main: 193 never runs without 175.
+{
+  const bare = new PGlite();
+  await bare.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+    CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+    CREATE TABLE public.chats (id uuid PRIMARY KEY, type text, band_id uuid, event_id uuid, created_by uuid, created_at timestamptz, name text);
+    CREATE TABLE public.chat_participants (chat_id uuid, user_id uuid, UNIQUE (chat_id, user_id));
+    CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, created_by uuid);`);
+  let guard = null;
+  try { await bare.exec(readFileSync(MIG193, 'utf8')); } catch (e) { guard = e.message; await bare.exec('ROLLBACK'); }
+  ok(!!guard && guard.includes('175'), `193 without 175 stops at once and names 175 (${guard ?? 'ran'})`);
+  ok((await bare.query(`SELECT to_regprocedure('public.bw_open_group_chat(text, uuid, uuid, text)') AS f`)).rows[0].f === null,
+    'and creates nothing');
+}
 
 // Still in the band: nothing changed for them.
 r = await as(LINE, `SELECT content FROM messages WHERE chat_id = '${EVCHAT}' ORDER BY created_at`);

@@ -15,6 +15,15 @@ export const normalizeChatType = (type: string | null | undefined): ChatKind | n
 
 const isTemp = (m: Message) => m.id.startsWith('temp-');
 
+/**
+ * The server row of a bubble on this device: same client id, never the same
+ * text (Codex #291 r4 B4: a second "OK" that answers something else is not
+ * the first one delivered). A row without one (an older build, a database
+ * before 192) confirms nothing.
+ */
+export const isServerCopyOf = (row: Message, bubble: Message): boolean =>
+  !!row.client_id && !!bubble.client_id && row.client_id === bubble.client_id;
+
 const sameMessage = (a: Message, b: Message) =>
   a.id === b.id &&
   a.content === b.content &&
@@ -33,9 +42,8 @@ const sameMessage = (a: Message, b: Message) =>
 const sameList = (a: Message[], b: Message[]) => a.length === b.length && a.every((m, i) => sameMessage(m, b[i]));
 
 /**
- * The server copy of a message still being sent: new to the list, from the
- * same sender, same text. Each pending message hides at most one copy, so an
- * older "ok" already on screen stays while a new "ok" is on its way.
+ * The server copy of a message still being sent: new to the list, with its
+ * client id (isServerCopyOf). Each pending message hides at most one copy.
  */
 const pendingCopies = (prev: Message[], incoming: Message[]): { copies: Set<string>; arrived: Set<string> } => {
   const have = new Set(prev.map((m) => m.id));
@@ -45,7 +53,7 @@ const pendingCopies = (prev: Message[], incoming: Message[]): { copies: Set<stri
   const arrived = new Set<string>();
   for (const d of incoming) {
     if (have.has(d.id)) continue;
-    const i = pending.findIndex((o) => o.content === d.content && o.sender_id === d.sender_id);
+    const i = pending.findIndex((o) => isServerCopyOf(d, o));
     if (i === -1) continue;
     const [o] = pending.splice(i, 1);
     if (o.failed) arrived.add(o.id);
@@ -118,7 +126,7 @@ export const prependOlder = (prev: Message[], olderPage: Message[]): Message[] =
  */
 export const appendIncoming = (prev: Message[], message: Message): Message[] => {
   if (prev.some((m) => m.id === message.id)) return prev;
-  const i = prev.findIndex((m) => isTemp(m) && m.sender_id === message.sender_id && m.content === message.content);
+  const i = prev.findIndex((m) => isTemp(m) && isServerCopyOf(message, m));
   const rest = i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
   const settled = rest.filter((m) => !isTemp(m));
   // In its place by time: arrivals are fetched one by one and can land out

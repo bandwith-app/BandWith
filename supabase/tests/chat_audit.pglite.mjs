@@ -10,14 +10,62 @@
 //   mkdir -p /tmp/pgchat && cd /tmp/pgchat && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/chat_audit.pglite.mjs . && node chat_audit.pglite.mjs <repo>
 //   node chat_audit.pglite.mjs <repo> /dev/null     # before: FAILs expected
+//
+// 193 needs 175 first (hard order, Codex #291 r4 B1/B2): its three objects
+// are taken by name from the real 175 (BW_175_REF, origin/fix/security-audit
+// or d9971705); none found: SKIP with a warning.
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
 const MIGS = process.argv[3]
   ? [process.argv[3]]
   : ['192_chat_notification_purge.sql', '193_one_chat_per_gig.sql'].map((n) => `${REPO}/supabase/migrations/${n}`);
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
+const M175 = (() => {
+  for (const ref of [process.env.BW_175_REF, 'origin/fix/security-audit', 'd9971705'].filter(Boolean)) {
+    try {
+      const sql = execFileSync('git', ['-C', REPO, 'show', `${ref}:supabase/migrations/175_security_audit_access.sql`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      console.log(`using 175 from ${ref}`);
+      return sql;
+    } catch { /* next */ }
+  }
+  console.log('SKIP: 175 not found (fetch origin/fix/security-audit or set BW_175_REF); 193 needs it first');
+  process.exit(0);
+})();
+// A function by name: its CREATE (or the DO block that writes it) and the
+// REVOKE / GRANT lines after it. A statement: from `head` to its semicolon.
+function fn(sql, name) {
+  const head = `CREATE OR REPLACE FUNCTION public.${name}(`;
+  const p = sql.indexOf(head);
+  if (p < 0) throw new Error(`function ${name} not found in 175`);
+  let start = p;
+  let end;
+  const doStart = sql.lastIndexOf('\nDO $', p);
+  if (doStart >= 0) {
+    const tag = sql.slice(doStart + 4).match(/^\$[A-Za-z_]*\$/)[0];
+    const close = sql.indexOf(`${tag};`, doStart + 4 + tag.length);
+    if (close > p) { start = doStart + 1; end = close + tag.length + 1; }
+  }
+  if (end === undefined) {
+    const as = sql.slice(p).match(/\bAS\s+(\$[A-Za-z_]*\$)/);
+    const bodyStart = p + as.index + as[0].length;
+    end = sql.indexOf(';', sql.indexOf(as[1], bodyStart)) + 1;
+  }
+  let out = sql.slice(start, end);
+  for (const line of sql.slice(end).split('\n').slice(1)) {
+    if (/^(REVOKE|GRANT)\b/.test(line) && line.includes(`public.${name}(`)) out += '\n' + line;
+    else if (line.trim() === '' || /^--/.test(line)) continue;
+    else break;
+  }
+  return out;
+}
+const stmt175 = (head) => {
+  const p = M175.indexOf(head);
+  if (p < 0) throw new Error(`${head} not found in 175`);
+  return M175.slice(p, M175.indexOf(';\n', p) + 1);
+};
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
 
 const db = new PGlite();
@@ -113,6 +161,11 @@ await db.exec(lines('050_chat_and_profile_privacy.sql', 62, 105)); // immutable 
 await db.exec(migFile('067_delete_chat_history.sql'));
 await db.exec(migFile('104_direct_chat_two_people.sql'));
 await db.exec(`CREATE POLICY chat_participants_insert ON public.chat_participants FOR INSERT TO authenticated WITH CHECK (bw_can_add_chat_participant(chat_id, user_id));`);
+// What 193 requires from 175 (and checks for at its top).
+for (const sql of [fn(M175, 'bw_chat_scope_ok'), fn(M175, 'bw_chat_scope_ok_for'), fn(M175, 'bw_chats_immutable_keys'),
+  stmt175('CREATE TRIGGER bw_chats_immutable_keys')]) {
+  await db.exec(sql);
+}
 
 const preview = (s) => s.slice(0, 120);
 // 100 letters + 15 guitars = 130 UTF-16 units: the app's preview keeps 10 guitars.

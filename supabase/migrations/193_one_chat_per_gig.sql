@@ -42,11 +42,30 @@
 -- and inserts one: instead of a raw unique-index error they get a clear
 -- message in their language ("This gig already has a chat...", still 23505).
 --
--- Independent of 175/181 (uses only 073 helpers; 175's bw_chat_scope_ok_for
--- only when it exists, through EXECUTE). Idempotent; one transaction.
+-- Needs 175 first (175_security_audit_access.sql, #281; Codex #291 r4 B1/B2,
+-- main's decision): removing someone from the band takes them out of these
+-- chats only through 175's rule (bw_chat_scope_ok_for, archived rows), and
+-- only 175's bw_chats_immutable_keys stops a chat's creator moving it to
+-- another band. Without them this file stops at once, naming 175. Hard
+-- order 175 → 193 (the release safety net checks it too, #278).
+-- Idempotent; one transaction.
 -- ============================================================================
 
 BEGIN;
+
+-- ── 175 first ───────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_chat_scope_ok_for(uuid, uuid)') IS NULL
+     OR to_regprocedure('public.bw_chats_immutable_keys()') IS NULL
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger t
+                     WHERE t.tgrelid = 'public.chats'::regclass
+                       AND t.tgname = 'bw_chats_immutable_keys'
+                       AND NOT t.tgisinternal) THEN
+    RAISE EXCEPTION '193 needs 175 (175_security_audit_access.sql, #281) applied first: missing public.bw_chat_scope_ok_for(uuid, uuid), public.bw_chats_immutable_keys() or trigger bw_chats_immutable_keys on public.chats';
+  END IF;
+END
+$$;
 
 -- ── Who may join a band or gig chat ─────────────────────────────────────────
 -- The rule itself, about anyone: for 193's own trigger and get-or-join
@@ -289,9 +308,9 @@ BEGIN
   -- 175 r4 (#281): a removed person's row is kept and its rule refuses it
   -- everywhere. That rule is the stricter one (lineup statuses in any case:
   -- 'Dropped_Out' is off the gig), so opening must pass it too, or someone
-  -- would "open" a chat they can't read. Called only when 175 is there
-  -- (EXECUTE: this file never depends on it). A chat created just now goes
-  -- back with the refusal.
+  -- would "open" a chat they can't read. 175 is required (checked at the
+  -- top); EXECUTE keeps this body valid on its own. A chat created just now
+  -- goes back with the refusal.
   IF to_regprocedure('public.bw_chat_scope_ok_for(uuid, uuid)') IS NOT NULL THEN
     EXECUTE 'SELECT coalesce(public.bw_chat_scope_ok_for($1, $2), false)' INTO v_scope_ok USING v_chat.id, v_uid;
     IF NOT v_scope_ok THEN
