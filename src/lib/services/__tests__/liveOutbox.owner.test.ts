@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Round 3 (Codex B1, offline path): A's note written with no signal waits in
 // A's outbox. If the flush runs while the session is B's (a sign-in switch
@@ -15,6 +15,10 @@ const net = vi.hoisted(() => ({
   rpcLog: [] as Array<{ fn: string; args: Record<string, unknown> }>,
   rpcResult: { data: { saved: true, song_count: 2, previous: [] }, error: null } as { data: unknown; error: unknown },
   log: [] as Array<{ table: string; op: string; args: unknown[] }>,
+  // Which session each request went out with (the token is read when it is sent).
+  sentAs: [] as Array<{ what: string; as: string | null }>,
+  // Hold the next write on the wire until this resolves.
+  hold: null as Promise<void> | null,
 }));
 vi.mock('../../supabase', () => {
   const q = (table: string) => {
@@ -28,8 +32,14 @@ vi.mock('../../supabase', () => {
       };
     }
     b.then = (res: (v: unknown) => void) => {
+      if (writes) net.sentAs.push({ what: table, as: net.session });
       if (writes && net.switchOnWrite) net.session = net.switchOnWrite;
-      res({ data: writes ? net.writeRows : [{ id: 'r1' }, { id: 'r2' }], error: writes ? net.writeError : null });
+      const answer = () => res({ data: writes ? net.writeRows : [{ id: 'r1' }, { id: 'r2' }], error: writes ? net.writeError : null });
+      const held = writes ? net.hold : null;
+      if (held) {
+        net.hold = null;
+        void held.then(answer);
+      } else answer();
     };
     return b;
   };
@@ -39,6 +49,7 @@ vi.mock('../../supabase', () => {
       from: (t: string) => q(t),
       rpc: async (fn: string, args: Record<string, unknown>) => {
         net.rpcLog.push({ fn, args });
+        net.sentAs.push({ what: fn, as: net.session });
         return net.rpcResult;
       },
       auth: {
@@ -65,6 +76,60 @@ beforeEach(() => {
   net.rpcLog = [];
   net.rpcResult = { data: { saved: true, song_count: 2, previous: [] }, error: null };
   net.log = [];
+  net.sentAs = [];
+  net.hold = null;
+});
+
+// Codex #287 B2 (routed to #292): another tab signs Bob in while this tab's
+// flush of Alice's outbox is running. This tab never signs out; Bob's session
+// just arrives (supabase-js picks it up from the auth key's storage event).
+// The flush reads the session again before every send: nothing of Alice's
+// goes out with Bob's session, and what wasn't sent stays in her outbox.
+describe('a flush running when another tab signs someone else in', () => {
+  const AUTH_KEY = 'sb-bandwith-auth-token';
+  // This tab's client following the shared session, as supabase-js does.
+  const followOtherTabs = (e: StorageEvent) => {
+    if (e.key === AUTH_KEY) net.session = e.newValue ? (JSON.parse(e.newValue) as { user: { id: string } }).user.id : null;
+  };
+  beforeEach(() => window.addEventListener('storage', followOtherTabs));
+  afterEach(() => window.removeEventListener('storage', followOtherTabs));
+
+  it('an already-running flushLiveOutbox keeps sending Alice’s notes after Bob signs in through another tab: none go with Bob’s session, the rest stay hers', async () => {
+    const n2 = { ...note, id: 'n2', body: 'Capo 2 on Empire State' };
+    const order = {
+      kind: 'order' as const,
+      setlistId: 'sl',
+      rows: [
+        { id: 'r2', setlist_id: 'sl', song_id: 's2', position: 1, set_number: 1 },
+        { id: 'r1', setlist_id: 'sl', song_id: 's1', position: 2, set_number: 1 },
+      ],
+      before: [{ id: 'r1', songId: 's1', setNumber: 1 }, { id: 'r2', songId: 's2', setNumber: 1 }],
+    };
+    queueLiveOp('u-a', note);
+    queueLiveOp('u-a', n2);
+    queueLiveOp('u-a', order);
+    let release: () => void = () => {};
+    net.hold = new Promise<void>((r) => (release = r));
+    const flush = flushLiveOutbox('u-a', liveOutboxApi, { force: true });
+    // Alice's first note is on the wire (with her session) …
+    await vi.waitFor(() => expect(net.sentAs).toHaveLength(1));
+    // … when another tab signs Bob in: only a storage event here, no sign-out.
+    const value = JSON.stringify({ access_token: 'bob-token', user: { id: 'u-b' } });
+    localStorage.setItem(AUTH_KEY, value);
+    window.dispatchEvent(new StorageEvent('storage', { key: AUTH_KEY, newValue: value }));
+    expect(net.session).toBe('u-b');
+    release();
+    const r = await flush;
+    // Only the note already sent before the switch went out, with Alice's session.
+    expect(net.sentAs).toEqual([{ what: 'song_personal_notes', as: 'u-a' }]);
+    expect(net.sentAs.some((x) => x.as === 'u-b')).toBe(false);
+    expect(net.rpcLog).toEqual([]);
+    // The rest wait in Alice's outbox, not refused, not dropped.
+    expect(readLiveOutbox('u-a').map((o) => (o as { kind: string; id?: string }).id ?? o.kind)).toEqual(['n2', 'order']);
+    expect(readRefusedLiveOps('u-a')).toEqual([]);
+    expect(readLiveOutbox('u-b')).toEqual([]);
+    expect(r).toMatchObject({ sent: 1, dropped: 0, left: 2 });
+  });
 });
 
 describe("the outbox is sent only as its own account", () => {
