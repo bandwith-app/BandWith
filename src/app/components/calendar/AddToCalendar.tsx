@@ -5,7 +5,7 @@ import { cn } from '@/app/components/ui/utils';
 import { getLocale, useT } from '@/lib/i18n';
 import { GIG_LABELS, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
 import { openExternal } from '@/lib/nativeFiles';
-import { memberCalendarUrl, useCalendarToken } from '@/lib/memberCalendar';
+import { memberEventCalendarUrl, useEventCalendarToken } from '@/lib/memberCalendar';
 
 export interface CalendarEventInfo {
   eventId: string;
@@ -25,14 +25,17 @@ export interface CalendarEventInfo {
 
 /**
  * "Add to calendar" for one event: the .ics file from member-calendar (Apple
- * Calendar on iPhone / iPad / Mac, Outlook; it keeps the event's UID, so a
- * later subscription updates the same entry) and Google Calendar. Logistics
+ * Calendar on iPhone / iPad / Mac, Outlook) and Google Calendar. Logistics
  * only, never fees. Settings → Calendar sync keeps every event in sync.
+ *
+ * The file link carries a token bound to this event and this date (182),
+ * never the account's feed token: forwarding the link shares this event
+ * only. One date of a repeating rehearsal comes alone, not the series.
  */
 export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: string }> = ({ event, className }) => {
   const t = useT();
-  const { token } = useCalendarToken(true);
-  const file = token ? memberCalendarUrl(token, { eventId: event.eventId }) : null;
+  const { token } = useEventCalendarToken(event.eventId, event.date);
+  const file = token ? memberEventCalendarUrl(token) : null;
   const labels = GIG_LABELS[getLocale()] ?? GIG_LABELS.en;
   const gig: DeputyGig = {
     title: event.title || (event.rehearsal ? t('Rehearsal') : t('Gig')),

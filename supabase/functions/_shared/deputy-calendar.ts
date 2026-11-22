@@ -21,7 +21,7 @@ export interface DeputyGig {
   city?: string | null;
   address?: string | null;
   role?: string | null;
-  /** The reply page, so the entry leads back to the details. */
+  /** A page without any credential in it (the app), so the entry leads back to it. */
   url?: string | null;
   /** A rehearsal reads "Rehearsal 19:00–22:00" instead of "Show …". */
   kind?: 'gig' | 'rehearsal';
@@ -219,4 +219,165 @@ export function googleCalendarUrl(g: DeputyGig, labels: GigLabels): string {
     location: location(g),
   });
   return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+// ------------------------------------------------------------- the feeds --
+// What the edge functions deputy-calendar and member-calendar serve, built
+// here so the tests can read it.
+
+/**
+ * One gig of the deputy's calendar (bw_deputy_calendar_feed, 182). `mine`:
+ * the request of the link. Older servers (bw_deputy_feed, 084) sent each
+ * request's reply token instead; it is never written into an entry.
+ */
+export interface DeputyFeedGig {
+  id: string;
+  mine?: boolean | null;
+  token?: string | null;
+  cancelled: boolean;
+  role: string | null;
+  event_title: string | null;
+  event_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_in_time: string | null;
+  soundcheck_time: string | null;
+  venue_name: string | null;
+  venue_city: string | null;
+  venue_address: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * The deputy's calendar (one = only the gig of the link). Entries carry no
+ * link to the reply page: whoever sees a calendar entry (a shared or
+ * family calendar, a forwarded invite) must not get the fee or the power to
+ * change the answer. The page is reached from the message the band sent.
+ */
+export function deputyFeedCalendar(
+  feed: { band_name?: string | null; gigs?: DeputyFeedGig[] | null },
+  opts: { token: string; lang: string; one: boolean; site?: string; now?: Date },
+): string {
+  const labels = GIG_LABELS[opts.lang] ?? GIG_LABELS.en;
+  const band = feed.band_name || "BandWith";
+  const mine = (g: DeputyFeedGig) => g.mine ?? (!!g.token && g.token === opts.token);
+  const events = (feed.gigs ?? [])
+    .filter((g) => g.event_date && (!opts.one || mine(g)))
+    .map((g) =>
+      gigEvent(
+        {
+          title: g.event_title || labels.gig || "Gig",
+          bandName: band,
+          date: g.event_date as string,
+          loadIn: g.load_in_time,
+          soundcheck: g.soundcheck_time,
+          start: g.start_time,
+          end: g.end_time,
+          venue: g.venue_name,
+          city: g.venue_city,
+          address: g.venue_address,
+          role: g.role,
+        },
+        labels,
+        `deputy-${g.id}`,
+        { updatedAt: g.updated_at, cancelled: g.cancelled, now: opts.now },
+      )
+    );
+  return calendarFile(events, `${band} · BandWith`);
+}
+
+/** One event of bw_member_calendar_feed (165). */
+export interface MemberFeedEvent {
+  id: string;
+  type: "gig" | "rehearsal" | "personal";
+  title: string | null;
+  band_name: string | null;
+  event_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_in_time: string | null;
+  soundcheck_time: string | null;
+  venue_name: string | null;
+  venue_city: string | null;
+  venue_address: string | null;
+  role: string | null;
+  recurrence: unknown;
+  updated_at: string | null;
+}
+
+const ymdStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/**
+ * Whether `date` (YYYY-MM-DD) is one of the dates of a repeating rehearsal
+ * that starts on `start`, stepped the way the app's calendar steps it
+ * (EventsView: weekly / biweekly / monthly by interval, until, count =
+ * repeats after the first date).
+ */
+export function isOccurrence(rule: unknown, start: string, date: string): boolean {
+  if (!rule || typeof rule !== "object") return false;
+  const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
+  const freq = String(r.freq ?? r.frequency ?? "").toLowerCase();
+  if (!["weekly", "biweekly", "monthly"].includes(freq)) return false;
+  const s = /^(\d{4})-(\d{2})-(\d{2})/.exec(start);
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (date === `${s[1]}-${s[2]}-${s[3]}`) return true;
+  const n = Number(r.interval);
+  const every = Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
+  const until = /^(\d{4}-\d{2}-\d{2})/.exec(typeof r.until === "string" ? r.until : "")?.[1] ?? null;
+  const c = Number(r.count);
+  const count = Number.isInteger(c) && c >= 1 && c <= 1000 ? c : 1000;
+  const cursor = new Date(Number(s[1]), Number(s[2]) - 1, Number(s[3]), 12, 0, 0);
+  for (let i = 0; i < count; i++) {
+    if (freq === "weekly") cursor.setDate(cursor.getDate() + 7 * every);
+    else if (freq === "biweekly") cursor.setDate(cursor.getDate() + 14);
+    else cursor.setMonth(cursor.getMonth() + every);
+    const d = ymdStr(cursor);
+    if (until && d > until) return false;
+    if (d === date) return true;
+    if (d > date) return false;
+  }
+  return false;
+}
+
+/**
+ * The member's calendar, or one event as a file to import once (`one` =
+ * its id). One date of a repeating rehearsal (`occurrence`) is that date
+ * alone, without the series rule, under its own UID. Null when that event
+ * (or that date of it) is not in the feed.
+ */
+export function memberFeedCalendar(
+  feedEvents: MemberFeedEvent[],
+  opts: { lang: string; site: string; one?: string | null; occurrence?: string | null; now?: Date },
+): string | null {
+  const labels = GIG_LABELS[opts.lang] ?? GIG_LABELS.en;
+  const one = opts.one || null;
+  const chosen = feedEvents.filter((e) => e.event_date && (!one || e.id === one));
+  if (one && chosen.length === 0) return null;
+  const events: string[][] = [];
+  for (const e of chosen) {
+    const rrule = recurrenceRule(e.recurrence);
+    const occ = one && rrule && opts.occurrence ? opts.occurrence : null;
+    if (occ && !isOccurrence(e.recurrence, e.event_date as string, occ)) return null;
+    events.push(gigEvent(
+      {
+        title: e.title || (e.type === "rehearsal" ? labels.rehearsal : labels.gig) || "Gig",
+        bandName: e.band_name ?? "",
+        kind: e.type === "rehearsal" ? "rehearsal" : "gig",
+        date: occ ?? (e.event_date as string),
+        loadIn: e.load_in_time,
+        soundcheck: e.soundcheck_time,
+        start: e.start_time,
+        end: e.end_time,
+        venue: e.venue_name,
+        city: e.venue_city,
+        address: e.venue_address,
+        role: e.role,
+        url: opts.site,
+      },
+      labels,
+      occ ? `event-${e.id}-${occ.replace(/-/g, "")}` : `event-${e.id}`,
+      { updatedAt: e.updated_at, rrule: occ ? null : rrule, now: opts.now },
+    ));
+  }
+  return calendarFile(events, one ? undefined : "BandWith", "Member");
 }

@@ -10,7 +10,15 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { calendarFile, gigEvent, googleCalendarUrl, recurrenceRule } from '../deputyCalendar';
-import { _resetCalendarTokenCache, googleSubscribeUrl, memberCalendarUrl, myCalendarToken, webcalUrl } from '../memberCalendar';
+import {
+  _resetCalendarTokenCache,
+  googleSubscribeUrl,
+  memberCalendarUrl,
+  memberEventCalendarUrl,
+  myCalendarToken,
+  myEventCalendarToken,
+  webcalUrl,
+} from '../memberCalendar';
 
 const L = { loadIn: 'Load-in', soundcheck: 'Soundcheck', show: 'Show', role: 'Role', rehearsal: 'Rehearsal' };
 const TOKEN = 'a'.repeat(64);
@@ -76,5 +84,39 @@ describe('member calendar: links', () => {
   it('gives null when the server has no link', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'missing function' } });
     expect(await myCalendarToken()).toBeNull();
+  });
+});
+
+describe('member calendar: one-event links (182)', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    _resetCalendarTokenCache();
+  });
+
+  it('asks for a token bound to that event and date, once per event and date', async () => {
+    const EV = '11111111-2222-4333-8444-555555555555';
+    rpc.mockResolvedValueOnce({ data: 'd'.repeat(64), error: null }).mockResolvedValueOnce({ data: 'e'.repeat(64), error: null });
+    expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('d'.repeat(64));
+    expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('d'.repeat(64));
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenLastCalledWith('bw_my_event_calendar_token', { p_event_id: EV, p_date: '2026-12-08' });
+    expect(await myEventCalendarToken(EV, '2026-12-15')).toBe('e'.repeat(64));
+    expect(rpc).toHaveBeenCalledTimes(2);
+    // Making a new account link (rotate) also ends the event links.
+    rpc.mockResolvedValueOnce({ data: TOKEN, error: null }).mockResolvedValueOnce({ data: 'f'.repeat(64), error: null });
+    await myCalendarToken(true);
+    expect(await myEventCalendarToken(EV, '2026-12-08')).toBe('f'.repeat(64));
+  });
+
+  it('null for a draft id, a bad date or no answer from the server', async () => {
+    expect(await myEventCalendarToken('draft-1', '2026-12-08')).toBeNull();
+    expect(rpc).not.toHaveBeenCalled();
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'missing function' } });
+    expect(await myEventCalendarToken('11111111-2222-4333-8444-555555555555', null)).toBeNull();
+  });
+
+  it('builds the one-event link without the account token', () => {
+    expect(memberEventCalendarUrl('d'.repeat(64), 'it')).toMatch(/\/functions\/v1\/member-calendar\?o=d{64}&l=it$/);
+    expect(memberEventCalendarUrl('nope')).toBeNull();
   });
 });

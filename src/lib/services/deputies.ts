@@ -272,7 +272,10 @@ export type DeputyChangeKey = 'date' | 'load_in' | 'soundcheck' | 'start' | 'end
 /** One request as the deputy sees it (bw_deputy_request_view + id and token). */
 export interface DeputyGig {
   id: string;
+  /** The reply token: answers and shows the fee. Never in a calendar. */
   token: string;
+  /** Read-only key of the calendar file / subscription (182); absent before 182. */
+  calendar_token?: string | null;
   status: DeputyRequestStatus;
   deputy_name: string;
   role: string | null;

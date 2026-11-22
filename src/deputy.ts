@@ -6,7 +6,7 @@
 // or a subscription that follows changes). If the band changes the gig
 // after the answer, the page shows what changed and asks "Still OK?".
 
-import { googleCalendarUrl } from './lib/deputyCalendar';
+import { deputyCalendarUrl, googleCalendarUrl } from './lib/deputyCalendar';
 import { addressWithoutCity } from './lib/eventAddress';
 import { APP_URL as WEB_APP_URL } from './lib/appUrl';
 import { instrumentKeys } from './lib/instruments';
@@ -41,6 +41,8 @@ interface View {
   changes: ChangeKey[];
   before: Partial<Record<ChangeKey, string | null>>;
   closed: boolean;
+  /** Read-only key of the calendar file / subscription (182). */
+  calendar_token?: string | null;
 }
 
 const params = new URL(window.location.href).searchParams;
@@ -135,8 +137,11 @@ function simpleCard(kicker: string, title: string, body: string, ink = true) {
   return h('section', { class: `card ${ink ? 'ink' : 'lime'}` }, h('div', { class: 'kicker' }, kicker), h('h1', {}, title), h('p', {}, body));
 }
 
-function feedUrl(one: boolean) {
-  return `${SUPABASE_URL}/functions/v1/deputy-calendar?t=${token}&l=${lang}${one ? '&one=1' : ''}`;
+// The calendar links use the request's read-only calendar token (182), never
+// the reply token of this page: a calendar is easily shared, and this
+// token shows the fee and changes the answer.
+function feedUrl(v: View, one: boolean) {
+  return deputyCalendarUrl(SUPABASE_URL, v.calendar_token, lang, one);
 }
 
 function detailRows(v: View) {
@@ -251,12 +256,14 @@ function answerCard(v: View) {
 }
 
 function calendarCard(v: View) {
-  const sub = feedUrl(false);
-  const webcal = sub.replace(/^https?:/, 'webcal:');
+  const sub = feedUrl(v, false);
+  const file = feedUrl(v, true);
+  const webcal = sub ? sub.replace(/^https?:/, 'webcal:') : null;
+  // No url: this page's address is the reply link.
   const gig = {
     title: v.event_title || 'Gig', bandName: v.band_name, date: v.event_date as string, loadIn: v.load_in_time,
     soundcheck: v.soundcheck_time, start: v.start_time, end: v.end_time, venue: v.venue_name, city: v.venue_city,
-    address: v.venue_address, role: roleLabel(v.role, lang, instrumentKeys), url: window.location.href,
+    address: v.venue_address, role: roleLabel(v.role, lang, instrumentKeys),
   };
   return h(
     'section',
@@ -265,17 +272,19 @@ function calendarCard(v: View) {
     h(
       'div',
       { class: 'stack' },
-      h('a', { class: 'btn', href: feedUrl(true) }, S.calApple, arrow()),
+      file ? h('a', { class: 'btn', href: file }, S.calApple, arrow()) : null,
       h('a', { class: 'btn light', href: googleCalendarUrl(gig, { loadIn: S.loadIn, soundcheck: S.soundcheck, show: S.show, role: S.role }), target: '_blank', rel: 'noopener' }, S.calGoogle, arrow()),
-      h('a', { class: 'btn lime', href: webcal }, S.calSubscribe, arrow()),
+      webcal ? h('a', { class: 'btn lime', href: webcal }, S.calSubscribe, arrow()) : null,
     ),
-    h(
-      'p',
-      { class: 'mute', style: 'font-size:14px;line-height:20px' },
-      fill(S.calSubscribeNote, vars(v)),
-      ' ',
-      h('a', { href: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`, target: '_blank', rel: 'noopener', style: 'color:inherit' }, S.calSubscribeGoogle),
-    ),
+    webcal
+      ? h(
+          'p',
+          { class: 'mute', style: 'font-size:14px;line-height:20px' },
+          fill(S.calSubscribeNote, vars(v)),
+          ' ',
+          h('a', { href: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`, target: '_blank', rel: 'noopener', style: 'color:inherit' }, S.calSubscribeGoogle),
+        )
+      : null,
   );
 }
 

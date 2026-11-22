@@ -5,7 +5,7 @@ import { cn } from '@/app/components/ui/utils';
 import { dateName, getLocale, intlLocale, useT } from '@/lib/i18n';
 import { parseLocalDate } from '@/lib/dates';
 import { addressWithoutCity } from '@/lib/eventAddress';
-import { GIG_LABELS, googleCalendarUrl } from '@/lib/deputyCalendar';
+import { deputyCalendarUrl, GIG_LABELS, googleCalendarUrl } from '@/lib/deputyCalendar';
 import { openExternal } from '@/lib/nativeFiles';
 import {
   answerDeputyGig,
@@ -34,9 +34,13 @@ const money = (n: number, currency?: string | null) => {
   }
 };
 
-/** The deputy's calendar file / subscription for this request (edge function deputy-calendar, 084). */
-const feedUrl = (token: string, one: boolean) =>
-  SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/deputy-calendar?t=${token}&l=${getLocale()}${one ? '&one=1' : ''}` : null;
+/**
+ * The deputy's calendar file / subscription for this request (edge function
+ * deputy-calendar): by its read-only calendar token (182), never the reply
+ * token, which shows the fee and changes the answer.
+ */
+const feedUrl = (calendarToken: string | null | undefined, one: boolean) =>
+  deputyCalendarUrl(SUPABASE_URL, calendarToken, getLocale(), one);
 
 type Tone = 'yes' | 'wait' | 'no' | 'off';
 const TONE_COLOR: Record<Tone, string> = {
@@ -84,7 +88,7 @@ export const DeputyGigCard: React.FC<{
       return;
     }
     setEditing(false);
-    onChanged({ ...gig, ...data, id: gig.id, token: gig.token });
+    onChanged({ ...gig, ...data, id: gig.id, token: gig.token, calendar_token: data.calendar_token ?? gig.calendar_token });
   };
 
   const status: { label: string; tone: Tone } = gig.event_cancelled
@@ -159,8 +163,8 @@ export const DeputyGigCard: React.FC<{
         role: gig.role,
       }
     : null;
-  const oneOff = feedUrl(gig.token, true);
-  const subscription = feedUrl(gig.token, false);
+  const oneOff = feedUrl(gig.calendar_token, true);
+  const subscription = feedUrl(gig.calendar_token, false);
 
   return (
     <article

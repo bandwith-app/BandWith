@@ -1039,6 +1039,7 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 // -------------------------------------------------------------------- rpc --
 
 let demoCalendarToken = '';
+const demoEventCalendarTokens = new Map<string, string>();
 
 const rpc = (fn: string, args: Row = {}) => {
   let data: any = null;
@@ -1055,9 +1056,19 @@ const rpc = (fn: string, args: Row = {}) => {
     // Calendar sync (165): a fixed link per demo session; rotate makes a new one.
     case 'bw_my_calendar_token': {
       if (args.p_rotate || !demoCalendarToken) {
+        demoEventCalendarTokens.clear();
         demoCalendarToken = Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
       }
       data = demoCalendarToken;
+      break;
+    }
+    // "Add to calendar" (182): a link token per event and date.
+    case 'bw_my_event_calendar_token': {
+      const k = `${args.p_event_id}|${args.p_date ?? ''}`;
+      if (!demoEventCalendarTokens.has(k)) {
+        demoEventCalendarTokens.set(k, Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''));
+      }
+      data = demoEventCalendarTokens.get(k);
       break;
     }
     // Band members → Invited (166): the demo's own band_invitations rows.
