@@ -4,15 +4,12 @@ import { CalendarPlus } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
 import { getLocale, useT } from '@/lib/i18n';
-import { GIG_LABELS, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
-import { openExternal } from '@/lib/nativeFiles';
+import { GIG_LABELS, calendarFile, gigEvent, googleCalendarUrl, type DeputyGig } from '@/lib/deputyCalendar';
+import { openExternal, shareFile } from '@/lib/nativeFiles';
 import {
   eventCalendarLinksMissing,
-  memberCalendarUrl,
   memberEventCalendarUrl,
-  myCalendarToken,
   myEventCalendarToken,
-  useCalendarToken,
   useEventCalendarToken,
 } from '@/lib/memberCalendar';
 import { CalendarLinkNotice } from './CalendarLinkNotice';
@@ -50,12 +47,8 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
   // comes back through the hook, and "Make a new link" ends it there (Codex
   // review #285 round 5).
   const { token, loading, legacy } = useEventCalendarToken(event.eventId, event.date);
-  // A database without 182 (PGRST202; Claude review #285 r5, M4): the link
-  // of builds before 182, the account token with this event.
-  const { token: accountToken } = useCalendarToken(legacy);
-  const legacyFile = (t: string | null) => (t ? memberCalendarUrl(t, { eventId: event.eventId }) : null);
   const [failed, setFailed] = React.useState(false);
-  const file = token ? memberEventCalendarUrl(token) : legacy ? legacyFile(accountToken) : null;
+  const file = token ? memberEventCalendarUrl(token) : null;
   const [making, setMaking] = React.useState(false);
 
   const add = async () => {
@@ -64,17 +57,22 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
       void openExternal(file);
       return;
     }
+    if (legacy) {
+      void handOver();
+      return;
+    }
     // On the web the window opens in the tap (a window opened after an await
     // is a blocked pop-up); the app hands the link to the system afterwards.
     const w = Capacitor.isNativePlatform() ? null : window.open('', '_blank');
     setMaking(true);
     const next = await myEventCalendarToken(event.eventId, event.date, { create: true }).catch(() => null);
-    const url = next
-      ? memberEventCalendarUrl(next)
-      : eventCalendarLinksMissing()
-        ? legacyFile(await myCalendarToken().catch(() => null))
-        : null;
+    const url = next ? memberEventCalendarUrl(next) : null;
     setMaking(false);
+    if (!url && eventCalendarLinksMissing()) {
+      w?.close();
+      void handOver();
+      return;
+    }
     if (!url) {
       w?.close();
       setFailed(true);
@@ -88,6 +86,22 @@ export const AddToCalendar: React.FC<{ event: CalendarEventInfo; className?: str
       }
       w.location.href = url;
     } else void openExternal(url);
+  };
+  // A database without 182 (PGRST202: the functions are not deployed yet;
+  // Claude review #285 r5 M4, Codex B2): this event's .ics, made here and
+  // handed to the system. No link, so no token: the account's feed token
+  // never goes into a one-event link. It doesn't follow later changes.
+  const handOver = async () => {
+    const ics = calendarFile(
+      [gigEvent(gig, labels, `event-${event.eventId}-${event.date.replace(/-/g, '')}`)],
+      undefined,
+      'Member',
+    );
+    try {
+      await shareFile(new Blob([ics], { type: 'text/calendar' }), 'bandwith-event.ics', { title: gig.title });
+    } catch {
+      setFailed(true);
+    }
   };
   const labels = GIG_LABELS[getLocale()] ?? GIG_LABELS.en;
   const gig: DeputyGig = {

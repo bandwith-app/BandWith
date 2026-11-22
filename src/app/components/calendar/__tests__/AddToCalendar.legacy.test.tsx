@@ -1,17 +1,18 @@
-// Claude review #285 r5 (M4): an app with 182's code on a database without
-// 182 (the functions are not deployed yet: PGRST202). Add to calendar still
-// works, with the one-event link of builds before 182 (account token + e=).
+// Claude review #285 r5 (M4) + Codex B2 (round 7): an app with 182's code
+// on a database without 182 (the functions are not deployed yet: PGRST202).
+// Add to calendar still works, as that event's .ics file made on the device:
+// never a link, and never the account token (which opens the whole feed).
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
-const h = vi.hoisted(() => ({ openExternal: vi.fn(), rpc: vi.fn() }));
+const h = vi.hoisted(() => ({ openExternal: vi.fn(), shareFile: vi.fn(), rpc: vi.fn() }));
 vi.mock('@capacitor/core', async (orig) => ({
   ...(await orig<typeof import('@capacitor/core')>()),
   Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
 }));
-vi.mock('@/lib/nativeFiles', () => ({ openExternal: h.openExternal }));
+vi.mock('@/lib/nativeFiles', () => ({ openExternal: h.openExternal, shareFile: h.shareFile }));
 vi.mock('@/lib/supabase', () => ({
   isDemoMode: false,
   supabase: {
@@ -24,7 +25,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { AddToCalendar } from '../AddToCalendar';
-import { _resetCalendarTokenCache, memberCalendarUrl } from '@/lib/memberCalendar';
+import { _resetCalendarTokenCache } from '@/lib/memberCalendar';
 
 const EV = { eventId: '11111111-2222-4333-8444-555555555555', title: 'Rooftop Session', date: '2026-12-08', start: '21:00' };
 const ACCOUNT = 'a'.repeat(64);
@@ -33,11 +34,13 @@ const missing = { data: null, error: { code: 'PGRST202', message: 'Could not fin
 beforeEach(() => {
   _resetCalendarTokenCache();
   h.openExternal.mockReset();
+  h.shareFile.mockReset();
+  h.shareFile.mockResolvedValue('shared');
   h.rpc.mockReset();
 });
 
 describe('Add to calendar before 182 is on the database', () => {
-  it('falls back to memberCalendarUrl(account token, { eventId }) on PGRST202', async () => {
+  it('on PGRST202 hands over the .ics of this event, with no token in it', async () => {
     h.rpc.mockImplementation(async (fn: string) => {
       if (fn === 'bw_my_event_calendar_link' || fn === 'bw_my_event_calendar_token') return missing;
       if (fn === 'bw_my_calendar_token') return { data: ACCOUNT, error: null };
@@ -47,8 +50,23 @@ describe('Add to calendar before 182 is on the database', () => {
     const button = await screen.findByRole('button', { name: 'Add to calendar' });
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(button);
-    const want = memberCalendarUrl(ACCOUNT, { eventId: EV.eventId });
-    await waitFor(() => expect(h.openExternal).toHaveBeenLastCalledWith(want));
+    await waitFor(() => expect(h.shareFile).toHaveBeenCalledTimes(1));
+    const [blob, name] = h.shareFile.mock.calls[0] as [Blob, string];
+    expect(name).toMatch(/\.ics$/);
+    const ics = await new Promise<string>((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.readAsText(blob);
+    });
+    expect(ics).toContain('BEGIN:VCALENDAR');
+    expect(ics).toContain('SUMMARY:Rooftop Session');
+    expect(ics).toContain('DTSTART:20261208T210000');
+    expect(ics).not.toContain('RRULE');
+    // No link, so no token: neither the account's nor any other.
+    expect(ics).not.toContain(ACCOUNT);
+    expect(ics).not.toMatch(/[?&](t|o)=/);
+    expect(h.openExternal).not.toHaveBeenCalled();
+    expect(h.rpc).not.toHaveBeenCalledWith('bw_my_calendar_token', expect.anything());
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -65,5 +83,6 @@ describe('Add to calendar before 182 is on the database', () => {
     fireEvent.click(button);
     await screen.findByRole('alert');
     expect(h.openExternal).not.toHaveBeenCalled();
+    expect(h.shareFile).not.toHaveBeenCalled();
   });
 });

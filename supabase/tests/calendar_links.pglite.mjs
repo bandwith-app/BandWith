@@ -128,6 +128,14 @@ await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date,
 await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Old', NULL)`, [DEPUTY6, BAND]);
 await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, status, answer_snapshot)
   VALUES ($1, $2, $3, $4, 'Old', 'cancelled', '{"venue":"Old Hall"}')`, [RPRE, BAND, EV_PRE, DEPUTY6]);
+// Codex round 7 (B3): a deputy deleted before 182 (no trigger then): the
+// request stays with deputy_id NULL and its reply link still worked.
+const [EV_ORPH, RORPH] = [93, 94].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, created_by, fee)
+  VALUES ($1, $2, 'Orphan Gig', 'gig', 'confirmed', current_date + 12, '20:00', 'Dock Bar', 'Jersey City', '5 Secret Pier', false, $3, 1)`, [EV_ORPH, BAND, ADMIN]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, status, answer_snapshot)
+  VALUES ($1, $2, $3, NULL, 'Gone', 'Drums', 400, 'USD', 'available', '{}')`, [RORPH, BAND, EV_ORPH]);
+const TORPH = (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [RORPH])).token;
 const tok = async (r) => (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [r])).token;
 const [TA, TB, TC] = [await tok(RA), await tok(RB), await tok(RC)];
 
@@ -691,6 +699,35 @@ await check('monthly vectors (29th-31st, 2027 and 2028, 14 months): the SQL next
   return true;
 });
 
+// Codex round 7 (M1, 182:717): the app's calendar (src/lib/recurrence.ts,
+// #298's repeatDates, used by EventsView) and the SQL give the same dates,
+// so the date the app sends is one 182 takes: Jan 31 2027 first, then every
+// vector. Node runs the .ts file as is (type stripping).
+await check('UI = SQL: repeatDates (EventsView) and the SQL next date agree, Jan 31 2027 and every vector', async () => {
+  const file = `${REPO}/src/lib/recurrence.ts`;
+  if (!existsSync(file)) { console.log('    src/lib/recurrence.ts missing: the app still steps months with setMonth'); return false; }
+  const { repeatDates } = await import(file);
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const { vectors } = JSON.parse(readFileSync(`${REPO}/supabase/tests/monthly-clamp-vectors.json`, 'utf8'));
+  const order = [...vectors].sort((x, y) => (x.start === '2027-01-31' ? -1 : y.start === '2027-01-31' ? 1 : 0));
+  if (order[0].start !== '2027-01-31') return false;
+  for (const { start, dates } of order) {
+    const ui = [start, ...repeatDates(start, { frequency: 'monthly' }, new Date(2030, 0, 1), dates.length - 1).map(ymd)];
+    const sql = [];
+    for (let k = 0; k < dates.length; k++) {
+      const from = k === 0 ? start : (await one(`SELECT ($1::date + 1)::text AS d`, [sql[k - 1]])).d;
+      sql.push(await nextOcc({ frequency: 'monthly' }, start, from));
+    }
+    if (JSON.stringify(ui) !== JSON.stringify(sql) || JSON.stringify(ui) !== JSON.stringify(dates)) {
+      console.log('    ', start, 'ui', ui.slice(0, 4).join(' '), 'sql', sql.slice(0, 4).join(' '));
+      return false;
+    }
+    // Each app date is a date of the series for 182.
+    for (const d of ui) if ((await occ({ frequency: 'monthly' }, start, d)) !== true) return false;
+  }
+  return true;
+});
+
 // B3: one event, without the whole feed; opening an event writes nothing.
 await check('the one-event lookup equals the feed, for every account and event', async () => {
   await q(`INSERT INTO calendar_feeds (user_id) SELECT id FROM auth.users ON CONFLICT (user_id) DO NOTHING`);
@@ -824,6 +861,60 @@ await check('with 178: confirmed again, it is back', async () => {
 await check('with 178: rehearsals and other gigs are untouched', async () => {
   const f = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [await col(RA, 'calendar_token')])).f;
   return f.gigs.some((g) => g.id === RA);
+});
+
+// ----------------------------------------------------- round 7 (Codex) --
+console.log('-- round 7');
+await check('Codex r7 B3: a request whose deputy was deleted before 182 has a new reply key (the old link opens nothing)', async () => {
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [TORPH])).v;
+  const now = (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [RORPH])).token;
+  return v === null && now !== TORPH && /^[0-9a-f]{64}$/.test(now);
+});
+await check('Codex r7 B3: with no deputy (deputy_id NULL) the reply page shows no fee, currency, address or calendar keys, and is closed', async () => {
+  const now = (await one(`SELECT token FROM deputy_requests WHERE id = $1`, [RORPH])).token;
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [now])).v;
+  return v && v.fee == null && v.currency == null && v.venue_address == null && v.reply_note == null
+    && v.calendar_token == null && v.gig_calendar_token == null && v.closed === true
+    && !(v.changes ?? []).includes('address') && !('address' in (v.before ?? {}));
+});
+await check('Codex r7 B3: a deputy deleted after 182 (trigger) gets the same page', async () => {
+  const [EV_D7, DEP7, R7] = [95, 96, 97].map(id);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, venue_name, venue_address, is_recurring, created_by, fee)
+    VALUES ($1, $2, 'Later Gig', 'gig', 'confirmed', current_date + 14, 'Hall 7', '7 Hidden Rd', false, $3, 1)`, [EV_D7, BAND, ADMIN]);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Seven', NULL)`, [DEP7, BAND]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, fee_offered, currency, status, answer_snapshot)
+    VALUES ($1, $2, $3, $4, 'Seven', 500, 'USD', 'available', '{}')`, [R7, BAND, EV_D7, DEP7]);
+  await q(`DELETE FROM band_deputies WHERE id = $1`, [DEP7]);
+  const now = (await one(`SELECT token, deputy_id FROM deputy_requests WHERE id = $1`, [R7]));
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [now.token])).v;
+  return now.deputy_id === null && v && v.fee == null && v.venue_address == null && v.closed === true;
+});
+await check('Codex r7 B3: a deputy still in the band keeps fee and address', async () => {
+  const v = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [await tok(RA)])).v;
+  return v && Number(v.fee) === 250 && v.venue_address === '12 Water St';
+});
+
+const [EV_END, EV_RUN] = [98, 99].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, is_recurring, recurrence_rule, created_by, fee)
+  VALUES ($1, $3, 'Ended rehearsal', 'rehearsal', 'confirmed', current_date - 30, '19:00', 'Studio C', true,
+          jsonb_build_object('frequency', 'weekly', 'interval', 1, 'until', to_char(current_date - 10, 'YYYY-MM-DD')), $4, 0),
+         ($2, $3, 'Running rehearsal', 'rehearsal', 'confirmed', current_date - 30, '19:00', 'Studio C', true,
+          '{"frequency":"weekly","interval":1}', $4, 0)`, [EV_END, EV_RUN, BAND, ADMIN]);
+await q(`INSERT INTO event_members (event_id, user_id, role, status) VALUES ($1, $3, NULL, 'confirmed'), ($2, $3, NULL, 'confirmed')`, [EV_END, EV_RUN, MEM]);
+await check('Codex r7 M3: a series with no date left gives no link without a date (never its first rehearsal)', async () => {
+  const made = await evTok(MEM, EV_END, null);
+  await as(MEM);
+  const read = (await one(`SELECT public.bw_my_event_calendar_link($1) AS t`, [EV_END])).t;
+  await db.exec('RESET ROLE');
+  const firstLinks = (await one(`SELECT count(*)::int AS n FROM calendar_event_links WHERE event_id = $1`, [EV_END])).n;
+  return made === null && read === null && firstLinks === 0;
+});
+await check('Codex r7 M3: a date the user opened still gets its link; a running series still gets its next date', async () => {
+  const first = (await one(`SELECT (current_date - 30)::text AS d`)).d;
+  const opened = await evTok(MEM, EV_END, first);
+  const running = await evTok(MEM, EV_RUN, null);
+  const r = await one(`SELECT occurrence::text AS o, (SELECT public.bw_calendar_today())::date - occurrence AS ago FROM calendar_event_links WHERE token = $1`, [running]);
+  return /^[0-9a-f]{64}$/.test(opened ?? '') && /^[0-9a-f]{64}$/.test(running ?? '') && r && r.ago <= 0 && r.ago > -7;
 });
 
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');

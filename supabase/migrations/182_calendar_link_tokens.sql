@@ -42,7 +42,9 @@
 --   - bw_deputy_claim (086) locks the deputy before it trusts the token, so a
 --     claim waiting on an unlink or a revoke can't link with the old token.
 --   - Deleting a deputy rotates their requests' keys first (trigger; older
---     builds delete the row directly).
+--     builds delete the row directly). Requests of deputies deleted before
+--     182 (deputy_id NULL) get new keys when 182 runs, and the reply page of
+--     a request with no deputy is closed, without fee, address or keys.
 --   - A cancelled event in either spelling ('cancelled', 'canceled', any
 --     case): bw_event_status_cancelled, used by every check here.
 --   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
@@ -72,7 +74,8 @@
 --     same link if it exists, read only (opening an event writes nothing).
 --     The date the user opened stays, also a past first date; a series asked
 --     without a date gets its next date from today
---     (bw_calendar_next_occurrence). "Today" is the earliest date still
+--     (bw_calendar_next_occurrence), and no link once none is left (never
+--     its first date). "Today" is the earliest date still
 --     current on Earth (bw_calendar_today, UTC-12), never the server's UTC
 --     date: events and bands keep no time zone. Accepted cost (Claude review
 --     r5): far east of UTC (New Zealand, UTC+13) a date counts as today for
@@ -278,12 +281,14 @@ DECLARE
   v_before jsonb := '{}'::jsonb;
   v_cancelled boolean;
   v_hidden boolean;
+  v_orphan boolean;
   k text;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
-         public.bw_event_status_cancelled(e.status::text), public.bw_event_deputy_hidden(r.event_id)
-    INTO v_snap, v_status, v_now, v_cancelled, v_hidden
+         public.bw_event_status_cancelled(e.status::text), public.bw_event_deputy_hidden(r.event_id),
+         r.deputy_id IS NULL
+    INTO v_snap, v_status, v_now, v_cancelled, v_hidden, v_orphan
     FROM public.deputy_requests r
     JOIN public.events e ON e.id = r.event_id
    WHERE r.token = p_token;
@@ -293,7 +298,7 @@ BEGIN
   -- An address the band cleared shows as changed, without the old one.
   IF v_snap IS NOT NULL AND v_status IN ('available', 'maybe') AND NOT coalesce(v_hidden, false) THEN
     FOREACH k IN ARRAY ARRAY['date', 'load_in', 'soundcheck', 'start', 'end', 'venue', 'city', 'address'] LOOP
-      CONTINUE WHEN k = 'address' AND (v_status <> 'available' OR v_cancelled);
+      CONTINUE WHEN k = 'address' AND (v_status <> 'available' OR v_cancelled OR v_orphan);
       IF (v_snap->>k) IS DISTINCT FROM (v_now->>k) THEN
         v_changes := v_changes || to_jsonb(k);
         CONTINUE WHEN k = 'address' AND nullif(btrim(coalesce(v_now->>k, '')), '') IS NULL;
@@ -354,6 +359,13 @@ BEGIN
       'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
       'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'calendar_token', NULL, 'gig_calendar_token', NULL,
       'closed', true);
+  END IF;
+  -- The deputy was deleted from the band (deputy_id NULL; Codex review #285
+  -- round 7): closed, without the offer, the address or the calendar keys.
+  IF v IS NOT NULL AND coalesce(v_orphan, false) THEN
+    v := v || jsonb_build_object(
+      'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'venue_address', NULL,
+      'calendar_token', NULL, 'gig_calendar_token', NULL, 'closed', true);
   END IF;
   RETURN v;
 END;
@@ -661,6 +673,16 @@ DROP TRIGGER IF EXISTS bw_band_deputy_delete_rotate ON public.band_deputies;
 CREATE TRIGGER bw_band_deputy_delete_rotate BEFORE DELETE ON public.band_deputies
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_deputy_delete_rotate();
 
+-- Deputies deleted before 182 (Codex review #285 round 7): no trigger then,
+-- so their requests (deputy_id NULL) kept working keys. New keys for all of
+-- them, now. Nobody may hold such a key, so another run changes nothing
+-- anyone uses.
+UPDATE public.deputy_requests r
+   SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+       calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+       gig_calendar_token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
+ WHERE r.deputy_id IS NULL;
+
 -- ------------------------------------------------ one event, for members --
 
 -- A date of a repeating rehearsal, stepped as the app's calendar steps it
@@ -844,8 +866,10 @@ BEGIN
   occ := NULL;
   IF NOT ok OR jsonb_typeof(p_event->'recurrence') <> 'object' THEN RETURN; END IF;
   v_start := (p_event->>'event_date')::date;
-  occ := coalesce(p_date, public.bw_calendar_next_occurrence(p_event->'recurrence', v_start, v_today), v_start);
-  ok := occ >= v_today - 60 AND occ <= v_today + 731
+  -- No date and none left (the series ended): no link, never its first
+  -- date (Codex review #285 round 7); the file link answers 404.
+  occ := coalesce(p_date, public.bw_calendar_next_occurrence(p_event->'recurrence', v_start, v_today));
+  ok := occ IS NOT NULL AND occ >= v_today - 60 AND occ <= v_today + 731
         AND public.bw_calendar_is_occurrence(p_event->'recurrence', v_start, occ);
 END;
 $$;

@@ -98,6 +98,49 @@ describe('member calendar: links', () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'missing function' } });
     expect(await myCalendarToken()).toBeNull();
   });
+
+  // Codex review #285 round 7 (M2, memberCalendar.ts:78): a lookup still on
+  // its way when "Make a new link" answers must not put the old link back.
+  it('a late lookup never overwrites a rotation: the latest request wins', async () => {
+    const OLD = TOKEN;
+    const NEW = 'b'.repeat(64);
+    let answerLookup!: (v: unknown) => void;
+    rpc.mockImplementation((_fn: string, args: { p_rotate: boolean }) =>
+      args.p_rotate ? Promise.resolve({ data: NEW, error: null }) : new Promise((r) => (answerLookup = r)),
+    );
+    const { result } = renderHook(() => useCalendarToken());
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('bw_my_calendar_token', { p_rotate: false }));
+    let rotated: string | null = null;
+    await act(async () => {
+      rotated = await myCalendarToken(true);
+    });
+    expect(rotated).toBe(NEW);
+    await act(async () => {
+      answerLookup({ data: OLD, error: null }); // read on the server before the rotation
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.token).toBe(NEW);
+    rpc.mockClear();
+    expect(await myCalendarToken()).toBe(NEW);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('a lookup asked while a rotation is on its way gets the new link', async () => {
+    const NEW = 'b'.repeat(64);
+    let answerRotate!: (v: unknown) => void;
+    rpc.mockImplementation((_fn: string, args: { p_rotate: boolean }) =>
+      args.p_rotate ? new Promise((r) => (answerRotate = r)) : Promise.resolve({ data: TOKEN, error: null }),
+    );
+    const rotating = myCalendarToken(true);
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('bw_my_calendar_token', { p_rotate: true }));
+    const lookup = myCalendarToken();
+    await new Promise((r) => setTimeout(r, 0)); // the lookup is on its way too
+    answerRotate({ data: NEW, error: null });
+    expect(await rotating).toBe(NEW);
+    expect(await lookup).toBe(NEW);
+    expect(await myCalendarToken()).toBe(NEW);
+  });
 });
 
 describe('member calendar: one-event links (182)', () => {

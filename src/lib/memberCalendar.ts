@@ -63,17 +63,33 @@ async function currentUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+/**
+ * The account-link requests in order (Codex review #285 round 7, M2): an
+ * answer counts only if no request started after it, so a lookup still on
+ * its way never puts back the link a rotation just ended. `rotating`: the
+ * rotation on its way, which lookups asked meanwhile wait for.
+ */
+let tokenSeq = 0;
+let latestRun: Promise<string | null> | null = null;
+let rotating: { userId: string; gen: number; run: Promise<string | null> } | null = null;
+
 /** The signed-in user's link token (created on first use); rotate = a new one. */
 export async function myCalendarToken(rotate = false): Promise<string | null> {
   const userId = await currentUserId();
   if (!userId) return null;
-  if (!rotate && cached?.userId === userId) return cached.token;
   const gen = accountGen;
+  if (!rotate && rotating?.userId === userId && rotating.gen === gen) return rotating.run;
+  if (!rotate && cached?.userId === userId) return cached.token;
   if (!rotate && pending?.userId === userId && pending.gen === gen) return pending.run;
-  const run = (async () => {
+  const seq = ++tokenSeq;
+  // Assigned below; read only after the first await.
+  let run!: Promise<string | null>;
+  run = (async () => {
     const { data, error } = await supabase.rpc('bw_my_calendar_token', { p_rotate: rotate });
     // Another account signed in meanwhile: not this one's link.
     if (!sameAccount(userId, gen)) return null;
+    // A newer request started meanwhile: its answer is the link, not this one.
+    if (seq !== tokenSeq && latestRun && latestRun !== run) return latestRun;
     if (error || typeof data !== 'string' || !/^[0-9a-f]{64}$/.test(data)) return null;
     cached = { userId, token: data };
     listeners.forEach((l) => l(data));
@@ -85,11 +101,14 @@ export async function myCalendarToken(rotate = false): Promise<string | null> {
     }
     return data;
   })();
+  latestRun = run;
   if (!rotate) pending = { userId, gen, run };
+  else rotating = { userId, gen, run };
   try {
     return await run;
   } finally {
     if (pending?.run === run) pending = null;
+    if (rotating?.run === run) rotating = null;
   }
 }
 
@@ -351,6 +370,7 @@ function forgetAccount() {
   accountGen += 1;
   cached = null;
   pending = null;
+  rotating = null;
   review = null;
   reviewGen += 1;
   reviewListeners.forEach((l) => l(false));
@@ -376,6 +396,8 @@ try {
 export function _resetCalendarTokenCache() {
   cached = null;
   pending = null;
+  rotating = null;
+  latestRun = null;
   eventTokens.clear();
   eventTokenValues.clear();
   eventTokensInFlight.clear();
