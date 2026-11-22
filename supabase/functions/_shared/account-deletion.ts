@@ -124,7 +124,9 @@ export async function removeObjects(server: ObjectServer, bucket: string, prefix
       const { error: removeError } = await store.remove(names.slice(i, i + REMOVE_CHUNK));
       if (removeError) return false;
     }
-    if (names.length < NAMES_PAGE) return true;
+    // Round 9 (Codex, Claude): only an empty page is the end. A server row
+    // cap (PostgREST max rows) gives short pages long before that.
+    if (names.length === 0) return true;
     after = names[names.length - 1];
   }
 }

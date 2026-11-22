@@ -163,6 +163,17 @@
 --      such even when its foreign key is NO ACTION; each row on its own, and
 --      a row that can't be changed is logged and skipped, never stopping the
 --      job. Begun deletions that lapsed are removed by the job.
+-- 12. Round 9 (Codex and Claude reviews #282, 85393e10):
+--    * A notification whose sender (or suggestion actor) is being deleted,
+--      or no longer exists, is never written (trigger on notifications): a
+--      push in flight can't land after the last scrub.
+--    * Once committed, their other device deletes nothing either.
+--    * Archived objects and delete markers don't count as files left
+--      (as 197 reads storage.objects).
+--    * Clearing what would stop Auth: one statement per column first, row by
+--      row only if that fails; their own notification logs go.
+--    * A poll keeps only invitees who still have an account, never NULL;
+--      one left with nobody stays with its creator, else the band's admins.
 --
 -- Older app builds: nothing they call changes shape. They show a NULL sender
 -- as "Member" (bubble), "Unknown" (search) and no name (chat list). Idempotent.
@@ -205,6 +216,27 @@ BEGIN
 END $$;
 
 -- ── 2. Storage before the account goes ─────────────────────────────────────
+-- Round 9 (Claude): a row in storage.objects is a file only when it is not
+-- archived and not a delete marker (prod has archived_at and
+-- is_delete_marker; local and PGlite have neither), as 197 reads it. Read
+-- from the catalog on each call, for the dynamic queries below.
+CREATE OR REPLACE FUNCTION public.bw_storage_live_filter()
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path TO 'public'
+AS $$
+  SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_attribute
+                            WHERE attrelid = to_regclass('storage.objects') AND attname = 'archived_at'
+                              AND attnum > 0 AND NOT attisdropped)
+              THEN ' AND o.archived_at IS NULL' ELSE '' END
+      || CASE WHEN EXISTS (SELECT 1 FROM pg_attribute
+                            WHERE attrelid = to_regclass('storage.objects') AND attname = 'is_delete_marker'
+                              AND attnum > 0 AND NOT attisdropped)
+              THEN ' AND NOT coalesce(o.is_delete_marker, false)' ELSE '' END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_storage_live_filter() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_account_storage_release(p_uid uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -240,8 +272,9 @@ BEGIN
   GET DIAGNOSTICS v_released = ROW_COUNT;
 
   EXECUTE $q$SELECT count(*) FROM storage.objects o
-     WHERE (o.bucket_id = 'personal-files' AND (o.name LIKE $1::text || '/%' OR $q$ || v_match || $q$))
-        OR (o.bucket_id = 'avatars' AND o.name LIKE $1::text || '/%')$q$
+     WHERE ((o.bucket_id = 'personal-files' AND (o.name LIKE $1::text || '/%' OR $q$ || v_match || $q$))
+        OR (o.bucket_id = 'avatars' AND o.name LIKE $1::text || '/%'))$q$
+      || public.bw_storage_live_filter()
     INTO v_personal
     USING p_uid;
 
@@ -670,6 +703,33 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_messages(uuid) FROM PUBLIC, an
 -- As 059, plus: the bands it deletes are noted with the pending deletion
 -- (prepared from then on), band and event chat messages stay without author
 -- instead of being deleted, and its band check takes the guard's locks.
+-- Who sees a poll left with no invitee (round 9, Claude): an empty list
+-- would mean the whole band, so its creator, else the band's active admins
+-- (not p_except, nobody whose deletion is committed). Only accounts that
+-- still exist.
+CREATE OR REPLACE FUNCTION public.bw_poll_fallback_invitees(p_band uuid, p_creator uuid, p_except uuid)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT CASE
+    WHEN p_creator IS NOT NULL AND p_creator IS DISTINCT FROM p_except
+         AND EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = p_creator)
+      THEN ARRAY[p_creator]
+    ELSE coalesce((
+      SELECT array_agg(bm.user_id ORDER BY bm.user_id)
+        FROM public.band_members bm
+       WHERE bm.band_id = p_band AND bm.role::text = 'admin' AND coalesce(bm.is_active, true)
+         AND bm.user_id IS DISTINCT FROM p_except
+         AND EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = bm.user_id)
+         AND NOT EXISTS (SELECT 1 FROM public.account_deletions_pending d
+                          WHERE d.user_id = bm.user_id AND d.committed_at IS NOT NULL)), '{}')
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_poll_fallback_invitees(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+
 -- A poll they were invited to vote on no longer counts them (round 4: the
 -- room cost split among the rest). Round 5 (Claude): the last invitee too.
 -- Then nobody is left to vote: an open poll closes (cancelled, no notice),
@@ -689,10 +749,12 @@ BEGIN
   END IF;
   DELETE FROM public.rehearsal_polls rp
    WHERE rp.invited_user_ids = ARRAY[p_uid] AND rp.created_by = p_uid;
+  -- Round 9 (Claude): never {NULL}. Nobody left: its creator, else
+  -- (creator gone too) the band's admins.
   UPDATE public.rehearsal_polls rp
-     SET invited_user_ids = CASE WHEN cardinality(rp.invited_user_ids) > 1
-                                 THEN array_remove(rp.invited_user_ids, p_uid)
-                                 ELSE ARRAY[rp.created_by] END,
+     SET invited_user_ids = CASE WHEN cardinality(array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)) > 0
+                                 THEN array_remove(array_remove(rp.invited_user_ids, p_uid), NULL)
+                                 ELSE public.bw_poll_fallback_invitees(rp.band_id, rp.created_by, p_uid) END,
          status = CASE WHEN cardinality(rp.invited_user_ids) = 1 AND rp.status IN ('proposed', 'polling')
                        THEN 'cancelled' ELSE rp.status END,
          updated_at = CASE WHEN cardinality(rp.invited_user_ids) = 1 THEN now() ELSE rp.updated_at END
@@ -1715,6 +1777,7 @@ AS $$
 DECLARE
   r record;
   v_row tid;
+  v_bulk boolean;
 BEGIN
   IF p_uid IS NULL THEN
     RAISE EXCEPTION 'p_uid is required' USING ERRCODE = '22004';
@@ -1743,13 +1806,23 @@ BEGIN
   END IF;
   -- Round 8 (Codex): poll invitee lists, again (a server write since).
   PERFORM public.bw_account_deletion_polls(p_uid);
+  -- Round 9 (Claude): their own push logs go (a cleared user_id kept their
+  -- message previews).
+  IF to_regclass('public.notification_logs') IS NOT NULL THEN
+    BEGIN
+      EXECUTE 'DELETE FROM public.notification_logs WHERE user_id = $1' USING p_uid;
+    EXCEPTION WHEN others THEN
+      RAISE WARNING 'bw_account_deletion_release_refs: notification_logs: %', SQLERRM;
+    END;
+  END IF;
   -- Round 8 (Claude): each row on its own. A check or a NOT NULL that
   -- refuses the row without them deletes the row; any other refusal (a
   -- guard trigger, a lock timeout) is logged and the row skipped: the job
   -- never stops on one row (Auth then says what is left).
   FOR r IN SELECT * FROM public.bw_account_deletion_author_columns() WHERE blocks IS NOT NULL LOOP
-    -- events.created_by: the personal gigs just went, band gigs pass (029).
-    CONTINUE WHEN r.table_name = 'events' AND r.column_name = 'created_by';
+    -- events.created_by: the personal gigs just went, band gigs pass (029),
+    -- as long as Auth clears it (round 9: not a NO ACTION key).
+    CONTINUE WHEN r.table_name = 'events' AND r.column_name = 'created_by' AND r.on_delete <> 'restrict';
     IF r.blocks = 'not_null' THEN
       BEGIN
         EXECUTE format('DELETE FROM public.%I WHERE %I = $1', r.table_name, r.column_name) USING p_uid;
@@ -1759,7 +1832,21 @@ BEGIN
       CONTINUE;
     END IF;
     -- check / restrict: Auth's SET NULL is only tried (and undone) when Auth
-    -- will do it itself; a NO ACTION column is really cleared.
+    -- will do it itself; a NO ACTION column is really cleared. Round 9
+    -- (Claude): the whole column in one statement first; row by row only
+    -- when that fails (prepare holds the band locks meanwhile).
+    v_bulk := false;
+    BEGIN
+      EXECUTE format('UPDATE public.%I SET %I = NULL WHERE %I = $1', r.table_name, r.column_name, r.column_name) USING p_uid;
+      IF r.on_delete <> 'restrict' THEN
+        RAISE EXCEPTION 'probe' USING ERRCODE = 'BW001';
+      END IF;
+      v_bulk := true;
+    EXCEPTION
+      WHEN SQLSTATE 'BW001' THEN v_bulk := true;
+      WHEN others THEN v_bulk := false;
+    END;
+    CONTINUE WHEN v_bulk;
     FOR v_row IN EXECUTE format('SELECT ctid FROM public.%I WHERE %I = $1', r.table_name, r.column_name) USING p_uid LOOP
       BEGIN
         BEGIN
@@ -1787,6 +1874,8 @@ REVOKE ALL ON FUNCTION public.bw_account_deletion_release_refs(uuid) FROM PUBLIC
 --   * the person writes nothing more (another device still signed in);
 --   * nobody else points a row at them (a task assigned, an invite, a poll
 --     they are invited to: rehearsal_polls.invited_user_ids, round 8).
+-- Round 9 (Codex): and their other device deletes nothing (a surviving
+-- band's poll).
 -- Only requests from the apps (WHEN auth.uid() IS NOT NULL): the server's
 -- own writes (prepare, Auth's SET NULL, push logs, the probes above) go
 -- through, and the last step clears what they left. AFTER the row is
@@ -1812,6 +1901,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.account_deletions_pending p WHERE p.user_id = v_uid AND p.committed_at IS NOT NULL) THEN
     RAISE EXCEPTION 'Your account is being deleted.'
       USING ERRCODE = 'P0001', HINT = 'account_being_deleted';
+  END IF;
+  -- Round 9 (Codex): deletes are refused to them only (above).
+  IF TG_OP = 'DELETE' THEN
+    RETURN NULL;
   END IF;
   v_new := to_jsonb(NEW);
   v_old := CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) END;
@@ -1862,7 +1955,7 @@ BEGIN
      GROUP BY a.table_name
   LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS bw_deleting_account_writes ON public.%I', t.table_name);
-    EXECUTE format('CREATE TRIGGER bw_deleting_account_writes AFTER INSERT OR UPDATE ON public.%I
+    EXECUTE format('CREATE TRIGGER bw_deleting_account_writes AFTER INSERT OR UPDATE OR DELETE ON public.%I
                       FOR EACH ROW WHEN (auth.uid() IS NOT NULL)
                       EXECUTE FUNCTION public.bw_trg_deleting_account_writes(%s)', t.table_name, t.cols);
   END LOOP;
@@ -1907,18 +2000,102 @@ BEGIN
   IF coalesce(p_bucket, '') = '' OR coalesce(trim(both '/' from p_prefix), '') = '' THEN
     RAISE EXCEPTION 'bucket and prefix are required' USING ERRCODE = '22004';
   END IF;
-  RETURN QUERY
-    SELECT o.name::text
-      FROM storage.objects o
-     WHERE o.bucket_id = p_bucket
-       AND o.name LIKE replace(replace(replace(trim(trailing '/' from p_prefix), '\', '\\'), '%', '\%'), '_', '\_') || '/%'
-       AND (p_after IS NULL OR o.name > p_after)
-     ORDER BY o.name
-     LIMIT least(greatest(coalesce(p_limit, 1000), 1), 1000);
+  -- Round 9 (Claude): files only, as the release count reads them.
+  RETURN QUERY EXECUTE
+    $q$SELECT o.name::text
+         FROM storage.objects o
+        WHERE o.bucket_id = $1
+          AND o.name LIKE replace(replace(replace(trim(trailing '/' from $2), '\', '\\'), '%', '\%'), '_', '\_') || '/%'
+          AND ($3 IS NULL OR o.name > $3)$q$ || public.bw_storage_live_filter() || $q$
+        ORDER BY o.name
+        LIMIT least(greatest(coalesce($4, 1000), 1), 1000)$q$
+    USING p_bucket, p_prefix, p_after, p_limit;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_account_storage_names(text, text, text, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_account_storage_names(text, text, text, integer) TO service_role;
+
+-- Round 9 (Codex): a notification from someone whose deletion is committed,
+-- or who no longer exists, is never written. Chat senders (sender_id /
+-- senderId) and 108's suggestion actor (by). Checked in the insert itself,
+-- so a push in flight (send-push checked the sender a moment earlier) can't
+-- land after the last scrub. Every insert, the server's included. The
+-- scrub stays for what was written before.
+CREATE OR REPLACE FUNCTION public.bw_trg_notifications_deleting_actor()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_id text;
+  v_re constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+BEGIN
+  IF NEW.data IS NULL OR jsonb_typeof(NEW.data) <> 'object' THEN
+    RETURN NEW;
+  END IF;
+  FOREACH v_id IN ARRAY ARRAY[NEW.data ->> 'sender_id', NEW.data ->> 'senderId'] LOOP
+    CONTINUE WHEN v_id IS NULL OR v_id !~* v_re;
+    IF NOT EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = v_id::uuid)
+       OR EXISTS (SELECT 1 FROM public.account_deletions_pending p
+                   WHERE p.user_id = v_id::uuid AND p.committed_at IS NOT NULL) THEN
+      RETURN NULL;
+    END IF;
+  END LOOP;
+  v_id := NEW.data ->> 'by';
+  IF v_id ~* v_re AND EXISTS (SELECT 1 FROM public.account_deletions_pending p
+                               WHERE p.user_id = v_id::uuid AND p.committed_at IS NOT NULL) THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_notifications_deleting_actor() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_notifications_deleting_actor ON public.notifications;
+CREATE TRIGGER bw_notifications_deleting_actor
+  BEFORE INSERT ON public.notifications
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_notifications_deleting_actor();
+
+-- Round 9 (Claude): a stale save (a co-admin's open form) can't write a
+-- deleted account back into a poll: only invitees who still have an
+-- account stay, never NULL. A list emptied this way goes to the creator,
+-- else the band's admins (bw_poll_fallback_invitees), never the whole band.
+CREATE OR REPLACE FUNCTION public.bw_trg_rehearsal_polls_live_invitees()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_live uuid[];
+BEGIN
+  IF NEW.invited_user_ids IS NULL OR cardinality(NEW.invited_user_ids) = 0 THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.invited_user_ids IS NOT DISTINCT FROM OLD.invited_user_ids THEN
+    RETURN NEW;
+  END IF;
+  SELECT coalesce(array_agg(x ORDER BY o), '{}') INTO v_live
+    FROM unnest(NEW.invited_user_ids) WITH ORDINALITY AS u(x, o)
+   WHERE x IS NOT NULL AND EXISTS (SELECT 1 FROM public.profiles pr WHERE pr.id = x);
+  IF cardinality(v_live) = cardinality(NEW.invited_user_ids) THEN
+    RETURN NEW;
+  END IF;
+  NEW.invited_user_ids := CASE WHEN cardinality(v_live) > 0 THEN v_live
+                               ELSE public.bw_poll_fallback_invitees(NEW.band_id, NEW.created_by, NULL) END;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_rehearsal_polls_live_invitees() FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'rehearsal_polls' AND column_name = 'invited_user_ids') THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS bw_rehearsal_polls_live_invitees ON public.rehearsal_polls';
+    EXECUTE 'CREATE TRIGGER bw_rehearsal_polls_live_invitees BEFORE INSERT OR UPDATE OF invited_user_ids ON public.rehearsal_polls
+               FOR EACH ROW EXECUTE FUNCTION public.bw_trg_rehearsal_polls_live_invitees()';
+  END IF;
+END $$;
 
 NOTIFY pgrst, 'reload schema';
 

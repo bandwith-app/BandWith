@@ -757,10 +757,11 @@ wantArgs.rehearsal_polls = [...(wantArgs.rehearsal_polls ?? []), 'invited_user_i
 const badTrig = Object.entries(wantArgs).filter(([t, cols]) => {
   const def = trigDefs[t] ?? '';
   const args = (def.match(/bw_trg_deleting_account_writes\((.*)\)\s*$/)?.[1] ?? '').split(',').map((a) => a.trim().replace(/^'|'$/g, '')).filter(Boolean).sort();
-  return !/AFTER INSERT OR UPDATE/.test(def) || !/WHEN \(+auth\.uid\(\) IS NOT NULL\)+/.test(def) || JSON.stringify(args) !== JSON.stringify([...cols].sort());
+  const ops = def.match(/AFTER (.*?) ON /)?.[1] ?? '';
+  return !['INSERT', 'UPDATE', 'DELETE'].every((op) => ops.includes(op)) || !/WHEN \(+auth\.uid\(\) IS NOT NULL\)+/.test(def) || JSON.stringify(args) !== JSON.stringify([...cols].sort());
 });
 ok(Object.keys(wantArgs).length > 0 && badTrig.length === 0,
-  `round 8 (Claude M5): every listed table but messages has the trigger, after the write, with its columns (${JSON.stringify(badTrig.map(([t]) => [t, trigDefs[t] ?? null]))})`);
+  `round 8 (Claude M5), round 9 (Codex B4: deletes too): every listed table but messages has the trigger, after the write, with its columns (${JSON.stringify(badTrig.map(([t]) => [t, trigDefs[t] ?? null]))})`);
 // A gig created just before the commit (between prepare's steps), and a
 // table with a check like it the migration doesn't know: the last step
 // clears both, so Auth isn't stopped.
@@ -1100,6 +1101,7 @@ await x(`DELETE FROM net.calls`);
 // 192 guard (#291, applied after 180): its purge on messages and this
 // trigger on chats, together: a cascade leaves no notice and nothing errors.
 const P192 = 'supabase/migrations/192_chat_notification_purge.sql';
+let loaded192 = false;
 let src192 = null;
 try {
   src192 = existsSync(`${REPO}/${P192}`) ? readFileSync(`${REPO}/${P192}`, 'utf8')
@@ -1109,6 +1111,7 @@ if (!src192) {
   console.log(`SKIP 192 guard: ${P192} not in the repo and origin/fix/chat-audit not found`);
 } else {
   d = await x(src192.split('\n').filter((l) => !/^\s*(BEGIN|COMMIT);\s*$/.test(l)).join('\n'));
+  loaded192 = !d.error;
   if (d.error) {
     console.log(`SKIP 192 guard: 192 did not load on the stand-ins (${d.error})`);
   } else {
@@ -1124,6 +1127,85 @@ if (!src192) {
     ok(!d.error && !del.error && left === 0, `192 guard: with 192's purge, a band deleted by cascade leaves no chat notice and nothing errors (${d.error ?? del.error ?? left})`);
   }
 }
+
+
+// ── Codex and Claude reviews #282, round 9 (of 85393e10) ───────────────────
+// X1 is committed (round 8, never deleted from Auth); BB2 lives.
+const NOPROF = id(297);
+const P4 = id(231), P5 = id(232), P6 = id(233), NR9 = [234, 235, 236, 237, 238].map(id);
+// Codex B2: a notification from a sender being deleted, or gone, is never
+// written (checked in the insert, after #291's 192 when it loaded).
+const noteIns = async (nid, data) => x(`INSERT INTO notifications (id, user_id, type, title, body, data)
+  VALUES ('${nid}', '${BB2}', 'chat_message', 'x', 'call me', '${JSON.stringify(data)}'::jsonb)`);
+const stored = async (nid) => (await qq(`SELECT 1 FROM notifications WHERE id = '${nid}'`)).rows.length === 1;
+let ins = [await noteIns(NR9[0], { chat_id: ZC, sender_id: X1 }), await noteIns(NR9[1], { chatId: ZC, senderId: NOPROF }),
+  await noteIns(NR9[2], { suggestion_id: id(239), by: X1 }), await noteIns(NR9[3], { chat_id: ZC, sender_id: BB2 }),
+  await noteIns(NR9[4], { member_name: 'Former member' })];
+ok(ins.every((r) => !r.error), `round 9: the inserts themselves never fail (${JSON.stringify(ins.map((r) => r.error ?? 'ok'))})`);
+ok(!(await stored(NR9[0])) && !(await stored(NR9[1])) && !(await stored(NR9[2])),
+  `round 9 (Codex B2${loaded192 ? ', with 192' : ''}): a notice from a sender being deleted, a sender gone, or a deleting suggestion actor is not written`);
+ok((await stored(NR9[3])) && (await stored(NR9[4])), `round 9 (Codex B2): the others' notices, and notices with no actor, are`);
+// Codex B4: their other device deletes nothing.
+e6 = await errAs(X1, `DELETE FROM rehearsal_polls WHERE id = '${P3}'`);
+ok(refused(e6) && (await qq(`SELECT 1 FROM rehearsal_polls WHERE id = '${P3}'`)).rows.length === 1,
+  `round 9 (Codex B4): once committed, their other device can't delete a band's poll (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `DELETE FROM rehearsal_polls WHERE id = '${P3}'`);
+ok(e6 === null, `round 9 (Codex B4): the band still can (${JSON.stringify(e6)})`);
+// Claude 1: archived objects and delete markers are not files left.
+d = await x(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS archived_at timestamptz, ADD COLUMN IF NOT EXISTS is_delete_marker boolean;
+  INSERT INTO storage.objects (bucket_id, name, owner, owner_id, archived_at, is_delete_marker) VALUES
+    ('personal-files', '${X1}/old.m4a', NULL, NULL, now(), false), ('avatars', '${X1}/me.png', NULL, NULL, NULL, true)`);
+const rel9 = (await q(`SELECT public.bw_account_storage_release('${X1}') AS r`)).rows?.[0]?.r;
+nm = await names8('personal-files', X1);
+ok(!d.error && rel9?.personal_left === 0 && nm.rows?.length === 0,
+  `round 9 (Claude 1): archived rows and delete markers don't count, and aren't listed (${d.error ?? JSON.stringify({ rel9, nm })})`);
+d = await q(`SELECT public.bw_account_deletion_finish('${X1}')`);
+ok(!d.error, `round 9 (Claude 1): so the last step isn't stuck on them (${d.error ?? 'ok'})`);
+await x(`DELETE FROM storage.objects WHERE name IN ('${X1}/old.m4a', '${X1}/me.png'); ALTER TABLE storage.objects DROP COLUMN archived_at, DROP COLUMN is_delete_marker`);
+// Claude 4: one statement per column first.
+d = await x(`CREATE TABLE public.test_bulk (id serial PRIMARY KEY, owner uuid REFERENCES public.profiles(id));
+  CREATE TABLE public.test_bulk_statements (n int); INSERT INTO test_bulk_statements VALUES (0);
+  CREATE FUNCTION public.test_bulk_count() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN UPDATE test_bulk_statements SET n = n + 1; RETURN NULL; END $f$;
+  CREATE TRIGGER test_bulk_count AFTER UPDATE ON public.test_bulk FOR EACH STATEMENT EXECUTE FUNCTION public.test_bulk_count();
+  INSERT INTO test_bulk (owner) VALUES ('${X1}'), ('${X1}'), ('${X1}'), ('${X1}')`);
+d = d.error ? d : await q(`SELECT public.bw_account_deletion_release_refs('${X1}')`);
+const bulk = (await qq(`SELECT (SELECT n FROM test_bulk_statements) AS n, (SELECT count(*)::int FROM test_bulk WHERE owner IS NOT NULL) AS left`)).rows[0];
+ok(!d.error && bulk?.n === 1 && bulk?.left === 0, `round 9 (Claude 4): a NO ACTION column is cleared in one statement, not row by row (${d.error ?? JSON.stringify(bulk)})`);
+await x(`DROP TABLE test_bulk; DROP TABLE test_bulk_statements`);
+// Claude 6: their own push logs go, not kept with no user.
+await x(`INSERT INTO notification_logs (user_id) VALUES ('${X1}'), ('${X1}'), ('${BB2}')`);
+const logsBefore = (await qq(`SELECT count(*)::int AS n FROM notification_logs WHERE user_id IS NULL`)).rows[0]?.n;
+d = await q(`SELECT public.bw_account_deletion_release_refs('${X1}')`);
+const logs9 = (await qq(`SELECT (SELECT count(*)::int FROM notification_logs WHERE user_id IS NULL) AS nulls,
+  (SELECT count(*)::int FROM notification_logs WHERE user_id = '${X1}') AS theirs, (SELECT count(*)::int FROM notification_logs WHERE user_id = '${BB2}') AS others`)).rows[0];
+ok(!d.error && logs9?.nulls === logsBefore && logs9?.theirs === 0 && logs9?.others === 1,
+  `round 9 (Claude 6): their notification logs are deleted, not left without a user (${d.error ?? JSON.stringify({ logsBefore, logs9 })})`);
+// Claude 7a: a NO ACTION events.created_by is cleared, not skipped.
+const evFk = (await qq(`SELECT conname FROM pg_constraint WHERE conrelid = 'public.events'::regclass AND contype = 'f'`)).rows[0]?.conname;
+d = await x(`ALTER TABLE events DROP CONSTRAINT ${evFk}; ALTER TABLE events ADD CONSTRAINT ${evFk} FOREIGN KEY (created_by) REFERENCES public.profiles(id);
+  INSERT INTO events (id, band_id, created_by, title) VALUES ('${id(240)}', '${WB}', '${X1}', 'Harlem brunch')`);
+d = d.error ? d : await q(`SELECT public.bw_account_deletion_release_refs('${X1}')`);
+const ev9 = (await qq(`SELECT created_by FROM events WHERE id = '${id(240)}'`)).rows[0];
+ok(!d.error && ev9 && ev9.created_by === null, `round 9 (Claude 7): a NO ACTION events.created_by is cleared for Auth (${d.error ?? JSON.stringify(ev9)})`);
+await x(`DELETE FROM events WHERE id = '${id(240)}'; ALTER TABLE events DROP CONSTRAINT ${evFk};
+  ALTER TABLE events ADD CONSTRAINT ${evFk} FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL`);
+// Claude 7b: a poll whose only invitee goes never becomes {NULL}.
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids, status) VALUES
+  ('${P4}', '${WB}', NULL, 'Tuesday?', ARRAY['${X1}']::uuid[], 'polling')`);
+d = d.error ? d : await q(`SELECT public.bw_account_deletion_polls('${X1}')`);
+const p4 = (await qq(`SELECT invited_user_ids::text[] AS i, status FROM rehearsal_polls WHERE id = '${P4}'`)).rows[0];
+ok(!d.error && JSON.stringify(p4?.i) === JSON.stringify([BB2]) && p4.status === 'cancelled',
+  `round 9 (Claude 7): its creator gone too, it goes to the band's admins, closed, never {NULL} (${d.error ?? JSON.stringify(p4)})`);
+// Claude 5: a stale save can't write a deleted account back.
+d = await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids) VALUES
+    ('${P5}', '${WB}', '${BB2}', 'Wednesday?', ARRAY['${BB2}', '${NOPROF}', NULL]::uuid[]),
+    ('${P6}', '${WB}', '${BB2}', 'Thursday?', ARRAY['${NOPROF}']::uuid[])`);
+let p56 = (await qq(`SELECT id::text AS id, invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id IN ('${P5}', '${P6}') ORDER BY id`)).rows;
+ok(!d.error && JSON.stringify(p56.map((r) => r.i)) === JSON.stringify([[BB2], [BB2]]),
+  `round 9 (Claude 5): only invitees with an account are kept; none left: the creator (${d.error ?? JSON.stringify(p56)})`);
+e6 = await errAs(BB2, `UPDATE rehearsal_polls SET invited_user_ids = ARRAY['${BB2}', '${NOPROF}']::uuid[] WHERE id = '${P5}'`);
+p56 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P5}'`)).rows[0];
+ok(e6 === null && JSON.stringify(p56?.i) === JSON.stringify([BB2]), `round 9 (Claude 5): a stale save drops the deleted account (${JSON.stringify({ e6, p56 })})`);
 
 // Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
 // authenticated): 180 running after it must not grant it back.

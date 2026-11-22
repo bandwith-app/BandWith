@@ -403,10 +403,24 @@ export const getChat = async (
       .in('id', partIds);
     const profileMap = new Map((profilesData || []).map((p: any) => [p.id, { id: p.id, full_name: p.full_name, avatar_url: p.avatar_url }]));
 
+    // A direct chat's newest message (#282 round 9): its sender tells a live
+    // account from a former member in the header (directChatName).
+    let lastMessage: Message | undefined;
+    if (chat.type === 'direct') {
+      const { data: last } = await supabase
+        .from('messages')
+        .select('id, chat_id, sender_id, created_at')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (Array.isArray(last) && last[0]) lastMessage = last[0] as unknown as Message;
+    }
+
     return {
       data: {
         ...chat,
         name: resolvedName,
+        last_message: lastMessage,
         logo_url: bandInfo?.logo_url || (chat as any).logo_url,
         band: bandInfo || undefined,
         participants: (chatParticipants || []).map((p: any) => ({

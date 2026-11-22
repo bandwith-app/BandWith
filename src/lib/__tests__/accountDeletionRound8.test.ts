@@ -46,11 +46,12 @@ describe('round 8: a response with account_being_deleted signs out', () => {
     expect(hit).not.toHaveBeenCalled();
   });
 
-  it('the app client is wired to it (through planAwareFetch) and signs out globally', () => {
+  it('the app client is wired to it (through planAwareFetch)', () => {
     const plan = planLimitSource.slice(planLimitSource.indexOf('export function planAwareFetch'));
     expect(plan).toMatch(/return deletionAwareFetch\(/);
     expect(plan).toMatch(/\}, signOutDeletingAccount\);/);
-    expect(signOutSource).toMatch(/signOut\(\{ scope: 'global' \}\)/);
+    // Round 9: through the app's own sign-out (accountDeletionRound9.test.ts).
+    expect(signOutSource).toMatch(/export async function signOutDeletingAccount\(userId: string \| null\)/);
   });
 });
 
@@ -96,9 +97,10 @@ describe('round 8: edge functions refuse a caller who is being deleted', () => {
     expect(await gate.callerDeletionRefusal(admin({ user_id: 'u1' }), { kind: 'service' })).toBeNull();
   });
 
-  it('a failed lookup refuses (503), never lets it through', async () => {
-    const refusal = await gate.callerDeletionRefusal(admin(null, { message: 'timeout' }), { kind: 'user', id: 'u1' });
-    expect(refusal?.status).toBe(503);
+  it('a failed lookup lets the call through (round 9: the triggers are the hard guard)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await gate.callerDeletionRefusal(admin(null, { message: 'timeout' }), { kind: 'user', id: 'u1' })).toBeNull();
+    warn.mockRestore();
   });
 
   it.each([

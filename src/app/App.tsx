@@ -18,6 +18,7 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { supabase } from "@/lib/supabase";
 import { appLockSupported, markUnlocked, shouldLockOnLaunch } from "@/lib/appLock";
 import { useServerLocaleSync } from "@/lib/i18n/serverLocale";
+import { useDeletionSignOut } from "@/lib/useDeletionSignOut";
 
 const AuthenticatedApp = lazy(() => import("./AuthenticatedApp"));
 const SetNewPasswordScreen = lazy(
@@ -71,6 +72,8 @@ const isAuthCallback = (): boolean => {
 
 export default function App() {
   const { isAuthenticated, loading: authLoading, userMode, profile, isPasswordRecovery, user, signOut } = useAuth();
+  // 180: the server says this account is being deleted: the same sign-out.
+  useDeletionSignOut(signOut);
   // The server writes some pushes (deputies) in the language of the app.
   useServerLocaleSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.preferred_language);
   const { startOnboarding, goToStep, resetOnboarding, path: onboardingPath, joinedEarly } = useOnboarding();

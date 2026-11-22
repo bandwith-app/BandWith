@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
+import { holdDeletionSignOut } from '@/lib/deletionSignOut';
 
 export type DeleteAccountResult =
   | { ok: true }
@@ -12,7 +13,23 @@ export type DeleteAccountResult =
  * Permanently deletes the signed-in user's account (edge function
  * `delete-account`). The caller is resolved from the session server-side.
  */
+// Round 9 (Claude): while this device deletes the account, its own
+// background writes refused by 180 sign nothing out mid-request; when the
+// deletion went through (or is committed), the hold stays a minute, while
+// the settings screen signs out itself.
 export async function deleteMyAccount(): Promise<DeleteAccountResult> {
+  const release = holdDeletionSignOut();
+  let result: DeleteAccountResult | null = null;
+  try {
+    result = await deleteMyAccountNow();
+    return result;
+  } finally {
+    if (result && (result.ok || result.reason === 'committed')) setTimeout(release, 60_000);
+    else release();
+  }
+}
+
+async function deleteMyAccountNow(): Promise<DeleteAccountResult> {
   const { data, error } = await supabase.functions.invoke('delete-account', {
     body: { confirm: 'DELETE' },
   });
