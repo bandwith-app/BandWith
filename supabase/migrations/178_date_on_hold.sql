@@ -1116,10 +1116,14 @@ REVOKE ALL ON FUNCTION public.bw_quote_chat_prune(uuid) FROM PUBLIC, anon, authe
 SELECT public.bw_quote_chat_prune(NULL);
 
 -- In or out of privacy (bw_event_quote_private false -> true, or true ->
--- false), from the event trigger, under the hold's lock. In: a new period
--- from now, open; from a gig, confirmed_once_at too. Out: the open period
--- ends now (the first one, from -infinity, also sets history_cutoff_at); an
--- exit with no open period hides since the last one (only ever more).
+-- false), from the event trigger or the quote / link privacy trigger, under
+-- the hold's lock. In: a new period from now, open; from a gig,
+-- confirmed_once_at too. Out: the open period ends now, never before it
+-- started (a transaction that began before a concurrent revert can't remove
+-- it); the first one, from -infinity, also sets history_cutoff_at. An exit
+-- with no open period hides since the last one (only ever more). The row
+-- it may insert is released at once ('reverted' / 'left_quote'): the sweep
+-- still announces a hold on it.
 CREATE OR REPLACE FUNCTION public.bw_quote_private_period(p_event_id uuid, p_band_id uuid, p_enter boolean,
   p_was_gig boolean DEFAULT false)
 RETURNS void
@@ -1140,15 +1144,17 @@ BEGIN
            confirmed_once_at = CASE WHEN p_was_gig THEN coalesce(confirmed_once_at, now()) ELSE confirmed_once_at END
      WHERE event_id = p_event_id;
   ELSE
-    UPDATE event_date_holds
+    UPDATE event_date_holds h
        SET history_cutoff_at = CASE WHEN private_periods IS NULL OR isempty(private_periods)
                                     THEN coalesce(history_cutoff_at, now()) ELSE history_cutoff_at END,
            private_periods = CASE
              WHEN private_periods IS NULL OR isempty(private_periods)
                THEN tstzmultirange(tstzrange(NULL, now(), '(]'))
              WHEN upper_inf(private_periods)
-               THEN private_periods - tstzmultirange(tstzrange(now(), NULL, '()'))
-             ELSE private_periods + tstzmultirange(tstzrange(upper(private_periods), now(), '[]'))
+               THEN private_periods - tstzmultirange(tstzrange(
+                      greatest(now(), (SELECT max(lower(pr)) FROM unnest(h.private_periods) pr)), NULL, '()'))
+             ELSE private_periods + tstzmultirange(tstzrange(upper(private_periods),
+                    greatest(now(), upper(private_periods)), '[]'))
            END
      WHERE event_id = p_event_id;
   END IF;
@@ -1996,9 +2002,15 @@ DECLARE
   ev record;
 BEGIN
   IF TG_OP = 'DELETE' THEN ev := OLD; ELSE ev := NEW; END IF;
-  -- 178: the hold's lock before any write to event_date_holds, in the same
-  -- order as the quote triggers and the sweep (lock, then the row).
-  PERFORM pg_advisory_xact_lock(178, hashtext(ev.id::text));
+  -- 178: the hold's lock before any write to event_date_holds. The UPDATE
+  -- already holds the events row, so the order is: events row, then the
+  -- hold's lock, then the hold row. The quote triggers lock the events row
+  -- before the hold's lock too; the sweep and bw_answer_date_hold take the
+  -- lock and the hold row, never the events row. Personal events (no band)
+  -- have no hold: no lock.
+  IF OLD.band_id IS NOT NULL OR (TG_OP = 'UPDATE' AND NEW.band_id IS NOT NULL) THEN
+    PERFORM pg_advisory_xact_lock(178, hashtext(ev.id::text));
+  END IF;
   v_kind := CASE WHEN lower(coalesce(ev.event_type::text, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
   v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
   v_when := coalesce(to_char(ev.event_date, 'Dy DD Mon'), 'date TBD') ||
@@ -2203,17 +2215,22 @@ SET search_path TO 'public'
 AS $$
 DECLARE
   v_quote uuid := NEW.id;
+  v_ids uuid[];
   r record;
 BEGIN
   IF TG_TABLE_NAME = 'quote_links' THEN v_quote := NEW.quote_id; END IF;
-  FOR r IN
-    SELECT DISTINCT e.id FROM events e JOIN quotes q ON q.id = v_quote
-     WHERE e.band_id = q.band_id AND (e.id = q.converted_to_event_id OR e.quote_id = q.id)
-  LOOP
+  SELECT array_agg(DISTINCT e.id) INTO v_ids FROM events e JOIN quotes q ON q.id = v_quote
+   WHERE e.band_id = q.band_id AND (e.id = q.converted_to_event_id OR e.quote_id = q.id);
+  IF v_ids IS NULL THEN RETURN NEW; END IF;
+  -- The events rows first, then the hold's lock (in the sync): the order of
+  -- an events UPDATE, and of bw_date_hold_quote_moved after this trigger.
+  PERFORM 1 FROM events e WHERE e.id = ANY (v_ids) ORDER BY e.id FOR NO KEY UPDATE;
+  FOR r IN SELECT unnest(v_ids) AS id ORDER BY 1 LOOP
     PERFORM public.bw_date_hold_sync(r.id, false);
   END LOOP;
   RETURN NEW;
 EXCEPTION WHEN others THEN
+  IF SQLSTATE IN ('40P01', '40001') THEN RAISE; END IF;
   RAISE WARNING 'bw_trg_date_hold_quote_changed: %', SQLERRM;
   RETURN NEW;
 END;
@@ -2235,17 +2252,21 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
+  v_ids uuid[];
   r record;
 BEGIN
-  FOR r IN
-    SELECT DISTINCT e.id FROM quotes q JOIN events e
+  SELECT array_agg(DISTINCT e.id) INTO v_ids FROM quotes q JOIN events e
       ON e.band_id = q.band_id AND (e.id = q.converted_to_event_id OR e.quote_id = q.id)
-     WHERE q.id = NEW.quote_id
-  LOOP
+   WHERE q.id = NEW.quote_id;
+  IF v_ids IS NULL THEN RETURN NEW; END IF;
+  -- The events rows first, then the hold's lock (in the sync).
+  PERFORM 1 FROM events e WHERE e.id = ANY (v_ids) ORDER BY e.id FOR NO KEY UPDATE;
+  FOR r IN SELECT unnest(v_ids) AS id ORDER BY 1 LOOP
     PERFORM public.bw_date_hold_sync(r.id, false);
   END LOOP;
   RETURN NEW;
 EXCEPTION WHEN others THEN
+  IF SQLSTATE IN ('40P01', '40001') THEN RAISE; END IF;
   RAISE WARNING 'bw_trg_date_hold_quote_musicians: %', SQLERRM;
   RETURN NEW;
 END;
@@ -2307,6 +2328,109 @@ CREATE TRIGGER bw_date_hold_quote_link_changed
   AFTER UPDATE OF status ON public.quote_links
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_date_hold_quote_changed();
 
+-- Privacy can change with no write to events. A cancelled event that was
+-- never a gig (no quote_id) is private until its client link is accepted,
+-- and with no hold row its quote decides (bw_event_quote_private's cancelled
+-- branch); other events are private by their own columns. So before a quote
+-- or link write, each such event's privacy is noted (once per statement, in
+-- a transaction-local setting) and after it a flip opens or closes a private
+-- period, as the event trigger does: true -> false whatever the path (the
+-- client accepting a link on a cancelled quote, a quote re-pointed or
+-- deleted). Errors are not swallowed: a flip with no period would leak.
+CREATE OR REPLACE FUNCTION public.bw_quote_privacy_events(p_event_ids uuid[])
+RETURNS TABLE (event_id uuid, band_id uuid, is_private boolean)
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT e.id, e.band_id, public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
+    FROM events e
+   WHERE e.id = ANY (p_event_ids)
+     AND e.band_id IS NOT NULL AND e.quote_id IS NULL
+     AND lower(coalesce(e.status::text, '')) IN ('cancelled', 'canceled')
+     AND lower(coalesce(e.event_type::text, '')) <> 'rehearsal';
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_privacy_events(uuid[]) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_trg_quote_privacy()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_ids uuid[];
+  v_stamp text := statement_timestamp()::text;
+  v_key text;
+  v_cur text;
+  v_was boolean;
+  v_now boolean;
+  v_band uuid;
+  r record;
+BEGIN
+  IF TG_TABLE_NAME = 'quote_links' THEN
+    SELECT array_agg(DISTINCT q.converted_to_event_id) INTO v_ids FROM quotes q
+     WHERE q.id IN (OLD.quote_id, NEW.quote_id) AND q.converted_to_event_id IS NOT NULL;
+  ELSE
+    v_ids := array_remove(ARRAY[OLD.converted_to_event_id, NEW.converted_to_event_id], NULL);
+  END IF;
+  IF coalesce(array_length(v_ids, 1), 0) = 0 THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_WHEN = 'BEFORE' THEN
+    FOR r IN SELECT * FROM public.bw_quote_privacy_events(v_ids) LOOP
+      v_key := 'bw178.qp_' || replace(r.event_id::text, '-', '');
+      v_cur := current_setting(v_key, true);
+      IF coalesce(split_part(v_cur, '|', 1), '') <> v_stamp THEN
+        PERFORM set_config(v_key, v_stamp || '|' || r.is_private::text, true);
+      END IF;
+    END LOOP;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+
+  FOR r IN SELECT unnest(v_ids) AS id ORDER BY 1 LOOP
+    v_key := 'bw178.qp_' || replace(r.id::text, '-', '');
+    v_cur := current_setting(v_key, true);
+    CONTINUE WHEN coalesce(v_cur, '') = '';
+    PERFORM set_config(v_key, '', true);
+    CONTINUE WHEN split_part(v_cur, '|', 1) <> v_stamp;
+    v_was := split_part(v_cur, '|', 2) = 'true';
+    -- The events row first, then the hold's lock (bw_quote_private_period).
+    PERFORM 1 FROM events e WHERE e.id = r.id FOR NO KEY UPDATE;
+    v_band := NULL;
+    SELECT p.band_id, p.is_private INTO v_band, v_now FROM public.bw_quote_privacy_events(ARRAY[r.id]) p;
+    CONTINUE WHEN v_band IS NULL;
+    IF v_was AND NOT v_now THEN
+      PERFORM public.bw_quote_private_period(r.id, v_band, false);
+    ELSIF v_now AND NOT v_was THEN
+      PERFORM public.bw_quote_private_period(r.id, v_band, true);
+      PERFORM public.bw_quote_chat_prune(r.id);
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_quote_privacy() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_quote_privacy_before ON public.quotes;
+CREATE TRIGGER bw_quote_privacy_before
+  BEFORE INSERT OR DELETE OR UPDATE OF status, converted_to_event_id, band_id ON public.quotes
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_privacy();
+DROP TRIGGER IF EXISTS bw_quote_privacy_after ON public.quotes;
+CREATE TRIGGER bw_quote_privacy_after
+  AFTER INSERT OR DELETE OR UPDATE OF status, converted_to_event_id, band_id ON public.quotes
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_privacy();
+DROP TRIGGER IF EXISTS bw_quote_privacy_before ON public.quote_links;
+CREATE TRIGGER bw_quote_privacy_before
+  BEFORE INSERT OR DELETE OR UPDATE OF status, quote_id ON public.quote_links
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_privacy();
+DROP TRIGGER IF EXISTS bw_quote_privacy_after ON public.quote_links;
+CREATE TRIGGER bw_quote_privacy_after
+  AFTER INSERT OR DELETE OR UPDATE OF status, quote_id ON public.quote_links
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_quote_privacy();
+
 -- Expiry has no write of its own, and a tentative event with no quote waits
 -- 2 minutes: the sweep announces and releases.
 CREATE OR REPLACE FUNCTION public.bw_date_hold_sweep()
@@ -2334,7 +2458,10 @@ BEGIN
      WHERE e.band_id IS NOT NULL
        AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
        AND coalesce(e.event_date, e.date) >= public.bw_date_hold_today()
-       AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = e.id)
+       -- No hold yet, or only the row a privacy change left (released at
+       -- once, 'reverted' / 'left_quote', not announced since).
+       AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = e.id
+                        AND NOT (h.released_at IS NOT NULL AND h.release_reason IN ('reverted', 'left_quote')))
   LOOP
     IF public.bw_date_hold_live(r.id) AND public.bw_date_hold_ready(r.id) THEN
       PERFORM public.bw_date_hold_sync(r.id, false);
